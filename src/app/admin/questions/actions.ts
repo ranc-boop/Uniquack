@@ -9,8 +9,10 @@ import {
 } from "@/lib/actions/feedback";
 import { syncBoundVideoTagsForQuestion } from "@/app/admin/videos/tag-sync";
 import { requireAdmin } from "@/lib/auth/guards";
+import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
 import { createClient } from "@/lib/supabase/server";
+import { uuidSchema } from "@/lib/validations/common";
 import {
   questionCreateSchema,
   questionDeleteSchema,
@@ -26,23 +28,35 @@ export async function createQuestion(formData: FormData) {
     const tagIds = questionTagIdsSchema.parse(
       formData.getAll("tag_ids").map(String).filter(Boolean),
     );
+    const draftIdValue = formData.get("draft_id");
+    const draftId =
+      typeof draftIdValue === "string" && draftIdValue
+        ? uuidSchema.parse(draftIdValue)
+        : null;
     const supabase = await createClient();
 
-    const { data: question, error } = await supabase
-      .from("questions")
-      .insert({
-        ...parsed,
-        content_html: sanitizeContentHtml(parsed.content_html),
-        solution_html: parsed.solution_html
-          ? sanitizeContentHtml(parsed.solution_html)
-          : null,
-        created_by: profile.id,
-        updated_by: profile.id,
-        published_at:
-          parsed.status === "published" ? new Date().toISOString() : null,
-      })
-      .select("id")
-      .single();
+    const values = {
+      ...parsed,
+      content_html: sanitizeContentHtml(parsed.content_html),
+      solution_html: parsed.solution_html
+        ? sanitizeContentHtml(parsed.solution_html)
+        : null,
+      created_by: profile.id,
+      updated_by: profile.id,
+      published_at:
+        parsed.status === "published" ? new Date().toISOString() : null,
+    };
+    const questionRequest = draftId
+      ? supabase
+          .from("questions")
+          .update(values)
+          .eq("id", draftId)
+          .eq("status", "draft")
+          .eq("created_by", profile.id)
+          .select("id")
+          .single()
+      : supabase.from("questions").insert(values).select("id").single();
+    const { data: question, error } = await questionRequest;
 
     if (error) {
       throw new Error(error.message);
@@ -186,6 +200,33 @@ export async function deleteQuestion(formData: FormData) {
     const parsed = questionDeleteSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
     questionId = parsed.id;
+    const { data: assets, error: assetsError } = await supabase
+      .from("question_assets")
+      .select("id, object_path")
+      .eq("question_id", parsed.id);
+
+    if (assetsError) {
+      throw new Error(assetsError.message);
+    }
+
+    if (assets?.length) {
+      const { error: storageError } = await supabase.storage
+        .from(QUESTION_ASSETS_BUCKET)
+        .remove(assets.map((asset) => asset.object_path));
+
+      if (storageError) {
+        throw new Error(storageError.message);
+      }
+
+      const { error: assetsDeleteError } = await supabase
+        .from("question_assets")
+        .delete()
+        .eq("question_id", parsed.id);
+
+      if (assetsDeleteError) {
+        throw new Error(assetsDeleteError.message);
+      }
+    }
 
     const { error } = await supabase
       .from("questions")

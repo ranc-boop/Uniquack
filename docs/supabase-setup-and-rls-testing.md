@@ -1,6 +1,6 @@
 # Supabase Setup And RLS Testing
 
-This phase verifies real Supabase Auth, RLS, middleware route protection, and the smallest CRUD loop. It intentionally does not cover AI parsing, Storage upload, student submissions, final dashboard polish, or advanced rich text editing.
+This phase verifies real Supabase Auth, RLS, middleware route protection, the smallest CRUD loop, and admin-only question image uploads. It intentionally does not cover AI parsing, student submissions, final dashboard polish, or advanced rich text editing.
 
 ## Environment Checklist
 
@@ -38,9 +38,13 @@ If applying manually:
 
 1. Open `supabase/migrations/0001_initial_schema.sql`.
 2. Run the whole file in the Supabase SQL Editor.
-3. Create the first Auth user in Supabase Auth.
-4. Edit `supabase/seed.sql`, replacing `REPLACE_WITH_FIRST_ADMIN_USERNAME@local.app`.
-5. Run `supabase/seed.sql` to promote the first user to `super_admin`.
+3. Open `supabase/migrations/0002_question_assets_storage.sql`.
+4. Run the whole file to create the public `question-assets` bucket, asset records, and Storage RLS.
+5. Open `supabase/migrations/0003_question_asset_detail_display.sql`.
+6. Run the whole file to add the detail-page display toggle and public read policy.
+7. Create the first Auth user in Supabase Auth.
+8. Edit `supabase/seed.sql`, replacing `REPLACE_WITH_FIRST_ADMIN_USERNAME@local.app`.
+9. Run `supabase/seed.sql` to promote the first user to `super_admin`.
 
 ## Test Users
 
@@ -96,6 +100,10 @@ where email = 'owner1@local.app';
 - Confirm `/admin/users` is blocked.
 - Create a `published` tag.
 - Create a `published` question with `difficulty_rating` and bind the tag.
+- Upload an image from `/admin/questions`, confirm the preview appears, copy the public URL, then delete the image.
+- Turn on `Show on detail`, confirm the image appears below the public question body, and click it to open the enlarged dialog.
+- Treat `Hide from detail` as discoverability control, not confidential storage. The public bucket still serves a hidden or draft image if somebody already knows its UUID URL.
+- In the create form, confirm the first image upload requires code and title and automatically creates a draft UUID without navigating away.
 - Create a `published` video bound to that question.
 - Confirm `/questions` and `/videos` show the published records.
 - Confirm admin cannot update `profiles.role` through direct client access.

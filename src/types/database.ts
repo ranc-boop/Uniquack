@@ -86,6 +86,20 @@ export type RubricStep = {
   updated_at: string;
 };
 
+export type QuestionAsset = {
+  id: string;
+  question_id: string | null;
+  object_path: string;
+  mime_type: string;
+  size_bytes: number;
+  original_filename: string;
+  status: "pending" | "ready";
+  display_on_detail: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type TableDefinition<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
   Row: Row;
   Insert: Insert;
@@ -113,6 +127,7 @@ export type Database = {
         updated_at: string;
       }>;
       question_rubric_steps: TableDefinition<RubricStep>;
+      question_assets: TableDefinition<QuestionAsset>;
       user_question_attempts: TableDefinition<{
         id: string;
         user_id: string;

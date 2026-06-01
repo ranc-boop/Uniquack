@@ -3,9 +3,11 @@ import {
   deleteQuestion,
   updateQuestion,
 } from "@/app/admin/questions/actions";
+import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
+import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { requireAdmin } from "@/lib/auth/guards";
+import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
 
 type AdminQuestionsPageProps = {
@@ -35,7 +38,12 @@ export default async function AdminQuestionsPage({
   const params = await searchParams;
   await requireAdmin();
   const supabase = await createClient();
-  const [{ data: questions, error }, { data: tags }, { data: questionTags }] =
+  const [
+    { data: questions, error },
+    { data: tags },
+    { data: questionTags },
+    { data: questionAssets },
+  ] =
     await Promise.all([
       supabase
         .from("questions")
@@ -50,10 +58,18 @@ export default async function AdminQuestionsPage({
         .order("name", { ascending: true })
         .limit(100),
       supabase.from("question_tags").select("question_id, tag_id").limit(1000),
+      supabase
+        .from("question_assets")
+        .select(
+          "id, question_id, object_path, original_filename, display_on_detail",
+        )
+        .eq("status", "ready")
+        .limit(1000),
     ]);
 
   const tagNameById = new Map((tags ?? []).map((tag) => [tag.id, tag.name]));
   const tagsByQuestionId = new Map<string, string[]>();
+  const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
 
   for (const binding of questionTags ?? []) {
     const current = tagsByQuestionId.get(binding.question_id) ?? [];
@@ -63,6 +79,26 @@ export default async function AdminQuestionsPage({
       current.push(tagName);
       tagsByQuestionId.set(binding.question_id, current);
     }
+  }
+
+  for (const asset of questionAssets ?? []) {
+    if (!asset.question_id) {
+      continue;
+    }
+
+    const current = assetsByQuestionId.get(asset.question_id) ?? [];
+    const { data } = supabase.storage
+      .from(QUESTION_ASSETS_BUCKET)
+      .getPublicUrl(asset.object_path);
+
+    current.push({
+      id: asset.id,
+      questionId: asset.question_id,
+      originalFilename: asset.original_filename,
+      publicUrl: data.publicUrl,
+      displayOnDetail: asset.display_on_detail,
+    });
+    assetsByQuestionId.set(asset.question_id, current);
   }
 
   return (
@@ -80,7 +116,12 @@ export default async function AdminQuestionsPage({
           <CardTitle className="text-base">Create question</CardTitle>
         </CardHeader>
         <CardContent>
-          <form action={createQuestion} className="grid gap-4 md:grid-cols-2">
+          <form
+            id="create-question-form"
+            action={createQuestion}
+            className="grid gap-4 md:grid-cols-2"
+          >
+            <input id="create-question-draft-id" type="hidden" name="draft_id" />
             <div className="space-y-2">
               <Label htmlFor="question_code">Code</Label>
               <Input
@@ -172,6 +213,13 @@ export default async function AdminQuestionsPage({
                 id="solution_html"
                 name="solution_html"
                 placeholder="<p>Optional solution placeholder</p>"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <QuestionAssetsPanel
+                draftInputId="create-question-draft-id"
+                questionCodeInputId="question_code"
+                titleInputId="title"
               />
             </div>
             <div className="md:col-span-2">
@@ -316,6 +364,12 @@ export default async function AdminQuestionsPage({
                           <Textarea
                             name="solution_html"
                             defaultValue={question.solution_html ?? ""}
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <QuestionAssetsPanel
+                            questionId={question.id}
+                            initialAssets={assetsByQuestionId.get(question.id)}
                           />
                         </div>
                         <div className="md:col-span-2">

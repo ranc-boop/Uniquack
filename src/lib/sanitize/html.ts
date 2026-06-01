@@ -3,6 +3,7 @@ import sanitizeHtml from "sanitize-html";
 const allowedTags = Array.from(
   new Set([
     ...sanitizeHtml.defaults.allowedTags,
+    "img",
     "picture",
     "video",
     "audio",
@@ -255,6 +256,19 @@ const isSafeAnchorHref = (href?: string) => {
   }
 };
 
+const isSafeImageSrc = (src?: string) => {
+  if (!src) {
+    return false;
+  }
+
+  try {
+    const url = new URL(src);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 export function sanitizeContentHtml(contentHtml: string) {
   return sanitizeHtml(contentHtml, {
     allowedTags,
@@ -288,10 +302,17 @@ export function sanitizeContentHtml(contentHtml: string) {
         },
       }),
     },
-    exclusiveFilter: (frame) =>
-      frame.tag === "a" && !isSafeAnchorHref(frame.attribs.href)
-        ? "excludeTag"
-        : false,
+    exclusiveFilter: (frame) => {
+      if (frame.tag === "a" && !isSafeAnchorHref(frame.attribs.href)) {
+        return "excludeTag";
+      }
+
+      if (frame.tag === "img" && !isSafeImageSrc(frame.attribs.src)) {
+        return "excludeTag";
+      }
+
+      return false;
+    },
     disallowedTagsMode: "discard",
   });
 }

@@ -13,7 +13,16 @@ assert.equal(sanitizeContentHtml(eventInput), "<p>Click</p>");
 const javascriptUrlInput = '<a href="javascript:alert(1)">bad</a><p>ok</p>';
 assert.equal(sanitizeContentHtml(javascriptUrlInput), "bad<p>ok</p>");
 
+const storageImageInput =
+  '<img src="https://example.supabase.co/storage/v1/object/public/question-assets/questions/question-id/asset-id.png" alt="diagram">';
+assert.equal(
+  sanitizeContentHtml(storageImageInput),
+  '<img src="https://example.supabase.co/storage/v1/object/public/question-assets/questions/question-id/asset-id.png" alt="diagram" />',
+);
+
 const dangerousHtml = toDangerousHtml(scriptInput);
 assert.deepEqual(dangerousHtml, { __html: "<p>Safe</p>" });
 
-console.log("PASS sanitizer removes scripts, event handlers, and javascript URLs");
+console.log(
+  "PASS sanitizer removes unsafe HTML and preserves Supabase Storage image URLs",
+);
