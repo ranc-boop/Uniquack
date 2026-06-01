@@ -1,31 +1,31 @@
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
-
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
+import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 
-const envPath = resolve(process.cwd(), ".env.local");
+// 动态计算项目根目录下 .env.local 的绝对路径
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const projectRoot = resolve(__dirname, "..");
+const envPath = resolve(projectRoot, ".env.local");
 
-if (existsSync(envPath)) {
-  const lines = readFileSync(envPath, "utf8").split(/\r?\n/);
+// 前置加载环境变量
+dotenv.config({ path: envPath });
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
-      continue;
-    }
-
-    const [key, ...rest] = trimmed.split("=");
-    process.env[key] ??= rest.join("=").replace(/^['"]|['"]$/g, "");
-  }
-}
-
+// 前置核心变量声明
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// 健壮性校验
 if (!supabaseUrl || !supabaseAnonKey) {
+  console.error(
+    "【错误】当前绝对路径下未找到环境变量，路径为:",
+    envPath
+  );
+  console.error("NEXT_PUBLIC_SUPABASE_URL:", supabaseUrl);
+  console.error("NEXT_PUBLIC_SUPABASE_ANON_KEY:", supabaseAnonKey);
   throw new Error(
-    "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+    "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY."
   );
 }
 
@@ -261,6 +261,32 @@ if (adminSession) {
     );
     cleanup.tags.push(secondaryTag.id);
 
+    const multiTagA = await insertOrThrow(
+      adminSession.client,
+      "tags",
+      {
+        name: "Admin smoke multi tag A",
+        slug: nowSlug("admin-smoke-multi-tag-a"),
+        tag_type: "knowledge",
+        status: "published",
+      },
+      "id,status,slug",
+    );
+    cleanup.tags.push(multiTagA.id);
+
+    const multiTagB = await insertOrThrow(
+      adminSession.client,
+      "tags",
+      {
+        name: "Admin smoke multi tag B",
+        slug: nowSlug("admin-smoke-multi-tag-b"),
+        tag_type: "attribute",
+        status: "published",
+      },
+      "id,status,slug",
+    );
+    cleanup.tags.push(multiTagB.id);
+
     const createdQuestion = await insertOrThrow(
       adminSession.client,
       "questions",
@@ -288,17 +314,36 @@ if (adminSession) {
     );
     logPass("admin can update questions");
 
-    const questionTag = await insertOrThrow(
-      adminSession.client,
-      "question_tags",
-      {
+    const multiQuestionTagPayload = [createdTag.id, multiTagA.id, multiTagB.id].map(
+      (tagId) => ({
         question_id: createdQuestion.id,
-        tag_id: createdTag.id,
-      },
-      "question_id,tag_id,updated_at",
+        tag_id: tagId,
+      }),
     );
-    cleanup.questionTags.push(questionTag);
-    logPass("admin can create question_tags");
+    const { data: questionTags, error: questionTagsError } =
+      await adminSession.client
+        .from("question_tags")
+        .insert(multiQuestionTagPayload)
+        .select("question_id,tag_id,updated_at");
+
+    assert(
+      !questionTagsError && questionTags?.length === 3,
+      `admin multi question_tags insert failed: ${questionTagsError?.message}`,
+    );
+    cleanup.questionTags.push(...questionTags);
+    logPass("admin can create multiple question_tags");
+
+    const { data: loadedQuestionTags, error: loadedQuestionTagsError } =
+      await adminSession.client
+        .from("question_tags")
+        .select("question_id,tag_id")
+        .eq("question_id", createdQuestion.id);
+
+    assert(
+      !loadedQuestionTagsError && loadedQuestionTags?.length === 3,
+      "admin multi question_tags row count mismatch",
+    );
+    logPass("question can have multiple question_tags rows");
 
     const createdVideo = await insertOrThrow(
       adminSession.client,
@@ -324,17 +369,33 @@ if (adminSession) {
     assert(!videoUpdateError, `admin video update failed: ${videoUpdateError?.message}`);
     logPass("admin can update videos");
 
-    const videoTag = await insertOrThrow(
-      adminSession.client,
-      "video_tags",
-      {
-        video_id: createdVideo.id,
-        tag_id: createdTag.id,
-      },
-      "video_id,tag_id,updated_at",
+    const inheritedVideoTagPayload = (loadedQuestionTags ?? []).map((binding) => ({
+      video_id: createdVideo.id,
+      tag_id: binding.tag_id,
+    }));
+    const { data: videoTags, error: videoTagsError } = await adminSession.client
+      .from("video_tags")
+      .insert(inheritedVideoTagPayload)
+      .select("video_id,tag_id,updated_at");
+
+    assert(
+      !videoTagsError && videoTags?.length === 3,
+      `admin multi video_tags insert failed: ${videoTagsError?.message}`,
     );
-    cleanup.videoTags.push(videoTag);
-    logPass("admin can create video_tags");
+    cleanup.videoTags.push(...videoTags);
+    logPass("admin can create multiple video_tags");
+
+    const { data: inheritedVideoTags, error: inheritedVideoTagsError } =
+      await adminSession.client
+        .from("video_tags")
+        .select("video_id,tag_id")
+        .eq("video_id", createdVideo.id);
+
+    assert(
+      !inheritedVideoTagsError && inheritedVideoTags?.length === 3,
+      "video did not inherit multiple question tags",
+    );
+    logPass("video can inherit multiple question tags");
 
     const { error: updateRoleError } = await adminSession.client
       .from("profiles")

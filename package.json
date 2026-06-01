@@ -48,6 +48,7 @@
     "@types/react-dom": "latest",
     "@types/sanitize-html": "^2.16.1",
     "autoprefixer": "latest",
+    "dotenv": "^17.4.2",
     "eslint": "latest",
     "eslint-config-next": "latest",
     "postcss": "latest",

@@ -49,35 +49,38 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
   }
 
   const supabase = await createClient();
-  const [{ data: videos, error }, { data: publicTags }] = await Promise.all([
-    supabase
-      .from("videos")
-      .select("id, title, question_id, provider, embed_url, status")
-      .eq("status", "published")
-      .order("created_at", { ascending: false })
-      .limit(100),
-    supabase
-      .from("tags")
-      .select("id, name")
-      .eq("status", "published")
-      .order("name", { ascending: true })
-      .limit(100),
-  ]);
+  const { data: videos, error } = await supabase
+    .from("videos")
+    .select("id, title, question_id, provider, embed_url, status")
+    .eq("status", "published")
+    .order("created_at", { ascending: false })
+    .limit(100);
   const videoIds = (videos ?? []).map((video) => video.id);
   const questionIds = (videos ?? []).map((video) => video.question_id);
-  const { data: bindings } = videoIds.length
+  const { data: bindings, error: bindingsError } = videoIds.length
     ? await supabase
         .from("video_tags")
         .select("video_id, tag_id")
         .in("video_id", videoIds)
-    : { data: [] };
-  const { data: questions } = questionIds.length
+    : { data: [], error: null };
+  const publicTagIds = Array.from(
+    new Set((bindings ?? []).map((binding) => binding.tag_id)),
+  );
+  const { data: publicTags, error: tagsError } = publicTagIds.length
+    ? await supabase
+        .from("tags")
+        .select("id, name")
+        .eq("status", "published")
+        .in("id", publicTagIds)
+        .order("name", { ascending: true })
+    : { data: [], error: null };
+  const { data: questions, error: questionsError } = questionIds.length
     ? await supabase
         .from("questions")
         .select("id, question_code, title, difficulty_rating")
         .eq("status", "published")
-        .in("id", questionIds)
-    : { data: [] };
+        .in("id", Array.from(new Set(questionIds)))
+    : { data: [], error: null };
   const tagNameById = new Map(
     (publicTags ?? []).map((tag) => [tag.id, tag.name]),
   );
@@ -186,9 +189,12 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
           </Button>
         </div>
       </form>
-      {error ? (
+      {error || bindingsError || tagsError || questionsError ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error.message}
+          {error?.message ??
+            bindingsError?.message ??
+            tagsError?.message ??
+            questionsError?.message}
         </p>
       ) : null}
       <div className="rounded-md border">
@@ -201,20 +207,38 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
               <TableHead>Difficulty</TableHead>
               <TableHead>Provider</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Open</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredVideos.map((video) => (
               <TableRow key={video.id}>
-                <TableCell>{video.title ?? "Untitled video"}</TableCell>
+                <TableCell>
+                  <Link
+                    href={`/videos/${video.id}`}
+                    className="font-medium hover:underline underline-offset-4"
+                  >
+                    {video.title ?? "Untitled video"}
+                  </Link>
+                </TableCell>
                 <TableCell>
                   <div className="space-y-1">
                     <div className="font-mono text-xs">
-                      {questionById.get(video.question_id)?.question_code ??
-                        video.question_id}
+                      <Link
+                        href={`/questions/${video.question_id}`}
+                        className="hover:underline underline-offset-4"
+                      >
+                        {questionById.get(video.question_id)?.question_code ??
+                          video.question_id}
+                      </Link>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {questionById.get(video.question_id)?.title}
+                      <Link
+                        href={`/questions/${video.question_id}`}
+                        className="hover:underline underline-offset-4"
+                      >
+                        {questionById.get(video.question_id)?.title}
+                      </Link>
                     </div>
                   </div>
                 </TableCell>
@@ -234,11 +258,16 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                 <TableCell>
                   <Badge variant="secondary">{video.status}</Badge>
                 </TableCell>
+                <TableCell>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/videos/${video.id}`}>Open</Link>
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
             {!filteredVideos.length ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={7} className="h-24 text-center">
                   No published videos match these filters.
                 </TableCell>
               </TableRow>
