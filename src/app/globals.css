@@ -56,3 +56,190 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .rich-html {
+    @apply text-foreground leading-7;
+  }
+
+  .rich-html > :first-child {
+    margin-top: 0;
+  }
+
+  .rich-html > :last-child {
+    margin-bottom: 0;
+  }
+
+  .rich-html p {
+    @apply my-4;
+  }
+
+  .rich-html h1,
+  .rich-html h2,
+  .rich-html h3,
+  .rich-html h4,
+  .rich-html h5,
+  .rich-html h6 {
+    @apply font-semibold tracking-tight text-foreground;
+  }
+
+  .rich-html h2 {
+    @apply mt-8 mb-4 text-2xl;
+  }
+
+  .rich-html h3 {
+    @apply mt-6 mb-3 text-xl;
+  }
+
+  .rich-html h4 {
+    @apply mt-5 mb-2 text-lg;
+  }
+
+  .rich-html h5 {
+    @apply mt-4 mb-2 text-base;
+  }
+
+  .rich-html h6 {
+    @apply mt-4 mb-2 text-sm;
+  }
+
+  .rich-html ul,
+  .rich-html ol {
+    @apply my-4 pl-6;
+  }
+
+  .rich-html ul {
+    list-style: disc;
+  }
+
+  .rich-html ol {
+    list-style: decimal;
+  }
+
+  .rich-html li {
+    @apply my-1 pl-1;
+  }
+
+  .rich-html blockquote {
+    @apply my-4 border-l-4 border-border pl-4 italic text-muted-foreground;
+  }
+
+  .rich-html pre {
+    @apply my-4 overflow-x-auto rounded-md bg-muted p-4 font-mono text-sm;
+  }
+
+  .rich-html code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.92em];
+  }
+
+  .rich-html pre code {
+    @apply rounded-none bg-transparent p-0 text-inherit;
+  }
+
+  .rich-html a {
+    @apply text-primary underline underline-offset-4;
+  }
+
+  .rich-html img {
+    @apply my-4 max-w-full rounded-md border;
+  }
+
+  .rich-html picture,
+  .rich-html video,
+  .rich-html audio,
+  .rich-html iframe {
+    @apply my-4 block max-w-full;
+  }
+
+  .rich-html video,
+  .rich-html audio {
+    width: 100%;
+  }
+
+  .rich-html figure {
+    @apply my-4;
+  }
+
+  .rich-html figcaption {
+    @apply mt-2 text-center text-xs text-muted-foreground;
+  }
+
+  .rich-html hr {
+    @apply my-6 border-border;
+  }
+
+  .rich-html table {
+    @apply my-4 w-full border-collapse overflow-hidden rounded-md border text-sm;
+  }
+
+  .rich-html thead {
+    @apply bg-muted;
+  }
+
+  .rich-html th,
+  .rich-html td {
+    @apply border border-border px-3 py-2 align-top;
+  }
+
+  .rich-html th {
+    @apply font-semibold;
+  }
+
+  .rich-html sub,
+  .rich-html sup {
+    @apply text-[0.8em];
+  }
+
+  .rich-html iframe {
+    @apply rounded-md border;
+    min-height: 240px;
+  }
+
+  .rich-html details {
+    @apply my-4 rounded-md border border-border p-4;
+  }
+
+  .rich-html summary {
+    @apply cursor-pointer font-medium;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .collapsible-chevron {
+    transition: transform 160ms ease;
+  }
+
+  details[open] > summary .collapsible-chevron {
+    transform: rotate(180deg);
+  }
+
+  .rich-html.rich-html--compact {
+    @apply leading-6;
+  }
+
+  .rich-html.rich-html--compact p {
+    @apply my-2;
+  }
+
+  .rich-html.rich-html--compact h2 {
+    @apply mt-4 mb-2 text-lg;
+  }
+
+  .rich-html.rich-html--compact h3 {
+    @apply mt-3 mb-2 text-base;
+  }
+
+  .rich-html.rich-html--compact ul,
+  .rich-html.rich-html--compact ol {
+    @apply my-2;
+  }
+
+  .rich-html.rich-html--compact pre,
+  .rich-html.rich-html--compact blockquote,
+  .rich-html.rich-html--compact figure,
+  .rich-html.rich-html--compact table {
+    @apply my-3;
+  }
+}

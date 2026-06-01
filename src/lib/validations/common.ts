@@ -10,4 +10,6 @@ export const optionalUuidSchema = z
   .transform((value) => (value ? value : null))
   .pipe(uuidSchema.nullable());
 
-export const tagIdsFormSchema = z.array(uuidSchema);
+export const tagIdsFormSchema = z
+  .array(uuidSchema)
+  .transform((tagIds) => Array.from(new Set(tagIds)));

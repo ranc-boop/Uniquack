@@ -7,6 +7,7 @@ import {
   redirectWithError,
   redirectWithSaved,
 } from "@/lib/actions/feedback";
+import { syncBoundVideoTagsForQuestion } from "@/app/admin/videos/tag-sync";
 import { requireAdmin } from "@/lib/auth/guards";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
 import { createClient } from "@/lib/supabase/server";
@@ -71,6 +72,9 @@ export async function createQuestion(formData: FormData) {
 }
 
 export async function updateQuestion(formData: FormData) {
+  let questionId = "";
+  let syncedVideoId: string | null = null;
+
   try {
     const profile = await requireAdmin();
     const parsed = questionUpdateSchema.parse(Object.fromEntries(formData));
@@ -79,6 +83,7 @@ export async function updateQuestion(formData: FormData) {
     );
     const supabase = await createClient();
     const { id, ...values } = parsed;
+    questionId = id;
 
     const { error } = await supabase
       .from("questions")
@@ -119,21 +124,34 @@ export async function updateQuestion(formData: FormData) {
         throw new Error(tagError.message);
       }
     }
+
+    syncedVideoId = await syncBoundVideoTagsForQuestion({
+      supabase,
+      questionId: id,
+    });
   } catch (error) {
     redirectWithError("/admin/questions", formatActionError(error));
   }
 
   revalidatePath("/admin/questions");
   revalidatePath("/questions");
+  revalidatePath(`/questions/${questionId}`);
   revalidatePath("/videos");
+  revalidatePath("/admin/videos");
+  if (syncedVideoId) {
+    revalidatePath(`/videos/${syncedVideoId}`);
+  }
   redirectWithSaved("/admin/questions", "Question updated.");
 }
 
 export async function updateQuestionStatus(formData: FormData) {
+  let questionId = "";
+
   try {
     const profile = await requireAdmin();
     const parsed = questionStatusSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
+    questionId = parsed.id;
 
     const { error } = await supabase
       .from("questions")
@@ -156,14 +174,18 @@ export async function updateQuestionStatus(formData: FormData) {
   revalidatePath("/questions");
   revalidatePath("/admin/videos");
   revalidatePath("/videos");
+  revalidatePath(`/questions/${questionId}`);
   redirectWithSaved("/admin/questions", "Question status updated.");
 }
 
 export async function deleteQuestion(formData: FormData) {
+  let questionId = "";
+
   try {
     await requireAdmin();
     const parsed = questionDeleteSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
+    questionId = parsed.id;
 
     const { error } = await supabase
       .from("questions")
@@ -181,5 +203,6 @@ export async function deleteQuestion(formData: FormData) {
   revalidatePath("/questions");
   revalidatePath("/admin/videos");
   revalidatePath("/videos");
+  revalidatePath(`/questions/${questionId}`);
   redirectWithSaved("/admin/questions", "Question deleted.");
 }

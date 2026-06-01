@@ -1,21 +1,12 @@
 import Link from "next/link";
 
 import { SupabaseConfigNotice } from "@/components/config-notice";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { QuestionsTable } from "@/components/questions-table";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
-import { toDangerousHtml } from "@/lib/sanitize/html";
 
 export const dynamic = "force-dynamic";
 
@@ -50,27 +41,30 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   }
 
   const supabase = await createClient();
-  const [{ data: questions, error }, { data: publicTags }] = await Promise.all([
-    supabase
-      .from("questions")
-      .select("id, question_code, title, content_html, difficulty_rating, status")
-      .eq("status", "published")
-      .order("created_at", { ascending: false })
-      .limit(100),
-    supabase
-      .from("tags")
-      .select("id, name")
-      .eq("status", "published")
-      .order("name", { ascending: true })
-      .limit(100),
-  ]);
+  const { data: questions, error } = await supabase
+    .from("questions")
+    .select("id, question_code, title, content_html, difficulty_rating, status")
+    .eq("status", "published")
+    .order("created_at", { ascending: false })
+    .limit(100);
   const questionIds = (questions ?? []).map((question) => question.id);
-  const { data: bindings } = questionIds.length
+  const { data: bindings, error: bindingsError } = questionIds.length
     ? await supabase
         .from("question_tags")
         .select("question_id, tag_id")
         .in("question_id", questionIds)
-    : { data: [] };
+    : { data: [], error: null };
+  const publicTagIds = Array.from(
+    new Set((bindings ?? []).map((binding) => binding.tag_id)),
+  );
+  const { data: publicTags, error: tagsError } = publicTagIds.length
+    ? await supabase
+        .from("tags")
+        .select("id, name")
+        .eq("status", "published")
+        .in("id", publicTagIds)
+        .order("name", { ascending: true })
+    : { data: [], error: null };
   const tagNameById = new Map(
     (publicTags ?? []).map((tag) => [tag.id, tag.name]),
   );
@@ -89,6 +83,8 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       tagIdsByQuestionId.set(binding.question_id, currentIds);
     }
   }
+
+  const tagsByQuestionIdObject = Object.fromEntries(tagsByQuestionId.entries());
 
   const filteredQuestions = (questions ?? []).filter((question) => {
     const difficultyMatches =
@@ -169,63 +165,23 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           </Button>
         </div>
       </form>
-      {error ? (
+      {error || bindingsError || tagsError ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error.message}
+          {error?.message ?? bindingsError?.message ?? tagsError?.message}
         </p>
       ) : null}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Title</TableHead>
-              <TableHead>Content</TableHead>
-              <TableHead>Tags</TableHead>
-              <TableHead>Difficulty</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredQuestions.map((question) => (
-              <TableRow key={question.id}>
-                <TableCell className="font-mono text-xs">
-                  {question.question_code}
-                </TableCell>
-                <TableCell>{question.title}</TableCell>
-                <TableCell className="max-w-md">
-                  <div
-                    className="line-clamp-3 text-sm text-muted-foreground"
-                    dangerouslySetInnerHTML={toDangerousHtml(
-                      question.content_html,
-                    )}
-                  />
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {(tagsByQuestionId.get(question.id) ?? []).map((tagName) => (
-                      <Badge key={tagName} variant="outline">
-                        {tagName}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>{question.difficulty_rating}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{question.status}</Badge>
-                </TableCell>
-              </TableRow>
-            ))}
-            {!filteredQuestions.length ? (
-              <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
-                  No published questions match these filters.
-                </TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
-      </div>
+      {filteredQuestions.length ? (
+        <QuestionsTable
+          questions={filteredQuestions}
+          tagsByQuestionId={tagsByQuestionIdObject}
+        />
+      ) : (
+        <div className="rounded-md border">
+          <div className="h-24 text-center text-sm text-muted-foreground">
+            No published questions match these filters.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

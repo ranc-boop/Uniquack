@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { contentStatusSchema, uuidSchema } from "@/lib/validations/common";
+import {
+  contentStatusSchema,
+  tagIdsFormSchema,
+  uuidSchema,
+} from "@/lib/validations/common";
 
 const optionalHtmlSchema = z
   .string()
@@ -29,4 +33,4 @@ export const questionDeleteSchema = z.object({
   id: uuidSchema,
 });
 
-export const questionTagIdsSchema = z.array(uuidSchema);
+export const questionTagIdsSchema = tagIdsFormSchema;

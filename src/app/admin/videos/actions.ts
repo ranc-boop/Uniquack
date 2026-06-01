@@ -7,9 +7,9 @@ import {
   redirectWithError,
   redirectWithSaved,
 } from "@/lib/actions/feedback";
+import { syncVideoTagsFromQuestion } from "@/app/admin/videos/tag-sync";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
-import { tagIdsFormSchema } from "@/lib/validations/common";
 import {
   videoCreateSchema,
   videoDeleteSchema,
@@ -39,27 +39,11 @@ export async function createVideo(formData: FormData) {
       throw new Error(error.message);
     }
 
-    const { data: questionTags, error: questionTagsError } = await supabase
-      .from("question_tags")
-      .select("tag_id")
-      .eq("question_id", video.question_id);
-
-    if (questionTagsError) {
-      throw new Error(questionTagsError.message);
-    }
-
-    if (questionTags?.length) {
-      const { error: videoTagsError } = await supabase.from("video_tags").insert(
-        questionTags.map((binding) => ({
-          video_id: video.id,
-          tag_id: binding.tag_id,
-        })),
-      );
-
-      if (videoTagsError) {
-        throw new Error(videoTagsError.message);
-      }
-    }
+    await syncVideoTagsFromQuestion({
+      supabase,
+      videoId: video.id,
+      questionId: video.question_id,
+    });
   } catch (error) {
     redirectWithError("/admin/videos", formatActionError(error));
   }
@@ -70,14 +54,14 @@ export async function createVideo(formData: FormData) {
 }
 
 export async function updateVideo(formData: FormData) {
+  let videoId = "";
+
   try {
     const profile = await requireAdmin();
     const parsed = videoUpdateSchema.parse(Object.fromEntries(formData));
-    const tagIds = tagIdsFormSchema.parse(
-      formData.getAll("tag_ids").map(String).filter(Boolean),
-    );
     const supabase = await createClient();
     const { id, ...values } = parsed;
+    videoId = id;
 
     const { error } = await supabase
       .from("videos")
@@ -93,41 +77,29 @@ export async function updateVideo(formData: FormData) {
       throw new Error(error.message);
     }
 
-    const { error: deleteTagsError } = await supabase
-      .from("video_tags")
-      .delete()
-      .eq("video_id", id);
-
-    if (deleteTagsError) {
-      throw new Error(deleteTagsError.message);
-    }
-
-    if (tagIds.length > 0) {
-      const { error: tagError } = await supabase.from("video_tags").insert(
-        tagIds.map((tagId) => ({
-          video_id: id,
-          tag_id: tagId,
-        })),
-      );
-
-      if (tagError) {
-        throw new Error(tagError.message);
-      }
-    }
+    await syncVideoTagsFromQuestion({
+      supabase,
+      videoId: id,
+      questionId: values.question_id,
+    });
   } catch (error) {
     redirectWithError("/admin/videos", formatActionError(error));
   }
 
   revalidatePath("/admin/videos");
   revalidatePath("/videos");
+  revalidatePath(`/videos/${videoId}`);
   redirectWithSaved("/admin/videos", "Video updated.");
 }
 
 export async function updateVideoStatus(formData: FormData) {
+  let videoId = "";
+
   try {
     const profile = await requireAdmin();
     const parsed = videoStatusSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
+    videoId = parsed.id;
 
     const { error } = await supabase
       .from("videos")
@@ -148,14 +120,18 @@ export async function updateVideoStatus(formData: FormData) {
 
   revalidatePath("/admin/videos");
   revalidatePath("/videos");
+  revalidatePath(`/videos/${videoId}`);
   redirectWithSaved("/admin/videos", "Video status updated.");
 }
 
 export async function deleteVideo(formData: FormData) {
+  let videoId = "";
+
   try {
     await requireAdmin();
     const parsed = videoDeleteSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
+    videoId = parsed.id;
 
     const { error } = await supabase.from("videos").delete().eq("id", parsed.id);
 
@@ -168,5 +144,6 @@ export async function deleteVideo(formData: FormData) {
 
   revalidatePath("/admin/videos");
   revalidatePath("/videos");
+  revalidatePath(`/videos/${videoId}`);
   redirectWithSaved("/admin/videos", "Video deleted.");
 }

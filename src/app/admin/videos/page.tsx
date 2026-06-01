@@ -80,7 +80,7 @@ export default async function AdminVideosPage({
         <h1 className="text-2xl font-semibold tracking-tight">Videos</h1>
         <p className="text-sm text-muted-foreground">
           External video CRUD skeleton. The unique question binding is enforced
-          by the database.
+          by the database. Video tags mirror the bound question tags for MVP.
         </p>
       </div>
       <PageFeedback error={params.error} saved={params.saved} />
@@ -284,21 +284,27 @@ export default async function AdminVideosPage({
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <Label>Video tags</Label>
-                          <select
-                            name="tag_ids"
-                            multiple
-                            className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={(videoTags ?? [])
-                              .filter((binding) => binding.video_id === video.id)
-                              .map((binding) => binding.tag_id)}
-                          >
-                            {(tags ?? []).map((tag) => (
-                              <option key={tag.id} value={tag.id}>
-                                {tag.name}
-                              </option>
-                            ))}
-                          </select>
+                          <Label>Mirrored tags</Label>
+                          <div className="min-h-10 rounded-md border bg-muted/20 px-3 py-2">
+                            <div className="flex flex-wrap gap-1">
+                              {(tagsByVideoId.get(video.id) ?? []).length ? (
+                                (tagsByVideoId.get(video.id) ?? []).map(
+                                  (tagName) => (
+                                    <Badge key={tagName} variant="outline">
+                                      {tagName}
+                                    </Badge>
+                                  ),
+                                )
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  No question tags to mirror.
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Edit the bound question tags to update video tags.
+                          </p>
                         </div>
                         <div className="md:col-span-2">
                           <FormSubmitButton size="sm" pendingLabel="Saving...">
