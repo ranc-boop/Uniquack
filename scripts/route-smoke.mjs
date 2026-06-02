@@ -193,6 +193,7 @@ const videos = await fetchRoute("/videos?q=AP&min=0&max=1000");
 const signedOutAdmin = await fetchRoute("/admin");
 const studentAdmin = await fetchRoute("/admin", studentCookie);
 const adminHome = await fetchRoute("/admin", adminCookie);
+const adminImports = await fetchRoute("/admin/imports", adminCookie);
 const adminUsers = await fetchRoute("/admin/users", adminCookie);
 const superAdminUsers = await fetchRoute("/admin/users", superAdminCookie);
 
@@ -225,6 +226,10 @@ assertRoute(
 assertRoute(
   adminHome.status === 200 && adminHome.text.includes("Create demo records"),
   "admin can access dashboard and demo seed action",
+);
+assertRoute(
+  adminImports.status === 200 && adminImports.text.includes("Manual JSON import"),
+  "admin can access batch import page",
 );
 assertRoute(
   adminUsers.status === 307 && adminUsers.location.includes("/unauthorized"),
