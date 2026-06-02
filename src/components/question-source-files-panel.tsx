@@ -7,7 +7,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -18,7 +18,7 @@ import {
   reserveQuestionSourceFileUpload,
   type QuestionSourceFileView,
 } from "@/app/admin/questions/source-file-actions";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   formatFileSize,
   QUESTION_SOURCE_FILE_MAX_BYTES,
@@ -26,6 +26,7 @@ import {
   QUESTION_SOURCE_FILES_BUCKET,
 } from "@/lib/question-source-files";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 type QuestionSourceFilesPanelProps = {
   questionId?: string;
@@ -55,6 +56,7 @@ export function QuestionSourceFilesPanel({
   questionCodeInputId,
   titleInputId,
 }: QuestionSourceFilesPanelProps) {
+  const fileInputId = useId();
   const [currentQuestionId, setCurrentQuestionId] = useState(questionId ?? "");
   const [sourceFiles, setSourceFiles] = useState(initialSourceFiles);
   const [uploading, setUploading] = useState(false);
@@ -216,12 +218,23 @@ export function QuestionSourceFilesPanel({
             AI parsing. They are not shown on public question pages.
           </p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
+        <label
+          htmlFor={fileInputId}
+          role="button"
+          tabIndex={uploading ? -1 : 0}
+          aria-disabled={uploading}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            uploading
+              ? "pointer-events-none opacity-50"
+              : "cursor-pointer",
+          )}
         >
           {uploading ? (
             <LoaderCircle className="size-4 animate-spin" />
@@ -229,13 +242,15 @@ export function QuestionSourceFilesPanel({
             <Upload className="size-4" />
           )}
           {uploading ? "Uploading..." : "Upload PDFs"}
-        </Button>
+        </label>
         <input
+          id={fileInputId}
           ref={inputRef}
           type="file"
           accept={QUESTION_SOURCE_FILE_MIME_TYPE}
           multiple
-          className="hidden"
+          disabled={uploading}
+          className="sr-only"
           onChange={(event) => void uploadFiles(event.target.files)}
         />
       </div>
