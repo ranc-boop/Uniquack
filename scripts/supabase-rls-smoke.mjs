@@ -48,6 +48,14 @@ function logSkip(message) {
   console.log(`SKIP ${message}`);
 }
 
+function isMissingMigrationError(error) {
+  const text = `${error?.code ?? ""} ${error?.message ?? ""}`;
+
+  return /question_source_files|question-source-files|schema cache|could not find|does not exist|bucket not found|not found/i.test(
+    text,
+  );
+}
+
 function nowSlug(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -154,6 +162,7 @@ async function insertOrThrow(client, table, payload, select = "*") {
 
 const anon = createClient(supabaseUrl, supabaseAnonKey);
 const questionAssetsBucket = "question-assets";
+const questionSourceFilesBucket = "question-source-files";
 
 await assertOnlyPublished(anon, "tags");
 await assertOnlyPublished(anon, "questions");
@@ -245,6 +254,8 @@ if (adminSession) {
     videos: [],
     questions: [],
     questionAssets: [],
+    questionSourceFiles: [],
+    sourceStorageObjects: [],
     storageObjects: [],
     tags: [],
   };
@@ -382,6 +393,189 @@ if (adminSession) {
 
     assert(publicAssetResponse.ok, "public question asset URL was not readable");
     logPass("question asset public URL is readable");
+
+    const sourceFileId = crypto.randomUUID();
+    const sourceFilePath = `questions/${createdQuestion.id}/${sourceFileId}.pdf`;
+    const { data: createdSourceFile, error: sourceFileInsertError } =
+      await adminSession.client
+        .from("question_source_files")
+        .insert({
+          id: sourceFileId,
+          question_id: createdQuestion.id,
+          object_path: sourceFilePath,
+          mime_type: "application/pdf",
+          size_bytes: 8,
+          original_filename: "admin-smoke.pdf",
+          status: "pending",
+          created_by: adminSession.user.id,
+        })
+        .select("id,question_id,object_path,status")
+        .single();
+
+    if (sourceFileInsertError) {
+      if (isMissingMigrationError(sourceFileInsertError)) {
+        logSkip(
+          "question source file RLS checks; apply supabase/migrations/0004_question_source_files.sql",
+        );
+      } else {
+        throw new Error(
+          `question_source_files insert failed: ${sourceFileInsertError.message}`,
+        );
+      }
+    } else {
+      cleanup.questionSourceFiles.push(createdSourceFile.id);
+      logPass("admin can create question source file records");
+
+      const { error: sourceStorageUploadError } =
+        await adminSession.client.storage
+          .from(questionSourceFilesBucket)
+          .upload(
+            sourceFilePath,
+            new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55]),
+            { contentType: "application/pdf" },
+          );
+
+      if (sourceStorageUploadError) {
+        if (isMissingMigrationError(sourceStorageUploadError)) {
+          logSkip(
+            "question source file storage checks; apply supabase/migrations/0004_question_source_files.sql",
+          );
+        } else {
+          throw new Error(
+            `admin source file upload failed: ${sourceStorageUploadError.message}`,
+          );
+        }
+      } else {
+        cleanup.sourceStorageObjects.push(sourceFilePath);
+        logPass("admin can upload private question source files");
+
+        const { error: sourceReadyError } = await adminSession.client
+          .from("question_source_files")
+          .update({ status: "ready" })
+          .eq("id", createdSourceFile.id);
+
+        assert(
+          !sourceReadyError,
+          `admin source file update failed: ${sourceReadyError?.message}`,
+        );
+        logPass("admin can finalize question source files");
+
+        const { data: signedSourceUrl, error: signedSourceUrlError } =
+          await adminSession.client.storage
+            .from(questionSourceFilesBucket)
+            .createSignedUrl(sourceFilePath, 60);
+
+        assert(
+          !signedSourceUrlError && signedSourceUrl?.signedUrl,
+          `admin source file signed URL failed: ${signedSourceUrlError?.message}`,
+        );
+        const sourceFileResponse = await fetch(signedSourceUrl.signedUrl);
+
+        assert(sourceFileResponse.ok, "private source file signed URL failed");
+        logPass("admin can read source files with a signed URL");
+
+        await assertNoRowsOrError(
+          anon
+            .from("question_source_files")
+            .select("id")
+            .eq("id", createdSourceFile.id),
+          "anon cannot read question source files",
+        );
+        await assertDeleteDeniedOrNoEffect({
+          actor: anon,
+          actorLabel: "anon",
+          adminClient: adminSession.client,
+          table: "question_source_files",
+          match: { id: createdSourceFile.id },
+        });
+
+        const { error: anonSourceStorageUploadError } = await anon.storage
+          .from(questionSourceFilesBucket)
+          .upload(
+            `questions/${createdQuestion.id}/${crypto.randomUUID()}.pdf`,
+            new Uint8Array([37, 80, 68, 70, 45]),
+            { contentType: "application/pdf" },
+          );
+
+        assert(
+          anonSourceStorageUploadError,
+          "anon unexpectedly uploaded a question source file",
+        );
+        logPass("anon cannot upload question source files");
+
+        const { error: anonSourceStorageDeleteError } = await anon.storage
+          .from(questionSourceFilesBucket)
+          .remove([sourceFilePath]);
+        const sourceDirectory = `questions/${createdQuestion.id}`;
+        const { data: sourceObjectsAfterAnonDelete, error: sourceListError } =
+          await adminSession.client.storage
+            .from(questionSourceFilesBucket)
+            .list(sourceDirectory, { search: sourceFileId });
+
+        assert(
+          !sourceListError &&
+            sourceObjectsAfterAnonDelete?.some((object) =>
+              object.name.includes(sourceFileId),
+            ),
+          "anon deleted a question source file",
+        );
+        logPass(
+          anonSourceStorageDeleteError
+            ? "anon cannot delete question source files"
+            : "anon source file delete is a no-op under RLS",
+        );
+
+        if (studentSession) {
+          await assertInsertDenied(
+            studentSession.client,
+            "question_source_files",
+            {
+              question_id: createdQuestion.id,
+              object_path: `questions/${createdQuestion.id}/${crypto.randomUUID()}.pdf`,
+              mime_type: "application/pdf",
+              size_bytes: 8,
+              original_filename: "student-blocked.pdf",
+              status: "pending",
+              created_by: studentSession.user.id,
+            },
+            "student",
+          );
+
+          const { error: studentSourceStorageUploadError } =
+            await studentSession.client.storage
+              .from(questionSourceFilesBucket)
+              .upload(
+                `questions/${createdQuestion.id}/${crypto.randomUUID()}.pdf`,
+                new Uint8Array([37, 80, 68, 70, 45]),
+                { contentType: "application/pdf" },
+              );
+
+          assert(
+            studentSourceStorageUploadError,
+            "student unexpectedly uploaded a question source file",
+          );
+          logPass("student cannot upload question source files");
+
+          await assertUpdateDeniedOrNoEffect({
+            actor: studentSession.client,
+            actorLabel: "student",
+            adminClient: adminSession.client,
+            table: "question_source_files",
+            match: { id: createdSourceFile.id },
+            update: { status: "deleted" },
+            verifySelect: "status",
+            verify: (row) => row?.status === "ready",
+          });
+          await assertDeleteDeniedOrNoEffect({
+            actor: studentSession.client,
+            actorLabel: "student",
+            adminClient: adminSession.client,
+            table: "question_source_files",
+            match: { id: createdSourceFile.id },
+          });
+        }
+      }
+    }
 
     const { error: questionUpdateError } = await adminSession.client
       .from("questions")
@@ -646,10 +840,21 @@ if (adminSession) {
       });
     }
   } finally {
+    if (cleanup.sourceStorageObjects.length) {
+      await adminSession.client.storage
+        .from(questionSourceFilesBucket)
+        .remove(cleanup.sourceStorageObjects);
+    }
     if (cleanup.storageObjects.length) {
       await adminSession.client.storage
         .from(questionAssetsBucket)
         .remove(cleanup.storageObjects);
+    }
+    for (const id of cleanup.questionSourceFiles) {
+      await adminSession.client
+        .from("question_source_files")
+        .delete()
+        .eq("id", id);
     }
     for (const id of cleanup.questionAssets) {
       await adminSession.client.from("question_assets").delete().eq("id", id);
