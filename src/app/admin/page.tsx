@@ -23,6 +23,11 @@ const cards = [
     body: "Bind one external video to one question.",
   },
   {
+    href: "/admin/imports",
+    title: "Batch import",
+    body: "Validate JSON and create draft questions for review.",
+  },
+  {
     href: "/admin/users",
     title: "Users",
     body: "Super admin role management.",

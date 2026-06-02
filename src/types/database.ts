@@ -113,6 +113,30 @@ export type QuestionSourceFile = {
   updated_at: string;
 };
 
+export type ImportBatch = {
+  id: string;
+  source_type: "manual_json" | "manual_csv" | "ai_pdf" | "ai_image" | "ai_word";
+  source_file_id: string | null;
+  status: "draft" | "validating" | "ready" | "imported" | "failed";
+  summary: Json;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ImportBatchItem = {
+  id: string;
+  batch_id: string;
+  item_index: number;
+  raw_payload: Json;
+  normalized_question_json: Json | null;
+  validation_errors: Json[];
+  status: "valid" | "invalid" | "imported" | "skipped";
+  created_question_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type TableDefinition<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
   Row: Row;
   Insert: Insert;
@@ -142,6 +166,8 @@ export type Database = {
       question_rubric_steps: TableDefinition<RubricStep>;
       question_assets: TableDefinition<QuestionAsset>;
       question_source_files: TableDefinition<QuestionSourceFile>;
+      import_batches: TableDefinition<ImportBatch>;
+      import_batch_items: TableDefinition<ImportBatchItem>;
       user_question_attempts: TableDefinition<{
         id: string;
         user_id: string;
