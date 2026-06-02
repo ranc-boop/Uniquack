@@ -3,6 +3,7 @@ import {
   deleteVideo,
   updateVideo,
 } from "@/app/admin/videos/actions";
+import { Fragment } from "react";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
@@ -175,43 +176,51 @@ export default async function AdminVideosPage({
               <TableHead>Inherited tags</TableHead>
               <TableHead>Provider</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-[260px]">Actions</TableHead>
+              <TableHead className="w-[160px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {(videos ?? []).map((video) => (
-              <TableRow key={video.id}>
-                <TableCell>{video.title ?? "Untitled video"}</TableCell>
-                <TableCell className="font-mono text-xs">
-                  {video.question_id}
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {(tagsByVideoId.get(video.id) ?? []).map((tagName) => (
-                      <Badge key={tagName} variant="outline">
-                        {tagName}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>{video.provider ?? "External"}</TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1">
-                    <Badge variant="secondary">{video.status}</Badge>
-                    {!isAllowedVideoEmbedUrl(video.embed_url) ? (
-                      <Badge variant="outline">Review embed URL</Badge>
-                    ) : null}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-2">
-                    <details className="w-full">
+              <Fragment key={video.id}>
+                <TableRow>
+                  <TableCell>{video.title ?? "Untitled video"}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {video.question_id}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {(tagsByVideoId.get(video.id) ?? []).map((tagName) => (
+                        <Badge key={tagName} variant="outline">
+                          {tagName}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>{video.provider ?? "External"}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <Badge variant="secondary">{video.status}</Badge>
+                      {!isAllowedVideoEmbedUrl(video.embed_url) ? (
+                        <Badge variant="outline">Review embed URL</Badge>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <form action={deleteVideo}>
+                      <input type="hidden" name="id" value={video.id} />
+                      <DeleteSubmitButton label={`video ${video.title ?? video.id}`} />
+                    </form>
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} className="bg-muted/20 p-3">
+                    <details>
                       <summary className="cursor-pointer text-sm font-medium">
-                        Edit
+                        Edit video
                       </summary>
                       <form
                         action={updateVideo}
-                        className="mt-3 grid gap-3 rounded-md border p-3 md:grid-cols-2"
+                        className="mt-3 grid gap-4 rounded-md border bg-background p-4 lg:grid-cols-2"
                       >
                         <input type="hidden" name="id" value={video.id} />
                         <div className="space-y-1">
@@ -306,20 +315,16 @@ export default async function AdminVideosPage({
                             Edit the bound question tags to update video tags.
                           </p>
                         </div>
-                        <div className="md:col-span-2">
+                        <div className="lg:col-span-2">
                           <FormSubmitButton size="sm" pendingLabel="Saving...">
                             Save video
                           </FormSubmitButton>
                         </div>
                       </form>
                     </details>
-                    <form action={deleteVideo}>
-                      <input type="hidden" name="id" value={video.id} />
-                      <DeleteSubmitButton label={`video ${video.title ?? video.id}`} />
-                    </form>
-                  </div>
-                </TableCell>
-              </TableRow>
+                  </TableCell>
+                </TableRow>
+              </Fragment>
             ))}
             {!videos?.length ? (
               <TableRow>

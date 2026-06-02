@@ -230,6 +230,10 @@ export function QuestionAssetsPanel({
           <p className="text-xs text-muted-foreground">
             Upload an image, preview it, then copy its public URL into your HTML.
           </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Images inserted directly in Content HTML are separate from uploaded
+            image assets and must be removed from Content HTML manually.
+          </p>
         </div>
         <Button
           type="button"

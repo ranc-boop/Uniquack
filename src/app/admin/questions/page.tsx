@@ -3,6 +3,7 @@ import {
   deleteQuestion,
   updateQuestion,
 } from "@/app/admin/questions/actions";
+import { Fragment } from "react";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
@@ -200,6 +201,7 @@ export default async function AdminQuestionsPage({
               <Textarea
                 id="content_html"
                 name="content_html"
+                className="min-h-36 font-mono text-sm"
                 placeholder="<p>Question stem placeholder</p>"
                 required
               />
@@ -212,6 +214,7 @@ export default async function AdminQuestionsPage({
               <Textarea
                 id="solution_html"
                 name="solution_html"
+                className="min-h-32 font-mono text-sm"
                 placeholder="<p>Optional solution placeholder</p>"
               />
             </div>
@@ -245,39 +248,47 @@ export default async function AdminQuestionsPage({
               <TableHead>Tags</TableHead>
               <TableHead>Difficulty</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-[260px]">Actions</TableHead>
+              <TableHead className="w-[160px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {(questions ?? []).map((question) => (
-              <TableRow key={question.id}>
-                <TableCell className="font-mono text-xs">
-                  {question.question_code}
-                </TableCell>
-                <TableCell>{question.title}</TableCell>
-                <TableCell>{question.question_type}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {(tagsByQuestionId.get(question.id) ?? []).map((tagName) => (
-                      <Badge key={tagName} variant="outline">
-                        {tagName}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>{question.difficulty_rating}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{question.status}</Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-2">
-                    <details className="w-full">
+              <Fragment key={question.id}>
+                <TableRow>
+                  <TableCell className="font-mono text-xs">
+                    {question.question_code}
+                  </TableCell>
+                  <TableCell>{question.title}</TableCell>
+                  <TableCell>{question.question_type}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {(tagsByQuestionId.get(question.id) ?? []).map((tagName) => (
+                        <Badge key={tagName} variant="outline">
+                          {tagName}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>{question.difficulty_rating}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">{question.status}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <form action={deleteQuestion}>
+                      <input type="hidden" name="id" value={question.id} />
+                      <DeleteSubmitButton label={`question ${question.question_code}`} />
+                    </form>
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell colSpan={7} className="bg-muted/20 p-3">
+                    <details>
                       <summary className="cursor-pointer text-sm font-medium">
-                        Edit
+                        Edit question
                       </summary>
                       <form
                         action={updateQuestion}
-                        className="mt-3 grid gap-3 rounded-md border p-3 md:grid-cols-2"
+                        className="mt-3 grid gap-4 rounded-md border bg-background p-4 lg:grid-cols-2"
                       >
                         <input type="hidden" name="id" value={question.id} />
                         <div className="space-y-1">
@@ -336,7 +347,7 @@ export default async function AdminQuestionsPage({
                           <select
                             name="tag_ids"
                             multiple
-                            className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                            className="min-h-32 w-full rounded-md border bg-background px-3 py-2 text-sm"
                             defaultValue={(questionTags ?? [])
                               .filter(
                                 (binding) =>
@@ -351,41 +362,39 @@ export default async function AdminQuestionsPage({
                             ))}
                           </select>
                         </div>
-                        <div className="space-y-1 md:col-span-2">
+                        <div className="space-y-1 lg:col-span-2">
                           <Label>Content HTML</Label>
                           <Textarea
                             name="content_html"
+                            className="min-h-56 font-mono text-sm"
                             defaultValue={question.content_html}
                             required
                           />
                         </div>
-                        <div className="space-y-1 md:col-span-2">
+                        <div className="space-y-1 lg:col-span-2">
                           <Label>Solution HTML</Label>
                           <Textarea
                             name="solution_html"
+                            className="min-h-48 font-mono text-sm"
                             defaultValue={question.solution_html ?? ""}
                           />
                         </div>
-                        <div className="md:col-span-2">
+                        <div className="lg:col-span-2">
                           <QuestionAssetsPanel
                             questionId={question.id}
                             initialAssets={assetsByQuestionId.get(question.id)}
                           />
                         </div>
-                        <div className="md:col-span-2">
+                        <div className="lg:col-span-2">
                           <FormSubmitButton size="sm" pendingLabel="Saving...">
                             Save question
                           </FormSubmitButton>
                         </div>
                       </form>
                     </details>
-                    <form action={deleteQuestion}>
-                      <input type="hidden" name="id" value={question.id} />
-                      <DeleteSubmitButton label={`question ${question.question_code}`} />
-                    </form>
-                  </div>
-                </TableCell>
-              </TableRow>
+                  </TableCell>
+                </TableRow>
+              </Fragment>
             ))}
             {!questions?.length ? (
               <TableRow>
