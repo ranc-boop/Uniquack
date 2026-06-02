@@ -188,11 +188,13 @@ const superAdminCookie = await sessionCookies(
 );
 
 const home = await fetchRoute("/");
+const login = await fetchRoute("/auth/login");
 const questions = await fetchRoute("/questions?q=AP&min=0&max=1000");
 const videos = await fetchRoute("/videos?q=AP&min=0&max=1000");
 const signedOutAdmin = await fetchRoute("/admin");
 const studentAdmin = await fetchRoute("/admin", studentCookie);
 const adminHome = await fetchRoute("/admin", adminCookie);
+const adminQuestions = await fetchRoute("/admin/questions", adminCookie);
 const adminImports = await fetchRoute("/admin/imports", adminCookie);
 const adminUsers = await fetchRoute("/admin/users", adminCookie);
 const superAdminUsers = await fetchRoute("/admin/users", superAdminCookie);
@@ -201,6 +203,10 @@ assertRoute(
   home.status === 200 &&
     home.text.includes("AI-powered AP content management platform"),
   "home renders product positioning",
+);
+assertRoute(
+  login.status === 200 && !login.text.includes('value="/admin"'),
+  "normal login does not default students into admin",
 );
 assertRoute(
   questions.status === 200 &&
@@ -226,6 +232,12 @@ assertRoute(
 assertRoute(
   adminHome.status === 200 && adminHome.text.includes("Create demo records"),
   "admin can access dashboard and demo seed action",
+);
+assertRoute(
+  adminQuestions.status === 200 &&
+    adminQuestions.text.includes("Find questions") &&
+    adminQuestions.text.includes("Search tags"),
+  "admin questions renders filters and checkbox tag picker",
 );
 assertRoute(
   adminImports.status === 200 && adminImports.text.includes("Manual JSON import"),

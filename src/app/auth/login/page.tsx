@@ -27,7 +27,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </CardHeader>
         <CardContent>
           <form action={signInWithUsername} className="space-y-4">
-            <input type="hidden" name="next" value={params.next ?? "/admin"} />
+            <input type="hidden" name="next" value={params.next ?? ""} />
             <div className="space-y-2">
               <Label htmlFor="username">Username</Label>
               <Input

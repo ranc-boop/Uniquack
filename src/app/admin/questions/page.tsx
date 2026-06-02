@@ -4,6 +4,7 @@ import {
   updateQuestion,
 } from "@/app/admin/questions/actions";
 import { Fragment } from "react";
+import Link from "next/link";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
@@ -11,7 +12,9 @@ import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
+import { TagCheckboxList } from "@/components/tag-checkbox-list";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,9 +34,18 @@ import { createClient } from "@/lib/supabase/server";
 type AdminQuestionsPageProps = {
   searchParams: Promise<{
     error?: string;
+    q?: string;
     saved?: string;
+    status?: string;
+    tag?: string;
   }>;
 };
+
+const questionStatuses = ["draft", "published", "archived"] as const;
+
+function safeStatusFilter(value: string | undefined) {
+  return questionStatuses.find((status) => status === value) ?? "";
+}
 
 export default async function AdminQuestionsPage({
   searchParams,
@@ -41,6 +53,9 @@ export default async function AdminQuestionsPage({
   const params = await searchParams;
   await requireAdmin();
   const supabase = await createClient();
+  const search = (params.q ?? "").trim().toLowerCase();
+  const selectedStatus = safeStatusFilter(params.status);
+  const selectedTagId = params.tag ?? "";
   const [
     { data: questions, error },
     { data: tags },
@@ -55,12 +70,12 @@ export default async function AdminQuestionsPage({
           "id, question_code, title, content_html, solution_html, difficulty_rating, question_type, status",
         )
         .order("created_at", { ascending: false })
-        .limit(50),
+        .limit(200),
       supabase
         .from("tags")
-        .select("id, name, status")
+        .select("id, name, status, tag_type")
         .order("name", { ascending: true })
-        .limit(100),
+        .limit(1000),
       supabase.from("question_tags").select("question_id, tag_id").limit(1000),
       supabase
         .from("question_assets")
@@ -80,16 +95,20 @@ export default async function AdminQuestionsPage({
 
   const tagNameById = new Map((tags ?? []).map((tag) => [tag.id, tag.name]));
   const tagsByQuestionId = new Map<string, string[]>();
+  const tagIdsByQuestionId = new Map<string, Set<string>>();
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
 
   for (const binding of questionTags ?? []) {
     const current = tagsByQuestionId.get(binding.question_id) ?? [];
+    const currentIds = tagIdsByQuestionId.get(binding.question_id) ?? new Set();
     const tagName = tagNameById.get(binding.tag_id);
 
     if (tagName) {
       current.push(tagName);
       tagsByQuestionId.set(binding.question_id, current);
+      currentIds.add(binding.tag_id);
+      tagIdsByQuestionId.set(binding.question_id, currentIds);
     }
   }
 
@@ -130,6 +149,19 @@ export default async function AdminQuestionsPage({
     });
     sourceFilesByQuestionId.set(sourceFile.question_id, current);
   }
+
+  const filteredQuestions = (questions ?? []).filter((question) => {
+    const searchMatches =
+      !search ||
+      question.question_code.toLowerCase().includes(search) ||
+      question.title.toLowerCase().includes(search);
+    const statusMatches = !selectedStatus || question.status === selectedStatus;
+    const tagMatches =
+      !selectedTagId ||
+      (tagIdsByQuestionId.get(question.id)?.has(selectedTagId) ?? false);
+
+    return searchMatches && statusMatches && tagMatches;
+  });
 
   return (
     <div className="space-y-6">
@@ -211,19 +243,8 @@ export default async function AdminQuestionsPage({
               </select>
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="tag_ids">Tags</Label>
-              <select
-                id="tag_ids"
-                name="tag_ids"
-                multiple
-                className="min-h-28 w-full rounded-md border bg-background px-3 py-2 text-sm"
-              >
-                {(tags ?? []).map((tag) => (
-                  <option key={tag.id} value={tag.id}>
-                    {tag.name} ({tag.status})
-                  </option>
-                ))}
-              </select>
+              <Label>Tags</Label>
+              <TagCheckboxList tags={tags ?? []} />
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="content_html">Content HTML</Label>
@@ -269,6 +290,66 @@ export default async function AdminQuestionsPage({
           </form>
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Find questions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form className="grid gap-3 md:grid-cols-[1.5fr_1fr_1fr_auto]">
+            <div className="space-y-2">
+              <Label htmlFor="q">Search</Label>
+              <Input
+                id="q"
+                name="q"
+                defaultValue={params.q ?? ""}
+                placeholder="Question code or title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status_filter">Status</Label>
+              <select
+                id="status_filter"
+                name="status"
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                defaultValue={selectedStatus}
+              >
+                <option value="">All statuses</option>
+                {questionStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tag_filter">Tag</Label>
+              <select
+                id="tag_filter"
+                name="tag"
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                defaultValue={selectedTagId}
+              >
+                <option value="">All tags</option>
+                {(tags ?? []).map((tag) => (
+                  <option key={tag.id} value={tag.id}>
+                    {tag.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end gap-2">
+              <Button type="submit">Filter</Button>
+              <Button asChild variant="outline" type="button">
+                <Link href="/admin/questions">Reset</Link>
+              </Button>
+            </div>
+          </form>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Showing {filteredQuestions.length} of {(questions ?? []).length}
+            questions.
+          </p>
+        </CardContent>
+      </Card>
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error.message}
@@ -288,7 +369,7 @@ export default async function AdminQuestionsPage({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(questions ?? []).map((question) => (
+            {filteredQuestions.map((question) => (
               <Fragment key={question.id}>
                 <TableRow>
                   <TableCell className="font-mono text-xs">
@@ -380,23 +461,14 @@ export default async function AdminQuestionsPage({
                         </div>
                         <div className="space-y-1">
                           <Label>Tags</Label>
-                          <select
-                            name="tag_ids"
-                            multiple
-                            className="min-h-32 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={(questionTags ?? [])
-                              .filter(
-                                (binding) =>
-                                  binding.question_id === question.id,
+                          <TagCheckboxList
+                            tags={tags ?? []}
+                            defaultValue={
+                              Array.from(
+                                tagIdsByQuestionId.get(question.id) ?? [],
                               )
-                              .map((binding) => binding.tag_id)}
-                          >
-                            {(tags ?? []).map((tag) => (
-                              <option key={tag.id} value={tag.id}>
-                                {tag.name} ({tag.status})
-                              </option>
-                            ))}
-                          </select>
+                            }
+                          />
                         </div>
                         <div className="space-y-1 lg:col-span-2">
                           <Label>Content HTML</Label>
@@ -440,11 +512,12 @@ export default async function AdminQuestionsPage({
                 </TableRow>
               </Fragment>
             ))}
-            {!questions?.length ? (
+            {!filteredQuestions.length ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center">
-                  No questions yet. Create a draft or use demo seed data from
-                  the admin dashboard.
+                  {(questions ?? []).length
+                    ? "No questions match these filters."
+                    : "No questions yet. Create a draft or use demo seed data from the admin dashboard."}
                 </TableCell>
               </TableRow>
             ) : null}
