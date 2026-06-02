@@ -3,11 +3,16 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { SupabaseConfigNotice } from "@/components/config-notice";
+import {
+  QuestionDetailImageGallery,
+  type QuestionDetailImage,
+} from "@/components/question-detail-image-gallery";
 import { VideoPlayerFrame } from "@/components/video-player-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
 import { toDangerousHtml } from "@/lib/sanitize/html";
 import type { Question, Tag, Video } from "@/types/database";
@@ -114,6 +119,7 @@ export default async function QuestionDetailPage({
   const [
     { data: questionTagBindings, error: questionTagError },
     { data: video, error: videoError },
+    { data: displayedAssets, error: displayedAssetsError },
   ] = await Promise.all([
     supabase
       .from("question_tags")
@@ -127,6 +133,13 @@ export default async function QuestionDetailPage({
       .eq("question_id", question.id)
       .eq("status", "published")
       .maybeSingle(),
+    supabase
+      .from("question_assets")
+      .select("id, object_path, original_filename")
+      .eq("question_id", question.id)
+      .eq("status", "ready")
+      .eq("display_on_detail", true)
+      .order("created_at", { ascending: true }),
   ]);
 
   if (questionTagError) {
@@ -140,6 +153,24 @@ export default async function QuestionDetailPage({
   if (videoError) {
     return <ErrorCard message={videoError.message} />;
   }
+
+  if (displayedAssetsError) {
+    return <ErrorCard message={displayedAssetsError.message} />;
+  }
+
+  const questionImages: QuestionDetailImage[] = (displayedAssets ?? []).map(
+    (asset) => {
+      const { data } = supabase.storage
+        .from(QUESTION_ASSETS_BUCKET)
+        .getPublicUrl(asset.object_path);
+
+      return {
+        id: asset.id,
+        originalFilename: asset.original_filename,
+        publicUrl: data.publicUrl,
+      };
+    },
+  );
 
   const questionTagsRequest = questionTagIds.length
     ? supabase
@@ -238,6 +269,7 @@ export default async function QuestionDetailPage({
             <div className="rich-html rounded-md border bg-background p-4 text-sm">
               <div dangerouslySetInnerHTML={toDangerousHtml(question.content_html)} />
             </div>
+            <QuestionDetailImageGallery images={questionImages} />
           </section>
 
           <section className="space-y-3">

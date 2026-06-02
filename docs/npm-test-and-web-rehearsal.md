@@ -81,7 +81,7 @@ npm run smoke:rls
 The smoke test verifies:
 - **Anon**: Only published content visible, no write access
 - **Student**: Published content visible, cannot modify content
-- **Admin**: Full CRUD on tags, questions, videos; cannot escalate role
+- **Admin**: Full CRUD on tags, questions, videos, and question images; cannot escalate role
 - **Super Admin**: All admin operations + profile role management
 
 ## Manual Browser Rehearsal
@@ -127,7 +127,26 @@ Create and test a question:
 - Draft status: hidden from public `/questions`
 - Published status: visible on `/questions` with published tag indicator
 
-### 4. Admin Videos Management
+### 4. Admin Question Images
+
+Upload images from the question create or edit form.
+
+**Validations:**
+- A new question requires code and title before the first image upload.
+- First upload automatically saves a draft UUID and keeps the current form open.
+- PNG, JPEG, WebP, and GIF images up to 6MB upload successfully.
+- SVG, non-image files, and files larger than 6MB are rejected.
+- Uploaded images show a preview and a public URL.
+- `Copy URL` copies the URL for manual use in HTML.
+- `Show on detail` displays the image below the public question body.
+- Clicking a displayed public image opens an enlarged dialog.
+- `Hide from detail` removes the image from the public question body without deleting it.
+- Hidden and draft images use hard-to-guess UUID URLs, but the public bucket still serves a URL if it leaks. Do not use this bucket for confidential material.
+- `Delete` removes the Storage object after confirmation.
+- Deleting a question removes its managed Storage objects first.
+- The first version does not insert URLs into HTML or render an HTML preview in the admin form.
+
+### 5. Admin Videos Management
 
 Create a video bound to a question:
 
@@ -140,7 +159,7 @@ Create a video bound to a question:
 - Draft videos do not appear on `/videos`
 - Published videos appear on `/videos`
 
-### 5. Public Pages Validation
+### 6. Public Pages Validation
 
 #### /questions Page
 
@@ -165,7 +184,7 @@ Create a video bound to a question:
 - Embed URL validation/warning if malformed
 - Note: Video playback functionality out of scope for MVP
 
-### 6. Security Hardening
+### 7. Security Hardening
 
 **XSS Prevention Test:**
 

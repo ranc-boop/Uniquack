@@ -153,6 +153,7 @@ async function insertOrThrow(client, table, payload, select = "*") {
 }
 
 const anon = createClient(supabaseUrl, supabaseAnonKey);
+const questionAssetsBucket = "question-assets";
 
 await assertOnlyPublished(anon, "tags");
 await assertOnlyPublished(anon, "questions");
@@ -160,6 +161,14 @@ await assertOnlyPublished(anon, "videos");
 await assertNoRowsOrError(
   anon.from("profiles").select("id,username,role").limit(1),
   "anon cannot read profiles",
+);
+await assertNoRowsOrError(
+  anon
+    .from("question_assets")
+    .select("id,question_id,display_on_detail")
+    .eq("display_on_detail", false)
+    .limit(1),
+  "anon cannot read hidden question assets",
 );
 await assertInsertDenied(
   anon,
@@ -210,6 +219,19 @@ if (studentSession) {
     },
     "student MVP",
   );
+  await assertInsertDenied(
+    studentSession.client,
+    "question_assets",
+    {
+      question_id: "00000000-0000-0000-0000-000000000000",
+      object_path: `questions/blocked/${crypto.randomUUID()}.png`,
+      mime_type: "image/png",
+      size_bytes: 1,
+      original_filename: "student-blocked.png",
+      created_by: studentSession.user.id,
+    },
+    "student",
+  );
 } else {
   logSkip("student checks; set TEST_STUDENT_USERNAME and TEST_STUDENT_PASSWORD");
 }
@@ -222,6 +244,8 @@ if (adminSession) {
     questionTags: [],
     videos: [],
     questions: [],
+    questionAssets: [],
+    storageObjects: [],
     tags: [],
   };
 
@@ -303,6 +327,62 @@ if (adminSession) {
     cleanup.questions.push(createdQuestion.id);
     logPass("admin can create questions");
 
+    const assetId = crypto.randomUUID();
+    const assetPath = `questions/${createdQuestion.id}/${assetId}.png`;
+    const createdQuestionAsset = await insertOrThrow(
+      adminSession.client,
+      "question_assets",
+      {
+        id: assetId,
+        question_id: createdQuestion.id,
+        object_path: assetPath,
+        mime_type: "image/png",
+        size_bytes: 8,
+        original_filename: "admin-smoke.png",
+        status: "pending",
+        created_by: adminSession.user.id,
+      },
+      "id,question_id,object_path,status",
+    );
+    cleanup.questionAssets.push(createdQuestionAsset.id);
+
+    const { error: storageUploadError } = await adminSession.client.storage
+      .from(questionAssetsBucket)
+      .upload(assetPath, new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), {
+        contentType: "image/png",
+      });
+
+    assert(!storageUploadError, `admin storage upload failed: ${storageUploadError?.message}`);
+    cleanup.storageObjects.push(assetPath);
+    logPass("admin can upload question assets");
+
+    const { error: assetReadyError } = await adminSession.client
+      .from("question_assets")
+      .update({ status: "ready" })
+      .eq("id", createdQuestionAsset.id);
+
+    assert(!assetReadyError, `admin question asset update failed: ${assetReadyError?.message}`);
+    logPass("admin can finalize question assets");
+
+    const { data: hiddenAnonAssets, error: hiddenAnonAssetsError } = await anon
+      .from("question_assets")
+      .select("id")
+      .eq("id", createdQuestionAsset.id);
+
+    assert(
+      !hiddenAnonAssetsError && hiddenAnonAssets?.length === 0,
+      "anon unexpectedly read a hidden question asset",
+    );
+    logPass("anon cannot read hidden question assets");
+
+    const { data: publicAssetUrl } = adminSession.client.storage
+      .from(questionAssetsBucket)
+      .getPublicUrl(assetPath);
+    const publicAssetResponse = await fetch(publicAssetUrl.publicUrl);
+
+    assert(publicAssetResponse.ok, "public question asset URL was not readable");
+    logPass("question asset public URL is readable");
+
     const { error: questionUpdateError } = await adminSession.client
       .from("questions")
       .update({ title: "Smoke question published", status: "published" })
@@ -313,6 +393,28 @@ if (adminSession) {
       `admin question update failed: ${questionUpdateError?.message}`,
     );
     logPass("admin can update questions");
+
+    const { error: assetDisplayError } = await adminSession.client
+      .from("question_assets")
+      .update({ display_on_detail: true })
+      .eq("id", createdQuestionAsset.id);
+
+    assert(!assetDisplayError, `admin asset display update failed: ${assetDisplayError?.message}`);
+    logPass("admin can show question assets on detail pages");
+
+    const { data: displayedAnonAssets, error: displayedAnonAssetsError } =
+      await anon
+        .from("question_assets")
+        .select("id,display_on_detail")
+        .eq("id", createdQuestionAsset.id);
+
+    assert(
+      !displayedAnonAssetsError &&
+        displayedAnonAssets?.length === 1 &&
+        displayedAnonAssets[0].display_on_detail,
+      "anon could not read the displayed question asset",
+    );
+    logPass("anon can read displayed assets for published questions");
 
     const multiQuestionTagPayload = [createdTag.id, multiTagA.id, multiTagB.id].map(
       (tagId) => ({
@@ -420,6 +522,17 @@ if (adminSession) {
         },
         "student",
       );
+      const { error: studentStorageUploadError } =
+        await studentSession.client.storage
+          .from(questionAssetsBucket)
+          .upload(
+            `questions/${createdQuestion.id}/${crypto.randomUUID()}.png`,
+            new Uint8Array([1]),
+            { contentType: "image/png" },
+          );
+
+      assert(studentStorageUploadError, "student unexpectedly uploaded a question asset");
+      logPass("student cannot upload question assets");
       await assertInsertDenied(
         studentSession.client,
         "videos",
@@ -533,6 +646,14 @@ if (adminSession) {
       });
     }
   } finally {
+    if (cleanup.storageObjects.length) {
+      await adminSession.client.storage
+        .from(questionAssetsBucket)
+        .remove(cleanup.storageObjects);
+    }
+    for (const id of cleanup.questionAssets) {
+      await adminSession.client.from("question_assets").delete().eq("id", id);
+    }
     for (const binding of cleanup.videoTags) {
       await adminSession.client.from("video_tags").delete().match(binding);
     }
