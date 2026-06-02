@@ -2,19 +2,18 @@
 
 import { redirect } from "next/navigation";
 
+import { canAccessAdmin } from "@/lib/auth/roles";
 import { usernameToLocalEmail } from "@/lib/auth/username";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 function safeNextPath(value: FormDataEntryValue | null) {
-  const fallback = "/admin";
-
   if (typeof value !== "string" || !value.startsWith("/")) {
-    return fallback;
+    return null;
   }
 
   if (value.startsWith("//")) {
-    return fallback;
+    return null;
   }
 
   return value;
@@ -35,7 +34,7 @@ export async function signInWithUsername(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -44,7 +43,17 @@ export async function signInWithUsername(formData: FormData) {
     redirect(`/auth/login?error=${encodeURIComponent(error.message)}`);
   }
 
-  redirect(next);
+  if (next) {
+    redirect(next);
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", data.user.id)
+    .maybeSingle();
+
+  redirect(canAccessAdmin(profile?.role) ? "/admin" : "/questions");
 }
 
 export async function signOut() {
