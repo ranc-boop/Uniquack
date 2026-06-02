@@ -10,6 +10,7 @@ import {
 import { syncBoundVideoTagsForQuestion } from "@/app/admin/videos/tag-sync";
 import { requireAdmin } from "@/lib/auth/guards";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
+import { QUESTION_SOURCE_FILES_BUCKET } from "@/lib/question-source-files";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
 import { createClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validations/common";
@@ -225,6 +226,35 @@ export async function deleteQuestion(formData: FormData) {
 
       if (assetsDeleteError) {
         throw new Error(assetsDeleteError.message);
+      }
+    }
+
+    const { data: sourceFiles, error: sourceFilesError } = await supabase
+      .from("question_source_files")
+      .select("id, object_path")
+      .eq("question_id", parsed.id)
+      .neq("status", "deleted");
+
+    if (sourceFilesError) {
+      throw new Error(sourceFilesError.message);
+    }
+
+    if (sourceFiles?.length) {
+      const { error: sourceStorageError } = await supabase.storage
+        .from(QUESTION_SOURCE_FILES_BUCKET)
+        .remove(sourceFiles.map((sourceFile) => sourceFile.object_path));
+
+      if (sourceStorageError) {
+        throw new Error(sourceStorageError.message);
+      }
+
+      const { error: sourceFilesUpdateError } = await supabase
+        .from("question_source_files")
+        .update({ status: "deleted" })
+        .eq("question_id", parsed.id);
+
+      if (sourceFilesUpdateError) {
+        throw new Error(sourceFilesUpdateError.message);
       }
     }
 

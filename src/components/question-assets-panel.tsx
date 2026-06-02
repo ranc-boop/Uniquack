@@ -1,7 +1,7 @@
 "use client";
 
 import { Copy, Eye, EyeOff, LoaderCircle, Trash2, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -12,13 +12,14 @@ import {
   type QuestionAssetView,
   updateQuestionAssetDisplay,
 } from "@/app/admin/questions/asset-actions";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   QUESTION_ASSET_MAX_BYTES,
   QUESTION_ASSET_MIME_TYPES,
 } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 type QuestionAssetsPanelProps = {
   questionId?: string;
@@ -48,6 +49,7 @@ export function QuestionAssetsPanel({
   questionCodeInputId,
   titleInputId,
 }: QuestionAssetsPanelProps) {
+  const fileInputId = useId();
   const [currentQuestionId, setCurrentQuestionId] = useState(questionId ?? "");
   const [assets, setAssets] = useState(initialAssets);
   const [uploading, setUploading] = useState(false);
@@ -235,12 +237,23 @@ export function QuestionAssetsPanel({
             image assets and must be removed from Content HTML manually.
           </p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
+        <label
+          htmlFor={fileInputId}
+          role="button"
+          tabIndex={uploading ? -1 : 0}
+          aria-disabled={uploading}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            uploading
+              ? "pointer-events-none opacity-50"
+              : "cursor-pointer",
+          )}
         >
           {uploading ? (
             <LoaderCircle className="size-4 animate-spin" />
@@ -248,13 +261,15 @@ export function QuestionAssetsPanel({
             <Upload className="size-4" />
           )}
           {uploading ? "Uploading..." : "Upload images"}
-        </Button>
+        </label>
         <input
+          id={fileInputId}
           ref={inputRef}
           type="file"
           accept={QUESTION_ASSET_MIME_TYPES.join(",")}
           multiple
-          className="hidden"
+          disabled={uploading}
+          className="sr-only"
           onChange={(event) => void uploadFiles(event.target.files)}
         />
       </div>

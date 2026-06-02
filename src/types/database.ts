@@ -100,6 +100,19 @@ export type QuestionAsset = {
   updated_at: string;
 };
 
+export type QuestionSourceFile = {
+  id: string;
+  question_id: string | null;
+  object_path: string;
+  mime_type: string;
+  size_bytes: number;
+  original_filename: string;
+  status: "pending" | "ready" | "deleted";
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ImportBatch = {
   id: string;
   source_type: "manual_json" | "manual_csv" | "ai_pdf" | "ai_image" | "ai_word";
@@ -152,6 +165,7 @@ export type Database = {
       }>;
       question_rubric_steps: TableDefinition<RubricStep>;
       question_assets: TableDefinition<QuestionAsset>;
+      question_source_files: TableDefinition<QuestionSourceFile>;
       import_batches: TableDefinition<ImportBatch>;
       import_batch_items: TableDefinition<ImportBatchItem>;
       user_question_attempts: TableDefinition<{
