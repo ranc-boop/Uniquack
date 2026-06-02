@@ -31,6 +31,11 @@ export default async function AdminImportsPage() {
           Manual JSON import pipeline for draft questions. Future AI parsing can
           feed normalized records into the same tables.
         </p>
+        <p className="mt-2 max-w-3xl text-xs text-muted-foreground">
+          Asset references are preserved for review only. Batch Import v2 does
+          not upload binary files or automatically attach assets yet. Future
+          package import will support questions.json + images + PDFs.
+        </p>
       </div>
 
       <Card>

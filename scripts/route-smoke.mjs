@@ -240,7 +240,9 @@ assertRoute(
   "admin questions renders filters and checkbox tag picker",
 );
 assertRoute(
-  adminImports.status === 200 && adminImports.text.includes("Manual JSON import"),
+  adminImports.status === 200 &&
+    adminImports.text.includes("Manual JSON import") &&
+    adminImports.text.includes("Asset references are preserved for review only"),
   "admin can access batch import page",
 );
 assertRoute(
