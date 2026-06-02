@@ -17,6 +17,8 @@ const importItemSchema = z
     content_html: z.string().optional(),
     solution_html: z.string().optional(),
     image_urls: z.array(z.string()).optional(),
+    source_file_ids: z.array(z.string()).optional(),
+    question_asset_ids: z.array(z.string()).optional(),
     video_url: z.string().optional(),
     embed_url: z.string().optional(),
   })
@@ -40,6 +42,8 @@ export type NormalizedImportQuestion = {
   content_html: string;
   solution_html: string | null;
   image_urls: string[];
+  source_file_ids: string[];
+  question_asset_ids: string[];
   video_url: string | null;
   embed_url: string | null;
 };
@@ -110,6 +114,10 @@ function httpUrlArray(values: string[] | undefined) {
   return (values ?? [])
     .map((value) => httpUrlOrNull(value))
     .filter((value): value is string => Boolean(value));
+}
+
+function idReferenceArray(values: string[] | undefined) {
+  return stringArray(values).slice(0, 50);
 }
 
 export function parseBatchImportJson(jsonText: string) {
@@ -236,6 +244,8 @@ export function evaluateBatchImportItems({
     const videoUrl = httpUrlOrNull(item.video_url);
     const embedUrl = httpUrlOrNull(item.embed_url);
     const imageUrls = httpUrlArray(item.image_urls);
+    const sourceFileIds = idReferenceArray(item.source_file_ids);
+    const questionAssetIds = idReferenceArray(item.question_asset_ids);
 
     if (item.video_url && !videoUrl) {
       warnings.push("Invalid video_url was ignored.");
@@ -247,6 +257,14 @@ export function evaluateBatchImportItems({
 
     if ((item.image_urls?.length ?? 0) !== imageUrls.length) {
       warnings.push("One or more invalid image_urls were ignored.");
+    }
+
+    // Batch Import v1 only preserves asset references in import_batch_items.
+    // Future asset-aware imports can resolve these ids into managed image/PDF links.
+    if (sourceFileIds.length || questionAssetIds.length) {
+      warnings.push(
+        "Asset references are preserved for review only in Batch Import v1.",
+      );
     }
 
     return {
@@ -268,6 +286,8 @@ export function evaluateBatchImportItems({
             content_html: sanitizedContent,
             solution_html: sanitizedSolution,
             image_urls: imageUrls,
+            source_file_ids: sourceFileIds,
+            question_asset_ids: questionAssetIds,
             video_url: videoUrl,
             embed_url: embedUrl,
           },

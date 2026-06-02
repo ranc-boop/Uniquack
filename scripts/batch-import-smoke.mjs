@@ -116,6 +116,8 @@ try {
           '<script>alert(1)</script><p onclick="alert(2)">Valid content</p>',
         solution_html: '<a href="javascript:alert(1)">Unsafe link</a><p>ok</p>',
         image_urls: ["https://example.com/image.png"],
+        source_file_ids: ["source-file-reserved-review-id"],
+        question_asset_ids: ["question-asset-reserved-review-id"],
       },
       {
         code: `BATCH-${suffix}-UNKNOWN`,
@@ -217,6 +219,8 @@ try {
     content_html: sanitizedContent,
     solution_html: sanitizedSolution,
     image_urls: validItem.image_urls,
+    source_file_ids: validItem.source_file_ids,
+    question_asset_ids: validItem.question_asset_ids,
     video_url: null,
     embed_url: null,
   };
@@ -308,6 +312,13 @@ try {
     validCount: 1,
     invalidCount: 2,
     unknownTagCount: 1,
+    createdQuestions: [
+      {
+        id: createdQuestion.id,
+        questionCode: normalizedValidItem.question_code,
+        title: normalizedValidItem.title,
+      },
+    ],
   };
   const { error: batchUpdateError } = await admin.client
     .from("import_batches")

@@ -17,6 +17,11 @@ export type BatchImportSummary = {
   validCount: number;
   invalidCount: number;
   unknownTagCount: number;
+  createdQuestions: {
+    id: string;
+    questionCode: string;
+    title: string;
+  }[];
 };
 
 async function loadImportContext(supabase: SupabaseLike) {
@@ -84,6 +89,7 @@ export async function importBatchImportJson({
     validCount: preview.validCount,
     invalidCount: preview.invalidCount,
     unknownTagCount: preview.unknownTagCount,
+    createdQuestions: [],
   };
   const { data: batch, error: batchError } = await supabase
     .from("import_batches")
@@ -122,6 +128,7 @@ export async function importBatchImportJson({
   let createdCount = 0;
   let skippedCount = preview.invalidCount;
   let errorCount = preview.invalidCount;
+  const createdQuestions: BatchImportSummary["createdQuestions"] = [];
 
   for (const item of preview.items) {
     if (!item.normalized) {
@@ -188,6 +195,11 @@ export async function importBatchImportJson({
     }
 
     createdCount += 1;
+    createdQuestions.push({
+      id: question.id,
+      questionCode: normalized.question_code,
+      title: normalized.title,
+    });
     await supabase
       .from("import_batch_items")
       .update({
@@ -207,6 +219,7 @@ export async function importBatchImportJson({
     validCount: preview.validCount,
     invalidCount: preview.invalidCount,
     unknownTagCount: preview.unknownTagCount,
+    createdQuestions,
   };
   const { error: batchUpdateError } = await supabase
     .from("import_batches")
