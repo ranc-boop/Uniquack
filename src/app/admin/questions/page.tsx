@@ -5,10 +5,12 @@ import {
 } from "@/app/admin/questions/actions";
 import { Fragment } from "react";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
+import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
+import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -44,6 +46,7 @@ export default async function AdminQuestionsPage({
     { data: tags },
     { data: questionTags },
     { data: questionAssets },
+    { data: questionSourceFiles },
   ] =
     await Promise.all([
       supabase
@@ -66,11 +69,19 @@ export default async function AdminQuestionsPage({
         )
         .eq("status", "ready")
         .limit(1000),
+      supabase
+        .from("question_source_files")
+        .select(
+          "id, question_id, original_filename, mime_type, size_bytes, status",
+        )
+        .neq("status", "deleted")
+        .limit(1000),
     ]);
 
   const tagNameById = new Map((tags ?? []).map((tag) => [tag.id, tag.name]));
   const tagsByQuestionId = new Map<string, string[]>();
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
+  const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
 
   for (const binding of questionTags ?? []) {
     const current = tagsByQuestionId.get(binding.question_id) ?? [];
@@ -100,6 +111,24 @@ export default async function AdminQuestionsPage({
       displayOnDetail: asset.display_on_detail,
     });
     assetsByQuestionId.set(asset.question_id, current);
+  }
+
+  for (const sourceFile of questionSourceFiles ?? []) {
+    if (!sourceFile.question_id) {
+      continue;
+    }
+
+    const current = sourceFilesByQuestionId.get(sourceFile.question_id) ?? [];
+
+    current.push({
+      id: sourceFile.id,
+      questionId: sourceFile.question_id,
+      originalFilename: sourceFile.original_filename,
+      mimeType: sourceFile.mime_type,
+      sizeBytes: sourceFile.size_bytes,
+      status: sourceFile.status,
+    });
+    sourceFilesByQuestionId.set(sourceFile.question_id, current);
   }
 
   return (
@@ -220,6 +249,13 @@ export default async function AdminQuestionsPage({
             </div>
             <div className="md:col-span-2">
               <QuestionAssetsPanel
+                draftInputId="create-question-draft-id"
+                questionCodeInputId="question_code"
+                titleInputId="title"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <QuestionSourceFilesPanel
                 draftInputId="create-question-draft-id"
                 questionCodeInputId="question_code"
                 titleInputId="title"
@@ -383,6 +419,14 @@ export default async function AdminQuestionsPage({
                           <QuestionAssetsPanel
                             questionId={question.id}
                             initialAssets={assetsByQuestionId.get(question.id)}
+                          />
+                        </div>
+                        <div className="lg:col-span-2">
+                          <QuestionSourceFilesPanel
+                            questionId={question.id}
+                            initialSourceFiles={sourceFilesByQuestionId.get(
+                              question.id,
+                            )}
                           />
                         </div>
                         <div className="lg:col-span-2">
