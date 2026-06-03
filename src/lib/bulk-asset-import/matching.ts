@@ -16,14 +16,32 @@ export type BulkAssetQuestionMatch = {
 };
 
 export type BulkAssetFileKind = "image" | "pdf";
+export type BulkAssetDuplicateReason = "existing" | "queue";
 export type BulkAssetMatchStatus =
   | "matched"
   | "unmatched"
   | "ambiguous"
-  | "invalid";
+  | "invalid"
+  | "duplicate";
+
+export type BulkAssetExistingFileRecord = {
+  fileKind: BulkAssetFileKind;
+  objectPath?: string | null;
+  originalFilename?: string | null;
+  questionId: string;
+};
+
+export type BulkAssetExistingFilesByQuestionId = Record<
+  string,
+  {
+    imageFilenames: string[];
+    pdfFilenames: string[];
+  }
+>;
 
 export type BulkAssetFileClassification = {
   actionLabel: string;
+  duplicateReason: BulkAssetDuplicateReason | null;
   fileKind: BulkAssetFileKind | null;
   fileName: string;
   matchedQuestion: BulkAssetQuestionMatch | null;
@@ -31,6 +49,12 @@ export type BulkAssetFileClassification = {
   message: string;
   mimeType: string | null;
   status: BulkAssetMatchStatus;
+};
+
+export type BulkAssetFileInput = {
+  fileName: string;
+  mimeType?: string;
+  sizeBytes: number;
 };
 
 const imageMimeTypeByExtension: Record<string, string> = {
@@ -45,6 +69,10 @@ function normalizeCode(value: string) {
   return value.trim().toUpperCase();
 }
 
+function normalizeFilename(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function extensionForFileName(fileName: string) {
   const match = /\.([a-z0-9]+)$/i.exec(fileName.trim());
 
@@ -57,6 +85,92 @@ function stemForFileName(fileName: string) {
 
 function isPrefixBoundary(value: string | undefined) {
   return value === undefined || value === "" || value === "_" || value === "-";
+}
+
+export function basenameForBulkAssetPath(path: string | null | undefined) {
+  if (!path) {
+    return "";
+  }
+
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? "";
+}
+
+export function bulkAssetDuplicateKey(file: BulkAssetFileInput) {
+  const inferredMimeType = inferBulkAssetMimeType(file.fileName, file.mimeType);
+
+  return [
+    normalizeFilename(file.fileName),
+    inferredMimeType ?? file.mimeType?.trim().toLowerCase() ?? "",
+    file.sizeBytes,
+  ].join("::");
+}
+
+export function buildBulkAssetExistingFileIndex(
+  records: BulkAssetExistingFileRecord[],
+): BulkAssetExistingFilesByQuestionId {
+  const index: BulkAssetExistingFilesByQuestionId = {};
+
+  for (const record of records) {
+    const existing = (index[record.questionId] ??= {
+      imageFilenames: [],
+      pdfFilenames: [],
+    });
+    const filenames = [
+      record.originalFilename,
+      basenameForBulkAssetPath(record.objectPath),
+    ]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map(normalizeFilename);
+
+    if (!filenames.length) {
+      continue;
+    }
+
+    const target =
+      record.fileKind === "image"
+        ? existing.imageFilenames
+        : existing.pdfFilenames;
+
+    for (const filename of filenames) {
+      if (!target.includes(filename)) {
+        target.push(filename);
+      }
+    }
+  }
+
+  return index;
+}
+
+export function addBulkAssetExistingFilename(
+  index: BulkAssetExistingFilesByQuestionId,
+  {
+    fileKind,
+    fileName,
+    questionId,
+  }: {
+    fileKind: BulkAssetFileKind;
+    fileName: string;
+    questionId: string;
+  },
+): BulkAssetExistingFilesByQuestionId {
+  const next = {
+    ...index,
+    [questionId]: {
+      imageFilenames: [...(index[questionId]?.imageFilenames ?? [])],
+      pdfFilenames: [...(index[questionId]?.pdfFilenames ?? [])],
+    },
+  };
+  const target =
+    fileKind === "image"
+      ? next[questionId].imageFilenames
+      : next[questionId].pdfFilenames;
+  const normalized = normalizeFilename(fileName);
+
+  if (!target.includes(normalized)) {
+    target.push(normalized);
+  }
+
+  return next;
 }
 
 export function inferBulkAssetMimeType(fileName: string, mimeType?: string) {
@@ -113,16 +227,45 @@ export function matchQuestionsByFilenamePrefix(
   });
 }
 
+function duplicateClassification({
+  duplicateReason,
+  fileKind,
+  fileName,
+  matchedQuestion,
+  matchedQuestions,
+  message,
+  mimeType,
+}: {
+  duplicateReason: BulkAssetDuplicateReason;
+  fileKind: BulkAssetFileKind | null;
+  fileName: string;
+  matchedQuestion: BulkAssetQuestionMatch | null;
+  matchedQuestions: BulkAssetQuestionMatch[];
+  message: string;
+  mimeType: string | null;
+}): BulkAssetFileClassification {
+  return {
+    actionLabel: "duplicate",
+    duplicateReason,
+    fileKind,
+    fileName,
+    matchedQuestion,
+    matchedQuestions,
+    message,
+    mimeType,
+    status: "duplicate",
+  };
+}
+
 export function classifyBulkAssetFile({
+  existingFilesByQuestionId,
   fileName,
   mimeType,
   questions,
   sizeBytes,
-}: {
-  fileName: string;
-  mimeType?: string;
+}: BulkAssetFileInput & {
+  existingFilesByQuestionId?: BulkAssetExistingFilesByQuestionId;
   questions: BulkAssetQuestionMatch[];
-  sizeBytes: number;
 }): BulkAssetFileClassification {
   const inferredMimeType = inferBulkAssetMimeType(fileName, mimeType);
   const extension = extensionForFileName(fileName);
@@ -131,6 +274,7 @@ export function classifyBulkAssetFile({
   if (extension === "svg" || mimeType?.toLowerCase() === "image/svg+xml") {
     return {
       actionLabel: "invalid file type",
+      duplicateReason: null,
       fileKind: null,
       fileName,
       matchedQuestion: null,
@@ -144,6 +288,7 @@ export function classifyBulkAssetFile({
   if (!fileKind || !inferredMimeType) {
     return {
       actionLabel: "invalid file type",
+      duplicateReason: null,
       fileKind: null,
       fileName,
       matchedQuestion: null,
@@ -160,6 +305,7 @@ export function classifyBulkAssetFile({
   if (sizeBytes <= 0 || sizeBytes > maxBytes) {
     return {
       actionLabel: "invalid file size",
+      duplicateReason: null,
       fileKind,
       fileName,
       matchedQuestion: null,
@@ -178,6 +324,7 @@ export function classifyBulkAssetFile({
   if (matchedQuestions.length === 0) {
     return {
       actionLabel: "unmatched",
+      duplicateReason: null,
       fileKind,
       fileName,
       matchedQuestion: null,
@@ -191,6 +338,7 @@ export function classifyBulkAssetFile({
   if (matchedQuestions.length > 1) {
     return {
       actionLabel: "ambiguous match",
+      duplicateReason: null,
       fileKind,
       fileName,
       matchedQuestion: null,
@@ -201,17 +349,72 @@ export function classifyBulkAssetFile({
     };
   }
 
+  const matchedQuestion = matchedQuestions[0];
+  const existingFilenames =
+    fileKind === "image"
+      ? existingFilesByQuestionId?.[matchedQuestion.id]?.imageFilenames
+      : existingFilesByQuestionId?.[matchedQuestion.id]?.pdfFilenames;
+
+  if (existingFilenames?.includes(normalizeFilename(fileName))) {
+    return duplicateClassification({
+      duplicateReason: "existing",
+      fileKind,
+      fileName,
+      matchedQuestion,
+      matchedQuestions,
+      message: "Already uploaded for this question.",
+      mimeType: inferredMimeType,
+    });
+  }
+
   return {
     actionLabel:
       fileKind === "image"
         ? "will upload as image asset"
         : "will upload as PDF source file",
+    duplicateReason: null,
     fileKind,
     fileName,
-    matchedQuestion: matchedQuestions[0],
+    matchedQuestion,
     matchedQuestions,
     message: "Ready to upload and bind.",
     mimeType: inferredMimeType,
     status: "matched",
   };
+}
+
+export function classifyBulkAssetQueue({
+  existingFilesByQuestionId,
+  files,
+  questions,
+}: {
+  existingFilesByQuestionId?: BulkAssetExistingFilesByQuestionId;
+  files: BulkAssetFileInput[];
+  questions: BulkAssetQuestionMatch[];
+}) {
+  const seen = new Set<string>();
+
+  return files.map((file) => {
+    const classification = classifyBulkAssetFile({
+      ...file,
+      existingFilesByQuestionId,
+      questions,
+    });
+    const duplicateKey = bulkAssetDuplicateKey(file);
+
+    if (classification.status !== "invalid" && seen.has(duplicateKey)) {
+      return duplicateClassification({
+        duplicateReason: "queue",
+        fileKind: classification.fileKind,
+        fileName: classification.fileName,
+        matchedQuestion: classification.matchedQuestion,
+        matchedQuestions: classification.matchedQuestions,
+        message: "Duplicate in current selection.",
+        mimeType: classification.mimeType,
+      });
+    }
+
+    seen.add(duplicateKey);
+    return classification;
+  });
 }

@@ -24,10 +24,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  addBulkAssetExistingFilename,
   BULK_ASSET_IMAGE_MIME_TYPES,
   BULK_ASSET_PDF_MIME_TYPE,
-  classifyBulkAssetFile,
+  classifyBulkAssetQueue,
+  type BulkAssetExistingFilesByQuestionId,
   type BulkAssetFileClassification,
+  type BulkAssetFileInput,
   type BulkAssetQuestionMatch,
 } from "@/lib/bulk-asset-import/matching";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
@@ -48,6 +51,7 @@ type BulkAssetPreviewRow = {
 type BulkAssetSummary = {
   affectedCodes: string[];
   ambiguousFiles: number;
+  duplicateFiles: number;
   failedUploads: number;
   skippedInvalidFiles: number;
   unmatchedFiles: number;
@@ -57,6 +61,7 @@ type BulkAssetSummary = {
 
 type BulkAssetUploadPanelProps = {
   draftQuestions: BulkAssetQuestionMatch[];
+  existingFilesByQuestionId: BulkAssetExistingFilesByQuestionId;
 };
 
 function errorMessage(error: unknown) {
@@ -71,14 +76,31 @@ function badgeVariant(status: BulkAssetFileClassification["status"]) {
   return "outline";
 }
 
-function classifyRows(files: File[], questions: BulkAssetQuestionMatch[]) {
+function fileInput(file: File): BulkAssetFileInput {
+  return {
+    fileName: file.name,
+    mimeType: file.type,
+    sizeBytes: file.size,
+  };
+}
+
+function classifyRows({
+  existingFilesByQuestionId,
+  files,
+  questions,
+}: {
+  existingFilesByQuestionId: BulkAssetExistingFilesByQuestionId;
+  files: File[];
+  questions: BulkAssetQuestionMatch[];
+}) {
+  const classifications = classifyBulkAssetQueue({
+    existingFilesByQuestionId,
+    files: files.map(fileInput),
+    questions,
+  });
+
   return files.map((file, index) => ({
-    classification: classifyBulkAssetFile({
-      fileName: file.name,
-      mimeType: file.type,
-      questions,
-      sizeBytes: file.size,
-    }),
+    classification: classifications[index],
     file,
     id: `${file.name}-${file.lastModified}-${file.size}-${index}`,
     uploadState: "idle" as const,
@@ -87,26 +109,34 @@ function classifyRows(files: File[], questions: BulkAssetQuestionMatch[]) {
 
 export function BulkAssetUploadPanel({
   draftQuestions,
+  existingFilesByQuestionId: initialExistingFilesByQuestionId,
 }: BulkAssetUploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [existingFilesByQuestionId, setExistingFilesByQuestionId] = useState(
+    initialExistingFilesByQuestionId,
+  );
   const [rows, setRows] = useState<BulkAssetPreviewRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [summary, setSummary] = useState<BulkAssetSummary | null>(null);
 
-  const matchedCount = rows.filter(
-    (row) => row.classification.status === "matched",
+  const eligibleCount = rows.filter(
+    (row) =>
+      row.classification.status === "matched" && row.uploadState !== "uploaded",
   ).length;
   const previewCounts = useMemo(
     () => ({
       ambiguous: rows.filter((row) => row.classification.status === "ambiguous")
         .length,
+      duplicate: rows.filter((row) => row.classification.status === "duplicate")
+        .length,
       invalid: rows.filter((row) => row.classification.status === "invalid")
         .length,
-      matched: matchedCount,
+      matched: rows.filter((row) => row.classification.status === "matched")
+        .length,
       unmatched: rows.filter((row) => row.classification.status === "unmatched")
         .length,
     }),
-    [matchedCount, rows],
+    [rows],
   );
 
   function handleFileSelection(files: FileList | null) {
@@ -114,7 +144,24 @@ export function BulkAssetUploadPanel({
       return;
     }
 
-    setRows(classifyRows(Array.from(files), draftQuestions));
+    const selectedFiles = Array.from(files);
+
+    setRows((current) =>
+      classifyRows({
+        existingFilesByQuestionId,
+        files: [...current.map((row) => row.file), ...selectedFiles],
+        questions: draftQuestions,
+      }),
+    );
+    setSummary(null);
+
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  }
+
+  function clearSelection() {
+    setRows([]);
     setSummary(null);
 
     if (inputRef.current) {
@@ -129,7 +176,7 @@ export function BulkAssetUploadPanel({
   }
 
   async function uploadMatchedRows() {
-    if (!matchedCount) {
+    if (!eligibleCount) {
       return;
     }
 
@@ -137,6 +184,7 @@ export function BulkAssetUploadPanel({
     const nextSummary: BulkAssetSummary = {
       affectedCodes: [],
       ambiguousFiles: previewCounts.ambiguous,
+      duplicateFiles: previewCounts.duplicate,
       failedUploads: 0,
       skippedInvalidFiles: previewCounts.invalid,
       unmatchedFiles: previewCounts.unmatched,
@@ -144,6 +192,7 @@ export function BulkAssetUploadPanel({
       uploadedPdfSourceFiles: 0,
     };
     const affectedCodes = new Set<string>();
+    let nextExistingFilesByQuestionId = existingFilesByQuestionId;
 
     setUploading(true);
 
@@ -153,6 +202,7 @@ export function BulkAssetUploadPanel({
 
         if (
           classification.status !== "matched" ||
+          row.uploadState === "uploaded" ||
           !classification.matchedQuestion ||
           !classification.fileKind ||
           !classification.mimeType
@@ -213,7 +263,18 @@ export function BulkAssetUploadPanel({
           }
 
           affectedCodes.add(classification.matchedQuestion.questionCode);
-          updateRow(row.id, { message: "Uploaded and bound.", uploadState: "uploaded" });
+          nextExistingFilesByQuestionId = addBulkAssetExistingFilename(
+            nextExistingFilesByQuestionId,
+            {
+              fileKind: classification.fileKind,
+              fileName: file.name,
+              questionId: classification.matchedQuestion.id,
+            },
+          );
+          updateRow(row.id, {
+            message: "Uploaded and bound.",
+            uploadState: "uploaded",
+          });
         } catch (error) {
           nextSummary.failedUploads += 1;
           updateRow(row.id, {
@@ -224,6 +285,7 @@ export function BulkAssetUploadPanel({
       }
 
       nextSummary.affectedCodes = [...affectedCodes];
+      setExistingFilesByQuestionId(nextExistingFilesByQuestionId);
       setSummary(nextSummary);
 
       if (nextSummary.failedUploads) {
@@ -252,38 +314,50 @@ export function BulkAssetUploadPanel({
               Source PDFs remain admin-only through signed URLs.
             </p>
           </div>
-          <label
-            role="button"
-            tabIndex={uploading ? -1 : 0}
-            aria-disabled={uploading}
-            className={cn(
-              buttonVariants({ variant: "outline" }),
-              uploading ? "pointer-events-none opacity-50" : "cursor-pointer",
-            )}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                inputRef.current?.click();
-              }
-            }}
-          >
-            <FileUp className="size-4" />
-            Select files
-            <input
-              ref={inputRef}
-              type="file"
-              accept={[...BULK_ASSET_IMAGE_MIME_TYPES, BULK_ASSET_PDF_MIME_TYPE].join(
-                ",",
+          <div className="flex flex-wrap gap-2">
+            <label
+              role="button"
+              tabIndex={uploading ? -1 : 0}
+              aria-disabled={uploading}
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                uploading ? "pointer-events-none opacity-50" : "cursor-pointer",
               )}
-              multiple
-              disabled={uploading}
-              className="sr-only"
-              onChange={(event) => handleFileSelection(event.target.files)}
-            />
-          </label>
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  inputRef.current?.click();
+                }
+              }}
+            >
+              <FileUp className="size-4" />
+              Select files
+              <input
+                ref={inputRef}
+                type="file"
+                accept={[
+                  ...BULK_ASSET_IMAGE_MIME_TYPES,
+                  BULK_ASSET_PDF_MIME_TYPE,
+                ].join(",")}
+                multiple
+                disabled={uploading}
+                className="sr-only"
+                onChange={(event) => handleFileSelection(event.target.files)}
+              />
+            </label>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!rows.length || uploading}
+              onClick={clearSelection}
+            >
+              Clear selection
+            </Button>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="secondary">Matched: {previewCounts.matched}</Badge>
+          <Badge variant="outline">Duplicate: {previewCounts.duplicate}</Badge>
           <Badge variant="outline">Unmatched: {previewCounts.unmatched}</Badge>
           <Badge variant="outline">Ambiguous: {previewCounts.ambiguous}</Badge>
           <Badge variant="outline">Invalid: {previewCounts.invalid}</Badge>
@@ -297,12 +371,12 @@ export function BulkAssetUploadPanel({
             <div>
               <p className="text-sm font-medium">Preview before upload</p>
               <p className="text-xs text-muted-foreground">
-                Unmatched, ambiguous, and invalid files are skipped.
+                Unmatched, ambiguous, invalid, and duplicate files are skipped.
               </p>
             </div>
             <Button
               type="button"
-              disabled={!matchedCount || uploading}
+              disabled={!eligibleCount || uploading}
               onClick={() => void uploadMatchedRows()}
             >
               {uploading ? (
@@ -410,6 +484,7 @@ export function BulkAssetUploadPanel({
             <p>Skipped invalid files: {summary.skippedInvalidFiles}</p>
             <p>Unmatched files: {summary.unmatchedFiles}</p>
             <p>Ambiguous files: {summary.ambiguousFiles}</p>
+            <p>Duplicate files skipped: {summary.duplicateFiles}</p>
             <p>Failed uploads: {summary.failedUploads}</p>
           </div>
           {summary.affectedCodes.length ? (

@@ -4,7 +4,11 @@ import { BulkAssetUploadPanel } from "@/components/bulk-asset-upload-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
-import type { BulkAssetQuestionMatch } from "@/lib/bulk-asset-import/matching";
+import {
+  buildBulkAssetExistingFileIndex,
+  type BulkAssetExistingFileRecord,
+  type BulkAssetQuestionMatch,
+} from "@/lib/bulk-asset-import/matching";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +29,43 @@ export default async function AdminImportAssetsPage() {
       title: question.title,
     }),
   );
+  const questionIds = draftQuestions.map((question) => question.id);
+  const [{ data: existingAssets }, { data: existingSourceFiles }] =
+    questionIds.length
+      ? await Promise.all([
+          supabase
+            .from("question_assets")
+            .select("question_id, original_filename, object_path")
+            .in("question_id", questionIds)
+            .limit(2000),
+          supabase
+            .from("question_source_files")
+            .select("question_id, original_filename, object_path")
+            .in("question_id", questionIds)
+            .neq("status", "deleted")
+            .limit(2000),
+        ])
+      : [{ data: [] }, { data: [] }];
+  const existingFileRecords: BulkAssetExistingFileRecord[] = [
+    ...(existingAssets ?? [])
+      .filter((asset) => asset.question_id)
+      .map((asset) => ({
+        fileKind: "image" as const,
+        objectPath: asset.object_path,
+        originalFilename: asset.original_filename,
+        questionId: asset.question_id as string,
+      })),
+    ...(existingSourceFiles ?? [])
+      .filter((sourceFile) => sourceFile.question_id)
+      .map((sourceFile) => ({
+        fileKind: "pdf" as const,
+        objectPath: sourceFile.object_path,
+        originalFilename: sourceFile.original_filename,
+        questionId: sourceFile.question_id as string,
+      })),
+  ];
+  const existingFilesByQuestionId =
+    buildBulkAssetExistingFileIndex(existingFileRecords);
 
   return (
     <div className="space-y-6">
@@ -70,7 +111,10 @@ export default async function AdminImportAssetsPage() {
           {error.message}
         </p>
       ) : (
-        <BulkAssetUploadPanel draftQuestions={draftQuestions} />
+        <BulkAssetUploadPanel
+          draftQuestions={draftQuestions}
+          existingFilesByQuestionId={existingFilesByQuestionId}
+        />
       )}
     </div>
   );

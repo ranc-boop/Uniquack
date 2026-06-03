@@ -59,6 +59,67 @@ assert(
   "image filename routes toward question_assets",
 );
 
+const firstSelection = [
+  {
+    fileName: "Q1001_diagram.png",
+    mimeType: "image/png",
+    sizeBytes: 1024,
+  },
+];
+const secondSelection = [
+  ...firstSelection,
+  {
+    fileName: "Q1002_circuit.webp",
+    mimeType: "image/webp",
+    sizeBytes: 1024,
+  },
+];
+const firstQueue = helper.classifyBulkAssetQueue({
+  files: firstSelection,
+  questions,
+});
+const accumulatedQueue = helper.classifyBulkAssetQueue({
+  files: secondSelection,
+  questions,
+});
+assert(
+  firstQueue.length === 1 &&
+    accumulatedQueue.length === 2 &&
+    accumulatedQueue.every((item) => item.status === "matched"),
+  "separate file picker selections can accumulate in the queue",
+);
+
+const queueDuplicate = helper.classifyBulkAssetQueue({
+  files: [...firstSelection, ...firstSelection],
+  questions,
+});
+assert(
+  queueDuplicate[0].status === "matched" &&
+    queueDuplicate[1].status === "duplicate" &&
+    queueDuplicate[1].duplicateReason === "queue",
+  "duplicate files in the current preview queue are skipped",
+);
+
+const existingImageIndex = helper.buildBulkAssetExistingFileIndex([
+  {
+    fileKind: "image",
+    originalFilename: "Q1001_diagram.png",
+    questionId: "question-1",
+  },
+]);
+const duplicateExistingImage = helper.classifyBulkAssetFile({
+  existingFilesByQuestionId: existingImageIndex,
+  fileName: "Q1001_diagram.png",
+  mimeType: "image/png",
+  questions,
+  sizeBytes: 1024,
+});
+assert(
+  duplicateExistingImage.status === "duplicate" &&
+    duplicateExistingImage.duplicateReason === "existing",
+  "duplicate image already uploaded for the same question is skipped",
+);
+
 const pdf = helper.classifyBulkAssetFile({
   fileName: "Q1002_source.pdf",
   mimeType: "application/pdf",
@@ -70,6 +131,26 @@ assert(
     pdf.fileKind === "pdf" &&
     pdf.matchedQuestion?.questionCode === "Q1002",
   "PDF filename routes toward question_source_files",
+);
+
+const existingPdfIndex = helper.buildBulkAssetExistingFileIndex([
+  {
+    fileKind: "pdf",
+    objectPath: "questions/question-2/Q1002_source.pdf",
+    questionId: "question-2",
+  },
+]);
+const duplicateExistingPdf = helper.classifyBulkAssetFile({
+  existingFilesByQuestionId: existingPdfIndex,
+  fileName: "Q1002_source.pdf",
+  mimeType: "application/pdf",
+  questions,
+  sizeBytes: 2048,
+});
+assert(
+  duplicateExistingPdf.status === "duplicate" &&
+    duplicateExistingPdf.duplicateReason === "existing",
+  "duplicate PDF already uploaded for the same question is skipped",
 );
 
 const underscoreCode = helper.classifyBulkAssetFile({
@@ -127,5 +208,33 @@ const oversizedImage = helper.classifyBulkAssetFile({
   sizeBytes: helper.BULK_ASSET_IMAGE_MAX_BYTES + 1,
 });
 assert(oversizedImage.status === "invalid", "oversized images are rejected");
+
+const mixedQueue = helper.classifyBulkAssetQueue({
+  existingFilesByQuestionId: existingImageIndex,
+  files: [
+    {
+      fileName: "Q1001_diagram.png",
+      mimeType: "image/png",
+      sizeBytes: 1024,
+    },
+    {
+      fileName: "NO_MATCH_diagram.gif",
+      mimeType: "image/gif",
+      sizeBytes: 1024,
+    },
+    {
+      fileName: "Q1002_source.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 2048,
+    },
+  ],
+  questions,
+});
+assert(
+  mixedQueue.filter((item) => item.status === "matched").length === 1 &&
+    mixedQueue.filter((item) => item.status === "duplicate").length === 1 &&
+    mixedQueue.filter((item) => item.status === "unmatched").length === 1,
+  "confirm upload eligibility excludes duplicate and unmatched files",
+);
 
 console.log("Bulk asset import smoke completed.");
