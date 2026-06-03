@@ -195,13 +195,19 @@ const videos = await fetchRoute("/videos?q=AP&min=0&max=1000");
 const signedOutAdmin = await fetchRoute("/admin");
 const signedOutReview = await fetchRoute("/admin/review");
 const signedOutImportAssets = await fetchRoute("/admin/imports/assets");
+const signedOutPackageImport = await fetchRoute("/admin/imports/package");
 const studentAdmin = await fetchRoute("/admin", studentCookie);
 const studentReview = await fetchRoute("/admin/review", studentCookie);
 const studentImportAssets = await fetchRoute("/admin/imports/assets", studentCookie);
+const studentPackageImport = await fetchRoute(
+  "/admin/imports/package",
+  studentCookie,
+);
 const adminHome = await fetchRoute("/admin", adminCookie);
 const adminQuestions = await fetchRoute("/admin/questions", adminCookie);
 const adminImports = await fetchRoute("/admin/imports", adminCookie);
 const adminImportAssets = await fetchRoute("/admin/imports/assets", adminCookie);
+const adminPackageImport = await fetchRoute("/admin/imports/package", adminCookie);
 const adminReview = await fetchRoute("/admin/review", adminCookie);
 const adminUsers = await fetchRoute("/admin/users", adminCookie);
 const superAdminUsers = await fetchRoute("/admin/users", superAdminCookie);
@@ -243,6 +249,11 @@ assertRoute(
   "signed out user visiting /admin/imports/assets redirects to login",
 );
 assertRoute(
+  signedOutPackageImport.status === 307 &&
+    signedOutPackageImport.location.includes("/auth/login"),
+  "signed out user visiting /admin/imports/package redirects to login",
+);
+assertRoute(
   studentAdmin.status === 307 && studentAdmin.location.includes("/unauthorized"),
   "student visiting /admin redirects to unauthorized",
 );
@@ -256,11 +267,17 @@ assertRoute(
   "student visiting /admin/imports/assets redirects to unauthorized",
 );
 assertRoute(
+  studentPackageImport.status === 307 &&
+    studentPackageImport.location.includes("/unauthorized"),
+  "student visiting /admin/imports/package redirects to unauthorized",
+);
+assertRoute(
   adminHome.status === 200 &&
     adminHome.text.includes("Create demo records") &&
     adminHome.text.includes("Review Drafts") &&
-    adminHome.text.includes("Bulk Assets"),
-  "admin can access dashboard, Review Drafts nav, and Bulk Assets nav",
+    adminHome.text.includes("Bulk Assets") &&
+    adminHome.text.includes("Package Import"),
+  "admin can access dashboard, Review Drafts nav, Bulk Assets nav, and Package Import nav",
 );
 assertRoute(
   adminQuestions.status === 200 &&
@@ -272,7 +289,8 @@ assertRoute(
   adminImports.status === 200 &&
     adminImports.text.includes("Manual JSON import") &&
     adminImports.text.includes("Asset references are preserved for review only") &&
-    adminImports.text.includes("Bulk asset upload"),
+    adminImports.text.includes("Bulk asset upload") &&
+    adminImports.text.includes("Package Import"),
   "admin can access batch import page",
 );
 assertRoute(
@@ -281,6 +299,13 @@ assertRoute(
     adminImportAssets.text.includes("Filename matching rules") &&
     adminImportAssets.text.includes("Select files"),
   "admin can access bulk asset upload page",
+);
+assertRoute(
+  adminPackageImport.status === 200 &&
+    adminPackageImport.text.includes("Package import") &&
+    adminPackageImport.text.includes("Supported package format") &&
+    adminPackageImport.text.includes("Select ZIP"),
+  "admin can access package import page",
 );
 assertRoute(
   adminReview.status === 200 &&

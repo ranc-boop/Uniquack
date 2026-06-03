@@ -17,7 +17,9 @@ const importItemSchema = z
     content_html: z.string().optional(),
     solution_html: z.string().optional(),
     image_urls: z.array(z.string()).optional(),
+    image_files: z.array(z.string()).optional(),
     source_file_ids: z.array(z.string()).optional(),
+    source_files: z.array(z.string()).optional(),
     question_asset_ids: z.array(z.string()).optional(),
     video_url: z.string().optional(),
     embed_url: z.string().optional(),
@@ -42,7 +44,9 @@ export type NormalizedImportQuestion = {
   content_html: string;
   solution_html: string | null;
   image_urls: string[];
+  image_files: string[];
   source_file_ids: string[];
+  source_files: string[];
   question_asset_ids: string[];
   video_url: string | null;
   embed_url: string | null;
@@ -244,7 +248,9 @@ export function evaluateBatchImportItems({
     const videoUrl = httpUrlOrNull(item.video_url);
     const embedUrl = httpUrlOrNull(item.embed_url);
     const imageUrls = httpUrlArray(item.image_urls);
+    const imageFiles = stringArray(item.image_files).slice(0, 50);
     const sourceFileIds = idReferenceArray(item.source_file_ids);
+    const sourceFiles = stringArray(item.source_files).slice(0, 50);
     const questionAssetIds = idReferenceArray(item.question_asset_ids);
 
     if (item.video_url && !videoUrl) {
@@ -261,7 +267,13 @@ export function evaluateBatchImportItems({
 
     // Batch Import v2 preserves asset references in import_batch_items for
     // admin review. It does not download/upload or auto-attach binaries yet.
-    if (imageUrls.length || sourceFileIds.length || questionAssetIds.length) {
+    if (
+      imageUrls.length ||
+      imageFiles.length ||
+      sourceFileIds.length ||
+      sourceFiles.length ||
+      questionAssetIds.length
+    ) {
       warnings.push(
         "Asset references are preserved for review only in Batch Import v2.",
       );
@@ -286,7 +298,9 @@ export function evaluateBatchImportItems({
             content_html: sanitizedContent,
             solution_html: sanitizedSolution,
             image_urls: imageUrls,
+            image_files: imageFiles,
             source_file_ids: sourceFileIds,
+            source_files: sourceFiles,
             question_asset_ids: questionAssetIds,
             video_url: videoUrl,
             embed_url: embedUrl,
