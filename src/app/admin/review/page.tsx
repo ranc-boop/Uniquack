@@ -9,6 +9,7 @@ import {
   extractImportAssetReferences,
   type ImportAssetReferences,
 } from "@/lib/batch-import/asset-references";
+import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -31,32 +32,12 @@ type ReviewQuestion = {
   title: string;
 };
 
-function hasText(value: string | null | undefined) {
-  return Boolean(value?.replace(/<[^>]*>/g, "").trim());
-}
-
 function formatDate(value: string | null | undefined) {
   if (!value) {
     return "Unknown";
   }
 
   return new Date(value).toLocaleString();
-}
-
-function ReadinessBadge({
-  ok,
-  okLabel,
-  missingLabel,
-}: {
-  missingLabel: string;
-  ok: boolean;
-  okLabel: string;
-}) {
-  return (
-    <Badge variant={ok ? "secondary" : "outline"}>
-      {ok ? okLabel : missingLabel}
-    </Badge>
-  );
 }
 
 function ImportedAssetReferenceBadges({
@@ -243,6 +224,15 @@ export default async function AdminReviewPage({
           const importedAt = importedAtByQuestionId.get(question.id);
           const hasImportedRefs =
             importRefs && countImportAssetReferences(importRefs).total > 0;
+          const readiness = getQuestionReadiness({
+            contentHtml: question.content_html,
+            difficultyRating: question.difficulty_rating,
+            imageCount,
+            importedAssetReferences: importRefs,
+            solutionHtml: question.solution_html,
+            sourceFileCount,
+            tagCount: tagNames.length,
+          });
 
           return (
             <Card key={question.id}>
@@ -290,26 +280,25 @@ export default async function AdminReviewPage({
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <ReadinessBadge
-                    ok={hasText(question.content_html)}
-                    okLabel="Has content"
-                    missingLabel="Needs content"
-                  />
-                  <ReadinessBadge
-                    ok={hasText(question.solution_html)}
-                    okLabel="Has solution"
-                    missingLabel="Needs solution"
-                  />
-                  <ReadinessBadge
-                    ok={tagNames.length > 0}
-                    okLabel="Has tags"
-                    missingLabel="Needs tags"
-                  />
-                  <ReadinessBadge
-                    ok={question.difficulty_rating >= 0}
-                    okLabel="Has difficulty"
-                    missingLabel="Needs difficulty"
-                  />
+                  <Badge variant={readiness.isReady ? "secondary" : "outline"}>
+                    {readiness.summaryLabel}
+                  </Badge>
+                  <Badge variant={readiness.hasContent ? "secondary" : "outline"}>
+                    {readiness.hasContent ? "Has content" : "Needs content"}
+                  </Badge>
+                  <Badge variant={readiness.hasSolution ? "secondary" : "outline"}>
+                    {readiness.hasSolution ? "Has solution" : "Needs solution"}
+                  </Badge>
+                  <Badge variant={readiness.hasTags ? "secondary" : "outline"}>
+                    {readiness.hasTags ? "Has tags" : "Needs tags"}
+                  </Badge>
+                  <Badge
+                    variant={readiness.hasDifficulty ? "secondary" : "outline"}
+                  >
+                    {readiness.hasDifficulty
+                      ? "Has difficulty"
+                      : "Needs difficulty"}
+                  </Badge>
                   <Badge variant="outline">Images: {imageCount}</Badge>
                   <Badge variant="outline">PDF source files: {sourceFileCount}</Badge>
                   <ImportedAssetReferenceBadges refs={importRefs} />
