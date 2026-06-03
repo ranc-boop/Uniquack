@@ -259,11 +259,11 @@ export function evaluateBatchImportItems({
       warnings.push("One or more invalid image_urls were ignored.");
     }
 
-    // Batch Import v1 only preserves asset references in import_batch_items.
-    // Future asset-aware imports can resolve these ids into managed image/PDF links.
-    if (sourceFileIds.length || questionAssetIds.length) {
+    // Batch Import v2 preserves asset references in import_batch_items for
+    // admin review. It does not download/upload or auto-attach binaries yet.
+    if (imageUrls.length || sourceFileIds.length || questionAssetIds.length) {
       warnings.push(
-        "Asset references are preserved for review only in Batch Import v1.",
+        "Asset references are preserved for review only in Batch Import v2.",
       );
     }
 

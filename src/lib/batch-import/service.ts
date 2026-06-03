@@ -3,6 +3,11 @@ import {
   evaluateBatchImportItems,
   parseBatchImportJson,
 } from "@/lib/batch-import/json";
+import {
+  countImportAssetReferences,
+  extractImportAssetReferences,
+  type ImportAssetReferences,
+} from "@/lib/batch-import/asset-references";
 
 type SupabaseLike = {
   from: (table: string) => any;
@@ -19,6 +24,13 @@ export type BatchImportSummary = {
   unknownTagCount: number;
   createdQuestions: {
     id: string;
+    assetReferences: ImportAssetReferences;
+    assetReferenceCounts: {
+      imageUrls: number;
+      sourceFileIds: number;
+      questionAssetIds: number;
+      total: number;
+    };
     questionCode: string;
     title: string;
   }[];
@@ -195,8 +207,11 @@ export async function importBatchImportJson({
     }
 
     createdCount += 1;
+    const assetReferences = extractImportAssetReferences(normalized);
     createdQuestions.push({
       id: question.id,
+      assetReferences,
+      assetReferenceCounts: countImportAssetReferences(assetReferences),
       questionCode: normalized.question_code,
       title: normalized.title,
     });

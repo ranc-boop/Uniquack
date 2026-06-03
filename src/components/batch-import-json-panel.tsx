@@ -13,6 +13,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  countImportAssetReferences,
+  extractImportAssetReferences,
+  type ImportAssetReferences,
+} from "@/lib/batch-import/asset-references";
 import type { BatchImportPreview } from "@/lib/batch-import/json";
 import type { BatchImportSummary } from "@/lib/batch-import/service";
 
@@ -27,9 +32,9 @@ const starterJson = JSON.stringify(
         tag_names: ["AP Physics"],
         content_html: "<p>Question stem goes here.</p>",
         solution_html: "<p>Solution notes go here.</p>",
-        image_urls: [],
-        source_file_ids: [],
-        question_asset_ids: [],
+        image_urls: ["https://example.com/q1-diagram.png"],
+        source_file_ids: ["00000000-0000-0000-0000-000000000001"],
+        question_asset_ids: ["00000000-0000-0000-0000-000000000002"],
         video_url: "",
         embed_url: "",
       },
@@ -41,6 +46,60 @@ const starterJson = JSON.stringify(
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Import failed.";
+}
+
+function AssetReferenceSummary({
+  refs,
+  showValues = false,
+}: {
+  refs: ImportAssetReferences;
+  showValues?: boolean;
+}) {
+  const counts = countImportAssetReferences(refs);
+
+  if (!counts.total) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No asset references included.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="grid grid-cols-3 gap-1">
+        <div className="rounded-md border p-1.5">
+          <p className="font-medium">{counts.imageUrls}</p>
+          <p className="text-muted-foreground">Image URLs</p>
+        </div>
+        <div className="rounded-md border p-1.5">
+          <p className="font-medium">{counts.sourceFileIds}</p>
+          <p className="text-muted-foreground">Source refs</p>
+        </div>
+        <div className="rounded-md border p-1.5">
+          <p className="font-medium">{counts.questionAssetIds}</p>
+          <p className="text-muted-foreground">Asset refs</p>
+        </div>
+      </div>
+      {showValues ? (
+        <div className="space-y-1 text-muted-foreground">
+          {refs.imageUrls.length ? (
+            <p className="break-all">Image URLs: {refs.imageUrls.join(", ")}</p>
+          ) : null}
+          {refs.sourceFileIds.length ? (
+            <p className="break-all">
+              Source file refs: {refs.sourceFileIds.join(", ")}
+            </p>
+          ) : null}
+          {refs.questionAssetIds.length ? (
+            <p className="break-all">
+              Question asset refs: {refs.questionAssetIds.join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function BatchImportJsonPanel() {
@@ -157,20 +216,22 @@ export function BatchImportJsonPanel() {
             <li>Questions are always imported as drafts.</li>
             <li>Tags must already exist by slug or name.</li>
             <li>Unsafe HTML is sanitized before saving.</li>
-            <li>Image and video URL fields are preserved for review only.</li>
+            <li>
+              Asset references are preserved for review only. Batch Import v2
+              does not upload binary files or automatically attach assets yet.
+            </li>
           </ul>
         </div>
         <div className="rounded-md border p-3">
           <p className="text-sm font-medium">Future asset path</p>
           <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-            <li>Batch Import v1 accepts structured JSON only.</li>
+            <li>Batch Import v2 accepts structured JSON only.</li>
             <li>Binary uploads stay in the image and source-file panels.</li>
             <li>
               Reserved fields: image_urls, source_file_ids, question_asset_ids.
             </li>
             <li>
-              Future AI/package imports can produce normalized JSON for this
-              same preview and draft-review flow.
+              Future package import will support questions.json + images + PDFs.
             </li>
           </ul>
         </div>
@@ -205,10 +266,13 @@ export function BatchImportJsonPanel() {
                   {summary.createdQuestions.map((question) => (
                     <div
                       key={question.id}
-                      className="rounded-md border px-2 py-1 text-xs"
+                      className="space-y-2 rounded-md border px-2 py-1.5 text-xs"
                     >
-                      <p className="font-mono">{question.questionCode}</p>
-                      <p className="text-muted-foreground">{question.title}</p>
+                      <div>
+                        <p className="font-mono">{question.questionCode}</p>
+                        <p className="text-muted-foreground">{question.title}</p>
+                      </div>
+                      <AssetReferenceSummary refs={question.assetReferences} />
                     </div>
                   ))}
                 </div>
@@ -245,6 +309,19 @@ export function BatchImportJsonPanel() {
                       <p>{item.normalized.question_code}</p>
                       <p>{item.normalized.title}</p>
                       <p>Tags: {item.normalized.tag_ids.length}</p>
+                      <div className="rounded-md bg-muted/30 p-2">
+                        <p className="mb-1 font-medium text-foreground">
+                          Asset references
+                        </p>
+                        <AssetReferenceSummary
+                          refs={extractImportAssetReferences(item.normalized)}
+                          showValues
+                        />
+                        <p className="mt-2">
+                          Preserved for admin review only. No files are
+                          downloaded, uploaded, or attached by Batch Import v2.
+                        </p>
+                      </div>
                     </div>
                   ) : null}
                   {item.errors.length ? (

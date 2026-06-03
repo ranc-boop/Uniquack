@@ -1,5 +1,6 @@
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
+import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 
@@ -88,6 +89,8 @@ const cleanup = {
 };
 
 try {
+  const sourceFileRefId = randomUUID();
+  const questionAssetRefId = randomUUID();
   const tag = await insertOne(
     admin.client,
     "tags",
@@ -116,8 +119,8 @@ try {
           '<script>alert(1)</script><p onclick="alert(2)">Valid content</p>',
         solution_html: '<a href="javascript:alert(1)">Unsafe link</a><p>ok</p>',
         image_urls: ["https://example.com/image.png"],
-        source_file_ids: ["source-file-reserved-review-id"],
-        question_asset_ids: ["question-asset-reserved-review-id"],
+        source_file_ids: [sourceFileRefId],
+        question_asset_ids: [questionAssetRefId],
       },
       {
         code: `BATCH-${suffix}-UNKNOWN`,
@@ -169,6 +172,13 @@ try {
     "unsafe HTML was not reported",
   );
   pass("batch import preview validates good, unknown tag, duplicate, and unsafe HTML");
+  assert(
+    validItem.image_urls[0] === "https://example.com/image.png" &&
+      validItem.source_file_ids[0] === sourceFileRefId &&
+      validItem.question_asset_ids[0] === questionAssetRefId,
+    "asset reference fields were not present in import payload",
+  );
+  pass("batch import payload includes image, source file, and question asset refs");
 
   let batch;
 
@@ -255,6 +265,37 @@ try {
 
   assert(!batchItemsError, `batch item insert failed: ${batchItemsError?.message}`);
 
+  const { data: storedImportItem, error: storedImportItemError } =
+    await admin.client
+      .from("import_batch_items")
+      .select("normalized_question_json")
+      .eq("batch_id", batch.id)
+      .eq("item_index", 0)
+      .single();
+
+  assert(
+    !storedImportItemError && storedImportItem,
+    `stored import item lookup failed: ${storedImportItemError?.message}`,
+  );
+
+  const storedNormalized = storedImportItem.normalized_question_json;
+
+  assert(
+    storedNormalized?.image_urls?.[0] === "https://example.com/image.png",
+    "image_urls were not preserved in normalized import JSON",
+  );
+  pass("batch import preserves image_urls in normalized import JSON");
+  assert(
+    storedNormalized?.source_file_ids?.[0] === sourceFileRefId,
+    "source_file_ids were not preserved in normalized import JSON",
+  );
+  pass("batch import preserves source_file_ids in normalized import JSON");
+  assert(
+    storedNormalized?.question_asset_ids?.[0] === questionAssetRefId,
+    "question_asset_ids were not preserved in normalized import JSON",
+  );
+  pass("batch import preserves question_asset_ids in normalized import JSON");
+
   const { data: createdQuestion, error: createQuestionError } = await admin.client
     .from("questions")
     .insert({
@@ -315,6 +356,20 @@ try {
     createdQuestions: [
       {
         id: createdQuestion.id,
+        assetReferences: {
+          imageUrls: normalizedValidItem.image_urls,
+          sourceFileIds: normalizedValidItem.source_file_ids,
+          questionAssetIds: normalizedValidItem.question_asset_ids,
+        },
+        assetReferenceCounts: {
+          imageUrls: normalizedValidItem.image_urls.length,
+          sourceFileIds: normalizedValidItem.source_file_ids.length,
+          questionAssetIds: normalizedValidItem.question_asset_ids.length,
+          total:
+            normalizedValidItem.image_urls.length +
+            normalizedValidItem.source_file_ids.length +
+            normalizedValidItem.question_asset_ids.length,
+        },
         questionCode: normalizedValidItem.question_code,
         title: normalizedValidItem.title,
       },

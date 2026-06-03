@@ -28,6 +28,11 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { requireAdmin } from "@/lib/auth/guards";
+import {
+  countImportAssetReferences,
+  extractImportAssetReferences,
+  type ImportAssetReferences,
+} from "@/lib/batch-import/asset-references";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
 
@@ -45,6 +50,84 @@ const questionStatuses = ["draft", "published", "archived"] as const;
 
 function safeStatusFilter(value: string | undefined) {
   return questionStatuses.find((status) => status === value) ?? "";
+}
+
+function ImportedAssetReferencesReview({
+  refs,
+}: {
+  refs: ImportAssetReferences;
+}) {
+  const counts = countImportAssetReferences(refs);
+
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/20 p-3 text-sm">
+      <div>
+        <p className="font-medium">Imported asset references</p>
+        <p className="text-xs text-muted-foreground">
+          Preserved from Batch Import v2 for review only. These refs are not
+          downloaded, uploaded, or automatically attached yet.
+        </p>
+      </div>
+      <div className="grid gap-2 md:grid-cols-3">
+        <div className="rounded-md border bg-background p-2">
+          <p className="font-medium">{counts.imageUrls}</p>
+          <p className="text-xs text-muted-foreground">Image URLs</p>
+        </div>
+        <div className="rounded-md border bg-background p-2">
+          <p className="font-medium">{counts.sourceFileIds}</p>
+          <p className="text-xs text-muted-foreground">Source file refs</p>
+        </div>
+        <div className="rounded-md border bg-background p-2">
+          <p className="font-medium">{counts.questionAssetIds}</p>
+          <p className="text-xs text-muted-foreground">Question asset refs</p>
+        </div>
+      </div>
+      <div className="space-y-2 text-xs text-muted-foreground">
+        <div>
+          <p className="font-medium text-foreground">Image URLs</p>
+          {refs.imageUrls.length ? (
+            <ul className="mt-1 space-y-1">
+              {refs.imageUrls.map((url) => (
+                <li key={url} className="break-all">
+                  {url}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>None</p>
+          )}
+        </div>
+        <div>
+          <p className="font-medium text-foreground">Source file IDs</p>
+          {refs.sourceFileIds.length ? (
+            <ul className="mt-1 space-y-1">
+              {refs.sourceFileIds.map((id) => (
+                <li key={id} className="break-all font-mono">
+                  {id}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>None</p>
+          )}
+        </div>
+        <div>
+          <p className="font-medium text-foreground">Question asset IDs</p>
+          {refs.questionAssetIds.length ? (
+            <ul className="mt-1 space-y-1">
+              {refs.questionAssetIds.map((id) => (
+                <li key={id} className="break-all font-mono">
+                  {id}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>None</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default async function AdminQuestionsPage({
@@ -94,10 +177,19 @@ export default async function AdminQuestionsPage({
     ]);
 
   const tagNameById = new Map((tags ?? []).map((tag) => [tag.id, tag.name]));
+  const questionIds = (questions ?? []).map((question) => question.id);
   const tagsByQuestionId = new Map<string, string[]>();
   const tagIdsByQuestionId = new Map<string, Set<string>>();
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
+  const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
+  const { data: importItems } = questionIds.length
+    ? await supabase
+        .from("import_batch_items")
+        .select("created_question_id, normalized_question_json")
+        .eq("status", "imported")
+        .in("created_question_id", questionIds)
+    : { data: [] };
 
   for (const binding of questionTags ?? []) {
     const current = tagsByQuestionId.get(binding.question_id) ?? [];
@@ -148,6 +240,17 @@ export default async function AdminQuestionsPage({
       status: sourceFile.status,
     });
     sourceFilesByQuestionId.set(sourceFile.question_id, current);
+  }
+
+  for (const item of importItems ?? []) {
+    if (!item.created_question_id) {
+      continue;
+    }
+
+    importRefsByQuestionId.set(
+      item.created_question_id,
+      extractImportAssetReferences(item.normalized_question_json),
+    );
   }
 
   const filteredQuestions = (questions ?? []).filter((question) => {
@@ -487,6 +590,16 @@ export default async function AdminQuestionsPage({
                             defaultValue={question.solution_html ?? ""}
                           />
                         </div>
+                        {importRefsByQuestionId.has(question.id) ? (
+                          <div className="lg:col-span-2">
+                            <ImportedAssetReferencesReview
+                              refs={
+                                importRefsByQuestionId.get(question.id) ??
+                                extractImportAssetReferences(null)
+                              }
+                            />
+                          </div>
+                        ) : null}
                         <div className="lg:col-span-2">
                           <QuestionAssetsPanel
                             questionId={question.id}
