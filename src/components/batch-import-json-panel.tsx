@@ -279,6 +279,19 @@ export function BatchImportJsonPanel() {
                 <Button asChild size="sm" variant="outline">
                   <Link href="/admin/questions">Review in Questions</Link>
                 </Button>
+                <Button asChild size="sm">
+                  <Link
+                    href={
+                      summary.createdQuestions.length === 1
+                        ? `/admin/review?search=${encodeURIComponent(
+                            summary.createdQuestions[0].questionCode,
+                          )}`
+                        : "/admin/review"
+                    }
+                  >
+                    Review imported drafts
+                  </Link>
+                </Button>
               </div>
             ) : null}
             <p className="break-all text-xs text-muted-foreground">

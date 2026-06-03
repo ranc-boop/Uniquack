@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 
 import { createBrowserClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
@@ -192,10 +193,13 @@ const login = await fetchRoute("/auth/login");
 const questions = await fetchRoute("/questions?q=AP&min=0&max=1000");
 const videos = await fetchRoute("/videos?q=AP&min=0&max=1000");
 const signedOutAdmin = await fetchRoute("/admin");
+const signedOutReview = await fetchRoute("/admin/review");
 const studentAdmin = await fetchRoute("/admin", studentCookie);
+const studentReview = await fetchRoute("/admin/review", studentCookie);
 const adminHome = await fetchRoute("/admin", adminCookie);
 const adminQuestions = await fetchRoute("/admin/questions", adminCookie);
 const adminImports = await fetchRoute("/admin/imports", adminCookie);
+const adminReview = await fetchRoute("/admin/review", adminCookie);
 const adminUsers = await fetchRoute("/admin/users", adminCookie);
 const superAdminUsers = await fetchRoute("/admin/users", superAdminCookie);
 
@@ -226,12 +230,23 @@ assertRoute(
   "signed out user visiting /admin redirects to login",
 );
 assertRoute(
+  signedOutReview.status === 307 &&
+    signedOutReview.location.includes("/auth/login"),
+  "signed out user visiting /admin/review redirects to login",
+);
+assertRoute(
   studentAdmin.status === 307 && studentAdmin.location.includes("/unauthorized"),
   "student visiting /admin redirects to unauthorized",
 );
 assertRoute(
-  adminHome.status === 200 && adminHome.text.includes("Create demo records"),
-  "admin can access dashboard and demo seed action",
+  studentReview.status === 307 && studentReview.location.includes("/unauthorized"),
+  "student visiting /admin/review redirects to unauthorized",
+);
+assertRoute(
+  adminHome.status === 200 &&
+    adminHome.text.includes("Create demo records") &&
+    adminHome.text.includes("Review Drafts"),
+  "admin can access dashboard and Review Drafts nav",
 );
 assertRoute(
   adminQuestions.status === 200 &&
@@ -244,6 +259,12 @@ assertRoute(
     adminImports.text.includes("Manual JSON import") &&
     adminImports.text.includes("Asset references are preserved for review only"),
   "admin can access batch import page",
+);
+assertRoute(
+  adminReview.status === 200 &&
+    adminReview.text.includes("Review Drafts") &&
+    adminReview.text.includes("Search drafts"),
+  "admin can access review dashboard",
 );
 assertRoute(
   adminUsers.status === 307 && adminUsers.location.includes("/unauthorized"),
@@ -260,6 +281,7 @@ const adminSession = await signedInSupabaseClient(
 );
 const suffix = `route-multi-${Date.now()}`;
 const cleanup = {
+  batches: [],
   videoTags: [],
   questionTags: [],
   videos: [],
@@ -338,6 +360,92 @@ try {
     "admin can create a question with multiple tags",
   );
   cleanup.questionTags.push(...questionTags);
+
+  const draftQuestion = await insertOne(
+    adminSession.client,
+    "questions",
+    {
+      question_code: `REVIEW-DRAFT-${Date.now()}`,
+      title: `Route review draft ${suffix}`,
+      content_html: "<p>Route smoke review draft content.</p>",
+      solution_html: null,
+      difficulty_rating: 455,
+      question_type: "frq",
+      status: "draft",
+      created_by: adminSession.user.id,
+      updated_by: adminSession.user.id,
+    },
+    "id,question_code,title",
+  );
+  cleanup.questions.push(draftQuestion.id);
+
+  const { data: draftTags, error: draftTagsError } = await adminSession.client
+    .from("question_tags")
+    .insert([{ question_id: draftQuestion.id, tag_id: tags[0].id }])
+    .select("question_id,tag_id");
+
+  if (draftTagsError) {
+    throw new Error(`draft question_tags insert failed: ${draftTagsError.message}`);
+  }
+  cleanup.questionTags.push(...draftTags);
+
+  const sourceFileRefId = randomUUID();
+  const questionAssetRefId = randomUUID();
+  const importBatch = await insertOne(
+    adminSession.client,
+    "import_batches",
+    {
+      source_type: "manual_json",
+      status: "imported",
+      summary: { createdCount: 1 },
+      created_by: adminSession.user.id,
+    },
+    "id",
+  );
+  cleanup.batches.push(importBatch.id);
+
+  const { error: importItemError } = await adminSession.client
+    .from("import_batch_items")
+    .insert({
+      batch_id: importBatch.id,
+      item_index: 0,
+      raw_payload: { code: draftQuestion.question_code },
+      normalized_question_json: {
+        question_code: draftQuestion.question_code,
+        title: draftQuestion.title,
+        status: "draft",
+        image_urls: ["https://example.com/review-draft.png"],
+        source_file_ids: [sourceFileRefId],
+        question_asset_ids: [questionAssetRefId],
+      },
+      validation_errors: [],
+      status: "imported",
+      created_question_id: draftQuestion.id,
+    });
+
+  if (importItemError) {
+    throw new Error(`import_batch_items insert failed: ${importItemError.message}`);
+  }
+
+  const reviewDashboard = await fetchRoute(
+    `/admin/review?search=${encodeURIComponent(draftQuestion.question_code)}`,
+    adminCookie,
+  );
+
+  assertRoute(
+    reviewDashboard.status === 200 &&
+      reviewDashboard.text.includes(draftQuestion.question_code) &&
+      reviewDashboard.text.includes("Needs solution") &&
+      reviewDashboard.text.includes("Has tags") &&
+      reviewDashboard.text.includes("Has imported asset refs") &&
+      reviewDashboard.text.includes("Needs media review") &&
+      reviewDashboard.text.includes("Edit question"),
+    "draft imported question appears in review queue with readiness indicators",
+  );
+  assertRoute(
+    !reviewDashboard.text.includes(question.title),
+    "published question does not appear in review queue",
+  );
 
   const { data: loadedQuestionTags, error: loadedQuestionTagsError } =
     await adminSession.client
@@ -535,6 +643,9 @@ try {
   }
   for (const id of cleanup.tags) {
     await adminSession.client.from("tags").delete().eq("id", id);
+  }
+  for (const id of cleanup.batches) {
+    await adminSession.client.from("import_batches").delete().eq("id", id);
   }
 }
 
