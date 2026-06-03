@@ -8,6 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const cards = [
   {
+    href: "/admin/review",
+    title: "Review Drafts",
+    body: "Check draft readiness before publishing.",
+  },
+  {
     href: "/admin/questions",
     title: "Questions",
     body: "Create draft questions, change status, and delete records.",
