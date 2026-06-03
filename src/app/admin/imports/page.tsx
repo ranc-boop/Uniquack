@@ -1,5 +1,6 @@
 import { BatchImportJsonPanel } from "@/components/batch-import-json-panel";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -11,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -25,17 +27,22 @@ export default async function AdminImportsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Batch import</h1>
-        <p className="text-sm text-muted-foreground">
-          Manual JSON import pipeline for draft questions. Future AI parsing can
-          feed normalized records into the same tables.
-        </p>
-        <p className="mt-2 max-w-3xl text-xs text-muted-foreground">
-          Asset references are preserved for review only. Batch Import v2 does
-          not upload binary files or automatically attach assets yet. Future
-          package import will support questions.json + images + PDFs.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Batch import</h1>
+          <p className="text-sm text-muted-foreground">
+            Manual JSON import pipeline for draft questions. Future AI parsing can
+            feed normalized records into the same tables.
+          </p>
+          <p className="mt-2 max-w-3xl text-xs text-muted-foreground">
+            Asset references are preserved for review only. Use Bulk asset upload
+            to attach image and PDF files to imported drafts by filename prefix.
+            Future package import will support questions.json + images + PDFs.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/admin/imports/assets">Bulk asset upload</Link>
+        </Button>
       </div>
 
       <Card>
