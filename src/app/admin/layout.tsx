@@ -14,6 +14,7 @@ const navItems = [
   { href: "/admin/tags", label: "Tags" },
   { href: "/admin/videos", label: "Videos" },
   { href: "/admin/imports", label: "Imports" },
+  { href: "/admin/imports/assets", label: "Bulk Assets" },
   { href: "/admin/users", label: "Users" },
 ];
 
