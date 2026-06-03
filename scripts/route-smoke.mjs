@@ -447,6 +447,19 @@ try {
     "published question does not appear in review queue",
   );
 
+  const adminDraftQuestionEdit = await fetchRoute(
+    `/admin/questions?status=draft&q=${encodeURIComponent(draftQuestion.question_code)}`,
+    adminCookie,
+  );
+
+  assertRoute(
+    adminDraftQuestionEdit.status === 200 &&
+      adminDraftQuestionEdit.text.includes("Publish readiness") &&
+      adminDraftQuestionEdit.text.includes("Needs solution") &&
+      adminDraftQuestionEdit.text.includes("Needs media review"),
+    "admin question edit shows publish readiness summary",
+  );
+
   const { data: loadedQuestionTags, error: loadedQuestionTagsError } =
     await adminSession.client
       .from("question_tags")

@@ -11,6 +11,7 @@ import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
+import { QuestionStatusSelect } from "@/components/question-status-select";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import { TagCheckboxList } from "@/components/tag-checkbox-list";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ import {
   type ImportAssetReferences,
 } from "@/lib/batch-import/asset-references";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
+import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
 
 type AdminQuestionsPageProps = {
@@ -126,6 +128,72 @@ function ImportedAssetReferencesReview({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function PublishReadinessBox({
+  imageCount,
+  importedAssetReferences,
+  readiness,
+  sourceFileCount,
+}: {
+  imageCount: number;
+  importedAssetReferences: ImportAssetReferences | null;
+  readiness: ReturnType<typeof getQuestionReadiness>;
+  sourceFileCount: number;
+}) {
+  const importedRefCount = importedAssetReferences
+    ? countImportAssetReferences(importedAssetReferences).total
+    : 0;
+
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/20 p-3 text-sm">
+      <div>
+        <p className="font-medium">Publish readiness</p>
+        <p className="text-xs text-muted-foreground">
+          Soft checks only. RLS still controls real access, and publishing is not
+          blocked by this warning.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Badge variant={readiness.isReady ? "secondary" : "outline"}>
+          {readiness.isReady ? "Ready to publish" : "Needs review"}
+        </Badge>
+        <Badge variant={readiness.hasContent ? "secondary" : "outline"}>
+          {readiness.hasContent ? "Has content" : "Needs content"}
+        </Badge>
+        <Badge variant={readiness.hasSolution ? "secondary" : "outline"}>
+          {readiness.hasSolution ? "Has solution" : "Needs solution"}
+        </Badge>
+        <Badge variant={readiness.hasTags ? "secondary" : "outline"}>
+          {readiness.hasTags ? "Has tags" : "Needs tags"}
+        </Badge>
+        <Badge variant={readiness.hasDifficulty ? "secondary" : "outline"}>
+          {readiness.hasDifficulty ? "Has difficulty" : "Needs difficulty"}
+        </Badge>
+        <Badge variant="outline">Images: {imageCount}</Badge>
+        <Badge variant="outline">PDF source files: {sourceFileCount}</Badge>
+        {readiness.hasImportedAssetRefs ? (
+          <>
+            <Badge variant="secondary">Has imported asset refs</Badge>
+            <Badge variant="outline">Needs media review</Badge>
+          </>
+        ) : (
+          <Badge variant="outline">No imported asset refs</Badge>
+        )}
+      </div>
+      {readiness.missingLabels.length || readiness.warningLabels.length ? (
+        <p className="text-xs text-muted-foreground">
+          Review:{" "}
+          {[...readiness.missingLabels, ...readiness.warningLabels].join(", ")}
+          {importedRefCount ? ` (${importedRefCount} imported refs)` : ""}.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Basic readiness checks pass.
+        </p>
+      )}
     </div>
   );
 }
@@ -472,159 +540,178 @@ export default async function AdminQuestionsPage({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredQuestions.map((question) => (
-              <Fragment key={question.id}>
-                <TableRow>
-                  <TableCell className="font-mono text-xs">
-                    {question.question_code}
-                  </TableCell>
-                  <TableCell>{question.title}</TableCell>
-                  <TableCell>{question.question_type}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {(tagsByQuestionId.get(question.id) ?? []).map((tagName) => (
-                        <Badge key={tagName} variant="outline">
-                          {tagName}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell>{question.difficulty_rating}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{question.status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <form action={deleteQuestion}>
-                      <input type="hidden" name="id" value={question.id} />
-                      <DeleteSubmitButton label={`question ${question.question_code}`} />
-                    </form>
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell colSpan={7} className="bg-muted/20 p-3">
-                    <details>
-                      <summary className="cursor-pointer text-sm font-medium">
-                        Edit question
-                      </summary>
-                      <form
-                        action={updateQuestion}
-                        className="mt-3 grid gap-4 rounded-md border bg-background p-4 lg:grid-cols-2"
-                      >
+            {filteredQuestions.map((question) => {
+              const questionTagNames = tagsByQuestionId.get(question.id) ?? [];
+              const importedAssetReferences =
+                importRefsByQuestionId.get(question.id) ?? null;
+              const imageCount =
+                assetsByQuestionId.get(question.id)?.length ?? 0;
+              const sourceFileCount =
+                sourceFilesByQuestionId.get(question.id)?.length ?? 0;
+              const readiness = getQuestionReadiness({
+                contentHtml: question.content_html,
+                difficultyRating: question.difficulty_rating,
+                imageCount,
+                importedAssetReferences,
+                solutionHtml: question.solution_html,
+                sourceFileCount,
+                tagCount: questionTagNames.length,
+              });
+
+              return (
+                <Fragment key={question.id}>
+                  <TableRow>
+                    <TableCell className="font-mono text-xs">
+                      {question.question_code}
+                    </TableCell>
+                    <TableCell>{question.title}</TableCell>
+                    <TableCell>{question.question_type}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {questionTagNames.map((tagName) => (
+                          <Badge key={tagName} variant="outline">
+                            {tagName}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>{question.difficulty_rating}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{question.status}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <form action={deleteQuestion}>
                         <input type="hidden" name="id" value={question.id} />
-                        <div className="space-y-1">
-                          <Label>Code</Label>
-                          <Input
-                            name="question_code"
-                            defaultValue={question.question_code}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Title</Label>
-                          <Input
-                            name="title"
-                            defaultValue={question.title}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Difficulty</Label>
-                          <Input
-                            name="difficulty_rating"
-                            type="number"
-                            min="0"
-                            max="1000"
-                            defaultValue={question.difficulty_rating}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Type</Label>
-                          <select
-                            name="question_type"
-                            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                            defaultValue={question.question_type}
-                          >
-                            <option value="frq">FRQ</option>
-                            <option value="mcq">MCQ</option>
-                            <option value="mixed">Mixed</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Status</Label>
-                          <select
-                            name="status"
-                            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                            defaultValue={question.status}
-                          >
-                            <option value="draft">Draft</option>
-                            <option value="published">Published</option>
-                            <option value="archived">Archived</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Tags</Label>
-                          <TagCheckboxList
-                            tags={tags ?? []}
-                            defaultValue={
-                              Array.from(
-                                tagIdsByQuestionId.get(question.id) ?? [],
-                              )
-                            }
-                          />
-                        </div>
-                        <div className="space-y-1 lg:col-span-2">
-                          <Label>Content HTML</Label>
-                          <Textarea
-                            name="content_html"
-                            className="min-h-56 font-mono text-sm"
-                            defaultValue={question.content_html}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-1 lg:col-span-2">
-                          <Label>Solution HTML</Label>
-                          <Textarea
-                            name="solution_html"
-                            className="min-h-48 font-mono text-sm"
-                            defaultValue={question.solution_html ?? ""}
-                          />
-                        </div>
-                        {importRefsByQuestionId.has(question.id) ? (
-                          <div className="lg:col-span-2">
-                            <ImportedAssetReferencesReview
-                              refs={
-                                importRefsByQuestionId.get(question.id) ??
-                                extractImportAssetReferences(null)
-                              }
+                        <DeleteSubmitButton
+                          label={`question ${question.question_code}`}
+                        />
+                      </form>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell colSpan={7} className="bg-muted/20 p-3">
+                      <details>
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Edit question
+                        </summary>
+                        <form
+                          action={updateQuestion}
+                          className="mt-3 grid gap-4 rounded-md border bg-background p-4 lg:grid-cols-2"
+                        >
+                          <input type="hidden" name="id" value={question.id} />
+                          <div className="space-y-1">
+                            <Label>Code</Label>
+                            <Input
+                              name="question_code"
+                              defaultValue={question.question_code}
+                              required
                             />
                           </div>
-                        ) : null}
-                        <div className="lg:col-span-2">
-                          <QuestionAssetsPanel
-                            questionId={question.id}
-                            initialAssets={assetsByQuestionId.get(question.id)}
-                          />
-                        </div>
-                        <div className="lg:col-span-2">
-                          <QuestionSourceFilesPanel
-                            questionId={question.id}
-                            initialSourceFiles={sourceFilesByQuestionId.get(
-                              question.id,
-                            )}
-                          />
-                        </div>
-                        <div className="lg:col-span-2">
-                          <FormSubmitButton size="sm" pendingLabel="Saving...">
-                            Save question
-                          </FormSubmitButton>
-                        </div>
-                      </form>
-                    </details>
-                  </TableCell>
-                </TableRow>
-              </Fragment>
-            ))}
+                          <div className="space-y-1">
+                            <Label>Title</Label>
+                            <Input
+                              name="title"
+                              defaultValue={question.title}
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Difficulty</Label>
+                            <Input
+                              name="difficulty_rating"
+                              type="number"
+                              min="0"
+                              max="1000"
+                              defaultValue={question.difficulty_rating}
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Type</Label>
+                            <select
+                              name="question_type"
+                              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                              defaultValue={question.question_type}
+                            >
+                              <option value="frq">FRQ</option>
+                              <option value="mcq">MCQ</option>
+                              <option value="mixed">Mixed</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Status</Label>
+                            <QuestionStatusSelect
+                              defaultValue={question.status}
+                              isReadyToPublish={readiness.isReady}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Tags</Label>
+                            <TagCheckboxList
+                              tags={tags ?? []}
+                              defaultValue={Array.from(
+                                tagIdsByQuestionId.get(question.id) ?? [],
+                              )}
+                            />
+                          </div>
+                          <div className="lg:col-span-2">
+                            <PublishReadinessBox
+                              imageCount={imageCount}
+                              importedAssetReferences={importedAssetReferences}
+                              readiness={readiness}
+                              sourceFileCount={sourceFileCount}
+                            />
+                          </div>
+                          <div className="space-y-1 lg:col-span-2">
+                            <Label>Content HTML</Label>
+                            <Textarea
+                              name="content_html"
+                              className="min-h-56 font-mono text-sm"
+                              defaultValue={question.content_html}
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1 lg:col-span-2">
+                            <Label>Solution HTML</Label>
+                            <Textarea
+                              name="solution_html"
+                              className="min-h-48 font-mono text-sm"
+                              defaultValue={question.solution_html ?? ""}
+                            />
+                          </div>
+                          {importedAssetReferences ? (
+                            <div className="lg:col-span-2">
+                              <ImportedAssetReferencesReview
+                                refs={importedAssetReferences}
+                              />
+                            </div>
+                          ) : null}
+                          <div className="lg:col-span-2">
+                            <QuestionAssetsPanel
+                              questionId={question.id}
+                              initialAssets={assetsByQuestionId.get(question.id)}
+                            />
+                          </div>
+                          <div className="lg:col-span-2">
+                            <QuestionSourceFilesPanel
+                              questionId={question.id}
+                              initialSourceFiles={sourceFilesByQuestionId.get(
+                                question.id,
+                              )}
+                            />
+                          </div>
+                          <div className="lg:col-span-2">
+                            <FormSubmitButton size="sm" pendingLabel="Saving...">
+                              Save question
+                            </FormSubmitButton>
+                          </div>
+                        </form>
+                      </details>
+                    </TableCell>
+                  </TableRow>
+                </Fragment>
+              );
+            })}
             {!filteredQuestions.length ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center">
