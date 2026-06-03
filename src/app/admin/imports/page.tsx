@@ -45,6 +45,42 @@ export default async function AdminImportsPage() {
         </Button>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">JSON Import</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>Create draft questions from structured JSON.</p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/imports">Open JSON Import</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Bulk Asset Upload</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>Attach selected image and PDF files to existing drafts.</p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/imports/assets">Open Bulk Asset Upload</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Package Import</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>Import questions.json with referenced images and PDFs in one ZIP.</p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/imports/package">Open Package Import</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Manual JSON import</CardTitle>
