@@ -3,6 +3,8 @@ import sanitizeHtml from "sanitize-html";
 const allowedTags = Array.from(
   new Set([
     ...sanitizeHtml.defaults.allowedTags,
+    "div",
+    "span",
     "img",
     "picture",
     "video",
