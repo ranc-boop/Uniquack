@@ -1,7 +1,7 @@
 "use client";
 
 import { Maximize2, Minimize2 } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { RichHtml } from "@/components/rich-html";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,17 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  markdownLatexToHtml,
+  type QuestionSourceFormat,
+} from "@/lib/markdown-latex/markdown";
 import { cn } from "@/lib/utils";
 
 type EditorMode = "markdown" | "html";
 
 type QuestionHtmlEditorProps = {
+  defaultSource?: string | null;
+  defaultSourceFormat?: QuestionSourceFormat | null;
   defaultValue?: string | null;
   id?: string;
   label: string;
@@ -25,272 +31,58 @@ type QuestionHtmlEditorProps = {
   name: string;
   placeholder?: string;
   required?: boolean;
+  sourceFormatName?: string;
+  sourceName?: string;
 };
 
-function normalizeInitialHtml(value: string | null | undefined) {
+function normalizeInitialValue(value: string | null | undefined) {
   return value?.trim() ?? "";
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function escapeAttribute(value: string) {
-  return escapeHtml(value).replaceAll("\n", " ");
-}
-
-function isSafeMarkdownUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function renderInlineMarkdown(value: string) {
-  const codeTokens: string[] = [];
-  const htmlTokens: string[] = [];
-  let rendered = escapeHtml(value).replace(/`([^`]+)`/g, (_, code: string) => {
-    const index = codeTokens.push(`<code>${code}</code>`) - 1;
-    return `@@CODE_${index}@@`;
-  });
-
-  rendered = rendered
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt: string, src: string) => {
-      if (!isSafeMarkdownUrl(src)) {
-        return "";
-      }
-
-      const index =
-        htmlTokens.push(
-          `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(
-            alt,
-          )}" loading="lazy" decoding="async" />`,
-        ) - 1;
-      return `@@HTML_${index}@@`;
-    })
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text: string, href: string) => {
-      if (!isSafeMarkdownUrl(href)) {
-        return escapeHtml(text);
-      }
-
-      const index =
-        htmlTokens.push(
-          `<a href="${escapeAttribute(href)}">${escapeHtml(text)}</a>`,
-        ) - 1;
-      return `@@HTML_${index}@@`;
-    })
-    .replace(/\$\$([^$]+?)\$\$/g, (_, latex: string) => {
-      const cleanLatex = escapeAttribute(latex.trim());
-      return `<span data-type="inline-math" data-latex="${cleanLatex}"></span>`;
-    })
-    .replace(/\$([^$\n]+?)\$/g, (_, latex: string) => {
-      const cleanLatex = escapeAttribute(latex.trim());
-      return `<span data-type="inline-math" data-latex="${cleanLatex}"></span>`;
-    })
-    .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*([^*]+?)\*/g, "<em>$1</em>");
-
-  for (const [index, token] of htmlTokens.entries()) {
-    rendered = rendered.replace(`@@HTML_${index}@@`, token);
+function inferSourceFieldNames(htmlFieldName: string) {
+  if (htmlFieldName === "content_html") {
+    return {
+      sourceName: "content_source",
+      sourceFormatName: "content_source_format",
+    };
   }
 
-  for (const [index, token] of codeTokens.entries()) {
-    rendered = rendered.replace(`@@CODE_${index}@@`, token);
+  if (htmlFieldName === "solution_html") {
+    return {
+      sourceName: "solution_source",
+      sourceFormatName: "solution_source_format",
+    };
   }
 
-  return rendered;
+  return {
+    sourceName: `${htmlFieldName}_source`,
+    sourceFormatName: `${htmlFieldName}_source_format`,
+  };
 }
 
-function renderList(items: string[], ordered: boolean) {
-  const tag = ordered ? "ol" : "ul";
-  return `<${tag}>${items
-    .map((item) => `<li>${renderInlineMarkdown(item)}</li>`)
-    .join("")}</${tag}>`;
-}
-
-function isTableDivider(line: string) {
-  return /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line);
-}
-
-function splitTableRow(line: string) {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => cell.trim());
-}
-
-function renderTable(headerLine: string, dividerLine: string, bodyLines: string[]) {
-  if (!isTableDivider(dividerLine)) {
-    return null;
+function initialModeFor({
+  defaultSource,
+  defaultSourceFormat,
+  defaultValue,
+}: {
+  defaultSource?: string | null;
+  defaultSourceFormat?: QuestionSourceFormat | null;
+  defaultValue?: string | null;
+}): EditorMode {
+  if (defaultSourceFormat === "markdown_latex") {
+    return "markdown";
   }
 
-  const headers = splitTableRow(headerLine);
-  const rows = bodyLines.map(splitTableRow).filter((row) => row.length === headers.length);
-
-  if (!headers.length || !rows.length) {
-    return null;
+  if (defaultSourceFormat === "html") {
+    return "html";
   }
 
-  return [
-    '<div class="rich-html-table-wrap"><table>',
-    "<thead><tr>",
-    ...headers.map((header) => `<th>${renderInlineMarkdown(header)}</th>`),
-    "</tr></thead>",
-    "<tbody>",
-    ...rows.map(
-      (row) =>
-        `<tr>${row
-          .map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`)
-          .join("")}</tr>`,
-    ),
-    "</tbody>",
-    "</table></div>",
-  ].join("");
-}
-
-function markdownToHtml(markdown: string) {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
-  const blocks: string[] = [];
-  let paragraph: string[] = [];
-  let unorderedItems: string[] = [];
-  let orderedItems: string[] = [];
-
-  function flushParagraph() {
-    if (!paragraph.length) {
-      return;
-    }
-
-    blocks.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
-    paragraph = [];
-  }
-
-  function flushLists() {
-    if (unorderedItems.length) {
-      blocks.push(renderList(unorderedItems, false));
-      unorderedItems = [];
-    }
-
-    if (orderedItems.length) {
-      blocks.push(renderList(orderedItems, true));
-      orderedItems = [];
-    }
-  }
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const rawLine = lines[index];
-    const line = rawLine.trim();
-
-    if (!line) {
-      flushParagraph();
-      flushLists();
-      continue;
-    }
-
-    if (line === "$$") {
-      flushParagraph();
-      flushLists();
-      const mathLines: string[] = [];
-
-      index += 1;
-      while (index < lines.length && lines[index].trim() !== "$$") {
-        mathLines.push(lines[index]);
-        index += 1;
-      }
-
-      const latex = escapeAttribute(mathLines.join("\n").trim());
-      if (latex) {
-        blocks.push(`<div data-type="block-math" data-latex="${latex}"></div>`);
-      }
-      continue;
-    }
-
-    if (line.startsWith(">")) {
-      flushParagraph();
-      flushLists();
-      const quoteLines = [line.replace(/^>\s?/, "")];
-
-      while (
-        index + 1 < lines.length &&
-        lines[index + 1].trim().startsWith(">")
-      ) {
-        index += 1;
-        quoteLines.push(lines[index].trim().replace(/^>\s?/, ""));
-      }
-
-      blocks.push(`<blockquote><p>${renderInlineMarkdown(quoteLines.join(" "))}</p></blockquote>`);
-      continue;
-    }
-
-    if (
-      line.includes("|") &&
-      index + 1 < lines.length &&
-      isTableDivider(lines[index + 1].trim())
-    ) {
-      flushParagraph();
-      flushLists();
-      const bodyLines: string[] = [];
-      const dividerLine = lines[index + 1].trim();
-      index += 2;
-
-      while (index < lines.length && lines[index].trim().includes("|")) {
-        bodyLines.push(lines[index].trim());
-        index += 1;
-      }
-
-      index -= 1;
-      const tableHtml = renderTable(line, dividerLine, bodyLines);
-
-      if (tableHtml) {
-        blocks.push(tableHtml);
-      }
-      continue;
-    }
-
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
-    if (heading) {
-      flushParagraph();
-      flushLists();
-      const level = heading[1].length;
-      blocks.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
-      continue;
-    }
-
-    const unordered = /^[-*]\s+(.+)$/.exec(line);
-    if (unordered) {
-      flushParagraph();
-      orderedItems = [];
-      unorderedItems.push(unordered[1]);
-      continue;
-    }
-
-    const ordered = /^\d+\.\s+(.+)$/.exec(line);
-    if (ordered) {
-      flushParagraph();
-      unorderedItems = [];
-      orderedItems.push(ordered[1]);
-      continue;
-    }
-
-    flushLists();
-    paragraph.push(line);
-  }
-
-  flushParagraph();
-  flushLists();
-
-  return blocks.join("\n");
+  return normalizeInitialValue(defaultValue) ? "html" : "markdown";
 }
 
 export function QuestionHtmlEditor({
+  defaultSource,
+  defaultSourceFormat,
   defaultValue,
   id,
   label,
@@ -298,26 +90,68 @@ export function QuestionHtmlEditor({
   name,
   placeholder,
   required = false,
+  sourceFormatName,
+  sourceName,
 }: QuestionHtmlEditorProps) {
   const generatedId = useId();
   const fieldId = id ?? `${name}-${generatedId}`;
-  const [mode, setMode] = useState<EditorMode>("markdown");
-  const [htmlValue, setHtmlValue] = useState(() => normalizeInitialHtml(defaultValue));
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [markdownValue, setMarkdownValue] = useState("");
+  const inferredSourceFields = useMemo(() => inferSourceFieldNames(name), [name]);
+  const sourceFieldName = sourceName ?? inferredSourceFields.sourceName;
+  const sourceFormatFieldName =
+    sourceFormatName ?? inferredSourceFields.sourceFormatName;
+  const initialMode = initialModeFor({
+    defaultSource,
+    defaultSourceFormat,
+    defaultValue,
+  });
+  const initialHtml = normalizeInitialValue(defaultValue);
+  const initialSource = normalizeInitialValue(defaultSource);
+  const [mode, setMode] = useState<EditorMode>(initialMode);
+  const [markdownValue, setMarkdownValue] = useState(
+    initialMode === "markdown" ? initialSource : "",
+  );
+  const [htmlSourceValue, setHtmlSourceValue] = useState(
+    initialMode === "html" ? initialSource || initialHtml : initialHtml,
+  );
+  const [htmlValue, setHtmlValue] = useState(() => {
+    if (initialHtml) {
+      return initialHtml;
+    }
 
-  const modeLabel = mode === "markdown" ? "Markdown + LaTeX" : "Original HTML";
+    return initialMode === "markdown" ? markdownLatexToHtml(initialSource) : "";
+  });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const sourceFormat: QuestionSourceFormat =
+    mode === "markdown" ? "markdown_latex" : "html";
+  const sourceValue = mode === "markdown" ? markdownValue : htmlSourceValue;
+  const modeLabel =
+    mode === "markdown" ? "Markdown + LaTeX" : "Advanced HTML fallback";
   const previewHtml = htmlValue.trim()
     ? htmlValue
     : '<p class="text-muted-foreground">Nothing to preview yet.</p>';
 
-  function renderMarkdownToHtml() {
-    setHtmlValue(markdownToHtml(markdownValue));
-  }
-
   function updateMarkdownValue(value: string) {
     setMarkdownValue(value);
-    setHtmlValue(markdownToHtml(value));
+    setHtmlValue(markdownLatexToHtml(value));
+  }
+
+  function updateHtmlSourceValue(value: string) {
+    setHtmlSourceValue(value);
+    setHtmlValue(value);
+  }
+
+  function switchMode(nextMode: EditorMode) {
+    setMode(nextMode);
+
+    if (nextMode === "html") {
+      const nextHtmlSource = htmlValue || htmlSourceValue;
+      setHtmlSourceValue(nextHtmlSource);
+      setHtmlValue(nextHtmlSource);
+      return;
+    }
+
+    setHtmlValue(markdownLatexToHtml(markdownValue));
   }
 
   const controls = (
@@ -334,7 +168,7 @@ export function QuestionHtmlEditor({
             ? "bg-background text-foreground shadow-sm"
             : "text-muted-foreground hover:text-foreground",
         )}
-        onClick={() => setMode("markdown")}
+        onClick={() => switchMode("markdown")}
       >
         Markdown + LaTeX
       </button>
@@ -346,9 +180,9 @@ export function QuestionHtmlEditor({
             ? "bg-background text-foreground shadow-sm"
             : "text-muted-foreground hover:text-foreground",
         )}
-        onClick={() => setMode("html")}
+        onClick={() => switchMode("html")}
       >
-        Original HTML
+        Advanced HTML
       </button>
     </div>
   );
@@ -359,54 +193,50 @@ export function QuestionHtmlEditor({
         <div>
           <p className="text-sm font-medium">{modeLabel}</p>
           <p className="text-xs text-muted-foreground">
-            Preview is always based on the HTML that will be submitted.
+            {mode === "markdown"
+              ? "Recommended for tutors. The original Markdown source and sanitized HTML render output are saved separately."
+              : "Advanced/developer fallback for legacy or complex HTML. Use Markdown + LaTeX for normal tutor authoring."}
           </p>
         </div>
         {controls}
       </div>
 
       {mode === "markdown" ? (
-        <div
-          className={cn(
-            "space-y-3",
-            fillHeight && "flex min-h-0 flex-1 flex-col",
-          )}
-        >
-          <Textarea
-            value={markdownValue}
-            onChange={(event) => updateMarkdownValue(event.target.value)}
-            className={cn(
-              "font-mono text-sm",
-              fillHeight ? "min-h-[18rem] flex-1 resize-none" : minEditorHeight,
-            )}
-            placeholder={[
-              "## Analysis",
-              "Use **Markdown** and inline math like $F=ma$.",
-              "",
-              "$$",
-              "\\Delta x = v_0t + \\frac{1}{2}at^2",
-              "$$",
-            ].join("\n")}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" onClick={renderMarkdownToHtml}>
-              Refresh HTML
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Markdown updates the saved HTML and preview as you type.
-            </p>
-          </div>
-        </div>
-      ) : (
         <Textarea
-          value={htmlValue}
-          onChange={(event) => setHtmlValue(event.target.value)}
+          value={markdownValue}
+          onChange={(event) => updateMarkdownValue(event.target.value)}
           className={cn(
             "font-mono text-sm",
             fillHeight ? "min-h-[18rem] flex-1 resize-none" : minEditorHeight,
           )}
-          placeholder={placeholder}
+          placeholder={[
+            "## Analysis",
+            "Use **Markdown** and inline math like $F=ma$.",
+            "",
+            "$$",
+            "\\Delta x = v_0t + \\frac{1}{2}at^2",
+            "$$",
+          ].join("\n")}
         />
+      ) : (
+        <div className="space-y-3 rounded-md border border-dashed bg-muted/20 p-3">
+          <div>
+            <p className="text-sm font-medium">Advanced HTML fallback</p>
+            <p className="text-xs text-muted-foreground">
+              HTML source is preserved for legacy content and developer/admin
+              debugging. It is sanitized before preview and public display.
+            </p>
+          </div>
+          <Textarea
+            value={htmlSourceValue}
+            onChange={(event) => updateHtmlSourceValue(event.target.value)}
+            className={cn(
+              "font-mono text-sm",
+              fillHeight ? "min-h-[18rem] flex-1 resize-none" : minEditorHeight,
+            )}
+            placeholder={placeholder}
+          />
+        </div>
       )}
     </div>
   );
@@ -416,7 +246,7 @@ export function QuestionHtmlEditor({
       <div>
         <p className="text-sm font-medium">Preview</p>
         <p className="text-xs text-muted-foreground">
-          Sanitized render of the current submitted HTML.
+          Sanitized render of the HTML that will be displayed publicly.
         </p>
       </div>
       <RichHtml
@@ -453,6 +283,21 @@ export function QuestionHtmlEditor({
         className="sr-only"
         tabIndex={-1}
         aria-hidden="true"
+        required={required}
+      />
+      <textarea
+        name={sourceFieldName}
+        value={sourceValue}
+        readOnly
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      <input
+        type="hidden"
+        name={sourceFormatFieldName}
+        value={sourceFormat}
+        readOnly
       />
 
       <div className="grid items-stretch gap-4 xl:grid-cols-2">
@@ -472,7 +317,8 @@ export function QuestionHtmlEditor({
             <div>
               <DialogTitle>{label}</DialogTitle>
               <DialogDescription>
-                Fullscreen mode. Edit on the left and review the rendered preview on the right.
+                Fullscreen mode. Edit on the left and review the rendered
+                preview on the right.
               </DialogDescription>
             </div>
             <Button

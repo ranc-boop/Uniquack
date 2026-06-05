@@ -282,8 +282,10 @@ assertRoute(
 assertRoute(
   adminQuestions.status === 200 &&
     adminQuestions.text.includes("Find questions") &&
-    adminQuestions.text.includes("Search tags"),
-  "admin questions renders filters and checkbox tag picker",
+    adminQuestions.text.includes("Search tags") &&
+    adminQuestions.text.includes("Markdown + LaTeX") &&
+    adminQuestions.text.includes("Advanced HTML"),
+  "admin questions renders filters, checkbox tag picker, and Markdown LaTeX editor",
 );
 assertRoute(
   adminImports.status === 200 &&
@@ -337,6 +339,118 @@ const cleanup = {
 };
 
 try {
+  const { error: sourceColumnsError } = await adminSession.client
+    .from("questions")
+    .select(
+      "content_source,content_source_format,solution_source,solution_source_format",
+    )
+    .limit(1);
+  const hasQuestionSourceColumns = !sourceColumnsError;
+
+  if (hasQuestionSourceColumns) {
+    const markdownSource = [
+      "## Route Source Preservation",
+      "",
+      "Inline math $F=ma$ and **bold** text.",
+      "",
+      "| Quantity | Value |",
+      "| --- | --- |",
+      "| F | 10 N |",
+      "",
+      "$$",
+      "a = \\frac{F}{m}",
+      "$$",
+    ].join("\n");
+    const markdownHtml = [
+      "<h2>Route Source Preservation</h2>",
+      '<p>Inline math <span data-type="inline-math" data-latex="F=ma"></span> and <strong>bold</strong> text.</p>',
+      '<div class="rich-html-table-wrap"><table><thead><tr><th>Quantity</th><th>Value</th></tr></thead><tbody><tr><td>F</td><td>10 N</td></tr></tbody></table></div>',
+      '<div data-type="block-math" data-latex="a = \\frac{F}{m}"></div>',
+    ].join("\n");
+    const sourceQuestion = await insertOne(
+      adminSession.client,
+      "questions",
+      {
+        question_code: `ROUTE-SOURCE-${Date.now()}`,
+        title: `Route source preservation ${suffix}`,
+        content_html: markdownHtml,
+        content_source: markdownSource,
+        content_source_format: "markdown_latex",
+        solution_html:
+          '<p>Solution math <span data-type="inline-math" data-latex="I=V/R"></span>.</p>',
+        solution_source: "Solution math $I=V/R$.",
+        solution_source_format: "markdown_latex",
+        difficulty_rating: 500,
+        question_type: "frq",
+        status: "published",
+        created_by: adminSession.user.id,
+        updated_by: adminSession.user.id,
+        published_at: new Date().toISOString(),
+      },
+      "id,question_code,title",
+    );
+    cleanup.questions.push(sourceQuestion.id);
+
+    const htmlFallbackQuestion = await insertOne(
+      adminSession.client,
+      "questions",
+      {
+        question_code: `ROUTE-HTML-${Date.now()}`,
+        title: `Route HTML fallback ${suffix}`,
+        content_html: "<h2>Original HTML fallback route smoke</h2>",
+        content_source: "<h2>Original HTML fallback route smoke</h2>",
+        content_source_format: "html",
+        solution_html: "<p>HTML solution fallback</p>",
+        solution_source: "<p>HTML solution fallback</p>",
+        solution_source_format: "html",
+        difficulty_rating: 510,
+        question_type: "frq",
+        status: "draft",
+        created_by: adminSession.user.id,
+        updated_by: adminSession.user.id,
+      },
+      "id,question_code,title",
+    );
+    cleanup.questions.push(htmlFallbackQuestion.id);
+
+    const sourceEdit = await fetchRoute(
+      `/admin/questions?q=${encodeURIComponent(sourceQuestion.question_code)}`,
+      adminCookie,
+    );
+    const htmlFallbackEdit = await fetchRoute(
+      `/admin/questions?status=draft&q=${encodeURIComponent(
+        htmlFallbackQuestion.question_code,
+      )}`,
+      adminCookie,
+    );
+    const sourceDetail = await fetchRoute(`/questions/${sourceQuestion.id}`);
+
+    assertRoute(
+      sourceEdit.status === 200 &&
+        sourceEdit.text.includes("## Route Source Preservation") &&
+        sourceEdit.text.includes("$F=ma$") &&
+        sourceEdit.text.includes("Markdown + LaTeX"),
+      "source Markdown survives save and re-edit",
+    );
+    assertRoute(
+      htmlFallbackEdit.status === 200 &&
+        htmlFallbackEdit.text.includes("Original HTML fallback route smoke") &&
+        htmlFallbackEdit.text.includes("Advanced HTML"),
+      "Original HTML fallback source reopens",
+    );
+    assertRoute(
+      sourceDetail.status === 200 &&
+        sourceDetail.text.includes('data-type="inline-math"') &&
+        sourceDetail.text.includes('data-type="block-math"') &&
+        sourceDetail.text.includes("rich-html-table-wrap"),
+      "public question detail renders RichHtml math and table markers",
+    );
+  } else {
+    console.log(
+      `SKIP source persistence route checks: apply supabase/migrations/0006_question_content_source.sql (${sourceColumnsError.message})`,
+    );
+  }
+
   const tagPayloads = [
     {
       name: `Route Multi AP Physics ${suffix}`,

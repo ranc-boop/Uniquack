@@ -2,13 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { SupabaseConfigNotice } from "@/components/config-notice";
+import { RichHtml } from "@/components/rich-html";
 import { VideoPlayerFrame } from "@/components/video-player-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
-import { toDangerousHtml } from "@/lib/sanitize/html";
 import type { Question, Tag, Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -269,11 +269,7 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="rich-html rich-html--compact rounded-md border bg-background p-4 text-sm">
-                  <div
-                    dangerouslySetInnerHTML={toDangerousHtml(question.content_html)}
-                  />
-                </div>
+                <RichHtml html={question.content_html} className="rich-html--compact" />
                 <div className="flex flex-wrap gap-2">
                   {(questionTags ?? []).length ? (
                     (questionTags ?? []).map((tag) => (

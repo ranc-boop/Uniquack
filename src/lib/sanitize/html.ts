@@ -170,7 +170,6 @@ const allowedAttributes = {
   a: ["href", "name", "target", "rel", "download", "hreflang", "referrerpolicy"],
   img: [
     "src",
-    "srcset",
     "sizes",
     "alt",
     "title",
@@ -204,7 +203,7 @@ const allowedAttributes = {
     "preload",
     "crossorigin",
   ],
-  source: ["src", "srcset", "sizes", "type", "media"],
+  source: ["src", "sizes", "type", "media"],
   track: ["src", "kind", "srclang", "label", "default"],
   iframe: [
     "src",
@@ -265,7 +264,11 @@ const isSafeImageSrc = (src?: string) => {
 
   try {
     const url = new URL(src);
-    return url.protocol === "http:" || url.protocol === "https:";
+    const path = url.pathname.toLowerCase();
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      !path.endsWith(".svg")
+    );
   } catch {
     return false;
   }

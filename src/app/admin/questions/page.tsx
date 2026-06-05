@@ -217,9 +217,7 @@ export default async function AdminQuestionsPage({
     await Promise.all([
       supabase
         .from("questions")
-        .select(
-          "id, question_code, title, content_html, solution_html, difficulty_rating, question_type, status",
-        )
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(200),
       supabase
@@ -665,6 +663,8 @@ export default async function AdminQuestionsPage({
                               id={`content_html_${question.id}`}
                               label="Content HTML"
                               name="content_html"
+                              defaultSource={question.content_source}
+                              defaultSourceFormat={question.content_source_format}
                               defaultValue={question.content_html}
                               required
                             />
@@ -674,6 +674,8 @@ export default async function AdminQuestionsPage({
                               id={`solution_html_${question.id}`}
                               label="Solution HTML"
                               name="solution_html"
+                              defaultSource={question.solution_source}
+                              defaultSourceFormat={question.solution_source_format}
                               defaultValue={question.solution_html ?? ""}
                             />
                           </div>
