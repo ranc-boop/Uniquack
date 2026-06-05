@@ -10,6 +10,7 @@ export type UserRole = "super_admin" | "admin" | "student";
 export type ContentStatus = "draft" | "published" | "archived";
 export type TagType = "knowledge" | "attribute";
 export type QuestionType = "mcq" | "frq" | "mixed";
+export type QuestionSourceFormat = "markdown_latex" | "html";
 
 export type Profile = {
   id: string;
@@ -42,7 +43,11 @@ export type Question = {
   question_code: string;
   title: string;
   content_html: string;
+  content_source: string | null;
+  content_source_format: QuestionSourceFormat;
   solution_html: string | null;
+  solution_source: string | null;
+  solution_source_format: QuestionSourceFormat;
   options: Json[];
   question_type: QuestionType;
   difficulty_rating: number;

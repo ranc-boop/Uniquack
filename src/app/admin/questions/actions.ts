@@ -22,6 +22,26 @@ import {
   questionUpdateSchema,
 } from "@/lib/validations/question";
 
+function questionSourceValues(values: {
+  content_html: string;
+  content_source: string;
+  content_source_format: "markdown_latex" | "html";
+  solution_html: string | null;
+  solution_source: string;
+  solution_source_format: "markdown_latex" | "html";
+}) {
+  return {
+    content_html: sanitizeContentHtml(values.content_html),
+    content_source: values.content_source || values.content_html,
+    content_source_format: values.content_source_format,
+    solution_html: values.solution_html
+      ? sanitizeContentHtml(values.solution_html)
+      : null,
+    solution_source: values.solution_source || values.solution_html || null,
+    solution_source_format: values.solution_source_format,
+  };
+}
+
 export async function createQuestion(formData: FormData) {
   try {
     const profile = await requireAdmin();
@@ -38,10 +58,7 @@ export async function createQuestion(formData: FormData) {
 
     const values = {
       ...parsed,
-      content_html: sanitizeContentHtml(parsed.content_html),
-      solution_html: parsed.solution_html
-        ? sanitizeContentHtml(parsed.solution_html)
-        : null,
+      ...questionSourceValues(parsed),
       created_by: profile.id,
       updated_by: profile.id,
       published_at:
@@ -104,10 +121,7 @@ export async function updateQuestion(formData: FormData) {
       .from("questions")
       .update({
         ...values,
-        content_html: sanitizeContentHtml(values.content_html),
-        solution_html: values.solution_html
-          ? sanitizeContentHtml(values.solution_html)
-          : null,
+        ...questionSourceValues(values),
         updated_by: profile.id,
         published_at:
           values.status === "published" ? new Date().toISOString() : null,

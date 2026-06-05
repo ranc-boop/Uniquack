@@ -15,7 +15,11 @@ const importItemSchema = z
     tag_slugs: z.array(z.string()).optional(),
     tag_names: z.array(z.string()).optional(),
     content_html: z.string().optional(),
+    content_source: z.string().optional(),
+    content_source_format: z.enum(["markdown_latex", "html"]).optional(),
     solution_html: z.string().optional(),
+    solution_source: z.string().optional(),
+    solution_source_format: z.enum(["markdown_latex", "html"]).optional(),
     image_urls: z.array(z.string()).optional(),
     image_files: z.array(z.string()).optional(),
     source_file_ids: z.array(z.string()).optional(),
@@ -42,7 +46,11 @@ export type NormalizedImportQuestion = {
   tag_slugs: string[];
   tag_names: string[];
   content_html: string;
+  content_source: string;
+  content_source_format: "markdown_latex" | "html";
   solution_html: string | null;
+  solution_source: string | null;
+  solution_source_format: "markdown_latex" | "html";
   image_urls: string[];
   image_files: string[];
   source_file_ids: string[];
@@ -180,7 +188,11 @@ export function evaluateBatchImportItems({
     const questionCode = normalizeCode(item.question_code ?? item.code);
     const title = normalizeTitle(item.title);
     const contentHtml = item.content_html?.trim() ?? "";
+    const contentSource = item.content_source || contentHtml;
+    const contentSourceFormat = item.content_source_format ?? "html";
     const solutionHtml = item.solution_html?.trim() || null;
+    const solutionSource = item.solution_source || solutionHtml;
+    const solutionSourceFormat = item.solution_source_format ?? "html";
 
     if (!questionCode) {
       errors.push("Missing code or question_code.");
@@ -296,7 +308,11 @@ export function evaluateBatchImportItems({
             tag_slugs: tagSlugs,
             tag_names: tagNames,
             content_html: sanitizedContent,
+            content_source: contentSource,
+            content_source_format: contentSourceFormat,
             solution_html: sanitizedSolution,
+            solution_source: solutionSource,
+            solution_source_format: solutionSourceFormat,
             image_urls: imageUrls,
             image_files: imageFiles,
             source_file_ids: sourceFileIds,

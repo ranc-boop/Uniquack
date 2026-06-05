@@ -10,6 +10,7 @@ import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-a
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
+import { QuestionHtmlEditor } from "@/components/question-html-editor";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionStatusSelect } from "@/components/question-status-select";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
@@ -27,7 +28,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   countImportAssetReferences,
@@ -217,9 +217,7 @@ export default async function AdminQuestionsPage({
     await Promise.all([
       supabase
         .from("questions")
-        .select(
-          "id, question_code, title, content_html, solution_html, difficulty_rating, question_type, status",
-        )
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(200),
       supabase
@@ -418,11 +416,10 @@ export default async function AdminQuestionsPage({
               <TagCheckboxList tags={tags ?? []} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="content_html">Content HTML</Label>
-              <Textarea
+              <QuestionHtmlEditor
                 id="content_html"
+                label="Content HTML"
                 name="content_html"
-                className="min-h-36 font-mono text-sm"
                 placeholder="<p>Question stem placeholder</p>"
                 required
               />
@@ -431,11 +428,10 @@ export default async function AdminQuestionsPage({
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="solution_html">Solution HTML</Label>
-              <Textarea
+              <QuestionHtmlEditor
                 id="solution_html"
+                label="Solution HTML"
                 name="solution_html"
-                className="min-h-32 font-mono text-sm"
                 placeholder="<p>Optional solution placeholder</p>"
               />
             </div>
@@ -663,19 +659,23 @@ export default async function AdminQuestionsPage({
                             />
                           </div>
                           <div className="space-y-1 lg:col-span-2">
-                            <Label>Content HTML</Label>
-                            <Textarea
+                            <QuestionHtmlEditor
+                              id={`content_html_${question.id}`}
+                              label="Content HTML"
                               name="content_html"
-                              className="min-h-56 font-mono text-sm"
+                              defaultSource={question.content_source}
+                              defaultSourceFormat={question.content_source_format}
                               defaultValue={question.content_html}
                               required
                             />
                           </div>
                           <div className="space-y-1 lg:col-span-2">
-                            <Label>Solution HTML</Label>
-                            <Textarea
+                            <QuestionHtmlEditor
+                              id={`solution_html_${question.id}`}
+                              label="Solution HTML"
                               name="solution_html"
-                              className="min-h-48 font-mono text-sm"
+                              defaultSource={question.solution_source}
+                              defaultSourceFormat={question.solution_source_format}
                               defaultValue={question.solution_html ?? ""}
                             />
                           </div>

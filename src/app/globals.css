@@ -141,7 +141,7 @@
   }
 
   .rich-html img {
-    @apply my-4 max-w-full rounded-md border;
+    @apply my-4 block h-auto max-w-full rounded-md border;
   }
 
   .rich-html picture,
@@ -168,8 +168,12 @@
     @apply my-6 border-border;
   }
 
+  .rich-html .rich-html-table-wrap {
+    @apply my-4 w-full overflow-x-auto rounded-md border;
+  }
+
   .rich-html table {
-    @apply my-4 w-full border-collapse overflow-hidden rounded-md border text-sm;
+    @apply w-full min-w-[520px] border-collapse text-sm;
   }
 
   .rich-html thead {
@@ -201,6 +205,14 @@
 
   .rich-html summary {
     @apply cursor-pointer font-medium;
+  }
+
+  .rich-html [data-type="inline-math"] {
+    @apply inline-block align-baseline;
+  }
+
+  .rich-html [data-type="block-math"] {
+    @apply my-4 block overflow-x-auto text-center;
   }
 
   summary::-webkit-details-marker {
@@ -239,7 +251,8 @@
   .rich-html.rich-html--compact pre,
   .rich-html.rich-html--compact blockquote,
   .rich-html.rich-html--compact figure,
-  .rich-html.rich-html--compact table {
+  .rich-html.rich-html--compact table,
+  .rich-html.rich-html--compact .rich-html-table-wrap {
     @apply my-3;
   }
 }

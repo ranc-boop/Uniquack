@@ -7,6 +7,7 @@ import {
   QuestionDetailImageGallery,
   type QuestionDetailImage,
 } from "@/components/question-detail-image-gallery";
+import { RichHtml } from "@/components/rich-html";
 import { VideoPlayerFrame } from "@/components/video-player-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
-import { toDangerousHtml } from "@/lib/sanitize/html";
 import type { Question, Tag, Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -266,20 +266,14 @@ export default async function QuestionDetailPage({
                 Sanitized HTML render
               </span>
             </div>
-            <div className="rich-html rounded-md border bg-background p-4 text-sm">
-              <div dangerouslySetInnerHTML={toDangerousHtml(question.content_html)} />
-            </div>
+            <RichHtml html={question.content_html} />
             <QuestionDetailImageGallery images={questionImages} />
           </section>
 
           <section className="space-y-3">
             {question.solution_html ? (
               <CollapsibleSection title="Solution" meta="Default collapsed">
-                <div className="rich-html rounded-md border bg-background p-4 text-sm">
-                  <div
-                    dangerouslySetInnerHTML={toDangerousHtml(question.solution_html)}
-                  />
-                </div>
+                <RichHtml html={question.solution_html} />
               </CollapsibleSection>
             ) : (
               <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
