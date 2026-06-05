@@ -26,13 +26,14 @@ export function RichHtml({ html, className }: RichHtmlProps) {
     );
 
     mathNodes.forEach((node) => {
-      const latex = node.dataset.latex;
+      const latex = node.dataset.latex || node.textContent?.trim();
 
       if (!latex) {
         return;
       }
 
       try {
+        node.textContent = latex;
         katex.render(latex, node, {
           displayMode: node.dataset.type === "block-math",
           throwOnError: false,

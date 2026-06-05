@@ -68,9 +68,9 @@ export function markdownLatexToHtml(markdown: string) {
         index += 1;
       }
 
-      const latex = escapeAttribute(mathLines.join("\n").trim());
+      const latex = mathLines.join("\n").trim();
       if (latex) {
-        blocks.push(`<div data-type="block-math" data-latex="${latex}"></div>`);
+        blocks.push(renderBlockMath(latex));
       }
       continue;
     }
@@ -167,6 +167,42 @@ function escapeAttribute(value: string) {
   return escapeHtml(value).replaceAll("\n", " ");
 }
 
+function getWrappedInlineMathSource(value: string) {
+  const trimmed = value.trim();
+  const doubleDollar = /^\$\$([^$]+?)\$\$$/.exec(trimmed);
+
+  if (doubleDollar) {
+    return doubleDollar[1].trim();
+  }
+
+  const singleDollar = /^\$([^$\n]+?)\$$/.exec(trimmed);
+  return singleDollar?.[1]?.trim() || null;
+}
+
+function renderInlineMath(latex: string) {
+  const cleanLatex = latex.trim();
+
+  if (!cleanLatex) {
+    return "";
+  }
+
+  return `<span data-type="inline-math" data-latex="${escapeAttribute(
+    cleanLatex,
+  )}">${escapeHtml(cleanLatex)}</span>`;
+}
+
+function renderBlockMath(latex: string) {
+  const cleanLatex = latex.trim();
+
+  if (!cleanLatex) {
+    return "";
+  }
+
+  return `<div data-type="block-math" data-latex="${escapeAttribute(
+    cleanLatex,
+  )}">${escapeHtml(cleanLatex)}</div>`;
+}
+
 function isSafeMarkdownUrl(value: string) {
   try {
     const url = new URL(value);
@@ -192,10 +228,19 @@ function isSafeMarkdownImageUrl(value: string) {
 function renderInlineMarkdown(value: string) {
   const codeTokens: string[] = [];
   const htmlTokens: string[] = [];
-  let rendered = escapeHtml(value).replace(/`([^`]+)`/g, (_, code: string) => {
-    const index = codeTokens.push(`<code>${code}</code>`) - 1;
+  let rendered = value.replace(/`([^`]+)`/g, (_, code: string) => {
+    const mathSource = getWrappedInlineMathSource(code);
+
+    if (mathSource) {
+      const index = htmlTokens.push(renderInlineMath(mathSource)) - 1;
+      return `@@HTML_${index}@@`;
+    }
+
+    const index = codeTokens.push(`<code>${escapeHtml(code)}</code>`) - 1;
     return `@@CODE_${index}@@`;
   });
+
+  rendered = escapeHtml(rendered);
 
   rendered = rendered
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt: string, src: string) => {
@@ -223,12 +268,10 @@ function renderInlineMarkdown(value: string) {
       return `@@HTML_${index}@@`;
     })
     .replace(/\$\$([^$]+?)\$\$/g, (_, latex: string) => {
-      const cleanLatex = escapeAttribute(latex.trim());
-      return `<span data-type="inline-math" data-latex="${cleanLatex}"></span>`;
+      return renderInlineMath(latex);
     })
     .replace(/\$([^$\n]+?)\$/g, (_, latex: string) => {
-      const cleanLatex = escapeAttribute(latex.trim());
-      return `<span data-type="inline-math" data-latex="${cleanLatex}"></span>`;
+      return renderInlineMath(latex);
     })
     .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+?)\*/g, "<em>$1</em>");

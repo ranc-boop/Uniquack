@@ -351,11 +351,12 @@ try {
     const markdownSource = [
       "## Route Source Preservation",
       "",
-      "Inline math $F=ma$ and **bold** text.",
+      "Inline math $F=ma$, resistance $4\\,\\Omega$, and voltage $12\\,\\mathrm{V}$ with **bold** text.",
       "",
       "| Quantity | Value |",
       "| --- | --- |",
-      "| F | 10 N |",
+      "| Voltage | `$12\\,\\mathrm{V}$` |",
+      "| Resistance | `$4\\,\\Omega$` |",
       "",
       "$$",
       "a = \\frac{F}{m}",
@@ -363,9 +364,9 @@ try {
     ].join("\n");
     const markdownHtml = [
       "<h2>Route Source Preservation</h2>",
-      '<p>Inline math <span data-type="inline-math" data-latex="F=ma"></span> and <strong>bold</strong> text.</p>',
-      '<div class="rich-html-table-wrap"><table><thead><tr><th>Quantity</th><th>Value</th></tr></thead><tbody><tr><td>F</td><td>10 N</td></tr></tbody></table></div>',
-      '<div data-type="block-math" data-latex="a = \\frac{F}{m}"></div>',
+      '<p>Inline math <span data-type="inline-math" data-latex="F=ma">F=ma</span>, resistance <span data-type="inline-math" data-latex="4\\,\\Omega">4\\,\\Omega</span>, and voltage <span data-type="inline-math" data-latex="12\\,\\mathrm{V}">12\\,\\mathrm{V}</span> with <strong>bold</strong> text.</p>',
+      '<div class="rich-html-table-wrap"><table><thead><tr><th>Quantity</th><th>Value</th></tr></thead><tbody><tr><td>Voltage</td><td><span data-type="inline-math" data-latex="12\\,\\mathrm{V}">12\\,\\mathrm{V}</span></td></tr><tr><td>Resistance</td><td><span data-type="inline-math" data-latex="4\\,\\Omega">4\\,\\Omega</span></td></tr></tbody></table></div>',
+      '<div data-type="block-math" data-latex="a = \\frac{F}{m}">a = \\frac{F}{m}</div>',
     ].join("\n");
     const sourceQuestion = await insertOne(
       adminSession.client,
@@ -426,9 +427,10 @@ try {
     const sourceDetail = await fetchRoute(`/questions/${sourceQuestion.id}`);
 
     assertRoute(
-      sourceEdit.status === 200 &&
+        sourceEdit.status === 200 &&
         sourceEdit.text.includes("## Route Source Preservation") &&
         sourceEdit.text.includes("$F=ma$") &&
+        sourceEdit.text.includes("$4\\,\\Omega$") &&
         sourceEdit.text.includes("Markdown + LaTeX"),
       "source Markdown survives save and re-edit",
     );
@@ -442,6 +444,8 @@ try {
       sourceDetail.status === 200 &&
         sourceDetail.text.includes('data-type="inline-math"') &&
         sourceDetail.text.includes('data-type="block-math"') &&
+        sourceDetail.text.includes("4\\,\\Omega") &&
+        sourceDetail.text.includes("12\\,\\mathrm{V}") &&
         sourceDetail.text.includes("rich-html-table-wrap"),
       "public question detail renders RichHtml math and table markers",
     );

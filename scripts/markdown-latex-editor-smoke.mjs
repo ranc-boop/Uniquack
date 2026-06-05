@@ -41,6 +41,7 @@ const markdownSource = [
   "## Newton Review",
   "",
   "A **bold** and *italic* paragraph with `code`, [safe link](https://example.com), and $F=ma$.",
+  "A resistor with resistance $4\\,\\Omega$ is connected to a $12\\,\\mathrm{V}$ battery.",
   "",
   "![diagram](https://example.com/diagram.png)",
   "",
@@ -54,8 +55,8 @@ const markdownSource = [
   "",
   "| Quantity | Value |",
   "| --- | --- |",
-  "| F | 10 N |",
-  "| m | 2 kg |",
+  "| Voltage | `$12\\,\\mathrm{V}$` |",
+  "| Resistance | `$4\\,\\Omega$` |",
   "",
   "$$",
   "a = \\frac{F}{m}",
@@ -85,8 +86,25 @@ assert(
   "inline math renders as safe marker",
 );
 assert(
+  rendered.includes('data-latex="4\\,\\Omega"') &&
+    rendered.includes(">4\\,\\Omega</span>"),
+  "inline Ohm math keeps fallback text",
+);
+assert(
+  rendered.includes('data-latex="12\\,\\mathrm{V}"') &&
+    rendered.includes(">12\\,\\mathrm{V}</span>"),
+  "inline voltage math keeps fallback text",
+);
+assert(
+  rendered.includes("<td>") &&
+    rendered.includes('data-latex="12\\,\\mathrm{V}"') &&
+    rendered.includes('data-latex="4\\,\\Omega"'),
+  "inline math inside pipe table renders as safe marker",
+);
+assert(
   rendered.includes('data-type="block-math"') &&
-    rendered.includes('data-latex="a = \\frac{F}{m}"'),
+    rendered.includes('data-latex="a = \\frac{F}{m}"') &&
+    rendered.includes(">a = \\frac{F}{m}</div>"),
   "block math renders as safe marker",
 );
 
@@ -110,6 +128,22 @@ assert(
   sanitized.includes('href="https://example.com"') &&
     sanitized.includes('rel="noopener noreferrer"'),
   "safe links keep noopener noreferrer",
+);
+
+const sanitizedMath = sanitizer.sanitizeContentHtml(
+  '<p>A <span data-type="inline-math" data-latex="4\\,\\Omega">4\\,\\Omega</span></p><div data-type="block-math" data-latex="I = \\frac{V}{R}">I = \\frac{V}{R}</div>',
+);
+assert(
+  sanitizedMath.includes('data-type="inline-math"') &&
+    sanitizedMath.includes('data-latex="4\\,\\Omega"') &&
+    sanitizedMath.includes("4\\,\\Omega"),
+  "sanitizer preserves inline math marker and fallback",
+);
+assert(
+  sanitizedMath.includes('data-type="block-math"') &&
+    sanitizedMath.includes('data-latex="I = \\frac{V}{R}"') &&
+    sanitizedMath.includes("I = \\frac{V}{R}"),
+  "sanitizer preserves block math marker and fallback",
 );
 
 const htmlSource = '<h2>HTML mode</h2><p>Original HTML fallback</p>';
