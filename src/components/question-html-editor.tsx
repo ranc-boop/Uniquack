@@ -194,7 +194,7 @@ export function QuestionHtmlEditor({
           <p className="text-sm font-medium">{modeLabel}</p>
           <p className="text-xs text-muted-foreground">
             {mode === "markdown"
-              ? "Recommended for tutors. The original Markdown source and sanitized HTML render output are saved separately."
+              ? "Recommended for tutors. Use inline math with $...$ and block math with $$...$$. \\(...\\) math is not supported yet. The original Markdown source and sanitized HTML render output are saved separately."
               : "Advanced/developer fallback for legacy or complex HTML. Use Markdown + LaTeX for normal tutor authoring."}
           </p>
         </div>

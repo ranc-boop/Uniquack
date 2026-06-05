@@ -1,7 +1,7 @@
 "use client";
 
 import katex from "katex";
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 import { cn } from "@/lib/utils";
 import { toDangerousHtml } from "@/lib/sanitize/html";
@@ -14,7 +14,7 @@ type RichHtmlProps = {
 export function RichHtml({ html, className }: RichHtmlProps) {
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = ref.current;
 
     if (!root) {
@@ -42,7 +42,7 @@ export function RichHtml({ html, className }: RichHtmlProps) {
         node.textContent = latex;
       }
     });
-  }, [html]);
+  });
 
   return (
     <div
