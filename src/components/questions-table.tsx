@@ -10,13 +10,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { toDangerousHtml } from "@/lib/sanitize/html";
 
 type QuestionRow = {
   id: string;
   question_code: string;
   title: string;
-  content_html: string;
+  content_excerpt: string;
   difficulty_rating: number;
   status: string;
 };
@@ -85,10 +84,9 @@ export function QuestionsTable({
                   {question.title}
                 </ClickableCell>
                 <ClickableCell href={href} label={label} className="max-w-md">
-                  <div
-                    className="rich-html rich-html--compact pointer-events-none line-clamp-3 text-sm text-muted-foreground"
-                    dangerouslySetInnerHTML={toDangerousHtml(question.content_html)}
-                  />
+                  <p className="line-clamp-3 text-sm text-muted-foreground">
+                    {question.content_excerpt || "Open question to view content."}
+                  </p>
                 </ClickableCell>
                 <ClickableCell href={href} label={label}>
                   <div className="flex flex-wrap gap-1">
