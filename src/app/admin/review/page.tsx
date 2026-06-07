@@ -32,12 +32,48 @@ type ReviewQuestion = {
   title: string;
 };
 
+type AIReviewMetadata = {
+  asset_placeholders?: unknown[];
+  page_refs?: unknown[];
+  provider?: {
+    model?: string;
+    name?: string;
+    provider?: string;
+  };
+  source?: string;
+  tag_decisions?: {
+    new_tag_names?: unknown[];
+  };
+};
+
 function formatDate(value: string | null | undefined) {
   if (!value) {
     return "Unknown";
   }
 
   return new Date(value).toLocaleString();
+}
+
+function getAIReviewMetadata(value: unknown): AIReviewMetadata | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const metadata = (value as { ai_metadata?: unknown }).ai_metadata;
+
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const candidate = metadata as AIReviewMetadata;
+
+  return candidate.source === "ai_pdf_import" ? candidate : null;
+}
+
+function stringList(values: unknown[] | undefined) {
+  return (values ?? [])
+    .map((value) => String(value).trim())
+    .filter(Boolean);
 }
 
 function ImportedAssetReferenceBadges({
@@ -101,7 +137,7 @@ export default async function AdminReviewPage({
           .select("question_id, tag_id")
           .in("question_id", questionIds)
           .limit(1000),
-        supabase.from("tags").select("id, name").limit(1000),
+        supabase.from("tags").select("id, name, status").limit(1000),
         supabase
           .from("question_assets")
           .select("question_id, id")
@@ -130,17 +166,30 @@ export default async function AdminReviewPage({
       ];
 
   const tagNameById = new Map((tags ?? []).map((tag) => [tag.id, tag.name]));
+  const tagStatusById = new Map(
+    (tags ?? []).map((tag) => [tag.id, tag.status]),
+  );
   const tagsByQuestionId = new Map<string, string[]>();
+  const draftTagCountByQuestionId = new Map<string, number>();
   const imageCountByQuestionId = new Map<string, number>();
   const sourceFileCountByQuestionId = new Map<string, number>();
+  const aiMetadataByQuestionId = new Map<string, AIReviewMetadata>();
   const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
   const importedAtByQuestionId = new Map<string, string>();
 
   for (const binding of questionTags ?? []) {
     const tagName = tagNameById.get(binding.tag_id);
+    const tagStatus = tagStatusById.get(binding.tag_id);
 
     if (!tagName) {
       continue;
+    }
+
+    if (tagStatus === "draft") {
+      draftTagCountByQuestionId.set(
+        binding.question_id,
+        (draftTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
+      );
     }
 
     tagsByQuestionId.set(binding.question_id, [
@@ -181,6 +230,12 @@ export default async function AdminReviewPage({
       extractImportAssetReferences(item.normalized_question_json),
     );
     importedAtByQuestionId.set(item.created_question_id, item.created_at);
+
+    const aiMetadata = getAIReviewMetadata(item.normalized_question_json);
+
+    if (aiMetadata) {
+      aiMetadataByQuestionId.set(item.created_question_id, aiMetadata);
+    }
   }
 
   return (
@@ -218,8 +273,15 @@ export default async function AdminReviewPage({
       <div className="grid gap-4">
         {draftQuestions.map((question) => {
           const tagNames = tagsByQuestionId.get(question.id) ?? [];
+          const draftTagCount = draftTagCountByQuestionId.get(question.id) ?? 0;
           const imageCount = imageCountByQuestionId.get(question.id) ?? 0;
           const sourceFileCount = sourceFileCountByQuestionId.get(question.id) ?? 0;
+          const aiMetadata = aiMetadataByQuestionId.get(question.id);
+          const aiPageRefs = stringList(aiMetadata?.page_refs);
+          const aiCreatedTags = stringList(
+            aiMetadata?.tag_decisions?.new_tag_names,
+          );
+          const aiCropCount = aiMetadata?.asset_placeholders?.length ?? 0;
           const importRefs = importRefsByQuestionId.get(question.id) ?? null;
           const importedAt = importedAtByQuestionId.get(question.id);
           const hasImportedRefs =
@@ -269,6 +331,11 @@ export default async function AdminReviewPage({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1">
+                  {draftTagCount ? (
+                    <Badge variant="outline">
+                      Needs tag review: {draftTagCount} draft
+                    </Badge>
+                  ) : null}
                   {tagNames.length ? (
                     tagNames.map((tagName) => (
                       <Badge key={tagName} variant="outline">
@@ -307,6 +374,27 @@ export default async function AdminReviewPage({
                   <p className="text-xs text-muted-foreground">
                     Imported asset refs need manual media review before publish.
                   </p>
+                ) : null}
+                {aiMetadata ? (
+                  <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary">AI PDF import</Badge>
+                      <Badge variant="outline">
+                        {aiMetadata.provider?.name ?? "Unknown provider"}
+                      </Badge>
+                      <Badge variant="outline">
+                        {aiMetadata.provider?.model ?? "Unknown model"}
+                      </Badge>
+                    </div>
+                    <p>
+                      Pages: {aiPageRefs.length ? aiPageRefs.join(", ") : "Unknown"}
+                      {" · "}
+                      Image crop refs: {aiCropCount}
+                    </p>
+                    {aiCreatedTags.length ? (
+                      <p>Created draft tags: {aiCreatedTags.join(", ")}</p>
+                    ) : null}
+                  </div>
                 ) : null}
                 <Button asChild size="sm">
                   <Link

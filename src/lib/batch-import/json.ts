@@ -27,6 +27,7 @@ const importItemSchema = z
     question_asset_ids: z.array(z.string()).optional(),
     video_url: z.string().optional(),
     embed_url: z.string().optional(),
+    ai_metadata: z.unknown().optional(),
   })
   .passthrough();
 
@@ -58,6 +59,7 @@ export type NormalizedImportQuestion = {
   question_asset_ids: string[];
   video_url: string | null;
   embed_url: string | null;
+  ai_metadata?: unknown;
 };
 
 export type BatchImportPreviewItem = {
@@ -320,6 +322,7 @@ export function evaluateBatchImportItems({
             question_asset_ids: questionAssetIds,
             video_url: videoUrl,
             embed_url: embedUrl,
+            ai_metadata: item.ai_metadata,
           },
       errors,
       warnings,

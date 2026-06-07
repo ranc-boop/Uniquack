@@ -191,6 +191,10 @@ const superAdminCookie = await sessionCookies(
 const home = await fetchRoute("/");
 const login = await fetchRoute("/auth/login");
 const questions = await fetchRoute("/questions?q=AP&min=0&max=1000");
+const publishedTagsApi = await fetchRoute("/api/tags/published");
+const publishedQuestionTagsApi = await fetchRoute(
+  "/api/tags/published?usedBy=questions",
+);
 const videos = await fetchRoute("/videos?q=AP&min=0&max=1000");
 const signedOutAdmin = await fetchRoute("/admin");
 const signedOutReview = await fetchRoute("/admin/review");
@@ -226,6 +230,18 @@ assertRoute(
     questions.text.includes("Published AP questions") &&
     questions.text.includes("Filter"),
   "questions page renders filters",
+);
+assertRoute(
+  publishedTagsApi.status === 200 &&
+    publishedTagsApi.text.includes('"tags"') &&
+    publishedTagsApi.text.includes('"count"'),
+  "published tags API is anonymously readable",
+);
+assertRoute(
+  publishedQuestionTagsApi.status === 200 &&
+    publishedQuestionTagsApi.text.includes('"tags"') &&
+    publishedQuestionTagsApi.text.includes('"usedBy":"questions"'),
+  "published tags API can filter to tags used by published questions",
 );
 assertRoute(
   videos.status === 200 &&
@@ -523,6 +539,24 @@ try {
     "admin can create a question with multiple tags",
   );
   cleanup.questionTags.push(...questionTags);
+
+  const currentPublishedTagsApi = await fetchRoute("/api/tags/published");
+  const currentPublishedQuestionTagsApi = await fetchRoute(
+    "/api/tags/published?usedBy=questions",
+  );
+
+  for (const tag of tags) {
+    assertRoute(
+      currentPublishedTagsApi.status === 200 &&
+        currentPublishedTagsApi.text.includes(tag.name),
+      `published tags API includes published tag ${tag.name}`,
+    );
+    assertRoute(
+      currentPublishedQuestionTagsApi.status === 200 &&
+        currentPublishedQuestionTagsApi.text.includes(tag.name),
+      `published tags API includes question-used tag ${tag.name}`,
+    );
+  }
 
   const draftQuestion = await insertOne(
     adminSession.client,

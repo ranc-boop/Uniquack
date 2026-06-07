@@ -36,14 +36,27 @@ export type BatchImportSummary = {
   }[];
 };
 
-async function loadImportContext(supabase: SupabaseLike) {
+type ImportBatchSourceType =
+  | "manual_json"
+  | "manual_csv"
+  | "ai_pdf"
+  | "ai_image"
+  | "ai_word";
+
+async function loadImportContext({
+  allowDraftTags = false,
+  supabase,
+}: {
+  allowDraftTags?: boolean;
+  supabase: SupabaseLike;
+}) {
+  const tagQuery = supabase.from("tags").select("id, name, slug").limit(1000);
+  const filteredTagQuery = allowDraftTags
+    ? tagQuery.neq("status", "archived")
+    : tagQuery.eq("status", "published");
   const [{ data: tags, error: tagsError }, { data: questions, error: questionsError }] =
     await Promise.all([
-      supabase
-        .from("tags")
-        .select("id, name, slug")
-        .eq("status", "published")
-        .limit(1000),
+      filteredTagQuery,
       supabase.from("questions").select("question_code").limit(5000),
     ]);
 
@@ -67,14 +80,16 @@ async function loadImportContext(supabase: SupabaseLike) {
 }
 
 export async function previewBatchImportJson({
+  allowDraftTags = false,
   supabase,
   jsonText,
 }: {
+  allowDraftTags?: boolean;
   supabase: SupabaseLike;
   jsonText: string;
 }): Promise<BatchImportPreview> {
   const rawItems = parseBatchImportJson(jsonText);
-  const context = await loadImportContext(supabase);
+  const context = await loadImportContext({ allowDraftTags, supabase });
 
   return evaluateBatchImportItems({
     rawItems,
@@ -84,15 +99,27 @@ export async function previewBatchImportJson({
 }
 
 export async function importBatchImportJson({
+  allowDraftTags = false,
+  batchId: providedBatchId,
+  initialSummaryExtras = {},
   supabase,
   profileId,
   jsonText,
+  sourceType = "manual_json",
 }: {
+  allowDraftTags?: boolean;
+  batchId?: string;
+  initialSummaryExtras?: Record<string, unknown>;
   supabase: SupabaseLike;
   profileId: string;
   jsonText: string;
+  sourceType?: ImportBatchSourceType;
 }): Promise<BatchImportSummary> {
-  const preview = await previewBatchImportJson({ supabase, jsonText });
+  const preview = await previewBatchImportJson({
+    allowDraftTags,
+    supabase,
+    jsonText,
+  });
   const initialSummary = {
     createdCount: 0,
     skippedCount: preview.invalidCount,
@@ -103,27 +130,54 @@ export async function importBatchImportJson({
     unknownTagCount: preview.unknownTagCount,
     createdQuestions: [],
   };
-  const { data: batch, error: batchError } = await supabase
-    .from("import_batches")
-    .insert({
-      source_type: "manual_json",
-      status: "validating",
-      summary: initialSummary,
-      created_by: profileId,
-    })
-    .select("id")
-    .single();
+  const batchId = providedBatchId ?? null;
+  let activeBatchId = batchId;
 
-  if (batchError) {
-    throw new Error(batchError.message);
+  if (activeBatchId) {
+    const { error: batchUpdateError } = await supabase
+      .from("import_batches")
+      .update({
+        status: "validating",
+        summary: {
+          ...initialSummary,
+          ...initialSummaryExtras,
+        },
+      })
+      .eq("id", activeBatchId);
+
+    if (batchUpdateError) {
+      throw new Error(batchUpdateError.message);
+    }
+  } else {
+    const { data: batch, error: batchError } = await supabase
+      .from("import_batches")
+      .insert({
+        source_type: sourceType,
+        status: "validating",
+        summary: {
+          ...initialSummary,
+          ...initialSummaryExtras,
+        },
+        created_by: profileId,
+      })
+      .select("id")
+      .single();
+
+    if (batchError) {
+      throw new Error(batchError.message);
+    }
+
+    activeBatchId = batch.id as string;
   }
 
-  const batchId = batch.id as string;
+  if (!activeBatchId) {
+    throw new Error("Import batch was not initialized.");
+  }
 
   if (preview.items.length) {
     const { error: itemsError } = await supabase.from("import_batch_items").insert(
       preview.items.map((item) => ({
-        batch_id: batchId,
+        batch_id: activeBatchId,
         item_index: item.index,
         raw_payload: item.raw,
         normalized_question_json: item.normalized,
@@ -181,7 +235,7 @@ export async function importBatchImportJson({
             questionError.message,
           ],
         })
-        .eq("batch_id", batchId)
+        .eq("batch_id", activeBatchId)
         .eq("item_index", item.index);
       continue;
     }
@@ -204,7 +258,7 @@ export async function importBatchImportJson({
             status: "skipped",
             validation_errors: [...item.errors, ...item.warnings, tagsError.message],
           })
-          .eq("batch_id", batchId)
+          .eq("batch_id", activeBatchId)
           .eq("item_index", item.index);
         continue;
       }
@@ -225,12 +279,12 @@ export async function importBatchImportJson({
         status: "imported",
         created_question_id: question.id,
       })
-      .eq("batch_id", batchId)
+      .eq("batch_id", activeBatchId)
       .eq("item_index", item.index);
   }
 
   const finalSummary = {
-    batchId,
+    batchId: activeBatchId,
     createdCount,
     skippedCount,
     errorCount,
@@ -246,7 +300,7 @@ export async function importBatchImportJson({
       status: errorCount > 0 ? "failed" : "imported",
       summary: finalSummary,
     })
-    .eq("id", batchId);
+    .eq("id", activeBatchId);
 
   if (batchUpdateError) {
     throw new Error(batchUpdateError.message);
