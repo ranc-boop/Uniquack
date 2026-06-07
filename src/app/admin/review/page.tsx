@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ type AIReviewMetadata = {
   tag_decisions?: {
     new_tag_names?: unknown[];
   };
+  warnings?: unknown[];
 };
 
 function formatDate(value: string | null | undefined) {
@@ -70,8 +71,12 @@ function getAIReviewMetadata(value: unknown): AIReviewMetadata | null {
   return candidate.source === "ai_pdf_import" ? candidate : null;
 }
 
-function stringList(values: unknown[] | undefined) {
-  return (values ?? [])
+function stringList(values: unknown) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
     .map((value) => String(value).trim())
     .filter(Boolean);
 }
@@ -152,7 +157,9 @@ export default async function AdminReviewPage({
           .limit(1000),
         supabase
           .from("import_batch_items")
-          .select("created_question_id, normalized_question_json, created_at")
+          .select(
+            "created_question_id, normalized_question_json, validation_errors, created_at",
+          )
           .eq("status", "imported")
           .in("created_question_id", questionIds)
           .limit(1000),
@@ -171,9 +178,11 @@ export default async function AdminReviewPage({
   );
   const tagsByQuestionId = new Map<string, string[]>();
   const draftTagCountByQuestionId = new Map<string, number>();
+  const publishedTagCountByQuestionId = new Map<string, number>();
   const imageCountByQuestionId = new Map<string, number>();
   const sourceFileCountByQuestionId = new Map<string, number>();
   const aiMetadataByQuestionId = new Map<string, AIReviewMetadata>();
+  const importWarningsByQuestionId = new Map<string, string[]>();
   const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
   const importedAtByQuestionId = new Map<string, string>();
 
@@ -189,6 +198,11 @@ export default async function AdminReviewPage({
       draftTagCountByQuestionId.set(
         binding.question_id,
         (draftTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
+      );
+    } else if (tagStatus === "published") {
+      publishedTagCountByQuestionId.set(
+        binding.question_id,
+        (publishedTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
       );
     }
 
@@ -230,6 +244,10 @@ export default async function AdminReviewPage({
       extractImportAssetReferences(item.normalized_question_json),
     );
     importedAtByQuestionId.set(item.created_question_id, item.created_at);
+    importWarningsByQuestionId.set(
+      item.created_question_id,
+      stringList(item.validation_errors),
+    );
 
     const aiMetadata = getAIReviewMetadata(item.normalized_question_json);
 
@@ -274,6 +292,8 @@ export default async function AdminReviewPage({
         {draftQuestions.map((question) => {
           const tagNames = tagsByQuestionId.get(question.id) ?? [];
           const draftTagCount = draftTagCountByQuestionId.get(question.id) ?? 0;
+          const publishedTagCount =
+            publishedTagCountByQuestionId.get(question.id) ?? 0;
           const imageCount = imageCountByQuestionId.get(question.id) ?? 0;
           const sourceFileCount = sourceFileCountByQuestionId.get(question.id) ?? 0;
           const aiMetadata = aiMetadataByQuestionId.get(question.id);
@@ -281,6 +301,10 @@ export default async function AdminReviewPage({
           const aiCreatedTags = stringList(
             aiMetadata?.tag_decisions?.new_tag_names,
           );
+          const aiWarnings = [
+            ...stringList(aiMetadata?.warnings),
+            ...(importWarningsByQuestionId.get(question.id) ?? []),
+          ];
           const aiCropCount = aiMetadata?.asset_placeholders?.length ?? 0;
           const importRefs = importRefsByQuestionId.get(question.id) ?? null;
           const importedAt = importedAtByQuestionId.get(question.id);
@@ -293,7 +317,7 @@ export default async function AdminReviewPage({
             importedAssetReferences: importRefs,
             solutionHtml: question.solution_html,
             sourceFileCount,
-            tagCount: tagNames.length,
+            tagCount: publishedTagCount,
           });
 
           return (
@@ -345,6 +369,11 @@ export default async function AdminReviewPage({
                   ) : (
                     <Badge variant="outline">No tags</Badge>
                   )}
+                  {publishedTagCount ? (
+                    <Badge variant="secondary">
+                      Published tags: {publishedTagCount}
+                    </Badge>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Badge variant={readiness.isReady ? "secondary" : "outline"}>
@@ -388,11 +417,21 @@ export default async function AdminReviewPage({
                     </div>
                     <p>
                       Pages: {aiPageRefs.length ? aiPageRefs.join(", ") : "Unknown"}
-                      {" · "}
+                      {" | "}
                       Image crop refs: {aiCropCount}
                     </p>
                     {aiCreatedTags.length ? (
                       <p>Created draft tags: {aiCreatedTags.join(", ")}</p>
+                    ) : null}
+                    {aiWarnings.length ? (
+                      <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
+                        <p className="font-medium">AI/import warnings</p>
+                        <ul className="mt-1 list-disc space-y-1 pl-4">
+                          {aiWarnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                      </div>
                     ) : null}
                   </div>
                 ) : null}

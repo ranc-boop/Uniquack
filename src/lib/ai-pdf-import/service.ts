@@ -4,6 +4,7 @@ import {
   cropPdfPlaceholderImage,
   getPdfPageCount,
   renderPdfPages,
+  type RenderedPage,
 } from "@/lib/ai-pdf-import/pdf";
 import {
   AI_PDF_IMPORT_MAX_BYTES,
@@ -16,6 +17,7 @@ import {
   type AIPdfQuestion,
 } from "@/lib/ai-pdf-import/schema";
 import { importBatchImportJson } from "@/lib/batch-import/service";
+import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
   QUESTION_ASSETS_BUCKET,
   QUESTION_ASSET_MAX_BYTES,
@@ -38,6 +40,7 @@ type ActiveTag = {
 type ProcessInput = {
   batchId: string;
   fileName: string;
+  jobId?: string;
   pdfBuffer: Buffer;
   profileId: string;
   providerProfileId: string;
@@ -46,8 +49,138 @@ type ProcessInput = {
   supabase: SupabaseLike;
 };
 
+type AIPdfProgress = {
+  detail?: string;
+  error?: string;
+  pageCount?: number;
+  phase: string;
+  provider?: { id: string; model: string; name: string; provider: string };
+  questionCount?: number;
+  sourceInput?: "pdf" | "page_images";
+  warnings?: string[];
+};
+
+async function updateAIPdfBatchProgress(
+  input: ProcessInput,
+  progress: AIPdfProgress,
+) {
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        aiPdfImport: {
+          fileName: input.fileName,
+          jobId: input.jobId,
+          sourceAssetId: input.sourceAssetId,
+          sourceObjectPath: input.sourceObjectPath,
+          updatedAt: new Date().toISOString(),
+          ...progress,
+        },
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 function stripHtml(value: string | null | undefined) {
   return value?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() ?? "";
+}
+
+function decodeBasicHtmlEntities(value: string) {
+  return value
+    .replaceAll("&nbsp;", " ")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'");
+}
+
+function simpleHtmlToMarkdownSource(value: string | null | undefined) {
+  const html = value?.trim();
+
+  if (!html) {
+    return "";
+  }
+
+  const withoutSimpleBlocks = html
+    .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?(p|span|strong|b|em|i)[^>]*>/gi, "")
+    .trim();
+
+  if (/<[a-z][\s\S]*>/i.test(withoutSimpleBlocks)) {
+    return "";
+  }
+
+  return decodeBasicHtmlEntities(withoutSimpleBlocks)
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .trim();
+}
+
+function hasLatexSignal(value: string) {
+  return /(?:\$|\\sqrt|\\frac|\\begin|\\left|\\right|\\int|\\sum|\\[a-zA-Z]+|\^|_)/.test(
+    value,
+  );
+}
+
+function balanceInlineDollarMath(value: string) {
+  const withoutBlockDelimiters = value.replace(/\$\$/g, "");
+  const dollarCount = (withoutBlockDelimiters.match(/\$/g) ?? []).length;
+
+  if (dollarCount % 2 === 0) {
+    return value;
+  }
+
+  const lastDollarIndex = value.lastIndexOf("$");
+  const trailing = lastDollarIndex >= 0 ? value.slice(lastDollarIndex + 1) : "";
+
+  return /[a-zA-Z\\^_=+\-*/()]/.test(trailing) ? `${value}$` : value;
+}
+
+function normalizeLatexSource(value: string) {
+  return balanceInlineDollarMath(
+    value
+      .replace(/\\\(([\s\S]*?)\\\)/g, "$$$1$")
+      .replace(/\\\[([\s\S]*?)\\\]/g, "$$$$\n$1\n$$$$")
+      .trim(),
+  );
+}
+
+function normalizeAITextFields({
+  html,
+  source,
+}: {
+  html: string | null | undefined;
+  source: string | null | undefined;
+}) {
+  const simpleHtmlSource = simpleHtmlToMarkdownSource(html);
+  const trimmedSource = source?.trim() ?? "";
+  const preferredSource =
+    simpleHtmlSource && (hasLatexSignal(simpleHtmlSource) || !trimmedSource)
+      ? simpleHtmlSource
+      : trimmedSource || simpleHtmlSource;
+
+  if (!preferredSource) {
+    return {
+      html: html ?? "",
+      source: "",
+      sourceFormat: "html" as const,
+    };
+  }
+
+  const normalizedSource = normalizeLatexSource(preferredSource);
+
+  return {
+    html: markdownLatexToHtml(normalizedSource),
+    source: normalizedSource,
+    sourceFormat: "markdown_latex" as const,
+  };
 }
 
 function escapeAttribute(value: string) {
@@ -116,7 +249,7 @@ function buildPrompt({
             },
           ],
           content_html: "<p>Question stem with {{asset:figure_1}} where the image belongs.</p>",
-          content_source: "Editable source, same meaning as content_html.",
+          content_source: "Editable Markdown + LaTeX source, same meaning as content_html. Use $...$ for inline math.",
           difficulty_rating: 500,
           new_tag_names: ["Only if no existing tag fits"],
           page_refs: [1, 2],
@@ -134,7 +267,14 @@ function buildPrompt({
     "",
     "Rules:",
     "- content_html is required and must be sanitized-friendly HTML.",
-    "- Use placeholders exactly like {{asset:figure_1}} for cropped figures.",
+    "- Prefer writing content_source and solution_source as clean Markdown + LaTeX. Use $...$ for inline math and $$ blocks for display math.",
+    "- Do not put raw dollar-delimited math directly in content_html. If content_html contains math, use <span data-type=\"inline-math\" data-latex=\"x^2\">x^2</span> or <div data-type=\"block-math\" data-latex=\"x^2\">x^2</div>.",
+    "- Never leave unmatched dollar signs. For blanks such as x =, write $x =$ with a closing dollar.",
+    "- Convert common math text to LaTeX in source fields: sqrt(x) -> \\sqrt{x}, pi -> \\pi when mathematical, fractions -> \\frac{...}{...}.",
+    "- If a figure, chart, graph, table image, or diagram is important to the question, create one asset_placeholders entry so the system can crop it and display it in the question image gallery.",
+    "- If the image must appear at an exact inline position, also put the exact placeholder string inside content_html or solution_html at that location.",
+    "- Inline placeholders are optional because cropped images are also attached as question_assets and shown below the question detail.",
+    "- Use placeholder strings exactly like {{asset:figure_1}}. Do not alter braces, spacing, or capitalization.",
     "- Bboxes are normalized page coordinates from top-left, all values 0..1.",
     "- Keep questions as draft-quality records for human review; do not invent answers when unsure.",
   ].join("\n");
@@ -266,6 +406,14 @@ async function buildImportJson({
     const questionCode =
       question.question_code?.trim() || defaultQuestionCode(batchId, index);
     question.question_code = questionCode;
+    const contentFields = normalizeAITextFields({
+      html: question.content_html,
+      source: question.content_source,
+    });
+    const solutionFields = normalizeAITextFields({
+      html: question.solution_html,
+      source: question.solution_source,
+    });
 
     questions.push({
       ai_metadata: {
@@ -279,16 +427,15 @@ async function buildImportJson({
           tag_slugs: question.tag_slugs,
         },
       },
-      content_html: question.content_html,
-      content_source: question.content_source || stripHtml(question.content_html),
-      content_source_format: "html",
+      content_html: contentFields.html || question.content_html,
+      content_source: contentFields.source || stripHtml(question.content_html),
+      content_source_format: contentFields.sourceFormat,
       difficulty_rating: question.difficulty_rating,
       question_code: questionCode,
       question_type: question.question_type,
-      solution_html: question.solution_html,
-      solution_source:
-        question.solution_source || stripHtml(question.solution_html),
-      solution_source_format: "html",
+      solution_html: solutionFields.html || question.solution_html,
+      solution_source: solutionFields.source || stripHtml(question.solution_html),
+      solution_source_format: solutionFields.sourceFormat,
       tag_slugs: Array.from(tagSlugs),
       title: question.title,
     });
@@ -377,12 +524,14 @@ async function attachCroppedAssets({
   extraction,
   pdfBuffer,
   profileId,
+  renderedPages,
   supabase,
 }: {
   createdQuestions: { id: string; questionCode: string }[];
   extraction: AIPdfExtraction;
   pdfBuffer: Buffer;
   profileId: string;
+  renderedPages?: RenderedPage[];
   supabase: SupabaseLike;
 }) {
   const byCode = new Map(
@@ -404,7 +553,7 @@ async function attachCroppedAssets({
   let pages;
 
   try {
-    pages = await renderPdfPages(pdfBuffer);
+    pages = renderedPages?.length ? renderedPages : await renderPdfPages(pdfBuffer);
   } catch (error) {
     return {
       uploadedCount,
@@ -456,29 +605,42 @@ async function attachCroppedAssets({
         placeholder.placeholder,
         uploaded.html,
       );
+      const nextContentSource = replacePlaceholder(
+        questionRow.content_source,
+        placeholder.placeholder,
+        uploaded.html,
+      );
       const nextSolutionHtml = replacePlaceholder(
         questionRow.solution_html,
         placeholder.placeholder,
         uploaded.html,
       );
+      const nextSolutionSource = replacePlaceholder(
+        questionRow.solution_source,
+        placeholder.placeholder,
+        uploaded.html,
+      );
+      const wasEmbedded =
+        nextContentHtml !== questionRow.content_html ||
+        nextSolutionHtml !== questionRow.solution_html;
+
+      if (!wasEmbedded) {
+        warnings.push(
+          `Placeholder ${placeholder.placeholder} was not found in content_html or solution_html; crop was attached as a question asset only.`,
+        );
+      }
 
       const { error: updateError } = await supabase
         .from("questions")
         .update({
-          content_html: nextContentHtml ? sanitizeContentHtml(nextContentHtml) : "",
-          content_source: replacePlaceholder(
-            questionRow.content_source,
-            placeholder.placeholder,
-            uploaded.html,
-          ),
+          content_html: nextContentHtml
+            ? sanitizeContentHtml(nextContentHtml)
+            : "",
+          content_source: nextContentSource,
           solution_html: nextSolutionHtml
             ? sanitizeContentHtml(nextSolutionHtml)
             : null,
-          solution_source: replacePlaceholder(
-            questionRow.solution_source,
-            placeholder.placeholder,
-            uploaded.html,
-          ),
+          solution_source: nextSolutionSource,
           updated_by: profileId,
         })
         .eq("id", created.id);
@@ -505,15 +667,37 @@ export async function processAIPdfImport(input: ProcessInput) {
     throw new Error("PDF is larger than 50MB.");
   }
 
+  await updateAIPdfBatchProgress(input, {
+    detail: "Counting PDF pages.",
+    phase: "counting_pages",
+  });
   const pageCount = await getPdfPageCount(input.pdfBuffer);
 
   if (pageCount > AI_PDF_IMPORT_MAX_PAGES) {
     throw new Error("PDF has more than 50 pages. Split it before importing.");
   }
 
+  await updateAIPdfBatchProgress(input, {
+    detail: "Loading AI provider profile.",
+    pageCount,
+    phase: "loading_provider",
+  });
   const provider = await loadAIProviderProfileForUse({
     profileId: input.providerProfileId,
     supabase: input.supabase,
+  });
+  const providerSummary = {
+    id: provider.id,
+    model: provider.model,
+    name: provider.name,
+    provider: provider.provider,
+  };
+
+  await updateAIPdfBatchProgress(input, {
+    detail: "Loading active tags for reuse.",
+    pageCount,
+    phase: "loading_tags",
+    provider: providerSummary,
   });
   const activeTags = await loadActiveTags(input.supabase);
   const prompt = buildPrompt({
@@ -521,9 +705,28 @@ export async function processAIPdfImport(input: ProcessInput) {
     fileName: input.fileName,
     pageCount,
   });
+
+  await updateAIPdfBatchProgress(input, {
+    detail: provider.supports_pdf_input
+      ? "Preparing full PDF input for the model."
+      : "Rendering all PDF pages as ordered images for the model.",
+    pageCount,
+    phase: provider.supports_pdf_input ? "preparing_pdf_input" : "rendering_page_images",
+    provider: providerSummary,
+    sourceInput: provider.supports_pdf_input ? "pdf" : "page_images",
+  });
   const pagesForVision = provider.supports_pdf_input
     ? []
     : await renderPdfPages(input.pdfBuffer);
+
+  await updateAIPdfBatchProgress(input, {
+    detail:
+      "Calling AI provider. If the first JSON is invalid, the system will ask the model once more with the validation error to repair it.",
+    pageCount,
+    phase: "calling_provider",
+    provider: providerSummary,
+    sourceInput: provider.supports_pdf_input ? "pdf" : "page_images",
+  });
   const extraction = aiPdfExtractionSchema.parse(
     await callAIPdfExtractionProvider({
       fileName: input.fileName,
@@ -533,6 +736,24 @@ export async function processAIPdfImport(input: ProcessInput) {
       prompt,
     }),
   );
+
+  await updateAIPdfBatchProgress(input, {
+    detail: "AI response parsed and validated.",
+    pageCount,
+    phase: "provider_response_validated",
+    provider: providerSummary,
+    questionCount: extraction.questions.length,
+    warnings: extraction.warnings,
+  });
+
+  await updateAIPdfBatchProgress(input, {
+    detail: "Normalizing AI questions into the shared import format.",
+    pageCount,
+    phase: "building_import_json",
+    provider: providerSummary,
+    questionCount: extraction.questions.length,
+    warnings: extraction.warnings,
+  });
   const jsonText = await buildImportJson({
     activeTags,
     batchId: input.batchId,
@@ -552,7 +773,9 @@ export async function processAIPdfImport(input: ProcessInput) {
     initialSummaryExtras: {
       aiPdfImport: {
         fileName: input.fileName,
+        jobId: input.jobId,
         pageCount,
+        phase: "importing_questions",
         provider: {
           id: provider.id,
           model: provider.model,
@@ -569,11 +792,21 @@ export async function processAIPdfImport(input: ProcessInput) {
     sourceType: "ai_pdf",
     supabase: input.supabase,
   });
+
+  await updateAIPdfBatchProgress(input, {
+    detail: "Attaching AI crop placeholders to created draft questions.",
+    pageCount,
+    phase: "cropping_assets",
+    provider: providerSummary,
+    questionCount: extraction.questions.length,
+    warnings: extraction.warnings,
+  });
   const cropSummary = await attachCroppedAssets({
     createdQuestions: importSummary.createdQuestions,
     extraction,
     pdfBuffer: input.pdfBuffer,
     profileId: input.profileId,
+    renderedPages: pagesForVision,
     supabase: input.supabase,
   });
   const finalSummary = {
@@ -581,7 +814,9 @@ export async function processAIPdfImport(input: ProcessInput) {
     aiPdfImport: {
       createdQuestionCount: importSummary.createdCount,
       fileName: input.fileName,
+      jobId: input.jobId,
       pageCount,
+      phase: "completed",
       provider: {
         id: provider.id,
         model: provider.model,

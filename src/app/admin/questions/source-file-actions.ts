@@ -5,10 +5,12 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   QUESTION_SOURCE_FILES_BUCKET,
+  normalizeQuestionSourceFileMimeType,
   questionSourceFileExtensionForMimeType,
 } from "@/lib/question-source-files";
 import { createClient } from "@/lib/supabase/server";
 import {
+  cancelQuestionSourceFileUploadSchema,
   createQuestionSourceFileSignedUrlSchema,
   deleteQuestionSourceFileSchema,
   ensureQuestionDraftForSourceUploadSchema,
@@ -91,9 +93,15 @@ export async function ensureQuestionDraftForSourceUpload(input: unknown) {
 export async function reserveQuestionSourceFileUpload(input: unknown) {
   const profile = await requireAdmin();
   const parsed = reserveQuestionSourceFileUploadSchema.parse(input);
-  const extension = questionSourceFileExtensionForMimeType(parsed.mimeType);
+  const mimeType = normalizeQuestionSourceFileMimeType({
+    fileName: parsed.originalFilename,
+    mimeType: parsed.mimeType,
+  });
+  const extension = mimeType
+    ? questionSourceFileExtensionForMimeType(mimeType)
+    : null;
 
-  if (!extension) {
+  if (!mimeType || !extension) {
     throw new Error("Unsupported source file type.");
   }
 
@@ -120,7 +128,7 @@ export async function reserveQuestionSourceFileUpload(input: unknown) {
       id: sourceFileId,
       question_id: parsed.questionId,
       object_path: objectPath,
-      mime_type: parsed.mimeType,
+      mime_type: mimeType,
       size_bytes: parsed.sizeBytes,
       original_filename: parsed.originalFilename,
       status: "pending",
@@ -204,6 +212,47 @@ export async function finalizeQuestionSourceFileUpload(input: unknown) {
     sizeBytes: sourceFile.size_bytes,
     status: "ready",
   } satisfies QuestionSourceFileView;
+}
+
+export async function cancelQuestionSourceFileUpload(input: unknown) {
+  await requireAdmin();
+  const parsed = cancelQuestionSourceFileUploadSchema.parse(input);
+  const supabase = await createClient();
+  const { data: sourceFile, error: sourceFileError } = await supabase
+    .from("question_source_files")
+    .select("id, object_path, status")
+    .eq("id", parsed.sourceFileId)
+    .maybeSingle();
+
+  if (sourceFileError) {
+    throw new Error(sourceFileError.message);
+  }
+
+  if (!sourceFile || sourceFile.status !== "pending") {
+    return { cancelled: false, sourceFileId: parsed.sourceFileId };
+  }
+
+  const { error: updateError } = await supabase
+    .from("question_source_files")
+    .update({ status: "deleted" })
+    .eq("id", sourceFile.id)
+    .eq("status", "pending");
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  const { error: storageError } = await supabase.storage
+    .from(QUESTION_SOURCE_FILES_BUCKET)
+    .remove([sourceFile.object_path]);
+
+  revalidatePath("/admin/questions");
+
+  return {
+    cancelled: true,
+    sourceFileId: sourceFile.id,
+    storageCleanupError: storageError?.message,
+  };
 }
 
 export async function createQuestionSourceFileSignedUrl(input: unknown) {

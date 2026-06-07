@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import type { AIPdfAssetPlaceholder } from "@/lib/ai-pdf-import/schema";
 
-type RenderedPage = {
+export type RenderedPage = {
   dataUrl: string;
   height: number;
   page: number;

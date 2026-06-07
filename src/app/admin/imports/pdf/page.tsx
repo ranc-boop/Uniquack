@@ -49,15 +49,28 @@ export default async function AdminAIPdfImportPage() {
     new Set((sourceAssets ?? []).map((asset) => asset.batch_id)),
   );
   let sourceBatches: NonNullable<typeof batches> = [];
+  let sourceBatchItems: {
+    batch_id: string;
+    created_question_id: string | null;
+    status: string;
+  }[] = [];
 
   if (sourceBatchIds.length) {
-    const { data } = await supabase
-      .from("import_batches")
-      .select("id, status, summary, created_at")
-      .eq("source_type", "ai_pdf")
-      .in("id", sourceBatchIds);
+    const [{ data: loadedBatches }, { data: loadedItems }] = await Promise.all([
+      supabase
+        .from("import_batches")
+        .select("id, status, summary, created_at")
+        .eq("source_type", "ai_pdf")
+        .in("id", sourceBatchIds),
+      supabase
+        .from("import_batch_items")
+        .select("batch_id, status, created_question_id")
+        .in("batch_id", sourceBatchIds)
+        .not("created_question_id", "is", null),
+    ]);
 
-    sourceBatches = data ?? [];
+    sourceBatches = loadedBatches ?? [];
+    sourceBatchItems = loadedItems ?? [];
   }
 
   let providers: SafeAIProviderProfile[] = [];
@@ -72,6 +85,15 @@ export default async function AdminAIPdfImportPage() {
   const sourceBatchById = new Map(
     sourceBatches.map((batch) => [batch.id, batch]),
   );
+  const createdQuestionCountByBatchId = new Map<string, number>();
+
+  for (const item of sourceBatchItems) {
+    createdQuestionCountByBatchId.set(
+      item.batch_id,
+      (createdQuestionCountByBatchId.get(item.batch_id) ?? 0) + 1,
+    );
+  }
+
   const sourceOptions = (sourceAssets ?? []).map((asset) => {
     const batch = sourceBatchById.get(asset.batch_id);
     const ai = aiSummary(batch?.summary);
@@ -87,12 +109,23 @@ export default async function AdminAIPdfImportPage() {
         : typeof ai.pageCount === "number"
           ? ai.pageCount
           : undefined;
+    const summaryQuestionCount =
+      typeof ai.createdQuestionCount === "number"
+        ? ai.createdQuestionCount
+        : typeof (batch?.summary as any)?.createdCount === "number"
+          ? (batch?.summary as any).createdCount
+          : 0;
+    const createdQuestionCount = Math.max(
+      summaryQuestionCount,
+      createdQuestionCountByBatchId.get(asset.batch_id) ?? 0,
+    );
 
     return {
       assetStatus: asset.status,
       batchId: asset.batch_id,
-      canDelete: batch?.status !== "imported",
+      canDelete: batch?.status !== "validating",
       createdAt: asset.created_at,
+      createdQuestionCount,
       fileName: asset.original_filename,
       pageCount,
       sizeBytes: Number(asset.size_bytes),
@@ -171,9 +204,12 @@ export default async function AdminAIPdfImportPage() {
                   const fileName =
                     typeof ai.fileName === "string" ? ai.fileName : "-";
                   const createdQuestionCount =
-                    typeof ai.createdQuestionCount === "number"
-                      ? ai.createdQuestionCount
-                      : summary?.createdCount ?? 0;
+                    Math.max(
+                      typeof ai.createdQuestionCount === "number"
+                        ? ai.createdQuestionCount
+                        : summary?.createdCount ?? 0,
+                      createdQuestionCountByBatchId.get(batch.id) ?? 0,
+                    );
                   const uploadedCropCount =
                     typeof ai.uploadedCropCount === "number"
                       ? ai.uploadedCropCount
