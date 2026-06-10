@@ -191,11 +191,16 @@ const superAdminCookie = await sessionCookies(
 const home = await fetchRoute("/");
 const login = await fetchRoute("/auth/login");
 const questions = await fetchRoute("/questions?q=AP&min=0&max=1000");
+const publishedTagsApi = await fetchRoute("/api/tags/published");
+const publishedQuestionTagsApi = await fetchRoute(
+  "/api/tags/published?usedBy=questions",
+);
 const videos = await fetchRoute("/videos?q=AP&min=0&max=1000");
 const signedOutAdmin = await fetchRoute("/admin");
 const signedOutReview = await fetchRoute("/admin/review");
 const signedOutImportAssets = await fetchRoute("/admin/imports/assets");
 const signedOutPackageImport = await fetchRoute("/admin/imports/package");
+const signedOutAiPdfImport = await fetchRoute("/admin/imports/pdf");
 const studentAdmin = await fetchRoute("/admin", studentCookie);
 const studentReview = await fetchRoute("/admin/review", studentCookie);
 const studentImportAssets = await fetchRoute("/admin/imports/assets", studentCookie);
@@ -203,14 +208,21 @@ const studentPackageImport = await fetchRoute(
   "/admin/imports/package",
   studentCookie,
 );
+const studentAiPdfImport = await fetchRoute("/admin/imports/pdf", studentCookie);
 const adminHome = await fetchRoute("/admin", adminCookie);
 const adminQuestions = await fetchRoute("/admin/questions", adminCookie);
 const adminImports = await fetchRoute("/admin/imports", adminCookie);
 const adminImportAssets = await fetchRoute("/admin/imports/assets", adminCookie);
 const adminPackageImport = await fetchRoute("/admin/imports/package", adminCookie);
+const adminAiPdfImport = await fetchRoute("/admin/imports/pdf", adminCookie);
 const adminReview = await fetchRoute("/admin/review", adminCookie);
 const adminUsers = await fetchRoute("/admin/users", adminCookie);
+const adminAiSettings = await fetchRoute("/admin/ai-settings", adminCookie);
 const superAdminUsers = await fetchRoute("/admin/users", superAdminCookie);
+const superAdminAiSettings = await fetchRoute(
+  "/admin/ai-settings",
+  superAdminCookie,
+);
 
 assertRoute(
   home.status === 200 &&
@@ -226,6 +238,18 @@ assertRoute(
     questions.text.includes("Published AP questions") &&
     questions.text.includes("Filter"),
   "questions page renders filters",
+);
+assertRoute(
+  publishedTagsApi.status === 200 &&
+    publishedTagsApi.text.includes('"tags"') &&
+    publishedTagsApi.text.includes('"count"'),
+  "published tags API is anonymously readable",
+);
+assertRoute(
+  publishedQuestionTagsApi.status === 200 &&
+    publishedQuestionTagsApi.text.includes('"tags"') &&
+    publishedQuestionTagsApi.text.includes('"usedBy":"questions"'),
+  "published tags API can filter to tags used by published questions",
 );
 assertRoute(
   videos.status === 200 &&
@@ -254,6 +278,11 @@ assertRoute(
   "signed out user visiting /admin/imports/package redirects to login",
 );
 assertRoute(
+  signedOutAiPdfImport.status === 307 &&
+    signedOutAiPdfImport.location.includes("/auth/login"),
+  "signed out user visiting /admin/imports/pdf redirects to login",
+);
+assertRoute(
   studentAdmin.status === 307 && studentAdmin.location.includes("/unauthorized"),
   "student visiting /admin redirects to unauthorized",
 );
@@ -272,12 +301,18 @@ assertRoute(
   "student visiting /admin/imports/package redirects to unauthorized",
 );
 assertRoute(
+  studentAiPdfImport.status === 307 &&
+    studentAiPdfImport.location.includes("/unauthorized"),
+  "student visiting /admin/imports/pdf redirects to unauthorized",
+);
+assertRoute(
   adminHome.status === 200 &&
     adminHome.text.includes("Create demo records") &&
     adminHome.text.includes("Review Drafts") &&
     adminHome.text.includes("Bulk Assets") &&
-    adminHome.text.includes("Package Import"),
-  "admin can access dashboard, Review Drafts nav, Bulk Assets nav, and Package Import nav",
+    adminHome.text.includes("Package Import") &&
+    adminHome.text.includes("AI PDF Import"),
+  "admin can access dashboard, Review Drafts nav, Bulk Assets nav, Package Import nav, and AI PDF Import nav",
 );
 assertRoute(
   adminQuestions.status === 200 &&
@@ -310,6 +345,13 @@ assertRoute(
   "admin can access package import page",
 );
 assertRoute(
+  adminAiPdfImport.status === 200 &&
+    adminAiPdfImport.text.includes("AI PDF Import") &&
+    adminAiPdfImport.text.includes("Upload PDF source") &&
+    adminAiPdfImport.text.includes("starting AI extraction requires a super admin"),
+  "admin can access AI PDF import upload UI without provider-token access",
+);
+assertRoute(
   adminReview.status === 200 &&
     adminReview.text.includes("Review Drafts") &&
     adminReview.text.includes("Search drafts"),
@@ -320,8 +362,19 @@ assertRoute(
   "admin is blocked from /admin/users",
 );
 assertRoute(
+  adminAiSettings.status === 307 &&
+    adminAiSettings.location.includes("/unauthorized"),
+  "admin is blocked from /admin/ai-settings",
+);
+assertRoute(
   superAdminUsers.status === 200 && superAdminUsers.text.includes("Update role"),
   "super_admin can access /admin/users",
+);
+assertRoute(
+  superAdminAiSettings.status === 200 &&
+    superAdminAiSettings.text.includes("AI Settings") &&
+    superAdminAiSettings.text.includes("API keys are"),
+  "super_admin can access AI provider settings",
 );
 
 const adminSession = await signedInSupabaseClient(
@@ -523,6 +576,27 @@ try {
     "admin can create a question with multiple tags",
   );
   cleanup.questionTags.push(...questionTags);
+
+  const smokeCacheBust = Date.now();
+  const currentPublishedTagsApi = await fetchRoute(
+    `/api/tags/published?limit=1000&_smoke=${smokeCacheBust}`,
+  );
+  const currentPublishedQuestionTagsApi = await fetchRoute(
+    `/api/tags/published?usedBy=questions&limit=1000&_smoke=${smokeCacheBust}`,
+  );
+
+  for (const tag of tags) {
+    assertRoute(
+      currentPublishedTagsApi.status === 200 &&
+        currentPublishedTagsApi.text.includes(tag.name),
+      `published tags API includes published tag ${tag.name}`,
+    );
+    assertRoute(
+      currentPublishedQuestionTagsApi.status === 200 &&
+        currentPublishedQuestionTagsApi.text.includes(tag.name),
+      `published tags API includes question-used tag ${tag.name}`,
+    );
+  }
 
   const draftQuestion = await insertOne(
     adminSession.client,

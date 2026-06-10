@@ -16,6 +16,8 @@ const navItems = [
   { href: "/admin/imports", label: "Imports" },
   { href: "/admin/imports/assets", label: "Bulk Assets" },
   { href: "/admin/imports/package", label: "Package Import" },
+  { href: "/admin/imports/pdf", label: "AI PDF Import" },
+  { href: "/admin/ai-settings", label: "AI Settings" },
   { href: "/admin/users", label: "Users" },
 ];
 
@@ -36,7 +38,9 @@ export default async function AdminLayout({
         <nav className="grid gap-1">
           {navItems
             .filter(
-              (item) => item.href !== "/admin/users" || profile.role === "super_admin",
+              (item) =>
+                !["/admin/users", "/admin/ai-settings"].includes(item.href) ||
+                profile.role === "super_admin",
             )
             .map((item) => (
               <Button

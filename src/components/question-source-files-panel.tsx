@@ -11,6 +11,7 @@ import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
+  cancelQuestionSourceFileUpload,
   createQuestionSourceFileSignedUrl,
   deleteQuestionSourceFile,
   ensureQuestionDraftForSourceUpload,
@@ -21,8 +22,9 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   formatFileSize,
+  normalizeQuestionSourceFileMimeType,
+  QUESTION_SOURCE_FILE_ACCEPT,
   QUESTION_SOURCE_FILE_MAX_BYTES,
-  QUESTION_SOURCE_FILE_MIME_TYPE,
   QUESTION_SOURCE_FILES_BUCKET,
 } from "@/lib/question-source-files";
 import { createClient } from "@/lib/supabase/client";
@@ -105,18 +107,23 @@ export function QuestionSourceFilesPanel({
     setUploading(true);
 
     try {
-      const validFiles = Array.from(files).filter((file) => {
-        if (file.type !== QUESTION_SOURCE_FILE_MIME_TYPE) {
+      const validFiles = Array.from(files).flatMap((file) => {
+        const mimeType = normalizeQuestionSourceFileMimeType({
+          fileName: file.name,
+          mimeType: file.type,
+        });
+
+        if (!mimeType) {
           toast.error(`${file.name}: only PDF source files are supported.`);
-          return false;
+          return [];
         }
 
         if (file.size > QUESTION_SOURCE_FILE_MAX_BYTES) {
           toast.error(`${file.name}: PDF exceeds the 20MB limit.`);
-          return false;
+          return [];
         }
 
-        return true;
+        return [{ file, mimeType }];
       });
 
       if (!validFiles.length) {
@@ -126,12 +133,16 @@ export function QuestionSourceFilesPanel({
       const resolvedQuestionId = await ensureQuestionId();
       const supabase = createClient();
 
-      for (const file of validFiles) {
+      for (const { file, mimeType } of validFiles) {
+        let reservation:
+          | Awaited<ReturnType<typeof reserveQuestionSourceFileUpload>>
+          | null = null;
+
         try {
-          const reservation = await reserveQuestionSourceFileUpload({
+          reservation = await reserveQuestionSourceFileUpload({
             questionId: resolvedQuestionId,
             originalFilename: file.name,
-            mimeType: file.type,
+            mimeType,
             sizeBytes: file.size,
           });
           const { error } = await supabase.storage
@@ -140,7 +151,7 @@ export function QuestionSourceFilesPanel({
               reservation.objectPath,
               reservation.token,
               file,
-              { contentType: file.type },
+              { contentType: mimeType },
             );
 
           if (error) {
@@ -154,6 +165,16 @@ export function QuestionSourceFilesPanel({
           setSourceFiles((current) => [...current, uploadedSourceFile]);
           toast.success(`${file.name} uploaded.`);
         } catch (error) {
+          if (reservation) {
+            void cancelQuestionSourceFileUpload({
+              sourceFileId: reservation.sourceFileId,
+            }).catch((cleanupError) => {
+              toast.error(
+                `${file.name}: cleanup failed: ${errorMessage(cleanupError)}`,
+              );
+            });
+          }
+
           toast.error(`${file.name}: ${errorMessage(error)}`);
         }
       }
@@ -247,7 +268,7 @@ export function QuestionSourceFilesPanel({
           id={fileInputId}
           ref={inputRef}
           type="file"
-          accept={QUESTION_SOURCE_FILE_MIME_TYPE}
+          accept={QUESTION_SOURCE_FILE_ACCEPT}
           multiple
           disabled={uploading}
           className="sr-only"

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
+    "@napi-rs/canvas": "^1.0.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -34,10 +35,12 @@
     "lucide-react": "latest",
     "next": "latest",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "^6.0.227",
     "react": "latest",
     "react-dom": "latest",
     "react-hook-form": "^7.76.1",
     "sanitize-html": "^2.17.4",
+    "sharp": "^0.34.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "latest",
     "zod": "^4.4.3"

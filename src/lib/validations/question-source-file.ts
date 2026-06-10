@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import {
   QUESTION_SOURCE_FILE_MAX_BYTES,
-  QUESTION_SOURCE_FILE_MIME_TYPE,
 } from "@/lib/question-source-files";
 import { uuidSchema } from "@/lib/validations/common";
 
@@ -15,11 +14,15 @@ export const ensureQuestionDraftForSourceUploadSchema = z.object({
 export const reserveQuestionSourceFileUploadSchema = z.object({
   questionId: uuidSchema,
   originalFilename: z.string().trim().min(1).max(255),
-  mimeType: z.literal(QUESTION_SOURCE_FILE_MIME_TYPE),
+  mimeType: z.string().trim().min(1).max(120),
   sizeBytes: z.number().int().positive().max(QUESTION_SOURCE_FILE_MAX_BYTES),
 });
 
 export const finalizeQuestionSourceFileUploadSchema = z.object({
+  sourceFileId: uuidSchema,
+});
+
+export const cancelQuestionSourceFileUploadSchema = z.object({
   sourceFileId: uuidSchema,
 });
 

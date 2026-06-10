@@ -11,6 +11,36 @@ export type ContentStatus = "draft" | "published" | "archived";
 export type TagType = "knowledge" | "attribute";
 export type QuestionType = "mcq" | "frq" | "mixed";
 export type QuestionSourceFormat = "markdown_latex" | "html";
+export type ImportBatchAssetRole =
+  | "source_pdf"
+  | "ai_crop_candidate"
+  | "unmatched"
+  | "other";
+export type ImportBatchAssetStatus =
+  | "pending"
+  | "ready"
+  | "failed"
+  | "deleted";
+
+export type AIProviderProfile = {
+  id: string;
+  name: string;
+  provider: string;
+  base_url: string;
+  model: string;
+  api_key_ciphertext: string | null;
+  api_key_iv: string | null;
+  api_key_tag: string | null;
+  api_key_last4: string | null;
+  enabled: boolean;
+  is_default: boolean;
+  supports_pdf_input: boolean;
+  supports_vision_images: boolean;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export type Profile = {
   id: string;
@@ -142,6 +172,21 @@ export type ImportBatchItem = {
   updated_at: string;
 };
 
+export type ImportBatchAsset = {
+  id: string;
+  batch_id: string;
+  asset_role: ImportBatchAssetRole;
+  object_path: string;
+  mime_type: string;
+  size_bytes: number;
+  original_filename: string;
+  status: ImportBatchAssetStatus;
+  metadata: Json;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type TableDefinition<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
   Row: Row;
   Insert: Insert;
@@ -153,6 +198,7 @@ export type Database = {
   public: {
     Tables: {
       profiles: TableDefinition<Profile>;
+      ai_provider_profiles: TableDefinition<AIProviderProfile>;
       tags: TableDefinition<Tag>;
       questions: TableDefinition<Question>;
       question_tags: TableDefinition<{
@@ -173,6 +219,7 @@ export type Database = {
       question_source_files: TableDefinition<QuestionSourceFile>;
       import_batches: TableDefinition<ImportBatch>;
       import_batch_items: TableDefinition<ImportBatchItem>;
+      import_batch_assets: TableDefinition<ImportBatchAsset>;
       user_question_attempts: TableDefinition<{
         id: string;
         user_id: string;

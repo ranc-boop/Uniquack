@@ -40,12 +40,17 @@ export default async function AdminImportsPage() {
             Future package import will support questions.json + images + PDFs.
           </p>
         </div>
-        <Button asChild variant="outline">
-          <Link href="/admin/imports/assets">Bulk asset upload</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/admin/imports/pdf">AI PDF import</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/imports/assets">Bulk asset upload</Link>
+          </Button>
+        </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">JSON Import</CardTitle>
@@ -76,6 +81,20 @@ export default async function AdminImportsPage() {
             <p>Import questions.json with referenced images and PDFs in one ZIP.</p>
             <Button asChild size="sm" variant="outline">
               <Link href="/admin/imports/package">Open Package Import</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">AI PDF Import</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              Parse a PDF with a configured multimodal model into draft
+              questions.
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/imports/pdf">Open AI PDF Import</Link>
             </Button>
           </CardContent>
         </Card>
