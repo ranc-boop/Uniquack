@@ -10,7 +10,7 @@ import {
 } from "@/lib/ai-pdf-import/constants";
 import { getPdfPageCount } from "@/lib/ai-pdf-import/pdf";
 import { processAIPdfImport } from "@/lib/ai-pdf-import/service";
-import { requireAdmin } from "@/lib/auth/guards";
+import { requireAdmin, requireSuperAdmin } from "@/lib/auth/guards";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validations/common";
@@ -1295,7 +1295,7 @@ export async function startAIPdfExtraction(input: {
   batchId: string;
   providerProfileId: string;
 }) {
-  await requireAdmin();
+  await requireSuperAdmin();
   const parsed = extractionInputSchema.parse(input);
   const supabase = await createClient();
   const sourceAsset = await loadSourceAsset({
@@ -1320,7 +1320,7 @@ export async function startAIPdfExtraction(input: {
 }
 
 export async function runQueuedAIPdfExtraction(input: unknown) {
-  const profile = await requireAdmin();
+  const profile = await requireSuperAdmin();
   const parsed = queuedExtractionInputSchema.parse(input);
   const supabase = await createClient();
   const { data: batch, error: batchError } = await supabase

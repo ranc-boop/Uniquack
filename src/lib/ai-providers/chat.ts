@@ -1,4 +1,9 @@
 import { aiPdfExtractionSchema, type AIPdfExtraction } from "@/lib/ai-pdf-import/schema";
+import {
+  assertMockAIProviderAllowed,
+  isMockAIProviderUrl,
+} from "@/lib/ai-providers/mock";
+import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
 
 type ProviderProfileForUse = {
   apiKey: string;
@@ -30,13 +35,6 @@ const CONNECTION_TEST_TIMEOUT_MS = 15_000;
 
 function endpoint(baseUrl: string) {
   return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
-}
-
-function parseJsonContent(value: string) {
-  const trimmed = value.trim();
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-
-  return JSON.parse(fenced ? fenced[1] : trimmed) as unknown;
 }
 
 function responsePreview(value: string) {
@@ -154,7 +152,7 @@ function parseExtractionContent(contentText: string) {
   let parsed: unknown;
 
   try {
-    parsed = parseJsonContent(contentText);
+    parsed = parsePossiblyMalformedJson(contentText);
   } catch (error) {
     throw new Error(
       `AI provider returned non-JSON content: ${
@@ -287,7 +285,9 @@ function mockExtraction(): AIPdfExtraction {
 export async function testAIProviderConnection(
   profile: Pick<ProviderProfileForUse, "apiKey" | "base_url" | "model" | "name">,
 ) {
-  if (profile.base_url === "mock://ai-pdf-import") {
+  if (isMockAIProviderUrl(profile.base_url)) {
+    assertMockAIProviderAllowed();
+
     return {
       message: `Mock provider ${profile.name} is reachable.`,
       ok: true as const,
@@ -359,7 +359,9 @@ export async function callAIPdfExtractionProvider({
   profile,
   prompt,
 }: ProviderInput) {
-  if (profile.base_url === "mock://ai-pdf-import") {
+  if (isMockAIProviderUrl(profile.base_url)) {
+    assertMockAIProviderAllowed();
+
     return mockExtraction();
   }
 

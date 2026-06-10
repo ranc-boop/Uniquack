@@ -76,11 +76,13 @@ export default async function AdminAIPdfImportPage() {
   let providers: SafeAIProviderProfile[] = [];
   let providerError: string | null = null;
 
-  try {
-    providers = await listEnabledAIProviderProfiles(supabase);
-  } catch (error) {
-    providerError =
-      error instanceof Error ? error.message : "Could not load AI providers.";
+  if (profile.role === "super_admin") {
+    try {
+      providers = await listEnabledAIProviderProfiles(supabase);
+    } catch (error) {
+      providerError =
+        error instanceof Error ? error.message : "Could not load AI providers.";
+    }
   }
   const sourceBatchById = new Map(
     sourceBatches.map((batch) => [batch.id, batch]),
@@ -167,6 +169,13 @@ export default async function AdminAIPdfImportPage() {
             <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               AI provider configuration is not available yet. Apply the AI PDF
               import migration and configure a provider in AI Settings.
+            </p>
+          ) : null}
+          {profile.role !== "super_admin" ? (
+            <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Admins can upload private PDF sources here, but starting AI
+              extraction requires a super admin so provider API keys remain
+              server-side and token use is explicitly controlled.
             </p>
           ) : null}
           {sourceAssetsError ? (

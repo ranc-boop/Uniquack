@@ -64,18 +64,21 @@ export async function loadAIProviderProfileForUse({
   profileId: string;
   supabase: SupabaseLike;
 }) {
-  const { data, error } = await (supabase as SupabaseRpcLike).rpc(
-    "get_ai_provider_profile_for_import",
-    { provider_profile_id: profileId },
-  );
+  const { data, error } = await supabase
+    .from("ai_provider_profiles")
+    .select("*")
+    .eq("id", profileId)
+    .eq("enabled", true)
+    .not("api_key_ciphertext", "is", null)
+    .not("api_key_iv", "is", null)
+    .not("api_key_tag", "is", null)
+    .maybeSingle();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const profile = (Array.isArray(data) ? data[0] : data) as
-    | AIProviderProfile
-    | null;
+  const profile = data as AIProviderProfile | null;
 
   if (!profile) {
     throw new Error("AI provider profile is not available for import.");

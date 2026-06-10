@@ -111,7 +111,7 @@ export function QuestionHtmlEditor({
     initialMode === "markdown" ? initialSource : "",
   );
   const [htmlSourceValue, setHtmlSourceValue] = useState(
-    initialHtml,
+    initialMode === "html" ? initialSource || initialHtml : initialHtml,
   );
   const [htmlValue, setHtmlValue] = useState(() => {
     if (initialHtml) {

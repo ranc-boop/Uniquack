@@ -194,7 +194,7 @@ as $$
     p.updated_at
   from public.ai_provider_profiles p
   where
-    (select private.is_admin())
+    (select private.is_super_admin())
     and p.enabled = true
     and p.api_key_last4 is not null
   order by p.is_default desc, p.name asc
@@ -205,63 +205,3 @@ revoke all on function public.list_enabled_ai_provider_profiles() from public;
 grant execute on function public.list_enabled_ai_provider_profiles() to authenticated;
 
 drop function if exists public.get_ai_provider_profile_for_import(uuid);
-
-create or replace function public.get_ai_provider_profile_for_import(
-  provider_profile_id uuid
-)
-returns table (
-  id uuid,
-  name text,
-  provider text,
-  base_url text,
-  model text,
-  api_key_ciphertext text,
-  api_key_iv text,
-  api_key_tag text,
-  api_key_last4 text,
-  enabled boolean,
-  is_default boolean,
-  supports_pdf_input boolean,
-  supports_vision_images boolean,
-  created_by uuid,
-  updated_by uuid,
-  created_at timestamptz,
-  updated_at timestamptz
-)
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select
-    p.id,
-    p.name,
-    p.provider,
-    p.base_url,
-    p.model,
-    p.api_key_ciphertext,
-    p.api_key_iv,
-    p.api_key_tag,
-    p.api_key_last4,
-    p.enabled,
-    p.is_default,
-    p.supports_pdf_input,
-    p.supports_vision_images,
-    p.created_by,
-    p.updated_by,
-    p.created_at,
-    p.updated_at
-  from public.ai_provider_profiles p
-  where
-    (select private.is_admin())
-    and p.id = provider_profile_id
-    and p.enabled = true
-    and p.api_key_ciphertext is not null
-    and p.api_key_iv is not null
-    and p.api_key_tag is not null
-  limit 1;
-$$;
-
-revoke all on function public.get_ai_provider_profile_for_import(uuid) from public;
-grant execute on function public.get_ai_provider_profile_for_import(uuid)
-to authenticated;

@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  isMockAIProviderAllowed,
+  isMockAIProviderUrl,
+} from "@/lib/ai-providers/mock";
 import { uuidSchema } from "@/lib/validations/common";
 
 const optionalUrlSchema = z
@@ -8,7 +12,7 @@ const optionalUrlSchema = z
   .min(1)
   .refine(
     (value) =>
-      value.startsWith("mock://") ||
+      (isMockAIProviderUrl(value) && isMockAIProviderAllowed()) ||
       (() => {
         try {
           const url = new URL(value);
@@ -18,7 +22,7 @@ const optionalUrlSchema = z
           return false;
         }
       })(),
-    "Base URL must be http(s) or mock:// for local smoke tests.",
+    "Base URL must be http(s). mock://ai-pdf-import is allowed only outside production or when ENABLE_MOCK_AI_PROVIDER=true.",
   );
 
 export const aiProviderProfileFormSchema = z.object({
