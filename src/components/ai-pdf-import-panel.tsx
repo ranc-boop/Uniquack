@@ -34,6 +34,7 @@ import {
   AI_IMPORT_SOURCES_BUCKET,
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
+import { describeAiPdfProviderInput } from "@/lib/ai-providers/adapters";
 import type { SafeAIProviderProfile } from "@/lib/ai-providers/profiles";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -80,6 +81,12 @@ type SourceUploadResult =
       uploadAttemptId?: string;
     }
   | null;
+
+const AI_PDF_STATUS_POLL_TIMEOUT_MS = 15 * 60 * 1000;
+
+function currentTimeMs() {
+  return Date.now();
+}
 
 type OperationState = {
   batchId?: string;
@@ -253,6 +260,8 @@ function phaseLabel(phase: string) {
     extracting: "Preparing extraction",
     loading_provider: "Loading model profile",
     loading_tags: "Loading tag context",
+    preparing_native_pdf_input: "Preparing Gemini Native PDF input",
+    preparing_provider_input: "Preparing provider input",
     preparing_pdf_input: "Preparing full PDF input",
     provider_response_validated: "Validating AI response",
     queued: "Queued",
@@ -332,9 +341,16 @@ export function AIPdfImportPanel({
   const [result, setResult] = useState<ImportResult>(null);
 
   const enabledProviders = providers.filter((provider) => provider.enabled);
-  const defaultProvider =
-    enabledProviders.find((provider) => provider.is_default) ??
-    enabledProviders[0];
+  const providerOptions = enabledProviders.map((provider) => ({
+    profile: provider,
+    support: describeAiPdfProviderInput(provider),
+  }));
+  const extractableProviderOptions = providerOptions.filter(
+    (option) => option.support.supported && option.support.implemented,
+  );
+  const defaultProviderOption =
+    extractableProviderOptions.find((option) => option.profile.is_default) ??
+    extractableProviderOptions[0];
   const uploadedSources = useMemo(
     () =>
       uploadedResults
@@ -455,7 +471,7 @@ export function AIPdfImportPanel({
     isActive: () => boolean,
   ) {
     let lastStatus = "";
-    const deadline = Date.now() + 15 * 60 * 1000;
+    const deadline = currentTimeMs() + AI_PDF_STATUS_POLL_TIMEOUT_MS;
 
     while (isActive()) {
       try {
@@ -498,7 +514,7 @@ export function AIPdfImportPanel({
           return snapshot;
         }
 
-        if (Date.now() > deadline) {
+        if (currentTimeMs() > deadline) {
           throw new Error(
             "AI extraction is still running after 15 minutes. The batch will keep its latest database status; reload this page to check it later.",
           );
@@ -512,7 +528,7 @@ export function AIPdfImportPanel({
           )}`,
         );
 
-        if (Date.now() > deadline) {
+        if (currentTimeMs() > deadline) {
           throw error;
         }
       }
@@ -863,6 +879,21 @@ export function AIPdfImportPanel({
 
     if (!providerProfileId) {
       toast.error("Select an AI provider before starting extraction.");
+      return;
+    }
+
+    const providerOption = providerOptions.find(
+      (option) => option.profile.id === providerProfileId,
+    );
+
+    if (
+      !providerOption?.support.supported ||
+      !providerOption.support.implemented
+    ) {
+      toast.error(
+        providerOption?.support.reason ??
+          "This provider is not available for AI PDF extraction.",
+      );
       return;
     }
 
@@ -1309,26 +1340,47 @@ export function AIPdfImportPanel({
             <select
               id="provider_profile_id"
               name="provider_profile_id"
-              defaultValue={defaultProvider?.id}
-              disabled={!enabledProviders.length || extracting}
+              defaultValue={defaultProviderOption?.profile.id}
+              disabled={!extractableProviderOptions.length || extracting}
               required
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             >
-              {!enabledProviders.length ? (
+              {!providerOptions.length ? (
                 <option value="">No enabled provider</option>
               ) : null}
-              {enabledProviders.map((provider) => (
-                <option key={provider.id} value={provider.id}>
-                  {provider.name} / {provider.model}
+              {providerOptions.map((option) => (
+                <option
+                  key={option.profile.id}
+                  value={option.profile.id}
+                  disabled={
+                    !option.support.supported || !option.support.implemented
+                  }
+                >
+                  {option.profile.name} / {option.profile.model} -{" "}
+                  {option.support.strategy.replaceAll("_", " ")}
                 </option>
               ))}
             </select>
+            {providerOptions.length && !extractableProviderOptions.length ? (
+              <p className="text-xs text-destructive">
+                {providerOptions[0]?.support.reason ??
+                  "No enabled provider supports PDF/image extraction."}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                DeepSeek text/json providers are blocked from PDF extraction
+                unless explicitly configured for page images. Gemini
+                OpenAI-compatible providers use page images, not full PDF file
+                input. Gemini Native providers can use full PDF input when
+                native/full PDF is enabled.
+              </p>
+            )}
           </div>
           <div className="flex items-end">
             <Button
               type="submit"
               disabled={
-                !selectedSource || !enabledProviders.length || extracting
+                !selectedSource || !extractableProviderOptions.length || extracting
               }
             >
               {extracting ? (
@@ -1355,10 +1407,11 @@ export function AIPdfImportPanel({
         {extracting ? (
           <ThinkingIndicator detail={activeDetail} phase={activePhase} />
         ) : null}
-        {!enabledProviders.length ? (
+        {!extractableProviderOptions.length ? (
           <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             PDF upload is available. AI extraction is waiting for a super admin
-            to configure an enabled provider with an API key.
+            to configure an enabled provider that supports page-image or native
+            PDF extraction.
           </p>
         ) : null}
       </form>

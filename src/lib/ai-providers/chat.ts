@@ -4,6 +4,15 @@ import {
   isMockAIProviderUrl,
 } from "@/lib/ai-providers/mock";
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
+import {
+  AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE,
+  inferAiProviderMode,
+  type AiPdfInputStrategy,
+} from "@/lib/ai-providers/adapters";
+import {
+  generateWithGeminiNativePdf,
+  testGeminiNativeTextConnection,
+} from "@/lib/ai-providers/gemini-native";
 
 type ProviderProfileForUse = {
   apiKey: string;
@@ -17,8 +26,10 @@ type ProviderProfileForUse = {
 
 type ProviderInput = {
   fileName: string;
+  inputStrategy: AiPdfInputStrategy;
   pageImageDataUrls: string[];
   pdfBase64: string;
+  pdfBytes: Buffer;
   prompt: string;
   profile: ProviderProfileForUse;
 };
@@ -283,7 +294,10 @@ function mockExtraction(): AIPdfExtraction {
 }
 
 export async function testAIProviderConnection(
-  profile: Pick<ProviderProfileForUse, "apiKey" | "base_url" | "model" | "name">,
+  profile: Pick<
+    ProviderProfileForUse,
+    "apiKey" | "base_url" | "model" | "name" | "provider"
+  >,
 ) {
   if (isMockAIProviderUrl(profile.base_url)) {
     assertMockAIProviderAllowed();
@@ -292,6 +306,14 @@ export async function testAIProviderConnection(
       message: `Mock provider ${profile.name} is reachable.`,
       ok: true as const,
     };
+  }
+
+  if (inferAiProviderMode(profile) === "gemini_native") {
+    return testGeminiNativeTextConnection({
+      apiKey: profile.apiKey,
+      baseUrl: profile.base_url,
+      model: profile.model,
+    });
   }
 
   let response: Response;
@@ -354,8 +376,10 @@ export async function testAIProviderConnection(
 
 export async function callAIPdfExtractionProvider({
   fileName,
+  inputStrategy,
   pageImageDataUrls,
   pdfBase64,
+  pdfBytes,
   profile,
   prompt,
 }: ProviderInput) {
@@ -365,6 +389,57 @@ export async function callAIPdfExtractionProvider({
     return mockExtraction();
   }
 
+  if (inputStrategy === "gemini_native_pdf") {
+    let lastError: unknown = null;
+    let previousResponse = "";
+    let usedRepair = false;
+
+    for (let attempt = 1; attempt <= MAX_EXTRACTION_ATTEMPTS; attempt += 1) {
+      const contentText = (
+        await generateWithGeminiNativePdf({
+          apiKey: profile.apiKey,
+          baseUrl: profile.base_url,
+          fileName,
+          model: profile.model,
+          pdfBytes,
+          prompt:
+            attempt === 1
+              ? prompt
+              : buildRepairPrompt({
+                  error: lastError,
+                  previousResponse,
+                }),
+        })
+      ).text;
+      previousResponse = contentText;
+
+      try {
+        const extraction = parseExtractionContent(contentText);
+
+        if (usedRepair) {
+          extraction.warnings = [
+            ...extraction.warnings,
+            "AI provider response was repaired after schema validation failed.",
+          ];
+        }
+
+        return extraction;
+      } catch (error) {
+        lastError = error;
+
+        if (attempt >= MAX_EXTRACTION_ATTEMPTS) {
+          break;
+        }
+
+        usedRepair = true;
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("AI provider JSON did not match the expected import schema.");
+  }
+
   const content: unknown[] = [
     {
       text: prompt,
@@ -372,7 +447,7 @@ export async function callAIPdfExtractionProvider({
     },
   ];
 
-  if (profile.supports_pdf_input) {
+  if (inputStrategy === "openai_file") {
     content.push({
       file: {
         file_data: `data:application/pdf;base64,${pdfBase64}`,
@@ -380,7 +455,7 @@ export async function callAIPdfExtractionProvider({
       },
       type: "file",
     });
-  } else if (profile.supports_vision_images) {
+  } else if (inputStrategy === "page_images") {
     for (const dataUrl of pageImageDataUrls) {
       content.push({
         image_url: {
@@ -390,7 +465,7 @@ export async function callAIPdfExtractionProvider({
       });
     }
   } else {
-    throw new Error("Selected AI provider does not support PDF or image input.");
+    throw new Error(AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE);
   }
 
   const messages: ChatMessage[] = [

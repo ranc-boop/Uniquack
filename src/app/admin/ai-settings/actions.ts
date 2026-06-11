@@ -112,6 +112,7 @@ export async function testNewAIProviderConnection(formData: FormData) {
       base_url: parsed.base_url,
       model: parsed.model,
       name: parsed.name,
+      provider: parsed.provider,
     });
 
     return result;
@@ -178,6 +179,7 @@ export async function testSavedAIProviderConnection(formData: FormData) {
       base_url: parsed.base_url,
       model: parsed.model,
       name: parsed.name,
+      provider: parsed.provider,
     });
 
     return result;
