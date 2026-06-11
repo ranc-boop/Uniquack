@@ -34,7 +34,10 @@ import {
   AI_IMPORT_SOURCES_BUCKET,
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
-import { describeAiPdfProviderInput } from "@/lib/ai-providers/adapters";
+import {
+  aiPdfInputStrategySummaryLabel,
+  describeAiPdfProviderInput,
+} from "@/lib/ai-providers/adapters";
 import type { SafeAIProviderProfile } from "@/lib/ai-providers/profiles";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -1110,7 +1113,14 @@ export function AIPdfImportPanel({
                     <p>Batch: {statusSnapshot.batch.status}</p>
                     <p>Phase: {phaseLabel(phase)}</p>
                     <p>Assets: {statusSnapshot.assets?.length ?? 0}</p>
-                    <p>Input: {ai?.sourceInput ?? "-"}</p>
+                    <p>
+                      Input:{" "}
+                      {aiPdfInputStrategySummaryLabel(
+                        typeof ai?.sourceInput === "string"
+                          ? ai.sourceInput
+                          : undefined,
+                      )}
+                    </p>
                     <p>Questions: {ai?.questionCount ?? "-"}</p>
                     <p>Warnings: {warnings.length}</p>
                     {ai?.detail ? (
@@ -1357,7 +1367,10 @@ export function AIPdfImportPanel({
                   }
                 >
                   {option.profile.name} / {option.profile.model} -{" "}
-                  {option.support.strategy.replaceAll("_", " ")}
+                  {aiPdfInputStrategySummaryLabel(
+                    option.support.strategy,
+                    option.support.mode,
+                  )}
                 </option>
               ))}
             </select>

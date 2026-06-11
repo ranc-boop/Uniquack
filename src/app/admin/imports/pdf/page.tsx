@@ -1,17 +1,12 @@
 import Link from "next/link";
 
+import {
+  AIPdfControlDashboard,
+  type AIPdfControlDashboardBatch,
+} from "@/components/ai-pdf-control-dashboard";
 import { AIPdfImportPanel } from "@/components/ai-pdf-import-panel";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   listEnabledAIProviderProfiles,
@@ -87,6 +82,9 @@ export default async function AdminAIPdfImportPage() {
   const sourceBatchById = new Map(
     sourceBatches.map((batch) => [batch.id, batch]),
   );
+  const sourceAssetByBatchId = new Map(
+    (sourceAssets ?? []).map((asset) => [asset.batch_id, asset]),
+  );
   const createdQuestionCountByBatchId = new Map<string, number>();
 
   for (const item of sourceBatchItems) {
@@ -136,6 +134,30 @@ export default async function AdminAIPdfImportPage() {
       status: batch?.status ?? "draft",
     };
   });
+  const dashboardBatches: AIPdfControlDashboardBatch[] = (batches ?? []).map(
+    (batch) => {
+      const ai = aiSummary(batch.summary);
+      const summary = batch.summary as any;
+      const summaryQuestionCount =
+        typeof ai.createdQuestionCount === "number"
+          ? ai.createdQuestionCount
+          : typeof summary?.createdCount === "number"
+            ? summary.createdCount
+            : 0;
+
+      return {
+        createdQuestionCount: Math.max(
+          summaryQuestionCount,
+          createdQuestionCountByBatchId.get(batch.id) ?? 0,
+        ),
+        created_at: batch.created_at,
+        id: batch.id,
+        sourceAsset: sourceAssetByBatchId.get(batch.id) ?? null,
+        status: batch.status,
+        summary: batch.summary,
+      };
+    },
+  );
 
   return (
     <div className="space-y-6">
@@ -188,77 +210,7 @@ export default async function AdminAIPdfImportPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent AI PDF batches</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>File</TableHead>
-                  <TableHead>Created questions</TableHead>
-                  <TableHead>Crops</TableHead>
-                  <TableHead>Phase / warnings</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(batches ?? []).map((batch) => {
-                  const summary = batch.summary as any;
-                  const ai = aiSummary(batch.summary);
-                  const warnings = Array.isArray(ai.warnings) ? ai.warnings : [];
-                  const fileName =
-                    typeof ai.fileName === "string" ? ai.fileName : "-";
-                  const createdQuestionCount =
-                    Math.max(
-                      typeof ai.createdQuestionCount === "number"
-                        ? ai.createdQuestionCount
-                        : summary?.createdCount ?? 0,
-                      createdQuestionCountByBatchId.get(batch.id) ?? 0,
-                    );
-                  const uploadedCropCount =
-                    typeof ai.uploadedCropCount === "number"
-                      ? ai.uploadedCropCount
-                      : 0;
-                  const phase =
-                    typeof ai.phase === "string"
-                      ? ai.phase
-                      : `${warnings.length} warnings`;
-
-                  return (
-                    <TableRow key={batch.id}>
-                      <TableCell className="text-xs">
-                        {new Date(batch.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={batch.status === "failed" ? "outline" : "secondary"}>
-                          {batch.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-56 truncate text-xs">
-                        {fileName}
-                      </TableCell>
-                      <TableCell>{createdQuestionCount}</TableCell>
-                      <TableCell>{uploadedCropCount}</TableCell>
-                      <TableCell>{phase}</TableCell>
-                    </TableRow>
-                  );
-                })}
-                {!batches?.length ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
-                      No AI PDF imports yet.
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <AIPdfControlDashboard batches={dashboardBatches} />
     </div>
   );
 }

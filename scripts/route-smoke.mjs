@@ -384,6 +384,7 @@ const adminSession = await signedInSupabaseClient(
 const suffix = `route-multi-${Date.now()}`;
 const cleanup = {
   batches: [],
+  importBatchAssets: [],
   videoTags: [],
   questionTags: [],
   videos: [],
@@ -664,6 +665,107 @@ try {
     throw new Error(`import_batch_items insert failed: ${importItemError.message}`);
   }
 
+  const aiPdfFileName = `Route AI Control ${suffix}.pdf`;
+  const aiPdfBatch = await insertOne(
+    adminSession.client,
+    "import_batches",
+    {
+      source_type: "ai_pdf",
+      status: "imported",
+      summary: {
+        createdCount: 2,
+        aiPdfImport: {
+          createdQuestionCount: 2,
+          detectedFigureCount: 2,
+          fileName: aiPdfFileName,
+          missingImageAttachmentCount: 1,
+          missingQuestionNumbers: ["3"],
+          needsImageReview: true,
+          pageCount: 6,
+          phase: "completed",
+          provider: {
+            id: randomUUID(),
+            model: "gemini-2.5-flash-lite",
+            name: "Route Gemini Native",
+            provider: "gemini_native",
+          },
+          sourceInput: "gemini_native_pdf",
+          sourcePageRefs: ["1", "2"],
+          uploadedCropCount: 1,
+          warnings: [
+            "AI provider response was repaired after schema validation failed.",
+            "Possible missing question numbers: 3",
+          ],
+        },
+      },
+      created_by: adminSession.user.id,
+    },
+    "id",
+  );
+  cleanup.batches.push(aiPdfBatch.id);
+
+  const aiPdfAsset = await insertOne(
+    adminSession.client,
+    "import_batch_assets",
+    {
+      asset_role: "source_pdf",
+      batch_id: aiPdfBatch.id,
+      created_by: adminSession.user.id,
+      metadata: { pageCount: 6 },
+      mime_type: "application/pdf",
+      object_path: `route-smoke/private/${suffix}.pdf`,
+      original_filename: aiPdfFileName,
+      size_bytes: 2_097_152,
+      status: "ready",
+    },
+    "id",
+  );
+  cleanup.importBatchAssets.push(aiPdfAsset.id);
+
+  const aiPdfDashboard = await fetchRoute("/admin/imports/pdf", adminCookie);
+
+  assertRoute(
+    aiPdfDashboard.status === 200 &&
+      aiPdfDashboard.text.includes("AI Parsing Control Dashboard") &&
+      aiPdfDashboard.text.includes("Route Gemini Native") &&
+      aiPdfDashboard.text.includes("gemini-2.5-flash-lite") &&
+      aiPdfDashboard.text.includes("Gemini Native full PDF") &&
+      aiPdfDashboard.text.includes(
+        "AI-generated questions are draft-only and are not visible to students until published.",
+      ) &&
+      aiPdfDashboard.text.includes("Review generated drafts") &&
+      aiPdfDashboard.text.includes(
+        "Chunk details are not available for this import yet.",
+      ) &&
+      aiPdfDashboard.text.includes("Possible missing question numbers: 3") &&
+      aiPdfDashboard.text.includes(
+        "Questions may need diagrams/images before publishing.",
+      ) &&
+      aiPdfDashboard.text.includes("Missing figure attachments") &&
+      aiPdfDashboard.text.includes("Needs media review"),
+    "AI PDF control dashboard renders provider, strategy, draft-only review, warnings, chunks, and figure indicators",
+  );
+  const forbiddenDashboardTokens = [
+    ["AI_PROVIDER", "ENCRYPTION_KEY"].join("_"),
+    ["SUPABASE", "SERVICE_ROLE"].join("_"),
+    "s" + "k-",
+    "AI" + "za",
+  ];
+
+  assertRoute(
+    forbiddenDashboardTokens.every(
+      (token) => !aiPdfDashboard.text.includes(token),
+    ),
+    "AI PDF control dashboard does not render provider secrets",
+  );
+
+  const publicAiPdfProbe = await fetchRoute("/questions?min=0&max=1000");
+
+  assertRoute(
+    publicAiPdfProbe.status === 200 && !publicAiPdfProbe.text.includes(aiPdfFileName),
+    "public questions do not expose AI PDF source metadata",
+  );
+
   const reviewDashboard = await fetchRoute(
     `/admin/review?search=${encodeURIComponent(draftQuestion.question_code)}`,
     adminCookie,
@@ -877,6 +979,9 @@ try {
     "video tag filter works after tag sync",
   );
 } finally {
+  for (const id of cleanup.importBatchAssets) {
+    await adminSession.client.from("import_batch_assets").delete().eq("id", id);
+  }
   for (const binding of cleanup.videoTags) {
     await adminSession.client.from("video_tags").delete().match(binding);
   }
