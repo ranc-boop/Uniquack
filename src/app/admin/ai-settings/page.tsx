@@ -3,6 +3,7 @@ import {
   deleteAIProviderProfile,
   updateAIProviderProfile,
 } from "@/app/admin/ai-settings/actions";
+import { AIProviderModeFields } from "@/components/ai-provider-mode-fields";
 import { AIProviderTestButton } from "@/components/ai-provider-test-button";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
@@ -13,6 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { requireSuperAdmin } from "@/lib/auth/guards";
+import {
+  aiPdfInputStrategyLabel,
+  aiProviderModeSummaryLabel,
+  describeAiPdfProviderInput,
+  getAiProviderCapabilities,
+  inferAiProviderMode,
+} from "@/lib/ai-providers/adapters";
 import { listSafeAIProviderProfiles } from "@/lib/ai-providers/profiles";
 import { createClient } from "@/lib/supabase/server";
 
@@ -70,6 +78,18 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
           restart.
         </div>
       ) : null}
+      <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">Provider modes</p>
+        <p>
+          DeepSeek is OpenAI-compatible and should usually be configured as a
+          text/json provider, not as the main scanned PDF parser.
+        </p>
+        <p>
+          Gemini OpenAI-compatible can use page images but should not be marked
+          as native/full PDF input. Gemini Native uses the native Gemini API and
+          can use full PDF input through the Files API.
+        </p>
+      </div>
 
       <Card>
         <CardHeader>
@@ -79,25 +99,17 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
           <form action={createAIProviderProfile} className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="new_name">Name</Label>
-              <Input id="new_name" name="name" placeholder="DeepSeek PDF parser" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new_provider">Provider</Label>
-              <Input id="new_provider" name="provider" placeholder="deepseek" required />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="new_base_url">Base URL</Label>
               <Input
-                id="new_base_url"
-                name="base_url"
-                placeholder="https://api.example.com/v1"
+                id="new_name"
+                name="name"
+                placeholder="Gemini Native PDF"
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="new_model">Model</Label>
-              <Input id="new_model" name="model" placeholder="vision-model-name" required />
-            </div>
+            <AIProviderModeFields
+              idPrefix="new"
+              defaultProvider="openai_compatible"
+            />
             <div className="space-y-2">
               <Label htmlFor="new_api_key">API key</Label>
               <Input id="new_api_key" name="api_key" type="password" required />
@@ -105,8 +117,6 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
             <div className="flex flex-wrap gap-4 md:col-span-2">
               <Checkbox name="enabled" label="Enabled" defaultChecked />
               <Checkbox name="is_default" label="Default provider" />
-              <Checkbox name="supports_pdf_input" label="Supports full PDF input" defaultChecked />
-              <Checkbox name="supports_vision_images" label="Supports page images" defaultChecked />
             </div>
             <div className="md:col-span-2">
               <div className="flex flex-wrap gap-2">
@@ -116,8 +126,13 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                 <AIProviderTestButton mode="new" />
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Testing uses the current form values and does not save the
-                provider.
+                Testing uses a tiny text request with the current form values
+                and does not save the provider. DeepSeek defaults should stay
+                text/json unless multimodal support is explicitly verified.
+                For Gemini Native full PDF, use provider type gemini_native,
+                the generativelanguage base URL, and enable native/full PDF.
+                Test connection uses Gemini Native generateContent with a tiny
+                text prompt; PDF import uses the Files API separately.
               </p>
             </div>
           </form>
@@ -125,14 +140,23 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
       </Card>
 
       <div className="grid gap-4">
-        {profiles.map((profile) => (
+        {profiles.map((profile) => {
+          const providerMode = inferAiProviderMode(profile);
+          const providerInput = describeAiPdfProviderInput(profile);
+          const capabilities = getAiProviderCapabilities(profile);
+
+          return (
           <Card key={profile.id}>
             <CardHeader>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <CardTitle className="text-base">{profile.name}</CardTitle>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {profile.provider} / {profile.model}
+                    {aiProviderModeSummaryLabel(providerMode)} / {profile.model}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Mode: {aiProviderModeSummaryLabel(providerMode)} / PDF input:{" "}
+                    {aiPdfInputStrategyLabel(providerInput.strategy)}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1">
@@ -145,6 +169,16 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                   <Badge variant="outline">
                     key {profile.api_key_last4 ? `...${profile.api_key_last4}` : "missing"}
                   </Badge>
+                  {capabilities.supportsPageImages ? (
+                    <Badge variant="outline">page images</Badge>
+                  ) : null}
+                  {capabilities.supportsNativePdf ? (
+                    <Badge variant="outline">native PDF</Badge>
+                  ) : null}
+                  {!capabilities.supportsPageImages &&
+                  !capabilities.supportsNativePdf ? (
+                    <Badge variant="outline">text/json</Badge>
+                  ) : null}
                 </div>
               </div>
             </CardHeader>
@@ -155,28 +189,14 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                   <Label htmlFor={`name_${profile.id}`}>Name</Label>
                   <Input id={`name_${profile.id}`} name="name" defaultValue={profile.name} required />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`provider_${profile.id}`}>Provider</Label>
-                  <Input
-                    id={`provider_${profile.id}`}
-                    name="provider"
-                    defaultValue={profile.provider}
-                    required
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor={`base_url_${profile.id}`}>Base URL</Label>
-                  <Input
-                    id={`base_url_${profile.id}`}
-                    name="base_url"
-                    defaultValue={profile.base_url}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`model_${profile.id}`}>Model</Label>
-                  <Input id={`model_${profile.id}`} name="model" defaultValue={profile.model} required />
-                </div>
+                <AIProviderModeFields
+                  idPrefix={`profile_${profile.id}`}
+                  defaultProvider={providerMode}
+                  defaultBaseUrl={profile.base_url}
+                  defaultModel={profile.model}
+                  defaultSupportsPdfInput={profile.supports_pdf_input}
+                  defaultSupportsVisionImages={profile.supports_vision_images}
+                />
                 <div className="space-y-2">
                   <Label htmlFor={`api_key_${profile.id}`}>Replace API key</Label>
                   <Input
@@ -193,16 +213,6 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                     label="Default provider"
                     defaultChecked={profile.is_default}
                   />
-                  <Checkbox
-                    name="supports_pdf_input"
-                    label="Supports full PDF input"
-                    defaultChecked={profile.supports_pdf_input}
-                  />
-                  <Checkbox
-                    name="supports_vision_images"
-                    label="Supports page images"
-                    defaultChecked={profile.supports_vision_images}
-                  />
                 </div>
                 <div className="flex flex-wrap gap-2 md:col-span-2">
                   <FormSubmitButton pendingLabel="Saving provider...">
@@ -214,8 +224,12 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground md:col-span-2">
-                  Testing uses the current visible values. If Replace API key is
-                  blank, the saved encrypted key is used.
+                  Testing uses a tiny text request with the current visible
+                  values. If Replace API key is blank, the saved encrypted key
+                  is used. Gemini OpenAI-compatible providers should use page
+                  images; Gemini Native should use native/full PDF input. For
+                  Gemini Native, Test connection checks generateContent only;
+                  full PDF import uses the Files API.
                 </p>
               </form>
               <form action={deleteAIProviderProfile} className="mt-3">
@@ -224,7 +238,8 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
               </form>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
         {!profiles.length ? (
           <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
             No AI provider profiles yet.

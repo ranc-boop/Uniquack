@@ -1,4 +1,9 @@
 import { callAIPdfExtractionProvider } from "@/lib/ai-providers/chat";
+import {
+  AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE,
+  describeAiPdfProviderInput,
+  type AiPdfInputStrategy,
+} from "@/lib/ai-providers/adapters";
 import { loadAIProviderProfileForUse } from "@/lib/ai-providers/profiles";
 import {
   cropPdfPlaceholderImage,
@@ -56,7 +61,7 @@ type AIPdfProgress = {
   phase: string;
   provider?: { id: string; model: string; name: string; provider: string };
   questionCount?: number;
-  sourceInput?: "pdf" | "page_images";
+  sourceInput?: AiPdfInputStrategy;
   warnings?: string[];
 };
 
@@ -692,6 +697,15 @@ export async function processAIPdfImport(input: ProcessInput) {
     name: provider.name,
     provider: provider.provider,
   };
+  const providerInput = describeAiPdfProviderInput(provider);
+
+  if (!providerInput.supported) {
+    throw new Error(AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE);
+  }
+
+  if (!providerInput.implemented) {
+    throw new Error(providerInput.reason ?? AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE);
+  }
 
   await updateAIPdfBatchProgress(input, {
     detail: "Loading active tags for reuse.",
@@ -707,15 +721,27 @@ export async function processAIPdfImport(input: ProcessInput) {
   });
 
   await updateAIPdfBatchProgress(input, {
-    detail: provider.supports_pdf_input
-      ? "Preparing full PDF input for the model."
-      : "Rendering all PDF pages as ordered images for the model.",
+    detail:
+      providerInput.strategy === "openai_file"
+        ? "Preparing full PDF input for the model."
+        : providerInput.strategy === "gemini_native_pdf"
+          ? "Preparing Gemini Native full PDF input for the model."
+        : providerInput.strategy === "page_images"
+          ? "Rendering all PDF pages as ordered images for the model."
+          : "Preparing mock provider input.",
     pageCount,
-    phase: provider.supports_pdf_input ? "preparing_pdf_input" : "rendering_page_images",
+    phase:
+      providerInput.strategy === "openai_file"
+        ? "preparing_pdf_input"
+        : providerInput.strategy === "gemini_native_pdf"
+          ? "preparing_native_pdf_input"
+        : providerInput.strategy === "page_images"
+          ? "rendering_page_images"
+          : "preparing_provider_input",
     provider: providerSummary,
-    sourceInput: provider.supports_pdf_input ? "pdf" : "page_images",
+    sourceInput: providerInput.strategy,
   });
-  const pagesForVision = provider.supports_pdf_input
+  const pagesForVision = providerInput.strategy !== "page_images"
     ? []
     : await renderPdfPages(input.pdfBuffer);
 
@@ -725,13 +751,15 @@ export async function processAIPdfImport(input: ProcessInput) {
     pageCount,
     phase: "calling_provider",
     provider: providerSummary,
-    sourceInput: provider.supports_pdf_input ? "pdf" : "page_images",
+    sourceInput: providerInput.strategy,
   });
   const extraction = aiPdfExtractionSchema.parse(
     await callAIPdfExtractionProvider({
       fileName: input.fileName,
+      inputStrategy: providerInput.strategy,
       pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
       pdfBase64: input.pdfBuffer.toString("base64"),
+      pdfBytes: input.pdfBuffer,
       profile: provider,
       prompt,
     }),
