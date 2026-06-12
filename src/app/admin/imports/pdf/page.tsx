@@ -1,17 +1,12 @@
 import Link from "next/link";
 
+import {
+  AIPdfControlDashboard,
+  type AIPdfControlDashboardBatch,
+} from "@/components/ai-pdf-control-dashboard";
 import { AIPdfImportPanel } from "@/components/ai-pdf-import-panel";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   listEnabledAIProviderProfiles,
@@ -30,21 +25,31 @@ function aiSummary(summary: unknown) {
 export default async function AdminAIPdfImportPage() {
   const profile = await requireAdmin();
   const supabase = await createClient();
-  const { data: batches } = await supabase
+  const canViewAllImports = profile.role === "super_admin";
+  let batchesQuery = supabase
     .from("import_batches")
-    .select("id, status, summary, created_at")
+    .select("id, status, summary, created_at, created_by")
     .eq("source_type", "ai_pdf")
     .order("created_at", { ascending: false })
     .limit(10);
-  const { data: sourceAssets, error: sourceAssetsError } = await supabase
+  let sourceAssetsQuery = supabase
     .from("import_batch_assets")
     .select(
-      "id, batch_id, object_path, mime_type, size_bytes, original_filename, status, metadata, created_at",
+      "id, batch_id, object_path, mime_type, size_bytes, original_filename, status, metadata, created_at, created_by",
     )
     .eq("asset_role", "source_pdf")
     .neq("status", "deleted")
     .order("created_at", { ascending: false })
     .limit(25);
+
+  if (!canViewAllImports) {
+    batchesQuery = batchesQuery.eq("created_by", profile.id);
+    sourceAssetsQuery = sourceAssetsQuery.eq("created_by", profile.id);
+  }
+
+  const { data: batches } = await batchesQuery;
+  const { data: sourceAssets, error: sourceAssetsError } =
+    await sourceAssetsQuery;
   const sourceBatchIds = Array.from(
     new Set((sourceAssets ?? []).map((asset) => asset.batch_id)),
   );
@@ -56,17 +61,24 @@ export default async function AdminAIPdfImportPage() {
   }[] = [];
 
   if (sourceBatchIds.length) {
-    const [{ data: loadedBatches }, { data: loadedItems }] = await Promise.all([
-      supabase
+    let loadedBatchesQuery = supabase
         .from("import_batches")
-        .select("id, status, summary, created_at")
+        .select("id, status, summary, created_at, created_by")
         .eq("source_type", "ai_pdf")
-        .in("id", sourceBatchIds),
-      supabase
+        .in("id", sourceBatchIds);
+    const loadedItemsQuery = supabase
         .from("import_batch_items")
         .select("batch_id, status, created_question_id")
         .in("batch_id", sourceBatchIds)
-        .not("created_question_id", "is", null),
+        .not("created_question_id", "is", null);
+
+    if (!canViewAllImports) {
+      loadedBatchesQuery = loadedBatchesQuery.eq("created_by", profile.id);
+    }
+
+    const [{ data: loadedBatches }, { data: loadedItems }] = await Promise.all([
+      loadedBatchesQuery,
+      loadedItemsQuery,
     ]);
 
     sourceBatches = loadedBatches ?? [];
@@ -86,6 +98,9 @@ export default async function AdminAIPdfImportPage() {
   }
   const sourceBatchById = new Map(
     sourceBatches.map((batch) => [batch.id, batch]),
+  );
+  const sourceAssetByBatchId = new Map(
+    (sourceAssets ?? []).map((asset) => [asset.batch_id, asset]),
   );
   const createdQuestionCountByBatchId = new Map<string, number>();
 
@@ -136,6 +151,30 @@ export default async function AdminAIPdfImportPage() {
       status: batch?.status ?? "draft",
     };
   });
+  const dashboardBatches: AIPdfControlDashboardBatch[] = (batches ?? []).map(
+    (batch) => {
+      const ai = aiSummary(batch.summary);
+      const summary = batch.summary as any;
+      const summaryQuestionCount =
+        typeof ai.createdQuestionCount === "number"
+          ? ai.createdQuestionCount
+          : typeof summary?.createdCount === "number"
+            ? summary.createdCount
+            : 0;
+
+      return {
+        createdQuestionCount: Math.max(
+          summaryQuestionCount,
+          createdQuestionCountByBatchId.get(batch.id) ?? 0,
+        ),
+        created_at: batch.created_at,
+        id: batch.id,
+        sourceAsset: sourceAssetByBatchId.get(batch.id) ?? null,
+        status: batch.status,
+        summary: batch.summary,
+      };
+    },
+  );
 
   return (
     <div className="space-y-6">
@@ -184,81 +223,16 @@ export default async function AdminAIPdfImportPage() {
               AI PDF import migration before uploading source PDFs.
             </p>
           ) : null}
+          <p className="mb-4 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            {canViewAllImports
+              ? "Super admins can see all AI PDF imports. Regular admins only see imports they created."
+              : "Showing only AI PDF imports uploaded by your account."}
+          </p>
           <AIPdfImportPanel providers={providers} sources={sourceOptions} />
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent AI PDF batches</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>File</TableHead>
-                  <TableHead>Created questions</TableHead>
-                  <TableHead>Crops</TableHead>
-                  <TableHead>Phase / warnings</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(batches ?? []).map((batch) => {
-                  const summary = batch.summary as any;
-                  const ai = aiSummary(batch.summary);
-                  const warnings = Array.isArray(ai.warnings) ? ai.warnings : [];
-                  const fileName =
-                    typeof ai.fileName === "string" ? ai.fileName : "-";
-                  const createdQuestionCount =
-                    Math.max(
-                      typeof ai.createdQuestionCount === "number"
-                        ? ai.createdQuestionCount
-                        : summary?.createdCount ?? 0,
-                      createdQuestionCountByBatchId.get(batch.id) ?? 0,
-                    );
-                  const uploadedCropCount =
-                    typeof ai.uploadedCropCount === "number"
-                      ? ai.uploadedCropCount
-                      : 0;
-                  const phase =
-                    typeof ai.phase === "string"
-                      ? ai.phase
-                      : `${warnings.length} warnings`;
-
-                  return (
-                    <TableRow key={batch.id}>
-                      <TableCell className="text-xs">
-                        {new Date(batch.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={batch.status === "failed" ? "outline" : "secondary"}>
-                          {batch.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-56 truncate text-xs">
-                        {fileName}
-                      </TableCell>
-                      <TableCell>{createdQuestionCount}</TableCell>
-                      <TableCell>{uploadedCropCount}</TableCell>
-                      <TableCell>{phase}</TableCell>
-                    </TableRow>
-                  );
-                })}
-                {!batches?.length ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
-                      No AI PDF imports yet.
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <AIPdfControlDashboard batches={dashboardBatches} />
     </div>
   );
 }

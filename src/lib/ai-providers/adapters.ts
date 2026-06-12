@@ -124,6 +124,49 @@ export function aiPdfInputStrategyLabel(strategy: AiPdfInputStrategy) {
   return "unsupported";
 }
 
+export function aiPdfInputStrategySummaryLabel(
+  strategy: AiPdfInputStrategy | string | null | undefined,
+  mode?: AiProviderMode | string | null,
+) {
+  if (strategy === "gemini_native_pdf") {
+    return "Gemini Native full PDF";
+  }
+
+  if (strategy === "page_images") {
+    return "Rendered page images";
+  }
+
+  if (strategy === "openai_file") {
+    return "OpenAI-compatible full PDF";
+  }
+
+  if (strategy === "mock") {
+    return "Mock provider - testing only";
+  }
+
+  if (mode === "deepseek_openai") {
+    return "DeepSeek text/json";
+  }
+
+  if (mode === "gemini_native") {
+    return "Gemini Native full PDF";
+  }
+
+  if (mode === "gemini_openai") {
+    return "Rendered page images";
+  }
+
+  if (mode === "mock") {
+    return "Mock provider - testing only";
+  }
+
+  if (strategy === "unsupported") {
+    return "Unsupported";
+  }
+
+  return "Unsupported";
+}
+
 export function inferAiProviderMode(
   profile: Pick<AiProviderRoutingProfile, "base_url" | "provider">,
 ): AiProviderMode {

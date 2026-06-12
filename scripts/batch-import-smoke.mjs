@@ -8,6 +8,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
 const { sanitizeContentHtml } = await import("../src/lib/sanitize/html.ts");
+const { aiPdfExtractionSchema, normalizeAIPdfExtractionResponse } = await import(
+  "../src/lib/ai-pdf-import/schema.ts"
+);
+const { resolveAIPdfQuestionCodeForImport } = await import(
+  "../src/lib/ai-pdf-import/question-code.ts"
+);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -77,6 +83,149 @@ async function insertOne(client, table, payload, select = "*") {
   assert(!error && data, `${table} insert failed: ${error?.message}`);
   return data;
 }
+
+const lenientAiQuestions = Array.from({ length: 12 }, (_, index) => ({
+  asset_placeholders:
+    index === 0
+      ? [
+          {
+            alt: "Valid figure fallback",
+            bbox: { height: 0.2, width: 0.25, x: 0.1, y: 0.1 },
+            page: 1,
+          },
+          {
+            bbox: { height: 0.2, width: 0.25, x: 0.2, y: 0.2 },
+            page: 1,
+            placeholder: "bad placeholder!",
+          },
+        ]
+      : [],
+  content_html:
+    index === 1 ? "" : `<p>Lenient AI question ${index + 1} {{asset:figure_1}}</p>`,
+  content_source: `Lenient AI question ${index + 1}`,
+  difficulty_rating: index === 2 ? 10 : index === 3 ? 1200 : 520,
+  new_tag_names: index === 4 ? "Algebra, Functions" : [],
+  page_refs: index === 5 ? ["2", "bad", 3] : [1],
+  question_code: index === 6 ? "bad code with spaces!" : `LENIENT-${index + 1}`,
+  question_type:
+    index === 0 ? "multiple_choice" : index === 7 ? "unexpected type" : "frq",
+  solution_html:
+    index === 8 ? { answer: "Object answer should stringify" } : "<p>Solution.</p>",
+  solution_source:
+    index === 8 ? { answer: "Object answer should stringify" } : "Solution.",
+  status: "published",
+  tag_names: index === 9 ? "Geometry; Graphs" : [],
+  tag_slugs: [],
+  title: `Lenient AI Question ${index + 1}`,
+}));
+
+const lenientExtraction = normalizeAIPdfExtractionResponse({
+  questions: [
+    ...lenientAiQuestions,
+    null,
+    { title: "Missing content should be skipped" },
+    "not a question",
+  ],
+  warnings: "provider warning",
+});
+assert(lenientExtraction.questions.length === 12, "lenient question count mismatch");
+assert(lenientExtraction.questions[0].question_type === "mcq", "mcq alias was not normalized");
+assert(
+  lenientExtraction.questions[0].asset_placeholders.length === 1,
+  "invalid asset placeholders were not sanitized",
+);
+assert(
+  lenientExtraction.questions[0].asset_placeholders[0].placeholder ===
+    "{{asset:figure_1}}",
+  "asset placeholder fallback was not preserved",
+);
+assert(lenientExtraction.questions[2].difficulty_rating === 100, "difficulty min clamp failed");
+assert(lenientExtraction.questions[3].difficulty_rating === 1000, "difficulty max clamp failed");
+assert(
+  JSON.stringify(lenientExtraction.questions[4].new_tag_names) ===
+    JSON.stringify(["Algebra", "Functions"]),
+  "new_tag_names string was not split",
+);
+assert(
+  JSON.stringify(lenientExtraction.questions[5].page_refs) ===
+    JSON.stringify([2, 3]),
+  "page_refs were not filtered",
+);
+assert(
+  lenientExtraction.questions[6].question_code === undefined,
+  "invalid question_code was not dropped",
+);
+assert(
+  lenientExtraction.questions[7].question_type === "mixed",
+  "unknown question_type was not normalized to mixed",
+);
+assert(
+  /Object answer/.test(lenientExtraction.questions[8].solution_source ?? ""),
+  "object solution_source was not stringified",
+);
+assert(
+  JSON.stringify(lenientExtraction.questions[9].tag_names) ===
+    JSON.stringify(["Geometry", "Graphs"]),
+  "tag_names string was not split",
+);
+assert(
+  lenientExtraction.warnings.some((warning) => warning.includes("was skipped")),
+  "lenient AI parser did not warn about skipped bad questions",
+);
+assert(
+  lenientExtraction.warnings.includes(
+    "Some image placeholders were ignored because they were invalid.",
+  ),
+  "lenient AI parser did not warn about invalid asset placeholders",
+);
+let missingQuestionsFailed = false;
+try {
+  normalizeAIPdfExtractionResponse({ warnings: [] });
+} catch (error) {
+  missingQuestionsFailed =
+    error instanceof Error && /questions|zero importable/i.test(error.message);
+}
+assert(missingQuestionsFailed, "missing questions array did not fail the batch");
+pass("AI PDF lenient parser imports valid questions and skips bad questions");
+
+const generatedCodeWarnings = [];
+const generatedUsedCodes = new Set();
+const generatedExistingCodes = new Set(["1", "ai-deadbeef-003"]);
+assert(
+  resolveAIPdfQuestionCodeForImport({
+    batchId: "deadbeef-0000-0000-0000-000000000000",
+    existingQuestionCodes: generatedExistingCodes,
+    index: 0,
+    requestedQuestionCode: "1",
+    usedQuestionCodes: generatedUsedCodes,
+    warnings: generatedCodeWarnings,
+  }) === "AI-DEADBEEF-001",
+  "duplicate existing question_code did not generate stable code",
+);
+assert(
+  resolveAIPdfQuestionCodeForImport({
+    batchId: "deadbeef-0000-0000-0000-000000000000",
+    existingQuestionCodes: generatedExistingCodes,
+    index: 1,
+    requestedQuestionCode: "",
+    usedQuestionCodes: generatedUsedCodes,
+    warnings: generatedCodeWarnings,
+  }) === "AI-DEADBEEF-002",
+  "missing question_code did not generate stable code",
+);
+assert(
+  resolveAIPdfQuestionCodeForImport({
+    batchId: "deadbeef-0000-0000-0000-000000000000",
+    existingQuestionCodes: generatedExistingCodes,
+    index: 2,
+    requestedQuestionCode: "AI-DEADBEEF-001",
+    usedQuestionCodes: generatedUsedCodes,
+    warnings: generatedCodeWarnings,
+  }) === "AI-DEADBEEF-003-2",
+  "generated question_code did not avoid default-code collision",
+);
+assert(generatedCodeWarnings.length === 3, "generated code warnings mismatch");
+pass("AI PDF duplicate and missing question codes generate stable draft codes");
 
 const anon = createClient(supabaseUrl, supabaseAnonKey);
 const admin = await signIn("TEST_ADMIN_USERNAME", "TEST_ADMIN_PASSWORD");
@@ -446,6 +595,180 @@ try {
     "draft import was visible publicly",
   );
   pass("draft imports do not appear on public RLS reads");
+
+  const aiInvalidPlaceholderBatch = await insertOne(
+    admin.client,
+    "import_batches",
+    {
+      source_type: "ai_pdf",
+      status: "validating",
+      summary: { aiPdfImport: { phase: "provider_response_validated" } },
+      created_by: admin.user.id,
+    },
+    "id",
+  );
+  cleanup.batches.push(aiInvalidPlaceholderBatch.id);
+
+  const aiExtraction = aiPdfExtractionSchema.parse({
+    questions: [
+      {
+        asset_placeholders: [
+          {
+            alt: "Bad placeholder should be dropped",
+            bbox: { height: 0.2, width: 0.2, x: 0.1, y: 0.1 },
+            page: 1,
+            placeholder: "invalid placeholder with spaces!",
+          },
+          {
+            alt: "Missing bbox should be dropped",
+            page: 1,
+            placeholder: "{{asset:figure_2}}",
+          },
+        ],
+        content_html: "<p>AI PDF invalid placeholder question.</p>",
+        content_source: "AI PDF invalid placeholder question.",
+        difficulty_rating: 520,
+        new_tag_names: [],
+        page_refs: [1],
+        question_code: `AI-BATCH-${suffix}`,
+        question_type: "frq",
+        solution_html: "<p>AI PDF invalid placeholder solution.</p>",
+        solution_source: "AI PDF invalid placeholder solution.",
+        status: "published",
+        tag_slugs: [tag.slug],
+        title: "AI PDF invalid placeholder draft",
+      },
+    ],
+    warnings: [],
+  });
+  const aiQuestion = aiExtraction.questions[0];
+  const aiNormalizedQuestion = {
+    ai_metadata: {
+      asset_placeholders: aiQuestion.asset_placeholders,
+      page_refs: aiQuestion.page_refs,
+      source: "ai_pdf_import",
+      warnings: aiExtraction.warnings,
+    },
+    content_html: sanitizeContentHtml(aiQuestion.content_html),
+    content_source: aiQuestion.content_source,
+    content_source_format: "markdown_latex",
+    difficulty_rating: aiQuestion.difficulty_rating,
+    question_code: aiQuestion.question_code,
+    question_type: aiQuestion.question_type,
+    solution_html: sanitizeContentHtml(aiQuestion.solution_html ?? ""),
+    solution_source: aiQuestion.solution_source,
+    solution_source_format: "markdown_latex",
+    status: "draft",
+    tag_ids: [tag.id],
+    tag_slugs: aiQuestion.tag_slugs,
+    title: aiQuestion.title,
+  };
+  const { error: aiImportItemError } = await admin.client
+    .from("import_batch_items")
+    .insert({
+      batch_id: aiInvalidPlaceholderBatch.id,
+      item_index: 0,
+      raw_payload: {
+        asset_placeholders: "invalid provider payload was sanitized before strict parse",
+      },
+      normalized_question_json: aiNormalizedQuestion,
+      validation_errors: aiExtraction.warnings,
+      status: "valid",
+    });
+
+  assert(
+    !aiImportItemError,
+    `AI PDF invalid placeholder import item insert failed: ${aiImportItemError?.message}`,
+  );
+
+  const { data: aiCreatedQuestion, error: aiCreateQuestionError } =
+    await admin.client
+      .from("questions")
+      .insert({
+        question_code: aiNormalizedQuestion.question_code,
+        title: aiNormalizedQuestion.title,
+        content_html: aiNormalizedQuestion.content_html,
+        content_source: aiNormalizedQuestion.content_source,
+        content_source_format: aiNormalizedQuestion.content_source_format,
+        solution_html: aiNormalizedQuestion.solution_html,
+        solution_source: aiNormalizedQuestion.solution_source,
+        solution_source_format: aiNormalizedQuestion.solution_source_format,
+        difficulty_rating: aiNormalizedQuestion.difficulty_rating,
+        question_type: aiNormalizedQuestion.question_type,
+        status: "draft",
+        created_by: admin.user.id,
+        updated_by: admin.user.id,
+      })
+      .select("id,status")
+      .single();
+
+  assert(
+    !aiCreateQuestionError && aiCreatedQuestion,
+    `AI PDF invalid placeholder draft insert failed: ${aiCreateQuestionError?.message}`,
+  );
+  cleanup.questions.push(aiCreatedQuestion.id);
+
+  const { data: aiCreatedBindings, error: aiCreateBindingsError } =
+    await admin.client
+      .from("question_tags")
+      .insert([{ question_id: aiCreatedQuestion.id, tag_id: tag.id }])
+      .select("question_id,tag_id");
+
+  assert(
+    !aiCreateBindingsError && aiCreatedBindings?.length === 1,
+    `AI PDF invalid placeholder tag bind failed: ${aiCreateBindingsError?.message}`,
+  );
+  cleanup.questionTags.push(...aiCreatedBindings);
+
+  const { error: aiImportItemUpdateError } = await admin.client
+    .from("import_batch_items")
+    .update({
+      status: "imported",
+      created_question_id: aiCreatedQuestion.id,
+    })
+    .eq("batch_id", aiInvalidPlaceholderBatch.id)
+    .eq("item_index", 0);
+
+  assert(
+    !aiImportItemUpdateError,
+    `AI PDF invalid placeholder import item update failed: ${aiImportItemUpdateError?.message}`,
+  );
+
+  const { error: aiBatchUpdateError } = await admin.client
+    .from("import_batches")
+    .update({
+      status: "imported",
+      summary: {
+        aiPdfImport: {
+          createdQuestionCount: 1,
+          phase: "completed",
+          warnings: aiExtraction.warnings,
+        },
+        createdCount: 1,
+        errorCount: 0,
+      },
+    })
+    .eq("id", aiInvalidPlaceholderBatch.id);
+
+  assert(
+    !aiBatchUpdateError,
+    `AI PDF invalid placeholder batch update failed: ${aiBatchUpdateError?.message}`,
+  );
+
+  assert(
+    aiExtraction.warnings.includes(
+      "Some image placeholders were ignored because they were invalid.",
+    ),
+    "AI PDF invalid asset_placeholders did not create a warning",
+  );
+
+  assert(
+    aiCreatedQuestion.status === "draft",
+    "AI PDF invalid asset_placeholders created a non-draft question",
+  );
+  pass(
+    "AI PDF invalid asset_placeholders warn and still create draft questions",
+  );
   }
 } finally {
   for (const binding of cleanup.questionTags) {
