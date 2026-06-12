@@ -8,6 +8,10 @@ import {
   AI_PDF_IMPORT_MAX_BYTES,
   AI_PDF_IMPORT_MAX_PAGES,
 } from "@/lib/ai-pdf-import/constants";
+import {
+  createAIPdfChunkingSummary,
+  mergeAIPdfImportChunkingSummary,
+} from "@/lib/ai-pdf-import/chunking";
 import { getPdfPageCount } from "@/lib/ai-pdf-import/pdf";
 import { processAIPdfImport } from "@/lib/ai-pdf-import/service";
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth/guards";
@@ -89,6 +93,13 @@ function getUploadAttemptId(metadata: unknown) {
 
 function getAIPdfImportSummary(summary: unknown) {
   return plainObject(plainObject(summary).aiPdfImport);
+}
+
+function mergeAIPdfImportSummary(
+  existingAiPdfImport: Record<string, unknown>,
+  patch: Record<string, unknown> = {},
+) {
+  return mergeAIPdfImportChunkingSummary(existingAiPdfImport, patch);
 }
 
 export async function getAIPdfImportStatus(input: { batchId: string }) {
@@ -269,8 +280,7 @@ export async function deleteAIPdfSource(input: unknown) {
       : {};
   const deletedSummary = {
     ...summary,
-    aiPdfImport: {
-      ...aiPdfImport,
+    aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, {
       fileName:
         "fileName" in aiPdfImport && typeof aiPdfImport.fileName === "string"
           ? aiPdfImport.fileName
@@ -279,7 +289,7 @@ export async function deleteAIPdfSource(input: unknown) {
       sourceAvailable: false,
       sourceDeletedAt: new Date().toISOString(),
       sourceObjectPath: asset.object_path,
-    },
+    }),
   };
   const shouldKeepBatchStatus = batch.status === "imported" || hasImportedItems;
   const nextStatus = shouldKeepBatchStatus ? batch.status : "failed";
@@ -287,11 +297,13 @@ export async function deleteAIPdfSource(input: unknown) {
     ? deletedSummary
     : {
         ...deletedSummary,
-        aiPdfImport: {
-          ...deletedSummary.aiPdfImport,
-          error: "Source PDF was deleted before extraction.",
-          phase: "source_deleted",
-        },
+        aiPdfImport: mergeAIPdfImportSummary(
+          plainObject(deletedSummary.aiPdfImport),
+          {
+            error: "Source PDF was deleted before extraction.",
+            phase: "source_deleted",
+          },
+        ),
       };
 
   const { error: batchUpdateError } = await supabase
@@ -370,8 +382,7 @@ export async function cancelAIPdfSourceUpload(input: unknown) {
   const aiPdfImport = getAIPdfImportSummary(summary);
   const nextSummary = {
     ...summary,
-    aiPdfImport: {
-      ...aiPdfImport,
+    aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, {
       detail: "Source PDF upload was cancelled before it became ready.",
       fileName:
         getString(aiPdfImport.fileName) ??
@@ -385,7 +396,7 @@ export async function cancelAIPdfSourceUpload(input: unknown) {
       ...(storageError
         ? { warning: `Storage cleanup failed: ${storageError.message}` }
         : {}),
-    },
+    }),
   };
 
   await supabase
@@ -505,13 +516,12 @@ export async function resetAIPdfImportOutputs(input: unknown) {
       status: "validating",
       summary: {
         ...summary,
-        aiPdfImport: {
-          ...aiPdfImport,
+        aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, {
           detail: "Resetting generated AI draft questions and image assets.",
           phase: "resetting_generated_drafts",
           resetOperationId,
           resetStartedAt,
-        },
+        }),
       } as Json,
     })
     .eq("id", parsed.batchId)
@@ -663,7 +673,7 @@ export async function resetAIPdfImportOutputs(input: unknown) {
 
   const nextSummary = {
     ...summary,
-    aiPdfImport: nextAiPdfImport,
+    aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, nextAiPdfImport),
     createdCount: 0,
     createdQuestions: [],
     duplicateCount: 0,
@@ -710,14 +720,13 @@ export async function resetAIPdfImportOutputs(input: unknown) {
         status: "failed",
         summary: {
           ...summary,
-          aiPdfImport: {
-            ...aiPdfImport,
+          aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, {
             detail: "AI PDF reset failed. Some generated output may need manual review.",
             error: message,
             phase: "reset_failed",
             resetFailedAt: new Date().toISOString(),
             resetOperationId,
-          },
+          }),
         } as Json,
       })
       .eq("id", parsed.batchId)
@@ -820,7 +829,7 @@ export async function finalizeAIPdfSourceUpload(input: unknown) {
   await requireAdmin();
   const parsed = sourceAssetUploadAttemptInputSchema.parse(input);
   const supabase = await createClient();
-  const { asset } = await ensureSourceAssetCanBeManaged({
+  const { asset, batch } = await ensureSourceAssetCanBeManaged({
     assetId: parsed.assetId,
     batchId: parsed.batchId,
     supabase,
@@ -832,17 +841,33 @@ export async function finalizeAIPdfSourceUpload(input: unknown) {
   }
 
   if (asset.status === "ready") {
-    const summary = {
-      aiPdfImport: {
-        fileName: asset.original_filename,
-        pageCount:
-          typeof metadata.pageCount === "number" ? metadata.pageCount : undefined,
-        phase: "source_uploaded",
-        sourceAssetId: asset.id,
-        sourceObjectPath: asset.object_path,
-        uploadAttemptId: parsed.uploadAttemptId,
-      },
+    const readyPageCount =
+      typeof metadata.pageCount === "number" ? metadata.pageCount : undefined;
+    const existingSummary = plainObject(batch.summary);
+    const existingAiPdfImport = getAIPdfImportSummary(existingSummary);
+    const readyPatch: Record<string, unknown> = {
+      fileName: asset.original_filename,
+      phase: "source_uploaded",
+      sourceAssetId: asset.id,
+      sourceObjectPath: asset.object_path,
+      uploadAttemptId: parsed.uploadAttemptId,
     };
+
+    if (readyPageCount) {
+      readyPatch.pageCount = readyPageCount;
+    }
+
+    const summary = {
+      ...existingSummary,
+      aiPdfImport: mergeAIPdfImportSummary(existingAiPdfImport, readyPatch),
+    };
+
+    await supabase
+      .from("import_batches")
+      .update({ summary: summary as Json })
+      .eq("id", parsed.batchId)
+      .eq("source_type", "ai_pdf")
+      .in("status", ["draft", "ready"]);
 
     return {
       batchId: parsed.batchId,
@@ -923,7 +948,8 @@ export async function finalizeAIPdfSourceUpload(input: unknown) {
       .update({
         status: "failed",
         summary: {
-          aiPdfImport: {
+          ...plainObject(batch.summary),
+          aiPdfImport: mergeAIPdfImportSummary(getAIPdfImportSummary(batch.summary), {
             error: message,
             fileName: asset.original_filename,
             pageCount,
@@ -931,8 +957,8 @@ export async function finalizeAIPdfSourceUpload(input: unknown) {
             sourceAssetId: asset.id,
             sourceObjectPath: asset.object_path,
             uploadAttemptId: parsed.uploadAttemptId,
-          },
-        },
+          }),
+        } as Json,
       })
       .eq("id", parsed.batchId);
 
@@ -966,20 +992,22 @@ export async function finalizeAIPdfSourceUpload(input: unknown) {
   }
 
   const summary = {
-    aiPdfImport: {
+    ...plainObject(batch.summary),
+    aiPdfImport: mergeAIPdfImportSummary(getAIPdfImportSummary(batch.summary), {
+      chunking: createAIPdfChunkingSummary({ pageCount }),
       fileName: asset.original_filename,
       pageCount,
       phase: "source_uploaded",
       sourceAssetId: asset.id,
       sourceObjectPath: asset.object_path,
       uploadAttemptId: parsed.uploadAttemptId,
-    },
+    }),
   };
   const { error: batchUpdateError } = await supabase
     .from("import_batches")
     .update({
       status: "draft",
-      summary,
+      summary: summary as Json,
     })
     .eq("id", parsed.batchId);
 
@@ -1071,13 +1099,12 @@ async function ensureBatchCanExtract({
         status: "failed",
         summary: {
           ...summary,
-          aiPdfImport: {
-            ...aiPdfImport,
+          aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, {
             detail: "Previous AI extraction lease expired before completion.",
             error: "Previous AI extraction lease expired before completion.",
             phase: "stale_lease",
             staleLeaseDetectedAt: new Date().toISOString(),
-          },
+          }),
         } as Json,
       })
       .eq("id", batchId)
@@ -1108,15 +1135,18 @@ async function acquireExtractionLease({
   sourceAsset: Awaited<ReturnType<typeof loadSourceAsset>>;
   supabase: Awaited<ReturnType<typeof createClient>>;
 }) {
-  await ensureBatchCanExtract({ batchId, supabase });
+  const batch = await ensureBatchCanExtract({ batchId, supabase });
 
   const jobId = crypto.randomUUID();
   const now = new Date();
   const leaseExpiresAt = new Date(
     now.getTime() + AI_PDF_EXTRACTION_LEASE_MS,
   ).toISOString();
+  const existingSummary = plainObject(batch.summary);
+  const existingAiPdfImport = getAIPdfImportSummary(existingSummary);
   const summary = {
-    aiPdfImport: {
+    ...existingSummary,
+    aiPdfImport: mergeAIPdfImportSummary(existingAiPdfImport, {
       detail: "AI extraction was queued and is waiting for the client to run the leased job.",
       fileName: sourceAsset.original_filename,
       jobId,
@@ -1126,13 +1156,13 @@ async function acquireExtractionLease({
       providerProfileId,
       sourceAssetId: sourceAsset.id,
       sourceObjectPath: sourceAsset.object_path,
-    },
+    }),
   };
   const { data: leasedBatch, error: leaseError } = await supabase
     .from("import_batches")
     .update({
       status: "validating",
-      summary,
+      summary: summary as Json,
     })
     .eq("id", batchId)
     .eq("source_type", "ai_pdf")
@@ -1184,12 +1214,25 @@ async function recordExtractionFailure({
   sourceAsset: Awaited<ReturnType<typeof loadSourceAsset>>;
   supabase: Awaited<ReturnType<typeof createClient>>;
 }) {
+  const { data: batch, error: readError } = await supabase
+    .from("import_batches")
+    .select("summary")
+    .eq("id", batchId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new Error(readError.message);
+  }
+
+  const existingSummary = plainObject(batch?.summary);
+  const existingAiPdfImport = getAIPdfImportSummary(existingSummary);
   const { error: updateError } = await supabase
     .from("import_batches")
     .update({
       status: "failed",
       summary: {
-        aiPdfImport: {
+        ...existingSummary,
+        aiPdfImport: mergeAIPdfImportSummary(existingAiPdfImport, {
           detail: "AI PDF extraction failed. See error output.",
           error: message,
           fileName: sourceAsset.original_filename,
@@ -1199,8 +1242,8 @@ async function recordExtractionFailure({
           providerProfileId,
           sourceAssetId: sourceAsset.id,
           sourceObjectPath: sourceAsset.object_path,
-        },
-      },
+        }),
+      } as Json,
     })
     .eq("id", batchId)
     .eq("status", "validating")
@@ -1227,22 +1270,35 @@ async function runAIPdfExtractionJob({
   supabase: Awaited<ReturnType<typeof createClient>>;
 }) {
   try {
+    const { data: batch, error: readError } = await supabase
+      .from("import_batches")
+      .select("summary")
+      .eq("id", batchId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(readError.message);
+    }
+
+    const existingSummary = plainObject(batch?.summary);
+    const existingAiPdfImport = getAIPdfImportSummary(existingSummary);
     const { error: startError } = await supabase
       .from("import_batches")
       .update({
         status: "validating",
         summary: {
-          aiPdfImport: {
-          detail: "Reading source PDF and preparing AI extraction.",
-          fileName: sourceAsset.original_filename,
-          jobId,
-          phase: "extracting",
-          phaseStartedAt: new Date().toISOString(),
-          providerProfileId,
+          ...existingSummary,
+          aiPdfImport: mergeAIPdfImportSummary(existingAiPdfImport, {
+            detail: "Reading source PDF and preparing AI extraction.",
+            fileName: sourceAsset.original_filename,
+            jobId,
+            phase: "extracting",
+            phaseStartedAt: new Date().toISOString(),
+            providerProfileId,
             sourceAssetId: sourceAsset.id,
             sourceObjectPath: sourceAsset.object_path,
-          },
-        },
+          }),
+        } as Json,
       })
       .eq("id", batchId)
       .eq("status", "validating")

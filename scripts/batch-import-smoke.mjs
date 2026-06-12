@@ -11,9 +11,10 @@ const { sanitizeContentHtml } = await import("../src/lib/sanitize/html.ts");
 const { aiPdfExtractionSchema, normalizeAIPdfExtractionResponse } = await import(
   "../src/lib/ai-pdf-import/schema.ts"
 );
-const { resolveAIPdfQuestionCodeForImport } = await import(
-  "../src/lib/ai-pdf-import/question-code.ts"
-);
+const {
+  generateAIPdfQuestionCodeForImport,
+  resolveAIPdfQuestionCodeForImport,
+} = await import("../src/lib/ai-pdf-import/question-code.ts");
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -226,6 +227,27 @@ assert(
 );
 assert(generatedCodeWarnings.length === 3, "generated code warnings mismatch");
 pass("AI PDF duplicate and missing question codes generate stable draft codes");
+
+const serverGeneratedCodes = new Set();
+assert(
+  generateAIPdfQuestionCodeForImport({
+    batchId: "facefeed-0000-0000-0000-000000000000",
+    existingQuestionCodes: new Set(["ai-facefeed-001"]),
+    index: 0,
+    usedQuestionCodes: serverGeneratedCodes,
+  }) === "AI-FACEFEED-001-2",
+  "server-generated AI PDF question_code did not avoid existing default collision",
+);
+assert(
+  generateAIPdfQuestionCodeForImport({
+    batchId: "facefeed-0000-0000-0000-000000000000",
+    existingQuestionCodes: new Set(["ai-facefeed-001"]),
+    index: 1,
+    usedQuestionCodes: serverGeneratedCodes,
+  }) === "AI-FACEFEED-002",
+  "server-generated AI PDF question_code did not follow extracted order",
+);
+pass("AI PDF server-generated question codes do not depend on visible numbering");
 
 const anon = createClient(supabaseUrl, supabaseAnonKey);
 const admin = await signIn("TEST_ADMIN_USERNAME", "TEST_ADMIN_PASSWORD");
