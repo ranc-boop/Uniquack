@@ -381,10 +381,16 @@ const adminSession = await signedInSupabaseClient(
   "TEST_ADMIN_USERNAME",
   "TEST_ADMIN_PASSWORD",
 );
+const superAdminSession = await signedInSupabaseClient(
+  "TEST_SUPER_ADMIN_USERNAME",
+  "TEST_SUPER_ADMIN_PASSWORD",
+);
 const suffix = `route-multi-${Date.now()}`;
 const cleanup = {
   batches: [],
   importBatchAssets: [],
+  superAdminBatches: [],
+  superAdminImportBatchAssets: [],
   videoTags: [],
   questionTags: [],
   videos: [],
@@ -722,18 +728,160 @@ try {
   );
   cleanup.importBatchAssets.push(aiPdfAsset.id);
 
+  const { error: aiPdfImportItemError } = await adminSession.client
+    .from("import_batch_items")
+    .insert({
+      batch_id: aiPdfBatch.id,
+      item_index: 0,
+      raw_payload: { code: draftQuestion.question_code },
+      normalized_question_json: {
+        ai_metadata: {
+          asset_placeholders: [],
+          page_refs: [1],
+          source: "ai_pdf_import",
+        },
+        image_urls: ["https://example.com/ai-pdf-review-draft.png"],
+        question_code: draftQuestion.question_code,
+        question_asset_ids: [questionAssetRefId],
+        source_file_ids: [sourceFileRefId],
+        status: "draft",
+        title: draftQuestion.title,
+      },
+      validation_errors: [],
+      status: "imported",
+      created_question_id: draftQuestion.id,
+    });
+
+  if (aiPdfImportItemError) {
+    throw new Error(
+      `AI PDF import_batch_items insert failed: ${aiPdfImportItemError.message}`,
+    );
+  }
+
+  const failedAiPdfFileName = `Route AI Failed Control ${suffix}.pdf`;
+  const failedFigureWarnings = Array.from(
+    { length: 11 },
+    (_, index) =>
+      `Could not find created question for {{asset:figure_${index + 1}}}.`,
+  );
+  const failedAiPdfBatch = await insertOne(
+    adminSession.client,
+    "import_batches",
+    {
+      source_type: "ai_pdf",
+      status: "failed",
+      summary: {
+        createdCount: 0,
+        aiPdfImport: {
+          createdQuestionCount: 0,
+          detectedFigureCount: 11,
+          fileName: failedAiPdfFileName,
+          missingImageAttachmentCount: 11,
+          pageCount: 27,
+          phase: "completed",
+          error:
+            "AI provider JSON did not match the expected import schema. questions.0.asset_placeholders.0.placeholder: Invalid input. Response preview: {\"asset_placeholders\":[{\"placeholder\":\"bad value\"}]}",
+          provider: {
+            id: randomUUID(),
+            model: "gemini-2.5-flash-lite",
+            name: "Route Gemini Native PDF",
+            provider: "gemini_native",
+          },
+          uploadedCropCount: 0,
+          warnings: failedFigureWarnings,
+        },
+      },
+      created_by: adminSession.user.id,
+    },
+    "id",
+  );
+  cleanup.batches.push(failedAiPdfBatch.id);
+
+  const failedAiPdfAsset = await insertOne(
+    adminSession.client,
+    "import_batch_assets",
+    {
+      asset_role: "source_pdf",
+      batch_id: failedAiPdfBatch.id,
+      created_by: adminSession.user.id,
+      metadata: { pageCount: 27 },
+      mime_type: "application/pdf",
+      object_path: `route-smoke/private/${suffix}-failed.pdf`,
+      original_filename: failedAiPdfFileName,
+      size_bytes: 6_291_456,
+      status: "ready",
+    },
+    "id",
+  );
+  cleanup.importBatchAssets.push(failedAiPdfAsset.id);
+
+  const hiddenOtherUserFileName = `Route AI Other User ${suffix}.pdf`;
+  const otherUserAiPdfBatch = await insertOne(
+    superAdminSession.client,
+    "import_batches",
+    {
+      source_type: "ai_pdf",
+      status: "imported",
+      summary: {
+        createdCount: 1,
+        aiPdfImport: {
+          createdQuestionCount: 1,
+          fileName: hiddenOtherUserFileName,
+          pageCount: 1,
+          phase: "completed",
+          provider: {
+            id: randomUUID(),
+            model: "gemini-2.5-flash-lite",
+            name: "Route Other User Gemini",
+            provider: "gemini_native",
+          },
+          sourceInput: "gemini_native_pdf",
+          uploadedCropCount: 0,
+          warnings: [],
+        },
+      },
+      created_by: superAdminSession.user.id,
+    },
+    "id",
+  );
+  cleanup.superAdminBatches.push(otherUserAiPdfBatch.id);
+
+  const otherUserAiPdfAsset = await insertOne(
+    superAdminSession.client,
+    "import_batch_assets",
+    {
+      asset_role: "source_pdf",
+      batch_id: otherUserAiPdfBatch.id,
+      created_by: superAdminSession.user.id,
+      metadata: { pageCount: 1 },
+      mime_type: "application/pdf",
+      object_path: `route-smoke/private/${suffix}-other-user.pdf`,
+      original_filename: hiddenOtherUserFileName,
+      size_bytes: 1024,
+      status: "ready",
+    },
+    "id",
+  );
+  cleanup.superAdminImportBatchAssets.push(otherUserAiPdfAsset.id);
+
   const aiPdfDashboard = await fetchRoute("/admin/imports/pdf", adminCookie);
+  const superAdminAiPdfDashboard = await fetchRoute(
+    "/admin/imports/pdf",
+    superAdminCookie,
+  );
 
   assertRoute(
     aiPdfDashboard.status === 200 &&
       aiPdfDashboard.text.includes("AI Parsing Control Dashboard") &&
       aiPdfDashboard.text.includes("Route Gemini Native") &&
+      !aiPdfDashboard.text.includes("Latest AI PDF extraction") &&
       aiPdfDashboard.text.includes("gemini-2.5-flash-lite") &&
       aiPdfDashboard.text.includes("Gemini Native full PDF") &&
       aiPdfDashboard.text.includes(
         "AI-generated questions are draft-only and are not visible to students until published.",
       ) &&
       aiPdfDashboard.text.includes("Review generated drafts") &&
+      aiPdfDashboard.text.includes(`/admin/review?batch=${aiPdfBatch.id}`) &&
       aiPdfDashboard.text.includes(
         "Chunk details are not available for this import yet.",
       ) &&
@@ -744,6 +892,79 @@ try {
       aiPdfDashboard.text.includes("Missing figure attachments") &&
       aiPdfDashboard.text.includes("Needs media review"),
     "AI PDF control dashboard renders provider, strategy, draft-only review, warnings, chunks, and figure indicators",
+  );
+  const dashboardStart = aiPdfDashboard.text.indexOf(
+    "AI Parsing Control Dashboard",
+  );
+  const failedCardStart = aiPdfDashboard.text.indexOf(
+    failedAiPdfFileName,
+    dashboardStart,
+  );
+  const failedDashboardBlock = aiPdfDashboard.text.slice(
+    Math.max(0, failedCardStart - 2_000),
+    failedCardStart + 12_000,
+  );
+  const failedCard = aiPdfDashboard.text.slice(
+    failedCardStart,
+    failedCardStart + 10_000,
+  );
+
+  assertRoute(failedCardStart >= 0, "AI PDF failed batch fixture renders");
+  assertRoute(
+    failedDashboardBlock.includes("Failed") &&
+      failedDashboardBlock.includes("Phase:") &&
+      !failedDashboardBlock.includes("Phase: Completed"),
+    "AI PDF failed batch never renders completed phase",
+  );
+  assertRoute(
+    failedCard.includes("Input:") &&
+      failedCard.includes("Gemini Native full PDF") &&
+      !failedCard.includes("Unsupported"),
+    "AI PDF failed Gemini Native batch renders supported full PDF input",
+  );
+  assertRoute(
+    failedCard.includes(
+      "The AI returned invalid image placeholder metadata. This should be treated as a warning instead of blocking all questions.",
+    ) &&
+      failedCard.includes(
+        "No draft questions were created because the AI response did not match the expected question schema.",
+      ),
+    "AI PDF failed batch renders human-readable schema and placeholder summaries",
+  );
+  assertRoute(
+    failedCard.includes("Technical details") &&
+      failedCard.includes(
+        "11 figure placeholders could not be attached because no matching draft questions were created.",
+      ) &&
+      failedCard.includes("Debug details"),
+    "AI PDF failed batch summarizes repeated figure placeholder warnings",
+  );
+  assertRoute(
+    failedCard.includes("No drafts were created.") &&
+      failedCard.includes("The extraction failed before questions could be imported.") &&
+      failedCard.includes("Retry the import or upload the PDF again after parser fixes.") &&
+      failedCard.includes("No drafts to review"),
+    "AI PDF failed batch with zero created questions disables review CTA and explains retry",
+  );
+  assertRoute(
+    failedCard.includes("Source assets:") &&
+      failedCard.includes("Question assets:") &&
+      failedCard.includes("Uploaded crops:"),
+    "AI PDF failed batch uses clear source/question asset labels",
+  );
+
+  assertRoute(
+    !aiPdfDashboard.text.includes(hiddenOtherUserFileName) &&
+      aiPdfDashboard.text.includes("Showing only AI PDF imports uploaded by your account."),
+    "normal admin sees only their own AI PDF imports",
+  );
+  assertRoute(
+    superAdminAiPdfDashboard.status === 200 &&
+      superAdminAiPdfDashboard.text.includes(hiddenOtherUserFileName) &&
+      superAdminAiPdfDashboard.text.includes(
+        "Super admins can see all AI PDF imports.",
+      ),
+    "super_admin can see all AI PDF imports with explicit UI copy",
   );
   const forbiddenDashboardTokens = [
     ["AI_PROVIDER", "ENCRYPTION_KEY"].join("_"),
@@ -770,6 +991,10 @@ try {
     `/admin/review?search=${encodeURIComponent(draftQuestion.question_code)}`,
     adminCookie,
   );
+  const reviewBatchDashboard = await fetchRoute(
+    `/admin/review?batch=${aiPdfBatch.id}`,
+    adminCookie,
+  );
 
   assertRoute(
     reviewDashboard.status === 200 &&
@@ -784,6 +1009,14 @@ try {
   assertRoute(
     !reviewDashboard.text.includes(question.title),
     "published question does not appear in review queue",
+  );
+  assertRoute(
+    reviewBatchDashboard.status === 200 &&
+      reviewBatchDashboard.text.includes("Showing drafts from AI PDF import") &&
+      reviewBatchDashboard.text.includes(aiPdfBatch.id.slice(0, 8)) &&
+      reviewBatchDashboard.text.includes(draftQuestion.question_code) &&
+      reviewBatchDashboard.text.includes("Clear batch filter"),
+    "review dashboard can jump directly to drafts from one AI PDF import batch",
   );
 
   const adminDraftQuestionEdit = await fetchRoute(
@@ -979,6 +1212,15 @@ try {
     "video tag filter works after tag sync",
   );
 } finally {
+  for (const id of cleanup.superAdminImportBatchAssets) {
+    await superAdminSession.client
+      .from("import_batch_assets")
+      .delete()
+      .eq("id", id);
+  }
+  for (const id of cleanup.superAdminBatches) {
+    await superAdminSession.client.from("import_batches").delete().eq("id", id);
+  }
   for (const id of cleanup.importBatchAssets) {
     await adminSession.client.from("import_batch_assets").delete().eq("id", id);
   }

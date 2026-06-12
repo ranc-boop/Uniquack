@@ -25,21 +25,31 @@ function aiSummary(summary: unknown) {
 export default async function AdminAIPdfImportPage() {
   const profile = await requireAdmin();
   const supabase = await createClient();
-  const { data: batches } = await supabase
+  const canViewAllImports = profile.role === "super_admin";
+  let batchesQuery = supabase
     .from("import_batches")
-    .select("id, status, summary, created_at")
+    .select("id, status, summary, created_at, created_by")
     .eq("source_type", "ai_pdf")
     .order("created_at", { ascending: false })
     .limit(10);
-  const { data: sourceAssets, error: sourceAssetsError } = await supabase
+  let sourceAssetsQuery = supabase
     .from("import_batch_assets")
     .select(
-      "id, batch_id, object_path, mime_type, size_bytes, original_filename, status, metadata, created_at",
+      "id, batch_id, object_path, mime_type, size_bytes, original_filename, status, metadata, created_at, created_by",
     )
     .eq("asset_role", "source_pdf")
     .neq("status", "deleted")
     .order("created_at", { ascending: false })
     .limit(25);
+
+  if (!canViewAllImports) {
+    batchesQuery = batchesQuery.eq("created_by", profile.id);
+    sourceAssetsQuery = sourceAssetsQuery.eq("created_by", profile.id);
+  }
+
+  const { data: batches } = await batchesQuery;
+  const { data: sourceAssets, error: sourceAssetsError } =
+    await sourceAssetsQuery;
   const sourceBatchIds = Array.from(
     new Set((sourceAssets ?? []).map((asset) => asset.batch_id)),
   );
@@ -51,17 +61,24 @@ export default async function AdminAIPdfImportPage() {
   }[] = [];
 
   if (sourceBatchIds.length) {
-    const [{ data: loadedBatches }, { data: loadedItems }] = await Promise.all([
-      supabase
+    let loadedBatchesQuery = supabase
         .from("import_batches")
-        .select("id, status, summary, created_at")
+        .select("id, status, summary, created_at, created_by")
         .eq("source_type", "ai_pdf")
-        .in("id", sourceBatchIds),
-      supabase
+        .in("id", sourceBatchIds);
+    const loadedItemsQuery = supabase
         .from("import_batch_items")
         .select("batch_id, status, created_question_id")
         .in("batch_id", sourceBatchIds)
-        .not("created_question_id", "is", null),
+        .not("created_question_id", "is", null);
+
+    if (!canViewAllImports) {
+      loadedBatchesQuery = loadedBatchesQuery.eq("created_by", profile.id);
+    }
+
+    const [{ data: loadedBatches }, { data: loadedItems }] = await Promise.all([
+      loadedBatchesQuery,
+      loadedItemsQuery,
     ]);
 
     sourceBatches = loadedBatches ?? [];
@@ -206,6 +223,11 @@ export default async function AdminAIPdfImportPage() {
               AI PDF import migration before uploading source PDFs.
             </p>
           ) : null}
+          <p className="mb-4 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            {canViewAllImports
+              ? "Super admins can see all AI PDF imports. Regular admins only see imports they created."
+              : "Showing only AI PDF imports uploaded by your account."}
+          </p>
           <AIPdfImportPanel providers={providers} sources={sourceOptions} />
         </CardContent>
       </Card>

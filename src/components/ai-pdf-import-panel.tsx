@@ -35,6 +35,13 @@ import {
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
 import {
+  deriveAIPdfBatchDisplayState,
+  deriveAIPdfPhase,
+  friendlyAIPdfPhaseLabel,
+  sanitizeAIPdfErrorForDisplay,
+  summarizeAIPdfError as summarizeSharedAIPdfError,
+} from "@/lib/ai-pdf-import/display";
+import {
   aiPdfInputStrategySummaryLabel,
   describeAiPdfProviderInput,
 } from "@/lib/ai-providers/adapters";
@@ -120,14 +127,19 @@ function isClientTimeoutError(error: unknown) {
   return error instanceof ClientTimeoutError;
 }
 
-function warningList(summary: any) {
-  const warnings = getAIPdfSummary(summary)?.warnings;
-
-  return Array.isArray(warnings) ? warnings.filter(Boolean) : [];
-}
-
 function formatError(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function summarizeAIPdfError(value: unknown) {
+  return (
+    summarizeSharedAIPdfError(value).join(" ") ||
+    "AI extraction failed before draft questions could be imported."
+  );
+}
+
+function safeTechnicalDetail(value: unknown) {
+  return sanitizeAIPdfErrorForDisplay(value);
 }
 
 function withTimeout<T>(
@@ -169,6 +181,21 @@ function getAIPdfPhase(summary: any) {
   const aiPdfImport = getAIPdfSummary(summary);
 
   return aiPdfImport?.phase ? String(aiPdfImport.phase) : "pending";
+}
+
+function isFailedBatchStatus(status: unknown) {
+  const normalized = typeof status === "string" ? status.toLowerCase() : "";
+
+  return (
+    normalized === "failed" ||
+    normalized === "error" ||
+    normalized.endsWith("_failed") ||
+    normalized.includes("failed")
+  );
+}
+
+function effectiveAIPdfPhase(status: unknown, phase: string) {
+  return deriveAIPdfPhase(status, phase);
 }
 
 function canExtractSource(source: AIPdfSourceOption) {
@@ -254,25 +281,7 @@ function sourceResultFromStatusSnapshot(snapshot: any): SourceUploadResult {
 }
 
 function phaseLabel(phase: string) {
-  const labels: Record<string, string> = {
-    building_import_json: "Normalizing questions",
-    calling_provider: "Reasoning with AI provider",
-    completed: "Completed",
-    counting_pages: "Reading PDF pages",
-    cropping_assets: "Preparing image crops",
-    extracting: "Preparing extraction",
-    loading_provider: "Loading model profile",
-    loading_tags: "Loading tag context",
-    preparing_native_pdf_input: "Preparing Gemini Native PDF input",
-    preparing_provider_input: "Preparing provider input",
-    preparing_pdf_input: "Preparing full PDF input",
-    provider_response_validated: "Validating AI response",
-    queued: "Queued",
-    rendering_page_images: "Rendering page images",
-    starting_extraction: "Starting",
-  };
-
-  return labels[phase] ?? phase.replaceAll("_", " ");
+  return friendlyAIPdfPhaseLabel(phase);
 }
 
 function ThinkingIndicator({
@@ -394,12 +403,12 @@ export function AIPdfImportPanel({
     extractableSources[0] ??
     null;
   const uploading = activeUploadCount > 0;
-  const summary = result?.summary;
-  const aiSummary = getAIPdfSummary(summary);
-  const warnings = warningList(summary);
   const activeStatusSummary = statusSnapshot?.batch?.summary ?? result?.summary;
   const activeAiSummary = getAIPdfSummary(activeStatusSummary);
-  const activePhase = getAIPdfPhase(activeStatusSummary);
+  const activePhase = effectiveAIPdfPhase(
+    statusSnapshot?.batch?.status ?? result?.status,
+    getAIPdfPhase(activeStatusSummary),
+  );
   const activeDetail =
     activeAiSummary?.detail !== undefined
       ? String(activeAiSummary.detail)
@@ -982,7 +991,7 @@ export function AIPdfImportPanel({
           getAIPdfPhase(nextResult.summary),
           nextResult.error ?? aiImportSummary?.error,
         );
-        toast.error(nextResult.error ?? "AI PDF import failed.");
+        toast.error(summarizeAIPdfError(nextResult.error));
       } else {
         finishOperation(
           operationId,
@@ -1000,7 +1009,7 @@ export function AIPdfImportPanel({
         status: "failed",
       });
       finishOperation(operationId, "failed", "AI extraction failed.", undefined, message);
-      toast.error(message);
+      toast.error(summarizeAIPdfError(message));
     } finally {
       polling = false;
       setExtracting(false);
@@ -1095,11 +1104,17 @@ export function AIPdfImportPanel({
           </div>
           {statusSnapshot?.batch ? (
             (() => {
-              const ai = getAIPdfSummary(statusSnapshot.batch.summary);
-              const warnings = Array.isArray(ai?.warnings)
-                ? ai.warnings
-                : [];
-              const phase = getAIPdfPhase(statusSnapshot.batch.summary);
+              const display = deriveAIPdfBatchDisplayState({
+                createdQuestionCount: 0,
+                id: statusSnapshot.batch.id ?? operation.batchId ?? "",
+                sourceAsset:
+                  sourceResultFromStatusSnapshot(statusSnapshot)?.sourceAsset,
+                status: statusSnapshot.batch.status ?? "failed",
+                summary: statusSnapshot.batch.summary,
+              });
+              const ai = display.ai;
+              const phase = display.phase;
+              const warnings = display.warnings;
 
               return (
                 <div className="space-y-3">
@@ -1111,27 +1126,64 @@ export function AIPdfImportPanel({
                   ) : null}
                   <div className="grid gap-2 rounded-md border bg-background px-3 py-2 text-xs md:grid-cols-3">
                     <p>Batch: {statusSnapshot.batch.status}</p>
-                    <p>Phase: {phaseLabel(phase)}</p>
-                    <p>Assets: {statusSnapshot.assets?.length ?? 0}</p>
+                    <p>Phase: {display.phaseLabel}</p>
+                    <p>Import assets: {statusSnapshot.assets?.length ?? 0}</p>
+                    <p>Uploaded crops: {display.uploadedCropCount}</p>
+                    <p>Input: {display.inputStrategyLabel}</p>
                     <p>
-                      Input:{" "}
-                      {aiPdfInputStrategySummaryLabel(
-                        typeof ai?.sourceInput === "string"
-                          ? ai.sourceInput
-                          : undefined,
-                      )}
+                      Questions:{" "}
+                      {typeof ai.questionCount === "number"
+                        ? ai.questionCount
+                        : display.createdQuestionCount || "-"}
                     </p>
-                    <p>Questions: {ai?.questionCount ?? "-"}</p>
-                    <p>Warnings: {warnings.length}</p>
-                    {ai?.detail ? (
+                    <p>Warnings: {warnings.debugWarnings.length}</p>
+                    {ai.detail ? (
                       <p className="md:col-span-3">
                         Detail: {String(ai.detail)}
                       </p>
                     ) : null}
-                    {ai?.error ? (
-                      <p className="text-destructive md:col-span-3">
-                        Error: {String(ai.error)}
-                      </p>
+                    {display.failedWithoutDrafts ? (
+                      <div className="space-y-1 text-destructive md:col-span-3">
+                        {display.failureMessages.map((message) => (
+                          <p key={message}>{message}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                    {warnings.visibleWarnings.length ? (
+                      <div className="space-y-1 md:col-span-3">
+                        <p className="font-medium">Warnings</p>
+                        <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+                          {warnings.visibleWarnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                        {warnings.debugWarnings.length !==
+                        warnings.visibleWarnings.length ? (
+                          <details className="rounded-md border bg-background p-2 text-muted-foreground">
+                            <summary className="cursor-pointer text-foreground">
+                              Debug details
+                            </summary>
+                            <ul className="mt-2 list-disc space-y-1 pl-4">
+                              {warnings.debugWarnings.map((warning, index) => (
+                                <li key={`${warning}-${index}`}>{warning}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {ai.error ? (
+                      <div className="space-y-2 text-destructive md:col-span-3">
+                        <p>Error: {summarizeAIPdfError(ai.error)}</p>
+                        <details className="rounded-md border bg-background p-2 text-muted-foreground">
+                          <summary className="cursor-pointer text-foreground">
+                            Technical details
+                          </summary>
+                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap">
+                            {safeTechnicalDetail(ai.error)}
+                          </pre>
+                        </details>
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -1150,9 +1202,17 @@ export function AIPdfImportPanel({
             ))}
           </ol>
           {operation.error ? (
-            <pre className="whitespace-pre-wrap rounded-md border border-destructive/30 bg-background p-3 text-xs text-destructive">
-              {operation.error}
-            </pre>
+            <div className="space-y-2 rounded-md border border-destructive/30 bg-background p-3 text-xs text-destructive">
+              <p>{summarizeAIPdfError(operation.error)}</p>
+              <details className="text-muted-foreground">
+                <summary className="cursor-pointer text-foreground">
+                  Technical details
+                </summary>
+                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap">
+                  {safeTechnicalDetail(operation.error)}
+                </pre>
+              </details>
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -1428,44 +1488,6 @@ export function AIPdfImportPanel({
           </p>
         ) : null}
       </form>
-
-      {result ? (
-        <div className="space-y-3 rounded-md border p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="font-medium">Latest AI PDF extraction</p>
-              <p className="font-mono text-xs text-muted-foreground">
-                {result.batchId || "No batch selected"}
-              </p>
-            </div>
-            <Badge variant={result.status === "failed" ? "outline" : "secondary"}>
-              {result.status}
-            </Badge>
-          </div>
-          {result.error ? (
-            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {result.error}
-            </p>
-          ) : null}
-          {aiSummary ? (
-            <div className="grid gap-2 text-sm md:grid-cols-3">
-              <p>Created questions: {aiSummary.createdQuestionCount ?? 0}</p>
-              <p>Uploaded crops: {aiSummary.uploadedCropCount ?? 0}</p>
-              <p>Pages: {aiSummary.pageCount ?? "-"}</p>
-              <p>Provider: {aiSummary.provider?.name ?? "-"}</p>
-              <p>Model: {aiSummary.provider?.model ?? "-"}</p>
-              <p>Warnings: {warnings.length}</p>
-            </div>
-          ) : null}
-          {warnings.length ? (
-            <div className="space-y-1 rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-              {warnings.map((warning: string) => (
-                <p key={warning}>{warning}</p>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }

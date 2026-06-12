@@ -117,6 +117,82 @@ console.log(
   "PASS AI PDF provider JSON repair handles fenced prose, generalized LaTeX escapes, and strips publish status",
 );
 
+const invalidAssetPlaceholderExtraction = aiPdfExtractionSchema.parse({
+  questions: [
+    {
+      asset_placeholders: [
+        {
+          alt: "usable fallback placeholder",
+          bbox: { height: 0.2, width: 0.3, x: 0.1, y: 0.1 },
+          page: 1,
+        },
+        {
+          alt: "bad placeholder string",
+          bbox: { height: 0.2, width: 0.3, x: 0.2, y: 0.2 },
+          page: 1,
+          placeholder: "not a valid placeholder!",
+        },
+        {
+          alt: "missing bbox should not block the question",
+          page: 1,
+          placeholder: "{{asset:figure_4}}",
+        },
+      ],
+      content_html: "<p>Question with {{asset:figure_3}}.</p>",
+      content_source: "Question with {{asset:figure_3}}.",
+      difficulty_rating: 500,
+      new_tag_names: [],
+      page_refs: [1],
+      question_code: "AI_INVALID_ASSET_PLACEHOLDER_001",
+      question_type: "frq",
+      solution_html: "<p>Solution.</p>",
+      solution_source: "Solution.",
+      tag_names: [],
+      tag_slugs: [],
+      title: "Invalid asset placeholder should not fail import",
+    },
+    {
+      asset_placeholders: "not an array",
+      content_html: "<p>Text-only question should still import.</p>",
+      difficulty_rating: 400,
+      new_tag_names: [],
+      page_refs: [2],
+      question_code: "AI_INVALID_ASSET_PLACEHOLDER_002",
+      question_type: "frq",
+      solution_html: "<p>Solution.</p>",
+      tag_names: [],
+      tag_slugs: [],
+      title: "Non-array asset placeholders should warn only",
+    },
+  ],
+  warnings: [],
+});
+
+assert.equal(invalidAssetPlaceholderExtraction.questions.length, 2);
+assert.equal(
+  invalidAssetPlaceholderExtraction.questions[0].asset_placeholders.length,
+  1,
+);
+assert.equal(
+  invalidAssetPlaceholderExtraction.questions[0].asset_placeholders[0]
+    .placeholder,
+  "{{asset:figure_3}}",
+);
+assert.equal(
+  invalidAssetPlaceholderExtraction.questions[1].asset_placeholders.length,
+  0,
+);
+assert.equal(
+  invalidAssetPlaceholderExtraction.warnings.includes(
+    "Some image placeholders were ignored because they were invalid.",
+  ),
+  true,
+);
+
+console.log(
+  "PASS AI PDF invalid asset_placeholders warn and do not block draft question parsing",
+);
+
 const deepSeekTextOnly = {
   base_url: "https://api.deepseek.com",
   model: "deepseek-v4-flash",

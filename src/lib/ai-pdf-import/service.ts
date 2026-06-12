@@ -16,7 +16,11 @@ import {
   AI_PDF_IMPORT_MAX_PAGES,
 } from "@/lib/ai-pdf-import/constants";
 import {
-  aiPdfExtractionSchema,
+  questionCodeKey,
+  resolveAIPdfQuestionCodeForImport,
+} from "@/lib/ai-pdf-import/question-code";
+import {
+  normalizeAIPdfExtractionResponse,
   type AIPdfAssetPlaceholder,
   type AIPdfExtraction,
   type AIPdfQuestion,
@@ -213,8 +217,34 @@ function uniqueValues(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
-function defaultQuestionCode(batchId: string, index: number) {
-  return `AI-${batchId.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, "0")}`;
+async function loadExistingQuestionCodeKeys(supabase: SupabaseLike) {
+  const existing = new Set<string>();
+  const pageSize = 1000;
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("questions")
+      .select("question_code")
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const rows = (data ?? []) as { question_code: string | null }[];
+
+    for (const row of rows) {
+      if (row.question_code) {
+        existing.add(questionCodeKey(row.question_code));
+      }
+    }
+
+    if (rows.length < pageSize) {
+      break;
+    }
+  }
+
+  return existing;
 }
 
 function buildPrompt({
@@ -374,6 +404,8 @@ async function buildImportJson({
   const byName = new Map(
     activeTags.map((tag) => [tag.name.trim().toLowerCase(), tag]),
   );
+  const existingQuestionCodes = await loadExistingQuestionCodeKeys(supabase);
+  const usedQuestionCodes = new Set<string>();
 
   const questions = [];
 
@@ -408,8 +440,14 @@ async function buildImportJson({
       tagSlugs.add(tag.slug);
     }
 
-    const questionCode =
-      question.question_code?.trim() || defaultQuestionCode(batchId, index);
+    const questionCode = resolveAIPdfQuestionCodeForImport({
+      batchId,
+      existingQuestionCodes,
+      index,
+      requestedQuestionCode: question.question_code ?? "",
+      usedQuestionCodes,
+      warnings: extraction.warnings,
+    });
     question.question_code = questionCode;
     const contentFields = normalizeAITextFields({
       html: question.content_html,
@@ -753,7 +791,7 @@ export async function processAIPdfImport(input: ProcessInput) {
     provider: providerSummary,
     sourceInput: providerInput.strategy,
   });
-  const extraction = aiPdfExtractionSchema.parse(
+  const extraction = normalizeAIPdfExtractionResponse(
     await callAIPdfExtractionProvider({
       fileName: input.fileName,
       inputStrategy: providerInput.strategy,
@@ -810,6 +848,7 @@ export async function processAIPdfImport(input: ProcessInput) {
           name: provider.name,
           provider: provider.provider,
         },
+        sourceInput: providerInput.strategy,
         sourceAssetId: input.sourceAssetId,
         sourceObjectPath: input.sourceObjectPath,
         warnings: extraction.warnings,
@@ -829,14 +868,19 @@ export async function processAIPdfImport(input: ProcessInput) {
     questionCount: extraction.questions.length,
     warnings: extraction.warnings,
   });
-  const cropSummary = await attachCroppedAssets({
-    createdQuestions: importSummary.createdQuestions,
-    extraction,
-    pdfBuffer: input.pdfBuffer,
-    profileId: input.profileId,
-    renderedPages: pagesForVision,
-    supabase: input.supabase,
-  });
+  const cropSummary = importSummary.createdCount > 0
+    ? await attachCroppedAssets({
+        createdQuestions: importSummary.createdQuestions,
+        extraction,
+        pdfBuffer: input.pdfBuffer,
+        profileId: input.profileId,
+        renderedPages: pagesForVision,
+        supabase: input.supabase,
+      })
+    : {
+        uploadedCount: 0,
+        warnings: ["No draft questions were created; skipped crop attachment."],
+      };
   const finalSummary = {
     ...importSummary,
     aiPdfImport: {
@@ -852,6 +896,7 @@ export async function processAIPdfImport(input: ProcessInput) {
         provider: provider.provider,
       },
       sourceAssetId: input.sourceAssetId,
+      sourceInput: providerInput.strategy,
       sourceObjectPath: input.sourceObjectPath,
       uploadedCropCount: cropSummary.uploadedCount,
       warnings: [...extraction.warnings, ...cropSummary.warnings],
@@ -860,7 +905,7 @@ export async function processAIPdfImport(input: ProcessInput) {
   const { error } = await input.supabase
     .from("import_batches")
     .update({
-      status: importSummary.errorCount > 0 ? "failed" : "imported",
+      status: importSummary.createdCount > 0 ? "imported" : "failed",
       summary: finalSummary,
     })
     .eq("id", input.batchId);

@@ -148,6 +148,18 @@ export function aiPdfInputStrategySummaryLabel(
     return "DeepSeek text/json";
   }
 
+  if (mode === "gemini_native") {
+    return "Gemini Native full PDF";
+  }
+
+  if (mode === "gemini_openai") {
+    return "Rendered page images";
+  }
+
+  if (mode === "mock") {
+    return "Mock provider - testing only";
+  }
+
   if (strategy === "unsupported") {
     return "Unsupported";
   }

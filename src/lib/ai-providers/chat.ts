@@ -1,4 +1,7 @@
-import { aiPdfExtractionSchema, type AIPdfExtraction } from "@/lib/ai-pdf-import/schema";
+import {
+  normalizeAIPdfExtractionResponse,
+  type AIPdfExtraction,
+} from "@/lib/ai-pdf-import/schema";
 import {
   assertMockAIProviderAllowed,
   isMockAIProviderUrl,
@@ -172,18 +175,15 @@ function parseExtractionContent(contentText: string) {
     );
   }
 
-  const result = aiPdfExtractionSchema.safeParse(parsed);
-
-  if (!result.success) {
+  try {
+    return normalizeAIPdfExtractionResponse(parsed);
+  } catch (error) {
     throw new Error(
-      `AI provider JSON did not match the expected import schema: ${result.error.issues
-        .map((issue) => `${issue.path.join(".") || "response"}: ${issue.message}`)
-        .slice(0, 8)
-        .join("; ")}. Response preview: ${responsePreview(contentText)}`,
+      `AI provider JSON did not match the expected import schema: ${
+        error instanceof Error ? error.message : "Unknown schema validation error."
+      }. Response preview: ${responsePreview(contentText)}`,
     );
   }
-
-  return result.data;
 }
 
 async function requestChatCompletion({

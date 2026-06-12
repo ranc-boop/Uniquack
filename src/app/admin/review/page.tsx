@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 type ReviewPageProps = {
   searchParams: Promise<{
+    batch?: string;
     search?: string;
   }>;
 };
@@ -53,6 +54,10 @@ function formatDate(value: string | null | undefined) {
   }
 
   return new Date(value).toLocaleString();
+}
+
+function shortId(value: string) {
+  return value.slice(0, 8);
 }
 
 function getAIReviewMetadata(value: unknown): AIReviewMetadata | null {
@@ -111,17 +116,82 @@ export default async function AdminReviewPage({
   searchParams,
 }: ReviewPageProps) {
   const params = await searchParams;
-  await requireAdmin();
+  const profile = await requireAdmin();
   const search = (params.search ?? "").trim().toLowerCase();
+  const batchId = (params.batch ?? "").trim();
   const supabase = await createClient();
-  const { data: questions, error } = await supabase
-    .from("questions")
-    .select(
-      "id, question_code, title, question_type, difficulty_rating, status, content_html, solution_html, created_at",
-    )
-    .eq("status", "draft")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  let batchFilter:
+    | {
+        createdAt: string | null;
+        id: string;
+        sourceType: string | null;
+      }
+    | null = null;
+  let batchQuestionIds: string[] | null = null;
+  let batchFilterMissing = false;
+
+  if (batchId) {
+    let batchQuery = supabase
+      .from("import_batches")
+      .select("id, source_type, created_at, created_by")
+      .eq("id", batchId);
+
+    if (profile.role !== "super_admin") {
+      batchQuery = batchQuery.eq("created_by", profile.id);
+    }
+
+    const { data: batch } = await batchQuery.maybeSingle();
+
+    if (batch) {
+      batchFilter = {
+        createdAt: batch.created_at,
+        id: batch.id,
+        sourceType: batch.source_type,
+      };
+
+      const { data: batchItems } = await supabase
+        .from("import_batch_items")
+        .select("created_question_id")
+        .eq("batch_id", batch.id)
+        .eq("status", "imported")
+        .not("created_question_id", "is", null)
+        .limit(1000);
+
+      batchQuestionIds = Array.from(
+        new Set(
+          (batchItems ?? [])
+            .map((item) => item.created_question_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+    } else {
+      batchQuestionIds = [];
+      batchFilterMissing = true;
+    }
+  }
+
+  let questions: ReviewQuestion[] = [];
+  let error: { message: string } | null = null;
+
+  if (!batchQuestionIds || batchQuestionIds.length) {
+    let questionsQuery = supabase
+      .from("questions")
+      .select(
+        "id, question_code, title, question_type, difficulty_rating, status, content_html, solution_html, created_at",
+      )
+      .eq("status", "draft")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (batchQuestionIds) {
+      questionsQuery = questionsQuery.in("id", batchQuestionIds);
+    }
+
+    const result = await questionsQuery;
+    questions = (result.data ?? []) as ReviewQuestion[];
+    error = result.error;
+  }
+
   const draftQuestions = ((questions ?? []) as ReviewQuestion[]).filter(
     (question) =>
       !search ||
@@ -129,6 +199,19 @@ export default async function AdminReviewPage({
       question.title.toLowerCase().includes(search),
   );
   const questionIds = draftQuestions.map((question) => question.id);
+  let importItemsQuery = supabase
+    .from("import_batch_items")
+    .select(
+      "created_question_id, normalized_question_json, validation_errors, created_at",
+    )
+    .eq("status", "imported")
+    .in("created_question_id", questionIds)
+    .limit(1000);
+
+  if (batchFilter) {
+    importItemsQuery = importItemsQuery.eq("batch_id", batchFilter.id);
+  }
+
   const [
     { data: questionTags },
     { data: tags },
@@ -155,14 +238,7 @@ export default async function AdminReviewPage({
           .in("question_id", questionIds)
           .neq("status", "deleted")
           .limit(1000),
-        supabase
-          .from("import_batch_items")
-          .select(
-            "created_question_id, normalized_question_json, validation_errors, created_at",
-          )
-          .eq("status", "imported")
-          .in("created_question_id", questionIds)
-          .limit(1000),
+        importItemsQuery,
       ])
     : [
         { data: [] },
@@ -282,7 +358,29 @@ export default async function AdminReviewPage({
         <Button asChild type="button" variant="outline">
           <Link href="/admin/review">Reset</Link>
         </Button>
+        {batchFilter ? (
+          <input type="hidden" name="batch" value={batchFilter.id} />
+        ) : null}
       </form>
+      {batchFilter ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+          <span>
+            Showing drafts from AI PDF import{" "}
+            <span className="font-mono">{shortId(batchFilter.id)}</span>
+            {batchFilter.createdAt
+              ? ` created ${formatDate(batchFilter.createdAt)}`
+              : ""}
+          </span>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/review">Clear batch filter</Link>
+          </Button>
+        </div>
+      ) : null}
+      {batchFilterMissing ? (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          This import batch was not found or is not visible to your account.
+        </p>
+      ) : null}
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error.message}

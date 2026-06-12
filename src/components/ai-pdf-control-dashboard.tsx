@@ -4,12 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  aiPdfInputStrategySummaryLabel,
-  aiProviderModeSummaryLabel,
-  inferAiProviderMode,
+  deriveAIPdfBatchDisplayState,
   type AiProviderMode,
-  type AiPdfInputStrategy,
-} from "@/lib/ai-providers/adapters";
+} from "@/lib/ai-pdf-import/display";
 
 type SourceAssetSummary = {
   created_at?: string | null;
@@ -29,6 +26,7 @@ export type AIPdfControlDashboardBatch = {
 };
 
 type PipelineState = "done" | "current" | "pending";
+const TECHNICAL_DETAIL_LIMIT = 1200;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -116,6 +114,10 @@ function formatCount(value: number | undefined) {
   return typeof value === "number" ? String(value) : "-";
 }
 
+function shortId(value: string) {
+  return value.slice(0, 8);
+}
+
 function formatFileSize(bytes: number | string | null | undefined) {
   const numeric = typeof bytes === "string" ? Number(bytes) : bytes;
 
@@ -166,6 +168,25 @@ function friendlyPhaseLabel(phase: string) {
   return labels[phase] ?? phase.replaceAll("_", " ");
 }
 
+function isFailedStatus(status: string) {
+  const normalized = status.trim().toLowerCase();
+
+  return (
+    normalized === "failed" ||
+    normalized === "error" ||
+    normalized.endsWith("_failed") ||
+    normalized.includes("failed")
+  );
+}
+
+function effectivePhase(status: string, phase: string) {
+  if (isFailedStatus(status)) {
+    return "failed";
+  }
+
+  return phase === "completed" && status !== "imported" ? "failed" : phase;
+}
+
 function phaseRank(phase: string) {
   const ranks: Record<string, number> = {
     upload_reserved: 1,
@@ -200,11 +221,11 @@ function statusLabel({
   phase: string;
   status: string;
 }) {
-  if (status === "failed" && createdQuestionCount > 0) {
+  if (isFailedStatus(status) && createdQuestionCount > 0) {
     return "Partial";
   }
 
-  if (status === "failed" || phase === "failed") {
+  if (isFailedStatus(status) || phase === "failed") {
     return "Failed";
   }
 
@@ -295,19 +316,6 @@ function pipelineSteps({
   ];
 }
 
-function providerModeLabel(provider: Record<string, unknown>) {
-  const providerValue = firstString(provider, ["provider"]);
-  const mode = inferAiProviderMode({
-    base_url: "",
-    provider: providerValue,
-  });
-
-  return {
-    label: aiProviderModeSummaryLabel(mode),
-    mode,
-  };
-}
-
 function getWarnings(ai: Record<string, unknown>, batchStatus: string) {
   const warnings = [
     ...stringList(ai.warnings),
@@ -329,7 +337,7 @@ function getWarnings(ai: Record<string, unknown>, batchStatus: string) {
   ]);
 
   if (error) {
-    warnings.push(`Provider failure: ${error}`);
+    warnings.push(...summarizeAIPdfError(error));
   }
 
   if (unsupported) {
@@ -341,6 +349,92 @@ function getWarnings(ai: Record<string, unknown>, batchStatus: string) {
   }
 
   return warnings;
+}
+
+function summarizeAIPdfError(value: unknown) {
+  const raw = typeof value === "string" ? value : "";
+
+  if (!raw.trim()) {
+    return [];
+  }
+
+  const normalized = raw.toLowerCase();
+  const summaries = new Set<string>();
+
+  if (
+    normalized.includes("asset_placeholders") ||
+    normalized.includes("placeholder: invalid input")
+  ) {
+    summaries.add(
+      "The AI returned invalid image placeholder metadata. This should be treated as a warning instead of blocking all questions.",
+    );
+    summaries.add("Some image placeholders were invalid and could not be attached.");
+  }
+
+  if (
+    normalized.includes("expected import schema") ||
+    normalized.includes("json did not match") ||
+    normalized.includes("invalid input") ||
+    normalized.includes("zod")
+  ) {
+    summaries.add(
+      "No draft questions were created because the AI response did not match the expected question schema.",
+    );
+  }
+
+  if (!summaries.size) {
+    summaries.add("AI extraction failed before draft questions could be imported.");
+  }
+
+  summaries.add("Please retry with a smaller PDF or a different extraction mode.");
+
+  return Array.from(summaries);
+}
+
+function safeTechnicalDetail(value: unknown) {
+  const raw =
+    typeof value === "string"
+      ? value
+      : value === undefined || value === null
+        ? ""
+        : JSON.stringify(value, null, 2);
+
+  if (!raw.trim()) {
+    return "";
+  }
+
+  return raw
+    .replace(/https?:\/\/\S*(?:ai-import-sources|X-Amz-Signature|token=)\S*/gi, "[private source URL redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]+/g, "[api key redacted]")
+    .replace(/\bAIza[A-Za-z0-9_-]+/g, "[api key redacted]")
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[jwt redacted]")
+    .slice(0, TECHNICAL_DETAIL_LIMIT);
+}
+
+function aggregateWarnings(warnings: string[]) {
+  const figurePlaceholderPattern =
+    /^Could not find created question for \{\{asset:figure_(\d+)\}\}\.?$/;
+  const figurePlaceholderWarnings = warnings.filter((warning) =>
+    figurePlaceholderPattern.test(warning),
+  );
+  const otherWarnings = warnings.filter(
+    (warning) => !figurePlaceholderPattern.test(warning),
+  );
+
+  if (figurePlaceholderWarnings.length <= 1) {
+    return {
+      debugWarnings: warnings,
+      visibleWarnings: warnings,
+    };
+  }
+
+  return {
+    debugWarnings: warnings,
+    visibleWarnings: [
+      ...otherWarnings,
+      `${figurePlaceholderWarnings.length} figure placeholders could not be attached because no matching draft questions were created.`,
+    ],
+  };
 }
 
 function getChunks(ai: Record<string, unknown>) {
@@ -435,38 +529,23 @@ export function AIPdfControlDashboard({
         {batches.length ? (
           <div className="space-y-4">
             {batches.map((batch) => {
-              const summary = asRecord(batch.summary);
-              const ai = aiSummary(batch.summary);
-              const provider = asRecord(ai.provider);
-              const providerInfo = providerModeLabel(provider);
-              const strategy = firstString(ai, ["sourceInput", "inputStrategy"]);
-              const sourceMetadata = asRecord(batch.sourceAsset?.metadata);
-              const pageCount =
-                firstNumber(ai, ["pagesProcessed", "processedPageCount", "pageCount"]) ??
-                firstNumber(sourceMetadata, ["pageCount"]);
-              const sizeBytes =
-                firstNumber(ai, ["fileSizeBytes", "sizeBytes"]) ??
-                firstNumber(
-                  {
-                    value: batch.sourceAsset?.size_bytes,
-                  },
-                  ["value"],
-                );
-              const createdQuestionCount = Math.max(
-                batch.createdQuestionCount,
-                firstNumber(ai, ["createdQuestionCount"]) ??
-                  firstNumber(summary, ["createdCount"]) ??
-                  0,
-              );
-              const uploadedCropCount =
-                firstNumber(ai, ["uploadedCropCount", "uploadedCrops"]) ?? 0;
-              const phase = firstString(ai, ["phase"], "source_uploaded");
-              const displayStatus = statusLabel({
-                createdQuestionCount,
-                phase,
+              const display = deriveAIPdfBatchDisplayState({
+                createdQuestionCount: batch.createdQuestionCount,
+                id: batch.id,
+                sourceAsset: batch.sourceAsset,
                 status: batch.status,
+                summary: batch.summary,
               });
-              const warnings = getWarnings(ai, batch.status);
+              const ai = display.ai;
+              const strategy = display.strategy;
+              const pageCount = display.pageCount;
+              const sizeBytes = display.sizeBytes;
+              const createdQuestionCount = display.createdQuestionCount;
+              const uploadedCropCount = display.uploadedCropCount;
+              const phase = display.phase;
+              const displayStatus = display.displayStatus;
+              const warnings = display.warnings.debugWarnings;
+              const aggregatedWarnings = display.warnings;
               const chunks = getChunks(ai);
               const chunkCount =
                 chunks.length || firstNumber(ai, ["chunkCount", "chunksCount"]);
@@ -488,12 +567,9 @@ export function AIPdfControlDashboard({
                 firstString(ai, ["figureDescription"]),
               ].filter(Boolean);
               const sourcePageRefs = stringList(ai.sourcePageRefs);
-              const model = firstString(provider, ["model"], "-");
-              const providerName = firstString(provider, ["name"], "Not selected");
-              const inputStrategyLabel = aiPdfInputStrategySummaryLabel(
-                strategy as AiPdfInputStrategy,
-                providerInfo.mode,
-              );
+              const model = display.model;
+              const providerName = display.providerName;
+              const inputStrategyLabel = display.inputStrategyLabel;
               const timeline = pipelineSteps({
                 createdQuestionCount,
                 hasProvider: Boolean(providerName && providerName !== "Not selected"),
@@ -506,9 +582,52 @@ export function AIPdfControlDashboard({
                 sizeBytes,
                 strategy,
               });
+              const sourceTitle = display.sourceTitle;
+              const technicalError = display.warnings.technicalDetail;
+              const ctaLabel = display.ctaLabel;
 
               return (
-                <div key={batch.id} className="space-y-4 rounded-md border p-4">
+                <details
+                  key={batch.id}
+                  className="overflow-hidden rounded-md border bg-background"
+                >
+                  <summary className="cursor-pointer list-none px-4 py-3 transition hover:bg-muted/30">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant={
+                              displayStatus === "Failed" ||
+                              displayStatus === "Partial"
+                                ? "outline"
+                                : "secondary"
+                            }
+                          >
+                            {displayStatus}
+                          </Badge>
+                          <span className="truncate text-sm font-medium">
+                            {sourceTitle}
+                          </span>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {display.shortId}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {providerName} / {model} / {inputStrategyLabel}
+                          {" | "}
+                          Drafts: {createdQuestionCount}
+                          {" | "}
+                          Warnings: {warnings.length}
+                          {" | "}
+                          {new Date(batch.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <span className="rounded-md border px-2 py-1 text-xs text-muted-foreground">
+                        Expand details
+                      </span>
+                    </div>
+                  </summary>
+                  <div className="space-y-4 border-t p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -522,32 +641,48 @@ export function AIPdfControlDashboard({
                           {displayStatus}
                         </Badge>
                         <Badge variant="outline">
-                          Phase: {friendlyPhaseLabel(phase)}
+                          Phase: {display.phaseLabel}
                         </Badge>
                         <Badge variant="outline">Draft only</Badge>
                       </div>
                       <h3 className="text-base font-semibold">
-                        {firstString(ai, ["fileName"]) ||
-                          batch.sourceAsset?.original_filename ||
-                          "AI PDF import"}
+                        {sourceTitle}
                       </h3>
                       <p className="text-xs text-muted-foreground">
                         Created {new Date(batch.created_at).toLocaleString()}
                       </p>
                     </div>
                     {createdQuestionCount > 0 ? (
-                      <Button asChild size="sm" variant="outline">
-                        <Link href="/admin/review">Review generated drafts</Link>
-                      </Button>
-                    ) : null}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {displayStatus === "Failed" ||
+                        displayStatus === "Partial" ? (
+                          <Badge variant="outline">Partial success</Badge>
+                        ) : null}
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/admin/review?batch=${batch.id}`}>
+                            {ctaLabel}
+                          </Link>
+                        </Button>
+                      </div>
+                    ) : (
+                      <Badge variant="outline">No drafts to review</Badge>
+                    )}
                   </div>
+
+                  {display.failedWithoutDrafts ? (
+                    <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      {display.failureMessages.map((message) => (
+                        <p key={message}>{message}</p>
+                      ))}
+                    </div>
+                  ) : null}
 
                   <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-md border bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">Provider</p>
                       <p className="font-medium">{providerName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {providerInfo.label}
+                        {display.providerModeLabel}
                       </p>
                     </div>
                     <div className="rounded-md border bg-muted/20 p-3">
@@ -574,6 +709,10 @@ export function AIPdfControlDashboard({
                       <p className="text-xs text-muted-foreground">Outputs</p>
                       <p className="font-medium">
                         Drafts: {createdQuestionCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Source assets: {batch.sourceAsset ? 1 : 0} / Question
+                        assets: {uploadedCropCount}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Uploaded crops: {uploadedCropCount} / Warnings:{" "}
@@ -617,7 +756,7 @@ export function AIPdfControlDashboard({
                           <p>Estimated complexity: {complexity}</p>
                           <p className="md:col-span-2">
                             Recommended mode:{" "}
-                            {recommendedModeCopy(strategy, providerInfo.mode)}
+                            {recommendedModeCopy(strategy, display.providerMode)}
                           </p>
                         </div>
                       </div>
@@ -684,21 +823,67 @@ export function AIPdfControlDashboard({
 
                       <div className="rounded-md border bg-muted/20 p-3">
                         <p className="text-sm font-medium">Warnings</p>
-                        {warnings.length ? (
-                          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                            {warnings.slice(0, 8).map((warning) => (
-                              <li key={warning}>{warning}</li>
-                            ))}
-                          </ul>
+                        {aggregatedWarnings.visibleWarnings.length ? (
+                          <>
+                            <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                              {aggregatedWarnings.visibleWarnings
+                                .slice(0, 8)
+                                .map((warning) => (
+                                  <li key={warning}>{warning}</li>
+                                ))}
+                            </ul>
+                            {aggregatedWarnings.debugWarnings.length !==
+                            aggregatedWarnings.visibleWarnings.length ? (
+                              <details className="mt-3 rounded-md border bg-background p-2 text-xs text-muted-foreground">
+                                <summary className="cursor-pointer font-medium text-foreground">
+                                  Debug details (
+                                  {aggregatedWarnings.debugWarnings.length} raw
+                                  warnings)
+                                </summary>
+                                <ul className="mt-2 list-disc space-y-1 pl-4">
+                                  {aggregatedWarnings.debugWarnings.map(
+                                    (warning, index) => (
+                                      <li key={`${warning}-${index}`}>
+                                        {warning}
+                                      </li>
+                                    ),
+                                  )}
+                                </ul>
+                              </details>
+                            ) : null}
+                            {technicalError ? (
+                              <details className="mt-3 rounded-md border bg-background p-2 text-xs text-muted-foreground">
+                                <summary className="cursor-pointer font-medium text-foreground">
+                                  Technical details
+                                </summary>
+                                <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap">
+                                  {technicalError}
+                                </pre>
+                              </details>
+                            ) : null}
+                          </>
                         ) : (
-                          <p className="mt-2 text-xs text-muted-foreground">
-                            No warnings reported for this import.
-                          </p>
+                          <>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              No warnings reported for this import.
+                            </p>
+                            {technicalError ? (
+                              <details className="mt-3 rounded-md border bg-background p-2 text-xs text-muted-foreground">
+                                <summary className="cursor-pointer font-medium text-foreground">
+                                  Technical details
+                                </summary>
+                                <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap">
+                                  {technicalError}
+                                </pre>
+                              </details>
+                            ) : null}
+                          </>
                         )}
                       </div>
                     </div>
                   </div>
-                </div>
+                  </div>
+                </details>
               );
             })}
           </div>

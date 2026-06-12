@@ -7,6 +7,14 @@ const bboxSchema = z.object({
   y: z.number().min(0).max(1),
 });
 
+const QUESTION_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -16,7 +24,13 @@ function escapeHtml(value: string) {
 }
 
 function normalizeQuestionType(value: unknown) {
-  const normalized = String(value ?? "frq")
+  const raw = String(value ?? "").trim();
+
+  if (!raw) {
+    return "frq";
+  }
+
+  const normalized = raw
     .trim()
     .toLowerCase()
     .replace(/[_-]+/g, " ");
@@ -25,16 +39,29 @@ function normalizeQuestionType(value: unknown) {
     normalized === "mcq" ||
     normalized.includes("multiple choice") ||
     normalized.includes("choice question") ||
+    normalized.includes("multiple select") ||
+    normalized.includes("single choice") ||
     normalized === "multiple"
   ) {
     return "mcq";
+  }
+
+  if (
+    normalized === "frq" ||
+    normalized.includes("free response") ||
+    normalized.includes("short answer") ||
+    normalized.includes("open response") ||
+    normalized.includes("calculation") ||
+    normalized.includes("proof")
+  ) {
+    return "frq";
   }
 
   if (normalized === "mixed" || normalized.includes("mixed")) {
     return "mixed";
   }
 
-  return "frq";
+  return "mixed";
 }
 
 const questionTypeSchema = z.preprocess(
@@ -52,9 +79,59 @@ function sourceToHtml(value: unknown) {
   return source ? `<p>${escapeHtml(source)}</p>` : "";
 }
 
+function stringifyRecoverableField(value: unknown) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
+
+function firstRecoverableString(
+  input: Record<string, unknown>,
+  keys: string[],
+) {
+  for (const key of keys) {
+    const value = stringifyRecoverableField(input[key]);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
 function fallbackTitle(input: Record<string, unknown>) {
   const code = String(input.question_code ?? "").trim();
-  const content = stripHtml(String(input.content_html ?? input.content_source ?? ""));
+  const content = stripHtml(
+    firstRecoverableString(input, [
+      "content_html",
+      "content_source",
+      "question",
+      "prompt",
+      "stem",
+      "text",
+      "body",
+      "content",
+    ]),
+  );
   const prefix = code ? `Question ${code}` : "AI imported question";
 
   if (!content) {
@@ -64,25 +141,185 @@ function fallbackTitle(input: Record<string, unknown>) {
   return `${prefix}: ${content.slice(0, 120)}`;
 }
 
+function numberInUnitRange(value: unknown) {
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric)
+    ? Math.max(0, Math.min(1, numeric))
+    : undefined;
+}
+
+function normalizeBbox(value: unknown) {
+  const input = asRecord(value);
+  const x = numberInUnitRange(input.x ?? input.left);
+  const y = numberInUnitRange(input.y ?? input.top);
+  const width = numberInUnitRange(input.width ?? input.w);
+  const height = numberInUnitRange(input.height ?? input.h);
+
+  if (
+    x === undefined ||
+    y === undefined ||
+    width === undefined ||
+    height === undefined
+  ) {
+    return null;
+  }
+
+  const parsed = bboxSchema.safeParse({ height, width, x, y });
+
+  return parsed.success ? parsed.data : null;
+}
+
+function normalizePageNumber(value: unknown) {
+  const numeric = Number(value);
+
+  return Number.isInteger(numeric) && numeric >= 1 ? numeric : null;
+}
+
+function placeholderFromValue(value: unknown) {
+  const raw = String(value ?? "").trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  const exactMatch = raw.match(/^\{\{\s*asset:([a-zA-Z0-9_-]+)\s*\}\}$/);
+
+  if (exactMatch) {
+    return `{{asset:${exactMatch[1]}}}`;
+  }
+
+  if (/^[a-zA-Z0-9_-]+$/.test(raw)) {
+    return `{{asset:${raw}}}`;
+  }
+
+  return null;
+}
+
+function contentPlaceholders(question: Record<string, unknown>) {
+  const source = [
+    question.content_html,
+    question.content_source,
+    question.solution_html,
+    question.solution_source,
+  ]
+    .map((value) => (typeof value === "string" ? value : ""))
+    .join("\n");
+  const matches = source.matchAll(/\{\{\s*asset:([a-zA-Z0-9_-]+)\s*\}\}/g);
+
+  return Array.from(matches, (match) => `{{asset:${match[1]}}}`);
+}
+
+function normalizeAssetPlaceholdersForQuestion({
+  question,
+  questionLabel,
+}: {
+  question: Record<string, unknown>;
+  questionLabel: string;
+}) {
+  const rawValue = question.asset_placeholders;
+
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return { placeholders: [], warnings: [] };
+  }
+
+  const rawItems = Array.isArray(rawValue)
+    ? rawValue
+    : rawValue && typeof rawValue === "object"
+      ? [rawValue]
+      : [];
+  const warnings: string[] = [];
+
+  if (!Array.isArray(rawValue)) {
+    warnings.push(
+      `${questionLabel}: asset_placeholders was not an array and was ignored.`,
+    );
+  }
+
+  const availableContentPlaceholders = contentPlaceholders(question);
+  const usedPlaceholders = new Set<string>();
+  const placeholders: {
+    alt?: string;
+    bbox: { height: number; width: number; x: number; y: number };
+    page: number;
+    placeholder: string;
+  }[] = [];
+
+  rawItems.forEach((item, index) => {
+    const input = asRecord(item);
+    const bbox = normalizeBbox(input.bbox);
+    const page = normalizePageNumber(
+      input.page ?? input.page_number ?? input.pageNumber,
+    );
+    let placeholder = placeholderFromValue(input.placeholder);
+
+    if (!placeholder) {
+      placeholder = availableContentPlaceholders.find(
+        (candidate) => !usedPlaceholders.has(candidate),
+      ) ?? null;
+    }
+
+    if (!bbox || !page || !placeholder) {
+      warnings.push(
+        `${questionLabel}: ignored invalid asset placeholder ${index + 1}.`,
+      );
+      return;
+    }
+
+    usedPlaceholders.add(placeholder);
+    placeholders.push({
+      alt:
+        typeof input.alt === "string"
+          ? input.alt
+          : typeof input.description === "string"
+            ? input.description
+            : undefined,
+      bbox,
+      page,
+      placeholder,
+    });
+  });
+
+  if (warnings.length) {
+    warnings.unshift("Some image placeholders were ignored because they were invalid.");
+  }
+
+  return { placeholders, warnings: Array.from(new Set(warnings)) };
+}
+
 const optionalStringSchema = z.preprocess((value) => {
   if (value === null || value === undefined) {
     return value;
   }
 
-  return String(value);
+  return stringifyRecoverableField(value);
 }, z.string().trim().optional().nullable());
 
+function normalizeStringArray(value: unknown) {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[,;\n]/)
+      : [];
+
+  return Array.from(
+    new Set(
+      rawValues
+        .map((item) => stringifyRecoverableField(item))
+        .flatMap((item) => item.split(/[,;\n]/))
+        .map((item) => item.trim().slice(0, 120))
+        .filter(Boolean),
+    ),
+  );
+}
+
 const stringArraySchema = z.preprocess((value) => {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item));
-  }
-
-  if (typeof value === "string" && value.trim()) {
-    return [value];
-  }
-
-  return [];
+  return normalizeStringArray(value);
 }, z.array(z.string().trim().min(1).max(120)).default([]));
+
+function looseStringList(value: unknown) {
+  return normalizeStringArray(value);
+}
 
 const pageRefsSchema = z.preprocess((value) => {
   const values = Array.isArray(value) ? value : value === undefined ? [] : [value];
@@ -99,23 +336,27 @@ const difficultyRatingSchema = z.preprocess((value) => {
     return 500;
   }
 
-  return Math.max(0, Math.min(1000, Math.round(numeric)));
-}, z.number().int().min(0).max(1000).default(500));
+  return Math.max(100, Math.min(1000, Math.round(numeric)));
+}, z.number().int().min(100).max(1000).default(500));
 
 export const aiPdfAssetPlaceholderSchema = z.object({
   alt: z.string().trim().max(240).optional(),
   bbox: bboxSchema,
   page: z.number().int().min(1),
-  placeholder: z.string().trim().min(1).max(80),
+  placeholder: z
+    .string()
+    .trim()
+    .regex(/^\{\{asset:[A-Za-z0-9_-]+\}\}$/)
+    .max(80),
 });
 
 const assetPlaceholdersSchema = z.preprocess((value) => {
   if (Array.isArray(value)) {
-    return value;
+    return value.filter((item) => aiPdfAssetPlaceholderSchema.safeParse(item).success);
   }
 
   if (value && typeof value === "object") {
-    return [value];
+    return aiPdfAssetPlaceholderSchema.safeParse(value).success ? [value] : [];
   }
 
   return [];
@@ -127,29 +368,54 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
   }
 
   const input = value as Record<string, unknown>;
+  const contentSource = firstRecoverableString(input, [
+    "content_source",
+    "question",
+    "prompt",
+    "stem",
+    "text",
+    "body",
+    "content",
+  ]);
   const contentHtml =
     typeof input.content_html === "string" && input.content_html.trim()
       ? input.content_html
-      : sourceToHtml(input.content_source);
+      : sourceToHtml(contentSource);
+  const solutionSource = firstRecoverableString(input, [
+    "solution_source",
+    "solution",
+    "explanation",
+    "answer",
+    "answers",
+  ]);
   const solutionHtml =
     input.solution_html === null
       ? null
       : typeof input.solution_html === "string" && input.solution_html.trim()
         ? input.solution_html
-        : sourceToHtml(input.solution_source) || null;
+        : sourceToHtml(solutionSource) || null;
+  const rawQuestionCode =
+    input.question_code === null || input.question_code === undefined
+      ? undefined
+      : stringifyRecoverableField(input.question_code).slice(0, 80);
+  const questionCode =
+    rawQuestionCode && QUESTION_CODE_PATTERN.test(rawQuestionCode)
+      ? rawQuestionCode
+      : undefined;
+  const rawTitle =
+    typeof input.title === "string" && input.title.trim()
+      ? input.title
+      : fallbackTitle({ ...input, content_html: contentHtml, content_source: contentSource });
 
   return {
     ...input,
+    content_source: (input.content_source ?? contentSource) || undefined,
     content_html: contentHtml,
-    question_code:
-      input.question_code === null || input.question_code === undefined
-        ? undefined
-        : String(input.question_code),
+    question_code: questionCode,
     solution_html: solutionHtml,
+    solution_source: (input.solution_source ?? solutionSource) || undefined,
     title:
-      typeof input.title === "string" && input.title.trim()
-        ? input.title
-        : fallbackTitle(input),
+      rawTitle.trim().slice(0, 240),
   };
 }, z.object({
   asset_placeholders: assetPlaceholdersSchema,
@@ -168,22 +434,86 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
 }));
 
 export const aiPdfExtractionSchema = z.preprocess((value) => {
-  if (Array.isArray(value)) {
+  const normalizeExtractionInput = (
+    input: Record<string, unknown>,
+    inheritedWarnings: string[] = [],
+  ) => {
+    const questions = Array.isArray(input.questions) ? input.questions : [];
+    const warnings = [
+      ...inheritedWarnings,
+      ...looseStringList(input.warnings),
+    ];
+    if (!Array.isArray(input.questions)) {
+      warnings.push("AI provider response did not include a questions array.");
+    }
+
+    if (questions.length > 200) {
+      warnings.push("AI provider returned more than 200 questions; extra questions were ignored.");
+    }
+
+    const normalizedQuestions: AIPdfQuestion[] = [];
+
+    questions.slice(0, 200).forEach((question, index) => {
+      if (!question || typeof question !== "object" || Array.isArray(question)) {
+        warnings.push(`Question ${index + 1} was skipped because it was not an object.`);
+        return;
+      }
+
+      const questionRecord = question as Record<string, unknown>;
+      const label =
+        typeof questionRecord.question_code === "string" &&
+        questionRecord.question_code.trim()
+          ? `Question ${questionRecord.question_code.trim()}`
+          : `Question ${index + 1}`;
+      const normalized = normalizeAssetPlaceholdersForQuestion({
+        question: questionRecord,
+        questionLabel: label,
+      });
+
+      warnings.push(...normalized.warnings);
+      const parsedQuestion = aiPdfQuestionSchema.safeParse({
+        ...questionRecord,
+        asset_placeholders: normalized.placeholders,
+      });
+
+      if (!parsedQuestion.success) {
+        warnings.push(
+          `${label} was skipped: ${parsedQuestion.error.issues
+            .map((issue) => `${issue.path.join(".") || "question"}: ${issue.message}`)
+            .slice(0, 4)
+            .join("; ")}`,
+        );
+        return;
+      }
+
+      normalizedQuestions.push(parsedQuestion.data);
+    });
+
     return {
-      questions: value,
-      warnings: ["AI provider returned a top-level array; normalized to questions."],
+      ...input,
+      questions: normalizedQuestions,
+      warnings: Array.from(new Set(warnings)),
     };
+  };
+
+  if (Array.isArray(value)) {
+    return normalizeExtractionInput(
+      { questions: value },
+      ["AI provider returned a top-level array; normalized to questions."],
+    );
   }
 
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const input = value as Record<string, unknown>;
 
     if (!("questions" in input) && Array.isArray(input.items)) {
-      return {
+      return normalizeExtractionInput({
         ...input,
         questions: input.items,
-      };
+      });
     }
+
+    return normalizeExtractionInput(input);
   }
 
   return value;
@@ -191,6 +521,25 @@ export const aiPdfExtractionSchema = z.preprocess((value) => {
   questions: z.array(aiPdfQuestionSchema).min(1).max(200),
   warnings: z.array(z.string()).default([]),
 }));
+
+export function normalizeAIPdfExtractionResponse(value: unknown) {
+  const parsed = aiPdfExtractionSchema.safeParse(value);
+
+  if (!parsed.success) {
+    throw new Error(
+      parsed.error.issues
+        .map((issue) => `${issue.path.join(".") || "response"}: ${issue.message}`)
+        .slice(0, 8)
+        .join("; "),
+    );
+  }
+
+  if (!parsed.data.questions.length) {
+    throw new Error("AI provider response contained zero importable questions.");
+  }
+
+  return parsed.data;
+}
 
 export type AIPdfAssetPlaceholder = z.infer<typeof aiPdfAssetPlaceholderSchema>;
 export type AIPdfExtraction = z.infer<typeof aiPdfExtractionSchema>;
