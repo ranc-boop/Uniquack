@@ -119,7 +119,12 @@ function firstRecoverableString(
 }
 
 function fallbackTitle(input: Record<string, unknown>) {
-  const code = String(input.question_code ?? "").trim();
+  const code = String(
+    input.question_number ??
+      input.visible_question_number ??
+      input.question_code ??
+      "",
+  ).trim();
   const content = stripHtml(
     firstRecoverableString(input, [
       "content_html",
@@ -402,6 +407,17 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
     rawQuestionCode && QUESTION_CODE_PATTERN.test(rawQuestionCode)
       ? rawQuestionCode
       : undefined;
+  const visibleQuestionNumber =
+    firstRecoverableString(input, [
+      "question_number",
+      "visible_question_number",
+      "visibleNumber",
+      "questionNumber",
+      "number",
+      "problem_number",
+    ]) ||
+    rawQuestionCode ||
+    "";
   const rawTitle =
     typeof input.title === "string" && input.title.trim()
       ? input.title
@@ -412,6 +428,7 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
     content_source: (input.content_source ?? contentSource) || undefined,
     content_html: contentHtml,
     question_code: questionCode,
+    question_number: visibleQuestionNumber || undefined,
     solution_html: solutionHtml,
     solution_source: (input.solution_source ?? solutionSource) || undefined,
     title:
@@ -425,6 +442,7 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
   new_tag_names: stringArraySchema,
   page_refs: pageRefsSchema,
   question_code: z.string().trim().max(80).optional(),
+  question_number: optionalStringSchema,
   question_type: questionTypeSchema.default("frq"),
   solution_html: z.string().trim().nullable().default(null),
   solution_source: optionalStringSchema,

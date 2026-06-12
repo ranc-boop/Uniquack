@@ -689,6 +689,53 @@ try {
           needsImageReview: true,
           pageCount: 6,
           phase: "completed",
+          chunking: {
+            chunkSizePages: 3,
+            chunks: [
+              {
+                chunkIndex: 0,
+                id: "chunk-1",
+                pageEnd: 3,
+                pageStart: 1,
+                questionCount: 2,
+                sourcePages: [1, 2, 3],
+                status: "completed",
+                warningCount: 0,
+              },
+              {
+                chunkIndex: 1,
+                errorMessage: "Mock chunk failed after provider timeout.",
+                id: "chunk-2",
+                overlapPages: [3],
+                pageEnd: 5,
+                pageStart: 3,
+                retryCount: 1,
+                sourcePages: [3, 4, 5],
+                status: "failed",
+                warningCount: 1,
+                warnings: ["ROUTE_RAW_CHUNK_WARNING_SHOULD_NOT_RENDER"],
+              },
+              {
+                chunkIndex: 2,
+                id: "chunk-3",
+                overlapPages: [5],
+                pageEnd: 6,
+                pageStart: 5,
+                sourcePages: [5, 6],
+                status: "planned",
+                warningCount: 0,
+              },
+            ],
+            completedChunks: 1,
+            enabled: true,
+            failedChunks: 1,
+            mergeStatus: "not_started",
+            mergeWarnings: ["Merge is deferred to review-safe M2 follow-up."],
+            mode: "foundation",
+            overlapPages: 1,
+            pageCount: 6,
+            totalChunks: 3,
+          },
           provider: {
             id: randomUUID(),
             model: "gemini-2.5-flash-lite",
@@ -870,28 +917,41 @@ try {
     superAdminCookie,
   );
 
+  const aiPdfDashboardExpectedTokens = [
+    "AI Parsing Control Dashboard",
+    "Route Gemini Native",
+    "gemini-2.5-flash-lite",
+    "Gemini Native full PDF",
+    "AI-generated questions are draft-only and are not visible to students until published.",
+    "Review generated drafts",
+    `/admin/review?batch=${aiPdfBatch.id}`,
+    "Total chunks:",
+    "Completed:",
+    "Failed:",
+    "Running or queued:",
+    "Mode:",
+    "foundation",
+    "Chunk",
+    "Pages 3-5",
+    "Retry controls will appear in a later PR.",
+    "Possible missing question numbers: 3",
+    "Questions may need diagrams/images before publishing.",
+    "Missing figure attachments",
+    "Needs media review",
+  ];
+  const missingAiPdfDashboardTokens = aiPdfDashboardExpectedTokens.filter(
+    (token) => !aiPdfDashboard.text.includes(token),
+  );
+
   assertRoute(
     aiPdfDashboard.status === 200 &&
-      aiPdfDashboard.text.includes("AI Parsing Control Dashboard") &&
-      aiPdfDashboard.text.includes("Route Gemini Native") &&
       !aiPdfDashboard.text.includes("Latest AI PDF extraction") &&
-      aiPdfDashboard.text.includes("gemini-2.5-flash-lite") &&
-      aiPdfDashboard.text.includes("Gemini Native full PDF") &&
-      aiPdfDashboard.text.includes(
-        "AI-generated questions are draft-only and are not visible to students until published.",
-      ) &&
-      aiPdfDashboard.text.includes("Review generated drafts") &&
-      aiPdfDashboard.text.includes(`/admin/review?batch=${aiPdfBatch.id}`) &&
-      aiPdfDashboard.text.includes(
-        "Chunk details are not available for this import yet.",
-      ) &&
-      aiPdfDashboard.text.includes("Possible missing question numbers: 3") &&
-      aiPdfDashboard.text.includes(
-        "Questions may need diagrams/images before publishing.",
-      ) &&
-      aiPdfDashboard.text.includes("Missing figure attachments") &&
-      aiPdfDashboard.text.includes("Needs media review"),
-    "AI PDF control dashboard renders provider, strategy, draft-only review, warnings, chunks, and figure indicators",
+      missingAiPdfDashboardTokens.length === 0,
+    `AI PDF control dashboard renders provider, strategy, draft-only review, warnings, chunks, and figure indicators${
+      missingAiPdfDashboardTokens.length
+        ? ` (missing: ${missingAiPdfDashboardTokens.join(", ")})`
+        : ""
+    }`,
   );
   const dashboardStart = aiPdfDashboard.text.indexOf(
     "AI Parsing Control Dashboard",
@@ -906,7 +966,7 @@ try {
   );
   const failedCard = aiPdfDashboard.text.slice(
     failedCardStart,
-    failedCardStart + 10_000,
+    failedCardStart + 18_000,
   );
 
   assertRoute(failedCardStart >= 0, "AI PDF failed batch fixture renders");
@@ -921,6 +981,12 @@ try {
       failedCard.includes("Gemini Native full PDF") &&
       !failedCard.includes("Unsupported"),
     "AI PDF failed Gemini Native batch renders supported full PDF input",
+  );
+  assertRoute(
+    failedCard.includes("Total chunks:") &&
+      failedCard.includes("Chunks:") &&
+      !failedCard.includes("Chunk details are not available for this import yet."),
+    "AI PDF pageCount-only failed batch renders fallback chunk plan instead of placeholder",
   );
   assertRoute(
     failedCard.includes(
@@ -995,6 +1061,10 @@ try {
     `/admin/review?batch=${aiPdfBatch.id}`,
     adminCookie,
   );
+  const emptyBatchReviewDashboard = await fetchRoute(
+    `/admin/review?batch=${failedAiPdfBatch.id}`,
+    adminCookie,
+  );
 
   assertRoute(
     reviewDashboard.status === 200 &&
@@ -1017,6 +1087,15 @@ try {
       reviewBatchDashboard.text.includes(draftQuestion.question_code) &&
       reviewBatchDashboard.text.includes("Clear batch filter"),
     "review dashboard can jump directly to drafts from one AI PDF import batch",
+  );
+  assertRoute(
+    emptyBatchReviewDashboard.status === 200 &&
+      emptyBatchReviewDashboard.text.includes("No drafts found for this batch yet.") &&
+      emptyBatchReviewDashboard.text.includes(
+        "Extraction may still be running or no usable questions were created.",
+      ) &&
+      emptyBatchReviewDashboard.text.includes("Clear filter"),
+    "review dashboard batch filter empty state does not white-screen",
   );
 
   const adminDraftQuestionEdit = await fetchRoute(

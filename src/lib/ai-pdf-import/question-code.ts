@@ -32,6 +32,33 @@ function uniqueGeneratedQuestionCode({
   return questionCode;
 }
 
+export function generateAIPdfQuestionCodeForImport({
+  batchId,
+  existingQuestionCodes,
+  index,
+  usedQuestionCodes,
+}: {
+  batchId: string;
+  existingQuestionCodes: Set<string>;
+  index: number;
+  usedQuestionCodes: Set<string>;
+}) {
+  const questionCode = uniqueGeneratedQuestionCode({
+    batchId,
+    existingQuestionCodes,
+    index,
+    usedQuestionCodes,
+  });
+
+  usedQuestionCodes.add(questionCodeKey(questionCode));
+
+  return questionCode;
+}
+
+export function visibleQuestionNumberKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function warnOnce(warnings: string[], warning: string) {
   if (!warnings.includes(warning)) {
     warnings.push(warning);

@@ -7,6 +7,12 @@ import {
   deriveAIPdfBatchDisplayState,
   type AiProviderMode,
 } from "@/lib/ai-pdf-import/display";
+import {
+  createAIPdfChunkingSummary,
+  formatAIPdfChunkPageRange,
+  normalizeAIPdfChunkingSummary,
+  type AIPdfImportChunkSummary,
+} from "@/lib/ai-pdf-import/chunking";
 
 type SourceAssetSummary = {
   created_at?: string | null;
@@ -455,6 +461,39 @@ function getChunks(ai: Record<string, unknown>) {
   return [];
 }
 
+function chunkStatusClass(status: string) {
+  if (status === "completed") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  }
+
+  if (status === "failed") {
+    return "border-destructive/30 bg-destructive/10 text-destructive";
+  }
+
+  if (status === "running" || status === "queued") {
+    return "border-amber-200 bg-amber-50 text-amber-900";
+  }
+
+  if (status === "partial") {
+    return "border-blue-200 bg-blue-50 text-blue-900";
+  }
+
+  return "border-muted bg-background text-muted-foreground";
+}
+
+function chunkDebugLine(chunk: AIPdfImportChunkSummary) {
+  const parts = [
+    chunk.provider,
+    chunk.model,
+    chunk.inputStrategy,
+    chunk.createdQuestionIds?.length
+      ? `created ${chunk.createdQuestionIds.length}`
+      : "",
+  ].filter(Boolean);
+
+  return parts.join(" / ");
+}
+
 function complexityLabel({
   pageCount,
   sizeBytes,
@@ -546,9 +585,19 @@ export function AIPdfControlDashboard({
               const displayStatus = display.displayStatus;
               const warnings = display.warnings.debugWarnings;
               const aggregatedWarnings = display.warnings;
-              const chunks = getChunks(ai);
+              const chunking =
+                normalizeAIPdfChunkingSummary(ai.chunking) ??
+                (pageCount ? createAIPdfChunkingSummary({ pageCount }) : null);
+              const legacyChunks = getChunks(ai);
               const chunkCount =
-                chunks.length || firstNumber(ai, ["chunkCount", "chunksCount"]);
+                chunking?.totalChunks ??
+                (legacyChunks.length ||
+                  firstNumber(ai, ["chunkCount", "chunksCount"]));
+              const runningChunkCount = chunking
+                ? chunking.chunks.filter((chunk) =>
+                    ["queued", "running"].includes(chunk.status),
+                  ).length
+                : 0;
               const detectedFigureCount = firstNumber(ai, [
                 "detectedFigureCount",
                 "detectedFiguresCount",
@@ -678,25 +727,31 @@ export function AIPdfControlDashboard({
                   ) : null}
 
                   <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-md border bg-muted/20 p-3">
+                    <div className="min-w-0 rounded-md border bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">Provider</p>
-                      <p className="font-medium">{providerName}</p>
+                      <p className="break-words font-medium">{providerName}</p>
                       <p className="text-xs text-muted-foreground">
                         {display.providerModeLabel}
                       </p>
                     </div>
-                    <div className="rounded-md border bg-muted/20 p-3">
+                    <div className="min-w-0 rounded-md border bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">Model</p>
-                      <p className="font-medium">{model}</p>
+                      <p className="break-words font-medium">{model}</p>
                       <p className="text-xs text-muted-foreground">
                         Input: {inputStrategyLabel}
                       </p>
                     </div>
-                    <div className="rounded-md border bg-muted/20 p-3">
+                    <div className="min-w-0 rounded-md border bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">
                         Source / pages
                       </p>
-                      <p className="font-medium">
+                      <p
+                        className="break-words font-medium"
+                        title={
+                          batch.sourceAsset?.original_filename ??
+                          firstString(ai, ["fileName"], "-")
+                        }
+                      >
                         {batch.sourceAsset?.original_filename ??
                           firstString(ai, ["fileName"], "-")}
                       </p>
@@ -705,20 +760,25 @@ export function AIPdfControlDashboard({
                         {formatFileSize(sizeBytes)}
                       </p>
                     </div>
-                    <div className="rounded-md border bg-muted/20 p-3">
+                    <div className="min-w-0 rounded-md border bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">Outputs</p>
-                      <p className="font-medium">
-                        Drafts: {createdQuestionCount}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Source assets: {batch.sourceAsset ? 1 : 0} / Question
-                        assets: {uploadedCropCount}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Uploaded crops: {uploadedCropCount} / Warnings:{" "}
-                        {warnings.length} / Chunks:{" "}
-                        {chunkCount !== undefined ? chunkCount : "-"}
-                      </p>
+                      <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+                        <p>
+                          <span className="font-medium text-foreground">
+                            Drafts:
+                          </span>{" "}
+                          {createdQuestionCount}
+                        </p>
+                        <p>
+                          Source assets: {batch.sourceAsset ? 1 : 0}
+                        </p>
+                        <p>Question assets: {uploadedCropCount}</p>
+                        <p>Uploaded crops: {uploadedCropCount}</p>
+                        <p>
+                          Warnings: {warnings.length} / Chunks:{" "}
+                          {chunkCount !== undefined ? chunkCount : "-"}
+                        </p>
+                      </div>
                     </div>
                   </div>
 
@@ -767,9 +827,82 @@ export function AIPdfControlDashboard({
                         <p className="text-sm font-medium">
                           Long PDF / chunks
                         </p>
-                        {chunks.length ? (
+                        {chunking ? (
                           <div className="mt-2 space-y-2 text-xs">
-                            {chunks.slice(0, 5).map((chunk) => (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <p className="rounded border bg-background p-2">
+                                Total chunks: {chunking.totalChunks}
+                              </p>
+                              <p className="rounded border bg-background p-2">
+                                Completed: {chunking.completedChunks} / Failed:{" "}
+                                {chunking.failedChunks}
+                              </p>
+                              <p className="rounded border bg-background p-2">
+                                Running or queued: {runningChunkCount}
+                              </p>
+                              <p className="rounded border bg-background p-2">
+                                Mode: {chunking.mode}
+                              </p>
+                            </div>
+                            {chunking.chunkSizePages || chunking.overlapPages ? (
+                              <p className="text-muted-foreground">
+                                Chunk size: {chunking.chunkSizePages ?? "-"} pages
+                                {" | "}
+                                Overlap: {chunking.overlapPages ?? 0} pages
+                              </p>
+                            ) : null}
+                            <div className="space-y-2">
+                              {chunking.chunks.slice(0, 8).map((chunk) => (
+                                <div
+                                  key={chunk.id}
+                                  className={`rounded border p-2 ${chunkStatusClass(
+                                    chunk.status,
+                                  )}`}
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="font-medium">
+                                      Chunk {chunk.chunkIndex + 1}
+                                    </p>
+                                    <Badge variant="outline">{chunk.status}</Badge>
+                                  </div>
+                                  <p>
+                                    {formatAIPdfChunkPageRange(chunk)}
+                                    {chunk.overlapPages?.length
+                                      ? ` / overlap ${chunk.overlapPages.join(", ")}`
+                                      : ""}
+                                  </p>
+                                  <p>
+                                    Questions:{" "}
+                                    {chunk.questionCount ?? "-"}
+                                    {" | "}
+                                    Warnings: {chunk.warningCount ?? 0}
+                                    {" | "}
+                                    Retries: {chunk.retryCount ?? 0}
+                                  </p>
+                                  {chunkDebugLine(chunk) ? (
+                                    <p>{chunkDebugLine(chunk)}</p>
+                                  ) : null}
+                                  {chunk.status === "failed" ? (
+                                    <p>Retry controls will appear in a later PR.</p>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                            {chunking.chunks.length > 8 ? (
+                              <p className="text-muted-foreground">
+                                {chunking.chunks.length - 8} more chunks hidden
+                                from this compact preview.
+                              </p>
+                            ) : null}
+                            {chunking.mergeStatus ? (
+                              <p className="text-muted-foreground">
+                                Merge status: {chunking.mergeStatus}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : legacyChunks.length ? (
+                          <div className="mt-2 space-y-2 text-xs">
+                            {legacyChunks.slice(0, 5).map((chunk) => (
                               <div
                                 key={`${chunk.label}-${chunk.pages}-${chunk.status}`}
                                 className="rounded border bg-background p-2"

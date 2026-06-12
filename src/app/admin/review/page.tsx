@@ -547,8 +547,23 @@ export default async function AdminReviewPage({
           );
         })}
         {!draftQuestions.length ? (
-          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">
-            No draft questions match this review queue.
+          <div className="space-y-3 rounded-md border p-8 text-center text-sm text-muted-foreground">
+            {batchFilter ? (
+              <>
+                <p className="font-medium text-foreground">
+                  No drafts found for this batch yet.
+                </p>
+                <p>
+                  Extraction may still be running or no usable questions were
+                  created.
+                </p>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/admin/review">Clear filter</Link>
+                </Button>
+              </>
+            ) : (
+              <p>No draft questions match this review queue.</p>
+            )}
           </div>
         ) : null}
       </div>

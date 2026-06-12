@@ -8,6 +8,17 @@ const { aiPdfExtractionSchema } = await import(
   "../src/lib/ai-pdf-import/schema.ts"
 );
 const {
+  createAIPdfChunkingSummary,
+  ensureAIPdfChunkingSummary,
+  mergeAIPdfImportChunkingSummary,
+  normalizeAIPdfChunkingSummary,
+  planAIPdfPageChunks,
+} = await import("../src/lib/ai-pdf-import/chunking.ts");
+const {
+  generateAIPdfQuestionCodeForImport,
+  visibleQuestionNumberKey,
+} = await import("../src/lib/ai-pdf-import/question-code.ts");
+const {
   AI_PROVIDER_MODE_OPTIONS,
   aiPdfInputStrategyLabel,
   aiProviderModeSummaryLabel,
@@ -47,6 +58,120 @@ assert.deepEqual(dangerousHtml, { __html: "<p>Safe</p>" });
 
 console.log(
   "PASS sanitizer removes unsafe HTML and preserves Supabase Storage image URLs",
+);
+
+assert.deepEqual(
+  planAIPdfPageChunks({
+    chunkSizePages: 3,
+    overlapPages: 1,
+    pageCount: 10,
+  }).map((chunk) => [chunk.pageStart, chunk.pageEnd]),
+  [
+    [1, 3],
+    [3, 5],
+    [5, 7],
+    [7, 9],
+    [9, 10],
+  ],
+);
+assert.deepEqual(
+  planAIPdfPageChunks({
+    chunkSizePages: 3,
+    overlapPages: 1,
+    pageCount: 2,
+  }).map((chunk) => [chunk.pageStart, chunk.pageEnd]),
+  [[1, 2]],
+);
+assert.throws(
+  () =>
+    planAIPdfPageChunks({
+      chunkSizePages: 3,
+      overlapPages: 3,
+      pageCount: 10,
+    }),
+  /overlapPages must be smaller/,
+);
+const chunkingSummary = createAIPdfChunkingSummary({
+  chunkSizePages: 3,
+  overlapPages: 1,
+  pageCount: 10,
+});
+assert.equal(chunkingSummary.totalChunks, 5);
+assert.deepEqual(chunkingSummary.chunks[1].overlapPages, [3]);
+assert.equal(chunkingSummary.chunks.every((chunk) => chunk.status === "planned"), true);
+const normalizedChunking = normalizeAIPdfChunkingSummary({
+  enabled: true,
+  mode: "foundation",
+  totalChunks: 2,
+  chunks: [
+    {
+      chunk_index: 1,
+      page_start: 3,
+      page_end: 5,
+      status: "failed",
+      warnings: ["raw warning stays counted, not used for identity"],
+    },
+    {
+      chunk_index: 0,
+      page_start: 1,
+      page_end: 3,
+      status: "completed",
+      question_count: 2,
+    },
+  ],
+});
+assert.equal(normalizedChunking?.chunks[0].chunkIndex, 0);
+assert.equal(normalizedChunking?.chunks[1].warningCount, 1);
+assert.equal(normalizedChunking?.failedChunks, 1);
+const sourceUploadAiPdfImport = mergeAIPdfImportChunkingSummary(
+  {},
+  {
+    chunking: createAIPdfChunkingSummary({ pageCount: 12 }),
+    pageCount: 12,
+    phase: "source_uploaded",
+  },
+);
+const leasedAiPdfImport = mergeAIPdfImportChunkingSummary(
+  sourceUploadAiPdfImport,
+  {
+    jobId: "lease-1",
+    phase: "queued",
+  },
+);
+const progressAiPdfImport = mergeAIPdfImportChunkingSummary(leasedAiPdfImport, {
+  pageCount: 12,
+  phase: "calling_provider",
+});
+const finalAiPdfImport = mergeAIPdfImportChunkingSummary(progressAiPdfImport, {
+  createdQuestionCount: 2,
+  pageCount: 12,
+  phase: "completed",
+});
+assert.equal(finalAiPdfImport.pageCount, 12);
+assert.equal(finalAiPdfImport.chunking?.totalChunks, 6);
+assert.notEqual(finalAiPdfImport.chunking?.totalChunks, undefined);
+assert.equal(
+  ensureAIPdfChunkingSummary({ pageCount: 12 })?.totalChunks,
+  6,
+  "old AI PDF summaries with pageCount should backfill foundation chunking",
+);
+console.log("PASS AI PDF chunking summary survives source, lease, progress, and final summary updates");
+
+const generatedQuestionCodes = new Set();
+const generatedQuestionCode = generateAIPdfQuestionCodeForImport({
+  batchId: "abc12345-0000-0000-0000-000000000000",
+  existingQuestionCodes: new Set(["ai-abc12345-001"]),
+  index: 0,
+  usedQuestionCodes: generatedQuestionCodes,
+});
+assert.equal(generatedQuestionCode, "AI-ABC12345-001-2");
+assert.equal(generatedQuestionCodes.has("ai-abc12345-001-2"), true);
+assert.notEqual(visibleQuestionNumberKey("3"), visibleQuestionNumberKey("3.1"));
+assert.notEqual(visibleQuestionNumberKey("3"), visibleQuestionNumberKey("3(a)"));
+assert.notEqual(visibleQuestionNumberKey("3"), visibleQuestionNumberKey("FRQ 2"));
+
+console.log(
+  "PASS AI PDF chunk planner and visible question numbering policy are deterministic and non-aggressive",
 );
 
 const validEscapesPayload = parsePossiblyMalformedJson(
