@@ -307,6 +307,24 @@ export function isAiPdfInputStrategyImplemented(strategy: AiPdfInputStrategy) {
   );
 }
 
+export function supportsAIPdfSequentialChunkExtraction(
+  strategy: AiPdfInputStrategy,
+) {
+  return strategy === "page_images";
+}
+
+export function estimateAIPdfProviderCallCount({
+  strategy,
+  totalChunks,
+}: {
+  strategy: AiPdfInputStrategy;
+  totalChunks: number;
+}) {
+  return supportsAIPdfSequentialChunkExtraction(strategy)
+    ? Math.max(1, totalChunks)
+    : 1;
+}
+
 export function describeAiPdfProviderInput(profile: AiProviderRoutingProfile) {
   const mode = inferAiProviderMode(profile);
   const capabilities = getAiProviderCapabilities(profile);

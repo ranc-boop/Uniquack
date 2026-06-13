@@ -113,6 +113,7 @@ export function friendlyAIPdfPhaseLabel(phase: string) {
     importing_questions: "Importing draft questions",
     loading_provider: "Provider selected",
     loading_tags: "Loading tag context",
+    partial: "Partial",
     preparing_native_pdf_input: "Preparing Gemini Native full PDF",
     preparing_pdf_input: "Preparing full PDF input",
     preparing_provider_input: "Preparing provider input",
@@ -163,6 +164,10 @@ function statusLabel({
   status: string;
 }) {
   if (isFailedAIPdfStatus(status) && createdQuestionCount > 0) {
+    return "Partial";
+  }
+
+  if (phase === "partial" && createdQuestionCount > 0) {
     return "Partial";
   }
 
@@ -407,10 +412,22 @@ export function deriveAIPdfBatchDisplayState({
     "AI PDF import";
   const hasNoDrafts = finalCreatedQuestionCount === 0;
   const failedWithoutDrafts = displayStatus === "Failed" && hasNoDrafts;
+  const validationErrorReasons = Array.from(
+    new Set(
+      (Array.isArray(summaryRecord.validationErrorReasons)
+        ? summaryRecord.validationErrorReasons
+        : []
+      )
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean),
+    ),
+  ).slice(0, 4);
   const failureMessages = failedWithoutDrafts
     ? [
         "No drafts were created.",
-        "The extraction failed before questions could be imported.",
+        validationErrorReasons.length
+          ? `Import validation failed: ${validationErrorReasons.join("; ")}`
+          : "The extraction failed before questions could be imported.",
         ...(warnings.hasAssetPlaceholderProblem
           ? [
               "Some image placeholders could not be attached, but this should not block text-only drafts in future retries.",

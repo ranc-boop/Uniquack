@@ -264,8 +264,8 @@ export function mergeAIPdfImportChunkingSummary(
     ...patch,
   };
   const chunking =
-    existingAiPdfImport.chunking ??
     patch.chunking ??
+    existingAiPdfImport.chunking ??
     ensureAIPdfChunkingSummary(nextAiPdfImport);
 
   if (chunking) {
@@ -273,6 +273,44 @@ export function mergeAIPdfImportChunkingSummary(
   }
 
   return nextAiPdfImport;
+}
+
+function recomputeAIPdfChunkingSummary(
+  current: AIPdfChunkingSummary,
+): AIPdfChunkingSummary {
+  const chunks = current.chunks
+    .slice()
+    .sort((left, right) => left.chunkIndex - right.chunkIndex);
+  const completedChunks = chunks.filter(
+    (chunk) => chunk.status === "completed",
+  ).length;
+  const failedChunks = chunks.filter((chunk) => chunk.status === "failed").length;
+  const totalChunks = chunks.length || current.totalChunks;
+  const hasRunningChunks = chunks.some((chunk) =>
+    ["queued", "running"].includes(chunk.status),
+  );
+  const hasUnfinishedChunks = chunks.some((chunk) =>
+    ["planned", "queued", "running"].includes(chunk.status),
+  );
+  const mergeStatus =
+    failedChunks > 0
+      ? hasUnfinishedChunks
+        ? "waiting_for_chunks"
+        : "failed"
+      : totalChunks > 0 && completedChunks === totalChunks
+        ? "ready"
+        : hasRunningChunks || completedChunks > 0
+          ? "waiting_for_chunks"
+          : current.mergeStatus ?? "not_started";
+
+  return {
+    ...current,
+    chunks,
+    completedChunks,
+    failedChunks,
+    mergeStatus,
+    totalChunks,
+  };
 }
 
 export function normalizeAIPdfChunkingSummary(
@@ -336,12 +374,6 @@ export function normalizeAIPdfChunkingSummary(
     .filter((chunk): chunk is AIPdfImportChunkSummary => Boolean(chunk))
     .sort((left, right) => left.chunkIndex - right.chunkIndex);
 
-  const completedChunks =
-    firstNumber(input, ["completedChunks", "completed_chunks"]) ??
-    chunks.filter((chunk) => chunk.status === "completed").length;
-  const failedChunks =
-    firstNumber(input, ["failedChunks", "failed_chunks"]) ??
-    chunks.filter((chunk) => chunk.status === "failed").length;
   const totalChunks =
     firstNumber(input, ["totalChunks", "total_chunks"]) ?? chunks.length;
   const mode =
@@ -349,12 +381,12 @@ export function normalizeAIPdfChunkingSummary(
       ? input.mode
       : "foundation";
 
-  return {
+  return recomputeAIPdfChunkingSummary({
     chunkSizePages: firstNumber(input, ["chunkSizePages", "chunk_size_pages"]),
     chunks,
-    completedChunks,
+    completedChunks: 0,
     enabled: Boolean(input.enabled ?? chunks.length),
-    failedChunks,
+    failedChunks: 0,
     mergeStatus:
       input.mergeStatus === "waiting_for_chunks" ||
       input.mergeStatus === "ready" ||
@@ -367,5 +399,48 @@ export function normalizeAIPdfChunkingSummary(
     overlapPages: firstNumber(input, ["overlapPages", "overlap_pages"]),
     pageCount: firstNumber(input, ["pageCount", "page_count"]),
     totalChunks,
-  };
+  });
+}
+
+export function patchAIPdfChunkingSummary({
+  chunkIndex,
+  pageCount,
+  patch,
+  value,
+}: {
+  chunkIndex: number;
+  pageCount: number;
+  patch: Partial<AIPdfImportChunkSummary>;
+  value: unknown;
+}): AIPdfChunkingSummary {
+  const current =
+    normalizeAIPdfChunkingSummary(value) ??
+    createAIPdfChunkingSummary({ pageCount });
+  const chunks = current.chunks
+    .map((chunk) =>
+      chunk.chunkIndex === chunkIndex
+        ? {
+            ...chunk,
+            ...patch,
+            chunkIndex: chunk.chunkIndex,
+            id: patch.id ?? chunk.id,
+            pageEnd: patch.pageEnd ?? chunk.pageEnd,
+            pageStart: patch.pageStart ?? chunk.pageStart,
+            sourcePages: patch.sourcePages ?? chunk.sourcePages,
+            warningCount:
+              patch.warningCount ??
+              (patch.warnings ? patch.warnings.length : chunk.warningCount),
+          }
+        : chunk,
+    )
+    .sort((left, right) => left.chunkIndex - right.chunkIndex);
+  return recomputeAIPdfChunkingSummary({
+    ...current,
+    chunks,
+    completedChunks: 0,
+    failedChunks: 0,
+    mode: "sequential",
+    pageCount: current.pageCount ?? pageCount,
+    totalChunks: chunks.length,
+  });
 }
