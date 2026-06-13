@@ -12,6 +12,7 @@ const {
   ensureAIPdfChunkingSummary,
   mergeAIPdfImportChunkingSummary,
   normalizeAIPdfChunkingSummary,
+  patchAIPdfChunkingSummary,
   planAIPdfPageChunks,
 } = await import("../src/lib/ai-pdf-import/chunking.ts");
 const {
@@ -23,10 +24,13 @@ const {
   aiPdfInputStrategyLabel,
   aiProviderModeSummaryLabel,
   describeAiPdfProviderInput,
+  estimateAIPdfProviderCallCount,
   getAiProviderCapabilities,
   inferAiProviderMode,
   selectAiPdfInputStrategy,
+  supportsAIPdfSequentialChunkExtraction,
 } = await import("../src/lib/ai-providers/adapters.ts");
+const { decryptSecret } = await import("../src/lib/ai-providers/encryption.ts");
 const {
   generateWithGeminiNativePdf,
   testGeminiNativeTextConnection,
@@ -150,12 +154,259 @@ const finalAiPdfImport = mergeAIPdfImportChunkingSummary(progressAiPdfImport, {
 assert.equal(finalAiPdfImport.pageCount, 12);
 assert.equal(finalAiPdfImport.chunking?.totalChunks, 6);
 assert.notEqual(finalAiPdfImport.chunking?.totalChunks, undefined);
+assert.equal(finalAiPdfImport.chunking?.mode, "foundation");
+assert.equal(
+  finalAiPdfImport.chunking?.chunks.every((chunk) => chunk.status === "planned"),
+  true,
+);
 assert.equal(
   ensureAIPdfChunkingSummary({ pageCount: 12 })?.totalChunks,
   6,
   "old AI PDF summaries with pageCount should backfill foundation chunking",
 );
 console.log("PASS AI PDF chunking summary survives source, lease, progress, and final summary updates");
+
+let staleOverwriteChunking = createAIPdfChunkingSummary({
+  chunkSizePages: 3,
+  overlapPages: 1,
+  pageCount: 7,
+});
+let staleAiPdfImport = { chunking: staleOverwriteChunking, pageCount: 7 };
+for (const chunk of staleOverwriteChunking.chunks) {
+  const nextChunking = patchAIPdfChunkingSummary({
+    chunkIndex: chunk.chunkIndex,
+    pageCount: 7,
+    patch: {
+      completedAt: `done-${chunk.chunkIndex}`,
+      createdQuestionIds: [`question-${chunk.chunkIndex}`],
+      questionCount: 1,
+      status: "completed",
+    },
+    value: staleAiPdfImport.chunking,
+  });
+  staleAiPdfImport = mergeAIPdfImportChunkingSummary(staleAiPdfImport, {
+    chunking: nextChunking,
+    phase: `chunk_${chunk.chunkIndex}_completed`,
+  });
+}
+assert.equal(staleAiPdfImport.chunking.completedChunks, 3);
+assert.equal(staleAiPdfImport.chunking.failedChunks, 0);
+assert.equal(staleAiPdfImport.chunking.mergeStatus, "ready");
+assert.equal(
+  staleAiPdfImport.chunking.chunks.every((chunk) => chunk.status === "completed"),
+  true,
+);
+
+let sixChunkSuccess = createAIPdfChunkingSummary({
+  chunkSizePages: 3,
+  overlapPages: 1,
+  pageCount: 13,
+});
+for (const chunk of sixChunkSuccess.chunks) {
+  sixChunkSuccess = patchAIPdfChunkingSummary({
+    chunkIndex: chunk.chunkIndex,
+    pageCount: 13,
+    patch: {
+      completedAt: `done-${chunk.chunkIndex}`,
+      createdQuestionIds: [`question-${chunk.chunkIndex}`],
+      questionCount: 5,
+      status: "completed",
+    },
+    value: sixChunkSuccess,
+  });
+}
+assert.equal(sixChunkSuccess.totalChunks, 6);
+assert.equal(sixChunkSuccess.completedChunks, 6);
+assert.equal(sixChunkSuccess.failedChunks, 0);
+assert.equal(sixChunkSuccess.mergeStatus, "ready");
+assert.equal(sixChunkSuccess.chunks.every((chunk) => chunk.status === "completed"), true);
+assert.equal(
+  normalizeAIPdfChunkingSummary({
+    ...sixChunkSuccess,
+    completedChunks: 1,
+    mergeStatus: "waiting_for_chunks",
+  })?.completedChunks,
+  6,
+);
+assert.equal(
+  normalizeAIPdfChunkingSummary({
+    ...sixChunkSuccess,
+    completedChunks: 1,
+    mergeStatus: "waiting_for_chunks",
+  })?.mergeStatus,
+  "ready",
+);
+console.log("PASS AI PDF chunking updates preserve prior chunk states and recompute final readiness");
+
+let sharedImportDbSummary = {
+  aiPdfImport: {
+    chunking: createAIPdfChunkingSummary({
+      chunkSizePages: 3,
+      overlapPages: 1,
+      pageCount: 13,
+    }),
+    pageCount: 13,
+    phase: "queued",
+  },
+  createdCount: 0,
+};
+for (const chunk of sharedImportDbSummary.aiPdfImport.chunking.chunks) {
+  const runningChunking = patchAIPdfChunkingSummary({
+    chunkIndex: chunk.chunkIndex,
+    pageCount: 13,
+    patch: {
+      status: "running",
+      startedAt: `start-${chunk.chunkIndex}`,
+    },
+    value: sharedImportDbSummary.aiPdfImport.chunking,
+  });
+  sharedImportDbSummary = {
+    ...sharedImportDbSummary,
+    aiPdfImport: mergeAIPdfImportChunkingSummary(sharedImportDbSummary.aiPdfImport, {
+      chunking: runningChunking,
+      phase: "importing_questions",
+    }),
+  };
+  const sharedImportFinalSummaryPatch = {
+    batchId: "shared-import-batch",
+    createdCount: chunk.chunkIndex + 1,
+    createdQuestions: [`question-${chunk.chunkIndex}`],
+    errorCount: 0,
+    skippedCount: 0,
+  };
+  sharedImportDbSummary = {
+    ...sharedImportDbSummary,
+    ...sharedImportFinalSummaryPatch,
+  };
+  const completedChunking = patchAIPdfChunkingSummary({
+    chunkIndex: chunk.chunkIndex,
+    pageCount: 13,
+    patch: {
+      completedAt: `done-${chunk.chunkIndex}`,
+      createdQuestionIds: [`question-${chunk.chunkIndex}`],
+      questionCount: 5,
+      status: "completed",
+    },
+    value: sharedImportDbSummary.aiPdfImport.chunking,
+  });
+  sharedImportDbSummary = {
+    ...sharedImportDbSummary,
+    aiPdfImport: mergeAIPdfImportChunkingSummary(sharedImportDbSummary.aiPdfImport, {
+      chunking: completedChunking,
+      phase: "cropping_assets",
+    }),
+  };
+}
+assert.equal(sharedImportDbSummary.aiPdfImport.chunking.totalChunks, 6);
+assert.equal(sharedImportDbSummary.aiPdfImport.chunking.completedChunks, 6);
+assert.equal(sharedImportDbSummary.aiPdfImport.chunking.failedChunks, 0);
+assert.equal(sharedImportDbSummary.aiPdfImport.chunking.mergeStatus, "ready");
+assert.equal(
+  sharedImportDbSummary.aiPdfImport.chunking.chunks.every(
+    (chunk) =>
+      chunk.status === "completed" &&
+      chunk.createdQuestionIds?.length === 1 &&
+      chunk.questionCount === 5,
+  ),
+  true,
+);
+
+const batchImportServiceSource = await readFile(
+  new URL("../src/lib/batch-import/service.ts", import.meta.url),
+  "utf8",
+);
+assert.match(batchImportServiceSource, /loadImportBatchSummary/);
+assert.match(batchImportServiceSource, /\.\.\.existingSummaryBeforeFinal/);
+console.log(
+  "PASS AI PDF shared batch import summary updates preserve all sequential chunk states",
+);
+
+assert.equal(supportsAIPdfSequentialChunkExtraction("page_images"), true);
+assert.equal(supportsAIPdfSequentialChunkExtraction("gemini_native_pdf"), false);
+assert.equal(supportsAIPdfSequentialChunkExtraction("openai_file"), false);
+assert.equal(estimateAIPdfProviderCallCount({
+  strategy: "page_images",
+  totalChunks: 6,
+}), 6);
+assert.equal(estimateAIPdfProviderCallCount({
+  strategy: "gemini_native_pdf",
+  totalChunks: 6,
+}), 1);
+assert.equal(estimateAIPdfProviderCallCount({
+  strategy: "openai_file",
+  totalChunks: 6,
+}), 1);
+
+console.log(
+  "PASS AI PDF full-PDF strategies stay single-pass while page images use sequential chunks",
+);
+
+let sequentialChunking = createAIPdfChunkingSummary({
+  chunkSizePages: 3,
+  overlapPages: 1,
+  pageCount: 7,
+});
+const processedOrder = [];
+
+for (const chunk of sequentialChunking.chunks.sort(
+  (left, right) => left.chunkIndex - right.chunkIndex,
+)) {
+  processedOrder.push(chunk.chunkIndex);
+  sequentialChunking = patchAIPdfChunkingSummary({
+    chunkIndex: chunk.chunkIndex,
+    pageCount: 7,
+    patch: {
+      completedAt: `done-${chunk.chunkIndex}`,
+      createdQuestionIds:
+        chunk.chunkIndex === 1 ? [] : [`question-${chunk.chunkIndex}`],
+      errorMessage: chunk.chunkIndex === 1 ? "Provider timeout" : undefined,
+      inputStrategy: "gemini_native_pdf",
+      model: "gemini-2.5-flash-lite",
+      provider: "gemini_native",
+      questionCount: chunk.chunkIndex === 1 ? 0 : 1,
+      retryCount: chunk.chunkIndex === 1 ? 0 : undefined,
+      sourcePages: chunk.sourcePages,
+      startedAt: `start-${chunk.chunkIndex}`,
+      status: chunk.chunkIndex === 1 ? "failed" : "completed",
+      warningCount: chunk.chunkIndex === 1 ? 1 : 0,
+      warnings: chunk.chunkIndex === 1 ? ["Provider timeout"] : [],
+    },
+    value: sequentialChunking,
+  });
+}
+
+assert.deepEqual(processedOrder, [0, 1, 2]);
+assert.equal(sequentialChunking.completedChunks, 2);
+assert.equal(sequentialChunking.failedChunks, 1);
+assert.deepEqual(sequentialChunking.chunks[0].createdQuestionIds, ["question-0"]);
+assert.deepEqual(sequentialChunking.chunks[2].createdQuestionIds, ["question-2"]);
+
+const retriedChunking = patchAIPdfChunkingSummary({
+  chunkIndex: 1,
+  pageCount: 7,
+  patch: {
+    completedAt: "retry-done-1",
+    createdQuestionIds: ["question-1-retry"],
+    errorMessage: undefined,
+    questionCount: 1,
+    retryCount: 1,
+    status: "completed",
+    warningCount: 0,
+    warnings: [],
+  },
+  value: sequentialChunking,
+});
+
+assert.equal(retriedChunking.completedChunks, 3);
+assert.equal(retriedChunking.failedChunks, 0);
+assert.equal(retriedChunking.chunks[1].retryCount, 1);
+assert.deepEqual(retriedChunking.chunks[1].createdQuestionIds, [
+  "question-1-retry",
+]);
+
+console.log(
+  "PASS AI PDF sequential chunks preserve ordered status updates and failed chunk retry metadata",
+);
 
 const generatedQuestionCodes = new Set();
 const generatedQuestionCode = generateAIPdfQuestionCodeForImport({
@@ -169,9 +420,10 @@ assert.equal(generatedQuestionCodes.has("ai-abc12345-001-2"), true);
 assert.notEqual(visibleQuestionNumberKey("3"), visibleQuestionNumberKey("3.1"));
 assert.notEqual(visibleQuestionNumberKey("3"), visibleQuestionNumberKey("3(a)"));
 assert.notEqual(visibleQuestionNumberKey("3"), visibleQuestionNumberKey("FRQ 2"));
+assert.equal(visibleQuestionNumberKey("3"), visibleQuestionNumberKey("3"));
 
 console.log(
-  "PASS AI PDF chunk planner and visible question numbering policy are deterministic and non-aggressive",
+  "PASS AI PDF chunk planner and visible question numbering policy are deterministic, non-aggressive, and do not blind-concat duplicate visible numbers",
 );
 
 const validEscapesPayload = parsePossiblyMalformedJson(
@@ -317,6 +569,45 @@ assert.equal(
 console.log(
   "PASS AI PDF invalid asset_placeholders warn and do not block draft question parsing",
 );
+
+const aiPdfServiceSource = await readFile(
+  new URL("../src/lib/ai-pdf-import/service.ts", import.meta.url),
+  "utf8",
+);
+assert.match(aiPdfServiceSource, /if \(solutionHtml\.trim\(\)\) \{/);
+assert.match(aiPdfServiceSource, /questionPayload\.solution_html = solutionHtml/);
+assert.doesNotMatch(
+  aiPdfServiceSource,
+  /solution_html:\s*solutionFields\.html \|\| question\.solution_html/,
+);
+console.log("PASS AI PDF import payload omits null solution fields before batch import");
+
+const previousEncryptionKey = process.env.AI_PROVIDER_ENCRYPTION_KEY;
+process.env.AI_PROVIDER_ENCRYPTION_KEY =
+  "security-smoke-test-encryption-key-for-friendly-decrypt-errors";
+let decryptErrorMessage = "";
+try {
+  decryptSecret({
+    ciphertext: Buffer.from("not the saved api key").toString("base64"),
+    iv: Buffer.alloc(12).toString("base64"),
+    tag: Buffer.alloc(16).toString("base64"),
+  });
+} catch (error) {
+  decryptErrorMessage = error instanceof Error ? error.message : String(error);
+} finally {
+  if (previousEncryptionKey === undefined) {
+    delete process.env.AI_PROVIDER_ENCRYPTION_KEY;
+  } else {
+    process.env.AI_PROVIDER_ENCRYPTION_KEY = previousEncryptionKey;
+  }
+}
+assert.equal(
+  decryptErrorMessage,
+  "Saved API key cannot be decrypted. Re-enter and save the API key for this provider.",
+);
+assert.equal(/Unsupported state|authenticate data/i.test(decryptErrorMessage), false);
+assert.equal(/sk-|AIza|eyJ/i.test(decryptErrorMessage), false);
+console.log("PASS saved AI provider decrypt failure shows friendly safe error");
 
 const deepSeekTextOnly = {
   base_url: "https://api.deepseek.com",

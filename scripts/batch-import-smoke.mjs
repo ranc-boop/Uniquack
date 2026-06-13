@@ -654,8 +654,8 @@ try {
         page_refs: [1],
         question_code: `AI-BATCH-${suffix}`,
         question_type: "frq",
-        solution_html: "<p>AI PDF invalid placeholder solution.</p>",
-        solution_source: "AI PDF invalid placeholder solution.",
+        solution_html: null,
+        solution_source: null,
         status: "published",
         tag_slugs: [tag.slug],
         title: "AI PDF invalid placeholder draft",
@@ -664,46 +664,42 @@ try {
     warnings: [],
   });
   const aiQuestion = aiExtraction.questions[0];
-  const aiNormalizedQuestion = {
-    ai_metadata: {
-      asset_placeholders: aiQuestion.asset_placeholders,
-      page_refs: aiQuestion.page_refs,
-      source: "ai_pdf_import",
-      warnings: aiExtraction.warnings,
-    },
-    content_html: sanitizeContentHtml(aiQuestion.content_html),
-    content_source: aiQuestion.content_source,
-    content_source_format: "markdown_latex",
-    difficulty_rating: aiQuestion.difficulty_rating,
-    question_code: aiQuestion.question_code,
-    question_type: aiQuestion.question_type,
-    solution_html: sanitizeContentHtml(aiQuestion.solution_html ?? ""),
-    solution_source: aiQuestion.solution_source,
-    solution_source_format: "markdown_latex",
-    status: "draft",
-    tag_ids: [tag.id],
-    tag_slugs: aiQuestion.tag_slugs,
-    title: aiQuestion.title,
+  const aiPayload = {
+    questions: [
+      {
+        ai_metadata: {
+          asset_placeholders: aiQuestion.asset_placeholders,
+          page_refs: aiQuestion.page_refs,
+          source: "ai_pdf_import",
+          warnings: aiExtraction.warnings,
+        },
+        content_html: sanitizeContentHtml(aiQuestion.content_html),
+        content_source: aiQuestion.content_source,
+        content_source_format: "markdown_latex",
+        difficulty_rating: aiQuestion.difficulty_rating,
+        question_code: aiQuestion.question_code,
+        question_type: aiQuestion.question_type,
+        solution_source_format: "markdown_latex",
+        status: "draft",
+        tag_slugs: aiQuestion.tag_slugs,
+        title: aiQuestion.title,
+      },
+    ],
   };
-  const { error: aiImportItemError } = await admin.client
+  const aiNormalizedQuestion = aiPayload.questions[0];
+  const { error: aiItemError } = await admin.client
     .from("import_batch_items")
     .insert({
       batch_id: aiInvalidPlaceholderBatch.id,
       item_index: 0,
-      raw_payload: {
-        asset_placeholders: "invalid provider payload was sanitized before strict parse",
-      },
+      raw_payload: aiNormalizedQuestion,
       normalized_question_json: aiNormalizedQuestion,
       validation_errors: aiExtraction.warnings,
       status: "valid",
     });
+  assert(!aiItemError, `AI PDF null solution item insert failed: ${aiItemError?.message}`);
 
-  assert(
-    !aiImportItemError,
-    `AI PDF invalid placeholder import item insert failed: ${aiImportItemError?.message}`,
-  );
-
-  const { data: aiCreatedQuestion, error: aiCreateQuestionError } =
+  const { data: aiCreatedQuestion, error: aiCreatedQuestionError } =
     await admin.client
       .from("questions")
       .insert({
@@ -712,70 +708,14 @@ try {
         content_html: aiNormalizedQuestion.content_html,
         content_source: aiNormalizedQuestion.content_source,
         content_source_format: aiNormalizedQuestion.content_source_format,
-        solution_html: aiNormalizedQuestion.solution_html,
-        solution_source: aiNormalizedQuestion.solution_source,
-        solution_source_format: aiNormalizedQuestion.solution_source_format,
         difficulty_rating: aiNormalizedQuestion.difficulty_rating,
         question_type: aiNormalizedQuestion.question_type,
         status: "draft",
         created_by: admin.user.id,
         updated_by: admin.user.id,
       })
-      .select("id,status")
+      .select("id,status,solution_html,solution_source")
       .single();
-
-  assert(
-    !aiCreateQuestionError && aiCreatedQuestion,
-    `AI PDF invalid placeholder draft insert failed: ${aiCreateQuestionError?.message}`,
-  );
-  cleanup.questions.push(aiCreatedQuestion.id);
-
-  const { data: aiCreatedBindings, error: aiCreateBindingsError } =
-    await admin.client
-      .from("question_tags")
-      .insert([{ question_id: aiCreatedQuestion.id, tag_id: tag.id }])
-      .select("question_id,tag_id");
-
-  assert(
-    !aiCreateBindingsError && aiCreatedBindings?.length === 1,
-    `AI PDF invalid placeholder tag bind failed: ${aiCreateBindingsError?.message}`,
-  );
-  cleanup.questionTags.push(...aiCreatedBindings);
-
-  const { error: aiImportItemUpdateError } = await admin.client
-    .from("import_batch_items")
-    .update({
-      status: "imported",
-      created_question_id: aiCreatedQuestion.id,
-    })
-    .eq("batch_id", aiInvalidPlaceholderBatch.id)
-    .eq("item_index", 0);
-
-  assert(
-    !aiImportItemUpdateError,
-    `AI PDF invalid placeholder import item update failed: ${aiImportItemUpdateError?.message}`,
-  );
-
-  const { error: aiBatchUpdateError } = await admin.client
-    .from("import_batches")
-    .update({
-      status: "imported",
-      summary: {
-        aiPdfImport: {
-          createdQuestionCount: 1,
-          phase: "completed",
-          warnings: aiExtraction.warnings,
-        },
-        createdCount: 1,
-        errorCount: 0,
-      },
-    })
-    .eq("id", aiInvalidPlaceholderBatch.id);
-
-  assert(
-    !aiBatchUpdateError,
-    `AI PDF invalid placeholder batch update failed: ${aiBatchUpdateError?.message}`,
-  );
 
   assert(
     aiExtraction.warnings.includes(
@@ -783,14 +723,197 @@ try {
     ),
     "AI PDF invalid asset_placeholders did not create a warning",
   );
+  assert(
+    !aiCreatedQuestionError && aiCreatedQuestion,
+    `AI PDF null solution draft insert failed: ${aiCreatedQuestionError?.message}`,
+  );
+  cleanup.questions.push(aiCreatedQuestion.id);
+  assert(aiCreatedQuestion.status === "draft", "AI PDF null solution created non-draft question");
+  assert(
+    aiCreatedQuestion.solution_html === null &&
+      aiCreatedQuestion.solution_source === null,
+    "AI PDF null solution was not preserved as missing solution",
+  );
+
+  const { data: aiCreatedBindings, error: aiCreatedBindingsError } =
+    await admin.client
+      .from("question_tags")
+      .insert([{ question_id: aiCreatedQuestion.id, tag_id: tag.id }])
+      .select("question_id,tag_id");
 
   assert(
-    aiCreatedQuestion.status === "draft",
-    "AI PDF invalid asset_placeholders created a non-draft question",
+    !aiCreatedBindingsError && aiCreatedBindings?.length === 1,
+    `AI PDF null solution tag bind failed: ${aiCreatedBindingsError?.message}`,
+  );
+  cleanup.questionTags.push(...aiCreatedBindings);
+  const { error: aiItemUpdateError } = await admin.client
+    .from("import_batch_items")
+    .update({
+      status: "imported",
+      created_question_id: aiCreatedQuestion.id,
+    })
+    .eq("batch_id", aiInvalidPlaceholderBatch.id)
+    .eq("item_index", 0);
+  assert(!aiItemUpdateError, `AI PDF null solution item update failed: ${aiItemUpdateError?.message}`);
+
+  const aiNullSolutionSummary = {
+    aiPdfImport: {
+      createdQuestionCount: 1,
+      phase: "completed",
+      questionCount: aiExtraction.questions.length,
+      warnings: aiExtraction.warnings,
+    },
+    createdCount: 1,
+    errorCount: 0,
+    validationErrorReasons: [],
+  };
+  const { error: aiBatchUpdateError } = await admin.client
+    .from("import_batches")
+    .update({ status: "imported", summary: aiNullSolutionSummary })
+    .eq("id", aiInvalidPlaceholderBatch.id);
+  assert(!aiBatchUpdateError, `AI PDF null solution batch update failed: ${aiBatchUpdateError?.message}`);
+  assert(
+    !aiNullSolutionSummary.validationErrorReasons.some((reason) =>
+      reason.includes("solution_html"),
+    ),
+    "AI PDF null solution still created solution_html validation errors",
   );
   pass(
-    "AI PDF invalid asset_placeholders warn and still create draft questions",
+    "AI PDF invalid asset_placeholders and null solution warn without blocking draft import",
   );
+
+  const aiBulkNullSolutionBatch = await insertOne(
+    admin.client,
+    "import_batches",
+    {
+      source_type: "ai_pdf",
+      status: "validating",
+      summary: { aiPdfImport: { phase: "provider_response_validated" } },
+      created_by: admin.user.id,
+    },
+    "id",
+  );
+  cleanup.batches.push(aiBulkNullSolutionBatch.id);
+  const bulkAiQuestions = Array.from({ length: 48 }, (_, index) => ({
+    content_html: `<p>AI PDF bulk null solution question ${index + 1}.</p>`,
+    content_source: `AI PDF bulk null solution question ${index + 1}.`,
+    content_source_format: "markdown_latex",
+    difficulty_rating: 500,
+    question_code: `AI-BULK-${suffix}-${String(index + 1).padStart(2, "0")}`,
+    question_type: "frq",
+    status: "draft",
+    tag_slugs: [tag.slug],
+    title: `AI PDF bulk null solution ${index + 1}`,
+  }));
+  const { error: bulkItemsError } = await admin.client
+    .from("import_batch_items")
+    .insert(
+      bulkAiQuestions.map((question, index) => ({
+        batch_id: aiBulkNullSolutionBatch.id,
+        item_index: index,
+        raw_payload: question,
+        normalized_question_json: question,
+        validation_errors: [],
+        status: "valid",
+      })),
+    );
+  assert(!bulkItemsError, `AI PDF 48 null-solution item insert failed: ${bulkItemsError?.message}`);
+
+  const { data: insertedBulkQuestions, error: bulkInsertError } =
+    await admin.client
+      .from("questions")
+      .insert(
+        bulkAiQuestions.map((question) => ({
+          question_code: question.question_code,
+          title: question.title,
+          content_html: question.content_html,
+          content_source: question.content_source,
+          content_source_format: question.content_source_format,
+          difficulty_rating: question.difficulty_rating,
+          question_type: question.question_type,
+          status: "draft",
+          created_by: admin.user.id,
+          updated_by: admin.user.id,
+        })),
+      )
+      .select("id,question_code");
+  assert(
+    !bulkInsertError && insertedBulkQuestions?.length === 48,
+    `AI PDF 48 null-solution draft insert failed: ${bulkInsertError?.message}`,
+  );
+  cleanup.questions.push(...insertedBulkQuestions.map((question) => question.id));
+  const { data: bulkQuestions, error: bulkQuestionsError } = await admin.client
+    .from("questions")
+    .select("id,solution_html")
+    .in(
+      "question_code",
+      bulkAiQuestions.map((question) => question.question_code),
+    );
+  assert(
+    !bulkQuestionsError && bulkQuestions?.length === 48,
+    `AI PDF 48 null-solution draft lookup failed: ${bulkQuestionsError?.message}`,
+  );
+  assert(
+    bulkQuestions.every((question) => question.solution_html === null),
+    "AI PDF 48 null-solution drafts did not preserve missing solution",
+  );
+  const { data: bulkBindings, error: bulkBindingsError } = await admin.client
+    .from("question_tags")
+    .insert(
+      bulkQuestions.map((question) => ({
+        question_id: question.id,
+        tag_id: tag.id,
+      })),
+    )
+    .select("question_id,tag_id");
+  assert(
+    !bulkBindingsError && bulkBindings?.length === 48,
+    `AI PDF 48 null-solution tag insert failed: ${bulkBindingsError?.message}`,
+  );
+  cleanup.questionTags.push(...bulkBindings);
+
+  const bulkSummary = {
+    aiPdfImport: {
+      createdQuestionCount: 48,
+      phase: "completed",
+      questionCount: bulkAiQuestions.length,
+      warnings: [],
+    },
+    createdCount: 48,
+    errorCount: 0,
+    validationErrorReasons: [],
+  };
+  const { error: bulkBatchUpdateError } = await admin.client
+    .from("import_batches")
+    .update({ status: "imported", summary: bulkSummary })
+    .eq("id", aiBulkNullSolutionBatch.id);
+  assert(!bulkBatchUpdateError, `AI PDF 48 null-solution batch update failed: ${bulkBatchUpdateError?.message}`);
+
+  const { data: bulkItems, error: bulkItemsLookupError } = await admin.client
+    .from("import_batch_items")
+    .select("validation_errors")
+    .eq("batch_id", aiBulkNullSolutionBatch.id);
+  assert(
+    !bulkItemsLookupError &&
+      bulkItems?.length === 48 &&
+      bulkItems.every(
+        (item) =>
+          !JSON.stringify(item.validation_errors ?? []).includes("solution_html"),
+      ),
+    "AI PDF 48 null-solution regression produced solution_html validation failures",
+  );
+  const { data: bulkBindingsLookup, error: bulkBindingsLookupError } = await admin.client
+    .from("question_tags")
+    .select("question_id,tag_id")
+    .in(
+      "question_id",
+      bulkQuestions.map((question) => question.id),
+    );
+  assert(
+    !bulkBindingsLookupError && bulkBindingsLookup?.length === 48,
+    `AI PDF 48 null-solution tag lookup failed: ${bulkBindingsLookupError?.message}`,
+  );
+  pass("AI PDF 48-question null-solution regression creates drafts without validation failures");
   }
 } finally {
   for (const binding of cleanup.questionTags) {

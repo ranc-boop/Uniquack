@@ -704,7 +704,8 @@ try {
               },
               {
                 chunkIndex: 1,
-                errorMessage: "Mock chunk failed after provider timeout.",
+                errorMessage:
+                  'AI provider request failed with upstream server error (503) for Route Gemini Native / gemini-2.5-flash-lite. Provider response: [{ "error": { "code": 503, "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.", "status": "UNAVAILABLE" } } ]',
                 id: "chunk-2",
                 overlapPages: [3],
                 pageEnd: 5,
@@ -819,6 +820,7 @@ try {
       status: "failed",
       summary: {
         createdCount: 0,
+        validationErrorReasons: ["solution_html: Invalid input"],
         aiPdfImport: {
           createdQuestionCount: 0,
           detectedFigureCount: 11,
@@ -933,7 +935,7 @@ try {
     "foundation",
     "Chunk",
     "Pages 3-5",
-    "Retry controls will appear in a later PR.",
+    "Failed chunk retry is available to super admins through the retry action foundation.",
     "Possible missing question numbers: 3",
     "Questions may need diagrams/images before publishing.",
     "Missing figure attachments",
@@ -952,6 +954,24 @@ try {
         ? ` (missing: ${missingAiPdfDashboardTokens.join(", ")})`
         : ""
     }`,
+  );
+  const failedChunkConciseError =
+    "Provider temporarily unavailable (503): model is experiencing high demand. Retry this chunk later.";
+  const failedChunkConciseErrorStart = aiPdfDashboard.text.indexOf(
+    failedChunkConciseError,
+  );
+  const failedChunkConciseErrorBlock = aiPdfDashboard.text.slice(
+    Math.max(0, failedChunkConciseErrorStart - 1_000),
+    failedChunkConciseErrorStart + failedChunkConciseError.length + 1_000,
+  );
+  assertRoute(
+    failedChunkConciseErrorStart >= 0 &&
+      !failedChunkConciseErrorBlock.includes("Provider response:") &&
+      !failedChunkConciseErrorBlock.includes("UNAVAILABLE") &&
+      !failedChunkConciseErrorBlock.includes(
+        "This model is currently experiencing high demand.",
+      ),
+    "AI PDF failed chunk renders concise safe error without raw provider response",
   );
   const dashboardStart = aiPdfDashboard.text.indexOf(
     "AI Parsing Control Dashboard",
@@ -1007,10 +1027,15 @@ try {
   );
   assertRoute(
     failedCard.includes("No drafts were created.") &&
-      failedCard.includes("The extraction failed before questions could be imported.") &&
+      failedCard.includes("Import validation failed: solution_html: Invalid input") &&
       failedCard.includes("Retry the import or upload the PDF again after parser fixes.") &&
       failedCard.includes("No drafts to review"),
     "AI PDF failed batch with zero created questions disables review CTA and explains retry",
+  );
+  assertRoute(
+    !failedCard.includes("Import validation failed: {") &&
+      !failedCard.includes("Import validation failed: Response preview"),
+    "AI PDF failed batch validation reason stays concise without raw JSON dump",
   );
   assertRoute(
     failedCard.includes("Source assets:") &&

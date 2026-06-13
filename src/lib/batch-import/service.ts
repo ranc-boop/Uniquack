@@ -13,6 +13,32 @@ type SupabaseLike = {
   from: (table: string) => any;
 };
 
+function asSummaryRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+async function loadImportBatchSummary({
+  batchId,
+  supabase,
+}: {
+  batchId: string;
+  supabase: SupabaseLike;
+}) {
+  const { data, error } = await supabase
+    .from("import_batches")
+    .select("summary")
+    .eq("id", batchId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return asSummaryRecord(data?.summary);
+}
+
 export type BatchImportSummary = {
   batchId: string | null;
   createdCount: number;
@@ -22,6 +48,7 @@ export type BatchImportSummary = {
   validCount: number;
   invalidCount: number;
   unknownTagCount: number;
+  validationErrorReasons: string[];
   createdQuestions: {
     id: string;
     assetReferences: ImportAssetReferences;
@@ -102,6 +129,7 @@ export async function importBatchImportJson({
   allowDraftTags = false,
   batchId: providedBatchId,
   initialSummaryExtras = {},
+  itemIndexOffset = 0,
   supabase,
   profileId,
   jsonText,
@@ -110,6 +138,7 @@ export async function importBatchImportJson({
   allowDraftTags?: boolean;
   batchId?: string;
   initialSummaryExtras?: Record<string, unknown>;
+  itemIndexOffset?: number;
   supabase: SupabaseLike;
   profileId: string;
   jsonText: string;
@@ -120,6 +149,14 @@ export async function importBatchImportJson({
     supabase,
     jsonText,
   });
+  const validationErrorReasons = Array.from(
+    new Set(
+      preview.items
+        .flatMap((item) => item.errors)
+        .map((error) => error.trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 8);
   const initialSummary = {
     createdCount: 0,
     skippedCount: preview.invalidCount,
@@ -128,17 +165,23 @@ export async function importBatchImportJson({
     validCount: preview.validCount,
     invalidCount: preview.invalidCount,
     unknownTagCount: preview.unknownTagCount,
+    validationErrorReasons,
     createdQuestions: [],
   };
   const batchId = providedBatchId ?? null;
   let activeBatchId = batchId;
 
   if (activeBatchId) {
+    const existingSummary = await loadImportBatchSummary({
+      batchId: activeBatchId,
+      supabase,
+    });
     const { error: batchUpdateError } = await supabase
       .from("import_batches")
       .update({
         status: "validating",
         summary: {
+          ...existingSummary,
           ...initialSummary,
           ...initialSummaryExtras,
         },
@@ -178,7 +221,7 @@ export async function importBatchImportJson({
     const { error: itemsError } = await supabase.from("import_batch_items").insert(
       preview.items.map((item) => ({
         batch_id: activeBatchId,
-        item_index: item.index,
+        item_index: item.index + itemIndexOffset,
         raw_payload: item.raw,
         normalized_question_json: item.normalized,
         validation_errors: [...item.errors, ...item.warnings],
@@ -236,7 +279,7 @@ export async function importBatchImportJson({
           ],
         })
         .eq("batch_id", activeBatchId)
-        .eq("item_index", item.index);
+        .eq("item_index", item.index + itemIndexOffset);
       continue;
     }
 
@@ -256,12 +299,12 @@ export async function importBatchImportJson({
           .from("import_batch_items")
           .update({
             status: "skipped",
-            validation_errors: [...item.errors, ...item.warnings, tagsError.message],
-          })
-          .eq("batch_id", activeBatchId)
-          .eq("item_index", item.index);
-        continue;
-      }
+          validation_errors: [...item.errors, ...item.warnings, tagsError.message],
+        })
+        .eq("batch_id", activeBatchId)
+        .eq("item_index", item.index + itemIndexOffset);
+      continue;
+    }
     }
 
     createdCount += 1;
@@ -280,7 +323,7 @@ export async function importBatchImportJson({
         created_question_id: question.id,
       })
       .eq("batch_id", activeBatchId)
-      .eq("item_index", item.index);
+      .eq("item_index", item.index + itemIndexOffset);
   }
 
   const finalSummary = {
@@ -292,13 +335,21 @@ export async function importBatchImportJson({
     validCount: preview.validCount,
     invalidCount: preview.invalidCount,
     unknownTagCount: preview.unknownTagCount,
+    validationErrorReasons,
     createdQuestions,
   };
+  const existingSummaryBeforeFinal = await loadImportBatchSummary({
+    batchId: activeBatchId,
+    supabase,
+  });
   const { error: batchUpdateError } = await supabase
     .from("import_batches")
     .update({
       status: errorCount > 0 ? "failed" : "imported",
-      summary: finalSummary,
+      summary: {
+        ...existingSummaryBeforeFinal,
+        ...finalSummary,
+      },
     })
     .eq("id", activeBatchId);
 

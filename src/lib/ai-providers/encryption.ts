@@ -43,17 +43,23 @@ export function decryptSecret(input: {
     throw new Error("AI provider API key is not configured.");
   }
 
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    encryptionKey(),
-    Buffer.from(input.iv, "base64"),
-  );
-  decipher.setAuthTag(Buffer.from(input.tag, "base64"));
+  try {
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      encryptionKey(),
+      Buffer.from(input.iv, "base64"),
+    );
+    decipher.setAuthTag(Buffer.from(input.tag, "base64"));
 
-  return Buffer.concat([
-    decipher.update(Buffer.from(input.ciphertext, "base64")),
-    decipher.final(),
-  ]).toString("utf8");
+    return Buffer.concat([
+      decipher.update(Buffer.from(input.ciphertext, "base64")),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    throw new Error(
+      "Saved API key cannot be decrypted. Re-enter and save the API key for this provider.",
+    );
+  }
 }
 
 export function apiKeyLast4(value: string) {

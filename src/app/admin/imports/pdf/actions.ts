@@ -11,7 +11,12 @@ import {
 import {
   createAIPdfChunkingSummary,
   mergeAIPdfImportChunkingSummary,
+  normalizeAIPdfChunkingSummary,
 } from "@/lib/ai-pdf-import/chunking";
+import {
+  supportsAIPdfSequentialChunkExtraction,
+  type AiPdfInputStrategy,
+} from "@/lib/ai-providers/adapters";
 import { getPdfPageCount } from "@/lib/ai-pdf-import/pdf";
 import { processAIPdfImport } from "@/lib/ai-pdf-import/service";
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth/guards";
@@ -47,6 +52,12 @@ const reserveSourceUploadSchema = z.object({
 const queuedExtractionInputSchema = z.object({
   batchId: uuidSchema,
   jobId: uuidSchema,
+});
+
+const retryChunkInputSchema = z.object({
+  batchId: uuidSchema,
+  chunkIndex: z.number().int().min(0).max(999),
+  providerProfileId: uuidSchema.optional(),
 });
 
 const AI_PDF_EXTRACTION_STALE_MS = 15 * 60 * 1000;
@@ -1431,6 +1442,123 @@ export async function runQueuedAIPdfExtraction(input: unknown) {
     sourceAsset,
     supabase,
   });
+
+  return getAIPdfImportStatus({ batchId: parsed.batchId });
+}
+
+export async function retryAIPdfImportChunk(input: unknown) {
+  const profile = await requireSuperAdmin();
+  const parsed = retryChunkInputSchema.parse(input);
+  const supabase = await createClient();
+  const { data: batch, error: batchError } = await supabase
+    .from("import_batches")
+    .select("id, status, summary")
+    .eq("id", parsed.batchId)
+    .eq("source_type", "ai_pdf")
+    .maybeSingle();
+
+  if (batchError) {
+    throw new Error(batchError.message);
+  }
+
+  if (!batch) {
+    throw new Error("AI PDF import batch was not found.");
+  }
+
+  if (batch.status === "validating") {
+    throw new Error("This AI PDF batch is already extracting. Wait for it to finish before retrying a chunk.");
+  }
+
+  const summary = plainObject(batch.summary);
+  const aiPdfImport = getAIPdfImportSummary(summary);
+  const chunking = normalizeAIPdfChunkingSummary(aiPdfImport.chunking);
+  const chunk = chunking?.chunks.find(
+    (item) => item.chunkIndex === parsed.chunkIndex,
+  );
+
+  if (!chunk) {
+    throw new Error("The requested AI PDF chunk was not found.");
+  }
+
+  if (chunk.status !== "failed") {
+    throw new Error("Only failed AI PDF chunks can be retried.");
+  }
+
+  if (chunk.createdQuestionIds?.length) {
+    throw new Error("This failed chunk already created draft questions. Reset generated drafts before retrying it.");
+  }
+
+  const sourceInput = getString(aiPdfImport.sourceInput);
+
+  if (
+    !sourceInput ||
+    !supportsAIPdfSequentialChunkExtraction(sourceInput as AiPdfInputStrategy)
+  ) {
+    throw new Error(
+      "This provider uses full-PDF input and does not support single-chunk retry. Retry the full import after resetting generated drafts.",
+    );
+  }
+
+  const providerProfileId =
+    parsed.providerProfileId ?? getString(aiPdfImport.providerProfileId);
+
+  if (!providerProfileId) {
+    throw new Error("AI provider profile is missing from this extraction job.");
+  }
+
+  const sourceAsset = await loadSourceAsset({
+    batchId: parsed.batchId,
+    supabase,
+  });
+  const jobId = crypto.randomUUID();
+  const { error: leaseError } = await supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...summary,
+        aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, {
+          detail: `Retrying failed chunk ${parsed.chunkIndex + 1}.`,
+          jobId,
+          phase: "queued",
+          providerProfileId,
+          retryChunkIndex: parsed.chunkIndex,
+          sourceAssetId: sourceAsset.id,
+          sourceObjectPath: sourceAsset.object_path,
+        }),
+      } as Json,
+    })
+    .eq("id", parsed.batchId)
+    .neq("status", "validating");
+
+  if (leaseError) {
+    throw new Error(leaseError.message);
+  }
+
+  const { data: sourceBlob, error: downloadError } = await supabase.storage
+    .from(AI_IMPORT_SOURCES_BUCKET)
+    .download(sourceAsset.object_path);
+
+  if (downloadError) {
+    throw new Error(downloadError.message);
+  }
+
+  await processAIPdfImport({
+    batchId: parsed.batchId,
+    chunkIndex: parsed.chunkIndex,
+    fileName: sourceAsset.original_filename,
+    jobId,
+    pdfBuffer: Buffer.from(await sourceBlob.arrayBuffer()),
+    profileId: profile.id,
+    providerProfileId,
+    sourceAssetId: sourceAsset.id,
+    sourceObjectPath: sourceAsset.object_path,
+    supabase,
+  });
+
+  revalidatePath("/admin/imports");
+  revalidatePath("/admin/imports/pdf");
+  revalidatePath("/admin/review");
 
   return getAIPdfImportStatus({ batchId: parsed.batchId });
 }

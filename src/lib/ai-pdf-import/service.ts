@@ -2,6 +2,7 @@ import { callAIPdfExtractionProvider } from "@/lib/ai-providers/chat";
 import {
   AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE,
   describeAiPdfProviderInput,
+  supportsAIPdfSequentialChunkExtraction,
   type AiPdfInputStrategy,
 } from "@/lib/ai-providers/adapters";
 import { loadAIProviderProfileForUse } from "@/lib/ai-providers/profiles";
@@ -15,7 +16,13 @@ import {
   AI_PDF_IMPORT_MAX_BYTES,
   AI_PDF_IMPORT_MAX_PAGES,
 } from "@/lib/ai-pdf-import/constants";
-import { mergeAIPdfImportChunkingSummary } from "@/lib/ai-pdf-import/chunking";
+import {
+  formatAIPdfChunkPageRange,
+  mergeAIPdfImportChunkingSummary,
+  normalizeAIPdfChunkingSummary,
+  patchAIPdfChunkingSummary,
+  type AIPdfImportChunkSummary,
+} from "@/lib/ai-pdf-import/chunking";
 import {
   generateAIPdfQuestionCodeForImport,
   questionCodeKey,
@@ -50,6 +57,7 @@ type ActiveTag = {
 
 type ProcessInput = {
   batchId: string;
+  chunkIndex?: number;
   fileName: string;
   jobId?: string;
   pdfBuffer: Buffer;
@@ -75,6 +83,50 @@ function plainObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function numberFromRecord(
+  record: Record<string, unknown>,
+  keys: string[],
+  fallback = 0,
+) {
+  for (const key of keys) {
+    const value = record[key];
+    const numeric = Number(value);
+
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+
+  return fallback;
+}
+
+function createdQuestionsFromSummary(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => plainObject(item))
+    .filter(
+      (item) =>
+        typeof item.id === "string" &&
+        typeof item.questionCode === "string" &&
+        typeof item.title === "string",
+    )
+    .map((item) => ({
+      assetReferenceCounts: plainObject(item.assetReferenceCounts) as {
+        imageUrls: number;
+        questionAssetIds: number;
+        sourceFileIds: number;
+        total: number;
+      },
+      assetReferences: item.assetReferences,
+      id: String(item.id),
+      questionCode: String(item.questionCode),
+      title: String(item.title),
+    }));
 }
 
 async function loadCurrentAIPdfSummary(input: ProcessInput) {
@@ -108,6 +160,55 @@ async function updateAIPdfBatchProgress(
     sourceObjectPath: input.sourceObjectPath,
     updatedAt: new Date().toISOString(),
     ...progress,
+  });
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function updateAIPdfChunkProgress({
+  chunk,
+  input,
+  pageCount,
+  patch,
+  progress = {},
+}: {
+  chunk: AIPdfImportChunkSummary;
+  input: ProcessInput;
+  pageCount: number;
+  patch: Partial<AIPdfImportChunkSummary>;
+  progress?: Partial<AIPdfProgress>;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const chunking = patchAIPdfChunkingSummary({
+    chunkIndex: chunk.chunkIndex,
+    pageCount,
+    patch: {
+      sourcePages: chunk.sourcePages,
+      ...patch,
+    },
+    value: current.aiPdfImport.chunking,
+  });
+  const aiPdfImport = mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+    fileName: input.fileName,
+    jobId: input.jobId,
+    pageCount,
+    sourceAssetId: input.sourceAssetId,
+    sourceObjectPath: input.sourceObjectPath,
+    updatedAt: new Date().toISOString(),
+    ...progress,
+    chunking,
   });
   const { error } = await input.supabase
     .from("import_batches")
@@ -279,10 +380,12 @@ async function loadExistingQuestionCodeKeys(supabase: SupabaseLike) {
 
 function buildPrompt({
   activeTags,
+  chunk,
   fileName,
   pageCount,
 }: {
   activeTags: ActiveTag[];
+  chunk?: Pick<AIPdfImportChunkSummary, "pageEnd" | "pageStart">;
   fileName: string;
   pageCount: number;
 }) {
@@ -297,6 +400,17 @@ function buildPrompt({
     "",
     `File: ${fileName}`,
     `Page count: ${pageCount}`,
+    chunk
+      ? [
+          "",
+          `Chunk page range: pages ${chunk.pageStart}-${chunk.pageEnd}.`,
+          `You are extracting questions only from pages ${chunk.pageStart}-${chunk.pageEnd}.`,
+          "Return questions found in this page range.",
+          "Preserve visible question numbers only as question_number.",
+          "Do not invent missing pages.",
+          "Do not concatenate content from other chunks or guess cross-page continuations.",
+        ].join("\n")
+      : "",
     "",
     "Existing active tags. Reuse these by tag_slugs or tag_names when they are semantically appropriate. Create new tags only when none fit:",
     tags || "(none)",
@@ -418,16 +532,20 @@ async function ensureDraftTag({
 async function buildImportJson({
   activeTags,
   batchId,
+  chunk,
   extraction,
   profileId,
   provider,
+  questionIndexOffset = 0,
   supabase,
 }: {
   activeTags: ActiveTag[];
   batchId: string;
+  chunk?: Pick<AIPdfImportChunkSummary, "chunkIndex" | "pageEnd" | "pageStart">;
   extraction: AIPdfExtraction;
   profileId: string;
   provider: { id: string; model: string; name: string; provider: string };
+  questionIndexOffset?: number;
   supabase: SupabaseLike;
 }) {
   const bySlug = new Map(
@@ -443,6 +561,7 @@ async function buildImportJson({
   const questions = [];
 
   for (const [index, question] of extraction.questions.entries()) {
+    const globalQuestionIndex = questionIndexOffset + index;
     const tagSlugs = new Set<string>();
 
     for (const slug of question.tag_slugs) {
@@ -485,17 +604,17 @@ async function buildImportJson({
     const questionCode = generateAIPdfQuestionCodeForImport({
       batchId,
       existingQuestionCodes,
-      index,
+      index: globalQuestionIndex,
       usedQuestionCodes,
     });
 
     if (!visibleQuestionNumber) {
       extraction.warnings.push(
-        `Question ${index + 1}: missing visible question number; server-generated question_code ${questionCode} was used.`,
+        `Question ${globalQuestionIndex + 1}: missing visible question number; server-generated question_code ${questionCode} was used.`,
       );
     } else if (usedVisibleQuestionNumbers.has(visibleNumberKey)) {
       extraction.warnings.push(
-        `Question ${index + 1}: duplicate visible question number "${visibleQuestionNumber}" was kept for review only; server-generated question_code ${questionCode} was used.`,
+        `Question ${globalQuestionIndex + 1}: duplicate visible question number "${visibleQuestionNumber}" was kept for review only; server-generated question_code ${questionCode} was used.`,
       );
     } else {
       usedVisibleQuestionNumbers.add(visibleNumberKey);
@@ -511,10 +630,23 @@ async function buildImportJson({
       source: question.solution_source,
     });
 
-    questions.push({
+    const contentHtml = contentFields.html || question.content_html;
+    const contentSource = contentFields.source || stripHtml(question.content_html);
+    const solutionHtml = solutionFields.html || question.solution_html || "";
+    const solutionSource =
+      solutionFields.source || stripHtml(question.solution_html) || "";
+    const questionPayload: Record<string, unknown> = {
       ai_metadata: {
         asset_placeholders: question.asset_placeholders,
-        order_index: index,
+        chunk:
+          chunk === undefined
+            ? null
+            : {
+                chunk_index: chunk.chunkIndex,
+                page_end: chunk.pageEnd,
+                page_start: chunk.pageStart,
+              },
+        order_index: globalQuestionIndex,
         page_refs: question.page_refs,
         provider,
         raw_ai_question_code: rawAiQuestionCode || null,
@@ -526,18 +658,26 @@ async function buildImportJson({
         },
         visible_question_number: visibleQuestionNumber || null,
       },
-      content_html: contentFields.html || question.content_html,
-      content_source: contentFields.source || stripHtml(question.content_html),
+      content_html: contentHtml,
+      content_source: contentSource,
       content_source_format: contentFields.sourceFormat,
       difficulty_rating: question.difficulty_rating,
       question_code: questionCode,
       question_type: question.question_type,
-      solution_html: solutionFields.html || question.solution_html,
-      solution_source: solutionFields.source || stripHtml(question.solution_html),
       solution_source_format: solutionFields.sourceFormat,
       tag_slugs: Array.from(tagSlugs),
       title: question.title,
-    });
+    };
+
+    if (solutionHtml.trim()) {
+      questionPayload.solution_html = solutionHtml;
+    }
+
+    if (solutionSource.trim()) {
+      questionPayload.solution_source = solutionSource;
+    }
+
+    questions.push(questionPayload);
   }
 
   return JSON.stringify({ questions });
@@ -761,6 +901,184 @@ async function attachCroppedAssets({
   return { uploadedCount, warnings };
 }
 
+function providerPreparationCopy(strategy: AiPdfInputStrategy) {
+  if (strategy === "openai_file") {
+    return {
+      detail: "Preparing full PDF input for the model.",
+      phase: "preparing_pdf_input",
+    };
+  }
+
+  if (strategy === "gemini_native_pdf") {
+    return {
+      detail: "Preparing Gemini Native full PDF input for the model.",
+      phase: "preparing_native_pdf_input",
+    };
+  }
+
+  if (strategy === "page_images") {
+    return {
+      detail: "Rendering PDF pages as ordered images for the model.",
+      phase: "rendering_page_images",
+    };
+  }
+
+  return {
+    detail: "Preparing mock provider input.",
+    phase: "preparing_provider_input",
+  };
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+async function processAIPdfSinglePass({
+  activeTags,
+  input,
+  pageCount,
+  provider,
+  providerInput,
+  providerSummary,
+}: {
+  activeTags: ActiveTag[];
+  input: ProcessInput;
+  pageCount: number;
+  provider: Awaited<ReturnType<typeof loadAIProviderProfileForUse>>;
+  providerInput: ReturnType<typeof describeAiPdfProviderInput>;
+  providerSummary: { id: string; model: string; name: string; provider: string };
+}) {
+  if (input.chunkIndex !== undefined) {
+    throw new Error(
+      "This provider uses full-PDF input and does not support single-chunk retry. Retry the full import after resetting generated drafts.",
+    );
+  }
+
+  const prompt = buildPrompt({
+    activeTags,
+    fileName: input.fileName,
+    pageCount,
+  });
+
+  await updateAIPdfBatchProgress(input, {
+    detail:
+      "Calling AI provider once with the full PDF. If the first JSON is invalid, the system will ask the model once more with the validation error to repair it.",
+    pageCount,
+    phase: "calling_provider",
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+  });
+  const extraction = normalizeAIPdfExtractionResponse(
+    await callAIPdfExtractionProvider({
+      fileName: input.fileName,
+      inputStrategy: providerInput.strategy,
+      pageImageDataUrls: [],
+      pdfBase64: input.pdfBuffer.toString("base64"),
+      pdfBytes: input.pdfBuffer,
+      profile: provider,
+      prompt,
+    }),
+  );
+
+  await updateAIPdfBatchProgress(input, {
+    detail: "AI response parsed and validated.",
+    pageCount,
+    phase: "provider_response_validated",
+    provider: providerSummary,
+    questionCount: extraction.questions.length,
+    sourceInput: providerInput.strategy,
+    warnings: extraction.warnings,
+  });
+
+  const jsonText = await buildImportJson({
+    activeTags,
+    batchId: input.batchId,
+    extraction,
+    profileId: input.profileId,
+    provider: providerSummary,
+    supabase: input.supabase,
+  });
+  const currentBeforeImport = await loadCurrentAIPdfSummary(input);
+  const importingAiPdfImport = mergeAIPdfImportChunkingSummary(
+    currentBeforeImport.aiPdfImport,
+    {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      pageCount,
+      phase: "importing_questions",
+      provider: providerSummary,
+      sourceAssetId: input.sourceAssetId,
+      sourceInput: providerInput.strategy,
+      sourceObjectPath: input.sourceObjectPath,
+      warnings: extraction.warnings,
+    },
+  );
+  const importSummary = await importBatchImportJson({
+    allowDraftTags: true,
+    batchId: input.batchId,
+    initialSummaryExtras: {
+      aiPdfImport: importingAiPdfImport,
+    },
+    jsonText,
+    profileId: input.profileId,
+    sourceType: "ai_pdf",
+    supabase: input.supabase,
+  });
+
+  await updateAIPdfBatchProgress(input, {
+    detail: "Attaching AI crop placeholders to created draft questions.",
+    pageCount,
+    phase: "cropping_assets",
+    provider: providerSummary,
+    questionCount: extraction.questions.length,
+    sourceInput: providerInput.strategy,
+    warnings: extraction.warnings,
+  });
+  const cropSummary =
+    importSummary.createdCount > 0
+      ? await attachCroppedAssets({
+          createdQuestions: importSummary.createdQuestions,
+          extraction,
+          pdfBuffer: input.pdfBuffer,
+          profileId: input.profileId,
+          supabase: input.supabase,
+        })
+      : {
+          uploadedCount: 0,
+          warnings: ["No draft questions were created; skipped crop attachment."],
+        };
+  const currentBeforeFinal = await loadCurrentAIPdfSummary(input);
+  const finalSummary = {
+    ...importSummary,
+    aiPdfImport: mergeAIPdfImportChunkingSummary(currentBeforeFinal.aiPdfImport, {
+      createdQuestionCount: importSummary.createdCount,
+      fileName: input.fileName,
+      jobId: input.jobId,
+      pageCount,
+      phase: importSummary.createdCount > 0 ? "completed" : "failed",
+      provider: providerSummary,
+      sourceAssetId: input.sourceAssetId,
+      sourceInput: providerInput.strategy,
+      sourceObjectPath: input.sourceObjectPath,
+      uploadedCropCount: cropSummary.uploadedCount,
+      warnings: uniqueStrings([...extraction.warnings, ...cropSummary.warnings]),
+    }),
+  };
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: importSummary.createdCount > 0 ? "imported" : "failed",
+      summary: finalSummary,
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return finalSummary;
+}
+
 export async function processAIPdfImport(input: ProcessInput) {
   if (input.pdfBuffer.length > AI_PDF_IMPORT_MAX_BYTES) {
     throw new Error("PDF is larger than 50MB.");
@@ -808,165 +1126,330 @@ export async function processAIPdfImport(input: ProcessInput) {
     provider: providerSummary,
   });
   const activeTags = await loadActiveTags(input.supabase);
-  const prompt = buildPrompt({
-    activeTags,
-    fileName: input.fileName,
-    pageCount,
-  });
-
-  await updateAIPdfBatchProgress(input, {
-    detail:
-      providerInput.strategy === "openai_file"
-        ? "Preparing full PDF input for the model."
-        : providerInput.strategy === "gemini_native_pdf"
-          ? "Preparing Gemini Native full PDF input for the model."
-        : providerInput.strategy === "page_images"
-          ? "Rendering all PDF pages as ordered images for the model."
-          : "Preparing mock provider input.",
-    pageCount,
-    phase:
-      providerInput.strategy === "openai_file"
-        ? "preparing_pdf_input"
-        : providerInput.strategy === "gemini_native_pdf"
-          ? "preparing_native_pdf_input"
-        : providerInput.strategy === "page_images"
-          ? "rendering_page_images"
-          : "preparing_provider_input",
-    provider: providerSummary,
-    sourceInput: providerInput.strategy,
-  });
-  const pagesForVision = providerInput.strategy !== "page_images"
-    ? []
-    : await renderPdfPages(input.pdfBuffer);
-
-  await updateAIPdfBatchProgress(input, {
-    detail:
-      "Calling AI provider. If the first JSON is invalid, the system will ask the model once more with the validation error to repair it.",
-    pageCount,
-    phase: "calling_provider",
-    provider: providerSummary,
-    sourceInput: providerInput.strategy,
-  });
-  const extraction = normalizeAIPdfExtractionResponse(
-    await callAIPdfExtractionProvider({
-      fileName: input.fileName,
-      inputStrategy: providerInput.strategy,
-      pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
-      pdfBase64: input.pdfBuffer.toString("base64"),
-      pdfBytes: input.pdfBuffer,
-      profile: provider,
-      prompt,
-    }),
-  );
-
-  await updateAIPdfBatchProgress(input, {
-    detail: "AI response parsed and validated.",
-    pageCount,
-    phase: "provider_response_validated",
-    provider: providerSummary,
-    questionCount: extraction.questions.length,
-    warnings: extraction.warnings,
-  });
-
-  await updateAIPdfBatchProgress(input, {
-    detail: "Normalizing AI questions into the shared import format.",
-    pageCount,
-    phase: "building_import_json",
-    provider: providerSummary,
-    questionCount: extraction.questions.length,
-    warnings: extraction.warnings,
-  });
-  const jsonText = await buildImportJson({
-    activeTags,
-    batchId: input.batchId,
-    extraction,
-    profileId: input.profileId,
-    provider: {
-      id: provider.id,
-      model: provider.model,
-      name: provider.name,
-      provider: provider.provider,
-    },
-    supabase: input.supabase,
-  });
-  const currentBeforeImport = await loadCurrentAIPdfSummary(input);
-  const importingAiPdfImport = mergeAIPdfImportChunkingSummary(
-    currentBeforeImport.aiPdfImport,
-    {
-      fileName: input.fileName,
-      jobId: input.jobId,
+  const currentAfterTags = await loadCurrentAIPdfSummary(input);
+  const plannedChunking =
+    normalizeAIPdfChunkingSummary(currentAfterTags.aiPdfImport.chunking) ??
+    patchAIPdfChunkingSummary({
+      chunkIndex: 0,
       pageCount,
-      phase: "importing_questions",
-      provider: {
-        id: provider.id,
-        model: provider.model,
-        name: provider.name,
-        provider: provider.provider,
-      },
-      sourceInput: providerInput.strategy,
-      sourceAssetId: input.sourceAssetId,
-      sourceObjectPath: input.sourceObjectPath,
-      warnings: extraction.warnings,
-    },
-  );
-  const importSummary = await importBatchImportJson({
-    allowDraftTags: true,
-    batchId: input.batchId,
-    initialSummaryExtras: {
-      aiPdfImport: importingAiPdfImport,
-    },
-    jsonText,
-    profileId: input.profileId,
-    sourceType: "ai_pdf",
-    supabase: input.supabase,
+      patch: {},
+      value: undefined,
+    });
+  const chunksToProcess = plannedChunking.chunks
+    .filter((chunk) =>
+      input.chunkIndex === undefined ? true : chunk.chunkIndex === input.chunkIndex,
+    )
+    .sort((left, right) => left.chunkIndex - right.chunkIndex);
+
+  if (!chunksToProcess.length) {
+    throw new Error("No matching AI PDF chunk was found to process.");
+  }
+
+  const preparation = providerPreparationCopy(providerInput.strategy);
+  await updateAIPdfBatchProgress(input, {
+    detail: preparation.detail,
+    pageCount,
+    phase: preparation.phase,
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
   });
 
-  await updateAIPdfBatchProgress(input, {
-    detail: "Attaching AI crop placeholders to created draft questions.",
-    pageCount,
-    phase: "cropping_assets",
-    provider: providerSummary,
-    questionCount: extraction.questions.length,
-    warnings: extraction.warnings,
-  });
-  const cropSummary = importSummary.createdCount > 0
-    ? await attachCroppedAssets({
-        createdQuestions: importSummary.createdQuestions,
+  if (!supportsAIPdfSequentialChunkExtraction(providerInput.strategy)) {
+    return processAIPdfSinglePass({
+      activeTags,
+      input,
+      pageCount,
+      provider,
+      providerInput,
+      providerSummary,
+    });
+  }
+
+  const startingCreatedQuestions = createdQuestionsFromSummary(
+    currentAfterTags.summary.createdQuestions,
+  );
+  let renderedPagesCache: RenderedPage[] | undefined;
+  let questionIndexOffset = 0;
+  const aggregate = {
+    createdCount: numberFromRecord(currentAfterTags.summary, ["createdCount"]),
+    duplicateCount: numberFromRecord(currentAfterTags.summary, ["duplicateCount"]),
+    errorCount: numberFromRecord(currentAfterTags.summary, ["errorCount"]),
+    invalidCount: numberFromRecord(currentAfterTags.summary, ["invalidCount"]),
+    skippedCount: numberFromRecord(currentAfterTags.summary, ["skippedCount"]),
+    unknownTagCount: numberFromRecord(currentAfterTags.summary, [
+      "unknownTagCount",
+    ]),
+    uploadedCropCount: numberFromRecord(currentAfterTags.aiPdfImport, [
+      "uploadedCropCount",
+      "uploadedCrops",
+    ]),
+    validCount: numberFromRecord(currentAfterTags.summary, ["validCount"]),
+  };
+  const createdQuestions = [...startingCreatedQuestions];
+  questionIndexOffset = aggregate.createdCount;
+  const allWarnings: string[] = Array.isArray(currentAfterTags.aiPdfImport.warnings)
+    ? currentAfterTags.aiPdfImport.warnings.map(String)
+    : [];
+
+  for (const chunk of chunksToProcess) {
+    const startedAt = new Date().toISOString();
+    const retryCount =
+      input.chunkIndex === undefined ? chunk.retryCount ?? 0 : (chunk.retryCount ?? 0) + 1;
+
+    await updateAIPdfChunkProgress({
+      chunk,
+      input,
+      pageCount,
+      patch: {
+        completedAt: undefined,
+        errorMessage: undefined,
+        inputStrategy: providerInput.strategy,
+        model: provider.model,
+        provider: provider.provider,
+        retryCount,
+        startedAt,
+        status: "running",
+        warningCount: 0,
+        warnings: [],
+      },
+      progress: {
+        detail: `Calling AI provider for ${formatAIPdfChunkPageRange(chunk)}.`,
+        pageCount,
+        phase: "calling_provider",
+        provider: providerSummary,
+        sourceInput: providerInput.strategy,
+      },
+    });
+
+    try {
+      const chunkPrompt = buildPrompt({
+        activeTags,
+        chunk,
+        fileName: input.fileName,
+        pageCount,
+      });
+      const pagesForVision =
+        providerInput.strategy !== "page_images"
+          ? []
+          : (
+              renderedPagesCache ??
+              (renderedPagesCache = await renderPdfPages(input.pdfBuffer))
+            ).filter(
+              (page) => page.page >= chunk.pageStart && page.page <= chunk.pageEnd,
+            );
+      const extraction = normalizeAIPdfExtractionResponse(
+        await callAIPdfExtractionProvider({
+          fileName: input.fileName,
+          inputStrategy: providerInput.strategy,
+          pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
+          pdfBase64: input.pdfBuffer.toString("base64"),
+          pdfBytes: input.pdfBuffer,
+          profile: provider,
+          prompt: chunkPrompt,
+        }),
+      );
+
+      await updateAIPdfChunkProgress({
+        chunk,
+        input,
+        pageCount,
+        patch: {
+          inputStrategy: providerInput.strategy,
+          model: provider.model,
+          provider: provider.provider,
+          questionCount: extraction.questions.length,
+          retryCount,
+          status: "running",
+          warningCount: extraction.warnings.length,
+          warnings: extraction.warnings,
+        },
+        progress: {
+          detail: `AI response parsed for ${formatAIPdfChunkPageRange(chunk)}.`,
+          pageCount,
+          phase: "provider_response_validated",
+          provider: providerSummary,
+          questionCount: extraction.questions.length,
+          sourceInput: providerInput.strategy,
+          warnings: extraction.warnings,
+        },
+      });
+
+      const jsonText = await buildImportJson({
+        activeTags,
+        batchId: input.batchId,
+        chunk,
         extraction,
-        pdfBuffer: input.pdfBuffer,
         profileId: input.profileId,
-        renderedPages: pagesForVision,
+        provider: providerSummary,
+        questionIndexOffset,
         supabase: input.supabase,
-      })
-    : {
-        uploadedCount: 0,
-        warnings: ["No draft questions were created; skipped crop attachment."],
-      };
+      });
+      const currentBeforeImport = await loadCurrentAIPdfSummary(input);
+      const importingAiPdfImport = mergeAIPdfImportChunkingSummary(
+        currentBeforeImport.aiPdfImport,
+        {
+          fileName: input.fileName,
+          jobId: input.jobId,
+          pageCount,
+          phase: "importing_questions",
+          provider: providerSummary,
+          sourceAssetId: input.sourceAssetId,
+          sourceInput: providerInput.strategy,
+          sourceObjectPath: input.sourceObjectPath,
+          warnings: uniqueStrings([...allWarnings, ...extraction.warnings]),
+        },
+      );
+      const importSummary = await importBatchImportJson({
+        allowDraftTags: true,
+        batchId: input.batchId,
+        initialSummaryExtras: {
+          aiPdfImport: importingAiPdfImport,
+        },
+        itemIndexOffset: chunk.chunkIndex * 1000,
+        jsonText,
+        profileId: input.profileId,
+        sourceType: "ai_pdf",
+        supabase: input.supabase,
+      });
+      const cropSummary =
+        importSummary.createdCount > 0
+          ? await attachCroppedAssets({
+              createdQuestions: importSummary.createdQuestions,
+              extraction,
+              pdfBuffer: input.pdfBuffer,
+              profileId: input.profileId,
+              renderedPages: renderedPagesCache,
+              supabase: input.supabase,
+            })
+          : {
+              uploadedCount: 0,
+              warnings: [
+                `No draft questions were created for ${formatAIPdfChunkPageRange(
+                  chunk,
+                )}; skipped crop attachment.`,
+              ],
+            };
+      const chunkWarnings = uniqueStrings([
+        ...extraction.warnings,
+        ...cropSummary.warnings,
+      ]);
+
+      aggregate.createdCount += importSummary.createdCount;
+      aggregate.duplicateCount += importSummary.duplicateCount;
+      aggregate.errorCount += importSummary.errorCount;
+      aggregate.invalidCount += importSummary.invalidCount;
+      aggregate.skippedCount += importSummary.skippedCount;
+      aggregate.unknownTagCount += importSummary.unknownTagCount;
+      aggregate.uploadedCropCount += cropSummary.uploadedCount;
+      aggregate.validCount += importSummary.validCount;
+      createdQuestions.push(...importSummary.createdQuestions);
+      allWarnings.push(...chunkWarnings);
+      questionIndexOffset += extraction.questions.length;
+
+      await updateAIPdfChunkProgress({
+        chunk,
+        input,
+        pageCount,
+        patch: {
+          completedAt: new Date().toISOString(),
+          createdQuestionIds: importSummary.createdQuestions.map(
+            (question) => question.id,
+          ),
+          inputStrategy: providerInput.strategy,
+          model: provider.model,
+          provider: provider.provider,
+          questionCount: importSummary.createdCount,
+          retryCount,
+          status: "completed",
+          warningCount: chunkWarnings.length,
+          warnings: chunkWarnings,
+        },
+        progress: {
+          detail: `Completed ${formatAIPdfChunkPageRange(chunk)}.`,
+          pageCount,
+          phase: "cropping_assets",
+          provider: providerSummary,
+          questionCount: aggregate.createdCount,
+          sourceInput: providerInput.strategy,
+          warnings: uniqueStrings(allWarnings),
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "AI PDF chunk extraction failed.";
+
+      allWarnings.push(
+        `${formatAIPdfChunkPageRange(chunk)} failed: ${message}`,
+      );
+      await updateAIPdfChunkProgress({
+        chunk,
+        input,
+        pageCount,
+        patch: {
+          completedAt: new Date().toISOString(),
+          errorMessage: message,
+          inputStrategy: providerInput.strategy,
+          model: provider.model,
+          provider: provider.provider,
+          retryCount,
+          status: "failed",
+          warningCount: 1,
+          warnings: [message],
+        },
+        progress: {
+          detail: `${formatAIPdfChunkPageRange(chunk)} failed; continuing remaining chunks.`,
+          pageCount,
+          phase: "calling_provider",
+          provider: providerSummary,
+          questionCount: aggregate.createdCount,
+          sourceInput: providerInput.strategy,
+          warnings: uniqueStrings(allWarnings),
+        },
+      });
+    }
+  }
+
+  const currentBeforeFinal = await loadCurrentAIPdfSummary(input);
+  const finalChunking = normalizeAIPdfChunkingSummary(
+    currentBeforeFinal.aiPdfImport.chunking,
+  );
+  const hasFailedChunks = (finalChunking?.failedChunks ?? 0) > 0;
+  const hasCreatedQuestions = aggregate.createdCount > 0;
+  const finalPhase = hasCreatedQuestions
+    ? hasFailedChunks
+      ? "partial"
+      : "completed"
+    : "failed";
+  const finalStatus = hasCreatedQuestions ? "imported" : "failed";
   const finalSummary = {
-    ...importSummary,
-    aiPdfImport: mergeAIPdfImportChunkingSummary(currentBeforeImport.aiPdfImport, {
-      createdQuestionCount: importSummary.createdCount,
+    ...currentBeforeFinal.summary,
+    batchId: input.batchId,
+    createdCount: aggregate.createdCount,
+    createdQuestions,
+    duplicateCount: aggregate.duplicateCount,
+    errorCount: aggregate.errorCount,
+    invalidCount: aggregate.invalidCount,
+    skippedCount: aggregate.skippedCount,
+    unknownTagCount: aggregate.unknownTagCount,
+    validCount: aggregate.validCount,
+    aiPdfImport: mergeAIPdfImportChunkingSummary(currentBeforeFinal.aiPdfImport, {
+      createdQuestionCount: aggregate.createdCount,
       fileName: input.fileName,
       jobId: input.jobId,
       pageCount,
-      phase: "completed",
-      provider: {
-        id: provider.id,
-        model: provider.model,
-        name: provider.name,
-        provider: provider.provider,
-      },
+      phase: finalPhase,
+      provider: providerSummary,
       sourceAssetId: input.sourceAssetId,
       sourceInput: providerInput.strategy,
       sourceObjectPath: input.sourceObjectPath,
-      uploadedCropCount: cropSummary.uploadedCount,
-      warnings: [...extraction.warnings, ...cropSummary.warnings],
+      uploadedCropCount: aggregate.uploadedCropCount,
+      warnings: uniqueStrings(allWarnings),
     }),
   };
   const { error } = await input.supabase
     .from("import_batches")
     .update({
-      status: importSummary.createdCount > 0 ? "imported" : "failed",
+      status: finalStatus,
       summary: finalSummary,
     })
     .eq("id", input.batchId);

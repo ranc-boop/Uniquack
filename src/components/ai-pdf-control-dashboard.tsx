@@ -494,6 +494,32 @@ function chunkDebugLine(chunk: AIPdfImportChunkSummary) {
   return parts.join(" / ");
 }
 
+function conciseChunkError(value: unknown) {
+  const detail = safeTechnicalDetail(value);
+
+  if (!detail) {
+    return "";
+  }
+
+  if (/503|high demand|UNAVAILABLE/i.test(detail)) {
+    return "Provider temporarily unavailable (503): model is experiencing high demand. Retry this chunk later.";
+  }
+
+  if (/timeout|timed out|524/i.test(detail)) {
+    return "Provider timed out. Retry this chunk later or use a smaller page range.";
+  }
+
+  if (/invalid json|non-json|json/i.test(detail)) {
+    return "Provider returned invalid JSON for this chunk. Retry may succeed.";
+  }
+
+  return detail
+    .replace(/Provider response:[\s\S]*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+}
+
 function complexityLabel({
   pageCount,
   sizeBytes,
@@ -585,6 +611,11 @@ export function AIPdfControlDashboard({
               const displayStatus = display.displayStatus;
               const warnings = display.warnings.debugWarnings;
               const aggregatedWarnings = display.warnings;
+              const visibleWarnings = aggregatedWarnings.visibleWarnings.slice(0, 5);
+              const hiddenWarningCount = Math.max(
+                0,
+                aggregatedWarnings.visibleWarnings.length - visibleWarnings.length,
+              );
               const chunking =
                 normalizeAIPdfChunkingSummary(ai.chunking) ??
                 (pageCount ? createAIPdfChunkingSummary({ pageCount }) : null);
@@ -782,7 +813,7 @@ export function AIPdfControlDashboard({
                     </div>
                   </div>
 
-                  <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                  <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
                     <div className="space-y-3">
                       <div>
                         <p className="mb-2 text-sm font-medium">
@@ -818,6 +849,45 @@ export function AIPdfControlDashboard({
                             Recommended mode:{" "}
                             {recommendedModeCopy(strategy, display.providerMode)}
                           </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-md border bg-muted/20 p-3">
+                        <p className="text-sm font-medium">
+                          Figure and image review
+                        </p>
+                        <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                          <p>
+                            Questions may need diagrams/images before publishing.
+                          </p>
+                          <p>
+                            Detected figures: {formatCount(detectedFigureCount)}
+                          </p>
+                          <p>Uploaded crops: {uploadedCropCount}</p>
+                          <p>
+                            Missing figure attachments:{" "}
+                            {missingImageAttachmentCount}
+                          </p>
+                          {needsImageReview ? (
+                            <div>
+                              <Badge variant="outline">Needs media review</Badge>
+                            </div>
+                          ) : null}
+                          {sourcePageRefs.length ? (
+                            <p>Source page refs: {sourcePageRefs.join(", ")}</p>
+                          ) : null}
+                          {figureDescriptions.length ? (
+                            <details className="sm:col-span-2">
+                              <summary className="cursor-pointer font-medium text-foreground">
+                                Figure notes ({figureDescriptions.length})
+                              </summary>
+                              <ul className="mt-2 list-disc space-y-1 pl-4">
+                                {figureDescriptions.slice(0, 5).map((description) => (
+                                  <li key={description}>{description}</li>
+                                ))}
+                              </ul>
+                            </details>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -883,7 +953,18 @@ export function AIPdfControlDashboard({
                                     <p>{chunkDebugLine(chunk)}</p>
                                   ) : null}
                                   {chunk.status === "failed" ? (
-                                    <p>Retry controls will appear in a later PR.</p>
+                                    <div className="space-y-1">
+                                      {conciseChunkError(chunk.errorMessage) ? (
+                                        <p>
+                                          Error:{" "}
+                                          {conciseChunkError(chunk.errorMessage)}
+                                        </p>
+                                      ) : null}
+                                      <p>
+                                        Failed chunk retry is available to super
+                                        admins through the retry action foundation.
+                                      </p>
+                                    </div>
                                   ) : null}
                                 </div>
                               ))}
@@ -922,49 +1003,34 @@ export function AIPdfControlDashboard({
                         )}
                       </div>
 
-                      <div className="rounded-md border bg-muted/20 p-3">
-                        <p className="text-sm font-medium">
-                          Figure and image review
-                        </p>
-                        <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                          <p>
-                            Questions may need diagrams/images before publishing.
-                          </p>
-                          <p>
-                            Detected figures: {formatCount(detectedFigureCount)}
-                          </p>
-                          <p>Uploaded crops: {uploadedCropCount}</p>
-                          <p>
-                            Missing figure attachments:{" "}
-                            {missingImageAttachmentCount}
-                          </p>
-                          {needsImageReview ? (
-                            <Badge variant="outline">Needs media review</Badge>
-                          ) : null}
-                          {sourcePageRefs.length ? (
-                            <p>Source page refs: {sourcePageRefs.join(", ")}</p>
-                          ) : null}
-                          {figureDescriptions.length ? (
-                            <ul className="list-disc space-y-1 pl-4">
-                              {figureDescriptions.slice(0, 3).map((description) => (
-                                <li key={description}>{description}</li>
-                              ))}
-                            </ul>
-                          ) : null}
-                        </div>
-                      </div>
+                    </div>
+                  </div>
 
                       <div className="rounded-md border bg-muted/20 p-3">
                         <p className="text-sm font-medium">Warnings</p>
                         {aggregatedWarnings.visibleWarnings.length ? (
                           <>
                             <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                              {aggregatedWarnings.visibleWarnings
-                                .slice(0, 8)
-                                .map((warning) => (
-                                  <li key={warning}>{warning}</li>
-                                ))}
+                              {visibleWarnings.map((warning) => (
+                                <li key={warning}>{warning}</li>
+                              ))}
                             </ul>
+                            {hiddenWarningCount ? (
+                              <details className="mt-3 rounded-md border bg-background p-2 text-xs text-muted-foreground">
+                                <summary className="cursor-pointer font-medium text-foreground">
+                                  Show all warnings (+{hiddenWarningCount})
+                                </summary>
+                                <ul className="mt-2 list-disc space-y-1 pl-4">
+                                  {aggregatedWarnings.visibleWarnings
+                                    .slice(5)
+                                    .map((warning, index) => (
+                                      <li key={`${warning}-${index}`}>
+                                        {warning}
+                                      </li>
+                                    ))}
+                                </ul>
+                              </details>
+                            ) : null}
                             {aggregatedWarnings.debugWarnings.length !==
                             aggregatedWarnings.visibleWarnings.length ? (
                               <details className="mt-3 rounded-md border bg-background p-2 text-xs text-muted-foreground">
@@ -1013,8 +1079,6 @@ export function AIPdfControlDashboard({
                           </>
                         )}
                       </div>
-                    </div>
-                  </div>
                   </div>
                 </details>
               );
