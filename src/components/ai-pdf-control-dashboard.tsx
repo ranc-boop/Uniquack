@@ -120,10 +120,6 @@ function formatCount(value: number | undefined) {
   return typeof value === "number" ? String(value) : "-";
 }
 
-function shortId(value: string) {
-  return value.slice(0, 8);
-}
-
 function formatFileSize(bytes: number | string | null | undefined) {
   const numeric = typeof bytes === "string" ? Number(bytes) : bytes;
 
@@ -141,56 +137,6 @@ function formatFileSize(bytes: number | string | null | undefined) {
   }
 
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
-function friendlyPhaseLabel(phase: string) {
-  const labels: Record<string, string> = {
-    building_import_json: "Normalizing questions",
-    calling_provider: "AI request sent",
-    completed: "Completed",
-    counting_pages: "Counting pages",
-    cropping_assets: "Attaching image crops",
-    extracting: "Extracting",
-    failed: "Failed",
-    importing_questions: "Importing draft questions",
-    loading_provider: "Provider selected",
-    loading_tags: "Loading tag context",
-    preparing_native_pdf_input: "Preparing Gemini Native full PDF",
-    preparing_pdf_input: "Preparing full PDF input",
-    preparing_provider_input: "Preparing provider input",
-    provider_response_validated: "AI response received",
-    queued: "Queued",
-    rendering_page_images: "Rendering page images",
-    resetting_generated_drafts: "Resetting generated drafts",
-    source_deleted: "Source deleted",
-    source_missing: "Source missing",
-    source_upload_cancelled: "Source upload cancelled",
-    source_upload_failed: "Source upload failed",
-    source_uploaded: "Source uploaded",
-    starting_extraction: "Starting extraction",
-    upload_reserved: "Upload reserved",
-  };
-
-  return labels[phase] ?? phase.replaceAll("_", " ");
-}
-
-function isFailedStatus(status: string) {
-  const normalized = status.trim().toLowerCase();
-
-  return (
-    normalized === "failed" ||
-    normalized === "error" ||
-    normalized.endsWith("_failed") ||
-    normalized.includes("failed")
-  );
-}
-
-function effectivePhase(status: string, phase: string) {
-  if (isFailedStatus(status)) {
-    return "failed";
-  }
-
-  return phase === "completed" && status !== "imported" ? "failed" : phase;
 }
 
 function phaseRank(phase: string) {
@@ -216,56 +162,6 @@ function phaseRank(phase: string) {
   };
 
   return ranks[phase] ?? 0;
-}
-
-function statusLabel({
-  createdQuestionCount,
-  phase,
-  status,
-}: {
-  createdQuestionCount: number;
-  phase: string;
-  status: string;
-}) {
-  if (isFailedStatus(status) && createdQuestionCount > 0) {
-    return "Partial";
-  }
-
-  if (isFailedStatus(status) || phase === "failed") {
-    return "Failed";
-  }
-
-  if (status === "imported" || phase === "completed") {
-    return "Imported to Review Drafts";
-  }
-
-  if (phase === "queued") {
-    return "Queued";
-  }
-
-  if (
-    status === "validating" ||
-    [
-      "starting_extraction",
-      "extracting",
-      "counting_pages",
-      "loading_provider",
-      "loading_tags",
-      "preparing_pdf_input",
-      "preparing_native_pdf_input",
-      "preparing_provider_input",
-      "rendering_page_images",
-      "calling_provider",
-      "provider_response_validated",
-      "building_import_json",
-      "importing_questions",
-      "cropping_assets",
-    ].includes(phase)
-  ) {
-    return "Running";
-  }
-
-  return "Uploaded";
 }
 
 function pipelineSteps({
@@ -320,41 +216,6 @@ function pipelineSteps({
       state: complete(createdQuestionCount > 0, false),
     },
   ];
-}
-
-function getWarnings(ai: Record<string, unknown>, batchStatus: string) {
-  const warnings = [
-    ...stringList(ai.warnings),
-    ...stringList(ai.parserWarnings),
-    ...stringList(ai.missingQuestionNumbers).map(
-      (value) => `Missing question number: ${value}`,
-    ),
-    ...stringList(ai.duplicateQuestionNumbers).map(
-      (value) => `Duplicate question number: ${value}`,
-    ),
-    ...stringList(ai.crossPageContinuations).map(
-      (value) => `Cross-page continuation: ${value}`,
-    ),
-  ];
-  const error = firstString(ai, ["error"]);
-  const unsupported = firstString(ai, [
-    "unsupportedProviderCapability",
-    "unsupportedProviderReason",
-  ]);
-
-  if (error) {
-    warnings.push(...summarizeAIPdfError(error));
-  }
-
-  if (unsupported) {
-    warnings.push(`Unsupported provider capability: ${unsupported}`);
-  }
-
-  if (batchStatus === "failed" && !warnings.length) {
-    warnings.push("Provider or parser failure. Check the latest extraction error.");
-  }
-
-  return warnings;
 }
 
 function summarizeAIPdfError(value: unknown) {
@@ -415,32 +276,6 @@ function safeTechnicalDetail(value: unknown) {
     .replace(/\bAIza[A-Za-z0-9_-]+/g, "[api key redacted]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[jwt redacted]")
     .slice(0, TECHNICAL_DETAIL_LIMIT);
-}
-
-function aggregateWarnings(warnings: string[]) {
-  const figurePlaceholderPattern =
-    /^Could not find created question for \{\{asset:figure_(\d+)\}\}\.?$/;
-  const figurePlaceholderWarnings = warnings.filter((warning) =>
-    figurePlaceholderPattern.test(warning),
-  );
-  const otherWarnings = warnings.filter(
-    (warning) => !figurePlaceholderPattern.test(warning),
-  );
-
-  if (figurePlaceholderWarnings.length <= 1) {
-    return {
-      debugWarnings: warnings,
-      visibleWarnings: warnings,
-    };
-  }
-
-  return {
-    debugWarnings: warnings,
-    visibleWarnings: [
-      ...otherWarnings,
-      `${figurePlaceholderWarnings.length} figure placeholders could not be attached because no matching draft questions were created.`,
-    ],
-  };
 }
 
 function getChunks(ai: Record<string, unknown>) {
@@ -602,7 +437,7 @@ export function AIPdfControlDashboard({
                 summary: batch.summary,
               });
               const ai = display.ai;
-              const strategy = display.strategy;
+              const inputStrategy = display.strategy;
               const pageCount = display.pageCount;
               const sizeBytes = display.sizeBytes;
               const createdQuestionCount = display.createdQuestionCount;
@@ -616,16 +451,16 @@ export function AIPdfControlDashboard({
                 0,
                 aggregatedWarnings.visibleWarnings.length - visibleWarnings.length,
               );
-              const chunking =
+              const chunkingSummary =
                 normalizeAIPdfChunkingSummary(ai.chunking) ??
                 (pageCount ? createAIPdfChunkingSummary({ pageCount }) : null);
-              const legacyChunks = getChunks(ai);
+              const legacyChunkSummaries = getChunks(ai);
               const chunkCount =
-                chunking?.totalChunks ??
-                (legacyChunks.length ||
+                chunkingSummary?.totalChunks ??
+                (legacyChunkSummaries.length ||
                   firstNumber(ai, ["chunkCount", "chunksCount"]));
-              const runningChunkCount = chunking
-                ? chunking.chunks.filter((chunk) =>
+              const runningChunkCount = chunkingSummary
+                ? chunkingSummary.chunks.filter((chunk) =>
                     ["queued", "running"].includes(chunk.status),
                   ).length
                 : 0;
@@ -660,7 +495,7 @@ export function AIPdfControlDashboard({
               const complexity = complexityLabel({
                 pageCount,
                 sizeBytes,
-                strategy,
+                strategy: inputStrategy,
               });
               const sourceTitle = display.sourceTitle;
               const technicalError = display.warnings.technicalDetail;
@@ -847,7 +682,10 @@ export function AIPdfControlDashboard({
                           <p>Estimated complexity: {complexity}</p>
                           <p className="md:col-span-2">
                             Recommended mode:{" "}
-                            {recommendedModeCopy(strategy, display.providerMode)}
+                            {recommendedModeCopy(
+                              inputStrategy,
+                              display.providerMode,
+                            )}
                           </p>
                         </div>
                       </div>
@@ -897,32 +735,33 @@ export function AIPdfControlDashboard({
                         <p className="text-sm font-medium">
                           Long PDF / chunks
                         </p>
-                        {chunking ? (
+                        {chunkingSummary ? (
                           <div className="mt-2 space-y-2 text-xs">
                             <div className="grid gap-2 sm:grid-cols-2">
                               <p className="rounded border bg-background p-2">
-                                Total chunks: {chunking.totalChunks}
+                                Total chunks: {chunkingSummary.totalChunks}
                               </p>
                               <p className="rounded border bg-background p-2">
-                                Completed: {chunking.completedChunks} / Failed:{" "}
-                                {chunking.failedChunks}
+                                Completed: {chunkingSummary.completedChunks} / Failed:{" "}
+                                {chunkingSummary.failedChunks}
                               </p>
                               <p className="rounded border bg-background p-2">
                                 Running or queued: {runningChunkCount}
                               </p>
                               <p className="rounded border bg-background p-2">
-                                Mode: {chunking.mode}
+                                Mode: {chunkingSummary.mode}
                               </p>
                             </div>
-                            {chunking.chunkSizePages || chunking.overlapPages ? (
+                            {chunkingSummary.chunkSizePages ||
+                            chunkingSummary.overlapPages ? (
                               <p className="text-muted-foreground">
-                                Chunk size: {chunking.chunkSizePages ?? "-"} pages
+                                Chunk size: {chunkingSummary.chunkSizePages ?? "-"} pages
                                 {" | "}
-                                Overlap: {chunking.overlapPages ?? 0} pages
+                                Overlap: {chunkingSummary.overlapPages ?? 0} pages
                               </p>
                             ) : null}
                             <div className="space-y-2">
-                              {chunking.chunks.slice(0, 8).map((chunk) => (
+                              {chunkingSummary.chunks.slice(0, 8).map((chunk) => (
                                 <div
                                   key={chunk.id}
                                   className={`rounded border p-2 ${chunkStatusClass(
@@ -969,21 +808,21 @@ export function AIPdfControlDashboard({
                                 </div>
                               ))}
                             </div>
-                            {chunking.chunks.length > 8 ? (
+                            {chunkingSummary.chunks.length > 8 ? (
                               <p className="text-muted-foreground">
-                                {chunking.chunks.length - 8} more chunks hidden
+                                {chunkingSummary.chunks.length - 8} more chunks hidden
                                 from this compact preview.
                               </p>
                             ) : null}
-                            {chunking.mergeStatus ? (
+                            {chunkingSummary.mergeStatus ? (
                               <p className="text-muted-foreground">
-                                Merge status: {chunking.mergeStatus}
+                                Merge status: {chunkingSummary.mergeStatus}
                               </p>
                             ) : null}
                           </div>
-                        ) : legacyChunks.length ? (
+                        ) : legacyChunkSummaries.length ? (
                           <div className="mt-2 space-y-2 text-xs">
-                            {legacyChunks.slice(0, 5).map((chunk) => (
+                            {legacyChunkSummaries.slice(0, 5).map((chunk) => (
                               <div
                                 key={`${chunk.label}-${chunk.pages}-${chunk.status}`}
                                 className="rounded border bg-background p-2"
