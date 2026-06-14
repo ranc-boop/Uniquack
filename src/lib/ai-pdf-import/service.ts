@@ -998,27 +998,19 @@ async function processAIPdfSinglePass({
     provider: providerSummary,
     supabase: input.supabase,
   });
-  const currentBeforeImport = await loadCurrentAIPdfSummary(input);
-  const importingAiPdfImport = mergeAIPdfImportChunkingSummary(
-    currentBeforeImport.aiPdfImport,
-    {
-      fileName: input.fileName,
-      jobId: input.jobId,
-      pageCount,
-      phase: "importing_questions",
-      provider: providerSummary,
-      sourceAssetId: input.sourceAssetId,
-      sourceInput: providerInput.strategy,
-      sourceObjectPath: input.sourceObjectPath,
-      warnings: extraction.warnings,
-    },
-  );
+  await updateAIPdfBatchProgress(input, {
+    detail: "Importing generated questions.",
+    pageCount,
+    phase: "importing_questions",
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+    warnings: extraction.warnings,
+  });
+
   const importSummary = await importBatchImportJson({
     allowDraftTags: true,
     batchId: input.batchId,
-    initialSummaryExtras: {
-      aiPdfImport: importingAiPdfImport,
-    },
+    initialSummaryExtras: {},
     jsonText,
     profileId: input.profileId,
     sourceType: "ai_pdf",
@@ -1284,27 +1276,19 @@ export async function processAIPdfImport(input: ProcessInput) {
         questionIndexOffset,
         supabase: input.supabase,
       });
-      const currentBeforeImport = await loadCurrentAIPdfSummary(input);
-      const importingAiPdfImport = mergeAIPdfImportChunkingSummary(
-        currentBeforeImport.aiPdfImport,
-        {
-          fileName: input.fileName,
-          jobId: input.jobId,
-          pageCount,
-          phase: "importing_questions",
-          provider: providerSummary,
-          sourceAssetId: input.sourceAssetId,
-          sourceInput: providerInput.strategy,
-          sourceObjectPath: input.sourceObjectPath,
-          warnings: uniqueStrings([...allWarnings, ...extraction.warnings]),
-        },
-      );
+      await updateAIPdfBatchProgress(input, {
+        detail: `Importing generated questions for ${formatAIPdfChunkPageRange(chunk)}.`,
+        pageCount,
+        phase: "importing_questions",
+        provider: providerSummary,
+        sourceInput: providerInput.strategy,
+        warnings: uniqueStrings([...allWarnings, ...extraction.warnings]),
+      });
+
       const importSummary = await importBatchImportJson({
         allowDraftTags: true,
         batchId: input.batchId,
-        initialSummaryExtras: {
-          aiPdfImport: importingAiPdfImport,
-        },
+        initialSummaryExtras: {},
         itemIndexOffset: chunk.chunkIndex * 1000,
         jsonText,
         profileId: input.profileId,
