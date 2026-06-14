@@ -394,7 +394,10 @@ export function deriveAIPdfBatchDisplayState({
   );
   const uploadedCropCount =
     firstAIPdfNumber(ai, ["uploadedCropCount", "uploadedCrops"]) ?? 0;
-  const strategy = firstAIPdfString(ai, ["sourceInput", "inputStrategy"]);
+  const inputStrategy = firstAIPdfString(ai, [
+    "sourceInput",
+    "inputStrategy",
+  ]);
   const reportedPhase = firstAIPdfString(ai, ["phase"], "source_uploaded");
   const phase = deriveAIPdfPhase(status, reportedPhase);
   const displayStatus = statusLabel({
@@ -405,7 +408,10 @@ export function deriveAIPdfBatchDisplayState({
   const warnings = summarizeAIPdfWarnings({ ai, status });
   const providerName = firstAIPdfString(provider, ["name"], "Not selected");
   const model = firstAIPdfString(provider, ["model"], "-");
-  const inputStrategyLabel = formatAIPdfInputStrategy(strategy, providerMode);
+  const inputStrategyLabel = formatAIPdfInputStrategy(
+    inputStrategy,
+    providerMode,
+  );
   const sourceTitle =
     firstAIPdfString(ai, ["fileName"]) ||
     sourceAsset?.original_filename ||
@@ -463,7 +469,7 @@ export function deriveAIPdfBatchDisplayState({
     sizeBytes,
     sourceAssetCount: sourceAsset ? 1 : 0,
     sourceTitle,
-    strategy,
+    strategy: inputStrategy,
     uploadedCropCount,
     warnings,
   };

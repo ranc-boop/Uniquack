@@ -278,19 +278,17 @@ export async function deleteAIPdfSource(input: unknown) {
     throw new Error(assetUpdateError.message);
   }
 
-  const summary =
-    batch.summary && typeof batch.summary === "object" && !Array.isArray(batch.summary)
-      ? batch.summary
-      : {};
-  const aiPdfImport =
-    "aiPdfImport" in summary &&
-    summary.aiPdfImport &&
-    typeof summary.aiPdfImport === "object" &&
-    !Array.isArray(summary.aiPdfImport)
-      ? summary.aiPdfImport
-      : {};
+  const { data: latestBatch } = await supabase
+    .from("import_batches")
+    .select("summary")
+    .eq("id", parsed.batchId)
+    .maybeSingle();
+
+  const latestSummary = plainObject(latestBatch?.summary ?? batch.summary);
+  const aiPdfImport = plainObject(latestSummary.aiPdfImport);
+
   const deletedSummary = {
-    ...summary,
+    ...latestSummary,
     aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, {
       fileName:
         "fileName" in aiPdfImport && typeof aiPdfImport.fileName === "string"
@@ -682,9 +680,18 @@ export async function resetAIPdfImportOutputs(input: unknown) {
     nextAiPdfImport.warnings = warnings;
   }
 
+  const { data: latestBatch } = await supabase
+    .from("import_batches")
+    .select("summary")
+    .eq("id", parsed.batchId)
+    .maybeSingle();
+
+  const latestSummary = plainObject(latestBatch?.summary ?? summary);
+  const latestAiPdfImport = plainObject(latestSummary.aiPdfImport ?? aiPdfImport);
+
   const nextSummary = {
-    ...summary,
-    aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, nextAiPdfImport),
+    ...latestSummary,
+    aiPdfImport: mergeAIPdfImportSummary(latestAiPdfImport, nextAiPdfImport),
     createdCount: 0,
     createdQuestions: [],
     duplicateCount: 0,
@@ -1471,8 +1478,8 @@ export async function retryAIPdfImportChunk(input: unknown) {
 
   const summary = plainObject(batch.summary);
   const aiPdfImport = getAIPdfImportSummary(summary);
-  const chunking = normalizeAIPdfChunkingSummary(aiPdfImport.chunking);
-  const chunk = chunking?.chunks.find(
+  const chunkingSummary = normalizeAIPdfChunkingSummary(aiPdfImport.chunking);
+  const chunk = chunkingSummary?.chunks.find(
     (item) => item.chunkIndex === parsed.chunkIndex,
   );
 
@@ -1488,11 +1495,11 @@ export async function retryAIPdfImportChunk(input: unknown) {
     throw new Error("This failed chunk already created draft questions. Reset generated drafts before retrying it.");
   }
 
-  const sourceInput = getString(aiPdfImport.sourceInput);
+  const inputStrategy = getString(aiPdfImport.sourceInput);
 
   if (
-    !sourceInput ||
-    !supportsAIPdfSequentialChunkExtraction(sourceInput as AiPdfInputStrategy)
+    !inputStrategy ||
+    !supportsAIPdfSequentialChunkExtraction(inputStrategy as AiPdfInputStrategy)
   ) {
     throw new Error(
       "This provider uses full-PDF input and does not support single-chunk retry. Retry the full import after resetting generated drafts.",

@@ -307,7 +307,7 @@ export function AIPdfControlDashboard({
                 summary: batch.summary,
               });
               const ai = display.ai;
-              const strategy = display.strategy;
+              const inputStrategy = display.strategy;
               const pageCount = display.pageCount;
               const sizeBytes = display.sizeBytes;
               const createdQuestionCount = display.createdQuestionCount;
@@ -365,7 +365,7 @@ export function AIPdfControlDashboard({
               const complexity = complexityLabel({
                 pageCount,
                 sizeBytes,
-                strategy,
+                strategy: inputStrategy,
               });
               const sourceTitle = display.sourceTitle;
               const sourceFilename =
@@ -497,7 +497,7 @@ export function AIPdfControlDashboard({
                             <p className="md:col-span-2">
                               Recommended mode:{" "}
                               {recommendedModeCopy(
-                                strategy,
+                                inputStrategy,
                                 display.providerMode,
                               )}
                             </p>
