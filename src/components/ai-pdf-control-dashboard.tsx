@@ -682,7 +682,10 @@ export function AIPdfControlDashboard({
                           <p>Estimated complexity: {complexity}</p>
                           <p className="md:col-span-2">
                             Recommended mode:{" "}
-                            {recommendedModeCopy(strategy, display.providerMode)}
+                            {recommendedModeCopy(
+                              inputStrategy,
+                              display.providerMode,
+                            )}
                           </p>
                         </div>
                       </div>
