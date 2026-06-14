@@ -5,7 +5,10 @@ import {
   supportsAIPdfSequentialChunkExtraction,
   type AiPdfInputStrategy,
 } from "@/lib/ai-providers/adapters";
-import { loadAIProviderProfileForUse } from "@/lib/ai-providers/profiles";
+import {
+  loadAIProviderProfileForUse,
+  loadSafeAIProviderProfileForUse,
+} from "@/lib/ai-providers/profiles";
 import {
   cropPdfPlaceholderImage,
   getPdfPageCount,
@@ -1091,17 +1094,28 @@ export async function processAIPdfImport(input: ProcessInput) {
     pageCount,
     phase: "loading_provider",
   });
-  const provider = await loadAIProviderProfileForUse({
+  const safeProvider = await loadSafeAIProviderProfileForUse({
     profileId: input.providerProfileId,
     supabase: input.supabase,
   });
   const providerSummary = {
-    id: provider.id,
-    model: provider.model,
-    name: provider.name,
-    provider: provider.provider,
+    id: safeProvider.id,
+    model: safeProvider.model,
+    name: safeProvider.name,
+    provider: safeProvider.provider,
   };
-  const providerInput = describeAiPdfProviderInput(provider);
+  const providerInput = describeAiPdfProviderInput(safeProvider);
+  await updateAIPdfBatchProgress(input, {
+    detail: "AI provider profile selected.",
+    pageCount,
+    phase: "loading_provider",
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+  });
+  const provider = await loadAIProviderProfileForUse({
+    profileId: input.providerProfileId,
+    supabase: input.supabase,
+  });
 
   if (!providerInput.supported) {
     throw new Error(AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE);
