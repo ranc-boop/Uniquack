@@ -22,6 +22,7 @@ const {
 const {
   AI_PROVIDER_MODE_OPTIONS,
   aiPdfInputStrategyLabel,
+  aiPdfInputStrategySummaryLabel,
   aiProviderModeSummaryLabel,
   describeAiPdfProviderInput,
   estimateAIPdfProviderCallCount,
@@ -581,6 +582,18 @@ assert.doesNotMatch(
   /solution_html:\s*solutionFields\.html \|\| question\.solution_html/,
 );
 console.log("PASS AI PDF import payload omits null solution fields before batch import");
+
+assert.match(
+  aiPdfServiceSource,
+  /loadSafeAIProviderProfileForUse[\s\S]*sourceInput: providerInput\.strategy[\s\S]*loadAIProviderProfileForUse/,
+);
+assert.equal(
+  aiPdfInputStrategySummaryLabel("page_images", "gemini_openai"),
+  "Rendered page images",
+);
+console.log(
+  "PASS AI PDF provider metadata remains visible when saved key decrypt fails",
+);
 
 const previousEncryptionKey = process.env.AI_PROVIDER_ENCRYPTION_KEY;
 process.env.AI_PROVIDER_ENCRYPTION_KEY =

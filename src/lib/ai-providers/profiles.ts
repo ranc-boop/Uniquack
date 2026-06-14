@@ -94,6 +94,33 @@ export async function loadAIProviderProfileForUse({
   };
 }
 
+export async function loadSafeAIProviderProfileForUse({
+  profileId,
+  supabase,
+}: {
+  profileId: string;
+  supabase: SupabaseLike;
+}) {
+  const { data, error } = await supabase
+    .from("ai_provider_profiles")
+    .select(
+      "id, name, provider, base_url, model, enabled, is_default, supports_pdf_input, supports_vision_images, api_key_last4, created_at, updated_at",
+    )
+    .eq("id", profileId)
+    .eq("enabled", true)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    throw new Error("AI provider profile is not available for import.");
+  }
+
+  return data as SafeAIProviderProfile;
+}
+
 export async function clearDefaultProfile({
   exceptId,
   supabase,
