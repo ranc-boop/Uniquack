@@ -49,6 +49,12 @@ import {
   mergeAIPacketPlanIntoSummary,
   type AIPacketPlan,
 } from "@/lib/ai-pdf-import/packets";
+import {
+  buildAIExtractionBatchPlanFromPacketPlan,
+  failedAIExtractionBatchPlan,
+  mergeAIExtractionBatchPlanIntoSummary,
+  type AIExtractionBatchPlan,
+} from "@/lib/ai-pdf-import/extraction-batches";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -309,6 +315,66 @@ async function updateAIPdfPacketPlan({
   }
 }
 
+async function updateAIExtractionBatchPlan({
+  batchPlan,
+  input,
+}: {
+  batchPlan: AIExtractionBatchPlan;
+  input: ProcessInput;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIExtractionBatchPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    batchPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreExtractionBatchPlan({
+  input,
+  packetPlan,
+}: {
+  input: ProcessInput;
+  packetPlan: AIPacketPlan;
+}) {
+  try {
+    const batchPlan = buildAIExtractionBatchPlanFromPacketPlan(packetPlan);
+    await updateAIExtractionBatchPlan({ batchPlan, input });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI extraction batch plan failed.";
+    await updateAIExtractionBatchPlan({
+      batchPlan: failedAIExtractionBatchPlan({
+        sourceHash: packetPlan.sourceHash,
+        sourceKind: packetPlan.sourceKind,
+        warnings: [`extraction batch plan failed: ${message}`],
+      }),
+      input,
+    });
+  }
+}
+
 async function generateAndStorePacketPlan({
   input,
   preanalysis,
@@ -319,17 +385,17 @@ async function generateAndStorePacketPlan({
   try {
     const packetPlan = buildAIPacketPlanFromPreanalysis(preanalysis);
     await updateAIPdfPacketPlan({ input, packetPlan });
+    await generateAndStoreExtractionBatchPlan({ input, packetPlan });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "AI packet plan failed.";
-    await updateAIPdfPacketPlan({
-      input,
-      packetPlan: failedPacketPlan({
-        sourceHash: preanalysis.sourceHash,
-        sourceKind: preanalysis.sourceKind,
-        warnings: [`packet plan failed: ${message}`],
-      }),
+    const packetPlan = failedPacketPlan({
+      sourceHash: preanalysis.sourceHash,
+      sourceKind: preanalysis.sourceKind,
+      warnings: [`packet plan failed: ${message}`],
     });
+    await updateAIPdfPacketPlan({ input, packetPlan });
+    await generateAndStoreExtractionBatchPlan({ input, packetPlan });
   }
 }
 
