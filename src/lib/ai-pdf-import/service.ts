@@ -55,6 +55,12 @@ import {
   mergeAIExtractionBatchPlanIntoSummary,
   type AIExtractionBatchPlan,
 } from "@/lib/ai-pdf-import/extraction-batches";
+import {
+  buildAIProviderRequestPlanFromExtractionBatchPlan,
+  failedAIProviderRequestPlan,
+  mergeAIProviderRequestPlanIntoSummary,
+  type AIProviderRequestPlan,
+} from "@/lib/ai-pdf-import/provider-requests";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -349,6 +355,66 @@ async function updateAIExtractionBatchPlan({
   }
 }
 
+async function updateAIProviderRequestPlan({
+  input,
+  requestPlan,
+}: {
+  input: ProcessInput;
+  requestPlan: AIProviderRequestPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIProviderRequestPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    requestPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreProviderRequestPlan({
+  batchPlan,
+  input,
+}: {
+  batchPlan: AIExtractionBatchPlan;
+  input: ProcessInput;
+}) {
+  try {
+    const requestPlan =
+      buildAIProviderRequestPlanFromExtractionBatchPlan(batchPlan);
+    await updateAIProviderRequestPlan({ input, requestPlan });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI provider request plan failed.";
+    await updateAIProviderRequestPlan({
+      input,
+      requestPlan: failedAIProviderRequestPlan({
+        sourceKind: batchPlan.sourceKind,
+        warnings: [`provider request plan failed: ${message}`],
+      }),
+    });
+  }
+}
+
 async function generateAndStoreExtractionBatchPlan({
   input,
   packetPlan,
@@ -359,19 +425,19 @@ async function generateAndStoreExtractionBatchPlan({
   try {
     const batchPlan = buildAIExtractionBatchPlanFromPacketPlan(packetPlan);
     await updateAIExtractionBatchPlan({ batchPlan, input });
+    await generateAndStoreProviderRequestPlan({ batchPlan, input });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
         : "AI extraction batch plan failed.";
-    await updateAIExtractionBatchPlan({
-      batchPlan: failedAIExtractionBatchPlan({
-        sourceHash: packetPlan.sourceHash,
-        sourceKind: packetPlan.sourceKind,
-        warnings: [`extraction batch plan failed: ${message}`],
-      }),
-      input,
+    const batchPlan = failedAIExtractionBatchPlan({
+      sourceHash: packetPlan.sourceHash,
+      sourceKind: packetPlan.sourceKind,
+      warnings: [`extraction batch plan failed: ${message}`],
     });
+    await updateAIExtractionBatchPlan({ batchPlan, input });
+    await generateAndStoreProviderRequestPlan({ batchPlan, input });
   }
 }
 

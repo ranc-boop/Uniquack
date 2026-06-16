@@ -33,6 +33,10 @@ const {
   mergeAIExtractionBatchPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/extraction-batches.ts");
 const {
+  buildAIProviderRequestPlanFromExtractionBatchPlan,
+  mergeAIProviderRequestPlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/provider-requests.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -651,6 +655,147 @@ assert.match(schemaPrompt, /Preserve each packetId and packetHash exactly/);
 assert.match(schemaPrompt, /Do not invent answers, assets, page numbers/);
 console.log(
   "PASS AI schema-first extraction normalizes results, plans batches, and preserves summary metadata",
+);
+
+const providerRequestPlan = buildAIProviderRequestPlanFromExtractionBatchPlan(
+  batchPlan,
+);
+assert.equal(providerRequestPlan.version, "provider_request_plan_v1");
+assert.equal(providerRequestPlan.status, "completed");
+assert.equal(providerRequestPlan.stats.textRequests, batchPlan.stats.totalBatches);
+assert.equal(providerRequestPlan.stats.totalPacketsCovered, 10);
+assert.equal(providerRequestPlan.requests[0].kind, "schema_text_extraction");
+assert.equal(providerRequestPlan.requests[0].recommendedMode, "text");
+assert.deepEqual(
+  providerRequestPlan.requests[0].packetIds,
+  batchPlan.batches[0].packetRefs.map((packet) => packet.packetId),
+);
+assert.deepEqual(
+  providerRequestPlan.requests[0].packetHashes,
+  batchPlan.batches[0].packetRefs.map((packet) => packet.packetHash),
+);
+assert.equal(providerRequestPlan.requests[0].safety.jsonOnly, true);
+assert.equal(providerRequestPlan.requests[0].safety.noMarkdown, true);
+assert.match(
+  providerRequestPlan.requests[0].prompt.systemInstruction,
+  /Return JSON only/,
+);
+assert.match(
+  providerRequestPlan.requests[0].prompt.userInstruction,
+  /Return exactly one result per packet/,
+);
+assert.match(
+  providerRequestPlan.requests[0].prompt.userInstruction,
+  /Preserve each packetId and packetHash exactly/,
+);
+assert.match(
+  providerRequestPlan.requests[0].prompt.userInstruction,
+  /Do not invent answers, assets, page numbers/,
+);
+
+const boundaryRequestPlan =
+  buildAIProviderRequestPlanFromExtractionBatchPlan(boundaryBatchPlan);
+assert.equal(boundaryRequestPlan.requests[0].kind, "schema_boundary_review");
+assert.equal(boundaryRequestPlan.requests[0].recommendedMode, "review_only");
+assert.match(
+  boundaryRequestPlan.requests[0].prompt.systemInstruction,
+  /boundary review only/i,
+);
+
+const assetRequestPlan =
+  buildAIProviderRequestPlanFromExtractionBatchPlan(assetBatchPlan);
+assert.equal(assetRequestPlan.requests[0].kind, "schema_mixed_extraction");
+assert.equal(assetRequestPlan.requests[0].recommendedMode, "mixed");
+assert.ok(assetRequestPlan.requests[0].inputRefs.assetRefs.length > 0);
+const assetRequestJson = JSON.stringify(assetRequestPlan);
+assert.equal(/data:image|base64|JVBERi0|iVBORw0KGgo/i.test(assetRequestJson), false);
+
+const singleImageRequestPlan =
+  buildAIProviderRequestPlanFromExtractionBatchPlan(singleImageBatchPlan);
+assert.equal(
+  singleImageRequestPlan.requests[0].kind,
+  "schema_single_image_extraction",
+);
+assert.equal(singleImageRequestPlan.requests[0].recommendedMode, "vision");
+
+const skippedRequestPlan = buildAIProviderRequestPlanFromExtractionBatchPlan({
+  batches: [
+    {
+      batchId: "mixed-review-1",
+      batchIndex: 0,
+      batchKind: "mixed_review_batch",
+      inputBudget: {
+        estimatedChars: 100,
+        estimatedTokens: 25,
+        hasImageInput: false,
+        hasTextInput: true,
+      },
+      packetRefs: [
+        {
+          assetRefCount: 0,
+          boundaryRiskCount: 0,
+          estimatedChars: 100,
+          kind: "unknown",
+          packetHash: "unknown-hash",
+          packetId: "unknown-packet",
+          pageNumbers: [1],
+        },
+      ],
+      recommendedInputMode: "mixed",
+      routingHints: ["unknown_packet_review"],
+      sourceKind: "pdf",
+      status: "planned",
+    },
+  ],
+  generatedAt: "2026-06-16T00:00:00.000Z",
+  sourceHash: "schema-source-hash",
+  sourceKind: "pdf",
+  stats: {
+    assetLinkedBatches: 0,
+    boundaryRiskBatches: 0,
+    estimatedTotalChars: 100,
+    estimatedTotalTokens: 25,
+    mixedReviewBatches: 1,
+    singleImageBatches: 0,
+    skippedPackets: 0,
+    textQuestionBatches: 0,
+    totalBatches: 1,
+    totalPackets: 1,
+  },
+  status: "completed",
+  version: "extraction_batch_plan_v1",
+  warnings: [],
+});
+assert.equal(skippedRequestPlan.status, "skipped");
+assert.equal(skippedRequestPlan.stats.skippedBatches, 1);
+assert.equal(skippedRequestPlan.requests.length, 0);
+
+const providerRequestMergedAiPdfImport = mergeAIProviderRequestPlanIntoSummary(
+  {
+    chunking: createAIPdfChunkingSummary({ pageCount: 4 }),
+    extractionBatchPlan: batchPlan,
+    packetPlan: pdfPacketPlan,
+    preanalysis: pdfPreanalysis,
+    provider: { id: "provider-1", name: "Provider", model: "model" },
+    warnings: ["keep existing warning"],
+  },
+  providerRequestPlan,
+);
+assert.equal(
+  providerRequestMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  providerRequestMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(providerRequestMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(providerRequestMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(providerRequestMergedAiPdfImport.chunking.totalChunks, 2);
+assert.equal(providerRequestMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(providerRequestMergedAiPdfImport.warnings, ["keep existing warning"]);
+console.log(
+  "PASS AI provider request builder creates shadow request plans and preserves summary metadata",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
