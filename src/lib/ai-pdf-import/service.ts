@@ -37,6 +37,12 @@ import {
   type AIPdfExtraction,
   type AIPdfQuestion,
 } from "@/lib/ai-pdf-import/schema";
+import {
+  failedPdfPreanalysis,
+  generatePdfPreanalysis,
+  mergeAIPreanalysisIntoSummary,
+  type AIPreanalysisResult,
+} from "@/lib/ai-pdf-import/preanalysis";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -226,6 +232,72 @@ async function updateAIPdfChunkProgress({
 
   if (error) {
     throw new Error(error.message);
+  }
+}
+
+async function updateAIPdfPreanalysis({
+  input,
+  preanalysis,
+}: {
+  input: ProcessInput;
+  preanalysis: AIPreanalysisResult;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIPreanalysisIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    preanalysis,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStorePdfPreanalysis({
+  input,
+  pageCount,
+}: {
+  input: ProcessInput;
+  pageCount: number;
+}) {
+  await updateAIPdfBatchProgress(input, {
+    detail: "Analyzing PDF structure before AI extraction.",
+    pageCount,
+    phase: "preanalyzing_source",
+  });
+
+  try {
+    const preanalysis = await generatePdfPreanalysis({
+      pageCount,
+      pdfBuffer: input.pdfBuffer,
+    });
+    await updateAIPdfPreanalysis({ input, preanalysis });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "PDF preanalysis failed.";
+    await updateAIPdfPreanalysis({
+      input,
+      preanalysis: failedPdfPreanalysis({
+        error: message,
+        pageCount,
+      }),
+    });
   }
 }
 
@@ -1088,6 +1160,8 @@ export async function processAIPdfImport(input: ProcessInput) {
   if (pageCount > AI_PDF_IMPORT_MAX_PAGES) {
     throw new Error("PDF has more than 50 pages. Split it before importing.");
   }
+
+  await generateAndStorePdfPreanalysis({ input, pageCount });
 
   await updateAIPdfBatchProgress(input, {
     detail: "Loading AI provider profile.",

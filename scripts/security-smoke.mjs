@@ -16,6 +16,10 @@ const {
   planAIPdfPageChunks,
 } = await import("../src/lib/ai-pdf-import/chunking.ts");
 const {
+  analyzePdfPageTexts,
+  generateImagePreanalysisFromMetadata,
+} = await import("../src/lib/ai-pdf-import/preanalysis-core.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -166,6 +170,93 @@ assert.equal(
   "old AI PDF summaries with pageCount should backfill foundation chunking",
 );
 console.log("PASS AI PDF chunking summary survives source, lease, progress, and final summary updates");
+
+const pdfPreanalysis = analyzePdfPageTexts({
+  generatedAt: "2026-06-16T00:00:00.000Z",
+  pageCount: 2,
+  pages: [
+    {
+      pageNumber: 1,
+      text: [
+        "Problem 1. A circuit question asks for current.",
+        "A. 1 A",
+        "B. 2 A",
+        "See the figure at the bottom of the page.",
+      ].join("\n"),
+      textLayerAvailable: true,
+    },
+    {
+      pageNumber: 2,
+      text: [
+        "C. 3 A",
+        "D. 4 A",
+        "Solution: Use Ohm's Law.",
+        "Answer: 3 A",
+      ].join("\n"),
+      textLayerAvailable: true,
+    },
+  ],
+  sourceHash: "pdf-hash",
+});
+assert.equal(pdfPreanalysis.sourceKind, "pdf");
+assert.equal(pdfPreanalysis.version, "preanalysis_v1");
+assert.equal(pdfPreanalysis.pageCount, 2);
+assert.equal(pdfPreanalysis.pages.length, 2);
+assert.equal(pdfPreanalysis.documentHints.hasQuestionMarkers, true);
+assert.equal(pdfPreanalysis.documentHints.hasChoiceMarkers, true);
+assert.equal(pdfPreanalysis.documentHints.hasAnswerMarkers, true);
+assert.ok(pdfPreanalysis.pages[0].questionNumberHints.length > 0);
+assert.ok(pdfPreanalysis.pages[0].choiceMarkerHints.length >= 2);
+assert.ok(pdfPreanalysis.pages[1].answerMarkerHints.length > 0);
+assert.equal(
+  pdfPreanalysis.pages[0].boundaryRisks.some(
+    (risk) => risk.type === "may_end_mid_question",
+  ),
+  true,
+);
+assert.equal(
+  pdfPreanalysis.pages[1].boundaryRisks.some(
+    (risk) =>
+      risk.type === "may_start_with_choices" ||
+      risk.type === "may_continue_previous_question",
+  ),
+  true,
+);
+assert.ok((pdfPreanalysis.pages[0].extractedTextPreview ?? "").length <= 800);
+
+const imagePreanalysis = generateImagePreanalysisFromMetadata({
+  fileSizeBytes: 7 * 1024 * 1024,
+  generatedAt: "2026-06-16T00:00:00.000Z",
+  height: 2400,
+  sourceHash: "image-hash",
+  width: 1200,
+});
+assert.equal(imagePreanalysis.sourceKind, "single_image");
+assert.equal(imagePreanalysis.version, "preanalysis_v1");
+assert.equal(imagePreanalysis.sourceHash, "image-hash");
+assert.equal(imagePreanalysis.image.width, 1200);
+assert.equal(imagePreanalysis.image.height, 2400);
+assert.equal(imagePreanalysis.image.orientationHint, "portrait");
+assert.equal(imagePreanalysis.image.qualityHints.includes("large_image"), true);
+assert.equal(imagePreanalysis.image.qualityHints.includes("likely_photo"), true);
+assert.equal(imagePreanalysis.textHints.ocrTextAvailable, false);
+assert.equal(imagePreanalysis.textHints.extractedTextLength, 0);
+
+const preanalysisMergedAiPdfImport = mergeAIPdfImportChunkingSummary(
+  {
+    chunking: createAIPdfChunkingSummary({ pageCount: 4 }),
+    provider: { id: "provider-1", name: "Provider", model: "model" },
+    warnings: ["keep existing warning"],
+  },
+  { preanalysis: pdfPreanalysis },
+);
+assert.equal(preanalysisMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(preanalysisMergedAiPdfImport.chunking.totalChunks, 2);
+assert.equal(preanalysisMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(preanalysisMergedAiPdfImport.warnings, ["keep existing warning"]);
+console.log(
+  "PASS AI parsing preanalysis classifies PDF/image inputs and preserves summary metadata",
+);
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
   chunkSizePages: 3,
@@ -574,6 +665,10 @@ console.log(
 const aiPdfServiceSource = await readFile(
   new URL("../src/lib/ai-pdf-import/service.ts", import.meta.url),
   "utf8",
+);
+assert.match(
+  aiPdfServiceSource,
+  /generateAndStorePdfPreanalysis\(\{ input, pageCount \}\);[\s\S]*detail: "Loading AI provider profile\."/,
 );
 assert.match(aiPdfServiceSource, /if \(solutionHtml\.trim\(\)\) \{/);
 assert.match(aiPdfServiceSource, /questionPayload\.solution_html = solutionHtml/);
