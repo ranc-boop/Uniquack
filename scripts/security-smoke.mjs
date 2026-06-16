@@ -24,6 +24,15 @@ const {
   mergeAIPacketPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/packets.ts");
 const {
+  buildDraftReadyQuestionFromExtraction,
+  buildSchemaFirstExtractionPrompt,
+  normalizeAIPacketExtractionResult,
+} = await import("../src/lib/ai-pdf-import/extraction-schema.ts");
+const {
+  buildAIExtractionBatchPlanFromPacketPlan,
+  mergeAIExtractionBatchPlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/extraction-batches.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -354,6 +363,294 @@ assert.equal(packetPlanMergedAiPdfImport.provider.id, "provider-1");
 assert.deepEqual(packetPlanMergedAiPdfImport.warnings, ["keep existing warning"]);
 console.log(
   "PASS AI parsing packet builder creates PDF/image packets and preserves summary metadata",
+);
+
+function makeExtractionPacket({
+  assetRefs = [],
+  boundaryRiskRefs = [],
+  estimatedChars = 900,
+  index,
+  kind = "pdf_question_candidate",
+  pageNumbers = [index + 1],
+  reviewHints = {},
+}) {
+  return {
+    assetRefs,
+    boundaryRiskRefs,
+    inputBudget: {
+      estimatedChars,
+      estimatedTokens: Math.ceil(estimatedChars / 4),
+      hasImageInput: assetRefs.length > 0 || kind === "single_image_question",
+      hasTextInput: estimatedChars > 0,
+    },
+    kind,
+    markerHints: {
+      answers: [],
+      choices: ["A.", "B.", "C.", "D."],
+      questionNumbers: [`${index + 1}.`],
+    },
+    packetHash: `packet-hash-${index}`,
+    packetId: `packet-${index}`,
+    pageNumbers,
+    pageSpan:
+      pageNumbers.length > 0
+        ? { endPage: pageNumbers[pageNumbers.length - 1], startPage: pageNumbers[0] }
+        : null,
+    questionNumberHint: String(index + 1),
+    reviewHints: {
+      likelyNeedsAI: true,
+      likelyNeedsBoundaryReread: false,
+      likelyNeedsVision: assetRefs.length > 0 || kind === "single_image_question",
+      reasonCodes: [],
+      ...reviewHints,
+    },
+    sourceHash: "schema-source-hash",
+    sourceKind: kind === "single_image_question" ? "single_image" : "pdf",
+    status: "planned",
+    textLength: estimatedChars,
+    textPreview: `Packet ${index + 1} preview`,
+  };
+}
+
+const schemaPacket = makeExtractionPacket({ index: 0, pageNumbers: [1] });
+const validExtraction = normalizeAIPacketExtractionResult({
+  packet: schemaPacket,
+  raw: {
+    confidence: 0.93,
+    packetHash: schemaPacket.packetHash,
+    packetId: schemaPacket.packetId,
+    question: {
+      answer: "B",
+      explanation: "Use Ohm's Law.",
+      format: "multiple-choice",
+      options: ["(A) 1 A", "B. 2 A", "C) 3 A", "d. 4 A"],
+      questionNumber: "1",
+      source: { pageNumbers: [1] },
+      stem: "What is the current?",
+    },
+    status: "valid",
+    version: "question_extract_v1",
+    warnings: ["model uncertainty kept"],
+  },
+});
+assert.equal(validExtraction.version, "question_extract_v1");
+assert.equal(validExtraction.status, "valid");
+assert.equal(validExtraction.question.options[0].label, "A");
+assert.equal(validExtraction.question.options[3].label, "D");
+assert.equal(validExtraction.review.reviewRequired, false);
+const draftReady = buildDraftReadyQuestionFromExtraction(validExtraction);
+assert.equal(draftReady.draft.questionType, "mcq");
+assert.equal(draftReady.draft.aiMetadata.packetId, schemaPacket.packetId);
+assert.match(draftReady.draft.contentHtml, /What is the current/);
+
+const missingAnswerExtraction = normalizeAIPacketExtractionResult({
+  packet: schemaPacket,
+  raw: {
+    confidence: 0.9,
+    packetHash: schemaPacket.packetHash,
+    packetId: schemaPacket.packetId,
+    question: {
+      answer: null,
+      explanation: "Needs review.",
+      format: "free_response",
+      source: { pageNumbers: [1] },
+      stem: "Explain the trend.",
+    },
+    status: "valid",
+    version: "question_extract_v1",
+  },
+});
+assert.equal(missingAnswerExtraction.status, "valid");
+assert.equal(missingAnswerExtraction.review.reviewRequired, true);
+assert.ok(
+  missingAnswerExtraction.review.reasonCodes.includes("missing_answer"),
+);
+
+const badOptionsExtraction = normalizeAIPacketExtractionResult({
+  packet: schemaPacket,
+  raw: {
+    confidence: 0.95,
+    packetHash: schemaPacket.packetHash,
+    packetId: schemaPacket.packetId,
+    question: {
+      answer: "A",
+      format: "multiple_choice",
+      options: ["A. only one option"],
+      source: { pageNumbers: [1] },
+      stem: "Choose one.",
+    },
+    status: "valid",
+    version: "question_extract_v1",
+  },
+});
+assert.equal(badOptionsExtraction.status, "invalid");
+assert.ok(
+  badOptionsExtraction.errors.some((error) => error.code === "invalid_options"),
+);
+assert.equal(buildDraftReadyQuestionFromExtraction(badOptionsExtraction).draft, null);
+
+const assetPacket = makeExtractionPacket({
+  assetRefs: [{ assetHintIndex: 0, kind: "figure", pageNumber: 2 }],
+  index: 1,
+  kind: "pdf_asset_linked",
+  pageNumbers: [2],
+});
+const invalidAssetExtraction = normalizeAIPacketExtractionResult({
+  packet: assetPacket,
+  raw: {
+    confidence: 0.88,
+    packetHash: assetPacket.packetHash,
+    packetId: assetPacket.packetId,
+    question: {
+      answer: "A",
+      assets: [{ assetRef: "asset:999", kind: "figure", pageNumber: 9 }],
+      format: "short_answer",
+      source: { pageNumbers: [2] },
+      stem: "Use the figure.",
+    },
+    status: "valid",
+    version: "question_extract_v1",
+  },
+});
+assert.equal(invalidAssetExtraction.status, "partial");
+assert.ok(
+  invalidAssetExtraction.errors.some((error) => error.code === "invalid_asset_ref"),
+);
+
+const boundaryPacket = makeExtractionPacket({
+  boundaryRiskRefs: [{ confidence: 0.7, pageNumber: 2, type: "may_end_mid_question" }],
+  index: 2,
+  kind: "pdf_boundary_risk",
+  pageNumbers: [2, 3],
+  reviewHints: { likelyNeedsBoundaryReread: true },
+});
+const boundaryExtraction = normalizeAIPacketExtractionResult({
+  packet: boundaryPacket,
+  raw: {
+    confidence: 0.92,
+    packetHash: boundaryPacket.packetHash,
+    packetId: boundaryPacket.packetId,
+    question: {
+      answer: "42",
+      explanation: "Boundary context preserved.",
+      format: "short_answer",
+      source: { pageNumbers: [2, 3] },
+      stem: "Question crosses pages.",
+    },
+    status: "valid",
+    version: "question_extract_v1",
+  },
+});
+assert.equal(boundaryExtraction.review.reviewRequired, true);
+assert.ok(
+  boundaryExtraction.review.reasonCodes.includes("boundary_risk_packet"),
+);
+
+const tenTextPackets = Array.from({ length: 10 }, (_, index) =>
+  makeExtractionPacket({ index, pageNumbers: [index + 1] }),
+);
+const batchPlan = buildAIExtractionBatchPlanFromPacketPlan({
+  generatedAt: "2026-06-16T00:00:00.000Z",
+  packets: tenTextPackets,
+  sourceHash: "schema-source-hash",
+  sourceKind: "pdf",
+  stats: {
+    assetLinkedPackets: 0,
+    boundaryRiskPackets: 0,
+    estimatedTotalChars: 9000,
+    estimatedTotalTokens: 2250,
+    pdfQuestionCandidatePackets: 10,
+    singleImagePackets: 0,
+    skippedPages: 0,
+    totalPackets: 10,
+  },
+  status: "completed",
+  version: "packet_plan_v1",
+  warnings: [],
+});
+assert.equal(batchPlan.version, "extraction_batch_plan_v1");
+assert.equal(batchPlan.status, "completed");
+assert.ok(batchPlan.stats.totalBatches < 10);
+assert.equal(batchPlan.stats.textQuestionBatches, batchPlan.stats.totalBatches);
+assert.equal(batchPlan.stats.totalPackets, 10);
+
+const boundaryBatchPlan = buildAIExtractionBatchPlanFromPacketPlan({
+  ...batchPlan,
+  packets: Array.from({ length: 4 }, (_, index) =>
+    makeExtractionPacket({
+      boundaryRiskRefs: [{ confidence: 0.7, pageNumber: index + 1, type: "unknown" }],
+      index,
+      kind: "pdf_boundary_risk",
+      reviewHints: { likelyNeedsBoundaryReread: true },
+    }),
+  ),
+});
+assert.equal(boundaryBatchPlan.stats.boundaryRiskBatches, 2);
+assert.equal(
+  boundaryBatchPlan.batches.every(
+    (batch) => batch.packetRefs.length <= 3 && batch.batchKind === "boundary_risk_batch",
+  ),
+  true,
+);
+
+const assetBatchPlan = buildAIExtractionBatchPlanFromPacketPlan({
+  ...batchPlan,
+  packets: Array.from({ length: 4 }, (_, index) =>
+    makeExtractionPacket({
+      assetRefs: [{ assetHintIndex: 0, kind: "figure", pageNumber: index + 1 }],
+      index,
+      kind: "pdf_asset_linked",
+    }),
+  ),
+});
+assert.equal(assetBatchPlan.stats.assetLinkedBatches, 2);
+assert.equal(
+  assetBatchPlan.batches.every((batch) => batch.recommendedInputMode === "mixed"),
+  true,
+);
+
+const singleImageBatchPlan = buildAIExtractionBatchPlanFromPacketPlan({
+  ...batchPlan,
+  packets: Array.from({ length: 2 }, (_, index) =>
+    makeExtractionPacket({
+      estimatedChars: 200,
+      index,
+      kind: "single_image_question",
+      pageNumbers: [],
+    }),
+  ),
+  sourceKind: "single_image",
+});
+assert.equal(singleImageBatchPlan.stats.singleImageBatches, 2);
+assert.equal(singleImageBatchPlan.batches[0].packetRefs.length, 1);
+
+const extractionBatchMergedAiPdfImport = mergeAIExtractionBatchPlanIntoSummary(
+  {
+    chunking: createAIPdfChunkingSummary({ pageCount: 4 }),
+    packetPlan: pdfPacketPlan,
+    preanalysis: pdfPreanalysis,
+    provider: { id: "provider-1", name: "Provider", model: "model" },
+    warnings: ["keep existing warning"],
+  },
+  batchPlan,
+);
+assert.equal(
+  extractionBatchMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(extractionBatchMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(extractionBatchMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(extractionBatchMergedAiPdfImport.chunking.totalChunks, 2);
+assert.equal(extractionBatchMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(extractionBatchMergedAiPdfImport.warnings, ["keep existing warning"]);
+
+const schemaPrompt = buildSchemaFirstExtractionPrompt(batchPlan.batches[0]);
+assert.match(schemaPrompt, /Return JSON only/);
+assert.match(schemaPrompt, /one result per packet/i);
+assert.match(schemaPrompt, /Preserve each packetId and packetHash exactly/);
+assert.match(schemaPrompt, /Do not invent answers, assets, page numbers/);
+console.log(
+  "PASS AI schema-first extraction normalizes results, plans batches, and preserves summary metadata",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
