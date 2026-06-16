@@ -2,7 +2,7 @@ import sharp from "sharp";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { AIPdfAssetPlaceholder } from "@/lib/ai-pdf-import/schema";
+import type { AIPdfAssetPlaceholder } from "./schema";
 
 export type RenderedPage = {
   dataUrl: string;
@@ -10,6 +10,14 @@ export type RenderedPage = {
   page: number;
   png: Buffer;
   width: number;
+};
+
+export type PdfPageText = {
+  extractedTextLength: number;
+  extractedTextPreview: string | null;
+  pageNumber: number;
+  text: string;
+  textLayerAvailable: boolean;
 };
 
 type PdfDocumentProxy = {
@@ -51,6 +59,49 @@ export async function getPdfPageCount(pdfBuffer: Buffer) {
   } finally {
     await destroyPdfDocument(document);
   }
+}
+
+function normalizePdfText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function previewPdfText(value: string) {
+  const normalized = normalizePdfText(value);
+
+  return normalized ? normalized.slice(0, 800) : null;
+}
+
+export async function extractPdfPageTexts(
+  pdfBuffer: Buffer,
+): Promise<PdfPageText[]> {
+  const document = await loadPdfDocument(new Uint8Array(pdfBuffer));
+  const pages: PdfPageText[] = [];
+
+  try {
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const text = normalizePdfText(
+        (textContent.items ?? [])
+          .map((item: { str?: unknown }) =>
+            typeof item.str === "string" ? item.str : "",
+          )
+          .join(" "),
+      );
+
+      pages.push({
+        extractedTextLength: text.length,
+        extractedTextPreview: previewPdfText(text),
+        pageNumber,
+        text,
+        textLayerAvailable: text.length > 0,
+      });
+    }
+  } finally {
+    await destroyPdfDocument(document);
+  }
+
+  return pages;
 }
 
 export async function renderPdfPages(pdfBuffer: Buffer): Promise<RenderedPage[]> {
