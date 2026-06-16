@@ -20,6 +20,10 @@ const {
   generateImagePreanalysisFromMetadata,
 } = await import("../src/lib/ai-pdf-import/preanalysis-core.ts");
 const {
+  buildAIPacketPlanFromPreanalysis,
+  mergeAIPacketPlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/packets.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -256,6 +260,100 @@ assert.equal(preanalysisMergedAiPdfImport.provider.id, "provider-1");
 assert.deepEqual(preanalysisMergedAiPdfImport.warnings, ["keep existing warning"]);
 console.log(
   "PASS AI parsing preanalysis classifies PDF/image inputs and preserves summary metadata",
+);
+
+const packetPlanPreanalysis = analyzePdfPageTexts({
+  generatedAt: "2026-06-16T00:00:00.000Z",
+  pageCount: 3,
+  pages: [
+    {
+      pageNumber: 1,
+      text: [
+        "Question 1. A block slides down a ramp.",
+        "A. 1 m/s",
+        "B. 2 m/s",
+        "Figure 1 shows the ramp near the page bottom.",
+      ].join("\n"),
+      textLayerAvailable: true,
+    },
+    {
+      pageNumber: 2,
+      text: [
+        "C. 3 m/s",
+        "D. 4 m/s",
+        "Solution: use conservation of energy.",
+        "Answer: 3 m/s",
+      ].join("\n"),
+      textLayerAvailable: true,
+    },
+    {
+      pageNumber: 3,
+      text: "   ",
+      textLayerAvailable: false,
+    },
+  ],
+  sourceHash: "packet-pdf-hash",
+});
+const pdfPacketPlan = buildAIPacketPlanFromPreanalysis(packetPlanPreanalysis);
+assert.equal(pdfPacketPlan.sourceKind, "pdf");
+assert.equal(pdfPacketPlan.version, "packet_plan_v1");
+assert.equal(pdfPacketPlan.status, "completed");
+assert.ok(pdfPacketPlan.stats.totalPackets >= 2);
+assert.ok(pdfPacketPlan.stats.pdfQuestionCandidatePackets >= 1);
+assert.ok(pdfPacketPlan.stats.boundaryRiskPackets >= 1);
+assert.ok(pdfPacketPlan.stats.assetLinkedPackets >= 1);
+assert.equal(pdfPacketPlan.stats.skippedPages, 1);
+assert.ok(
+  pdfPacketPlan.packets.some(
+    (packet) =>
+      packet.kind === "pdf_boundary_risk" &&
+      packet.pageSpan?.startPage === 1 &&
+      packet.pageSpan.endPage === 2 &&
+      packet.reviewHints.likelyNeedsBoundaryReread,
+  ),
+);
+assert.ok(
+  pdfPacketPlan.packets.some(
+    (packet) => packet.assetRefs.length > 0 && packet.packetHash,
+  ),
+);
+assert.equal(
+  pdfPacketPlan.packets.every(
+    (packet) => (packet.textPreview?.length ?? 0) <= 1200,
+  ),
+  true,
+);
+
+const imagePacketPlan = buildAIPacketPlanFromPreanalysis(imagePreanalysis);
+assert.equal(imagePacketPlan.sourceKind, "single_image");
+assert.equal(imagePacketPlan.stats.singleImagePackets, 1);
+assert.equal(imagePacketPlan.packets[0].kind, "single_image_question");
+assert.equal(imagePacketPlan.packets[0].sourceHash, "image-hash");
+assert.equal(imagePacketPlan.packets[0].reviewHints.likelyNeedsVision, true);
+assert.equal(
+  imagePacketPlan.packets[0].reviewHints.reasonCodes.includes(
+    "likely_screenshot",
+  ),
+  true,
+);
+assert.ok(imagePacketPlan.packets[0].packetHash);
+
+const packetPlanMergedAiPdfImport = mergeAIPacketPlanIntoSummary(
+  {
+    chunking: createAIPdfChunkingSummary({ pageCount: 4 }),
+    preanalysis: pdfPreanalysis,
+    provider: { id: "provider-1", name: "Provider", model: "model" },
+    warnings: ["keep existing warning"],
+  },
+  pdfPacketPlan,
+);
+assert.equal(packetPlanMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(packetPlanMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(packetPlanMergedAiPdfImport.chunking.totalChunks, 2);
+assert.equal(packetPlanMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(packetPlanMergedAiPdfImport.warnings, ["keep existing warning"]);
+console.log(
+  "PASS AI parsing packet builder creates PDF/image packets and preserves summary metadata",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
@@ -669,6 +767,10 @@ const aiPdfServiceSource = await readFile(
 assert.match(
   aiPdfServiceSource,
   /generateAndStorePdfPreanalysis\(\{ input, pageCount \}\);[\s\S]*detail: "Loading AI provider profile\."/,
+);
+assert.match(
+  aiPdfServiceSource,
+  /generateAndStorePacketPlan\(\{ input, preanalysis \}\);[\s\S]*detail: "Loading AI provider profile\."/,
 );
 assert.match(aiPdfServiceSource, /if \(solutionHtml\.trim\(\)\) \{/);
 assert.match(aiPdfServiceSource, /questionPayload\.solution_html = solutionHtml/);

@@ -43,6 +43,12 @@ import {
   mergeAIPreanalysisIntoSummary,
   type AIPreanalysisResult,
 } from "@/lib/ai-pdf-import/preanalysis";
+import {
+  buildAIPacketPlanFromPreanalysis,
+  failedPacketPlan,
+  mergeAIPacketPlanIntoSummary,
+  type AIPacketPlan,
+} from "@/lib/ai-pdf-import/packets";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -269,6 +275,64 @@ async function updateAIPdfPreanalysis({
   }
 }
 
+async function updateAIPdfPacketPlan({
+  input,
+  packetPlan,
+}: {
+  input: ProcessInput;
+  packetPlan: AIPacketPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIPacketPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    packetPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStorePacketPlan({
+  input,
+  preanalysis,
+}: {
+  input: ProcessInput;
+  preanalysis: AIPreanalysisResult;
+}) {
+  try {
+    const packetPlan = buildAIPacketPlanFromPreanalysis(preanalysis);
+    await updateAIPdfPacketPlan({ input, packetPlan });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "AI packet plan failed.";
+    await updateAIPdfPacketPlan({
+      input,
+      packetPlan: failedPacketPlan({
+        sourceHash: preanalysis.sourceHash,
+        sourceKind: preanalysis.sourceKind,
+        warnings: [`packet plan failed: ${message}`],
+      }),
+    });
+  }
+}
+
 async function generateAndStorePdfPreanalysis({
   input,
   pageCount,
@@ -288,16 +352,16 @@ async function generateAndStorePdfPreanalysis({
       pdfBuffer: input.pdfBuffer,
     });
     await updateAIPdfPreanalysis({ input, preanalysis });
+    await generateAndStorePacketPlan({ input, preanalysis });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "PDF preanalysis failed.";
-    await updateAIPdfPreanalysis({
-      input,
-      preanalysis: failedPdfPreanalysis({
-        error: message,
-        pageCount,
-      }),
+    const preanalysis = failedPdfPreanalysis({
+      error: message,
+      pageCount,
     });
+    await updateAIPdfPreanalysis({ input, preanalysis });
+    await generateAndStorePacketPlan({ input, preanalysis });
   }
 }
 
