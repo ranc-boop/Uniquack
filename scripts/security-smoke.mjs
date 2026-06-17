@@ -61,6 +61,11 @@ const {
   validateAdaptiveRereadDryRunOutput,
 } = await import("../src/lib/ai-pdf-import/adaptive-reread-runner.ts");
 const {
+  buildAIAdaptiveRereadMergePlanFromSummary,
+  buildAdaptiveRereadMergeItems,
+  mergeAIAdaptiveRereadMergePlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/adaptive-reread-merge.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -1386,6 +1391,201 @@ assert.ok(
 );
 console.log(
   "PASS AI adaptive reread runner creates shadow dry-run metadata without real provider calls or merge intent",
+);
+
+const adaptiveRereadMergePlan = buildAIAdaptiveRereadMergePlanFromSummary(
+  adaptiveRereadRunMergedAiPdfImport,
+);
+assert.equal(
+  adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(adaptiveRereadMergePlan.mode, "planning_only");
+assert.ok(
+  adaptiveRereadMergePlan.status === "completed" ||
+    adaptiveRereadMergePlan.status === "completed_with_warnings",
+);
+assert.ok(adaptiveRereadMergePlan.mergeItems.length > 0);
+assert.equal(
+  adaptiveRereadMergePlan.mergeItems.every(
+    (item) =>
+      item.mergePolicy.officialMerge === false &&
+      item.mergePolicy.reviewDraftWrite === false &&
+      item.mergePolicy.overwriteExistingField === false &&
+      item.mergePolicy.requireHumanReview === true &&
+      item.mergePolicy.preserveOriginalValue === true &&
+      item.mergePolicy.attachAsSuggestionOnly === true,
+  ),
+  true,
+);
+assert.equal(
+  adaptiveRereadMergePlan.mergeItems.every(
+    (item) => item.packetId && item.packetHash,
+  ),
+  true,
+);
+assert.equal(
+  adaptiveRereadMergePlan.mergeItems.some(
+    (item) => item.rereadRequestId && item.rereadRequestHash,
+  ),
+  true,
+);
+assert.equal(
+  adaptiveRereadMergePlan.mergeItems.some(
+    (item) => item.requestId && item.requestHash,
+  ),
+  true,
+);
+assert.equal(
+  adaptiveRereadMergePlan.mergeItems.some((item) => item.runId),
+  true,
+);
+assert.ok(
+  adaptiveRereadMergePlan.mergeItems.some(
+    (item) =>
+      item.action === "suggest_extend_source_pages" &&
+      item.field === "sourcePages",
+  ),
+);
+assert.ok(
+  adaptiveRereadMergePlan.mergeItems.some(
+    (item) =>
+      item.action === "suggest_attach_asset_ref" ||
+      item.field === "assetRefs",
+  ),
+);
+assert.ok(
+  adaptiveRereadMergePlan.mergeItems.some(
+    (item) =>
+      item.action === "flag_review_required" ||
+      item.action === "skip",
+  ),
+);
+assert.ok(
+  adaptiveRereadMergePlan.mergeItems.some((item) =>
+    item.warnings.includes("adaptive_reread_merge_dry_run_only"),
+  ),
+);
+assert.equal(
+  adaptiveRereadMergePlan.mergeItems.some((item) =>
+    /recovered|invented|Dry run placeholder/i.test(JSON.stringify(item)),
+  ),
+  false,
+);
+const adaptiveRereadMergeItems = buildAdaptiveRereadMergeItems(
+  adaptiveRereadRunMergedAiPdfImport,
+);
+assert.deepEqual(
+  adaptiveRereadMergeItems.map((item) => item.mergeItemHash),
+  adaptiveRereadMergePlan.mergeItems.map((item) => item.mergeItemHash),
+);
+const adaptiveRereadMergeJson = JSON.stringify(adaptiveRereadMergePlan);
+assert.equal(
+  /data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    adaptiveRereadMergeJson,
+  ),
+  false,
+);
+const adaptiveRereadMergeMergedAiPdfImport =
+  mergeAIAdaptiveRereadMergePlanIntoSummary(
+    adaptiveRereadRunMergedAiPdfImport,
+    adaptiveRereadMergePlan,
+  );
+assert.equal(
+  adaptiveRereadMergeMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  adaptiveRereadMergeMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  adaptiveRereadMergeMergedAiPdfImport.adaptiveRereadProviderRequestPlan
+    .version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  adaptiveRereadMergeMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  adaptiveRereadMergeMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  adaptiveRereadMergeMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  adaptiveRereadMergeMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(
+  adaptiveRereadMergeMergedAiPdfImport.packetPlan.version,
+  "packet_plan_v1",
+);
+assert.equal(
+  adaptiveRereadMergeMergedAiPdfImport.preanalysis.version,
+  "preanalysis_v1",
+);
+assert.equal(adaptiveRereadMergeMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(adaptiveRereadMergeMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(adaptiveRereadMergeMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+const missingAdaptiveRereadMergePlan =
+  buildAIAdaptiveRereadMergePlanFromSummary({
+    adaptiveRereadPlan,
+    adaptiveRereadProviderRequestPlan,
+  });
+assert.equal(missingAdaptiveRereadMergePlan.status, "skipped");
+assert.ok(
+  missingAdaptiveRereadMergePlan.warnings.includes(
+    "adaptive_reread_merge_missing_run_plan",
+  ),
+);
+const unknownAdaptiveRereadMergePlan =
+  buildAIAdaptiveRereadMergePlanFromSummary({
+    adaptiveRereadPlan,
+    adaptiveRereadProviderRequestPlan: {
+      ...adaptiveRereadProviderRequestPlan,
+      requests: [
+        {
+          ...adaptiveRereadProviderRequestPlan.requests[0],
+          kind: "adaptive_unknown_case",
+          requestHash: "adaptive-unknown-merge-request-hash",
+          requestId: "adaptive-unknown-merge-request",
+        },
+      ],
+    },
+    adaptiveRereadRunPlan: {
+      ...adaptiveRereadRunPlan,
+      requestRuns: [
+        {
+          ...adaptiveRereadRunPlan.requestRuns[0],
+          kind: "adaptive_unknown_case",
+          requestHash: "adaptive-unknown-merge-request-hash",
+          requestId: "adaptive-unknown-merge-request",
+          runId: "adaptive-unknown-merge-run",
+          status: "skipped",
+        },
+      ],
+    },
+  });
+assert.ok(
+  unknownAdaptiveRereadMergePlan.mergeItems.some(
+    (item) =>
+      item.action === "skip" &&
+      item.reason.code === "unsupported_merge_case",
+  ),
+);
+assert.ok(
+  unknownAdaptiveRereadMergePlan.warnings.includes(
+    "adaptive_reread_merge_unknown_case_skipped",
+  ),
+);
+console.log(
+  "PASS AI adaptive reread merge planner creates suggestion-only metadata and preserves prior parsing summaries",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
