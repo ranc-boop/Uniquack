@@ -37,6 +37,13 @@ const {
   mergeAIProviderRequestPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/provider-requests.ts");
 const {
+  buildAIProviderRunPlanFromProviderRequestPlan,
+  buildProviderRequestRun,
+  mergeAIProviderRunPlanIntoSummary,
+  simulateProviderRequestDryRun,
+  validateDryRunProviderOutput,
+} = await import("../src/lib/ai-pdf-import/provider-runner.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -796,6 +803,111 @@ assert.equal(providerRequestMergedAiPdfImport.provider.id, "provider-1");
 assert.deepEqual(providerRequestMergedAiPdfImport.warnings, ["keep existing warning"]);
 console.log(
   "PASS AI provider request builder creates shadow request plans and preserves summary metadata",
+);
+
+const providerRunPlan = buildAIProviderRunPlanFromProviderRequestPlan({
+  mode: "dry_run",
+  providerRequestPlan,
+});
+assert.equal(providerRunPlan.version, "provider_run_plan_v1");
+assert.equal(providerRunPlan.mode, "dry_run");
+assert.equal(providerRunPlan.status, "completed");
+assert.equal(providerRunPlan.stats.requestCount, providerRequestPlan.requests.length);
+assert.equal(
+  providerRunPlan.stats.totalPacketCount,
+  providerRequestPlan.stats.totalPacketsCovered,
+);
+assert.equal(providerRunPlan.requestRuns[0].requestId, providerRequestPlan.requests[0].requestId);
+assert.equal(providerRunPlan.requestRuns[0].requestHash, providerRequestPlan.requests[0].requestHash);
+assert.deepEqual(providerRunPlan.requestRuns[0].packetIds, providerRequestPlan.requests[0].packetIds);
+assert.deepEqual(
+  providerRunPlan.requestRuns[0].packetHashes,
+  providerRequestPlan.requests[0].packetHashes,
+);
+assert.equal(providerRunPlan.requestRuns[0].provider.realCall, false);
+assert.equal(providerRunPlan.requestRuns[0].status, "simulated");
+assert.equal(providerRunPlan.requestRuns[0].dryRunResult.resultCount, providerRunPlan.requestRuns[0].packetIds.length);
+assert.equal(providerRunPlan.requestRuns[0].dryRunResult.validation.valid, true);
+assert.equal(providerRunPlan.requestRuns[0].dryRunResult.schemaVersion, "question_extract_v1");
+
+const dryRunResult = simulateProviderRequestDryRun(providerRequestPlan.requests[0]);
+assert.equal(dryRunResult.resultCount, providerRequestPlan.requests[0].packetIds.length);
+assert.equal(dryRunResult.validation.valid, true);
+const invalidDryRunValidation = validateDryRunProviderOutput({
+  packetHashes: ["expected-hash"],
+  packetIds: ["expected-packet"],
+  results: [
+    {
+      packetHash: "wrong-hash",
+      packetId: "expected-packet",
+      question: {
+        answer: "fake answer",
+        explanation: null,
+      },
+      review: { reviewRequired: true },
+      version: "question_extract_v1",
+    },
+  ],
+});
+assert.equal(invalidDryRunValidation.valid, false);
+assert.ok(
+  invalidDryRunValidation.errors.includes("result_0_packet_hash_mismatch"),
+);
+assert.ok(
+  invalidDryRunValidation.errors.includes("result_0_dry_run_answer_must_be_null"),
+);
+
+const unsupportedRequestRun = buildProviderRequestRun({
+  mode: "dry_run",
+  request: {
+    ...providerRequestPlan.requests[0],
+    kind: "unsupported_request_kind",
+    requestHash: "unsupported-request-hash",
+    requestId: "unsupported-request",
+  },
+});
+assert.equal(unsupportedRequestRun.status, "skipped");
+assert.equal(unsupportedRequestRun.provider.realCall, false);
+assert.ok(
+  unsupportedRequestRun.warnings.includes(
+    "provider_run_request_skipped_unknown_kind",
+  ),
+);
+
+const providerRunJson = JSON.stringify(providerRunPlan);
+assert.equal(/data:image|base64|JVBERi0|iVBORw0KGgo/i.test(providerRunJson), false);
+
+const providerRunMergedAiPdfImport = mergeAIProviderRunPlanIntoSummary(
+  {
+    chunking: createAIPdfChunkingSummary({ pageCount: 4 }),
+    extractionBatchPlan: batchPlan,
+    packetPlan: pdfPacketPlan,
+    preanalysis: pdfPreanalysis,
+    provider: { id: "provider-1", name: "Provider", model: "model" },
+    providerRequestPlan,
+    warnings: ["keep existing warning"],
+  },
+  providerRunPlan,
+);
+assert.equal(
+  providerRunMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  providerRunMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  providerRunMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(providerRunMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(providerRunMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(providerRunMergedAiPdfImport.chunking.totalChunks, 2);
+assert.equal(providerRunMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(providerRunMergedAiPdfImport.warnings, ["keep existing warning"]);
+console.log(
+  "PASS AI provider runner creates dry-run plans without real provider calls and preserves summary metadata",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({

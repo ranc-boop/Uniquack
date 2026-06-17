@@ -61,6 +61,12 @@ import {
   mergeAIProviderRequestPlanIntoSummary,
   type AIProviderRequestPlan,
 } from "@/lib/ai-pdf-import/provider-requests";
+import {
+  buildAIProviderRunPlanFromProviderRequestPlan,
+  failedAIProviderRunPlan,
+  mergeAIProviderRunPlanIntoSummary,
+  type AIProviderRunPlan,
+} from "@/lib/ai-pdf-import/provider-runner";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -389,6 +395,66 @@ async function updateAIProviderRequestPlan({
   }
 }
 
+async function updateAIProviderRunPlan({
+  input,
+  runPlan,
+}: {
+  input: ProcessInput;
+  runPlan: AIProviderRunPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIProviderRunPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    runPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreProviderRunPlan({
+  input,
+  requestPlan,
+}: {
+  input: ProcessInput;
+  requestPlan: AIProviderRequestPlan;
+}) {
+  try {
+    const runPlan = buildAIProviderRunPlanFromProviderRequestPlan({
+      mode: "dry_run",
+      providerRequestPlan: requestPlan,
+    });
+    await updateAIProviderRunPlan({ input, runPlan });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "AI provider run plan failed.";
+    await updateAIProviderRunPlan({
+      input,
+      runPlan: failedAIProviderRunPlan({
+        sourceKind: requestPlan.sourceKind,
+        warnings: [`provider run plan failed: ${message}`],
+      }),
+    });
+  }
+}
+
 async function generateAndStoreProviderRequestPlan({
   batchPlan,
   input,
@@ -400,18 +466,18 @@ async function generateAndStoreProviderRequestPlan({
     const requestPlan =
       buildAIProviderRequestPlanFromExtractionBatchPlan(batchPlan);
     await updateAIProviderRequestPlan({ input, requestPlan });
+    await generateAndStoreProviderRunPlan({ input, requestPlan });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
         : "AI provider request plan failed.";
-    await updateAIProviderRequestPlan({
-      input,
-      requestPlan: failedAIProviderRequestPlan({
-        sourceKind: batchPlan.sourceKind,
-        warnings: [`provider request plan failed: ${message}`],
-      }),
+    const requestPlan = failedAIProviderRequestPlan({
+      sourceKind: batchPlan.sourceKind,
+      warnings: [`provider request plan failed: ${message}`],
     });
+    await updateAIProviderRequestPlan({ input, requestPlan });
+    await generateAndStoreProviderRunPlan({ input, requestPlan });
   }
 }
 
