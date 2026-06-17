@@ -54,6 +54,13 @@ const {
   "../src/lib/ai-pdf-import/adaptive-reread-provider-requests.ts"
 );
 const {
+  buildAIAdaptiveRereadRunPlanFromProviderRequestPlan,
+  buildAdaptiveRereadRequestRun,
+  mergeAIAdaptiveRereadRunPlanIntoSummary,
+  simulateAdaptiveRereadDryRun,
+  validateAdaptiveRereadDryRunOutput,
+} = await import("../src/lib/ai-pdf-import/adaptive-reread-runner.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -1194,6 +1201,191 @@ assert.ok(
 );
 console.log(
   "PASS AI adaptive reread provider request builder creates shadow-only bounded request drafts and preserves summary metadata",
+);
+
+const adaptiveRereadRunPlan =
+  buildAIAdaptiveRereadRunPlanFromProviderRequestPlan({
+    mode: "dry_run",
+    providerRequestPlan: adaptiveRereadProviderRequestPlan,
+  });
+assert.equal(adaptiveRereadRunPlan.version, "adaptive_reread_run_plan_v1");
+assert.equal(adaptiveRereadRunPlan.mode, "dry_run");
+assert.ok(
+  adaptiveRereadRunPlan.status === "completed" ||
+    adaptiveRereadRunPlan.status === "completed_with_warnings",
+);
+assert.equal(
+  adaptiveRereadRunPlan.requestRuns.length,
+  adaptiveRereadProviderRequestPlan.requests.length,
+);
+for (const [index, request] of adaptiveRereadProviderRequestPlan.requests.entries()) {
+  const run = adaptiveRereadRunPlan.requestRuns[index];
+
+  assert.equal(run.requestId, request.requestId);
+  assert.equal(run.requestHash, request.requestHash);
+  assert.equal(run.rereadRequestId, request.rereadRequestId);
+  assert.equal(run.rereadRequestHash, request.rereadRequestHash);
+  assert.deepEqual(run.packetIds, request.packetIds);
+  assert.deepEqual(run.packetHashes, request.packetHashes);
+  assert.deepEqual(run.pageWindow.pageNumbers, request.pageWindow.pageNumbers);
+  assert.equal(run.pageWindow.pageNumbers.length <= 3, true);
+  assert.equal(run.provider.realCall, false);
+  assert.equal(run.outputContract.jsonOnly, true);
+  assert.equal(run.outputContract.preservePacketIds, true);
+  assert.equal(run.outputContract.preservePacketHashes, true);
+  assert.equal(run.outputContract.adaptiveRereadOnly, true);
+
+  if (request.kind === "adaptive_review_only") {
+    assert.equal(run.status, "skipped");
+    assert.equal(run.dryRunResult, undefined);
+    assert.ok(run.warnings.includes("adaptive_reread_run_review_only_skipped"));
+  } else {
+    assert.equal(run.status, "simulated");
+    assert.equal(run.dryRunResult?.mergeIntent.officialMerge, false);
+    assert.equal(run.dryRunResult?.mergeIntent.reviewDraftWrite, false);
+    assert.equal(run.dryRunResult?.mergeIntent.adaptiveRereadOnly, true);
+    assert.equal(run.dryRunResult?.resultCount, request.packetIds.length);
+    assert.deepEqual(run.dryRunResult?.packetIds, request.packetIds);
+    assert.equal(run.dryRunResult?.validation.valid, true);
+  }
+}
+const lowTextRun = adaptiveRereadRunPlan.requestRuns.find(
+  (run) => run.kind === "adaptive_low_text_confidence_review",
+);
+assert.ok(lowTextRun?.warnings.includes("adaptive_reread_run_low_text_confidence"));
+const mixedRun = adaptiveRereadRunPlan.requestRuns.find(
+  (run) => run.kind === "adaptive_mixed_layout_review",
+);
+assert.ok(
+  mixedRun?.warnings.some((warning) =>
+    warning.includes("adaptive_reread_run_validation_warning"),
+  ),
+);
+const adaptiveDryRun = simulateAdaptiveRereadDryRun(
+  adaptiveRereadProviderRequestPlan.requests[0],
+);
+assert.equal(adaptiveDryRun.mergeIntent.officialMerge, false);
+assert.equal(adaptiveDryRun.mergeIntent.reviewDraftWrite, false);
+assert.equal(adaptiveDryRun.mergeIntent.adaptiveRereadOnly, true);
+assert.equal(adaptiveDryRun.validation.valid, true);
+const badAdaptiveDryRunValidation = validateAdaptiveRereadDryRunOutput({
+  packetHashes: ["expected-hash"],
+  packetIds: ["expected-packet"],
+  rereadRequestHash: "expected-reread-hash",
+  rereadRequestId: "expected-reread-id",
+  requestHash: "expected-request-hash",
+  requestId: "expected-request-id",
+  results: [
+    {
+      mergeIntent: {
+        adaptiveRereadOnly: false,
+        officialMerge: true,
+        reviewDraftWrite: true,
+      },
+      packetHash: "wrong-hash",
+      packetId: "expected-packet",
+      question: {
+        answer: "invented answer",
+        explanation: "invented explanation",
+      },
+      rereadRequestHash: "expected-reread-hash",
+      rereadRequestId: "expected-reread-id",
+      requestHash: "expected-request-hash",
+      requestId: "expected-request-id",
+      version: "question_extract_v1",
+    },
+  ],
+});
+assert.equal(badAdaptiveDryRunValidation.valid, false);
+assert.ok(
+  badAdaptiveDryRunValidation.errors.includes("result_0_packet_hash_mismatch"),
+);
+assert.ok(
+  badAdaptiveDryRunValidation.errors.includes(
+    "result_0_dry_run_answer_must_be_null",
+  ),
+);
+assert.ok(
+  badAdaptiveDryRunValidation.errors.includes(
+    "result_0_dry_run_explanation_must_be_null",
+  ),
+);
+assert.ok(
+  badAdaptiveDryRunValidation.errors.includes(
+    "result_0_merge_intent_must_stay_shadow_only",
+  ),
+);
+const unknownAdaptiveRereadRun = buildAdaptiveRereadRequestRun({
+  mode: "dry_run",
+  request: {
+    ...adaptiveRereadProviderRequestPlan.requests[0],
+    kind: "adaptive_unknown_kind",
+    requestHash: "adaptive-unknown-request-hash",
+    requestId: "adaptive-unknown-request",
+  },
+});
+assert.equal(unknownAdaptiveRereadRun.status, "skipped");
+assert.equal(unknownAdaptiveRereadRun.provider.realCall, false);
+assert.ok(
+  unknownAdaptiveRereadRun.warnings.includes(
+    "adaptive_reread_run_unknown_request_kind",
+  ),
+);
+const adaptiveRereadRunJson = JSON.stringify(adaptiveRereadRunPlan);
+assert.equal(
+  /data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse/i.test(
+    adaptiveRereadRunJson,
+  ),
+  false,
+);
+const adaptiveRereadRunMergedAiPdfImport =
+  mergeAIAdaptiveRereadRunPlanIntoSummary(
+    adaptiveProviderRequestMergedAiPdfImport,
+    adaptiveRereadRunPlan,
+  );
+assert.equal(
+  adaptiveRereadRunMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  adaptiveRereadRunMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  adaptiveRereadRunMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  adaptiveRereadRunMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  adaptiveRereadRunMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  adaptiveRereadRunMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(adaptiveRereadRunMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(adaptiveRereadRunMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(adaptiveRereadRunMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(adaptiveRereadRunMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(adaptiveRereadRunMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+const missingAdaptiveRereadRunPlan =
+  buildAIAdaptiveRereadRunPlanFromProviderRequestPlan({
+    providerRequestPlan: null,
+  });
+assert.equal(missingAdaptiveRereadRunPlan.status, "skipped");
+assert.ok(
+  missingAdaptiveRereadRunPlan.warnings.includes(
+    "adaptive_reread_run_missing_provider_request_plan",
+  ),
+);
+console.log(
+  "PASS AI adaptive reread runner creates shadow dry-run metadata without real provider calls or merge intent",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
