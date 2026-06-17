@@ -91,6 +91,12 @@ import {
   mergeAIAdaptiveRereadMergePlanIntoSummary,
   type AIAdaptiveRereadMergePlan,
 } from "@/lib/ai-pdf-import/adaptive-reread-merge";
+import {
+  buildAITaggingV2PlanFromSummary,
+  failedAITaggingV2Plan,
+  mergeAITaggingV2PlanIntoSummary,
+  type AITaggingV2Plan,
+} from "@/lib/ai-pdf-import/tagging-v2";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -589,6 +595,73 @@ async function updateAIAdaptiveRereadMergePlan({
   }
 }
 
+async function updateAITaggingV2Plan({
+  input,
+  taggingV2Plan,
+}: {
+  input: ProcessInput;
+  taggingV2Plan: AITaggingV2Plan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAITaggingV2PlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    taggingV2Plan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreTaggingV2Plan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const current = await loadCurrentAIPdfSummary(input);
+    const taggingV2Plan = buildAITaggingV2PlanFromSummary(current.aiPdfImport);
+    await updateAITaggingV2Plan({ input, taggingV2Plan });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI tagging v2 plan failed.";
+    const current = await loadCurrentAIPdfSummary(input);
+    const mergePlan = plainObject(current.aiPdfImport.adaptiveRereadMergePlan);
+    const preanalysis = plainObject(current.aiPdfImport.preanalysis);
+    const sourceKind =
+      mergePlan.sourceKind === "single_image" ||
+      preanalysis.sourceKind === "single_image"
+        ? "single_image"
+        : "pdf";
+
+    await updateAITaggingV2Plan({
+      input,
+      taggingV2Plan: failedAITaggingV2Plan({
+        sourceKind,
+        warnings: [`tagging v2 plan failed: ${message}`],
+      }),
+    });
+  }
+}
+
 async function generateAndStoreAdaptiveRereadMergePlan({
   input,
 }: {
@@ -600,6 +673,7 @@ async function generateAndStoreAdaptiveRereadMergePlan({
       current.aiPdfImport,
     );
     await updateAIAdaptiveRereadMergePlan({ input, mergePlan });
+    await generateAndStoreTaggingV2Plan({ input });
   } catch (error) {
     const message =
       error instanceof Error
@@ -621,6 +695,7 @@ async function generateAndStoreAdaptiveRereadMergePlan({
         warnings: [`adaptive reread merge plan failed: ${message}`],
       }),
     });
+    await generateAndStoreTaggingV2Plan({ input });
   }
 }
 
