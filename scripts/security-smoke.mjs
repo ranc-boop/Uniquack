@@ -66,6 +66,15 @@ const {
   mergeAIAdaptiveRereadMergePlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/adaptive-reread-merge.ts");
 const {
+  buildAITaggingV2PlanFromSummary,
+  buildRuleBasedTagSuggestionsForTarget,
+  findTaxonomyTagById,
+  getControlledAITagTaxonomy,
+  mergeAITaggingV2PlanIntoSummary,
+  normalizeTagSuggestion,
+  validateTagSuggestionAgainstTaxonomy,
+} = await import("../src/lib/ai-pdf-import/tagging-v2.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -1586,6 +1595,265 @@ assert.ok(
 );
 console.log(
   "PASS AI adaptive reread merge planner creates suggestion-only metadata and preserves prior parsing summaries",
+);
+
+const taxonomy = getControlledAITagTaxonomy();
+for (const tagId of [
+  "subject.math",
+  "course.sat_math",
+  "domain.advanced_math",
+  "unit.quadratics",
+  "skill.factor_quadratic",
+  "subskill.difference_of_squares",
+  "skill.slope_intercept",
+  "skill.conditional_probability",
+  "format.table_based",
+  "format.image_based",
+]) {
+  assert.ok(
+    taxonomy.some((tag) => tag.id === tagId),
+    `controlled taxonomy should include ${tagId}`,
+  );
+}
+assert.equal(findTaxonomyTagById("skill.factor_quadratic")?.level, "skill");
+
+const taggingEvidence = [
+  {
+    kind: "text_snippet",
+    message: "Fixture evidence.",
+    packetIds: ["packet-tagging"],
+    pageNumbers: [1],
+    snippet: "Factor the quadratic x^2 - 9.",
+  },
+];
+assert.equal(
+  validateTagSuggestionAgainstTaxonomy({
+    confidence: 0.8,
+    evidence: taggingEvidence,
+    reasonCodes: ["fixture"],
+    source: "local_rule",
+    tagId: "freeform.not_allowed",
+  }).valid,
+  false,
+);
+assert.ok(
+  validateTagSuggestionAgainstTaxonomy({
+    confidence: 0.9,
+    evidence: taggingEvidence,
+    label: "Freeform Algebra",
+    level: "skill",
+    parentTagIds: ["unit.quadratics"],
+    reasonCodes: ["fixture"],
+    reviewRequired: false,
+    source: "local_rule",
+    status: "suggested",
+    tagId: "skill.factor_quadratic",
+  }).errors.includes("unsupported_freeform_label"),
+);
+assert.ok(
+  validateTagSuggestionAgainstTaxonomy({
+    confidence: 0.9,
+    evidence: taggingEvidence,
+    parentTagIds: [],
+    reasonCodes: ["fixture"],
+    source: "local_rule",
+    tagId: "skill.factor_quadratic",
+  }).warnings.includes("parent_tag_context_missing"),
+);
+assert.equal(
+  normalizeTagSuggestion({
+    confidence: 1.8,
+    evidence: taggingEvidence,
+    reasonCodes: ["fixture"],
+    source: "local_rule",
+    tagId: "skill.factor_quadratic",
+  }).confidence,
+  1,
+);
+
+const taggingTargetBase = {
+  assetRefCount: 0,
+  batchIds: ["batch-tagging"],
+  choiceMarkerCount: 0,
+  pageClassHints: [],
+  packetHash: "packet-hash-tagging",
+  packetId: "packet-tagging",
+  packetKind: "pdf_question_candidate",
+  providerRequestIds: ["request-tagging"],
+  sourceKind: "pdf",
+  sourcePages: [1],
+  targetId: "target-tagging",
+};
+const normalizedTagsFor = (target) =>
+  buildRuleBasedTagSuggestionsForTarget(target).map((suggestion) =>
+    normalizeTagSuggestion(suggestion),
+  );
+const tagIdsFor = (target) =>
+  new Set(normalizedTagsFor(target).map((suggestion) => suggestion.tagId));
+const quadraticTagIds = tagIdsFor({
+  ...taggingTargetBase,
+  choiceMarkerCount: 4,
+  textPreview:
+    "Factor the quadratic x^2 - 9 by using the difference of squares and identify the vertex of the parabola.",
+});
+assert.ok(quadraticTagIds.has("unit.quadratics"));
+assert.ok(quadraticTagIds.has("skill.factor_quadratic"));
+assert.ok(quadraticTagIds.has("subskill.difference_of_squares"));
+assert.ok(quadraticTagIds.has("format.multiple_choice"));
+
+const slopeTagIds = tagIdsFor({
+  ...taggingTargetBase,
+  textPreview: "Find the slope and y-intercept of a linear function.",
+});
+assert.ok(slopeTagIds.has("domain.algebra"));
+assert.ok(slopeTagIds.has("skill.slope_intercept"));
+
+const probabilityTagIds = tagIdsFor({
+  ...taggingTargetBase,
+  textPreview:
+    "Use the two-way table to find the conditional probability given that the student chose math.",
+});
+assert.ok(probabilityTagIds.has("skill.conditional_probability"));
+assert.ok(probabilityTagIds.has("skill.two_way_table"));
+assert.ok(probabilityTagIds.has("format.table_based"));
+
+const assetTagIds = tagIdsFor({
+  ...taggingTargetBase,
+  assetRefCount: 1,
+  packetKind: "pdf_asset_linked",
+  textPreview: "Use the diagram image to answer the question.",
+});
+assert.ok(assetTagIds.has("format.image_based"));
+assert.ok(assetTagIds.has("format.diagram_based"));
+
+const taggingPackets = [
+  {
+    ...makeExtractionPacket({ index: 20, pageNumbers: [1] }),
+    packetHash: "tagging-packet-hash-quadratic",
+    packetId: "tagging-packet-quadratic",
+    textPreview:
+      "Factor the quadratic x^2 - 9 by using the difference of squares and identify the vertex of the parabola. A. 1 B. 2",
+  },
+  {
+    ...makeExtractionPacket({ index: 21, pageNumbers: [2] }),
+    packetHash: "tagging-packet-hash-slope",
+    packetId: "tagging-packet-slope",
+    textPreview: "Find the slope and y-intercept of a linear function.",
+  },
+  {
+    ...makeExtractionPacket({ index: 22, pageNumbers: [3] }),
+    packetHash: "tagging-packet-hash-table",
+    packetId: "tagging-packet-table",
+    textPreview:
+      "Use the two-way table to find the conditional probability given that the student chose math.",
+  },
+  {
+    ...makeExtractionPacket({
+      assetRefs: [{ assetHintIndex: 0, kind: "figure", pageNumber: 4 }],
+      index: 23,
+      kind: "pdf_asset_linked",
+      pageNumbers: [4],
+    }),
+    packetHash: "tagging-packet-hash-asset",
+    packetId: "tagging-packet-asset",
+    textPreview: "Use the graph and diagram to answer the question.",
+  },
+  {
+    ...makeExtractionPacket({ index: 24, pageNumbers: [5] }),
+    packetHash: "tagging-packet-hash-generic",
+    packetId: "tagging-packet-generic",
+    textPreview: "Look at the item and answer.",
+  },
+];
+const taggingAiPdfImport = {
+  ...adaptiveRereadMergeMergedAiPdfImport,
+  packetPlan: {
+    ...pdfPacketPlan,
+    packets: taggingPackets,
+  },
+};
+const taggingPlan = buildAITaggingV2PlanFromSummary(taggingAiPdfImport);
+assert.equal(taggingPlan.version, "tagging_v2_plan_v1");
+assert.equal(taggingPlan.mode, "planning_only");
+assert.equal(taggingPlan.taxonomyVersion, "edu_taxonomy_v1");
+assert.equal(taggingPlan.sourceKind, "pdf");
+assert.equal(taggingPlan.targets.length, taggingPackets.length);
+assert.ok(taggingPlan.stats.suggestionCount > 0);
+assert.ok(taggingPlan.stats.reviewRequiredCount > 0);
+assert.ok(
+  taggingPlan.targets.every((target) => target.packetId && target.packetHash),
+);
+assert.ok(
+  taggingPlan.targets.every((target) =>
+    target.suggestions.every(
+      (suggestion) =>
+        suggestion.status === "rejected_by_validator" ||
+        Boolean(findTaxonomyTagById(suggestion.tagId)),
+    ),
+  ),
+);
+assert.ok(
+  taggingPlan.targets.every((target) =>
+    target.suggestions.every((suggestion) => suggestion.evidence.length > 0),
+  ),
+);
+assert.ok(
+  taggingPlan.targets.some(
+    (target) =>
+      target.packetId === "tagging-packet-generic" &&
+      target.validation.genericOnly &&
+      target.suggestions.every((suggestion) => suggestion.reviewRequired),
+  ),
+);
+assert.ok(
+  taggingPlan.targets.every((target) => {
+    const tagIds = target.suggestions.map((suggestion) => suggestion.tagId);
+    return tagIds.length === new Set(tagIds).size && tagIds.length <= 8;
+  }),
+);
+assert.equal(
+  /data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(taggingPlan),
+  ),
+  false,
+);
+const taggingMergedAiPdfImport = mergeAITaggingV2PlanIntoSummary(
+  adaptiveRereadMergeMergedAiPdfImport,
+  taggingPlan,
+);
+assert.equal(taggingMergedAiPdfImport.taggingV2Plan.version, "tagging_v2_plan_v1");
+assert.equal(
+  taggingMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  taggingMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  taggingMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  taggingMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(taggingMergedAiPdfImport.providerRunPlan.version, "provider_run_plan_v1");
+assert.equal(
+  taggingMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  taggingMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(taggingMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(taggingMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(taggingMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(taggingMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(taggingMergedAiPdfImport.warnings, ["keep existing warning"]);
+console.log(
+  "PASS AI tagging v2 controlled taxonomy creates evidence-based planning-only suggestions and preserves summary metadata",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
