@@ -44,6 +44,10 @@ const {
   validateDryRunProviderOutput,
 } = await import("../src/lib/ai-pdf-import/provider-runner.ts");
 const {
+  buildAIAdaptiveRereadPlanFromSummary,
+  mergeAIAdaptiveRereadPlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/adaptive-reread.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -908,6 +912,136 @@ assert.equal(providerRunMergedAiPdfImport.provider.id, "provider-1");
 assert.deepEqual(providerRunMergedAiPdfImport.warnings, ["keep existing warning"]);
 console.log(
   "PASS AI provider runner creates dry-run plans without real provider calls and preserves summary metadata",
+);
+
+const adaptiveBatchPlan = buildAIExtractionBatchPlanFromPacketPlan(pdfPacketPlan);
+const adaptiveProviderRequestPlan =
+  buildAIProviderRequestPlanFromExtractionBatchPlan(adaptiveBatchPlan);
+const adaptiveProviderRunPlan = buildAIProviderRunPlanFromProviderRequestPlan({
+  mode: "dry_run",
+  providerRequestPlan: adaptiveProviderRequestPlan,
+});
+const warningProviderRunPlan = {
+  ...adaptiveProviderRunPlan,
+  requestRuns: adaptiveProviderRunPlan.requestRuns.map((run, index) =>
+    index === 0
+      ? {
+          ...run,
+          dryRunResult: {
+            ...run.dryRunResult,
+            validation: {
+              ...run.dryRunResult.validation,
+              warnings: ["validation_needs_boundary_review"],
+            },
+          },
+        }
+      : run,
+  ),
+};
+const adaptiveSummary = {
+  chunking: createAIPdfChunkingSummary({ pageCount: 8 }),
+  extractionBatchPlan: adaptiveBatchPlan,
+  packetPlan: pdfPacketPlan,
+  preanalysis: {
+    ...packetPlanPreanalysis,
+    pageCount: 8,
+  },
+  provider: { id: "provider-1", name: "Provider", model: "model" },
+  providerRequestPlan: adaptiveProviderRequestPlan,
+  providerRunPlan: warningProviderRunPlan,
+  warnings: ["keep existing warning"],
+};
+const adaptiveRereadPlan =
+  buildAIAdaptiveRereadPlanFromSummary(adaptiveSummary);
+assert.equal(adaptiveRereadPlan.version, "adaptive_reread_plan_v1");
+assert.equal(adaptiveRereadPlan.mode, "planning_only");
+assert.notEqual(adaptiveRereadPlan.status, "failed");
+assert.ok(adaptiveRereadPlan.requests.length > 0);
+assert.equal(
+  adaptiveRereadPlan.requests.every((request) => request.safety.realCall === false),
+  true,
+);
+assert.equal(
+  adaptiveRereadPlan.requests.every(
+    (request) =>
+      request.safety.planningOnly &&
+      request.safety.noBase64 &&
+      request.safety.noFullPdfText &&
+      request.safety.noImageBytes,
+  ),
+  true,
+);
+assert.equal(
+  adaptiveRereadPlan.requests.every(
+    (request) =>
+      request.pageWindow.pageNumbers.length <= 3 &&
+      request.pageWindow.pageNumbers.length < 8,
+  ),
+  true,
+);
+assert.ok(
+  adaptiveRereadPlan.requests.some((request) =>
+    request.reasons.some(
+      (reason) => reason.code === "provider_run_validation_warning",
+    ),
+  ),
+);
+assert.ok(
+  adaptiveRereadPlan.requests.some(
+    (request) => request.packetIds.length > 0 && request.packetHashes.length > 0,
+  ),
+);
+const adaptiveRereadPlanAgain =
+  buildAIAdaptiveRereadPlanFromSummary(adaptiveSummary);
+assert.deepEqual(
+  adaptiveRereadPlanAgain.requests.map((request) => request.rereadRequestHash),
+  adaptiveRereadPlan.requests.map((request) => request.rereadRequestHash),
+);
+const unknownRiskPlan = buildAIAdaptiveRereadPlanFromSummary({
+  ...adaptiveSummary,
+  preanalysis: {
+    ...packetPlanPreanalysis,
+    pages: [
+      {
+        boundaryRisks: [{ confidence: 0.5, type: "strange_marker" }],
+        extractedTextLength: 120,
+        pageNumber: 2,
+        textLayerAvailable: true,
+      },
+    ],
+  },
+});
+assert.ok(
+  unknownRiskPlan.requests.some((request) =>
+    request.reasons.some((reason) => reason.code === "unknown_boundary_risk"),
+  ),
+);
+const adaptivePlanJson = JSON.stringify(adaptiveRereadPlan);
+assert.equal(/data:image|;base64,|JVBERi0|iVBORw0KGgo/i.test(adaptivePlanJson), false);
+const adaptiveMergedAiPdfImport = mergeAIAdaptiveRereadPlanIntoSummary(
+  adaptiveSummary,
+  adaptiveRereadPlan,
+);
+assert.equal(
+  adaptiveMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(adaptiveMergedAiPdfImport.providerRunPlan.version, "provider_run_plan_v1");
+assert.equal(
+  adaptiveMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  adaptiveMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(adaptiveMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(adaptiveMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(adaptiveMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(adaptiveMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(adaptiveMergedAiPdfImport.warnings, ["keep existing warning"]);
+console.log(
+  "PASS AI adaptive reread planning creates bounded planning-only requests and preserves summary metadata",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
