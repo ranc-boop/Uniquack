@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
 
 import { SupabaseConfigNotice } from "@/components/config-notice";
 import {
@@ -11,11 +10,17 @@ import { RichHtml } from "@/components/rich-html";
 import { VideoPlayerFrame } from "@/components/video-player-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
-import type { Question, Tag, Video } from "@/types/database";
+import type { Tag, Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -38,54 +43,55 @@ function formatDate(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
-function ErrorCard({ message }: { message: string }) {
+function DifficultyBadge({ rating }: { rating: number }) {
+  let color = "bg-green-100 text-green-800 hover:bg-green-100";
+
+  if (rating >= 400) {
+    color = "bg-red-100 text-red-800 hover:bg-red-100";
+  } else if (rating >= 250) {
+    color = "bg-orange-100 text-orange-800 hover:bg-orange-100";
+  } else if (rating >= 100) {
+    color = "bg-blue-100 text-blue-800 hover:bg-blue-100";
+  }
+
   return (
-    <Card className="border-destructive/30">
-      <CardContent className="p-6 text-sm text-destructive">{message}</CardContent>
-    </Card>
+    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${color}`}>
+      Difficulty {rating}
+    </span>
   );
 }
 
-function CollapsibleSection({
+function QuestionSection({
   title,
-  meta,
   children,
-  defaultOpen = false,
 }: {
   title: string;
-  meta?: string;
-  children: ReactNode;
-  defaultOpen?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <details
-      className="overflow-hidden rounded-md border bg-background"
-      open={defaultOpen}
-    >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-lg font-semibold">
-        <span className="flex items-center gap-2">
-          <span>{title}</span>
-          <span className="text-xs font-normal text-muted-foreground">
-            {meta ?? "Click to expand"}
-          </span>
-        </span>
-        <svg
-          className="collapsible-chevron h-4 w-4 shrink-0 text-muted-foreground"
-          viewBox="0 0 20 20"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path
-            d="M6 8l4 4 4-4"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </summary>
-      <div className="border-t p-4">{children}</div>
-    </details>
+    <section className="space-y-3">
+      <h2 className="border-b pb-2 text-lg font-semibold">{title}</h2>
+      <div className="text-sm leading-relaxed">{children}</div>
+    </section>
+  );
+}
+
+function SidebarCard({
+  title,
+  children,
+}: {
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card>
+      {title ? (
+        <CardHeader className="border-b pb-3">
+          <h3 className="text-sm font-semibold">{title}</h3>
+        </CardHeader>
+      ) : null}
+      <CardContent className="space-y-3 p-4">{children}</CardContent>
+    </Card>
   );
 }
 
@@ -109,7 +115,13 @@ export default async function QuestionDetailPage({
     .maybeSingle();
 
   if (questionError) {
-    return <ErrorCard message={questionError.message} />;
+    return (
+      <Card className="border-destructive/30">
+        <CardContent className="p-6 text-sm text-destructive">
+          {questionError.message}
+        </CardContent>
+      </Card>
+    );
   }
 
   if (!question) {
@@ -143,7 +155,13 @@ export default async function QuestionDetailPage({
   ]);
 
   if (questionTagError) {
-    return <ErrorCard message={questionTagError.message} />;
+    return (
+      <Card className="border-destructive/30">
+        <CardContent className="p-6 text-sm text-destructive">
+          {questionTagError.message}
+        </CardContent>
+      </Card>
+    );
   }
 
   const questionTagIds = Array.from(
@@ -151,26 +169,36 @@ export default async function QuestionDetailPage({
   );
 
   if (videoError) {
-    return <ErrorCard message={videoError.message} />;
+    return (
+      <Card className="border-destructive/30">
+        <CardContent className="p-6 text-sm text-destructive">
+          {videoError.message}
+        </CardContent>
+      </Card>
+    );
   }
 
   if (displayedAssetsError) {
-    return <ErrorCard message={displayedAssetsError.message} />;
+    return (
+      <Card className="border-destructive/30">
+        <CardContent className="p-6 text-sm text-destructive">
+          {displayedAssetsError.message}
+        </CardContent>
+      </Card>
+    );
   }
 
-  const questionImages: QuestionDetailImage[] = (displayedAssets ?? []).map(
-    (asset) => {
-      const { data } = supabase.storage
-        .from(QUESTION_ASSETS_BUCKET)
-        .getPublicUrl(asset.object_path);
+  const questionImages: QuestionDetailImage[] = (displayedAssets ?? []).map((asset) => {
+    const { data } = supabase.storage
+      .from(QUESTION_ASSETS_BUCKET)
+      .getPublicUrl(asset.object_path);
 
-      return {
-        id: asset.id,
-        originalFilename: asset.original_filename,
-        publicUrl: data.publicUrl,
-      };
-    },
-  );
+    return {
+      id: asset.id,
+      originalFilename: asset.original_filename,
+      publicUrl: data.publicUrl,
+    };
+  });
 
   const questionTagsRequest = questionTagIds.length
     ? supabase
@@ -183,17 +211,27 @@ export default async function QuestionDetailPage({
   const videoTagBindingsRequest = video
     ? supabase.from("video_tags").select("tag_id").eq("video_id", video.id)
     : Promise.resolve({ data: [], error: null });
-  const [
-    { data: questionTags, error: tagsError },
-    { data: videoTagBindings, error: videoTagError },
-  ] = await Promise.all([questionTagsRequest, videoTagBindingsRequest]);
+  const [{ data: questionTags, error: tagsError }, { data: videoTagBindings, error: videoTagError }] =
+    await Promise.all([questionTagsRequest, videoTagBindingsRequest]);
 
   if (tagsError) {
-    return <ErrorCard message={tagsError.message} />;
+    return (
+      <Card className="border-destructive/30">
+        <CardContent className="p-6 text-sm text-destructive">
+          {tagsError.message}
+        </CardContent>
+      </Card>
+    );
   }
 
   if (videoTagError) {
-    return <ErrorCard message={videoTagError.message} />;
+    return (
+      <Card className="border-destructive/30">
+        <CardContent className="p-6 text-sm text-destructive">
+          {videoTagError.message}
+        </CardContent>
+      </Card>
+    );
   }
 
   let videoTags: TagRow[] = [];
@@ -214,7 +252,13 @@ export default async function QuestionDetailPage({
         : { data: [] as TagRow[], error: null };
 
     if (loadedVideoTagsError) {
-      return <ErrorCard message={loadedVideoTagsError.message} />;
+      return (
+        <Card className="border-destructive/30">
+          <CardContent className="p-6 text-sm text-destructive">
+            {loadedVideoTagsError.message}
+          </CardContent>
+        </Card>
+      );
     }
 
     videoTags = loadedVideoTags ?? [];
@@ -222,145 +266,185 @@ export default async function QuestionDetailPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-2">
-          <Badge variant="secondary">Question detail</Badge>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            {question.title}
-          </h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            {question.question_code} | difficulty {question.difficulty_rating} |{" "}
-            {question.question_type}
-          </p>
+      <div className="rounded-md border bg-gradient-to-r from-muted/40 to-background">
+        <div className="flex flex-wrap items-end justify-between gap-4 p-6">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="font-mono">
+                {question.question_code}
+              </Badge>
+              <Badge variant="secondary">{question.question_type}</Badge>
+              <DifficultyBadge rating={question.difficulty_rating} />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {question.title}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {question.question_code} | {question.question_type} | difficulty{" "}
+              {question.difficulty_rating}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild size="sm">
+              <Link href="/questions">Back to questions</Link>
+            </Button>
+          </div>
         </div>
-        <Button asChild variant="outline">
-          <Link href="/questions">Back to questions</Link>
-        </Button>
       </div>
 
-      <Card>
-        <CardHeader className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="font-mono">
-              {question.question_code}
-            </Badge>
-            <Badge variant="secondary">{question.question_type}</Badge>
-            <Badge variant="secondary">{question.status}</Badge>
-            <Badge variant="outline">Difficulty {question.difficulty_rating}</Badge>
-          </div>
-          <CardTitle className="text-xl">{question.title}</CardTitle>
-          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            {question.source ? <span>Source: {question.source}</span> : null}
-            {formatDate(question.published_at) ? (
-              <span>Published: {formatDate(question.published_at)}</span>
-            ) : null}
-            <span>Updated: {formatDate(question.updated_at) ?? "-"}</span>
-          </div>
-        </CardHeader>
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+        <div className="space-y-6">
+          <Card>
+            <CardContent className="space-y-8 p-6">
+              <QuestionSection title="Description">
+                <RichHtml html={question.content_html} />
+              </QuestionSection>
 
-        <CardContent className="space-y-8">
-          <section className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Question</h2>
-              <span className="text-xs text-muted-foreground">
-                Sanitized HTML render
+              {questionImages.length ? (
+                <QuestionSection title="Images">
+                  <QuestionDetailImageGallery images={questionImages} />
+                </QuestionSection>
+              ) : null}
+
+              <QuestionSection title="Solution">
+                {question.solution_html ? (
+                  <Accordion type="single" collapsible>
+                    <AccordionItem value="solution">
+                      <AccordionTrigger>
+                        <span className="text-base font-semibold">
+                          View solution
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="pt-2">
+                          <RichHtml html={question.solution_html} />
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                ) : (
+                  <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+                    No solution content available.
+                  </div>
+                )}
+              </QuestionSection>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <SidebarCard>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Problem ID</span>
+              <span className="font-mono font-medium">
+                {question.question_code}
               </span>
-            </div>
-            <RichHtml html={question.content_html} />
-            <QuestionDetailImageGallery images={questionImages} />
-          </section>
-
-          <section className="space-y-3">
-            {question.solution_html ? (
-              <CollapsibleSection title="Solution" meta="Default collapsed">
-                <RichHtml html={question.solution_html} />
-              </CollapsibleSection>
-            ) : (
-              <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-                No solution has been published yet.
               </div>
-            )}
-          </section>
+              <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Type</span>
+              <span className="font-medium">{question.question_type}</span>
+              </div>
+              <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Difficulty</span>
+              <span className="font-medium">
+                {question.difficulty_rating}
+              </span>
+              </div>
+              <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Status</span>
+              <span className="font-medium">{question.status}</span>
+              </div>
+              {question.source ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Source</span>
+                  <span className="font-medium">{question.source}</span>
+                </div>
+              ) : null}
+              {formatDate(question.published_at) ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Published</span>
+                  <span className="font-medium">
+                    {formatDate(question.published_at)}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          </SidebarCard>
 
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Tags</h2>
-            <div className="flex flex-wrap gap-2">
-              {(questionTags ?? []).length ? (
-                (questionTags ?? []).map((tag) => (
+          <SidebarCard title="Tags">
+            {(questionTags ?? []).length ? (
+              <div className="flex flex-wrap gap-2">
+                {(questionTags ?? []).map((tag) => (
                   <Badge key={tag.id} variant="outline">
                     {tag.name}
                   </Badge>
-                ))
-              ) : (
-                <span className="text-sm text-muted-foreground">
-                  No tags attached.
-                </span>
-              )}
-            </div>
-          </section>
-
-          <section className="space-y-3">
-            {video ? (
-              <CollapsibleSection title="Attached video" meta="Default collapsed">
-                <Card>
-                  <CardHeader className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="secondary">{video.status}</Badge>
-                      {video.provider ? (
-                        <Badge variant="outline">{video.provider}</Badge>
-                      ) : null}
-                    </div>
-                    <CardTitle className="text-base">
-                      <Link
-                        href={`/videos/${video.id}`}
-                        className="hover:underline underline-offset-4"
-                      >
-                        {video.title ?? "Untitled video"}
-                      </Link>
-                    </CardTitle>
-                    <div className="text-sm text-muted-foreground">
-                      Published: {formatDate(video.published_at) ?? "-"}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <VideoPlayerFrame
-                      embedUrl={video.embed_url}
-                      videoUrl={video.video_url}
-                    />
-                    <div className="flex flex-wrap gap-1">
-                      {videoTags.length ? (
-                        videoTags.map((tag) => (
-                          <Badge key={tag.id} variant="outline">
-                            {tag.name}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-sm text-muted-foreground">
-                          No inherited tags.
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button asChild variant="outline" size="sm">
-                        <Link href={`/videos/${video.id}`}>Open video detail</Link>
-                      </Button>
-                      <Button asChild variant="outline" size="sm">
-                        <a href={video.video_url} target="_blank" rel="noreferrer">
-                          Open original video
-                        </a>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </CollapsibleSection>
-            ) : (
-              <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-                No attached video has been published yet.
+                ))}
               </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                No tags
+              </span>
             )}
-          </section>
-        </CardContent>
-      </Card>
+          </SidebarCard>
+
+          {video ? (
+            <SidebarCard title="Video explanation">
+              <div className="space-y-3">
+                <div className="text-sm font-medium">
+                  <Link
+                    href={`/videos/${video.id}`}
+                    className="hover:underline underline-offset-4"
+                  >
+                    {video.title ?? "Untitled video"}
+                  </Link>
+                </div>
+                <div className="aspect-video overflow-hidden rounded-md border bg-black">
+                  <VideoPlayerFrame
+                    embedUrl={video.embed_url}
+                    videoUrl={video.video_url}
+                  />
+                </div>
+                {videoTags.length ? (
+                  <div className="flex flex-wrap gap-1">
+                    {videoTags.map((tag) => (
+                      <Badge key={tag.id} variant="secondary" className="text-xs">
+                        {tag.name}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/videos/${video.id}`}>Open video</Link>
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <a
+                      href={video.video_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Original video
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            </SidebarCard>
+          ) : (
+            <SidebarCard title="Video explanation">
+              <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+                No video explanation available.
+              </div>
+            </SidebarCard>
+          )}
+
+          <SidebarCard title="Recommended problems">
+            <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+              Recommended problems coming soon.
+            </div>
+          </SidebarCard>
+        </div>
+      </div>
     </div>
   );
 }
