@@ -48,6 +48,12 @@ const {
   mergeAIAdaptiveRereadPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/adaptive-reread.ts");
 const {
+  buildAIAdaptiveRereadProviderRequestPlanFromAdaptiveRereadPlan,
+  mergeAIAdaptiveRereadProviderRequestPlanIntoSummary,
+} = await import(
+  "../src/lib/ai-pdf-import/adaptive-reread-provider-requests.ts"
+);
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -1042,6 +1048,152 @@ assert.equal(adaptiveMergedAiPdfImport.provider.id, "provider-1");
 assert.deepEqual(adaptiveMergedAiPdfImport.warnings, ["keep existing warning"]);
 console.log(
   "PASS AI adaptive reread planning creates bounded planning-only requests and preserves summary metadata",
+);
+
+const adaptiveProviderKinds = [
+  ["cross_page_question_context", "adaptive_cross_page_text_extraction", "text"],
+  ["answer_key_context", "adaptive_answer_key_review", "text"],
+  ["asset_context", "adaptive_asset_context_review", "mixed"],
+  [
+    "low_text_confidence_context",
+    "adaptive_low_text_confidence_review",
+    "review_only",
+  ],
+  ["mixed_layout_context", "adaptive_mixed_layout_review", "mixed"],
+  ["review_only", "adaptive_review_only", "review_only"],
+];
+const adaptiveProviderBaseRequest = adaptiveRereadPlan.requests[0];
+const allKindAdaptiveRereadPlan = {
+  ...adaptiveRereadPlan,
+  requests: adaptiveProviderKinds.map(([kind], index) => ({
+    ...adaptiveProviderBaseRequest,
+    assetRefs: kind === "asset_context" ? [`asset-ref-${index}`] : [],
+    budget: {
+      ...adaptiveProviderBaseRequest.budget,
+      hasImageInput: kind === "asset_context" || kind === "mixed_layout_context",
+      hasTextInput: true,
+    },
+    kind,
+    packetHashes: [`adaptive-packet-hash-${index}`],
+    packetIds: [`adaptive-packet-${index}`],
+    pageWindow: {
+      endPage: 2,
+      maxWindowPages: 3,
+      originalPageNumbers: [1, 2],
+      pageNumbers: [1, 2],
+      startPage: 1,
+    },
+    reasons: [
+      {
+        ...adaptiveProviderBaseRequest.reasons[0],
+        packetIds: [`adaptive-packet-${index}`],
+        pageNumbers: [1, 2],
+      },
+    ],
+    rereadRequestHash: `adaptive-reread-hash-${index}`,
+    rereadRequestId: `adaptive-reread-${index}`,
+  })),
+};
+const adaptiveRereadProviderRequestPlan =
+  buildAIAdaptiveRereadProviderRequestPlanFromAdaptiveRereadPlan(
+    allKindAdaptiveRereadPlan,
+  );
+assert.equal(
+  adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(adaptiveRereadProviderRequestPlan.mode, "shadow");
+assert.equal(
+  adaptiveRereadProviderRequestPlan.requests.length,
+  adaptiveProviderKinds.length,
+);
+for (const [index, [, expectedKind, expectedMode]] of adaptiveProviderKinds.entries()) {
+  const request = adaptiveRereadProviderRequestPlan.requests[index];
+
+  assert.equal(request.kind, expectedKind);
+  assert.equal(request.recommendedMode, expectedMode);
+  assert.equal(request.rereadRequestId, `adaptive-reread-${index}`);
+  assert.equal(request.rereadRequestHash, `adaptive-reread-hash-${index}`);
+  assert.deepEqual(request.packetIds, [`adaptive-packet-${index}`]);
+  assert.deepEqual(request.packetHashes, [`adaptive-packet-hash-${index}`]);
+  assert.equal(request.pageWindow.pageNumbers.length <= 3, true);
+  assert.equal(request.safety.realCall, false);
+  assert.equal(request.safety.shadowOnly, true);
+  assert.equal(request.safety.noBase64, true);
+  assert.equal(request.safety.noFullPdfText, true);
+  assert.equal(request.safety.noImageBytes, true);
+  assert.equal(request.promptContract.jsonOnly, true);
+  assert.equal(request.promptContract.noMarkdown, true);
+  assert.equal(request.promptContract.preservePacketIds, true);
+  assert.equal(request.promptContract.preservePacketHashes, true);
+  assert.equal(request.promptContract.useOnlyProvidedPages, true);
+  assert.equal(request.promptContract.useOnlyProvidedAssets, true);
+  assert.match(request.promptContract.systemInstruction, /Return JSON only/);
+  assert.match(request.promptContract.userInstruction, /Packet IDs:/);
+}
+assert.ok(
+  adaptiveRereadProviderRequestPlan.requests
+    .filter((request) => request.recommendedMode === "review_only")
+    .every((request) =>
+      request.warnings.includes("adaptive_reread_provider_request_review_only"),
+    ),
+);
+const adaptiveProviderRequestJson = JSON.stringify(adaptiveRereadProviderRequestPlan);
+assert.equal(
+  /data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse/i.test(
+    adaptiveProviderRequestJson,
+  ),
+  false,
+);
+const adaptiveProviderRequestMergedAiPdfImport =
+  mergeAIAdaptiveRereadProviderRequestPlanIntoSummary(
+    adaptiveMergedAiPdfImport,
+    adaptiveRereadProviderRequestPlan,
+  );
+assert.equal(
+  adaptiveProviderRequestMergedAiPdfImport.adaptiveRereadProviderRequestPlan
+    .version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  adaptiveProviderRequestMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  adaptiveProviderRequestMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  adaptiveProviderRequestMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  adaptiveProviderRequestMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(
+  adaptiveProviderRequestMergedAiPdfImport.packetPlan.version,
+  "packet_plan_v1",
+);
+assert.equal(
+  adaptiveProviderRequestMergedAiPdfImport.preanalysis.version,
+  "preanalysis_v1",
+);
+assert.equal(adaptiveProviderRequestMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(adaptiveProviderRequestMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(adaptiveProviderRequestMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+const missingAdaptiveRereadProviderRequestPlan =
+  buildAIAdaptiveRereadProviderRequestPlanFromAdaptiveRereadPlan(null);
+assert.equal(missingAdaptiveRereadProviderRequestPlan.status, "skipped");
+assert.ok(
+  missingAdaptiveRereadProviderRequestPlan.warnings.includes(
+    "adaptive_reread_provider_request_missing_reread_plan",
+  ),
+);
+console.log(
+  "PASS AI adaptive reread provider request builder creates shadow-only bounded request drafts and preserves summary metadata",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
