@@ -85,6 +85,12 @@ import {
   mergeAIAdaptiveRereadRunPlanIntoSummary,
   type AIAdaptiveRereadRunPlan,
 } from "@/lib/ai-pdf-import/adaptive-reread-runner";
+import {
+  buildAIAdaptiveRereadMergePlanFromSummary,
+  failedAIAdaptiveRereadMergePlan,
+  mergeAIAdaptiveRereadMergePlanIntoSummary,
+  type AIAdaptiveRereadMergePlan,
+} from "@/lib/ai-pdf-import/adaptive-reread-merge";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -549,6 +555,75 @@ async function updateAIAdaptiveRereadRunPlan({
   }
 }
 
+async function updateAIAdaptiveRereadMergePlan({
+  input,
+  mergePlan,
+}: {
+  input: ProcessInput;
+  mergePlan: AIAdaptiveRereadMergePlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIAdaptiveRereadMergePlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    mergePlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreAdaptiveRereadMergePlan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const current = await loadCurrentAIPdfSummary(input);
+    const mergePlan = buildAIAdaptiveRereadMergePlanFromSummary(
+      current.aiPdfImport,
+    );
+    await updateAIAdaptiveRereadMergePlan({ input, mergePlan });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI adaptive reread merge plan failed.";
+    const current = await loadCurrentAIPdfSummary(input);
+    const runPlan = plainObject(current.aiPdfImport.adaptiveRereadRunPlan);
+    const preanalysis = plainObject(current.aiPdfImport.preanalysis);
+    const sourceKind =
+      runPlan.sourceKind === "single_image" ||
+      preanalysis.sourceKind === "single_image"
+        ? "single_image"
+        : "pdf";
+
+    await updateAIAdaptiveRereadMergePlan({
+      input,
+      mergePlan: failedAIAdaptiveRereadMergePlan({
+        sourceKind,
+        warnings: [`adaptive reread merge plan failed: ${message}`],
+      }),
+    });
+  }
+}
+
 async function generateAndStoreAdaptiveRereadRunPlan({
   input,
 }: {
@@ -563,6 +638,7 @@ async function generateAndStoreAdaptiveRereadRunPlan({
       ),
     });
     await updateAIAdaptiveRereadRunPlan({ input, runPlan });
+    await generateAndStoreAdaptiveRereadMergePlan({ input });
   } catch (error) {
     const message =
       error instanceof Error
@@ -586,6 +662,7 @@ async function generateAndStoreAdaptiveRereadRunPlan({
         warnings: [`adaptive reread run plan failed: ${message}`],
       }),
     });
+    await generateAndStoreAdaptiveRereadMergePlan({ input });
   }
 }
 
