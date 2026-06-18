@@ -127,6 +127,12 @@ import {
   mergeAICoverageRecoveryPlanIntoSummary,
   type AICoverageRecoveryPlan,
 } from "@/lib/ai-pdf-import/coverage-recovery";
+import {
+  buildAICoverageRecoveryRunPlanFromSummary,
+  failedAICoverageRecoveryRunPlan,
+  mergeAICoverageRecoveryRunPlanIntoSummary,
+  type AICoverageRecoveryRunPlan,
+} from "@/lib/ai-pdf-import/coverage-recovery-runner";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -852,6 +858,63 @@ async function updateAICoverageRecoveryPlan({
   }
 }
 
+async function updateAICoverageRecoveryRunPlan({
+  input,
+  runPlan,
+}: {
+  input: ProcessInput;
+  runPlan: AICoverageRecoveryRunPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAICoverageRecoveryRunPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    runPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreCoverageRecoveryRunPlan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const current = await loadCurrentAIPdfSummary(input);
+    const runPlan = buildAICoverageRecoveryRunPlanFromSummary(current.summary);
+    await updateAICoverageRecoveryRunPlan({ input, runPlan });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI coverage recovery dry run failed.";
+
+    await updateAICoverageRecoveryRunPlan({
+      input,
+      runPlan: failedAICoverageRecoveryRunPlan({
+        warnings: [`coverage recovery dry run failed: ${message}`],
+      }),
+    });
+  }
+}
+
 async function generateAndStoreCoverageRecoveryPlan({
   input,
 }: {
@@ -863,6 +926,7 @@ async function generateAndStoreCoverageRecoveryPlan({
       current.summary,
     );
     await updateAICoverageRecoveryPlan({ input, recoveryPlan });
+    await generateAndStoreCoverageRecoveryRunPlan({ input });
   } catch (error) {
     const message =
       error instanceof Error
@@ -875,6 +939,7 @@ async function generateAndStoreCoverageRecoveryPlan({
         warnings: [`coverage recovery plan failed: ${message}`],
       }),
     });
+    await generateAndStoreCoverageRecoveryRunPlan({ input });
   }
 }
 
