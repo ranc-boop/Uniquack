@@ -81,6 +81,12 @@ const {
   validateTaxonomyDraftTag,
 } = await import("../src/lib/ai-pdf-import/taxonomy-bootstrap.ts");
 const {
+  buildAITaxonomyReviewPlanFromBootstrapPlan,
+  buildTaxonomyPatchPreview,
+  mergeAITaxonomyReviewPlanIntoSummary,
+  validateTaxonomyReviewAction,
+} = await import("../src/lib/ai-pdf-import/taxonomy-review.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -2129,6 +2135,265 @@ assert.deepEqual(taxonomyBootstrapMergedAiPdfImport.warnings, [
 ]);
 console.log(
   "PASS AI taxonomy bootstrap creates draft packs, candidate queues, aliases, and human-review actions without official tag writes",
+);
+
+const taxonomyReviewPlan =
+  buildAITaxonomyReviewPlanFromBootstrapPlan(taxonomyBootstrapPlan);
+assert.equal(taxonomyReviewPlan.version, "taxonomy_review_plan_v1");
+assert.equal(taxonomyReviewPlan.mode, "planning_only");
+assert.equal(taxonomyReviewPlan.taxonomyVersion, "edu_taxonomy_v1");
+assert.ok(taxonomyReviewPlan.actions.length > 0);
+assert.ok(taxonomyReviewPlan.stats.actionCount > 0);
+assert.ok(
+  taxonomyReviewPlan.warnings.includes("taxonomy_review_planning_only"),
+);
+assert.ok(
+  taxonomyReviewPlan.warnings.includes("taxonomy_review_no_db_mutation"),
+);
+assert.ok(
+  taxonomyReviewPlan.warnings.includes("taxonomy_review_no_official_promotion"),
+);
+assert.ok(
+  taxonomyReviewPlan.warnings.includes("taxonomy_review_no_question_tag_write"),
+);
+assert.ok(
+  taxonomyReviewPlan.actions.every(
+    (action) =>
+      action.targetId &&
+      action.actionHash &&
+      action.humanReview.required === true &&
+      action.humanReview.approved === false &&
+      action.humanReview.executed === false,
+  ),
+);
+assert.ok(
+  taxonomyReviewPlan.actions.every(
+    (action) =>
+      action.safety.planningOnly === true &&
+      action.safety.dbMutation === false &&
+      action.safety.officialPromotion === false &&
+      action.safety.officialQuestionTagWrite === false &&
+      action.safety.reviewDraftTagWrite === false,
+  ),
+);
+assert.equal(
+  taxonomyReviewPlan.actions.some(
+    (action) =>
+      action.actionType === "merge_as_alias" &&
+      Boolean(action.proposedChange.mergeTargetTagId),
+  ),
+  true,
+);
+const duplicateBootstrapPlan = {
+  ...taxonomyBootstrapPlan,
+  candidateQueue: taxonomyBootstrapPlan.candidateQueue.map((candidate, index) =>
+    index === 0
+      ? {
+          ...candidate,
+          warnings: [
+            ...candidate.warnings,
+            "taxonomy_bootstrap_duplicate_likely",
+          ],
+        }
+      : candidate,
+  ),
+};
+const duplicateReviewPlan =
+  buildAITaxonomyReviewPlanFromBootstrapPlan(duplicateBootstrapPlan);
+const duplicateRiskAction = duplicateReviewPlan.actions.find(
+  (action) => action.validation.duplicateRisk,
+);
+assert.ok(duplicateRiskAction);
+const duplicateApproveValidation = validateTaxonomyReviewAction({
+  action: {
+    ...duplicateRiskAction,
+    actionType: "approve_as_official",
+    proposedChange: {
+      ...duplicateRiskAction.proposedChange,
+      proposedOfficialId:
+        duplicateRiskAction.proposedChange.proposedOfficialId ??
+        "candidate.skill.duplicate",
+    },
+  },
+  bootstrapPlan: duplicateBootstrapPlan,
+});
+assert.equal(duplicateApproveValidation.valid, false);
+assert.ok(
+  duplicateApproveValidation.errors.includes("approve_blocked_duplicate_risk"),
+);
+const parentRiskAction =
+  taxonomyReviewPlan.actions.find((action) => action.validation.parentRisk) ??
+  taxonomyReviewPlan.actions.find(
+    (action) => action.targetType === "candidate_tag",
+  );
+assert.ok(parentRiskAction);
+const parentApproveValidation = validateTaxonomyReviewAction({
+  action: {
+    ...parentRiskAction,
+    actionType: "approve_as_official",
+    proposedChange: {
+      ...parentRiskAction.proposedChange,
+      proposedOfficialId:
+        parentRiskAction.proposedChange.proposedOfficialId ??
+        "candidate.skill.parent_risk",
+    },
+  },
+  bootstrapPlan: taxonomyBootstrapPlan,
+});
+assert.equal(parentApproveValidation.valid, false);
+assert.ok(parentApproveValidation.errors.includes("approve_blocked_parent_risk"));
+const mergeAction =
+  taxonomyReviewPlan.actions.find(
+    (action) => action.actionType === "merge_as_alias",
+  ) ?? taxonomyReviewPlan.actions[0];
+const missingMergeTargetValidation = validateTaxonomyReviewAction({
+  action: {
+    ...mergeAction,
+    actionType: "merge_as_alias",
+    proposedChange: {
+      ...mergeAction.proposedChange,
+      mergeTargetLabel: null,
+      mergeTargetTagId: null,
+    },
+  },
+  bootstrapPlan: taxonomyBootstrapPlan,
+});
+assert.equal(missingMergeTargetValidation.valid, false);
+assert.ok(
+  missingMergeTargetValidation.errors.includes("merge_alias_missing_target"),
+);
+const rejectAction =
+  taxonomyReviewPlan.actions.find((action) => action.actionType === "reject") ??
+  taxonomyReviewPlan.actions[0];
+const missingRejectReasonValidation = validateTaxonomyReviewAction({
+  action: {
+    ...rejectAction,
+    actionType: "reject",
+    proposedChange: {
+      ...rejectAction.proposedChange,
+      rejectionReason: null,
+    },
+  },
+  bootstrapPlan: taxonomyBootstrapPlan,
+});
+assert.equal(missingRejectReasonValidation.valid, false);
+assert.ok(
+  missingRejectReasonValidation.errors.includes("reject_missing_reason"),
+);
+const unsafeHumanReviewValidation = validateTaxonomyReviewAction({
+  action: {
+    ...taxonomyReviewPlan.actions[0],
+    humanReview: {
+      ...taxonomyReviewPlan.actions[0].humanReview,
+      approved: true,
+    },
+  },
+  bootstrapPlan: taxonomyBootstrapPlan,
+});
+assert.equal(unsafeHumanReviewValidation.valid, false);
+assert.ok(
+  unsafeHumanReviewValidation.errors.includes(
+    "missing_human_review_requirement",
+  ),
+);
+const unsafeMutationValidation = validateTaxonomyReviewAction({
+  action: {
+    ...taxonomyReviewPlan.actions[0],
+    safety: {
+      ...taxonomyReviewPlan.actions[0].safety,
+      dbMutation: true,
+    },
+  },
+  bootstrapPlan: taxonomyBootstrapPlan,
+});
+assert.equal(unsafeMutationValidation.valid, false);
+assert.ok(unsafeMutationValidation.errors.includes("unsafe_action_flags"));
+const patchPreview = buildTaxonomyPatchPreview(taxonomyReviewPlan.actions);
+assert.equal(patchPreview.mode, "preview_only");
+assert.equal(patchPreview.officialMutation, false);
+assert.equal(
+  patchPreview.approvedTagPreviews.every((preview) => preview.sourceActionId),
+  true,
+);
+assert.equal(
+  patchPreview.aliasMergePreviews.every((preview) => preview.sourceActionId),
+  true,
+);
+assert.equal(
+  patchPreview.rejectedTargetPreviews.every((preview) => preview.sourceActionId),
+  true,
+);
+assert.equal(
+  patchPreview.pendingTargetPreviews.every((preview) => preview.sourceActionId),
+  true,
+);
+assert.equal(
+  /question_tags|reviewDraftTags|officialTagWrite|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(taxonomyReviewPlan),
+  ),
+  false,
+);
+const taxonomyReviewMergedAiPdfImport = mergeAITaxonomyReviewPlanIntoSummary(
+  taxonomyBootstrapMergedAiPdfImport,
+  taxonomyReviewPlan,
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.taxonomyReviewPlan.version,
+  "taxonomy_review_plan_v1",
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.taxonomyBootstrapPlan.version,
+  "taxonomy_bootstrap_plan_v1",
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.taggingV2Plan.version,
+  "tagging_v2_plan_v1",
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  taxonomyReviewMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(taxonomyReviewMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(taxonomyReviewMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(taxonomyReviewMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(taxonomyReviewMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(taxonomyReviewMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+const missingBootstrapReviewPlan =
+  buildAITaxonomyReviewPlanFromBootstrapPlan(null);
+assert.equal(missingBootstrapReviewPlan.status, "skipped");
+assert.ok(
+  missingBootstrapReviewPlan.warnings.includes(
+    "taxonomy_review_missing_bootstrap_plan",
+  ),
+);
+console.log(
+  "PASS AI taxonomy review actions create human-review-required preview-only plans without DB mutation",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
