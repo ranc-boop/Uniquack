@@ -75,6 +75,12 @@ const {
   validateTagSuggestionAgainstTaxonomy,
 } = await import("../src/lib/ai-pdf-import/tagging-v2.ts");
 const {
+  buildAITaxonomyBootstrapPlanFromSummary,
+  buildStarterTaxonomyDraftPacks,
+  mergeAITaxonomyBootstrapPlanIntoSummary,
+  validateTaxonomyDraftTag,
+} = await import("../src/lib/ai-pdf-import/taxonomy-bootstrap.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -1854,6 +1860,275 @@ assert.equal(taggingMergedAiPdfImport.provider.id, "provider-1");
 assert.deepEqual(taggingMergedAiPdfImport.warnings, ["keep existing warning"]);
 console.log(
   "PASS AI tagging v2 controlled taxonomy creates evidence-based planning-only suggestions and preserves summary metadata",
+);
+
+const starterDraftPacks = buildStarterTaxonomyDraftPacks();
+assert.ok(
+  starterDraftPacks.some((pack) => pack.packId === "sat_math_v1_draft"),
+);
+assert.ok(
+  starterDraftPacks.some((pack) => pack.packId === "general_math_v1_draft"),
+);
+assert.ok(starterDraftPacks.length >= 2);
+assert.ok(
+  starterDraftPacks.every(
+    (pack) =>
+      pack.status === "draft" ||
+      pack.status === "pending_review" ||
+      pack.tagDrafts.length > 0,
+  ),
+);
+assert.ok(
+  starterDraftPacks
+    .flatMap((pack) => pack.tagDrafts)
+    .every(
+      (tag) =>
+        tag.status !== "approved" &&
+        tag.evidence.length > 0 &&
+        tag.description &&
+        tag.exampleSignals.length > 0 &&
+        Array.isArray(tag.aliases) &&
+        (["subject", "format", "difficulty", "cognitive_process", "error_type"].includes(
+          tag.level,
+        ) ||
+          tag.parentTagIds.length > 0),
+    ),
+);
+const invalidDraftValidation = validateTaxonomyDraftTag({
+  draftTag: {
+    aliases: [],
+    evidence: [],
+    label: "Algebra",
+    level: "skill",
+    parentTagIds: [],
+    proposedOfficialId: "freeform bad id",
+  },
+  knownDraftIds: [],
+});
+assert.equal(invalidDraftValidation.valid, false);
+assert.ok(invalidDraftValidation.errors.includes("invalid_id_shape"));
+assert.ok(invalidDraftValidation.errors.includes("missing_parent"));
+assert.ok(invalidDraftValidation.errors.includes("missing_evidence"));
+const missingParentValidation = validateTaxonomyDraftTag({
+  draftTag: {
+    aliases: [],
+    evidence: [
+      {
+        kind: "text_signal",
+        message: "evidence",
+        packetIds: ["packet-missing-parent"],
+        pageNumbers: [1],
+        snippet: "piecewise",
+      },
+    ],
+    label: "Piecewise function intervals",
+    level: "skill",
+    parentTagIds: [],
+    proposedOfficialId: "skill.piecewise_function_intervals",
+  },
+  knownDraftIds: [],
+});
+assert.equal(missingParentValidation.valid, false);
+assert.ok(missingParentValidation.errors.includes("missing_parent"));
+
+const rejectedTaggingTarget = {
+  batchIds: ["batch-rejected"],
+  packetHash: "tagging-packet-hash-rejected",
+  packetId: "tagging-packet-rejected",
+  providerRequestIds: ["request-rejected"],
+  sourcePages: [6],
+  suggestions: [
+    {
+      confidence: 0.77,
+      evidence: [
+        {
+          kind: "text_snippet",
+          message: "Rejected freeform fixture.",
+          packetIds: ["tagging-packet-rejected"],
+          pageNumbers: [6],
+          snippet: "A rational function has an asymptote.",
+        },
+      ],
+      label: "Rational asymptote",
+      level: "skill",
+      parentTagIds: [],
+      reasonCodes: ["unknown_taxonomy_tag"],
+      reviewRequired: true,
+      source: "future_ai_ranked",
+      status: "rejected_by_validator",
+      tagId: "freeform.rational_asymptote",
+    },
+    {
+      confidence: 0.5,
+      evidence: [
+        {
+          kind: "text_snippet",
+          message: "Generic subject fixture.",
+          packetIds: ["tagging-packet-rejected"],
+          pageNumbers: [6],
+          snippet: "A rational function has an asymptote.",
+        },
+      ],
+      label: "Math",
+      level: "subject",
+      parentTagIds: [],
+      reasonCodes: ["generic_fixture"],
+      reviewRequired: true,
+      source: "local_rule",
+      status: "review_required",
+      tagId: "subject.math",
+    },
+  ],
+  targetHash: "tagging-target-hash-rejected",
+  targetId: "tagging-target-rejected",
+  textPreview:
+    "A rational function has an asymptote. It appears in a calculator active section.",
+  validation: {
+    errors: [],
+    genericOnly: true,
+    hasEvidence: true,
+    hasSkillLevelTag: false,
+    valid: true,
+    warnings: ["tagging_v2_generic_only"],
+  },
+  warnings: ["tagging_v2_generic_only"],
+};
+const taxonomyBootstrapInput = {
+  ...taggingMergedAiPdfImport,
+  taggingV2Plan: {
+    ...taggingPlan,
+    targets: [...taggingPlan.targets, rejectedTaggingTarget],
+  },
+};
+const taxonomyBootstrapPlan =
+  buildAITaxonomyBootstrapPlanFromSummary(taxonomyBootstrapInput);
+assert.equal(taxonomyBootstrapPlan.version, "taxonomy_bootstrap_plan_v1");
+assert.equal(taxonomyBootstrapPlan.mode, "planning_only");
+assert.equal(taxonomyBootstrapPlan.taxonomyVersion, "edu_taxonomy_v1");
+assert.equal(taxonomyBootstrapPlan.sourceKind, "pdf");
+assert.ok(taxonomyBootstrapPlan.draftPacks.length >= 2);
+assert.ok(taxonomyBootstrapPlan.stats.draftTagCount > 0);
+assert.ok(taxonomyBootstrapPlan.candidateQueue.length > 0);
+assert.ok(taxonomyBootstrapPlan.aliasCandidates.length > 0);
+assert.ok(taxonomyBootstrapPlan.reviewActions.length > 0);
+assert.ok(
+  taxonomyBootstrapPlan.warnings.includes("taxonomy_bootstrap_planning_only"),
+);
+assert.ok(
+  taxonomyBootstrapPlan.warnings.includes("taxonomy_bootstrap_no_ai_generation"),
+);
+assert.ok(
+  taxonomyBootstrapPlan.warnings.includes(
+    "taxonomy_bootstrap_no_official_tag_write",
+  ),
+);
+assert.ok(
+  taxonomyBootstrapPlan.candidateQueue.some(
+    (candidate) => candidate.source === "tagging_v2_generic_only",
+  ),
+);
+assert.ok(
+  taxonomyBootstrapPlan.candidateQueue.some(
+    (candidate) => candidate.source === "tagging_v2_rejected_freeform",
+  ),
+);
+assert.ok(
+  taxonomyBootstrapPlan.candidateQueue.some((candidate) =>
+    candidate.proposedLabel.includes("Rational function"),
+  ),
+);
+assert.ok(
+  taxonomyBootstrapPlan.candidateQueue.every(
+    (candidate) =>
+      candidate.status === "pending_review" &&
+      candidate.evidence.length > 0 &&
+      candidate.nearestExistingTags.length > 0,
+  ),
+);
+assert.ok(
+  taxonomyBootstrapPlan.aliasCandidates.every(
+    (alias) =>
+      alias.status === "pending_review" &&
+      alias.evidence.length > 0 &&
+      alias.targetTagId,
+  ),
+);
+assert.ok(
+  taxonomyBootstrapPlan.reviewActions.every(
+    (action) => action.humanRequired === true,
+  ),
+);
+assert.equal(
+  taxonomyBootstrapPlan.candidateQueue.some(
+    (candidate) => candidate.status !== "pending_review",
+  ),
+  false,
+);
+assert.equal(
+  taxonomyBootstrapPlan.draftPacks
+    .flatMap((pack) => pack.tagDrafts)
+    .some((tag) => tag.status === "approved"),
+  false,
+);
+assert.equal(
+  /question_tags|reviewDraftTags|officialTagWrite|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(taxonomyBootstrapPlan),
+  ),
+  false,
+);
+const taxonomyBootstrapMergedAiPdfImport =
+  mergeAITaxonomyBootstrapPlanIntoSummary(
+    taggingMergedAiPdfImport,
+    taxonomyBootstrapPlan,
+  );
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.taxonomyBootstrapPlan.version,
+  "taxonomy_bootstrap_plan_v1",
+);
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.taggingV2Plan.version,
+  "tagging_v2_plan_v1",
+);
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(taxonomyBootstrapMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(
+  taxonomyBootstrapMergedAiPdfImport.preanalysis.version,
+  "preanalysis_v1",
+);
+assert.equal(taxonomyBootstrapMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(taxonomyBootstrapMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(taxonomyBootstrapMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+console.log(
+  "PASS AI taxonomy bootstrap creates draft packs, candidate queues, aliases, and human-review actions without official tag writes",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({

@@ -97,6 +97,12 @@ import {
   mergeAITaggingV2PlanIntoSummary,
   type AITaggingV2Plan,
 } from "@/lib/ai-pdf-import/tagging-v2";
+import {
+  buildAITaxonomyBootstrapPlanFromSummary,
+  failedAITaxonomyBootstrapPlan,
+  mergeAITaxonomyBootstrapPlanIntoSummary,
+  type AITaxonomyBootstrapPlan,
+} from "@/lib/ai-pdf-import/taxonomy-bootstrap";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -629,6 +635,75 @@ async function updateAITaggingV2Plan({
   }
 }
 
+async function updateAITaxonomyBootstrapPlan({
+  input,
+  taxonomyBootstrapPlan,
+}: {
+  input: ProcessInput;
+  taxonomyBootstrapPlan: AITaxonomyBootstrapPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAITaxonomyBootstrapPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    taxonomyBootstrapPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreTaxonomyBootstrapPlan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const current = await loadCurrentAIPdfSummary(input);
+    const taxonomyBootstrapPlan = buildAITaxonomyBootstrapPlanFromSummary(
+      current.aiPdfImport,
+    );
+    await updateAITaxonomyBootstrapPlan({ input, taxonomyBootstrapPlan });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI taxonomy bootstrap plan failed.";
+    const current = await loadCurrentAIPdfSummary(input);
+    const taggingPlan = plainObject(current.aiPdfImport.taggingV2Plan);
+    const preanalysis = plainObject(current.aiPdfImport.preanalysis);
+    const sourceKind =
+      taggingPlan.sourceKind === "single_image" ||
+      preanalysis.sourceKind === "single_image"
+        ? "single_image"
+        : "pdf";
+
+    await updateAITaxonomyBootstrapPlan({
+      input,
+      taxonomyBootstrapPlan: failedAITaxonomyBootstrapPlan({
+        sourceKind,
+        warnings: [`taxonomy bootstrap plan failed: ${message}`],
+      }),
+    });
+  }
+}
+
 async function generateAndStoreTaggingV2Plan({
   input,
 }: {
@@ -638,6 +713,7 @@ async function generateAndStoreTaggingV2Plan({
     const current = await loadCurrentAIPdfSummary(input);
     const taggingV2Plan = buildAITaggingV2PlanFromSummary(current.aiPdfImport);
     await updateAITaggingV2Plan({ input, taggingV2Plan });
+    await generateAndStoreTaxonomyBootstrapPlan({ input });
   } catch (error) {
     const message =
       error instanceof Error
@@ -659,6 +735,7 @@ async function generateAndStoreTaggingV2Plan({
         warnings: [`tagging v2 plan failed: ${message}`],
       }),
     });
+    await generateAndStoreTaxonomyBootstrapPlan({ input });
   }
 }
 
