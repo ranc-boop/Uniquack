@@ -92,6 +92,10 @@ const {
   validateTaxonomyPersistencePlan,
 } = await import("../src/lib/ai-pdf-import/taxonomy-persistence.ts");
 const {
+  buildAIExtractionCoverageAuditPlanFromSummary,
+  mergeAIExtractionCoverageAuditPlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/extraction-coverage-audit.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -2613,6 +2617,285 @@ assert.ok(
 );
 console.log(
   "PASS AI taxonomy persistence proposes admin/storage contracts without migrations or DB mutation",
+);
+
+const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({
+  answerMarkerHints: [],
+  assetHints: [],
+  boundaryRisks: [],
+  choiceMarkerHints: ["A", "B", "C", "D"],
+  extractedTextLength: 120,
+  extractedTextPreview: `Question-like page ${index + 1}`,
+  pageClass: "question_page",
+  pageNumber: index + 1,
+  questionNumberHints: [`${index + 1}.`],
+  textLayerAvailable: true,
+}));
+const coveragePackets = coveragePreanalysisPages.map((page, index) =>
+  makeExtractionPacket({ index: 100 + index, pageNumbers: [page.pageNumber] }),
+);
+const coverageBatches = coveragePackets.map((packet, index) => ({
+  batchId: `coverage-batch-${index + 1}`,
+  batchIndex: index,
+  batchKind: "text_question_batch",
+  inputBudget: {
+    estimatedChars: 300,
+    estimatedTokens: 75,
+    hasImageInput: false,
+    hasTextInput: true,
+  },
+  packetRefs: [
+    {
+      assetRefCount: 0,
+      boundaryRiskCount: 0,
+      estimatedChars: 300,
+      kind: packet.kind,
+      packetHash: packet.packetHash,
+      packetId: packet.packetId,
+      pageNumbers: packet.pageNumbers,
+      questionNumberHint: packet.questionNumberHint,
+    },
+  ],
+  recommendedInputMode: "text",
+  routingHints: [],
+  sourceKind: "pdf",
+  status: "planned",
+}));
+const coverageChunking = createAIPdfChunkingSummary({
+  chunkSizePages: 2,
+  overlapPages: 0,
+  pageCount: 6,
+});
+const coverageSummary = {
+  createdQuestions: [
+    {
+      id: "created-coverage-1",
+      questionCode: "COVERAGE_001",
+      sourcePages: [1, 2, 3],
+      title: "Covered early pages",
+    },
+  ],
+  aiPdfImport: {
+    ...taxonomyPersistenceMergedAiPdfImport,
+    chunking: coverageChunking,
+    extractionBatchPlan: {
+      batches: coverageBatches,
+      generatedAt: new Date(0).toISOString(),
+      sourceKind: "pdf",
+      stats: {
+        assetLinkedBatches: 0,
+        boundaryRiskBatches: 0,
+        estimatedTotalChars: 1800,
+        estimatedTotalTokens: 450,
+        mixedReviewBatches: 0,
+        singleImageBatches: 0,
+        skippedPackets: 0,
+        textQuestionBatches: 6,
+        totalBatches: 6,
+        totalPackets: 6,
+      },
+      status: "completed",
+      version: "extraction_batch_plan_v1",
+      warnings: [],
+    },
+    packetPlan: {
+      generatedAt: new Date(0).toISOString(),
+      packets: coveragePackets,
+      sourceKind: "pdf",
+      stats: {
+        assetLinkedPackets: 0,
+        boundaryRiskPackets: 0,
+        estimatedTotalChars: 1800,
+        pdfQuestionCandidatePackets: 6,
+        singleImagePackets: 0,
+        skippedPages: 0,
+        totalPackets: 6,
+      },
+      status: "completed",
+      version: "packet_plan_v1",
+      warnings: [],
+    },
+    pageCount: 6,
+    preanalysis: {
+      documentHints: {
+        hasAnswerMarkers: false,
+        hasChoiceMarkers: true,
+        hasQuestionMarkers: true,
+        likelyScannedPdf: false,
+      },
+      generatedAt: new Date(0).toISOString(),
+      pageCount: 6,
+      pages: coveragePreanalysisPages,
+      sourceKind: "pdf",
+      status: "completed",
+      textLayerAvailable: true,
+      version: "preanalysis_v1",
+      warnings: [],
+    },
+    sourceInput: "gemini_native_pdf",
+  },
+};
+const coverageAuditPlan =
+  buildAIExtractionCoverageAuditPlanFromSummary(coverageSummary);
+assert.equal(
+  coverageAuditPlan.version,
+  "extraction_coverage_audit_plan_v1",
+);
+assert.equal(coverageAuditPlan.mode, "planning_only");
+assert.equal(coverageAuditPlan.sourceKind, "pdf");
+assert.equal(coverageAuditPlan.strategy, "gemini_native_full_pdf");
+assert.equal(coverageAuditPlan.pageCoverage.totalPages, 6);
+assert.deepEqual(coverageAuditPlan.pageCoverage.extractedSourcePages, [1, 2, 3]);
+assert.deepEqual(coverageAuditPlan.pageCoverage.terminalUncoveredPages, [
+  4, 5, 6,
+]);
+assert.ok(
+  coverageAuditPlan.risks.some(
+    (risk) => risk.kind === "terminal_pages_missing_from_extraction",
+  ),
+);
+assert.ok(
+  coverageAuditPlan.risks.some(
+    (risk) => risk.kind === "full_pdf_silent_partial_risk",
+  ),
+);
+assert.ok(
+  coverageAuditPlan.risks.some((risk) => risk.kind === "packet_coverage_low"),
+);
+assert.ok(
+  coverageAuditPlan.risks.some((risk) => risk.kind === "batch_coverage_low"),
+);
+assert.ok(
+  coverageAuditPlan.recommendedRecoveryWindows.some(
+    (window) =>
+      window.reason === "terminal_uncovered_pages" &&
+      window.providerCallPlanned === false &&
+      window.reviewRequired === true,
+  ),
+);
+assert.ok(
+  coverageAuditPlan.warnings.includes(
+    "coverage_audit_full_pdf_silent_partial_risk",
+  ),
+);
+assert.ok(
+  coverageAuditPlan.warnings.includes(
+    "coverage_audit_terminal_pages_uncovered",
+  ),
+);
+assert.ok(
+  coverageAuditPlan.warnings.includes("coverage_audit_recovery_recommended"),
+);
+const missingSourceCoveragePlan =
+  buildAIExtractionCoverageAuditPlanFromSummary({
+    ...coverageSummary,
+    createdQuestions: [],
+  });
+assert.equal(missingSourceCoveragePlan.pageCoverage.pagesWithNoSourceRefs, true);
+assert.ok(
+  missingSourceCoveragePlan.warnings.includes(
+    "coverage_audit_source_page_refs_missing",
+  ),
+);
+const failedChunkCoveragePlan = buildAIExtractionCoverageAuditPlanFromSummary({
+  createdQuestions: [
+    {
+      id: "created-coverage-2",
+      questionCode: "COVERAGE_002",
+      sourcePages: [1, 2, 3, 4],
+      title: "Covered pages before failed chunk",
+    },
+  ],
+  aiPdfImport: {
+    ...coverageSummary.aiPdfImport,
+    chunking: patchAIPdfChunkingSummary({
+      chunkIndex: 2,
+      pageCount: 6,
+      patch: {
+        errorMessage: "Provider high demand.",
+        sourcePages: [5, 6],
+        status: "failed",
+      },
+      value: coverageChunking,
+    }),
+    sourceInput: "page_images",
+  },
+});
+assert.equal(failedChunkCoveragePlan.strategy, "page_images");
+assert.ok(
+  failedChunkCoveragePlan.risks.some(
+    (risk) => risk.kind === "chunk_partial_failure",
+  ),
+);
+assert.ok(
+  failedChunkCoveragePlan.recommendedRecoveryWindows.some(
+    (window) =>
+      window.reason === "failed_chunk_pages" &&
+      window.providerCallPlanned === false,
+  ),
+);
+assert.equal(
+  /reviewDraftTags|officialTagWrite|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(coverageAuditPlan),
+  ),
+  false,
+);
+const coverageMergedAiPdfImport = mergeAIExtractionCoverageAuditPlanIntoSummary(
+  taxonomyPersistenceMergedAiPdfImport,
+  coverageAuditPlan,
+);
+assert.equal(
+  coverageMergedAiPdfImport.extractionCoverageAuditPlan.version,
+  "extraction_coverage_audit_plan_v1",
+);
+assert.equal(
+  coverageMergedAiPdfImport.taxonomyPersistencePlan.version,
+  "taxonomy_persistence_plan_v1",
+);
+assert.equal(
+  coverageMergedAiPdfImport.taxonomyReviewPlan.version,
+  "taxonomy_review_plan_v1",
+);
+assert.equal(
+  coverageMergedAiPdfImport.taxonomyBootstrapPlan.version,
+  "taxonomy_bootstrap_plan_v1",
+);
+assert.equal(coverageMergedAiPdfImport.taggingV2Plan.version, "tagging_v2_plan_v1");
+assert.equal(
+  coverageMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  coverageMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  coverageMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  coverageMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  coverageMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  coverageMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  coverageMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(coverageMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(coverageMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(coverageMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(coverageMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(coverageMergedAiPdfImport.warnings, ["keep existing warning"]);
+console.log(
+  "PASS AI extraction coverage audit detects silent partial extraction without provider calls or recovery execution",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
