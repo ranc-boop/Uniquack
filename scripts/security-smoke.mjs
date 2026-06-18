@@ -96,6 +96,10 @@ const {
   mergeAIExtractionCoverageAuditPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/extraction-coverage-audit.ts");
 const {
+  buildAICoverageRecoveryPlanFromSummary,
+  mergeAICoverageRecoveryPlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/coverage-recovery.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -2896,6 +2900,184 @@ assert.equal(coverageMergedAiPdfImport.provider.id, "provider-1");
 assert.deepEqual(coverageMergedAiPdfImport.warnings, ["keep existing warning"]);
 console.log(
   "PASS AI extraction coverage audit detects silent partial extraction without provider calls or recovery execution",
+);
+
+const coverageRecoveryPlan =
+  buildAICoverageRecoveryPlanFromSummary(coverageMergedAiPdfImport);
+assert.equal(coverageRecoveryPlan.version, "coverage_recovery_plan_v1");
+assert.equal(coverageRecoveryPlan.mode, "planning_only");
+assert.equal(coverageRecoveryPlan.sourceKind, "pdf");
+assert.equal(coverageRecoveryPlan.sourceAuditPlanPresent, true);
+assert.ok(coverageRecoveryPlan.recoveryTasks.length > 0);
+assert.ok(coverageRecoveryPlan.requestDrafts.length > 0);
+assert.ok(
+  coverageRecoveryPlan.recoveryTasks.some(
+    (task) => task.kind === "terminal_page_recovery",
+  ),
+);
+assert.ok(
+  coverageRecoveryPlan.recoveryTasks.some(
+    (task) => task.kind === "uncovered_question_like_page_recovery",
+  ),
+);
+assert.ok(
+  coverageRecoveryPlan.recoveryTasks.some(
+    (task) => task.kind === "low_packet_coverage_review",
+  ),
+);
+assert.ok(
+  coverageRecoveryPlan.requestDrafts.some(
+    (request) => request.requestKind === "coverage_terminal_page_extraction",
+  ),
+);
+assert.equal(
+  coverageRecoveryPlan.requestDrafts.every(
+    (request) =>
+      request.pageNumbers.length > 0 &&
+      request.promptContract.boundedPagesOnly === true &&
+      request.promptContract.recoverMissingQuestionsOnly === true &&
+      request.promptContract.doNotReextractCoveredPages === true &&
+      request.promptContract.preserveExistingDrafts === true &&
+      request.promptContract.requireSourcePageRefs === true &&
+      request.promptContract.requireCompletionSentinel === true &&
+      request.providerRouting.realCall === false &&
+      request.providerRouting.shadowOnly === true &&
+      request.safety.noProviderCall === true &&
+      request.safety.noReviewDraftWrite === true &&
+      request.safety.noOfficialTaxonomyWrite === true &&
+      request.safety.noDbMutation === true &&
+      request.safety.noRawResponseStorage === true,
+  ),
+  true,
+);
+assert.equal(
+  coverageRecoveryPlan.recoveryTasks.every(
+    (task) =>
+      task.reviewRequired === true &&
+      task.execution.providerCallPlanned === true &&
+      task.execution.providerCallExecuted === false &&
+      task.execution.reviewDraftWritePlanned === false &&
+      task.execution.reviewDraftWriteExecuted === false &&
+      task.execution.officialMergePlanned === false,
+  ),
+  true,
+);
+assert.ok(
+  coverageRecoveryPlan.warnings.includes("coverage_recovery_planning_only"),
+);
+assert.ok(
+  coverageRecoveryPlan.warnings.includes("coverage_recovery_no_provider_call"),
+);
+assert.ok(
+  coverageRecoveryPlan.warnings.includes("coverage_recovery_no_execution"),
+);
+assert.ok(
+  coverageRecoveryPlan.warnings.includes(
+    "coverage_recovery_no_review_draft_write",
+  ),
+);
+assert.ok(
+  coverageRecoveryPlan.warnings.includes("coverage_recovery_no_db_mutation"),
+);
+assert.ok(
+  coverageRecoveryPlan.warnings.includes(
+    "coverage_recovery_terminal_pages_planned",
+  ),
+);
+const failedChunkRecoveryPlan = buildAICoverageRecoveryPlanFromSummary({
+  aiPdfImport: {
+    extractionCoverageAuditPlan: failedChunkCoveragePlan,
+  },
+});
+assert.ok(
+  failedChunkRecoveryPlan.recoveryTasks.some(
+    (task) => task.kind === "failed_chunk_recovery",
+  ),
+);
+assert.ok(
+  failedChunkRecoveryPlan.requestDrafts.some(
+    (request) => request.requestKind === "coverage_failed_chunk_retry",
+  ),
+);
+const missingAuditRecoveryPlan = buildAICoverageRecoveryPlanFromSummary({});
+assert.equal(missingAuditRecoveryPlan.status, "skipped");
+assert.equal(missingAuditRecoveryPlan.sourceAuditPlanPresent, false);
+assert.ok(
+  missingAuditRecoveryPlan.warnings.includes(
+    "coverage_recovery_missing_coverage_audit_plan",
+  ),
+);
+assert.equal(
+  /reviewDraftTags|officialTagWrite|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(coverageRecoveryPlan),
+  ),
+  false,
+);
+const coverageRecoveryMergedAiPdfImport = mergeAICoverageRecoveryPlanIntoSummary(
+  coverageMergedAiPdfImport,
+  coverageRecoveryPlan,
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.coverageRecoveryPlan.version,
+  "coverage_recovery_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.extractionCoverageAuditPlan.version,
+  "extraction_coverage_audit_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.taxonomyPersistencePlan.version,
+  "taxonomy_persistence_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.taxonomyReviewPlan.version,
+  "taxonomy_review_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.taxonomyBootstrapPlan.version,
+  "taxonomy_bootstrap_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.taggingV2Plan.version,
+  "tagging_v2_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(coverageRecoveryMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(coverageRecoveryMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(coverageRecoveryMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(coverageRecoveryMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(coverageRecoveryMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+console.log(
+  "PASS AI coverage recovery plans bounded shadow requests without provider calls or draft writes",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({

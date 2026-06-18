@@ -121,6 +121,12 @@ import {
   mergeAIExtractionCoverageAuditPlanIntoSummary,
   type AIExtractionCoverageAuditPlan,
 } from "@/lib/ai-pdf-import/extraction-coverage-audit";
+import {
+  buildAICoverageRecoveryPlanFromSummary,
+  failedAICoverageRecoveryPlan,
+  mergeAICoverageRecoveryPlanIntoSummary,
+  type AICoverageRecoveryPlan,
+} from "@/lib/ai-pdf-import/coverage-recovery";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -813,6 +819,65 @@ async function updateAIExtractionCoverageAuditPlan({
   }
 }
 
+async function updateAICoverageRecoveryPlan({
+  input,
+  recoveryPlan,
+}: {
+  input: ProcessInput;
+  recoveryPlan: AICoverageRecoveryPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAICoverageRecoveryPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    recoveryPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreCoverageRecoveryPlan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const current = await loadCurrentAIPdfSummary(input);
+    const recoveryPlan = buildAICoverageRecoveryPlanFromSummary(
+      current.summary,
+    );
+    await updateAICoverageRecoveryPlan({ input, recoveryPlan });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI coverage recovery plan failed.";
+
+    await updateAICoverageRecoveryPlan({
+      input,
+      recoveryPlan: failedAICoverageRecoveryPlan({
+        warnings: [`coverage recovery plan failed: ${message}`],
+      }),
+    });
+  }
+}
+
 async function generateAndStoreExtractionCoverageAuditPlan({
   input,
 }: {
@@ -824,6 +889,7 @@ async function generateAndStoreExtractionCoverageAuditPlan({
       current.summary,
     );
     await updateAIExtractionCoverageAuditPlan({ auditPlan, input });
+    await generateAndStoreCoverageRecoveryPlan({ input });
   } catch (error) {
     const message =
       error instanceof Error
@@ -836,6 +902,7 @@ async function generateAndStoreExtractionCoverageAuditPlan({
       }),
       input,
     });
+    await generateAndStoreCoverageRecoveryPlan({ input });
   }
 }
 
