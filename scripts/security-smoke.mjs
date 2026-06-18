@@ -100,6 +100,12 @@ const {
   mergeAICoverageRecoveryPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/coverage-recovery.ts");
 const {
+  buildAICoverageRecoveryRunPlanFromSummary,
+  buildCoverageRecoveryRunItem,
+  mergeAICoverageRecoveryRunPlanIntoSummary,
+  validateCoverageRecoveryRequestDraft,
+} = await import("../src/lib/ai-pdf-import/coverage-recovery-runner.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -3078,6 +3084,193 @@ assert.deepEqual(coverageRecoveryMergedAiPdfImport.warnings, [
 ]);
 console.log(
   "PASS AI coverage recovery plans bounded shadow requests without provider calls or draft writes",
+);
+
+const coverageRecoveryRunPlan = buildAICoverageRecoveryRunPlanFromSummary({
+  aiPdfImport: coverageRecoveryMergedAiPdfImport,
+});
+assert.equal(
+  coverageRecoveryRunPlan.version,
+  "coverage_recovery_run_plan_v1",
+);
+assert.equal(coverageRecoveryRunPlan.mode, "dry_run_only");
+assert.equal(coverageRecoveryRunPlan.sourceKind, "pdf");
+assert.equal(coverageRecoveryRunPlan.sourceRecoveryPlanPresent, true);
+assert.ok(coverageRecoveryRunPlan.runItems.length > 0);
+assert.equal(
+  coverageRecoveryRunPlan.stats.requestDraftCount,
+  coverageRecoveryPlan.requestDrafts.length,
+);
+assert.ok(coverageRecoveryRunPlan.stats.dryRunReadyCount > 0);
+assert.ok(coverageRecoveryRunPlan.stats.terminalPageRunCount > 0);
+assert.ok(coverageRecoveryRunPlan.stats.uncoveredPageRunCount > 0);
+assert.equal(
+  coverageRecoveryRunPlan.runItems.every(
+    (item) =>
+      item.status === "dry_run_ready" &&
+      item.pageNumbers.length > 0 &&
+      item.sourceRequestId.length > 0 &&
+      item.sourceRequestHash.length > 0 &&
+      item.sourceTaskId.length > 0 &&
+      item.validation.valid === true &&
+      item.validation.hasBoundedPages === true &&
+      item.validation.realCallFalse === true &&
+      item.validation.shadowOnlyTrue === true &&
+      item.validation.noProviderCallTrue === true &&
+      item.validation.noReviewDraftWriteTrue === true &&
+      item.validation.noDbMutationTrue === true &&
+      item.validation.hasSourcePageRefsRequirement === true &&
+      item.validation.hasCompletionSentinelRequirement === true &&
+      item.validation.preservesExistingDrafts === true &&
+      item.validation.blocksCoveredPageReextraction === true &&
+      item.dryRunResult.wouldRunInFuture === true &&
+      item.dryRunResult.simulatedContent === null &&
+      item.dryRunResult.expectedOutputContract.humanReviewRequired === true &&
+      item.safety.dryRunOnly === true &&
+      item.safety.realProviderCall === false &&
+      item.safety.providerCallExecuted === false &&
+      item.safety.reviewDraftWriteExecuted === false &&
+      item.safety.officialMergeExecuted === false &&
+      item.safety.dbMutationExecuted === false &&
+      item.safety.rawResponseStored === false &&
+      item.safety.fakeRecoveredContentGenerated === false,
+  ),
+  true,
+);
+assert.ok(
+  coverageRecoveryRunPlan.runItems.some(
+    (item) => item.requestKind === "coverage_terminal_page_extraction",
+  ),
+);
+assert.ok(
+  coverageRecoveryRunPlan.runItems.some(
+    (item) => item.requestKind === "coverage_uncovered_page_extraction",
+  ),
+);
+const failedChunkRecoveryRunPlan = buildAICoverageRecoveryRunPlanFromSummary({
+  aiPdfImport: {
+    coverageRecoveryPlan: failedChunkRecoveryPlan,
+  },
+});
+assert.ok(
+  failedChunkRecoveryRunPlan.runItems.some(
+    (item) => item.requestKind === "coverage_failed_chunk_retry",
+  ),
+);
+const invalidRecoveryRequest = {
+  ...coverageRecoveryPlan.requestDrafts[0],
+  pageNumbers: [],
+  promptContract: {
+    ...coverageRecoveryPlan.requestDrafts[0].promptContract,
+    requireCompletionSentinel: false,
+  },
+  providerRouting: {
+    ...coverageRecoveryPlan.requestDrafts[0].providerRouting,
+    realCall: true,
+  },
+  safety: {
+    ...coverageRecoveryPlan.requestDrafts[0].safety,
+    noDbMutation: false,
+  },
+};
+const invalidRecoveryValidation =
+  validateCoverageRecoveryRequestDraft(invalidRecoveryRequest);
+assert.equal(invalidRecoveryValidation.valid, false);
+assert.ok(invalidRecoveryValidation.errors.length >= 3);
+const invalidRecoveryRunItem =
+  buildCoverageRecoveryRunItem(invalidRecoveryRequest);
+assert.equal(invalidRecoveryRunItem.item?.status, "dry_run_blocked");
+assert.equal(invalidRecoveryRunItem.skippedItem?.reason, "missing_page_numbers");
+const missingRecoveryRunPlan = buildAICoverageRecoveryRunPlanFromSummary({});
+assert.equal(missingRecoveryRunPlan.status, "skipped");
+assert.equal(missingRecoveryRunPlan.sourceRecoveryPlanPresent, false);
+assert.ok(
+  missingRecoveryRunPlan.warnings.includes(
+    "coverage_recovery_run_missing_recovery_plan",
+  ),
+);
+assert.equal(
+  /reviewDraftTags|officialTagWrite|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes|fakeRecoveredQuestion/i.test(
+    JSON.stringify(coverageRecoveryRunPlan),
+  ),
+  false,
+);
+const coverageRecoveryRunMergedAiPdfImport =
+  mergeAICoverageRecoveryRunPlanIntoSummary(
+    coverageRecoveryMergedAiPdfImport,
+    coverageRecoveryRunPlan,
+  );
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.coverageRecoveryRunPlan.version,
+  "coverage_recovery_run_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.coverageRecoveryPlan.version,
+  "coverage_recovery_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.extractionCoverageAuditPlan.version,
+  "extraction_coverage_audit_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.taxonomyPersistencePlan.version,
+  "taxonomy_persistence_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.taxonomyReviewPlan.version,
+  "taxonomy_review_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.taxonomyBootstrapPlan.version,
+  "taxonomy_bootstrap_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.taggingV2Plan.version,
+  "tagging_v2_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.packetPlan.version,
+  "packet_plan_v1",
+);
+assert.equal(
+  coverageRecoveryRunMergedAiPdfImport.preanalysis.version,
+  "preanalysis_v1",
+);
+assert.equal(coverageRecoveryRunMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(coverageRecoveryRunMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(coverageRecoveryRunMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+console.log(
+  "PASS AI coverage recovery runner creates dry-run metadata without provider calls or draft writes",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
