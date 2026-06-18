@@ -1,3 +1,5 @@
+import "server-only";
+
 type GeminiFetch = typeof fetch;
 
 type GeminiFile = {

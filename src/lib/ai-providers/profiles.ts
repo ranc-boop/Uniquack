@@ -1,9 +1,12 @@
+import "server-only";
+
 import type { AIProviderProfile } from "@/types/database";
 import {
   apiKeyLast4,
   decryptSecret,
   encryptSecret,
 } from "@/lib/ai-providers/encryption";
+import { requireAIProviderGatewayToken } from "@/lib/ai-providers/gateway-token";
 
 type SupabaseLike = {
   from: (table: string) => any;
@@ -30,13 +33,10 @@ export type SafeAIProviderProfile = Pick<
 >;
 
 export async function listSafeAIProviderProfiles(supabase: SupabaseLike) {
-  const { data, error } = await supabase
-    .from("ai_provider_profiles")
-    .select(
-      "id, name, provider, base_url, model, enabled, is_default, supports_pdf_input, supports_vision_images, api_key_last4, created_at, updated_at",
-    )
-    .order("name", { ascending: true })
-    .limit(100);
+  const { data, error } = await (supabase as SupabaseRpcLike).rpc(
+    "list_ai_provider_profiles_for_gateway",
+    { gateway_token: requireAIProviderGatewayToken() },
+  );
 
   if (error) {
     throw new Error(error.message);
@@ -47,7 +47,8 @@ export async function listSafeAIProviderProfiles(supabase: SupabaseLike) {
 
 export async function listEnabledAIProviderProfiles(supabase: SupabaseLike) {
   const { data, error } = await (supabase as SupabaseRpcLike).rpc(
-    "list_enabled_ai_provider_profiles",
+    "list_enabled_ai_provider_profiles_for_gateway",
+    { gateway_token: requireAIProviderGatewayToken() },
   );
 
   if (error) {
@@ -64,24 +65,26 @@ export async function loadAIProviderProfileForUse({
   profileId: string;
   supabase: SupabaseLike;
 }) {
-  const { data, error } = await supabase
-    .from("ai_provider_profiles")
-    .select("*")
-    .eq("id", profileId)
-    .eq("enabled", true)
-    .not("api_key_ciphertext", "is", null)
-    .not("api_key_iv", "is", null)
-    .not("api_key_tag", "is", null)
-    .maybeSingle();
+  const { data, error } = await (supabase as SupabaseRpcLike).rpc(
+    "get_ai_provider_profile_for_gateway",
+    {
+      gateway_token: requireAIProviderGatewayToken(),
+      profile_id: profileId,
+    },
+  );
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const profile = data as AIProviderProfile | null;
+  const profile = (Array.isArray(data) ? data[0] : data) as AIProviderProfile | null;
 
   if (!profile) {
     throw new Error("AI provider profile is not available for import.");
+  }
+
+  if (!profile.enabled) {
+    throw new Error("AI provider profile is disabled.");
   }
 
   return {
@@ -101,24 +104,24 @@ export async function loadSafeAIProviderProfileForUse({
   profileId: string;
   supabase: SupabaseLike;
 }) {
-  const { data, error } = await supabase
-    .from("ai_provider_profiles")
-    .select(
-      "id, name, provider, base_url, model, enabled, is_default, supports_pdf_input, supports_vision_images, api_key_last4, created_at, updated_at",
-    )
-    .eq("id", profileId)
-    .eq("enabled", true)
-    .maybeSingle();
+  const { data, error } = await (supabase as SupabaseRpcLike).rpc(
+    "list_enabled_ai_provider_profiles_for_gateway",
+    { gateway_token: requireAIProviderGatewayToken() },
+  );
 
   if (error) {
     throw new Error(error.message);
   }
 
-  if (!data) {
+  const profile = (data ?? []).find(
+    (item: SafeAIProviderProfile) => item.id === profileId,
+  );
+
+  if (!profile) {
     throw new Error("AI provider profile is not available for import.");
   }
 
-  return data as SafeAIProviderProfile;
+  return profile as SafeAIProviderProfile;
 }
 
 export async function clearDefaultProfile({
