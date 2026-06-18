@@ -115,6 +115,12 @@ import {
   mergeAITaxonomyPersistencePlanIntoSummary,
   type AITaxonomyPersistencePlan,
 } from "@/lib/ai-pdf-import/taxonomy-persistence";
+import {
+  buildAIExtractionCoverageAuditPlanFromSummary,
+  failedAIExtractionCoverageAuditPlan,
+  mergeAIExtractionCoverageAuditPlanIntoSummary,
+  type AIExtractionCoverageAuditPlan,
+} from "@/lib/ai-pdf-import/extraction-coverage-audit";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -770,6 +776,65 @@ async function generateAndStoreTaxonomyPersistencePlan({
       taxonomyPersistencePlan: failedAITaxonomyPersistencePlan({
         warnings: [`taxonomy persistence plan failed: ${message}`],
       }),
+    });
+  }
+}
+
+async function updateAIExtractionCoverageAuditPlan({
+  auditPlan,
+  input,
+}: {
+  auditPlan: AIExtractionCoverageAuditPlan;
+  input: ProcessInput;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIExtractionCoverageAuditPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    auditPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreExtractionCoverageAuditPlan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const current = await loadCurrentAIPdfSummary(input);
+    const auditPlan = buildAIExtractionCoverageAuditPlanFromSummary(
+      current.summary,
+    );
+    await updateAIExtractionCoverageAuditPlan({ auditPlan, input });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI extraction coverage audit failed.";
+
+    await updateAIExtractionCoverageAuditPlan({
+      auditPlan: failedAIExtractionCoverageAuditPlan({
+        warnings: [`coverage audit failed: ${message}`],
+      }),
+      input,
     });
   }
 }
@@ -2004,6 +2069,8 @@ async function processAIPdfSinglePass({
     throw new Error(error.message);
   }
 
+  await generateAndStoreExtractionCoverageAuditPlan({ input });
+
   return finalSummary;
 }
 
@@ -2390,6 +2457,8 @@ export async function processAIPdfImport(input: ProcessInput) {
   if (error) {
     throw new Error(error.message);
   }
+
+  await generateAndStoreExtractionCoverageAuditPlan({ input });
 
   return finalSummary;
 }
