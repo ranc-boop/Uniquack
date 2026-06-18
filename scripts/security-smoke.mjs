@@ -87,6 +87,11 @@ const {
   validateTaxonomyReviewAction,
 } = await import("../src/lib/ai-pdf-import/taxonomy-review.ts");
 const {
+  buildAITaxonomyPersistencePlanFromSummary,
+  mergeAITaxonomyPersistencePlanIntoSummary,
+  validateTaxonomyPersistencePlan,
+} = await import("../src/lib/ai-pdf-import/taxonomy-persistence.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -2394,6 +2399,220 @@ assert.ok(
 );
 console.log(
   "PASS AI taxonomy review actions create human-review-required preview-only plans without DB mutation",
+);
+
+const taxonomyPersistencePlan = buildAITaxonomyPersistencePlanFromSummary(
+  taxonomyReviewMergedAiPdfImport,
+);
+assert.equal(taxonomyPersistencePlan.version, "taxonomy_persistence_plan_v1");
+assert.equal(taxonomyPersistencePlan.mode, "planning_only");
+assert.equal(taxonomyPersistencePlan.taxonomyVersion, "edu_taxonomy_v1");
+assert.equal(taxonomyPersistencePlan.sourcePlans.taggingV2PlanPresent, true);
+assert.equal(
+  taxonomyPersistencePlan.sourcePlans.taxonomyBootstrapPlanPresent,
+  true,
+);
+assert.equal(taxonomyPersistencePlan.sourcePlans.taxonomyReviewPlanPresent, true);
+assert.equal(
+  taxonomyPersistencePlan.proposedStorageModel.mode,
+  "proposal_only",
+);
+assert.equal(taxonomyPersistencePlan.proposedStorageModel.noMigrationAdded, true);
+const proposedTableNames = taxonomyPersistencePlan.proposedStorageModel.tables.map(
+  (table) => table.tableName,
+);
+for (const tableName of [
+  "taxonomy_packs",
+  "taxonomy_tags",
+  "taxonomy_tag_aliases",
+  "taxonomy_tag_edges",
+  "taxonomy_review_actions",
+  "taxonomy_pack_versions",
+  "question_tag_assignments",
+]) {
+  assert.ok(proposedTableNames.includes(tableName));
+}
+assert.equal(
+  taxonomyPersistencePlan.proposedStorageModel.tables.find(
+    (table) => table.tableName === "question_tag_assignments",
+  )?.requiredForPhase,
+  "future_question_assignment",
+);
+assert.ok(taxonomyPersistencePlan.proposedStorageModel.relationships.length > 0);
+assert.ok(taxonomyPersistencePlan.proposedStorageModel.indexes.length > 0);
+assert.ok(taxonomyPersistencePlan.proposedStorageModel.rlsNotes.length > 0);
+assert.equal(
+  taxonomyPersistencePlan.proposedAdminContracts.length >= 10,
+  true,
+);
+assert.equal(
+  taxonomyPersistencePlan.proposedAdminContracts.every(
+    (contract) => contract.allowedRoles.length > 0,
+  ),
+  true,
+);
+assert.equal(
+  taxonomyPersistencePlan.proposedAdminContracts.every(
+    (contract) => contract.producesAuditEvent === true,
+  ),
+  true,
+);
+assert.equal(
+  taxonomyPersistencePlan.proposedAdminContracts.every(
+    (contract) => contract.implementedNow === false,
+  ),
+  true,
+);
+assert.equal(
+  taxonomyPersistencePlan.proposedMigrationPlan.mode,
+  "proposal_only",
+);
+assert.equal(
+  taxonomyPersistencePlan.proposedMigrationPlan.noMigrationAdded,
+  true,
+);
+assert.ok(taxonomyPersistencePlan.proposedMigrationPlan.phases.length > 0);
+assert.equal(
+  taxonomyPersistencePlan.proposedVersioningPlan.packVersionStrategy,
+  "immutable_pack_versions",
+);
+assert.equal(
+  taxonomyPersistencePlan.proposedVersioningPlan.tagIdStability,
+  "stable_official_ids",
+);
+assert.equal(
+  taxonomyPersistencePlan.proposedVersioningPlan.deprecationStrategy,
+  "soft_deprecate_do_not_delete",
+);
+assert.ok(taxonomyPersistencePlan.proposedAuditPlan.auditEvents.length > 0);
+assert.equal(taxonomyPersistencePlan.validation.noDbMutation, true);
+assert.equal(taxonomyPersistencePlan.validation.noMigrationAdded, true);
+assert.equal(taxonomyPersistencePlan.validation.noOfficialPromotion, true);
+assert.equal(
+  taxonomyPersistencePlan.validation.adminContractsRequireRoles,
+  true,
+);
+assert.equal(
+  taxonomyPersistencePlan.validation.auditRequiredForMutations,
+  true,
+);
+assert.equal(
+  taxonomyPersistencePlan.validation.softDeleteOrDeprecationOnly,
+  true,
+);
+const standalonePersistenceValidation = validateTaxonomyPersistencePlan({
+  adminContracts: taxonomyPersistencePlan.proposedAdminContracts,
+  proposedStorageModel: taxonomyPersistencePlan.proposedStorageModel,
+  sourceReviewPlanPresent: true,
+});
+assert.equal(standalonePersistenceValidation.valid, true);
+assert.ok(
+  taxonomyPersistencePlan.warnings.includes(
+    "taxonomy_persistence_planning_only",
+  ),
+);
+assert.ok(
+  taxonomyPersistencePlan.warnings.includes(
+    "taxonomy_persistence_no_db_mutation",
+  ),
+);
+assert.ok(
+  taxonomyPersistencePlan.warnings.includes(
+    "taxonomy_persistence_no_migration_added",
+  ),
+);
+assert.ok(
+  taxonomyPersistencePlan.warnings.includes(
+    "taxonomy_persistence_no_official_promotion",
+  ),
+);
+assert.ok(
+  taxonomyPersistencePlan.warnings.includes(
+    "taxonomy_persistence_question_assignment_proposal_only",
+  ),
+);
+assert.equal(
+  /reviewDraftTags|officialTagWrite|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(taxonomyPersistencePlan),
+  ),
+  false,
+);
+const taxonomyPersistenceMergedAiPdfImport =
+  mergeAITaxonomyPersistencePlanIntoSummary(
+    taxonomyReviewMergedAiPdfImport,
+    taxonomyPersistencePlan,
+  );
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.taxonomyPersistencePlan.version,
+  "taxonomy_persistence_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.taxonomyReviewPlan.version,
+  "taxonomy_review_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.taxonomyBootstrapPlan.version,
+  "taxonomy_bootstrap_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.taggingV2Plan.version,
+  "tagging_v2_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.packetPlan.version,
+  "packet_plan_v1",
+);
+assert.equal(
+  taxonomyPersistenceMergedAiPdfImport.preanalysis.version,
+  "preanalysis_v1",
+);
+assert.equal(taxonomyPersistenceMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(taxonomyPersistenceMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(taxonomyPersistenceMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+const missingReviewPersistencePlan =
+  buildAITaxonomyPersistencePlanFromSummary({});
+assert.equal(missingReviewPersistencePlan.status, "skipped");
+assert.equal(
+  missingReviewPersistencePlan.sourcePlans.taxonomyReviewPlanPresent,
+  false,
+);
+assert.ok(
+  missingReviewPersistencePlan.warnings.includes(
+    "taxonomy_persistence_review_plan_missing",
+  ),
+);
+console.log(
+  "PASS AI taxonomy persistence proposes admin/storage contracts without migrations or DB mutation",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({

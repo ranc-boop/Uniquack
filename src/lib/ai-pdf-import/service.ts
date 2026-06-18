@@ -109,6 +109,12 @@ import {
   mergeAITaxonomyReviewPlanIntoSummary,
   type AITaxonomyReviewPlan,
 } from "@/lib/ai-pdf-import/taxonomy-review";
+import {
+  buildAITaxonomyPersistencePlanFromSummary,
+  failedAITaxonomyPersistencePlan,
+  mergeAITaxonomyPersistencePlanIntoSummary,
+  type AITaxonomyPersistencePlan,
+} from "@/lib/ai-pdf-import/taxonomy-persistence";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -709,6 +715,65 @@ async function updateAITaxonomyReviewPlan({
   }
 }
 
+async function updateAITaxonomyPersistencePlan({
+  input,
+  taxonomyPersistencePlan,
+}: {
+  input: ProcessInput;
+  taxonomyPersistencePlan: AITaxonomyPersistencePlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAITaxonomyPersistencePlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    taxonomyPersistencePlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreTaxonomyPersistencePlan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const current = await loadCurrentAIPdfSummary(input);
+    const taxonomyPersistencePlan =
+      buildAITaxonomyPersistencePlanFromSummary(current.aiPdfImport);
+    await updateAITaxonomyPersistencePlan({ input, taxonomyPersistencePlan });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI taxonomy persistence plan failed.";
+
+    await updateAITaxonomyPersistencePlan({
+      input,
+      taxonomyPersistencePlan: failedAITaxonomyPersistencePlan({
+        warnings: [`taxonomy persistence plan failed: ${message}`],
+      }),
+    });
+  }
+}
+
 async function generateAndStoreTaxonomyReviewPlan({
   input,
 }: {
@@ -720,6 +785,7 @@ async function generateAndStoreTaxonomyReviewPlan({
       current.aiPdfImport.taxonomyBootstrapPlan,
     );
     await updateAITaxonomyReviewPlan({ input, taxonomyReviewPlan });
+    await generateAndStoreTaxonomyPersistencePlan({ input });
   } catch (error) {
     const message =
       error instanceof Error
@@ -732,6 +798,7 @@ async function generateAndStoreTaxonomyReviewPlan({
         warnings: [`taxonomy review plan failed: ${message}`],
       }),
     });
+    await generateAndStoreTaxonomyPersistencePlan({ input });
   }
 }
 
