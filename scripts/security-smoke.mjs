@@ -106,6 +106,10 @@ const {
   validateCoverageRecoveryRequestDraft,
 } = await import("../src/lib/ai-pdf-import/coverage-recovery-runner.ts");
 const {
+  buildAICoverageRecoveryMergePlanFromSummary,
+  mergeAICoverageRecoveryMergePlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/coverage-recovery-merge.ts");
+const {
   generateAIPdfQuestionCodeForImport,
   visibleQuestionNumberKey,
 } = await import("../src/lib/ai-pdf-import/question-code.ts");
@@ -3271,6 +3275,179 @@ assert.deepEqual(coverageRecoveryRunMergedAiPdfImport.warnings, [
 ]);
 console.log(
   "PASS AI coverage recovery runner creates dry-run metadata without provider calls or draft writes",
+);
+
+const coverageRecoveryMergePlan = buildAICoverageRecoveryMergePlanFromSummary({
+  aiPdfImport: coverageRecoveryRunMergedAiPdfImport,
+});
+assert.equal(
+  coverageRecoveryMergePlan.version,
+  "coverage_recovery_merge_plan_v1",
+);
+assert.equal(coverageRecoveryMergePlan.mode, "planning_only");
+assert.equal(coverageRecoveryMergePlan.sourceKind, "pdf");
+assert.equal(coverageRecoveryMergePlan.sourceRecoveryRunPlanPresent, true);
+assert.ok(coverageRecoveryMergePlan.mergeItems.length > 0);
+assert.ok(coverageRecoveryMergePlan.duplicateGuards.length > 0);
+assert.ok(coverageRecoveryMergePlan.stats.futureSuggestionCount > 0);
+assert.ok(coverageRecoveryMergePlan.stats.blockedUntilRecoveryResultCount > 0);
+assert.equal(
+  coverageRecoveryMergePlan.mergePolicy.policyVersion,
+  "coverage_recovery_merge_policy_v1",
+);
+assert.equal(
+  coverageRecoveryMergePlan.mergePolicy.existingDraftsHandling,
+  "preserve_all_existing_drafts",
+);
+assert.equal(
+  coverageRecoveryMergePlan.mergePolicy.duplicateHandling,
+  "block_or_review_on_duplicate_risk",
+);
+assert.equal(coverageRecoveryMergePlan.mergePolicy.sourcePageRefsRequired, true);
+assert.equal(
+  coverageRecoveryMergePlan.mergePolicy.completionSentinelRequired,
+  true,
+);
+assert.equal(coverageRecoveryMergePlan.mergePolicy.humanReviewRequired, true);
+assert.equal(coverageRecoveryMergePlan.mergePolicy.officialMergeAllowed, false);
+assert.equal(
+  coverageRecoveryMergePlan.mergePolicy.reviewDraftWriteAllowedNow,
+  false,
+);
+assert.equal(coverageRecoveryMergePlan.mergePolicy.dbMutationAllowedNow, false);
+assert.equal(
+  coverageRecoveryMergePlan.mergeItems.every(
+    (item) =>
+      item.plannedSuggestion.contentAvailableNow === false &&
+      item.plannedSuggestion.futureRecoveredContentRequired === true &&
+      item.plannedSuggestion.recoveredContentPlaceholder === null &&
+      item.safety.planningOnly === true &&
+      item.safety.officialMerge === false &&
+      item.safety.reviewDraftWrite === false &&
+      item.safety.overwriteExistingDraft === false &&
+      item.safety.deleteExistingDraft === false &&
+      item.safety.mutateExistingQuestion === false &&
+      item.safety.requireHumanReview === true &&
+      item.safety.preserveExistingDrafts === true &&
+      item.safety.attachAsSuggestionOnly === true &&
+      item.safety.noFakeRecoveredContent === true &&
+      item.review.required === true &&
+      item.review.approved === false &&
+      item.review.executed === false,
+  ),
+  true,
+);
+assert.ok(
+  coverageRecoveryMergePlan.mergeItems.some(
+    (item) =>
+      item.kind === "future_recovered_question_suggestion" &&
+      item.status === "blocked_until_recovery_result" &&
+      item.plannedSuggestion.mergeMode === "append_as_review_suggestion",
+  ),
+);
+assert.equal(
+  coverageRecoveryMergePlan.duplicateGuards.every(
+    (guard) =>
+      guard.requiredBeforeExecution === true &&
+      guard.currentResult === "not_run_planning_only",
+  ),
+  true,
+);
+const missingRecoveryMergePlan =
+  buildAICoverageRecoveryMergePlanFromSummary({});
+assert.equal(missingRecoveryMergePlan.status, "skipped");
+assert.equal(missingRecoveryMergePlan.sourceRecoveryRunPlanPresent, false);
+assert.ok(
+  missingRecoveryMergePlan.warnings.includes(
+    "coverage_recovery_merge_missing_run_plan",
+  ),
+);
+assert.equal(
+  /reviewDraftTags|officialTagWrite|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes|fakeRecoveredQuestion|recoveredContentPlaceholder\":\"[^n]/i.test(
+    JSON.stringify(coverageRecoveryMergePlan),
+  ),
+  false,
+);
+const coverageRecoveryMergeMergedAiPdfImport =
+  mergeAICoverageRecoveryMergePlanIntoSummary(
+    coverageRecoveryRunMergedAiPdfImport,
+    coverageRecoveryMergePlan,
+  );
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.coverageRecoveryMergePlan.version,
+  "coverage_recovery_merge_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.coverageRecoveryRunPlan.version,
+  "coverage_recovery_run_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.coverageRecoveryPlan.version,
+  "coverage_recovery_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.extractionCoverageAuditPlan.version,
+  "extraction_coverage_audit_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.taxonomyPersistencePlan.version,
+  "taxonomy_persistence_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.taxonomyReviewPlan.version,
+  "taxonomy_review_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.taxonomyBootstrapPlan.version,
+  "taxonomy_bootstrap_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.taggingV2Plan.version,
+  "tagging_v2_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.packetPlan.version,
+  "packet_plan_v1",
+);
+assert.equal(
+  coverageRecoveryMergeMergedAiPdfImport.preanalysis.version,
+  "preanalysis_v1",
+);
+assert.equal(coverageRecoveryMergeMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(coverageRecoveryMergeMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(coverageRecoveryMergeMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+console.log(
+  "PASS AI coverage recovery merge planner creates suggestion-only metadata with duplicate guards",
 );
 
 let staleOverwriteChunking = createAIPdfChunkingSummary({
