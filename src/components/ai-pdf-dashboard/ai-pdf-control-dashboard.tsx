@@ -4,6 +4,7 @@ import {
   ChunkStatusPanel,
   type LegacyAIPdfChunk,
 } from "@/components/ai-pdf-dashboard/chunk-status-panel";
+import { CoverageWarningCard } from "@/components/ai-pdf-dashboard/coverage-warning-card";
 import { FigureReviewCard } from "@/components/ai-pdf-dashboard/figure-review-card";
 import { PipelineTimeline } from "@/components/ai-pdf-dashboard/pipeline-timeline";
 import { ProviderSummaryCards } from "@/components/ai-pdf-dashboard/provider-summary-cards";
@@ -526,6 +527,8 @@ export function AIPdfControlDashboard({
                         />
                       </div>
                     </div>
+
+                    <CoverageWarningCard ai={ai} />
 
                     <WarningSummary
                       aggregatedWarnings={aggregatedWarnings}
