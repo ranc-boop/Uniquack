@@ -9,10 +9,10 @@ import {
 } from "@/lib/actions/feedback";
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import {
-  clearDefaultProfile,
   encryptedKeyPatch,
 } from "@/lib/ai-providers/profiles";
 import { decryptSecret } from "@/lib/ai-providers/encryption";
+import { requireAIProviderGatewayToken } from "@/lib/ai-providers/gateway-token";
 import { testAIProviderConnection } from "@/lib/ai-providers/chat";
 import { createClient } from "@/lib/supabase/server";
 import type { AIProviderProfile } from "@/types/database";
@@ -55,17 +55,25 @@ async function loadSavedProvider({
   id: string;
   supabase: Awaited<ReturnType<typeof createClient>>;
 }) {
-  const { data, error } = await supabase
-    .from("ai_provider_profiles")
-    .select("*")
-    .eq("id", id)
-    .single();
+  const { data, error } = await supabase.rpc(
+    "get_ai_provider_profile_for_gateway",
+    {
+      gateway_token: requireAIProviderGatewayToken(),
+      profile_id: id,
+    },
+  );
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data as AIProviderProfile;
+  const profile = (Array.isArray(data) ? data[0] : data) as AIProviderProfile | null;
+
+  if (!profile) {
+    throw new Error("AI provider profile is not available.");
+  }
+
+  return profile;
 }
 
 export async function createAIProviderProfile(formData: FormData) {
@@ -73,23 +81,23 @@ export async function createAIProviderProfile(formData: FormData) {
     const profile = await requireSuperAdmin();
     const parsed = aiProviderProfileFormSchema.parse(formValues(formData));
     const supabase = await createClient();
+    const encrypted = encryptedKeyPatch(parsed.api_key);
 
-    if (parsed.is_default) {
-      await clearDefaultProfile({ supabase });
-    }
-
-    const { error } = await supabase.from("ai_provider_profiles").insert({
-      name: parsed.name,
-      provider: parsed.provider,
-      base_url: parsed.base_url,
-      model: parsed.model,
-      enabled: parsed.enabled,
-      is_default: parsed.is_default,
-      supports_pdf_input: parsed.supports_pdf_input,
-      supports_vision_images: parsed.supports_vision_images,
-      ...encryptedKeyPatch(parsed.api_key),
-      created_by: profile.id,
-      updated_by: profile.id,
+    void profile;
+    const { error } = await supabase.rpc("create_ai_provider_profile_for_gateway", {
+      gateway_token: requireAIProviderGatewayToken(),
+      profile_api_key_ciphertext: encrypted.api_key_ciphertext ?? null,
+      profile_api_key_iv: encrypted.api_key_iv ?? null,
+      profile_api_key_last4: encrypted.api_key_last4 ?? null,
+      profile_api_key_tag: encrypted.api_key_tag ?? null,
+      profile_base_url: parsed.base_url,
+      profile_enabled: parsed.enabled,
+      profile_is_default: parsed.is_default,
+      profile_model: parsed.model,
+      profile_name: parsed.name,
+      profile_provider: parsed.provider,
+      profile_supports_pdf_input: parsed.supports_pdf_input,
+      profile_supports_vision_images: parsed.supports_vision_images,
     });
 
     if (error) {
@@ -129,26 +137,25 @@ export async function updateAIProviderProfile(formData: FormData) {
     const profile = await requireSuperAdmin();
     const parsed = aiProviderProfileUpdateSchema.parse(formValues(formData));
     const supabase = await createClient();
+    const encrypted = encryptedKeyPatch(parsed.api_key);
 
-    if (parsed.is_default) {
-      await clearDefaultProfile({ exceptId: parsed.id, supabase });
-    }
-
-    const { error } = await supabase
-      .from("ai_provider_profiles")
-      .update({
-        name: parsed.name,
-        provider: parsed.provider,
-        base_url: parsed.base_url,
-        model: parsed.model,
-        enabled: parsed.enabled,
-        is_default: parsed.is_default,
-        supports_pdf_input: parsed.supports_pdf_input,
-        supports_vision_images: parsed.supports_vision_images,
-        ...encryptedKeyPatch(parsed.api_key),
-        updated_by: profile.id,
-      })
-      .eq("id", parsed.id);
+    void profile;
+    const { error } = await supabase.rpc("update_ai_provider_profile_for_gateway", {
+      gateway_token: requireAIProviderGatewayToken(),
+      profile_api_key_ciphertext: encrypted.api_key_ciphertext ?? null,
+      profile_api_key_iv: encrypted.api_key_iv ?? null,
+      profile_api_key_last4: encrypted.api_key_last4 ?? null,
+      profile_api_key_tag: encrypted.api_key_tag ?? null,
+      profile_base_url: parsed.base_url,
+      profile_enabled: parsed.enabled,
+      profile_id: parsed.id,
+      profile_is_default: parsed.is_default,
+      profile_model: parsed.model,
+      profile_name: parsed.name,
+      profile_provider: parsed.provider,
+      profile_supports_pdf_input: parsed.supports_pdf_input,
+      profile_supports_vision_images: parsed.supports_vision_images,
+    });
 
     if (error) {
       throw new Error(error.message);
@@ -196,10 +203,10 @@ export async function deleteAIProviderProfile(formData: FormData) {
     await requireSuperAdmin();
     const parsed = aiProviderProfileDeleteSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
-    const { error } = await supabase
-      .from("ai_provider_profiles")
-      .delete()
-      .eq("id", parsed.id);
+    const { error } = await supabase.rpc("delete_ai_provider_profile_for_gateway", {
+      gateway_token: requireAIProviderGatewayToken(),
+      profile_id: parsed.id,
+    });
 
     if (error) {
       throw new Error(error.message);

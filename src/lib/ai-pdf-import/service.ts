@@ -2240,10 +2240,14 @@ async function processAIPdfSinglePass({
           warnings: ["No draft questions were created; skipped crop attachment."],
         };
   const currentBeforeFinal = await loadCurrentAIPdfSummary(input);
-  const finalSummary = {
-    ...importSummary,
-    aiPdfImport: mergeAIPdfImportChunkingSummary(currentBeforeFinal.aiPdfImport, {
+  const finalAiPdfImport = mergeAIPdfImportChunkingSummary(
+    currentBeforeFinal.aiPdfImport,
+    {
       createdQuestionCount: importSummary.createdCount,
+      detail:
+        importSummary.createdCount > 0
+          ? `Imported ${importSummary.createdCount} draft question(s). Review failed chunks separately if needed.`
+          : "AI PDF extraction finished without creating draft questions.",
       fileName: input.fileName,
       jobId: input.jobId,
       pageCount,
@@ -2254,7 +2258,18 @@ async function processAIPdfSinglePass({
       sourceObjectPath: input.sourceObjectPath,
       uploadedCropCount: cropSummary.uploadedCount,
       warnings: uniqueStrings([...extraction.warnings, ...cropSummary.warnings]),
-    }),
+    },
+  );
+
+  if (importSummary.createdCount > 0) {
+    delete finalAiPdfImport.error;
+    delete finalAiPdfImport.phaseFailedAt;
+    delete finalAiPdfImport.staleLeaseDetectedAt;
+  }
+
+  const finalSummary = {
+    ...importSummary,
+    aiPdfImport: finalAiPdfImport,
   };
   const { error } = await input.supabase
     .from("import_batches")

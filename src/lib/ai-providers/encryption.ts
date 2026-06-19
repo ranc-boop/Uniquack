@@ -1,3 +1,5 @@
+import "server-only";
+
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 
 type EncryptedSecret = {

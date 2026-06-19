@@ -42,6 +42,22 @@ export type AIProviderProfile = {
   updated_at: string;
 };
 
+export type AIProviderProfileSafe = Pick<
+  AIProviderProfile,
+  | "id"
+  | "name"
+  | "provider"
+  | "base_url"
+  | "model"
+  | "enabled"
+  | "is_default"
+  | "supports_pdf_input"
+  | "supports_vision_images"
+  | "api_key_last4"
+  | "created_at"
+  | "updated_at"
+>;
+
 export type Profile = {
   id: string;
   username: string;
@@ -234,7 +250,67 @@ export type Database = {
       }>;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      list_ai_provider_profiles_for_gateway: {
+        Args: { gateway_token: string };
+        Returns: AIProviderProfileSafe[];
+      };
+      list_enabled_ai_provider_profiles_for_gateway: {
+        Args: { gateway_token: string };
+        Returns: AIProviderProfileSafe[];
+      };
+      get_ai_provider_profile_for_gateway: {
+        Args: {
+          gateway_token: string;
+          profile_id: string;
+        };
+        Returns: AIProviderProfile[];
+      };
+      create_ai_provider_profile_for_gateway: {
+        Args: {
+          gateway_token: string;
+          profile_api_key_ciphertext: string | null;
+          profile_api_key_iv: string | null;
+          profile_api_key_last4: string | null;
+          profile_api_key_tag: string | null;
+          profile_base_url: string;
+          profile_enabled: boolean;
+          profile_is_default: boolean;
+          profile_model: string;
+          profile_name: string;
+          profile_provider: string;
+          profile_supports_pdf_input: boolean;
+          profile_supports_vision_images: boolean;
+        };
+        Returns: string;
+      };
+      update_ai_provider_profile_for_gateway: {
+        Args: {
+          gateway_token: string;
+          profile_api_key_ciphertext: string | null;
+          profile_api_key_iv: string | null;
+          profile_api_key_last4: string | null;
+          profile_api_key_tag: string | null;
+          profile_base_url: string;
+          profile_enabled: boolean;
+          profile_id: string;
+          profile_is_default: boolean;
+          profile_model: string;
+          profile_name: string;
+          profile_provider: string;
+          profile_supports_pdf_input: boolean;
+          profile_supports_vision_images: boolean;
+        };
+        Returns: undefined;
+      };
+      delete_ai_provider_profile_for_gateway: {
+        Args: {
+          gateway_token: string;
+          profile_id: string;
+        };
+        Returns: undefined;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
