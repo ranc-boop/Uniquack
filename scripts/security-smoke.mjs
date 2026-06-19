@@ -1,5 +1,33 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+
+const hasReactServerCondition = process.execArgv.some(
+  (arg) => arg === "--conditions=react-server" || arg === "-Creact-server",
+);
+
+if (!process.env.O2I_SECURITY_SMOKE_REEXECED && !hasReactServerCondition) {
+  const scriptPath = fileURLToPath(import.meta.url);
+  const child = spawnSync(
+    process.execPath,
+    [
+      ...process.execArgv,
+      "--conditions=react-server",
+      scriptPath,
+      ...process.argv.slice(2),
+    ],
+    {
+      env: {
+        ...process.env,
+        O2I_SECURITY_SMOKE_REEXECED: "1",
+      },
+      stdio: "inherit",
+    },
+  );
+
+  process.exit(child.status ?? 1);
+}
 
 const { sanitizeContentHtml, toDangerousHtml } = await import(
   "../src/lib/sanitize/html.ts"
