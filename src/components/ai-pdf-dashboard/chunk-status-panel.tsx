@@ -36,6 +36,8 @@ function safeTechnicalDetail(value: unknown) {
       /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
       "[jwt redacted]",
     )
+    .replace(/\bAI_PROVIDER_[A-Z0-9_]+\b/g, "[server provider setting redacted]")
+    .replace(/\bSUPABASE_SERVICE_ROLE[A-Z0-9_]*\b/g, "[server setting redacted]")
     .slice(0, TECHNICAL_DETAIL_LIMIT);
 }
 
