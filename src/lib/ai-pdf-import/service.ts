@@ -122,6 +122,12 @@ import {
   type AITaxonomyPersistencePlan,
 } from "@/lib/ai-pdf-import/taxonomy-persistence";
 import {
+  buildAIFiveFacetTagTaxonomyPlan,
+  failedAIFiveFacetTagTaxonomyPlan,
+  mergeAIFiveFacetTagTaxonomyPlanIntoSummary,
+  type AIFiveFacetTagTaxonomyPlan,
+} from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+import {
   buildAIExtractionCoverageAuditPlanFromSummary,
   failedAIExtractionCoverageAuditPlan,
   mergeAIExtractionCoverageAuditPlanIntoSummary,
@@ -779,6 +785,66 @@ async function updateAITaxonomyPersistencePlan({
   }
 }
 
+async function updateAIFiveFacetTagTaxonomyPlan({
+  fiveFacetTagTaxonomyPlan,
+  input,
+}: {
+  fiveFacetTagTaxonomyPlan: AIFiveFacetTagTaxonomyPlan;
+  input: ProcessInput;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIFiveFacetTagTaxonomyPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    fiveFacetTagTaxonomyPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreFiveFacetTagTaxonomyPlan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const fiveFacetTagTaxonomyPlan = buildAIFiveFacetTagTaxonomyPlan();
+    await updateAIFiveFacetTagTaxonomyPlan({
+      fiveFacetTagTaxonomyPlan,
+      input,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI five-facet tag taxonomy plan failed.";
+
+    await updateAIFiveFacetTagTaxonomyPlan({
+      fiveFacetTagTaxonomyPlan: failedAIFiveFacetTagTaxonomyPlan({
+        warnings: [`five-facet tag taxonomy plan failed: ${message}`],
+      }),
+      input,
+    });
+  }
+}
+
 async function generateAndStoreTaxonomyPersistencePlan({
   input,
 }: {
@@ -789,6 +855,7 @@ async function generateAndStoreTaxonomyPersistencePlan({
     const taxonomyPersistencePlan =
       buildAITaxonomyPersistencePlanFromSummary(current.aiPdfImport);
     await updateAITaxonomyPersistencePlan({ input, taxonomyPersistencePlan });
+    await generateAndStoreFiveFacetTagTaxonomyPlan({ input });
   } catch (error) {
     const message =
       error instanceof Error
@@ -801,6 +868,7 @@ async function generateAndStoreTaxonomyPersistencePlan({
         warnings: [`taxonomy persistence plan failed: ${message}`],
       }),
     });
+    await generateAndStoreFiveFacetTagTaxonomyPlan({ input });
   }
 }
 
