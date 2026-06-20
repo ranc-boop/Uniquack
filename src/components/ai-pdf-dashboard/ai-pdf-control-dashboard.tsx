@@ -4,6 +4,7 @@ import {
   ChunkStatusPanel,
   type LegacyAIPdfChunk,
 } from "@/components/ai-pdf-dashboard/chunk-status-panel";
+import { CoverageWarningCard } from "@/components/ai-pdf-dashboard/coverage-warning-card";
 import { FigureReviewCard } from "@/components/ai-pdf-dashboard/figure-review-card";
 import { PipelineTimeline } from "@/components/ai-pdf-dashboard/pipeline-timeline";
 import { ProviderSummaryCards } from "@/components/ai-pdf-dashboard/provider-summary-cards";
@@ -321,9 +322,28 @@ export function AIPdfControlDashboard({
                 0,
                 aggregatedWarnings.visibleWarnings.length - visibleWarnings.length,
               );
-              const chunking =
-                normalizeAIPdfChunkingSummary(ai.chunking) ??
-                (pageCount ? createAIPdfChunkingSummary({ pageCount }) : null);
+              const executionMode = firstString(ai, ["executionMode"],
+                inputStrategy === "page_images"
+                  ? "page_image_chunks"
+                  : "single_full_pdf",
+              );
+              const manualSegmentation = asRecord(ai.manualSegmentation);
+              const confirmedBoundaryCount = Array.isArray(
+                manualSegmentation.boundaries,
+              )
+                ? manualSegmentation.boundaries.length
+                : 0;
+              const storedChunking = normalizeAIPdfChunkingSummary(ai.chunking);
+              const isUnusedFullPdfFoundation =
+                executionMode !== "segmented_full_pdf" &&
+                ["gemini_native_pdf", "openai_file"].includes(inputStrategy) &&
+                storedChunking?.mode === "foundation";
+              const chunking = isUnusedFullPdfFoundation
+                ? null
+                : storedChunking ??
+                  (pageCount && inputStrategy === "page_images"
+                    ? createAIPdfChunkingSummary({ pageCount })
+                    : null);
               const legacyChunks = getChunks(ai);
               const chunkCount =
                 chunking?.totalChunks ??
@@ -493,13 +513,23 @@ export function AIPdfControlDashboard({
                             <p>Page count: {formatCount(pageCount)}</p>
                             <p>File size: {formatFileSize(sizeBytes)}</p>
                             <p>Input strategy: {inputStrategyLabel}</p>
+                            <p>
+                              Execution: {executionMode.replaceAll("_", " ")}
+                            </p>
+                            {executionMode === "segmented_full_pdf" ? (
+                              <p>
+                                Confirmed masked boundaries: {confirmedBoundaryCount}
+                              </p>
+                            ) : null}
                             <p>Estimated complexity: {complexity}</p>
                             <p className="md:col-span-2">
                               Recommended mode:{" "}
-                              {recommendedModeCopy(
-                                inputStrategy,
-                                display.providerMode,
-                              )}
+                              {executionMode === "segmented_full_pdf"
+                                ? "Confirmed boundary pages are shared with complementary white masks, then each chunk is sent as a native/full PDF."
+                                : recommendedModeCopy(
+                                    inputStrategy,
+                                    display.providerMode,
+                                  )}
                             </p>
                           </div>
                         </div>
@@ -521,11 +551,14 @@ export function AIPdfControlDashboard({
                       <div className="space-y-3">
                         <ChunkStatusPanel
                           chunking={chunking}
+                          executionMode={executionMode}
                           legacyChunks={legacyChunks}
                           runningChunkCount={runningChunkCount}
                         />
                       </div>
                     </div>
+
+                    <CoverageWarningCard ai={ai} />
 
                     <WarningSummary
                       aggregatedWarnings={aggregatedWarnings}

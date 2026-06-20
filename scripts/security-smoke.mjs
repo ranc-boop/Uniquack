@@ -1,5 +1,33 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+
+const hasReactServerCondition = process.execArgv.some(
+  (arg) => arg === "--conditions=react-server" || arg === "-Creact-server",
+);
+
+if (!process.env.O2I_SECURITY_SMOKE_REEXECED && !hasReactServerCondition) {
+  const scriptPath = fileURLToPath(import.meta.url);
+  const child = spawnSync(
+    process.execPath,
+    [
+      ...process.execArgv,
+      "--conditions=react-server",
+      scriptPath,
+      ...process.argv.slice(2),
+    ],
+    {
+      env: {
+        ...process.env,
+        O2I_SECURITY_SMOKE_REEXECED: "1",
+      },
+      stdio: "inherit",
+    },
+  );
+
+  process.exit(child.status ?? 1);
+}
 
 const { sanitizeContentHtml, toDangerousHtml } = await import(
   "../src/lib/sanitize/html.ts"
@@ -15,6 +43,12 @@ const {
   patchAIPdfChunkingSummary,
   planAIPdfPageChunks,
 } = await import("../src/lib/ai-pdf-import/chunking.ts");
+const {
+  buildManualSegmentationPlan,
+  chunkingSummaryFromSegmentationPlan,
+  normalizeManualSegmentationPlan,
+  suggestedBoundaryPages,
+} = await import("../src/lib/ai-pdf-import/segmentation.ts");
 const {
   analyzePdfPageTexts,
   generateImagePreanalysisFromMetadata,
@@ -198,6 +232,62 @@ const chunkingSummary = createAIPdfChunkingSummary({
 assert.equal(chunkingSummary.totalChunks, 5);
 assert.deepEqual(chunkingSummary.chunks[1].overlapPages, [3]);
 assert.equal(chunkingSummary.chunks.every((chunk) => chunk.status === "planned"), true);
+
+const maskedSegmentationPlan = buildManualSegmentationPlan({
+  boundaries: [
+    {
+      id: "boundary-1",
+      sourcePage: 35,
+      splitY: 0.42,
+      status: "confirmed",
+    },
+    {
+      id: "boundary-2",
+      sourcePage: 69,
+      splitY: 0.73,
+      status: "confirmed",
+    },
+  ],
+  confirmedAt: "2026-06-18T00:00:00.000Z",
+  pageCount: 73,
+  status: "confirmed",
+  targetPages: 35,
+});
+assert.deepEqual(
+  maskedSegmentationPlan.chunks.map((chunk) => [
+    chunk.pageStart,
+    chunk.pageEnd,
+  ]),
+  [
+    [1, 35],
+    [35, 69],
+    [69, 73],
+  ],
+);
+assert.deepEqual(maskedSegmentationPlan.chunks[0].masks, [
+  { sourcePage: 35, splitY: 0.42, type: "white_below" },
+]);
+assert.deepEqual(maskedSegmentationPlan.chunks[1].masks, [
+  { sourcePage: 35, splitY: 0.42, type: "white_above" },
+  { sourcePage: 69, splitY: 0.73, type: "white_below" },
+]);
+assert.equal(
+  normalizeManualSegmentationPlan(maskedSegmentationPlan)?.status,
+  "confirmed",
+);
+const maskedChunking = chunkingSummaryFromSegmentationPlan(
+  maskedSegmentationPlan,
+);
+assert.equal(maskedChunking.totalChunks, 3);
+assert.equal(maskedChunking.overlapPages, 0);
+assert.equal(maskedChunking.mode, "sequential");
+assert.deepEqual(
+  suggestedBoundaryPages({ pageCount: 73, targetPages: 35 }),
+  [24, 49],
+);
+console.log(
+  "PASS masked full-PDF segmentation produces complementary non-overlapping boundary masks",
+);
 const normalizedChunking = normalizeAIPdfChunkingSummary({
   enabled: true,
   mode: "foundation",

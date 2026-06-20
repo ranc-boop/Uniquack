@@ -64,6 +64,9 @@ const markdownSource = [
 ].join("\n");
 
 const rendered = markdown.markdownLatexToHtml(markdownSource);
+const derivativeRendered = markdown.markdownLatexToHtml(
+  String.raw`If $f'(x) = 1 + 2x - x^3 - \sqrt{x^4 + 1}$, then $f$ has a local minimum at $x = $?`,
+);
 
 assert(rendered.includes("<h2>Newton Review</h2>"), "heading renders");
 assert(rendered.includes("<strong>bold</strong>"), "bold renders");
@@ -84,6 +87,11 @@ assert(
   rendered.includes('data-type="inline-math"') &&
     rendered.includes('data-latex="F=ma"'),
   "inline math renders as safe marker",
+);
+assert(
+  derivativeRendered.includes('data-latex="f&#39;(x) = 1 + 2x - x^3 - \\sqrt{x^4 + 1}"') &&
+    !derivativeRendered.includes("&amp;#39;"),
+  "derivative apostrophe is escaped once without corrupting LaTeX",
 );
 assert(
   rendered.includes('data-latex="4\\,\\Omega"') &&

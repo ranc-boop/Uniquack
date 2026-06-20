@@ -36,6 +36,8 @@ function safeTechnicalDetail(value: unknown) {
       /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
       "[jwt redacted]",
     )
+    .replace(/\bAI_PROVIDER_[A-Z0-9_]+\b/g, "[server provider setting redacted]")
+    .replace(/\bSUPABASE_SERVICE_ROLE[A-Z0-9_]*\b/g, "[server setting redacted]")
     .slice(0, TECHNICAL_DETAIL_LIMIT);
 }
 
@@ -100,16 +102,28 @@ function conciseChunkError(value: unknown) {
 
 export function ChunkStatusPanel({
   chunking,
+  executionMode,
   legacyChunks,
   runningChunkCount,
 }: {
   chunking: AIPdfChunkingSummary | null;
+  executionMode?: string;
   legacyChunks: LegacyAIPdfChunk[];
   runningChunkCount: number;
 }) {
   return (
     <div className="rounded-md border bg-muted/20 p-3">
-      <p className="text-sm font-medium">Long PDF / chunks</p>
+      <p className="text-sm font-medium">
+        {executionMode === "segmented_full_pdf"
+          ? "Masked full-PDF segments"
+          : "Long PDF / chunks"}
+      </p>
+      {executionMode === "segmented_full_pdf" ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Boundary pages appear in adjacent segments with complementary white
+          masks. Visible source content does not overlap.
+        </p>
+      ) : null}
       {chunking ? (
         <div className="mt-2 space-y-2 text-xs">
           <div className="grid gap-2 sm:grid-cols-2">
@@ -166,8 +180,9 @@ export function ChunkStatusPanel({
                       <p>Error: {conciseChunkError(chunk.errorMessage)}</p>
                     ) : null}
                     <p>
-                      Failed chunk retry is available to super admins through
-                      the retry action foundation.
+                      {executionMode === "segmented_full_pdf"
+                        ? "Super admins can retry this failed full-PDF segment without rerunning completed segments."
+                        : "Failed chunk retry is available to super admins through the retry action foundation."}
                     </p>
                   </div>
                 ) : null}
@@ -186,6 +201,11 @@ export function ChunkStatusPanel({
             </p>
           ) : null}
         </div>
+      ) : executionMode === "single_full_pdf" ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          This import used one full-PDF provider request. No chunk jobs were
+          scheduled.
+        </p>
       ) : legacyChunks.length ? (
         <div className="mt-2 space-y-2 text-xs">
           {legacyChunks.slice(0, 5).map((chunk) => (

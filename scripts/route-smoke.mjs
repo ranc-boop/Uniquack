@@ -684,11 +684,179 @@ try {
           createdQuestionCount: 2,
           detectedFigureCount: 2,
           fileName: aiPdfFileName,
+          executionMode: "segmented_full_pdf",
           missingImageAttachmentCount: 1,
           missingQuestionNumbers: ["3"],
           needsImageReview: true,
           pageCount: 6,
           phase: "completed",
+          extractionCoverageAuditPlan: {
+            batchCoverage: {
+              coverageRatio: 0.5,
+              coveredBatchCount: 1,
+              expectedBatchCount: 2,
+              failedBatchCount: 0,
+              uncoveredBatchIds: ["route-batch-gap"],
+            },
+            generatedAt: new Date(0).toISOString(),
+            mode: "planning_only",
+            packetCoverage: {
+              coverageRatio: 0.5,
+              coveredPacketCount: 1,
+              expectedPacketCount: 2,
+              uncoveredPacketIds: ["route-packet-gap"],
+            },
+            pageCoverage: {
+              expectedQuestionLikePages: [1, 2, 3, 4, 5, 6],
+              extractedSourcePages: [1, 2, 3],
+              pagesWithNoSourceRefs: false,
+              terminalUncoveredPages: [4, 5, 6],
+              totalPages: 6,
+              uncoveredQuestionLikePages: [4, 5],
+            },
+            recommendedRecoveryWindows: [
+              {
+                pageEnd: 6,
+                pageNumbers: [4, 5, 6],
+                pageStart: 4,
+                packetIds: ["route-packet-gap"],
+                providerCallPlanned: false,
+                reason: "terminal_uncovered_pages",
+                recommendedStrategy: "page_images_recovery",
+                reviewRequired: true,
+                windowId: "route-coverage-window-1",
+              },
+            ],
+            risks: [
+              {
+                batchIds: ["route-ai-batch"],
+                evidence: [],
+                kind: "terminal_pages_missing_from_extraction",
+                message: "Terminal pages are not represented in draft output.",
+                packetIds: ["route-packet-gap"],
+                pageNumbers: [4, 5, 6],
+                recommendedAction: "run_terminal_page_recovery",
+                riskId: "route-coverage-alert-1",
+                severity: "high",
+              },
+              {
+                batchIds: ["route-ai-batch"],
+                evidence: [],
+                kind: "full_pdf_silent_partial_risk",
+                message: "Full PDF import may have silently missed pages.",
+                packetIds: ["route-packet-gap"],
+                pageNumbers: [4, 5, 6],
+                recommendedAction: "coverage_recovery_recommended",
+                riskId: "route-coverage-alert-2",
+                severity: "medium",
+              },
+            ],
+            sourceKind: "pdf",
+            stats: {
+              coveredBatchCount: 1,
+              coveredPacketCount: 1,
+              expectedBatchCount: 2,
+              expectedPacketCount: 2,
+              expectedQuestionLikePageCount: 6,
+              extractedSourcePageCount: 3,
+              highRiskCount: 1,
+              recoveryWindowCount: 1,
+              terminalUncoveredPageCount: 3,
+              uncoveredQuestionLikePageCount: 2,
+            },
+            status: "completed_with_warnings",
+            strategy: "gemini_native_full_pdf",
+            version: "extraction_coverage_audit_plan_v1",
+            warnings: ["coverage_audit_terminal_pages_uncovered"],
+          },
+          coverageRecoveryPlan: {
+            generatedAt: new Date(0).toISOString(),
+            mode: "planning_only",
+            recoveryTasks: [
+              {
+                kind: "terminal_page_recovery",
+                pageNumbers: [4, 5, 6],
+                priority: "high",
+                taskId: "route-coverage-job-1",
+              },
+            ],
+            requestDrafts: [
+              {
+                pageNumbers: [4, 5, 6],
+                requestId: "route-coverage-request-1",
+                requestKind: "coverage_terminal_page_extraction",
+              },
+            ],
+            skippedWindows: [],
+            sourceAuditPlanPresent: true,
+            sourceKind: "pdf",
+            stats: {
+              failedChunkRecoveryCount: 0,
+              highPriorityCount: 1,
+              manualReviewOnlyCount: 0,
+              recoveryTaskCount: 1,
+              requestDraftCount: 1,
+              skippedWindowCount: 0,
+              terminalPageRecoveryCount: 1,
+              uncoveredPageRecoveryCount: 0,
+            },
+            status: "completed_with_warnings",
+            version: "coverage_recovery_plan_v1",
+            warnings: ["coverage_recovery_planning_only"],
+          },
+          coverageRecoveryRunPlan: {
+            generatedAt: new Date(0).toISOString(),
+            mode: "dry_run_only",
+            runItems: [
+              {
+                pageNumbers: [4, 5, 6],
+                requestKind: "coverage_terminal_page_extraction",
+                runItemId: "route-coverage-run-1",
+                status: "dry_run_ready",
+              },
+            ],
+            skippedItems: [],
+            sourceKind: "pdf",
+            sourceRecoveryPlanPresent: true,
+            stats: {
+              dryRunBlockedCount: 0,
+              dryRunReadyCount: 1,
+              dryRunSkippedCount: 0,
+              failedChunkRunCount: 0,
+              manualReviewOnlyCount: 0,
+              requestDraftCount: 1,
+              runItemCount: 1,
+              terminalPageRunCount: 1,
+              uncoveredPageRunCount: 0,
+              warningCount: 0,
+            },
+            status: "completed",
+            version: "coverage_recovery_run_plan_v1",
+            warnings: [],
+          },
+          coverageRecoveryMergePlan: {
+            duplicateGuards: [{ guardId: "route-coverage-guard-1" }],
+            generatedAt: new Date(0).toISOString(),
+            mergeItems: [{ mergeItemId: "route-coverage-merge-1" }],
+            mergePolicy: {
+              humanReviewRequired: true,
+            },
+            mode: "planning_only",
+            sourceKind: "pdf",
+            sourceRecoveryRunPlanPresent: true,
+            stats: {
+              blockedUntilRecoveryResultCount: 1,
+              duplicateGuardCount: 1,
+              futureSuggestionCount: 1,
+              highRiskPageCount: 3,
+              manualReviewOnlyCount: 0,
+              mergeItemCount: 1,
+              warningCount: 0,
+            },
+            status: "completed_with_warnings",
+            version: "coverage_recovery_merge_plan_v1",
+            warnings: [],
+          },
           chunking: {
             chunkSizePages: 3,
             chunks: [
@@ -732,10 +900,21 @@ try {
             failedChunks: 1,
             mergeStatus: "not_started",
             mergeWarnings: ["Merge is deferred to review-safe M2 follow-up."],
-            mode: "foundation",
-            overlapPages: 1,
+            mode: "sequential",
+            overlapPages: 0,
             pageCount: 6,
             totalChunks: 3,
+          },
+          manualSegmentation: {
+            boundaries: [
+              { id: "route-boundary-1", sourcePage: 3, splitY: 0.5, status: "confirmed" },
+              { id: "route-boundary-2", sourcePage: 5, splitY: 0.5, status: "confirmed" },
+            ],
+            mode: "segmented_full_pdf",
+            pageCount: 6,
+            status: "confirmed",
+            targetPages: 3,
+            version: "masked_boundaries_v1",
           },
           provider: {
             id: randomUUID(),
@@ -932,14 +1111,30 @@ try {
     "Failed:",
     "Running or queued:",
     "Mode:",
-    "foundation",
+    "sequential",
+    "Masked full-PDF segments",
     "Chunk",
     "Pages 3-5",
-    "Failed chunk retry is available to super admins through the retry action foundation.",
+    "Super admins can retry this failed full-PDF segment without rerunning completed segments.",
     "Possible missing question numbers: 3",
     "Questions may need diagrams/images before publishing.",
     "Missing figure attachments",
     "Needs media review",
+    "Coverage warning",
+    "completed with warnings",
+    "Risks: 2",
+    "Terminal missing pages: 4-6",
+    "Uncovered question-like pages: 4-5",
+    "Recovery windows: 1",
+    "Terminal pages missing on pages 4-6",
+    "Full PDF silent partial risk on pages 4-6",
+    "Recovery plan: 1 tasks / 1 request drafts",
+    "Dry run: 1 ready / 0 blocked or skipped",
+    "Future suggestions: 1",
+    "Duplicate guards: 1",
+    "Recovery is planned only and has not been executed.",
+    "Recovery execution is not available yet.",
+    "Human review required.",
   ];
   const missingAiPdfDashboardTokens = aiPdfDashboardExpectedTokens.filter(
     (token) => !aiPdfDashboard.text.includes(token),
@@ -1003,10 +1198,9 @@ try {
     "AI PDF failed Gemini Native batch renders supported full PDF input",
   );
   assertRoute(
-    failedCard.includes("Total chunks:") &&
-      failedCard.includes("Chunks:") &&
-      !failedCard.includes("Chunk details are not available for this import yet."),
-    "AI PDF pageCount-only failed batch renders fallback chunk plan instead of placeholder",
+    failedCard.includes("No chunk jobs were scheduled.") &&
+      !failedCard.includes("Total chunks:"),
+    "AI PDF pageCount-only full-PDF batch renders single-pass status without fake chunk jobs",
   );
   assertRoute(
     failedCard.includes(
@@ -1057,16 +1251,25 @@ try {
       ),
     "super_admin can see all AI PDF imports with explicit UI copy",
   );
+  const aiPdfCardStart = aiPdfDashboard.text.indexOf(
+    aiPdfFileName,
+    dashboardStart,
+  );
+  const aiPdfCard = aiPdfDashboard.text.slice(
+    aiPdfCardStart,
+    aiPdfCardStart + 20_000,
+  );
   const forbiddenDashboardTokens = [
     ["AI_PROVIDER", "ENCRYPTION_KEY"].join("_"),
     ["SUPABASE", "SERVICE_ROLE"].join("_"),
     "s" + "k-",
     "AI" + "za",
   ];
+  const smokeDashboardCards = `${aiPdfCard}\n${failedCard}`;
 
   assertRoute(
     forbiddenDashboardTokens.every(
-      (token) => !aiPdfDashboard.text.includes(token),
+      (token) => !smokeDashboardCards.includes(token),
     ),
     "AI PDF control dashboard does not render provider secrets",
   );

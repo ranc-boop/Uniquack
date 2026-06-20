@@ -120,6 +120,7 @@ export function friendlyAIPdfPhaseLabel(phase: string) {
     provider_response_validated: "AI response received",
     queued: "Queued",
     rendering_page_images: "Rendering page images",
+    segmentation_confirmed: "Masked boundaries confirmed",
     resetting_generated_drafts: "Resetting generated drafts",
     source_deleted: "Source deleted",
     source_missing: "Source missing",
@@ -195,6 +196,7 @@ function statusLabel({
       "preparing_native_pdf_input",
       "preparing_provider_input",
       "rendering_page_images",
+      "segmentation_confirmed",
       "calling_provider",
       "provider_response_validated",
       "building_import_json",
@@ -231,6 +233,8 @@ export function sanitizeAIPdfErrorForDisplay(value: unknown) {
       /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
       "[jwt redacted]",
     )
+    .replace(/\bAI_PROVIDER_[A-Z0-9_]+\b/g, "[server provider setting redacted]")
+    .replace(/\bSUPABASE_SERVICE_ROLE[A-Z0-9_]*\b/g, "[server setting redacted]")
     .slice(0, TECHNICAL_DETAIL_LIMIT);
 }
 

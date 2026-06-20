@@ -30,9 +30,11 @@ import {
 } from "@/app/admin/imports/pdf/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { AIPdfSegmentationPlanner } from "@/components/ai-pdf-segmentation-planner";
 import {
   AI_IMPORT_SOURCES_BUCKET,
   AI_PDF_IMPORT_MAX_BYTES,
+  AI_PDF_IMPORT_MAX_PAGES,
 } from "@/lib/ai-pdf-import/constants";
 import {
   deriveAIPdfBatchDisplayState,
@@ -56,7 +58,9 @@ type AIPdfSourceOption = {
   assetStatus?: string;
   canDelete?: boolean;
   fileName: string;
+  executionMode?: "single_full_pdf" | "segmented_full_pdf" | "page_image_chunks";
   pageCount?: number;
+  segmentationConfirmed?: boolean;
   sizeBytes?: number;
   sourceAssetId?: string;
   sourceObjectPath?: string;
@@ -257,7 +261,14 @@ function sourceFromUpload(result: SourceUploadResult): AIPdfSourceOption | null 
       ai.fileName ??
       result.sourceAsset?.original_filename ??
       "Uploaded PDF source",
+    executionMode:
+      ai.executionMode === "segmented_full_pdf" ||
+      ai.executionMode === "page_image_chunks"
+        ? ai.executionMode
+        : "single_full_pdf",
     pageCount: ai.pageCount,
+    segmentationConfirmed:
+      ai.manualSegmentation?.status === "confirmed",
     sizeBytes: result.sourceAsset?.size_bytes,
     sourceAssetId: ai.sourceAssetId ?? result.sourceAsset?.id,
     sourceObjectPath: ai.sourceObjectPath ?? result.sourceAsset?.object_path,
@@ -363,6 +374,17 @@ export function AIPdfImportPanel({
   const defaultProviderOption =
     extractableProviderOptions.find((option) => option.profile.is_default) ??
     extractableProviderOptions[0];
+  const [providerProfileId, setProviderProfileId] = useState(
+    defaultProviderOption?.profile.id ?? "",
+  );
+  const [executionMode, setExecutionMode] = useState<
+    "single_full_pdf" | "segmented_full_pdf" | "page_image_chunks"
+  >(
+    sources.find(canExtractSource)?.executionMode ?? "single_full_pdf",
+  );
+  const [segmentationConfirmed, setSegmentationConfirmed] = useState(
+    sources.find(canExtractSource)?.segmentationConfirmed ?? false,
+  );
   const uploadedSources = useMemo(
     () =>
       uploadedResults
@@ -402,6 +424,13 @@ export function AIPdfImportPanel({
     extractableSources.find((source) => source.batchId === selectedBatchId) ??
     extractableSources[0] ??
     null;
+  const selectedProviderOption = providerOptions.find(
+    (option) => option.profile.id === providerProfileId,
+  );
+  const selectedProviderUsesFullPdf = [
+    "gemini_native_pdf",
+    "openai_file",
+  ].includes(selectedProviderOption?.support.strategy ?? "");
   const uploading = activeUploadCount > 0;
   const activeStatusSummary = statusSnapshot?.batch?.summary ?? result?.summary;
   const activeAiSummary = getAIPdfSummary(activeStatusSummary);
@@ -413,6 +442,14 @@ export function AIPdfImportPanel({
     activeAiSummary?.detail !== undefined
       ? String(activeAiSummary.detail)
       : operation?.detail;
+
+  function selectSource(source: AIPdfSourceOption) {
+    setSelectedBatchId(source.batchId);
+    setExecutionMode(source.executionMode ?? "single_full_pdf");
+    setSegmentationConfirmed(source.segmentationConfirmed ?? false);
+    setResult(null);
+    setStatusSnapshot(null);
+  }
 
   function startOperation(input: Omit<OperationState, "id" | "steps"> & { step: string }) {
     const id = crypto.randomUUID();
@@ -678,7 +715,7 @@ export function AIPdfImportPanel({
           ]);
 
           if (nextSource) {
-            setSelectedBatchId(nextSource.batchId);
+            selectSource(nextSource);
           }
 
           uploadedCount += 1;
@@ -909,6 +946,19 @@ export function AIPdfImportPanel({
       return;
     }
 
+    const resolvedExecutionMode =
+      providerOption.support.strategy === "page_images"
+        ? "page_image_chunks"
+        : executionMode;
+
+    if (
+      resolvedExecutionMode === "segmented_full_pdf" &&
+      !segmentationConfirmed
+    ) {
+      toast.error("Confirm every masked PDF boundary before starting segmented extraction.");
+      return;
+    }
+
     setExtracting(true);
     setStatusSnapshot(null);
     setResult({
@@ -934,6 +984,7 @@ export function AIPdfImportPanel({
       appendOperationStep(operationId, "Queueing AI extraction on the server.");
       const queuedResult = await startAIPdfExtraction({
         batchId,
+        executionMode: resolvedExecutionMode,
         providerProfileId,
       });
       setResult(queuedResult);
@@ -1065,8 +1116,8 @@ export function AIPdfImportPanel({
         </div>
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           {uploading ? <LoaderCircle className="size-3 animate-spin" /> : null}
-          Upload is available even when no AI provider is configured. Limits:
-          50 pages / 50MB per file. If an upload times out, select the file
+          Upload is available even when no AI provider is configured. Limits:{" "}
+          {AI_PDF_IMPORT_MAX_PAGES} pages / 50MB per file. If an upload times out, select the file
           again to retry.
         </p>
       </form>
@@ -1291,7 +1342,7 @@ export function AIPdfImportPanel({
                       size="sm"
                       variant={isSelected ? "default" : "outline"}
                       disabled={!extractable || extracting}
-                      onClick={() => setSelectedBatchId(source.batchId)}
+                      onClick={() => selectSource(source)}
                     >
                       {isSelected ? "Selected" : "Use for extraction"}
                     </Button>
@@ -1381,7 +1432,7 @@ export function AIPdfImportPanel({
         }}
         className="space-y-4 rounded-md border bg-muted/20 p-4"
       >
-        <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+        <div className="grid gap-4 xl:grid-cols-[1fr_1fr_0.9fr_auto]">
           <div className="space-y-2">
             <label htmlFor="source_batch_id" className="text-sm font-medium">
               PDF source
@@ -1389,7 +1440,16 @@ export function AIPdfImportPanel({
             <select
               id="source_batch_id"
               value={selectedSource?.batchId ?? ""}
-              onChange={(event) => setSelectedBatchId(event.target.value)}
+              onChange={(event) => {
+                const nextBatchId = event.target.value;
+                const nextSource = extractableSources.find(
+                  (source) => source.batchId === nextBatchId,
+                );
+
+                if (nextSource) {
+                  selectSource(nextSource);
+                }
+              }}
               disabled={!extractableSources.length || extracting}
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             >
@@ -1410,7 +1470,19 @@ export function AIPdfImportPanel({
             <select
               id="provider_profile_id"
               name="provider_profile_id"
-              defaultValue={defaultProviderOption?.profile.id}
+              value={providerProfileId}
+              onChange={(event) => {
+                const nextId = event.target.value;
+                const nextProvider = providerOptions.find(
+                  (option) => option.profile.id === nextId,
+                );
+                setProviderProfileId(nextId);
+                if (nextProvider?.support.strategy === "page_images") {
+                  setExecutionMode("page_image_chunks");
+                } else if (executionMode === "page_image_chunks") {
+                  setExecutionMode("single_full_pdf");
+                }
+              }}
               disabled={!extractableProviderOptions.length || extracting}
               required
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
@@ -1449,11 +1521,55 @@ export function AIPdfImportPanel({
               </p>
             )}
           </div>
+          <div className="space-y-2">
+            <label htmlFor="execution_mode" className="text-sm font-medium">
+              Execution mode
+            </label>
+            <select
+              id="execution_mode"
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              disabled={!selectedProviderOption || extracting}
+              onChange={(event) => {
+                setExecutionMode(
+                  event.target.value as
+                    | "single_full_pdf"
+                    | "segmented_full_pdf"
+                    | "page_image_chunks",
+                );
+              }}
+              value={
+                selectedProviderOption?.support.strategy === "page_images"
+                  ? "page_image_chunks"
+                  : executionMode
+              }
+            >
+              {selectedProviderUsesFullPdf ? (
+                <>
+                  <option value="single_full_pdf">Single full PDF</option>
+                  <option value="segmented_full_pdf">
+                    Split into masked PDF chunks
+                  </option>
+                </>
+              ) : (
+                <option value="page_image_chunks">Page-image chunks</option>
+              )}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {selectedProviderUsesFullPdf
+                ? "Split mode is available for PDFs of any length and requires reviewing each blue split line. Short PDFs can usually stay in single full-PDF mode."
+                : "This provider receives rendered page images using the existing overlap workflow."}
+            </p>
+          </div>
           <div className="flex items-end">
             <Button
               type="submit"
               disabled={
-                !selectedSource || !extractableProviderOptions.length || extracting
+                !selectedSource ||
+                !extractableProviderOptions.length ||
+                extracting ||
+                (selectedProviderUsesFullPdf &&
+                  executionMode === "segmented_full_pdf" &&
+                  !segmentationConfirmed)
               }
             >
               {extracting ? (
@@ -1477,6 +1593,30 @@ export function AIPdfImportPanel({
             Upload a PDF source before starting AI extraction.
           </p>
         )}
+        {selectedSource?.pageCount &&
+        selectedProviderUsesFullPdf &&
+        executionMode === "segmented_full_pdf" ? (
+          <AIPdfSegmentationPlanner
+            batchId={selectedSource.batchId}
+            disabled={extracting}
+            initiallyConfirmed={segmentationConfirmed}
+            key={selectedSource.batchId}
+            onConfirmationChange={setSegmentationConfirmed}
+            onConfirmed={(summary) => {
+              setSegmentationConfirmed(true);
+              setStatusSnapshot((current: any) => ({
+                ...(current ?? {}),
+                batch: {
+                  ...(current?.batch ?? {}),
+                  id: selectedSource.batchId,
+                  status: selectedSource.status,
+                  summary,
+                },
+              }));
+            }}
+            pageCount={selectedSource.pageCount}
+          />
+        ) : null}
         {extracting ? (
           <ThinkingIndicator detail={activeDetail} phase={activePhase} />
         ) : null}

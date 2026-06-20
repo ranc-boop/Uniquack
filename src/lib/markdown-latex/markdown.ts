@@ -240,6 +240,15 @@ function renderInlineMarkdown(value: string) {
     return `@@CODE_${index}@@`;
   });
 
+  rendered = rendered.replace(
+    /\$\$([^$]+?)\$\$|\$([^$\n]+?)\$/g,
+    (_, blockLatex: string | undefined, inlineLatex: string | undefined) => {
+      const latex = blockLatex ?? inlineLatex ?? "";
+      const index = htmlTokens.push(renderInlineMath(latex)) - 1;
+      return `@@HTML_${index}@@`;
+    },
+  );
+
   rendered = escapeHtml(rendered);
 
   rendered = rendered
@@ -266,12 +275,6 @@ function renderInlineMarkdown(value: string) {
           `<a href="${escapeAttribute(href)}">${escapeHtml(text)}</a>`,
         ) - 1;
       return `@@HTML_${index}@@`;
-    })
-    .replace(/\$\$([^$]+?)\$\$/g, (_, latex: string) => {
-      return renderInlineMath(latex);
-    })
-    .replace(/\$([^$\n]+?)\$/g, (_, latex: string) => {
-      return renderInlineMath(latex);
     })
     .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+?)\*/g, "<em>$1</em>");

@@ -22,6 +22,24 @@ function shouldSkipRawMath(parent: ParentNode | null) {
   );
 }
 
+function decodeLatexHtmlEntities(value: string) {
+  const textarea = document.createElement("textarea");
+  let decoded = value;
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    textarea.innerHTML = decoded;
+    const next = textarea.value;
+
+    if (next === decoded) {
+      break;
+    }
+
+    decoded = next;
+  }
+
+  return decoded;
+}
+
 function balanceLikelyTrailingInlineMath(value: string) {
   const withoutBlockDelimiters = value.replace(/\$\$/g, "");
   const dollarCount = (withoutBlockDelimiters.match(/\$/g) ?? []).length;
@@ -110,11 +128,13 @@ export function RichHtml({ html, className }: RichHtmlProps) {
     );
 
     mathNodes.forEach((node) => {
-      const latex = node.dataset.latex || node.textContent?.trim();
+      const encodedLatex = node.dataset.latex || node.textContent?.trim();
 
-      if (!latex) {
+      if (!encodedLatex) {
         return;
       }
+
+      const latex = decodeLatexHtmlEntities(encodedLatex);
 
       try {
         node.textContent = latex;

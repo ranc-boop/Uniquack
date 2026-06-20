@@ -212,6 +212,13 @@ function strategyFrom(aiPdfImport: Record<string, unknown>) {
   );
   const chunking = asRecord(aiPdfImport.chunking);
 
+  if (
+    aiPdfImport.executionMode === "segmented_full_pdf" &&
+    chunking.mode === "sequential"
+  ) {
+    return "chunked" as const;
+  }
+
   if (sourceInput === "gemini_native_pdf") {
     return "gemini_native_full_pdf" as const;
   }

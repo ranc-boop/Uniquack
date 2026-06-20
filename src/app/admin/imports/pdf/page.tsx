@@ -136,6 +136,14 @@ export default async function AdminAIPdfImportPage() {
       summaryQuestionCount,
       createdQuestionCountByBatchId.get(asset.batch_id) ?? 0,
     );
+    const executionMode:
+      | "single_full_pdf"
+      | "segmented_full_pdf"
+      | "page_image_chunks" =
+      ai.executionMode === "segmented_full_pdf" ||
+      ai.executionMode === "page_image_chunks"
+        ? ai.executionMode
+        : "single_full_pdf";
 
     return {
       assetStatus: asset.status,
@@ -144,7 +152,10 @@ export default async function AdminAIPdfImportPage() {
       createdAt: asset.created_at,
       createdQuestionCount,
       fileName: asset.original_filename,
+      executionMode,
       pageCount,
+      segmentationConfirmed:
+        (ai.manualSegmentation as any)?.status === "confirmed",
       sizeBytes: Number(asset.size_bytes),
       sourceAssetId: asset.id,
       sourceObjectPath: asset.object_path,

@@ -15,6 +15,12 @@ import {
   renderPdfPages,
   type RenderedPage,
 } from "@/lib/ai-pdf-import/pdf";
+import { buildMaskedPdfChunk } from "@/lib/ai-pdf-import/masked-pdf";
+import {
+  normalizeManualSegmentationPlan,
+  segmentChunkForIndex,
+  type AIPdfSegmentChunk,
+} from "@/lib/ai-pdf-import/segmentation";
 import {
   AI_PDF_IMPORT_MAX_BYTES,
   AI_PDF_IMPORT_MAX_PAGES,
@@ -1582,11 +1588,13 @@ function buildPrompt({
   activeTags,
   chunk,
   fileName,
+  pageMapping,
   pageCount,
 }: {
   activeTags: ActiveTag[];
   chunk?: Pick<AIPdfImportChunkSummary, "pageEnd" | "pageStart">;
   fileName: string;
+  pageMapping?: { chunkPage: number; sourcePage: number }[];
   pageCount: number;
 }) {
   const tags = activeTags
@@ -1599,9 +1607,17 @@ function buildPrompt({
     "Return ONLY valid JSON. Do not wrap it in markdown.",
     "",
     `File: ${fileName}`,
-    `Page count: ${pageCount}`,
+    `Original source page count: ${pageCount}`,
     chunk
-      ? [
+      ? pageMapping?.length
+        ? [
+            "",
+            `This chunk covers original source pages ${chunk.pageStart}-${chunk.pageEnd}.`,
+            `This chunk PDF contains ${pageMapping.length} visible page(s).`,
+            "Preserve visible question numbers only as question_number.",
+            "Do not invent content from adjacent chunks or hidden white regions.",
+          ].join("\n")
+        : [
           "",
           `Chunk page range: pages ${chunk.pageStart}-${chunk.pageEnd}.`,
           `You are extracting questions only from pages ${chunk.pageStart}-${chunk.pageEnd}.`,
@@ -1609,6 +1625,17 @@ function buildPrompt({
           "Preserve visible question numbers only as question_number.",
           "Do not invent missing pages.",
           "Do not concatenate content from other chunks or guess cross-page continuations.",
+          ].join("\n")
+      : "",
+    pageMapping?.length
+      ? [
+          "",
+          "This is a non-overlapping full-PDF segment. White regions on the first or last page intentionally hide content assigned to an adjacent segment.",
+          "Extract only visible content. Never infer or reconstruct content hidden by white regions.",
+          `Chunk-page to original-source-page mapping: ${pageMapping
+            .map((item) => `${item.chunkPage}->${item.sourcePage}`)
+            .join(", ")}.`,
+          "Return page_refs and asset placeholder page values using CHUNK page numbers; the server maps them back to original source pages.",
         ].join("\n")
       : "",
     "",
@@ -1659,6 +1686,31 @@ function buildPrompt({
     "- Do not normalize visible numbers aggressively: 3, 3.1, 3(a), and FRQ 2 are different display values.",
     "- Keep questions as draft-quality records for human review; do not invent answers when unsure.",
   ].join("\n");
+}
+
+function remapSegmentExtractionPages({
+  chunk,
+  extraction,
+}: {
+  chunk: AIPdfSegmentChunk;
+  extraction: AIPdfExtraction;
+}) {
+  const sourcePageByChunkPage = new Map(
+    chunk.pageMapping.map((item) => [item.chunkPage, item.sourcePage]),
+  );
+  const mapPage = (page: number) => sourcePageByChunkPage.get(page) ?? page;
+
+  for (const question of extraction.questions) {
+    question.page_refs = Array.from(new Set(question.page_refs.map(mapPage)));
+    question.asset_placeholders = question.asset_placeholders.map(
+      (placeholder) => ({
+        ...placeholder,
+        page: mapPage(placeholder.page),
+      }),
+    );
+  }
+
+  return extraction;
 }
 
 async function loadActiveTags(supabase: SupabaseLike) {
@@ -2300,7 +2352,9 @@ export async function processAIPdfImport(input: ProcessInput) {
   const pageCount = await getPdfPageCount(input.pdfBuffer);
 
   if (pageCount > AI_PDF_IMPORT_MAX_PAGES) {
-    throw new Error("PDF has more than 50 pages. Split it before importing.");
+    throw new Error(
+      `PDF has more than ${AI_PDF_IMPORT_MAX_PAGES} pages.`,
+    );
   }
 
   await generateAndStorePdfPreanalysis({ input, pageCount });
@@ -2349,6 +2403,17 @@ export async function processAIPdfImport(input: ProcessInput) {
   });
   const activeTags = await loadActiveTags(input.supabase);
   const currentAfterTags = await loadCurrentAIPdfSummary(input);
+  const segmentationPlan = normalizeManualSegmentationPlan(
+    currentAfterTags.aiPdfImport.manualSegmentation,
+  );
+  const executionMode = String(
+    currentAfterTags.aiPdfImport.executionMode ?? "",
+  );
+  const usesSegmentedFullPdf =
+    executionMode === "segmented_full_pdf" &&
+    segmentationPlan?.status === "confirmed" &&
+    segmentationPlan.chunks.length > 1 &&
+    ["gemini_native_pdf", "openai_file"].includes(providerInput.strategy);
   const plannedChunking =
     normalizeAIPdfChunkingSummary(currentAfterTags.aiPdfImport.chunking) ??
     patchAIPdfChunkingSummary({
@@ -2376,7 +2441,10 @@ export async function processAIPdfImport(input: ProcessInput) {
     sourceInput: providerInput.strategy,
   });
 
-  if (!supportsAIPdfSequentialChunkExtraction(providerInput.strategy)) {
+  if (
+    !supportsAIPdfSequentialChunkExtraction(providerInput.strategy) &&
+    !usesSegmentedFullPdf
+  ) {
     return processAIPdfSinglePass({
       activeTags,
       input,
@@ -2444,10 +2512,14 @@ export async function processAIPdfImport(input: ProcessInput) {
     });
 
     try {
+      const segmentChunk = usesSegmentedFullPdf
+        ? segmentChunkForIndex(segmentationPlan!, chunk.chunkIndex)
+        : null;
       const chunkPrompt = buildPrompt({
         activeTags,
         chunk,
         fileName: input.fileName,
+        pageMapping: segmentChunk?.pageMapping,
         pageCount,
       });
       const pagesForVision =
@@ -2459,17 +2531,35 @@ export async function processAIPdfImport(input: ProcessInput) {
             ).filter(
               (page) => page.page >= chunk.pageStart && page.page <= chunk.pageEnd,
             );
-      const extraction = normalizeAIPdfExtractionResponse(
+      const segmentedPdf = segmentChunk
+        ? await buildMaskedPdfChunk({
+            chunk: segmentChunk,
+            pdfBuffer: input.pdfBuffer,
+          })
+        : null;
+      const rawExtraction = normalizeAIPdfExtractionResponse(
         await callAIPdfExtractionProvider({
-          fileName: input.fileName,
+          fileName: segmentChunk
+            ? `${input.fileName.replace(/\.pdf$/i, "")}-chunk-${
+                chunk.chunkIndex + 1
+              }.pdf`
+            : input.fileName,
           inputStrategy: providerInput.strategy,
           pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
-          pdfBase64: input.pdfBuffer.toString("base64"),
-          pdfBytes: input.pdfBuffer,
+          pdfBase64: (segmentedPdf?.pdfBytes ?? input.pdfBuffer).toString(
+            "base64",
+          ),
+          pdfBytes: segmentedPdf?.pdfBytes ?? input.pdfBuffer,
           profile: provider,
           prompt: chunkPrompt,
         }),
       );
+      const extraction = segmentChunk
+        ? remapSegmentExtractionPages({
+            chunk: segmentChunk,
+            extraction: rawExtraction,
+          })
+        : rawExtraction;
 
       await updateAIPdfChunkProgress({
         chunk,
