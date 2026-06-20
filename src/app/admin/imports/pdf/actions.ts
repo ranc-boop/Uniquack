@@ -14,10 +14,26 @@ import {
   normalizeAIPdfChunkingSummary,
 } from "@/lib/ai-pdf-import/chunking";
 import {
+  buildBoundaryPreview,
+  buildBoundaryPreviewFromRenderedPage,
+} from "@/lib/ai-pdf-import/masked-pdf";
+import {
+  buildManualSegmentationPlan,
+  chunkingSummaryFromSegmentationPlan,
+  normalizeManualSegmentationPlan,
+  suggestedBoundaryPages,
+  type AIPdfExecutionMode,
+} from "@/lib/ai-pdf-import/segmentation";
+import {
+  describeAiPdfProviderInput,
   supportsAIPdfSequentialChunkExtraction,
   type AiPdfInputStrategy,
 } from "@/lib/ai-providers/adapters";
-import { getPdfPageCount } from "@/lib/ai-pdf-import/pdf";
+import { loadSafeAIProviderProfileForUse } from "@/lib/ai-providers/profiles";
+import {
+  getPdfPageCount,
+  renderPdfPageNumbers,
+} from "@/lib/ai-pdf-import/pdf";
 import { processAIPdfImport } from "@/lib/ai-pdf-import/service";
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth/guards";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
@@ -27,7 +43,32 @@ import type { Json } from "@/types/database";
 
 const extractionInputSchema = z.object({
   batchId: uuidSchema,
+  executionMode: z
+    .enum(["single_full_pdf", "segmented_full_pdf", "page_image_chunks"])
+    .optional(),
   providerProfileId: uuidSchema,
+});
+
+const segmentationPreviewInputSchema = z.object({
+  batchId: uuidSchema,
+  targetPages: z.number().int().min(1).max(100),
+});
+
+const boundaryPagePreviewInputSchema = z.object({
+  batchId: uuidSchema,
+  sourcePage: z.number().int().min(1),
+});
+
+const segmentationBoundarySchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  sourcePage: z.number().int().min(1),
+  splitY: z.number().min(0.05).max(0.95),
+});
+
+const confirmSegmentationInputSchema = z.object({
+  batchId: uuidSchema,
+  boundaries: z.array(segmentationBoundarySchema).max(64),
+  targetPages: z.number().int().min(1).max(100),
 });
 
 const batchInputSchema = z.object({
@@ -664,6 +705,17 @@ export async function resetAIPdfImportOutputs(input: unknown) {
     nextAiPdfImport.provider = aiPdfImport.provider;
   }
 
+  const preservedSegmentation = normalizeManualSegmentationPlan(
+    aiPdfImport.manualSegmentation,
+  );
+
+  if (preservedSegmentation?.status === "confirmed") {
+    nextAiPdfImport.executionMode = "segmented_full_pdf";
+    nextAiPdfImport.manualSegmentation = preservedSegmentation;
+    nextAiPdfImport.chunking =
+      chunkingSummaryFromSegmentationPlan(preservedSegmentation);
+  }
+
   if (sourceAsset?.id) {
     nextAiPdfImport.sourceAssetId = sourceAsset.id;
   } else if (typeof aiPdfImport.sourceAssetId === "string") {
@@ -929,7 +981,7 @@ export async function finalizeAIPdfSourceUpload(input: unknown) {
   );
 
   if (pageCount > AI_PDF_IMPORT_MAX_PAGES) {
-    const message = "PDF has more than 50 pages. Split it before importing.";
+    const message = `PDF has more than ${AI_PDF_IMPORT_MAX_PAGES} pages.`;
 
     const { data: failedAsset, error: failedAssetError } = await supabase
       .from("import_batch_assets")
@@ -1068,6 +1120,157 @@ async function loadSourceAsset({
   return data;
 }
 
+async function loadManageableSourcePdf({
+  batchId,
+  supabase,
+}: {
+  batchId: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const sourceAsset = await loadSourceAsset({ batchId, supabase });
+
+  await ensureSourceAssetCanBeManaged({
+    assetId: sourceAsset.id,
+    batchId,
+    supabase,
+  });
+  const { data: sourceBlob, error: downloadError } = await supabase.storage
+    .from(AI_IMPORT_SOURCES_BUCKET)
+    .download(sourceAsset.object_path);
+
+  if (downloadError) {
+    throw new Error(downloadError.message);
+  }
+
+  return {
+    pdfBuffer: Buffer.from(await sourceBlob.arrayBuffer()),
+    sourceAsset,
+  };
+}
+
+export async function prepareAIPdfSegmentation(input: unknown) {
+  await requireAdmin();
+  const parsed = segmentationPreviewInputSchema.parse(input);
+  const supabase = await createClient();
+  const { pdfBuffer } = await loadManageableSourcePdf({
+    batchId: parsed.batchId,
+    supabase,
+  });
+  const pageCount = await getPdfPageCount(pdfBuffer);
+  const boundaryPages = suggestedBoundaryPages({
+    pageCount,
+    targetPages: parsed.targetPages,
+  });
+  const renderedBoundaryPages = await renderPdfPageNumbers(
+    pdfBuffer,
+    boundaryPages,
+    1.15,
+  );
+  const previews = await Promise.all(
+    renderedBoundaryPages.map(buildBoundaryPreviewFromRenderedPage),
+  );
+
+  return {
+    pageCount,
+    previews,
+    targetPages: parsed.targetPages,
+  };
+}
+
+export async function previewAIPdfBoundaryPage(input: unknown) {
+  await requireAdmin();
+  const parsed = boundaryPagePreviewInputSchema.parse(input);
+  const supabase = await createClient();
+  const { pdfBuffer } = await loadManageableSourcePdf({
+    batchId: parsed.batchId,
+    supabase,
+  });
+  const pageCount = await getPdfPageCount(pdfBuffer);
+
+  if (parsed.sourcePage >= pageCount) {
+    throw new Error("The last PDF page cannot be used as a chunk boundary.");
+  }
+
+  return buildBoundaryPreview({
+    pdfBuffer,
+    sourcePage: parsed.sourcePage,
+  });
+}
+
+export async function confirmAIPdfSegmentation(input: unknown) {
+  const profile = await requireAdmin();
+  const parsed = confirmSegmentationInputSchema.parse(input);
+  const supabase = await createClient();
+  const { data: batch, error: batchError } = await supabase
+    .from("import_batches")
+    .select("id, status, summary")
+    .eq("id", parsed.batchId)
+    .eq("source_type", "ai_pdf")
+    .maybeSingle();
+
+  if (batchError) {
+    throw new Error(batchError.message);
+  }
+
+  if (!batch || batch.status === "validating" || batch.status === "imported") {
+    throw new Error("This PDF cannot change segmentation while extraction is active or already imported.");
+  }
+
+  const { pdfBuffer } = await loadManageableSourcePdf({
+    batchId: parsed.batchId,
+    supabase,
+  });
+  const pageCount = await getPdfPageCount(pdfBuffer);
+  const confirmedAt = new Date().toISOString();
+  const plan = buildManualSegmentationPlan({
+    boundaries: parsed.boundaries.map((boundary) => ({
+      ...boundary,
+      confirmedAt,
+      confirmedBy: profile.id,
+      status: "confirmed",
+    })),
+    confirmedAt,
+    pageCount,
+    status: "confirmed",
+    targetPages: parsed.targetPages,
+  });
+
+  if (plan.boundaries.length === 0) {
+    throw new Error("Confirm at least one boundary for segmented full-PDF extraction.");
+  }
+
+  const summary = plainObject(batch.summary);
+  const aiPdfImport = getAIPdfImportSummary(summary);
+  const nextSummary = {
+    ...summary,
+    aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, {
+      chunking: chunkingSummaryFromSegmentationPlan(plan),
+      detail: `Confirmed ${plan.boundaries.length} non-overlapping masked boundary line(s).`,
+      executionMode: "segmented_full_pdf",
+      manualSegmentation: plan,
+      phase: "segmentation_confirmed",
+    }),
+  };
+  const { error: updateError } = await supabase
+    .from("import_batches")
+    .update({ summary: nextSummary as Json })
+    .eq("id", parsed.batchId)
+    .neq("status", "validating");
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  revalidatePath("/admin/imports/pdf");
+
+  return {
+    batchId: parsed.batchId,
+    plan,
+    status: batch.status,
+    summary: nextSummary,
+  };
+}
+
 async function ensureBatchCanExtract({
   batchId,
   supabase,
@@ -1144,11 +1347,13 @@ async function ensureBatchCanExtract({
 
 async function acquireExtractionLease({
   batchId,
+  executionMode,
   providerProfileId,
   sourceAsset,
   supabase,
 }: {
   batchId: string;
+  executionMode?: AIPdfExecutionMode;
   providerProfileId: string;
   sourceAsset: Awaited<ReturnType<typeof loadSourceAsset>>;
   supabase: Awaited<ReturnType<typeof createClient>>;
@@ -1162,10 +1367,22 @@ async function acquireExtractionLease({
   ).toISOString();
   const existingSummary = plainObject(batch.summary);
   const existingAiPdfImport = getAIPdfImportSummary(existingSummary);
+
+  if (
+    executionMode === "segmented_full_pdf" &&
+    normalizeManualSegmentationPlan(existingAiPdfImport.manualSegmentation)
+      ?.status !== "confirmed"
+  ) {
+    throw new Error(
+      "Confirm every masked PDF boundary before starting segmented extraction.",
+    );
+  }
+
   const summary = {
     ...existingSummary,
     aiPdfImport: mergeAIPdfImportSummary(existingAiPdfImport, {
       detail: "AI extraction was queued and is waiting for the client to run the leased job.",
+      executionMode: executionMode ?? existingAiPdfImport.executionMode,
       fileName: sourceAsset.original_filename,
       jobId,
       leaseExpiresAt,
@@ -1367,17 +1584,34 @@ async function runAIPdfExtractionJob({
 
 export async function startAIPdfExtraction(input: {
   batchId: string;
+  executionMode?: AIPdfExecutionMode;
   providerProfileId: string;
 }) {
   await requireSuperAdmin();
   const parsed = extractionInputSchema.parse(input);
   const supabase = await createClient();
+  const safeProvider = await loadSafeAIProviderProfileForUse({
+    profileId: parsed.providerProfileId,
+    supabase,
+  });
+  const providerInput = describeAiPdfProviderInput(safeProvider);
+
+  if (
+    parsed.executionMode === "segmented_full_pdf" &&
+    !["gemini_native_pdf", "openai_file"].includes(providerInput.strategy)
+  ) {
+    throw new Error(
+      "Masked full-PDF chunks require a provider configured for native/full PDF input.",
+    );
+  }
+
   const sourceAsset = await loadSourceAsset({
     batchId: parsed.batchId,
     supabase,
   });
   const lease = await acquireExtractionLease({
     batchId: parsed.batchId,
+    executionMode: parsed.executionMode,
     providerProfileId: parsed.providerProfileId,
     supabase,
     sourceAsset,
@@ -1496,10 +1730,18 @@ export async function retryAIPdfImportChunk(input: unknown) {
   }
 
   const inputStrategy = getString(aiPdfImport.sourceInput);
+  const segmentationPlan = normalizeManualSegmentationPlan(
+    aiPdfImport.manualSegmentation,
+  );
+  const segmentedFullPdfRetry =
+    aiPdfImport.executionMode === "segmented_full_pdf" &&
+    segmentationPlan?.status === "confirmed" &&
+    ["gemini_native_pdf", "openai_file"].includes(inputStrategy ?? "");
 
   if (
     !inputStrategy ||
-    !supportsAIPdfSequentialChunkExtraction(inputStrategy as AiPdfInputStrategy)
+    (!supportsAIPdfSequentialChunkExtraction(inputStrategy as AiPdfInputStrategy) &&
+      !segmentedFullPdfRetry)
   ) {
     throw new Error(
       "This provider uses full-PDF input and does not support single-chunk retry. Retry the full import after resetting generated drafts.",

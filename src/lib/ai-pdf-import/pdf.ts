@@ -8,6 +8,8 @@ export type RenderedPage = {
   dataUrl: string;
   height: number;
   page: number;
+  pdfHeight: number;
+  pdfWidth: number;
   png: Buffer;
   width: number;
 };
@@ -105,14 +107,36 @@ export async function extractPdfPageTexts(
 }
 
 export async function renderPdfPages(pdfBuffer: Buffer): Promise<RenderedPage[]> {
+  return renderPdfPageNumbers(pdfBuffer);
+}
+
+export async function renderPdfPageNumbers(
+  pdfBuffer: Buffer,
+  requestedPageNumbers?: number[],
+  scale = renderScale,
+): Promise<RenderedPage[]> {
   const { createCanvas } = await import("@napi-rs/canvas");
   const document = await loadPdfDocument(new Uint8Array(pdfBuffer));
   const pages: RenderedPage[] = [];
 
   try {
-    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const pageNumbers = requestedPageNumbers?.length
+      ? Array.from(
+          new Set(
+            requestedPageNumbers.filter(
+              (pageNumber) =>
+                Number.isInteger(pageNumber) &&
+                pageNumber >= 1 &&
+                pageNumber <= document.numPages,
+            ),
+          ),
+        ).sort((left, right) => left - right)
+      : Array.from({ length: document.numPages }, (_, index) => index + 1);
+
+    for (const pageNumber of pageNumbers) {
       const page = await document.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: renderScale });
+      const viewport = page.getViewport({ scale });
+      const pdfViewport = page.getViewport({ scale: 1 });
       const canvas = createCanvas(
         Math.ceil(viewport.width),
         Math.ceil(viewport.height),
@@ -130,6 +154,8 @@ export async function renderPdfPages(pdfBuffer: Buffer): Promise<RenderedPage[]>
         dataUrl: `data:image/png;base64,${png.toString("base64")}`,
         height: canvas.height,
         page: pageNumber,
+        pdfHeight: pdfViewport.height,
+        pdfWidth: pdfViewport.width,
         png,
         width: canvas.width,
       });

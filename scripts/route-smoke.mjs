@@ -684,6 +684,7 @@ try {
           createdQuestionCount: 2,
           detectedFigureCount: 2,
           fileName: aiPdfFileName,
+          executionMode: "segmented_full_pdf",
           missingImageAttachmentCount: 1,
           missingQuestionNumbers: ["3"],
           needsImageReview: true,
@@ -899,10 +900,21 @@ try {
             failedChunks: 1,
             mergeStatus: "not_started",
             mergeWarnings: ["Merge is deferred to review-safe M2 follow-up."],
-            mode: "foundation",
-            overlapPages: 1,
+            mode: "sequential",
+            overlapPages: 0,
             pageCount: 6,
             totalChunks: 3,
+          },
+          manualSegmentation: {
+            boundaries: [
+              { id: "route-boundary-1", sourcePage: 3, splitY: 0.5, status: "confirmed" },
+              { id: "route-boundary-2", sourcePage: 5, splitY: 0.5, status: "confirmed" },
+            ],
+            mode: "segmented_full_pdf",
+            pageCount: 6,
+            status: "confirmed",
+            targetPages: 3,
+            version: "masked_boundaries_v1",
           },
           provider: {
             id: randomUUID(),
@@ -1099,10 +1111,11 @@ try {
     "Failed:",
     "Running or queued:",
     "Mode:",
-    "foundation",
+    "sequential",
+    "Masked full-PDF segments",
     "Chunk",
     "Pages 3-5",
-    "Failed chunk retry is available to super admins through the retry action foundation.",
+    "Super admins can retry this failed full-PDF segment without rerunning completed segments.",
     "Possible missing question numbers: 3",
     "Questions may need diagrams/images before publishing.",
     "Missing figure attachments",
@@ -1185,10 +1198,9 @@ try {
     "AI PDF failed Gemini Native batch renders supported full PDF input",
   );
   assertRoute(
-    failedCard.includes("Total chunks:") &&
-      failedCard.includes("Chunks:") &&
-      !failedCard.includes("Chunk details are not available for this import yet."),
-    "AI PDF pageCount-only failed batch renders fallback chunk plan instead of placeholder",
+    failedCard.includes("No chunk jobs were scheduled.") &&
+      !failedCard.includes("Total chunks:"),
+    "AI PDF pageCount-only full-PDF batch renders single-pass status without fake chunk jobs",
   );
   assertRoute(
     failedCard.includes(
