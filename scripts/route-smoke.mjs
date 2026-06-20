@@ -1181,7 +1181,12 @@ try {
   );
   const failedCard = aiPdfDashboard.text.slice(
     failedCardStart,
-    failedCardStart + 18_000,
+    Math.max(
+      failedCardStart,
+      aiPdfDashboard.text.indexOf(aiPdfFileName, failedCardStart) >= 0
+        ? aiPdfDashboard.text.indexOf(aiPdfFileName, failedCardStart)
+        : failedCardStart + 18_000,
+    ),
   );
 
   assertRoute(failedCardStart >= 0, "AI PDF failed batch fixture renders");
