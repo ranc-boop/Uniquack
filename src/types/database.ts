@@ -248,8 +248,34 @@ export type Database = {
         created_at: string;
         updated_at: string;
       }>;
+      page_visits: TableDefinition<{
+        id: string;
+        ip_hash: string;
+        country_code: string | null;
+        country_name: string | null;
+        pathname: string;
+        user_agent: string | null;
+        user_id: string | null;
+        created_at: string;
+      }>;
     };
-    Views: Record<string, never>;
+    Views: {
+      page_visit_country_stats: TableDefinition<{
+        country_code: string | null;
+        country_name: string | null;
+        visit_count: number;
+        unique_visitor_count: number;
+        first_visit_at: string | null;
+        last_visit_at: string | null;
+      }>;
+      page_visit_daily_stats: TableDefinition<{
+        visit_date: string;
+        country_code: string | null;
+        country_name: string | null;
+        visit_count: number;
+        unique_visitor_count: number;
+      }>;
+    };
     Functions: {
       list_ai_provider_profiles_for_gateway: {
         Args: { gateway_token: string };
