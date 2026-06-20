@@ -857,6 +857,83 @@ try {
             version: "coverage_recovery_merge_plan_v1",
             warnings: [],
           },
+          fiveFacetQuestionTaggingPlan: {
+            generatedAt: new Date(0).toISOString(),
+            itemCount: 1,
+            mode: "planning_only",
+            source: "rule_based_catalog",
+            status: "completed_with_warnings",
+            suggestions: [
+              {
+                confidence: 0.72,
+                difficultySuggestion: 0.48,
+                evidence: {
+                  matchedAliases: ["vertex"],
+                  matchedSignals: ["quadratic_vertex_family"],
+                  safeTextPreview:
+                    "Find the maximum value of a quadratic from vertex form.",
+                },
+                questionRef: {
+                  id: draftQuestion.id,
+                  questionCode: draftQuestion.question_code,
+                  sourcePages: [1],
+                  titlePreview: "Route quadratic vertex suggestion",
+                },
+                reviewRequired: true,
+                tags: {
+                  curriculum: [
+                    "curriculum.bc.precalculus_11.quadratic_functions",
+                  ],
+                  concept: [
+                    "concept.algebra.functions.quadratic",
+                    "concept.algebra.functions.quadratic.vertex",
+                  ],
+                  method: [
+                    "method.algebraic_manipulation.complete_the_square",
+                  ],
+                  task: ["task.determine.determine_extreme_value"],
+                  form: ["form.symbolic.vertex_form"],
+                },
+                validation: {
+                  errors: [],
+                  normalized: {
+                    difficulty: 0.48,
+                    tags: {
+                      curriculum: [
+                        "curriculum.bc.precalculus_11.quadratic_functions",
+                      ],
+                      concept: [
+                        "concept.algebra.functions.quadratic",
+                        "concept.algebra.functions.quadratic.vertex",
+                      ],
+                      method: [
+                        "method.algebraic_manipulation.complete_the_square",
+                      ],
+                      task: ["task.determine.determine_extreme_value"],
+                      form: ["form.symbolic.vertex_form"],
+                    },
+                  },
+                  valid: true,
+                  warnings: [],
+                },
+                warnings: ["ambiguous_alias:vertex"],
+              },
+            ],
+            validation: {
+              allBundlesValidated: true,
+              difficultyIsNumeric: true,
+              errorPatternIsNotQuestionTag: true,
+              noDbMutation: true,
+              noOfficialTagWrite: true,
+              noProviderCall: true,
+              noReviewDraftTagWrite: true,
+            },
+            version: "five_facet_question_tagging_plan_v1",
+            warnings: [
+              "five_facet_question_tagging_planning_only",
+              "ambiguous_alias:vertex",
+            ],
+          },
           chunking: {
             chunkSizePages: 3,
             chunks: [
@@ -1135,6 +1212,20 @@ try {
     "Recovery is planned only and has not been executed.",
     "Recovery execution is not available yet.",
     "Human review required.",
+    "Five-facet tag suggestions",
+    "Planning-only suggestions for tutor review",
+    "Items:",
+    "Valid bundles:",
+    "Ambiguous:",
+    "Review required:",
+    "Difficulty suggestion:",
+    "Validation status:",
+    "Curriculum",
+    "Concept",
+    "Method",
+    "Task",
+    "Form",
+    "ambiguous_alias:vertex",
   ];
   const missingAiPdfDashboardTokens = aiPdfDashboardExpectedTokens.filter(
     (token) => !aiPdfDashboard.text.includes(token),
@@ -1149,6 +1240,18 @@ try {
         ? ` (missing: ${missingAiPdfDashboardTokens.join(", ")})`
         : ""
     }`,
+  );
+  assertRoute(
+    aiPdfDashboard.text.includes("Five-facet tag suggestions") &&
+      aiPdfDashboard.text.includes("Review required") &&
+      aiPdfDashboard.text.includes("ambiguous_alias:vertex") &&
+      !aiPdfDashboard.text.includes("Approve suggestion") &&
+      !aiPdfDashboard.text.includes("Reject suggestion") &&
+      !aiPdfDashboard.text.includes("Write official tags") &&
+      !aiPdfDashboard.text.includes("rawProviderResponse") &&
+      !aiPdfDashboard.text.includes("JVBERi0") &&
+      !aiPdfDashboard.text.includes(";base64,"),
+    "AI PDF dashboard renders five-facet tag suggestions as review-only safe metadata",
   );
   const failedChunkConciseError =
     "Provider temporarily unavailable (503): model is experiencing high demand. Retry this chunk later.";
