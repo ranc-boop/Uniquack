@@ -130,6 +130,23 @@ const {
   mergeAIFiveFacetTagTaxonomyPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/five-facet-tag-taxonomy.ts");
 const {
+  getCurriculumConceptMappings,
+  getFiveFacetTagAncestors,
+  getFiveFacetTagCatalog,
+  getFiveFacetTagChildren,
+  getFiveFacetTagDescendants,
+  getFiveFacetTagNode,
+  getFiveFacetTagParents,
+  listFiveFacetTagCategories,
+  listFiveFacetTagNodes,
+  listFiveFacetTagsByCategory,
+  normalizeFiveFacetTagBundle,
+  resolveFiveFacetAlias,
+  summarizeFiveFacetTagCatalog,
+  validateFiveFacetTagBundle,
+  validateFiveFacetTagId,
+} = await import("../src/lib/tags/five-facet-tag-catalog.ts");
+const {
   buildAIExtractionCoverageAuditPlanFromSummary,
   mergeAIExtractionCoverageAuditPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/extraction-coverage-audit.ts");
@@ -2921,6 +2938,195 @@ assert.deepEqual(fiveFacetMergedAiPdfImport.warnings, [
 ]);
 console.log(
   "PASS AI five-facet tag taxonomy defines planning-only curriculum/concept/method/task/form foundation",
+);
+
+const fiveFacetCatalog = getFiveFacetTagCatalog();
+const fiveFacetCatalogCategories = listFiveFacetTagCategories();
+assert.deepEqual(fiveFacetCatalogCategories.sort(), [
+  "concept",
+  "curriculum",
+  "form",
+  "method",
+  "task",
+]);
+assert.equal(summarizeFiveFacetTagCatalog().categoryCount, 5);
+assert.equal(summarizeFiveFacetTagCatalog().noProviderCall, true);
+assert.equal(summarizeFiveFacetTagCatalog().noDbWrite, true);
+assert.equal(summarizeFiveFacetTagCatalog().noReviewDraftWrite, true);
+assert.equal(
+  summarizeFiveFacetTagCatalog().difficultyIsTaxonomyCategory,
+  false,
+);
+assert.equal(
+  summarizeFiveFacetTagCatalog().errorPatternIsQuestionTaxonomy,
+  false,
+);
+assert.ok(listFiveFacetTagNodes().length >= 90);
+for (const category of fiveFacetCatalogCategories) {
+  assert.ok(listFiveFacetTagsByCategory(category).length > 0);
+}
+assert.equal(
+  getFiveFacetTagNode(
+    "curriculum.bc.precalculus_11.quadratic_functions",
+  )?.category,
+  "curriculum",
+);
+assert.equal(
+  getFiveFacetTagNode("concept.algebra.functions.quadratic")?.category,
+  "concept",
+);
+assert.equal(
+  getFiveFacetTagNode("method.algebraic_manipulation.complete_the_square")
+    ?.category,
+  "method",
+);
+assert.equal(
+  getFiveFacetTagNode("task.determine.determine_where_extreme_occurs")
+    ?.category,
+  "task",
+);
+assert.equal(getFiveFacetTagNode("form.symbolic.vertex_form")?.category, "form");
+assert.equal(
+  getFiveFacetTagChildren("concept.algebra.functions.quadratic").some(
+    (node) => node.tagId === "concept.algebra.functions.quadratic.vertex",
+  ),
+  true,
+);
+assert.equal(
+  getFiveFacetTagParents("concept.algebra.functions.quadratic.vertex").some(
+    (node) => node.tagId === "concept.algebra.functions.quadratic",
+  ),
+  true,
+);
+assert.equal(
+  getFiveFacetTagAncestors(
+    "concept.algebra.functions.quadratic.where_extreme_occurs",
+  ).some((node) => node.tagId === "concept.algebra.functions"),
+  true,
+);
+assert.equal(
+  getFiveFacetTagDescendants("concept.algebra.functions").some(
+    (node) =>
+      node.tagId ===
+      "concept.algebra.functions.quadratic.where_extreme_occurs",
+  ),
+  true,
+);
+assert.deepEqual(
+  getCurriculumConceptMappings(
+    "curriculum.bc.precalculus_11.quadratic_functions",
+  ).map((node) => node.tagId),
+  ["concept.algebra.functions.quadratic"],
+);
+assert.equal(
+  getFiveFacetTagParents("concept.algebra.functions.quadratic").some((node) =>
+    node.tagId.startsWith("curriculum."),
+  ),
+  false,
+);
+assert.deepEqual(resolveFiveFacetAlias("quadratic max").tagIds, [
+  "concept.algebra.functions.quadratic.extreme_value",
+]);
+assert.deepEqual(resolveFiveFacetAlias("vertex form").tagIds, [
+  "form.symbolic.vertex_form",
+]);
+const vertexAliasResolution = resolveFiveFacetAlias("vertex");
+assert.equal(vertexAliasResolution.ambiguous, true);
+assert.equal(vertexAliasResolution.collision?.alias, "vertex");
+assert.equal(vertexAliasResolution.tagIds.length, 2);
+assert.equal(validateFiveFacetTagId("form.symbolic.vertex_form").valid, true);
+assert.equal(validateFiveFacetTagId("difficulty").valid, false);
+assert.equal(validateFiveFacetTagId("error_pattern.sign_error").valid, false);
+const validFiveFacetBundle = validateFiveFacetTagBundle({
+  difficulty: 0.48,
+  tags: {
+    concept: [
+      "concept.algebra.functions.quadratic.vertex",
+      "concept.algebra.functions.quadratic.extreme_value",
+    ],
+    curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+    form: ["form.symbolic.vertex_form", "form.verbal.word_problem"],
+    method: ["method.algebraic_manipulation.complete_the_square"],
+    task: [
+      "task.determine.determine_extreme_value",
+      "task.determine.determine_where_extreme_occurs",
+    ],
+  },
+});
+assert.equal(validFiveFacetBundle.valid, true);
+assert.equal(validFiveFacetBundle.normalized.difficulty, 0.48);
+assert.deepEqual(
+  normalizeFiveFacetTagBundle({
+    tags: {
+      concept: [
+        "concept.algebra.functions.quadratic.vertex",
+        "concept.algebra.functions.quadratic.vertex",
+      ],
+      curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+      form: ["form.symbolic.vertex_form"],
+      task: ["task.identify.identify_vertex"],
+    },
+  }).tags.concept,
+  ["concept.algebra.functions.quadratic.vertex"],
+);
+assert.equal(
+  validateFiveFacetTagBundle({
+    tags: {
+      concept: ["concept.algebra.functions.quadratic.vertex"],
+      curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+      difficulty: ["difficulty.medium"],
+      form: ["form.symbolic.vertex_form"],
+      method: [],
+      task: ["task.identify.identify_vertex"],
+    },
+  }).errors.includes("difficulty_is_numeric_field_not_taxonomy_category"),
+  true,
+);
+assert.equal(
+  validateFiveFacetTagBundle({
+    tags: {
+      concept: ["concept.algebra.functions.quadratic.vertex"],
+      curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+      error_pattern: ["error.sign_error"],
+      form: ["form.symbolic.vertex_form"],
+      method: [],
+      task: ["task.identify.identify_vertex"],
+    },
+  }).errors.includes("error_pattern_belongs_to_attempt_diagnosis"),
+  true,
+);
+assert.equal(
+  validateFiveFacetTagBundle({
+    tags: {
+      concept: ["not.a.real.tag"],
+      curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+      form: ["form.symbolic.vertex_form"],
+      method: [],
+      task: ["task.identify.identify_vertex"],
+    },
+  }).valid,
+  false,
+);
+assert.equal(
+  validateFiveFacetTagBundle({
+    tags: {
+      concept: ["form.symbolic.vertex_form"],
+      curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+      form: ["form.symbolic.vertex_form"],
+      method: [],
+      task: ["task.identify.identify_vertex"],
+    },
+  }).errors.includes("wrong_category:form.symbolic.vertex_form:expected_concept"),
+  true,
+);
+assert.equal(
+  /reviewDraftTags|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(fiveFacetCatalog),
+  ),
+  false,
+);
+console.log(
+  "PASS five-facet tag catalog registry supports lookup, traversal, aliases, mappings, and bundle validation without writes",
 );
 
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({
