@@ -43,9 +43,6 @@ export default function RootLayout({
                 <Button asChild variant="ghost" size="sm">
                   <Link href="/videos">Videos</Link>
                 </Button>
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/analytics">Analytics</Link>
-                </Button>
                 <Button asChild variant="outline" size="sm">
                   <Link href="/admin">Admin</Link>
                 </Button>
