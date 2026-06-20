@@ -126,6 +126,10 @@ const {
   validateTaxonomyPersistencePlan,
 } = await import("../src/lib/ai-pdf-import/taxonomy-persistence.ts");
 const {
+  buildAIFiveFacetTagTaxonomyPlan,
+  mergeAIFiveFacetTagTaxonomyPlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/five-facet-tag-taxonomy.ts");
+const {
   buildAIExtractionCoverageAuditPlanFromSummary,
   mergeAIExtractionCoverageAuditPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/extraction-coverage-audit.ts");
@@ -2721,6 +2725,202 @@ assert.ok(
 );
 console.log(
   "PASS AI taxonomy persistence proposes admin/storage contracts without migrations or DB mutation",
+);
+
+const fiveFacetTagTaxonomyPlan = buildAIFiveFacetTagTaxonomyPlan();
+assert.equal(
+  fiveFacetTagTaxonomyPlan.version,
+  "five_facet_tag_taxonomy_plan_v1",
+);
+assert.equal(fiveFacetTagTaxonomyPlan.mode, "planning_only");
+assert.equal(fiveFacetTagTaxonomyPlan.validation.valid, true);
+assert.equal(fiveFacetTagTaxonomyPlan.validation.exactlyFiveCategories, true);
+assert.deepEqual(Object.keys(fiveFacetTagTaxonomyPlan.taxonomy).sort(), [
+  "concept",
+  "curriculum",
+  "form",
+  "method",
+  "task",
+]);
+assert.equal("difficulty" in fiveFacetTagTaxonomyPlan.taxonomy, false);
+assert.equal("error_pattern" in fiveFacetTagTaxonomyPlan.taxonomy, false);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.questionTagBundleContract.difficultyField
+    .taxonomyCategory,
+  false,
+);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.questionTagBundleContract.difficultyField.type,
+  "number",
+);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.attemptDiagnosisContract
+    .errorPatternLivesOnAttemptRecord,
+  true,
+);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.attemptDiagnosisContract
+    .questionTaxonomyIncludesErrorPattern,
+  false,
+);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.validation.conceptIdsAvoidCoursePrefixes,
+  true,
+);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.validation.curriculumMapsToConceptOnly,
+  true,
+);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.validation.methodTagsRepresentSolvingApproach,
+  true,
+);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.validation.taskTagsRepresentQuestionDemand,
+  true,
+);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.validation.formTagsRepresentPresentation,
+  true,
+);
+assert.equal(fiveFacetTagTaxonomyPlan.validation.aliasCollisionsDetected, true);
+assert.ok(
+  fiveFacetTagTaxonomyPlan.aliasIndex.collisions.some(
+    (collision) => collision.alias === "vertex",
+  ),
+);
+assert.ok(
+  fiveFacetTagTaxonomyPlan.taxonomy.curriculum.edges.some(
+    (edge) =>
+      edge.edgeKind === "maps_to" &&
+      edge.fromTagId ===
+        "curriculum.bc.precalculus_11.quadratic_functions" &&
+      edge.toTagId === "concept.algebra.functions.quadratic",
+  ),
+);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.taxonomy.concept.nodes.some((node) =>
+    node.parentTagIds.some((parentTagId) =>
+      parentTagId.startsWith("curriculum."),
+    ),
+  ),
+  false,
+);
+assert.ok(
+  fiveFacetTagTaxonomyPlan.taxonomy.curriculum.nodes.some(
+    (node) => node.tagId === "curriculum.ap.ap_calculus_bc",
+  ),
+);
+assert.ok(
+  fiveFacetTagTaxonomyPlan.taxonomy.concept.nodes.some(
+    (node) =>
+      node.tagId ===
+      "concept.algebra.functions.quadratic.where_extreme_occurs",
+  ),
+);
+assert.ok(
+  fiveFacetTagTaxonomyPlan.taxonomy.method.nodes.some(
+    (node) =>
+      node.tagId ===
+      "method.algebraic_manipulation.complete_the_square",
+  ),
+);
+assert.ok(
+  fiveFacetTagTaxonomyPlan.taxonomy.task.nodes.some(
+    (node) =>
+      node.tagId === "task.determine.determine_where_extreme_occurs",
+  ),
+);
+assert.ok(
+  fiveFacetTagTaxonomyPlan.taxonomy.form.nodes.some(
+    (node) => node.tagId === "form.symbolic.vertex_form",
+  ),
+);
+assert.equal(fiveFacetTagTaxonomyPlan.validation.noDbMutation, true);
+assert.equal(fiveFacetTagTaxonomyPlan.validation.noProviderCall, true);
+assert.equal(fiveFacetTagTaxonomyPlan.validation.noOfficialTagWrite, true);
+assert.equal(fiveFacetTagTaxonomyPlan.validation.noReviewDraftTagWrite, true);
+assert.equal(
+  fiveFacetTagTaxonomyPlan.questionTagBundleContract.recommendedTagLimits
+    .totalSuggestedMax,
+  12,
+);
+for (const warning of [
+  "five_facet_taxonomy_planning_only",
+  "five_facet_taxonomy_no_db_write",
+  "five_facet_taxonomy_no_official_tag_write",
+  "five_facet_taxonomy_no_review_draft_write",
+  "five_facet_taxonomy_alias_collision",
+]) {
+  assert.ok(fiveFacetTagTaxonomyPlan.warnings.includes(warning));
+}
+assert.equal(
+  /reviewDraftTags|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(fiveFacetTagTaxonomyPlan),
+  ),
+  false,
+);
+const fiveFacetMergedAiPdfImport = mergeAIFiveFacetTagTaxonomyPlanIntoSummary(
+  taxonomyPersistenceMergedAiPdfImport,
+  fiveFacetTagTaxonomyPlan,
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.fiveFacetTagTaxonomyPlan.version,
+  "five_facet_tag_taxonomy_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.taxonomyPersistencePlan.version,
+  "taxonomy_persistence_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.taxonomyReviewPlan.version,
+  "taxonomy_review_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.taxonomyBootstrapPlan.version,
+  "taxonomy_bootstrap_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.taggingV2Plan.version,
+  "tagging_v2_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.adaptiveRereadMergePlan.version,
+  "adaptive_reread_merge_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.adaptiveRereadRunPlan.version,
+  "adaptive_reread_run_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.adaptiveRereadProviderRequestPlan.version,
+  "adaptive_reread_provider_request_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.adaptiveRereadPlan.version,
+  "adaptive_reread_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.providerRunPlan.version,
+  "provider_run_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.providerRequestPlan.version,
+  "provider_request_plan_v1",
+);
+assert.equal(
+  fiveFacetMergedAiPdfImport.extractionBatchPlan.version,
+  "extraction_batch_plan_v1",
+);
+assert.equal(fiveFacetMergedAiPdfImport.packetPlan.version, "packet_plan_v1");
+assert.equal(fiveFacetMergedAiPdfImport.preanalysis.version, "preanalysis_v1");
+assert.equal(fiveFacetMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(fiveFacetMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(fiveFacetMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+console.log(
+  "PASS AI five-facet tag taxonomy defines planning-only curriculum/concept/method/task/form foundation",
 );
 
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({
