@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 const cards = [
   {
     href: "/admin/review",
-    title: "Review drafts",
+    title: "Review Drafts",
     body: "Check draft readiness before publishing.",
   },
   {
@@ -31,11 +31,6 @@ const cards = [
     href: "/admin/imports",
     title: "Batch import",
     body: "Validate JSON and create draft questions for review.",
-  },
-  {
-    href: "/admin/analytics",
-    title: "Visitor analytics",
-    body: "Page visit counts by country (hashed IP).",
   },
   {
     href: "/admin/users",
