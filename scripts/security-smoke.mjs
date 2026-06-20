@@ -130,6 +130,10 @@ const {
   mergeAIFiveFacetTagTaxonomyPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/five-facet-tag-taxonomy.ts");
 const {
+  buildFiveFacetQuestionTaggingPlanFromSummary,
+  mergeFiveFacetQuestionTaggingPlanIntoSummary,
+} = await import("../src/lib/ai-pdf-import/five-facet-question-tagging.ts");
+const {
   getCurriculumConceptMappings,
   getFiveFacetTagAncestors,
   getFiveFacetTagCatalog,
@@ -3127,6 +3131,178 @@ assert.equal(
 );
 console.log(
   "PASS five-facet tag catalog registry supports lookup, traversal, aliases, mappings, and bundle validation without writes",
+);
+
+const fiveFacetQuestionTaggingSummary = {
+  aiPdfImport: fiveFacetMergedAiPdfImport,
+  createdQuestions: [
+    {
+      id: "created-five-facet-1",
+      questionCode: "FF_TAG_001",
+      sourcePages: [1],
+      title:
+        "Determine the maximum value and where it occurs for a quadratic in vertex form.",
+    },
+    {
+      id: "created-five-facet-2",
+      questionCode: "FF_TAG_002",
+      sourcePages: [2],
+      title:
+        "Use the chain rule to find the derivative of a composite function.",
+    },
+    {
+      id: "created-five-facet-3",
+      questionCode: "FF_TAG_003",
+      sourcePages: [3],
+      title:
+        "Identify key graph features from a table and explain the model.",
+    },
+  ],
+};
+const fiveFacetQuestionTaggingPlan =
+  buildFiveFacetQuestionTaggingPlanFromSummary(fiveFacetQuestionTaggingSummary);
+assert.equal(
+  fiveFacetQuestionTaggingPlan.version,
+  "five_facet_question_tagging_plan_v1",
+);
+assert.equal(fiveFacetQuestionTaggingPlan.mode, "planning_only");
+assert.equal(fiveFacetQuestionTaggingPlan.source, "rule_based_catalog");
+assert.equal(fiveFacetQuestionTaggingPlan.itemCount, 3);
+assert.equal(
+  fiveFacetQuestionTaggingPlan.validation.noProviderCall,
+  true,
+);
+assert.equal(fiveFacetQuestionTaggingPlan.validation.noDbMutation, true);
+assert.equal(
+  fiveFacetQuestionTaggingPlan.validation.noOfficialTagWrite,
+  true,
+);
+assert.equal(
+  fiveFacetQuestionTaggingPlan.validation.noReviewDraftTagWrite,
+  true,
+);
+assert.equal(
+  fiveFacetQuestionTaggingPlan.validation.difficultyIsNumeric,
+  true,
+);
+assert.equal(
+  fiveFacetQuestionTaggingPlan.validation.errorPatternIsNotQuestionTag,
+  true,
+);
+const quadraticSuggestion = fiveFacetQuestionTaggingPlan.suggestions[0];
+assert.equal(quadraticSuggestion.reviewRequired, true);
+assert.equal(typeof quadraticSuggestion.difficultySuggestion, "number");
+assert.ok(
+  quadraticSuggestion.tags.concept.includes(
+    "concept.algebra.functions.quadratic.extreme_value",
+  ),
+);
+assert.ok(
+  quadraticSuggestion.tags.concept.includes(
+    "concept.algebra.functions.quadratic.where_extreme_occurs",
+  ),
+);
+assert.ok(
+  quadraticSuggestion.tags.task.includes(
+    "task.determine.determine_extreme_value",
+  ),
+);
+assert.ok(
+  quadraticSuggestion.tags.form.includes("form.symbolic.vertex_form"),
+);
+assert.equal(quadraticSuggestion.validation.valid, true);
+const chainRuleSuggestion = fiveFacetQuestionTaggingPlan.suggestions[1];
+assert.ok(
+  chainRuleSuggestion.tags.concept.includes(
+    "concept.calculus.derivatives.chain_rule",
+  ),
+);
+assert.ok(
+  chainRuleSuggestion.tags.method.includes(
+    "method.formula_based.use_derivative_rule",
+  ),
+);
+assert.equal(chainRuleSuggestion.validation.valid, true);
+const graphTableSuggestion = fiveFacetQuestionTaggingPlan.suggestions[2];
+assert.ok(graphTableSuggestion.tags.form.includes("form.graph.coordinate_graph"));
+assert.ok(graphTableSuggestion.tags.form.includes("form.table.data_table"));
+assert.ok(graphTableSuggestion.tags.task.includes("task.explain.explain_reasoning"));
+assert.ok(
+  graphTableSuggestion.tags.method.includes(
+    "method.graph_reasoning.read_from_graph",
+  ),
+);
+const ambiguousTaggingPlan = buildFiveFacetQuestionTaggingPlanFromSummary({
+  createdQuestions: [
+    {
+      id: "created-five-facet-ambiguous",
+      questionCode: "FF_TAG_AMBIG",
+      sourcePages: [4],
+      title: "Identify the vertex from the graph.",
+    },
+  ],
+});
+assert.equal(ambiguousTaggingPlan.suggestions[0].reviewRequired, true);
+assert.ok(
+  ambiguousTaggingPlan.suggestions[0].warnings.includes(
+    "ambiguous_alias:vertex",
+  ),
+);
+assert.equal(
+  ambiguousTaggingPlan.suggestions[0].tags.task.includes(
+    "task.identify.identify_vertex",
+  ),
+  true,
+);
+assert.equal(
+  fiveFacetQuestionTaggingPlan.suggestions.some((item) =>
+    Object.keys(item.tags).includes("error_pattern"),
+  ),
+  false,
+);
+assert.equal(
+  fiveFacetQuestionTaggingPlan.suggestions.some((item) =>
+    Object.keys(item.tags).includes("difficulty"),
+  ),
+  false,
+);
+assert.equal(
+  /reviewDraftTags|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(fiveFacetQuestionTaggingPlan),
+  ),
+  false,
+);
+const fiveFacetQuestionTaggingMergedAiPdfImport =
+  mergeFiveFacetQuestionTaggingPlanIntoSummary(
+    fiveFacetMergedAiPdfImport,
+    fiveFacetQuestionTaggingPlan,
+  );
+assert.equal(
+  fiveFacetQuestionTaggingMergedAiPdfImport.fiveFacetQuestionTaggingPlan
+    .version,
+  "five_facet_question_tagging_plan_v1",
+);
+assert.equal(
+  fiveFacetQuestionTaggingMergedAiPdfImport.fiveFacetTagTaxonomyPlan.version,
+  "five_facet_tag_taxonomy_plan_v1",
+);
+assert.equal(
+  fiveFacetQuestionTaggingMergedAiPdfImport.taxonomyPersistencePlan.version,
+  "taxonomy_persistence_plan_v1",
+);
+assert.equal(
+  fiveFacetQuestionTaggingMergedAiPdfImport.chunking.totalChunks,
+  4,
+);
+assert.equal(
+  fiveFacetQuestionTaggingMergedAiPdfImport.provider.id,
+  "provider-1",
+);
+assert.deepEqual(fiveFacetQuestionTaggingMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+console.log(
+  "PASS AI five-facet question tagging creates rule-based review-only suggestions from catalog metadata",
 );
 
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({

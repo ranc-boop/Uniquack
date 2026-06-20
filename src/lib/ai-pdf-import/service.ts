@@ -128,6 +128,12 @@ import {
   type AIFiveFacetTagTaxonomyPlan,
 } from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
 import {
+  buildFiveFacetQuestionTaggingPlanFromSummary,
+  failedFiveFacetQuestionTaggingPlan,
+  mergeFiveFacetQuestionTaggingPlanIntoSummary,
+  type AIFiveFacetQuestionTaggingPlan,
+} from "@/lib/ai-pdf-import/five-facet-question-tagging";
+import {
   buildAIExtractionCoverageAuditPlanFromSummary,
   failedAIExtractionCoverageAuditPlan,
   mergeAIExtractionCoverageAuditPlanIntoSummary,
@@ -839,6 +845,70 @@ async function generateAndStoreFiveFacetTagTaxonomyPlan({
     await updateAIFiveFacetTagTaxonomyPlan({
       fiveFacetTagTaxonomyPlan: failedAIFiveFacetTagTaxonomyPlan({
         warnings: [`five-facet tag taxonomy plan failed: ${message}`],
+      }),
+      input,
+    });
+  }
+
+  await generateAndStoreFiveFacetQuestionTaggingPlan({ input });
+}
+
+async function updateAIFiveFacetQuestionTaggingPlan({
+  fiveFacetQuestionTaggingPlan,
+  input,
+}: {
+  fiveFacetQuestionTaggingPlan: AIFiveFacetQuestionTaggingPlan;
+  input: ProcessInput;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeFiveFacetQuestionTaggingPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    fiveFacetQuestionTaggingPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreFiveFacetQuestionTaggingPlan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const current = await loadCurrentAIPdfSummary(input);
+    const fiveFacetQuestionTaggingPlan =
+      buildFiveFacetQuestionTaggingPlanFromSummary(current.summary);
+    await updateAIFiveFacetQuestionTaggingPlan({
+      fiveFacetQuestionTaggingPlan,
+      input,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI five-facet question tagging plan failed.";
+
+    await updateAIFiveFacetQuestionTaggingPlan({
+      fiveFacetQuestionTaggingPlan: failedFiveFacetQuestionTaggingPlan({
+        warnings: [`five-facet question tagging plan failed: ${message}`],
       }),
       input,
     });
