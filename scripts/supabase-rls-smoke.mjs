@@ -51,7 +51,7 @@ function logSkip(message) {
 function isMissingMigrationError(error) {
   const text = `${error?.code ?? ""} ${error?.message ?? ""}`;
 
-  return /question_source_files|question-source-files|schema cache|could not find|does not exist|bucket not found|not found/i.test(
+  return /question_source_files|question-source-files|five_facet_|schema cache|could not find|does not exist|bucket not found|not found/i.test(
     text,
   );
 }
@@ -254,6 +254,12 @@ if (adminSession) {
     videos: [],
     questions: [],
     questionAssets: [],
+    fiveFacetTagReviewActions: [],
+    fiveFacetQuestionTagAssignments: [],
+    fiveFacetCurriculumConceptMappings: [],
+    fiveFacetTagAliases: [],
+    fiveFacetTagEdges: [],
+    fiveFacetTagNodes: [],
     questionSourceFiles: [],
     sourceStorageObjects: [],
     storageObjects: [],
@@ -393,6 +399,179 @@ if (adminSession) {
 
     assert(publicAssetResponse.ok, "public question asset URL was not readable");
     logPass("question asset public URL is readable");
+
+    const fiveFacetSuffix = nowSlug("rls").replaceAll("-", "_");
+    const fiveFacetConceptTagId = `concept.smoke.${fiveFacetSuffix}`;
+    const fiveFacetCurriculumTagId = `curriculum.smoke.${fiveFacetSuffix}`;
+    const { data: createdFiveFacetConcept, error: fiveFacetConceptError } =
+      await adminSession.client
+        .from("five_facet_tag_nodes")
+        .insert({
+          category: "concept",
+          created_by: adminSession.user.id,
+          label: "Smoke concept tag",
+          tag_id: fiveFacetConceptTagId,
+        })
+        .select("id,tag_id,category")
+        .single();
+
+    if (fiveFacetConceptError) {
+      if (isMissingMigrationError(fiveFacetConceptError)) {
+        logSkip(
+          "five-facet tag persistence RLS checks; apply supabase/migrations/0009_five_facet_tag_persistence.sql",
+        );
+      } else {
+        throw new Error(
+          `five_facet_tag_nodes insert failed: ${fiveFacetConceptError.message}`,
+        );
+      }
+    } else {
+      cleanup.fiveFacetTagNodes.push(createdFiveFacetConcept.tag_id);
+      logPass("admin can create five-facet tag nodes");
+
+      const createdFiveFacetCurriculum = await insertOrThrow(
+        adminSession.client,
+        "five_facet_tag_nodes",
+        {
+          category: "curriculum",
+          created_by: adminSession.user.id,
+          label: "Smoke curriculum tag",
+          tag_id: fiveFacetCurriculumTagId,
+        },
+        "id,tag_id,category",
+      );
+      cleanup.fiveFacetTagNodes.push(createdFiveFacetCurriculum.tag_id);
+
+      const createdFiveFacetEdge = await insertOrThrow(
+        adminSession.client,
+        "five_facet_tag_edges",
+        {
+          created_by: adminSession.user.id,
+          edge_kind: "maps_to",
+          from_tag_id: fiveFacetCurriculumTagId,
+          to_tag_id: fiveFacetConceptTagId,
+        },
+        "id,edge_kind",
+      );
+      cleanup.fiveFacetTagEdges.push(createdFiveFacetEdge.id);
+
+      const createdFiveFacetAlias = await insertOrThrow(
+        adminSession.client,
+        "five_facet_tag_aliases",
+        {
+          alias_text: "Smoke concept",
+          created_by: adminSession.user.id,
+          normalized_alias: `smoke concept ${fiveFacetSuffix}`,
+          tag_id: fiveFacetConceptTagId,
+        },
+        "id,normalized_alias",
+      );
+      cleanup.fiveFacetTagAliases.push(createdFiveFacetAlias.id);
+
+      const createdFiveFacetMapping = await insertOrThrow(
+        adminSession.client,
+        "five_facet_curriculum_concept_mappings",
+        {
+          concept_tag_id: fiveFacetConceptTagId,
+          created_by: adminSession.user.id,
+          curriculum_tag_id: fiveFacetCurriculumTagId,
+        },
+        "id,curriculum_tag_id,concept_tag_id",
+      );
+      cleanup.fiveFacetCurriculumConceptMappings.push(createdFiveFacetMapping.id);
+
+      const createdFiveFacetAssignment = await insertOrThrow(
+        adminSession.client,
+        "five_facet_question_tag_assignments",
+        {
+          category: "concept",
+          confidence: 0.75,
+          created_by: adminSession.user.id,
+          question_id: createdQuestion.id,
+          review_status: "pending_review",
+          source: "ai_suggestion",
+          tag_id: fiveFacetConceptTagId,
+        },
+        "id,category,review_status",
+      );
+      cleanup.fiveFacetQuestionTagAssignments.push(
+        createdFiveFacetAssignment.id,
+      );
+      logPass("admin can create five-facet question tag assignments");
+
+      const createdFiveFacetReviewAction = await insertOrThrow(
+        adminSession.client,
+        "five_facet_tag_review_actions",
+        {
+          action_id: nowSlug("five-facet-action"),
+          action_kind: "approve_single_tag",
+          confidence: 0.75,
+          created_by: adminSession.user.id,
+          proposed_tag_ids: [fiveFacetConceptTagId],
+          question_id: createdQuestion.id,
+          question_ref: { id: createdQuestion.id },
+          reason: "Smoke pending review action",
+          target_facet: "concept",
+        },
+        "id,action_kind,review_status",
+      );
+      cleanup.fiveFacetTagReviewActions.push(createdFiveFacetReviewAction.id);
+      logPass("admin can create five-facet review action drafts");
+
+      await assertInsertDenied(
+        anon,
+        "five_facet_tag_nodes",
+        {
+          category: "concept",
+          label: "Anon five-facet tag",
+          tag_id: `concept.anon.${fiveFacetSuffix}`,
+        },
+        "anon",
+      );
+      await assertInsertDenied(
+        anon,
+        "five_facet_question_tag_assignments",
+        {
+          category: "concept",
+          question_id: createdQuestion.id,
+          tag_id: fiveFacetConceptTagId,
+        },
+        "anon",
+      );
+
+      const { error: difficultyTagError } = await adminSession.client
+        .from("five_facet_tag_nodes")
+        .insert({
+          category: "difficulty",
+          label: "Invalid difficulty tag",
+          tag_id: `difficulty.${fiveFacetSuffix}`,
+        });
+      assert(difficultyTagError, "difficulty unexpectedly inserted as tag category");
+      logPass("difficulty is not accepted as a five-facet tag category");
+
+      const { error: errorPatternTagError } = await adminSession.client
+        .from("five_facet_tag_nodes")
+        .insert({
+          category: "error_pattern",
+          label: "Invalid error pattern tag",
+          tag_id: `error_pattern.${fiveFacetSuffix}`,
+        });
+      assert(errorPatternTagError, "error_pattern unexpectedly inserted as tag category");
+      logPass("error_pattern is not accepted as a question taxonomy category");
+
+      if (studentSession) {
+        await assertInsertDenied(
+          studentSession.client,
+          "five_facet_question_tag_assignments",
+          {
+            category: "concept",
+            question_id: createdQuestion.id,
+            tag_id: fiveFacetConceptTagId,
+          },
+          "student",
+        );
+      }
+    }
 
     const sourceFileId = crypto.randomUUID();
     const sourceFilePath = `questions/${createdQuestion.id}/${sourceFileId}.pdf`;
@@ -849,6 +1028,42 @@ if (adminSession) {
       await adminSession.client.storage
         .from(questionAssetsBucket)
         .remove(cleanup.storageObjects);
+    }
+    for (const id of cleanup.fiveFacetTagReviewActions) {
+      await adminSession.client
+        .from("five_facet_tag_review_actions")
+        .delete()
+        .eq("id", id);
+    }
+    for (const id of cleanup.fiveFacetQuestionTagAssignments) {
+      await adminSession.client
+        .from("five_facet_question_tag_assignments")
+        .delete()
+        .eq("id", id);
+    }
+    for (const id of cleanup.fiveFacetCurriculumConceptMappings) {
+      await adminSession.client
+        .from("five_facet_curriculum_concept_mappings")
+        .delete()
+        .eq("id", id);
+    }
+    for (const id of cleanup.fiveFacetTagAliases) {
+      await adminSession.client
+        .from("five_facet_tag_aliases")
+        .delete()
+        .eq("id", id);
+    }
+    for (const id of cleanup.fiveFacetTagEdges) {
+      await adminSession.client
+        .from("five_facet_tag_edges")
+        .delete()
+        .eq("id", id);
+    }
+    for (const tagId of cleanup.fiveFacetTagNodes) {
+      await adminSession.client
+        .from("five_facet_tag_nodes")
+        .delete()
+        .eq("tag_id", tagId);
     }
     for (const id of cleanup.questionSourceFiles) {
       await adminSession.client
