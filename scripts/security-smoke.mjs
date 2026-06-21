@@ -164,6 +164,14 @@ const {
   validateFiveFacetTagNodeRow,
 } = await import("../src/lib/tags/five-facet-tag-persistence.ts");
 const {
+  buildFiveFacetQuestionTagAssignmentsFromApprovedActions,
+  buildFiveFacetQuestionTagSearchFilter,
+  buildFiveFacetQuestionTagSearchPlan,
+  summarizeFiveFacetQuestionTagAssignments,
+  validateApprovedFiveFacetReviewAction,
+  validateFiveFacetQuestionTagAssignmentRow,
+} = await import("../src/lib/tags/five-facet-tag-assignment.ts");
+const {
   buildAIExtractionCoverageAuditPlanFromSummary,
   mergeAIExtractionCoverageAuditPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/extraction-coverage-audit.ts");
@@ -3623,6 +3631,167 @@ assert.equal(
 );
 console.log(
   "PASS five-facet tag persistence foundation defines conservative schema and planning-only helpers without writes",
+);
+
+const approvedActionForAssignment = approvedFiveFacetReviewActionPlan.actions[0];
+assert.equal(
+  validateApprovedFiveFacetReviewAction(approvedActionForAssignment).valid,
+  true,
+);
+const approvedAssignmentContract =
+  buildFiveFacetQuestionTagAssignmentsFromApprovedActions(
+    approvedFiveFacetReviewActionPlan,
+  );
+assert.ok(approvedAssignmentContract.rows.length > 0);
+assert.equal(approvedAssignmentContract.valid, true);
+assert.equal(
+  approvedAssignmentContract.rows.every(
+    (row) =>
+      row.review_status === "approved" &&
+      row.source === "review_action" &&
+      ["curriculum", "concept", "method", "task", "form"].includes(row.category),
+  ),
+  true,
+);
+const assignmentContractSummary = summarizeFiveFacetQuestionTagAssignments(
+  approvedAssignmentContract.rows,
+);
+assert.equal(assignmentContractSummary.approvedCount, approvedAssignmentContract.rows.length);
+assert.equal(assignmentContractSummary.pendingReviewCount, 0);
+assert.equal(assignmentContractSummary.questionCount, 1);
+assert.equal(
+  buildFiveFacetQuestionTagAssignmentsFromApprovedActions(
+    fiveFacetTagReviewActionPlan,
+  ).rows.length,
+  0,
+);
+const rejectedActionAssignmentContract =
+  buildFiveFacetQuestionTagAssignmentsFromApprovedActions([
+    {
+      ...approvedActionForAssignment,
+      reviewStatus: "rejected",
+    },
+  ]);
+assert.equal(rejectedActionAssignmentContract.rows.length, 0);
+assert.ok(
+  rejectedActionAssignmentContract.errors.some((error) =>
+    error.includes("review_action_not_approved"),
+  ),
+);
+const invalidTagAssignmentContract =
+  buildFiveFacetQuestionTagAssignmentsFromApprovedActions([
+    {
+      ...approvedActionForAssignment,
+      proposedTagIds: ["concept.not_a_real_tag"],
+    },
+  ]);
+assert.equal(invalidTagAssignmentContract.rows.length, 0);
+assert.ok(
+  invalidTagAssignmentContract.errors.includes(
+    "unknown_five_facet_tag:concept.not_a_real_tag",
+  ),
+);
+assert.equal(
+  validateFiveFacetQuestionTagAssignmentRow({
+    category: "form",
+    question_id: "11111111-1111-4111-8111-111111111111",
+    review_status: "approved",
+    source: "review_action",
+    tag_id: "concept.algebra.functions.quadratic.vertex",
+  }).errors.includes(
+    "wrong_category:concept.algebra.functions.quadratic.vertex:expected_form",
+  ),
+  true,
+);
+const fiveFacetSearchFilter = buildFiveFacetQuestionTagSearchFilter({
+  difficulty: { max: 0.9, min: 0.2 },
+  exclude: {
+    form: ["form.table.data_table"],
+  },
+  include: {
+    concept: ["concept.algebra.functions.quadratic.vertex"],
+    curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+    form: ["form.symbolic.vertex_form"],
+    method: ["method.algebraic_manipulation.complete_the_square"],
+    task: ["task.determine.determine_extreme_value"],
+  },
+  requireReviewed: true,
+});
+assert.equal(fiveFacetSearchFilter.valid, true);
+assert.equal(fiveFacetSearchFilter.filter.requireReviewed, true);
+assert.equal(
+  fiveFacetSearchFilter.filter.include.concept.includes(
+    "concept.algebra.functions.quadratic.vertex",
+  ),
+  true,
+);
+const fiveFacetSearchPlan = buildFiveFacetQuestionTagSearchPlan(
+  {
+    difficulty: { max: 0.9, min: 0.2 },
+    include: {
+      curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+    },
+    requireReviewed: true,
+  },
+  { generatedAt: new Date(0).toISOString() },
+);
+assert.equal(fiveFacetSearchPlan.version, "five_facet_question_tag_search_plan_v1");
+assert.equal(fiveFacetSearchPlan.mode, "planning_only");
+assert.equal(fiveFacetSearchPlan.noProviderCall, true);
+assert.equal(fiveFacetSearchPlan.noDbMutation, true);
+assert.equal(fiveFacetSearchPlan.noReviewDraftWrite, true);
+assert.equal(fiveFacetSearchPlan.noExtractionBehaviorChange, true);
+assert.equal(
+  fiveFacetSearchPlan.searchContract.reviewStatusFilter,
+  "approved",
+);
+assert.equal(
+  fiveFacetSearchPlan.searchContract.curriculumConceptExpansion[0]
+    .hierarchyMutation,
+  false,
+);
+assert.ok(
+  fiveFacetSearchPlan.searchContract.curriculumConceptExpansion[0]
+    .conceptTagIds.length > 0,
+);
+const invalidFiveFacetSearchPlan = buildFiveFacetQuestionTagSearchPlan({
+  difficulty: { max: 0.1, min: 0.9 },
+  include: {
+    concept: ["form.symbolic.vertex_form"],
+    difficulty: ["difficulty.medium"],
+    error_pattern: ["error_pattern.sign_error"],
+  },
+});
+assert.equal(invalidFiveFacetSearchPlan.valid, false);
+assert.ok(
+  invalidFiveFacetSearchPlan.errors.includes(
+    "include.wrong_category:form.symbolic.vertex_form:expected_concept",
+  ),
+);
+assert.ok(
+  invalidFiveFacetSearchPlan.errors.includes(
+    "include.difficulty_is_numeric_field_not_taxonomy_category",
+  ),
+);
+assert.ok(
+  invalidFiveFacetSearchPlan.errors.includes(
+    "include.error_pattern_is_attempt_diagnosis_not_question_taxonomy",
+  ),
+);
+assert.ok(
+  invalidFiveFacetSearchPlan.errors.includes("difficulty.min_cannot_exceed_max"),
+);
+assert.equal(
+  /reviewDraftTags|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify({
+      approvedAssignmentContract,
+      fiveFacetSearchPlan,
+    }),
+  ),
+  false,
+);
+console.log(
+  "PASS five-facet tag assignment and search contract validates approved actions and planning-only filters",
 );
 
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({
