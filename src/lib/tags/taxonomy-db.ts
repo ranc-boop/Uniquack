@@ -1,12 +1,27 @@
 import "server-only";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 import type {
   TaxonomyCatalogView,
   TaxonomyNodeView,
 } from "@/components/tags/taxonomy-tag-tree-picker";
-import type { Database } from "@/types/database";
+
+type TaxonomySupabaseLike = {
+  from: (table: string) => any;
+};
+
+type FacetRow = TaxonomyCatalogView["facets"][number];
+type NodeRow = Omit<TaxonomyNodeView, "aliases" | "parent_tag_ids"> & {
+  is_assignable: boolean;
+  sort_order?: number | null;
+};
+type EdgeRow = {
+  from_tag_id: string;
+  to_tag_id: string;
+};
+type AliasRow = {
+  alias_text: string;
+  tag_id: string;
+};
 
 export type TaxonomyDbLoadResult = {
   catalog: TaxonomyCatalogView;
@@ -25,7 +40,7 @@ function isMissingTaxonomyError(error: unknown) {
 }
 
 export async function loadTaxonomyCatalog(
-  supabase: SupabaseClient<Database>,
+  supabase: TaxonomySupabaseLike,
 ): Promise<TaxonomyDbLoadResult> {
   const [
     { data: facets, error: facetsError },
@@ -66,7 +81,7 @@ export async function loadTaxonomyCatalog(
   }
 
   const aliasesByTagId = new Map<string, string[]>();
-  for (const alias of aliases ?? []) {
+  for (const alias of (aliases ?? []) as AliasRow[]) {
     aliasesByTagId.set(alias.tag_id, [
       ...(aliasesByTagId.get(alias.tag_id) ?? []),
       alias.alias_text,
@@ -74,14 +89,14 @@ export async function loadTaxonomyCatalog(
   }
 
   const parentsByTagId = new Map<string, string[]>();
-  for (const edge of edges ?? []) {
+  for (const edge of (edges ?? []) as EdgeRow[]) {
     parentsByTagId.set(edge.to_tag_id, [
       ...(parentsByTagId.get(edge.to_tag_id) ?? []),
       edge.from_tag_id,
     ]);
   }
 
-  const catalogNodes: TaxonomyNodeView[] = (nodes ?? [])
+  const catalogNodes: TaxonomyNodeView[] = ((nodes ?? []) as NodeRow[])
     .filter((node) => node.is_assignable || node.tag_id === node.facet_key)
     .map((node) => ({
       aliases: aliasesByTagId.get(node.tag_id) ?? [],
@@ -94,10 +109,9 @@ export async function loadTaxonomyCatalog(
 
   return {
     catalog: {
-      facets: facets ?? [],
+      facets: (facets ?? []) as FacetRow[],
       nodes: catalogNodes,
     },
     errorMessage: null,
   };
 }
-

@@ -139,6 +139,7 @@ import {
   mergeTaxonomyTagReviewActionPlanIntoSummary,
   type AITaxonomyTagReviewActionPlan,
 } from "@/lib/ai-pdf-import/taxonomy-tag-review-actions";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import {
   buildAIExtractionCoverageAuditPlanFromSummary,
   failedAIExtractionCoverageAuditPlan,
@@ -837,7 +838,9 @@ async function generateAndStoreTaxonomyTagTaxonomyPlan({
   input: ProcessInput;
 }) {
   try {
-    const taxonomyTagTaxonomyPlan = buildAITaxonomyTagTaxonomyPlan();
+    const { catalog, errorMessage } = await loadTaxonomyCatalog(input.supabase);
+    if (errorMessage) throw new Error(errorMessage);
+    const taxonomyTagTaxonomyPlan = buildAITaxonomyTagTaxonomyPlan(catalog);
     await updateAITaxonomyTagTaxonomyPlan({
       taxonomyTagTaxonomyPlan,
       input,
@@ -900,8 +903,10 @@ async function generateAndStoreTaxonomyQuestionTaggingPlan({
 }) {
   try {
     const current = await loadCurrentAIPdfSummary(input);
+    const { catalog, errorMessage } = await loadTaxonomyCatalog(input.supabase);
+    if (errorMessage) throw new Error(errorMessage);
     const taxonomyQuestionTaggingPlan =
-      buildTaxonomyQuestionTaggingPlanFromSummary(current.summary);
+      buildTaxonomyQuestionTaggingPlanFromSummary(current.summary, catalog);
     await updateAITaxonomyQuestionTaggingPlan({
       taxonomyQuestionTaggingPlan,
       input,
@@ -964,8 +969,10 @@ async function generateAndStoreTaxonomyTagReviewActionPlan({
 }) {
   try {
     const current = await loadCurrentAIPdfSummary(input);
+    const { catalog, errorMessage } = await loadTaxonomyCatalog(input.supabase);
+    if (errorMessage) throw new Error(errorMessage);
     const taxonomyTagReviewActionPlan =
-      buildTaxonomyTagReviewActionPlanFromSummary(current.summary);
+      buildTaxonomyTagReviewActionPlanFromSummary(current.summary, catalog);
     await updateAITaxonomyTagReviewActionPlan({
       taxonomyTagReviewActionPlan,
       input,
