@@ -157,6 +157,13 @@ const {
   validateFiveFacetTagId,
 } = await import("../src/lib/tags/five-facet-tag-catalog.ts");
 const {
+  buildFiveFacetCatalogPersistencePlan,
+  buildQuestionTagAssignmentRowsFromApprovedReviewActions,
+  summarizeFiveFacetTagPersistencePlan,
+  validateFiveFacetQuestionTagAssignment,
+  validateFiveFacetTagNodeRow,
+} = await import("../src/lib/tags/five-facet-tag-persistence.ts");
+const {
   buildAIExtractionCoverageAuditPlanFromSummary,
   mergeAIExtractionCoverageAuditPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/extraction-coverage-audit.ts");
@@ -3452,6 +3459,170 @@ assert.deepEqual(fiveFacetTagReviewMergedAiPdfImport.warnings, [
 ]);
 console.log(
   "PASS AI five-facet tag review actions create planning-only pending-review drafts without writes",
+);
+
+const fiveFacetPersistenceMigration = await readFile(
+  new URL(
+    "../supabase/migrations/0009_five_facet_tag_persistence.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+for (const expectedTable of [
+  "five_facet_tag_nodes",
+  "five_facet_tag_edges",
+  "five_facet_tag_aliases",
+  "five_facet_curriculum_concept_mappings",
+  "five_facet_question_tag_assignments",
+  "five_facet_tag_review_actions",
+]) {
+  assert.ok(fiveFacetPersistenceMigration.includes(`public.${expectedTable}`));
+  assert.ok(
+    fiveFacetPersistenceMigration.includes(
+      `alter table public.${expectedTable} enable row level security`,
+    ),
+  );
+}
+assert.ok(
+  fiveFacetPersistenceMigration.includes(
+    "category in ('curriculum', 'concept', 'method', 'task', 'form')",
+  ),
+);
+assert.ok(fiveFacetPersistenceMigration.includes("difficulty"));
+assert.ok(fiveFacetPersistenceMigration.includes("error_pattern"));
+assert.ok(fiveFacetPersistenceMigration.includes("pending_review"));
+assert.ok(fiveFacetPersistenceMigration.includes("confidence"));
+assert.ok(fiveFacetPersistenceMigration.includes("source"));
+assert.ok(fiveFacetPersistenceMigration.includes("review_status"));
+assert.ok(fiveFacetPersistenceMigration.includes("private.is_admin()"));
+assert.equal(/ai_provider_profiles|service_role|provider gateway/i.test(fiveFacetPersistenceMigration), false);
+
+const fiveFacetPersistencePlan = buildFiveFacetCatalogPersistencePlan({
+  generatedAt: new Date(0).toISOString(),
+});
+const fiveFacetPersistenceSummary =
+  summarizeFiveFacetTagPersistencePlan(fiveFacetPersistencePlan);
+assert.equal(
+  fiveFacetPersistencePlan.version,
+  "five_facet_tag_persistence_plan_v1",
+);
+assert.equal(fiveFacetPersistencePlan.mode, "schema_foundation");
+assert.deepEqual(fiveFacetPersistencePlan.categories.sort(), [
+  "concept",
+  "curriculum",
+  "form",
+  "method",
+  "task",
+]);
+assert.equal(fiveFacetPersistenceSummary.tableCount, 6);
+assert.equal(fiveFacetPersistenceSummary.noProviderCall, true);
+assert.equal(fiveFacetPersistenceSummary.noDbMutation, true);
+assert.equal(fiveFacetPersistenceSummary.noOfficialTagWrite, true);
+assert.equal(fiveFacetPersistenceSummary.noReviewDraftWrite, true);
+assert.equal(
+  validateFiveFacetTagNodeRow({
+    category: "concept",
+    label: "Quadratic vertex",
+    tag_id: "concept.algebra.functions.quadratic.vertex",
+  }).valid,
+  true,
+);
+assert.equal(
+  validateFiveFacetTagNodeRow({
+    category: "difficulty",
+    label: "Difficulty",
+    tag_id: "difficulty.medium",
+  }).errors.includes("invalid_five_facet_category:difficulty"),
+  true,
+);
+assert.equal(
+  validateFiveFacetTagNodeRow({
+    category: "concept",
+    label: "Error pattern",
+    tag_id: "error_pattern.sign_error",
+  }).errors.includes(
+    "error_pattern_is_attempt_diagnosis_not_question_taxonomy",
+  ),
+  true,
+);
+const validFiveFacetAssignment = validateFiveFacetQuestionTagAssignment({
+  category: "concept",
+  confidence: 0.82,
+  question_id: "11111111-1111-4111-8111-111111111111",
+  review_status: "pending_review",
+  source: "ai_suggestion",
+  tag_id: "concept.algebra.functions.quadratic.vertex",
+});
+assert.equal(validFiveFacetAssignment.valid, true);
+assert.equal(validFiveFacetAssignment.row?.review_status, "pending_review");
+assert.equal(
+  validateFiveFacetQuestionTagAssignment({
+    category: "form",
+    question_id: "11111111-1111-4111-8111-111111111111",
+    tag_id: "concept.algebra.functions.quadratic.vertex",
+  }).errors.includes(
+    "wrong_category:concept.algebra.functions.quadratic.vertex:expected_form",
+  ),
+  true,
+);
+assert.equal(
+  validateFiveFacetQuestionTagAssignment({
+    category: "difficulty",
+    question_id: "11111111-1111-4111-8111-111111111111",
+    tag_id: "difficulty.medium",
+  }).errors.includes("invalid_five_facet_category:difficulty"),
+  true,
+);
+assert.equal(
+  validateFiveFacetQuestionTagAssignment({
+    category: "error_pattern",
+    question_id: "11111111-1111-4111-8111-111111111111",
+    tag_id: "error_pattern.sign_error",
+  }).errors.includes("invalid_five_facet_category:error_pattern"),
+  true,
+);
+const approvedFiveFacetReviewActionPlan = {
+  ...fiveFacetTagReviewActionPlan,
+  actions: fiveFacetTagReviewActionPlan.actions
+    .filter((action) => action.actionKind === "approve_bundle")
+    .slice(0, 1)
+    .map((action) => ({
+      ...action,
+      questionRef: {
+        ...action.questionRef,
+        id: "11111111-1111-4111-8111-111111111111",
+      },
+      reviewStatus: "approved",
+    })),
+};
+const approvedFiveFacetAssignmentRows =
+  buildQuestionTagAssignmentRowsFromApprovedReviewActions(
+    approvedFiveFacetReviewActionPlan,
+  );
+assert.ok(approvedFiveFacetAssignmentRows.rows.length > 0);
+assert.equal(
+  approvedFiveFacetAssignmentRows.rows.every(
+    (row) =>
+      row.review_status === "approved" &&
+      row.source === "review_action" &&
+      ["curriculum", "concept", "method", "task", "form"].includes(row.category),
+  ),
+  true,
+);
+assert.equal(
+  buildQuestionTagAssignmentRowsFromApprovedReviewActions(
+    fiveFacetTagReviewActionPlan,
+  ).rows.length,
+  0,
+);
+assert.equal(
+  /reviewDraftTags|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(fiveFacetPersistencePlan),
+  ),
+  false,
+);
+console.log(
+  "PASS five-facet tag persistence foundation defines conservative schema and planning-only helpers without writes",
 );
 
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({
