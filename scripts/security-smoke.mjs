@@ -172,6 +172,16 @@ const {
   validateFiveFacetQuestionTagAssignmentRow,
 } = await import("../src/lib/tags/five-facet-tag-assignment.ts");
 const {
+  buildApprovedTagAssignmentWritePlan,
+  buildFiveFacetCatalogSeedRows,
+  buildFiveFacetCatalogSyncPlan,
+  persistApprovedFiveFacetAssignments,
+  seedFiveFacetCatalog,
+  summarizeFiveFacetAdminPersistencePlan,
+  validateApprovedTagAssignmentWritePlan,
+  validateFiveFacetCatalogSeedRows,
+} = await import("../src/lib/tags/five-facet-tag-admin-persistence.ts");
+const {
   buildAIExtractionCoverageAuditPlanFromSummary,
   mergeAIExtractionCoverageAuditPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/extraction-coverage-audit.ts");
@@ -3792,6 +3802,122 @@ assert.equal(
 );
 console.log(
   "PASS five-facet tag assignment and search contract validates approved actions and planning-only filters",
+);
+
+const fiveFacetCatalogSeedRows = buildFiveFacetCatalogSeedRows();
+assert.equal(
+  fiveFacetCatalogSeedRows.nodes.length,
+  listFiveFacetTagNodes().length,
+);
+assert.ok(fiveFacetCatalogSeedRows.aliases.length > 0);
+assert.ok(fiveFacetCatalogSeedRows.edges.length > 0);
+assert.ok(fiveFacetCatalogSeedRows.curriculumConceptMappings.length > 0);
+assert.equal(validateFiveFacetCatalogSeedRows(fiveFacetCatalogSeedRows).valid, true);
+const invalidFiveFacetCatalogSeedRows = {
+  ...fiveFacetCatalogSeedRows,
+  nodes: [
+    ...fiveFacetCatalogSeedRows.nodes,
+    {
+      category: "difficulty",
+      description: "Difficulty is numeric metadata, not a five-facet tag.",
+      label: "Difficulty",
+      metadata: {},
+      status: "active",
+      tag_id: "difficulty.medium",
+    },
+  ],
+};
+assert.equal(validateFiveFacetCatalogSeedRows(invalidFiveFacetCatalogSeedRows).valid, false);
+assert.ok(
+  validateFiveFacetCatalogSeedRows(invalidFiveFacetCatalogSeedRows).errors.some(
+    (error) =>
+      error.includes("invalid_five_facet_category:difficulty") ||
+      error.includes("difficulty_is_not_taxonomy"),
+  ),
+);
+const fiveFacetCatalogSyncPlan = buildFiveFacetCatalogSyncPlan({
+  generatedAt: new Date(0).toISOString(),
+});
+assert.equal(fiveFacetCatalogSyncPlan.version, "five_facet_catalog_sync_plan_v1");
+assert.equal(fiveFacetCatalogSyncPlan.mode, "admin_server_only");
+assert.equal(fiveFacetCatalogSyncPlan.status, "planned");
+assert.equal(fiveFacetCatalogSyncPlan.safety.serverOnly, true);
+assert.equal(fiveFacetCatalogSyncPlan.safety.noAiImportWrite, true);
+assert.equal(fiveFacetCatalogSyncPlan.safety.noProviderCall, true);
+assert.equal(fiveFacetCatalogSyncPlan.safety.noReviewDraftWrite, true);
+assert.equal(fiveFacetCatalogSyncPlan.upsertKeys.nodes[0], "tag_id");
+assert.equal(
+  fiveFacetCatalogSyncPlan.upsertKeys.curriculumConceptMappings.join(","),
+  "curriculum_tag_id,concept_tag_id",
+);
+const approvedFiveFacetWritePlan = buildApprovedTagAssignmentWritePlan(
+  approvedFiveFacetReviewActionPlan,
+  { generatedAt: new Date(0).toISOString() },
+);
+assert.equal(
+  approvedFiveFacetWritePlan.version,
+  "five_facet_approved_assignment_write_plan_v1",
+);
+assert.equal(approvedFiveFacetWritePlan.mode, "admin_server_only");
+assert.equal(approvedFiveFacetWritePlan.valid, true);
+assert.equal(approvedFiveFacetWritePlan.status, "planned");
+assert.ok(approvedFiveFacetWritePlan.assignmentRows.length > 0);
+assert.equal(
+  approvedFiveFacetWritePlan.assignmentRows.every(
+    (row) => row.review_status === "approved" && row.source === "review_action",
+  ),
+  true,
+);
+assert.equal(validateApprovedTagAssignmentWritePlan(approvedFiveFacetWritePlan).valid, true);
+const pendingFiveFacetWritePlan = buildApprovedTagAssignmentWritePlan(
+  fiveFacetTagReviewActionPlan,
+  { generatedAt: new Date(0).toISOString() },
+);
+assert.equal(pendingFiveFacetWritePlan.status, "blocked");
+assert.equal(pendingFiveFacetWritePlan.assignmentRows.length, 0);
+assert.ok(
+  pendingFiveFacetWritePlan.errors.some((error) =>
+    error.includes("review_action_not_approved"),
+  ),
+);
+const rejectedFiveFacetWritePlan = buildApprovedTagAssignmentWritePlan(
+  [
+    {
+      ...approvedActionForAssignment,
+      reviewStatus: "rejected",
+    },
+  ],
+  { generatedAt: new Date(0).toISOString() },
+);
+assert.equal(rejectedFiveFacetWritePlan.assignmentRows.length, 0);
+assert.ok(
+  rejectedFiveFacetWritePlan.errors.some((error) =>
+    error.includes("review_action_not_approved"),
+  ),
+);
+const fiveFacetAdminPersistenceSummary = summarizeFiveFacetAdminPersistencePlan({
+  assignmentWritePlan: approvedFiveFacetWritePlan,
+  catalogSyncPlan: fiveFacetCatalogSyncPlan,
+});
+assert.equal(fiveFacetAdminPersistenceSummary.nodeCount, fiveFacetCatalogSeedRows.nodes.length);
+assert.equal(fiveFacetAdminPersistenceSummary.assignmentRowCount, approvedFiveFacetWritePlan.assignmentRows.length);
+assert.equal(fiveFacetAdminPersistenceSummary.serverOnly, true);
+assert.equal(fiveFacetAdminPersistenceSummary.noAiImportWrite, true);
+assert.equal(fiveFacetAdminPersistenceSummary.noProviderCall, true);
+assert.equal(typeof seedFiveFacetCatalog, "function");
+assert.equal(typeof persistApprovedFiveFacetAssignments, "function");
+assert.equal(
+  /reviewDraftTags|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify({
+      approvedFiveFacetWritePlan,
+      fiveFacetCatalogSyncPlan,
+      fiveFacetAdminPersistenceSummary,
+    }),
+  ),
+  false,
+);
+console.log(
+  "PASS five-facet admin persistence builds catalog seed and approved assignment write plans without AI import writes",
 );
 
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({
