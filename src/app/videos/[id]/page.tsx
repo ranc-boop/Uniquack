@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
-import type { Question, Tag, Video } from "@/types/database";
+import type { Question, Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -53,8 +53,6 @@ type RelatedQuestionRow = Pick<
   | "created_at"
   | "updated_at"
 >;
-
-type TagRow = Pick<Tag, "id" | "name">;
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
@@ -130,32 +128,6 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
     notFound();
   }
 
-  const { data: videoTagBindings, error: videoTagError } = await supabase
-    .from("video_tags")
-    .select("tag_id")
-    .eq("video_id", video.id);
-
-  if (videoTagError) {
-    return <ErrorCard message={videoTagError.message} />;
-  }
-
-  const videoTagIds = Array.from(
-    new Set((videoTagBindings ?? []).map((binding) => binding.tag_id)),
-  );
-
-  const { data: videoTags, error: loadedVideoTagsError } = videoTagIds.length
-    ? await supabase
-        .from("tags")
-        .select("id, name")
-        .eq("status", "published")
-        .in("id", videoTagIds)
-        .order("name", { ascending: true })
-    : { data: [] as TagRow[], error: null };
-
-  if (loadedVideoTagsError) {
-    return <ErrorCard message={loadedVideoTagsError.message} />;
-  }
-
   const { data: fiveFacetVideoAssignments, error: fiveFacetVideoAssignmentsError } =
     await supabase
       .from("five_facet_video_tag_assignments")
@@ -168,33 +140,6 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
     isMissingFiveFacetVideoTableError(fiveFacetVideoAssignmentsError)
       ? []
       : ((fiveFacetVideoAssignments ?? []) as FiveFacetTagChipAssignment[]);
-
-  const { data: questionTagBindings, error: questionTagError } = await supabase
-    .from("question_tags")
-    .select("tag_id")
-    .eq("question_id", question.id);
-
-  if (questionTagError) {
-    return <ErrorCard message={questionTagError.message} />;
-  }
-
-  const questionTagIds = Array.from(
-    new Set((questionTagBindings ?? []).map((binding) => binding.tag_id)),
-  );
-
-  const { data: questionTags, error: loadedQuestionTagsError } =
-    questionTagIds.length
-      ? await supabase
-          .from("tags")
-          .select("id, name")
-          .eq("status", "published")
-          .in("id", questionTagIds)
-          .order("name", { ascending: true })
-      : { data: [] as TagRow[], error: null };
-
-  if (loadedQuestionTagsError) {
-    return <ErrorCard message={loadedQuestionTagsError.message} />;
-  }
 
   return (
     <div className="space-y-6">
@@ -252,28 +197,10 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
 
           <section className="space-y-3">
             <h2 className="text-lg font-semibold">Official five-facet video tags</h2>
-            <FiveFacetTagChips assignments={officialFiveFacetVideoAssignments} />
-            <div className="space-y-2 rounded-md border p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Legacy / deprecated video tags
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Compatibility-only tags mirrored from the old tag system.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {(videoTags ?? []).length ? (
-                  (videoTags ?? []).map((tag) => (
-                    <Badge key={tag.id} variant="outline">
-                      {tag.name}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-sm text-muted-foreground">
-                    No legacy video tags attached.
-                  </span>
-                )}
-              </div>
-            </div>
+            <FiveFacetTagChips
+              assignments={officialFiveFacetVideoAssignments}
+              emptyLabel="No five-facet tags assigned yet."
+            />
           </section>
 
           <section className="space-y-3">
@@ -309,19 +236,6 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
               </CardHeader>
               <CardContent className="space-y-4">
                 <RichHtml html={question.content_html} className="rich-html--compact" />
-                <div className="flex flex-wrap gap-2">
-                  {(questionTags ?? []).length ? (
-                    (questionTags ?? []).map((tag) => (
-                      <Badge key={tag.id} variant="outline">
-                        {tag.name}
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-sm text-muted-foreground">
-                      No question tags.
-                    </span>
-                  )}
-                </div>
                 <div className="flex flex-wrap gap-2">
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/questions/${question.id}`}>

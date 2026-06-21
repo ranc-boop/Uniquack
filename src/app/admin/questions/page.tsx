@@ -13,7 +13,6 @@ import { PageFeedback } from "@/components/page-feedback";
 import { QuestionHtmlEditor } from "@/components/question-html-editor";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
-import { TagCheckboxList } from "@/components/tag-checkbox-list";
 import {
   FiveFacetTagChips,
   type FiveFacetTagChipAssignment,
@@ -68,7 +67,6 @@ type AdminQuestionsPageProps = {
     q?: string;
     saved?: string;
     status?: string;
-    tag?: string;
   }>;
 };
 
@@ -116,7 +114,6 @@ export default async function AdminQuestionsPage({
   const supabase = await createClient();
   const search = (params.q ?? "").trim().toLowerCase();
   const selectedStatus = safeStatusFilter(params.status);
-  const selectedTagId = params.tag ?? "";
   const fiveFacetFilter = {
     difficulty: {
       max: numericParam(params.ff_difficulty_max),
@@ -144,8 +141,6 @@ export default async function AdminQuestionsPage({
   const fiveFacetSearchPlan = buildFiveFacetQuestionBankSearchPlan(fiveFacetFilter);
   const [
     { data: questions, error },
-    { data: tags },
-    { data: questionTags },
     { data: questionAssets },
     { data: questionSourceFiles },
   ] =
@@ -155,12 +150,6 @@ export default async function AdminQuestionsPage({
         .select("*")
         .order("created_at", { ascending: false })
         .limit(200),
-      supabase
-        .from("tags")
-        .select("id, name, status, tag_type")
-        .order("name", { ascending: true })
-        .limit(1000),
-      supabase.from("question_tags").select("question_id, tag_id").limit(1000),
       supabase
         .from("question_assets")
         .select(
@@ -177,10 +166,7 @@ export default async function AdminQuestionsPage({
         .limit(1000),
     ]);
 
-  const tagNameById = new Map((tags ?? []).map((tag) => [tag.id, tag.name]));
   const questionIds = (questions ?? []).map((question) => question.id);
-  const tagsByQuestionId = new Map<string, string[]>();
-  const tagIdsByQuestionId = new Map<string, Set<string>>();
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
   const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
@@ -219,19 +205,6 @@ export default async function AdminQuestionsPage({
         });
         fiveFacetAssignmentsByQuestionId.set(assignment.question_id, current);
       }
-    }
-  }
-
-  for (const binding of questionTags ?? []) {
-    const current = tagsByQuestionId.get(binding.question_id) ?? [];
-    const currentIds = tagIdsByQuestionId.get(binding.question_id) ?? new Set();
-    const tagName = tagNameById.get(binding.tag_id);
-
-    if (tagName) {
-      current.push(tagName);
-      tagsByQuestionId.set(binding.question_id, current);
-      currentIds.add(binding.tag_id);
-      tagIdsByQuestionId.set(binding.question_id, currentIds);
     }
   }
 
@@ -290,11 +263,8 @@ export default async function AdminQuestionsPage({
       question.question_code.toLowerCase().includes(search) ||
       question.title.toLowerCase().includes(search);
     const statusMatches = !selectedStatus || question.status === selectedStatus;
-    const tagMatches =
-      !selectedTagId ||
-      (tagIdsByQuestionId.get(question.id)?.has(selectedTagId) ?? false);
 
-    return searchMatches && statusMatches && tagMatches;
+    return searchMatches && statusMatches;
   });
   const fiveFacetSearchResult =
     hasFiveFacetFilters && fiveFacetSearchPlan.valid && !fiveFacetSearchMessage
@@ -394,10 +364,6 @@ export default async function AdminQuestionsPage({
               </select>
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label>Tags</Label>
-              <TagCheckboxList tags={tags ?? []} />
-            </div>
-            <div className="space-y-2 md:col-span-2">
               <QuestionHtmlEditor
                 id="content_html"
                 label="Content HTML"
@@ -444,7 +410,7 @@ export default async function AdminQuestionsPage({
           <CardTitle className="text-base">Find questions</CardTitle>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-[1.5fr_1fr_1fr_auto]">
+          <form className="grid gap-3 md:grid-cols-[1.5fr_1fr_auto]">
             <div className="space-y-2">
               <Label htmlFor="q">Search</Label>
               <Input
@@ -470,34 +436,18 @@ export default async function AdminQuestionsPage({
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="tag_filter">Tag</Label>
-              <select
-                id="tag_filter"
-                name="tag"
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                defaultValue={selectedTagId}
-              >
-                <option value="">All tags</option>
-                {(tags ?? []).map((tag) => (
-                  <option key={tag.id} value={tag.id}>
-                    {tag.name}
-                  </option>
-                ))}
-              </select>
-            </div>
             <div className="flex items-end gap-2">
               <Button type="submit">Filter</Button>
               <Button asChild variant="outline" type="button">
                 <Link href="/admin/questions">Reset</Link>
               </Button>
             </div>
-            <div className="space-y-3 rounded-md border p-3 md:col-span-4">
+            <div className="space-y-3 rounded-md border p-3 md:col-span-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Five-facet tags</p>
                 <p className="text-xs text-muted-foreground">
-                  Filter by official five-facet assignments. Legacy tags remain
-                  separate from curriculum, concept, method, task, and form tags.
+                  Filter by official curriculum, concept, method, task, and form
+                  assignments.
                 </p>
               </div>
               <FiveFacetTagTreePicker
@@ -600,7 +550,6 @@ export default async function AdminQuestionsPage({
           </TableHeader>
           <TableBody>
             {filteredQuestions.map((question) => {
-              const questionTagNames = tagsByQuestionId.get(question.id) ?? [];
               const importedAssetReferences =
                 importRefsByQuestionId.get(question.id) ?? null;
               const imageCount =
@@ -614,7 +563,8 @@ export default async function AdminQuestionsPage({
                 importedAssetReferences,
                 solutionHtml: question.solution_html,
                 sourceFileCount,
-                tagCount: questionTagNames.length,
+                tagCount:
+                  fiveFacetAssignmentsByQuestionId.get(question.id)?.length ?? 0,
               });
 
               return (
@@ -626,37 +576,13 @@ export default async function AdminQuestionsPage({
                     <TableCell>{question.title}</TableCell>
                     <TableCell>{question.question_type}</TableCell>
                     <TableCell>
-                      <div className="space-y-2">
-                        <div className="space-y-1">
-                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Legacy tags
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {questionTagNames.length ? (
-                              questionTagNames.map((tagName) => (
-                                <Badge key={tagName} variant="secondary">
-                                  {tagName}
-                                </Badge>
-                              ))
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                No legacy tags
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Official five-facet tags
-                          </p>
-                          <FiveFacetTagChips
-                            assignments={fiveFacetAssignmentsByQuestionId.get(
-                              question.id,
-                            )}
-                            showCategoryHeadings={false}
-                          />
-                        </div>
-                      </div>
+                      <FiveFacetTagChips
+                        assignments={fiveFacetAssignmentsByQuestionId.get(
+                          question.id,
+                        )}
+                        emptyLabel="No five-facet tags assigned yet."
+                        showCategoryHeadings={false}
+                      />
                     </TableCell>
                     <TableCell>{question.difficulty_rating}</TableCell>
                     <TableCell>
@@ -688,11 +614,7 @@ export default async function AdminQuestionsPage({
                         importedAssetReferences={importedAssetReferences}
                         question={question}
                         readiness={readiness}
-                        selectedTagIds={Array.from(
-                          tagIdsByQuestionId.get(question.id) ?? [],
-                        )}
                         sourceFiles={sourceFilesByQuestionId.get(question.id)}
-                        tags={tags ?? []}
                       />
                     </TableCell>
                   </TableRow>

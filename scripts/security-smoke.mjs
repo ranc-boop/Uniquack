@@ -4163,13 +4163,13 @@ const publicVideoDetailSource = await readFile(
   "utf8",
 );
 assert.ok(adminVideosPageSource.includes("Official five-facet video tags"));
-assert.ok(adminVideosPageSource.includes("Legacy / deprecated video tags"));
 assert.ok(adminVideosPageSource.includes("FiveFacetTagTreePicker"));
 assert.ok(adminVideosPageSource.includes("five_facet_video_tag_assignments"));
 assert.ok(publicVideosPageSource.includes("Official five-facet tags"));
-assert.ok(publicVideosPageSource.includes("Legacy / deprecated tags"));
 assert.ok(publicVideoDetailSource.includes("Official five-facet video tags"));
-assert.ok(publicVideoDetailSource.includes("Legacy / deprecated video tags"));
+assert.equal(adminVideosPageSource.includes("Legacy / deprecated"), false);
+assert.equal(publicVideosPageSource.includes("Legacy / deprecated"), false);
+assert.equal(publicVideoDetailSource.includes("Legacy / deprecated"), false);
 assert.equal(
   /processAIPdfImport|generateContent|openai|gemini|anthropic|reviewDraftTags|rawProviderResponse|fullPdfText|imageBytes|;base64,|JVBERi0|iVBORw0KGgo/i.test(
     JSON.stringify({
@@ -4381,10 +4381,13 @@ assert.ok(fiveFacetSuggestionsCardSource.includes("Format valid"));
 assert.ok(fiveFacetSuggestionsCardSource.includes("tutor review is still required"));
 assert.ok(adminQuestionsPageSource.includes("FiveFacetTagTreePicker"));
 assert.ok(adminQuestionsPageSource.includes("FiveFacetTagChips"));
-assert.ok(adminQuestionsPageSource.includes("Legacy tags"));
 assert.ok(adminQuestionsPageSource.includes("Official five-facet tags"));
 assert.ok(publicQuestionDetailSource.includes("Official five-facet tags"));
 assert.ok(publicQuestionDetailSource.includes("five_facet_question_tag_assignments"));
+assert.equal(adminQuestionsPageSource.includes("TagCheckboxList"), false);
+assert.equal(adminQuestionsPageSource.includes("All tags"), false);
+assert.equal(adminQuestionsPageSource.includes("Legacy tags"), false);
+assert.equal(publicQuestionDetailSource.includes("SidebarCard title=\"Tags\""), false);
 assert.equal(
   /processAIPdfImport|generateContent|openai|gemini|anthropic|reviewDraftTags|rawProviderResponse|fullPdfText|imageBytes|;base64,|JVBERi0|iVBORw0KGgo/i.test(
     JSON.stringify({
@@ -4403,6 +4406,63 @@ assert.equal(fiveFacetSuggestionsCardSource.includes("Reject suggestion"), false
 assert.equal(fiveFacetSuggestionsCardSource.includes("Write official tags"), false);
 console.log(
   "PASS five-facet product UI uses label-first catalog controls without provider calls, payload exposure, or write actions",
+);
+
+const resetScriptSource = await readFile(
+  new URL("../scripts/admin-reset-question-bank.mjs", import.meta.url),
+  "utf8",
+);
+assert.ok(resetScriptSource.includes("RESET_QUESTION_BANK"));
+for (const preservedTable of [
+  "auth.users",
+  "public.profiles",
+  "public.ai_provider_profiles",
+  "storage.buckets",
+  "public.videos",
+  "public.five_facet_tag_nodes",
+  "public.five_facet_tag_edges",
+  "public.five_facet_tag_aliases",
+  "public.five_facet_curriculum_concept_mappings",
+]) {
+  assert.ok(resetScriptSource.includes(preservedTable));
+}
+for (const resetTable of [
+  "questions",
+  "question_tags",
+  "tags",
+  "question_assets",
+  "question_source_files",
+  "question_rubric_steps",
+  "user_question_attempts",
+  "import_batches",
+  "import_batch_items",
+  "import_batch_assets",
+  "video_tags",
+  "five_facet_question_tag_assignments",
+  "five_facet_tag_review_actions",
+  "five_facet_video_tag_assignments",
+]) {
+  assert.ok(resetScriptSource.includes(`table: "${resetTable}"`));
+}
+assert.ok(resetScriptSource.includes("No rows, storage objects, or videos were deleted."));
+assert.equal(resetScriptSource.includes('table: "videos"'), false);
+assert.equal(/service_role|SUPABASE_SERVICE_ROLE|AI_PROVIDER_ENCRYPTION_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|sk-|AIza|eyJ/.test(resetScriptSource), false);
+const resetMissingConfirm = spawnSync(
+  process.execPath,
+  ["scripts/admin-reset-question-bank.mjs", "--execute"],
+  {
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+    encoding: "utf8",
+  },
+);
+assert.notEqual(resetMissingConfirm.status, 0);
+assert.ok(
+  `${resetMissingConfirm.stdout}\n${resetMissingConfirm.stderr}`.includes(
+    "Execute mode requires: --confirm RESET_QUESTION_BANK",
+  ),
+);
+console.log(
+  "PASS question bank reset script preserves videos, clears legacy/five-facet assignment targets, and requires exact execute confirmation",
 );
 
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({

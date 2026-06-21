@@ -1,6 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import {
+  FiveFacetTagChips,
+  type FiveFacetTagChipAssignment,
+} from "@/components/tags/five-facet-tag-chips";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -21,8 +25,8 @@ type QuestionRow = {
 };
 
 type QuestionsTableProps = {
+  fiveFacetTagsByQuestionId?: Record<string, FiveFacetTagChipAssignment[]>;
   questions: QuestionRow[];
-  tagsByQuestionId: Record<string, string[]>;
 };
 
 function ClickableCell({
@@ -50,8 +54,8 @@ function ClickableCell({
 }
 
 export function QuestionsTable({
+  fiveFacetTagsByQuestionId = {},
   questions,
-  tagsByQuestionId,
 }: QuestionsTableProps) {
   return (
     <div className="rounded-md border">
@@ -61,7 +65,7 @@ export function QuestionsTable({
             <TableHead>Code</TableHead>
             <TableHead>Title</TableHead>
             <TableHead>Content</TableHead>
-            <TableHead>Tags</TableHead>
+            <TableHead>Five-facet tags</TableHead>
             <TableHead>Difficulty</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Open</TableHead>
@@ -89,13 +93,11 @@ export function QuestionsTable({
                   </p>
                 </ClickableCell>
                 <ClickableCell href={href} label={label}>
-                  <div className="flex flex-wrap gap-1">
-                    {(tagsByQuestionId[question.id] ?? []).map((tagName) => (
-                      <Badge key={tagName} variant="outline">
-                        {tagName}
-                      </Badge>
-                    ))}
-                  </div>
+                  <FiveFacetTagChips
+                    assignments={fiveFacetTagsByQuestionId[question.id]}
+                    emptyLabel="No five-facet tags assigned yet."
+                    showCategoryHeadings={false}
+                  />
                 </ClickableCell>
                 <ClickableCell href={href} label={label}>
                   {question.difficulty_rating}
