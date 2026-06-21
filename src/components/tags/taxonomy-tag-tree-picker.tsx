@@ -1,14 +1,14 @@
-import type { AIFiveFacetTagCategory, AITagNode } from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+import type { AITaxonomyTagCategory, AITagNode } from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 import {
-  getFiveFacetTagCatalog,
-  getFiveFacetTagChildren,
-  listFiveFacetTagCategories,
-  listFiveFacetTagsByCategory,
-} from "@/lib/tags/five-facet-tag-catalog";
+  getTaxonomyTagCatalog,
+  getTaxonomyTagChildren,
+  listTaxonomyTagCategories,
+  listTaxonomyTagsByCategory,
+} from "@/lib/tags/taxonomy-tag-catalog";
 
-type SelectedTagMap = Partial<Record<AIFiveFacetTagCategory, string[]>>;
+type SelectedTagMap = Partial<Record<AITaxonomyTagCategory, string[]>>;
 
-type FiveFacetTagTreePickerProps = {
+type TaxonomyTagTreePickerProps = {
   disabled?: boolean;
   emptyLabel?: string;
   namePrefix: string;
@@ -22,12 +22,12 @@ function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function inputName(namePrefix: string, category: AIFiveFacetTagCategory) {
+function inputName(namePrefix: string, category: AITaxonomyTagCategory) {
   return `${namePrefix}_${category}`;
 }
 
 function aliasesForTag(tagId: string) {
-  return getFiveFacetTagCatalog().aliasIndex.aliases
+  return getTaxonomyTagCatalog().aliasIndex.aliases
     .filter((alias) => alias.tagIds.includes(tagId))
     .map((alias) => alias.alias);
 }
@@ -46,8 +46,8 @@ function nodeMatchesSearch(node: AITagNode, query: string) {
   return haystack.includes(query.toLowerCase());
 }
 
-function rootNodes(category: AIFiveFacetTagCategory) {
-  const nodes = listFiveFacetTagsByCategory(category);
+function rootNodes(category: AITaxonomyTagCategory) {
+  const nodes = listTaxonomyTagsByCategory(category);
   const nodeIds = new Set(nodes.map((node) => node.tagId));
 
   return nodes.filter(
@@ -59,12 +59,12 @@ function rootNodes(category: AIFiveFacetTagCategory) {
 
 function nodeOrDescendantMatches(
   node: AITagNode,
-  category: AIFiveFacetTagCategory,
+  category: AITaxonomyTagCategory,
   query: string,
 ): boolean {
   if (!query || nodeMatchesSearch(node, query)) return true;
 
-  return getFiveFacetTagChildren(node.tagId)
+  return getTaxonomyTagChildren(node.tagId)
     .filter((child) => child.category === category)
     .some((child) => nodeOrDescendantMatches(child, category, query));
 }
@@ -78,7 +78,7 @@ function TreeNode({
   selected,
   level = 0,
 }: {
-  category: AIFiveFacetTagCategory;
+  category: AITaxonomyTagCategory;
   disabled: boolean;
   level?: number;
   namePrefix: string;
@@ -86,7 +86,7 @@ function TreeNode({
   query: string;
   selected: Set<string>;
 }) {
-  const children = getFiveFacetTagChildren(node.tagId).filter(
+  const children = getTaxonomyTagChildren(node.tagId).filter(
     (child) =>
       child.category === category && nodeOrDescendantMatches(child, category, query),
   );
@@ -136,17 +136,17 @@ function TreeNode({
   );
 }
 
-export function FiveFacetTagTreePicker({
+export function TaxonomyTagTreePicker({
   disabled = false,
-  emptyLabel = "No matching five-facet tags.",
+  emptyLabel = "No matching taxonomy tags.",
   namePrefix,
   searchName = `${namePrefix}_search`,
   searchQuery = "",
   selectedTagIds = {},
-  title = "Five-facet tag picker",
-}: FiveFacetTagTreePickerProps) {
+  title = "Taxonomy tag picker",
+}: TaxonomyTagTreePickerProps) {
   const query = searchQuery.trim();
-  const categories = listFiveFacetTagCategories();
+  const categories = listTaxonomyTagCategories();
 
   return (
     <div className="space-y-3 rounded-md border p-3">
@@ -159,7 +159,7 @@ export function FiveFacetTagTreePicker({
       </div>
       <label className="block space-y-1">
         <span className="text-xs font-medium text-muted-foreground">
-          Search five-facet catalog
+          Search taxonomy catalog
         </span>
         <input
           className="h-9 w-full rounded-md border bg-background px-3 text-sm"

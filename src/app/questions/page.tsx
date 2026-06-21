@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { QuestionsTable } from "@/components/questions-table";
-import type { FiveFacetTagChipAssignment } from "@/components/tags/five-facet-tag-chips";
+import type { TaxonomyTagChipAssignment } from "@/components/tags/taxonomy-tag-chips";
 import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
@@ -113,36 +113,36 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   const to = from + pageSize - 1;
   const { data: questions, error, count } = await questionsQuery.range(from, to);
   const questionIds = (questions ?? []).map((question) => question.id);
-  const { data: fiveFacetAssignments, error: fiveFacetAssignmentsError } = questionIds.length
+  const { data: taxonomyAssignments, error: taxonomyAssignmentsError } = questionIds.length
     ? await supabase
-        .from("five_facet_question_tag_assignments")
-        .select("question_id, tag_id, category, review_status")
+        .from("question_taxonomy_assignments")
+        .select("question_id, tag_id, review_status")
         .eq("review_status", "approved")
         .in("question_id", questionIds)
     : { data: [], error: null };
-  const fiveFacetTagsByQuestionId = new Map<string, FiveFacetTagChipAssignment[]>();
-  const publicFiveFacetAssignments =
-    fiveFacetAssignmentsError &&
-    /permission denied|relation .* does not exist|schema cache|five_facet_/i.test(
-      fiveFacetAssignmentsError.message,
+  const taxonomyTagsByQuestionId = new Map<string, TaxonomyTagChipAssignment[]>();
+  const publicTaxonomyAssignments =
+    taxonomyAssignmentsError &&
+    /permission denied|relation .* does not exist|schema cache|taxonomy_/i.test(
+      taxonomyAssignmentsError.message,
     )
       ? []
-      : ((fiveFacetAssignments ?? []) as Array<
-          FiveFacetTagChipAssignment & { question_id: string }
+      : ((taxonomyAssignments ?? []) as Array<
+          TaxonomyTagChipAssignment & { question_id: string }
         >);
 
-  for (const assignment of publicFiveFacetAssignments) {
-    const current = fiveFacetTagsByQuestionId.get(assignment.question_id) ?? [];
+  for (const assignment of publicTaxonomyAssignments) {
+    const current = taxonomyTagsByQuestionId.get(assignment.question_id) ?? [];
     current.push({
       category: assignment.category,
       review_status: assignment.review_status,
       tag_id: assignment.tag_id,
     });
-    fiveFacetTagsByQuestionId.set(assignment.question_id, current);
+    taxonomyTagsByQuestionId.set(assignment.question_id, current);
   }
 
-  const fiveFacetTagsByQuestionIdObject = Object.fromEntries(
-    fiveFacetTagsByQuestionId.entries(),
+  const taxonomyTagsByQuestionIdObject = Object.fromEntries(
+    taxonomyTagsByQuestionId.entries(),
   );
   const questionRows = (questions ?? []).map((question) => ({
     id: question.id,
@@ -159,7 +159,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Questions</h1>
         <p className="text-sm text-muted-foreground">
-          Published AP questions with official five-facet tags and difficulty.
+          Published AP questions with official taxonomy tags and difficulty.
           Draft and archived records are excluded by query and RLS.
         </p>
       </div>
@@ -209,7 +209,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       ) : null}
       {questionRows.length ? (
         <QuestionsTable
-          fiveFacetTagsByQuestionId={fiveFacetTagsByQuestionIdObject}
+          taxonomyTagsByQuestionId={taxonomyTagsByQuestionIdObject}
           questions={questionRows}
         />
       ) : (

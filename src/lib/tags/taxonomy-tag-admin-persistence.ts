@@ -3,34 +3,34 @@ import "server-only";
 import { createRequire } from "node:module";
 
 import type {
-  AIFiveFacetTagReviewActionDraft,
-  AIFiveFacetTagReviewActionPlan,
-} from "@/lib/ai-pdf-import/five-facet-tag-review-actions";
+  AITaxonomyTagReviewActionDraft,
+  AITaxonomyTagReviewActionPlan,
+} from "@/lib/ai-pdf-import/taxonomy-tag-review-actions";
 import type {
-  AIFiveFacetTagCategory,
+  AITaxonomyTagCategory,
   AITagEdge,
   AITagNode,
-} from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+} from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 
 const require = createRequire(import.meta.url);
 const {
-  buildFiveFacetQuestionTagAssignmentsFromApprovedActions,
-  validateApprovedFiveFacetReviewAction,
-} = require("./five-facet-tag-assignment.ts") as typeof import("@/lib/tags/five-facet-tag-assignment");
+  buildTaxonomyQuestionTagAssignmentsFromApprovedActions,
+  validateApprovedTaxonomyReviewAction,
+} = require("./taxonomy-tag-assignment.ts") as typeof import("@/lib/tags/taxonomy-tag-assignment");
 const {
-  getFiveFacetTagCatalog,
-  getFiveFacetTagNode,
-  listFiveFacetTagCategories,
-  listFiveFacetTagNodes,
-  resolveFiveFacetAlias,
-} = require("./five-facet-tag-catalog.ts") as typeof import("@/lib/tags/five-facet-tag-catalog");
+  getTaxonomyTagCatalog,
+  getTaxonomyTagNode,
+  listTaxonomyTagCategories,
+  listTaxonomyTagNodes,
+  resolveTaxonomyAlias,
+} = require("./taxonomy-tag-catalog.ts") as typeof import("@/lib/tags/taxonomy-tag-catalog");
 const {
-  validateFiveFacetQuestionTagAssignment,
-  validateFiveFacetTagNodeRow,
-} = require("./five-facet-tag-persistence.ts") as typeof import("@/lib/tags/five-facet-tag-persistence");
+  validateTaxonomyQuestionTagAssignment,
+  validateTaxonomyTagNodeRow,
+} = require("./taxonomy-tag-persistence.ts") as typeof import("@/lib/tags/taxonomy-tag-persistence");
 import type {
-  FiveFacetQuestionTagAssignmentRow,
-} from "@/lib/tags/five-facet-tag-persistence";
+  TaxonomyQuestionTagAssignmentRow,
+} from "@/lib/tags/taxonomy-tag-persistence";
 
 type SupabaseLike = {
   from: (table: string) => {
@@ -41,8 +41,8 @@ type SupabaseLike = {
 
 type PersistableEdgeKind = "maps_to" | "parent_child" | "related";
 
-export interface FiveFacetTagNodeSeedRow {
-  category: AIFiveFacetTagCategory;
+export interface TaxonomyTagNodeSeedRow {
+  category: AITaxonomyTagCategory;
   description: string;
   label: string;
   metadata: Record<string, unknown>;
@@ -50,7 +50,7 @@ export interface FiveFacetTagNodeSeedRow {
   tag_id: string;
 }
 
-export interface FiveFacetTagEdgeSeedRow {
+export interface TaxonomyTagEdgeSeedRow {
   edge_kind: PersistableEdgeKind;
   from_tag_id: string;
   metadata: Record<string, unknown>;
@@ -58,7 +58,7 @@ export interface FiveFacetTagEdgeSeedRow {
   to_tag_id: string;
 }
 
-export interface FiveFacetTagAliasSeedRow {
+export interface TaxonomyTagAliasSeedRow {
   alias_text: string;
   metadata: Record<string, unknown>;
   normalized_alias: string;
@@ -66,22 +66,22 @@ export interface FiveFacetTagAliasSeedRow {
   tag_id: string;
 }
 
-export interface FiveFacetCurriculumConceptMappingSeedRow {
+export interface TaxonomyCurriculumConceptMappingSeedRow {
   concept_tag_id: string;
   curriculum_tag_id: string;
   evidence: Record<string, unknown>;
   status: "active";
 }
 
-export interface FiveFacetCatalogSeedRows {
-  aliases: FiveFacetTagAliasSeedRow[];
-  curriculumConceptMappings: FiveFacetCurriculumConceptMappingSeedRow[];
-  edges: FiveFacetTagEdgeSeedRow[];
-  nodes: FiveFacetTagNodeSeedRow[];
+export interface TaxonomyCatalogSeedRows {
+  aliases: TaxonomyTagAliasSeedRow[];
+  curriculumConceptMappings: TaxonomyCurriculumConceptMappingSeedRow[];
+  edges: TaxonomyTagEdgeSeedRow[];
+  nodes: TaxonomyTagNodeSeedRow[];
   skippedEdges: AITagEdge[];
 }
 
-export interface FiveFacetCatalogSyncPlan {
+export interface TaxonomyCatalogSyncPlan {
   generatedAt: string;
   mode: "admin_server_only";
   safety: {
@@ -91,7 +91,7 @@ export interface FiveFacetCatalogSyncPlan {
     noReviewDraftWrite: true;
     serverOnly: true;
   };
-  seedRows: FiveFacetCatalogSeedRows;
+  seedRows: TaxonomyCatalogSeedRows;
   status: "planned";
   upsertKeys: {
     aliases: ["normalized_alias", "tag_id"];
@@ -99,18 +99,18 @@ export interface FiveFacetCatalogSyncPlan {
     edges: ["from_tag_id", "to_tag_id", "edge_kind"];
     nodes: ["tag_id"];
   };
-  validation: FiveFacetCatalogSeedValidation;
-  version: "five_facet_catalog_sync_plan_v1";
+  validation: TaxonomyCatalogSeedValidation;
+  version: "taxonomy_catalog_sync_plan_v1";
 }
 
-export interface FiveFacetCatalogSeedValidation {
+export interface TaxonomyCatalogSeedValidation {
   errors: string[];
   valid: boolean;
   warnings: string[];
 }
 
 export interface ApprovedTagAssignmentWritePlan {
-  assignmentRows: FiveFacetQuestionTagAssignmentRow[];
+  assignmentRows: TaxonomyQuestionTagAssignmentRow[];
   errors: string[];
   generatedAt: string;
   mode: "admin_server_only";
@@ -124,11 +124,11 @@ export interface ApprovedTagAssignmentWritePlan {
   sourceActionIds: string[];
   status: "blocked" | "planned";
   valid: boolean;
-  version: "five_facet_approved_assignment_write_plan_v1";
+  version: "taxonomy_approved_assignment_write_plan_v1";
   warnings: string[];
 }
 
-export interface FiveFacetReviewActionRowInput {
+export interface TaxonomyReviewActionRowInput {
   action_id: string;
   action_kind: string;
   confidence: number | null;
@@ -142,7 +142,7 @@ export interface FiveFacetReviewActionRowInput {
   target_tag_ids: string[] | null;
 }
 
-export interface FiveFacetAdminPersistenceSummary {
+export interface TaxonomyAdminPersistenceSummary {
   aliasCount: number;
   assignmentRowCount: number;
   curriculumConceptMappingCount: number;
@@ -189,13 +189,13 @@ function stringList(value: unknown): string[] {
     : [];
 }
 
-function isFiveFacetCategory(value: unknown): value is AIFiveFacetTagCategory {
-  return listFiveFacetTagCategories().includes(value as AIFiveFacetTagCategory);
+function isTaxonomyCategory(value: unknown): value is AITaxonomyTagCategory {
+  return listTaxonomyTagCategories().includes(value as AITaxonomyTagCategory);
 }
 
-export function fiveFacetReviewActionRowsToDrafts(
-  rows: FiveFacetReviewActionRowInput[],
-): AIFiveFacetTagReviewActionDraft[] {
+export function taxonomyReviewActionRowsToDrafts(
+  rows: TaxonomyReviewActionRowInput[],
+): AITaxonomyTagReviewActionDraft[] {
   return rows.map((row) => {
     const questionRef = asRecord(row.question_ref);
     const questionId =
@@ -204,7 +204,7 @@ export function fiveFacetReviewActionRowsToDrafts(
 
     return {
       actionId: row.action_id,
-      actionKind: row.action_kind as AIFiveFacetTagReviewActionDraft["actionKind"],
+      actionKind: row.action_kind as AITaxonomyTagReviewActionDraft["actionKind"],
       confidence: Number(row.confidence ?? 0),
       evidence: asRecord(row.evidence),
       proposedTagIds: stringList(row.proposed_tag_ids),
@@ -223,24 +223,24 @@ export function fiveFacetReviewActionRowsToDrafts(
         planningOnly: true,
       },
       status: "pending_review",
-      targetFacet: isFiveFacetCategory(row.target_facet) ? row.target_facet : null,
+      targetFacet: isTaxonomyCategory(row.target_facet) ? row.target_facet : null,
       targetTagIds: stringList(row.target_tag_ids),
-    } as AIFiveFacetTagReviewActionDraft & { reviewStatus: string };
+    } as AITaxonomyTagReviewActionDraft & { reviewStatus: string };
   });
 }
 
 function catalogNodes(): AITagNode[] {
-  return listFiveFacetTagNodes();
+  return listTaxonomyTagNodes();
 }
 
 function catalogEdges(): AITagEdge[] {
-  const catalog = getFiveFacetTagCatalog();
-  return listFiveFacetTagCategories().flatMap((category) => [
+  const catalog = getTaxonomyTagCatalog();
+  return listTaxonomyTagCategories().flatMap((category) => [
     ...catalog.taxonomy[category].edges,
   ]);
 }
 
-function nodeToSeedRow(node: AITagNode): FiveFacetTagNodeSeedRow {
+function nodeToSeedRow(node: AITagNode): TaxonomyTagNodeSeedRow {
   return {
     category: node.category,
     description: node.description,
@@ -255,7 +255,7 @@ function nodeToSeedRow(node: AITagNode): FiveFacetTagNodeSeedRow {
   };
 }
 
-function edgeToSeedRow(edge: AITagEdge): FiveFacetTagEdgeSeedRow | null {
+function edgeToSeedRow(edge: AITagEdge): TaxonomyTagEdgeSeedRow | null {
   if (!PERSISTABLE_EDGE_KINDS.has(edge.edgeKind)) {
     return null;
   }
@@ -269,10 +269,10 @@ function edgeToSeedRow(edge: AITagEdge): FiveFacetTagEdgeSeedRow | null {
   };
 }
 
-function catalogAliasRows(): FiveFacetTagAliasSeedRow[] {
-  const catalog = getFiveFacetTagCatalog();
+function catalogAliasRows(): TaxonomyTagAliasSeedRow[] {
+  const catalog = getTaxonomyTagCatalog();
   return catalog.aliasIndex.aliases.flatMap((aliasMapping) => {
-    const resolution = resolveFiveFacetAlias(aliasMapping.alias);
+    const resolution = resolveTaxonomyAlias(aliasMapping.alias);
     return aliasMapping.tagIds.map((tagId) => ({
       alias_text: aliasMapping.alias,
       metadata: {
@@ -286,9 +286,9 @@ function catalogAliasRows(): FiveFacetTagAliasSeedRow[] {
   });
 }
 
-function curriculumConceptMappingRows(): FiveFacetCurriculumConceptMappingSeedRow[] {
-  const catalog = getFiveFacetTagCatalog();
-  const rows: FiveFacetCurriculumConceptMappingSeedRow[] = [];
+function curriculumConceptMappingRows(): TaxonomyCurriculumConceptMappingSeedRow[] {
+  const catalog = getTaxonomyTagCatalog();
+  const rows: TaxonomyCurriculumConceptMappingSeedRow[] = [];
 
   for (const [curriculumTagId, conceptTagIds] of catalog.curriculumConceptMappings) {
     for (const conceptTagId of conceptTagIds) {
@@ -307,12 +307,12 @@ function curriculumConceptMappingRows(): FiveFacetCurriculumConceptMappingSeedRo
   return rows;
 }
 
-export function buildFiveFacetCatalogSeedRows(): FiveFacetCatalogSeedRows {
+export function buildTaxonomyCatalogSeedRows(): TaxonomyCatalogSeedRows {
   const nodes = catalogNodes().map(nodeToSeedRow);
   const edgeCandidates = catalogEdges();
   const edges = edgeCandidates
     .map(edgeToSeedRow)
-    .filter((edge): edge is FiveFacetTagEdgeSeedRow => Boolean(edge));
+    .filter((edge): edge is TaxonomyTagEdgeSeedRow => Boolean(edge));
   const skippedEdges = edgeCandidates.filter((edge) => !edgeToSeedRow(edge));
   const aliases = catalogAliasRows();
   const curriculumConceptMappings = curriculumConceptMappingRows();
@@ -332,15 +332,15 @@ export function buildFiveFacetCatalogSeedRows(): FiveFacetCatalogSeedRows {
   };
 }
 
-export function validateFiveFacetCatalogSeedRows(
-  seedRows: FiveFacetCatalogSeedRows,
-): FiveFacetCatalogSeedValidation {
+export function validateTaxonomyCatalogSeedRows(
+  seedRows: TaxonomyCatalogSeedRows,
+): TaxonomyCatalogSeedValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
   const tagIds = new Set(seedRows.nodes.map((node) => node.tag_id));
 
   for (const node of seedRows.nodes) {
-    const validation = validateFiveFacetTagNodeRow(node);
+    const validation = validateTaxonomyTagNodeRow(node);
     errors.push(...validation.errors);
     if (/^difficulty(\.|$)/.test(node.tag_id)) {
       errors.push("difficulty_is_not_taxonomy");
@@ -397,11 +397,11 @@ export function validateFiveFacetCatalogSeedRows(
   };
 }
 
-export function buildFiveFacetCatalogSyncPlan({
+export function buildTaxonomyCatalogSyncPlan({
   generatedAt = new Date().toISOString(),
-}: { generatedAt?: string } = {}): FiveFacetCatalogSyncPlan {
-  const seedRows = buildFiveFacetCatalogSeedRows();
-  const validation = validateFiveFacetCatalogSeedRows(seedRows);
+}: { generatedAt?: string } = {}): TaxonomyCatalogSyncPlan {
+  const seedRows = buildTaxonomyCatalogSeedRows();
+  const validation = validateTaxonomyCatalogSeedRows(seedRows);
 
   return {
     generatedAt,
@@ -422,23 +422,23 @@ export function buildFiveFacetCatalogSyncPlan({
       nodes: ["tag_id"],
     },
     validation,
-    version: "five_facet_catalog_sync_plan_v1",
+    version: "taxonomy_catalog_sync_plan_v1",
   };
 }
 
 function approvedActions(
-  input: AIFiveFacetTagReviewActionDraft[] | AIFiveFacetTagReviewActionPlan,
+  input: AITaxonomyTagReviewActionDraft[] | AITaxonomyTagReviewActionPlan,
 ) {
   const actions = Array.isArray(input) ? input : input.actions;
-  return actions.filter((action) => validateApprovedFiveFacetReviewAction(action).valid);
+  return actions.filter((action) => validateApprovedTaxonomyReviewAction(action).valid);
 }
 
 export function buildApprovedTagAssignmentWritePlan(
-  input: AIFiveFacetTagReviewActionDraft[] | AIFiveFacetTagReviewActionPlan,
+  input: AITaxonomyTagReviewActionDraft[] | AITaxonomyTagReviewActionPlan,
   { generatedAt = new Date().toISOString() }: { generatedAt?: string } = {},
 ): ApprovedTagAssignmentWritePlan {
   const assignmentResult =
-    buildFiveFacetQuestionTagAssignmentsFromApprovedActions(input);
+    buildTaxonomyQuestionTagAssignmentsFromApprovedActions(input);
   const validation = validateApprovedTagAssignmentWritePlan({
     assignmentRows: assignmentResult.rows,
     errors: assignmentResult.errors,
@@ -454,7 +454,7 @@ export function buildApprovedTagAssignmentWritePlan(
     sourceActionIds: approvedActions(input).map((action) => action.actionId),
     status: assignmentResult.errors.length ? "blocked" : "planned",
     valid: assignmentResult.errors.length === 0,
-    version: "five_facet_approved_assignment_write_plan_v1",
+    version: "taxonomy_approved_assignment_write_plan_v1",
     warnings: assignmentResult.warnings,
   });
 
@@ -468,11 +468,11 @@ export function buildApprovedTagAssignmentWritePlan(
 }
 
 export function buildApprovedTagAssignmentWritePlanFromRows(
-  rows: FiveFacetReviewActionRowInput[],
+  rows: TaxonomyReviewActionRowInput[],
   options: { generatedAt?: string } = {},
 ) {
   return buildApprovedTagAssignmentWritePlan(
-    fiveFacetReviewActionRowsToDrafts(rows),
+    taxonomyReviewActionRowsToDrafts(rows),
     options,
   );
 }
@@ -501,7 +501,7 @@ export function validateApprovedTagAssignmentWritePlan(plan: ApprovedTagAssignme
   }
 
   for (const row of plan.assignmentRows) {
-    const validation = validateFiveFacetQuestionTagAssignment({
+    const validation = validateTaxonomyQuestionTagAssignment({
       category: row.category,
       confidence: row.confidence,
       evidence: row.evidence,
@@ -516,7 +516,7 @@ export function validateApprovedTagAssignmentWritePlan(plan: ApprovedTagAssignme
     if (row.review_status !== "approved") {
       errors.push(`assignment_not_approved:${row.question_id}:${row.tag_id}`);
     }
-    const node = getFiveFacetTagNode(row.tag_id);
+    const node = getTaxonomyTagNode(row.tag_id);
     if (!node) {
       errors.push(`assignment_unknown_catalog_tag:${row.tag_id}`);
     } else if (node.category !== row.category) {
@@ -532,13 +532,13 @@ export function validateApprovedTagAssignmentWritePlan(plan: ApprovedTagAssignme
   };
 }
 
-export function summarizeFiveFacetAdminPersistencePlan({
+export function summarizeTaxonomyAdminPersistencePlan({
   assignmentWritePlan,
   catalogSyncPlan,
 }: {
   assignmentWritePlan?: ApprovedTagAssignmentWritePlan;
-  catalogSyncPlan: FiveFacetCatalogSyncPlan;
-}): FiveFacetAdminPersistenceSummary {
+  catalogSyncPlan: TaxonomyCatalogSyncPlan;
+}): TaxonomyAdminPersistenceSummary {
   return {
     aliasCount: catalogSyncPlan.seedRows.aliases.length,
     assignmentRowCount: assignmentWritePlan?.assignmentRows.length ?? 0,
@@ -554,15 +554,15 @@ export function summarizeFiveFacetAdminPersistencePlan({
   };
 }
 
-export async function seedFiveFacetCatalog({
+export async function seedTaxonomyCatalog({
   createdBy,
   supabase,
 }: {
   createdBy?: string;
   supabase: SupabaseLike;
 }) {
-  const plan = buildFiveFacetCatalogSyncPlan();
-  const validation = validateFiveFacetCatalogSeedRows(plan.seedRows);
+  const plan = buildTaxonomyCatalogSyncPlan();
+  const validation = validateTaxonomyCatalogSeedRows(plan.seedRows);
   if (!validation.valid) {
     return { error: validation.errors.join("; "), plan };
   }
@@ -588,26 +588,26 @@ export async function seedFiveFacetCatalog({
     updated_by: createdBy,
   }));
 
-  const upsertRows = supabase.from("five_facet_tag_nodes").upsert as (
+  const upsertRows = supabase.from("taxonomy_nodes").upsert as (
     values: unknown,
     options?: unknown,
   ) => PromiseLike<unknown>;
   await upsertRows(nodeRows, {
     onConflict: "tag_id",
   });
-  await (supabase.from("five_facet_tag_edges").upsert as (
+  await (supabase.from("taxonomy_edges").upsert as (
     values: unknown,
     options?: unknown,
   ) => PromiseLike<unknown>)(edgeRows, {
     onConflict: "from_tag_id,to_tag_id,edge_kind",
   });
-  await (supabase.from("five_facet_tag_aliases").upsert as (
+  await (supabase.from("taxonomy_aliases").upsert as (
     values: unknown,
     options?: unknown,
   ) => PromiseLike<unknown>)(aliasRows, {
     onConflict: "normalized_alias,tag_id",
   });
-  await (supabase.from("five_facet_curriculum_concept_mappings").upsert as (
+  await (supabase.from("taxonomy_edges").upsert as (
     values: unknown,
     options?: unknown,
   ) => PromiseLike<unknown>)(mappingRows, {
@@ -617,13 +617,13 @@ export async function seedFiveFacetCatalog({
   return { plan };
 }
 
-export async function persistApprovedFiveFacetAssignments({
+export async function persistApprovedTaxonomyAssignments({
   createdBy,
   reviewActions,
   supabase,
 }: {
   createdBy?: string;
-  reviewActions: AIFiveFacetTagReviewActionDraft[] | AIFiveFacetTagReviewActionPlan;
+  reviewActions: AITaxonomyTagReviewActionDraft[] | AITaxonomyTagReviewActionPlan;
   supabase: SupabaseLike;
 }) {
   const plan = buildApprovedTagAssignmentWritePlan(reviewActions);
@@ -638,7 +638,7 @@ export async function persistApprovedFiveFacetAssignments({
   }));
 
   if (rows.length) {
-    await (supabase.from("five_facet_question_tag_assignments").insert as (
+    await (supabase.from("question_taxonomy_assignments").insert as (
       values: unknown,
     ) => PromiseLike<unknown>)(rows);
   }

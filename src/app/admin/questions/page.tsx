@@ -14,10 +14,10 @@ import { QuestionHtmlEditor } from "@/components/question-html-editor";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import {
-  FiveFacetTagChips,
-  type FiveFacetTagChipAssignment,
-} from "@/components/tags/five-facet-tag-chips";
-import { FiveFacetTagTreePicker } from "@/components/tags/five-facet-tag-tree-picker";
+  TaxonomyTagChips,
+  type TaxonomyTagChipAssignment,
+} from "@/components/tags/taxonomy-tag-chips";
+import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,11 +40,11 @@ import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
 import {
-  buildFiveFacetQuestionBankSearchPlan,
-  filterQuestionsByFiveFacetAssignments,
-  hasFiveFacetQuestionBankFilters,
-  type FiveFacetQuestionSearchAssignmentRow,
-} from "@/lib/tags/five-facet-question-search";
+  buildTaxonomyQuestionBankSearchPlan,
+  filterQuestionsByTaxonomyAssignments,
+  hasTaxonomyQuestionBankFilters,
+  type TaxonomyQuestionSearchAssignmentRow,
+} from "@/lib/tags/taxonomy-question-search";
 
 type AdminQuestionsPageProps = {
   searchParams: Promise<{
@@ -88,6 +88,10 @@ function tagIdList(value: string | string[] | undefined) {
     .filter(Boolean);
 }
 
+function categoryFromTagId(tagId: string) {
+  return tagId.split(".")[0] as TaxonomyQuestionSearchAssignmentRow["category"];
+}
+
 function numericParam(value: string | string[] | undefined) {
   const first = firstParam(value);
   if (first === undefined || first.trim() === "") return undefined;
@@ -95,14 +99,14 @@ function numericParam(value: string | string[] | undefined) {
   return Number.isFinite(numeric) ? numeric : Number.NaN;
 }
 
-function isMissingFiveFacetTableError(error: unknown) {
+function isMissingTaxonomyTableError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const record = error as { code?: unknown; message?: unknown };
   const message = typeof record.message === "string" ? record.message : "";
 
   return (
     record.code === "42P01" ||
-    /five_facet_|relation .* does not exist|schema cache/i.test(message)
+    /taxonomy_|relation .* does not exist|schema cache/i.test(message)
   );
 }
 
@@ -114,7 +118,7 @@ export default async function AdminQuestionsPage({
   const supabase = await createClient();
   const search = (params.q ?? "").trim().toLowerCase();
   const selectedStatus = safeStatusFilter(params.status);
-  const fiveFacetFilter = {
+  const taxonomyFilter = {
     difficulty: {
       max: numericParam(params.ff_difficulty_max),
       min: numericParam(params.ff_difficulty_min),
@@ -135,10 +139,10 @@ export default async function AdminQuestionsPage({
     },
     requireReviewed: firstParam(params.ff_reviewed) !== "false",
   };
-  const selectedFiveFacetInclude = fiveFacetFilter.include;
-  const selectedFiveFacetExclude = fiveFacetFilter.exclude;
-  const hasFiveFacetFilters = hasFiveFacetQuestionBankFilters(fiveFacetFilter);
-  const fiveFacetSearchPlan = buildFiveFacetQuestionBankSearchPlan(fiveFacetFilter);
+  const selectedTaxonomyInclude = taxonomyFilter.include;
+  const selectedTaxonomyExclude = taxonomyFilter.exclude;
+  const hasTaxonomyFilters = hasTaxonomyQuestionBankFilters(taxonomyFilter);
+  const taxonomySearchPlan = buildTaxonomyQuestionBankSearchPlan(taxonomyFilter);
   const [
     { data: questions, error },
     { data: questionAssets },
@@ -170,12 +174,12 @@ export default async function AdminQuestionsPage({
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
   const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
-  let fiveFacetAssignments: FiveFacetQuestionSearchAssignmentRow[] = [];
-  const fiveFacetAssignmentsByQuestionId = new Map<
+  let taxonomyAssignments: TaxonomyQuestionSearchAssignmentRow[] = [];
+  const taxonomyAssignmentsByQuestionId = new Map<
     string,
-    FiveFacetTagChipAssignment[]
+    TaxonomyTagChipAssignment[]
   >();
-  let fiveFacetSearchMessage: string | null = null;
+  let taxonomySearchMessage: string | null = null;
   const { data: importItems } = questionIds.length
     ? await supabase
         .from("import_batch_items")
@@ -184,26 +188,29 @@ export default async function AdminQuestionsPage({
         .in("created_question_id", questionIds)
     : { data: [] };
   if (questionIds.length) {
-    const { data, error: fiveFacetAssignmentsError } = await supabase
-      .from("five_facet_question_tag_assignments")
-      .select("question_id, tag_id, category, review_status")
+    const { data, error: taxonomyAssignmentsError } = await supabase
+      .from("question_taxonomy_assignments")
+      .select("question_id, tag_id, review_status")
       .in("question_id", questionIds);
 
-    if (fiveFacetAssignmentsError) {
-      fiveFacetSearchMessage = isMissingFiveFacetTableError(fiveFacetAssignmentsError)
-        ? "Five-facet assignment tables are not available yet. Apply migration 0009_five_facet_tag_persistence.sql to enable these filters."
-        : `Five-facet filters are unavailable: ${fiveFacetAssignmentsError.message}`;
+    if (taxonomyAssignmentsError) {
+      taxonomySearchMessage = isMissingTaxonomyTableError(taxonomyAssignmentsError)
+        ? "Taxonomy assignment tables are not available yet. Apply migration 0011_math_taxonomy_source_of_truth.sql to enable these filters."
+        : `Taxonomy filters are unavailable: ${taxonomyAssignmentsError.message}`;
     } else {
-      fiveFacetAssignments = (data ?? []) as FiveFacetQuestionSearchAssignmentRow[];
-      for (const assignment of fiveFacetAssignments) {
+      taxonomyAssignments = (data ?? []).map((assignment) => ({
+        ...assignment,
+        category: categoryFromTagId(assignment.tag_id),
+      })) as TaxonomyQuestionSearchAssignmentRow[];
+      for (const assignment of taxonomyAssignments) {
         const current =
-          fiveFacetAssignmentsByQuestionId.get(assignment.question_id) ?? [];
+          taxonomyAssignmentsByQuestionId.get(assignment.question_id) ?? [];
         current.push({
           category: assignment.category,
           review_status: assignment.review_status,
           tag_id: assignment.tag_id,
         });
-        fiveFacetAssignmentsByQuestionId.set(assignment.question_id, current);
+        taxonomyAssignmentsByQuestionId.set(assignment.question_id, current);
       }
     }
   }
@@ -266,22 +273,22 @@ export default async function AdminQuestionsPage({
 
     return searchMatches && statusMatches;
   });
-  const fiveFacetSearchResult =
-    hasFiveFacetFilters && fiveFacetSearchPlan.valid && !fiveFacetSearchMessage
-      ? filterQuestionsByFiveFacetAssignments({
-          assignments: fiveFacetAssignments,
-          filter: fiveFacetFilter,
+  const taxonomySearchResult =
+    hasTaxonomyFilters && taxonomySearchPlan.valid && !taxonomySearchMessage
+      ? filterQuestionsByTaxonomyAssignments({
+          assignments: taxonomyAssignments,
+          filter: taxonomyFilter,
           questions: baseFilteredQuestions.map((question) => ({
             difficulty_rating: question.difficulty_rating,
             id: question.id,
           })),
         })
       : null;
-  const fiveFacetMatchedIds = new Set(
-    fiveFacetSearchResult?.matchedQuestionIds ?? [],
+  const taxonomyMatchedIds = new Set(
+    taxonomySearchResult?.matchedQuestionIds ?? [],
   );
-  const filteredQuestions = fiveFacetSearchResult
-    ? baseFilteredQuestions.filter((question) => fiveFacetMatchedIds.has(question.id))
+  const filteredQuestions = taxonomySearchResult
+    ? baseFilteredQuestions.filter((question) => taxonomyMatchedIds.has(question.id))
     : baseFilteredQuestions;
 
   return (
@@ -444,43 +451,43 @@ export default async function AdminQuestionsPage({
             </div>
             <div className="space-y-3 rounded-md border p-3 md:col-span-3">
               <div className="space-y-1">
-                <p className="text-sm font-medium">Five-facet tags</p>
+                <p className="text-sm font-medium">Taxonomy tags</p>
                 <p className="text-xs text-muted-foreground">
                   Filter by official curriculum, concept, method, task, and form
                   assignments.
                 </p>
               </div>
-              <FiveFacetTagTreePicker
+              <TaxonomyTagTreePicker
                 namePrefix="ff"
                 searchQuery={firstParam(params.ff_search) ?? ""}
-                selectedTagIds={selectedFiveFacetInclude}
-                title="Include official five-facet tags"
+                selectedTagIds={selectedTaxonomyInclude}
+                title="Include official taxonomy tags"
               />
               <details className="rounded-md border px-3 py-2">
                 <summary className="cursor-pointer text-sm font-medium">
                   Exclude tags and difficulty
                 </summary>
                 <div className="mt-3 space-y-3">
-                  <FiveFacetTagTreePicker
+                  <TaxonomyTagTreePicker
                     namePrefix="ff_exclude"
                     searchName="ff_exclude_search"
                     searchQuery={firstParam(params.ff_exclude_search) ?? ""}
-                    selectedTagIds={selectedFiveFacetExclude}
-                    title="Exclude official five-facet tags"
+                    selectedTagIds={selectedTaxonomyExclude}
+                    title="Exclude official taxonomy tags"
                   />
                   <div className="grid gap-3 md:grid-cols-3">
                   <Input
                     name="ff_difficulty_min"
                     defaultValue={firstParam(params.ff_difficulty_min) ?? ""}
                     placeholder="Difficulty min"
-                    aria-label="Five-facet difficulty minimum"
+                    aria-label="Taxonomy difficulty minimum"
                     type="number"
                   />
                   <Input
                     name="ff_difficulty_max"
                     defaultValue={firstParam(params.ff_difficulty_max) ?? ""}
                     placeholder="Difficulty max"
-                    aria-label="Five-facet difficulty maximum"
+                    aria-label="Taxonomy difficulty maximum"
                     type="number"
                   />
                   <div className="space-y-2">
@@ -498,27 +505,27 @@ export default async function AdminQuestionsPage({
                   </div>
                 </div>
               </details>
-              {hasFiveFacetFilters ? (
+              {hasTaxonomyFilters ? (
                 <div className="space-y-1 text-xs">
                   <p className="text-muted-foreground">
-                    Five-facet search contract: reviewed-only assignments use
+                    Taxonomy search contract: reviewed-only assignments use
                     explicit curriculum-to-concept expansion without hierarchy
                     mutation.
                   </p>
-                  {fiveFacetSearchPlan.errors.length ? (
+                  {taxonomySearchPlan.errors.length ? (
                     <p className="text-destructive">
-                      {fiveFacetSearchPlan.errors.slice(0, 3).join("; ")}
+                      {taxonomySearchPlan.errors.slice(0, 3).join("; ")}
                     </p>
                   ) : null}
-                  {fiveFacetSearchMessage ? (
-                    <p className="text-amber-700">{fiveFacetSearchMessage}</p>
+                  {taxonomySearchMessage ? (
+                    <p className="text-amber-700">{taxonomySearchMessage}</p>
                   ) : null}
                 </div>
               ) : null}
-              {!fiveFacetSearchMessage &&
-              fiveFacetAssignments.length === 0 ? (
+              {!taxonomySearchMessage &&
+              taxonomyAssignments.length === 0 ? (
                 <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                  No official five-facet tag assignments yet. Seed the catalog
+                  No official taxonomy tag assignments yet. Seed the catalog
                   and persist approved assignments from /admin/tags.
                 </p>
               ) : null}
@@ -564,7 +571,7 @@ export default async function AdminQuestionsPage({
                 solutionHtml: question.solution_html,
                 sourceFileCount,
                 tagCount:
-                  fiveFacetAssignmentsByQuestionId.get(question.id)?.length ?? 0,
+                  taxonomyAssignmentsByQuestionId.get(question.id)?.length ?? 0,
               });
 
               return (
@@ -576,11 +583,11 @@ export default async function AdminQuestionsPage({
                     <TableCell>{question.title}</TableCell>
                     <TableCell>{question.question_type}</TableCell>
                     <TableCell>
-                      <FiveFacetTagChips
-                        assignments={fiveFacetAssignmentsByQuestionId.get(
+                      <TaxonomyTagChips
+                        assignments={taxonomyAssignmentsByQuestionId.get(
                           question.id,
                         )}
-                        emptyLabel="No five-facet tags assigned yet."
+                        emptyLabel="No taxonomy tags assigned yet."
                         showCategoryHeadings={false}
                       />
                     </TableCell>
@@ -601,10 +608,10 @@ export default async function AdminQuestionsPage({
                     <TableCell colSpan={7} className="bg-muted/20 p-3">
                       <div className="mb-3 rounded-md border bg-background p-3">
                         <p className="mb-2 text-sm font-medium">
-                          Official five-facet tags
+                          Official taxonomy tags
                         </p>
-                        <FiveFacetTagChips
-                          assignments={fiveFacetAssignmentsByQuestionId.get(
+                        <TaxonomyTagChips
+                          assignments={taxonomyAssignmentsByQuestionId.get(
                             question.id,
                           )}
                         />

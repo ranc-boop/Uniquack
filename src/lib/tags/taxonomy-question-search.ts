@@ -1,32 +1,33 @@
 import { createRequire } from "node:module";
 
-import type { AIFiveFacetTagCategory } from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+import type { AITaxonomyTagCategory } from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 import type {
-  FiveFacetVideoTagSearchFilterInput,
-  FiveFacetVideoTagSearchPlan,
-} from "@/lib/tags/five-facet-video-tag-assignment";
+  TaxonomyQuestionTagSearchFilterInput,
+  TaxonomyQuestionTagSearchPlan,
+} from "@/lib/tags/taxonomy-tag-assignment";
 
 const require = createRequire(import.meta.url);
 const {
-  buildFiveFacetVideoTagSearchPlan,
-} = require("./five-facet-video-tag-assignment.ts") as typeof import("@/lib/tags/five-facet-video-tag-assignment");
+  buildTaxonomyQuestionTagSearchPlan,
+} = require("./taxonomy-tag-assignment.ts") as typeof import("@/lib/tags/taxonomy-tag-assignment");
 const {
   getCurriculumConceptMappings,
-  listFiveFacetTagCategories,
-} = require("./five-facet-tag-catalog.ts") as typeof import("@/lib/tags/five-facet-tag-catalog");
+  listTaxonomyTagCategories,
+} = require("./taxonomy-tag-catalog.ts") as typeof import("@/lib/tags/taxonomy-tag-catalog");
 
-export interface FiveFacetVideoSearchAssignmentRow {
-  category: AIFiveFacetTagCategory;
+export interface TaxonomyQuestionSearchAssignmentRow {
+  category: AITaxonomyTagCategory;
+  question_id: string;
   review_status: string;
   tag_id: string;
-  video_id: string;
 }
 
-export interface FiveFacetVideoSearchVideoRow {
+export interface TaxonomyQuestionSearchQuestionRow {
+  difficulty_rating?: number | null;
   id: string;
 }
 
-export interface FiveFacetVideoBankSearchPlan {
+export interface TaxonomyQuestionBankSearchPlan {
   assignmentQuery: {
     includeConceptExpansion: Array<{
       conceptTagIds: string[];
@@ -34,43 +35,43 @@ export interface FiveFacetVideoBankSearchPlan {
       hierarchyMutation: false;
     }>;
     requireReviewed: boolean;
-    table: "five_facet_video_tag_assignments";
+    table: "question_taxonomy_assignments";
   };
   errors: string[];
-  filter: FiveFacetVideoTagSearchPlan["filter"];
+  filter: TaxonomyQuestionTagSearchPlan["filter"];
   generatedAt: string;
   mode: "planning_only";
   noDbMutation: true;
   noExtractionBehaviorChange: true;
   noProviderCall: true;
   noReviewDraftWrite: true;
-  searchContract: FiveFacetVideoTagSearchPlan["searchContract"];
+  searchContract: TaxonomyQuestionTagSearchPlan["searchContract"];
   valid: boolean;
-  version: "five_facet_video_bank_search_plan_v1";
+  version: "taxonomy_question_bank_search_plan_v1";
   warnings: string[];
 }
 
-export interface FiveFacetVideoBankSearchResult {
+export interface TaxonomyQuestionBankSearchResult {
   errors: string[];
-  matchedVideoIds: string[];
-  plan: FiveFacetVideoBankSearchPlan;
+  matchedQuestionIds: string[];
+  plan: TaxonomyQuestionBankSearchPlan;
   valid: boolean;
   warnings: string[];
 }
 
-const FIVE_FACET_CATEGORIES = listFiveFacetTagCategories();
+const TAXONOMY_CATEGORIES = listTaxonomyTagCategories();
 
 function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function emptyCategoryMap(): Record<AIFiveFacetTagCategory, string[]> {
-  return FIVE_FACET_CATEGORIES.reduce(
+function emptyCategoryMap(): Record<AITaxonomyTagCategory, string[]> {
+  return TAXONOMY_CATEGORIES.reduce(
     (accumulator, category) => ({
       ...accumulator,
       [category]: [],
     }),
-    {} as Record<AIFiveFacetTagCategory, string[]>,
+    {} as Record<AITaxonomyTagCategory, string[]>,
   );
 }
 
@@ -84,14 +85,27 @@ function curriculumConceptExpansion(curriculumTagIds: string[]) {
   }));
 }
 
+function questionDifficultyMatches(
+  question: TaxonomyQuestionSearchQuestionRow,
+  difficulty: TaxonomyQuestionBankSearchPlan["filter"]["difficulty"],
+) {
+  if (!difficulty) return true;
+  const value = question.difficulty_rating;
+  if (value === null || value === undefined) return false;
+  if (difficulty.min !== undefined && value < difficulty.min) return false;
+  if (difficulty.max !== undefined && value > difficulty.max) return false;
+
+  return true;
+}
+
 function assignmentMatchesTagSet({
   assignments,
   category,
   requireReviewed,
   tagIds,
 }: {
-  assignments: FiveFacetVideoSearchAssignmentRow[];
-  category: AIFiveFacetTagCategory;
+  assignments: TaxonomyQuestionSearchAssignmentRow[];
+  category: AITaxonomyTagCategory;
   requireReviewed: boolean;
   tagIds: string[];
 }) {
@@ -106,16 +120,16 @@ function assignmentMatchesTagSet({
   );
 }
 
-function videoMatchesIncludeFilters({
+function questionMatchesIncludeFilters({
   assignments,
   plan,
 }: {
-  assignments: FiveFacetVideoSearchAssignmentRow[];
-  plan: FiveFacetVideoBankSearchPlan;
+  assignments: TaxonomyQuestionSearchAssignmentRow[];
+  plan: TaxonomyQuestionBankSearchPlan;
 }) {
   const { include, requireReviewed } = plan.filter;
 
-  for (const category of FIVE_FACET_CATEGORIES) {
+  for (const category of TAXONOMY_CATEGORIES) {
     if (!include[category].length) continue;
 
     if (
@@ -151,16 +165,16 @@ function videoMatchesIncludeFilters({
   return true;
 }
 
-function videoMatchesExcludeFilters({
+function questionMatchesExcludeFilters({
   assignments,
   plan,
 }: {
-  assignments: FiveFacetVideoSearchAssignmentRow[];
-  plan: FiveFacetVideoBankSearchPlan;
+  assignments: TaxonomyQuestionSearchAssignmentRow[];
+  plan: TaxonomyQuestionBankSearchPlan;
 }) {
   const { exclude, requireReviewed } = plan.filter;
 
-  for (const category of FIVE_FACET_CATEGORIES) {
+  for (const category of TAXONOMY_CATEGORIES) {
     if (!exclude[category].length) continue;
 
     if (
@@ -178,11 +192,11 @@ function videoMatchesExcludeFilters({
   return true;
 }
 
-export function buildFiveFacetVideoBankSearchPlan(
-  filter: FiveFacetVideoTagSearchFilterInput,
+export function buildTaxonomyQuestionBankSearchPlan(
+  filter: TaxonomyQuestionTagSearchFilterInput,
   { generatedAt = new Date().toISOString() }: { generatedAt?: string } = {},
-): FiveFacetVideoBankSearchPlan {
-  const searchPlan = buildFiveFacetVideoTagSearchPlan(filter, {
+): TaxonomyQuestionBankSearchPlan {
+  const searchPlan = buildTaxonomyQuestionTagSearchPlan(filter, {
     generatedAt,
   });
 
@@ -192,7 +206,7 @@ export function buildFiveFacetVideoBankSearchPlan(
         searchPlan.filter.include.curriculum,
       ),
       requireReviewed: searchPlan.filter.requireReviewed,
-      table: "five_facet_video_tag_assignments",
+      table: "question_taxonomy_assignments",
     },
     errors: searchPlan.errors,
     filter: searchPlan.filter,
@@ -204,76 +218,80 @@ export function buildFiveFacetVideoBankSearchPlan(
     noReviewDraftWrite: true,
     searchContract: searchPlan.searchContract,
     valid: searchPlan.valid,
-    version: "five_facet_video_bank_search_plan_v1",
+    version: "taxonomy_question_bank_search_plan_v1",
     warnings: searchPlan.warnings,
   };
 }
 
-export function filterVideosByFiveFacetAssignments({
+export function filterQuestionsByTaxonomyAssignments({
   assignments,
   filter,
-  videos,
+  questions,
 }: {
-  assignments: FiveFacetVideoSearchAssignmentRow[];
-  filter: FiveFacetVideoTagSearchFilterInput;
-  videos: FiveFacetVideoSearchVideoRow[];
-}): FiveFacetVideoBankSearchResult {
-  const plan = buildFiveFacetVideoBankSearchPlan(filter);
+  assignments: TaxonomyQuestionSearchAssignmentRow[];
+  filter: TaxonomyQuestionTagSearchFilterInput;
+  questions: TaxonomyQuestionSearchQuestionRow[];
+}): TaxonomyQuestionBankSearchResult {
+  const plan = buildTaxonomyQuestionBankSearchPlan(filter);
   if (!plan.valid) {
     return {
       errors: plan.errors,
-      matchedVideoIds: [],
+      matchedQuestionIds: [],
       plan,
       valid: false,
       warnings: plan.warnings,
     };
   }
 
-  const assignmentMap = new Map<string, FiveFacetVideoSearchAssignmentRow[]>();
+  const assignmentMap = new Map<string, TaxonomyQuestionSearchAssignmentRow[]>();
   for (const assignment of assignments) {
-    assignmentMap.set(assignment.video_id, [
-      ...(assignmentMap.get(assignment.video_id) ?? []),
+    assignmentMap.set(assignment.question_id, [
+      ...(assignmentMap.get(assignment.question_id) ?? []),
       assignment,
     ]);
   }
 
-  const matchedVideoIds = videos
-    .filter((video) => {
-      const videoAssignments = assignmentMap.get(video.id) ?? [];
+  const matchedQuestionIds = questions
+    .filter((question) => {
+      if (!questionDifficultyMatches(question, plan.filter.difficulty)) {
+        return false;
+      }
+      const questionAssignments = assignmentMap.get(question.id) ?? [];
       return (
-        videoMatchesIncludeFilters({
-          assignments: videoAssignments,
+        questionMatchesIncludeFilters({
+          assignments: questionAssignments,
           plan,
         }) &&
-        videoMatchesExcludeFilters({
-          assignments: videoAssignments,
+        questionMatchesExcludeFilters({
+          assignments: questionAssignments,
           plan,
         })
       );
     })
-    .map((video) => video.id);
+    .map((question) => question.id);
 
   return {
     errors: [],
-    matchedVideoIds: uniqueStrings(matchedVideoIds),
+    matchedQuestionIds: uniqueStrings(matchedQuestionIds),
     plan,
     valid: true,
     warnings: plan.warnings,
   };
 }
 
-export function hasFiveFacetVideoBankFilters(
-  filter: FiveFacetVideoTagSearchFilterInput,
+export function hasTaxonomyQuestionBankFilters(
+  filter: TaxonomyQuestionTagSearchFilterInput,
 ) {
   const include = filter.include ?? {};
   const exclude = filter.exclude ?? {};
   return (
+    Boolean(filter.difficulty?.min !== undefined || filter.difficulty?.max !== undefined) ||
     Object.values(include).some((values) => Boolean(values?.length)) ||
     Object.values(exclude).some((values) => Boolean(values?.length))
   );
 }
 
-export function emptyFiveFacetVideoSearchFilter(): FiveFacetVideoTagSearchFilterInput {
+export function emptyTaxonomyQuestionSearchFilter(): TaxonomyQuestionTagSearchFilterInput {
   return {
     exclude: emptyCategoryMap(),
     include: emptyCategoryMap(),

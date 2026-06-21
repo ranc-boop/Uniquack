@@ -2,215 +2,187 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireAdmin } from "@/lib/auth/guards";
 import {
   formatActionError,
   redirectWithError,
   redirectWithSaved,
 } from "@/lib/actions/feedback";
+import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import {
-  buildApprovedTagAssignmentWritePlan,
-  fiveFacetReviewActionRowsToDrafts,
-  persistApprovedFiveFacetAssignments,
-  seedFiveFacetCatalog,
-  type FiveFacetReviewActionRowInput,
-} from "@/lib/tags/five-facet-tag-admin-persistence";
-import {
-  tagCreateSchema,
-  tagDeleteSchema,
-  tagStatusSchema,
-  tagUpdateSchema,
+  taxonomyActionSchema,
+  taxonomyNodeCreateSchema,
+  taxonomyNodeDeleteSchema,
 } from "@/lib/validations/tag";
 
-function isMissingFiveFacetTableError(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-  const record = error as { code?: unknown; message?: unknown };
-  const message = typeof record.message === "string" ? record.message : "";
-
-  return (
-    record.code === "42P01" ||
-    /five_facet_|relation .* does not exist|schema cache/i.test(message)
-  );
+function redirectTagError(error: unknown) {
+  redirectWithError("/admin/tags", formatActionError(error));
 }
 
-function fiveFacetSetupMessage() {
-  return "Five-facet tag tables are not available yet. Apply migration 0009_five_facet_tag_persistence.sql, then retry.";
-}
-
-async function loadApprovedFiveFacetReviewActions() {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("five_facet_tag_review_actions")
-    .select(
-      "action_id, question_id, question_ref, action_kind, target_facet, target_tag_ids, proposed_tag_ids, reason, confidence, evidence, review_status",
-    )
-    .eq("review_status", "approved")
-    .limit(250);
-
-  if (error) {
-    throw error;
-  }
-
-  return fiveFacetReviewActionRowsToDrafts(
-    (data ?? []) as FiveFacetReviewActionRowInput[],
-  );
-}
-
-export async function createTag(formData: FormData) {
+export async function createTaxonomyNode(formData: FormData) {
   try {
     const profile = await requireAdmin();
-    const parsed = tagCreateSchema.parse(Object.fromEntries(formData));
+    const parsed = taxonomyNodeCreateSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
 
-    const { error } = await supabase.from("tags").insert({
-      ...parsed,
-      parent_id: parsed.tag_type === "attribute" ? null : parsed.parent_id,
+    const { error: nodeError } = await supabase.from("taxonomy_nodes").insert({
+      tag_id: parsed.tag_id,
+      node_kind: "tag",
+      subject_tag_id: "subject.math",
+      facet_key: parsed.facet_key,
+      label: parsed.label,
+      description: parsed.description || null,
+      is_assignable: parsed.is_assignable,
+      status: "active",
       created_by: profile.id,
       updated_by: profile.id,
     });
 
+    if (nodeError) {
+      throw new Error(nodeError.message);
+    }
+
+    if (parsed.parent_tag_id) {
+      const { error: edgeError } = await supabase.from("taxonomy_edges").insert({
+        from_tag_id: parsed.parent_tag_id,
+        to_tag_id: parsed.tag_id,
+        edge_kind: "parent_child",
+        is_primary: true,
+        status: "active",
+        created_by: profile.id,
+        updated_by: profile.id,
+      });
+
+      if (edgeError) {
+        throw new Error(edgeError.message);
+      }
+    }
+  } catch (error) {
+    redirectTagError(error);
+  }
+
+  revalidatePath("/admin/tags");
+  redirectWithSaved("/admin/tags", "Taxonomy node created.");
+}
+
+export async function deleteTaxonomyNode(formData: FormData) {
+  try {
+    await requireAdmin();
+    const parsed = taxonomyNodeDeleteSchema.parse(Object.fromEntries(formData));
+
+    if (parsed.tag_id === "subject.math") {
+      throw new Error("The math subject root cannot be deleted.");
+    }
+
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("taxonomy_nodes")
+      .delete()
+      .eq("tag_id", parsed.tag_id);
+
     if (error) {
       throw new Error(error.message);
     }
   } catch (error) {
-    redirectWithError("/admin/tags", formatActionError(error));
+    redirectTagError(error);
   }
 
   revalidatePath("/admin/tags");
-  revalidatePath("/questions");
-  revalidatePath("/videos");
-  redirectWithSaved("/admin/tags", "Tag created.");
+  redirectWithSaved("/admin/tags", "Taxonomy node deleted.");
 }
 
-export async function updateTag(formData: FormData) {
+export async function approveTaxonomyReviewAction(formData: FormData) {
   try {
     const profile = await requireAdmin();
-    const parsed = tagUpdateSchema.parse(Object.fromEntries(formData));
+    const parsed = taxonomyActionSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
-    const { id, ...values } = parsed;
+    const { data: action, error: actionError } = await supabase
+      .from("taxonomy_review_actions")
+      .select("id, action_id, question_id, proposed_tag_ids, confidence, evidence")
+      .eq("id", parsed.id)
+      .maybeSingle();
 
-    const { error } = await supabase
-      .from("tags")
+    if (actionError) {
+      throw new Error(actionError.message);
+    }
+
+    if (!action?.question_id || !action.proposed_tag_ids?.length) {
+      throw new Error("Review action is missing a question or proposed tags.");
+    }
+
+    const rows = Array.from(new Set(action.proposed_tag_ids)).map((tagId) => ({
+      question_id: action.question_id,
+      tag_id: tagId,
+      confidence: action.confidence,
+      evidence: {
+        ...(action.evidence && typeof action.evidence === "object"
+          ? action.evidence
+          : {}),
+        reviewActionId: action.action_id,
+      },
+      source: "review_action",
+      review_status: "approved",
+      approved_by: profile.id,
+      approved_at: new Date().toISOString(),
+      created_by: profile.id,
+      updated_by: profile.id,
+    }));
+
+    const { error: insertError } = await supabase
+      .from("question_taxonomy_assignments")
+      .upsert(rows, {
+        onConflict: "question_id,tag_id",
+      });
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+
+    const { error: updateError } = await supabase
+      .from("taxonomy_review_actions")
       .update({
-        ...values,
-        parent_id: values.tag_type === "attribute" ? null : values.parent_id,
+        review_status: "approved",
+        reviewed_by: profile.id,
+        reviewed_at: new Date().toISOString(),
         updated_by: profile.id,
       })
-      .eq("id", id);
+      .eq("id", parsed.id);
 
-    if (error) {
-      throw new Error(error.message);
+    if (updateError) {
+      throw new Error(updateError.message);
     }
   } catch (error) {
-    redirectWithError("/admin/tags", formatActionError(error));
+    redirectTagError(error);
   }
 
   revalidatePath("/admin/tags");
+  revalidatePath("/admin/questions");
   revalidatePath("/questions");
-  revalidatePath("/videos");
-  redirectWithSaved("/admin/tags", "Tag updated.");
+  redirectWithSaved("/admin/tags", "Taxonomy suggestion approved.");
 }
 
-export async function updateTagStatus(formData: FormData) {
+export async function rejectTaxonomyReviewAction(formData: FormData) {
   try {
     const profile = await requireAdmin();
-    const parsed = tagStatusSchema.parse(Object.fromEntries(formData));
+    const parsed = taxonomyActionSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
-
     const { error } = await supabase
-      .from("tags")
-      .update({ status: parsed.status, updated_by: profile.id })
+      .from("taxonomy_review_actions")
+      .update({
+        review_status: "rejected",
+        reviewed_by: profile.id,
+        reviewed_at: new Date().toISOString(),
+        updated_by: profile.id,
+      })
       .eq("id", parsed.id);
 
     if (error) {
       throw new Error(error.message);
     }
   } catch (error) {
-    redirectWithError("/admin/tags", formatActionError(error));
+    redirectTagError(error);
   }
 
   revalidatePath("/admin/tags");
-  revalidatePath("/questions");
-  revalidatePath("/videos");
-  redirectWithSaved("/admin/tags", "Tag status updated.");
-}
-
-export async function deleteTag(formData: FormData) {
-  try {
-    await requireAdmin();
-    const parsed = tagDeleteSchema.parse(Object.fromEntries(formData));
-    const supabase = await createClient();
-
-    const { error } = await supabase.from("tags").delete().eq("id", parsed.id);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-  } catch (error) {
-    redirectWithError("/admin/tags", formatActionError(error));
-  }
-
-  revalidatePath("/admin/tags");
-  revalidatePath("/questions");
-  revalidatePath("/videos");
-  redirectWithSaved("/admin/tags", "Tag deleted.");
-}
-
-export async function seedOfficialFiveFacetCatalog() {
-  try {
-    const profile = await requireAdmin();
-    const supabase = await createClient();
-    const result = await seedFiveFacetCatalog({
-      createdBy: profile.id,
-      supabase,
-    });
-
-    if ("error" in result && result.error) {
-      throw new Error(result.error);
-    }
-  } catch (error) {
-    redirectWithError(
-      "/admin/tags",
-      isMissingFiveFacetTableError(error)
-        ? fiveFacetSetupMessage()
-        : formatActionError(error),
-    );
-  }
-
-  revalidatePath("/admin/tags");
-  redirectWithSaved("/admin/tags", "Five-facet catalog seed synced.");
-}
-
-export async function persistApprovedFiveFacetTagAssignments() {
-  try {
-    const profile = await requireAdmin();
-    const supabase = await createClient();
-    const reviewActions = await loadApprovedFiveFacetReviewActions();
-    const plan = buildApprovedTagAssignmentWritePlan(reviewActions);
-
-    if (!plan.assignmentRows.length) {
-      throw new Error("No approved five-facet review actions are ready to persist.");
-    }
-
-    const result = await persistApprovedFiveFacetAssignments({
-      createdBy: profile.id,
-      reviewActions,
-      supabase,
-    });
-
-    if ("error" in result && result.error) {
-      throw new Error(result.error);
-    }
-  } catch (error) {
-    redirectWithError(
-      "/admin/tags",
-      isMissingFiveFacetTableError(error)
-        ? fiveFacetSetupMessage()
-        : formatActionError(error),
-    );
-  }
-
-  revalidatePath("/admin/tags");
-  redirectWithSaved("/admin/tags", "Approved five-facet tag assignments persisted.");
+  redirectWithSaved("/admin/tags", "Taxonomy suggestion rejected.");
 }

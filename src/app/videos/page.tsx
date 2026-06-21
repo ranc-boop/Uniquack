@@ -2,9 +2,9 @@ import Link from "next/link";
 
 import { SupabaseConfigNotice } from "@/components/config-notice";
 import {
-  FiveFacetTagChips,
-  type FiveFacetTagChipAssignment,
-} from "@/components/tags/five-facet-tag-chips";
+  TaxonomyTagChips,
+  type TaxonomyTagChipAssignment,
+} from "@/components/tags/taxonomy-tag-chips";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,14 +40,14 @@ function parseDifficulty(value: string | undefined, fallback: number) {
   return Math.min(1000, Math.max(0, Math.trunc(parsed)));
 }
 
-function isMissingFiveFacetVideoTableError(error: unknown) {
+function isMissingTaxonomyTableError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const record = error as { code?: unknown; message?: unknown };
   const message = typeof record.message === "string" ? record.message : "";
 
   return (
     record.code === "42P01" ||
-    /five_facet_video_tag_assignments|permission denied|relation .* does not exist|schema cache/i.test(
+    /question_taxonomy_assignments|permission denied|relation .* does not exist|schema cache/i.test(
       message,
     )
   );
@@ -70,7 +70,6 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
     .eq("status", "published")
     .order("created_at", { ascending: false })
     .limit(100);
-  const videoIds = (videos ?? []).map((video) => video.id);
   const questionIds = (videos ?? []).map((video) => video.question_id);
   const { data: questions, error: questionsError } = questionIds.length
     ? await supabase
@@ -79,34 +78,35 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
         .eq("status", "published")
         .in("id", Array.from(new Set(questionIds)))
     : { data: [], error: null };
-  const { data: fiveFacetVideoAssignments, error: fiveFacetVideoAssignmentsError } =
-    videoIds.length
+  const { data: taxonomyAssignments, error: taxonomyAssignmentsError } =
+    questionIds.length
       ? await supabase
-          .from("five_facet_video_tag_assignments")
-          .select("video_id, tag_id, category, review_status")
+          .from("question_taxonomy_assignments")
+          .select("question_id, tag_id, review_status")
           .eq("review_status", "approved")
-          .in("video_id", videoIds)
+          .in("question_id", Array.from(new Set(questionIds)))
       : { data: [], error: null };
   const questionById = new Map(
     (questions ?? []).map((question) => [question.id, question]),
   );
-  const fiveFacetAssignmentsByVideoId = new Map<
+  const taxonomyAssignmentsByQuestionId = new Map<
     string,
-    FiveFacetTagChipAssignment[]
+    TaxonomyTagChipAssignment[]
   >();
 
-  const publicFiveFacetVideoAssignments =
-    fiveFacetVideoAssignmentsError &&
-    isMissingFiveFacetVideoTableError(fiveFacetVideoAssignmentsError)
+  const publicTaxonomyAssignments =
+    taxonomyAssignmentsError &&
+    isMissingTaxonomyTableError(taxonomyAssignmentsError)
       ? []
-      : ((fiveFacetVideoAssignments ?? []) as Array<
-          FiveFacetTagChipAssignment & { video_id: string }
+      : ((taxonomyAssignments ?? []) as Array<
+          TaxonomyTagChipAssignment & { question_id: string }
         >);
 
-  for (const assignment of publicFiveFacetVideoAssignments) {
-    const current = fiveFacetAssignmentsByVideoId.get(assignment.video_id) ?? [];
+  for (const assignment of publicTaxonomyAssignments) {
+    const current =
+      taxonomyAssignmentsByQuestionId.get(assignment.question_id) ?? [];
     current.push(assignment);
-    fiveFacetAssignmentsByVideoId.set(assignment.video_id, current);
+    taxonomyAssignmentsByQuestionId.set(assignment.question_id, current);
   }
 
   const filteredVideos = (videos ?? []).filter((video) => {
@@ -135,7 +135,7 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
         <h1 className="text-2xl font-semibold tracking-tight">Videos</h1>
         <p className="text-sm text-muted-foreground">
           Published video explanations with their linked question, official
-          five-facet tags, and difficulty.
+          taxonomy tags, and difficulty.
         </p>
       </div>
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-[1.5fr_1fr_1fr_auto]">
@@ -232,11 +232,13 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                   <div className="space-y-2">
                     <div className="space-y-1">
                       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Official five-facet tags
+                        Official taxonomy tags
                       </p>
-                      <FiveFacetTagChips
-                        assignments={fiveFacetAssignmentsByVideoId.get(video.id)}
-                        emptyLabel="No five-facet tags assigned yet."
+                      <TaxonomyTagChips
+                        assignments={taxonomyAssignmentsByQuestionId.get(
+                          video.question_id,
+                        )}
+                        emptyLabel="No taxonomy tags assigned yet."
                         showCategoryHeadings={false}
                       />
                     </div>

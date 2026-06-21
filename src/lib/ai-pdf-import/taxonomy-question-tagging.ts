@@ -1,60 +1,60 @@
 import { createRequire } from "node:module";
 
 import type {
-  FiveFacetTagBundleValidationResult,
-  NormalizedFiveFacetTagBundle,
-} from "@/lib/tags/five-facet-tag-catalog";
-import type { AIFiveFacetTagCategory } from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+  TaxonomyTagBundleValidationResult,
+  NormalizedTaxonomyTagBundle,
+} from "@/lib/tags/taxonomy-tag-catalog";
+import type { AITaxonomyTagCategory } from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 
 const require = createRequire(import.meta.url);
 const {
   getCurriculumConceptMappings,
-  listFiveFacetTagsByCategory,
-  normalizeFiveFacetTagBundle,
-  resolveFiveFacetAlias,
-  validateFiveFacetTagBundle,
-} = require("../tags/five-facet-tag-catalog.ts") as typeof import("@/lib/tags/five-facet-tag-catalog");
+  listTaxonomyTagsByCategory,
+  normalizeTaxonomyTagBundle,
+  resolveTaxonomyAlias,
+  validateTaxonomyTagBundle,
+} = require("../tags/taxonomy-tag-catalog.ts") as typeof import("@/lib/tags/taxonomy-tag-catalog");
 
-export type AIFiveFacetQuestionTaggingPlanVersion =
-  "five_facet_question_tagging_plan_v1";
+export type AITaxonomyQuestionTaggingPlanVersion =
+  "taxonomy_question_tagging_plan_v1";
 
-export type AIFiveFacetQuestionTaggingPlanStatus =
+export type AITaxonomyQuestionTaggingPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export interface AIFiveFacetQuestionRef {
+export interface AITaxonomyQuestionRef {
   id?: string;
   questionCode?: string;
   sourcePages: number[];
   titlePreview: string;
 }
 
-export interface AIFiveFacetQuestionTaggingEvidence {
+export interface AITaxonomyQuestionTaggingEvidence {
   matchedAliases: string[];
   matchedSignals: string[];
   safeTextPreview: string;
 }
 
-export interface AIFiveFacetQuestionTaggingSuggestion {
+export interface AITaxonomyQuestionTaggingSuggestion {
   confidence: number;
   difficultySuggestion: number;
-  evidence: AIFiveFacetQuestionTaggingEvidence;
-  questionRef: AIFiveFacetQuestionRef;
+  evidence: AITaxonomyQuestionTaggingEvidence;
+  questionRef: AITaxonomyQuestionRef;
   reviewRequired: true;
-  tags: Record<AIFiveFacetTagCategory, string[]>;
-  validation: FiveFacetTagBundleValidationResult;
+  tags: Record<AITaxonomyTagCategory, string[]>;
+  validation: TaxonomyTagBundleValidationResult;
   warnings: string[];
 }
 
-export interface AIFiveFacetQuestionTaggingPlan {
+export interface AITaxonomyQuestionTaggingPlan {
   generatedAt: string;
   itemCount: number;
   mode: "planning_only";
   source: "rule_based_catalog";
-  status: AIFiveFacetQuestionTaggingPlanStatus;
-  suggestions: AIFiveFacetQuestionTaggingSuggestion[];
+  status: AITaxonomyQuestionTaggingPlanStatus;
+  suggestions: AITaxonomyQuestionTaggingSuggestion[];
   validation: {
     allBundlesValidated: boolean;
     difficultyIsNumeric: true;
@@ -64,7 +64,7 @@ export interface AIFiveFacetQuestionTaggingPlan {
     noProviderCall: true;
     noReviewDraftTagWrite: true;
   };
-  version: AIFiveFacetQuestionTaggingPlanVersion;
+  version: AITaxonomyQuestionTaggingPlanVersion;
   warnings: string[];
 }
 
@@ -113,11 +113,11 @@ function includesAny(text: string, signals: string[]) {
   return signals.some((signal) => text.includes(signal));
 }
 
-function addTag(tags: Record<AIFiveFacetTagCategory, string[]>, category: AIFiveFacetTagCategory, tagId: string) {
+function addTag(tags: Record<AITaxonomyTagCategory, string[]>, category: AITaxonomyTagCategory, tagId: string) {
   tags[category] = uniqueStrings([...tags[category], tagId]);
 }
 
-function confidenceFor({ matchedSignals, validation }: { matchedSignals: string[]; validation: FiveFacetTagBundleValidationResult }) {
+function confidenceFor({ matchedSignals, validation }: { matchedSignals: string[]; validation: TaxonomyTagBundleValidationResult }) {
   const base = validation.valid ? 0.58 : 0.42;
   const signalBoost = Math.min(0.3, matchedSignals.length * 0.04);
   const warningPenalty = Math.min(0.12, validation.warnings.length * 0.03);
@@ -133,7 +133,7 @@ function difficultyFor(text: string) {
 }
 
 function curriculumCandidatesForConcepts(conceptTagIds: string[]) {
-  const curriculumTags = listFiveFacetTagsByCategory("curriculum");
+  const curriculumTags = listTaxonomyTagsByCategory("curriculum");
   const matches: string[] = [];
   for (const curriculum of curriculumTags) {
     const mappedConceptIds = getCurriculumConceptMappings(curriculum.tagId).map(
@@ -147,7 +147,7 @@ function curriculumCandidatesForConcepts(conceptTagIds: string[]) {
 }
 
 function applyDefaultMinimums(
-  tags: Record<AIFiveFacetTagCategory, string[]>,
+  tags: Record<AITaxonomyTagCategory, string[]>,
   text: string,
 ) {
   if (!tags.concept.length) addTag(tags, "concept", "concept.algebra.functions");
@@ -172,7 +172,7 @@ function applyDefaultMinimums(
 }
 
 function suggestTagsForText(text: string) {
-  const tags: Record<AIFiveFacetTagCategory, string[]> = {
+  const tags: Record<AITaxonomyTagCategory, string[]> = {
     concept: [],
     curriculum: [],
     form: [],
@@ -198,7 +198,7 @@ function suggestTagsForText(text: string) {
   ]) {
     if (!lower.includes(alias)) continue;
     if (alias === "vertex" && lower.includes("vertex form")) continue;
-    const resolution = resolveFiveFacetAlias(alias);
+    const resolution = resolveTaxonomyAlias(alias);
     matchedAliases.push(alias);
     if (resolution.ambiguous) {
       warnings.push(`ambiguous_alias:${alias}`);
@@ -322,22 +322,22 @@ function extractQuestionTargetsFromSummary(summary: Record<string, unknown>) {
   return asArray(taggingPlan.targets).map(asRecord).map(targetFromRecord);
 }
 
-export function buildFiveFacetQuestionTaggingPlanFromSummary(
+export function buildTaxonomyQuestionTaggingPlanFromSummary(
   summary: Record<string, unknown>,
   { generatedAt = new Date().toISOString() }: { generatedAt?: string } = {},
-): AIFiveFacetQuestionTaggingPlan {
+): AITaxonomyQuestionTaggingPlan {
   const targets = extractQuestionTargetsFromSummary(summary).slice(0, 100);
   const suggestions = targets.map((target, index) => {
     const suggestion = suggestTagsForText(`${target.title} ${target.text}`);
-    const normalized = normalizeFiveFacetTagBundle({
+    const normalized = normalizeTaxonomyTagBundle({
       difficulty: difficultyFor(`${target.title} ${target.text}`),
       tags: suggestion.tags,
     });
-    const validation = validateFiveFacetTagBundle(normalized);
+    const validation = validateTaxonomyTagBundle(normalized);
     const warnings = uniqueStrings([
       ...suggestion.warnings,
       ...validation.warnings,
-      ...(validation.valid ? [] : ["five_facet_bundle_validation_failed"]),
+      ...(validation.valid ? [] : ["taxonomy_bundle_validation_failed"]),
     ]);
 
     return {
@@ -361,14 +361,14 @@ export function buildFiveFacetQuestionTaggingPlanFromSummary(
       tags: normalized.tags,
       validation,
       warnings,
-    } satisfies AIFiveFacetQuestionTaggingSuggestion;
+    } satisfies AITaxonomyQuestionTaggingSuggestion;
   });
   const warnings = uniqueStrings([
-    "five_facet_question_tagging_planning_only",
-    "five_facet_question_tagging_no_db_write",
-    "five_facet_question_tagging_no_official_tag_write",
-    "five_facet_question_tagging_no_review_draft_write",
-    ...(targets.length ? [] : ["five_facet_question_tagging_no_targets"]),
+    "taxonomy_question_tagging_planning_only",
+    "taxonomy_question_tagging_no_db_write",
+    "taxonomy_question_tagging_no_official_tag_write",
+    "taxonomy_question_tagging_no_review_draft_write",
+    ...(targets.length ? [] : ["taxonomy_question_tagging_no_targets"]),
     ...suggestions.flatMap((item) => item.warnings),
   ]);
 
@@ -392,18 +392,18 @@ export function buildFiveFacetQuestionTaggingPlanFromSummary(
       noProviderCall: true,
       noReviewDraftTagWrite: true,
     },
-    version: "five_facet_question_tagging_plan_v1",
+    version: "taxonomy_question_tagging_plan_v1",
     warnings,
   };
 }
 
-export function failedFiveFacetQuestionTaggingPlan({
+export function failedTaxonomyQuestionTaggingPlan({
   generatedAt = new Date().toISOString(),
   warnings = [],
 }: {
   generatedAt?: string;
   warnings?: string[];
-} = {}): AIFiveFacetQuestionTaggingPlan {
+} = {}): AITaxonomyQuestionTaggingPlan {
   return {
     generatedAt,
     itemCount: 0,
@@ -420,20 +420,20 @@ export function failedFiveFacetQuestionTaggingPlan({
       noProviderCall: true,
       noReviewDraftTagWrite: true,
     },
-    version: "five_facet_question_tagging_plan_v1",
+    version: "taxonomy_question_tagging_plan_v1",
     warnings: uniqueStrings([
-      "five_facet_question_tagging_failed",
+      "taxonomy_question_tagging_failed",
       ...warnings,
     ]),
   };
 }
 
-export function mergeFiveFacetQuestionTaggingPlanIntoSummary(
+export function mergeTaxonomyQuestionTaggingPlanIntoSummary(
   aiPdfImport: Record<string, unknown> | null | undefined,
-  fiveFacetQuestionTaggingPlan: AIFiveFacetQuestionTaggingPlan,
+  taxonomyQuestionTaggingPlan: AITaxonomyQuestionTaggingPlan,
 ) {
   return {
     ...(aiPdfImport ?? {}),
-    fiveFacetQuestionTaggingPlan,
+    taxonomyQuestionTaggingPlan,
   };
 }

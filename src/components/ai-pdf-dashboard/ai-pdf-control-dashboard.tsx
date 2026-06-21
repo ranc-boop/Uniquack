@@ -6,7 +6,7 @@ import {
 } from "@/components/ai-pdf-dashboard/chunk-status-panel";
 import { CoverageWarningCard } from "@/components/ai-pdf-dashboard/coverage-warning-card";
 import { FigureReviewCard } from "@/components/ai-pdf-dashboard/figure-review-card";
-import { FiveFacetTagSuggestionsCard } from "@/components/ai-pdf-dashboard/five-facet-tag-suggestions-card";
+import { TaxonomyTagSuggestionsCard } from "@/components/ai-pdf-dashboard/taxonomy-tag-suggestions-card";
 import { PipelineTimeline } from "@/components/ai-pdf-dashboard/pipeline-timeline";
 import { ProviderSummaryCards } from "@/components/ai-pdf-dashboard/provider-summary-cards";
 import { WarningSummary } from "@/components/ai-pdf-dashboard/warning-summary";
@@ -561,7 +561,7 @@ export function AIPdfControlDashboard({
 
                     <CoverageWarningCard ai={ai} />
 
-                    <FiveFacetTagSuggestionsCard ai={ai} />
+                    <TaxonomyTagSuggestionsCard ai={ai} />
 
                     <WarningSummary
                       aggregatedWarnings={aggregatedWarnings}

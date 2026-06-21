@@ -2,9 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import {
-  FiveFacetTagChips,
-  type FiveFacetTagChipAssignment,
-} from "@/components/tags/five-facet-tag-chips";
+  TaxonomyTagChips,
+  type TaxonomyTagChipAssignment,
+} from "@/components/tags/taxonomy-tag-chips";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -25,7 +25,7 @@ type QuestionRow = {
 };
 
 type QuestionsTableProps = {
-  fiveFacetTagsByQuestionId?: Record<string, FiveFacetTagChipAssignment[]>;
+  taxonomyTagsByQuestionId?: Record<string, TaxonomyTagChipAssignment[]>;
   questions: QuestionRow[];
 };
 
@@ -54,7 +54,7 @@ function ClickableCell({
 }
 
 export function QuestionsTable({
-  fiveFacetTagsByQuestionId = {},
+  taxonomyTagsByQuestionId = {},
   questions,
 }: QuestionsTableProps) {
   return (
@@ -65,7 +65,7 @@ export function QuestionsTable({
             <TableHead>Code</TableHead>
             <TableHead>Title</TableHead>
             <TableHead>Content</TableHead>
-            <TableHead>Five-facet tags</TableHead>
+            <TableHead>Taxonomy tags</TableHead>
             <TableHead>Difficulty</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Open</TableHead>
@@ -93,9 +93,9 @@ export function QuestionsTable({
                   </p>
                 </ClickableCell>
                 <ClickableCell href={href} label={label}>
-                  <FiveFacetTagChips
-                    assignments={fiveFacetTagsByQuestionId[question.id]}
-                    emptyLabel="No five-facet tags assigned yet."
+                  <TaxonomyTagChips
+                    assignments={taxonomyTagsByQuestionId[question.id]}
+                    emptyLabel="No taxonomy tags assigned yet."
                     showCategoryHeadings={false}
                   />
                 </ClickableCell>

@@ -1,19 +1,19 @@
 import { Badge } from "@/components/ui/badge";
-import type { AIFiveFacetTagCategory } from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+import type { AITaxonomyTagCategory } from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 import {
-  getFiveFacetTagAncestors,
-  getFiveFacetTagNode,
-  listFiveFacetTagCategories,
-} from "@/lib/tags/five-facet-tag-catalog";
+  getTaxonomyTagAncestors,
+  getTaxonomyTagNode,
+  listTaxonomyTagCategories,
+} from "@/lib/tags/taxonomy-tag-catalog";
 
-export type FiveFacetTagChipAssignment = {
+export type TaxonomyTagChipAssignment = {
   category?: string | null;
   review_status?: string | null;
   tag_id: string;
 };
 
-type FiveFacetTagChipsProps = {
-  assignments?: FiveFacetTagChipAssignment[];
+type TaxonomyTagChipsProps = {
+  assignments?: TaxonomyTagChipAssignment[];
   emptyLabel?: string;
   showCategoryHeadings?: boolean;
   tagIds?: string[];
@@ -24,7 +24,7 @@ function titleCase(value: string) {
 }
 
 function breadcrumb(tagId: string) {
-  return getFiveFacetTagAncestors(tagId)
+  return getTaxonomyTagAncestors(tagId)
     .map((ancestor) => ancestor.label)
     .join(" > ");
 }
@@ -32,9 +32,9 @@ function breadcrumb(tagId: string) {
 function normalizeAssignments({
   assignments,
   tagIds,
-}: Pick<FiveFacetTagChipsProps, "assignments" | "tagIds">) {
+}: Pick<TaxonomyTagChipsProps, "assignments" | "tagIds">) {
   const seen = new Set<string>();
-  const rows: FiveFacetTagChipAssignment[] = [
+  const rows: TaxonomyTagChipAssignment[] = [
     ...(assignments ?? []),
     ...(tagIds ?? []).map((tagId) => ({ tag_id: tagId })),
   ];
@@ -42,24 +42,24 @@ function normalizeAssignments({
   return rows.filter((row) => {
     if (!row.tag_id || seen.has(row.tag_id)) return false;
     seen.add(row.tag_id);
-    return Boolean(getFiveFacetTagNode(row.tag_id));
+    return Boolean(getTaxonomyTagNode(row.tag_id));
   });
 }
 
-export function FiveFacetTagChips({
+export function TaxonomyTagChips({
   assignments,
-  emptyLabel = "No official five-facet tags assigned yet",
+  emptyLabel = "No official taxonomy tags assigned yet",
   showCategoryHeadings = true,
   tagIds,
-}: FiveFacetTagChipsProps) {
+}: TaxonomyTagChipsProps) {
   const normalized = normalizeAssignments({ assignments, tagIds });
-  const categories = listFiveFacetTagCategories();
-  const byCategory = new Map<AIFiveFacetTagCategory, FiveFacetTagChipAssignment[]>(
+  const categories = listTaxonomyTagCategories();
+  const byCategory = new Map<AITaxonomyTagCategory, TaxonomyTagChipAssignment[]>(
     categories.map((category) => [category, []]),
   );
 
   for (const row of normalized) {
-    const node = getFiveFacetTagNode(row.tag_id);
+    const node = getTaxonomyTagNode(row.tag_id);
     if (!node) continue;
     byCategory.set(node.category, [...(byCategory.get(node.category) ?? []), row]);
   }
@@ -83,7 +83,7 @@ export function FiveFacetTagChips({
             ) : null}
             <div className="flex min-w-0 flex-wrap gap-1.5">
               {rows.map((row) => {
-                const node = getFiveFacetTagNode(row.tag_id);
+                const node = getTaxonomyTagNode(row.tag_id);
                 if (!node) return null;
                 const path = breadcrumb(row.tag_id);
                 const status =

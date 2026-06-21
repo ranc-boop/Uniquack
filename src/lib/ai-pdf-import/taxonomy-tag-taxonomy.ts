@@ -1,34 +1,34 @@
-export type AIFiveFacetTagTaxonomyPlanVersion =
-  "five_facet_tag_taxonomy_plan_v1";
+export type AITaxonomyTagTaxonomyPlanVersion =
+  "taxonomy_tag_taxonomy_plan_v1";
 
-export type AIFiveFacetTagTaxonomyPlanStatus =
+export type AITaxonomyTagTaxonomyPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AIFiveFacetTagCategory =
+export type AITaxonomyTagCategory =
   | "curriculum"
   | "concept"
   | "method"
   | "task"
   | "form";
 
-export interface AIFiveFacetTagTaxonomyPlan {
-  aliasIndex: AIFiveFacetAliasIndex;
+export interface AITaxonomyTagTaxonomyPlan {
+  aliasIndex: AITaxonomyAliasIndex;
   attemptDiagnosisContract: AIAttemptDiagnosisContract;
   generatedAt: string;
   mode: "planning_only";
   questionTagBundleContract: AIQuestionTagBundleContract;
-  stats: AIFiveFacetTagTaxonomyStats;
-  status: AIFiveFacetTagTaxonomyPlanStatus;
-  taxonomy: AIFiveFacetTagTaxonomy;
-  validation: AIFiveFacetTagTaxonomyValidation;
-  version: AIFiveFacetTagTaxonomyPlanVersion;
+  stats: AITaxonomyTagTaxonomyStats;
+  status: AITaxonomyTagTaxonomyPlanStatus;
+  taxonomy: AITaxonomyTagTaxonomy;
+  validation: AITaxonomyTagTaxonomyValidation;
+  version: AITaxonomyTagTaxonomyPlanVersion;
   warnings: string[];
 }
 
-export interface AIFiveFacetTagTaxonomy {
+export interface AITaxonomyTagTaxonomy {
   curriculum: AITagTree;
   concept: AITagTree;
   method: AITagTree;
@@ -37,7 +37,7 @@ export interface AIFiveFacetTagTaxonomy {
 }
 
 export interface AITagTree {
-  category: AIFiveFacetTagCategory;
+  category: AITaxonomyTagCategory;
   edges: AITagEdge[];
   label: string;
   nodes: AITagNode[];
@@ -47,7 +47,7 @@ export interface AITagTree {
 
 export interface AITagNode {
   aliases: string[];
-  category: AIFiveFacetTagCategory;
+  category: AITaxonomyTagCategory;
   description: string;
   exampleSignals: string[];
   label: string;
@@ -80,7 +80,7 @@ export interface AIQuestionTagBundleContract {
   example: {
     difficulty: number;
     item_id: string;
-    tags: Record<AIFiveFacetTagCategory, string[]>;
+    tags: Record<AITaxonomyTagCategory, string[]>;
   };
   itemIdExample: string;
   recommendedTagLimits: {
@@ -91,7 +91,7 @@ export interface AIQuestionTagBundleContract {
     task: { max: 3; min: 1 };
     totalSuggestedMax: 12;
   };
-  tags: Record<AIFiveFacetTagCategory, string[]>;
+  tags: Record<AITaxonomyTagCategory, string[]>;
 }
 
 export interface AIAttemptDiagnosisContract {
@@ -113,23 +113,23 @@ export interface AIAttemptDiagnosisContract {
   questionTaxonomyIncludesErrorPattern: false;
 }
 
-export interface AIFiveFacetAliasIndex {
-  aliases: AIFiveFacetAliasMapping[];
-  collisions: AIFiveFacetAliasCollision[];
+export interface AITaxonomyAliasIndex {
+  aliases: AITaxonomyAliasMapping[];
+  collisions: AITaxonomyAliasCollision[];
 }
 
-export interface AIFiveFacetAliasMapping {
+export interface AITaxonomyAliasMapping {
   alias: string;
   tagIds: string[];
 }
 
-export interface AIFiveFacetAliasCollision {
+export interface AITaxonomyAliasCollision {
   alias: string;
   candidateTagIds: string[];
   warning: string;
 }
 
-export interface AIFiveFacetTagTaxonomyValidation {
+export interface AITaxonomyTagTaxonomyValidation {
   aliasCollisionsDetected: boolean;
   conceptIdsAvoidCoursePrefixes: boolean;
   curriculumMapsToConceptOnly: boolean;
@@ -152,7 +152,7 @@ export interface AIFiveFacetTagTaxonomyValidation {
   warnings: string[];
 }
 
-export interface AIFiveFacetTagTaxonomyStats {
+export interface AITaxonomyTagTaxonomyStats {
   aliasCollisionCount: number;
   categoryCount: number;
   edgeCount: number;
@@ -170,7 +170,7 @@ type SeedNode = Omit<
   exampleSignals?: string[];
 };
 
-const CATEGORIES: AIFiveFacetTagCategory[] = [
+const CATEGORIES: AITaxonomyTagCategory[] = [
   "curriculum",
   "concept",
   "method",
@@ -224,7 +224,7 @@ function buildTree({
   rootId,
   mappingEdges = [],
 }: {
-  category: AIFiveFacetTagCategory;
+  category: AITaxonomyTagCategory;
   label: string;
   mappingEdges?: AITagEdge[];
   nodes: SeedNode[];
@@ -454,7 +454,7 @@ export function buildFormTagTree(): AITagTree {
   });
 }
 
-export function buildFiveFacetTagTaxonomy(): AIFiveFacetTagTaxonomy {
+export function buildTaxonomyTagTaxonomy(): AITaxonomyTagTaxonomy {
   return {
     concept: buildConceptTagTree(),
     curriculum: buildCurriculumTagTree(),
@@ -464,10 +464,10 @@ export function buildFiveFacetTagTaxonomy(): AIFiveFacetTagTaxonomy {
   };
 }
 
-export function buildFiveFacetAliasIndex(
-  taxonomy: AIFiveFacetTagTaxonomy,
-): AIFiveFacetAliasIndex {
-  const aliases: AIFiveFacetAliasMapping[] = [
+export function buildTaxonomyAliasIndex(
+  taxonomy: AITaxonomyTagTaxonomy,
+): AITaxonomyAliasIndex {
+  const aliases: AITaxonomyAliasMapping[] = [
     { alias: "quadratic max", tagIds: ["concept.algebra.functions.quadratic.extreme_value"] },
     { alias: "maximum value", tagIds: ["concept.algebra.functions.quadratic.extreme_value"] },
     { alias: "where maximum occurs", tagIds: ["concept.algebra.functions.quadratic.where_extreme_occurs"] },
@@ -591,15 +591,15 @@ function buildAttemptDiagnosisContract(): AIAttemptDiagnosisContract {
   };
 }
 
-export function validateFiveFacetTagTaxonomyPlan({
+export function validateTaxonomyTagTaxonomyPlan({
   aliasIndex,
   planMode,
   taxonomy,
 }: {
-  aliasIndex: AIFiveFacetAliasIndex;
-  planMode: AIFiveFacetTagTaxonomyPlan["mode"];
-  taxonomy: AIFiveFacetTagTaxonomy;
-}): AIFiveFacetTagTaxonomyValidation {
+  aliasIndex: AITaxonomyAliasIndex;
+  planMode: AITaxonomyTagTaxonomyPlan["mode"];
+  taxonomy: AITaxonomyTagTaxonomy;
+}): AITaxonomyTagTaxonomyValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
   const trees: AITagTree[] = Object.values(taxonomy);
@@ -643,7 +643,7 @@ export function validateFiveFacetTagTaxonomyPlan({
   if (!conceptIdsAvoidCoursePrefixes) errors.push("concept_course_prefix_detected");
   if (!curriculumMapsToConceptOnly) errors.push("invalid_curriculum_concept_mapping");
   if (planMode !== "planning_only") errors.push("plan_must_be_planning_only");
-  if (aliasIndex.collisions.length) warnings.push("five_facet_taxonomy_alias_collision");
+  if (aliasIndex.collisions.length) warnings.push("taxonomy_taxonomy_alias_collision");
 
   return {
     aliasCollisionsDetected: aliasIndex.collisions.length > 0,
@@ -674,10 +674,10 @@ function stats({
   taxonomy,
   warnings,
 }: {
-  aliasIndex: AIFiveFacetAliasIndex;
-  taxonomy: AIFiveFacetTagTaxonomy;
+  aliasIndex: AITaxonomyAliasIndex;
+  taxonomy: AITaxonomyTagTaxonomy;
   warnings: string[];
-}): AIFiveFacetTagTaxonomyStats {
+}): AITaxonomyTagTaxonomyStats {
   const trees = Object.values(taxonomy);
   const edges = trees.flatMap((tree) => tree.edges);
 
@@ -691,29 +691,29 @@ function stats({
   };
 }
 
-export function buildAIFiveFacetTagTaxonomyPlan({
+export function buildAITaxonomyTagTaxonomyPlan({
   generatedAt = new Date().toISOString(),
 }: {
   generatedAt?: string;
-} = {}): AIFiveFacetTagTaxonomyPlan {
-  const taxonomy = buildFiveFacetTagTaxonomy();
-  const aliasIndex = buildFiveFacetAliasIndex(taxonomy);
-  const validation = validateFiveFacetTagTaxonomyPlan({
+} = {}): AITaxonomyTagTaxonomyPlan {
+  const taxonomy = buildTaxonomyTagTaxonomy();
+  const aliasIndex = buildTaxonomyAliasIndex(taxonomy);
+  const validation = validateTaxonomyTagTaxonomyPlan({
     aliasIndex,
     planMode: "planning_only",
     taxonomy,
   });
   const warnings = uniqueStrings([
-    "five_facet_taxonomy_planning_only",
-    "five_facet_taxonomy_no_db_write",
-    "five_facet_taxonomy_no_official_tag_write",
-    "five_facet_taxonomy_no_review_draft_write",
-    "five_facet_taxonomy_curriculum_overlay_only",
-    "five_facet_taxonomy_concept_is_canonical",
-    "five_facet_taxonomy_error_pattern_attempt_only",
-    "five_facet_taxonomy_difficulty_numeric_only",
+    "taxonomy_taxonomy_planning_only",
+    "taxonomy_taxonomy_no_db_write",
+    "taxonomy_taxonomy_no_official_tag_write",
+    "taxonomy_taxonomy_no_review_draft_write",
+    "taxonomy_taxonomy_curriculum_overlay_only",
+    "taxonomy_taxonomy_concept_is_canonical",
+    "taxonomy_taxonomy_error_pattern_attempt_only",
+    "taxonomy_taxonomy_difficulty_numeric_only",
     ...validation.warnings,
-    "five_facet_taxonomy_summary_limited",
+    "taxonomy_taxonomy_summary_limited",
   ]);
 
   return {
@@ -734,25 +734,25 @@ export function buildAIFiveFacetTagTaxonomyPlan({
       ...validation,
       warnings,
     },
-    version: "five_facet_tag_taxonomy_plan_v1",
+    version: "taxonomy_tag_taxonomy_plan_v1",
     warnings,
   };
 }
 
-export function failedAIFiveFacetTagTaxonomyPlan({
+export function failedAITaxonomyTagTaxonomyPlan({
   generatedAt = new Date().toISOString(),
   warnings,
 }: {
   generatedAt?: string;
   warnings: string[];
-}): AIFiveFacetTagTaxonomyPlan {
-  const taxonomy = buildFiveFacetTagTaxonomy();
-  const aliasIndex = buildFiveFacetAliasIndex(taxonomy);
+}): AITaxonomyTagTaxonomyPlan {
+  const taxonomy = buildTaxonomyTagTaxonomy();
+  const aliasIndex = buildTaxonomyAliasIndex(taxonomy);
   const finalWarnings = uniqueStrings([
-    "five_facet_taxonomy_planning_only",
-    "five_facet_taxonomy_no_db_write",
-    "five_facet_taxonomy_no_official_tag_write",
-    "five_facet_taxonomy_no_review_draft_write",
+    "taxonomy_taxonomy_planning_only",
+    "taxonomy_taxonomy_no_db_write",
+    "taxonomy_taxonomy_no_official_tag_write",
+    "taxonomy_taxonomy_no_review_draft_write",
     ...warnings,
   ]);
 
@@ -766,24 +766,24 @@ export function failedAIFiveFacetTagTaxonomyPlan({
     status: "failed",
     taxonomy,
     validation: {
-      ...validateFiveFacetTagTaxonomyPlan({
+      ...validateTaxonomyTagTaxonomyPlan({
         aliasIndex,
         planMode: "planning_only",
         taxonomy,
       }),
       warnings: finalWarnings,
     },
-    version: "five_facet_tag_taxonomy_plan_v1",
+    version: "taxonomy_tag_taxonomy_plan_v1",
     warnings: finalWarnings,
   };
 }
 
-export function mergeAIFiveFacetTagTaxonomyPlanIntoSummary(
+export function mergeAITaxonomyTagTaxonomyPlanIntoSummary(
   existingAiPdfImport: Record<string, unknown>,
-  fiveFacetTagTaxonomyPlan: AIFiveFacetTagTaxonomyPlan,
+  taxonomyTagTaxonomyPlan: AITaxonomyTagTaxonomyPlan,
 ) {
   return {
     ...existingAiPdfImport,
-    fiveFacetTagTaxonomyPlan,
+    taxonomyTagTaxonomyPlan,
   };
 }

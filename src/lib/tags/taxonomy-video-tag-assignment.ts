@@ -1,13 +1,13 @@
 import { createRequire } from "node:module";
 
-import type { AIFiveFacetTagCategory } from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+import type { AITaxonomyTagCategory } from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 
 const require = createRequire(import.meta.url);
 const {
   getCurriculumConceptMappings,
-  getFiveFacetTagNode,
-  listFiveFacetTagCategories,
-} = require("./five-facet-tag-catalog.ts") as typeof import("@/lib/tags/five-facet-tag-catalog");
+  getTaxonomyTagNode,
+  listTaxonomyTagCategories,
+} = require("./taxonomy-tag-catalog.ts") as typeof import("@/lib/tags/taxonomy-tag-catalog");
 
 type AssignmentSource =
   | "ai_suggestion"
@@ -22,11 +22,11 @@ type ReviewStatus =
   | "pending_review"
   | "rejected";
 
-export type FiveFacetVideoTagSearchCategoryFilter = Partial<
-  Record<AIFiveFacetTagCategory, string[]>
+export type TaxonomyVideoTagSearchCategoryFilter = Partial<
+  Record<AITaxonomyTagCategory, string[]>
 >;
 
-export interface FiveFacetVideoTagAssignmentInput {
+export interface TaxonomyVideoTagAssignmentInput {
   category: string;
   confidence?: number | null;
   evidence?: Record<string, unknown> | null;
@@ -36,8 +36,8 @@ export interface FiveFacetVideoTagAssignmentInput {
   video_id: string;
 }
 
-export interface FiveFacetVideoTagAssignmentRow {
-  category: AIFiveFacetTagCategory;
+export interface TaxonomyVideoTagAssignmentRow {
+  category: AITaxonomyTagCategory;
   confidence: number | null;
   evidence: Record<string, unknown>;
   review_status: ReviewStatus;
@@ -46,17 +46,17 @@ export interface FiveFacetVideoTagAssignmentRow {
   video_id: string;
 }
 
-export interface FiveFacetVideoTagSearchFilterInput {
-  exclude?: FiveFacetVideoTagSearchCategoryFilter;
-  include?: FiveFacetVideoTagSearchCategoryFilter;
+export interface TaxonomyVideoTagSearchFilterInput {
+  exclude?: TaxonomyVideoTagSearchCategoryFilter;
+  include?: TaxonomyVideoTagSearchCategoryFilter;
   requireReviewed?: boolean;
 }
 
-export interface FiveFacetVideoTagSearchPlan {
+export interface TaxonomyVideoTagSearchPlan {
   errors: string[];
   filter: {
-    exclude: Record<AIFiveFacetTagCategory, string[]>;
-    include: Record<AIFiveFacetTagCategory, string[]>;
+    exclude: Record<AITaxonomyTagCategory, string[]>;
+    include: Record<AITaxonomyTagCategory, string[]>;
     requireReviewed: boolean;
   };
   generatedAt: string;
@@ -66,7 +66,7 @@ export interface FiveFacetVideoTagSearchPlan {
   noProviderCall: true;
   noReviewDraftWrite: true;
   searchContract: {
-    assignmentTable: "five_facet_video_tag_assignments";
+    assignmentTable: "question_taxonomy_assignments";
     curriculumConceptExpansion: Array<{
       conceptTagIds: string[];
       curriculumTagId: string;
@@ -77,20 +77,20 @@ export interface FiveFacetVideoTagSearchPlan {
     reviewStatusFilter: "approved" | "any_review_status";
   };
   valid: boolean;
-  version: "five_facet_video_tag_search_plan_v1";
+  version: "taxonomy_video_tag_search_plan_v1";
   warnings: string[];
 }
 
-export interface FiveFacetVideoAssignmentSummary {
+export interface TaxonomyVideoAssignmentSummary {
   approvedCount: number;
-  byCategory: Record<AIFiveFacetTagCategory, number>;
+  byCategory: Record<AITaxonomyTagCategory, number>;
   pendingReviewCount: number;
   rejectedCount: number;
   rowCount: number;
   videoCount: number;
 }
 
-const FIVE_FACET_CATEGORIES = listFiveFacetTagCategories();
+const TAXONOMY_CATEGORIES = listTaxonomyTagCategories();
 const REVIEW_STATUSES = new Set<string>([
   "approved",
   "archived",
@@ -105,13 +105,13 @@ const ASSIGNMENT_SOURCES = new Set<string>([
   "review_action",
 ]);
 
-function emptyCategoryMap(): Record<AIFiveFacetTagCategory, string[]> {
-  return FIVE_FACET_CATEGORIES.reduce(
+function emptyCategoryMap(): Record<AITaxonomyTagCategory, string[]> {
+  return TAXONOMY_CATEGORIES.reduce(
     (accumulator, category) => ({
       ...accumulator,
       [category]: [],
     }),
-    {} as Record<AIFiveFacetTagCategory, string[]>,
+    {} as Record<AITaxonomyTagCategory, string[]>,
   );
 }
 
@@ -119,10 +119,10 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function isFiveFacetCategory(
+function isTaxonomyCategory(
   category: string,
-): category is AIFiveFacetTagCategory {
-  return FIVE_FACET_CATEGORIES.includes(category as AIFiveFacetTagCategory);
+): category is AITaxonomyTagCategory {
+  return TAXONOMY_CATEGORIES.includes(category as AITaxonomyTagCategory);
 }
 
 function isUuidLike(value: string | undefined) {
@@ -146,7 +146,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function normalizeCategoryFilter(
-  filter: FiveFacetVideoTagSearchCategoryFilter | undefined,
+  filter: TaxonomyVideoTagSearchCategoryFilter | undefined,
   scope: "exclude" | "include",
 ) {
   const normalized = emptyCategoryMap();
@@ -162,15 +162,15 @@ function normalizeCategoryFilter(
       errors.push(`${scope}.error_pattern_is_attempt_diagnosis_not_video_taxonomy`);
       continue;
     }
-    if (!isFiveFacetCategory(category)) {
-      errors.push(`${scope}.unknown_five_facet_category:${category}`);
+    if (!isTaxonomyCategory(category)) {
+      errors.push(`${scope}.unknown_taxonomy_category:${category}`);
       continue;
     }
 
     normalized[category] = uniqueStrings(values ?? []);
 
     for (const tagId of normalized[category]) {
-      const node = getFiveFacetTagNode(tagId);
+      const node = getTaxonomyTagNode(tagId);
       if (!node) {
         errors.push(`${scope}.unknown_tag:${tagId}`);
         continue;
@@ -198,8 +198,8 @@ function curriculumConceptExpansion(curriculumTagIds: string[]) {
   }));
 }
 
-export function validateFiveFacetVideoTagAssignmentRow(
-  assignment: FiveFacetVideoTagAssignmentInput,
+export function validateTaxonomyVideoTagAssignmentRow(
+  assignment: TaxonomyVideoTagAssignmentInput,
 ) {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -207,8 +207,8 @@ export function validateFiveFacetVideoTagAssignmentRow(
   if (!isUuidLike(assignment.video_id)) {
     errors.push("video_id_must_be_uuid");
   }
-  if (!isFiveFacetCategory(assignment.category)) {
-    errors.push(`unknown_five_facet_category:${assignment.category}`);
+  if (!isTaxonomyCategory(assignment.category)) {
+    errors.push(`unknown_taxonomy_category:${assignment.category}`);
   }
   if (/^difficulty(\.|$)/.test(assignment.tag_id)) {
     errors.push("difficulty_is_not_taxonomy");
@@ -217,9 +217,9 @@ export function validateFiveFacetVideoTagAssignmentRow(
     errors.push("error_pattern_is_not_video_taxonomy");
   }
 
-  const node = getFiveFacetTagNode(assignment.tag_id);
+  const node = getTaxonomyTagNode(assignment.tag_id);
   if (!node) {
-    errors.push(`unknown_five_facet_tag:${assignment.tag_id}`);
+    errors.push(`unknown_taxonomy_tag:${assignment.tag_id}`);
   } else if (node.category !== assignment.category) {
     errors.push(`wrong_category:${assignment.tag_id}:expected_${assignment.category}`);
   }
@@ -247,22 +247,22 @@ export function validateFiveFacetVideoTagAssignmentRow(
     row:
       errors.length === 0
         ? ({
-            category: assignment.category as AIFiveFacetTagCategory,
+            category: assignment.category as AITaxonomyTagCategory,
             confidence,
             evidence: asRecord(assignment.evidence),
             review_status: reviewStatus as ReviewStatus,
             source: source as AssignmentSource,
             tag_id: assignment.tag_id,
             video_id: assignment.video_id,
-          } satisfies FiveFacetVideoTagAssignmentRow)
+          } satisfies TaxonomyVideoTagAssignmentRow)
         : null,
     valid: errors.length === 0,
     warnings,
   };
 }
 
-export function buildFiveFacetVideoTagSearchFilter(
-  filter: FiveFacetVideoTagSearchFilterInput,
+export function buildTaxonomyVideoTagSearchFilter(
+  filter: TaxonomyVideoTagSearchFilterInput,
 ) {
   const include = normalizeCategoryFilter(filter.include, "include");
   const exclude = normalizeCategoryFilter(filter.exclude, "exclude");
@@ -281,11 +281,11 @@ export function buildFiveFacetVideoTagSearchFilter(
   };
 }
 
-export function buildFiveFacetVideoTagSearchPlan(
-  filter: FiveFacetVideoTagSearchFilterInput,
+export function buildTaxonomyVideoTagSearchPlan(
+  filter: TaxonomyVideoTagSearchFilterInput,
   { generatedAt = new Date().toISOString() }: { generatedAt?: string } = {},
-): FiveFacetVideoTagSearchPlan {
-  const normalized = buildFiveFacetVideoTagSearchFilter(filter);
+): TaxonomyVideoTagSearchPlan {
+  const normalized = buildTaxonomyVideoTagSearchFilter(filter);
 
   return {
     errors: normalized.errors,
@@ -297,7 +297,7 @@ export function buildFiveFacetVideoTagSearchPlan(
     noProviderCall: true,
     noReviewDraftWrite: true,
     searchContract: {
-      assignmentTable: "five_facet_video_tag_assignments",
+      assignmentTable: "question_taxonomy_assignments",
       curriculumConceptExpansion: curriculumConceptExpansion(
         normalized.filter.include.curriculum,
       ),
@@ -308,17 +308,17 @@ export function buildFiveFacetVideoTagSearchPlan(
         : "any_review_status",
     },
     valid: normalized.valid,
-    version: "five_facet_video_tag_search_plan_v1",
+    version: "taxonomy_video_tag_search_plan_v1",
     warnings: normalized.warnings,
   };
 }
 
-export function summarizeFiveFacetVideoTagAssignments(
-  rows: FiveFacetVideoTagAssignmentRow[],
-): FiveFacetVideoAssignmentSummary {
+export function summarizeTaxonomyVideoTagAssignments(
+  rows: TaxonomyVideoTagAssignmentRow[],
+): TaxonomyVideoAssignmentSummary {
   const byCategory = Object.fromEntries(
-    FIVE_FACET_CATEGORIES.map((category) => [category, 0]),
-  ) as Record<AIFiveFacetTagCategory, number>;
+    TAXONOMY_CATEGORIES.map((category) => [category, 0]),
+  ) as Record<AITaxonomyTagCategory, number>;
   const videoIds = new Set<string>();
   let approvedCount = 0;
   let pendingReviewCount = 0;

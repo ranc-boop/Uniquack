@@ -1,24 +1,24 @@
 import { createRequire } from "node:module";
 
 import type {
-  AIFiveFacetTagReviewActionDraft,
-  AIFiveFacetTagReviewActionPlan,
-} from "@/lib/ai-pdf-import/five-facet-tag-review-actions";
-import type { AIFiveFacetTagCategory } from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+  AITaxonomyTagReviewActionDraft,
+  AITaxonomyTagReviewActionPlan,
+} from "@/lib/ai-pdf-import/taxonomy-tag-review-actions";
+import type { AITaxonomyTagCategory } from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 import type {
-  FiveFacetQuestionTagAssignmentInput,
-  FiveFacetQuestionTagAssignmentRow,
-} from "@/lib/tags/five-facet-tag-persistence";
+  TaxonomyQuestionTagAssignmentInput,
+  TaxonomyQuestionTagAssignmentRow,
+} from "@/lib/tags/taxonomy-tag-persistence";
 
 const require = createRequire(import.meta.url);
 const {
   getCurriculumConceptMappings,
-  getFiveFacetTagNode,
-  listFiveFacetTagCategories,
-} = require("./five-facet-tag-catalog.ts") as typeof import("@/lib/tags/five-facet-tag-catalog");
+  getTaxonomyTagNode,
+  listTaxonomyTagCategories,
+} = require("./taxonomy-tag-catalog.ts") as typeof import("@/lib/tags/taxonomy-tag-catalog");
 const {
-  validateFiveFacetQuestionTagAssignment,
-} = require("./five-facet-tag-persistence.ts") as typeof import("@/lib/tags/five-facet-tag-persistence");
+  validateTaxonomyQuestionTagAssignment,
+} = require("./taxonomy-tag-persistence.ts") as typeof import("@/lib/tags/taxonomy-tag-persistence");
 
 type AssignmentSource =
   | "ai_suggestion"
@@ -26,29 +26,29 @@ type AssignmentSource =
   | "manual"
   | "review_action";
 
-export type FiveFacetTagSearchCategoryFilter = Partial<
-  Record<AIFiveFacetTagCategory, string[]>
+export type TaxonomyTagSearchCategoryFilter = Partial<
+  Record<AITaxonomyTagCategory, string[]>
 >;
 
-export interface FiveFacetQuestionTagSearchFilterInput {
+export interface TaxonomyQuestionTagSearchFilterInput {
   difficulty?: {
     max?: number;
     min?: number;
   };
-  exclude?: FiveFacetTagSearchCategoryFilter;
-  include?: FiveFacetTagSearchCategoryFilter;
+  exclude?: TaxonomyTagSearchCategoryFilter;
+  include?: TaxonomyTagSearchCategoryFilter;
   requireReviewed?: boolean;
 }
 
-export interface FiveFacetQuestionTagSearchPlan {
+export interface TaxonomyQuestionTagSearchPlan {
   errors: string[];
   filter: {
     difficulty?: {
       max?: number;
       min?: number;
     };
-    exclude: Record<AIFiveFacetTagCategory, string[]>;
-    include: Record<AIFiveFacetTagCategory, string[]>;
+    exclude: Record<AITaxonomyTagCategory, string[]>;
+    include: Record<AITaxonomyTagCategory, string[]>;
     requireReviewed: boolean;
   };
   generatedAt: string;
@@ -58,7 +58,7 @@ export interface FiveFacetQuestionTagSearchPlan {
   noProviderCall: true;
   noReviewDraftWrite: true;
   searchContract: {
-    assignmentTable: "five_facet_question_tag_assignments";
+    assignmentTable: "question_taxonomy_assignments";
     curriculumConceptExpansion: Array<{
       conceptTagIds: string[];
       curriculumTagId: string;
@@ -69,33 +69,33 @@ export interface FiveFacetQuestionTagSearchPlan {
     reviewStatusFilter: "approved" | "any_review_status";
   };
   valid: boolean;
-  version: "five_facet_question_tag_search_plan_v1";
+  version: "taxonomy_question_tag_search_plan_v1";
   warnings: string[];
 }
 
-export interface FiveFacetAssignmentSummary {
+export interface TaxonomyAssignmentSummary {
   approvedCount: number;
-  byCategory: Record<AIFiveFacetTagCategory, number>;
+  byCategory: Record<AITaxonomyTagCategory, number>;
   pendingReviewCount: number;
   questionCount: number;
   rejectedCount: number;
   rowCount: number;
 }
 
-type ReviewActionLike = AIFiveFacetTagReviewActionDraft & {
+type ReviewActionLike = AITaxonomyTagReviewActionDraft & {
   reviewStatus?: unknown;
   review_status?: unknown;
 };
 
-const FIVE_FACET_CATEGORIES = listFiveFacetTagCategories();
+const TAXONOMY_CATEGORIES = listTaxonomyTagCategories();
 
-function emptyCategoryMap(): Record<AIFiveFacetTagCategory, string[]> {
-  return FIVE_FACET_CATEGORIES.reduce(
+function emptyCategoryMap(): Record<AITaxonomyTagCategory, string[]> {
+  return TAXONOMY_CATEGORIES.reduce(
     (accumulator, category) => ({
       ...accumulator,
       [category]: [],
     }),
-    {} as Record<AIFiveFacetTagCategory, string[]>,
+    {} as Record<AITaxonomyTagCategory, string[]>,
   );
 }
 
@@ -103,10 +103,10 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function isFiveFacetCategory(
+function isTaxonomyCategory(
   category: string,
-): category is AIFiveFacetTagCategory {
-  return FIVE_FACET_CATEGORIES.includes(category as AIFiveFacetTagCategory);
+): category is AITaxonomyTagCategory {
+  return TAXONOMY_CATEGORIES.includes(category as AITaxonomyTagCategory);
 }
 
 function isUuidLike(value: string | undefined) {
@@ -130,7 +130,7 @@ function actionReviewStatus(action: ReviewActionLike) {
   return action.status;
 }
 
-function actionAssignmentKind(action: AIFiveFacetTagReviewActionDraft) {
+function actionAssignmentKind(action: AITaxonomyTagReviewActionDraft) {
   return (
     action.actionKind === "approve_bundle" ||
     action.actionKind === "approve_single_tag"
@@ -138,7 +138,7 @@ function actionAssignmentKind(action: AIFiveFacetTagReviewActionDraft) {
 }
 
 function normalizeCategoryFilter(
-  filter: FiveFacetTagSearchCategoryFilter | undefined,
+  filter: TaxonomyTagSearchCategoryFilter | undefined,
   scope: "exclude" | "include",
 ) {
   const normalized = emptyCategoryMap();
@@ -154,15 +154,15 @@ function normalizeCategoryFilter(
       errors.push(`${scope}.error_pattern_is_attempt_diagnosis_not_question_taxonomy`);
       continue;
     }
-    if (!isFiveFacetCategory(category)) {
-      errors.push(`${scope}.unknown_five_facet_category:${category}`);
+    if (!isTaxonomyCategory(category)) {
+      errors.push(`${scope}.unknown_taxonomy_category:${category}`);
       continue;
     }
 
     normalized[category] = uniqueStrings(values ?? []);
 
     for (const tagId of normalized[category]) {
-      const node = getFiveFacetTagNode(tagId);
+      const node = getTaxonomyTagNode(tagId);
       if (!node) {
         errors.push(`${scope}.unknown_tag:${tagId}`);
         continue;
@@ -181,7 +181,7 @@ function normalizeCategoryFilter(
 }
 
 function normalizeDifficulty(
-  difficulty: FiveFacetQuestionTagSearchFilterInput["difficulty"],
+  difficulty: TaxonomyQuestionTagSearchFilterInput["difficulty"],
 ) {
   const errors: string[] = [];
   const normalized: { max?: number; min?: number } = {};
@@ -221,8 +221,8 @@ function curriculumConceptExpansion(curriculumTagIds: string[]) {
   }));
 }
 
-export function validateApprovedFiveFacetReviewAction(
-  action: AIFiveFacetTagReviewActionDraft,
+export function validateApprovedTaxonomyReviewAction(
+  action: AITaxonomyTagReviewActionDraft,
 ) {
   const actionRecord = action as ReviewActionLike;
   const errors: string[] = [];
@@ -242,9 +242,9 @@ export function validateApprovedFiveFacetReviewAction(
   }
 
   for (const tagId of action.proposedTagIds) {
-    const node = getFiveFacetTagNode(tagId);
+    const node = getTaxonomyTagNode(tagId);
     if (!node) {
-      errors.push(`unknown_five_facet_tag:${tagId}`);
+      errors.push(`unknown_taxonomy_tag:${tagId}`);
     }
   }
 
@@ -260,23 +260,23 @@ export function validateApprovedFiveFacetReviewAction(
   };
 }
 
-export function validateFiveFacetQuestionTagAssignmentRow(
-  assignment: FiveFacetQuestionTagAssignmentInput,
+export function validateTaxonomyQuestionTagAssignmentRow(
+  assignment: TaxonomyQuestionTagAssignmentInput,
 ) {
-  return validateFiveFacetQuestionTagAssignment(assignment);
+  return validateTaxonomyQuestionTagAssignment(assignment);
 }
 
-export function buildFiveFacetQuestionTagAssignmentsFromApprovedActions(
-  input: AIFiveFacetTagReviewActionDraft[] | AIFiveFacetTagReviewActionPlan,
+export function buildTaxonomyQuestionTagAssignmentsFromApprovedActions(
+  input: AITaxonomyTagReviewActionDraft[] | AITaxonomyTagReviewActionPlan,
 ) {
   const actions = Array.isArray(input) ? input : input.actions;
   const errors: string[] = [];
   const warnings: string[] = [];
-  const rows: FiveFacetQuestionTagAssignmentRow[] = [];
+  const rows: TaxonomyQuestionTagAssignmentRow[] = [];
   const seen = new Set<string>();
 
   for (const action of actions) {
-    const actionValidation = validateApprovedFiveFacetReviewAction(action);
+    const actionValidation = validateApprovedTaxonomyReviewAction(action);
     if (!actionValidation.valid) {
       errors.push(...actionValidation.errors);
       warnings.push(...actionValidation.warnings);
@@ -284,10 +284,10 @@ export function buildFiveFacetQuestionTagAssignmentsFromApprovedActions(
     }
 
     for (const tagId of action.proposedTagIds) {
-      const node = getFiveFacetTagNode(tagId);
+      const node = getTaxonomyTagNode(tagId);
       if (!node || !action.questionRef.id) continue;
 
-      const assignment = validateFiveFacetQuestionTagAssignmentRow({
+      const assignment = validateTaxonomyQuestionTagAssignmentRow({
         category: node.category,
         confidence: action.confidence,
         evidence: {
@@ -323,8 +323,8 @@ export function buildFiveFacetQuestionTagAssignmentsFromApprovedActions(
   };
 }
 
-export function buildFiveFacetQuestionTagSearchFilter(
-  filter: FiveFacetQuestionTagSearchFilterInput,
+export function buildTaxonomyQuestionTagSearchFilter(
+  filter: TaxonomyQuestionTagSearchFilterInput,
 ) {
   const include = normalizeCategoryFilter(filter.include, "include");
   const exclude = normalizeCategoryFilter(filter.exclude, "exclude");
@@ -353,11 +353,11 @@ export function buildFiveFacetQuestionTagSearchFilter(
   };
 }
 
-export function buildFiveFacetQuestionTagSearchPlan(
-  filter: FiveFacetQuestionTagSearchFilterInput,
+export function buildTaxonomyQuestionTagSearchPlan(
+  filter: TaxonomyQuestionTagSearchFilterInput,
   { generatedAt = new Date().toISOString() }: { generatedAt?: string } = {},
-): FiveFacetQuestionTagSearchPlan {
-  const normalized = buildFiveFacetQuestionTagSearchFilter(filter);
+): TaxonomyQuestionTagSearchPlan {
+  const normalized = buildTaxonomyQuestionTagSearchFilter(filter);
 
   return {
     errors: normalized.errors,
@@ -369,7 +369,7 @@ export function buildFiveFacetQuestionTagSearchPlan(
     noProviderCall: true,
     noReviewDraftWrite: true,
     searchContract: {
-      assignmentTable: "five_facet_question_tag_assignments",
+      assignmentTable: "question_taxonomy_assignments",
       curriculumConceptExpansion: curriculumConceptExpansion(
         normalized.filter.include.curriculum,
       ),
@@ -380,17 +380,17 @@ export function buildFiveFacetQuestionTagSearchPlan(
         : "any_review_status",
     },
     valid: normalized.valid,
-    version: "five_facet_question_tag_search_plan_v1",
+    version: "taxonomy_question_tag_search_plan_v1",
     warnings: normalized.warnings,
   };
 }
 
-export function summarizeFiveFacetQuestionTagAssignments(
-  rows: FiveFacetQuestionTagAssignmentRow[],
-): FiveFacetAssignmentSummary {
+export function summarizeTaxonomyQuestionTagAssignments(
+  rows: TaxonomyQuestionTagAssignmentRow[],
+): TaxonomyAssignmentSummary {
   const byCategory = Object.fromEntries(
-    FIVE_FACET_CATEGORIES.map((category) => [category, 0]),
-  ) as Record<AIFiveFacetTagCategory, number>;
+    TAXONOMY_CATEGORIES.map((category) => [category, 0]),
+  ) as Record<AITaxonomyTagCategory, number>;
   const questionIds = new Set<string>();
   let approvedCount = 0;
   let pendingReviewCount = 0;

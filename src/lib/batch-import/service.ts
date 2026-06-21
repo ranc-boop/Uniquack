@@ -77,10 +77,14 @@ async function loadImportContext({
   allowDraftTags?: boolean;
   supabase: SupabaseLike;
 }) {
-  const tagQuery = supabase.from("tags").select("id, name, slug").limit(1000);
+  const tagQuery = supabase
+    .from("taxonomy_nodes")
+    .select("tag_id, label, status")
+    .eq("is_assignable", true)
+    .limit(1000);
   const filteredTagQuery = allowDraftTags
     ? tagQuery.neq("status", "archived")
-    : tagQuery.eq("status", "published");
+    : tagQuery.eq("status", "active");
   const [{ data: tags, error: tagsError }, { data: questions, error: questionsError }] =
     await Promise.all([
       filteredTagQuery,
@@ -95,7 +99,14 @@ async function loadImportContext({
     throw new Error(questionsError.message);
   }
 
-  const loadedTags = (tags ?? []) as { id: string; name: string; slug: string }[];
+  const loadedTags = ((tags ?? []) as {
+    label: string;
+    tag_id: string;
+  }[]).map((tag) => ({
+    id: tag.tag_id,
+    name: tag.label,
+    slug: tag.tag_id,
+  }));
   const loadedQuestions = (questions ?? []) as { question_code: string }[];
 
   return {
@@ -284,10 +295,14 @@ export async function importBatchImportJson({
     }
 
     if (normalized.tag_ids.length) {
-      const { error: tagsError } = await supabase.from("question_tags").insert(
+      const { error: tagsError } = await supabase
+        .from("question_taxonomy_assignments")
+        .insert(
         normalized.tag_ids.map((tagId) => ({
           question_id: question.id,
           tag_id: tagId,
+          review_status: "pending_review",
+          source: "batch_import",
         })),
       );
 

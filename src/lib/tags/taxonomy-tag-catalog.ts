@@ -1,56 +1,56 @@
 import { createRequire } from "node:module";
 
 import type {
-  AIFiveFacetAliasCollision,
-  AIFiveFacetAliasIndex,
-  AIFiveFacetTagCategory,
-  AIFiveFacetTagTaxonomy,
+  AITaxonomyAliasCollision,
+  AITaxonomyAliasIndex,
+  AITaxonomyTagCategory,
+  AITaxonomyTagTaxonomy,
   AITagNode,
   AITagTree,
-} from "../ai-pdf-import/five-facet-tag-taxonomy";
+} from "../ai-pdf-import/taxonomy-tag-taxonomy";
 
 const require = createRequire(import.meta.url);
-const { buildFiveFacetAliasIndex, buildFiveFacetTagTaxonomy } = require(
-  "../ai-pdf-import/five-facet-tag-taxonomy.ts",
-) as typeof import("../ai-pdf-import/five-facet-tag-taxonomy");
+const { buildTaxonomyAliasIndex, buildTaxonomyTagTaxonomy } = require(
+  "../ai-pdf-import/taxonomy-tag-taxonomy.ts",
+) as typeof import("../ai-pdf-import/taxonomy-tag-taxonomy");
 
-export const FIVE_FACET_TAG_CATEGORIES = [
+export const TAXONOMY_TAG_CATEGORIES = [
   "curriculum",
   "concept",
   "method",
   "task",
   "form",
-] as const satisfies readonly AIFiveFacetTagCategory[];
+] as const satisfies readonly AITaxonomyTagCategory[];
 
-export type FiveFacetTagBundleTags = Record<AIFiveFacetTagCategory, string[]>;
+export type TaxonomyTagBundleTags = Record<AITaxonomyTagCategory, string[]>;
 
-export interface FiveFacetTagBundle {
+export interface TaxonomyTagBundle {
   difficulty?: number;
-  tags: Partial<Record<AIFiveFacetTagCategory | string, string[]>>;
+  tags: Partial<Record<AITaxonomyTagCategory | string, string[]>>;
 }
 
-export interface NormalizedFiveFacetTagBundle {
+export interface NormalizedTaxonomyTagBundle {
   difficulty?: number;
-  tags: FiveFacetTagBundleTags;
+  tags: TaxonomyTagBundleTags;
 }
 
-export interface FiveFacetTagBundleValidationResult {
+export interface TaxonomyTagBundleValidationResult {
   errors: string[];
-  normalized: NormalizedFiveFacetTagBundle;
+  normalized: NormalizedTaxonomyTagBundle;
   valid: boolean;
   warnings: string[];
 }
 
-export interface FiveFacetAliasResolution {
+export interface TaxonomyAliasResolution {
   alias: string;
   ambiguous: boolean;
-  collision?: AIFiveFacetAliasCollision;
+  collision?: AITaxonomyAliasCollision;
   normalizedAlias: string;
   nodes: AITagNode[];
   tagIds: string[];
 }
 
-export interface FiveFacetTagCatalogSummary {
+export interface TaxonomyTagCatalogSummary {
   aliasCollisionCount: number;
   categoryCount: number;
   curriculumConceptMappingCount: number;
@@ -62,17 +62,17 @@ export interface FiveFacetTagCatalogSummary {
   noReviewDraftWrite: true;
 }
 
-export interface FiveFacetTagCatalog {
-  aliasIndex: AIFiveFacetAliasIndex;
+export interface TaxonomyTagCatalog {
+  aliasIndex: AITaxonomyAliasIndex;
   childrenByTagId: ReadonlyMap<string, readonly AITagNode[]>;
   curriculumConceptMappings: ReadonlyMap<string, readonly string[]>;
   nodeByTagId: ReadonlyMap<string, AITagNode>;
   parentByTagId: ReadonlyMap<string, readonly AITagNode[]>;
-  taxonomy: AIFiveFacetTagTaxonomy;
+  taxonomy: AITaxonomyTagTaxonomy;
 }
 
 const BUNDLE_LIMITS: Record<
-  AIFiveFacetTagCategory,
+  AITaxonomyTagCategory,
   { max: number; min: number }
 > = {
   concept: { max: 4, min: 1 },
@@ -87,19 +87,19 @@ function normalizeAlias(aliasText: string) {
   return aliasText.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function isFiveFacetTagCategory(
+function isTaxonomyTagCategory(
   category: string,
-): category is AIFiveFacetTagCategory {
-  return FIVE_FACET_TAG_CATEGORIES.includes(
-    category as AIFiveFacetTagCategory,
+): category is AITaxonomyTagCategory {
+  return TAXONOMY_TAG_CATEGORIES.includes(
+    category as AITaxonomyTagCategory,
   );
 }
 
-function allTrees(taxonomy: AIFiveFacetTagTaxonomy): AITagTree[] {
-  return FIVE_FACET_TAG_CATEGORIES.map((category) => taxonomy[category]);
+function allTrees(taxonomy: AITaxonomyTagTaxonomy): AITagTree[] {
+  return TAXONOMY_TAG_CATEGORIES.map((category) => taxonomy[category]);
 }
 
-function buildNodeByTagId(taxonomy: AIFiveFacetTagTaxonomy) {
+function buildNodeByTagId(taxonomy: AITaxonomyTagTaxonomy) {
   return new Map(
     allTrees(taxonomy)
       .flatMap((tree) => tree.nodes)
@@ -109,7 +109,7 @@ function buildNodeByTagId(taxonomy: AIFiveFacetTagTaxonomy) {
 
 function buildParentByTagId(
   nodeByTagId: ReadonlyMap<string, AITagNode>,
-  taxonomy: AIFiveFacetTagTaxonomy,
+  taxonomy: AITaxonomyTagTaxonomy,
 ) {
   return new Map(
     allTrees(taxonomy)
@@ -125,7 +125,7 @@ function buildParentByTagId(
 
 function buildChildrenByTagId(
   nodeByTagId: ReadonlyMap<string, AITagNode>,
-  taxonomy: AIFiveFacetTagTaxonomy,
+  taxonomy: AITaxonomyTagTaxonomy,
 ) {
   const children = new Map<string, AITagNode[]>();
   for (const node of allTrees(taxonomy).flatMap((tree) => tree.nodes)) {
@@ -143,7 +143,7 @@ function buildChildrenByTagId(
   return children;
 }
 
-function buildCurriculumConceptMappingIndex(taxonomy: AIFiveFacetTagTaxonomy) {
+function buildCurriculumConceptMappingIndex(taxonomy: AITaxonomyTagTaxonomy) {
   const mappings = new Map<string, string[]>();
   for (const edge of allTrees(taxonomy).flatMap((tree) => tree.edges)) {
     if (edge.edgeKind !== "maps_to") continue;
@@ -157,15 +157,15 @@ function buildCurriculumConceptMappingIndex(taxonomy: AIFiveFacetTagTaxonomy) {
   return mappings;
 }
 
-function buildCatalog(): FiveFacetTagCatalog {
-  const taxonomy = buildFiveFacetTagTaxonomy();
+function buildCatalog(): TaxonomyTagCatalog {
+  const taxonomy = buildTaxonomyTagTaxonomy();
   const nodeByTagId = buildNodeByTagId(taxonomy);
   const parentByTagId = buildParentByTagId(nodeByTagId, taxonomy);
   const childrenByTagId = buildChildrenByTagId(nodeByTagId, taxonomy);
   const curriculumConceptMappings = buildCurriculumConceptMappingIndex(taxonomy);
 
   return {
-    aliasIndex: buildFiveFacetAliasIndex(taxonomy),
+    aliasIndex: buildTaxonomyAliasIndex(taxonomy),
     childrenByTagId,
     curriculumConceptMappings,
     nodeByTagId,
@@ -174,45 +174,45 @@ function buildCatalog(): FiveFacetTagCatalog {
   };
 }
 
-export const FIVE_FACET_TAG_CATALOG: FiveFacetTagCatalog = buildCatalog();
+export const TAXONOMY_TAG_CATALOG: TaxonomyTagCatalog = buildCatalog();
 
-export function getFiveFacetTagCatalog() {
-  return FIVE_FACET_TAG_CATALOG;
+export function getTaxonomyTagCatalog() {
+  return TAXONOMY_TAG_CATALOG;
 }
 
-export function listFiveFacetTagCategories(): AIFiveFacetTagCategory[] {
-  return [...FIVE_FACET_TAG_CATEGORIES];
+export function listTaxonomyTagCategories(): AITaxonomyTagCategory[] {
+  return [...TAXONOMY_TAG_CATEGORIES];
 }
 
-export function listFiveFacetTagNodes(): AITagNode[] {
-  return allTrees(FIVE_FACET_TAG_CATALOG.taxonomy).flatMap((tree) => [
+export function listTaxonomyTagNodes(): AITagNode[] {
+  return allTrees(TAXONOMY_TAG_CATALOG.taxonomy).flatMap((tree) => [
     ...tree.nodes,
   ]);
 }
 
-export function listFiveFacetTagsByCategory(
-  category: AIFiveFacetTagCategory,
+export function listTaxonomyTagsByCategory(
+  category: AITaxonomyTagCategory,
 ): AITagNode[] {
-  return [...FIVE_FACET_TAG_CATALOG.taxonomy[category].nodes];
+  return [...TAXONOMY_TAG_CATALOG.taxonomy[category].nodes];
 }
 
-export function getFiveFacetTagNode(tagId: string): AITagNode | null {
-  return FIVE_FACET_TAG_CATALOG.nodeByTagId.get(tagId) ?? null;
+export function getTaxonomyTagNode(tagId: string): AITagNode | null {
+  return TAXONOMY_TAG_CATALOG.nodeByTagId.get(tagId) ?? null;
 }
 
-export function getFiveFacetTagChildren(tagId: string): AITagNode[] {
-  return [...(FIVE_FACET_TAG_CATALOG.childrenByTagId.get(tagId) ?? [])];
+export function getTaxonomyTagChildren(tagId: string): AITagNode[] {
+  return [...(TAXONOMY_TAG_CATALOG.childrenByTagId.get(tagId) ?? [])];
 }
 
-export function getFiveFacetTagParents(tagId: string): AITagNode[] {
-  return [...(FIVE_FACET_TAG_CATALOG.parentByTagId.get(tagId) ?? [])];
+export function getTaxonomyTagParents(tagId: string): AITagNode[] {
+  return [...(TAXONOMY_TAG_CATALOG.parentByTagId.get(tagId) ?? [])];
 }
 
-export function getFiveFacetTagAncestors(tagId: string): AITagNode[] {
+export function getTaxonomyTagAncestors(tagId: string): AITagNode[] {
   const ancestors: AITagNode[] = [];
   const seen = new Set<string>();
   const visit = (currentTagId: string) => {
-    for (const parent of getFiveFacetTagParents(currentTagId)) {
+    for (const parent of getTaxonomyTagParents(currentTagId)) {
       if (seen.has(parent.tagId)) continue;
       seen.add(parent.tagId);
       ancestors.push(parent);
@@ -223,11 +223,11 @@ export function getFiveFacetTagAncestors(tagId: string): AITagNode[] {
   return ancestors;
 }
 
-export function getFiveFacetTagDescendants(tagId: string): AITagNode[] {
+export function getTaxonomyTagDescendants(tagId: string): AITagNode[] {
   const descendants: AITagNode[] = [];
   const seen = new Set<string>();
   const visit = (currentTagId: string) => {
-    for (const child of getFiveFacetTagChildren(currentTagId)) {
+    for (const child of getTaxonomyTagChildren(currentTagId)) {
       if (seen.has(child.tagId)) continue;
       seen.add(child.tagId);
       descendants.push(child);
@@ -242,22 +242,22 @@ export function getCurriculumConceptMappings(
   curriculumTagId: string,
 ): AITagNode[] {
   return [
-    ...(FIVE_FACET_TAG_CATALOG.curriculumConceptMappings.get(
+    ...(TAXONOMY_TAG_CATALOG.curriculumConceptMappings.get(
       curriculumTagId,
     ) ?? []),
   ]
-    .map((tagId) => getFiveFacetTagNode(tagId))
+    .map((tagId) => getTaxonomyTagNode(tagId))
     .filter((node): node is AITagNode => Boolean(node));
 }
 
-export function resolveFiveFacetAlias(
+export function resolveTaxonomyAlias(
   aliasText: string,
-): FiveFacetAliasResolution {
+): TaxonomyAliasResolution {
   const normalizedAlias = normalizeAlias(aliasText);
-  const mapping = FIVE_FACET_TAG_CATALOG.aliasIndex.aliases.find(
+  const mapping = TAXONOMY_TAG_CATALOG.aliasIndex.aliases.find(
     (candidate) => normalizeAlias(candidate.alias) === normalizedAlias,
   );
-  const collision = FIVE_FACET_TAG_CATALOG.aliasIndex.collisions.find(
+  const collision = TAXONOMY_TAG_CATALOG.aliasIndex.collisions.find(
     (candidate) => normalizeAlias(candidate.alias) === normalizedAlias,
   );
   const tagIds = mapping?.tagIds ?? [];
@@ -268,22 +268,22 @@ export function resolveFiveFacetAlias(
     collision,
     normalizedAlias,
     nodes: tagIds
-      .map((tagId) => getFiveFacetTagNode(tagId))
+      .map((tagId) => getTaxonomyTagNode(tagId))
       .filter((node): node is AITagNode => Boolean(node)),
     tagIds,
   };
 }
 
-export function validateFiveFacetTagId(tagId: string): {
-  category?: AIFiveFacetTagCategory;
+export function validateTaxonomyTagId(tagId: string): {
+  category?: AITaxonomyTagCategory;
   error?: string;
   node: AITagNode | null;
   valid: boolean;
 } {
-  const node = getFiveFacetTagNode(tagId);
+  const node = getTaxonomyTagNode(tagId);
   if (!node) {
     return {
-      error: "unknown_five_facet_tag_id",
+      error: "unknown_taxonomy_tag_id",
       node: null,
       valid: false,
     };
@@ -296,15 +296,15 @@ export function validateFiveFacetTagId(tagId: string): {
   };
 }
 
-export function normalizeFiveFacetTagBundle(
-  bundle: FiveFacetTagBundle,
-): NormalizedFiveFacetTagBundle {
+export function normalizeTaxonomyTagBundle(
+  bundle: TaxonomyTagBundle,
+): NormalizedTaxonomyTagBundle {
   const tags = Object.fromEntries(
-    FIVE_FACET_TAG_CATEGORIES.map((category) => [
+    TAXONOMY_TAG_CATEGORIES.map((category) => [
       category,
       Array.from(new Set((bundle.tags[category] ?? []).map((tag) => tag.trim()).filter(Boolean))),
     ]),
-  ) as FiveFacetTagBundleTags;
+  ) as TaxonomyTagBundleTags;
 
   return {
     difficulty: typeof bundle.difficulty === "number" ? bundle.difficulty : undefined,
@@ -312,10 +312,10 @@ export function normalizeFiveFacetTagBundle(
   };
 }
 
-export function validateFiveFacetTagBundle(
-  bundle: FiveFacetTagBundle,
-): FiveFacetTagBundleValidationResult {
-  const normalized = normalizeFiveFacetTagBundle(bundle);
+export function validateTaxonomyTagBundle(
+  bundle: TaxonomyTagBundle,
+): TaxonomyTagBundleValidationResult {
+  const normalized = normalizeTaxonomyTagBundle(bundle);
   const errors: string[] = [];
   const warnings: string[] = [];
   const inputCategories = Object.keys(bundle.tags);
@@ -329,7 +329,7 @@ export function validateFiveFacetTagBundle(
       errors.push("error_pattern_belongs_to_attempt_diagnosis");
       continue;
     }
-    if (!isFiveFacetTagCategory(category)) {
+    if (!isTaxonomyTagCategory(category)) {
       errors.push(`unknown_tag_category:${category}`);
     }
   }
@@ -346,7 +346,7 @@ export function validateFiveFacetTagBundle(
   }
 
   let totalTags = 0;
-  for (const category of FIVE_FACET_TAG_CATEGORIES) {
+  for (const category of TAXONOMY_TAG_CATEGORIES) {
     const tags = normalized.tags[category];
     totalTags += tags.length;
     const limits = BUNDLE_LIMITS[category];
@@ -357,7 +357,7 @@ export function validateFiveFacetTagBundle(
       errors.push(`too_many_${category}_tags`);
     }
     for (const tagId of tags) {
-      const node = getFiveFacetTagNode(tagId);
+      const node = getTaxonomyTagNode(tagId);
       if (!node) {
         errors.push(`unknown_tag:${tagId}`);
         continue;
@@ -391,15 +391,15 @@ export function validateFiveFacetTagBundle(
   };
 }
 
-export function summarizeFiveFacetTagCatalog(): FiveFacetTagCatalogSummary {
-  const nodes = listFiveFacetTagNodes();
+export function summarizeTaxonomyTagCatalog(): TaxonomyTagCatalogSummary {
+  const nodes = listTaxonomyTagNodes();
   const curriculumConceptMappingCount = Array.from(
-    FIVE_FACET_TAG_CATALOG.curriculumConceptMappings.values(),
+    TAXONOMY_TAG_CATALOG.curriculumConceptMappings.values(),
   ).reduce((count, mappings) => count + mappings.length, 0);
 
   return {
-    aliasCollisionCount: FIVE_FACET_TAG_CATALOG.aliasIndex.collisions.length,
-    categoryCount: FIVE_FACET_TAG_CATEGORIES.length,
+    aliasCollisionCount: TAXONOMY_TAG_CATALOG.aliasIndex.collisions.length,
+    categoryCount: TAXONOMY_TAG_CATEGORIES.length,
     curriculumConceptMappingCount,
     difficultyIsTaxonomyCategory: false,
     errorPatternIsQuestionTaxonomy: false,

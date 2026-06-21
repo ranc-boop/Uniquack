@@ -7,7 +7,6 @@ import {
   redirectWithError,
   redirectWithSaved,
 } from "@/lib/actions/feedback";
-import { syncBoundVideoTagsForQuestion } from "@/app/admin/videos/tag-sync";
 import { requireAdmin } from "@/lib/auth/guards";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { QUESTION_SOURCE_FILES_BUCKET } from "@/lib/question-source-files";
@@ -18,7 +17,6 @@ import {
   questionCreateSchema,
   questionDeleteSchema,
   questionStatusSchema,
-  questionTagIdsSchema,
   questionUpdateSchema,
 } from "@/lib/validations/question";
 
@@ -46,9 +44,6 @@ export async function createQuestion(formData: FormData) {
   try {
     const profile = await requireAdmin();
     const parsed = questionCreateSchema.parse(Object.fromEntries(formData));
-    const tagIds = questionTagIdsSchema.parse(
-      formData.getAll("tag_ids").map(String).filter(Boolean),
-    );
     const draftIdValue = formData.get("draft_id");
     const draftId =
       typeof draftIdValue === "string" && draftIdValue
@@ -80,18 +75,7 @@ export async function createQuestion(formData: FormData) {
       throw new Error(error.message);
     }
 
-    if (tagIds.length > 0) {
-      const { error: tagError } = await supabase.from("question_tags").insert(
-        tagIds.map((tagId) => ({
-          question_id: question.id,
-          tag_id: tagId,
-        })),
-      );
-
-      if (tagError) {
-        throw new Error(tagError.message);
-      }
-    }
+    void question;
   } catch (error) {
     redirectWithError("/admin/questions", formatActionError(error));
   }
@@ -105,14 +89,10 @@ export async function createQuestion(formData: FormData) {
 
 export async function updateQuestion(formData: FormData) {
   let questionId = "";
-  let syncedVideoId: string | null = null;
 
   try {
     const profile = await requireAdmin();
     const parsed = questionUpdateSchema.parse(Object.fromEntries(formData));
-    const tagIds = questionTagIdsSchema.parse(
-      formData.getAll("tag_ids").map(String).filter(Boolean),
-    );
     const supabase = await createClient();
     const { id, ...values } = parsed;
     questionId = id;
@@ -132,32 +112,6 @@ export async function updateQuestion(formData: FormData) {
       throw new Error(error.message);
     }
 
-    const { error: deleteTagsError } = await supabase
-      .from("question_tags")
-      .delete()
-      .eq("question_id", id);
-
-    if (deleteTagsError) {
-      throw new Error(deleteTagsError.message);
-    }
-
-    if (tagIds.length > 0) {
-      const { error: tagError } = await supabase.from("question_tags").insert(
-        tagIds.map((tagId) => ({
-          question_id: id,
-          tag_id: tagId,
-        })),
-      );
-
-      if (tagError) {
-        throw new Error(tagError.message);
-      }
-    }
-
-    syncedVideoId = await syncBoundVideoTagsForQuestion({
-      supabase,
-      questionId: id,
-    });
   } catch (error) {
     redirectWithError("/admin/questions", formatActionError(error));
   }
@@ -167,9 +121,6 @@ export async function updateQuestion(formData: FormData) {
   revalidatePath(`/questions/${questionId}`);
   revalidatePath("/videos");
   revalidatePath("/admin/videos");
-  if (syncedVideoId) {
-    revalidatePath(`/videos/${syncedVideoId}`);
-  }
   redirectWithSaved("/admin/questions", "Question updated.");
 }
 

@@ -8,9 +8,9 @@ import {
 } from "@/components/question-detail-image-gallery";
 import { RichHtml } from "@/components/rich-html";
 import {
-  FiveFacetTagChips,
-  type FiveFacetTagChipAssignment,
-} from "@/components/tags/five-facet-tag-chips";
+  TaxonomyTagChips,
+  type TaxonomyTagChipAssignment,
+} from "@/components/tags/taxonomy-tag-chips";
 import { VideoPlayerFrame } from "@/components/video-player-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -133,7 +133,7 @@ export default async function QuestionDetailPage({
   const [
     { data: video, error: videoError },
     { data: displayedAssets, error: displayedAssetsError },
-    { data: fiveFacetAssignments, error: fiveFacetAssignmentsError },
+    { data: taxonomyAssignments, error: taxonomyAssignmentsError },
   ] = await Promise.all([
     supabase
       .from("videos")
@@ -151,8 +151,8 @@ export default async function QuestionDetailPage({
       .eq("display_on_detail", true)
       .order("created_at", { ascending: true }),
     supabase
-      .from("five_facet_question_tag_assignments")
-      .select("tag_id, category, review_status")
+      .from("question_taxonomy_assignments")
+      .select("tag_id, review_status")
       .eq("question_id", question.id)
       .eq("review_status", "approved"),
   ]);
@@ -177,13 +177,13 @@ export default async function QuestionDetailPage({
     );
   }
 
-  const publicFiveFacetAssignments =
-    fiveFacetAssignmentsError &&
-    /permission denied|relation .* does not exist|schema cache|five_facet_/i.test(
-      fiveFacetAssignmentsError.message,
+  const publicTaxonomyAssignments =
+    taxonomyAssignmentsError &&
+    /permission denied|relation .* does not exist|schema cache|taxonomy_/i.test(
+      taxonomyAssignmentsError.message,
     )
       ? []
-      : ((fiveFacetAssignments ?? []) as FiveFacetTagChipAssignment[]);
+      : ((taxonomyAssignments ?? []) as TaxonomyTagChipAssignment[]);
 
   const questionImages: QuestionDetailImage[] = (displayedAssets ?? []).map((asset) => {
     const { data } = supabase.storage
@@ -305,10 +305,10 @@ export default async function QuestionDetailPage({
             </div>
           </SidebarCard>
 
-          <SidebarCard title="Official five-facet tags">
-            <FiveFacetTagChips
-              assignments={publicFiveFacetAssignments}
-              emptyLabel="No five-facet tags assigned yet."
+          <SidebarCard title="Official taxonomy tags">
+            <TaxonomyTagChips
+              assignments={publicTaxonomyAssignments}
+              emptyLabel="No taxonomy tags assigned yet."
             />
           </SidebarCard>
 

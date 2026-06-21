@@ -7,7 +7,6 @@ import {
   redirectWithError,
   redirectWithSaved,
 } from "@/lib/actions/feedback";
-import { syncVideoTagsFromQuestion } from "@/app/admin/videos/tag-sync";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -23,7 +22,7 @@ export async function createVideo(formData: FormData) {
     const parsed = videoCreateSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
 
-    const { data: video, error } = await supabase
+    const { error } = await supabase
       .from("videos")
       .insert({
         ...parsed,
@@ -32,18 +31,13 @@ export async function createVideo(formData: FormData) {
         published_at:
           parsed.status === "published" ? new Date().toISOString() : null,
       })
-      .select("id, question_id")
+      .select("id")
       .single();
 
     if (error) {
       throw new Error(error.message);
     }
 
-    await syncVideoTagsFromQuestion({
-      supabase,
-      videoId: video.id,
-      questionId: video.question_id,
-    });
   } catch (error) {
     redirectWithError("/admin/videos", formatActionError(error));
   }
@@ -77,11 +71,6 @@ export async function updateVideo(formData: FormData) {
       throw new Error(error.message);
     }
 
-    await syncVideoTagsFromQuestion({
-      supabase,
-      videoId: id,
-      questionId: values.question_id,
-    });
   } catch (error) {
     redirectWithError("/admin/videos", formatActionError(error));
   }

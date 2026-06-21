@@ -1,30 +1,30 @@
 import { createRequire } from "node:module";
 
 import type {
-  AIFiveFacetQuestionRef,
-  AIFiveFacetQuestionTaggingPlan,
-  AIFiveFacetQuestionTaggingSuggestion,
-} from "@/lib/ai-pdf-import/five-facet-question-tagging";
-import type { AIFiveFacetTagCategory } from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+  AITaxonomyQuestionRef,
+  AITaxonomyQuestionTaggingPlan,
+  AITaxonomyQuestionTaggingSuggestion,
+} from "@/lib/ai-pdf-import/taxonomy-question-tagging";
+import type { AITaxonomyTagCategory } from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 
 const require = createRequire(import.meta.url);
 const {
-  getFiveFacetTagNode,
-  normalizeFiveFacetTagBundle,
-  resolveFiveFacetAlias,
-  validateFiveFacetTagBundle,
-} = require("../tags/five-facet-tag-catalog.ts") as typeof import("@/lib/tags/five-facet-tag-catalog");
+  getTaxonomyTagNode,
+  normalizeTaxonomyTagBundle,
+  resolveTaxonomyAlias,
+  validateTaxonomyTagBundle,
+} = require("../tags/taxonomy-tag-catalog.ts") as typeof import("@/lib/tags/taxonomy-tag-catalog");
 
-export type AIFiveFacetTagReviewActionPlanVersion =
-  "five_facet_tag_review_action_plan_v1";
+export type AITaxonomyTagReviewActionPlanVersion =
+  "taxonomy_tag_review_action_plan_v1";
 
-export type AIFiveFacetTagReviewActionPlanStatus =
+export type AITaxonomyTagReviewActionPlanStatus =
   | "completed"
   | "completed_with_warnings"
   | "skipped"
   | "failed";
 
-export type AIFiveFacetTagReviewActionKind =
+export type AITaxonomyTagReviewActionKind =
   | "approve_bundle"
   | "reject_bundle"
   | "edit_bundle"
@@ -35,7 +35,7 @@ export type AIFiveFacetTagReviewActionKind =
   | "merge_alias_candidate"
   | "request_manual_review";
 
-export interface AIFiveFacetTagReviewActionSafety {
+export interface AITaxonomyTagReviewActionSafety {
   noDbMutation: true;
   noOfficialTagWrite: true;
   noProviderCall: true;
@@ -43,28 +43,28 @@ export interface AIFiveFacetTagReviewActionSafety {
   planningOnly: true;
 }
 
-export interface AIFiveFacetTagReviewActionDraft {
+export interface AITaxonomyTagReviewActionDraft {
   actionId: string;
-  actionKind: AIFiveFacetTagReviewActionKind;
+  actionKind: AITaxonomyTagReviewActionKind;
   confidence: number;
   evidence: Record<string, unknown>;
   proposedTagIds: string[];
-  questionRef: AIFiveFacetQuestionRef;
+  questionRef: AITaxonomyQuestionRef;
   reason: string;
   reviewRequired: true;
-  safety: AIFiveFacetTagReviewActionSafety;
+  safety: AITaxonomyTagReviewActionSafety;
   status: "pending_review";
-  targetFacet: AIFiveFacetTagCategory | null;
+  targetFacet: AITaxonomyTagCategory | null;
   targetTagIds: string[];
 }
 
-export interface AIFiveFacetTagReviewActionPlan {
+export interface AITaxonomyTagReviewActionPlan {
   actionCount: number;
-  actions: AIFiveFacetTagReviewActionDraft[];
+  actions: AITaxonomyTagReviewActionDraft[];
   generatedAt: string;
   mode: "planning_only";
   sourcePlanVersion?: string;
-  status: AIFiveFacetTagReviewActionPlanStatus;
+  status: AITaxonomyTagReviewActionPlanStatus;
   validation: {
     allActionsPendingReview: boolean;
     allActionsRequireHumanReview: boolean;
@@ -73,19 +73,19 @@ export interface AIFiveFacetTagReviewActionPlan {
     noProviderCall: true;
     noReviewDraftWrite: true;
   };
-  version: AIFiveFacetTagReviewActionPlanVersion;
+  version: AITaxonomyTagReviewActionPlanVersion;
   warnings: string[];
 }
 
-const FIVE_FACET_CATEGORIES = [
+const TAXONOMY_CATEGORIES = [
   "curriculum",
   "concept",
   "method",
   "task",
   "form",
-] as const satisfies readonly AIFiveFacetTagCategory[];
+] as const satisfies readonly AITaxonomyTagCategory[];
 
-const ACTION_SAFETY: AIFiveFacetTagReviewActionSafety = {
+const ACTION_SAFETY: AITaxonomyTagReviewActionSafety = {
   noDbMutation: true,
   noOfficialTagWrite: true,
   noProviderCall: true,
@@ -123,12 +123,12 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function questionKey(questionRef: AIFiveFacetQuestionRef, index: number) {
+function questionKey(questionRef: AITaxonomyQuestionRef, index: number) {
   return questionRef.id ?? questionRef.questionCode ?? `question-${index + 1}`;
 }
 
 function actionId(parts: Array<number | string>) {
-  return `five-facet-review-${parts.join("-")}`
+  return `taxonomy-review-${parts.join("-")}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
@@ -146,17 +146,17 @@ function actionDraft({
   targetTagIds = [],
   proposedTagIds = [],
 }: {
-  actionKind: AIFiveFacetTagReviewActionKind;
+  actionKind: AITaxonomyTagReviewActionKind;
   confidence: number;
   evidence: Record<string, unknown>;
   index: number;
   proposedTagIds?: string[];
-  questionRef: AIFiveFacetQuestionRef;
+  questionRef: AITaxonomyQuestionRef;
   reason: string;
   sequence: number;
-  targetFacet: AIFiveFacetTagCategory | null;
+  targetFacet: AITaxonomyTagCategory | null;
   targetTagIds?: string[];
-}): AIFiveFacetTagReviewActionDraft {
+}): AITaxonomyTagReviewActionDraft {
   return {
     actionId: actionId([questionKey(questionRef, index), actionKind, sequence]),
     actionKind,
@@ -174,15 +174,15 @@ function actionDraft({
 }
 
 function normalizedSuggestionBundle(
-  suggestion: AIFiveFacetQuestionTaggingSuggestion,
+  suggestion: AITaxonomyQuestionTaggingSuggestion,
 ) {
-  return normalizeFiveFacetTagBundle({
+  return normalizeTaxonomyTagBundle({
     difficulty: suggestion.difficultySuggestion,
     tags: suggestion.tags,
   });
 }
 
-function ambiguousAliases(suggestion: AIFiveFacetQuestionTaggingSuggestion) {
+function ambiguousAliases(suggestion: AITaxonomyQuestionTaggingSuggestion) {
   const warningAliases = suggestion.warnings
     .map((warning) => /^ambiguous_alias:(.+)$/.exec(warning)?.[1] ?? "")
     .filter(Boolean);
@@ -191,23 +191,23 @@ function ambiguousAliases(suggestion: AIFiveFacetQuestionTaggingSuggestion) {
   return uniqueStrings([
     ...warningAliases,
     ...stringList(evidenceAliases).filter(
-      (alias) => resolveFiveFacetAlias(alias).ambiguous,
+      (alias) => resolveTaxonomyAlias(alias).ambiguous,
     ),
   ]);
 }
 
 function missingFacetReasons(errors: string[]) {
-  return FIVE_FACET_CATEGORIES.filter((category) =>
+  return TAXONOMY_CATEGORIES.filter((category) =>
     errors.includes(`too_few_${category}_tags`),
   );
 }
 
 function buildActionsForSuggestion(
-  suggestion: AIFiveFacetQuestionTaggingSuggestion,
+  suggestion: AITaxonomyQuestionTaggingSuggestion,
   index: number,
 ) {
   const normalized = normalizedSuggestionBundle(suggestion);
-  const validation = validateFiveFacetTagBundle(normalized);
+  const validation = validateTaxonomyTagBundle(normalized);
   const warnings = uniqueStrings([
     ...suggestion.warnings,
     ...validation.warnings,
@@ -219,7 +219,7 @@ function buildActionsForSuggestion(
     validationErrors: validation.errors,
     validationWarnings: validation.warnings,
   };
-  const actions: AIFiveFacetTagReviewActionDraft[] = [];
+  const actions: AITaxonomyTagReviewActionDraft[] = [];
   let sequence = 0;
 
   if (validation.valid && !warnings.some((warning) => warning.includes("ambiguous_alias:"))) {
@@ -229,11 +229,11 @@ function buildActionsForSuggestion(
         confidence,
         evidence,
         index,
-        proposedTagIds: FIVE_FACET_CATEGORIES.flatMap(
+        proposedTagIds: TAXONOMY_CATEGORIES.flatMap(
           (category) => normalized.tags[category],
         ),
         questionRef: suggestion.questionRef,
-        reason: "Suggested five-facet bundle passed catalog validation.",
+        reason: "Suggested taxonomy bundle passed catalog validation.",
         sequence: sequence++,
         targetFacet: null,
       }),
@@ -249,7 +249,7 @@ function buildActionsForSuggestion(
         reason: "Suggested bundle needs review before it can be trusted.",
         sequence: sequence++,
         targetFacet: null,
-        targetTagIds: FIVE_FACET_CATEGORIES.flatMap(
+        targetTagIds: TAXONOMY_CATEGORIES.flatMap(
           (category) => normalized.tags[category],
         ),
       }),
@@ -260,20 +260,20 @@ function buildActionsForSuggestion(
         confidence,
         evidence,
         index,
-        proposedTagIds: FIVE_FACET_CATEGORIES.flatMap(
+        proposedTagIds: TAXONOMY_CATEGORIES.flatMap(
           (category) => normalized.tags[category],
         ),
         questionRef: suggestion.questionRef,
-        reason: "Review and edit the five-facet bundle before persistence.",
+        reason: "Review and edit the taxonomy bundle before persistence.",
         sequence: sequence++,
         targetFacet: null,
       }),
     );
   }
 
-  for (const category of FIVE_FACET_CATEGORIES) {
+  for (const category of TAXONOMY_CATEGORIES) {
     for (const tagId of normalized.tags[category]) {
-      const node = getFiveFacetTagNode(tagId);
+      const node = getTaxonomyTagNode(tagId);
       if (!node || node.category !== category) {
         actions.push(
           actionDraft({
@@ -284,7 +284,7 @@ function buildActionsForSuggestion(
             questionRef: suggestion.questionRef,
             reason: node
               ? `Tag belongs to ${node.category}, not ${category}.`
-              : "Tag is not present in the five-facet catalog.",
+              : "Tag is not present in the taxonomy catalog.",
             sequence: sequence++,
             targetFacet: category,
             targetTagIds: [tagId],
@@ -325,7 +325,7 @@ function buildActionsForSuggestion(
   }
 
   for (const alias of ambiguousAliases(suggestion)) {
-    const resolution = resolveFiveFacetAlias(alias);
+    const resolution = resolveTaxonomyAlias(alias);
     actions.push(
       actionDraft({
         actionKind: "mark_ambiguous",
@@ -338,7 +338,7 @@ function buildActionsForSuggestion(
         index,
         proposedTagIds: resolution.tagIds,
         questionRef: suggestion.questionRef,
-        reason: `Alias "${alias}" maps to multiple five-facet tags.`,
+        reason: `Alias "${alias}" maps to multiple taxonomy tags.`,
         sequence: sequence++,
         targetFacet: null,
       }),
@@ -398,30 +398,30 @@ function buildActionsForSuggestion(
 
 function readTaggingPlan(
   summary: Record<string, unknown>,
-): AIFiveFacetQuestionTaggingPlan | null {
+): AITaxonomyQuestionTaggingPlan | null {
   const aiPdfImport = asRecord(summary.aiPdfImport ?? summary);
-  const plan = asRecord(aiPdfImport.fiveFacetQuestionTaggingPlan);
+  const plan = asRecord(aiPdfImport.taxonomyQuestionTaggingPlan);
 
-  return plan.version === "five_facet_question_tagging_plan_v1"
-    ? (plan as unknown as AIFiveFacetQuestionTaggingPlan)
+  return plan.version === "taxonomy_question_tagging_plan_v1"
+    ? (plan as unknown as AITaxonomyQuestionTaggingPlan)
     : null;
 }
 
-export function buildFiveFacetTagReviewActionPlanFromSummary(
+export function buildTaxonomyTagReviewActionPlanFromSummary(
   summary: Record<string, unknown>,
   { generatedAt = new Date().toISOString() }: { generatedAt?: string } = {},
-): AIFiveFacetTagReviewActionPlan {
+): AITaxonomyTagReviewActionPlan {
   const taggingPlan = readTaggingPlan(summary);
   const suggestions = taggingPlan?.suggestions ?? [];
   const actionResults = suggestions.map(buildActionsForSuggestion);
   const actions = actionResults.flatMap((result) => result.actions);
   const warnings = uniqueStrings([
-    "five_facet_tag_review_actions_planning_only",
-    "five_facet_tag_review_actions_no_db_write",
-    "five_facet_tag_review_actions_no_official_tag_write",
-    "five_facet_tag_review_actions_no_review_draft_write",
-    ...(taggingPlan ? [] : ["five_facet_tag_review_actions_no_tagging_plan"]),
-    ...(suggestions.length ? [] : ["five_facet_tag_review_actions_no_suggestions"]),
+    "taxonomy_review_actions_planning_only",
+    "taxonomy_review_actions_no_db_write",
+    "taxonomy_review_actions_no_official_tag_write",
+    "taxonomy_review_actions_no_review_draft_write",
+    ...(taggingPlan ? [] : ["taxonomy_review_actions_no_tagging_plan"]),
+    ...(suggestions.length ? [] : ["taxonomy_review_actions_no_suggestions"]),
     ...actionResults.flatMap((result) => result.warnings),
   ]);
 
@@ -448,18 +448,18 @@ export function buildFiveFacetTagReviewActionPlanFromSummary(
       noProviderCall: true,
       noReviewDraftWrite: true,
     },
-    version: "five_facet_tag_review_action_plan_v1",
+    version: "taxonomy_tag_review_action_plan_v1",
     warnings,
   };
 }
 
-export function failedFiveFacetTagReviewActionPlan({
+export function failedTaxonomyTagReviewActionPlan({
   generatedAt = new Date().toISOString(),
   warnings = [],
 }: {
   generatedAt?: string;
   warnings?: string[];
-} = {}): AIFiveFacetTagReviewActionPlan {
+} = {}): AITaxonomyTagReviewActionPlan {
   return {
     actionCount: 0,
     actions: [],
@@ -474,20 +474,20 @@ export function failedFiveFacetTagReviewActionPlan({
       noProviderCall: true,
       noReviewDraftWrite: true,
     },
-    version: "five_facet_tag_review_action_plan_v1",
+    version: "taxonomy_tag_review_action_plan_v1",
     warnings: uniqueStrings([
-      "five_facet_tag_review_actions_failed",
+      "taxonomy_review_actions_failed",
       ...warnings,
     ]),
   };
 }
 
-export function mergeFiveFacetTagReviewActionPlanIntoSummary(
+export function mergeTaxonomyTagReviewActionPlanIntoSummary(
   aiPdfImport: Record<string, unknown> | null | undefined,
-  fiveFacetTagReviewActionPlan: AIFiveFacetTagReviewActionPlan,
+  taxonomyTagReviewActionPlan: AITaxonomyTagReviewActionPlan,
 ) {
   return {
     ...(aiPdfImport ?? {}),
-    fiveFacetTagReviewActionPlan,
+    taxonomyTagReviewActionPlan,
   };
 }

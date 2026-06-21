@@ -122,23 +122,23 @@ import {
   type AITaxonomyPersistencePlan,
 } from "@/lib/ai-pdf-import/taxonomy-persistence";
 import {
-  buildAIFiveFacetTagTaxonomyPlan,
-  failedAIFiveFacetTagTaxonomyPlan,
-  mergeAIFiveFacetTagTaxonomyPlanIntoSummary,
-  type AIFiveFacetTagTaxonomyPlan,
-} from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+  buildAITaxonomyTagTaxonomyPlan,
+  failedAITaxonomyTagTaxonomyPlan,
+  mergeAITaxonomyTagTaxonomyPlanIntoSummary,
+  type AITaxonomyTagTaxonomyPlan,
+} from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 import {
-  buildFiveFacetQuestionTaggingPlanFromSummary,
-  failedFiveFacetQuestionTaggingPlan,
-  mergeFiveFacetQuestionTaggingPlanIntoSummary,
-  type AIFiveFacetQuestionTaggingPlan,
-} from "@/lib/ai-pdf-import/five-facet-question-tagging";
+  buildTaxonomyQuestionTaggingPlanFromSummary,
+  failedTaxonomyQuestionTaggingPlan,
+  mergeTaxonomyQuestionTaggingPlanIntoSummary,
+  type AITaxonomyQuestionTaggingPlan,
+} from "@/lib/ai-pdf-import/taxonomy-question-tagging";
 import {
-  buildFiveFacetTagReviewActionPlanFromSummary,
-  failedFiveFacetTagReviewActionPlan,
-  mergeFiveFacetTagReviewActionPlanIntoSummary,
-  type AIFiveFacetTagReviewActionPlan,
-} from "@/lib/ai-pdf-import/five-facet-tag-review-actions";
+  buildTaxonomyTagReviewActionPlanFromSummary,
+  failedTaxonomyTagReviewActionPlan,
+  mergeTaxonomyTagReviewActionPlanIntoSummary,
+  type AITaxonomyTagReviewActionPlan,
+} from "@/lib/ai-pdf-import/taxonomy-tag-review-actions";
 import {
   buildAIExtractionCoverageAuditPlanFromSummary,
   failedAIExtractionCoverageAuditPlan,
@@ -181,7 +181,7 @@ type ActiveTag = {
   name: string;
   slug: string;
   status: string;
-  tag_type: string;
+  facet_key: string | null;
 };
 
 type ProcessInput = {
@@ -797,15 +797,15 @@ async function updateAITaxonomyPersistencePlan({
   }
 }
 
-async function updateAIFiveFacetTagTaxonomyPlan({
-  fiveFacetTagTaxonomyPlan,
+async function updateAITaxonomyTagTaxonomyPlan({
+  taxonomyTagTaxonomyPlan,
   input,
 }: {
-  fiveFacetTagTaxonomyPlan: AIFiveFacetTagTaxonomyPlan;
+  taxonomyTagTaxonomyPlan: AITaxonomyTagTaxonomyPlan;
   input: ProcessInput;
 }) {
   const current = await loadCurrentAIPdfSummary(input);
-  const aiPdfImport = mergeAIFiveFacetTagTaxonomyPlanIntoSummary(
+  const aiPdfImport = mergeAITaxonomyTagTaxonomyPlanIntoSummary(
     mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
       fileName: input.fileName,
       jobId: input.jobId,
@@ -813,7 +813,7 @@ async function updateAIFiveFacetTagTaxonomyPlan({
       sourceObjectPath: input.sourceObjectPath,
       updatedAt: new Date().toISOString(),
     }),
-    fiveFacetTagTaxonomyPlan,
+    taxonomyTagTaxonomyPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -831,43 +831,43 @@ async function updateAIFiveFacetTagTaxonomyPlan({
   }
 }
 
-async function generateAndStoreFiveFacetTagTaxonomyPlan({
+async function generateAndStoreTaxonomyTagTaxonomyPlan({
   input,
 }: {
   input: ProcessInput;
 }) {
   try {
-    const fiveFacetTagTaxonomyPlan = buildAIFiveFacetTagTaxonomyPlan();
-    await updateAIFiveFacetTagTaxonomyPlan({
-      fiveFacetTagTaxonomyPlan,
+    const taxonomyTagTaxonomyPlan = buildAITaxonomyTagTaxonomyPlan();
+    await updateAITaxonomyTagTaxonomyPlan({
+      taxonomyTagTaxonomyPlan,
       input,
     });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
-        : "AI five-facet tag taxonomy plan failed.";
+        : "AI taxonomy tag taxonomy plan failed.";
 
-    await updateAIFiveFacetTagTaxonomyPlan({
-      fiveFacetTagTaxonomyPlan: failedAIFiveFacetTagTaxonomyPlan({
-        warnings: [`five-facet tag taxonomy plan failed: ${message}`],
+    await updateAITaxonomyTagTaxonomyPlan({
+      taxonomyTagTaxonomyPlan: failedAITaxonomyTagTaxonomyPlan({
+        warnings: [`taxonomy tag taxonomy plan failed: ${message}`],
       }),
       input,
     });
   }
 
-  await generateAndStoreFiveFacetQuestionTaggingPlan({ input });
+  await generateAndStoreTaxonomyQuestionTaggingPlan({ input });
 }
 
-async function updateAIFiveFacetQuestionTaggingPlan({
-  fiveFacetQuestionTaggingPlan,
+async function updateAITaxonomyQuestionTaggingPlan({
+  taxonomyQuestionTaggingPlan,
   input,
 }: {
-  fiveFacetQuestionTaggingPlan: AIFiveFacetQuestionTaggingPlan;
+  taxonomyQuestionTaggingPlan: AITaxonomyQuestionTaggingPlan;
   input: ProcessInput;
 }) {
   const current = await loadCurrentAIPdfSummary(input);
-  const aiPdfImport = mergeFiveFacetQuestionTaggingPlanIntoSummary(
+  const aiPdfImport = mergeTaxonomyQuestionTaggingPlanIntoSummary(
     mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
       fileName: input.fileName,
       jobId: input.jobId,
@@ -875,7 +875,7 @@ async function updateAIFiveFacetQuestionTaggingPlan({
       sourceObjectPath: input.sourceObjectPath,
       updatedAt: new Date().toISOString(),
     }),
-    fiveFacetQuestionTaggingPlan,
+    taxonomyQuestionTaggingPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -893,45 +893,45 @@ async function updateAIFiveFacetQuestionTaggingPlan({
   }
 }
 
-async function generateAndStoreFiveFacetQuestionTaggingPlan({
+async function generateAndStoreTaxonomyQuestionTaggingPlan({
   input,
 }: {
   input: ProcessInput;
 }) {
   try {
     const current = await loadCurrentAIPdfSummary(input);
-    const fiveFacetQuestionTaggingPlan =
-      buildFiveFacetQuestionTaggingPlanFromSummary(current.summary);
-    await updateAIFiveFacetQuestionTaggingPlan({
-      fiveFacetQuestionTaggingPlan,
+    const taxonomyQuestionTaggingPlan =
+      buildTaxonomyQuestionTaggingPlanFromSummary(current.summary);
+    await updateAITaxonomyQuestionTaggingPlan({
+      taxonomyQuestionTaggingPlan,
       input,
     });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
-        : "AI five-facet question tagging plan failed.";
+        : "AI taxonomy question tagging plan failed.";
 
-    await updateAIFiveFacetQuestionTaggingPlan({
-      fiveFacetQuestionTaggingPlan: failedFiveFacetQuestionTaggingPlan({
-        warnings: [`five-facet question tagging plan failed: ${message}`],
+    await updateAITaxonomyQuestionTaggingPlan({
+      taxonomyQuestionTaggingPlan: failedTaxonomyQuestionTaggingPlan({
+        warnings: [`taxonomy question tagging plan failed: ${message}`],
       }),
       input,
     });
   }
 
-  await generateAndStoreFiveFacetTagReviewActionPlan({ input });
+  await generateAndStoreTaxonomyTagReviewActionPlan({ input });
 }
 
-async function updateAIFiveFacetTagReviewActionPlan({
-  fiveFacetTagReviewActionPlan,
+async function updateAITaxonomyTagReviewActionPlan({
+  taxonomyTagReviewActionPlan,
   input,
 }: {
-  fiveFacetTagReviewActionPlan: AIFiveFacetTagReviewActionPlan;
+  taxonomyTagReviewActionPlan: AITaxonomyTagReviewActionPlan;
   input: ProcessInput;
 }) {
   const current = await loadCurrentAIPdfSummary(input);
-  const aiPdfImport = mergeFiveFacetTagReviewActionPlanIntoSummary(
+  const aiPdfImport = mergeTaxonomyTagReviewActionPlanIntoSummary(
     mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
       fileName: input.fileName,
       jobId: input.jobId,
@@ -939,7 +939,7 @@ async function updateAIFiveFacetTagReviewActionPlan({
       sourceObjectPath: input.sourceObjectPath,
       updatedAt: new Date().toISOString(),
     }),
-    fiveFacetTagReviewActionPlan,
+    taxonomyTagReviewActionPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -957,28 +957,28 @@ async function updateAIFiveFacetTagReviewActionPlan({
   }
 }
 
-async function generateAndStoreFiveFacetTagReviewActionPlan({
+async function generateAndStoreTaxonomyTagReviewActionPlan({
   input,
 }: {
   input: ProcessInput;
 }) {
   try {
     const current = await loadCurrentAIPdfSummary(input);
-    const fiveFacetTagReviewActionPlan =
-      buildFiveFacetTagReviewActionPlanFromSummary(current.summary);
-    await updateAIFiveFacetTagReviewActionPlan({
-      fiveFacetTagReviewActionPlan,
+    const taxonomyTagReviewActionPlan =
+      buildTaxonomyTagReviewActionPlanFromSummary(current.summary);
+    await updateAITaxonomyTagReviewActionPlan({
+      taxonomyTagReviewActionPlan,
       input,
     });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
-        : "AI five-facet tag review action plan failed.";
+        : "AI taxonomy tag review action plan failed.";
 
-    await updateAIFiveFacetTagReviewActionPlan({
-      fiveFacetTagReviewActionPlan: failedFiveFacetTagReviewActionPlan({
-        warnings: [`five-facet tag review action plan failed: ${message}`],
+    await updateAITaxonomyTagReviewActionPlan({
+      taxonomyTagReviewActionPlan: failedTaxonomyTagReviewActionPlan({
+        warnings: [`taxonomy tag review action plan failed: ${message}`],
       }),
       input,
     });
@@ -995,7 +995,7 @@ async function generateAndStoreTaxonomyPersistencePlan({
     const taxonomyPersistencePlan =
       buildAITaxonomyPersistencePlanFromSummary(current.aiPdfImport);
     await updateAITaxonomyPersistencePlan({ input, taxonomyPersistencePlan });
-    await generateAndStoreFiveFacetTagTaxonomyPlan({ input });
+    await generateAndStoreTaxonomyTagTaxonomyPlan({ input });
   } catch (error) {
     const message =
       error instanceof Error
@@ -1008,7 +1008,7 @@ async function generateAndStoreTaxonomyPersistencePlan({
         warnings: [`taxonomy persistence plan failed: ${message}`],
       }),
     });
-    await generateAndStoreFiveFacetTagTaxonomyPlan({ input });
+    await generateAndStoreTaxonomyTagTaxonomyPlan({ input });
   }
 }
 
@@ -1806,7 +1806,10 @@ function buildPrompt({
   pageCount: number;
 }) {
   const tags = activeTags
-    .map((tag) => `- ${tag.name} | slug=${tag.slug} | type=${tag.tag_type} | status=${tag.status}`)
+    .map(
+      (tag) =>
+        `- ${tag.name} | tag_id=${tag.slug} | facet=${tag.facet_key ?? "none"} | status=${tag.status}`,
+    )
     .join("\n");
 
   return [
@@ -1923,70 +1926,30 @@ function remapSegmentExtractionPages({
 
 async function loadActiveTags(supabase: SupabaseLike) {
   const { data, error } = await supabase
-    .from("tags")
-    .select("id, name, slug, status, tag_type")
-    .neq("status", "archived")
-    .order("name", { ascending: true })
+    .from("taxonomy_nodes")
+    .select("tag_id, label, status, facet_key")
+    .eq("is_assignable", true)
+    .eq("status", "active")
+    .order("sort_order", { ascending: true })
+    .order("label", { ascending: true })
     .limit(1000);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return (data ?? []) as ActiveTag[];
-}
-
-async function ensureDraftTag({
-  existingTags,
-  name,
-  profileId,
-  supabase,
-}: {
-  existingTags: ActiveTag[];
-  name: string;
-  profileId: string;
-  supabase: SupabaseLike;
-}) {
-  const normalizedName = name.trim().toLowerCase();
-  const byName = existingTags.find(
-    (tag) => tag.name.trim().toLowerCase() === normalizedName,
-  );
-
-  if (byName) {
-    return byName;
-  }
-
-  const baseSlug = slugify(name);
-  let slug = baseSlug;
-  let suffix = 1;
-
-  while (
-    existingTags.some((tag) => tag.slug.trim().toLowerCase() === slug.toLowerCase())
-  ) {
-    suffix += 1;
-    slug = `${baseSlug}-${suffix}`;
-  }
-
-  const { data, error } = await supabase
-    .from("tags")
-    .insert({
-      created_by: profileId,
-      name,
-      slug,
-      status: "draft",
-      tag_type: "knowledge",
-      updated_by: profileId,
-    })
-    .select("id, name, slug, status, tag_type")
-    .single();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const created = data as ActiveTag;
-  existingTags.push(created);
-  return created;
+  return ((data ?? []) as {
+    facet_key: string | null;
+    label: string;
+    status: string;
+    tag_id: string;
+  }[]).map((tag) => ({
+    facet_key: tag.facet_key,
+    id: tag.tag_id,
+    name: tag.label,
+    slug: tag.tag_id,
+    status: tag.status,
+  }));
 }
 
 async function buildImportJson({
@@ -2040,16 +2003,10 @@ async function buildImportJson({
       }
     }
 
-    for (const name of question.new_tag_names) {
-      const tag = await ensureDraftTag({
-        existingTags: activeTags,
-        name,
-        profileId,
-        supabase,
-      });
-      bySlug.set(tag.slug.trim().toLowerCase(), tag);
-      byName.set(tag.name.trim().toLowerCase(), tag);
-      tagSlugs.add(tag.slug);
+    if (question.new_tag_names.length) {
+      extraction.warnings.push(
+        `Question ${globalQuestionIndex + 1}: AI suggested new taxonomy tags (${question.new_tag_names.join(", ")}); suggestions were preserved in metadata and not written to the official taxonomy.`,
+      );
     }
 
     const rawAiQuestionCode = question.question_code?.trim() || "";

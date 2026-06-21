@@ -221,11 +221,15 @@ export default async function AdminReviewPage({
   ] = questionIds.length
     ? await Promise.all([
         supabase
-          .from("question_tags")
-          .select("question_id, tag_id")
+          .from("question_taxonomy_assignments")
+          .select("question_id, tag_id, review_status")
           .in("question_id", questionIds)
           .limit(1000),
-        supabase.from("tags").select("id, name, status").limit(1000),
+        supabase
+          .from("taxonomy_nodes")
+          .select("tag_id, label, status")
+          .eq("status", "active")
+          .limit(1000),
         supabase
           .from("question_assets")
           .select("question_id, id")
@@ -248,13 +252,16 @@ export default async function AdminReviewPage({
         { data: [] },
       ];
 
-  const tagNameById = new Map((tags ?? []).map((tag) => [tag.id, tag.name]));
+  const tagNameById = new Map((tags ?? []).map((tag) => [tag.tag_id, tag.label]));
   const tagStatusById = new Map(
-    (tags ?? []).map((tag) => [tag.id, tag.status]),
+    (questionTags ?? []).map((tag) => [
+      `${tag.question_id}:${tag.tag_id}`,
+      tag.review_status,
+    ]),
   );
   const tagsByQuestionId = new Map<string, string[]>();
-  const draftTagCountByQuestionId = new Map<string, number>();
-  const publishedTagCountByQuestionId = new Map<string, number>();
+  const pendingTagCountByQuestionId = new Map<string, number>();
+  const approvedTagCountByQuestionId = new Map<string, number>();
   const imageCountByQuestionId = new Map<string, number>();
   const sourceFileCountByQuestionId = new Map<string, number>();
   const aiMetadataByQuestionId = new Map<string, AIReviewMetadata>();
@@ -264,21 +271,21 @@ export default async function AdminReviewPage({
 
   for (const binding of questionTags ?? []) {
     const tagName = tagNameById.get(binding.tag_id);
-    const tagStatus = tagStatusById.get(binding.tag_id);
+    const tagStatus = tagStatusById.get(`${binding.question_id}:${binding.tag_id}`);
 
     if (!tagName) {
       continue;
     }
 
-    if (tagStatus === "draft") {
-      draftTagCountByQuestionId.set(
+    if (tagStatus === "pending_review" || tagStatus === "needs_review") {
+      pendingTagCountByQuestionId.set(
         binding.question_id,
-        (draftTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
+        (pendingTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
       );
-    } else if (tagStatus === "published") {
-      publishedTagCountByQuestionId.set(
+    } else if (tagStatus === "approved") {
+      approvedTagCountByQuestionId.set(
         binding.question_id,
-        (publishedTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
+        (approvedTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
       );
     }
 
@@ -389,9 +396,9 @@ export default async function AdminReviewPage({
       <div className="grid gap-4">
         {draftQuestions.map((question) => {
           const tagNames = tagsByQuestionId.get(question.id) ?? [];
-          const draftTagCount = draftTagCountByQuestionId.get(question.id) ?? 0;
-          const publishedTagCount =
-            publishedTagCountByQuestionId.get(question.id) ?? 0;
+          const pendingTagCount = pendingTagCountByQuestionId.get(question.id) ?? 0;
+          const approvedTagCount =
+            approvedTagCountByQuestionId.get(question.id) ?? 0;
           const imageCount = imageCountByQuestionId.get(question.id) ?? 0;
           const sourceFileCount = sourceFileCountByQuestionId.get(question.id) ?? 0;
           const aiMetadata = aiMetadataByQuestionId.get(question.id);
@@ -415,7 +422,7 @@ export default async function AdminReviewPage({
             importedAssetReferences: importRefs,
             solutionHtml: question.solution_html,
             sourceFileCount,
-            tagCount: publishedTagCount,
+            tagCount: approvedTagCount,
           });
 
           return (
@@ -453,9 +460,9 @@ export default async function AdminReviewPage({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {draftTagCount ? (
+                  {pendingTagCount ? (
                     <Badge variant="outline">
-                      Needs tag review: {draftTagCount} draft
+                      Needs taxonomy review: {pendingTagCount}
                     </Badge>
                   ) : null}
                   {tagNames.length ? (
@@ -465,11 +472,11 @@ export default async function AdminReviewPage({
                       </Badge>
                     ))
                   ) : (
-                    <Badge variant="outline">No tags</Badge>
+                    <Badge variant="outline">No taxonomy tags</Badge>
                   )}
-                  {publishedTagCount ? (
+                  {approvedTagCount ? (
                     <Badge variant="secondary">
-                      Published tags: {publishedTagCount}
+                      Approved taxonomy tags: {approvedTagCount}
                     </Badge>
                   ) : null}
                 </div>
