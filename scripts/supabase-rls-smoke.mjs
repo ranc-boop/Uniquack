@@ -255,6 +255,7 @@ if (adminSession) {
     questions: [],
     questionAssets: [],
     fiveFacetTagReviewActions: [],
+    fiveFacetVideoTagAssignments: [],
     fiveFacetQuestionTagAssignments: [],
     fiveFacetCurriculumConceptMappings: [],
     fiveFacetTagAliases: [],
@@ -844,6 +845,64 @@ if (adminSession) {
     assert(!videoUpdateError, `admin video update failed: ${videoUpdateError?.message}`);
     logPass("admin can update videos");
 
+    if (cleanup.fiveFacetTagNodes.includes(fiveFacetConceptTagId)) {
+      const { data: createdFiveFacetVideoAssignment, error: videoAssignmentError } =
+        await adminSession.client
+          .from("five_facet_video_tag_assignments")
+          .insert({
+            category: "concept",
+            confidence: 0.8,
+            created_by: adminSession.user.id,
+            review_status: "approved",
+            source: "manual",
+            tag_id: fiveFacetConceptTagId,
+            video_id: createdVideo.id,
+          })
+          .select("id,category,review_status")
+          .single();
+
+      if (videoAssignmentError) {
+        if (isMissingMigrationError(videoAssignmentError)) {
+          logSkip(
+            "five-facet video tag assignment RLS checks; apply supabase/migrations/0010_five_facet_video_tag_assignments.sql",
+          );
+        } else {
+          throw new Error(
+            `five_facet_video_tag_assignments insert failed: ${videoAssignmentError.message}`,
+          );
+        }
+      } else {
+        cleanup.fiveFacetVideoTagAssignments.push(
+          createdFiveFacetVideoAssignment.id,
+        );
+        logPass("admin can create five-facet video tag assignments");
+
+        await assertInsertDenied(
+          anon,
+          "five_facet_video_tag_assignments",
+          {
+            category: "concept",
+            tag_id: fiveFacetConceptTagId,
+            video_id: createdVideo.id,
+          },
+          "anon",
+        );
+
+        if (studentSession) {
+          await assertInsertDenied(
+            studentSession.client,
+            "five_facet_video_tag_assignments",
+            {
+              category: "concept",
+              tag_id: fiveFacetConceptTagId,
+              video_id: createdVideo.id,
+            },
+            "student",
+          );
+        }
+      }
+    }
+
     const inheritedVideoTagPayload = (loadedQuestionTags ?? []).map((binding) => ({
       video_id: createdVideo.id,
       tag_id: binding.tag_id,
@@ -1032,6 +1091,12 @@ if (adminSession) {
     for (const id of cleanup.fiveFacetTagReviewActions) {
       await adminSession.client
         .from("five_facet_tag_review_actions")
+        .delete()
+        .eq("id", id);
+    }
+    for (const id of cleanup.fiveFacetVideoTagAssignments) {
+      await adminSession.client
+        .from("five_facet_video_tag_assignments")
         .delete()
         .eq("id", id);
     }

@@ -1,6 +1,10 @@
 import Link from "next/link";
 
 import { SupabaseConfigNotice } from "@/components/config-notice";
+import {
+  FiveFacetTagChips,
+  type FiveFacetTagChipAssignment,
+} from "@/components/tags/five-facet-tag-chips";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +39,19 @@ function parseDifficulty(value: string | undefined, fallback: number) {
   }
 
   return Math.min(1000, Math.max(0, Math.trunc(parsed)));
+}
+
+function isMissingFiveFacetVideoTableError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const record = error as { code?: unknown; message?: unknown };
+  const message = typeof record.message === "string" ? record.message : "";
+
+  return (
+    record.code === "42P01" ||
+    /five_facet_video_tag_assignments|permission denied|relation .* does not exist|schema cache/i.test(
+      message,
+    )
+  );
 }
 
 export default async function VideosPage({ searchParams }: VideosPageProps) {
@@ -81,6 +98,14 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
         .eq("status", "published")
         .in("id", Array.from(new Set(questionIds)))
     : { data: [], error: null };
+  const { data: fiveFacetVideoAssignments, error: fiveFacetVideoAssignmentsError } =
+    videoIds.length
+      ? await supabase
+          .from("five_facet_video_tag_assignments")
+          .select("video_id, tag_id, category, review_status")
+          .eq("review_status", "approved")
+          .in("video_id", videoIds)
+      : { data: [], error: null };
   const tagNameById = new Map(
     (publicTags ?? []).map((tag) => [tag.id, tag.name]),
   );
@@ -89,6 +114,10 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
   );
   const tagsByVideoId = new Map<string, string[]>();
   const tagIdsByVideoId = new Map<string, Set<string>>();
+  const fiveFacetAssignmentsByVideoId = new Map<
+    string,
+    FiveFacetTagChipAssignment[]
+  >();
 
   for (const binding of bindings ?? []) {
     const current = tagsByVideoId.get(binding.video_id) ?? [];
@@ -101,6 +130,20 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
       currentIds.add(binding.tag_id);
       tagIdsByVideoId.set(binding.video_id, currentIds);
     }
+  }
+
+  const publicFiveFacetVideoAssignments =
+    fiveFacetVideoAssignmentsError &&
+    isMissingFiveFacetVideoTableError(fiveFacetVideoAssignmentsError)
+      ? []
+      : ((fiveFacetVideoAssignments ?? []) as Array<
+          FiveFacetTagChipAssignment & { video_id: string }
+        >);
+
+  for (const assignment of publicFiveFacetVideoAssignments) {
+    const current = fiveFacetAssignmentsByVideoId.get(assignment.video_id) ?? [];
+    current.push(assignment);
+    fiveFacetAssignmentsByVideoId.set(assignment.video_id, current);
   }
 
   const filteredVideos = (videos ?? []).filter((video) => {
@@ -243,12 +286,28 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {(tagsByVideoId.get(video.id) ?? []).map((tagName) => (
-                      <Badge key={tagName} variant="outline">
-                        {tagName}
-                      </Badge>
-                    ))}
+                  <div className="space-y-2">
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Official five-facet tags
+                      </p>
+                      <FiveFacetTagChips
+                        assignments={fiveFacetAssignmentsByVideoId.get(video.id)}
+                        showCategoryHeadings={false}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Legacy / deprecated tags
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {(tagsByVideoId.get(video.id) ?? []).map((tagName) => (
+                          <Badge key={tagName} variant="outline">
+                            {tagName}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell>
