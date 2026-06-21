@@ -135,8 +135,8 @@ create index if not exists question_taxonomy_assignments_tag_idx on public.quest
 create index if not exists taxonomy_review_actions_question_idx on public.taxonomy_review_actions(question_id, review_status);
 create index if not exists question_rubric_steps_linked_taxonomy_tag_idx on public.question_rubric_steps(linked_taxonomy_tag_id);
 
-create or replace function private.refresh_taxonomy_node_closure()
-returns trigger
+create or replace function private.rebuild_taxonomy_node_closure()
+returns void
 language plpgsql
 security definer
 set search_path = ''
@@ -167,8 +167,160 @@ begin
   from walk
   group by ancestor_tag_id, descendant_tag_id
   on conflict (ancestor_tag_id, descendant_tag_id) do update set depth = excluded.depth;
+end;
+$$;
 
+create or replace function private.refresh_taxonomy_node_closure_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.rebuild_taxonomy_node_closure();
   return null;
+end;
+$$;
+
+create or replace function private.validate_taxonomy_node()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  facet_subject_tag_id text;
+  facet_root_tag_id text;
+begin
+  if new.node_kind = 'subject' then
+    if new.subject_tag_id is not null or new.facet_key is not null or new.is_assignable then
+      raise exception 'Subject taxonomy nodes cannot belong to a facet or be assignable.';
+    end if;
+    return new;
+  end if;
+
+  if new.subject_tag_id is null or new.facet_key is null then
+    raise exception 'Non-subject taxonomy nodes require subject_tag_id and facet_key.';
+  end if;
+
+  select subject_tag_id, root_tag_id
+  into facet_subject_tag_id, facet_root_tag_id
+  from public.taxonomy_facets
+  where facet_key = new.facet_key;
+
+  if found then
+    if facet_subject_tag_id <> new.subject_tag_id then
+      raise exception 'Taxonomy node subject does not match its facet subject.';
+    end if;
+    if new.node_kind = 'facet_root' and facet_root_tag_id <> new.tag_id then
+      raise exception 'Facet root node does not match taxonomy_facets.root_tag_id.';
+    end if;
+    if new.node_kind = 'tag' and facet_root_tag_id = new.tag_id then
+      raise exception 'Facet root must use node_kind facet_root.';
+    end if;
+  elsif new.node_kind <> 'facet_root' then
+    raise exception 'Taxonomy facet % does not exist.', new.facet_key;
+  end if;
+
+  if new.node_kind = 'facet_root' and new.is_assignable then
+    raise exception 'Facet root taxonomy nodes cannot be assignable.';
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function private.validate_taxonomy_parent_edge()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  parent_node public.taxonomy_nodes%rowtype;
+  child_node public.taxonomy_nodes%rowtype;
+  excluded_edge_id uuid;
+begin
+  if new.edge_kind <> 'parent_child' or new.status <> 'active' then
+    return new;
+  end if;
+
+  select * into parent_node
+  from public.taxonomy_nodes
+  where tag_id = new.from_tag_id;
+
+  select * into child_node
+  from public.taxonomy_nodes
+  where tag_id = new.to_tag_id;
+
+  if parent_node.status <> 'active' or child_node.status <> 'active' then
+    raise exception 'Active parent-child edges require active taxonomy nodes.';
+  end if;
+
+  if parent_node.node_kind = 'subject' then
+    if child_node.node_kind <> 'facet_root'
+       or child_node.subject_tag_id <> parent_node.tag_id then
+      raise exception 'Subject roots may only parent their facet roots.';
+    end if;
+  elsif parent_node.subject_tag_id is distinct from child_node.subject_tag_id
+     or parent_node.facet_key is distinct from child_node.facet_key then
+    raise exception 'Parent-child edges must remain inside one subject and facet.';
+  end if;
+
+  excluded_edge_id := case when tg_op = 'UPDATE' then old.id else null end;
+
+  if exists (
+    with recursive descendants(tag_id) as (
+      select e.to_tag_id
+      from public.taxonomy_edges e
+      where e.from_tag_id = new.to_tag_id
+        and e.edge_kind = 'parent_child'
+        and e.status = 'active'
+        and (excluded_edge_id is null or e.id <> excluded_edge_id)
+      union
+      select e.to_tag_id
+      from descendants d
+      join public.taxonomy_edges e
+        on e.from_tag_id = d.tag_id
+       and e.edge_kind = 'parent_child'
+       and e.status = 'active'
+       and (excluded_edge_id is null or e.id <> excluded_edge_id)
+    )
+    select 1
+    from descendants
+    where tag_id = new.from_tag_id
+  ) then
+    raise exception 'Taxonomy parent-child edge would create a cycle.';
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function private.validate_question_taxonomy_assignment()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  assigned_node public.taxonomy_nodes%rowtype;
+begin
+  select * into assigned_node
+  from public.taxonomy_nodes
+  where tag_id = new.tag_id;
+
+  if not found then
+    raise exception 'Taxonomy node % does not exist.', new.tag_id;
+  end if;
+
+  if assigned_node.status <> 'active'
+     or assigned_node.node_kind <> 'tag'
+     or not assigned_node.is_assignable then
+    raise exception 'Question taxonomy assignments require an active assignable tag node.';
+  end if;
+
+  return new;
 end;
 $$;
 
@@ -191,17 +343,6 @@ as $$
   select coalesce(array_agg(label order by depth desc), '{}'::text[])
   from upward;
 $$;
-
-drop trigger if exists taxonomy_nodes_refresh_closure on public.taxonomy_nodes;
-create trigger taxonomy_nodes_refresh_closure
-after insert or update or delete on public.taxonomy_nodes
-for each statement execute function private.refresh_taxonomy_node_closure();
-
-drop trigger if exists taxonomy_edges_refresh_closure on public.taxonomy_edges;
-create trigger taxonomy_edges_refresh_closure
-after insert or update or delete on public.taxonomy_edges
-for each statement execute function private.refresh_taxonomy_node_closure();
-
 
 insert into public.taxonomy_nodes (tag_id, node_kind, subject_tag_id, facet_key, label, description, is_assignable, sort_order, status, metadata) values
   ('subject.math', 'subject', null, null, 'Mathematics', 'Root subject for the official mathematics taxonomy.', false, 0, 'active', '{"seed":"math_taxonomy_v1"}'::jsonb)
@@ -476,7 +617,32 @@ insert into public.taxonomy_aliases (alias_text, normalized_alias, tag_id, statu
 on conflict (normalized_alias, tag_id) do update set alias_text = excluded.alias_text, status = excluded.status, metadata = excluded.metadata;
 
 
-select private.refresh_taxonomy_node_closure();
+select private.rebuild_taxonomy_node_closure();
+
+drop trigger if exists taxonomy_nodes_validate on public.taxonomy_nodes;
+create trigger taxonomy_nodes_validate
+before insert or update on public.taxonomy_nodes
+for each row execute function private.validate_taxonomy_node();
+
+drop trigger if exists taxonomy_edges_validate_parent on public.taxonomy_edges;
+create trigger taxonomy_edges_validate_parent
+before insert or update on public.taxonomy_edges
+for each row execute function private.validate_taxonomy_parent_edge();
+
+drop trigger if exists question_taxonomy_assignments_validate on public.question_taxonomy_assignments;
+create trigger question_taxonomy_assignments_validate
+before insert or update on public.question_taxonomy_assignments
+for each row execute function private.validate_question_taxonomy_assignment();
+
+drop trigger if exists taxonomy_nodes_refresh_closure on public.taxonomy_nodes;
+create trigger taxonomy_nodes_refresh_closure
+after insert or update or delete on public.taxonomy_nodes
+for each statement execute function private.refresh_taxonomy_node_closure_trigger();
+
+drop trigger if exists taxonomy_edges_refresh_closure on public.taxonomy_edges;
+create trigger taxonomy_edges_refresh_closure
+after insert or update or delete on public.taxonomy_edges
+for each statement execute function private.refresh_taxonomy_node_closure_trigger();
 
 alter table public.taxonomy_facets enable row level security;
 alter table public.taxonomy_nodes enable row level security;
