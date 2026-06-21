@@ -328,10 +328,12 @@ assertRoute(
 assertRoute(
   adminQuestions.status === 200 &&
     adminQuestions.text.includes("Find questions") &&
+    adminQuestions.text.includes("Five-facet tags") &&
+    adminQuestions.text.includes("catalog tag IDs") &&
     adminQuestions.text.includes("Search tags") &&
     adminQuestions.text.includes("Markdown + LaTeX") &&
     adminQuestions.text.includes("Advanced HTML"),
-  "admin questions renders filters, checkbox tag picker, and Markdown LaTeX editor",
+  "admin questions renders filters, five-facet controls, checkbox tag picker, and Markdown LaTeX editor",
 );
 assertRoute(
   adminTags.status === 200 &&
