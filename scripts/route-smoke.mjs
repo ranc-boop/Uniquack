@@ -201,6 +201,7 @@ const signedOutReview = await fetchRoute("/admin/review");
 const signedOutImportAssets = await fetchRoute("/admin/imports/assets");
 const signedOutPackageImport = await fetchRoute("/admin/imports/package");
 const signedOutAiPdfImport = await fetchRoute("/admin/imports/pdf");
+const signedOutTags = await fetchRoute("/admin/tags");
 const studentAdmin = await fetchRoute("/admin", studentCookie);
 const studentReview = await fetchRoute("/admin/review", studentCookie);
 const studentImportAssets = await fetchRoute("/admin/imports/assets", studentCookie);
@@ -209,8 +210,10 @@ const studentPackageImport = await fetchRoute(
   studentCookie,
 );
 const studentAiPdfImport = await fetchRoute("/admin/imports/pdf", studentCookie);
+const studentTags = await fetchRoute("/admin/tags", studentCookie);
 const adminHome = await fetchRoute("/admin", adminCookie);
 const adminQuestions = await fetchRoute("/admin/questions", adminCookie);
+const adminTags = await fetchRoute("/admin/tags", adminCookie);
 const adminImports = await fetchRoute("/admin/imports", adminCookie);
 const adminImportAssets = await fetchRoute("/admin/imports/assets", adminCookie);
 const adminPackageImport = await fetchRoute("/admin/imports/package", adminCookie);
@@ -283,6 +286,10 @@ assertRoute(
   "signed out user visiting /admin/imports/pdf redirects to login",
 );
 assertRoute(
+  signedOutTags.status === 307 && signedOutTags.location.includes("/auth/login"),
+  "signed out user visiting /admin/tags redirects to login",
+);
+assertRoute(
   studentAdmin.status === 307 && studentAdmin.location.includes("/unauthorized"),
   "student visiting /admin redirects to unauthorized",
 );
@@ -306,6 +313,10 @@ assertRoute(
   "student visiting /admin/imports/pdf redirects to unauthorized",
 );
 assertRoute(
+  studentTags.status === 307 && studentTags.location.includes("/unauthorized"),
+  "student visiting /admin/tags redirects to unauthorized",
+);
+assertRoute(
   adminHome.status === 200 &&
     adminHome.text.includes("Create demo records") &&
     adminHome.text.includes("Review Drafts") &&
@@ -321,6 +332,15 @@ assertRoute(
     adminQuestions.text.includes("Markdown + LaTeX") &&
     adminQuestions.text.includes("Advanced HTML"),
   "admin questions renders filters, checkbox tag picker, and Markdown LaTeX editor",
+);
+assertRoute(
+  adminTags.status === 200 &&
+    adminTags.text.includes("Five-facet official tag system") &&
+    adminTags.text.includes("Catalog seed preview") &&
+    adminTags.text.includes("Approved assignment write preview") &&
+    adminTags.text.includes("No provider calls") &&
+    adminTags.text.includes("No Review Draft mutation"),
+  "admin tags renders five-facet seed and approved assignment previews",
 );
 assertRoute(
   adminImports.status === 200 &&

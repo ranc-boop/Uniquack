@@ -3920,6 +3920,45 @@ console.log(
   "PASS five-facet admin persistence builds catalog seed and approved assignment write plans without AI import writes",
 );
 
+const adminTagsActionsSource = await readFile(
+  new URL("../src/app/admin/tags/actions.ts", import.meta.url),
+  "utf8",
+);
+const fiveFacetAdminPanelSource = await readFile(
+  new URL(
+    "../src/components/admin/five-facet-tags/five-facet-tag-admin-panel.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+assert.ok(adminTagsActionsSource.includes('"use server"'));
+assert.ok(adminTagsActionsSource.includes("seedOfficialFiveFacetCatalog"));
+assert.ok(
+  adminTagsActionsSource.includes("persistApprovedFiveFacetTagAssignments"),
+);
+assert.ok(adminTagsActionsSource.includes("requireAdmin()"));
+assert.ok(adminTagsActionsSource.includes("seedFiveFacetCatalog"));
+assert.ok(adminTagsActionsSource.includes("persistApprovedFiveFacetAssignments"));
+assert.equal(
+  /processAIPdfImport|generateContent|openai|gemini|anthropic|reviewDraftTags|question_tags\.insert|ai_provider_profiles/i.test(
+    adminTagsActionsSource,
+  ),
+  false,
+);
+assert.ok(fiveFacetAdminPanelSource.includes("Catalog seed preview"));
+assert.ok(fiveFacetAdminPanelSource.includes("Approved assignment write preview"));
+assert.ok(fiveFacetAdminPanelSource.includes("No provider calls"));
+assert.ok(fiveFacetAdminPanelSource.includes("No Review Draft mutation"));
+assert.equal(
+  /rawProviderResponse|fullPdfText|imageBytes|;base64,|JVBERi0|iVBORw0KGgo/i.test(
+    fiveFacetAdminPanelSource,
+  ),
+  false,
+);
+console.log(
+  "PASS five-facet admin execution UI is server-action guarded without provider, extraction, or Review Draft writes",
+);
+
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({
   answerMarkerHints: [],
   assetHints: [],
