@@ -172,6 +172,12 @@ const {
   validateFiveFacetQuestionTagAssignmentRow,
 } = await import("../src/lib/tags/five-facet-tag-assignment.ts");
 const {
+  buildFiveFacetQuestionBankSearchPlan,
+  emptyFiveFacetQuestionSearchFilter,
+  filterQuestionsByFiveFacetAssignments,
+  hasFiveFacetQuestionBankFilters,
+} = await import("../src/lib/tags/five-facet-question-search.ts");
+const {
   buildApprovedTagAssignmentWritePlan,
   buildFiveFacetCatalogSeedRows,
   buildFiveFacetCatalogSyncPlan,
@@ -3802,6 +3808,148 @@ assert.equal(
 );
 console.log(
   "PASS five-facet tag assignment and search contract validates approved actions and planning-only filters",
+);
+
+const fiveFacetQuestionBankSearchPlan = buildFiveFacetQuestionBankSearchPlan(
+  {
+    difficulty: { max: 700, min: 200 },
+    exclude: {
+      form: ["form.table.data_table"],
+    },
+    include: {
+      concept: ["concept.algebra.functions.quadratic.vertex"],
+      curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+      form: ["form.symbolic.vertex_form"],
+      method: ["method.algebraic_manipulation.complete_the_square"],
+      task: ["task.determine.determine_extreme_value"],
+    },
+    requireReviewed: true,
+  },
+  { generatedAt: new Date(0).toISOString() },
+);
+assert.equal(
+  fiveFacetQuestionBankSearchPlan.version,
+  "five_facet_question_bank_search_plan_v1",
+);
+assert.equal(fiveFacetQuestionBankSearchPlan.mode, "planning_only");
+assert.equal(fiveFacetQuestionBankSearchPlan.valid, true);
+assert.equal(fiveFacetQuestionBankSearchPlan.noProviderCall, true);
+assert.equal(fiveFacetQuestionBankSearchPlan.noDbMutation, true);
+assert.equal(fiveFacetQuestionBankSearchPlan.noReviewDraftWrite, true);
+assert.equal(fiveFacetQuestionBankSearchPlan.noExtractionBehaviorChange, true);
+assert.equal(
+  fiveFacetQuestionBankSearchPlan.assignmentQuery.table,
+  "five_facet_question_tag_assignments",
+);
+assert.equal(fiveFacetQuestionBankSearchPlan.assignmentQuery.requireReviewed, true);
+assert.equal(
+  fiveFacetQuestionBankSearchPlan.assignmentQuery.includeConceptExpansion[0]
+    .hierarchyMutation,
+  false,
+);
+assert.ok(
+  fiveFacetQuestionBankSearchPlan.assignmentQuery.includeConceptExpansion[0]
+    .conceptTagIds.length > 0,
+);
+assert.equal(
+  hasFiveFacetQuestionBankFilters(emptyFiveFacetQuestionSearchFilter()),
+  false,
+);
+const fiveFacetQuestionBankSearchResult =
+  filterQuestionsByFiveFacetAssignments({
+    assignments: [
+      {
+        category: "curriculum",
+        question_id: "question-a",
+        review_status: "approved",
+        tag_id: "curriculum.bc.precalculus_11.quadratic_functions",
+      },
+      {
+        category: "concept",
+        question_id: "question-a",
+        review_status: "approved",
+        tag_id: "concept.algebra.functions.quadratic.vertex",
+      },
+      {
+        category: "method",
+        question_id: "question-a",
+        review_status: "approved",
+        tag_id: "method.algebraic_manipulation.complete_the_square",
+      },
+      {
+        category: "task",
+        question_id: "question-a",
+        review_status: "approved",
+        tag_id: "task.determine.determine_extreme_value",
+      },
+      {
+        category: "form",
+        question_id: "question-a",
+        review_status: "approved",
+        tag_id: "form.symbolic.vertex_form",
+      },
+      {
+        category: "concept",
+        question_id: "question-b",
+        review_status: "pending_review",
+        tag_id: "concept.algebra.functions.quadratic.vertex",
+      },
+    ],
+    filter: {
+      difficulty: { max: 700, min: 200 },
+      include: {
+        concept: ["concept.algebra.functions.quadratic.vertex"],
+        form: ["form.symbolic.vertex_form"],
+        method: ["method.algebraic_manipulation.complete_the_square"],
+        task: ["task.determine.determine_extreme_value"],
+      },
+      requireReviewed: true,
+    },
+    questions: [
+      { difficulty_rating: 500, id: "question-a" },
+      { difficulty_rating: 500, id: "question-b" },
+      { difficulty_rating: 900, id: "question-c" },
+    ],
+  });
+assert.equal(fiveFacetQuestionBankSearchResult.valid, true);
+assert.deepEqual(fiveFacetQuestionBankSearchResult.matchedQuestionIds, [
+  "question-a",
+]);
+const invalidFiveFacetQuestionBankSearchPlan =
+  buildFiveFacetQuestionBankSearchPlan({
+    difficulty: { max: 100, min: 900 },
+    include: {
+      concept: ["form.symbolic.vertex_form"],
+      error_pattern: ["error_pattern.sign_error"],
+    },
+  });
+assert.equal(invalidFiveFacetQuestionBankSearchPlan.valid, false);
+assert.ok(
+  invalidFiveFacetQuestionBankSearchPlan.errors.includes(
+    "include.wrong_category:form.symbolic.vertex_form:expected_concept",
+  ),
+);
+assert.ok(
+  invalidFiveFacetQuestionBankSearchPlan.errors.includes(
+    "include.error_pattern_is_attempt_diagnosis_not_question_taxonomy",
+  ),
+);
+assert.ok(
+  invalidFiveFacetQuestionBankSearchPlan.errors.includes(
+    "difficulty.min_cannot_exceed_max",
+  ),
+);
+assert.equal(
+  /reviewDraftTags|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify({
+      fiveFacetQuestionBankSearchPlan,
+      fiveFacetQuestionBankSearchResult,
+    }),
+  ),
+  false,
+);
+console.log(
+  "PASS five-facet question bank search validates filters and matches reviewed assignments without writes",
 );
 
 const fiveFacetCatalogSeedRows = buildFiveFacetCatalogSeedRows();
