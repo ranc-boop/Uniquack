@@ -134,6 +134,12 @@ const {
   mergeFiveFacetQuestionTaggingPlanIntoSummary,
 } = await import("../src/lib/ai-pdf-import/five-facet-question-tagging.ts");
 const {
+  buildFiveFacetTagReviewActionPlanFromSummary,
+  mergeFiveFacetTagReviewActionPlanIntoSummary,
+} = await import(
+  "../src/lib/ai-pdf-import/five-facet-tag-review-actions.ts"
+);
+const {
   getCurriculumConceptMappings,
   getFiveFacetTagAncestors,
   getFiveFacetTagCatalog,
@@ -3303,6 +3309,149 @@ assert.deepEqual(fiveFacetQuestionTaggingMergedAiPdfImport.warnings, [
 ]);
 console.log(
   "PASS AI five-facet question tagging creates rule-based review-only suggestions from catalog metadata",
+);
+
+const fiveFacetTagReviewActionPlan =
+  buildFiveFacetTagReviewActionPlanFromSummary({
+    aiPdfImport: fiveFacetQuestionTaggingMergedAiPdfImport,
+  });
+assert.equal(
+  fiveFacetTagReviewActionPlan.version,
+  "five_facet_tag_review_action_plan_v1",
+);
+assert.equal(fiveFacetTagReviewActionPlan.mode, "planning_only");
+assert.ok(fiveFacetTagReviewActionPlan.actionCount > 0);
+assert.equal(
+  fiveFacetTagReviewActionPlan.validation.allActionsPendingReview,
+  true,
+);
+assert.equal(
+  fiveFacetTagReviewActionPlan.validation.allActionsRequireHumanReview,
+  true,
+);
+assert.equal(fiveFacetTagReviewActionPlan.validation.noProviderCall, true);
+assert.equal(fiveFacetTagReviewActionPlan.validation.noDbMutation, true);
+assert.equal(
+  fiveFacetTagReviewActionPlan.validation.noOfficialTagWrite,
+  true,
+);
+assert.equal(
+  fiveFacetTagReviewActionPlan.validation.noReviewDraftWrite,
+  true,
+);
+assert.ok(
+  fiveFacetTagReviewActionPlan.actions.some(
+    (action) => action.actionKind === "approve_bundle",
+  ),
+);
+assert.equal(
+  fiveFacetTagReviewActionPlan.actions.every(
+    (action) =>
+      action.status === "pending_review" &&
+      action.reviewRequired === true &&
+      action.safety.noDbMutation === true &&
+      action.safety.noOfficialTagWrite === true &&
+      action.safety.noReviewDraftWrite === true &&
+      action.safety.noProviderCall === true,
+  ),
+  true,
+);
+
+const invalidFiveFacetTaggingPlan = {
+  ...fiveFacetQuestionTaggingPlan,
+  suggestions: [
+    {
+      ...quadraticSuggestion,
+      tags: {
+        ...quadraticSuggestion.tags,
+        concept: ["not.a.catalog.tag"],
+        curriculum: [],
+      },
+    },
+  ],
+};
+const invalidFiveFacetTagReviewActionPlan =
+  buildFiveFacetTagReviewActionPlanFromSummary({
+    aiPdfImport: {
+      fiveFacetQuestionTaggingPlan: invalidFiveFacetTaggingPlan,
+    },
+  });
+assert.ok(
+  invalidFiveFacetTagReviewActionPlan.actions.some(
+    (action) => action.actionKind === "reject_bundle",
+  ),
+);
+assert.ok(
+  invalidFiveFacetTagReviewActionPlan.actions.some(
+    (action) => action.actionKind === "edit_bundle",
+  ),
+);
+assert.ok(
+  invalidFiveFacetTagReviewActionPlan.actions.some(
+    (action) => action.actionKind === "request_manual_review",
+  ),
+);
+assert.ok(
+  invalidFiveFacetTagReviewActionPlan.actions.some(
+    (action) => action.actionKind === "reject_single_tag",
+  ),
+);
+assert.ok(
+  invalidFiveFacetTagReviewActionPlan.actions.some(
+    (action) => action.actionKind === "replace_tag",
+  ),
+);
+
+const ambiguousFiveFacetTagReviewActionPlan =
+  buildFiveFacetTagReviewActionPlanFromSummary({
+    aiPdfImport: {
+      fiveFacetQuestionTaggingPlan: ambiguousTaggingPlan,
+    },
+  });
+assert.ok(
+  ambiguousFiveFacetTagReviewActionPlan.actions.some(
+    (action) => action.actionKind === "mark_ambiguous",
+  ),
+);
+assert.ok(
+  ambiguousFiveFacetTagReviewActionPlan.actions.some(
+    (action) => action.actionKind === "merge_alias_candidate",
+  ),
+);
+assert.equal(
+  /reviewDraftTags|data:image|;base64,|JVBERi0|iVBORw0KGgo|rawProviderResponse|fullPdfText|imageBytes/i.test(
+    JSON.stringify(fiveFacetTagReviewActionPlan),
+  ),
+  false,
+);
+const fiveFacetTagReviewMergedAiPdfImport =
+  mergeFiveFacetTagReviewActionPlanIntoSummary(
+    fiveFacetQuestionTaggingMergedAiPdfImport,
+    fiveFacetTagReviewActionPlan,
+  );
+assert.equal(
+  fiveFacetTagReviewMergedAiPdfImport.fiveFacetTagReviewActionPlan.version,
+  "five_facet_tag_review_action_plan_v1",
+);
+assert.equal(
+  fiveFacetTagReviewMergedAiPdfImport.fiveFacetQuestionTaggingPlan.version,
+  "five_facet_question_tagging_plan_v1",
+);
+assert.equal(
+  fiveFacetTagReviewMergedAiPdfImport.fiveFacetTagTaxonomyPlan.version,
+  "five_facet_tag_taxonomy_plan_v1",
+);
+assert.equal(
+  fiveFacetTagReviewMergedAiPdfImport.taxonomyPersistencePlan.version,
+  "taxonomy_persistence_plan_v1",
+);
+assert.equal(fiveFacetTagReviewMergedAiPdfImport.chunking.totalChunks, 4);
+assert.equal(fiveFacetTagReviewMergedAiPdfImport.provider.id, "provider-1");
+assert.deepEqual(fiveFacetTagReviewMergedAiPdfImport.warnings, [
+  "keep existing warning",
+]);
+console.log(
+  "PASS AI five-facet tag review actions create planning-only pending-review drafts without writes",
 );
 
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({
