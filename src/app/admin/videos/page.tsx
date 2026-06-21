@@ -28,12 +28,6 @@ import {
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
-import {
-  buildTaxonomyVideoBankSearchPlan,
-  filterVideosByTaxonomyAssignments,
-  hasTaxonomyVideoBankFilters,
-  type TaxonomyVideoSearchAssignmentRow,
-} from "@/lib/tags/taxonomy-video-search";
 import { isAllowedVideoEmbedUrl } from "@/lib/validations/video";
 
 type AdminVideosPageProps = {
@@ -71,7 +65,7 @@ function selectedTagsForFacets({
       facet.facet_key,
       tagIdList(params[`${prefix}_${facet.facet_key}`]),
     ]),
-  ) as Record<TaxonomyVideoSearchAssignmentRow["category"], string[]>;
+  ) as Record<string, string[]>;
 }
 
 function isMissingTaxonomyVideoTableError(error: unknown) {
@@ -108,8 +102,20 @@ export default async function AdminVideosPage({
     }),
     requireReviewed: firstParam(params.tax_reviewed) !== "false",
   };
-  const hasTaxonomyFilters = hasTaxonomyVideoBankFilters(taxonomyFilter);
-  const taxonomySearchPlan = buildTaxonomyVideoBankSearchPlan(taxonomyFilter);
+  const { data: matchingQuestionRows, error: taxonomyRpcError } =
+    await supabase.rpc("search_questions_by_taxonomy", {
+      assignment_review_status: taxonomyFilter.requireReviewed
+        ? "approved"
+        : null,
+      exclude_tag_ids: Object.values(taxonomyFilter.exclude).flat(),
+      include_tag_ids: Object.values(taxonomyFilter.include).flat(),
+      page_limit: 100,
+      page_offset: 0,
+      question_status: "published",
+    });
+  const matchingQuestionIds = new Set(
+    (matchingQuestionRows ?? []).map((row) => row.question_id),
+  );
   const [
     { data: videos, error },
     { data: questions },
@@ -136,8 +142,11 @@ export default async function AdminVideosPage({
     string,
     TaxonomyTagChipAssignment[]
   >();
-  let taxonomyAssignments: TaxonomyVideoSearchAssignmentRow[] = [];
-  let taxonomySearchMessage: string | null = null;
+  let taxonomySearchMessage: string | null = taxonomyRpcError
+    ? isMissingTaxonomyVideoTableError(taxonomyRpcError)
+      ? "Taxonomy search RPC is unavailable. Apply migrations 0011 and 0012."
+      : `Taxonomy search is unavailable: ${taxonomyRpcError.message}`
+    : null;
 
   const videoByQuestionId = new Map(
     (videos ?? []).map((video) => [video.question_id, video]),
@@ -156,47 +165,25 @@ export default async function AdminVideosPage({
         ? "Taxonomy assignments are unavailable. Apply migration 0011_math_taxonomy_source_of_truth.sql to enable official tags."
         : `Taxonomy assignments are unavailable: ${taxonomyAssignmentsError.message}`;
     } else {
-      taxonomyAssignments = (data ?? [])
-        .map((assignment) => {
-          const video = videoByQuestionId.get(assignment.question_id);
-          if (!video) return null;
-          return {
-            category: assignment.tag_id.split(".")[0],
-            review_status: assignment.review_status,
-            tag_id: assignment.tag_id,
-            video_id: video.id,
-          } as TaxonomyVideoSearchAssignmentRow;
-        })
-        .filter((assignment): assignment is TaxonomyVideoSearchAssignmentRow =>
-          Boolean(assignment),
-        );
-      for (const assignment of taxonomyAssignments) {
+      for (const assignment of data ?? []) {
+        const video = videoByQuestionId.get(assignment.question_id);
+        if (!video) continue;
         const current =
-          taxonomyAssignmentsByVideoId.get(assignment.video_id) ?? [];
+          taxonomyAssignmentsByVideoId.get(video.id) ?? [];
         current.push({
-          category: assignment.category,
           review_status: assignment.review_status,
           tag_id: assignment.tag_id,
         });
-        taxonomyAssignmentsByVideoId.set(assignment.video_id, current);
+        taxonomyAssignmentsByVideoId.set(video.id, current);
       }
     }
   }
 
-  const taxonomySearchResult =
-    hasTaxonomyFilters && taxonomySearchPlan.valid && !taxonomySearchMessage
-      ? filterVideosByTaxonomyAssignments({
-          assignments: taxonomyAssignments,
-          filter: taxonomyFilter,
-          videos: videos ?? [],
-        })
-      : null;
-  const taxonomyMatchedIds = new Set(
-    taxonomySearchResult?.matchedVideoIds ?? [],
-  );
-  const filteredVideos = taxonomySearchResult
-    ? (videos ?? []).filter((video) => taxonomyMatchedIds.has(video.id))
-    : videos ?? [];
+  const filteredVideos = taxonomyRpcError
+    ? []
+    : (videos ?? []).filter((video) =>
+        matchingQuestionIds.has(video.question_id),
+      );
 
   return (
     <div className="space-y-6">
@@ -255,17 +242,8 @@ export default async function AdminVideosPage({
                 </div>
               </div>
             </details>
-            {hasTaxonomyFilters ? (
+            {taxonomySearchMessage || taxonomyCatalogError ? (
               <div className="space-y-1 text-xs">
-                <p className="text-muted-foreground">
-                  Taxonomy video search contract: curriculum tags can expand
-                  to mapped concepts without hierarchy mutation.
-                </p>
-                {taxonomySearchPlan.errors.length ? (
-                  <p className="text-destructive">
-                    {taxonomySearchPlan.errors.slice(0, 3).join("; ")}
-                  </p>
-                ) : null}
                 {taxonomySearchMessage ? (
                   <p className="text-amber-700">{taxonomySearchMessage}</p>
                 ) : null}
@@ -274,7 +252,8 @@ export default async function AdminVideosPage({
                 ) : null}
               </div>
             ) : null}
-            {!taxonomySearchMessage && !taxonomyAssignments.length ? (
+            {!taxonomySearchMessage &&
+            taxonomyAssignmentsByVideoId.size === 0 ? (
               <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
                 No linked question taxonomy tags assigned yet.
               </p>

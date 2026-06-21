@@ -416,6 +416,7 @@ export type Database = {
           page_limit?: number | null;
           page_offset?: number | null;
           question_status?: string | null;
+          query_text?: string | null;
         };
         Returns: Array<{
           difficulty_rating: number;

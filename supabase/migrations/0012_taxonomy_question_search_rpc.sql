@@ -7,6 +7,7 @@ create or replace function public.search_questions_by_taxonomy(
   difficulty_min integer default null,
   difficulty_max integer default null,
   question_status text default 'published',
+  query_text text default null,
   assignment_review_status text default 'approved',
   page_limit integer default 50,
   page_offset integer default 0
@@ -137,6 +138,11 @@ filtered_questions as (
   select q.*
   from public.questions q
   where (question_status is null or q.status = question_status)
+    and (
+      nullif(btrim(query_text), '') is null
+      or q.question_code ilike '%' || btrim(query_text) || '%'
+      or q.title ilike '%' || btrim(query_text) || '%'
+    )
     and (difficulty_min is null or q.difficulty_rating >= difficulty_min)
     and (difficulty_max is null or q.difficulty_rating <= difficulty_max)
     and not exists (
@@ -215,7 +221,7 @@ grant execute on function public.search_questions_by_taxonomy(
   integer,
   text,
   text,
+  text,
   integer,
   integer
 ) to authenticated, anon;
-

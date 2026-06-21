@@ -40,12 +40,6 @@ import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
-import {
-  buildTaxonomyQuestionBankSearchPlan,
-  filterQuestionsByTaxonomyAssignments,
-  hasTaxonomyQuestionBankFilters,
-  type TaxonomyQuestionSearchAssignmentRow,
-} from "@/lib/tags/taxonomy-question-search";
 
 type AdminQuestionsPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined> & {
@@ -56,6 +50,7 @@ type AdminQuestionsPageProps = {
     tax_reviewed?: string | string[];
     tax_search?: string | string[];
     q?: string;
+    page?: string;
     saved?: string;
     status?: string;
   }>;
@@ -79,8 +74,25 @@ function tagIdList(value: string | string[] | undefined) {
     .filter(Boolean);
 }
 
-function facetFromTagId(tagId: string) {
-  return tagId.split(".")[0] as TaxonomyQuestionSearchAssignmentRow["category"];
+function parsePage(value: string | string[] | undefined) {
+  const parsed = Number(firstParam(value));
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.trunc(parsed) : 1;
+}
+
+function pageHref(
+  params: Record<string, string | string[] | undefined>,
+  page: number,
+) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "page" || key === "error" || key === "saved") continue;
+    for (const item of Array.isArray(value) ? value : value ? [value] : []) {
+      query.append(key, item);
+    }
+  }
+  if (page > 1) query.set("page", String(page));
+  const serialized = query.toString();
+  return serialized ? `/admin/questions?${serialized}` : "/admin/questions";
 }
 
 function selectedTagsForFacets({
@@ -97,7 +109,7 @@ function selectedTagsForFacets({
       facet.facet_key,
       tagIdList(params[`${prefix}_${facet.facet_key}`]),
     ]),
-  ) as Record<TaxonomyQuestionSearchAssignmentRow["category"], string[]>;
+  ) as Record<string, string[]>;
 }
 
 function numericParam(value: string | string[] | undefined) {
@@ -147,45 +159,89 @@ export default async function AdminQuestionsPage({
   };
   const selectedTaxonomyInclude = taxonomyFilter.include;
   const selectedTaxonomyExclude = taxonomyFilter.exclude;
-  const hasTaxonomyFilters = hasTaxonomyQuestionBankFilters(taxonomyFilter);
-  const taxonomySearchPlan = buildTaxonomyQuestionBankSearchPlan(taxonomyFilter);
+  const page = parsePage(params.page);
+  const pageSize = 50;
+  const includeTagIds = Object.values(taxonomyFilter.include).flat();
+  const excludeTagIds = Object.values(taxonomyFilter.exclude).flat();
+  const difficultyMin = Number.isFinite(taxonomyFilter.difficulty.min)
+    ? taxonomyFilter.difficulty.min
+    : null;
+  const difficultyMax = Number.isFinite(taxonomyFilter.difficulty.max)
+    ? taxonomyFilter.difficulty.max
+    : null;
+  const facetByTagId = new Map(
+    taxonomyCatalog.nodes.map((node) => [node.tag_id, node.facet_key]),
+  );
+  const {
+    data: taxonomySearchRows,
+    error: taxonomyRpcError,
+  } = await supabase.rpc("search_questions_by_taxonomy", {
+    assignment_review_status: taxonomyFilter.requireReviewed
+      ? "approved"
+      : null,
+    difficulty_max: difficultyMax,
+    difficulty_min: difficultyMin,
+    exclude_tag_ids: excludeTagIds,
+    include_tag_ids: includeTagIds,
+    page_limit: pageSize,
+    page_offset: (page - 1) * pageSize,
+    query_text: search || null,
+    question_status: selectedStatus || null,
+  });
+  const orderedQuestionIds = (taxonomySearchRows ?? []).map(
+    (row) => row.question_id,
+  );
+  const totalQuestions = Number(taxonomySearchRows?.[0]?.total_count ?? 0);
+  const questionOrder = new Map(
+    orderedQuestionIds.map((questionId, index) => [questionId, index]),
+  );
   const [
     { data: questions, error },
     { data: questionAssets },
     { data: questionSourceFiles },
   ] =
     await Promise.all([
-      supabase
-        .from("questions")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("question_assets")
-        .select(
-          "id, question_id, object_path, original_filename, display_on_detail",
-        )
-        .eq("status", "ready")
-        .limit(1000),
-      supabase
-        .from("question_source_files")
-        .select(
-          "id, question_id, original_filename, mime_type, size_bytes, status",
-        )
-        .neq("status", "deleted")
-        .limit(1000),
+      orderedQuestionIds.length
+        ? supabase.from("questions").select("*").in("id", orderedQuestionIds)
+        : Promise.resolve({ data: [], error: null }),
+      orderedQuestionIds.length
+        ? supabase
+            .from("question_assets")
+            .select(
+              "id, question_id, object_path, original_filename, display_on_detail",
+            )
+            .eq("status", "ready")
+            .in("question_id", orderedQuestionIds)
+        : Promise.resolve({ data: [], error: null }),
+      orderedQuestionIds.length
+        ? supabase
+            .from("question_source_files")
+            .select(
+              "id, question_id, original_filename, mime_type, size_bytes, status",
+            )
+            .neq("status", "deleted")
+            .in("question_id", orderedQuestionIds)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
-  const questionIds = (questions ?? []).map((question) => question.id);
+  const filteredQuestions = [...(questions ?? [])].sort(
+    (left, right) =>
+      (questionOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+      (questionOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+  );
+  const questionIds = filteredQuestions.map((question) => question.id);
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
   const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
-  let taxonomyAssignments: TaxonomyQuestionSearchAssignmentRow[] = [];
   const taxonomyAssignmentsByQuestionId = new Map<
     string,
     TaxonomyTagChipAssignment[]
   >();
-  let taxonomySearchMessage: string | null = null;
+  let taxonomySearchMessage: string | null = taxonomyRpcError
+    ? isMissingTaxonomyTableError(taxonomyRpcError)
+      ? "Taxonomy search RPC is unavailable. Apply migrations 0011 and 0012."
+      : `Taxonomy search is unavailable: ${taxonomyRpcError.message}`
+    : null;
   const { data: importItems } = questionIds.length
     ? await supabase
         .from("import_batch_items")
@@ -204,15 +260,11 @@ export default async function AdminQuestionsPage({
         ? "Taxonomy assignment tables are not available yet. Apply migration 0011_math_taxonomy_source_of_truth.sql to enable these filters."
         : `Taxonomy filters are unavailable: ${taxonomyAssignmentsError.message}`;
     } else {
-      taxonomyAssignments = (data ?? []).map((assignment) => ({
-        ...assignment,
-        category: facetFromTagId(assignment.tag_id),
-      })) as TaxonomyQuestionSearchAssignmentRow[];
-      for (const assignment of taxonomyAssignments) {
+      for (const assignment of data ?? []) {
         const current =
           taxonomyAssignmentsByQuestionId.get(assignment.question_id) ?? [];
         current.push({
-          category: assignment.category,
+          facet_key: facetByTagId.get(assignment.tag_id),
           review_status: assignment.review_status,
           tag_id: assignment.tag_id,
         });
@@ -269,33 +321,6 @@ export default async function AdminQuestionsPage({
       extractImportAssetReferences(item.normalized_question_json),
     );
   }
-
-  const baseFilteredQuestions = (questions ?? []).filter((question) => {
-    const searchMatches =
-      !search ||
-      question.question_code.toLowerCase().includes(search) ||
-      question.title.toLowerCase().includes(search);
-    const statusMatches = !selectedStatus || question.status === selectedStatus;
-
-    return searchMatches && statusMatches;
-  });
-  const taxonomySearchResult =
-    hasTaxonomyFilters && taxonomySearchPlan.valid && !taxonomySearchMessage
-      ? filterQuestionsByTaxonomyAssignments({
-          assignments: taxonomyAssignments,
-          filter: taxonomyFilter,
-          questions: baseFilteredQuestions.map((question) => ({
-            difficulty_rating: question.difficulty_rating,
-            id: question.id,
-          })),
-        })
-      : null;
-  const taxonomyMatchedIds = new Set(
-    taxonomySearchResult?.matchedQuestionIds ?? [],
-  );
-  const filteredQuestions = taxonomySearchResult
-    ? baseFilteredQuestions.filter((question) => taxonomyMatchedIds.has(question.id))
-    : baseFilteredQuestions;
 
   return (
     <div className="space-y-6">
@@ -513,18 +538,8 @@ export default async function AdminQuestionsPage({
                   </div>
                 </div>
               </details>
-              {hasTaxonomyFilters ? (
+              {taxonomySearchMessage || taxonomyCatalogError ? (
                 <div className="space-y-1 text-xs">
-                  <p className="text-muted-foreground">
-                    Taxonomy search contract: reviewed-only assignments use
-                    explicit curriculum-to-concept expansion without hierarchy
-                    mutation.
-                  </p>
-                  {taxonomySearchPlan.errors.length ? (
-                    <p className="text-destructive">
-                      {taxonomySearchPlan.errors.slice(0, 3).join("; ")}
-                    </p>
-                  ) : null}
                   {taxonomySearchMessage ? (
                     <p className="text-amber-700">{taxonomySearchMessage}</p>
                   ) : null}
@@ -534,18 +549,35 @@ export default async function AdminQuestionsPage({
                 </div>
               ) : null}
               {!taxonomySearchMessage &&
-              taxonomyAssignments.length === 0 ? (
+              taxonomyAssignmentsByQuestionId.size === 0 ? (
                 <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                  No official taxonomy tag assignments yet. Seed the catalog
-                  and persist approved assignments from /admin/tags.
+                  No taxonomy assignments are present on this result page.
                 </p>
               ) : null}
             </div>
           </form>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Showing {filteredQuestions.length} of {(questions ?? []).length}
-            questions.
-          </p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <p>
+              Showing {filteredQuestions.length} of {totalQuestions} matching
+              questions.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button asChild disabled={page <= 1} size="sm" variant="outline">
+                <Link href={pageHref(params, Math.max(1, page - 1))}>
+                  Previous
+                </Link>
+              </Button>
+              <span>Page {page}</span>
+              <Button
+                asChild
+                disabled={page * pageSize >= totalQuestions}
+                size="sm"
+                variant="outline"
+              >
+                <Link href={pageHref(params, page + 1)}>Next</Link>
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
       {error ? (
