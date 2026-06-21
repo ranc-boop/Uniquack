@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import type { Question, Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +95,7 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
   }
 
   const supabase = await createClient();
+  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   const { data: video, error: videoError } = await supabase
     .from("videos")
     .select(
@@ -202,6 +204,7 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
             <TaxonomyTagChips
               assignments={officialTaxonomyAssignments}
               emptyLabel="No taxonomy tags assigned yet."
+              taxonomyCatalog={taxonomyCatalog}
             />
           </section>
 

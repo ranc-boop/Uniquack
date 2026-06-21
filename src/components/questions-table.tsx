@@ -5,6 +5,7 @@ import {
   TaxonomyTagChips,
   type TaxonomyTagChipAssignment,
 } from "@/components/tags/taxonomy-tag-chips";
+import type { TaxonomyCatalogView } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -25,6 +26,7 @@ type QuestionRow = {
 };
 
 type QuestionsTableProps = {
+  taxonomyCatalog: TaxonomyCatalogView;
   taxonomyTagsByQuestionId?: Record<string, TaxonomyTagChipAssignment[]>;
   questions: QuestionRow[];
 };
@@ -54,6 +56,7 @@ function ClickableCell({
 }
 
 export function QuestionsTable({
+  taxonomyCatalog,
   taxonomyTagsByQuestionId = {},
   questions,
 }: QuestionsTableProps) {
@@ -97,6 +100,7 @@ export function QuestionsTable({
                     assignments={taxonomyTagsByQuestionId[question.id]}
                     emptyLabel="No taxonomy tags assigned yet."
                     showCategoryHeadings={false}
+                    taxonomyCatalog={taxonomyCatalog}
                   />
                 </ClickableCell>
                 <ClickableCell href={href} label={label}>

@@ -10,10 +10,6 @@ const require = createRequire(import.meta.url);
 const {
   buildTaxonomyQuestionTagSearchPlan,
 } = require("./taxonomy-tag-assignment.ts") as typeof import("@/lib/tags/taxonomy-tag-assignment");
-const {
-  getCurriculumConceptMappings,
-  listTaxonomyTagCategories,
-} = require("./taxonomy-tag-catalog.ts") as typeof import("@/lib/tags/taxonomy-tag-catalog");
 
 export interface TaxonomyQuestionSearchAssignmentRow {
   category: AITaxonomyTagCategory;
@@ -59,14 +55,21 @@ export interface TaxonomyQuestionBankSearchResult {
   warnings: string[];
 }
 
-const TAXONOMY_CATEGORIES = listTaxonomyTagCategories();
-
 function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function emptyCategoryMap(): Record<AITaxonomyTagCategory, string[]> {
-  return TAXONOMY_CATEGORIES.reduce(
+function taxonomyCategoriesFromFilter(filter: TaxonomyQuestionTagSearchFilterInput) {
+  return uniqueStrings([
+    ...Object.keys(filter.include ?? {}),
+    ...Object.keys(filter.exclude ?? {}),
+  ]) as AITaxonomyTagCategory[];
+}
+
+function emptyCategoryMap(
+  categories: string[] = ["curriculum", "concept", "method", "task", "form"],
+): Record<AITaxonomyTagCategory, string[]> {
+  return categories.reduce(
     (accumulator, category) => ({
       ...accumulator,
       [category]: [],
@@ -77,9 +80,7 @@ function emptyCategoryMap(): Record<AITaxonomyTagCategory, string[]> {
 
 function curriculumConceptExpansion(curriculumTagIds: string[]) {
   return curriculumTagIds.map((curriculumTagId) => ({
-    conceptTagIds: getCurriculumConceptMappings(curriculumTagId).map(
-      (node) => node.tagId,
-    ),
+    conceptTagIds: [],
     curriculumTagId,
     hierarchyMutation: false as const,
   }));
@@ -128,8 +129,9 @@ function questionMatchesIncludeFilters({
   plan: TaxonomyQuestionBankSearchPlan;
 }) {
   const { include, requireReviewed } = plan.filter;
+  const categories = taxonomyCategoriesFromFilter(plan.filter);
 
-  for (const category of TAXONOMY_CATEGORIES) {
+  for (const category of categories) {
     if (!include[category].length) continue;
 
     if (
@@ -173,8 +175,9 @@ function questionMatchesExcludeFilters({
   plan: TaxonomyQuestionBankSearchPlan;
 }) {
   const { exclude, requireReviewed } = plan.filter;
+  const categories = taxonomyCategoriesFromFilter(plan.filter);
 
-  for (const category of TAXONOMY_CATEGORIES) {
+  for (const category of categories) {
     if (!exclude[category].length) continue;
 
     if (

@@ -9,6 +9,7 @@ import type { TaxonomyTagChipAssignment } from "@/components/tags/taxonomy-tag-c
 import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   }
 
   const supabase = await createClient();
+  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   let questionsQuery = supabase
     .from("questions")
     .select("id, question_code, title, content_html, difficulty_rating, status", {
@@ -210,6 +212,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       {questionRows.length ? (
         <QuestionsTable
           taxonomyTagsByQuestionId={taxonomyTagsByQuestionIdObject}
+          taxonomyCatalog={taxonomyCatalog}
           questions={questionRows}
         />
       ) : (

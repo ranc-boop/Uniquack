@@ -24,6 +24,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import type { Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -107,6 +108,7 @@ export default async function QuestionDetailPage({
   }
 
   const supabase = await createClient();
+  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   const { data: question, error: questionError } = await supabase
     .from("questions")
     .select(
@@ -309,6 +311,7 @@ export default async function QuestionDetailPage({
             <TaxonomyTagChips
               assignments={publicTaxonomyAssignments}
               emptyLabel="No taxonomy tags assigned yet."
+              taxonomyCatalog={taxonomyCatalog}
             />
           </SidebarCard>
 

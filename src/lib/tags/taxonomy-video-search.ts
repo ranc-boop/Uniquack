@@ -10,10 +10,6 @@ const require = createRequire(import.meta.url);
 const {
   buildTaxonomyVideoTagSearchPlan,
 } = require("./taxonomy-video-tag-assignment.ts") as typeof import("@/lib/tags/taxonomy-video-tag-assignment");
-const {
-  getCurriculumConceptMappings,
-  listTaxonomyTagCategories,
-} = require("./taxonomy-tag-catalog.ts") as typeof import("@/lib/tags/taxonomy-tag-catalog");
 
 export interface TaxonomyVideoSearchAssignmentRow {
   category: AITaxonomyTagCategory;
@@ -58,14 +54,21 @@ export interface TaxonomyVideoBankSearchResult {
   warnings: string[];
 }
 
-const TAXONOMY_CATEGORIES = listTaxonomyTagCategories();
-
 function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function emptyCategoryMap(): Record<AITaxonomyTagCategory, string[]> {
-  return TAXONOMY_CATEGORIES.reduce(
+function taxonomyCategoriesFromFilter(filter: TaxonomyVideoTagSearchFilterInput) {
+  return uniqueStrings([
+    ...Object.keys(filter.include ?? {}),
+    ...Object.keys(filter.exclude ?? {}),
+  ]) as AITaxonomyTagCategory[];
+}
+
+function emptyCategoryMap(
+  categories: string[] = ["curriculum", "concept", "method", "task", "form"],
+): Record<AITaxonomyTagCategory, string[]> {
+  return categories.reduce(
     (accumulator, category) => ({
       ...accumulator,
       [category]: [],
@@ -76,9 +79,7 @@ function emptyCategoryMap(): Record<AITaxonomyTagCategory, string[]> {
 
 function curriculumConceptExpansion(curriculumTagIds: string[]) {
   return curriculumTagIds.map((curriculumTagId) => ({
-    conceptTagIds: getCurriculumConceptMappings(curriculumTagId).map(
-      (node) => node.tagId,
-    ),
+    conceptTagIds: [],
     curriculumTagId,
     hierarchyMutation: false as const,
   }));
@@ -114,8 +115,9 @@ function videoMatchesIncludeFilters({
   plan: TaxonomyVideoBankSearchPlan;
 }) {
   const { include, requireReviewed } = plan.filter;
+  const categories = taxonomyCategoriesFromFilter(plan.filter);
 
-  for (const category of TAXONOMY_CATEGORIES) {
+  for (const category of categories) {
     if (!include[category].length) continue;
 
     if (
@@ -159,8 +161,9 @@ function videoMatchesExcludeFilters({
   plan: TaxonomyVideoBankSearchPlan;
 }) {
   const { exclude, requireReviewed } = plan.filter;
+  const categories = taxonomyCategoriesFromFilter(plan.filter);
 
-  for (const category of TAXONOMY_CATEGORIES) {
+  for (const category of categories) {
     if (!exclude[category].length) continue;
 
     if (

@@ -39,6 +39,7 @@ import {
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import {
   buildTaxonomyQuestionBankSearchPlan,
   filterQuestionsByTaxonomyAssignments,
@@ -47,23 +48,13 @@ import {
 } from "@/lib/tags/taxonomy-question-search";
 
 type AdminQuestionsPageProps = {
-  searchParams: Promise<{
+  searchParams: Promise<Record<string, string | string[] | undefined> & {
     error?: string;
-    ff_concept?: string | string[];
-    ff_curriculum?: string | string[];
-    ff_difficulty_max?: string | string[];
-    ff_difficulty_min?: string | string[];
-    ff_exclude_concept?: string | string[];
-    ff_exclude_curriculum?: string | string[];
-    ff_exclude_form?: string | string[];
-    ff_exclude_method?: string | string[];
-    ff_exclude_search?: string | string[];
-    ff_exclude_task?: string | string[];
-    ff_form?: string | string[];
-    ff_method?: string | string[];
-    ff_reviewed?: string | string[];
-    ff_search?: string | string[];
-    ff_task?: string | string[];
+    tax_difficulty_max?: string | string[];
+    tax_difficulty_min?: string | string[];
+    tax_exclude_search?: string | string[];
+    tax_reviewed?: string | string[];
+    tax_search?: string | string[];
     q?: string;
     saved?: string;
     status?: string;
@@ -88,8 +79,25 @@ function tagIdList(value: string | string[] | undefined) {
     .filter(Boolean);
 }
 
-function categoryFromTagId(tagId: string) {
+function facetFromTagId(tagId: string) {
   return tagId.split(".")[0] as TaxonomyQuestionSearchAssignmentRow["category"];
+}
+
+function selectedTagsForFacets({
+  facets,
+  params,
+  prefix,
+}: {
+  facets: { facet_key: string }[];
+  params: Record<string, string | string[] | undefined>;
+  prefix: string;
+}) {
+  return Object.fromEntries(
+    facets.map((facet) => [
+      facet.facet_key,
+      tagIdList(params[`${prefix}_${facet.facet_key}`]),
+    ]),
+  ) as Record<TaxonomyQuestionSearchAssignmentRow["category"], string[]>;
 }
 
 function numericParam(value: string | string[] | undefined) {
@@ -118,26 +126,24 @@ export default async function AdminQuestionsPage({
   const supabase = await createClient();
   const search = (params.q ?? "").trim().toLowerCase();
   const selectedStatus = safeStatusFilter(params.status);
+  const { catalog: taxonomyCatalog, errorMessage: taxonomyCatalogError } =
+    await loadTaxonomyCatalog(supabase);
   const taxonomyFilter = {
     difficulty: {
-      max: numericParam(params.ff_difficulty_max),
-      min: numericParam(params.ff_difficulty_min),
+      max: numericParam(params.tax_difficulty_max),
+      min: numericParam(params.tax_difficulty_min),
     },
-    exclude: {
-      concept: tagIdList(params.ff_exclude_concept),
-      curriculum: tagIdList(params.ff_exclude_curriculum),
-      form: tagIdList(params.ff_exclude_form),
-      method: tagIdList(params.ff_exclude_method),
-      task: tagIdList(params.ff_exclude_task),
-    },
-    include: {
-      concept: tagIdList(params.ff_concept),
-      curriculum: tagIdList(params.ff_curriculum),
-      form: tagIdList(params.ff_form),
-      method: tagIdList(params.ff_method),
-      task: tagIdList(params.ff_task),
-    },
-    requireReviewed: firstParam(params.ff_reviewed) !== "false",
+    exclude: selectedTagsForFacets({
+      facets: taxonomyCatalog.facets,
+      params,
+      prefix: "tax_exclude",
+    }),
+    include: selectedTagsForFacets({
+      facets: taxonomyCatalog.facets,
+      params,
+      prefix: "tax",
+    }),
+    requireReviewed: firstParam(params.tax_reviewed) !== "false",
   };
   const selectedTaxonomyInclude = taxonomyFilter.include;
   const selectedTaxonomyExclude = taxonomyFilter.exclude;
@@ -200,7 +206,7 @@ export default async function AdminQuestionsPage({
     } else {
       taxonomyAssignments = (data ?? []).map((assignment) => ({
         ...assignment,
-        category: categoryFromTagId(assignment.tag_id),
+        category: facetFromTagId(assignment.tag_id),
       })) as TaxonomyQuestionSearchAssignmentRow[];
       for (const assignment of taxonomyAssignments) {
         const current =
@@ -458,9 +464,10 @@ export default async function AdminQuestionsPage({
                 </p>
               </div>
               <TaxonomyTagTreePicker
-                namePrefix="ff"
-                searchQuery={firstParam(params.ff_search) ?? ""}
+                namePrefix="tax"
+                searchQuery={firstParam(params.tax_search) ?? ""}
                 selectedTagIds={selectedTaxonomyInclude}
+                taxonomyCatalog={taxonomyCatalog}
                 title="Include official taxonomy tags"
               />
               <details className="rounded-md border px-3 py-2">
@@ -469,34 +476,35 @@ export default async function AdminQuestionsPage({
                 </summary>
                 <div className="mt-3 space-y-3">
                   <TaxonomyTagTreePicker
-                    namePrefix="ff_exclude"
-                    searchName="ff_exclude_search"
-                    searchQuery={firstParam(params.ff_exclude_search) ?? ""}
+                    namePrefix="tax_exclude"
+                    searchName="tax_exclude_search"
+                    searchQuery={firstParam(params.tax_exclude_search) ?? ""}
                     selectedTagIds={selectedTaxonomyExclude}
+                    taxonomyCatalog={taxonomyCatalog}
                     title="Exclude official taxonomy tags"
                   />
                   <div className="grid gap-3 md:grid-cols-3">
                   <Input
-                    name="ff_difficulty_min"
-                    defaultValue={firstParam(params.ff_difficulty_min) ?? ""}
+                    name="tax_difficulty_min"
+                    defaultValue={firstParam(params.tax_difficulty_min) ?? ""}
                     placeholder="Difficulty min"
                     aria-label="Taxonomy difficulty minimum"
                     type="number"
                   />
                   <Input
-                    name="ff_difficulty_max"
-                    defaultValue={firstParam(params.ff_difficulty_max) ?? ""}
+                    name="tax_difficulty_max"
+                    defaultValue={firstParam(params.tax_difficulty_max) ?? ""}
                     placeholder="Difficulty max"
                     aria-label="Taxonomy difficulty maximum"
                     type="number"
                   />
                   <div className="space-y-2">
-                    <Label htmlFor="ff_reviewed">Assignments</Label>
+                    <Label htmlFor="tax_reviewed">Assignments</Label>
                     <select
-                      id="ff_reviewed"
-                      name="ff_reviewed"
+                      id="tax_reviewed"
+                      name="tax_reviewed"
                       className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                      defaultValue={firstParam(params.ff_reviewed) ?? "true"}
+                      defaultValue={firstParam(params.tax_reviewed) ?? "true"}
                     >
                       <option value="true">Reviewed only</option>
                       <option value="false">Any review status</option>
@@ -519,6 +527,9 @@ export default async function AdminQuestionsPage({
                   ) : null}
                   {taxonomySearchMessage ? (
                     <p className="text-amber-700">{taxonomySearchMessage}</p>
+                  ) : null}
+                  {taxonomyCatalogError ? (
+                    <p className="text-amber-700">{taxonomyCatalogError}</p>
                   ) : null}
                 </div>
               ) : null}
@@ -589,6 +600,7 @@ export default async function AdminQuestionsPage({
                         )}
                         emptyLabel="No taxonomy tags assigned yet."
                         showCategoryHeadings={false}
+                        taxonomyCatalog={taxonomyCatalog}
                       />
                     </TableCell>
                     <TableCell>{question.difficulty_rating}</TableCell>
@@ -614,6 +626,7 @@ export default async function AdminQuestionsPage({
                           assignments={taxonomyAssignmentsByQuestionId.get(
                             question.id,
                           )}
+                          taxonomyCatalog={taxonomyCatalog}
                         />
                       </div>
                       <AdminQuestionEditDetails

@@ -1,13 +1,4 @@
-import { createRequire } from "node:module";
-
 import type { AITaxonomyTagCategory } from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
-
-const require = createRequire(import.meta.url);
-const {
-  getCurriculumConceptMappings,
-  getTaxonomyTagNode,
-  listTaxonomyTagCategories,
-} = require("./taxonomy-tag-catalog.ts") as typeof import("@/lib/tags/taxonomy-tag-catalog");
 
 type AssignmentSource =
   | "ai_suggestion"
@@ -90,7 +81,13 @@ export interface TaxonomyVideoAssignmentSummary {
   videoCount: number;
 }
 
-const TAXONOMY_CATEGORIES = listTaxonomyTagCategories();
+const DEFAULT_TAXONOMY_CATEGORIES = [
+  "curriculum",
+  "concept",
+  "method",
+  "task",
+  "form",
+] as AITaxonomyTagCategory[];
 const REVIEW_STATUSES = new Set<string>([
   "approved",
   "archived",
@@ -105,8 +102,10 @@ const ASSIGNMENT_SOURCES = new Set<string>([
   "review_action",
 ]);
 
-function emptyCategoryMap(): Record<AITaxonomyTagCategory, string[]> {
-  return TAXONOMY_CATEGORIES.reduce(
+function emptyCategoryMap(
+  categories: AITaxonomyTagCategory[] = DEFAULT_TAXONOMY_CATEGORIES,
+): Record<AITaxonomyTagCategory, string[]> {
+  return categories.reduce(
     (accumulator, category) => ({
       ...accumulator,
       [category]: [],
@@ -122,7 +121,12 @@ function uniqueStrings(values: string[]) {
 function isTaxonomyCategory(
   category: string,
 ): category is AITaxonomyTagCategory {
-  return TAXONOMY_CATEGORIES.includes(category as AITaxonomyTagCategory);
+  return /^[a-z][a-z0-9_]*$/.test(category);
+}
+
+function categoryFromTagId(tagId: string): AITaxonomyTagCategory | null {
+  const category = tagId.split(".")[0];
+  return isTaxonomyCategory(category) ? category : null;
 }
 
 function isUuidLike(value: string | undefined) {
@@ -170,12 +174,7 @@ function normalizeCategoryFilter(
     normalized[category] = uniqueStrings(values ?? []);
 
     for (const tagId of normalized[category]) {
-      const node = getTaxonomyTagNode(tagId);
-      if (!node) {
-        errors.push(`${scope}.unknown_tag:${tagId}`);
-        continue;
-      }
-      if (node.category !== category) {
+      if (categoryFromTagId(tagId) !== category) {
         errors.push(`${scope}.wrong_category:${tagId}:expected_${category}`);
       }
     }
@@ -190,9 +189,7 @@ function normalizeCategoryFilter(
 
 function curriculumConceptExpansion(curriculumTagIds: string[]) {
   return curriculumTagIds.map((curriculumTagId) => ({
-    conceptTagIds: getCurriculumConceptMappings(curriculumTagId).map(
-      (node) => node.tagId,
-    ),
+    conceptTagIds: [],
     curriculumTagId,
     hierarchyMutation: false as const,
   }));
@@ -217,10 +214,9 @@ export function validateTaxonomyVideoTagAssignmentRow(
     errors.push("error_pattern_is_not_video_taxonomy");
   }
 
-  const node = getTaxonomyTagNode(assignment.tag_id);
-  if (!node) {
+  if (!categoryFromTagId(assignment.tag_id)) {
     errors.push(`unknown_taxonomy_tag:${assignment.tag_id}`);
-  } else if (node.category !== assignment.category) {
+  } else if (categoryFromTagId(assignment.tag_id) !== assignment.category) {
     errors.push(`wrong_category:${assignment.tag_id}:expected_${assignment.category}`);
   }
 
@@ -317,7 +313,7 @@ export function summarizeTaxonomyVideoTagAssignments(
   rows: TaxonomyVideoTagAssignmentRow[],
 ): TaxonomyVideoAssignmentSummary {
   const byCategory = Object.fromEntries(
-    TAXONOMY_CATEGORIES.map((category) => [category, 0]),
+    DEFAULT_TAXONOMY_CATEGORIES.map((category) => [category, 0]),
   ) as Record<AITaxonomyTagCategory, number>;
   const videoIds = new Set<string>();
   let approvedCount = 0;
@@ -325,6 +321,9 @@ export function summarizeTaxonomyVideoTagAssignments(
   let rejectedCount = 0;
 
   for (const row of rows) {
+    if (byCategory[row.category] === undefined) {
+      byCategory[row.category] = 0;
+    }
     byCategory[row.category] += 1;
     videoIds.add(row.video_id);
     if (row.review_status === "approved") approvedCount += 1;

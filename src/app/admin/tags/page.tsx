@@ -281,7 +281,13 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
               <Input id="description" name="description" placeholder="Optional short description" />
             </div>
             <label className="flex items-center gap-2 text-sm">
-              <input defaultChecked name="is_assignable" type="checkbox" />
+              <input name="is_assignable" type="hidden" value="false" />
+              <input
+                defaultChecked
+                name="is_assignable"
+                type="checkbox"
+                value="true"
+              />
               Assignable to questions
             </label>
             <div className="md:col-span-2">

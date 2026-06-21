@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import {
   buildTaxonomyVideoBankSearchPlan,
   filterVideosByTaxonomyAssignments,
@@ -36,21 +37,11 @@ import {
 import { isAllowedVideoEmbedUrl } from "@/lib/validations/video";
 
 type AdminVideosPageProps = {
-  searchParams: Promise<{
+  searchParams: Promise<Record<string, string | string[] | undefined> & {
     error?: string;
-    ff_concept?: string | string[];
-    ff_curriculum?: string | string[];
-    ff_exclude_concept?: string | string[];
-    ff_exclude_curriculum?: string | string[];
-    ff_exclude_form?: string | string[];
-    ff_exclude_method?: string | string[];
-    ff_exclude_search?: string | string[];
-    ff_exclude_task?: string | string[];
-    ff_form?: string | string[];
-    ff_method?: string | string[];
-    ff_reviewed?: string | string[];
-    ff_search?: string | string[];
-    ff_task?: string | string[];
+    tax_exclude_search?: string | string[];
+    tax_reviewed?: string | string[];
+    tax_search?: string | string[];
     saved?: string;
   }>;
 };
@@ -64,6 +55,23 @@ function tagIdList(value: string | string[] | undefined) {
     .flatMap((entry) => entry.split(","))
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function selectedTagsForFacets({
+  facets,
+  params,
+  prefix,
+}: {
+  facets: { facet_key: string }[];
+  params: Record<string, string | string[] | undefined>;
+  prefix: string;
+}) {
+  return Object.fromEntries(
+    facets.map((facet) => [
+      facet.facet_key,
+      tagIdList(params[`${prefix}_${facet.facet_key}`]),
+    ]),
+  ) as Record<TaxonomyVideoSearchAssignmentRow["category"], string[]>;
 }
 
 function isMissingTaxonomyVideoTableError(error: unknown) {
@@ -84,26 +92,24 @@ export default async function AdminVideosPage({
 }: AdminVideosPageProps) {
   const params = await searchParams;
   await requireAdmin();
+  const supabase = await createClient();
+  const { catalog: taxonomyCatalog, errorMessage: taxonomyCatalogError } =
+    await loadTaxonomyCatalog(supabase);
   const taxonomyFilter = {
-    exclude: {
-      concept: tagIdList(params.ff_exclude_concept),
-      curriculum: tagIdList(params.ff_exclude_curriculum),
-      form: tagIdList(params.ff_exclude_form),
-      method: tagIdList(params.ff_exclude_method),
-      task: tagIdList(params.ff_exclude_task),
-    },
-    include: {
-      concept: tagIdList(params.ff_concept),
-      curriculum: tagIdList(params.ff_curriculum),
-      form: tagIdList(params.ff_form),
-      method: tagIdList(params.ff_method),
-      task: tagIdList(params.ff_task),
-    },
-    requireReviewed: firstParam(params.ff_reviewed) !== "false",
+    exclude: selectedTagsForFacets({
+      facets: taxonomyCatalog.facets,
+      params,
+      prefix: "tax_exclude",
+    }),
+    include: selectedTagsForFacets({
+      facets: taxonomyCatalog.facets,
+      params,
+      prefix: "tax",
+    }),
+    requireReviewed: firstParam(params.tax_reviewed) !== "false",
   };
   const hasTaxonomyFilters = hasTaxonomyVideoBankFilters(taxonomyFilter);
   const taxonomySearchPlan = buildTaxonomyVideoBankSearchPlan(taxonomyFilter);
-  const supabase = await createClient();
   const [
     { data: videos, error },
     { data: questions },
@@ -216,9 +222,10 @@ export default async function AdminVideosPage({
               and form tag system.
             </p>
             <TaxonomyTagTreePicker
-              namePrefix="ff"
-              searchQuery={firstParam(params.ff_search) ?? ""}
+              namePrefix="tax"
+              searchQuery={firstParam(params.tax_search) ?? ""}
               selectedTagIds={taxonomyFilter.include}
+              taxonomyCatalog={taxonomyCatalog}
               title="Include linked question taxonomy"
             />
             <details className="rounded-md border px-3 py-2">
@@ -227,19 +234,20 @@ export default async function AdminVideosPage({
               </summary>
               <div className="mt-3 space-y-3">
                 <TaxonomyTagTreePicker
-                  namePrefix="ff_exclude"
-                  searchName="ff_exclude_search"
-                  searchQuery={firstParam(params.ff_exclude_search) ?? ""}
+                  namePrefix="tax_exclude"
+                  searchName="tax_exclude_search"
+                  searchQuery={firstParam(params.tax_exclude_search) ?? ""}
                   selectedTagIds={taxonomyFilter.exclude}
+                  taxonomyCatalog={taxonomyCatalog}
                   title="Exclude linked question taxonomy"
                 />
                 <div className="space-y-2">
-                  <Label htmlFor="ff_reviewed">Assignments</Label>
+                  <Label htmlFor="tax_reviewed">Assignments</Label>
                   <select
-                    id="ff_reviewed"
-                    name="ff_reviewed"
+                    id="tax_reviewed"
+                    name="tax_reviewed"
                     className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                    defaultValue={firstParam(params.ff_reviewed) ?? "true"}
+                    defaultValue={firstParam(params.tax_reviewed) ?? "true"}
                   >
                     <option value="true">Reviewed only</option>
                     <option value="false">Any review status</option>
@@ -260,6 +268,9 @@ export default async function AdminVideosPage({
                 ) : null}
                 {taxonomySearchMessage ? (
                   <p className="text-amber-700">{taxonomySearchMessage}</p>
+                ) : null}
+                {taxonomyCatalogError ? (
+                  <p className="text-amber-700">{taxonomyCatalogError}</p>
                 ) : null}
               </div>
             ) : null}
@@ -389,6 +400,7 @@ export default async function AdminVideosPage({
                           assignments={taxonomyAssignmentsByVideoId.get(video.id)}
                           emptyLabel="No taxonomy tags assigned yet."
                           showCategoryHeadings={false}
+                          taxonomyCatalog={taxonomyCatalog}
                         />
                       </div>
                     </div>
@@ -497,6 +509,7 @@ export default async function AdminVideosPage({
                                 video.id,
                               )}
                               emptyLabel="No taxonomy tags assigned yet."
+                              taxonomyCatalog={taxonomyCatalog}
                             />
                           </div>
                           <p className="text-xs text-muted-foreground">

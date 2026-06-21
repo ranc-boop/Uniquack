@@ -406,6 +406,28 @@ export type Database = {
         };
         Returns: undefined;
       };
+      search_questions_by_taxonomy: {
+        Args: {
+          assignment_review_status?: string | null;
+          difficulty_max?: number | null;
+          difficulty_min?: number | null;
+          exclude_tag_ids?: string[];
+          include_tag_ids?: string[];
+          page_limit?: number | null;
+          page_offset?: number | null;
+          question_status?: string | null;
+        };
+        Returns: Array<{
+          difficulty_rating: number;
+          matched_tag_ids: string[];
+          question_code: string;
+          question_id: string;
+          question_type: string;
+          status: string;
+          title: string;
+          total_count: number;
+        }>;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

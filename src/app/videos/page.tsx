@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,7 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
   }
 
   const supabase = await createClient();
+  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   const { data: videos, error } = await supabase
     .from("videos")
     .select("id, title, question_id, provider, embed_url, status")
@@ -240,6 +242,7 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                         )}
                         emptyLabel="No taxonomy tags assigned yet."
                         showCategoryHeadings={false}
+                        taxonomyCatalog={taxonomyCatalog}
                       />
                     </div>
                   </div>

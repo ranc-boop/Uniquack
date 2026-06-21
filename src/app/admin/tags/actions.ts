@@ -110,7 +110,8 @@ export async function approveTaxonomyReviewAction(formData: FormData) {
       throw new Error("Review action is missing a question or proposed tags.");
     }
 
-    const rows = Array.from(new Set(action.proposed_tag_ids)).map((tagId) => ({
+    const proposedTagIds = Array.from(new Set(action.proposed_tag_ids));
+    const rows = proposedTagIds.map((tagId) => ({
       question_id: action.question_id,
       tag_id: tagId,
       confidence: action.confidence,
@@ -128,11 +129,19 @@ export async function approveTaxonomyReviewAction(formData: FormData) {
       updated_by: profile.id,
     }));
 
+    const { error: deleteExistingError } = await supabase
+      .from("question_taxonomy_assignments")
+      .delete()
+      .eq("question_id", action.question_id)
+      .in("tag_id", proposedTagIds);
+
+    if (deleteExistingError) {
+      throw new Error(deleteExistingError.message);
+    }
+
     const { error: insertError } = await supabase
       .from("question_taxonomy_assignments")
-      .upsert(rows, {
-        onConflict: "question_id,tag_id",
-      });
+      .insert(rows);
 
     if (insertError) {
       throw new Error(insertError.message);
