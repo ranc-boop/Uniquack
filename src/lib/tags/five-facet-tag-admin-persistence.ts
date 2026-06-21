@@ -34,8 +34,8 @@ import type {
 
 type SupabaseLike = {
   from: (table: string) => {
-    insert: (values: unknown) => unknown;
-    upsert: (values: unknown, options?: unknown) => unknown;
+    insert: (...args: never[]) => unknown;
+    upsert: (...args: never[]) => unknown;
   };
 };
 
@@ -128,6 +128,20 @@ export interface ApprovedTagAssignmentWritePlan {
   warnings: string[];
 }
 
+export interface FiveFacetReviewActionRowInput {
+  action_id: string;
+  action_kind: string;
+  confidence: number | null;
+  evidence: Record<string, unknown> | null;
+  proposed_tag_ids: string[] | null;
+  question_id: string | null;
+  question_ref: Record<string, unknown> | null;
+  reason: string | null;
+  review_status: string;
+  target_facet: string | null;
+  target_tag_ids: string[] | null;
+}
+
 export interface FiveFacetAdminPersistenceSummary {
   aliasCount: number;
   assignmentRowCount: number;
@@ -161,6 +175,58 @@ function uniqueBy<T>(values: T[], keyFor: (value: T) => string) {
     result.push(value);
   }
   return result;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function isFiveFacetCategory(value: unknown): value is AIFiveFacetTagCategory {
+  return listFiveFacetTagCategories().includes(value as AIFiveFacetTagCategory);
+}
+
+export function fiveFacetReviewActionRowsToDrafts(
+  rows: FiveFacetReviewActionRowInput[],
+): AIFiveFacetTagReviewActionDraft[] {
+  return rows.map((row) => {
+    const questionRef = asRecord(row.question_ref);
+    const questionId =
+      row.question_id ??
+      (typeof questionRef.id === "string" ? questionRef.id : undefined);
+
+    return {
+      actionId: row.action_id,
+      actionKind: row.action_kind as AIFiveFacetTagReviewActionDraft["actionKind"],
+      confidence: Number(row.confidence ?? 0),
+      evidence: asRecord(row.evidence),
+      proposedTagIds: stringList(row.proposed_tag_ids),
+      questionRef: {
+        ...questionRef,
+        id: questionId,
+      },
+      reason: row.reason ?? "",
+      reviewRequired: true,
+      reviewStatus: row.review_status,
+      safety: {
+        noDbMutation: true,
+        noOfficialTagWrite: true,
+        noProviderCall: true,
+        noReviewDraftWrite: true,
+        planningOnly: true,
+      },
+      status: "pending_review",
+      targetFacet: isFiveFacetCategory(row.target_facet) ? row.target_facet : null,
+      targetTagIds: stringList(row.target_tag_ids),
+    } as AIFiveFacetTagReviewActionDraft & { reviewStatus: string };
+  });
 }
 
 function catalogNodes(): AITagNode[] {
@@ -401,6 +467,16 @@ export function buildApprovedTagAssignmentWritePlan(
   };
 }
 
+export function buildApprovedTagAssignmentWritePlanFromRows(
+  rows: FiveFacetReviewActionRowInput[],
+  options: { generatedAt?: string } = {},
+) {
+  return buildApprovedTagAssignmentWritePlan(
+    fiveFacetReviewActionRowsToDrafts(rows),
+    options,
+  );
+}
+
 export function validateApprovedTagAssignmentWritePlan(plan: ApprovedTagAssignmentWritePlan) {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -512,20 +588,31 @@ export async function seedFiveFacetCatalog({
     updated_by: createdBy,
   }));
 
-  await (supabase.from("five_facet_tag_nodes").upsert(nodeRows, {
+  const upsertRows = supabase.from("five_facet_tag_nodes").upsert as (
+    values: unknown,
+    options?: unknown,
+  ) => PromiseLike<unknown>;
+  await upsertRows(nodeRows, {
     onConflict: "tag_id",
-  }) as PromiseLike<unknown>);
-  await (supabase.from("five_facet_tag_edges").upsert(edgeRows, {
+  });
+  await (supabase.from("five_facet_tag_edges").upsert as (
+    values: unknown,
+    options?: unknown,
+  ) => PromiseLike<unknown>)(edgeRows, {
     onConflict: "from_tag_id,to_tag_id,edge_kind",
-  }) as PromiseLike<unknown>);
-  await (supabase.from("five_facet_tag_aliases").upsert(aliasRows, {
+  });
+  await (supabase.from("five_facet_tag_aliases").upsert as (
+    values: unknown,
+    options?: unknown,
+  ) => PromiseLike<unknown>)(aliasRows, {
     onConflict: "normalized_alias,tag_id",
-  }) as PromiseLike<unknown>);
-  await (supabase
-    .from("five_facet_curriculum_concept_mappings")
-    .upsert(mappingRows, {
+  });
+  await (supabase.from("five_facet_curriculum_concept_mappings").upsert as (
+    values: unknown,
+    options?: unknown,
+  ) => PromiseLike<unknown>)(mappingRows, {
       onConflict: "curriculum_tag_id,concept_tag_id",
-    }) as PromiseLike<unknown>);
+    });
 
   return { plan };
 }
@@ -551,9 +638,9 @@ export async function persistApprovedFiveFacetAssignments({
   }));
 
   if (rows.length) {
-    await (supabase
-      .from("five_facet_question_tag_assignments")
-      .insert(rows) as PromiseLike<unknown>);
+    await (supabase.from("five_facet_question_tag_assignments").insert as (
+      values: unknown,
+    ) => PromiseLike<unknown>)(rows);
   }
 
   return { plan };
