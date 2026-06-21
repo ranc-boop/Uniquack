@@ -1,3 +1,4 @@
+import { FiveFacetTagChips } from "@/components/tags/five-facet-tag-chips";
 import { Badge } from "@/components/ui/badge";
 
 const FACET_CATEGORIES = [
@@ -7,8 +8,6 @@ const FACET_CATEGORIES = [
   "task",
   "form",
 ] as const;
-
-type FacetCategory = (typeof FACET_CATEGORIES)[number];
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -40,6 +39,10 @@ function stringList(value: unknown) {
     .filter(Boolean);
 }
 
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
 function percentLabel(value: unknown) {
   const numeric = numberValue(value, NaN);
 
@@ -62,25 +65,19 @@ function difficultyLabel(value: unknown) {
   return numeric <= 1 ? numeric.toFixed(2) : String(Math.round(numeric));
 }
 
-function titleCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function facetTags(
-  tags: Record<string, unknown>,
-  category: FacetCategory,
-) {
-  return stringList(tags[category]);
+function suggestionTagIds(suggestion: Record<string, unknown>) {
+  const tags = asRecord(suggestion.tags);
+  return FACET_CATEGORIES.flatMap((category) => stringList(tags[category]));
 }
 
 function suggestionWarnings(suggestion: Record<string, unknown>) {
   const validation = asRecord(suggestion.validation);
 
-  return [
+  return uniqueStrings([
     ...stringList(suggestion.warnings),
     ...stringList(validation.warnings),
     ...stringList(validation.errors),
-  ];
+  ]);
 }
 
 function hasAmbiguousWarning(suggestion: Record<string, unknown>) {
@@ -110,7 +107,7 @@ export function FiveFacetTagSuggestionsCard({
     return null;
   }
 
-  const planWarnings = stringList(plan.warnings);
+  const planWarnings = uniqueStrings(stringList(plan.warnings));
   const itemCount =
     numberValue(plan.itemCount, NaN) || suggestions.length;
   const validBundleCount = suggestions.filter(
@@ -133,107 +130,95 @@ export function FiveFacetTagSuggestionsCard({
         <div>
           <p className="font-medium">Five-facet tag suggestions</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Planning-only suggestions for tutor review. Tags are not written to
-            official records from this dashboard.
+            Compact planning-only suggestions. Format valid means the bundle
+            matches catalog rules; tutor review is still required before official
+            assignment writes.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline">Items: {itemCount}</Badge>
-          <Badge variant="outline">Valid bundles: {validBundleCount}</Badge>
+          <Badge variant="outline">Format valid: {validBundleCount}</Badge>
           <Badge variant="outline">Warnings: {warningCount}</Badge>
           <Badge variant="outline">Ambiguous: {ambiguousSuggestionCount}</Badge>
           <Badge variant="outline">Review required: {reviewRequiredCount}</Badge>
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3">
+      {planWarnings.length ? (
+        <div className="mt-3 rounded border bg-background/80 p-2 text-xs">
+          <p className="font-medium">Plan warnings</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
+            {planWarnings.slice(0, 4).map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="mt-3 grid gap-2">
         {suggestions.length ? (
-          suggestions.slice(0, 8).map((suggestion, index) => {
-            const tags = asRecord(suggestion.tags);
+          suggestions.map((suggestion, index) => {
             const validation = asRecord(suggestion.validation);
             const warnings = suggestionWarnings(suggestion);
             const reviewRequired = suggestion.reviewRequired !== false;
             const validationStatus = booleanValue(validation.valid)
-              ? "valid"
+              ? "format valid"
               : "needs review";
+            const tagIds = suggestionTagIds(suggestion);
 
             return (
-              <div
+              <details
                 className="rounded-md border bg-background/80 p-3"
                 key={`${questionLabel(suggestion, index)}-${index}`}
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium">
-                      {questionLabel(suggestion, index)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Difficulty suggestion:{" "}
-                      {difficultyLabel(suggestion.difficultySuggestion)}
-                      {" | "}
-                      Confidence: {percentLabel(suggestion.confidence)}
-                      {" | "}
-                      Validation status: {validationStatus}
-                    </p>
+                <summary className="cursor-pointer list-none">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium">{questionLabel(suggestion, index)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Difficulty {difficultyLabel(suggestion.difficultySuggestion)}
+                        {" | "}
+                        Confidence {percentLabel(suggestion.confidence)}
+                        {" | "}
+                        {validationStatus}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant={reviewRequired ? "outline" : "secondary"}>
+                        {reviewRequired ? "Review required" : "Review optional"}
+                      </Badge>
+                      {warnings.length ? (
+                        <Badge variant="outline">{warnings.length} warnings</Badge>
+                      ) : null}
+                    </div>
                   </div>
-                  <Badge variant={reviewRequired ? "outline" : "secondary"}>
-                    {reviewRequired ? "Review required" : "Review optional"}
-                  </Badge>
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <FiveFacetTagChips tagIds={tagIds} />
+                  {warnings.length ? (
+                    <div className="rounded border bg-muted/20 p-2 text-xs">
+                      <p className="font-medium">Warnings</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
+                        {warnings.slice(0, 4).map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                      {warnings.length > 4 ? (
+                        <details className="mt-2">
+                          <summary className="cursor-pointer font-medium">
+                            Show remaining warnings (+{warnings.length - 4})
+                          </summary>
+                          <ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
+                            {warnings.slice(4).map((warning) => (
+                              <li key={warning}>{warning}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
-
-                <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-                  {FACET_CATEGORIES.map((category) => {
-                    const categoryTags = facetTags(tags, category);
-
-                    return (
-                      <div className="rounded border bg-muted/20 p-2" key={category}>
-                        <p className="text-xs font-medium">
-                          {titleCase(category)}
-                        </p>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {categoryTags.length ? (
-                            categoryTags.map((tagId) => (
-                              <span
-                                className="rounded border bg-background px-1.5 py-0.5 font-mono text-[11px]"
-                                key={tagId}
-                              >
-                                {tagId}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              None suggested
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {warnings.length ? (
-                  <div className="mt-3 rounded border bg-muted/20 p-2 text-xs">
-                    <p className="font-medium">Warnings</p>
-                    <ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
-                      {warnings.slice(0, 4).map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
-                    {warnings.length > 4 ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer font-medium">
-                          Show remaining warnings (+{warnings.length - 4})
-                        </summary>
-                        <ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
-                          {warnings.slice(4).map((warning) => (
-                            <li key={warning}>{warning}</li>
-                          ))}
-                        </ul>
-                      </details>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+              </details>
             );
           })
         ) : (
@@ -243,21 +228,6 @@ export function FiveFacetTagSuggestionsCard({
           </p>
         )}
       </div>
-
-      {suggestions.length > 8 ? (
-        <details className="mt-3 rounded border bg-background/80 p-2 text-xs">
-          <summary className="cursor-pointer font-medium">
-            Show remaining suggestions (+{suggestions.length - 8})
-          </summary>
-          <ul className="mt-2 list-disc space-y-1 pl-4 text-muted-foreground">
-            {suggestions.slice(8).map((suggestion, index) => (
-              <li key={`${questionLabel(suggestion, index + 8)}-${index}`}>
-                {questionLabel(suggestion, index + 8)}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
     </div>
   );
 }

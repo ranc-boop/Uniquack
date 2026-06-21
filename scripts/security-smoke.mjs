@@ -4107,6 +4107,69 @@ console.log(
   "PASS five-facet admin execution UI is server-action guarded without provider, extraction, or Review Draft writes",
 );
 
+const fiveFacetTreePickerSource = await readFile(
+  new URL("../src/components/tags/five-facet-tag-tree-picker.tsx", import.meta.url),
+  "utf8",
+);
+const fiveFacetChipsSource = await readFile(
+  new URL("../src/components/tags/five-facet-tag-chips.tsx", import.meta.url),
+  "utf8",
+);
+const fiveFacetSuggestionsCardSource = await readFile(
+  new URL(
+    "../src/components/ai-pdf-dashboard/five-facet-tag-suggestions-card.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const adminQuestionsPageSource = await readFile(
+  new URL("../src/app/admin/questions/page.tsx", import.meta.url),
+  "utf8",
+);
+const publicQuestionDetailSource = await readFile(
+  new URL("../src/app/questions/[id]/page.tsx", import.meta.url),
+  "utf8",
+);
+assert.ok(fiveFacetTreePickerSource.includes("listFiveFacetTagCategories"));
+assert.ok(fiveFacetTreePickerSource.includes("node.label"));
+assert.ok(fiveFacetTreePickerSource.includes('type="checkbox"'));
+assert.ok(fiveFacetTreePickerSource.includes("Search five-facet catalog"));
+assert.ok(fiveFacetTreePickerSource.includes("raw IDs are"));
+assert.ok(fiveFacetTreePickerSource.includes("shown only as small reference text"));
+assert.ok(fiveFacetTreePickerSource.includes("Boolean(query)"));
+assert.ok(fiveFacetChipsSource.includes("getFiveFacetTagNode"));
+assert.ok(fiveFacetChipsSource.includes("node.label"));
+assert.ok(fiveFacetChipsSource.includes("getFiveFacetTagAncestors"));
+assert.ok(fiveFacetSuggestionsCardSource.includes("FiveFacetTagChips"));
+assert.ok(fiveFacetSuggestionsCardSource.includes("<details"));
+assert.ok(fiveFacetSuggestionsCardSource.includes("Format valid"));
+assert.ok(fiveFacetSuggestionsCardSource.includes("tutor review is still required"));
+assert.ok(adminQuestionsPageSource.includes("FiveFacetTagTreePicker"));
+assert.ok(adminQuestionsPageSource.includes("FiveFacetTagChips"));
+assert.ok(adminQuestionsPageSource.includes("Legacy tags"));
+assert.ok(adminQuestionsPageSource.includes("Official five-facet tags"));
+assert.ok(publicQuestionDetailSource.includes("Official five-facet tags"));
+assert.ok(publicQuestionDetailSource.includes("five_facet_question_tag_assignments"));
+assert.equal(
+  /processAIPdfImport|generateContent|openai|gemini|anthropic|reviewDraftTags|rawProviderResponse|fullPdfText|imageBytes|;base64,|JVBERi0|iVBORw0KGgo/i.test(
+    JSON.stringify({
+      fiveFacetTreePickerSource,
+      fiveFacetChipsSource,
+      fiveFacetSuggestionsCardSource,
+      adminQuestionsPageSource,
+      publicQuestionDetailSource,
+    }),
+  ),
+  false,
+);
+assert.equal(adminQuestionsPageSource.includes('placeholder="concept'), false);
+assert.equal(fiveFacetSuggestionsCardSource.includes("Approve suggestion"), false);
+assert.equal(fiveFacetSuggestionsCardSource.includes("Reject suggestion"), false);
+assert.equal(fiveFacetSuggestionsCardSource.includes("Write official tags"), false);
+console.log(
+  "PASS five-facet product UI uses label-first catalog controls without provider calls, payload exposure, or write actions",
+);
+
 const coveragePreanalysisPages = Array.from({ length: 6 }, (_, index) => ({
   answerMarkerHints: [],
   assetHints: [],

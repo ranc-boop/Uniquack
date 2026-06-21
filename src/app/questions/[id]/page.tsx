@@ -7,6 +7,10 @@ import {
   type QuestionDetailImage,
 } from "@/components/question-detail-image-gallery";
 import { RichHtml } from "@/components/rich-html";
+import {
+  FiveFacetTagChips,
+  type FiveFacetTagChipAssignment,
+} from "@/components/tags/five-facet-tag-chips";
 import { VideoPlayerFrame } from "@/components/video-player-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -132,6 +136,7 @@ export default async function QuestionDetailPage({
     { data: questionTagBindings, error: questionTagError },
     { data: video, error: videoError },
     { data: displayedAssets, error: displayedAssetsError },
+    { data: fiveFacetAssignments, error: fiveFacetAssignmentsError },
   ] = await Promise.all([
     supabase
       .from("question_tags")
@@ -152,6 +157,11 @@ export default async function QuestionDetailPage({
       .eq("status", "ready")
       .eq("display_on_detail", true)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("five_facet_question_tag_assignments")
+      .select("tag_id, category, review_status")
+      .eq("question_id", question.id)
+      .eq("review_status", "approved"),
   ]);
 
   if (questionTagError) {
@@ -187,6 +197,14 @@ export default async function QuestionDetailPage({
       </Card>
     );
   }
+
+  const publicFiveFacetAssignments =
+    fiveFacetAssignmentsError &&
+    /permission denied|relation .* does not exist|schema cache|five_facet_/i.test(
+      fiveFacetAssignmentsError.message,
+    )
+      ? []
+      : ((fiveFacetAssignments ?? []) as FiveFacetTagChipAssignment[]);
 
   const questionImages: QuestionDetailImage[] = (displayedAssets ?? []).map((asset) => {
     const { data } = supabase.storage
@@ -386,6 +404,10 @@ export default async function QuestionDetailPage({
                 No tags
               </span>
             )}
+          </SidebarCard>
+
+          <SidebarCard title="Official five-facet tags">
+            <FiveFacetTagChips assignments={publicFiveFacetAssignments} />
           </SidebarCard>
 
           {video ? (
