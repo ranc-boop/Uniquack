@@ -328,12 +328,14 @@ assertRoute(
 assertRoute(
   adminQuestions.status === 200 &&
     adminQuestions.text.includes("Find questions") &&
-    adminQuestions.text.includes("Five-facet tags") &&
-    adminQuestions.text.includes("catalog tag IDs") &&
-    adminQuestions.text.includes("Search tags") &&
+    adminQuestions.text.includes("Include official five-facet tags") &&
+    adminQuestions.text.includes("Search five-facet catalog") &&
+    adminQuestions.text.includes("raw IDs are shown only as small reference text") &&
+    adminQuestions.text.includes("Legacy tags") &&
+    adminQuestions.text.includes("Official five-facet tags") &&
     adminQuestions.text.includes("Markdown + LaTeX") &&
     adminQuestions.text.includes("Advanced HTML"),
-  "admin questions renders filters, five-facet controls, checkbox tag picker, and Markdown LaTeX editor",
+  "admin questions renders filters, label-first five-facet controls, legacy/official tag sections, and Markdown LaTeX editor",
 );
 assertRoute(
   adminTags.status === 200 &&
@@ -1235,13 +1237,14 @@ try {
     "Recovery execution is not available yet.",
     "Human review required.",
     "Five-facet tag suggestions",
-    "Planning-only suggestions for tutor review",
+    "Compact planning-only suggestions",
     "Items:",
-    "Valid bundles:",
+    "Format valid:",
     "Ambiguous:",
     "Review required:",
-    "Difficulty suggestion:",
-    "Validation status:",
+    "Difficulty",
+    "Compact planning-only suggestions",
+    "Format valid means the bundle matches catalog rules",
     "Curriculum",
     "Concept",
     "Method",
@@ -1266,6 +1269,8 @@ try {
   assertRoute(
     aiPdfDashboard.text.includes("Five-facet tag suggestions") &&
       aiPdfDashboard.text.includes("Review required") &&
+      aiPdfDashboard.text.includes("Format valid") &&
+      aiPdfDashboard.text.includes("tutor review is still required") &&
       aiPdfDashboard.text.includes("ambiguous_alias:vertex") &&
       !aiPdfDashboard.text.includes("Approve suggestion") &&
       !aiPdfDashboard.text.includes("Reject suggestion") &&

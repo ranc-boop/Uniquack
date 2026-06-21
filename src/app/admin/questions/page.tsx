@@ -14,6 +14,11 @@ import { QuestionHtmlEditor } from "@/components/question-html-editor";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import { TagCheckboxList } from "@/components/tag-checkbox-list";
+import {
+  FiveFacetTagChips,
+  type FiveFacetTagChipAssignment,
+} from "@/components/tags/five-facet-tag-chips";
+import { FiveFacetTagTreePicker } from "@/components/tags/five-facet-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,19 +50,21 @@ import {
 type AdminQuestionsPageProps = {
   searchParams: Promise<{
     error?: string;
-    ff_concept?: string;
-    ff_curriculum?: string;
-    ff_difficulty_max?: string;
-    ff_difficulty_min?: string;
-    ff_exclude_concept?: string;
-    ff_exclude_curriculum?: string;
-    ff_exclude_form?: string;
-    ff_exclude_method?: string;
-    ff_exclude_task?: string;
-    ff_form?: string;
-    ff_method?: string;
-    ff_reviewed?: string;
-    ff_task?: string;
+    ff_concept?: string | string[];
+    ff_curriculum?: string | string[];
+    ff_difficulty_max?: string | string[];
+    ff_difficulty_min?: string | string[];
+    ff_exclude_concept?: string | string[];
+    ff_exclude_curriculum?: string | string[];
+    ff_exclude_form?: string | string[];
+    ff_exclude_method?: string | string[];
+    ff_exclude_search?: string | string[];
+    ff_exclude_task?: string | string[];
+    ff_form?: string | string[];
+    ff_method?: string | string[];
+    ff_reviewed?: string | string[];
+    ff_search?: string | string[];
+    ff_task?: string | string[];
     q?: string;
     saved?: string;
     status?: string;
@@ -71,16 +78,22 @@ function safeStatusFilter(value: string | undefined) {
   return questionStatuses.find((status) => status === value) ?? "";
 }
 
-function tagIdList(value: string | undefined) {
-  return (value ?? "")
-    .split(/[,\s]+/)
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function tagIdList(value: string | string[] | undefined) {
+  const values = Array.isArray(value) ? value : [value ?? ""];
+  return values
+    .flatMap((item) => item.split(/[,\s]+/))
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
-function numericParam(value: string | undefined) {
-  if (value === undefined || value.trim() === "") return undefined;
-  const numeric = Number(value);
+function numericParam(value: string | string[] | undefined) {
+  const first = firstParam(value);
+  if (first === undefined || first.trim() === "") return undefined;
+  const numeric = Number(first);
   return Number.isFinite(numeric) ? numeric : Number.NaN;
 }
 
@@ -123,8 +136,10 @@ export default async function AdminQuestionsPage({
       method: tagIdList(params.ff_method),
       task: tagIdList(params.ff_task),
     },
-    requireReviewed: params.ff_reviewed !== "false",
+    requireReviewed: firstParam(params.ff_reviewed) !== "false",
   };
+  const selectedFiveFacetInclude = fiveFacetFilter.include;
+  const selectedFiveFacetExclude = fiveFacetFilter.exclude;
   const hasFiveFacetFilters = hasFiveFacetQuestionBankFilters(fiveFacetFilter);
   const fiveFacetSearchPlan = buildFiveFacetQuestionBankSearchPlan(fiveFacetFilter);
   const [
@@ -170,6 +185,10 @@ export default async function AdminQuestionsPage({
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
   const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
   let fiveFacetAssignments: FiveFacetQuestionSearchAssignmentRow[] = [];
+  const fiveFacetAssignmentsByQuestionId = new Map<
+    string,
+    FiveFacetTagChipAssignment[]
+  >();
   let fiveFacetSearchMessage: string | null = null;
   const { data: importItems } = questionIds.length
     ? await supabase
@@ -178,7 +197,7 @@ export default async function AdminQuestionsPage({
         .eq("status", "imported")
         .in("created_question_id", questionIds)
     : { data: [] };
-  if (questionIds.length && hasFiveFacetFilters && fiveFacetSearchPlan.valid) {
+  if (questionIds.length) {
     const { data, error: fiveFacetAssignmentsError } = await supabase
       .from("five_facet_question_tag_assignments")
       .select("question_id, tag_id, category, review_status")
@@ -190,6 +209,16 @@ export default async function AdminQuestionsPage({
         : `Five-facet filters are unavailable: ${fiveFacetAssignmentsError.message}`;
     } else {
       fiveFacetAssignments = (data ?? []) as FiveFacetQuestionSearchAssignmentRow[];
+      for (const assignment of fiveFacetAssignments) {
+        const current =
+          fiveFacetAssignmentsByQuestionId.get(assignment.question_id) ?? [];
+        current.push({
+          category: assignment.category,
+          review_status: assignment.review_status,
+          tag_id: assignment.tag_id,
+        });
+        fiveFacetAssignmentsByQuestionId.set(assignment.question_id, current);
+      }
     }
   }
 
@@ -467,102 +496,39 @@ export default async function AdminQuestionsPage({
               <div className="space-y-1">
                 <p className="text-sm font-medium">Five-facet tags</p>
                 <p className="text-xs text-muted-foreground">
-                  Filter by official approved five-facet assignments. Use
-                  catalog tag IDs separated by commas.
+                  Filter by official five-facet assignments. Legacy tags remain
+                  separate from curriculum, concept, method, task, and form tags.
                 </p>
               </div>
-              <div className="grid gap-3 md:grid-cols-5">
-                <div className="space-y-2">
-                  <Label htmlFor="ff_curriculum">Curriculum</Label>
-                  <Input
-                    id="ff_curriculum"
-                    name="ff_curriculum"
-                    defaultValue={params.ff_curriculum ?? ""}
-                    placeholder="curriculum..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ff_concept">Concept</Label>
-                  <Input
-                    id="ff_concept"
-                    name="ff_concept"
-                    defaultValue={params.ff_concept ?? ""}
-                    placeholder="concept..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ff_method">Method</Label>
-                  <Input
-                    id="ff_method"
-                    name="ff_method"
-                    defaultValue={params.ff_method ?? ""}
-                    placeholder="method..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ff_task">Task</Label>
-                  <Input
-                    id="ff_task"
-                    name="ff_task"
-                    defaultValue={params.ff_task ?? ""}
-                    placeholder="task..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ff_form">Form</Label>
-                  <Input
-                    id="ff_form"
-                    name="ff_form"
-                    defaultValue={params.ff_form ?? ""}
-                    placeholder="form..."
-                  />
-                </div>
-              </div>
+              <FiveFacetTagTreePicker
+                namePrefix="ff"
+                searchQuery={firstParam(params.ff_search) ?? ""}
+                selectedTagIds={selectedFiveFacetInclude}
+                title="Include official five-facet tags"
+              />
               <details className="rounded-md border px-3 py-2">
                 <summary className="cursor-pointer text-sm font-medium">
                   Exclude tags and difficulty
                 </summary>
-                <div className="mt-3 grid gap-3 md:grid-cols-5">
-                  <Input
-                    name="ff_exclude_curriculum"
-                    defaultValue={params.ff_exclude_curriculum ?? ""}
-                    placeholder="Exclude curriculum"
-                    aria-label="Exclude curriculum five-facet tags"
+                <div className="mt-3 space-y-3">
+                  <FiveFacetTagTreePicker
+                    namePrefix="ff_exclude"
+                    searchName="ff_exclude_search"
+                    searchQuery={firstParam(params.ff_exclude_search) ?? ""}
+                    selectedTagIds={selectedFiveFacetExclude}
+                    title="Exclude official five-facet tags"
                   />
-                  <Input
-                    name="ff_exclude_concept"
-                    defaultValue={params.ff_exclude_concept ?? ""}
-                    placeholder="Exclude concept"
-                    aria-label="Exclude concept five-facet tags"
-                  />
-                  <Input
-                    name="ff_exclude_method"
-                    defaultValue={params.ff_exclude_method ?? ""}
-                    placeholder="Exclude method"
-                    aria-label="Exclude method five-facet tags"
-                  />
-                  <Input
-                    name="ff_exclude_task"
-                    defaultValue={params.ff_exclude_task ?? ""}
-                    placeholder="Exclude task"
-                    aria-label="Exclude task five-facet tags"
-                  />
-                  <Input
-                    name="ff_exclude_form"
-                    defaultValue={params.ff_exclude_form ?? ""}
-                    placeholder="Exclude form"
-                    aria-label="Exclude form five-facet tags"
-                  />
+                  <div className="grid gap-3 md:grid-cols-3">
                   <Input
                     name="ff_difficulty_min"
-                    defaultValue={params.ff_difficulty_min ?? ""}
+                    defaultValue={firstParam(params.ff_difficulty_min) ?? ""}
                     placeholder="Difficulty min"
                     aria-label="Five-facet difficulty minimum"
                     type="number"
                   />
                   <Input
                     name="ff_difficulty_max"
-                    defaultValue={params.ff_difficulty_max ?? ""}
+                    defaultValue={firstParam(params.ff_difficulty_max) ?? ""}
                     placeholder="Difficulty max"
                     aria-label="Five-facet difficulty maximum"
                     type="number"
@@ -573,11 +539,12 @@ export default async function AdminQuestionsPage({
                       id="ff_reviewed"
                       name="ff_reviewed"
                       className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                      defaultValue={params.ff_reviewed ?? "true"}
+                      defaultValue={firstParam(params.ff_reviewed) ?? "true"}
                     >
                       <option value="true">Reviewed only</option>
                       <option value="false">Any review status</option>
                     </select>
+                  </div>
                   </div>
                 </div>
               </details>
@@ -597,6 +564,13 @@ export default async function AdminQuestionsPage({
                     <p className="text-amber-700">{fiveFacetSearchMessage}</p>
                   ) : null}
                 </div>
+              ) : null}
+              {!fiveFacetSearchMessage &&
+              fiveFacetAssignments.length === 0 ? (
+                <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                  No official five-facet tag assignments yet. Seed the catalog
+                  and persist approved assignments from /admin/tags.
+                </p>
               ) : null}
             </div>
           </form>
@@ -652,12 +626,36 @@ export default async function AdminQuestionsPage({
                     <TableCell>{question.title}</TableCell>
                     <TableCell>{question.question_type}</TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {questionTagNames.map((tagName) => (
-                          <Badge key={tagName} variant="outline">
-                            {tagName}
-                          </Badge>
-                        ))}
+                      <div className="space-y-2">
+                        <div className="space-y-1">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Legacy tags
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {questionTagNames.length ? (
+                              questionTagNames.map((tagName) => (
+                                <Badge key={tagName} variant="secondary">
+                                  {tagName}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                No legacy tags
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Official five-facet tags
+                          </p>
+                          <FiveFacetTagChips
+                            assignments={fiveFacetAssignmentsByQuestionId.get(
+                              question.id,
+                            )}
+                            showCategoryHeadings={false}
+                          />
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>{question.difficulty_rating}</TableCell>
@@ -675,6 +673,16 @@ export default async function AdminQuestionsPage({
                   </TableRow>
                   <TableRow>
                     <TableCell colSpan={7} className="bg-muted/20 p-3">
+                      <div className="mb-3 rounded-md border bg-background p-3">
+                        <p className="mb-2 text-sm font-medium">
+                          Official five-facet tags
+                        </p>
+                        <FiveFacetTagChips
+                          assignments={fiveFacetAssignmentsByQuestionId.get(
+                            question.id,
+                          )}
+                        />
+                      </div>
                       <AdminQuestionEditDetails
                         assets={assetsByQuestionId.get(question.id)}
                         importedAssetReferences={importedAssetReferences}

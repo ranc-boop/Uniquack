@@ -3,6 +3,7 @@ import {
   seedOfficialFiveFacetCatalog,
 } from "@/app/admin/tags/actions";
 import { FormSubmitButton } from "@/components/form-submit-button";
+import { FiveFacetTagTreePicker } from "@/components/tags/five-facet-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
@@ -77,8 +78,9 @@ export function FiveFacetTagAdminPanel({
       <CardContent className="space-y-5">
         <div className="space-y-1">
           <p className="text-sm text-muted-foreground">
-            Preview and execute admin-only catalog syncs and approved assignment
-            writes. AI import suggestions are never written automatically.
+            Legacy tags stay in the existing tag table. This panel controls the
+            separate official five-facet catalog and approved five-facet question
+            assignments. AI import suggestions are never written automatically.
           </p>
           <div className="flex flex-wrap gap-2">
             <Badge variant="secondary">Admin-only</Badge>
@@ -113,7 +115,8 @@ export function FiveFacetTagAdminPanel({
             <div className="space-y-1">
               <h2 className="text-sm font-semibold">Catalog seed preview</h2>
               <p className="text-xs text-muted-foreground">
-                Uses upsert-style keys for tag nodes, edges, aliases, and
+                Writes the built-in five-facet catalog to the official DB tables
+                using upsert-style keys for tag nodes, edges, aliases, and
                 curriculum concept mappings.
               </p>
             </div>
@@ -142,8 +145,8 @@ export function FiveFacetTagAdminPanel({
                 Approved assignment write preview
               </h2>
               <p className="text-xs text-muted-foreground">
-                Only approved review actions can produce official assignment
-                rows.
+                Writes approved review actions to the official question tag
+                assignment table. Pending AI suggestions remain review-only.
               </p>
             </div>
             <PlanStatus
@@ -177,6 +180,19 @@ export function FiveFacetTagAdminPanel({
             )}
           </section>
         </div>
+
+        <details className="rounded-md border p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Browse built-in five-facet catalog
+          </summary>
+          <div className="mt-3">
+            <FiveFacetTagTreePicker
+              disabled
+              namePrefix="five_facet_catalog_preview"
+              title="Built-in catalog preview"
+            />
+          </div>
+        </details>
       </CardContent>
     </Card>
   );
