@@ -10,7 +10,6 @@ import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionHtmlEditor } from "@/components/question-html-editor";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import { QuestionStatusSelect } from "@/components/question-status-select";
-import { TagCheckboxList } from "@/components/tag-checkbox-list";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,13 +20,6 @@ import {
 import type { QuestionSourceFormat } from "@/lib/markdown-latex/markdown";
 import type { QuestionReadiness } from "@/lib/questions/readiness";
 import { useState } from "react";
-
-type TagOption = {
-  id: string;
-  name: string;
-  status?: string | null;
-  tag_type?: string | null;
-};
 
 type EditableQuestion = {
   content_html: string;
@@ -49,9 +41,7 @@ type AdminQuestionEditDetailsProps = {
   importedAssetReferences: ImportAssetReferences | null;
   question: EditableQuestion;
   readiness: QuestionReadiness;
-  selectedTagIds: string[];
   sourceFiles?: QuestionSourceFileView[];
-  tags: TagOption[];
 };
 
 function ImportedAssetReferencesReview({
@@ -203,9 +193,7 @@ export function AdminQuestionEditDetails({
   importedAssetReferences,
   question,
   readiness,
-  selectedTagIds,
   sourceFiles = [],
-  tags,
 }: AdminQuestionEditDetailsProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -261,10 +249,6 @@ export function AdminQuestionEditDetails({
               defaultValue={question.status}
               isReadyToPublish={readiness.isReady}
             />
-          </div>
-          <div className="space-y-1">
-            <Label>Tags</Label>
-            <TagCheckboxList tags={tags} defaultValue={selectedTagIds} />
           </div>
           <div className="lg:col-span-2">
             <PublishReadinessBox

@@ -107,8 +107,6 @@ export default async function AdminVideosPage({
   const [
     { data: videos, error },
     { data: questions },
-    { data: videoTags },
-    { data: tags },
   ] = await Promise.all([
     supabase
       .from("videos")
@@ -123,31 +121,17 @@ export default async function AdminVideosPage({
       .eq("status", "published")
       .order("created_at", { ascending: false })
       .limit(100),
-    supabase.from("video_tags").select("video_id, tag_id").limit(1000),
-    supabase.from("tags").select("id, name").limit(1000),
   ]);
-  const tagNameById = new Map((tags ?? []).map((tag) => [tag.id, tag.name]));
   const boundQuestionIds = new Set((videos ?? []).map((video) => video.question_id));
   const availableQuestions = (questions ?? []).filter(
     (question) => !boundQuestionIds.has(question.id),
   );
-  const tagsByVideoId = new Map<string, string[]>();
   const fiveFacetAssignmentsByVideoId = new Map<
     string,
     FiveFacetTagChipAssignment[]
   >();
   let fiveFacetAssignments: FiveFacetVideoSearchAssignmentRow[] = [];
   let fiveFacetSearchMessage: string | null = null;
-
-  for (const binding of videoTags ?? []) {
-    const current = tagsByVideoId.get(binding.video_id) ?? [];
-    const tagName = tagNameById.get(binding.tag_id);
-
-    if (tagName) {
-      current.push(tagName);
-      tagsByVideoId.set(binding.video_id, current);
-    }
-  }
 
   const videoIds = (videos ?? []).map((video) => video.id);
   if (videoIds.length) {
@@ -198,8 +182,8 @@ export default async function AdminVideosPage({
         <h1 className="text-2xl font-semibold tracking-tight">Videos</h1>
         <p className="text-sm text-muted-foreground">
           External video CRUD skeleton. The unique question binding is enforced
-          by the database. Official five-facet tags are the primary video
-          taxonomy; legacy mirrored tags are deprecated compatibility data.
+          by the database. Official five-facet tags are the visible video
+          taxonomy.
         </p>
       </div>
       <PageFeedback error={params.error} saved={params.saved} />
@@ -211,8 +195,7 @@ export default async function AdminVideosPage({
           <form className="space-y-3">
             <p className="text-sm text-muted-foreground">
               Filter videos by the primary curriculum, concept, method, task,
-              and form tag system. Legacy / deprecated video tags remain
-              compatibility-only.
+              and form tag system.
             </p>
             <FiveFacetTagTreePicker
               namePrefix="ff"
@@ -386,23 +369,9 @@ export default async function AdminVideosPage({
                         </p>
                         <FiveFacetTagChips
                           assignments={fiveFacetAssignmentsByVideoId.get(video.id)}
+                          emptyLabel="No five-facet tags assigned yet."
                           showCategoryHeadings={false}
                         />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Legacy / deprecated video tags
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">
-                          Compatibility-only mirror of the bound question tags.
-                        </p>
-                        <div className="flex flex-wrap gap-1">
-                          {(tagsByVideoId.get(video.id) ?? []).map((tagName) => (
-                            <Badge key={tagName} variant="outline">
-                              {tagName}
-                            </Badge>
-                          ))}
-                        </div>
                       </div>
                     </div>
                   </TableCell>
@@ -509,6 +478,7 @@ export default async function AdminVideosPage({
                               assignments={fiveFacetAssignmentsByVideoId.get(
                                 video.id,
                               )}
+                              emptyLabel="No five-facet tags assigned yet."
                             />
                           </div>
                           <p className="text-xs text-muted-foreground">
@@ -516,32 +486,6 @@ export default async function AdminVideosPage({
                             the five-facet review/admin workflow.
                           </p>
                         </div>
-                        <details className="rounded-md border p-3">
-                          <summary className="cursor-pointer text-sm font-medium">
-                            Legacy / deprecated mirrored tags
-                          </summary>
-                          <div className="min-h-10 rounded-md border bg-muted/20 px-3 py-2">
-                            <div className="flex flex-wrap gap-1">
-                              {(tagsByVideoId.get(video.id) ?? []).length ? (
-                                (tagsByVideoId.get(video.id) ?? []).map(
-                                  (tagName) => (
-                                    <Badge key={tagName} variant="outline">
-                                      {tagName}
-                                    </Badge>
-                                  ),
-                                )
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  No question tags to mirror.
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Compatibility-only mirror. Edit the bound question
-                            legacy tags to update this deprecated list.
-                          </p>
-                        </details>
                         <div className="lg:col-span-2">
                           <FormSubmitButton size="sm" pendingLabel="Saving...">
                             Save video

@@ -25,7 +25,6 @@ export const dynamic = "force-dynamic";
 type VideosPageProps = {
   searchParams: Promise<{
     q?: string;
-    tag?: string;
     min?: string;
     max?: string;
   }>;
@@ -57,7 +56,6 @@ function isMissingFiveFacetVideoTableError(error: unknown) {
 export default async function VideosPage({ searchParams }: VideosPageProps) {
   const params = await searchParams;
   const search = (params.q ?? "").trim().toLowerCase();
-  const selectedTagId = params.tag ?? "";
   const minDifficulty = parseDifficulty(params.min, 0);
   const maxDifficulty = parseDifficulty(params.max, 1000);
 
@@ -74,23 +72,6 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
     .limit(100);
   const videoIds = (videos ?? []).map((video) => video.id);
   const questionIds = (videos ?? []).map((video) => video.question_id);
-  const { data: bindings, error: bindingsError } = videoIds.length
-    ? await supabase
-        .from("video_tags")
-        .select("video_id, tag_id")
-        .in("video_id", videoIds)
-    : { data: [], error: null };
-  const publicTagIds = Array.from(
-    new Set((bindings ?? []).map((binding) => binding.tag_id)),
-  );
-  const { data: publicTags, error: tagsError } = publicTagIds.length
-    ? await supabase
-        .from("tags")
-        .select("id, name")
-        .eq("status", "published")
-        .in("id", publicTagIds)
-        .order("name", { ascending: true })
-    : { data: [], error: null };
   const { data: questions, error: questionsError } = questionIds.length
     ? await supabase
         .from("questions")
@@ -106,31 +87,13 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
           .eq("review_status", "approved")
           .in("video_id", videoIds)
       : { data: [], error: null };
-  const tagNameById = new Map(
-    (publicTags ?? []).map((tag) => [tag.id, tag.name]),
-  );
   const questionById = new Map(
     (questions ?? []).map((question) => [question.id, question]),
   );
-  const tagsByVideoId = new Map<string, string[]>();
-  const tagIdsByVideoId = new Map<string, Set<string>>();
   const fiveFacetAssignmentsByVideoId = new Map<
     string,
     FiveFacetTagChipAssignment[]
   >();
-
-  for (const binding of bindings ?? []) {
-    const current = tagsByVideoId.get(binding.video_id) ?? [];
-    const currentIds = tagIdsByVideoId.get(binding.video_id) ?? new Set();
-    const tagName = tagNameById.get(binding.tag_id);
-
-    if (tagName) {
-      current.push(tagName);
-      tagsByVideoId.set(binding.video_id, current);
-      currentIds.add(binding.tag_id);
-      tagIdsByVideoId.set(binding.video_id, currentIds);
-    }
-  }
 
   const publicFiveFacetVideoAssignments =
     fiveFacetVideoAssignmentsError &&
@@ -162,10 +125,8 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
       .join(" ")
       .toLowerCase();
     const searchMatches = !search || searchable.includes(search);
-    const tagMatches =
-      !selectedTagId || tagIdsByVideoId.get(video.id)?.has(selectedTagId);
 
-    return difficultyMatches && searchMatches && tagMatches;
+    return difficultyMatches && searchMatches;
   });
 
   return (
@@ -173,11 +134,11 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Videos</h1>
         <p className="text-sm text-muted-foreground">
-          Published video explanations with their linked question, inherited
-          tags, and difficulty.
+          Published video explanations with their linked question, official
+          five-facet tags, and difficulty.
         </p>
       </div>
-      <form className="grid gap-3 rounded-md border p-4 md:grid-cols-[1.5fr_1fr_1fr_1fr_auto]">
+      <form className="grid gap-3 rounded-md border p-4 md:grid-cols-[1.5fr_1fr_1fr_auto]">
         <div className="space-y-2">
           <Label htmlFor="q">Search</Label>
           <Input
@@ -186,22 +147,6 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
             defaultValue={params.q ?? ""}
             placeholder="Video, provider, or question"
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="tag">Tag</Label>
-          <select
-            id="tag"
-            name="tag"
-            defaultValue={selectedTagId}
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-          >
-            <option value="">All tags</option>
-            {(publicTags ?? []).map((tag) => (
-              <option key={tag.id} value={tag.id}>
-                {tag.name}
-              </option>
-            ))}
-          </select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="min">Min difficulty</Label>
@@ -232,11 +177,9 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
           </Button>
         </div>
       </form>
-      {error || bindingsError || tagsError || questionsError ? (
+      {error || questionsError ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error?.message ??
-            bindingsError?.message ??
-            tagsError?.message ??
             questionsError?.message}
         </p>
       ) : null}
@@ -293,20 +236,9 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
                       </p>
                       <FiveFacetTagChips
                         assignments={fiveFacetAssignmentsByVideoId.get(video.id)}
+                        emptyLabel="No five-facet tags assigned yet."
                         showCategoryHeadings={false}
                       />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Legacy / deprecated tags
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {(tagsByVideoId.get(video.id) ?? []).map((tagName) => (
-                          <Badge key={tagName} variant="outline">
-                            {tagName}
-                          </Badge>
-                        ))}
-                      </div>
                     </div>
                   </div>
                 </TableCell>

@@ -332,11 +332,11 @@ assertRoute(
     adminQuestions.text.includes("Include official five-facet tags") &&
     adminQuestions.text.includes("Search five-facet catalog") &&
     adminQuestions.text.includes("raw IDs are shown only as small reference text") &&
-    adminQuestions.text.includes("Legacy tags") &&
     adminQuestions.text.includes("Official five-facet tags") &&
     adminQuestions.text.includes("Markdown + LaTeX") &&
-    adminQuestions.text.includes("Advanced HTML"),
-  "admin questions renders filters, label-first five-facet controls, legacy/official tag sections, and Markdown LaTeX editor",
+    adminQuestions.text.includes("Advanced HTML") &&
+    !adminQuestions.text.includes("All tags"),
+  "admin questions renders five-facet-only filters, label-first controls, and Markdown LaTeX editor",
 );
 assertRoute(
   adminTags.status === 200 &&
@@ -344,8 +344,12 @@ assertRoute(
     adminTags.text.includes("Catalog seed preview") &&
     adminTags.text.includes("Approved assignment write preview") &&
     adminTags.text.includes("No provider calls") &&
-    adminTags.text.includes("No Review Draft mutation"),
-  "admin tags renders five-facet seed and approved assignment previews",
+    adminTags.text.includes("No Review Draft mutation") &&
+    !adminTags.text.includes("Create tag") &&
+    !adminTags.text.includes('name="tag_type"') &&
+    !adminTags.text.includes('value="knowledge"') &&
+    !adminTags.text.includes('value="attribute"'),
+  "admin tags renders five-facet-only seed and approved assignment previews",
 );
 assertRoute(
   adminImports.status === 200 &&
@@ -385,9 +389,9 @@ assertRoute(
 assertRoute(
   adminVideos.status === 200 &&
     adminVideos.text.includes("Official five-facet video tags") &&
-    adminVideos.text.includes("Legacy / deprecated") &&
-    adminVideos.text.includes("Search five-facet catalog"),
-  "admin videos page renders five-facet video tag filters and deprecated legacy copy",
+    adminVideos.text.includes("Search five-facet catalog") &&
+    !adminVideos.text.includes("Legacy / deprecated"),
+  "admin videos page renders five-facet-only video tag filters",
 );
 assertRoute(
   adminUsers.status === 307 && adminUsers.location.includes("/unauthorized"),
@@ -1526,55 +1530,35 @@ try {
   const questionList = await fetchRoute(
     `/questions?q=${encodeURIComponent(question.question_code)}&min=0&max=1000`,
   );
-  const questionFilteredByTag = await fetchRoute(
-    `/questions?tag=${tags[1].id}&min=0&max=1000`,
-  );
   const questionDetail = await fetchRoute(`/questions/${question.id}`);
   const videoList = await fetchRoute(
     `/videos?q=${encodeURIComponent(video.title)}&min=0&max=1000`,
   );
-  const videoFilteredByTag = await fetchRoute(
-    `/videos?tag=${tags[2].id}&min=0&max=1000`,
-  );
   const videoDetail = await fetchRoute(`/videos/${video.id}`);
 
-  for (const tag of tags) {
-    assertRoute(
-      questionList.text.includes(tag.name),
-      `/questions displays multi-tag ${tag.name}`,
-    );
-    assertRoute(
-      questionDetail.text.includes(tag.name),
-      `/questions/[id] displays multi-tag ${tag.name}`,
-    );
-    assertRoute(
-      videoList.text.includes(tag.name),
-      `/videos displays inherited multi-tag ${tag.name}`,
-    );
-    assertRoute(
-      videoDetail.text.includes(tag.name),
-      `/videos/[id] displays inherited multi-tag ${tag.name}`,
-    );
-  }
-
+  assertRoute(
+    questionList.text.includes("No five-facet tags assigned yet.") &&
+      !questionList.text.includes("All tags"),
+    "/questions renders five-facet empty state without legacy tag filter",
+  );
+  assertRoute(
+    questionDetail.text.includes("Official five-facet tags") &&
+      questionDetail.text.includes("No five-facet tags assigned yet.") &&
+      !questionDetail.text.includes("Legacy"),
+    "/questions/[id] renders official five-facet tags without legacy tags",
+  );
   assertRoute(
     videoList.text.includes("Official five-facet tags") &&
-      videoList.text.includes("Legacy / deprecated tags"),
-    "/videos labels official five-facet tags and deprecated legacy tags",
+      videoList.text.includes("No five-facet tags assigned yet.") &&
+      !videoList.text.includes("All tags") &&
+      !videoList.text.includes("Legacy"),
+    "/videos renders five-facet tags without legacy tag filter",
   );
   assertRoute(
     videoDetail.text.includes("Official five-facet video tags") &&
-      videoDetail.text.includes("Legacy / deprecated video tags"),
-    "/videos/[id] labels official five-facet video tags and deprecated legacy tags",
-  );
-
-  assertRoute(
-    questionFilteredByTag.text.includes(question.title),
-    "question tag filter works with multi-tag question",
-  );
-  assertRoute(
-    videoFilteredByTag.text.includes(video.title),
-    "video tag filter works with multi-tag video",
+      videoDetail.text.includes("No five-facet tags assigned yet.") &&
+      !videoDetail.text.includes("Legacy"),
+    "/videos/[id] renders official five-facet video tags without legacy tags",
   );
 
   const keptTags = tags.slice(0, 2);
@@ -1630,20 +1614,24 @@ try {
 
   for (const tag of keptTags) {
     assertRoute(
-      syncedQuestionList.text.includes(tag.name),
-      `/questions displays synced kept tag ${tag.name}`,
+      syncedQuestionList.text.includes("No five-facet tags assigned yet.") &&
+        !syncedQuestionList.text.includes(tag.name),
+      `/questions keeps five-facet empty state after legacy tag sync ${tag.name}`,
     );
     assertRoute(
-      syncedQuestionDetail.text.includes(tag.name),
-      `/questions/[id] displays synced kept tag ${tag.name}`,
+      syncedQuestionDetail.text.includes("No five-facet tags assigned yet.") &&
+        !syncedQuestionDetail.text.includes(tag.name),
+      `/questions/[id] keeps five-facet empty state after legacy tag sync ${tag.name}`,
     );
     assertRoute(
-      syncedVideoList.text.includes(tag.name),
-      `/videos displays synced kept tag ${tag.name}`,
+      syncedVideoList.text.includes("No five-facet tags assigned yet.") &&
+        !syncedVideoList.text.includes(tag.name),
+      `/videos keeps five-facet empty state after legacy tag sync ${tag.name}`,
     );
     assertRoute(
-      syncedVideoDetail.text.includes(tag.name),
-      `/videos/[id] displays synced kept tag ${tag.name}`,
+      syncedVideoDetail.text.includes("No five-facet tags assigned yet.") &&
+        !syncedVideoDetail.text.includes(tag.name),
+      `/videos/[id] keeps five-facet empty state after legacy tag sync ${tag.name}`,
     );
   }
 
@@ -1655,22 +1643,6 @@ try {
     !syncedVideoList.text.includes(removedTag.name) &&
       !syncedVideoDetail.text.includes(removedTag.name),
     "removed video tag no longer appears publicly",
-  );
-
-  const syncedQuestionFilteredByTag = await fetchRoute(
-    `/questions?tag=${keptTags[0].id}&min=0&max=1000`,
-  );
-  const syncedVideoFilteredByTag = await fetchRoute(
-    `/videos?tag=${keptTags[1].id}&min=0&max=1000`,
-  );
-
-  assertRoute(
-    syncedQuestionFilteredByTag.text.includes(question.title),
-    "question tag filter works after tag sync",
-  );
-  assertRoute(
-    syncedVideoFilteredByTag.text.includes(video.title),
-    "video tag filter works after tag sync",
   );
 } finally {
   for (const id of cleanup.superAdminImportBatchAssets) {

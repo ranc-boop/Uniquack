@@ -24,7 +24,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
-import type { Tag, Video } from "@/types/database";
+import type { Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +33,6 @@ type QuestionDetailPageProps = {
     id: string;
   }>;
 };
-
-type TagRow = Pick<Tag, "id" | "name">;
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
@@ -133,15 +131,10 @@ export default async function QuestionDetailPage({
   }
 
   const [
-    { data: questionTagBindings, error: questionTagError },
     { data: video, error: videoError },
     { data: displayedAssets, error: displayedAssetsError },
     { data: fiveFacetAssignments, error: fiveFacetAssignmentsError },
   ] = await Promise.all([
-    supabase
-      .from("question_tags")
-      .select("tag_id")
-      .eq("question_id", question.id),
     supabase
       .from("videos")
       .select(
@@ -163,20 +156,6 @@ export default async function QuestionDetailPage({
       .eq("question_id", question.id)
       .eq("review_status", "approved"),
   ]);
-
-  if (questionTagError) {
-    return (
-      <Card className="border-destructive/30">
-        <CardContent className="p-6 text-sm text-destructive">
-          {questionTagError.message}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const questionTagIds = Array.from(
-    new Set((questionTagBindings ?? []).map((binding) => binding.tag_id)),
-  );
 
   if (videoError) {
     return (
@@ -217,70 +196,6 @@ export default async function QuestionDetailPage({
       publicUrl: data.publicUrl,
     };
   });
-
-  const questionTagsRequest = questionTagIds.length
-    ? supabase
-        .from("tags")
-        .select("id, name")
-        .eq("status", "published")
-        .in("id", questionTagIds)
-        .order("name", { ascending: true })
-    : Promise.resolve({ data: [] as TagRow[], error: null });
-  const videoTagBindingsRequest = video
-    ? supabase.from("video_tags").select("tag_id").eq("video_id", video.id)
-    : Promise.resolve({ data: [], error: null });
-  const [{ data: questionTags, error: tagsError }, { data: videoTagBindings, error: videoTagError }] =
-    await Promise.all([questionTagsRequest, videoTagBindingsRequest]);
-
-  if (tagsError) {
-    return (
-      <Card className="border-destructive/30">
-        <CardContent className="p-6 text-sm text-destructive">
-          {tagsError.message}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (videoTagError) {
-    return (
-      <Card className="border-destructive/30">
-        <CardContent className="p-6 text-sm text-destructive">
-          {videoTagError.message}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  let videoTags: TagRow[] = [];
-
-  if (video) {
-    const videoTagIds = Array.from(
-      new Set((videoTagBindings ?? []).map((binding) => binding.tag_id)),
-    );
-
-    const { data: loadedVideoTags, error: loadedVideoTagsError } =
-      videoTagIds.length
-        ? await supabase
-            .from("tags")
-            .select("id, name")
-            .eq("status", "published")
-            .in("id", videoTagIds)
-            .order("name", { ascending: true })
-        : { data: [] as TagRow[], error: null };
-
-    if (loadedVideoTagsError) {
-      return (
-        <Card className="border-destructive/30">
-          <CardContent className="p-6 text-sm text-destructive">
-            {loadedVideoTagsError.message}
-          </CardContent>
-        </Card>
-      );
-    }
-
-    videoTags = loadedVideoTags ?? [];
-  }
 
   return (
     <div className="space-y-6">
@@ -390,24 +305,11 @@ export default async function QuestionDetailPage({
             </div>
           </SidebarCard>
 
-          <SidebarCard title="Tags">
-            {(questionTags ?? []).length ? (
-              <div className="flex flex-wrap gap-2">
-                {(questionTags ?? []).map((tag) => (
-                  <Badge key={tag.id} variant="outline">
-                    {tag.name}
-                  </Badge>
-                ))}
-              </div>
-            ) : (
-              <span className="text-sm text-muted-foreground">
-                No tags
-              </span>
-            )}
-          </SidebarCard>
-
           <SidebarCard title="Official five-facet tags">
-            <FiveFacetTagChips assignments={publicFiveFacetAssignments} />
+            <FiveFacetTagChips
+              assignments={publicFiveFacetAssignments}
+              emptyLabel="No five-facet tags assigned yet."
+            />
           </SidebarCard>
 
           {video ? (
@@ -427,15 +329,6 @@ export default async function QuestionDetailPage({
                     videoUrl={video.video_url}
                   />
                 </div>
-                {videoTags.length ? (
-                  <div className="flex flex-wrap gap-1">
-                    {videoTags.map((tag) => (
-                      <Badge key={tag.id} variant="secondary" className="text-xs">
-                        {tag.name}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/videos/${video.id}`}>Open video</Link>
