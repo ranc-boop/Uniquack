@@ -7,7 +7,13 @@ import { Fragment } from "react";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
+import {
+  FiveFacetTagChips,
+  type FiveFacetTagChipAssignment,
+} from "@/components/tags/five-facet-tag-chips";
+import { FiveFacetTagTreePicker } from "@/components/tags/five-facet-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,20 +27,82 @@ import {
 } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildFiveFacetVideoBankSearchPlan,
+  filterVideosByFiveFacetAssignments,
+  hasFiveFacetVideoBankFilters,
+  type FiveFacetVideoSearchAssignmentRow,
+} from "@/lib/tags/five-facet-video-search";
 import { isAllowedVideoEmbedUrl } from "@/lib/validations/video";
 
 type AdminVideosPageProps = {
   searchParams: Promise<{
     error?: string;
+    ff_concept?: string | string[];
+    ff_curriculum?: string | string[];
+    ff_exclude_concept?: string | string[];
+    ff_exclude_curriculum?: string | string[];
+    ff_exclude_form?: string | string[];
+    ff_exclude_method?: string | string[];
+    ff_exclude_search?: string | string[];
+    ff_exclude_task?: string | string[];
+    ff_form?: string | string[];
+    ff_method?: string | string[];
+    ff_reviewed?: string | string[];
+    ff_search?: string | string[];
+    ff_task?: string | string[];
     saved?: string;
   }>;
 };
+
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function tagIdList(value: string | string[] | undefined) {
+  return (Array.isArray(value) ? value : value ? [value] : [])
+    .flatMap((entry) => entry.split(","))
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function isMissingFiveFacetVideoTableError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const record = error as { code?: unknown; message?: unknown };
+  const message = typeof record.message === "string" ? record.message : "";
+
+  return (
+    record.code === "42P01" ||
+    /five_facet_video_tag_assignments|relation .* does not exist|schema cache/i.test(
+      message,
+    )
+  );
+}
 
 export default async function AdminVideosPage({
   searchParams,
 }: AdminVideosPageProps) {
   const params = await searchParams;
   await requireAdmin();
+  const fiveFacetFilter = {
+    exclude: {
+      concept: tagIdList(params.ff_exclude_concept),
+      curriculum: tagIdList(params.ff_exclude_curriculum),
+      form: tagIdList(params.ff_exclude_form),
+      method: tagIdList(params.ff_exclude_method),
+      task: tagIdList(params.ff_exclude_task),
+    },
+    include: {
+      concept: tagIdList(params.ff_concept),
+      curriculum: tagIdList(params.ff_curriculum),
+      form: tagIdList(params.ff_form),
+      method: tagIdList(params.ff_method),
+      task: tagIdList(params.ff_task),
+    },
+    requireReviewed: firstParam(params.ff_reviewed) !== "false",
+  };
+  const hasFiveFacetFilters = hasFiveFacetVideoBankFilters(fiveFacetFilter);
+  const fiveFacetSearchPlan = buildFiveFacetVideoBankSearchPlan(fiveFacetFilter);
   const supabase = await createClient();
   const [
     { data: videos, error },
@@ -64,6 +132,12 @@ export default async function AdminVideosPage({
     (question) => !boundQuestionIds.has(question.id),
   );
   const tagsByVideoId = new Map<string, string[]>();
+  const fiveFacetAssignmentsByVideoId = new Map<
+    string,
+    FiveFacetTagChipAssignment[]
+  >();
+  let fiveFacetAssignments: FiveFacetVideoSearchAssignmentRow[] = [];
+  let fiveFacetSearchMessage: string | null = null;
 
   for (const binding of videoTags ?? []) {
     const current = tagsByVideoId.get(binding.video_id) ?? [];
@@ -75,16 +149,133 @@ export default async function AdminVideosPage({
     }
   }
 
+  const videoIds = (videos ?? []).map((video) => video.id);
+  if (videoIds.length) {
+    const { data, error: fiveFacetVideoAssignmentsError } = await supabase
+      .from("five_facet_video_tag_assignments")
+      .select("video_id, tag_id, category, review_status")
+      .in("video_id", videoIds);
+
+    if (fiveFacetVideoAssignmentsError) {
+      fiveFacetSearchMessage = isMissingFiveFacetVideoTableError(
+        fiveFacetVideoAssignmentsError,
+      )
+        ? "Five-facet video assignments are unavailable. Apply migration 0010_five_facet_video_tag_assignments.sql to enable official video tags."
+        : `Five-facet video assignments are unavailable: ${fiveFacetVideoAssignmentsError.message}`;
+    } else {
+      fiveFacetAssignments = (data ?? []) as FiveFacetVideoSearchAssignmentRow[];
+      for (const assignment of fiveFacetAssignments) {
+        const current =
+          fiveFacetAssignmentsByVideoId.get(assignment.video_id) ?? [];
+        current.push({
+          category: assignment.category,
+          review_status: assignment.review_status,
+          tag_id: assignment.tag_id,
+        });
+        fiveFacetAssignmentsByVideoId.set(assignment.video_id, current);
+      }
+    }
+  }
+
+  const fiveFacetSearchResult =
+    hasFiveFacetFilters && fiveFacetSearchPlan.valid && !fiveFacetSearchMessage
+      ? filterVideosByFiveFacetAssignments({
+          assignments: fiveFacetAssignments,
+          filter: fiveFacetFilter,
+          videos: videos ?? [],
+        })
+      : null;
+  const fiveFacetMatchedIds = new Set(
+    fiveFacetSearchResult?.matchedVideoIds ?? [],
+  );
+  const filteredVideos = fiveFacetSearchResult
+    ? (videos ?? []).filter((video) => fiveFacetMatchedIds.has(video.id))
+    : videos ?? [];
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Videos</h1>
         <p className="text-sm text-muted-foreground">
           External video CRUD skeleton. The unique question binding is enforced
-          by the database. Video tags mirror the bound question tags for MVP.
+          by the database. Official five-facet tags are the primary video
+          taxonomy; legacy mirrored tags are deprecated compatibility data.
         </p>
       </div>
       <PageFeedback error={params.error} saved={params.saved} />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Official five-facet video tags</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Filter videos by the primary curriculum, concept, method, task,
+              and form tag system. Legacy / deprecated video tags remain
+              compatibility-only.
+            </p>
+            <FiveFacetTagTreePicker
+              namePrefix="ff"
+              searchQuery={firstParam(params.ff_search) ?? ""}
+              selectedTagIds={fiveFacetFilter.include}
+              title="Include official five-facet video tags"
+            />
+            <details className="rounded-md border px-3 py-2">
+              <summary className="cursor-pointer text-sm font-medium">
+                Exclude official tags
+              </summary>
+              <div className="mt-3 space-y-3">
+                <FiveFacetTagTreePicker
+                  namePrefix="ff_exclude"
+                  searchName="ff_exclude_search"
+                  searchQuery={firstParam(params.ff_exclude_search) ?? ""}
+                  selectedTagIds={fiveFacetFilter.exclude}
+                  title="Exclude official five-facet video tags"
+                />
+                <div className="space-y-2">
+                  <Label htmlFor="ff_reviewed">Assignments</Label>
+                  <select
+                    id="ff_reviewed"
+                    name="ff_reviewed"
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                    defaultValue={firstParam(params.ff_reviewed) ?? "true"}
+                  >
+                    <option value="true">Reviewed only</option>
+                    <option value="false">Any review status</option>
+                  </select>
+                </div>
+              </div>
+            </details>
+            {hasFiveFacetFilters ? (
+              <div className="space-y-1 text-xs">
+                <p className="text-muted-foreground">
+                  Five-facet video search contract: curriculum tags can expand
+                  to mapped concepts without hierarchy mutation.
+                </p>
+                {fiveFacetSearchPlan.errors.length ? (
+                  <p className="text-destructive">
+                    {fiveFacetSearchPlan.errors.slice(0, 3).join("; ")}
+                  </p>
+                ) : null}
+                {fiveFacetSearchMessage ? (
+                  <p className="text-amber-700">{fiveFacetSearchMessage}</p>
+                ) : null}
+              </div>
+            ) : null}
+            {!fiveFacetSearchMessage && !fiveFacetAssignments.length ? (
+              <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                No official five-facet video tags assigned yet.
+              </p>
+            ) : null}
+            <div className="flex gap-2">
+              <Button type="submit">Filter videos</Button>
+              <Button asChild type="button" variant="outline">
+                <a href="/admin/videos">Reset</a>
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Create video</CardTitle>
@@ -173,14 +364,14 @@ export default async function AdminVideosPage({
             <TableRow>
               <TableHead>Title</TableHead>
               <TableHead>Question</TableHead>
-              <TableHead>Inherited tags</TableHead>
+              <TableHead>Tags</TableHead>
               <TableHead>Provider</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-[160px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(videos ?? []).map((video) => (
+            {filteredVideos.map((video) => (
               <Fragment key={video.id}>
                 <TableRow>
                   <TableCell>{video.title ?? "Untitled video"}</TableCell>
@@ -188,12 +379,31 @@ export default async function AdminVideosPage({
                     {video.question_id}
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {(tagsByVideoId.get(video.id) ?? []).map((tagName) => (
-                        <Badge key={tagName} variant="outline">
-                          {tagName}
-                        </Badge>
-                      ))}
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Official five-facet tags
+                        </p>
+                        <FiveFacetTagChips
+                          assignments={fiveFacetAssignmentsByVideoId.get(video.id)}
+                          showCategoryHeadings={false}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Legacy / deprecated video tags
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Compatibility-only mirror of the bound question tags.
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {(tagsByVideoId.get(video.id) ?? []).map((tagName) => (
+                            <Badge key={tagName} variant="outline">
+                              {tagName}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>{video.provider ?? "External"}</TableCell>
@@ -293,7 +503,23 @@ export default async function AdminVideosPage({
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <Label>Mirrored tags</Label>
+                          <Label>Official five-facet video tags</Label>
+                          <div className="min-h-10 rounded-md border bg-muted/20 px-3 py-2">
+                            <FiveFacetTagChips
+                              assignments={fiveFacetAssignmentsByVideoId.get(
+                                video.id,
+                              )}
+                            />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Official video tag assignment writes are handled by
+                            the five-facet review/admin workflow.
+                          </p>
+                        </div>
+                        <details className="rounded-md border p-3">
+                          <summary className="cursor-pointer text-sm font-medium">
+                            Legacy / deprecated mirrored tags
+                          </summary>
                           <div className="min-h-10 rounded-md border bg-muted/20 px-3 py-2">
                             <div className="flex flex-wrap gap-1">
                               {(tagsByVideoId.get(video.id) ?? []).length ? (
@@ -312,9 +538,10 @@ export default async function AdminVideosPage({
                             </div>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            Edit the bound question tags to update video tags.
+                            Compatibility-only mirror. Edit the bound question
+                            legacy tags to update this deprecated list.
                           </p>
-                        </div>
+                        </details>
                         <div className="lg:col-span-2">
                           <FormSubmitButton size="sm" pendingLabel="Saving...">
                             Save video
@@ -326,11 +553,12 @@ export default async function AdminVideosPage({
                 </TableRow>
               </Fragment>
             ))}
-            {!videos?.length ? (
+            {!filteredVideos.length ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center">
-                  No videos yet. Create a published question first, then bind a
-                  video to it here.
+                  {(videos ?? []).length
+                    ? "No videos match these filters."
+                    : "No videos yet. Create a published question first, then bind a video to it here."}
                 </TableCell>
               </TableRow>
             ) : null}

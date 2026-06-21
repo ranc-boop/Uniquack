@@ -3,6 +3,10 @@ import { notFound } from "next/navigation";
 
 import { SupabaseConfigNotice } from "@/components/config-notice";
 import { RichHtml } from "@/components/rich-html";
+import {
+  FiveFacetTagChips,
+  type FiveFacetTagChipAssignment,
+} from "@/components/tags/five-facet-tag-chips";
 import { VideoPlayerFrame } from "@/components/video-player-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,6 +72,19 @@ function ErrorCard({ message }: { message: string }) {
     <Card className="border-destructive/30">
       <CardContent className="p-6 text-sm text-destructive">{message}</CardContent>
     </Card>
+  );
+}
+
+function isMissingFiveFacetVideoTableError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const record = error as { code?: unknown; message?: unknown };
+  const message = typeof record.message === "string" ? record.message : "";
+
+  return (
+    record.code === "42P01" ||
+    /five_facet_video_tag_assignments|permission denied|relation .* does not exist|schema cache/i.test(
+      message,
+    )
   );
 }
 
@@ -138,6 +155,19 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
   if (loadedVideoTagsError) {
     return <ErrorCard message={loadedVideoTagsError.message} />;
   }
+
+  const { data: fiveFacetVideoAssignments, error: fiveFacetVideoAssignmentsError } =
+    await supabase
+      .from("five_facet_video_tag_assignments")
+      .select("tag_id, category, review_status")
+      .eq("video_id", video.id)
+      .eq("review_status", "approved");
+
+  const officialFiveFacetVideoAssignments =
+    fiveFacetVideoAssignmentsError &&
+    isMissingFiveFacetVideoTableError(fiveFacetVideoAssignmentsError)
+      ? []
+      : ((fiveFacetVideoAssignments ?? []) as FiveFacetTagChipAssignment[]);
 
   const { data: questionTagBindings, error: questionTagError } = await supabase
     .from("question_tags")
@@ -221,19 +251,28 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Video tags</h2>
-            <div className="flex flex-wrap gap-2">
-              {(videoTags ?? []).length ? (
-                (videoTags ?? []).map((tag) => (
-                  <Badge key={tag.id} variant="outline">
-                    {tag.name}
-                  </Badge>
-                ))
-              ) : (
-                <span className="text-sm text-muted-foreground">
-                  No tags attached.
-                </span>
-              )}
+            <h2 className="text-lg font-semibold">Official five-facet video tags</h2>
+            <FiveFacetTagChips assignments={officialFiveFacetVideoAssignments} />
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Legacy / deprecated video tags
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Compatibility-only tags mirrored from the old tag system.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(videoTags ?? []).length ? (
+                  (videoTags ?? []).map((tag) => (
+                    <Badge key={tag.id} variant="outline">
+                      {tag.name}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-sm text-muted-foreground">
+                    No legacy video tags attached.
+                  </span>
+                )}
+              </div>
             </div>
           </section>
 

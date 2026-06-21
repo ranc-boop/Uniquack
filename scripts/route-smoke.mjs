@@ -219,6 +219,7 @@ const adminImportAssets = await fetchRoute("/admin/imports/assets", adminCookie)
 const adminPackageImport = await fetchRoute("/admin/imports/package", adminCookie);
 const adminAiPdfImport = await fetchRoute("/admin/imports/pdf", adminCookie);
 const adminReview = await fetchRoute("/admin/review", adminCookie);
+const adminVideos = await fetchRoute("/admin/videos", adminCookie);
 const adminUsers = await fetchRoute("/admin/users", adminCookie);
 const adminAiSettings = await fetchRoute("/admin/ai-settings", adminCookie);
 const superAdminUsers = await fetchRoute("/admin/users", superAdminCookie);
@@ -380,6 +381,13 @@ assertRoute(
     adminReview.text.includes("Review Drafts") &&
     adminReview.text.includes("Search drafts"),
   "admin can access review dashboard",
+);
+assertRoute(
+  adminVideos.status === 200 &&
+    adminVideos.text.includes("Official five-facet video tags") &&
+    adminVideos.text.includes("Legacy / deprecated") &&
+    adminVideos.text.includes("Search five-facet catalog"),
+  "admin videos page renders five-facet video tag filters and deprecated legacy copy",
 );
 assertRoute(
   adminUsers.status === 307 && adminUsers.location.includes("/unauthorized"),
@@ -1548,6 +1556,17 @@ try {
       `/videos/[id] displays inherited multi-tag ${tag.name}`,
     );
   }
+
+  assertRoute(
+    videoList.text.includes("Official five-facet tags") &&
+      videoList.text.includes("Legacy / deprecated tags"),
+    "/videos labels official five-facet tags and deprecated legacy tags",
+  );
+  assertRoute(
+    videoDetail.text.includes("Official five-facet video tags") &&
+      videoDetail.text.includes("Legacy / deprecated video tags"),
+    "/videos/[id] labels official five-facet video tags and deprecated legacy tags",
+  );
 
   assertRoute(
     questionFilteredByTag.text.includes(question.title),

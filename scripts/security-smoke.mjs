@@ -178,6 +178,18 @@ const {
   hasFiveFacetQuestionBankFilters,
 } = await import("../src/lib/tags/five-facet-question-search.ts");
 const {
+  buildFiveFacetVideoTagSearchFilter,
+  buildFiveFacetVideoTagSearchPlan,
+  summarizeFiveFacetVideoTagAssignments,
+  validateFiveFacetVideoTagAssignmentRow,
+} = await import("../src/lib/tags/five-facet-video-tag-assignment.ts");
+const {
+  buildFiveFacetVideoBankSearchPlan,
+  emptyFiveFacetVideoSearchFilter,
+  filterVideosByFiveFacetAssignments,
+  hasFiveFacetVideoBankFilters,
+} = await import("../src/lib/tags/five-facet-video-search.ts");
+const {
   buildApprovedTagAssignmentWritePlan,
   buildFiveFacetCatalogSeedRows,
   buildFiveFacetCatalogSyncPlan,
@@ -3950,6 +3962,229 @@ assert.equal(
 );
 console.log(
   "PASS five-facet question bank search validates filters and matches reviewed assignments without writes",
+);
+
+const fiveFacetVideoMigration = await readFile(
+  new URL(
+    "../supabase/migrations/0010_five_facet_video_tag_assignments.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+assert.ok(
+  fiveFacetVideoMigration.includes(
+    "create table if not exists public.five_facet_video_tag_assignments",
+  ),
+);
+assert.ok(
+  fiveFacetVideoMigration.includes(
+    "alter table public.five_facet_video_tag_assignments enable row level security",
+  ),
+);
+assert.ok(fiveFacetVideoMigration.includes("five_facet_video_tag_assignments_admin_crud"));
+assert.ok(fiveFacetVideoMigration.includes("private.is_admin()"));
+assert.ok(fiveFacetVideoMigration.includes("references public.videos(id)"));
+assert.ok(fiveFacetVideoMigration.includes("references public.five_facet_tag_nodes(tag_id)"));
+assert.equal(/ai_provider_profiles|provider gateway/i.test(fiveFacetVideoMigration), false);
+
+const validFiveFacetVideoAssignment = validateFiveFacetVideoTagAssignmentRow({
+  category: "concept",
+  confidence: 0.88,
+  evidence: { source: "smoke" },
+  review_status: "approved",
+  source: "manual",
+  tag_id: "concept.algebra.functions.quadratic.vertex",
+  video_id: "11111111-1111-4111-8111-111111111111",
+});
+assert.equal(validFiveFacetVideoAssignment.valid, true);
+assert.equal(validFiveFacetVideoAssignment.row?.review_status, "approved");
+assert.equal(
+  validateFiveFacetVideoTagAssignmentRow({
+    category: "concept",
+    tag_id: "concept.not_a_real_tag",
+    video_id: "11111111-1111-4111-8111-111111111111",
+  }).errors.includes("unknown_five_facet_tag:concept.not_a_real_tag"),
+  true,
+);
+assert.equal(
+  validateFiveFacetVideoTagAssignmentRow({
+    category: "form",
+    tag_id: "concept.algebra.functions.quadratic.vertex",
+    video_id: "11111111-1111-4111-8111-111111111111",
+  }).errors.includes(
+    "wrong_category:concept.algebra.functions.quadratic.vertex:expected_form",
+  ),
+  true,
+);
+assert.equal(
+  validateFiveFacetVideoTagAssignmentRow({
+    category: "difficulty",
+    tag_id: "difficulty.medium",
+    video_id: "11111111-1111-4111-8111-111111111111",
+  }).errors.includes("difficulty_is_not_taxonomy"),
+  true,
+);
+assert.equal(
+  validateFiveFacetVideoTagAssignmentRow({
+    category: "concept",
+    tag_id: "error_pattern.sign_error",
+    video_id: "11111111-1111-4111-8111-111111111111",
+  }).errors.includes("error_pattern_is_not_video_taxonomy"),
+  true,
+);
+const fiveFacetVideoSearchFilter = buildFiveFacetVideoTagSearchFilter({
+  exclude: {
+    form: ["form.table.data_table"],
+  },
+  include: {
+    concept: ["concept.algebra.functions.quadratic.vertex"],
+    curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+    form: ["form.symbolic.vertex_form"],
+    method: ["method.algebraic_manipulation.complete_the_square"],
+    task: ["task.determine.determine_extreme_value"],
+  },
+  requireReviewed: true,
+});
+assert.equal(fiveFacetVideoSearchFilter.valid, true);
+assert.equal(fiveFacetVideoSearchFilter.filter.requireReviewed, true);
+const fiveFacetVideoSearchPlan = buildFiveFacetVideoTagSearchPlan(
+  {
+    include: {
+      curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+    },
+    requireReviewed: true,
+  },
+  { generatedAt: new Date(0).toISOString() },
+);
+assert.equal(fiveFacetVideoSearchPlan.version, "five_facet_video_tag_search_plan_v1");
+assert.equal(fiveFacetVideoSearchPlan.searchContract.assignmentTable, "five_facet_video_tag_assignments");
+assert.equal(fiveFacetVideoSearchPlan.searchContract.reviewStatusFilter, "approved");
+assert.equal(
+  fiveFacetVideoSearchPlan.searchContract.curriculumConceptExpansion[0]
+    .hierarchyMutation,
+  false,
+);
+assert.equal(fiveFacetVideoSearchPlan.noProviderCall, true);
+assert.equal(fiveFacetVideoSearchPlan.noDbMutation, true);
+assert.equal(fiveFacetVideoSearchPlan.noReviewDraftWrite, true);
+assert.equal(fiveFacetVideoSearchPlan.noExtractionBehaviorChange, true);
+const invalidFiveFacetVideoSearchPlan = buildFiveFacetVideoTagSearchPlan({
+  include: {
+    concept: ["form.symbolic.vertex_form"],
+    difficulty: ["difficulty.medium"],
+    error_pattern: ["error_pattern.sign_error"],
+  },
+});
+assert.equal(invalidFiveFacetVideoSearchPlan.valid, false);
+assert.ok(
+  invalidFiveFacetVideoSearchPlan.errors.includes(
+    "include.wrong_category:form.symbolic.vertex_form:expected_concept",
+  ),
+);
+assert.ok(
+  invalidFiveFacetVideoSearchPlan.errors.includes(
+    "include.difficulty_is_numeric_field_not_taxonomy_category",
+  ),
+);
+assert.ok(
+  invalidFiveFacetVideoSearchPlan.errors.includes(
+    "include.error_pattern_is_attempt_diagnosis_not_video_taxonomy",
+  ),
+);
+const fiveFacetVideoBankSearchPlan = buildFiveFacetVideoBankSearchPlan(
+  {
+    include: {
+      concept: ["concept.algebra.functions.quadratic.vertex"],
+      curriculum: ["curriculum.bc.precalculus_11.quadratic_functions"],
+    },
+    requireReviewed: true,
+  },
+  { generatedAt: new Date(0).toISOString() },
+);
+assert.equal(
+  fiveFacetVideoBankSearchPlan.version,
+  "five_facet_video_bank_search_plan_v1",
+);
+assert.equal(fiveFacetVideoBankSearchPlan.assignmentQuery.table, "five_facet_video_tag_assignments");
+assert.equal(fiveFacetVideoBankSearchPlan.assignmentQuery.requireReviewed, true);
+assert.equal(
+  hasFiveFacetVideoBankFilters(emptyFiveFacetVideoSearchFilter()),
+  false,
+);
+const fiveFacetVideoSearchResult = filterVideosByFiveFacetAssignments({
+  assignments: [
+    {
+      category: "concept",
+      review_status: "approved",
+      tag_id: "concept.algebra.functions.quadratic.vertex",
+      video_id: "video-a",
+    },
+    {
+      category: "form",
+      review_status: "approved",
+      tag_id: "form.symbolic.vertex_form",
+      video_id: "video-a",
+    },
+    {
+      category: "concept",
+      review_status: "pending_review",
+      tag_id: "concept.algebra.functions.quadratic.vertex",
+      video_id: "video-b",
+    },
+  ],
+  filter: {
+    include: {
+      concept: ["concept.algebra.functions.quadratic.vertex"],
+      form: ["form.symbolic.vertex_form"],
+    },
+    requireReviewed: true,
+  },
+  videos: [{ id: "video-a" }, { id: "video-b" }, { id: "video-c" }],
+});
+assert.equal(fiveFacetVideoSearchResult.valid, true);
+assert.deepEqual(fiveFacetVideoSearchResult.matchedVideoIds, ["video-a"]);
+const fiveFacetVideoAssignmentSummary = summarizeFiveFacetVideoTagAssignments([
+  validFiveFacetVideoAssignment.row,
+].filter(Boolean));
+assert.equal(fiveFacetVideoAssignmentSummary.rowCount, 1);
+assert.equal(fiveFacetVideoAssignmentSummary.byCategory.concept, 1);
+assert.equal(fiveFacetVideoAssignmentSummary.videoCount, 1);
+
+const adminVideosPageSource = await readFile(
+  new URL("../src/app/admin/videos/page.tsx", import.meta.url),
+  "utf8",
+);
+const publicVideosPageSource = await readFile(
+  new URL("../src/app/videos/page.tsx", import.meta.url),
+  "utf8",
+);
+const publicVideoDetailSource = await readFile(
+  new URL("../src/app/videos/[id]/page.tsx", import.meta.url),
+  "utf8",
+);
+assert.ok(adminVideosPageSource.includes("Official five-facet video tags"));
+assert.ok(adminVideosPageSource.includes("Legacy / deprecated video tags"));
+assert.ok(adminVideosPageSource.includes("FiveFacetTagTreePicker"));
+assert.ok(adminVideosPageSource.includes("five_facet_video_tag_assignments"));
+assert.ok(publicVideosPageSource.includes("Official five-facet tags"));
+assert.ok(publicVideosPageSource.includes("Legacy / deprecated tags"));
+assert.ok(publicVideoDetailSource.includes("Official five-facet video tags"));
+assert.ok(publicVideoDetailSource.includes("Legacy / deprecated video tags"));
+assert.equal(
+  /processAIPdfImport|generateContent|openai|gemini|anthropic|reviewDraftTags|rawProviderResponse|fullPdfText|imageBytes|;base64,|JVBERi0|iVBORw0KGgo/i.test(
+    JSON.stringify({
+      adminVideosPageSource,
+      fiveFacetVideoBankSearchPlan,
+      fiveFacetVideoMigration,
+      fiveFacetVideoSearchResult,
+      publicVideoDetailSource,
+      publicVideosPageSource,
+    }),
+  ),
+  false,
+);
+console.log(
+  "PASS five-facet video tag integration defines migration, helpers, UI display, and search without provider or extraction changes",
 );
 
 const fiveFacetCatalogSeedRows = buildFiveFacetCatalogSeedRows();
