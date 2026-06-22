@@ -8,7 +8,7 @@ export type Json =
 
 export type UserRole = "super_admin" | "admin" | "student";
 export type ContentStatus = "draft" | "published" | "archived";
-export type QuestionType = "mcq" | "frq" | "mixed";
+export type QuestionType = "mcq" | "fill_blank" | "frq" | "mixed";
 export type QuestionSourceFormat = "markdown_latex" | "html";
 export type TaxonomyStatus = "active" | "deprecated" | "archived";
 export type TaxonomyNodeKind = "subject" | "facet_root" | "tag";
@@ -180,6 +180,7 @@ export type Question = {
   solution_html: string | null;
   solution_source: string | null;
   solution_source_format: QuestionSourceFormat;
+  answer_spec: Json;
   options: Json[];
   question_type: QuestionType;
   difficulty_rating: number;

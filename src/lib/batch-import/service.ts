@@ -245,6 +245,7 @@ export async function importBatchImportJson({
   let createdCount = 0;
   let skippedCount = preview.invalidCount;
   let errorCount = preview.invalidCount;
+  const runtimeErrorReasons = new Set<string>();
   const createdQuestions: BatchImportSummary["createdQuestions"] = [];
 
   for (const item of preview.items) {
@@ -264,7 +265,9 @@ export async function importBatchImportJson({
         solution_html: normalized.solution_html,
         solution_source: normalized.solution_source,
         solution_source_format: normalized.solution_source_format,
+        answer_spec: normalized.answer_spec,
         difficulty_rating: normalized.difficulty_rating,
+        options: normalized.options,
         question_type: normalized.question_type,
         status: "draft",
         created_by: profileId,
@@ -276,6 +279,7 @@ export async function importBatchImportJson({
     if (questionError) {
       skippedCount += 1;
       errorCount += 1;
+      runtimeErrorReasons.add(questionError.message);
       await supabase
         .from("import_batch_items")
         .update({
@@ -306,6 +310,7 @@ export async function importBatchImportJson({
       if (tagsError) {
         skippedCount += 1;
         errorCount += 1;
+        runtimeErrorReasons.add(tagsError.message);
         await supabase.from("questions").delete().eq("id", question.id);
         await supabase
           .from("import_batch_items")
@@ -347,7 +352,9 @@ export async function importBatchImportJson({
     validCount: preview.validCount,
     invalidCount: preview.invalidCount,
     unknownTagCount: preview.unknownTagCount,
-    validationErrorReasons,
+    validationErrorReasons: Array.from(
+      new Set([...validationErrorReasons, ...runtimeErrorReasons]),
+    ).slice(0, 8),
     createdQuestions,
   };
   const existingSummaryBeforeFinal = await loadImportBatchSummary({

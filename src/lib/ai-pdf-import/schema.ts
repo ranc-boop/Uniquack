@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+import {
+  answerSpecToJson,
+  normalizeAnswerSpec,
+  normalizeQuestionOptions,
+  optionsToJson,
+} from "@/lib/questions/answer-spec";
+
 const bboxSchema = z.object({
   height: z.number().min(0).max(1),
   width: z.number().min(0).max(1),
@@ -47,6 +54,15 @@ function normalizeQuestionType(value: unknown) {
   }
 
   if (
+    normalized === "fill blank" ||
+    normalized === "fill in the blank" ||
+    normalized === "fill_blank" ||
+    normalized.includes("blank")
+  ) {
+    return "fill_blank";
+  }
+
+  if (
     normalized === "frq" ||
     normalized.includes("free response") ||
     normalized.includes("short answer") ||
@@ -66,7 +82,7 @@ function normalizeQuestionType(value: unknown) {
 
 const questionTypeSchema = z.preprocess(
   normalizeQuestionType,
-  z.enum(["mcq", "frq", "mixed"]),
+  z.enum(["mcq", "fill_blank", "frq", "mixed"]),
 );
 
 function stripHtml(value: string) {
@@ -425,8 +441,12 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
 
   return {
     ...input,
+    answer_spec: answerSpecToJson(
+      normalizeAnswerSpec(input.answer_spec ?? { kind: normalizeQuestionType(input.question_type) }),
+    ),
     content_source: (input.content_source ?? contentSource) || undefined,
     content_html: contentHtml,
+    options: optionsToJson(normalizeQuestionOptions(input.options)),
     question_code: questionCode,
     question_number: visibleQuestionNumber || undefined,
     solution_html: solutionHtml,
@@ -436,6 +456,7 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
   };
 }, z.object({
   asset_placeholders: assetPlaceholdersSchema,
+  answer_spec: z.unknown().default({}),
   content_html: z.string().trim().min(1),
   content_source: optionalStringSchema,
   difficulty_rating: difficultyRatingSchema,
@@ -443,6 +464,7 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
   question_code: z.string().trim().max(80).optional(),
   question_number: optionalStringSchema,
   question_type: questionTypeSchema.default("frq"),
+  options: z.array(z.unknown()).default([]),
   solution_html: z.string().trim().nullable().default(null),
   solution_source: optionalStringSchema,
   tag_ids: stringArraySchema,

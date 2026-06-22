@@ -6,6 +6,7 @@ import {
   QuestionDetailImageGallery,
   type QuestionDetailImage,
 } from "@/components/question-detail-image-gallery";
+import { QuestionAnswerSummary } from "@/components/question-answer-summary";
 import { RichHtml } from "@/components/rich-html";
 import {
   TaxonomyTagChips,
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/accordion";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
+import { normalizeQuestionOptions } from "@/lib/questions/answer-spec";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import type { Video } from "@/types/database";
@@ -112,7 +114,7 @@ export default async function QuestionDetailPage({
   const { data: question, error: questionError } = await supabase
     .from("questions")
     .select(
-      "id, question_code, title, content_html, solution_html, difficulty_rating, question_type, status, source, published_at, created_at, updated_at",
+      "id, question_code, title, content_html, solution_html, options, answer_spec, difficulty_rating, question_type, status, source, published_at, created_at, updated_at",
     )
     .eq("id", id)
     .eq("status", "published")
@@ -198,6 +200,7 @@ export default async function QuestionDetailPage({
       publicUrl: data.publicUrl,
     };
   });
+  const questionOptions = normalizeQuestionOptions(question.options);
 
   return (
     <div className="space-y-6">
@@ -234,6 +237,27 @@ export default async function QuestionDetailPage({
               <QuestionSection title="Description">
                 <RichHtml html={question.content_html} />
               </QuestionSection>
+
+              {question.question_type === "mcq" && questionOptions.length ? (
+                <QuestionSection title="Options">
+                  <div className="space-y-2">
+                    {questionOptions.map((option) => (
+                      <div
+                        className="grid gap-3 rounded-md border bg-muted/20 p-3 sm:grid-cols-[2rem_1fr]"
+                        key={option.id}
+                      >
+                        <span className="flex size-8 items-center justify-center rounded-md border bg-background font-mono text-sm font-semibold">
+                          {option.label || option.id}
+                        </span>
+                        <RichHtml
+                          className="border-none bg-transparent p-0"
+                          html={option.content_html}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </QuestionSection>
+              ) : null}
 
               {questionImages.length ? (
                 <QuestionSection title="Images">
@@ -312,6 +336,14 @@ export default async function QuestionDetailPage({
               assignments={publicTaxonomyAssignments}
               emptyLabel="No taxonomy tags assigned yet."
               taxonomyCatalog={taxonomyCatalog}
+            />
+          </SidebarCard>
+
+          <SidebarCard title="Answer data">
+            <QuestionAnswerSummary
+              answerSpec={question.answer_spec}
+              options={question.options}
+              questionType={question.question_type}
             />
           </SidebarCard>
 

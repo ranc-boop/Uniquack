@@ -11,6 +11,11 @@ import {
 import { requireAdmin } from "@/lib/auth/guards";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { QUESTION_SOURCE_FILES_BUCKET } from "@/lib/question-source-files";
+import {
+  answerSpecFromFormData,
+  answerSpecToJson,
+  optionsToJson,
+} from "@/lib/questions/answer-spec";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
 import { createClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validations/common";
@@ -125,7 +130,21 @@ async function approveQuestionTaxonomyAssignmentsForPublish({
     return;
   }
 
-  const { error } = await supabase
+  const { data: pendingAssignments, error: pendingError } = await supabase
+    .from("question_taxonomy_assignments")
+    .select("question_id, tag_id")
+    .in("question_id", uniqueQuestionIds)
+    .in("review_status", ["pending_review", "needs_review"]);
+
+  if (pendingError) {
+    throw new Error(pendingError.message);
+  }
+
+  if (!pendingAssignments?.length) {
+    return;
+  }
+
+  const { data: approvedAssignments, error } = await supabase
     .from("question_taxonomy_assignments")
     .update({
       approved_at: new Date().toISOString(),
@@ -134,10 +153,21 @@ async function approveQuestionTaxonomyAssignmentsForPublish({
       updated_by: profileId,
     })
     .in("question_id", uniqueQuestionIds)
-    .in("review_status", ["pending_review", "needs_review"]);
+    .in("review_status", ["pending_review", "needs_review"])
+    .select("question_id, tag_id");
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  if ((approvedAssignments?.length ?? 0) !== pendingAssignments.length) {
+    throw new Error(
+      "Only approved " +
+        (approvedAssignments?.length ?? 0) +
+        " of " +
+        pendingAssignments.length +
+        " pending taxonomy assignment(s).",
+    );
   }
 }
 
@@ -170,12 +200,15 @@ export async function createQuestion(formData: FormData) {
       typeof draftIdValue === "string" && draftIdValue
         ? uuidSchema.parse(draftIdValue)
         : null;
+    const answerData = answerSpecFromFormData(formData);
     const supabase = await createClient();
 
     const values = {
       ...parsed,
       ...questionSourceValues(parsed),
+      answer_spec: answerSpecToJson(answerData.answerSpec),
       created_by: profile.id,
+      options: optionsToJson(answerData.options),
       updated_by: profile.id,
       published_at:
         parsed.status === "published" ? new Date().toISOString() : null,
@@ -221,6 +254,7 @@ export async function updateQuestion(formData: FormData) {
     const parsed = questionUpdateSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
     const { id, ...values } = parsed;
+    const answerData = answerSpecFromFormData(formData);
     questionId = id;
 
     const { error } = await supabase
@@ -228,6 +262,8 @@ export async function updateQuestion(formData: FormData) {
       .update({
         ...values,
         ...questionSourceValues(values),
+        answer_spec: answerSpecToJson(answerData.answerSpec),
+        options: optionsToJson(answerData.options),
         updated_by: profile.id,
         published_at:
           values.status === "published" ? new Date().toISOString() : null,
@@ -266,7 +302,15 @@ export async function updateQuestionStatus(formData: FormData) {
     const supabase = await createClient();
     questionId = parsed.id;
 
-    const { error } = await supabase
+    if (parsed.status === "published") {
+      await approveQuestionTaxonomyAssignmentsForPublish({
+        profileId: profile.id,
+        questionIds: [parsed.id],
+        supabase,
+      });
+    }
+
+    const { data: updatedQuestions, error } = await supabase
       .from("questions")
       .update({
         status: parsed.status,
@@ -274,18 +318,15 @@ export async function updateQuestionStatus(formData: FormData) {
         published_at:
           parsed.status === "published" ? new Date().toISOString() : null,
       })
-      .eq("id", parsed.id);
+      .eq("id", parsed.id)
+      .select("id");
 
     if (error) {
       throw new Error(error.message);
     }
 
-    if (parsed.status === "published") {
-      await approveQuestionTaxonomyAssignmentsForPublish({
-        profileId: profile.id,
-        questionIds: [parsed.id],
-        supabase,
-      });
+    if ((updatedQuestions?.length ?? 0) !== 1) {
+      throw new Error("Question status update did not affect the selected question.");
     }
   } catch (error) {
     redirectWithError("/admin/questions", formatActionError(error));
@@ -384,10 +425,18 @@ async function deleteQuestionById({
     }
   }
 
-  const { error } = await supabase.from("questions").delete().eq("id", questionId);
+  const { data: deletedQuestions, error } = await supabase
+    .from("questions")
+    .delete()
+    .eq("id", questionId)
+    .select("id");
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  if ((deletedQuestions?.length ?? 0) !== 1) {
+    throw new Error("Question delete did not affect the selected question.");
   }
 }
 
@@ -412,7 +461,15 @@ export async function bulkUpdateQuestions(formData: FormData) {
         throw new Error("Choose a status.");
       }
 
-      const { error } = await supabase
+      if (parsed.status === "published") {
+        await approveQuestionTaxonomyAssignmentsForPublish({
+          profileId: profile.id,
+          questionIds,
+          supabase,
+        });
+      }
+
+      const { data: updatedQuestions, error } = await supabase
         .from("questions")
         .update({
           published_at:
@@ -420,18 +477,25 @@ export async function bulkUpdateQuestions(formData: FormData) {
           status: parsed.status,
           updated_by: profile.id,
         })
-        .in("id", questionIds);
+        .in("id", questionIds)
+        .select("id");
 
       if (error) {
         throw new Error(error.message);
       }
 
-      if (parsed.status === "published") {
-        await approveQuestionTaxonomyAssignmentsForPublish({
-          profileId: profile.id,
-          questionIds,
-          supabase,
-        });
+      if ((updatedQuestions?.length ?? 0) !== questionIds.length) {
+        throw new Error(
+          "Only updated " +
+            (updatedQuestions?.length ?? 0) +
+            " of " +
+            questionIds.length +
+            " selected question(s).",
+        );
+      }
+
+      if (parsed.status === "published" && returnTo.startsWith("/admin/review")) {
+        returnTo = "/admin/questions?status=published";
       }
     } else {
       for (const questionId of questionIds) {

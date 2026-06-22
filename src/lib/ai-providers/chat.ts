@@ -329,7 +329,7 @@ function buildRepairPrompt({
     "Only repair the JSON structure and field values. Do not drop questions unless the previous answer was clearly empty.",
     "",
     "Required output shape:",
-    '{"questions":[{"title":"...","question_code":"...","question_type":"mcq|frq|mixed","difficulty_rating":500,"content_html":"...","content_source":"...","solution_html":"...","solution_source":"...","tag_ids":[],"page_refs":[1],"asset_placeholders":[]}],"warnings":[]}',
+    '{"questions":[{"title":"...","question_code":"...","question_type":"mcq|fill_blank|frq|mixed","difficulty_rating":500,"content_html":"...","content_source":"...","solution_html":"...","solution_source":"...","options":[],"answer_spec":{},"tag_ids":[],"page_refs":[1],"asset_placeholders":[]}],"warnings":[]}',
     "",
     "Validation error:",
     schemaIssueSummary(error),
@@ -346,9 +346,11 @@ function mockExtraction(): AIPdfExtraction {
     questions: [
       {
         asset_placeholders: [],
+        answer_spec: { kind: "frq", grading_mode: "manual_or_ai" },
         content_html: "<p>Mock AI PDF import content.</p>",
         content_source: "Mock AI PDF import content.",
         difficulty_rating: 500,
+        options: [],
         page_refs: [1],
         question_code: "AI-PDF-MOCK-1",
         question_type: "frq",

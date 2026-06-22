@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  answerSpecToJson,
+  normalizeAnswerSpec,
+  normalizeQuestionOptions,
+  optionsToJson,
+} from "@/lib/questions/answer-spec";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
 
 const importItemSchema = z
@@ -19,6 +25,16 @@ const importItemSchema = z
     solution_html: z.string().optional(),
     solution_source: z.string().optional(),
     solution_source_format: z.enum(["markdown_latex", "html"]).optional(),
+    answer_spec: z.unknown().optional(),
+    accepted_answers: z.array(z.string()).or(z.string()).optional(),
+    answer: z.string().or(z.array(z.string())).optional(),
+    answers: z.array(z.string()).or(z.string()).optional(),
+    choices: z.unknown().optional(),
+    correct_answer: z.string().or(z.array(z.string())).optional(),
+    correct_answers: z.array(z.string()).or(z.string()).optional(),
+    final_answer: z.string().or(z.array(z.string())).optional(),
+    final_answers: z.array(z.string()).or(z.string()).optional(),
+    options: z.unknown().optional(),
     image_urls: z.array(z.string()).optional(),
     image_files: z.array(z.string()).optional(),
     source_file_ids: z.array(z.string()).optional(),
@@ -37,7 +53,9 @@ export type ExistingImportTag = {
 export type NormalizedImportQuestion = {
   question_code: string;
   title: string;
-  question_type: "mcq" | "frq" | "mixed";
+  answer_spec: ReturnType<typeof answerSpecToJson>;
+  options: ReturnType<typeof optionsToJson>;
+  question_type: "mcq" | "fill_blank" | "frq" | "mixed";
   difficulty_rating: number;
   status: "draft";
   tag_ids: string[];
@@ -90,7 +108,61 @@ function normalizeTitle(value: string | undefined) {
 function normalizeType(value: string | undefined) {
   const normalized = value?.trim().toLowerCase();
 
-  return normalized === "mcq" || normalized === "mixed" ? normalized : "frq";
+  if (
+    normalized === "mcq" ||
+    normalized === "multiple_choice" ||
+    normalized === "multiple choice" ||
+    normalized === "choice"
+  ) {
+    return "mcq";
+  }
+  if (
+    normalized === "fill_blank" ||
+    normalized === "fill blank" ||
+    normalized === "fill-in-the-blank" ||
+    normalized === "short_answer" ||
+    normalized === "short answer"
+  ) {
+    return "fill_blank";
+  }
+  return normalized === "mixed" ? normalized : "frq";
+}
+
+function looseStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(String).map((item) => item.trim()).filter(Boolean)
+    : typeof value === "string"
+      ? value
+          .split(/[,;\n]/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+}
+
+function inferQuestionType({
+  answerValues,
+  options,
+  rawType,
+}: {
+  answerValues: string[];
+  options: ReturnType<typeof normalizeQuestionOptions>;
+  rawType: string | undefined;
+}) {
+  const normalized = normalizeType(rawType);
+
+  if (rawType?.trim()) {
+    return normalized;
+  }
+
+  if (options.length) {
+    return "mcq";
+  }
+
+  if (answerValues.length) {
+    return "fill_blank";
+  }
+
+  return normalized;
 }
 
 function normalizeDifficulty(value: string | number | undefined) {
@@ -222,6 +294,50 @@ export function evaluateBatchImportItems({
     const sourceFileIds = idReferenceArray(item.source_file_ids);
     const sourceFiles = stringArray(item.source_files).slice(0, 50);
     const questionAssetIds = idReferenceArray(item.question_asset_ids);
+    const options = normalizeQuestionOptions(item.options ?? item.choices);
+    const correctAnswerValues = looseStringArray(
+      item.correct_answers ?? item.correct_answer ?? item.answer,
+    );
+    const finalAnswerValues = looseStringArray(
+      item.final_answers ?? item.final_answer ?? item.answers ?? item.answer,
+    );
+    const acceptedAnswerValues = looseStringArray(item.accepted_answers);
+    const questionType = inferQuestionType({
+      answerValues: [...finalAnswerValues, ...acceptedAnswerValues],
+      options,
+      rawType: item.question_type ?? item.type,
+    });
+    const answerSpec = normalizeAnswerSpec(
+      item.answer_spec ??
+        (questionType === "mcq"
+          ? {
+              allow_multiple: correctAnswerValues.length > 1,
+              correct_option_ids: correctAnswerValues,
+              kind: "mcq",
+            }
+          : questionType === "fill_blank"
+            ? {
+                accepted_answers: acceptedAnswerValues.length
+                  ? acceptedAnswerValues
+                  : finalAnswerValues,
+                equivalence: "math",
+                final_answers: finalAnswerValues,
+                kind: "fill_blank",
+                numeric_tolerance: 0,
+              }
+            : {}),
+    );
+
+    if (questionType === "mcq" && !options.length) {
+      warnings.push("MCQ import has no options; automatic grading will not work until options are added.");
+    }
+    if (
+      questionType === "mcq" &&
+      answerSpec.kind === "mcq" &&
+      !answerSpec.correct_option_ids?.length
+    ) {
+      warnings.push("MCQ import has no correct_option_ids in answer_spec.");
+    }
 
     if (item.video_url && !videoUrl) warnings.push("Invalid video_url was ignored.");
     if (item.embed_url && !embedUrl) warnings.push("Invalid embed_url was ignored.");
@@ -249,7 +365,9 @@ export function evaluateBatchImportItems({
         : {
             question_code: questionCode,
             title,
-            question_type: normalizeType(item.question_type ?? item.type),
+            answer_spec: answerSpecToJson(answerSpec),
+            options: optionsToJson(options),
+            question_type: questionType,
             difficulty_rating: normalizeDifficulty(
               item.difficulty_rating ?? item.difficulty,
             ),

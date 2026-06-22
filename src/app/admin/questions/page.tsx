@@ -11,6 +11,7 @@ import { AdminQuestionEditDetails } from "@/components/admin-question-edit-detai
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
+import { QuestionAnswerFields } from "@/components/question-answer-fields";
 import { QuestionHtmlEditor } from "@/components/question-html-editor";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
@@ -475,19 +476,7 @@ export default async function AdminQuestionsPage({
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="question_type">Type</Label>
-              <select
-                id="question_type"
-                name="question_type"
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                defaultValue="frq"
-              >
-                <option value="frq">FRQ</option>
-                <option value="mcq">MCQ</option>
-                <option value="mixed">Mixed</option>
-              </select>
-            </div>
+            <QuestionAnswerFields defaultQuestionType="frq" />
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
               <select
