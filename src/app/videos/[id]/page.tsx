@@ -4,15 +4,16 @@ import { notFound } from "next/navigation";
 import { SupabaseConfigNotice } from "@/components/config-notice";
 import { RichHtml } from "@/components/rich-html";
 import {
-  FiveFacetTagChips,
-  type FiveFacetTagChipAssignment,
-} from "@/components/tags/five-facet-tag-chips";
+  TaxonomyTagChips,
+  type TaxonomyTagChipAssignment,
+} from "@/components/tags/taxonomy-tag-chips";
 import { VideoPlayerFrame } from "@/components/video-player-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import type { Question, Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -73,14 +74,14 @@ function ErrorCard({ message }: { message: string }) {
   );
 }
 
-function isMissingFiveFacetVideoTableError(error: unknown) {
+function isMissingTaxonomyTableError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const record = error as { code?: unknown; message?: unknown };
   const message = typeof record.message === "string" ? record.message : "";
 
   return (
     record.code === "42P01" ||
-    /five_facet_video_tag_assignments|permission denied|relation .* does not exist|schema cache/i.test(
+    /question_taxonomy_assignments|permission denied|relation .* does not exist|schema cache/i.test(
       message,
     )
   );
@@ -94,6 +95,7 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
   }
 
   const supabase = await createClient();
+  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   const { data: video, error: videoError } = await supabase
     .from("videos")
     .select(
@@ -128,18 +130,18 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
     notFound();
   }
 
-  const { data: fiveFacetVideoAssignments, error: fiveFacetVideoAssignmentsError } =
+  const { data: taxonomyAssignments, error: taxonomyAssignmentsError } =
     await supabase
-      .from("five_facet_video_tag_assignments")
-      .select("tag_id, category, review_status")
-      .eq("video_id", video.id)
+      .from("question_taxonomy_assignments")
+      .select("tag_id, review_status")
+      .eq("question_id", question.id)
       .eq("review_status", "approved");
 
-  const officialFiveFacetVideoAssignments =
-    fiveFacetVideoAssignmentsError &&
-    isMissingFiveFacetVideoTableError(fiveFacetVideoAssignmentsError)
+  const officialTaxonomyAssignments =
+    taxonomyAssignmentsError &&
+    isMissingTaxonomyTableError(taxonomyAssignmentsError)
       ? []
-      : ((fiveFacetVideoAssignments ?? []) as FiveFacetTagChipAssignment[]);
+      : ((taxonomyAssignments ?? []) as TaxonomyTagChipAssignment[]);
 
   return (
     <div className="space-y-6">
@@ -196,10 +198,13 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Official five-facet video tags</h2>
-            <FiveFacetTagChips
-              assignments={officialFiveFacetVideoAssignments}
-              emptyLabel="No five-facet tags assigned yet."
+            <h2 className="text-lg font-semibold">
+              Official linked question taxonomy
+            </h2>
+            <TaxonomyTagChips
+              assignments={officialTaxonomyAssignments}
+              emptyLabel="No taxonomy tags assigned yet."
+              taxonomyCatalog={taxonomyCatalog}
             />
           </section>
 

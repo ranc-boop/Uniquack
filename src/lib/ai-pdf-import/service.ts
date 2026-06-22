@@ -101,6 +101,7 @@ import {
   buildAITaggingV2PlanFromSummary,
   failedAITaggingV2Plan,
   mergeAITaggingV2PlanIntoSummary,
+  taxonomyCatalogToAITagTaxonomy,
   type AITaggingV2Plan,
 } from "@/lib/ai-pdf-import/tagging-v2";
 import {
@@ -122,23 +123,24 @@ import {
   type AITaxonomyPersistencePlan,
 } from "@/lib/ai-pdf-import/taxonomy-persistence";
 import {
-  buildAIFiveFacetTagTaxonomyPlan,
-  failedAIFiveFacetTagTaxonomyPlan,
-  mergeAIFiveFacetTagTaxonomyPlanIntoSummary,
-  type AIFiveFacetTagTaxonomyPlan,
-} from "@/lib/ai-pdf-import/five-facet-tag-taxonomy";
+  buildAITaxonomyTagTaxonomyPlan,
+  failedAITaxonomyTagTaxonomyPlan,
+  mergeAITaxonomyTagTaxonomyPlanIntoSummary,
+  type AITaxonomyTagTaxonomyPlan,
+} from "@/lib/ai-pdf-import/taxonomy-tag-taxonomy";
 import {
-  buildFiveFacetQuestionTaggingPlanFromSummary,
-  failedFiveFacetQuestionTaggingPlan,
-  mergeFiveFacetQuestionTaggingPlanIntoSummary,
-  type AIFiveFacetQuestionTaggingPlan,
-} from "@/lib/ai-pdf-import/five-facet-question-tagging";
+  buildTaxonomyQuestionTaggingPlanFromSummary,
+  failedTaxonomyQuestionTaggingPlan,
+  mergeTaxonomyQuestionTaggingPlanIntoSummary,
+  type AITaxonomyQuestionTaggingPlan,
+} from "@/lib/ai-pdf-import/taxonomy-question-tagging";
 import {
-  buildFiveFacetTagReviewActionPlanFromSummary,
-  failedFiveFacetTagReviewActionPlan,
-  mergeFiveFacetTagReviewActionPlanIntoSummary,
-  type AIFiveFacetTagReviewActionPlan,
-} from "@/lib/ai-pdf-import/five-facet-tag-review-actions";
+  buildTaxonomyTagReviewActionPlanFromSummary,
+  failedTaxonomyTagReviewActionPlan,
+  mergeTaxonomyTagReviewActionPlanIntoSummary,
+  type AITaxonomyTagReviewActionPlan,
+} from "@/lib/ai-pdf-import/taxonomy-tag-review-actions";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import {
   buildAIExtractionCoverageAuditPlanFromSummary,
   failedAIExtractionCoverageAuditPlan,
@@ -178,10 +180,7 @@ type SupabaseLike = {
 
 type ActiveTag = {
   id: string;
-  name: string;
-  slug: string;
-  status: string;
-  tag_type: string;
+  facet_key: string | null;
 };
 
 type ProcessInput = {
@@ -797,15 +796,15 @@ async function updateAITaxonomyPersistencePlan({
   }
 }
 
-async function updateAIFiveFacetTagTaxonomyPlan({
-  fiveFacetTagTaxonomyPlan,
+async function updateAITaxonomyTagTaxonomyPlan({
+  taxonomyTagTaxonomyPlan,
   input,
 }: {
-  fiveFacetTagTaxonomyPlan: AIFiveFacetTagTaxonomyPlan;
+  taxonomyTagTaxonomyPlan: AITaxonomyTagTaxonomyPlan;
   input: ProcessInput;
 }) {
   const current = await loadCurrentAIPdfSummary(input);
-  const aiPdfImport = mergeAIFiveFacetTagTaxonomyPlanIntoSummary(
+  const aiPdfImport = mergeAITaxonomyTagTaxonomyPlanIntoSummary(
     mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
       fileName: input.fileName,
       jobId: input.jobId,
@@ -813,7 +812,7 @@ async function updateAIFiveFacetTagTaxonomyPlan({
       sourceObjectPath: input.sourceObjectPath,
       updatedAt: new Date().toISOString(),
     }),
-    fiveFacetTagTaxonomyPlan,
+    taxonomyTagTaxonomyPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -831,43 +830,45 @@ async function updateAIFiveFacetTagTaxonomyPlan({
   }
 }
 
-async function generateAndStoreFiveFacetTagTaxonomyPlan({
+async function generateAndStoreTaxonomyTagTaxonomyPlan({
   input,
 }: {
   input: ProcessInput;
 }) {
   try {
-    const fiveFacetTagTaxonomyPlan = buildAIFiveFacetTagTaxonomyPlan();
-    await updateAIFiveFacetTagTaxonomyPlan({
-      fiveFacetTagTaxonomyPlan,
+    const { catalog, errorMessage } = await loadTaxonomyCatalog(input.supabase);
+    if (errorMessage) throw new Error(errorMessage);
+    const taxonomyTagTaxonomyPlan = buildAITaxonomyTagTaxonomyPlan(catalog);
+    await updateAITaxonomyTagTaxonomyPlan({
+      taxonomyTagTaxonomyPlan,
       input,
     });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
-        : "AI five-facet tag taxonomy plan failed.";
+        : "AI taxonomy tag taxonomy plan failed.";
 
-    await updateAIFiveFacetTagTaxonomyPlan({
-      fiveFacetTagTaxonomyPlan: failedAIFiveFacetTagTaxonomyPlan({
-        warnings: [`five-facet tag taxonomy plan failed: ${message}`],
+    await updateAITaxonomyTagTaxonomyPlan({
+      taxonomyTagTaxonomyPlan: failedAITaxonomyTagTaxonomyPlan({
+        warnings: [`taxonomy tag taxonomy plan failed: ${message}`],
       }),
       input,
     });
   }
 
-  await generateAndStoreFiveFacetQuestionTaggingPlan({ input });
+  await generateAndStoreTaxonomyQuestionTaggingPlan({ input });
 }
 
-async function updateAIFiveFacetQuestionTaggingPlan({
-  fiveFacetQuestionTaggingPlan,
+async function updateAITaxonomyQuestionTaggingPlan({
+  taxonomyQuestionTaggingPlan,
   input,
 }: {
-  fiveFacetQuestionTaggingPlan: AIFiveFacetQuestionTaggingPlan;
+  taxonomyQuestionTaggingPlan: AITaxonomyQuestionTaggingPlan;
   input: ProcessInput;
 }) {
   const current = await loadCurrentAIPdfSummary(input);
-  const aiPdfImport = mergeFiveFacetQuestionTaggingPlanIntoSummary(
+  const aiPdfImport = mergeTaxonomyQuestionTaggingPlanIntoSummary(
     mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
       fileName: input.fileName,
       jobId: input.jobId,
@@ -875,7 +876,7 @@ async function updateAIFiveFacetQuestionTaggingPlan({
       sourceObjectPath: input.sourceObjectPath,
       updatedAt: new Date().toISOString(),
     }),
-    fiveFacetQuestionTaggingPlan,
+    taxonomyQuestionTaggingPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -893,45 +894,47 @@ async function updateAIFiveFacetQuestionTaggingPlan({
   }
 }
 
-async function generateAndStoreFiveFacetQuestionTaggingPlan({
+async function generateAndStoreTaxonomyQuestionTaggingPlan({
   input,
 }: {
   input: ProcessInput;
 }) {
   try {
     const current = await loadCurrentAIPdfSummary(input);
-    const fiveFacetQuestionTaggingPlan =
-      buildFiveFacetQuestionTaggingPlanFromSummary(current.summary);
-    await updateAIFiveFacetQuestionTaggingPlan({
-      fiveFacetQuestionTaggingPlan,
+    const { catalog, errorMessage } = await loadTaxonomyCatalog(input.supabase);
+    if (errorMessage) throw new Error(errorMessage);
+    const taxonomyQuestionTaggingPlan =
+      buildTaxonomyQuestionTaggingPlanFromSummary(current.summary, catalog);
+    await updateAITaxonomyQuestionTaggingPlan({
+      taxonomyQuestionTaggingPlan,
       input,
     });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
-        : "AI five-facet question tagging plan failed.";
+        : "AI taxonomy question tagging plan failed.";
 
-    await updateAIFiveFacetQuestionTaggingPlan({
-      fiveFacetQuestionTaggingPlan: failedFiveFacetQuestionTaggingPlan({
-        warnings: [`five-facet question tagging plan failed: ${message}`],
+    await updateAITaxonomyQuestionTaggingPlan({
+      taxonomyQuestionTaggingPlan: failedTaxonomyQuestionTaggingPlan({
+        warnings: [`taxonomy question tagging plan failed: ${message}`],
       }),
       input,
     });
   }
 
-  await generateAndStoreFiveFacetTagReviewActionPlan({ input });
+  await generateAndStoreTaxonomyTagReviewActionPlan({ input });
 }
 
-async function updateAIFiveFacetTagReviewActionPlan({
-  fiveFacetTagReviewActionPlan,
+async function updateAITaxonomyTagReviewActionPlan({
+  taxonomyTagReviewActionPlan,
   input,
 }: {
-  fiveFacetTagReviewActionPlan: AIFiveFacetTagReviewActionPlan;
+  taxonomyTagReviewActionPlan: AITaxonomyTagReviewActionPlan;
   input: ProcessInput;
 }) {
   const current = await loadCurrentAIPdfSummary(input);
-  const aiPdfImport = mergeFiveFacetTagReviewActionPlanIntoSummary(
+  const aiPdfImport = mergeTaxonomyTagReviewActionPlanIntoSummary(
     mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
       fileName: input.fileName,
       jobId: input.jobId,
@@ -939,7 +942,7 @@ async function updateAIFiveFacetTagReviewActionPlan({
       sourceObjectPath: input.sourceObjectPath,
       updatedAt: new Date().toISOString(),
     }),
-    fiveFacetTagReviewActionPlan,
+    taxonomyTagReviewActionPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -957,28 +960,30 @@ async function updateAIFiveFacetTagReviewActionPlan({
   }
 }
 
-async function generateAndStoreFiveFacetTagReviewActionPlan({
+async function generateAndStoreTaxonomyTagReviewActionPlan({
   input,
 }: {
   input: ProcessInput;
 }) {
   try {
     const current = await loadCurrentAIPdfSummary(input);
-    const fiveFacetTagReviewActionPlan =
-      buildFiveFacetTagReviewActionPlanFromSummary(current.summary);
-    await updateAIFiveFacetTagReviewActionPlan({
-      fiveFacetTagReviewActionPlan,
+    const { catalog, errorMessage } = await loadTaxonomyCatalog(input.supabase);
+    if (errorMessage) throw new Error(errorMessage);
+    const taxonomyTagReviewActionPlan =
+      buildTaxonomyTagReviewActionPlanFromSummary(current.summary, catalog);
+    await updateAITaxonomyTagReviewActionPlan({
+      taxonomyTagReviewActionPlan,
       input,
     });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
-        : "AI five-facet tag review action plan failed.";
+        : "AI taxonomy tag review action plan failed.";
 
-    await updateAIFiveFacetTagReviewActionPlan({
-      fiveFacetTagReviewActionPlan: failedFiveFacetTagReviewActionPlan({
-        warnings: [`five-facet tag review action plan failed: ${message}`],
+    await updateAITaxonomyTagReviewActionPlan({
+      taxonomyTagReviewActionPlan: failedTaxonomyTagReviewActionPlan({
+        warnings: [`taxonomy tag review action plan failed: ${message}`],
       }),
       input,
     });
@@ -995,7 +1000,7 @@ async function generateAndStoreTaxonomyPersistencePlan({
     const taxonomyPersistencePlan =
       buildAITaxonomyPersistencePlanFromSummary(current.aiPdfImport);
     await updateAITaxonomyPersistencePlan({ input, taxonomyPersistencePlan });
-    await generateAndStoreFiveFacetTagTaxonomyPlan({ input });
+    await generateAndStoreTaxonomyTagTaxonomyPlan({ input });
   } catch (error) {
     const message =
       error instanceof Error
@@ -1008,7 +1013,7 @@ async function generateAndStoreTaxonomyPersistencePlan({
         warnings: [`taxonomy persistence plan failed: ${message}`],
       }),
     });
-    await generateAndStoreFiveFacetTagTaxonomyPlan({ input });
+    await generateAndStoreTaxonomyTagTaxonomyPlan({ input });
   }
 }
 
@@ -1324,7 +1329,12 @@ async function generateAndStoreTaggingV2Plan({
 }) {
   try {
     const current = await loadCurrentAIPdfSummary(input);
-    const taggingV2Plan = buildAITaggingV2PlanFromSummary(current.aiPdfImport);
+    const { catalog, errorMessage } = await loadTaxonomyCatalog(input.supabase);
+    if (errorMessage) throw new Error(errorMessage);
+    const taggingV2Plan = buildAITaggingV2PlanFromSummary(
+      current.aiPdfImport,
+      taxonomyCatalogToAITagTaxonomy(catalog),
+    );
     await updateAITaggingV2Plan({ input, taggingV2Plan });
     await generateAndStoreTaxonomyBootstrapPlan({ input });
   } catch (error) {
@@ -1745,19 +1755,6 @@ function escapeAttribute(value: string) {
     .replaceAll(">", "&gt;");
 }
 
-function slugify(value: string) {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-
-  return slug || `ai-tag-${crypto.randomUUID().slice(0, 8)}`;
-}
-
 function uniqueValues(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
@@ -1805,13 +1802,21 @@ function buildPrompt({
   pageMapping?: { chunkPage: number; sourcePage: number }[];
   pageCount: number;
 }) {
-  const tags = activeTags
-    .map((tag) => `- ${tag.name} | slug=${tag.slug} | type=${tag.tag_type} | status=${tag.status}`)
-    .join("\n");
+  const tagIdsByFacet = activeTags.reduce<Record<string, string[]>>((groups, tag) => {
+    const facet = tag.facet_key ?? "none";
+    groups[facet] = [...(groups[facet] ?? []), tag.id];
+    return groups;
+  }, {});
+  const compactTags = Object.entries(tagIdsByFacet)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([facet, tagIds]) => `${facet}: ${tagIds.join(", ")}`)
+    .join("; ");
 
   return [
     "You are importing a PDF question set into a question bank.",
     "Read the entire document context in order. Questions, solutions, and figures may continue across page boundaries; do not split one question only because it crosses pages.",
+    "Extract only actual questions that ask the student to answer, solve, prove, evaluate, choose, or fill in something.",
+    "Do not create question records for section headings, page titles, unit titles, directions-only blocks, answer keys, or standalone labels. Use headings only as context for nearby real questions.",
     "Return ONLY valid JSON. Do not wrap it in markdown.",
     "",
     `File: ${fileName}`,
@@ -1847,8 +1852,76 @@ function buildPrompt({
         ].join("\n")
       : "",
     "",
-    "Existing active tags. Reuse these by tag_slugs or tag_names when they are semantically appropriate. Create new tags only when none fit:",
-    tags || "(none)",
+    "Allowed active assignable tag_ids by facet. Every listed candidate below is a full tag_id. Output full tag_ids exactly as written, never abbreviate or shorten them. Use only these exact IDs; do not create, rename, or suggest tags:",
+    compactTags || "(none)",
+    "",
+    "Taxonomy tagging goal:",
+    "- For every question, try to cover at least 4 of the 5 official taxonomy facets when matching tags exist in the list above.",
+    "- The five facets are normally curriculum, concept, method, task, and difficulty/form. Use the facet groups above as the source of truth.",
+    "- Curriculum coverage should be generous: if a question accurately belongs to multiple systems, include all matching full curriculum tag_ids, such as AP, SAT, BC, Common Core, IB, or A-Level. Do not choose only one curriculum tag when several listed curriculum IDs are accurate.",
+    "- Do not force a weak or false tag. If fewer than 4 facets have an accurate existing tag, use the accurate tags only and add a warning explaining which facet was missing.",
+    "- Prefer the most specific available leaf-like tag_id in each facet. Avoid broad course or parent-level IDs when a more specific child tag is listed.",
+    "- Reuse tag_ids freely. Many questions can share the same curriculum, concept, method, task, or form tags.",
+    "",
+    "Taxonomy tagging thought process to follow silently before writing JSON:",
+    "1. Identify the math topic and every relevant course/unit system from the question stem and solution.",
+    "2. Choose one or more concept tags for the core idea being tested.",
+    "3. Choose method tags for the technique required to solve it, such as factoring, differentiation, substitution, graph interpretation, or equation solving.",
+    "4. Choose task/form tags for the student action and item format, such as evaluate, solve, prove, multiple choice, free response, or fill blank, when such tags exist.",
+    "5. Choose all accurate full curriculum tag_ids across multiple systems when the listed tag_ids support them.",
+    "6. Choose difficulty/form tags when the listed tag_ids support them.",
+    "7. Check that selected tag_ids are full exact IDs from the allowed list and cover at least 4 facets when possible.",
+    "",
+    "Complete tagging examples. These examples show how to tag a typical question. In real output, use exact tag_ids from the allowed list above; if an example id is not present, choose the closest accurate allowed leaf tag_id and do not invent it:",
+    JSON.stringify(
+      [
+        {
+          extracted_question: {
+            content_source:
+              "If $f'(x)=1+2x-x^3$, then $f$ has a local minimum at $x=\\ ?$",
+            question_type: "frq",
+            solution_summary:
+              "Find critical points from f'(x)=0, then use sign change or first derivative test to identify a local minimum.",
+          },
+          selected_tag_ids: [
+            "math.curriculum.ap.ap_calculus_ab.analytical_applications_derivatives",
+            "math.curriculum.ap.ap_calculus_ab.contextual_applications_derivatives",
+            "math.curriculum.bc.calculus_12.derivatives",
+            "math.curriculum.bc.calculus_12.applications_derivatives",
+            "math.concept.calculus.derivatives.local_extrema",
+            "math.concept.calculus.derivatives.critical_points",
+            "math.method.calculus.first_derivative_test",
+            "math.task.find_local_minimum",
+            "math.form.fill_blank",
+          ],
+          why:
+            "This includes multiple full curriculum IDs because the same derivative-extrema question can fit AP Calculus AB and BC Calculus 12. It also covers concept, method, task, and form.",
+        },
+        {
+          extracted_question: {
+            content_source:
+              "A gym charges a $25 sign-up fee and $12 per class. If a student paid $109 total, how many classes did the student take?",
+            question_type: "mcq",
+            solution_summary:
+              "Model the situation as 25+12x=109 and solve the resulting linear equation.",
+          },
+          selected_tag_ids: [
+            "math.curriculum.sat.algebra",
+            "math.curriculum.common_core.algebra",
+            "math.curriculum.bc.precalculus_11.functions_relations",
+            "math.concept.algebra.linear_equations",
+            "math.concept.algebra.linear_models",
+            "math.method.algebra.equation_solving",
+            "math.task.solve",
+            "math.form.multiple_choice",
+          ],
+          why:
+            "This includes all accurate full curriculum IDs from multiple systems, then adds concept, method, task, and item form tags.",
+        },
+      ],
+      null,
+      2,
+    ),
     "",
     "JSON schema:",
     JSON.stringify({
@@ -1862,27 +1935,41 @@ function buildPrompt({
               placeholder: "{{asset:figure_1}}",
             },
           ],
-          content_html: "<p>Question stem with {{asset:figure_1}} where the image belongs.</p>",
+          content_html: "<p>Find the derivative of $y=x^2\\sin(x)$ with {{asset:figure_1}} where the image belongs.</p>",
           content_source: "Editable Markdown + LaTeX source, same meaning as content_html. Use $...$ for inline math.",
           difficulty_rating: 500,
-          new_tag_names: ["Only if no existing tag fits"],
+          options: [
+            { id: "A", label: "A", content_html: "$2x\\sin(x)+x^2\\cos(x)$" },
+            { id: "B", label: "B", content_html: "$x^2\\sin(x)$" },
+          ],
+          answer_spec: {
+            kind: "mcq",
+            correct_option_ids: ["A"],
+            allow_multiple: false,
+          },
           page_refs: [1, 2],
           question_number: "Visible source number such as 3, 3.1, 3(a), or FRQ 2. Omit if missing.",
           question_type: "frq",
-          solution_html: "<p>Solution or explanation.</p>",
+          solution_html: "<p>Use the product rule: $y'=2x\\sin(x)+x^2\\cos(x)$.</p>",
           solution_source: "Editable solution source.",
-          tag_names: ["Existing tag name"],
-          tag_slugs: ["existing-tag-slug"],
-          title: "Short question title",
+          tag_ids: ["math.concept.calculus.derivatives.chain_rule"],
+          title: "Short plain-text title, no HTML, no LaTeX, no section heading",
         },
       ],
       warnings: ["Any uncertainty about extraction."],
     }),
     "",
     "Rules:",
+    "- A question record must contain a real prompt in content_html/content_source. If a visible line is only a heading such as 'Unit 3 Review', 'Multiple Choice', 'Part A', 'Solutions', or 'Directions', skip it and do not output it as a question.",
+    "- title must be a short plain-text label for the question, usually 3-10 words. Never put HTML, markdown, LaTeX delimiters, full question text, options, page headings, section headings, or answer text in title.",
+    "- Good title examples: 'Derivative local minimum', 'Linear equation word problem', 'Circle tangent angle'. Bad title examples: '<p>...</p>', '$f\'(x)=...$', 'Multiple Choice', 'Chapter 2 Review'.",
     "- content_html is required and must be sanitized-friendly HTML.",
+    "- For multiple-choice questions, include every visible option in options as {id,label,content_html}. Also include answer_spec.kind='mcq' and answer_spec.correct_option_ids when the correct answer is visible or clearly stated in the source.",
+    "- For fill-blank questions with a visible or clearly stated final answer, set question_type='fill_blank' and include answer_spec.kind='fill_blank', final_answers, accepted_answers, equivalence, numeric_tolerance, and case_sensitive.",
+    "- If the answer is not visible or not certain, leave answer_spec empty or use only {kind: question_type}; do not invent correct answers.",
     "- Prefer writing content_source and solution_source as clean Markdown + LaTeX. Use $...$ for inline math and $$ blocks for display math.",
-    "- Do not put raw dollar-delimited math directly in content_html. If content_html contains math, use <span data-type=\"inline-math\" data-latex=\"x^2\">x^2</span> or <div data-type=\"block-math\" data-latex=\"x^2\">x^2</div>.",
+    "- Wrap every math variable, expression, equation, and formula in $...$ inside content_html, solution_html, option content_html, content_source, and solution_source so the renderer can detect it.",
+    "- Examples: write <p>Find the derivative of $y=x^2\\sin(x)$.</p>, not <p>Find the derivative of y = x^2 sin(x).</p>. Write <p>The derivative is $f'(x)$.</p>, not plain f'(x).",
     "- Never leave unmatched dollar signs. For blanks such as x =, write $x =$ with a closing dollar.",
     "- Convert common math text to LaTeX in source fields: sqrt(x) -> \\sqrt{x}, pi -> \\pi when mathematical, fractions -> \\frac{...}{...}.",
     "- If a figure, chart, graph, table image, or diagram is important to the question, create one asset_placeholders entry so the system can crop it and display it in the question image gallery.",
@@ -1892,6 +1979,10 @@ function buildPrompt({
     "- Bboxes are normalized page coordinates from top-left, all values 0..1.",
     "- Use question_number only for the visible number from the PDF. Do not invent database question_code values; the server always generates those.",
     "- Do not normalize visible numbers aggressively: 3, 3.1, 3(a), and FRQ 2 are different display values.",
+    "- Assign multiple tag_ids when they accurately describe the question. A single question can and should reuse existing tags across several facets when relevant.",
+    "- It is okay for many questions to reuse the same tag_id if they cover the same concept, method, task, curriculum, or difficulty signal.",
+    "- Prefer specific leaf tag_ids over broad parent-like IDs. Only use tag_ids from the list above.",
+    "- Only output tag_ids listed above. If no existing tag fits, leave tag_ids empty and add a warning. Do not output any alternate tag identifier fields.",
     "- Keep questions as draft-quality records for human review; do not invent answers when unsure.",
   ].join("\n");
 }
@@ -1923,70 +2014,25 @@ function remapSegmentExtractionPages({
 
 async function loadActiveTags(supabase: SupabaseLike) {
   const { data, error } = await supabase
-    .from("tags")
-    .select("id, name, slug, status, tag_type")
-    .neq("status", "archived")
-    .order("name", { ascending: true })
+    .from("taxonomy_nodes")
+    .select("tag_id, facet_key")
+    .eq("is_assignable", true)
+    .eq("status", "active")
+    .order("facet_key", { ascending: true })
+    .order("tag_id", { ascending: true })
     .limit(1000);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return (data ?? []) as ActiveTag[];
-}
-
-async function ensureDraftTag({
-  existingTags,
-  name,
-  profileId,
-  supabase,
-}: {
-  existingTags: ActiveTag[];
-  name: string;
-  profileId: string;
-  supabase: SupabaseLike;
-}) {
-  const normalizedName = name.trim().toLowerCase();
-  const byName = existingTags.find(
-    (tag) => tag.name.trim().toLowerCase() === normalizedName,
-  );
-
-  if (byName) {
-    return byName;
-  }
-
-  const baseSlug = slugify(name);
-  let slug = baseSlug;
-  let suffix = 1;
-
-  while (
-    existingTags.some((tag) => tag.slug.trim().toLowerCase() === slug.toLowerCase())
-  ) {
-    suffix += 1;
-    slug = `${baseSlug}-${suffix}`;
-  }
-
-  const { data, error } = await supabase
-    .from("tags")
-    .insert({
-      created_by: profileId,
-      name,
-      slug,
-      status: "draft",
-      tag_type: "knowledge",
-      updated_by: profileId,
-    })
-    .select("id, name, slug, status, tag_type")
-    .single();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const created = data as ActiveTag;
-  existingTags.push(created);
-  return created;
+  return ((data ?? []) as {
+    facet_key: string | null;
+    tag_id: string;
+  }[]).map((tag) => ({
+    facet_key: tag.facet_key,
+    id: tag.tag_id,
+  }));
 }
 
 async function buildImportJson({
@@ -2008,12 +2054,7 @@ async function buildImportJson({
   questionIndexOffset?: number;
   supabase: SupabaseLike;
 }) {
-  const bySlug = new Map(
-    activeTags.map((tag) => [tag.slug.trim().toLowerCase(), tag]),
-  );
-  const byName = new Map(
-    activeTags.map((tag) => [tag.name.trim().toLowerCase(), tag]),
-  );
+  const activeTagIds = new Set(activeTags.map((tag) => tag.id));
   const existingQuestionCodes = await loadExistingQuestionCodeKeys(supabase);
   const usedQuestionCodes = new Set<string>();
   const usedVisibleQuestionNumbers = new Set<string>();
@@ -2022,34 +2063,17 @@ async function buildImportJson({
 
   for (const [index, question] of extraction.questions.entries()) {
     const globalQuestionIndex = questionIndexOffset + index;
-    const tagSlugs = new Set<string>();
+    const tagIds = new Set<string>();
 
-    for (const slug of question.tag_slugs) {
-      const tag = bySlug.get(slug.trim().toLowerCase());
-
-      if (tag) {
-        tagSlugs.add(tag.slug);
+    for (const tagId of question.tag_ids) {
+      const normalizedTagId = tagId.trim();
+      if (activeTagIds.has(normalizedTagId)) {
+        tagIds.add(normalizedTagId);
+      } else if (normalizedTagId) {
+        extraction.warnings.push(
+          `Question ${globalQuestionIndex + 1}: unknown taxonomy tag_id "${normalizedTagId}" was ignored.`,
+        );
       }
-    }
-
-    for (const name of question.tag_names) {
-      const tag = byName.get(name.trim().toLowerCase());
-
-      if (tag) {
-        tagSlugs.add(tag.slug);
-      }
-    }
-
-    for (const name of question.new_tag_names) {
-      const tag = await ensureDraftTag({
-        existingTags: activeTags,
-        name,
-        profileId,
-        supabase,
-      });
-      bySlug.set(tag.slug.trim().toLowerCase(), tag);
-      byName.set(tag.name.trim().toLowerCase(), tag);
-      tagSlugs.add(tag.slug);
     }
 
     const rawAiQuestionCode = question.question_code?.trim() || "";
@@ -2112,9 +2136,7 @@ async function buildImportJson({
         raw_ai_question_code: rawAiQuestionCode || null,
         source: "ai_pdf_import",
         tag_decisions: {
-          new_tag_names: question.new_tag_names,
-          tag_names: question.tag_names,
-          tag_slugs: question.tag_slugs,
+          tag_ids: question.tag_ids,
         },
         visible_question_number: visibleQuestionNumber || null,
       },
@@ -2122,10 +2144,12 @@ async function buildImportJson({
       content_source: contentSource,
       content_source_format: contentFields.sourceFormat,
       difficulty_rating: question.difficulty_rating,
+      answer_spec: question.answer_spec,
+      options: question.options,
       question_code: questionCode,
       question_type: question.question_type,
       solution_source_format: solutionFields.sourceFormat,
-      tag_slugs: Array.from(tagSlugs),
+      tag_ids: Array.from(tagIds),
       title: question.title,
     };
 
@@ -2430,6 +2454,16 @@ async function processAIPdfSinglePass({
   });
   const extraction = normalizeAIPdfExtractionResponse(
     await callAIPdfExtractionProvider({
+      debugContext: {
+        batchId: input.batchId,
+        chunkIndex: null,
+        fileName: input.fileName,
+        jobId: input.jobId,
+        pageCount,
+        providerProfileId: input.providerProfileId,
+        sourceAssetId: input.sourceAssetId,
+        sourceObjectPath: input.sourceObjectPath,
+      },
       fileName: input.fileName,
       inputStrategy: providerInput.strategy,
       pageImageDataUrls: [],
@@ -2747,6 +2781,19 @@ export async function processAIPdfImport(input: ProcessInput) {
         : null;
       const rawExtraction = normalizeAIPdfExtractionResponse(
         await callAIPdfExtractionProvider({
+          debugContext: {
+            batchId: input.batchId,
+            chunkIndex: chunk.chunkIndex,
+            fileName: input.fileName,
+            jobId: input.jobId,
+            pageEnd: chunk.pageEnd,
+            pageStart: chunk.pageStart,
+            pageCount,
+            providerProfileId: input.providerProfileId,
+            retryCount,
+            sourceAssetId: input.sourceAssetId,
+            sourceObjectPath: input.sourceObjectPath,
+          },
           fileName: segmentChunk
             ? `${input.fileName.replace(/\.pdf$/i, "")}-chunk-${
                 chunk.chunkIndex + 1

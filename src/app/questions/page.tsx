@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { QuestionsTable } from "@/components/questions-table";
-import type { FiveFacetTagChipAssignment } from "@/components/tags/five-facet-tag-chips";
+import type { TaxonomyTagChipAssignment } from "@/components/tags/taxonomy-tag-chips";
 import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 
 export const dynamic = "force-dynamic";
 
@@ -92,59 +93,68 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   }
 
   const supabase = await createClient();
-  let questionsQuery = supabase
-    .from("questions")
-    .select("id, question_code, title, content_html, difficulty_rating, status", {
-      count: "exact",
-    })
-    .eq("status", "published")
-    .gte("difficulty_rating", minDifficulty)
-    .lte("difficulty_rating", maxDifficulty)
-    .order("created_at", { ascending: false });
+  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
+  const from = (page - 1) * pageSize;
+  const taxonomySearchArgs = {
+    assignment_review_status: "approved",
+    difficulty_max: maxDifficulty,
+    difficulty_min: minDifficulty,
+    exclude_tag_ids: [],
+    include_tag_ids: [],
+    page_limit: pageSize,
+    page_offset: from,
+    query_text: search || null,
+    question_status: "published",
+  };
+  const { data: taxonomySearchRows, error } = await supabase.rpc(
+    "search_questions_by_taxonomy",
+    taxonomySearchArgs,
+  );
+  let fallbackTotalCount = 0;
+  if (!error && page > 1 && !taxonomySearchRows?.length) {
+    const { data: firstPageRows } = await supabase.rpc(
+      "search_questions_by_taxonomy",
+      {
+        ...taxonomySearchArgs,
+        page_limit: 1,
+        page_offset: 0,
+      },
+    );
+    fallbackTotalCount = Number(firstPageRows?.[0]?.total_count ?? 0);
+  }
+  const orderedQuestionIds = (taxonomySearchRows ?? []).map(
+    (row) => row.question_id,
+  );
+  const questionOrder = new Map(
+    orderedQuestionIds.map((questionId, index) => [questionId, index]),
+  );
+  const { data: questions, error: questionsError } = orderedQuestionIds.length
+    ? await supabase
+        .from("questions")
+        .select("id, question_code, title, content_html, difficulty_rating, status")
+        .in("id", orderedQuestionIds)
+    : { data: [], error: null };
+  const sortedQuestions = [...(questions ?? [])].sort(
+    (left, right) =>
+      (questionOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+      (questionOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+  );
+  const totalCount = Number(taxonomySearchRows?.[0]?.total_count ?? fallbackTotalCount);
+  const taxonomyTagsByQuestionId = new Map<string, TaxonomyTagChipAssignment[]>();
 
-  if (search) {
-    const pattern = `%${search}%`;
-    questionsQuery = questionsQuery.or(
-      `question_code.ilike.${pattern},title.ilike.${pattern}`,
+  for (const row of taxonomySearchRows ?? []) {
+    taxonomyTagsByQuestionId.set(
+      row.question_id,
+      (row.matched_tag_ids ?? []).map((tagId) => ({
+        review_status: "approved",
+        tag_id: tagId,
+      })),
     );
   }
-
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-  const { data: questions, error, count } = await questionsQuery.range(from, to);
-  const questionIds = (questions ?? []).map((question) => question.id);
-  const { data: fiveFacetAssignments, error: fiveFacetAssignmentsError } = questionIds.length
-    ? await supabase
-        .from("five_facet_question_tag_assignments")
-        .select("question_id, tag_id, category, review_status")
-        .eq("review_status", "approved")
-        .in("question_id", questionIds)
-    : { data: [], error: null };
-  const fiveFacetTagsByQuestionId = new Map<string, FiveFacetTagChipAssignment[]>();
-  const publicFiveFacetAssignments =
-    fiveFacetAssignmentsError &&
-    /permission denied|relation .* does not exist|schema cache|five_facet_/i.test(
-      fiveFacetAssignmentsError.message,
-    )
-      ? []
-      : ((fiveFacetAssignments ?? []) as Array<
-          FiveFacetTagChipAssignment & { question_id: string }
-        >);
-
-  for (const assignment of publicFiveFacetAssignments) {
-    const current = fiveFacetTagsByQuestionId.get(assignment.question_id) ?? [];
-    current.push({
-      category: assignment.category,
-      review_status: assignment.review_status,
-      tag_id: assignment.tag_id,
-    });
-    fiveFacetTagsByQuestionId.set(assignment.question_id, current);
-  }
-
-  const fiveFacetTagsByQuestionIdObject = Object.fromEntries(
-    fiveFacetTagsByQuestionId.entries(),
+  const taxonomyTagsByQuestionIdObject = Object.fromEntries(
+    taxonomyTagsByQuestionId.entries(),
   );
-  const questionRows = (questions ?? []).map((question) => ({
+  const questionRows = sortedQuestions.map((question) => ({
     id: question.id,
     question_code: question.question_code,
     title: question.title,
@@ -152,14 +162,14 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
     difficulty_rating: question.difficulty_rating,
     status: question.status,
   }));
-  const totalPages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Questions</h1>
         <p className="text-sm text-muted-foreground">
-          Published AP questions with official five-facet tags and difficulty.
+          Published AP questions with official taxonomy tags and difficulty.
           Draft and archived records are excluded by query and RLS.
         </p>
       </div>
@@ -202,14 +212,15 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           </Button>
         </div>
       </form>
-      {error ? (
+      {error || questionsError ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error.message}
+          {error?.message ?? questionsError?.message}
         </p>
       ) : null}
       {questionRows.length ? (
         <QuestionsTable
-          fiveFacetTagsByQuestionId={fiveFacetTagsByQuestionIdObject}
+          taxonomyTagsByQuestionId={taxonomyTagsByQuestionIdObject}
+          taxonomyCatalog={taxonomyCatalog}
           questions={questionRows}
         />
       ) : (
@@ -222,7 +233,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
         <p>
           Showing {questionRows.length ? from + 1 : 0}-
-          {from + questionRows.length} of {count ?? 0} published questions.
+          {from + questionRows.length} of {totalCount} published questions.
         </p>
         <div className="flex items-center gap-2">
           <Button asChild size="sm" variant="outline" disabled={page <= 1}>

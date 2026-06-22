@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,18 @@ export default async function AdminImportsPage() {
     .select("id, source_type, status, summary, created_at")
     .order("created_at", { ascending: false })
     .limit(10);
+  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
+  const parentTagIds = new Set(
+    taxonomyCatalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  );
+  const importPromptTagIds = taxonomyCatalog.nodes
+    .filter(
+      (node) =>
+        node.is_assignable &&
+        !parentTagIds.has(node.tag_id),
+    )
+    .map((node) => node.tag_id)
+    .sort();
 
   return (
     <div className="space-y-6">
@@ -105,7 +118,7 @@ export default async function AdminImportsPage() {
           <CardTitle className="text-base">Manual JSON import</CardTitle>
         </CardHeader>
         <CardContent>
-          <BatchImportJsonPanel />
+          <BatchImportJsonPanel tagIds={importPromptTagIds} />
         </CardContent>
       </Card>
 

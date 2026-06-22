@@ -21,7 +21,7 @@ export const questionCreateSchema = z.object({
   solution_source: z.string().optional().default(""),
   solution_source_format: z.enum(questionSourceFormats).default("markdown_latex"),
   difficulty_rating: z.coerce.number().int().min(0).max(1000),
-  question_type: z.enum(["mcq", "frq", "mixed"]).default("frq"),
+  question_type: z.enum(["mcq", "fill_blank", "frq", "mixed"]).default("frq"),
   status: contentStatusSchema.default("draft"),
 });
 

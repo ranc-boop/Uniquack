@@ -6,10 +6,15 @@ import {
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
 import { FormSubmitButton } from "@/components/form-submit-button";
+import { QuestionAnswerFields } from "@/components/question-answer-fields";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionHtmlEditor } from "@/components/question-html-editor";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import { QuestionStatusSelect } from "@/components/question-status-select";
+import {
+  TaxonomyTagTreePicker,
+  type TaxonomyCatalogView,
+} from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,11 +27,13 @@ import type { QuestionReadiness } from "@/lib/questions/readiness";
 import { useState } from "react";
 
 type EditableQuestion = {
+  answer_spec: unknown;
   content_html: string;
   content_source: string | null;
   content_source_format: QuestionSourceFormat | null;
   difficulty_rating: number;
   id: string;
+  options: unknown;
   question_code: string;
   question_type: string;
   solution_html: string | null;
@@ -36,12 +43,17 @@ type EditableQuestion = {
   title: string;
 };
 
+type SelectedTaxonomyTagMap = Partial<Record<string, string[]>>;
+
 type AdminQuestionEditDetailsProps = {
   assets?: QuestionAssetView[];
+  defaultOpen?: boolean;
   importedAssetReferences: ImportAssetReferences | null;
   question: EditableQuestion;
   readiness: QuestionReadiness;
+  selectedTaxonomyTagIds?: SelectedTaxonomyTagMap;
   sourceFiles?: QuestionSourceFileView[];
+  taxonomyCatalog: TaxonomyCatalogView;
 };
 
 function ImportedAssetReferencesReview({
@@ -190,15 +202,18 @@ function PublishReadinessBox({
 
 export function AdminQuestionEditDetails({
   assets = [],
+  defaultOpen = false,
   importedAssetReferences,
   question,
   readiness,
+  selectedTaxonomyTagIds = {},
   sourceFiles = [],
+  taxonomyCatalog,
 }: AdminQuestionEditDetailsProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <details onToggle={(event) => setIsOpen(event.currentTarget.open)}>
+    <details open={isOpen} onToggle={(event) => setIsOpen(event.currentTarget.open)}>
       <summary className="cursor-pointer text-sm font-medium">
         Edit question
       </summary>
@@ -231,18 +246,11 @@ export function AdminQuestionEditDetails({
               required
             />
           </div>
-          <div className="space-y-1">
-            <Label>Type</Label>
-            <select
-              name="question_type"
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              defaultValue={question.question_type}
-            >
-              <option value="frq">FRQ</option>
-              <option value="mcq">MCQ</option>
-              <option value="mixed">Mixed</option>
-            </select>
-          </div>
+          <QuestionAnswerFields
+            answerSpec={question.answer_spec}
+            defaultQuestionType={question.question_type}
+            options={question.options}
+          />
           <div className="space-y-1">
             <Label>Status</Label>
             <QuestionStatusSelect
@@ -256,6 +264,15 @@ export function AdminQuestionEditDetails({
               importedAssetReferences={importedAssetReferences}
               readiness={readiness}
               sourceFileCount={sourceFiles.length}
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <TaxonomyTagTreePicker
+              namePrefix="question_tax"
+              selectable="assignable"
+              selectedTagIds={selectedTaxonomyTagIds}
+              taxonomyCatalog={taxonomyCatalog}
+              title="Question taxonomy tags"
             />
           </div>
           <div className="space-y-1 lg:col-span-2">

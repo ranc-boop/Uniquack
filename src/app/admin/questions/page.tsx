@@ -1,4 +1,5 @@
 import {
+  bulkUpdateQuestions,
   createQuestion,
   deleteQuestion,
 } from "@/app/admin/questions/actions";
@@ -10,14 +11,15 @@ import { AdminQuestionEditDetails } from "@/components/admin-question-edit-detai
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
+import { QuestionAnswerFields } from "@/components/question-answer-fields";
 import { QuestionHtmlEditor } from "@/components/question-html-editor";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import {
-  FiveFacetTagChips,
-  type FiveFacetTagChipAssignment,
-} from "@/components/tags/five-facet-tag-chips";
-import { FiveFacetTagTreePicker } from "@/components/tags/five-facet-tag-tree-picker";
+  TaxonomyTagChips,
+  type TaxonomyTagChipAssignment,
+} from "@/components/tags/taxonomy-tag-chips";
+import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,38 +41,29 @@ import {
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
-import {
-  buildFiveFacetQuestionBankSearchPlan,
-  filterQuestionsByFiveFacetAssignments,
-  hasFiveFacetQuestionBankFilters,
-  type FiveFacetQuestionSearchAssignmentRow,
-} from "@/lib/tags/five-facet-question-search";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
+import type { Database } from "@/types/database";
 
 type AdminQuestionsPageProps = {
-  searchParams: Promise<{
+  searchParams: Promise<Record<string, string | string[] | undefined> & {
     error?: string;
-    ff_concept?: string | string[];
-    ff_curriculum?: string | string[];
-    ff_difficulty_max?: string | string[];
-    ff_difficulty_min?: string | string[];
-    ff_exclude_concept?: string | string[];
-    ff_exclude_curriculum?: string | string[];
-    ff_exclude_form?: string | string[];
-    ff_exclude_method?: string | string[];
-    ff_exclude_search?: string | string[];
-    ff_exclude_task?: string | string[];
-    ff_form?: string | string[];
-    ff_method?: string | string[];
-    ff_reviewed?: string | string[];
-    ff_search?: string | string[];
-    ff_task?: string | string[];
+    tax_difficulty_max?: string | string[];
+    tax_difficulty_min?: string | string[];
+    tax_exclude_search?: string | string[];
+    tax_reviewed?: string | string[];
+    tax_search?: string | string[];
+    edit?: string;
     q?: string;
+    page?: string;
     saved?: string;
     status?: string;
   }>;
 };
 
 const questionStatuses = ["draft", "published", "archived"] as const;
+type QuestionRow = Database["public"]["Tables"]["questions"]["Row"];
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function safeStatusFilter(value: string | undefined) {
   return questionStatuses.find((status) => status === value) ?? "";
@@ -88,6 +81,59 @@ function tagIdList(value: string | string[] | undefined) {
     .filter(Boolean);
 }
 
+function parsePage(value: string | string[] | undefined) {
+  const parsed = Number(firstParam(value));
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.trunc(parsed) : 1;
+}
+
+function pageHref(
+  params: Record<string, string | string[] | undefined>,
+  page: number,
+) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "page" || key === "error" || key === "saved") continue;
+    for (const item of Array.isArray(value) ? value : value ? [value] : []) {
+      query.append(key, item);
+    }
+  }
+  if (page > 1) query.set("page", String(page));
+  const serialized = query.toString();
+  return serialized ? `/admin/questions?${serialized}` : "/admin/questions";
+}
+
+function selectedTagsForFacets({
+  facets,
+  params,
+  prefix,
+}: {
+  facets: { facet_key: string }[];
+  params: Record<string, string | string[] | undefined>;
+  prefix: string;
+}) {
+  return Object.fromEntries(
+    facets.map((facet) => [
+      facet.facet_key,
+      tagIdList(params[`${prefix}_${facet.facet_key}`]),
+    ]),
+  ) as Record<string, string[]>;
+}
+
+
+function selectedTaxonomyTagMapFromAssignments(
+  assignments: TaxonomyTagChipAssignment[] | undefined,
+) {
+  const selected: Record<string, string[]> = {};
+
+  for (const assignment of assignments ?? []) {
+    const facetKey = assignment.facet_key ?? assignment.category;
+    if (!facetKey) continue;
+    selected[facetKey] = [...(selected[facetKey] ?? []), assignment.tag_id];
+  }
+
+  return selected;
+}
+
 function numericParam(value: string | string[] | undefined) {
   const first = firstParam(value);
   if (first === undefined || first.trim() === "") return undefined;
@@ -95,14 +141,18 @@ function numericParam(value: string | string[] | undefined) {
   return Number.isFinite(numeric) ? numeric : Number.NaN;
 }
 
-function isMissingFiveFacetTableError(error: unknown) {
+function postgrestLikePattern(value: string) {
+  return value.replace(/[,%_]/g, " ").trim();
+}
+
+function isMissingTaxonomyTableError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const record = error as { code?: unknown; message?: unknown };
   const message = typeof record.message === "string" ? record.message : "";
 
   return (
     record.code === "42P01" ||
-    /five_facet_|relation .* does not exist|schema cache/i.test(message)
+    /taxonomy_|relation .* does not exist|schema cache/i.test(message)
   );
 }
 
@@ -113,69 +163,176 @@ export default async function AdminQuestionsPage({
   await requireAdmin();
   const supabase = await createClient();
   const search = (params.q ?? "").trim().toLowerCase();
+  const focusedQuestionId = uuidPattern.test(firstParam(params.edit) ?? "")
+    ? firstParam(params.edit)!.trim()
+    : "";
   const selectedStatus = safeStatusFilter(params.status);
-  const fiveFacetFilter = {
+  const { catalog: taxonomyCatalog, errorMessage: taxonomyCatalogError } =
+    await loadTaxonomyCatalog(supabase);
+  const taxonomyFilter = {
     difficulty: {
-      max: numericParam(params.ff_difficulty_max),
-      min: numericParam(params.ff_difficulty_min),
+      max: numericParam(params.tax_difficulty_max),
+      min: numericParam(params.tax_difficulty_min),
     },
-    exclude: {
-      concept: tagIdList(params.ff_exclude_concept),
-      curriculum: tagIdList(params.ff_exclude_curriculum),
-      form: tagIdList(params.ff_exclude_form),
-      method: tagIdList(params.ff_exclude_method),
-      task: tagIdList(params.ff_exclude_task),
-    },
-    include: {
-      concept: tagIdList(params.ff_concept),
-      curriculum: tagIdList(params.ff_curriculum),
-      form: tagIdList(params.ff_form),
-      method: tagIdList(params.ff_method),
-      task: tagIdList(params.ff_task),
-    },
-    requireReviewed: firstParam(params.ff_reviewed) !== "false",
+    exclude: selectedTagsForFacets({
+      facets: taxonomyCatalog.facets,
+      params,
+      prefix: "tax_exclude",
+    }),
+    include: selectedTagsForFacets({
+      facets: taxonomyCatalog.facets,
+      params,
+      prefix: "tax",
+    }),
+    requireReviewed: firstParam(params.tax_reviewed) !== "false",
   };
-  const selectedFiveFacetInclude = fiveFacetFilter.include;
-  const selectedFiveFacetExclude = fiveFacetFilter.exclude;
-  const hasFiveFacetFilters = hasFiveFacetQuestionBankFilters(fiveFacetFilter);
-  const fiveFacetSearchPlan = buildFiveFacetQuestionBankSearchPlan(fiveFacetFilter);
+  const selectedTaxonomyInclude = taxonomyFilter.include;
+  const selectedTaxonomyExclude = taxonomyFilter.exclude;
+  const page = parsePage(params.page);
+  const currentPath = pageHref(params, page);
+  const pageSize = 50;
+  const includeTagIds = Object.values(taxonomyFilter.include).flat();
+  const excludeTagIds = Object.values(taxonomyFilter.exclude).flat();
+  const difficultyMin = Number.isFinite(taxonomyFilter.difficulty.min)
+    ? taxonomyFilter.difficulty.min
+    : null;
+  const difficultyMax = Number.isFinite(taxonomyFilter.difficulty.max)
+    ? taxonomyFilter.difficulty.max
+    : null;
+  const facetByTagId = new Map(
+    taxonomyCatalog.nodes.map((node) => [node.tag_id, node.facet_key]),
+  );
+  const taxonomySearchArgs = {
+    assignment_review_status: taxonomyFilter.requireReviewed
+      ? "approved"
+      : null,
+    difficulty_max: difficultyMax,
+    difficulty_min: difficultyMin,
+    exclude_tag_ids: excludeTagIds,
+    include_tag_ids: includeTagIds,
+    page_limit: pageSize,
+    page_offset: (page - 1) * pageSize,
+    query_text: search || null,
+    question_status: selectedStatus || null,
+  };
+  const {
+    data: taxonomySearchRows,
+    error: taxonomyRpcError,
+  } = focusedQuestionId
+    ? {
+        data: [{ question_id: focusedQuestionId, total_count: 1 }],
+        error: null,
+      }
+    : await supabase.rpc("search_questions_by_taxonomy", taxonomySearchArgs);
+  let fallbackTotalQuestions = 0;
+  if (!taxonomyRpcError && page > 1 && !taxonomySearchRows?.length) {
+    const { data: firstPageRows } = await supabase.rpc(
+      "search_questions_by_taxonomy",
+      {
+        ...taxonomySearchArgs,
+        page_limit: 1,
+        page_offset: 0,
+      },
+    );
+    fallbackTotalQuestions = Number(firstPageRows?.[0]?.total_count ?? 0);
+  }
+  let orderedQuestionIds = (taxonomySearchRows ?? []).map(
+    (row) => row.question_id,
+  );
+  let totalQuestions = Number(
+    taxonomySearchRows?.[0]?.total_count ?? fallbackTotalQuestions,
+  );
+  let fallbackQuestionsResult: {
+    count: number | null;
+    data: QuestionRow[] | null;
+    error: { message?: string } | null;
+  } | null = null;
+
+  if (taxonomyRpcError) {
+    let fallbackQuery = supabase
+      .from("questions")
+      .select("*", { count: "exact" });
+
+    if (selectedStatus) {
+      fallbackQuery = fallbackQuery.eq("status", selectedStatus);
+    }
+
+    if (difficultyMin !== null) {
+      fallbackQuery = fallbackQuery.gte("difficulty_rating", difficultyMin);
+    }
+
+    if (difficultyMax !== null) {
+      fallbackQuery = fallbackQuery.lte("difficulty_rating", difficultyMax);
+    }
+
+    const fallbackSearch = postgrestLikePattern(search);
+    if (fallbackSearch) {
+      fallbackQuery = fallbackQuery.or(
+        `question_code.ilike.%${fallbackSearch}%,title.ilike.%${fallbackSearch}%`,
+      );
+    }
+
+    fallbackQuestionsResult = await fallbackQuery
+      .order("created_at", { ascending: false })
+      .range((page - 1) * pageSize, page * pageSize - 1);
+    orderedQuestionIds = (fallbackQuestionsResult.data ?? []).map(
+      (question) => question.id,
+    );
+    totalQuestions = fallbackQuestionsResult.count ?? 0;
+  }
+
+  const questionOrder = new Map(
+    orderedQuestionIds.map((questionId, index) => [questionId, index]),
+  );
   const [
     { data: questions, error },
     { data: questionAssets },
     { data: questionSourceFiles },
   ] =
     await Promise.all([
-      supabase
-        .from("questions")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("question_assets")
-        .select(
-          "id, question_id, object_path, original_filename, display_on_detail",
-        )
-        .eq("status", "ready")
-        .limit(1000),
-      supabase
-        .from("question_source_files")
-        .select(
-          "id, question_id, original_filename, mime_type, size_bytes, status",
-        )
-        .neq("status", "deleted")
-        .limit(1000),
+      fallbackQuestionsResult
+        ? Promise.resolve(fallbackQuestionsResult)
+        : orderedQuestionIds.length
+          ? supabase.from("questions").select("*").in("id", orderedQuestionIds)
+          : Promise.resolve({ data: [], error: null }),
+      orderedQuestionIds.length
+        ? supabase
+            .from("question_assets")
+            .select(
+              "id, question_id, object_path, original_filename, display_on_detail",
+            )
+            .eq("status", "ready")
+            .in("question_id", orderedQuestionIds)
+        : Promise.resolve({ data: [], error: null }),
+      orderedQuestionIds.length
+        ? supabase
+            .from("question_source_files")
+            .select(
+              "id, question_id, original_filename, mime_type, size_bytes, status",
+            )
+            .neq("status", "deleted")
+            .in("question_id", orderedQuestionIds)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
-  const questionIds = (questions ?? []).map((question) => question.id);
+  const filteredQuestions = [...(questions ?? [])].sort(
+    (left, right) =>
+      (questionOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+      (questionOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+  );
+  const questionIds = filteredQuestions.map((question) => question.id);
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
   const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
-  let fiveFacetAssignments: FiveFacetQuestionSearchAssignmentRow[] = [];
-  const fiveFacetAssignmentsByQuestionId = new Map<
+  const taxonomyAssignmentsByQuestionId = new Map<
     string,
-    FiveFacetTagChipAssignment[]
+    TaxonomyTagChipAssignment[]
   >();
-  let fiveFacetSearchMessage: string | null = null;
+  let taxonomySearchMessage: string | null = taxonomyRpcError
+    ? isMissingTaxonomyTableError(taxonomyRpcError)
+      ? "Taxonomy search RPC is unavailable. Apply migrations 0011 and 0012."
+      : `Taxonomy search is unavailable: ${taxonomyRpcError.message}`
+    : null;
   const { data: importItems } = questionIds.length
     ? await supabase
         .from("import_batch_items")
@@ -184,26 +341,25 @@ export default async function AdminQuestionsPage({
         .in("created_question_id", questionIds)
     : { data: [] };
   if (questionIds.length) {
-    const { data, error: fiveFacetAssignmentsError } = await supabase
-      .from("five_facet_question_tag_assignments")
-      .select("question_id, tag_id, category, review_status")
+    const { data, error: taxonomyAssignmentsError } = await supabase
+      .from("question_taxonomy_assignments")
+      .select("question_id, tag_id, review_status")
       .in("question_id", questionIds);
 
-    if (fiveFacetAssignmentsError) {
-      fiveFacetSearchMessage = isMissingFiveFacetTableError(fiveFacetAssignmentsError)
-        ? "Five-facet assignment tables are not available yet. Apply migration 0009_five_facet_tag_persistence.sql to enable these filters."
-        : `Five-facet filters are unavailable: ${fiveFacetAssignmentsError.message}`;
+    if (taxonomyAssignmentsError) {
+      taxonomySearchMessage = isMissingTaxonomyTableError(taxonomyAssignmentsError)
+        ? "Taxonomy assignment tables are not available yet. Apply migration 0011_math_taxonomy_source_of_truth.sql to enable these filters."
+        : `Taxonomy filters are unavailable: ${taxonomyAssignmentsError.message}`;
     } else {
-      fiveFacetAssignments = (data ?? []) as FiveFacetQuestionSearchAssignmentRow[];
-      for (const assignment of fiveFacetAssignments) {
+      for (const assignment of data ?? []) {
         const current =
-          fiveFacetAssignmentsByQuestionId.get(assignment.question_id) ?? [];
+          taxonomyAssignmentsByQuestionId.get(assignment.question_id) ?? [];
         current.push({
-          category: assignment.category,
+          facet_key: facetByTagId.get(assignment.tag_id),
           review_status: assignment.review_status,
           tag_id: assignment.tag_id,
         });
-        fiveFacetAssignmentsByQuestionId.set(assignment.question_id, current);
+        taxonomyAssignmentsByQuestionId.set(assignment.question_id, current);
       }
     }
   }
@@ -257,33 +413,6 @@ export default async function AdminQuestionsPage({
     );
   }
 
-  const baseFilteredQuestions = (questions ?? []).filter((question) => {
-    const searchMatches =
-      !search ||
-      question.question_code.toLowerCase().includes(search) ||
-      question.title.toLowerCase().includes(search);
-    const statusMatches = !selectedStatus || question.status === selectedStatus;
-
-    return searchMatches && statusMatches;
-  });
-  const fiveFacetSearchResult =
-    hasFiveFacetFilters && fiveFacetSearchPlan.valid && !fiveFacetSearchMessage
-      ? filterQuestionsByFiveFacetAssignments({
-          assignments: fiveFacetAssignments,
-          filter: fiveFacetFilter,
-          questions: baseFilteredQuestions.map((question) => ({
-            difficulty_rating: question.difficulty_rating,
-            id: question.id,
-          })),
-        })
-      : null;
-  const fiveFacetMatchedIds = new Set(
-    fiveFacetSearchResult?.matchedQuestionIds ?? [],
-  );
-  const filteredQuestions = fiveFacetSearchResult
-    ? baseFilteredQuestions.filter((question) => fiveFacetMatchedIds.has(question.id))
-    : baseFilteredQuestions;
-
   return (
     <div className="space-y-6">
       <div>
@@ -294,7 +423,17 @@ export default async function AdminQuestionsPage({
         </p>
       </div>
       <PageFeedback error={params.error} saved={params.saved} />
-      <Card>
+      {!focusedQuestionId ? (
+      <details className="rounded-lg border bg-card p-5 shadow-sm">
+        <summary className="cursor-pointer list-none">
+          <div className="space-y-1">
+            <p className="text-base font-semibold">Create question</p>
+            <p className="text-sm text-muted-foreground">
+              Open this panel only when adding a new manual question.
+            </p>
+          </div>
+        </summary>
+      <Card className="mt-4">
         <CardHeader>
           <CardTitle className="text-base">Create question</CardTitle>
         </CardHeader>
@@ -337,19 +476,7 @@ export default async function AdminQuestionsPage({
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="question_type">Type</Label>
-              <select
-                id="question_type"
-                name="question_type"
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                defaultValue="frq"
-              >
-                <option value="frq">FRQ</option>
-                <option value="mcq">MCQ</option>
-                <option value="mixed">Mixed</option>
-              </select>
-            </div>
+            <QuestionAnswerFields defaultQuestionType="frq" />
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
               <select
@@ -384,6 +511,14 @@ export default async function AdminQuestionsPage({
               />
             </div>
             <div className="md:col-span-2">
+              <TaxonomyTagTreePicker
+                namePrefix="question_tax"
+                selectable="assignable"
+                taxonomyCatalog={taxonomyCatalog}
+                title="Question taxonomy tags"
+              />
+            </div>
+            <div className="md:col-span-2">
               <QuestionAssetsPanel
                 draftInputId="create-question-draft-id"
                 questionCodeInputId="question_code"
@@ -405,6 +540,9 @@ export default async function AdminQuestionsPage({
           </form>
         </CardContent>
       </Card>
+      </details>
+      ) : null}
+      {!focusedQuestionId ? (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Find questions</CardTitle>
@@ -444,52 +582,54 @@ export default async function AdminQuestionsPage({
             </div>
             <div className="space-y-3 rounded-md border p-3 md:col-span-3">
               <div className="space-y-1">
-                <p className="text-sm font-medium">Five-facet tags</p>
+                <p className="text-sm font-medium">Taxonomy tags</p>
                 <p className="text-xs text-muted-foreground">
                   Filter by official curriculum, concept, method, task, and form
                   assignments.
                 </p>
               </div>
-              <FiveFacetTagTreePicker
-                namePrefix="ff"
-                searchQuery={firstParam(params.ff_search) ?? ""}
-                selectedTagIds={selectedFiveFacetInclude}
-                title="Include official five-facet tags"
+              <TaxonomyTagTreePicker
+                namePrefix="tax"
+                searchQuery={firstParam(params.tax_search) ?? ""}
+                selectedTagIds={selectedTaxonomyInclude}
+                taxonomyCatalog={taxonomyCatalog}
+                title="Include official taxonomy tags"
               />
               <details className="rounded-md border px-3 py-2">
                 <summary className="cursor-pointer text-sm font-medium">
                   Exclude tags and difficulty
                 </summary>
                 <div className="mt-3 space-y-3">
-                  <FiveFacetTagTreePicker
-                    namePrefix="ff_exclude"
-                    searchName="ff_exclude_search"
-                    searchQuery={firstParam(params.ff_exclude_search) ?? ""}
-                    selectedTagIds={selectedFiveFacetExclude}
-                    title="Exclude official five-facet tags"
+                  <TaxonomyTagTreePicker
+                    namePrefix="tax_exclude"
+                    searchName="tax_exclude_search"
+                    searchQuery={firstParam(params.tax_exclude_search) ?? ""}
+                    selectedTagIds={selectedTaxonomyExclude}
+                    taxonomyCatalog={taxonomyCatalog}
+                    title="Exclude official taxonomy tags"
                   />
                   <div className="grid gap-3 md:grid-cols-3">
                   <Input
-                    name="ff_difficulty_min"
-                    defaultValue={firstParam(params.ff_difficulty_min) ?? ""}
+                    name="tax_difficulty_min"
+                    defaultValue={firstParam(params.tax_difficulty_min) ?? ""}
                     placeholder="Difficulty min"
-                    aria-label="Five-facet difficulty minimum"
+                    aria-label="Taxonomy difficulty minimum"
                     type="number"
                   />
                   <Input
-                    name="ff_difficulty_max"
-                    defaultValue={firstParam(params.ff_difficulty_max) ?? ""}
+                    name="tax_difficulty_max"
+                    defaultValue={firstParam(params.tax_difficulty_max) ?? ""}
                     placeholder="Difficulty max"
-                    aria-label="Five-facet difficulty maximum"
+                    aria-label="Taxonomy difficulty maximum"
                     type="number"
                   />
                   <div className="space-y-2">
-                    <Label htmlFor="ff_reviewed">Assignments</Label>
+                    <Label htmlFor="tax_reviewed">Assignments</Label>
                     <select
-                      id="ff_reviewed"
-                      name="ff_reviewed"
+                      id="tax_reviewed"
+                      name="tax_reviewed"
                       className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                      defaultValue={firstParam(params.ff_reviewed) ?? "true"}
+                      defaultValue={firstParam(params.tax_reviewed) ?? "true"}
                     >
                       <option value="true">Reviewed only</option>
                       <option value="false">Any review status</option>
@@ -498,47 +638,140 @@ export default async function AdminQuestionsPage({
                   </div>
                 </div>
               </details>
-              {hasFiveFacetFilters ? (
+              {taxonomySearchMessage || taxonomyCatalogError ? (
                 <div className="space-y-1 text-xs">
-                  <p className="text-muted-foreground">
-                    Five-facet search contract: reviewed-only assignments use
-                    explicit curriculum-to-concept expansion without hierarchy
-                    mutation.
-                  </p>
-                  {fiveFacetSearchPlan.errors.length ? (
-                    <p className="text-destructive">
-                      {fiveFacetSearchPlan.errors.slice(0, 3).join("; ")}
-                    </p>
+                  {taxonomySearchMessage ? (
+                    <p className="text-amber-700">{taxonomySearchMessage}</p>
                   ) : null}
-                  {fiveFacetSearchMessage ? (
-                    <p className="text-amber-700">{fiveFacetSearchMessage}</p>
+                  {taxonomyCatalogError ? (
+                    <p className="text-amber-700">{taxonomyCatalogError}</p>
                   ) : null}
                 </div>
               ) : null}
-              {!fiveFacetSearchMessage &&
-              fiveFacetAssignments.length === 0 ? (
+              {!taxonomySearchMessage &&
+              taxonomyAssignmentsByQuestionId.size === 0 ? (
                 <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                  No official five-facet tag assignments yet. Seed the catalog
-                  and persist approved assignments from /admin/tags.
+                  No taxonomy assignments are present on this result page.
                 </p>
               ) : null}
             </div>
           </form>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Showing {filteredQuestions.length} of {(questions ?? []).length}
-            questions.
-          </p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <p>
+              Showing {filteredQuestions.length} of {totalQuestions} matching
+              questions.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button asChild disabled={page <= 1} size="sm" variant="outline">
+                <Link href={pageHref(params, Math.max(1, page - 1))}>
+                  Previous
+                </Link>
+              </Button>
+              <span>Page {page}</span>
+              <Button
+                asChild
+                disabled={page * pageSize >= totalQuestions}
+                size="sm"
+                variant="outline"
+              >
+                <Link href={pageHref(params, page + 1)}>Next</Link>
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
+      ) : null}
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error.message}
         </p>
       ) : null}
+      {focusedQuestionId ? (
+        <div className="space-y-4">
+          {filteredQuestions.map((question) => {
+            const importedAssetReferences =
+              importRefsByQuestionId.get(question.id) ?? null;
+            const imageCount = assetsByQuestionId.get(question.id)?.length ?? 0;
+            const sourceFileCount =
+              sourceFilesByQuestionId.get(question.id)?.length ?? 0;
+            const readiness = getQuestionReadiness({
+              contentHtml: question.content_html,
+              difficultyRating: question.difficulty_rating,
+              imageCount,
+              importedAssetReferences,
+              solutionHtml: question.solution_html,
+              sourceFileCount,
+              tagCount:
+                taxonomyAssignmentsByQuestionId.get(question.id)?.length ?? 0,
+            });
+
+            return (
+              <AdminQuestionEditDetails
+                key={question.id}
+                assets={assetsByQuestionId.get(question.id)}
+                defaultOpen
+                importedAssetReferences={importedAssetReferences}
+                question={question}
+                readiness={readiness}
+                selectedTaxonomyTagIds={selectedTaxonomyTagMapFromAssignments(
+                  taxonomyAssignmentsByQuestionId.get(question.id),
+                )}
+                sourceFiles={sourceFilesByQuestionId.get(question.id)}
+                taxonomyCatalog={taxonomyCatalog}
+              />
+            );
+          })}
+          {!filteredQuestions.length ? (
+            <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">
+              Question not found or not visible to your account.
+            </div>
+          ) : null}
+        </div>
+      ) : (
       <div className="rounded-md border">
+        <form
+          id="admin-questions-bulk-form"
+          action={bulkUpdateQuestions}
+          className="flex flex-wrap items-center gap-2 border-b p-3 text-sm"
+        >
+          <input type="hidden" name="return_to" value={currentPath} />
+          <select
+            name="status"
+            className="h-9 rounded-md border bg-background px-2 text-sm"
+            defaultValue="draft"
+          >
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="archived">Archived</option>
+          </select>
+          <FormSubmitButton
+            name="bulk_action"
+            value="status"
+            size="sm"
+            variant="outline"
+            pendingLabel="Updating..."
+          >
+            Update selected status
+          </FormSubmitButton>
+          <FormSubmitButton
+            name="bulk_action"
+            value="delete"
+            size="sm"
+            variant="destructive"
+            pendingLabel="Deleting..."
+          >
+            Delete selected
+          </FormSubmitButton>
+          <span className="text-xs text-muted-foreground">
+            Select rows below before applying a bulk action.
+          </span>
+        </form>
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <span className="sr-only">Select</span>
+              </TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Title</TableHead>
               <TableHead>Type</TableHead>
@@ -564,24 +797,36 @@ export default async function AdminQuestionsPage({
                 solutionHtml: question.solution_html,
                 sourceFileCount,
                 tagCount:
-                  fiveFacetAssignmentsByQuestionId.get(question.id)?.length ?? 0,
+                  taxonomyAssignmentsByQuestionId.get(question.id)?.length ?? 0,
               });
 
               return (
                 <Fragment key={question.id}>
                   <TableRow>
+                    <TableCell>
+                      <input
+                        aria-label={`Select question ${question.question_code}`}
+                        className="size-4 rounded border"
+                        form="admin-questions-bulk-form"
+                        name="question_id"
+                        type="checkbox"
+                        value={question.id}
+                      />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">
                       {question.question_code}
                     </TableCell>
                     <TableCell>{question.title}</TableCell>
                     <TableCell>{question.question_type}</TableCell>
                     <TableCell>
-                      <FiveFacetTagChips
-                        assignments={fiveFacetAssignmentsByQuestionId.get(
+                      <TaxonomyTagChips
+                        assignments={taxonomyAssignmentsByQuestionId.get(
                           question.id,
                         )}
-                        emptyLabel="No five-facet tags assigned yet."
+                        emptyLabel="No taxonomy tags assigned yet."
+                        maxVisibleTags={3}
                         showCategoryHeadings={false}
+                        taxonomyCatalog={taxonomyCatalog}
                       />
                     </TableCell>
                     <TableCell>{question.difficulty_rating}</TableCell>
@@ -598,23 +843,30 @@ export default async function AdminQuestionsPage({
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={7} className="bg-muted/20 p-3">
-                      <div className="mb-3 rounded-md border bg-background p-3">
-                        <p className="mb-2 text-sm font-medium">
-                          Official five-facet tags
-                        </p>
-                        <FiveFacetTagChips
-                          assignments={fiveFacetAssignmentsByQuestionId.get(
-                            question.id,
-                          )}
-                        />
-                      </div>
+                    <TableCell colSpan={8} className="bg-muted/20 p-3">
+                      <details className="mb-3 rounded-md border bg-background px-3 py-2">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Official taxonomy tags
+                        </summary>
+                        <div className="mt-2">
+                          <TaxonomyTagChips
+                            assignments={taxonomyAssignmentsByQuestionId.get(
+                              question.id,
+                            )}
+                            taxonomyCatalog={taxonomyCatalog}
+                          />
+                        </div>
+                      </details>
                       <AdminQuestionEditDetails
                         assets={assetsByQuestionId.get(question.id)}
                         importedAssetReferences={importedAssetReferences}
                         question={question}
                         readiness={readiness}
+                        selectedTaxonomyTagIds={selectedTaxonomyTagMapFromAssignments(
+                          taxonomyAssignmentsByQuestionId.get(question.id),
+                        )}
                         sourceFiles={sourceFilesByQuestionId.get(question.id)}
+                        taxonomyCatalog={taxonomyCatalog}
                       />
                     </TableCell>
                   </TableRow>
@@ -623,7 +875,7 @@ export default async function AdminQuestionsPage({
             })}
             {!filteredQuestions.length ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
+                <TableCell colSpan={8} className="h-24 text-center">
                   {(questions ?? []).length
                     ? "No questions match these filters."
                     : "No questions yet. Create a draft or use demo seed data from the admin dashboard."}
@@ -633,6 +885,7 @@ export default async function AdminQuestionsPage({
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   );
 }

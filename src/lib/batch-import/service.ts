@@ -77,10 +77,14 @@ async function loadImportContext({
   allowDraftTags?: boolean;
   supabase: SupabaseLike;
 }) {
-  const tagQuery = supabase.from("tags").select("id, name, slug").limit(1000);
+  const tagQuery = supabase
+    .from("taxonomy_nodes")
+    .select("tag_id, label, status")
+    .eq("is_assignable", true)
+    .limit(1000);
   const filteredTagQuery = allowDraftTags
     ? tagQuery.neq("status", "archived")
-    : tagQuery.eq("status", "published");
+    : tagQuery.eq("status", "active");
   const [{ data: tags, error: tagsError }, { data: questions, error: questionsError }] =
     await Promise.all([
       filteredTagQuery,
@@ -95,7 +99,11 @@ async function loadImportContext({
     throw new Error(questionsError.message);
   }
 
-  const loadedTags = (tags ?? []) as { id: string; name: string; slug: string }[];
+  const loadedTags = ((tags ?? []) as {
+    tag_id: string;
+  }[]).map((tag) => ({
+    id: tag.tag_id,
+  }));
   const loadedQuestions = (questions ?? []) as { question_code: string }[];
 
   return {
@@ -237,6 +245,7 @@ export async function importBatchImportJson({
   let createdCount = 0;
   let skippedCount = preview.invalidCount;
   let errorCount = preview.invalidCount;
+  const runtimeErrorReasons = new Set<string>();
   const createdQuestions: BatchImportSummary["createdQuestions"] = [];
 
   for (const item of preview.items) {
@@ -256,7 +265,9 @@ export async function importBatchImportJson({
         solution_html: normalized.solution_html,
         solution_source: normalized.solution_source,
         solution_source_format: normalized.solution_source_format,
+        answer_spec: normalized.answer_spec,
         difficulty_rating: normalized.difficulty_rating,
+        options: normalized.options,
         question_type: normalized.question_type,
         status: "draft",
         created_by: profileId,
@@ -268,6 +279,7 @@ export async function importBatchImportJson({
     if (questionError) {
       skippedCount += 1;
       errorCount += 1;
+      runtimeErrorReasons.add(questionError.message);
       await supabase
         .from("import_batch_items")
         .update({
@@ -284,16 +296,21 @@ export async function importBatchImportJson({
     }
 
     if (normalized.tag_ids.length) {
-      const { error: tagsError } = await supabase.from("question_tags").insert(
+      const { error: tagsError } = await supabase
+        .from("question_taxonomy_assignments")
+        .insert(
         normalized.tag_ids.map((tagId) => ({
           question_id: question.id,
           tag_id: tagId,
+          review_status: "pending_review",
+          source: "batch_import",
         })),
       );
 
       if (tagsError) {
         skippedCount += 1;
         errorCount += 1;
+        runtimeErrorReasons.add(tagsError.message);
         await supabase.from("questions").delete().eq("id", question.id);
         await supabase
           .from("import_batch_items")
@@ -335,7 +352,9 @@ export async function importBatchImportJson({
     validCount: preview.validCount,
     invalidCount: preview.invalidCount,
     unknownTagCount: preview.unknownTagCount,
-    validationErrorReasons,
+    validationErrorReasons: Array.from(
+      new Set([...validationErrorReasons, ...runtimeErrorReasons]),
+    ).slice(0, 8),
     createdQuestions,
   };
   const existingSummaryBeforeFinal = await loadImportBatchSummary({

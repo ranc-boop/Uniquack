@@ -69,7 +69,10 @@ function initialModeFor({
   defaultSourceFormat?: QuestionSourceFormat | null;
   defaultValue?: string | null;
 }): EditorMode {
-  if (defaultSourceFormat === "markdown_latex") {
+  const normalizedSource = normalizeInitialValue(defaultSource);
+  const normalizedHtml = normalizeInitialValue(defaultValue);
+
+  if (defaultSourceFormat === "markdown_latex" && normalizedSource) {
     return "markdown";
   }
 
@@ -77,7 +80,7 @@ function initialModeFor({
     return "html";
   }
 
-  return normalizeInitialValue(defaultValue) ? "html" : "markdown";
+  return normalizedHtml ? "html" : "markdown";
 }
 
 export function QuestionHtmlEditor({

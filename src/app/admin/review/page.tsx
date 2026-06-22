@@ -1,5 +1,7 @@
 ﻿import Link from "next/link";
 
+import { bulkUpdateQuestions } from "@/app/admin/questions/actions";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,7 +45,7 @@ type AIReviewMetadata = {
   };
   source?: string;
   tag_decisions?: {
-    new_tag_names?: unknown[];
+    tag_ids?: unknown[];
   };
   warnings?: unknown[];
 };
@@ -58,6 +60,15 @@ function formatDate(value: string | null | undefined) {
 
 function shortId(value: string) {
   return value.slice(0, 8);
+}
+
+function reviewPath({ batch, search }: { batch?: string; search?: string }) {
+  const query = new URLSearchParams();
+  if (batch) query.set("batch", batch);
+  if (search) query.set("search", search);
+  const serialized = query.toString();
+
+  return serialized ? `/admin/review?${serialized}` : "/admin/review";
 }
 
 function getAIReviewMetadata(value: unknown): AIReviewMetadata | null {
@@ -119,6 +130,7 @@ export default async function AdminReviewPage({
   const profile = await requireAdmin();
   const search = (params.search ?? "").trim().toLowerCase();
   const batchId = (params.batch ?? "").trim();
+  const currentPath = reviewPath({ batch: params.batch, search: params.search });
   const supabase = await createClient();
   let batchFilter:
     | {
@@ -221,11 +233,15 @@ export default async function AdminReviewPage({
   ] = questionIds.length
     ? await Promise.all([
         supabase
-          .from("question_tags")
-          .select("question_id, tag_id")
+          .from("question_taxonomy_assignments")
+          .select("question_id, tag_id, review_status")
           .in("question_id", questionIds)
           .limit(1000),
-        supabase.from("tags").select("id, name, status").limit(1000),
+        supabase
+          .from("taxonomy_nodes")
+          .select("tag_id, label, status")
+          .eq("status", "active")
+          .limit(1000),
         supabase
           .from("question_assets")
           .select("question_id, id")
@@ -248,13 +264,16 @@ export default async function AdminReviewPage({
         { data: [] },
       ];
 
-  const tagNameById = new Map((tags ?? []).map((tag) => [tag.id, tag.name]));
+  const activeTagIds = new Set((tags ?? []).map((tag) => tag.tag_id));
   const tagStatusById = new Map(
-    (tags ?? []).map((tag) => [tag.id, tag.status]),
+    (questionTags ?? []).map((tag) => [
+      `${tag.question_id}:${tag.tag_id}`,
+      tag.review_status,
+    ]),
   );
-  const tagsByQuestionId = new Map<string, string[]>();
-  const draftTagCountByQuestionId = new Map<string, number>();
-  const publishedTagCountByQuestionId = new Map<string, number>();
+  const tagIdsByQuestionId = new Map<string, string[]>();
+  const pendingTagCountByQuestionId = new Map<string, number>();
+  const approvedTagCountByQuestionId = new Map<string, number>();
   const imageCountByQuestionId = new Map<string, number>();
   const sourceFileCountByQuestionId = new Map<string, number>();
   const aiMetadataByQuestionId = new Map<string, AIReviewMetadata>();
@@ -263,28 +282,27 @@ export default async function AdminReviewPage({
   const importedAtByQuestionId = new Map<string, string>();
 
   for (const binding of questionTags ?? []) {
-    const tagName = tagNameById.get(binding.tag_id);
-    const tagStatus = tagStatusById.get(binding.tag_id);
+    const tagStatus = tagStatusById.get(`${binding.question_id}:${binding.tag_id}`);
 
-    if (!tagName) {
+    if (!activeTagIds.has(binding.tag_id)) {
       continue;
     }
 
-    if (tagStatus === "draft") {
-      draftTagCountByQuestionId.set(
+    if (tagStatus === "pending_review" || tagStatus === "needs_review") {
+      pendingTagCountByQuestionId.set(
         binding.question_id,
-        (draftTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
+        (pendingTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
       );
-    } else if (tagStatus === "published") {
-      publishedTagCountByQuestionId.set(
+    } else if (tagStatus === "approved") {
+      approvedTagCountByQuestionId.set(
         binding.question_id,
-        (publishedTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
+        (approvedTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
       );
     }
 
-    tagsByQuestionId.set(binding.question_id, [
-      ...(tagsByQuestionId.get(binding.question_id) ?? []),
-      tagName,
+    tagIdsByQuestionId.set(binding.question_id, [
+      ...(tagIdsByQuestionId.get(binding.question_id) ?? []),
+      binding.tag_id,
     ]);
   }
 
@@ -386,18 +404,55 @@ export default async function AdminReviewPage({
           {error.message}
         </p>
       ) : null}
+      <form
+        id="admin-review-bulk-form"
+        action={bulkUpdateQuestions}
+        className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-3 text-sm"
+      >
+        <input type="hidden" name="return_to" value={currentPath} />
+        <select
+          name="status"
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          defaultValue="published"
+        >
+          <option value="draft">Draft</option>
+          <option value="published">Published</option>
+          <option value="archived">Archived</option>
+        </select>
+        <FormSubmitButton
+          name="bulk_action"
+          value="status"
+          size="sm"
+          variant="outline"
+          pendingLabel="Updating..."
+        >
+          Update selected status
+        </FormSubmitButton>
+        <FormSubmitButton
+          name="bulk_action"
+          value="delete"
+          size="sm"
+          variant="destructive"
+          pendingLabel="Deleting..."
+        >
+          Delete selected
+        </FormSubmitButton>
+        <span className="text-xs text-muted-foreground">
+          Select draft cards below before applying a bulk action.
+        </span>
+      </form>
       <div className="grid gap-4">
         {draftQuestions.map((question) => {
-          const tagNames = tagsByQuestionId.get(question.id) ?? [];
-          const draftTagCount = draftTagCountByQuestionId.get(question.id) ?? 0;
-          const publishedTagCount =
-            publishedTagCountByQuestionId.get(question.id) ?? 0;
+          const tagIds = tagIdsByQuestionId.get(question.id) ?? [];
+          const pendingTagCount = pendingTagCountByQuestionId.get(question.id) ?? 0;
+          const approvedTagCount =
+            approvedTagCountByQuestionId.get(question.id) ?? 0;
           const imageCount = imageCountByQuestionId.get(question.id) ?? 0;
           const sourceFileCount = sourceFileCountByQuestionId.get(question.id) ?? 0;
           const aiMetadata = aiMetadataByQuestionId.get(question.id);
           const aiPageRefs = stringList(aiMetadata?.page_refs);
           const aiCreatedTags = stringList(
-            aiMetadata?.tag_decisions?.new_tag_names,
+            aiMetadata?.tag_decisions?.tag_ids,
           );
           const aiWarnings = [
             ...stringList(aiMetadata?.warnings),
@@ -415,20 +470,30 @@ export default async function AdminReviewPage({
             importedAssetReferences: importRefs,
             solutionHtml: question.solution_html,
             sourceFileCount,
-            tagCount: publishedTagCount,
+            tagCount: approvedTagCount,
           });
 
           return (
             <Card key={question.id}>
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <CardTitle className="text-base">
-                      {question.question_code}
-                    </CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {question.title}
-                    </p>
+                  <div className="flex items-start gap-3">
+                    <input
+                      aria-label={`Select question ${question.question_code}`}
+                      className="mt-1 size-4 rounded border"
+                      form="admin-review-bulk-form"
+                      name="question_id"
+                      type="checkbox"
+                      value={question.id}
+                    />
+                    <div>
+                      <CardTitle className="text-base">
+                        {question.question_code}
+                      </CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {question.title}
+                      </p>
+                    </div>
                   </div>
                   <Badge variant="secondary">{question.status}</Badge>
                 </div>
@@ -453,23 +518,23 @@ export default async function AdminReviewPage({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {draftTagCount ? (
+                  {pendingTagCount ? (
                     <Badge variant="outline">
-                      Needs tag review: {draftTagCount} draft
+                      Needs taxonomy review: {pendingTagCount}
                     </Badge>
                   ) : null}
-                  {tagNames.length ? (
-                    tagNames.map((tagName) => (
-                      <Badge key={tagName} variant="outline">
-                        {tagName}
+                  {tagIds.length ? (
+                    tagIds.map((tagId) => (
+                      <Badge key={tagId} variant="outline" title={tagId}>
+                        {tagId}
                       </Badge>
                     ))
                   ) : (
-                    <Badge variant="outline">No tags</Badge>
+                    <Badge variant="outline">No taxonomy tags</Badge>
                   )}
-                  {publishedTagCount ? (
+                  {approvedTagCount ? (
                     <Badge variant="secondary">
-                      Published tags: {publishedTagCount}
+                      Approved taxonomy tags: {approvedTagCount}
                     </Badge>
                   ) : null}
                 </div>
@@ -535,9 +600,7 @@ export default async function AdminReviewPage({
                 ) : null}
                 <Button asChild size="sm">
                   <Link
-                    href={`/admin/questions?status=draft&q=${encodeURIComponent(
-                      question.question_code,
-                    )}`}
+                    href={`/admin/questions?edit=${question.id}`}
                   >
                     Edit question
                   </Link>

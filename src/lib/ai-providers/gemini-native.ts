@@ -1,5 +1,7 @@
 import "server-only";
 
+import { writeAIImportLLMDebugLog } from "@/lib/ai-providers/llm-debug-logs";
+
 type GeminiFetch = typeof fetch;
 
 type GeminiFile = {
@@ -27,6 +29,7 @@ type GeminiGenerateResponse = {
 type GeminiNativePdfInput = {
   apiKey: string;
   baseUrl?: string;
+  debugContext?: Record<string, unknown>;
   fetchImpl?: GeminiFetch;
   fileName: string;
   maxPollAttempts?: number;
@@ -338,42 +341,110 @@ async function deleteGeminiFile({
 async function generateContent({
   apiKey,
   baseUrl,
+  debugContext,
   fetchImpl,
   parts,
   model,
 }: {
   apiKey: string;
   baseUrl: string;
+  debugContext?: Record<string, unknown>;
   fetchImpl: GeminiFetch;
   parts: Record<string, unknown>[];
   model: string;
 }) {
-  const response = await fetchImpl(
-    generateContentUrl(model, baseUrl),
-    {
-      body: JSON.stringify({
-        contents: [
-          {
-            parts,
-          },
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.1,
-        },
-      }),
+  const requestBody = {
+    contents: [
+      {
+        parts,
+      },
+    ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.1,
+    },
+  };
+
+  await writeAIImportLLMDebugLog({
+    context: {
+      ...debugContext,
+      adapter: "gemini_native",
+      model,
+    },
+    event: "request",
+    payload: {
+      body: requestBody,
+      endpoint: generateContentUrl(model, baseUrl),
       headers: {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
+        "X-Goog-Api-Key": "[redacted]",
       },
       method: "POST",
-      signal: AbortSignal.timeout(GEMINI_GENERATE_TIMEOUT_MS),
     },
-  );
+  });
+
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      generateContentUrl(model, baseUrl),
+      {
+        body: JSON.stringify(requestBody),
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+        },
+        method: "POST",
+        signal: AbortSignal.timeout(GEMINI_GENERATE_TIMEOUT_MS),
+      },
+    );
+  } catch (error) {
+    await writeAIImportLLMDebugLog({
+      context: {
+        ...debugContext,
+        adapter: "gemini_native",
+        model,
+      },
+      event: "error",
+      payload: {
+        message: error instanceof Error ? error.message : String(error),
+        name: error instanceof Error ? error.name : "UnknownError",
+      },
+    });
+    throw error;
+  }
+  if (!response.ok) {
+    const text = await response.clone().text().catch(() => "");
+    await writeAIImportLLMDebugLog({
+      context: {
+        ...debugContext,
+        adapter: "gemini_native",
+        model,
+      },
+      event: "error",
+      payload: {
+        body: text,
+        status: response.status,
+        statusText: response.statusText,
+      },
+    });
+  }
   const payload = await readJson<GeminiGenerateResponse>(
     response,
     "generateContent",
   );
+  await writeAIImportLLMDebugLog({
+    context: {
+      ...debugContext,
+      adapter: "gemini_native",
+      model,
+    },
+    event: "response",
+    payload: {
+      body: payload,
+      status: response.status,
+      statusText: response.statusText,
+    },
+  });
   const text = payload.candidates
     ?.flatMap((candidate) => candidate.content?.parts ?? [])
     .map((part) => part.text)
@@ -391,6 +462,7 @@ async function generateContent({
 export async function generateWithGeminiNativePdf({
   apiKey,
   baseUrl = DEFAULT_GEMINI_API_BASE_URL,
+  debugContext,
   fetchImpl = fetch,
   fileName,
   maxPollAttempts = DEFAULT_MAX_POLL_ATTEMPTS,
@@ -428,6 +500,7 @@ export async function generateWithGeminiNativePdf({
       text: await generateContent({
         apiKey,
         baseUrl,
+        debugContext,
         fetchImpl,
         model,
         parts: [
