@@ -423,7 +423,16 @@ export default async function AdminQuestionsPage({
       </div>
       <PageFeedback error={params.error} saved={params.saved} />
       {!focusedQuestionId ? (
-      <Card>
+      <details className="rounded-lg border bg-card p-5 shadow-sm">
+        <summary className="cursor-pointer list-none">
+          <div className="space-y-1">
+            <p className="text-base font-semibold">Create question</p>
+            <p className="text-sm text-muted-foreground">
+              Open this panel only when adding a new manual question.
+            </p>
+          </div>
+        </summary>
+      <Card className="mt-4">
         <CardHeader>
           <CardTitle className="text-base">Create question</CardTitle>
         </CardHeader>
@@ -542,6 +551,7 @@ export default async function AdminQuestionsPage({
           </form>
         </CardContent>
       </Card>
+      </details>
       ) : null}
       {!focusedQuestionId ? (
       <Card>
@@ -710,6 +720,7 @@ export default async function AdminQuestionsPage({
               <AdminQuestionEditDetails
                 key={question.id}
                 assets={assetsByQuestionId.get(question.id)}
+                defaultOpen
                 importedAssetReferences={importedAssetReferences}
                 question={question}
                 readiness={readiness}
@@ -824,6 +835,7 @@ export default async function AdminQuestionsPage({
                           question.id,
                         )}
                         emptyLabel="No taxonomy tags assigned yet."
+                        maxVisibleTags={3}
                         showCategoryHeadings={false}
                         taxonomyCatalog={taxonomyCatalog}
                       />
@@ -843,17 +855,19 @@ export default async function AdminQuestionsPage({
                   </TableRow>
                   <TableRow>
                     <TableCell colSpan={8} className="bg-muted/20 p-3">
-                      <div className="mb-3 rounded-md border bg-background p-3">
-                        <p className="mb-2 text-sm font-medium">
+                      <details className="mb-3 rounded-md border bg-background px-3 py-2">
+                        <summary className="cursor-pointer text-sm font-medium">
                           Official taxonomy tags
-                        </p>
-                        <TaxonomyTagChips
-                          assignments={taxonomyAssignmentsByQuestionId.get(
-                            question.id,
-                          )}
-                          taxonomyCatalog={taxonomyCatalog}
-                        />
-                      </div>
+                        </summary>
+                        <div className="mt-2">
+                          <TaxonomyTagChips
+                            assignments={taxonomyAssignmentsByQuestionId.get(
+                              question.id,
+                            )}
+                            taxonomyCatalog={taxonomyCatalog}
+                          />
+                        </div>
+                      </details>
                       <AdminQuestionEditDetails
                         assets={assetsByQuestionId.get(question.id)}
                         importedAssetReferences={importedAssetReferences}

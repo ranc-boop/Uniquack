@@ -15,6 +15,7 @@ export type TaxonomyTagChipAssignment = {
 type TaxonomyTagChipsProps = {
   assignments?: TaxonomyTagChipAssignment[];
   emptyLabel?: string;
+  maxVisibleTags?: number;
   showCategoryHeadings?: boolean;
   tagIds?: string[];
   taxonomyCatalog?: TaxonomyCatalogView;
@@ -73,6 +74,7 @@ function normalizeAssignments({
 export function TaxonomyTagChips({
   assignments,
   emptyLabel = "No official taxonomy tags assigned yet",
+  maxVisibleTags,
   showCategoryHeadings = true,
   tagIds,
   taxonomyCatalog = { facets: [], nodes: [] },
@@ -95,6 +97,56 @@ export function TaxonomyTagChips({
 
   if (!normalized.length) {
     return <p className="text-xs text-muted-foreground">{emptyLabel}</p>;
+  }
+
+  if (typeof maxVisibleTags === "number" && maxVisibleTags > 0) {
+    const visibleRows = normalized.slice(0, maxVisibleTags);
+    const hiddenCount = Math.max(0, normalized.length - visibleRows.length);
+
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        {visibleRows.map((row) => {
+          const node = nodesById.get(row.tag_id);
+          if (!node) return null;
+          const path = breadcrumb({ node, nodesById });
+          const status =
+            row.review_status && row.review_status !== "approved"
+              ? row.review_status
+              : "";
+          const label = taxonomyDisplayLabelFromId(node.tag_id);
+          const chipTitle = path
+            ? `${path} > ${label} (${row.tag_id})`
+            : `${label} (${row.tag_id})`;
+
+          return (
+            <Badge
+              className="max-w-[16rem] truncate"
+              key={row.tag_id}
+              title={chipTitle}
+              variant="outline"
+            >
+              <span className="truncate">{label}</span>
+              {status ? (
+                <span className="ml-1 text-[10px] text-muted-foreground">
+                  {status}
+                </span>
+              ) : null}
+            </Badge>
+          );
+        })}
+        {hiddenCount ? (
+          <Badge
+            title={normalized
+              .slice(maxVisibleTags)
+              .map((row) => row.tag_id)
+              .join(", ")}
+            variant="secondary"
+          >
+            +{hiddenCount}
+          </Badge>
+        ) : null}
+      </div>
+    );
   }
 
   return (

@@ -44,6 +44,7 @@ type SelectedTaxonomyTagMap = Partial<Record<string, string[]>>;
 
 type AdminQuestionEditDetailsProps = {
   assets?: QuestionAssetView[];
+  defaultOpen?: boolean;
   importedAssetReferences: ImportAssetReferences | null;
   question: EditableQuestion;
   readiness: QuestionReadiness;
@@ -198,6 +199,7 @@ function PublishReadinessBox({
 
 export function AdminQuestionEditDetails({
   assets = [],
+  defaultOpen = false,
   importedAssetReferences,
   question,
   readiness,
@@ -205,10 +207,10 @@ export function AdminQuestionEditDetails({
   sourceFiles = [],
   taxonomyCatalog,
 }: AdminQuestionEditDetailsProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <details onToggle={(event) => setIsOpen(event.currentTarget.open)}>
+    <details open={isOpen} onToggle={(event) => setIsOpen(event.currentTarget.open)}>
       <summary className="cursor-pointer text-sm font-medium">
         Edit question
       </summary>

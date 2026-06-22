@@ -99,6 +99,7 @@ export function QuestionsTable({
                   <TaxonomyTagChips
                     assignments={taxonomyTagsByQuestionId[question.id]}
                     emptyLabel="No taxonomy tags assigned yet."
+                    maxVisibleTags={3}
                     showCategoryHeadings={false}
                     taxonomyCatalog={taxonomyCatalog}
                   />
