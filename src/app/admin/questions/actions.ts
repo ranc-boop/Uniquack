@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import {
   formatActionError,
@@ -20,6 +21,23 @@ import {
   questionUpdateSchema,
 } from "@/lib/validations/question";
 
+const bulkQuestionActionSchema = z.object({
+  bulk_action: z.enum(["status", "delete"]),
+  return_to: z.string().optional().default("/admin/questions"),
+  status: questionStatusSchema.shape.status.optional(),
+});
+
+function idsFromFormData(formData: FormData) {
+  return Array.from(new Set(formData.getAll("question_id")))
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => uuidSchema.parse(value));
+}
+
+function safeReturnTo(value: string) {
+  return value.startsWith("/admin/review") || value.startsWith("/admin/questions")
+    ? value
+    : "/admin/questions";
+}
 
 const taxonomyTagIdPattern = /^math\.[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
 
@@ -89,6 +107,37 @@ async function replaceQuestionTaxonomyAssignments({
 
   if (insertError) {
     throw new Error(insertError.message);
+  }
+}
+
+async function approveQuestionTaxonomyAssignmentsForPublish({
+  profileId,
+  questionIds,
+  supabase,
+}: {
+  profileId: string;
+  questionIds: string[];
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const uniqueQuestionIds = Array.from(new Set(questionIds));
+
+  if (!uniqueQuestionIds.length) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("question_taxonomy_assignments")
+    .update({
+      approved_at: new Date().toISOString(),
+      approved_by: profileId,
+      review_status: "approved",
+      updated_by: profileId,
+    })
+    .in("question_id", uniqueQuestionIds)
+    .in("review_status", ["pending_review", "needs_review"]);
+
+  if (error) {
+    throw new Error(error.message);
   }
 }
 
@@ -230,6 +279,14 @@ export async function updateQuestionStatus(formData: FormData) {
     if (error) {
       throw new Error(error.message);
     }
+
+    if (parsed.status === "published") {
+      await approveQuestionTaxonomyAssignmentsForPublish({
+        profileId: profile.id,
+        questionIds: [parsed.id],
+        supabase,
+      });
+    }
   } catch (error) {
     redirectWithError("/admin/questions", formatActionError(error));
   }
@@ -250,71 +307,7 @@ export async function deleteQuestion(formData: FormData) {
     const parsed = questionDeleteSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
     questionId = parsed.id;
-    const { data: assets, error: assetsError } = await supabase
-      .from("question_assets")
-      .select("id, object_path")
-      .eq("question_id", parsed.id);
-
-    if (assetsError) {
-      throw new Error(assetsError.message);
-    }
-
-    if (assets?.length) {
-      const { error: storageError } = await supabase.storage
-        .from(QUESTION_ASSETS_BUCKET)
-        .remove(assets.map((asset) => asset.object_path));
-
-      if (storageError) {
-        throw new Error(storageError.message);
-      }
-
-      const { error: assetsDeleteError } = await supabase
-        .from("question_assets")
-        .delete()
-        .eq("question_id", parsed.id);
-
-      if (assetsDeleteError) {
-        throw new Error(assetsDeleteError.message);
-      }
-    }
-
-    const { data: sourceFiles, error: sourceFilesError } = await supabase
-      .from("question_source_files")
-      .select("id, object_path")
-      .eq("question_id", parsed.id)
-      .neq("status", "deleted");
-
-    if (sourceFilesError) {
-      throw new Error(sourceFilesError.message);
-    }
-
-    if (sourceFiles?.length) {
-      const { error: sourceStorageError } = await supabase.storage
-        .from(QUESTION_SOURCE_FILES_BUCKET)
-        .remove(sourceFiles.map((sourceFile) => sourceFile.object_path));
-
-      if (sourceStorageError) {
-        throw new Error(sourceStorageError.message);
-      }
-
-      const { error: sourceFilesUpdateError } = await supabase
-        .from("question_source_files")
-        .update({ status: "deleted" })
-        .eq("question_id", parsed.id);
-
-      if (sourceFilesUpdateError) {
-        throw new Error(sourceFilesUpdateError.message);
-      }
-    }
-
-    const { error } = await supabase
-      .from("questions")
-      .delete()
-      .eq("id", parsed.id);
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    await deleteQuestionById({ questionId: parsed.id, supabase });
   } catch (error) {
     redirectWithError("/admin/questions", formatActionError(error));
   }
@@ -325,4 +318,137 @@ export async function deleteQuestion(formData: FormData) {
   revalidatePath("/videos");
   revalidatePath(`/questions/${questionId}`);
   redirectWithSaved("/admin/questions", "Question deleted.");
+}
+
+async function deleteQuestionById({
+  questionId,
+  supabase,
+}: {
+  questionId: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const { data: assets, error: assetsError } = await supabase
+    .from("question_assets")
+    .select("id, object_path")
+    .eq("question_id", questionId);
+
+  if (assetsError) {
+    throw new Error(assetsError.message);
+  }
+
+  if (assets?.length) {
+    const { error: storageError } = await supabase.storage
+      .from(QUESTION_ASSETS_BUCKET)
+      .remove(assets.map((asset) => asset.object_path));
+
+    if (storageError) {
+      throw new Error(storageError.message);
+    }
+
+    const { error: assetsDeleteError } = await supabase
+      .from("question_assets")
+      .delete()
+      .eq("question_id", questionId);
+
+    if (assetsDeleteError) {
+      throw new Error(assetsDeleteError.message);
+    }
+  }
+
+  const { data: sourceFiles, error: sourceFilesError } = await supabase
+    .from("question_source_files")
+    .select("id, object_path")
+    .eq("question_id", questionId)
+    .neq("status", "deleted");
+
+  if (sourceFilesError) {
+    throw new Error(sourceFilesError.message);
+  }
+
+  if (sourceFiles?.length) {
+    const { error: sourceStorageError } = await supabase.storage
+      .from(QUESTION_SOURCE_FILES_BUCKET)
+      .remove(sourceFiles.map((sourceFile) => sourceFile.object_path));
+
+    if (sourceStorageError) {
+      throw new Error(sourceStorageError.message);
+    }
+
+    const { error: sourceFilesUpdateError } = await supabase
+      .from("question_source_files")
+      .update({ status: "deleted" })
+      .eq("question_id", questionId);
+
+    if (sourceFilesUpdateError) {
+      throw new Error(sourceFilesUpdateError.message);
+    }
+  }
+
+  const { error } = await supabase.from("questions").delete().eq("id", questionId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function bulkUpdateQuestions(formData: FormData) {
+  let returnTo = "/admin/questions";
+  let questionIds: string[] = [];
+
+  try {
+    const profile = await requireAdmin();
+    const parsed = bulkQuestionActionSchema.parse(Object.fromEntries(formData));
+    returnTo = safeReturnTo(parsed.return_to);
+    questionIds = idsFromFormData(formData);
+
+    if (!questionIds.length) {
+      throw new Error("Select at least one question.");
+    }
+
+    const supabase = await createClient();
+
+    if (parsed.bulk_action === "status") {
+      if (!parsed.status) {
+        throw new Error("Choose a status.");
+      }
+
+      const { error } = await supabase
+        .from("questions")
+        .update({
+          published_at:
+            parsed.status === "published" ? new Date().toISOString() : null,
+          status: parsed.status,
+          updated_by: profile.id,
+        })
+        .in("id", questionIds);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (parsed.status === "published") {
+        await approveQuestionTaxonomyAssignmentsForPublish({
+          profileId: profile.id,
+          questionIds,
+          supabase,
+        });
+      }
+    } else {
+      for (const questionId of questionIds) {
+        await deleteQuestionById({ questionId, supabase });
+      }
+    }
+  } catch (error) {
+    redirectWithError(returnTo, formatActionError(error));
+  }
+
+  revalidatePath("/admin/questions");
+  revalidatePath("/admin/review");
+  revalidatePath("/questions");
+  revalidatePath("/admin/videos");
+  revalidatePath("/videos");
+  for (const questionId of questionIds) {
+    revalidatePath(`/questions/${questionId}`);
+  }
+  redirectWithSaved(returnTo, `Updated ${questionIds.length} question(s).`);
 }

@@ -1,4 +1,5 @@
 import {
+  bulkUpdateQuestions,
   createQuestion,
   deleteQuestion,
 } from "@/app/admin/questions/actions";
@@ -50,6 +51,7 @@ type AdminQuestionsPageProps = {
     tax_exclude_search?: string | string[];
     tax_reviewed?: string | string[];
     tax_search?: string | string[];
+    edit?: string;
     q?: string;
     page?: string;
     saved?: string;
@@ -59,6 +61,8 @@ type AdminQuestionsPageProps = {
 
 const questionStatuses = ["draft", "published", "archived"] as const;
 type QuestionRow = Database["public"]["Tables"]["questions"]["Row"];
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function safeStatusFilter(value: string | undefined) {
   return questionStatuses.find((status) => status === value) ?? "";
@@ -158,6 +162,9 @@ export default async function AdminQuestionsPage({
   await requireAdmin();
   const supabase = await createClient();
   const search = (params.q ?? "").trim().toLowerCase();
+  const focusedQuestionId = uuidPattern.test(firstParam(params.edit) ?? "")
+    ? firstParam(params.edit)!.trim()
+    : "";
   const selectedStatus = safeStatusFilter(params.status);
   const { catalog: taxonomyCatalog, errorMessage: taxonomyCatalogError } =
     await loadTaxonomyCatalog(supabase);
@@ -181,6 +188,7 @@ export default async function AdminQuestionsPage({
   const selectedTaxonomyInclude = taxonomyFilter.include;
   const selectedTaxonomyExclude = taxonomyFilter.exclude;
   const page = parsePage(params.page);
+  const currentPath = pageHref(params, page);
   const pageSize = 50;
   const includeTagIds = Object.values(taxonomyFilter.include).flat();
   const excludeTagIds = Object.values(taxonomyFilter.exclude).flat();
@@ -209,7 +217,12 @@ export default async function AdminQuestionsPage({
   const {
     data: taxonomySearchRows,
     error: taxonomyRpcError,
-  } = await supabase.rpc("search_questions_by_taxonomy", taxonomySearchArgs);
+  } = focusedQuestionId
+    ? {
+        data: [{ question_id: focusedQuestionId, total_count: 1 }],
+        error: null,
+      }
+    : await supabase.rpc("search_questions_by_taxonomy", taxonomySearchArgs);
   let fallbackTotalQuestions = 0;
   if (!taxonomyRpcError && page > 1 && !taxonomySearchRows?.length) {
     const { data: firstPageRows } = await supabase.rpc(
@@ -409,6 +422,7 @@ export default async function AdminQuestionsPage({
         </p>
       </div>
       <PageFeedback error={params.error} saved={params.saved} />
+      {!focusedQuestionId ? (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Create question</CardTitle>
@@ -500,7 +514,6 @@ export default async function AdminQuestionsPage({
             </div>
             <div className="md:col-span-2">
               <TaxonomyTagTreePicker
-                defaultOpenFacetKeys={["concept", "method", "task"]}
                 namePrefix="question_tax"
                 selectable="assignable"
                 taxonomyCatalog={taxonomyCatalog}
@@ -529,6 +542,8 @@ export default async function AdminQuestionsPage({
           </form>
         </CardContent>
       </Card>
+      ) : null}
+      {!focusedQuestionId ? (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Find questions</CardTitle>
@@ -575,7 +590,6 @@ export default async function AdminQuestionsPage({
                 </p>
               </div>
               <TaxonomyTagTreePicker
-                defaultOpenFacetKeys={["concept", "method", "task"]}
                 namePrefix="tax"
                 searchQuery={firstParam(params.tax_search) ?? ""}
                 selectedTagIds={selectedTaxonomyInclude}
@@ -588,7 +602,6 @@ export default async function AdminQuestionsPage({
                 </summary>
                 <div className="mt-3 space-y-3">
                   <TaxonomyTagTreePicker
-                    defaultOpenFacetKeys={["concept", "method", "task"]}
                     namePrefix="tax_exclude"
                     searchName="tax_exclude_search"
                     searchQuery={firstParam(params.tax_exclude_search) ?? ""}
@@ -668,15 +681,97 @@ export default async function AdminQuestionsPage({
           </div>
         </CardContent>
       </Card>
+      ) : null}
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error.message}
         </p>
       ) : null}
+      {focusedQuestionId ? (
+        <div className="space-y-4">
+          {filteredQuestions.map((question) => {
+            const importedAssetReferences =
+              importRefsByQuestionId.get(question.id) ?? null;
+            const imageCount = assetsByQuestionId.get(question.id)?.length ?? 0;
+            const sourceFileCount =
+              sourceFilesByQuestionId.get(question.id)?.length ?? 0;
+            const readiness = getQuestionReadiness({
+              contentHtml: question.content_html,
+              difficultyRating: question.difficulty_rating,
+              imageCount,
+              importedAssetReferences,
+              solutionHtml: question.solution_html,
+              sourceFileCount,
+              tagCount:
+                taxonomyAssignmentsByQuestionId.get(question.id)?.length ?? 0,
+            });
+
+            return (
+              <AdminQuestionEditDetails
+                key={question.id}
+                assets={assetsByQuestionId.get(question.id)}
+                importedAssetReferences={importedAssetReferences}
+                question={question}
+                readiness={readiness}
+                selectedTaxonomyTagIds={selectedTaxonomyTagMapFromAssignments(
+                  taxonomyAssignmentsByQuestionId.get(question.id),
+                )}
+                sourceFiles={sourceFilesByQuestionId.get(question.id)}
+                taxonomyCatalog={taxonomyCatalog}
+              />
+            );
+          })}
+          {!filteredQuestions.length ? (
+            <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">
+              Question not found or not visible to your account.
+            </div>
+          ) : null}
+        </div>
+      ) : (
       <div className="rounded-md border">
+        <form
+          id="admin-questions-bulk-form"
+          action={bulkUpdateQuestions}
+          className="flex flex-wrap items-center gap-2 border-b p-3 text-sm"
+        >
+          <input type="hidden" name="return_to" value={currentPath} />
+          <select
+            name="status"
+            className="h-9 rounded-md border bg-background px-2 text-sm"
+            defaultValue="draft"
+          >
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="archived">Archived</option>
+          </select>
+          <FormSubmitButton
+            name="bulk_action"
+            value="status"
+            size="sm"
+            variant="outline"
+            pendingLabel="Updating..."
+          >
+            Update selected status
+          </FormSubmitButton>
+          <FormSubmitButton
+            name="bulk_action"
+            value="delete"
+            size="sm"
+            variant="destructive"
+            pendingLabel="Deleting..."
+          >
+            Delete selected
+          </FormSubmitButton>
+          <span className="text-xs text-muted-foreground">
+            Select rows below before applying a bulk action.
+          </span>
+        </form>
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <span className="sr-only">Select</span>
+              </TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Title</TableHead>
               <TableHead>Type</TableHead>
@@ -708,6 +803,16 @@ export default async function AdminQuestionsPage({
               return (
                 <Fragment key={question.id}>
                   <TableRow>
+                    <TableCell>
+                      <input
+                        aria-label={`Select question ${question.question_code}`}
+                        className="size-4 rounded border"
+                        form="admin-questions-bulk-form"
+                        name="question_id"
+                        type="checkbox"
+                        value={question.id}
+                      />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">
                       {question.question_code}
                     </TableCell>
@@ -737,7 +842,7 @@ export default async function AdminQuestionsPage({
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={7} className="bg-muted/20 p-3">
+                    <TableCell colSpan={8} className="bg-muted/20 p-3">
                       <div className="mb-3 rounded-md border bg-background p-3">
                         <p className="mb-2 text-sm font-medium">
                           Official taxonomy tags
@@ -767,7 +872,7 @@ export default async function AdminQuestionsPage({
             })}
             {!filteredQuestions.length ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
+                <TableCell colSpan={8} className="h-24 text-center">
                   {(questions ?? []).length
                     ? "No questions match these filters."
                     : "No questions yet. Create a draft or use demo seed data from the admin dashboard."}
@@ -777,6 +882,7 @@ export default async function AdminQuestionsPage({
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   );
 }

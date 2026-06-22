@@ -270,7 +270,6 @@ export function AdminQuestionEditDetails({
           </div>
           <div className="lg:col-span-2">
             <TaxonomyTagTreePicker
-              defaultOpenFacetKeys={["concept", "method", "task"]}
               namePrefix="question_tax"
               selectable="assignable"
               selectedTagIds={selectedTaxonomyTagIds}

@@ -180,7 +180,6 @@ type SupabaseLike = {
 
 type ActiveTag = {
   id: string;
-  status: string;
   facet_key: string | null;
 };
 
@@ -1803,12 +1802,15 @@ function buildPrompt({
   pageMapping?: { chunkPage: number; sourcePage: number }[];
   pageCount: number;
 }) {
-  const tags = activeTags
-    .map(
-      (tag) =>
-        `- tag_id=${tag.id} | facet=${tag.facet_key ?? "none"} | status=${tag.status}`,
-    )
-    .join("\n");
+  const tagIdsByFacet = activeTags.reduce<Record<string, string[]>>((groups, tag) => {
+    const facet = tag.facet_key ?? "none";
+    groups[facet] = [...(groups[facet] ?? []), tag.id];
+    return groups;
+  }, {});
+  const compactTags = Object.entries(tagIdsByFacet)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([facet, tagIds]) => `${facet}: ${tagIds.join(", ")}`)
+    .join("; ");
 
   return [
     "You are importing a PDF question set into a question bank.",
@@ -1848,8 +1850,76 @@ function buildPrompt({
         ].join("\n")
       : "",
     "",
-    "Existing active taxonomy tag IDs. Reuse only these exact tag_ids when they are semantically appropriate. Do not create, invent, rename, or suggest new taxonomy tags:",
-    tags || "(none)",
+    "Allowed active assignable tag_ids by facet. Every listed candidate below is a full tag_id. Output full tag_ids exactly as written, never abbreviate or shorten them. Use only these exact IDs; do not create, rename, or suggest tags:",
+    compactTags || "(none)",
+    "",
+    "Taxonomy tagging goal:",
+    "- For every question, try to cover at least 4 of the 5 official taxonomy facets when matching tags exist in the list above.",
+    "- The five facets are normally curriculum, concept, method, task, and difficulty/form. Use the facet groups above as the source of truth.",
+    "- Curriculum coverage should be generous: if a question accurately belongs to multiple systems, include all matching full curriculum tag_ids, such as AP, SAT, BC, Common Core, IB, or A-Level. Do not choose only one curriculum tag when several listed curriculum IDs are accurate.",
+    "- Do not force a weak or false tag. If fewer than 4 facets have an accurate existing tag, use the accurate tags only and add a warning explaining which facet was missing.",
+    "- Prefer the most specific available leaf-like tag_id in each facet. Avoid broad course or parent-level IDs when a more specific child tag is listed.",
+    "- Reuse tag_ids freely. Many questions can share the same curriculum, concept, method, task, or form tags.",
+    "",
+    "Taxonomy tagging thought process to follow silently before writing JSON:",
+    "1. Identify the math topic and every relevant course/unit system from the question stem and solution.",
+    "2. Choose one or more concept tags for the core idea being tested.",
+    "3. Choose method tags for the technique required to solve it, such as factoring, differentiation, substitution, graph interpretation, or equation solving.",
+    "4. Choose task/form tags for the student action and item format, such as evaluate, solve, prove, multiple choice, free response, or fill blank, when such tags exist.",
+    "5. Choose all accurate full curriculum tag_ids across multiple systems when the listed tag_ids support them.",
+    "6. Choose difficulty/form tags when the listed tag_ids support them.",
+    "7. Check that selected tag_ids are full exact IDs from the allowed list and cover at least 4 facets when possible.",
+    "",
+    "Complete tagging examples. These examples show how to tag a typical question. In real output, use exact tag_ids from the allowed list above; if an example id is not present, choose the closest accurate allowed leaf tag_id and do not invent it:",
+    JSON.stringify(
+      [
+        {
+          extracted_question: {
+            content_source:
+              "If $f'(x)=1+2x-x^3$, then $f$ has a local minimum at $x=\\ ?$",
+            question_type: "frq",
+            solution_summary:
+              "Find critical points from f'(x)=0, then use sign change or first derivative test to identify a local minimum.",
+          },
+          selected_tag_ids: [
+            "math.curriculum.ap.ap_calculus_ab.analytical_applications_derivatives",
+            "math.curriculum.ap.ap_calculus_ab.contextual_applications_derivatives",
+            "math.curriculum.bc.calculus_12.derivatives",
+            "math.curriculum.bc.calculus_12.applications_derivatives",
+            "math.concept.calculus.derivatives.local_extrema",
+            "math.concept.calculus.derivatives.critical_points",
+            "math.method.calculus.first_derivative_test",
+            "math.task.find_local_minimum",
+            "math.form.fill_blank",
+          ],
+          why:
+            "This includes multiple full curriculum IDs because the same derivative-extrema question can fit AP Calculus AB and BC Calculus 12. It also covers concept, method, task, and form.",
+        },
+        {
+          extracted_question: {
+            content_source:
+              "A gym charges a $25 sign-up fee and $12 per class. If a student paid $109 total, how many classes did the student take?",
+            question_type: "mcq",
+            solution_summary:
+              "Model the situation as 25+12x=109 and solve the resulting linear equation.",
+          },
+          selected_tag_ids: [
+            "math.curriculum.sat.algebra",
+            "math.curriculum.common_core.algebra",
+            "math.curriculum.bc.precalculus_11.functions_relations",
+            "math.concept.algebra.linear_equations",
+            "math.concept.algebra.linear_models",
+            "math.method.algebra.equation_solving",
+            "math.task.solve",
+            "math.form.multiple_choice",
+          ],
+          why:
+            "This includes all accurate full curriculum IDs from multiple systems, then adds concept, method, task, and item form tags.",
+        },
+      ],
+      null,
+      2,
+    ),
     "",
     "JSON schema:",
     JSON.stringify({
@@ -1891,6 +1961,9 @@ function buildPrompt({
     "- Bboxes are normalized page coordinates from top-left, all values 0..1.",
     "- Use question_number only for the visible number from the PDF. Do not invent database question_code values; the server always generates those.",
     "- Do not normalize visible numbers aggressively: 3, 3.1, 3(a), and FRQ 2 are different display values.",
+    "- Assign multiple tag_ids when they accurately describe the question. A single question can and should reuse existing tags across several facets when relevant.",
+    "- It is okay for many questions to reuse the same tag_id if they cover the same concept, method, task, curriculum, or difficulty signal.",
+    "- Prefer specific leaf tag_ids over broad parent-like IDs. Only use tag_ids from the list above.",
     "- Only output tag_ids listed above. If no existing tag fits, leave tag_ids empty and add a warning. Do not output any alternate tag identifier fields.",
     "- Keep questions as draft-quality records for human review; do not invent answers when unsure.",
   ].join("\n");
@@ -1924,11 +1997,11 @@ function remapSegmentExtractionPages({
 async function loadActiveTags(supabase: SupabaseLike) {
   const { data, error } = await supabase
     .from("taxonomy_nodes")
-    .select("tag_id, label, status, facet_key")
+    .select("tag_id, facet_key")
     .eq("is_assignable", true)
     .eq("status", "active")
-    .order("sort_order", { ascending: true })
-    .order("label", { ascending: true })
+    .order("facet_key", { ascending: true })
+    .order("tag_id", { ascending: true })
     .limit(1000);
 
   if (error) {
@@ -1937,12 +2010,10 @@ async function loadActiveTags(supabase: SupabaseLike) {
 
   return ((data ?? []) as {
     facet_key: string | null;
-    status: string;
     tag_id: string;
   }[]).map((tag) => ({
     facet_key: tag.facet_key,
     id: tag.tag_id,
-    status: tag.status,
   }));
 }
 
@@ -2363,6 +2434,16 @@ async function processAIPdfSinglePass({
   });
   const extraction = normalizeAIPdfExtractionResponse(
     await callAIPdfExtractionProvider({
+      debugContext: {
+        batchId: input.batchId,
+        chunkIndex: null,
+        fileName: input.fileName,
+        jobId: input.jobId,
+        pageCount,
+        providerProfileId: input.providerProfileId,
+        sourceAssetId: input.sourceAssetId,
+        sourceObjectPath: input.sourceObjectPath,
+      },
       fileName: input.fileName,
       inputStrategy: providerInput.strategy,
       pageImageDataUrls: [],
@@ -2680,6 +2761,19 @@ export async function processAIPdfImport(input: ProcessInput) {
         : null;
       const rawExtraction = normalizeAIPdfExtractionResponse(
         await callAIPdfExtractionProvider({
+          debugContext: {
+            batchId: input.batchId,
+            chunkIndex: chunk.chunkIndex,
+            fileName: input.fileName,
+            jobId: input.jobId,
+            pageEnd: chunk.pageEnd,
+            pageStart: chunk.pageStart,
+            pageCount,
+            providerProfileId: input.providerProfileId,
+            retryCount,
+            sourceAssetId: input.sourceAssetId,
+            sourceObjectPath: input.sourceObjectPath,
+          },
           fileName: segmentChunk
             ? `${input.fileName.replace(/\.pdf$/i, "")}-chunk-${
                 chunk.chunkIndex + 1

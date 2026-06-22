@@ -1,5 +1,7 @@
 ﻿import Link from "next/link";
 
+import { bulkUpdateQuestions } from "@/app/admin/questions/actions";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,6 +60,15 @@ function formatDate(value: string | null | undefined) {
 
 function shortId(value: string) {
   return value.slice(0, 8);
+}
+
+function reviewPath({ batch, search }: { batch?: string; search?: string }) {
+  const query = new URLSearchParams();
+  if (batch) query.set("batch", batch);
+  if (search) query.set("search", search);
+  const serialized = query.toString();
+
+  return serialized ? `/admin/review?${serialized}` : "/admin/review";
 }
 
 function getAIReviewMetadata(value: unknown): AIReviewMetadata | null {
@@ -119,6 +130,7 @@ export default async function AdminReviewPage({
   const profile = await requireAdmin();
   const search = (params.search ?? "").trim().toLowerCase();
   const batchId = (params.batch ?? "").trim();
+  const currentPath = reviewPath({ batch: params.batch, search: params.search });
   const supabase = await createClient();
   let batchFilter:
     | {
@@ -392,6 +404,43 @@ export default async function AdminReviewPage({
           {error.message}
         </p>
       ) : null}
+      <form
+        id="admin-review-bulk-form"
+        action={bulkUpdateQuestions}
+        className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-3 text-sm"
+      >
+        <input type="hidden" name="return_to" value={currentPath} />
+        <select
+          name="status"
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          defaultValue="published"
+        >
+          <option value="draft">Draft</option>
+          <option value="published">Published</option>
+          <option value="archived">Archived</option>
+        </select>
+        <FormSubmitButton
+          name="bulk_action"
+          value="status"
+          size="sm"
+          variant="outline"
+          pendingLabel="Updating..."
+        >
+          Update selected status
+        </FormSubmitButton>
+        <FormSubmitButton
+          name="bulk_action"
+          value="delete"
+          size="sm"
+          variant="destructive"
+          pendingLabel="Deleting..."
+        >
+          Delete selected
+        </FormSubmitButton>
+        <span className="text-xs text-muted-foreground">
+          Select draft cards below before applying a bulk action.
+        </span>
+      </form>
       <div className="grid gap-4">
         {draftQuestions.map((question) => {
           const tagIds = tagIdsByQuestionId.get(question.id) ?? [];
@@ -428,13 +477,23 @@ export default async function AdminReviewPage({
             <Card key={question.id}>
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <CardTitle className="text-base">
-                      {question.question_code}
-                    </CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {question.title}
-                    </p>
+                  <div className="flex items-start gap-3">
+                    <input
+                      aria-label={`Select question ${question.question_code}`}
+                      className="mt-1 size-4 rounded border"
+                      form="admin-review-bulk-form"
+                      name="question_id"
+                      type="checkbox"
+                      value={question.id}
+                    />
+                    <div>
+                      <CardTitle className="text-base">
+                        {question.question_code}
+                      </CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {question.title}
+                      </p>
+                    </div>
                   </div>
                   <Badge variant="secondary">{question.status}</Badge>
                 </div>
@@ -541,9 +600,7 @@ export default async function AdminReviewPage({
                 ) : null}
                 <Button asChild size="sm">
                   <Link
-                    href={`/admin/questions?status=draft&q=${encodeURIComponent(
-                      question.question_code,
-                    )}`}
+                    href={`/admin/questions?edit=${question.id}`}
                   >
                     Edit question
                   </Link>

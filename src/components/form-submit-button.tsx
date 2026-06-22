@@ -8,7 +8,9 @@ type FormSubmitButtonProps = {
   children: React.ReactNode;
   pendingLabel?: string;
   className?: string;
+  name?: string;
   size?: "default" | "sm" | "lg" | "icon";
+  value?: string;
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
 };
 
@@ -16,7 +18,9 @@ export function FormSubmitButton({
   children,
   pendingLabel = "Saving...",
   className,
+  name,
   size,
+  value,
   variant,
 }: FormSubmitButtonProps) {
   const { pending } = useFormStatus();
@@ -24,6 +28,8 @@ export function FormSubmitButton({
   return (
     <Button
       type="submit"
+      name={name}
+      value={value}
       disabled={pending}
       className={className}
       size={size}

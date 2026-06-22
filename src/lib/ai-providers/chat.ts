@@ -9,6 +9,7 @@ import {
   isMockAIProviderUrl,
 } from "@/lib/ai-providers/mock";
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
+import { writeAIImportLLMDebugLog } from "@/lib/ai-providers/llm-debug-logs";
 import {
   AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE,
   inferAiProviderMode,
@@ -30,6 +31,7 @@ type ProviderProfileForUse = {
 };
 
 type ProviderInput = {
+  debugContext?: Record<string, unknown>;
   fileName: string;
   inputStrategy: AiPdfInputStrategy;
   pageImageDataUrls: string[];
@@ -189,22 +191,45 @@ function parseExtractionContent(contentText: string) {
 }
 
 async function requestChatCompletion({
+  debugContext,
   messages,
   profile,
 }: {
+  debugContext?: Record<string, unknown>;
   messages: ChatMessage[];
   profile: ProviderProfileForUse;
 }) {
   let response: Response;
+  const requestBody = {
+    messages,
+    model: profile.model,
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  };
+
+  await writeAIImportLLMDebugLog({
+    context: {
+      ...debugContext,
+      adapter: "openai_compatible_chat",
+      model: profile.model,
+      provider: profile.provider,
+      providerName: profile.name,
+    },
+    event: "request",
+    payload: {
+      body: requestBody,
+      endpoint: endpoint(profile.base_url),
+      headers: {
+        Authorization: "Bearer [redacted]",
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  });
 
   try {
     response = await fetch(endpoint(profile.base_url), {
-      body: JSON.stringify({
-        messages,
-        model: profile.model,
-        response_format: { type: "json_object" },
-        temperature: 0.1,
-      }),
+      body: JSON.stringify(requestBody),
       headers: {
         Authorization: `Bearer ${profile.apiKey}`,
         "Content-Type": "application/json",
@@ -213,6 +238,20 @@ async function requestChatCompletion({
       signal: AbortSignal.timeout(CHAT_COMPLETION_TIMEOUT_MS),
     });
   } catch (error) {
+    await writeAIImportLLMDebugLog({
+      context: {
+        ...debugContext,
+        adapter: "openai_compatible_chat",
+        model: profile.model,
+        provider: profile.provider,
+        providerName: profile.name,
+      },
+      event: "error",
+      payload: {
+        message: error instanceof Error ? error.message : String(error),
+        name: error instanceof Error ? error.name : "UnknownError",
+      },
+    });
     throw new Error(
       providerNetworkErrorMessage({
         error,
@@ -225,6 +264,21 @@ async function requestChatCompletion({
 
   if (!response.ok) {
     const text = await response.text();
+    await writeAIImportLLMDebugLog({
+      context: {
+        ...debugContext,
+        adapter: "openai_compatible_chat",
+        model: profile.model,
+        provider: profile.provider,
+        providerName: profile.name,
+      },
+      event: "error",
+      payload: {
+        body: text,
+        status: response.status,
+        statusText: response.statusText,
+      },
+    });
     throw new Error(
       providerHttpErrorMessage({
         body: text,
@@ -238,6 +292,21 @@ async function requestChatCompletion({
   const payload = (await response.json()) as {
     choices?: { message?: { content?: string } }[];
   };
+  await writeAIImportLLMDebugLog({
+    context: {
+      ...debugContext,
+      adapter: "openai_compatible_chat",
+      model: profile.model,
+      provider: profile.provider,
+      providerName: profile.name,
+    },
+    event: "response",
+    payload: {
+      body: payload,
+      status: response.status,
+      statusText: response.statusText,
+    },
+  });
   const contentText = payload.choices?.[0]?.message?.content;
 
   if (!contentText) {
@@ -375,6 +444,7 @@ export async function testAIProviderConnection(
 }
 
 export async function callAIPdfExtractionProvider({
+  debugContext,
   fileName,
   inputStrategy,
   pageImageDataUrls,
@@ -388,6 +458,27 @@ export async function callAIPdfExtractionProvider({
 
     return mockExtraction();
   }
+
+  await writeAIImportLLMDebugLog({
+    context: {
+      ...debugContext,
+      adapter: inferAiProviderMode(profile),
+      fileName,
+      inputStrategy,
+      model: profile.model,
+      provider: profile.provider,
+      providerName: profile.name,
+    },
+    event: "provider-input-context",
+    payload: {
+      fileName,
+      inputStrategy,
+      pageImageDataUrls,
+      pdfBase64,
+      pdfByteLength: pdfBytes.byteLength,
+      prompt,
+    },
+  });
 
   if (inputStrategy === "gemini_native_pdf") {
     let lastError: unknown = null;
@@ -409,8 +500,32 @@ export async function callAIPdfExtractionProvider({
                   error: lastError,
                   previousResponse,
                 }),
+          debugContext: {
+            ...debugContext,
+            attempt,
+            fileName,
+            inputStrategy,
+            repairAttempt: attempt > 1,
+          },
         })
       ).text;
+      await writeAIImportLLMDebugLog({
+        context: {
+          ...debugContext,
+          adapter: "gemini_native",
+          attempt,
+          fileName,
+          inputStrategy,
+          model: profile.model,
+          provider: profile.provider,
+          providerName: profile.name,
+          repairAttempt: attempt > 1,
+        },
+        event: "raw-output-text",
+        payload: {
+          text: contentText,
+        },
+      });
       previousResponse = contentText;
 
       try {
@@ -479,8 +594,32 @@ export async function callAIPdfExtractionProvider({
 
   for (let attempt = 1; attempt <= MAX_EXTRACTION_ATTEMPTS; attempt += 1) {
     const contentText = await requestChatCompletion({
+      debugContext: {
+        ...debugContext,
+        attempt,
+        fileName,
+        inputStrategy,
+        repairAttempt: attempt > 1,
+      },
       messages,
       profile,
+    });
+    await writeAIImportLLMDebugLog({
+      context: {
+        ...debugContext,
+        adapter: "openai_compatible_chat",
+        attempt,
+        fileName,
+        inputStrategy,
+        model: profile.model,
+        provider: profile.provider,
+        providerName: profile.name,
+        repairAttempt: attempt > 1,
+      },
+      event: "raw-output-text",
+      payload: {
+        text: contentText,
+      },
     });
 
     try {
