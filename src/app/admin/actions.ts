@@ -11,64 +11,10 @@ import { requireAdmin } from "@/lib/auth/guards";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
 import { createClient } from "@/lib/supabase/server";
 
-async function findOrCreateTag({
-  name,
-  slug,
-  userId,
-}: {
-  name: string;
-  slug: string;
-  userId: string;
-}) {
-  const supabase = await createClient();
-  const { data: existing, error: selectError } = await supabase
-    .from("tags")
-    .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
-
-  if (selectError) {
-    throw new Error(selectError.message);
-  }
-
-  if (existing) {
-    return existing.id;
-  }
-
-  const { data, error } = await supabase
-    .from("tags")
-    .insert({
-      name,
-      slug,
-      tag_type: "knowledge",
-      status: "published",
-      created_by: userId,
-      updated_by: userId,
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data.id;
-}
-
 export async function createDemoContent() {
   try {
     const profile = await requireAdmin();
     const supabase = await createClient();
-    const physicsTagId = await findOrCreateTag({
-      name: "AP Physics",
-      slug: "ap-physics",
-      userId: profile.id,
-    });
-    await findOrCreateTag({
-      name: "AP Calculus",
-      slug: "ap-calculus",
-      userId: profile.id,
-    });
 
     const { data: existingQuestion, error: questionSelectError } = await supabase
       .from("questions")
@@ -111,29 +57,6 @@ export async function createDemoContent() {
       questionId = question.id;
     }
 
-    const { data: existingQuestionTag, error: questionTagSelectError } =
-      await supabase
-        .from("question_tags")
-        .select("question_id, tag_id")
-        .eq("question_id", questionId)
-        .eq("tag_id", physicsTagId)
-        .maybeSingle();
-
-    if (questionTagSelectError) {
-      throw new Error(questionTagSelectError.message);
-    }
-
-    if (!existingQuestionTag) {
-      const { error } = await supabase.from("question_tags").insert({
-        question_id: questionId,
-        tag_id: physicsTagId,
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-    }
-
     const { data: existingVideo, error: videoSelectError } = await supabase
       .from("videos")
       .select("id")
@@ -171,27 +94,7 @@ export async function createDemoContent() {
       videoId = video.id;
     }
 
-    const { data: existingVideoTag, error: videoTagSelectError } = await supabase
-      .from("video_tags")
-      .select("video_id, tag_id")
-      .eq("video_id", videoId)
-      .eq("tag_id", physicsTagId)
-      .maybeSingle();
-
-    if (videoTagSelectError) {
-      throw new Error(videoTagSelectError.message);
-    }
-
-    if (!existingVideoTag) {
-      const { error } = await supabase.from("video_tags").insert({
-        video_id: videoId,
-        tag_id: physicsTagId,
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-    }
+    void videoId;
   } catch (error) {
     redirectWithError("/admin", formatActionError(error));
   }

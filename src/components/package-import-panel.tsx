@@ -458,8 +458,7 @@ export function PackageImportPanel() {
                         </p>
                       </TableCell>
                       <TableCell className="text-xs">
-                        {[...question.tagSlugs, ...question.tagNames].join(", ") ||
-                          "No tags"}
+                        {question.tagIds.join(", ") || "No tags"}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">

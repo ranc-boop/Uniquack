@@ -426,7 +426,7 @@ function proposedChangeFor({
         actionType === "reject" ? "Alias candidate rejected by reviewer." : null,
       requestedEvidence:
         actionType === "needs_more_evidence"
-          ? ["Add examples showing this alias means the same skill."]
+          ? ["Add examples showing this alias means the same tag."]
           : null,
     };
   }

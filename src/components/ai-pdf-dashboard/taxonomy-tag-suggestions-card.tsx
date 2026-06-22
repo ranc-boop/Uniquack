@@ -1,4 +1,4 @@
-import { FiveFacetTagChips } from "@/components/tags/five-facet-tag-chips";
+import { TaxonomyTagChips } from "@/components/tags/taxonomy-tag-chips";
 import { Badge } from "@/components/ui/badge";
 
 const FACET_CATEGORIES = [
@@ -95,12 +95,12 @@ function questionLabel(suggestion: Record<string, unknown>, index: number) {
   return [code || fallback, title].filter(Boolean).join(" - ");
 }
 
-export function FiveFacetTagSuggestionsCard({
+export function TaxonomyTagSuggestionsCard({
   ai,
 }: {
   ai: Record<string, unknown>;
 }) {
-  const plan = asRecord(ai.fiveFacetQuestionTaggingPlan);
+  const plan = asRecord(ai.taxonomyQuestionTaggingPlan);
   const suggestions = asArray(plan.suggestions).map(asRecord);
 
   if (!stringValue(plan.version) && !suggestions.length) {
@@ -128,7 +128,7 @@ export function FiveFacetTagSuggestionsCard({
     <div className="rounded-md border bg-muted/20 p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="font-medium">Five-facet tag suggestions</p>
+          <p className="font-medium">Taxonomy tag suggestions</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Compact planning-only suggestions. Format valid means the bundle
             matches catalog rules; tutor review is still required before official
@@ -194,7 +194,7 @@ export function FiveFacetTagSuggestionsCard({
                   </div>
                 </summary>
                 <div className="mt-3 space-y-3">
-                  <FiveFacetTagChips tagIds={tagIds} />
+                  <TaxonomyTagChips tagIds={tagIds} />
                   {warnings.length ? (
                     <div className="rounded border bg-muted/20 p-2 text-xs">
                       <p className="font-medium">Warnings</p>
@@ -223,7 +223,7 @@ export function FiveFacetTagSuggestionsCard({
           })
         ) : (
           <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-            No five-facet question tag suggestions were generated for this
+            No taxonomy question tag suggestions were generated for this
             import.
           </p>
         )}

@@ -8,10 +8,10 @@ import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import {
-  FiveFacetTagChips,
-  type FiveFacetTagChipAssignment,
-} from "@/components/tags/five-facet-tag-chips";
-import { FiveFacetTagTreePicker } from "@/components/tags/five-facet-tag-tree-picker";
+  TaxonomyTagChips,
+  type TaxonomyTagChipAssignment,
+} from "@/components/tags/taxonomy-tag-chips";
+import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,30 +27,15 @@ import {
 } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
-import {
-  buildFiveFacetVideoBankSearchPlan,
-  filterVideosByFiveFacetAssignments,
-  hasFiveFacetVideoBankFilters,
-  type FiveFacetVideoSearchAssignmentRow,
-} from "@/lib/tags/five-facet-video-search";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import { isAllowedVideoEmbedUrl } from "@/lib/validations/video";
 
 type AdminVideosPageProps = {
-  searchParams: Promise<{
+  searchParams: Promise<Record<string, string | string[] | undefined> & {
     error?: string;
-    ff_concept?: string | string[];
-    ff_curriculum?: string | string[];
-    ff_exclude_concept?: string | string[];
-    ff_exclude_curriculum?: string | string[];
-    ff_exclude_form?: string | string[];
-    ff_exclude_method?: string | string[];
-    ff_exclude_search?: string | string[];
-    ff_exclude_task?: string | string[];
-    ff_form?: string | string[];
-    ff_method?: string | string[];
-    ff_reviewed?: string | string[];
-    ff_search?: string | string[];
-    ff_task?: string | string[];
+    tax_exclude_search?: string | string[];
+    tax_reviewed?: string | string[];
+    tax_search?: string | string[];
     saved?: string;
   }>;
 };
@@ -66,14 +51,31 @@ function tagIdList(value: string | string[] | undefined) {
     .filter(Boolean);
 }
 
-function isMissingFiveFacetVideoTableError(error: unknown) {
+function selectedTagsForFacets({
+  facets,
+  params,
+  prefix,
+}: {
+  facets: { facet_key: string }[];
+  params: Record<string, string | string[] | undefined>;
+  prefix: string;
+}) {
+  return Object.fromEntries(
+    facets.map((facet) => [
+      facet.facet_key,
+      tagIdList(params[`${prefix}_${facet.facet_key}`]),
+    ]),
+  ) as Record<string, string[]>;
+}
+
+function isMissingTaxonomyVideoTableError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const record = error as { code?: unknown; message?: unknown };
   const message = typeof record.message === "string" ? record.message : "";
 
   return (
     record.code === "42P01" ||
-    /five_facet_video_tag_assignments|relation .* does not exist|schema cache/i.test(
+    /question_taxonomy_assignments|relation .* does not exist|schema cache/i.test(
       message,
     )
   );
@@ -84,26 +86,36 @@ export default async function AdminVideosPage({
 }: AdminVideosPageProps) {
   const params = await searchParams;
   await requireAdmin();
-  const fiveFacetFilter = {
-    exclude: {
-      concept: tagIdList(params.ff_exclude_concept),
-      curriculum: tagIdList(params.ff_exclude_curriculum),
-      form: tagIdList(params.ff_exclude_form),
-      method: tagIdList(params.ff_exclude_method),
-      task: tagIdList(params.ff_exclude_task),
-    },
-    include: {
-      concept: tagIdList(params.ff_concept),
-      curriculum: tagIdList(params.ff_curriculum),
-      form: tagIdList(params.ff_form),
-      method: tagIdList(params.ff_method),
-      task: tagIdList(params.ff_task),
-    },
-    requireReviewed: firstParam(params.ff_reviewed) !== "false",
-  };
-  const hasFiveFacetFilters = hasFiveFacetVideoBankFilters(fiveFacetFilter);
-  const fiveFacetSearchPlan = buildFiveFacetVideoBankSearchPlan(fiveFacetFilter);
   const supabase = await createClient();
+  const { catalog: taxonomyCatalog, errorMessage: taxonomyCatalogError } =
+    await loadTaxonomyCatalog(supabase);
+  const taxonomyFilter = {
+    exclude: selectedTagsForFacets({
+      facets: taxonomyCatalog.facets,
+      params,
+      prefix: "tax_exclude",
+    }),
+    include: selectedTagsForFacets({
+      facets: taxonomyCatalog.facets,
+      params,
+      prefix: "tax",
+    }),
+    requireReviewed: firstParam(params.tax_reviewed) !== "false",
+  };
+  const { data: matchingQuestionRows, error: taxonomyRpcError } =
+    await supabase.rpc("search_questions_by_taxonomy", {
+      assignment_review_status: taxonomyFilter.requireReviewed
+        ? "approved"
+        : null,
+      exclude_tag_ids: Object.values(taxonomyFilter.exclude).flat(),
+      include_tag_ids: Object.values(taxonomyFilter.include).flat(),
+      page_limit: 100,
+      page_offset: 0,
+      question_status: "published",
+    });
+  const matchingQuestionIds = new Set(
+    (matchingQuestionRows ?? []).map((row) => row.question_id),
+  );
   const [
     { data: videos, error },
     { data: questions },
@@ -126,55 +138,52 @@ export default async function AdminVideosPage({
   const availableQuestions = (questions ?? []).filter(
     (question) => !boundQuestionIds.has(question.id),
   );
-  const fiveFacetAssignmentsByVideoId = new Map<
+  const taxonomyAssignmentsByVideoId = new Map<
     string,
-    FiveFacetTagChipAssignment[]
+    TaxonomyTagChipAssignment[]
   >();
-  let fiveFacetAssignments: FiveFacetVideoSearchAssignmentRow[] = [];
-  let fiveFacetSearchMessage: string | null = null;
+  let taxonomySearchMessage: string | null = taxonomyRpcError
+    ? isMissingTaxonomyVideoTableError(taxonomyRpcError)
+      ? "Taxonomy search RPC is unavailable. Apply migrations 0011 and 0012."
+      : `Taxonomy search is unavailable: ${taxonomyRpcError.message}`
+    : null;
 
-  const videoIds = (videos ?? []).map((video) => video.id);
-  if (videoIds.length) {
-    const { data, error: fiveFacetVideoAssignmentsError } = await supabase
-      .from("five_facet_video_tag_assignments")
-      .select("video_id, tag_id, category, review_status")
-      .in("video_id", videoIds);
+  const videoByQuestionId = new Map(
+    (videos ?? []).map((video) => [video.question_id, video]),
+  );
+  const videoQuestionIds = Array.from(videoByQuestionId.keys());
+  if (videoQuestionIds.length) {
+    const { data, error: taxonomyAssignmentsError } = await supabase
+      .from("question_taxonomy_assignments")
+      .select("question_id, tag_id, review_status")
+      .in("question_id", videoQuestionIds);
 
-    if (fiveFacetVideoAssignmentsError) {
-      fiveFacetSearchMessage = isMissingFiveFacetVideoTableError(
-        fiveFacetVideoAssignmentsError,
+    if (taxonomyAssignmentsError) {
+      taxonomySearchMessage = isMissingTaxonomyVideoTableError(
+        taxonomyAssignmentsError,
       )
-        ? "Five-facet video assignments are unavailable. Apply migration 0010_five_facet_video_tag_assignments.sql to enable official video tags."
-        : `Five-facet video assignments are unavailable: ${fiveFacetVideoAssignmentsError.message}`;
+        ? "Taxonomy assignments are unavailable. Apply migration 0011_math_taxonomy_source_of_truth.sql to enable official tags."
+        : `Taxonomy assignments are unavailable: ${taxonomyAssignmentsError.message}`;
     } else {
-      fiveFacetAssignments = (data ?? []) as FiveFacetVideoSearchAssignmentRow[];
-      for (const assignment of fiveFacetAssignments) {
+      for (const assignment of data ?? []) {
+        const video = videoByQuestionId.get(assignment.question_id);
+        if (!video) continue;
         const current =
-          fiveFacetAssignmentsByVideoId.get(assignment.video_id) ?? [];
+          taxonomyAssignmentsByVideoId.get(video.id) ?? [];
         current.push({
-          category: assignment.category,
           review_status: assignment.review_status,
           tag_id: assignment.tag_id,
         });
-        fiveFacetAssignmentsByVideoId.set(assignment.video_id, current);
+        taxonomyAssignmentsByVideoId.set(video.id, current);
       }
     }
   }
 
-  const fiveFacetSearchResult =
-    hasFiveFacetFilters && fiveFacetSearchPlan.valid && !fiveFacetSearchMessage
-      ? filterVideosByFiveFacetAssignments({
-          assignments: fiveFacetAssignments,
-          filter: fiveFacetFilter,
-          videos: videos ?? [],
-        })
-      : null;
-  const fiveFacetMatchedIds = new Set(
-    fiveFacetSearchResult?.matchedVideoIds ?? [],
-  );
-  const filteredVideos = fiveFacetSearchResult
-    ? (videos ?? []).filter((video) => fiveFacetMatchedIds.has(video.id))
-    : videos ?? [];
+  const filteredVideos = taxonomyRpcError
+    ? []
+    : (videos ?? []).filter((video) =>
+        matchingQuestionIds.has(video.question_id),
+      );
 
   return (
     <div className="space-y-6">
@@ -182,14 +191,16 @@ export default async function AdminVideosPage({
         <h1 className="text-2xl font-semibold tracking-tight">Videos</h1>
         <p className="text-sm text-muted-foreground">
           External video CRUD skeleton. The unique question binding is enforced
-          by the database. Official five-facet tags are the visible video
+          by the database. Official taxonomy tags are the visible video
           taxonomy.
         </p>
       </div>
       <PageFeedback error={params.error} saved={params.saved} />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Official five-facet video tags</CardTitle>
+          <CardTitle className="text-base">
+            Linked question taxonomy filters
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <form className="space-y-3">
@@ -197,31 +208,33 @@ export default async function AdminVideosPage({
               Filter videos by the primary curriculum, concept, method, task,
               and form tag system.
             </p>
-            <FiveFacetTagTreePicker
-              namePrefix="ff"
-              searchQuery={firstParam(params.ff_search) ?? ""}
-              selectedTagIds={fiveFacetFilter.include}
-              title="Include official five-facet video tags"
+            <TaxonomyTagTreePicker
+              namePrefix="tax"
+              searchQuery={firstParam(params.tax_search) ?? ""}
+              selectedTagIds={taxonomyFilter.include}
+              taxonomyCatalog={taxonomyCatalog}
+              title="Include linked question taxonomy"
             />
             <details className="rounded-md border px-3 py-2">
               <summary className="cursor-pointer text-sm font-medium">
                 Exclude official tags
               </summary>
               <div className="mt-3 space-y-3">
-                <FiveFacetTagTreePicker
-                  namePrefix="ff_exclude"
-                  searchName="ff_exclude_search"
-                  searchQuery={firstParam(params.ff_exclude_search) ?? ""}
-                  selectedTagIds={fiveFacetFilter.exclude}
-                  title="Exclude official five-facet video tags"
+                <TaxonomyTagTreePicker
+                  namePrefix="tax_exclude"
+                  searchName="tax_exclude_search"
+                  searchQuery={firstParam(params.tax_exclude_search) ?? ""}
+                  selectedTagIds={taxonomyFilter.exclude}
+                  taxonomyCatalog={taxonomyCatalog}
+                  title="Exclude linked question taxonomy"
                 />
                 <div className="space-y-2">
-                  <Label htmlFor="ff_reviewed">Assignments</Label>
+                  <Label htmlFor="tax_reviewed">Assignments</Label>
                   <select
-                    id="ff_reviewed"
-                    name="ff_reviewed"
+                    id="tax_reviewed"
+                    name="tax_reviewed"
                     className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                    defaultValue={firstParam(params.ff_reviewed) ?? "true"}
+                    defaultValue={firstParam(params.tax_reviewed) ?? "true"}
                   >
                     <option value="true">Reviewed only</option>
                     <option value="false">Any review status</option>
@@ -229,25 +242,20 @@ export default async function AdminVideosPage({
                 </div>
               </div>
             </details>
-            {hasFiveFacetFilters ? (
+            {taxonomySearchMessage || taxonomyCatalogError ? (
               <div className="space-y-1 text-xs">
-                <p className="text-muted-foreground">
-                  Five-facet video search contract: curriculum tags can expand
-                  to mapped concepts without hierarchy mutation.
-                </p>
-                {fiveFacetSearchPlan.errors.length ? (
-                  <p className="text-destructive">
-                    {fiveFacetSearchPlan.errors.slice(0, 3).join("; ")}
-                  </p>
+                {taxonomySearchMessage ? (
+                  <p className="text-amber-700">{taxonomySearchMessage}</p>
                 ) : null}
-                {fiveFacetSearchMessage ? (
-                  <p className="text-amber-700">{fiveFacetSearchMessage}</p>
+                {taxonomyCatalogError ? (
+                  <p className="text-amber-700">{taxonomyCatalogError}</p>
                 ) : null}
               </div>
             ) : null}
-            {!fiveFacetSearchMessage && !fiveFacetAssignments.length ? (
+            {!taxonomySearchMessage &&
+            taxonomyAssignmentsByVideoId.size === 0 ? (
               <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                No official five-facet video tags assigned yet.
+                No linked question taxonomy tags assigned yet.
               </p>
             ) : null}
             <div className="flex gap-2">
@@ -365,12 +373,13 @@ export default async function AdminVideosPage({
                     <div className="space-y-2">
                       <div className="space-y-1">
                         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Official five-facet tags
+                          Official taxonomy tags
                         </p>
-                        <FiveFacetTagChips
-                          assignments={fiveFacetAssignmentsByVideoId.get(video.id)}
-                          emptyLabel="No five-facet tags assigned yet."
+                        <TaxonomyTagChips
+                          assignments={taxonomyAssignmentsByVideoId.get(video.id)}
+                          emptyLabel="No taxonomy tags assigned yet."
                           showCategoryHeadings={false}
+                          taxonomyCatalog={taxonomyCatalog}
                         />
                       </div>
                     </div>
@@ -472,18 +481,19 @@ export default async function AdminVideosPage({
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <Label>Official five-facet video tags</Label>
+                          <Label>Linked question taxonomy</Label>
                           <div className="min-h-10 rounded-md border bg-muted/20 px-3 py-2">
-                            <FiveFacetTagChips
-                              assignments={fiveFacetAssignmentsByVideoId.get(
+                            <TaxonomyTagChips
+                              assignments={taxonomyAssignmentsByVideoId.get(
                                 video.id,
                               )}
-                              emptyLabel="No five-facet tags assigned yet."
+                              emptyLabel="No taxonomy tags assigned yet."
+                              taxonomyCatalog={taxonomyCatalog}
                             />
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            Official video tag assignment writes are handled by
-                            the five-facet review/admin workflow.
+                            Videos inherit taxonomy through their linked
+                            question.
                           </p>
                         </div>
                         <div className="lg:col-span-2">

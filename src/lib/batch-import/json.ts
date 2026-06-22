@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  answerSpecToJson,
+  normalizeAnswerSpec,
+  normalizeQuestionOptions,
+  optionsToJson,
+} from "@/lib/questions/answer-spec";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
 
 const importItemSchema = z
@@ -12,14 +18,23 @@ const importItemSchema = z
     difficulty: z.number().or(z.string()).optional(),
     difficulty_rating: z.number().or(z.string()).optional(),
     status: z.string().optional(),
-    tag_slugs: z.array(z.string()).optional(),
-    tag_names: z.array(z.string()).optional(),
+    tag_ids: z.array(z.string()).optional(),
     content_html: z.string().optional(),
     content_source: z.string().optional(),
     content_source_format: z.enum(["markdown_latex", "html"]).optional(),
     solution_html: z.string().optional(),
     solution_source: z.string().optional(),
     solution_source_format: z.enum(["markdown_latex", "html"]).optional(),
+    answer_spec: z.unknown().optional(),
+    accepted_answers: z.array(z.string()).or(z.string()).optional(),
+    answer: z.string().or(z.array(z.string())).optional(),
+    answers: z.array(z.string()).or(z.string()).optional(),
+    choices: z.unknown().optional(),
+    correct_answer: z.string().or(z.array(z.string())).optional(),
+    correct_answers: z.array(z.string()).or(z.string()).optional(),
+    final_answer: z.string().or(z.array(z.string())).optional(),
+    final_answers: z.array(z.string()).or(z.string()).optional(),
+    options: z.unknown().optional(),
     image_urls: z.array(z.string()).optional(),
     image_files: z.array(z.string()).optional(),
     source_file_ids: z.array(z.string()).optional(),
@@ -33,19 +48,17 @@ const importItemSchema = z
 
 export type ExistingImportTag = {
   id: string;
-  name: string;
-  slug: string;
 };
 
 export type NormalizedImportQuestion = {
   question_code: string;
   title: string;
-  question_type: "mcq" | "frq" | "mixed";
+  answer_spec: ReturnType<typeof answerSpecToJson>;
+  options: ReturnType<typeof optionsToJson>;
+  question_type: "mcq" | "fill_blank" | "frq" | "mixed";
   difficulty_rating: number;
   status: "draft";
   tag_ids: string[];
-  tag_slugs: string[];
-  tag_names: string[];
   content_html: string;
   content_source: string;
   content_source_format: "markdown_latex" | "html";
@@ -95,7 +108,61 @@ function normalizeTitle(value: string | undefined) {
 function normalizeType(value: string | undefined) {
   const normalized = value?.trim().toLowerCase();
 
-  return normalized === "mcq" || normalized === "mixed" ? normalized : "frq";
+  if (
+    normalized === "mcq" ||
+    normalized === "multiple_choice" ||
+    normalized === "multiple choice" ||
+    normalized === "choice"
+  ) {
+    return "mcq";
+  }
+  if (
+    normalized === "fill_blank" ||
+    normalized === "fill blank" ||
+    normalized === "fill-in-the-blank" ||
+    normalized === "short_answer" ||
+    normalized === "short answer"
+  ) {
+    return "fill_blank";
+  }
+  return normalized === "mixed" ? normalized : "frq";
+}
+
+function looseStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(String).map((item) => item.trim()).filter(Boolean)
+    : typeof value === "string"
+      ? value
+          .split(/[,;\n]/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+}
+
+function inferQuestionType({
+  answerValues,
+  options,
+  rawType,
+}: {
+  answerValues: string[];
+  options: ReturnType<typeof normalizeQuestionOptions>;
+  rawType: string | undefined;
+}) {
+  const normalized = normalizeType(rawType);
+
+  if (rawType?.trim()) {
+    return normalized;
+  }
+
+  if (options.length) {
+    return "mcq";
+  }
+
+  if (answerValues.length) {
+    return "fill_blank";
+  }
+
+  return normalized;
 }
 
 function normalizeDifficulty(value: string | number | undefined) {
@@ -109,13 +176,10 @@ function normalizeDifficulty(value: string | number | undefined) {
 }
 
 function httpUrlOrNull(value: string | undefined) {
-  if (!value?.trim()) {
-    return null;
-  }
+  if (!value?.trim()) return null;
 
   try {
     const url = new URL(value.trim());
-
     return url.protocol === "http:" || url.protocol === "https:"
       ? url.toString()
       : null;
@@ -137,9 +201,7 @@ function idReferenceArray(values: string[] | undefined) {
 export function parseBatchImportJson(jsonText: string) {
   const parsed = JSON.parse(jsonText) as unknown;
 
-  if (Array.isArray(parsed)) {
-    return parsed;
-  }
+  if (Array.isArray(parsed)) return parsed;
 
   if (
     parsed &&
@@ -162,13 +224,9 @@ export function evaluateBatchImportItems({
   existingTags: ExistingImportTag[];
   existingQuestionCodes: Set<string>;
 }): BatchImportPreview {
-  const tagBySlug = new Map(
-    existingTags.map((tag) => [tag.slug.trim().toLowerCase(), tag]),
-  );
-  const tagByName = new Map(
-    existingTags.map((tag) => [tag.name.trim().toLowerCase(), tag]),
-  );
+  const existingTagIds = new Set(existingTags.map((tag) => tag.id));
   const seenCodes = new Set<string>();
+
   const items = rawItems.map((raw, index): BatchImportPreviewItem => {
     const parsed = importItemSchema.safeParse(raw);
     const errors: string[] = [];
@@ -196,53 +254,23 @@ export function evaluateBatchImportItems({
     const solutionSource = item.solution_source || solutionHtml;
     const solutionSourceFormat = item.solution_source_format ?? "html";
 
-    if (!questionCode) {
-      errors.push("Missing code or question_code.");
-    }
-
-    if (!title) {
-      errors.push("Missing title.");
-    }
-
-    if (!contentHtml) {
-      errors.push("Missing content_html.");
-    }
+    if (!questionCode) errors.push("Missing code or question_code.");
+    if (!title) errors.push("Missing title.");
+    if (!contentHtml) errors.push("Missing content_html.");
 
     const codeKey = questionCode.toLowerCase();
-
     if (questionCode && existingQuestionCodes.has(codeKey)) {
       errors.push(`Duplicate question code already exists: ${questionCode}.`);
     }
-
     if (questionCode && seenCodes.has(codeKey)) {
       errors.push(`Duplicate question code within import: ${questionCode}.`);
     }
+    if (questionCode) seenCodes.add(codeKey);
 
-    if (questionCode) {
-      seenCodes.add(codeKey);
-    }
-
-    const tagSlugs = stringArray(item.tag_slugs);
-    const tagNames = stringArray(item.tag_names);
-    const tagIds = new Set<string>();
-
-    for (const slug of tagSlugs) {
-      const tag = tagBySlug.get(slug.toLowerCase());
-
-      if (tag) {
-        tagIds.add(tag.id);
-      } else {
-        errors.push(`Unknown tag slug: ${slug}.`);
-      }
-    }
-
-    for (const name of tagNames) {
-      const tag = tagByName.get(name.toLowerCase());
-
-      if (tag) {
-        tagIds.add(tag.id);
-      } else {
-        errors.push(`Unknown tag name: ${name}.`);
+    const tagIds = stringArray(item.tag_ids);
+    for (const tagId of tagIds) {
+      if (!existingTagIds.has(tagId)) {
+        errors.push(`Unknown tag ID: ${tagId}.`);
       }
     }
 
@@ -266,21 +294,57 @@ export function evaluateBatchImportItems({
     const sourceFileIds = idReferenceArray(item.source_file_ids);
     const sourceFiles = stringArray(item.source_files).slice(0, 50);
     const questionAssetIds = idReferenceArray(item.question_asset_ids);
+    const options = normalizeQuestionOptions(item.options ?? item.choices);
+    const correctAnswerValues = looseStringArray(
+      item.correct_answers ?? item.correct_answer ?? item.answer,
+    );
+    const finalAnswerValues = looseStringArray(
+      item.final_answers ?? item.final_answer ?? item.answers ?? item.answer,
+    );
+    const acceptedAnswerValues = looseStringArray(item.accepted_answers);
+    const questionType = inferQuestionType({
+      answerValues: [...finalAnswerValues, ...acceptedAnswerValues],
+      options,
+      rawType: item.question_type ?? item.type,
+    });
+    const answerSpec = normalizeAnswerSpec(
+      item.answer_spec ??
+        (questionType === "mcq"
+          ? {
+              allow_multiple: correctAnswerValues.length > 1,
+              correct_option_ids: correctAnswerValues,
+              kind: "mcq",
+            }
+          : questionType === "fill_blank"
+            ? {
+                accepted_answers: acceptedAnswerValues.length
+                  ? acceptedAnswerValues
+                  : finalAnswerValues,
+                equivalence: "math",
+                final_answers: finalAnswerValues,
+                kind: "fill_blank",
+                numeric_tolerance: 0,
+              }
+            : {}),
+    );
 
-    if (item.video_url && !videoUrl) {
-      warnings.push("Invalid video_url was ignored.");
+    if (questionType === "mcq" && !options.length) {
+      warnings.push("MCQ import has no options; automatic grading will not work until options are added.");
+    }
+    if (
+      questionType === "mcq" &&
+      answerSpec.kind === "mcq" &&
+      !answerSpec.correct_option_ids?.length
+    ) {
+      warnings.push("MCQ import has no correct_option_ids in answer_spec.");
     }
 
-    if (item.embed_url && !embedUrl) {
-      warnings.push("Invalid embed_url was ignored.");
-    }
-
+    if (item.video_url && !videoUrl) warnings.push("Invalid video_url was ignored.");
+    if (item.embed_url && !embedUrl) warnings.push("Invalid embed_url was ignored.");
     if ((item.image_urls?.length ?? 0) !== imageUrls.length) {
       warnings.push("One or more invalid image_urls were ignored.");
     }
 
-    // Batch Import v2 preserves asset references in import_batch_items for
-    // admin review. It does not download/upload or auto-attach binaries yet.
     if (
       imageUrls.length ||
       imageFiles.length ||
@@ -301,14 +365,14 @@ export function evaluateBatchImportItems({
         : {
             question_code: questionCode,
             title,
-            question_type: normalizeType(item.question_type ?? item.type),
+            answer_spec: answerSpecToJson(answerSpec),
+            options: optionsToJson(options),
+            question_type: questionType,
             difficulty_rating: normalizeDifficulty(
               item.difficulty_rating ?? item.difficulty,
             ),
             status: "draft",
-            tag_ids: Array.from(tagIds),
-            tag_slugs: tagSlugs,
-            tag_names: tagNames,
+            tag_ids: tagIds,
             content_html: sanitizedContent,
             content_source: contentSource,
             content_source_format: contentSourceFormat,

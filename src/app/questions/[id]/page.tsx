@@ -6,11 +6,12 @@ import {
   QuestionDetailImageGallery,
   type QuestionDetailImage,
 } from "@/components/question-detail-image-gallery";
+import { QuestionAnswerSummary } from "@/components/question-answer-summary";
 import { RichHtml } from "@/components/rich-html";
 import {
-  FiveFacetTagChips,
-  type FiveFacetTagChipAssignment,
-} from "@/components/tags/five-facet-tag-chips";
+  TaxonomyTagChips,
+  type TaxonomyTagChipAssignment,
+} from "@/components/tags/taxonomy-tag-chips";
 import { VideoPlayerFrame } from "@/components/video-player-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,9 @@ import {
 } from "@/components/ui/accordion";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
+import { normalizeQuestionOptions } from "@/lib/questions/answer-spec";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import type { Video } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -107,10 +110,11 @@ export default async function QuestionDetailPage({
   }
 
   const supabase = await createClient();
+  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   const { data: question, error: questionError } = await supabase
     .from("questions")
     .select(
-      "id, question_code, title, content_html, solution_html, difficulty_rating, question_type, status, source, published_at, created_at, updated_at",
+      "id, question_code, title, content_html, solution_html, options, answer_spec, difficulty_rating, question_type, status, source, published_at, created_at, updated_at",
     )
     .eq("id", id)
     .eq("status", "published")
@@ -133,7 +137,7 @@ export default async function QuestionDetailPage({
   const [
     { data: video, error: videoError },
     { data: displayedAssets, error: displayedAssetsError },
-    { data: fiveFacetAssignments, error: fiveFacetAssignmentsError },
+    { data: taxonomyAssignments, error: taxonomyAssignmentsError },
   ] = await Promise.all([
     supabase
       .from("videos")
@@ -151,8 +155,8 @@ export default async function QuestionDetailPage({
       .eq("display_on_detail", true)
       .order("created_at", { ascending: true }),
     supabase
-      .from("five_facet_question_tag_assignments")
-      .select("tag_id, category, review_status")
+      .from("question_taxonomy_assignments")
+      .select("tag_id, review_status")
       .eq("question_id", question.id)
       .eq("review_status", "approved"),
   ]);
@@ -177,13 +181,13 @@ export default async function QuestionDetailPage({
     );
   }
 
-  const publicFiveFacetAssignments =
-    fiveFacetAssignmentsError &&
-    /permission denied|relation .* does not exist|schema cache|five_facet_/i.test(
-      fiveFacetAssignmentsError.message,
+  const publicTaxonomyAssignments =
+    taxonomyAssignmentsError &&
+    /permission denied|relation .* does not exist|schema cache|taxonomy_/i.test(
+      taxonomyAssignmentsError.message,
     )
       ? []
-      : ((fiveFacetAssignments ?? []) as FiveFacetTagChipAssignment[]);
+      : ((taxonomyAssignments ?? []) as TaxonomyTagChipAssignment[]);
 
   const questionImages: QuestionDetailImage[] = (displayedAssets ?? []).map((asset) => {
     const { data } = supabase.storage
@@ -196,6 +200,7 @@ export default async function QuestionDetailPage({
       publicUrl: data.publicUrl,
     };
   });
+  const questionOptions = normalizeQuestionOptions(question.options);
 
   return (
     <div className="space-y-6">
@@ -232,6 +237,27 @@ export default async function QuestionDetailPage({
               <QuestionSection title="Description">
                 <RichHtml html={question.content_html} />
               </QuestionSection>
+
+              {question.question_type === "mcq" && questionOptions.length ? (
+                <QuestionSection title="Options">
+                  <div className="space-y-2">
+                    {questionOptions.map((option) => (
+                      <div
+                        className="grid gap-3 rounded-md border bg-muted/20 p-3 sm:grid-cols-[2rem_1fr]"
+                        key={option.id}
+                      >
+                        <span className="flex size-8 items-center justify-center rounded-md border bg-background font-mono text-sm font-semibold">
+                          {option.label || option.id}
+                        </span>
+                        <RichHtml
+                          className="border-none bg-transparent p-0"
+                          html={option.content_html}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </QuestionSection>
+              ) : null}
 
               {questionImages.length ? (
                 <QuestionSection title="Images">
@@ -305,10 +331,19 @@ export default async function QuestionDetailPage({
             </div>
           </SidebarCard>
 
-          <SidebarCard title="Official five-facet tags">
-            <FiveFacetTagChips
-              assignments={publicFiveFacetAssignments}
-              emptyLabel="No five-facet tags assigned yet."
+          <SidebarCard title="Official taxonomy tags">
+            <TaxonomyTagChips
+              assignments={publicTaxonomyAssignments}
+              emptyLabel="No taxonomy tags assigned yet."
+              taxonomyCatalog={taxonomyCatalog}
+            />
+          </SidebarCard>
+
+          <SidebarCard title="Answer data">
+            <QuestionAnswerSummary
+              answerSpec={question.answer_spec}
+              options={question.options}
+              questionType={question.question_type}
             />
           </SidebarCard>
 

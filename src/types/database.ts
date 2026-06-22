@@ -8,9 +8,16 @@ export type Json =
 
 export type UserRole = "super_admin" | "admin" | "student";
 export type ContentStatus = "draft" | "published" | "archived";
-export type TagType = "knowledge" | "attribute";
-export type QuestionType = "mcq" | "frq" | "mixed";
+export type QuestionType = "mcq" | "fill_blank" | "frq" | "mixed";
 export type QuestionSourceFormat = "markdown_latex" | "html";
+export type TaxonomyStatus = "active" | "deprecated" | "archived";
+export type TaxonomyNodeKind = "subject" | "facet_root" | "tag";
+export type TaxonomyReviewStatus =
+  | "pending_review"
+  | "approved"
+  | "rejected"
+  | "needs_review"
+  | "archived";
 export type ImportBatchAssetRole =
   | "source_pdf"
   | "ai_crop_candidate"
@@ -69,15 +76,94 @@ export type Profile = {
   updated_at: string;
 };
 
-export type Tag = {
-  id: string;
-  parent_id: string | null;
-  name: string;
-  slug: string;
+export type TaxonomyFacet = {
+  facet_key: string;
+  subject_tag_id: string;
+  root_tag_id: string;
+  label: string;
   description: string | null;
-  tag_type: TagType;
-  status: ContentStatus;
   sort_order: number;
+  status: TaxonomyStatus;
+  config: Json;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaxonomyNode = {
+  tag_id: string;
+  node_kind: TaxonomyNodeKind;
+  subject_tag_id: string | null;
+  facet_key: string | null;
+  label: string;
+  description: string | null;
+  is_assignable: boolean;
+  sort_order: number;
+  status: TaxonomyStatus;
+  metadata: Json;
+  deprecated_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaxonomyEdge = {
+  id: string;
+  from_tag_id: string;
+  to_tag_id: string;
+  edge_kind: "parent_child" | "related" | "maps_to";
+  is_primary: boolean;
+  sort_order: number;
+  status: TaxonomyStatus;
+  metadata: Json;
+  deprecated_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type QuestionTaxonomyAssignment = {
+  id: string;
+  question_id: string;
+  tag_id: string;
+  confidence: number | null;
+  source: "manual" | "ai_suggestion" | "batch_import" | "review_action";
+  review_status: TaxonomyReviewStatus;
+  evidence: Json;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaxonomyReviewAction = {
+  id: string;
+  action_id: string;
+  question_id: string | null;
+  question_ref: Json;
+  action_kind:
+    | "approve_bundle"
+    | "reject_bundle"
+    | "edit_bundle"
+    | "approve_single_tag"
+    | "reject_single_tag"
+    | "replace_tag"
+    | "mark_ambiguous"
+    | "merge_alias_candidate"
+    | "request_manual_review";
+  target_tag_ids: string[];
+  proposed_tag_ids: string[];
+  reason: string;
+  confidence: number | null;
+  evidence: Json;
+  review_status: TaxonomyReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -94,6 +180,7 @@ export type Question = {
   solution_html: string | null;
   solution_source: string | null;
   solution_source_format: QuestionSourceFormat;
+  answer_spec: Json;
   options: Json[];
   question_type: QuestionType;
   difficulty_rating: number;
@@ -129,7 +216,7 @@ export type RubricStep = {
   step_order: number;
   content_html: string;
   max_points: number;
-  linked_tag_id: string | null;
+  linked_taxonomy_tag_id: string | null;
   status: ContentStatus;
   created_by: string | null;
   updated_by: string | null;
@@ -215,21 +302,31 @@ export type Database = {
     Tables: {
       profiles: TableDefinition<Profile>;
       ai_provider_profiles: TableDefinition<AIProviderProfile>;
-      tags: TableDefinition<Tag>;
+      taxonomy_facets: TableDefinition<TaxonomyFacet>;
+      taxonomy_nodes: TableDefinition<TaxonomyNode>;
+      taxonomy_edges: TableDefinition<TaxonomyEdge>;
+      taxonomy_aliases: TableDefinition<{
+        id: string;
+        alias_text: string;
+        normalized_alias: string;
+        tag_id: string;
+        status: "active" | "ambiguous" | "deprecated" | "archived";
+        metadata: Json;
+        deprecated_at: string | null;
+        created_by: string | null;
+        updated_by: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+      taxonomy_node_closure: TableDefinition<{
+        ancestor_tag_id: string;
+        descendant_tag_id: string;
+        depth: number;
+      }>;
       questions: TableDefinition<Question>;
-      question_tags: TableDefinition<{
-        question_id: string;
-        tag_id: string;
-        created_at: string;
-        updated_at: string;
-      }>;
+      question_taxonomy_assignments: TableDefinition<QuestionTaxonomyAssignment>;
+      taxonomy_review_actions: TableDefinition<TaxonomyReviewAction>;
       videos: TableDefinition<Video>;
-      video_tags: TableDefinition<{
-        video_id: string;
-        tag_id: string;
-        created_at: string;
-        updated_at: string;
-      }>;
       question_rubric_steps: TableDefinition<RubricStep>;
       question_assets: TableDefinition<QuestionAsset>;
       question_source_files: TableDefinition<QuestionSourceFile>;
@@ -309,6 +406,32 @@ export type Database = {
           profile_id: string;
         };
         Returns: undefined;
+      };
+      search_questions_by_taxonomy: {
+        Args: {
+          assignment_review_status?: string | null;
+          difficulty_max?: number | null;
+          difficulty_min?: number | null;
+          exclude_tag_ids?: string[];
+          include_tag_ids?: string[];
+          page_cursor?: string | null;
+          page_limit?: number | null;
+          page_offset?: number | null;
+          question_status?: string | null;
+          query_text?: string | null;
+        };
+        Returns: Array<{
+          difficulty_rating: number;
+          matched_tag_ids: string[];
+          matched_tags: Json;
+          next_cursor: string | null;
+          question_code: string;
+          question_id: string;
+          question_type: string;
+          status: string;
+          title: string;
+          total_count: number;
+        }>;
       };
     };
     Enums: Record<string, never>;

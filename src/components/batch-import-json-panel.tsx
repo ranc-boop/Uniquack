@@ -25,18 +25,39 @@ const starterJson = JSON.stringify(
   {
     questions: [
       {
-        code: "AP-PHYS-IMPORT-001",
-        title: "Imported draft FRQ",
-        type: "frq",
+        code: "AP-CALC-IMPORT-001",
+        title: "Derivative local minimum",
+        type: "fill_blank",
         difficulty: 520,
-        tag_names: ["AP Physics"],
-        content_html: "<p>Question stem goes here.</p>",
-        solution_html: "<p>Solution notes go here.</p>",
-        image_urls: ["https://example.com/q1-diagram.png"],
-        source_file_ids: ["00000000-0000-0000-0000-000000000001"],
-        question_asset_ids: ["00000000-0000-0000-0000-000000000002"],
-        video_url: "",
-        embed_url: "",
+        tag_ids: ["math.curriculum.ap.ap_calculus_ab"],
+        content_html: "<p>If $f'(x)=1+2x-x^3$, then $f$ has a local minimum at $x=$ ____.</p>",
+        solution_html: "<p>Solve $f'(x)=0$ and use the first derivative test.</p>",
+        answer_spec: {
+          kind: "fill_blank",
+          final_answers: ["2"],
+          accepted_answers: ["2", "x=2"],
+          equivalence: "math",
+          case_sensitive: false,
+        },
+      },
+      {
+        code: "AP-CALC-IMPORT-002",
+        title: "Limit from graph",
+        type: "mcq",
+        difficulty: 430,
+        tag_ids: ["math.curriculum.ap.ap_calculus_ab"],
+        content_html: "<p>What is $\\lim_{x\\to 2} f(x)$?</p>",
+        solution_html: "<p>Read the y-value approached from both sides.</p>",
+        options: [
+          { id: "A", label: "A", content_html: "1" },
+          { id: "B", label: "B", content_html: "2" },
+          { id: "C", label: "C", content_html: "Does not exist" },
+        ],
+        answer_spec: {
+          kind: "mcq",
+          correct_option_ids: ["B"],
+          allow_multiple: false,
+        },
       },
     ],
   },
@@ -102,7 +123,100 @@ function AssetReferenceSummary({
   );
 }
 
-export function BatchImportJsonPanel() {
+function firstTag(tagIds: string[], includes: string[]) {
+  return tagIds.find((tagId) =>
+    includes.every((part) => tagId.includes(part)),
+  );
+}
+
+function completeExampleJson(tagIds: string[]) {
+  const exampleTagIds = Array.from(
+    new Set(
+      [
+        firstTag(tagIds, ["curriculum", "ap"]),
+        firstTag(tagIds, ["curriculum", "sat"]),
+        firstTag(tagIds, ["curriculum", "common_core"]),
+        firstTag(tagIds, ["concept", "calculus"]),
+        firstTag(tagIds, ["concept", "derivative"]),
+        firstTag(tagIds, ["method"]),
+        firstTag(tagIds, ["task"]),
+        firstTag(tagIds, ["form", "fill"]),
+        firstTag(tagIds, ["form"]),
+      ].filter((tagId): tagId is string => Boolean(tagId)),
+    ),
+  ).slice(0, 9);
+
+  return JSON.stringify(
+    {
+      questions: [
+        {
+          code: "AI-GENERATED-001",
+          title: "Derivative local minimum",
+          type: "fill_blank",
+          difficulty: 560,
+          tag_ids: exampleTagIds,
+          content_html:
+            "<p>If $f'(x)=1+2x-x^3$, then $f$ has a local minimum at $x=$ ____.</p>",
+          solution_html:
+            "<p>Set $f'(x)=0$ and use a first derivative sign test to identify the local minimum.</p>",
+          answer_spec: {
+            kind: "fill_blank",
+            final_answers: ["2"],
+            accepted_answers: ["2", "x=2"],
+            equivalence: "math",
+            case_sensitive: false,
+          },
+        },
+      ],
+    },
+    null,
+    2,
+  );
+}
+
+function buildAiJsonPrompt(tagIds: string[]) {
+  const tagText = tagIds.join(", ") || "(none)";
+
+  return [
+    "Role: You are an O2I question-bank authoring assistant. The user will next describe the questions they want. Generate import-ready JSON for the O2I manual JSON import tool.",
+    "Return JSON only. Do not wrap it in markdown. Do not add commentary before or after the JSON.",
+    "Goal: create high-quality draft questions that can be reviewed by an admin and later used by an Agent recommendation and grading system.",
+    "Required output shape and examples:",
+    starterJson,
+    "Complete example with multi-tag coverage. This example uses tag IDs from the allowed list when matching IDs are available; imitate the coverage style, not the exact topic:",
+    completeExampleJson(tagIds),
+    "Required schema rules:",
+    "- Output {\"questions\":[...]} only.",
+    "- Use type as one of mcq, fill_blank, frq, mixed.",
+    "- MCQ must include options and answer_spec.correct_option_ids. Options use {id,label,content_html}; correct_option_ids must match option IDs exactly.",
+    "- Fill blank must include answer_spec.kind='fill_blank' plus final_answers or accepted_answers. Put equivalent accepted forms when useful.",
+    "- For FRQ/mixed, keep JSON simple. Omit answer_spec unless the user explicitly asks for grading metadata.",
+    "- Keep title short, plain text, no HTML, no Markdown, no LaTeX, and not the full question stem.",
+    "- content_html and solution_html should be sanitized-friendly HTML strings. Use simple paragraphs, lists, and tables when needed.",
+    "- Wrap every math variable, expression, equation, and formula in $...$ inside content_html, solution_html, and option content_html so the renderer can detect it.",
+    "- Examples: write <p>Solve $x^2-4=0$.</p>, not <p>Solve x^2-4=0.</p>. Write <p>The derivative is $f'(x)$.</p>, not plain f'(x).",
+    "Tagging method:",
+    "- Use tag_ids only from the allowed active assignable tag_id list below. Never invent, abbreviate, rename, or output labels instead of IDs.",
+    "- Tag generously but accurately. Most questions should have several tags, not just one.",
+    "- Try to cover at least 4 taxonomy facets when matching tags exist: curriculum, concept, method, task, and form/difficulty.",
+    "- Curriculum is especially important. Include every accurate curriculum tag from the allowed list, even when multiple systems apply to the same question, such as AP, SAT, BC, Common Core, IB, A-Level, course/unit, or exam-topic tags.",
+    "- Concept tags should describe the core math idea. Method tags should describe the solving technique. Task tags should describe what the student does. Form tags should describe item format such as multiple choice, fill blank, or free response.",
+    "- Prefer specific leaf tags over broad parent-like tags when both are available.",
+    "- Reuse tag_ids freely. Many generated questions can share the same curriculum, concept, method, task, or form tags.",
+    "- If fewer than 4 facets fit accurately, use only the accurate tags and do not force weak tags.",
+    "Answer rules:",
+    "- Do not invent hidden answers for FRQ. For ordinary FRQ/mixed questions, no answer_spec is needed.",
+    "- For MCQ and fill_blank, include answer_spec when the answer is defined by the generated question.",
+    "- For fill_blank, include common equivalent forms in accepted_answers, for example ['2','x=2','\\\\frac{4}{2}'] when those are mathematically appropriate.",
+    "- Use numeric_tolerance for decimal/numeric answers where rounding is expected.",
+    "Do not include asset/image/PDF fields:",
+    "- Do not output image_urls, image_files, source_file_ids, source_files, question_asset_ids, video_url, embed_url, bbox, asset_placeholders, page_refs, or PDF chunk fields.",
+    "Allowed active assignable tag_ids:",
+    tagText,
+  ].join("\n\n");
+}
+
+export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
   const router = useRouter();
   const [jsonText, setJsonText] = useState("");
   const [preview, setPreview] = useState<BatchImportPreview | null>(null);
@@ -110,6 +224,7 @@ export function BatchImportJsonPanel() {
   const [showExample, setShowExample] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [importing, setImporting] = useState(false);
+  const aiJsonPrompt = buildAiJsonPrompt(tagIds);
 
   function updateJsonText(value: string) {
     setJsonText(value);
@@ -151,14 +266,35 @@ export function BatchImportJsonPanel() {
       setJsonText("");
       setPreview(null);
       router.refresh();
-      toast.success(
-        `Imported ${result.createdCount} draft question(s) successfully.`,
-      );
+      if (result.errorCount > 0) {
+        toast.error(
+          `Import finished with ${result.errorCount} error(s); created ${result.createdCount}.`,
+        );
+      } else {
+        toast.success(
+          `Imported ${result.createdCount} draft question(s) successfully.`,
+        );
+      }
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
       setImporting(false);
     }
+  }
+
+  async function copyAiPrompt() {
+    await navigator.clipboard.writeText(aiJsonPrompt);
+    toast.success("AI JSON prompt copied.");
+  }
+
+  function downloadAiPrompt() {
+    const blob = new Blob([aiJsonPrompt], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "o2i-question-json-import-prompt.txt";
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -168,7 +304,7 @@ export function BatchImportJsonPanel() {
           value={jsonText}
           onChange={(event) => updateJsonText(event.target.value)}
           className="min-h-[520px] font-mono text-sm"
-          placeholder='Paste JSON here. Example: { "questions": [{ "code": "AP-CALC-001", "title": "Limits FRQ", "content_html": "<p>...</p>", "tag_names": ["AP Calculus"] }] }'
+          placeholder='Paste JSON here. Example: { "questions": [{ "code": "AP-CALC-001", "title": "Limits FRQ", "content_html": "<p>...</p>", "tag_ids": ["math.concept.calculus.limits"] }] }'
           spellCheck={false}
         />
         <div className="flex flex-wrap gap-2">
@@ -198,6 +334,12 @@ export function BatchImportJsonPanel() {
           >
             {showExample ? "Hide example JSON" : "Show example JSON"}
           </Button>
+          <Button type="button" variant="outline" onClick={copyAiPrompt}>
+            Copy AI JSON prompt
+          </Button>
+          <Button type="button" variant="outline" onClick={downloadAiPrompt}>
+            Download AI JSON prompt
+          </Button>
         </div>
         {showExample ? (
           <div className="rounded-md border bg-muted/20 p-3">
@@ -214,37 +356,32 @@ export function BatchImportJsonPanel() {
           <p className="text-sm font-medium">Rules</p>
           <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
             <li>Questions are always imported as drafts.</li>
-            <li>Tags must already exist by slug or name.</li>
+            <li>Tags must already exist by exact tag_id.</li>
             <li>Unsafe HTML is sanitized before saving.</li>
-            <li>
-              Asset references are preserved for review only. Batch Import v2
-              does not upload binary files or automatically attach assets yet.
-            </li>
+            <li>FRQ/mixed questions can omit answer_spec.</li>
           </ul>
         </div>
-        <div className="rounded-md border p-3">
-          <p className="text-sm font-medium">Future asset path</p>
-          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-            <li>Batch Import v2 accepts structured JSON only.</li>
-            <li>Binary uploads stay in the image and source-file panels.</li>
-            <li>
-              Reserved fields: image_urls, source_file_ids, question_asset_ids.
-            </li>
-            <li>
-              Future package import will support questions.json + images + PDFs.
-            </li>
-          </ul>
-        </div>
-
         {summary ? (
           <div className="space-y-3 rounded-md border p-3 text-sm">
             <div>
-              <p className="font-medium">Import completed</p>
+              <p className="font-medium">
+                {summary.errorCount > 0 ? "Import completed with errors" : "Import completed"}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 All imported questions are saved as Draft and can be reviewed in
                 Admin Questions.
               </p>
             </div>
+            {summary.validationErrorReasons.length ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                <p className="font-medium">Import issues</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {summary.validationErrorReasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div className="grid grid-cols-3 gap-2 text-xs">
               <div className="rounded-md border p-2">
                 <p className="font-medium">{summary.createdCount}</p>

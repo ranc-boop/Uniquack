@@ -8,12 +8,17 @@ import {
 import type { ImportAssetReferences } from "@/lib/batch-import/asset-references";
 import type { QuestionReadiness } from "@/lib/questions/readiness";
 
+type SelectedTaxonomyTagMap = Partial<Record<string, string[]>>;
+
 type AdminQuestionEditDetailsProps = {
   assets?: QuestionAssetView[];
+  defaultOpen?: boolean;
   importedAssetReferences: ImportAssetReferences | null;
   question: EditableQuestion;
   readiness: QuestionReadiness;
+  selectedTaxonomyTagIds?: SelectedTaxonomyTagMap;
   sourceFiles?: QuestionSourceFileView[];
+  taxonomyCatalog: TaxonomyCatalogView;
 };
 
 export function AdminQuestionEditDetails({
