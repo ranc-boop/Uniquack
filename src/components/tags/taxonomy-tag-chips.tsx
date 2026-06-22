@@ -3,6 +3,7 @@ import type {
   TaxonomyCatalogView,
   TaxonomyNodeView,
 } from "@/components/tags/taxonomy-tag-tree-picker";
+import { taxonomyDisplayLabelFromId } from "@/lib/tags/taxonomy-display";
 
 export type TaxonomyTagChipAssignment = {
   category?: string | null;
@@ -123,11 +124,11 @@ export function TaxonomyTagChips({
                   <Badge
                     className="max-w-full whitespace-normal text-left leading-relaxed"
                     key={row.tag_id}
-                    title={`${path ? `${path} > ` : ""}${node.label} (${row.tag_id})`}
+                    title={`${path ? `${path} > ` : ""}${taxonomyDisplayLabelFromId(node.tag_id)} (${row.tag_id})`}
                     variant="outline"
                   >
                     <span className="min-w-0">
-                      <span>{node.label}</span>
+                      <span>{taxonomyDisplayLabelFromId(node.tag_id)}</span>
                       {path ? (
                         <span className="ml-1 text-[10px] text-muted-foreground">
                           {path} &gt;

@@ -10,6 +10,10 @@ import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionHtmlEditor } from "@/components/question-html-editor";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import { QuestionStatusSelect } from "@/components/question-status-select";
+import {
+  TaxonomyTagTreePicker,
+  type TaxonomyCatalogView,
+} from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,12 +40,16 @@ type EditableQuestion = {
   title: string;
 };
 
+type SelectedTaxonomyTagMap = Partial<Record<string, string[]>>;
+
 type AdminQuestionEditDetailsProps = {
   assets?: QuestionAssetView[];
   importedAssetReferences: ImportAssetReferences | null;
   question: EditableQuestion;
   readiness: QuestionReadiness;
+  selectedTaxonomyTagIds?: SelectedTaxonomyTagMap;
   sourceFiles?: QuestionSourceFileView[];
+  taxonomyCatalog: TaxonomyCatalogView;
 };
 
 function ImportedAssetReferencesReview({
@@ -193,7 +201,9 @@ export function AdminQuestionEditDetails({
   importedAssetReferences,
   question,
   readiness,
+  selectedTaxonomyTagIds = {},
   sourceFiles = [],
+  taxonomyCatalog,
 }: AdminQuestionEditDetailsProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -256,6 +266,16 @@ export function AdminQuestionEditDetails({
               importedAssetReferences={importedAssetReferences}
               readiness={readiness}
               sourceFileCount={sourceFiles.length}
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <TaxonomyTagTreePicker
+              defaultOpenFacetKeys={["concept", "method", "task"]}
+              namePrefix="question_tax"
+              selectable="assignable"
+              selectedTagIds={selectedTaxonomyTagIds}
+              taxonomyCatalog={taxonomyCatalog}
+              title="Question taxonomy tags"
             />
           </div>
           <div className="space-y-1 lg:col-span-2">

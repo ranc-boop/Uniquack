@@ -25,7 +25,6 @@ export type AITaxonomyOfficialTagStatus =
 
 export type AITaxonomyAdminOperationKind =
   | "create_pack"
-  | "create_official_tag"
   | "update_tag"
   | "deprecate_tag"
   | "merge_alias"
@@ -246,7 +245,7 @@ export function buildTaxonomyStorageModelProposal(): AITaxonomyStorageModelPropo
     {
       proposedColumns: [
         column("id", "uuid", false, "Primary key."),
-        column("slug", "text", false, "Stable pack slug."),
+        column("id_path", "text", false, "Stable pack ID path."),
         column("label", "text", false, "Human-readable pack name."),
         column("kind", "text", false, "Pack family such as SAT Math or AP Physics."),
         column("visibility", "taxonomy_visibility", false, "Private, school, public, or system scope."),
@@ -359,7 +358,7 @@ export function buildTaxonomyStorageModelProposal(): AITaxonomyStorageModelPropo
 
   return {
     indexes: [
-      { columns: ["slug"], purpose: "Keep taxonomy pack slugs unique.", tableName: "taxonomy_packs", unique: true },
+      { columns: ["id_path"], purpose: "Keep taxonomy pack ID paths unique.", tableName: "taxonomy_packs", unique: true },
       { columns: ["pack_id", "official_tag_id"], purpose: "Keep official IDs stable within a pack.", tableName: "taxonomy_tags", unique: true },
       { columns: ["tag_id", "alias_text"], purpose: "Avoid duplicate aliases for a tag.", tableName: "taxonomy_aliases", unique: true },
       { columns: ["parent_tag_id", "child_tag_id", "edge_kind"], purpose: "Avoid duplicate hierarchy edges.", tableName: "taxonomy_edges", unique: true },
@@ -422,25 +421,12 @@ export function buildTaxonomyAdminContracts(): AITaxonomyAdminContract[] {
       "Create taxonomy pack",
       "Create a future controlled taxonomy pack after review.",
       [
-        field("slug", "text", true, "Stable pack slug."),
+        field("id_path", "text", true, "Stable pack ID path."),
         field("label", "text", true, "Pack display label."),
         field("visibility", "taxonomy_visibility", true, "Private, school, public, or system."),
       ],
-      ["slug_unique", "visibility_allowed", "label_required"],
+      ["id_path_unique", "visibility_allowed", "label_required"],
       ["create_as_draft", "audit_actor_required"],
-    ),
-    contract(
-      "create_official_tag",
-      "Create official tag",
-      "Promote a reviewed candidate into a future official tag.",
-      [
-        field("pack_id", "uuid", true, "Target pack."),
-        field("label", "text", true, "Official tag label."),
-        field("level", "text", true, "Hierarchy level."),
-        field("reason", "text", true, "Human approval reason."),
-      ],
-      ["pack_active_or_draft", "label_unique_in_pack", "parent_exists_if_provided"],
-      ["human_approval_required", "stable_official_id_generated", "audit_actor_required"],
     ),
     contract(
       "update_tag",

@@ -43,7 +43,7 @@ type AIReviewMetadata = {
   };
   source?: string;
   tag_decisions?: {
-    new_tag_names?: unknown[];
+    tag_ids?: unknown[];
   };
   warnings?: unknown[];
 };
@@ -252,14 +252,14 @@ export default async function AdminReviewPage({
         { data: [] },
       ];
 
-  const tagNameById = new Map((tags ?? []).map((tag) => [tag.tag_id, tag.label]));
+  const activeTagIds = new Set((tags ?? []).map((tag) => tag.tag_id));
   const tagStatusById = new Map(
     (questionTags ?? []).map((tag) => [
       `${tag.question_id}:${tag.tag_id}`,
       tag.review_status,
     ]),
   );
-  const tagsByQuestionId = new Map<string, string[]>();
+  const tagIdsByQuestionId = new Map<string, string[]>();
   const pendingTagCountByQuestionId = new Map<string, number>();
   const approvedTagCountByQuestionId = new Map<string, number>();
   const imageCountByQuestionId = new Map<string, number>();
@@ -270,10 +270,9 @@ export default async function AdminReviewPage({
   const importedAtByQuestionId = new Map<string, string>();
 
   for (const binding of questionTags ?? []) {
-    const tagName = tagNameById.get(binding.tag_id);
     const tagStatus = tagStatusById.get(`${binding.question_id}:${binding.tag_id}`);
 
-    if (!tagName) {
+    if (!activeTagIds.has(binding.tag_id)) {
       continue;
     }
 
@@ -289,9 +288,9 @@ export default async function AdminReviewPage({
       );
     }
 
-    tagsByQuestionId.set(binding.question_id, [
-      ...(tagsByQuestionId.get(binding.question_id) ?? []),
-      tagName,
+    tagIdsByQuestionId.set(binding.question_id, [
+      ...(tagIdsByQuestionId.get(binding.question_id) ?? []),
+      binding.tag_id,
     ]);
   }
 
@@ -395,7 +394,7 @@ export default async function AdminReviewPage({
       ) : null}
       <div className="grid gap-4">
         {draftQuestions.map((question) => {
-          const tagNames = tagsByQuestionId.get(question.id) ?? [];
+          const tagIds = tagIdsByQuestionId.get(question.id) ?? [];
           const pendingTagCount = pendingTagCountByQuestionId.get(question.id) ?? 0;
           const approvedTagCount =
             approvedTagCountByQuestionId.get(question.id) ?? 0;
@@ -404,7 +403,7 @@ export default async function AdminReviewPage({
           const aiMetadata = aiMetadataByQuestionId.get(question.id);
           const aiPageRefs = stringList(aiMetadata?.page_refs);
           const aiCreatedTags = stringList(
-            aiMetadata?.tag_decisions?.new_tag_names,
+            aiMetadata?.tag_decisions?.tag_ids,
           );
           const aiWarnings = [
             ...stringList(aiMetadata?.warnings),
@@ -465,10 +464,10 @@ export default async function AdminReviewPage({
                       Needs taxonomy review: {pendingTagCount}
                     </Badge>
                   ) : null}
-                  {tagNames.length ? (
-                    tagNames.map((tagName) => (
-                      <Badge key={tagName} variant="outline">
-                        {tagName}
+                  {tagIds.length ? (
+                    tagIds.map((tagId) => (
+                      <Badge key={tagId} variant="outline" title={tagId}>
+                        {tagId}
                       </Badge>
                     ))
                   ) : (

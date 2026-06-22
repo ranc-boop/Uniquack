@@ -15,8 +15,7 @@ export type PackageQuestionReference = {
   imageFiles: string[];
   sourceFiles: string[];
   solutionHtmlPresent: boolean;
-  tagNames: string[];
-  tagSlugs: string[];
+  tagIds: string[];
   title: string;
 };
 
@@ -106,8 +105,7 @@ export function extractPackageQuestionReferences(rawItems: unknown[]) {
       imageFiles: stringArray(item.image_files).map(normalizePackagePath),
       sourceFiles: stringArray(item.source_files).map(normalizePackagePath),
       solutionHtmlPresent: Boolean(stringValue(item.solution_html)),
-      tagNames: stringArray(item.tag_names),
-      tagSlugs: stringArray(item.tag_slugs),
+      tagIds: stringArray(item.tag_ids),
       title: stringValue(item.title),
     };
   });

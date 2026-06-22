@@ -89,6 +89,20 @@ function boundedText(value: string, maxLength = 500) {
   return compact.length > maxLength ? `${compact.slice(0, maxLength)}...` : compact;
 }
 
+function leafAssignableTagIds(catalog: TaxonomyCatalogView) {
+  const parentTagIds = new Set(
+    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  );
+  return new Set(
+    catalog.nodes
+      .filter(
+        (node) =>
+          node.facet_key && node.is_assignable && !parentTagIds.has(node.tag_id),
+      )
+      .map((node) => node.tag_id),
+  );
+}
+
 function targetFromRecord(
   record: Record<string, unknown>,
   index: number,
@@ -135,6 +149,7 @@ function difficultyFor(text: string) {
 
 function suggestFromCatalog(text: string, catalog: TaxonomyCatalogView) {
   const lower = text.toLowerCase();
+  const allowedTagIds = leafAssignableTagIds(catalog);
   const tags: Record<string, string[]> = Object.fromEntries(
     catalog.facets.map((facet) => [facet.facet_key, []]),
   );
@@ -142,7 +157,7 @@ function suggestFromCatalog(text: string, catalog: TaxonomyCatalogView) {
   const matchedSignals: string[] = [];
 
   const candidates = catalog.nodes
-    .filter((node) => node.facet_key)
+    .filter((node) => node.facet_key && allowedTagIds.has(node.tag_id))
     .map((node) => {
       const signals = uniqueStrings([
         node.label,
@@ -174,12 +189,21 @@ function suggestFromCatalog(text: string, catalog: TaxonomyCatalogView) {
   }
 
   const selectedCount = Object.values(tags).flat().length;
+  const invalidTagIds = Object.values(tags)
+    .flat()
+    .filter((tagId) => !allowedTagIds.has(tagId));
   const validation: TaxonomyTagBundleValidationResult = {
-    errors: selectedCount ? [] : ["no_database_taxonomy_match"],
-    valid: selectedCount > 0,
-    warnings: catalog.facets
-      .filter((facet) => !(tags[facet.facet_key]?.length ?? 0))
-      .map((facet) => `no_${facet.facet_key}_suggestion`),
+    errors: [
+      ...(selectedCount ? [] : ["no_database_taxonomy_match"]),
+      ...(invalidTagIds.length ? ["non_leaf_or_unassignable_tag_selected"] : []),
+    ],
+    valid: selectedCount > 0 && invalidTagIds.length === 0,
+    warnings: [
+      ...(allowedTagIds.size ? [] : ["taxonomy_no_leaf_assignable_tags"]),
+      ...catalog.facets
+        .filter((facet) => !(tags[facet.facet_key]?.length ?? 0))
+        .map((facet) => `no_${facet.facet_key}_suggestion`),
+    ],
   };
 
   return {
@@ -228,6 +252,9 @@ export function buildTaxonomyQuestionTaggingPlanFromSummary(
   });
   const warnings = uniqueStrings([
     ...(catalog.nodes.length ? [] : ["taxonomy_database_catalog_empty"]),
+    ...(leafAssignableTagIds(catalog).size
+      ? []
+      : ["taxonomy_no_leaf_assignable_tags"]),
     ...(targets.length ? [] : ["taxonomy_question_tagging_no_targets"]),
     ...suggestions.flatMap((item) => item.warnings),
   ]);

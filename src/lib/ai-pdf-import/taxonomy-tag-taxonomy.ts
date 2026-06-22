@@ -2,20 +2,13 @@ import type { TaxonomyCatalogView } from "@/components/tags/taxonomy-tag-tree-pi
 
 export type AITaxonomyTagCategory = string;
 
-export interface AITagNode {
-  aliases: string[];
-  category: string;
-  description: string;
-  label: string;
-  parentTagIds: string[];
-  tagId: string;
-}
-
 export interface AITaxonomyTagTaxonomyPlan {
+  allowedLeafTagIds: string[];
+  allowedLeafTagIdsByFacet: Record<string, string[]>;
   facetCount: number;
   facets: Array<{
     facetKey: string;
-    label: string;
+    leafAssignableNodeCount: number;
     nodeCount: number;
     rootTagId: string;
   }>;
@@ -35,11 +28,34 @@ export function buildAITaxonomyTagTaxonomyPlan(
   catalog: TaxonomyCatalogView,
   { generatedAt = new Date().toISOString() }: { generatedAt?: string } = {},
 ): AITaxonomyTagTaxonomyPlan {
+  const parentTagIds = new Set(
+    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  );
+  const allowedLeafNodes = catalog.nodes.filter(
+    (node) =>
+      node.facet_key && node.is_assignable && !parentTagIds.has(node.tag_id),
+  );
+  const allowedLeafTagIds = allowedLeafNodes
+    .map((node) => node.tag_id)
+    .sort();
+  const allowedLeafTagIdsByFacet = Object.fromEntries(
+    catalog.facets.map((facet) => [
+      facet.facet_key,
+      allowedLeafNodes
+        .filter((node) => node.facet_key === facet.facet_key)
+        .map((node) => node.tag_id)
+        .sort(),
+    ]),
+  );
+
   return {
+    allowedLeafTagIds,
+    allowedLeafTagIdsByFacet,
     facetCount: catalog.facets.length,
     facets: catalog.facets.map((facet) => ({
       facetKey: facet.facet_key,
-      label: facet.label,
+      leafAssignableNodeCount:
+        allowedLeafTagIdsByFacet[facet.facet_key]?.length ?? 0,
       nodeCount: catalog.nodes.filter(
         (node) => node.facet_key === facet.facet_key,
       ).length,
@@ -62,6 +78,8 @@ export function failedAITaxonomyTagTaxonomyPlan({
   warnings: string[];
 }): AITaxonomyTagTaxonomyPlan {
   return {
+    allowedLeafTagIds: [],
+    allowedLeafTagIdsByFacet: {},
     facetCount: 0,
     facets: [],
     generatedAt,

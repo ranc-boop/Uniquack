@@ -10,6 +10,11 @@ import {
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import {
+  taxonomyDisplayLabelFromId,
+  taxonomyJoinTagId,
+  taxonomySuffixFromLabel,
+} from "@/lib/tags/taxonomy-display";
+import {
   taxonomyActionSchema,
   taxonomyNodeCreateSchema,
   taxonomyNodeDeleteSchema,
@@ -19,18 +24,91 @@ function redirectTagError(error: unknown) {
   redirectWithError("/admin/tags", formatActionError(error));
 }
 
+async function collectTaxonomySubtreeIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rootTagId: string,
+) {
+  const tagIds = new Set([rootTagId]);
+
+  const { data: closureRows, error: closureError } = await supabase
+    .from("taxonomy_node_closure")
+    .select("descendant_tag_id")
+    .eq("ancestor_tag_id", rootTagId);
+
+  if (closureError) {
+    throw new Error(closureError.message);
+  }
+
+  for (const row of closureRows ?? []) {
+    if (row.descendant_tag_id) {
+      tagIds.add(row.descendant_tag_id);
+    }
+  }
+
+  const { data: prefixRows, error: prefixError } = await supabase
+    .from("taxonomy_nodes")
+    .select("tag_id")
+    .like("tag_id", rootTagId + ".%");
+
+  if (prefixError) {
+    throw new Error(prefixError.message);
+  }
+
+  for (const row of prefixRows ?? []) {
+    if (row.tag_id) {
+      tagIds.add(row.tag_id);
+    }
+  }
+
+  return Array.from(tagIds);
+}
+
 export async function createTaxonomyNode(formData: FormData) {
   try {
     const profile = await requireAdmin();
     const parsed = taxonomyNodeCreateSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
 
+    const { data: parentNode, error: parentError } = await supabase
+      .from("taxonomy_nodes")
+      .select("tag_id,node_kind,subject_tag_id,facet_key,status")
+      .eq("tag_id", parsed.parent_tag_id)
+      .maybeSingle();
+
+    if (parentError) {
+      throw new Error(parentError.message);
+    }
+
+    if (!parentNode) {
+      throw new Error("Selected parent taxonomy node was not found.");
+    }
+
+    if (parentNode.status !== "active") {
+      throw new Error("Selected parent taxonomy node is not active.");
+    }
+
+    if (parentNode.node_kind === "subject") {
+      throw new Error("Create tags under a facet root or existing tag, not directly under the subject root.");
+    }
+
+    if (parentNode.facet_key && parentNode.facet_key !== parsed.facet_key) {
+      throw new Error("Selected parent facet does not match the submitted facet.");
+    }
+
+    const expectedTagId = taxonomyJoinTagId(
+      parsed.parent_tag_id,
+      taxonomySuffixFromLabel(parsed.label),
+    );
+    if (!expectedTagId || parsed.tag_id !== expectedTagId) {
+      throw new Error("Submitted taxonomy ID does not match the display tag.");
+    }
+
     const { error: nodeError } = await supabase.from("taxonomy_nodes").insert({
-      tag_id: parsed.tag_id,
+      tag_id: expectedTagId,
       node_kind: "tag",
-      subject_tag_id: "subject.math",
+      subject_tag_id: parentNode.subject_tag_id ?? "math",
       facet_key: parsed.facet_key,
-      label: parsed.label,
+      label: taxonomyDisplayLabelFromId(expectedTagId),
       description: parsed.description || null,
       is_assignable: parsed.is_assignable,
       status: "active",
@@ -42,20 +120,19 @@ export async function createTaxonomyNode(formData: FormData) {
       throw new Error(nodeError.message);
     }
 
-    if (parsed.parent_tag_id) {
-      const { error: edgeError } = await supabase.from("taxonomy_edges").insert({
-        from_tag_id: parsed.parent_tag_id,
-        to_tag_id: parsed.tag_id,
-        edge_kind: "parent_child",
-        is_primary: true,
-        status: "active",
-        created_by: profile.id,
-        updated_by: profile.id,
-      });
+    const { error: edgeError } = await supabase.from("taxonomy_edges").insert({
+      from_tag_id: parsed.parent_tag_id,
+      to_tag_id: expectedTagId,
+      edge_kind: "parent_child",
+      is_primary: true,
+      status: "active",
+      created_by: profile.id,
+      updated_by: profile.id,
+    });
 
-      if (edgeError) {
-        throw new Error(edgeError.message);
-      }
+    if (edgeError) {
+      await supabase.from("taxonomy_nodes").delete().eq("tag_id", expectedTagId);
+      throw new Error(edgeError.message);
     }
   } catch (error) {
     redirectTagError(error);
@@ -70,15 +147,24 @@ export async function deleteTaxonomyNode(formData: FormData) {
     await requireAdmin();
     const parsed = taxonomyNodeDeleteSchema.parse(Object.fromEntries(formData));
 
-    if (parsed.tag_id === "subject.math") {
-      throw new Error("The math subject root cannot be deleted.");
+    if (parsed.tag_id === "math") {
+      throw new Error("The math root cannot be deleted.");
     }
 
     const supabase = await createClient();
+    const subtreeTagIds = await collectTaxonomySubtreeIds(
+      supabase,
+      parsed.tag_id,
+    );
+
+    if (!subtreeTagIds.length) {
+      throw new Error("No taxonomy nodes were selected for deletion.");
+    }
+
     const { error } = await supabase
       .from("taxonomy_nodes")
       .delete()
-      .eq("tag_id", parsed.tag_id);
+      .in("tag_id", subtreeTagIds);
 
     if (error) {
       throw new Error(error.message);
@@ -88,7 +174,7 @@ export async function deleteTaxonomyNode(formData: FormData) {
   }
 
   revalidatePath("/admin/tags");
-  redirectWithSaved("/admin/tags", "Taxonomy node deleted.");
+  redirectWithSaved("/admin/tags", "Taxonomy subtree deleted.");
 }
 
 export async function approveTaxonomyReviewAction(formData: FormData) {
@@ -110,7 +196,12 @@ export async function approveTaxonomyReviewAction(formData: FormData) {
       throw new Error("Review action is missing a question or proposed tags.");
     }
 
-    const proposedTagIds = Array.from(new Set(action.proposed_tag_ids));
+    const proposedTagIds = Array.from(
+      new Set(action.proposed_tag_ids.filter(Boolean)),
+    );
+    if (!proposedTagIds.length) {
+      throw new Error("Review action does not contain any valid proposed tags.");
+    }
     const rows = proposedTagIds.map((tagId) => ({
       question_id: action.question_id,
       tag_id: tagId,

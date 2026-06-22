@@ -1,3 +1,9 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
+import { taxonomyDisplayLabelFromId } from "@/lib/tags/taxonomy-display";
+
 export type TaxonomyFacetView = {
   facet_key: string;
   label: string;
@@ -9,6 +15,7 @@ export type TaxonomyNodeView = {
   aliases?: string[];
   description?: string | null;
   facet_key?: string | null;
+  is_assignable?: boolean;
   label: string;
   parent_tag_ids?: string[];
   tag_id: string;
@@ -22,11 +29,13 @@ export type TaxonomyCatalogView = {
 type SelectedTagMap = Partial<Record<string, string[]>>;
 
 type TaxonomyTagTreePickerProps = {
+  defaultOpenFacetKeys?: string[];
   disabled?: boolean;
   emptyLabel?: string;
   namePrefix: string;
   searchName?: string;
   searchQuery?: string;
+  selectable?: "all" | "assignable";
   selectedTagIds?: SelectedTagMap;
   taxonomyCatalog: TaxonomyCatalogView;
   title?: string;
@@ -41,7 +50,6 @@ function inputName(namePrefix: string, facetKey: string) {
 }
 
 function buildCatalogIndex(catalog: TaxonomyCatalogView) {
-  const nodesById = new Map(catalog.nodes.map((node) => [node.tag_id, node]));
   const childrenById = new Map<string, TaxonomyNodeView[]>();
 
   for (const node of catalog.nodes) {
@@ -53,13 +61,21 @@ function buildCatalogIndex(catalog: TaxonomyCatalogView) {
     }
   }
 
-  return { childrenById, nodesById };
+  for (const children of childrenById.values()) {
+    children.sort((left, right) => left.tag_id.localeCompare(right.tag_id));
+  }
+
+  return { childrenById };
+}
+
+function nodeLabel(node: TaxonomyNodeView) {
+  return taxonomyDisplayLabelFromId(node.tag_id);
 }
 
 function nodeMatchesSearch(node: TaxonomyNodeView, query: string) {
   if (!query) return true;
   const haystack = [
-    node.label,
+    nodeLabel(node),
     node.description,
     node.tag_id,
     ...(node.aliases ?? []),
@@ -106,6 +122,18 @@ function nodeOrDescendantMatches(
     );
 }
 
+function hasSelectedDescendant(
+  node: TaxonomyNodeView,
+  selected: Set<string>,
+  childrenById: Map<string, TaxonomyNodeView[]>,
+): boolean {
+  return (childrenById.get(node.tag_id) ?? []).some(
+    (child) =>
+      selected.has(child.tag_id) ||
+      hasSelectedDescendant(child, selected, childrenById),
+  );
+}
+
 function TreeNode({
   childrenById,
   disabled,
@@ -113,6 +141,7 @@ function TreeNode({
   namePrefix,
   node,
   query,
+  selectable,
   selected,
   level = 0,
 }: {
@@ -123,6 +152,7 @@ function TreeNode({
   namePrefix: string;
   node: TaxonomyNodeView;
   query: string;
+  selectable: "all" | "assignable";
   selected: Set<string>;
 }) {
   const children = (childrenById.get(node.tag_id) ?? []).filter(
@@ -130,88 +160,131 @@ function TreeNode({
       child.facet_key === facetKey &&
       nodeOrDescendantMatches(child, facetKey, query, childrenById),
   );
-  const childTree = children.map((child) => (
-    <TreeNode
-      childrenById={childrenById}
-      disabled={disabled}
-      facetKey={facetKey}
-      key={child.tag_id}
-      level={level + 1}
-      namePrefix={namePrefix}
-      node={child}
-      query={query}
-      selected={selected}
-    />
-  ));
   const matches = nodeMatchesSearch(node, query);
   if (query && !matches && !children.length) return null;
+
   const aliases = node.aliases ?? [];
+  const isSelected = selected.has(node.tag_id);
+  const canSelect = selectable === "all" || node.is_assignable !== false;
+  const shouldOpen =
+    Boolean(query) ||
+    isSelected ||
+    hasSelectedDescendant(node, selected, childrenById) ||
+    level === 0;
 
   return (
-    <div className="space-y-1" style={{ marginLeft: `${Math.min(level, 4) * 12}px` }}>
-      {matches ? (
-        <label className="flex min-w-0 items-start gap-2 rounded-md border bg-background px-2 py-1.5 text-sm">
-          <input
-            className="mt-1"
-            defaultChecked={selected.has(node.tag_id)}
-            disabled={disabled}
-            name={inputName(namePrefix, facetKey)}
-            type="checkbox"
-            value={node.tag_id}
-          />
-          <span className="min-w-0">
-            <span className="block font-medium">{node.label}</span>
-            <span className="block break-all text-[11px] text-muted-foreground">
-              {node.tag_id}
-            </span>
-            {aliases.length ? (
-              <span className="block text-[11px] text-muted-foreground">
-                Aliases: {aliases.slice(0, 3).join(", ")}
+    <details className="group" open={shouldOpen}>
+      <summary
+        className="flex cursor-pointer list-none items-start gap-2 rounded-md border bg-background px-2 py-1.5 text-sm transition hover:bg-muted/40"
+        style={{ marginLeft: `${level * 14}px` }}
+      >
+        <span className="mt-0.5 w-3 text-xs text-muted-foreground group-open:hidden">
+          ▸
+        </span>
+        <span className="mt-0.5 hidden w-3 text-xs text-muted-foreground group-open:inline">
+          ▾
+        </span>
+        <input
+          className="mt-1"
+          defaultChecked={isSelected}
+          disabled={disabled || !canSelect}
+          name={inputName(namePrefix, facetKey)}
+          onClick={(event) => event.stopPropagation()}
+          type="checkbox"
+          value={node.tag_id}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{nodeLabel(node)}</span>
+            {node.is_assignable === false ? (
+              <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                group
+              </span>
+            ) : null}
+            {children.length ? (
+              <span className="text-[11px] text-muted-foreground">
+                {children.length} children
               </span>
             ) : null}
           </span>
-        </label>
+          <span className="block break-all text-[11px] text-muted-foreground">
+            {node.tag_id}
+          </span>
+          {aliases.length ? (
+            <span className="block text-[11px] text-muted-foreground">
+              Aliases: {aliases.slice(0, 3).join(", ")}
+            </span>
+          ) : null}
+        </span>
+      </summary>
+      {children.length ? (
+        <div className="ml-4 mt-1 space-y-1 border-l pl-2">
+          {children.map((child) => (
+            <TreeNode
+              childrenById={childrenById}
+              disabled={disabled}
+              facetKey={facetKey}
+              key={child.tag_id}
+              level={level + 1}
+              namePrefix={namePrefix}
+              node={child}
+              query={query}
+              selectable={selectable}
+              selected={selected}
+            />
+          ))}
+        </div>
       ) : null}
-      {childTree.length ? <div className="space-y-1">{childTree}</div> : null}
-    </div>
+    </details>
   );
 }
 
 export function TaxonomyTagTreePicker({
+  defaultOpenFacetKeys = [],
   disabled = false,
   emptyLabel = "No matching taxonomy tags.",
   namePrefix,
   searchName = `${namePrefix}_search`,
   searchQuery = "",
+  selectable = "all",
   selectedTagIds = {},
   taxonomyCatalog,
   title = "Taxonomy tag picker",
 }: TaxonomyTagTreePickerProps) {
-  const query = searchQuery.trim();
-  const { childrenById } = buildCatalogIndex(taxonomyCatalog);
-  const facets = [...taxonomyCatalog.facets].sort(
-    (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+  const [query, setQuery] = useState(searchQuery.trim());
+  const { childrenById } = useMemo(
+    () => buildCatalogIndex(taxonomyCatalog),
+    [taxonomyCatalog],
   );
+  const facets = useMemo(
+    () =>
+      [...taxonomyCatalog.facets].sort(
+        (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+      ),
+    [taxonomyCatalog.facets],
+  );
+  const defaultOpenFacets = new Set(defaultOpenFacetKeys);
 
   return (
     <div className="space-y-3 rounded-md border p-3">
       <div className="space-y-1">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted-foreground">
-          Browse by facet. Search matches label, alias, and tag ID; raw IDs are
-          shown only as small reference text.
+          Expand a facet, then choose existing tag IDs. Display names are derived
+          from the final ID segment.
         </p>
       </div>
       <label className="block space-y-1">
         <span className="text-xs font-medium text-muted-foreground">
-          Search taxonomy catalog
+          Filter visible IDs
         </span>
         <input
           className="h-9 w-full rounded-md border bg-background px-3 text-sm"
           defaultValue={searchQuery}
           disabled={disabled}
           name={searchName}
-          placeholder="quadratic, vertex, chain rule..."
+          onChange={(event) => setQuery(event.currentTarget.value.trim())}
+          placeholder="math.concept.calculus, chain_rule..."
           type="search"
         />
       </label>
@@ -241,6 +314,7 @@ export function TaxonomyTagTreePicker({
                 namePrefix={namePrefix}
                 node={node}
                 query={query}
+                selectable={selectable}
                 selected={selected}
               />
             ))
@@ -250,7 +324,11 @@ export function TaxonomyTagTreePicker({
             <details
               className="rounded-md border p-2"
               key={facet.facet_key}
-              open={Boolean(query) || Boolean(selected.size)}
+              open={
+                Boolean(query) ||
+                Boolean(selected.size) ||
+                defaultOpenFacets.has(facet.facet_key)
+              }
             >
               <summary className="cursor-pointer text-sm font-semibold">
                 {facet.label || titleCase(facet.facet_key)}
@@ -260,7 +338,7 @@ export function TaxonomyTagTreePicker({
                   </span>
                 ) : null}
               </summary>
-              <div className="mt-2 max-h-[340px] space-y-1 overflow-y-auto pr-1">
+              <div className="mt-2 max-h-[360px] space-y-1 overflow-y-auto pr-1">
                 {renderedRoots.length ? (
                   renderedRoots
                 ) : (

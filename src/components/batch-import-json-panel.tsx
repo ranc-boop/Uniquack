@@ -29,7 +29,7 @@ const starterJson = JSON.stringify(
         title: "Imported draft FRQ",
         type: "frq",
         difficulty: 520,
-        tag_names: ["AP Physics"],
+        tag_ids: ["math.curriculum.ap.ap_calculus_ab"],
         content_html: "<p>Question stem goes here.</p>",
         solution_html: "<p>Solution notes go here.</p>",
         image_urls: ["https://example.com/q1-diagram.png"],
@@ -168,7 +168,7 @@ export function BatchImportJsonPanel() {
           value={jsonText}
           onChange={(event) => updateJsonText(event.target.value)}
           className="min-h-[520px] font-mono text-sm"
-          placeholder='Paste JSON here. Example: { "questions": [{ "code": "AP-CALC-001", "title": "Limits FRQ", "content_html": "<p>...</p>", "tag_names": ["AP Calculus"] }] }'
+          placeholder='Paste JSON here. Example: { "questions": [{ "code": "AP-CALC-001", "title": "Limits FRQ", "content_html": "<p>...</p>", "tag_ids": ["math.concept.calculus.limits"] }] }'
           spellCheck={false}
         />
         <div className="flex flex-wrap gap-2">
@@ -214,7 +214,7 @@ export function BatchImportJsonPanel() {
           <p className="text-sm font-medium">Rules</p>
           <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
             <li>Questions are always imported as drafts.</li>
-            <li>Tags must already exist by slug or name.</li>
+            <li>Tags must already exist by exact tag_id.</li>
             <li>Unsafe HTML is sanitized before saving.</li>
             <li>
               Asset references are preserved for review only. Batch Import v2

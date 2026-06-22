@@ -20,6 +20,78 @@ import {
   questionUpdateSchema,
 } from "@/lib/validations/question";
 
+
+const taxonomyTagIdPattern = /^math\.[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
+
+function taxonomyTagIdsFromForm(formData: FormData, prefix = "question_tax") {
+  const tagIds = new Set<string>();
+
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith(`${prefix}_`) || key.endsWith("_search")) {
+      continue;
+    }
+
+    if (typeof value !== "string") {
+      continue;
+    }
+
+    const tagId = value.trim();
+    if (taxonomyTagIdPattern.test(tagId)) {
+      tagIds.add(tagId);
+    }
+  }
+
+  return Array.from(tagIds);
+}
+
+async function replaceQuestionTaxonomyAssignments({
+  profileId,
+  questionId,
+  supabase,
+  tagIds,
+}: {
+  profileId: string;
+  questionId: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  tagIds: string[];
+}) {
+  const uniqueTagIds = Array.from(new Set(tagIds));
+
+  const { error: deleteError } = await supabase
+    .from("question_taxonomy_assignments")
+    .delete()
+    .eq("question_id", questionId);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  if (!uniqueTagIds.length) {
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from("question_taxonomy_assignments")
+    .insert(
+      uniqueTagIds.map((tagId) => ({
+        approved_at: new Date().toISOString(),
+        approved_by: profileId,
+        confidence: 1,
+        created_by: profileId,
+        evidence: { source: "admin_question_form" },
+        question_id: questionId,
+        review_status: "approved",
+        source: "manual",
+        tag_id: tagId,
+        updated_by: profileId,
+      })),
+    );
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+}
+
 function questionSourceValues(values: {
   content_html: string;
   content_source: string;
@@ -75,7 +147,12 @@ export async function createQuestion(formData: FormData) {
       throw new Error(error.message);
     }
 
-    void question;
+    await replaceQuestionTaxonomyAssignments({
+      profileId: profile.id,
+      questionId: question.id,
+      supabase,
+      tagIds: taxonomyTagIdsFromForm(formData),
+    });
   } catch (error) {
     redirectWithError("/admin/questions", formatActionError(error));
   }
@@ -111,6 +188,13 @@ export async function updateQuestion(formData: FormData) {
     if (error) {
       throw new Error(error.message);
     }
+
+    await replaceQuestionTaxonomyAssignments({
+      profileId: profile.id,
+      questionId: id,
+      supabase,
+      tagIds: taxonomyTagIdsFromForm(formData),
+    });
 
   } catch (error) {
     redirectWithError("/admin/questions", formatActionError(error));

@@ -40,6 +40,7 @@ import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
+import type { Database } from "@/types/database";
 
 type AdminQuestionsPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined> & {
@@ -57,6 +58,7 @@ type AdminQuestionsPageProps = {
 };
 
 const questionStatuses = ["draft", "published", "archived"] as const;
+type QuestionRow = Database["public"]["Tables"]["questions"]["Row"];
 
 function safeStatusFilter(value: string | undefined) {
   return questionStatuses.find((status) => status === value) ?? "";
@@ -112,11 +114,30 @@ function selectedTagsForFacets({
   ) as Record<string, string[]>;
 }
 
+
+function selectedTaxonomyTagMapFromAssignments(
+  assignments: TaxonomyTagChipAssignment[] | undefined,
+) {
+  const selected: Record<string, string[]> = {};
+
+  for (const assignment of assignments ?? []) {
+    const facetKey = assignment.facet_key ?? assignment.category;
+    if (!facetKey) continue;
+    selected[facetKey] = [...(selected[facetKey] ?? []), assignment.tag_id];
+  }
+
+  return selected;
+}
+
 function numericParam(value: string | string[] | undefined) {
   const first = firstParam(value);
   if (first === undefined || first.trim() === "") return undefined;
   const numeric = Number(first);
   return Number.isFinite(numeric) ? numeric : Number.NaN;
+}
+
+function postgrestLikePattern(value: string) {
+  return value.replace(/[,%_]/g, " ").trim();
 }
 
 function isMissingTaxonomyTableError(error: unknown) {
@@ -172,10 +193,7 @@ export default async function AdminQuestionsPage({
   const facetByTagId = new Map(
     taxonomyCatalog.nodes.map((node) => [node.tag_id, node.facet_key]),
   );
-  const {
-    data: taxonomySearchRows,
-    error: taxonomyRpcError,
-  } = await supabase.rpc("search_questions_by_taxonomy", {
+  const taxonomySearchArgs = {
     assignment_review_status: taxonomyFilter.requireReviewed
       ? "approved"
       : null,
@@ -187,11 +205,68 @@ export default async function AdminQuestionsPage({
     page_offset: (page - 1) * pageSize,
     query_text: search || null,
     question_status: selectedStatus || null,
-  });
-  const orderedQuestionIds = (taxonomySearchRows ?? []).map(
+  };
+  const {
+    data: taxonomySearchRows,
+    error: taxonomyRpcError,
+  } = await supabase.rpc("search_questions_by_taxonomy", taxonomySearchArgs);
+  let fallbackTotalQuestions = 0;
+  if (!taxonomyRpcError && page > 1 && !taxonomySearchRows?.length) {
+    const { data: firstPageRows } = await supabase.rpc(
+      "search_questions_by_taxonomy",
+      {
+        ...taxonomySearchArgs,
+        page_limit: 1,
+        page_offset: 0,
+      },
+    );
+    fallbackTotalQuestions = Number(firstPageRows?.[0]?.total_count ?? 0);
+  }
+  let orderedQuestionIds = (taxonomySearchRows ?? []).map(
     (row) => row.question_id,
   );
-  const totalQuestions = Number(taxonomySearchRows?.[0]?.total_count ?? 0);
+  let totalQuestions = Number(
+    taxonomySearchRows?.[0]?.total_count ?? fallbackTotalQuestions,
+  );
+  let fallbackQuestionsResult: {
+    count: number | null;
+    data: QuestionRow[] | null;
+    error: { message?: string } | null;
+  } | null = null;
+
+  if (taxonomyRpcError) {
+    let fallbackQuery = supabase
+      .from("questions")
+      .select("*", { count: "exact" });
+
+    if (selectedStatus) {
+      fallbackQuery = fallbackQuery.eq("status", selectedStatus);
+    }
+
+    if (difficultyMin !== null) {
+      fallbackQuery = fallbackQuery.gte("difficulty_rating", difficultyMin);
+    }
+
+    if (difficultyMax !== null) {
+      fallbackQuery = fallbackQuery.lte("difficulty_rating", difficultyMax);
+    }
+
+    const fallbackSearch = postgrestLikePattern(search);
+    if (fallbackSearch) {
+      fallbackQuery = fallbackQuery.or(
+        `question_code.ilike.%${fallbackSearch}%,title.ilike.%${fallbackSearch}%`,
+      );
+    }
+
+    fallbackQuestionsResult = await fallbackQuery
+      .order("created_at", { ascending: false })
+      .range((page - 1) * pageSize, page * pageSize - 1);
+    orderedQuestionIds = (fallbackQuestionsResult.data ?? []).map(
+      (question) => question.id,
+    );
+    totalQuestions = fallbackQuestionsResult.count ?? 0;
+  }
+
   const questionOrder = new Map(
     orderedQuestionIds.map((questionId, index) => [questionId, index]),
   );
@@ -201,9 +276,11 @@ export default async function AdminQuestionsPage({
     { data: questionSourceFiles },
   ] =
     await Promise.all([
-      orderedQuestionIds.length
-        ? supabase.from("questions").select("*").in("id", orderedQuestionIds)
-        : Promise.resolve({ data: [], error: null }),
+      fallbackQuestionsResult
+        ? Promise.resolve(fallbackQuestionsResult)
+        : orderedQuestionIds.length
+          ? supabase.from("questions").select("*").in("id", orderedQuestionIds)
+          : Promise.resolve({ data: [], error: null }),
       orderedQuestionIds.length
         ? supabase
             .from("question_assets")
@@ -422,6 +499,15 @@ export default async function AdminQuestionsPage({
               />
             </div>
             <div className="md:col-span-2">
+              <TaxonomyTagTreePicker
+                defaultOpenFacetKeys={["concept", "method", "task"]}
+                namePrefix="question_tax"
+                selectable="assignable"
+                taxonomyCatalog={taxonomyCatalog}
+                title="Question taxonomy tags"
+              />
+            </div>
+            <div className="md:col-span-2">
               <QuestionAssetsPanel
                 draftInputId="create-question-draft-id"
                 questionCodeInputId="question_code"
@@ -489,6 +575,7 @@ export default async function AdminQuestionsPage({
                 </p>
               </div>
               <TaxonomyTagTreePicker
+                defaultOpenFacetKeys={["concept", "method", "task"]}
                 namePrefix="tax"
                 searchQuery={firstParam(params.tax_search) ?? ""}
                 selectedTagIds={selectedTaxonomyInclude}
@@ -501,6 +588,7 @@ export default async function AdminQuestionsPage({
                 </summary>
                 <div className="mt-3 space-y-3">
                   <TaxonomyTagTreePicker
+                    defaultOpenFacetKeys={["concept", "method", "task"]}
                     namePrefix="tax_exclude"
                     searchName="tax_exclude_search"
                     searchQuery={firstParam(params.tax_exclude_search) ?? ""}
@@ -666,7 +754,11 @@ export default async function AdminQuestionsPage({
                         importedAssetReferences={importedAssetReferences}
                         question={question}
                         readiness={readiness}
+                        selectedTaxonomyTagIds={selectedTaxonomyTagMapFromAssignments(
+                          taxonomyAssignmentsByQuestionId.get(question.id),
+                        )}
                         sourceFiles={sourceFilesByQuestionId.get(question.id)}
+                        taxonomyCatalog={taxonomyCatalog}
                       />
                     </TableCell>
                   </TableRow>

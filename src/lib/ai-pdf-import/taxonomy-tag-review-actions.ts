@@ -68,6 +68,20 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function leafAssignableTagIds(catalog: TaxonomyCatalogView) {
+  const parentTagIds = new Set(
+    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  );
+  return new Set(
+    catalog.nodes
+      .filter(
+        (node) =>
+          node.facet_key && node.is_assignable && !parentTagIds.has(node.tag_id),
+      )
+      .map((node) => node.tag_id),
+  );
+}
+
 function readTaggingPlan(
   summary: Record<string, unknown>,
 ): AITaxonomyQuestionTaggingPlan | null {
@@ -131,10 +145,15 @@ function actionsForSuggestion(
   catalog: TaxonomyCatalogView,
 ) {
   const nodesById = new Map(catalog.nodes.map((node) => [node.tag_id, node]));
+  const allowedTagIds = leafAssignableTagIds(catalog);
   const proposedTagIds = uniqueStrings(Object.values(suggestion.tags).flat());
   const validTagIds = proposedTagIds.filter((tagId) => {
     const node = nodesById.get(tagId);
-    return node?.facet_key && suggestion.tags[node.facet_key]?.includes(tagId);
+    return (
+      node?.facet_key &&
+      allowedTagIds.has(tagId) &&
+      suggestion.tags[node.facet_key]?.includes(tagId)
+    );
   });
   const invalidTagIds = proposedTagIds.filter(
     (tagId) => !validTagIds.includes(tagId),
@@ -203,6 +222,9 @@ export function buildTaxonomyTagReviewActionPlanFromSummary(
   const warnings = uniqueStrings([
     ...(taggingPlan ? [] : ["taxonomy_review_actions_no_tagging_plan"]),
     ...(catalog.nodes.length ? [] : ["taxonomy_database_catalog_empty"]),
+    ...(leafAssignableTagIds(catalog).size
+      ? []
+      : ["taxonomy_no_leaf_assignable_tags"]),
   ]);
 
   return {

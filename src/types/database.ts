@@ -413,6 +413,7 @@ export type Database = {
           difficulty_min?: number | null;
           exclude_tag_ids?: string[];
           include_tag_ids?: string[];
+          page_cursor?: string | null;
           page_limit?: number | null;
           page_offset?: number | null;
           question_status?: string | null;
@@ -421,6 +422,8 @@ export type Database = {
         Returns: Array<{
           difficulty_rating: number;
           matched_tag_ids: string[];
+          matched_tags: Json;
+          next_cursor: string | null;
           question_code: string;
           question_id: string;
           question_type: string;

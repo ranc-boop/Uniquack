@@ -101,6 +101,7 @@ import {
   buildAITaggingV2PlanFromSummary,
   failedAITaggingV2Plan,
   mergeAITaggingV2PlanIntoSummary,
+  taxonomyCatalogToAITagTaxonomy,
   type AITaggingV2Plan,
 } from "@/lib/ai-pdf-import/tagging-v2";
 import {
@@ -179,8 +180,6 @@ type SupabaseLike = {
 
 type ActiveTag = {
   id: string;
-  name: string;
-  slug: string;
   status: string;
   facet_key: string | null;
 };
@@ -1331,7 +1330,12 @@ async function generateAndStoreTaggingV2Plan({
 }) {
   try {
     const current = await loadCurrentAIPdfSummary(input);
-    const taggingV2Plan = buildAITaggingV2PlanFromSummary(current.aiPdfImport);
+    const { catalog, errorMessage } = await loadTaxonomyCatalog(input.supabase);
+    if (errorMessage) throw new Error(errorMessage);
+    const taggingV2Plan = buildAITaggingV2PlanFromSummary(
+      current.aiPdfImport,
+      taxonomyCatalogToAITagTaxonomy(catalog),
+    );
     await updateAITaggingV2Plan({ input, taggingV2Plan });
     await generateAndStoreTaxonomyBootstrapPlan({ input });
   } catch (error) {
@@ -1752,19 +1756,6 @@ function escapeAttribute(value: string) {
     .replaceAll(">", "&gt;");
 }
 
-function slugify(value: string) {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-
-  return slug || `ai-tag-${crypto.randomUUID().slice(0, 8)}`;
-}
-
 function uniqueValues(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
@@ -1815,7 +1806,7 @@ function buildPrompt({
   const tags = activeTags
     .map(
       (tag) =>
-        `- ${tag.name} | tag_id=${tag.slug} | facet=${tag.facet_key ?? "none"} | status=${tag.status}`,
+        `- tag_id=${tag.id} | facet=${tag.facet_key ?? "none"} | status=${tag.status}`,
     )
     .join("\n");
 
@@ -1857,7 +1848,7 @@ function buildPrompt({
         ].join("\n")
       : "",
     "",
-    "Existing active tags. Reuse these by tag_slugs or tag_names when they are semantically appropriate. Create new tags only when none fit:",
+    "Existing active taxonomy tag IDs. Reuse only these exact tag_ids when they are semantically appropriate. Do not create, invent, rename, or suggest new taxonomy tags:",
     tags || "(none)",
     "",
     "JSON schema:",
@@ -1875,14 +1866,12 @@ function buildPrompt({
           content_html: "<p>Question stem with {{asset:figure_1}} where the image belongs.</p>",
           content_source: "Editable Markdown + LaTeX source, same meaning as content_html. Use $...$ for inline math.",
           difficulty_rating: 500,
-          new_tag_names: ["Only if no existing tag fits"],
           page_refs: [1, 2],
           question_number: "Visible source number such as 3, 3.1, 3(a), or FRQ 2. Omit if missing.",
           question_type: "frq",
           solution_html: "<p>Solution or explanation.</p>",
           solution_source: "Editable solution source.",
-          tag_names: ["Existing tag name"],
-          tag_slugs: ["existing-tag-slug"],
+          tag_ids: ["math.concept.calculus.derivatives.chain_rule"],
           title: "Short question title",
         },
       ],
@@ -1902,6 +1891,7 @@ function buildPrompt({
     "- Bboxes are normalized page coordinates from top-left, all values 0..1.",
     "- Use question_number only for the visible number from the PDF. Do not invent database question_code values; the server always generates those.",
     "- Do not normalize visible numbers aggressively: 3, 3.1, 3(a), and FRQ 2 are different display values.",
+    "- Only output tag_ids listed above. If no existing tag fits, leave tag_ids empty and add a warning. Do not output any alternate tag identifier fields.",
     "- Keep questions as draft-quality records for human review; do not invent answers when unsure.",
   ].join("\n");
 }
@@ -1947,14 +1937,11 @@ async function loadActiveTags(supabase: SupabaseLike) {
 
   return ((data ?? []) as {
     facet_key: string | null;
-    label: string;
     status: string;
     tag_id: string;
   }[]).map((tag) => ({
     facet_key: tag.facet_key,
     id: tag.tag_id,
-    name: tag.label,
-    slug: tag.tag_id,
     status: tag.status,
   }));
 }
@@ -1978,12 +1965,7 @@ async function buildImportJson({
   questionIndexOffset?: number;
   supabase: SupabaseLike;
 }) {
-  const bySlug = new Map(
-    activeTags.map((tag) => [tag.slug.trim().toLowerCase(), tag]),
-  );
-  const byName = new Map(
-    activeTags.map((tag) => [tag.name.trim().toLowerCase(), tag]),
-  );
+  const activeTagIds = new Set(activeTags.map((tag) => tag.id));
   const existingQuestionCodes = await loadExistingQuestionCodeKeys(supabase);
   const usedQuestionCodes = new Set<string>();
   const usedVisibleQuestionNumbers = new Set<string>();
@@ -1992,28 +1974,17 @@ async function buildImportJson({
 
   for (const [index, question] of extraction.questions.entries()) {
     const globalQuestionIndex = questionIndexOffset + index;
-    const tagSlugs = new Set<string>();
+    const tagIds = new Set<string>();
 
-    for (const slug of question.tag_slugs) {
-      const tag = bySlug.get(slug.trim().toLowerCase());
-
-      if (tag) {
-        tagSlugs.add(tag.slug);
+    for (const tagId of question.tag_ids) {
+      const normalizedTagId = tagId.trim();
+      if (activeTagIds.has(normalizedTagId)) {
+        tagIds.add(normalizedTagId);
+      } else if (normalizedTagId) {
+        extraction.warnings.push(
+          `Question ${globalQuestionIndex + 1}: unknown taxonomy tag_id "${normalizedTagId}" was ignored.`,
+        );
       }
-    }
-
-    for (const name of question.tag_names) {
-      const tag = byName.get(name.trim().toLowerCase());
-
-      if (tag) {
-        tagSlugs.add(tag.slug);
-      }
-    }
-
-    if (question.new_tag_names.length) {
-      extraction.warnings.push(
-        `Question ${globalQuestionIndex + 1}: AI suggested new taxonomy tags (${question.new_tag_names.join(", ")}); suggestions were preserved in metadata and not written to the official taxonomy.`,
-      );
     }
 
     const rawAiQuestionCode = question.question_code?.trim() || "";
@@ -2076,9 +2047,7 @@ async function buildImportJson({
         raw_ai_question_code: rawAiQuestionCode || null,
         source: "ai_pdf_import",
         tag_decisions: {
-          new_tag_names: question.new_tag_names,
-          tag_names: question.tag_names,
-          tag_slugs: question.tag_slugs,
+          tag_ids: question.tag_ids,
         },
         visible_question_number: visibleQuestionNumber || null,
       },
@@ -2089,7 +2058,7 @@ async function buildImportJson({
       question_code: questionCode,
       question_type: question.question_type,
       solution_source_format: solutionFields.sourceFormat,
-      tag_slugs: Array.from(tagSlugs),
+      tag_ids: Array.from(tagIds),
       title: question.title,
     };
 

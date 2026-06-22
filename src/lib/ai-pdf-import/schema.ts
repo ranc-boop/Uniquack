@@ -439,15 +439,13 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
   content_html: z.string().trim().min(1),
   content_source: optionalStringSchema,
   difficulty_rating: difficultyRatingSchema,
-  new_tag_names: stringArraySchema,
   page_refs: pageRefsSchema,
   question_code: z.string().trim().max(80).optional(),
   question_number: optionalStringSchema,
   question_type: questionTypeSchema.default("frq"),
   solution_html: z.string().trim().nullable().default(null),
   solution_source: optionalStringSchema,
-  tag_names: stringArraySchema,
-  tag_slugs: stringArraySchema,
+  tag_ids: stringArraySchema,
   title: z.string().trim().min(1).max(240),
 }));
 

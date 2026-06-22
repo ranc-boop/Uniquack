@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+import type { TaxonomyCatalogView } from "@/components/tags/taxonomy-tag-tree-picker";
+
 export type AITaggingV2PlanVersion = "tagging_v2_plan_v1";
 
 export type AITaggingV2PlanStatus =
@@ -147,99 +149,7 @@ const MAX_SUBSKILL_TAGS_PER_TARGET = 3;
 const MAX_FORMAT_TAGS_PER_TARGET = 2;
 const MAX_DIFFICULTY_TAGS_PER_TARGET = 1;
 
-const TAXONOMY: AITaxonomyTag[] = [
-  { id: "subject.math", label: "Math", level: "subject", parentIds: [] },
-  { id: "subject.physics", label: "Physics", level: "subject", parentIds: [] },
-  { id: "subject.chemistry", label: "Chemistry", level: "subject", parentIds: [] },
-  { id: "subject.biology", label: "Biology", level: "subject", parentIds: [] },
-  { id: "subject.english", label: "English", level: "subject", parentIds: [] },
-  { id: "subject.history", label: "History", level: "subject", parentIds: [] },
-  { id: "subject.unknown", label: "Unknown subject", level: "subject", parentIds: [] },
-  { id: "course.sat_math", label: "SAT Math", level: "course", parentIds: ["subject.math"] },
-  { id: "course.ap_calculus_ab", label: "AP Calculus AB", level: "course", parentIds: ["subject.math"] },
-  { id: "course.ap_calculus_bc", label: "AP Calculus BC", level: "course", parentIds: ["subject.math"] },
-  { id: "course.ap_physics_1", label: "AP Physics 1", level: "course", parentIds: ["subject.physics"] },
-  { id: "course.ap_physics_2", label: "AP Physics 2", level: "course", parentIds: ["subject.physics"] },
-  { id: "course.ap_statistics", label: "AP Statistics", level: "course", parentIds: ["subject.math"] },
-  { id: "course.general_math", label: "General Math", level: "course", parentIds: ["subject.math"] },
-  { id: "course.unknown", label: "Unknown course", level: "course", parentIds: ["subject.unknown"] },
-  { id: "domain.algebra", label: "Algebra", level: "domain", parentIds: ["course.sat_math", "course.general_math"] },
-  { id: "domain.advanced_math", label: "Advanced Math", level: "domain", parentIds: ["course.sat_math", "course.general_math"] },
-  { id: "domain.problem_solving_data_analysis", label: "Problem Solving and Data Analysis", level: "domain", parentIds: ["course.sat_math"] },
-  { id: "domain.geometry_trigonometry", label: "Geometry and Trigonometry", level: "domain", parentIds: ["course.sat_math"] },
-  { id: "unit.linear_equations", label: "Linear equations", level: "unit", parentIds: ["domain.algebra"] },
-  { id: "unit.systems_of_equations", label: "Systems of equations", level: "unit", parentIds: ["domain.algebra"] },
-  { id: "unit.quadratics", label: "Quadratics", level: "unit", parentIds: ["domain.advanced_math"] },
-  { id: "unit.exponential_functions", label: "Exponential functions", level: "unit", parentIds: ["domain.advanced_math"] },
-  { id: "unit.functions", label: "Functions", level: "unit", parentIds: ["domain.advanced_math", "domain.algebra"] },
-  { id: "unit.polynomials", label: "Polynomials", level: "unit", parentIds: ["domain.advanced_math"] },
-  { id: "unit.ratios_percentages", label: "Ratios and percentages", level: "unit", parentIds: ["domain.problem_solving_data_analysis"] },
-  { id: "unit.statistics", label: "Statistics", level: "unit", parentIds: ["domain.problem_solving_data_analysis"] },
-  { id: "unit.probability", label: "Probability", level: "unit", parentIds: ["domain.problem_solving_data_analysis"] },
-  { id: "unit.geometry_area_volume", label: "Area and volume", level: "unit", parentIds: ["domain.geometry_trigonometry"] },
-  { id: "unit.triangles", label: "Triangles", level: "unit", parentIds: ["domain.geometry_trigonometry"] },
-  { id: "unit.circles", label: "Circles", level: "unit", parentIds: ["domain.geometry_trigonometry"] },
-  { id: "unit.trigonometry", label: "Trigonometry", level: "unit", parentIds: ["domain.geometry_trigonometry"] },
-  { id: "skill.solve_linear_equation", label: "Solve linear equation", level: "skill", parentIds: ["unit.linear_equations"] },
-  { id: "skill.linear_function_interpretation", label: "Linear function interpretation", level: "skill", parentIds: ["unit.functions"] },
-  { id: "skill.slope_intercept", label: "Slope-intercept interpretation", level: "skill", parentIds: ["unit.functions"] },
-  { id: "skill.systems_solution", label: "Systems solution", level: "skill", parentIds: ["unit.systems_of_equations"] },
-  { id: "skill.factor_quadratic", label: "Factor quadratic", level: "skill", parentIds: ["unit.quadratics"] },
-  { id: "skill.quadratic_formula", label: "Quadratic formula", level: "skill", parentIds: ["unit.quadratics"] },
-  { id: "skill.complete_square", label: "Complete the square", level: "skill", parentIds: ["unit.quadratics"] },
-  { id: "skill.exponential_growth_decay", label: "Exponential growth and decay", level: "skill", parentIds: ["unit.exponential_functions"] },
-  { id: "skill.function_notation", label: "Function notation", level: "skill", parentIds: ["unit.functions"] },
-  { id: "skill.function_transformation", label: "Function transformation", level: "skill", parentIds: ["unit.functions"] },
-  { id: "skill.polynomial_operations", label: "Polynomial operations", level: "skill", parentIds: ["unit.polynomials"] },
-  { id: "skill.ratio_proportion", label: "Ratio and proportion", level: "skill", parentIds: ["unit.ratios_percentages"] },
-  { id: "skill.percent_change", label: "Percent change", level: "skill", parentIds: ["unit.ratios_percentages"] },
-  { id: "skill.mean_median", label: "Mean and median", level: "skill", parentIds: ["unit.statistics"] },
-  { id: "skill.standard_deviation", label: "Standard deviation", level: "skill", parentIds: ["unit.statistics"] },
-  { id: "skill.two_way_table", label: "Two-way table", level: "skill", parentIds: ["unit.probability", "unit.statistics"] },
-  { id: "skill.conditional_probability", label: "Conditional probability", level: "skill", parentIds: ["unit.probability"] },
-  { id: "skill.area_volume", label: "Area and volume", level: "skill", parentIds: ["unit.geometry_area_volume"] },
-  { id: "skill.similar_triangles", label: "Similar triangles", level: "skill", parentIds: ["unit.triangles"] },
-  { id: "skill.circle_equation", label: "Circle equation", level: "skill", parentIds: ["unit.circles"] },
-  { id: "skill.right_triangle_trig", label: "Right triangle trigonometry", level: "skill", parentIds: ["unit.trigonometry"] },
-  { id: "subskill.difference_of_squares", label: "Difference of squares", level: "subskill", parentIds: ["skill.factor_quadratic"] },
-  { id: "subskill.vertex_form", label: "Vertex form", level: "subskill", parentIds: ["skill.quadratic_formula", "skill.complete_square"] },
-  { id: "subskill.x_intercepts", label: "X-intercepts", level: "subskill", parentIds: ["skill.factor_quadratic"] },
-  { id: "subskill.slope_from_two_points", label: "Slope from two points", level: "subskill", parentIds: ["skill.slope_intercept"] },
-  { id: "subskill.y_intercept_context", label: "Y-intercept in context", level: "subskill", parentIds: ["skill.slope_intercept"] },
-  { id: "subskill.table_to_function", label: "Table to function", level: "subskill", parentIds: ["skill.function_notation"] },
-  { id: "subskill.graph_to_equation", label: "Graph to equation", level: "subskill", parentIds: ["skill.linear_function_interpretation"] },
-  { id: "subskill.probability_from_table", label: "Probability from table", level: "subskill", parentIds: ["skill.conditional_probability", "skill.two_way_table"] },
-  { id: "subskill.arc_angle_relationship", label: "Arc-angle relationship", level: "subskill", parentIds: ["skill.circle_equation"] },
-  { id: "format.multiple_choice", label: "Multiple choice", level: "format", parentIds: [] },
-  { id: "format.free_response", label: "Free response", level: "format", parentIds: [] },
-  { id: "format.numeric_input", label: "Numeric input", level: "format", parentIds: [] },
-  { id: "format.expression_input", label: "Expression input", level: "format", parentIds: [] },
-  { id: "format.graph_based", label: "Graph-based", level: "format", parentIds: [] },
-  { id: "format.table_based", label: "Table-based", level: "format", parentIds: [] },
-  { id: "format.diagram_based", label: "Diagram-based", level: "format", parentIds: [] },
-  { id: "format.image_based", label: "Image-based", level: "format", parentIds: [] },
-  { id: "format.proof_or_explanation", label: "Proof or explanation", level: "format", parentIds: [] },
-  { id: "format.unknown", label: "Unknown format", level: "format", parentIds: [] },
-  { id: "difficulty.easy", label: "Easy", level: "difficulty", parentIds: [] },
-  { id: "difficulty.medium", label: "Medium", level: "difficulty", parentIds: [] },
-  { id: "difficulty.hard", label: "Hard", level: "difficulty", parentIds: [] },
-  { id: "difficulty.unknown", label: "Unknown difficulty", level: "difficulty", parentIds: [] },
-  { id: "cognitive.recall", label: "Recall", level: "cognitive_process", parentIds: [] },
-  { id: "cognitive.procedure", label: "Procedure", level: "cognitive_process", parentIds: [] },
-  { id: "cognitive.conceptual", label: "Conceptual", level: "cognitive_process", parentIds: [] },
-  { id: "cognitive.application", label: "Application", level: "cognitive_process", parentIds: [] },
-  { id: "cognitive.multi_step_reasoning", label: "Multi-step reasoning", level: "cognitive_process", parentIds: [] },
-  { id: "cognitive.unknown", label: "Unknown cognitive process", level: "cognitive_process", parentIds: [] },
-  { id: "error.conceptual_gap", label: "Conceptual gap", level: "error_type", parentIds: [] },
-  { id: "error.calculation_error", label: "Calculation error", level: "error_type", parentIds: [] },
-  { id: "error.misread_question", label: "Misread question", level: "error_type", parentIds: [] },
-  { id: "error.wrong_formula", label: "Wrong formula", level: "error_type", parentIds: [] },
-  { id: "error.unit_error", label: "Unit error", level: "error_type", parentIds: [] },
-  { id: "error.graph_interpretation_error", label: "Graph interpretation error", level: "error_type", parentIds: [] },
-  { id: "error.algebra_manipulation_error", label: "Algebra manipulation error", level: "error_type", parentIds: [] },
-  { id: "error.unknown", label: "Unknown error type", level: "error_type", parentIds: [] },
-];
-
+const DEFAULT_TAXONOMY: AITaxonomyTag[] = [];
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -288,16 +198,64 @@ function boundedText(value: string, maxLength: number) {
   return text.length <= maxLength ? text : `${text.slice(0, maxLength)}...`;
 }
 
-function taxonomyById() {
-  return new Map(TAXONOMY.map((tag) => [tag.id, tag]));
+function inferTagLevel(tagId: string, parentIds: string[], facetKey: string | null): AITagLevel {
+  if (tagId === "math" || !parentIds.length) return "subject";
+  if (parentIds.includes("math")) {
+    if (facetKey === "curriculum") return "course";
+    if (facetKey === "concept") return "domain";
+    if (facetKey === "form" || facetKey === "task") return "format";
+    return "skill";
+  }
+
+  if (facetKey === "form" || facetKey === "task") return "format";
+  if (facetKey === "curriculum") return "course";
+  if (facetKey === "concept") {
+    const depth = tagId.split(".").length;
+    if (depth <= 3) return "domain";
+    if (depth === 4) return "unit";
+  }
+
+  return "skill";
 }
 
-export function getControlledAITagTaxonomy() {
-  return TAXONOMY;
+function taxonomyById(taxonomy: AITaxonomyTag[] = DEFAULT_TAXONOMY) {
+  return new Map(taxonomy.map((tag) => [tag.id, tag]));
 }
 
-export function findTaxonomyTagById(tagId: string) {
-  return taxonomyById().get(tagId) ?? null;
+export function taxonomyCatalogToAITagTaxonomy(
+  catalog: TaxonomyCatalogView,
+): AITaxonomyTag[] {
+  const parentTagIds = new Set(
+    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  );
+
+  return catalog.nodes
+    .filter(
+      (node) =>
+        node.facet_key && node.is_assignable && !parentTagIds.has(node.tag_id),
+    )
+    .map((node) => {
+      const parentIds = node.parent_tag_ids ?? [];
+      return {
+        id: node.tag_id,
+        label: node.label,
+        level: inferTagLevel(node.tag_id, parentIds, node.facet_key ?? null),
+        parentIds,
+      };
+    });
+}
+
+export function getControlledAITagTaxonomy(
+  taxonomy: AITaxonomyTag[] = DEFAULT_TAXONOMY,
+) {
+  return taxonomy;
+}
+
+export function findTaxonomyTagById(
+  tagId: string,
+  taxonomy: AITaxonomyTag[] = DEFAULT_TAXONOMY,
+) {
+  return taxonomyById(taxonomy).get(tagId) ?? null;
 }
 
 function evidenceForTarget({
@@ -332,10 +290,11 @@ function rawSuggestion({
 
 export function validateTagSuggestionAgainstTaxonomy(
   suggestion: RawSuggestionInput | AITagSuggestion,
+  taxonomy: AITaxonomyTag[] = DEFAULT_TAXONOMY,
 ) {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const taxonomyTag = findTaxonomyTagById(suggestion.tagId);
+  const taxonomyTag = findTaxonomyTagById(suggestion.tagId, taxonomy);
 
   if (!taxonomyTag) {
     errors.push("unknown_taxonomy_tag");
@@ -383,8 +342,9 @@ export function validateTagSuggestionAgainstTaxonomy(
 
 export function normalizeTagSuggestion(
   suggestion: RawSuggestionInput,
+  taxonomy: AITaxonomyTag[] = DEFAULT_TAXONOMY,
 ): AITagSuggestion {
-  const validation = validateTagSuggestionAgainstTaxonomy(suggestion);
+  const validation = validateTagSuggestionAgainstTaxonomy(suggestion, taxonomy);
   const tag = validation.tag;
   const reviewRequired =
     !validation.valid ||
@@ -568,115 +528,115 @@ export function buildRuleBasedTagSuggestionsForTarget(
   );
 
   if (mathSignal) {
-    addSuggestion(suggestions, target, "subject.math", ["math_signal"], "Math signal found.", {
+    addSuggestion(suggestions, target, "math", ["math_signal"], "Math signal found.", {
       confidence: 0.8,
     });
-    addSuggestion(suggestions, target, "course.sat_math", ["sat_math_style"], "SAT/AP-style math signal found.", {
+    addSuggestion(suggestions, target, "math.curriculum.sat", ["sat_math_style"], "SAT/AP-style math signal found.", {
       confidence: 0.68,
     });
   }
 
   if (has(/quadratic|parabola|x\^2|x²|vertex|factor/)) {
-    addSuggestion(suggestions, target, "domain.advanced_math", ["quadratic_signal"], "Quadratic or parabola language found.");
-    addSuggestion(suggestions, target, "unit.quadratics", ["quadratic_signal"], "Quadratic unit signal found.");
-    addSuggestion(suggestions, target, "skill.factor_quadratic", ["quadratic_factor_signal"], "Quadratic factoring signal found.");
+    addSuggestion(suggestions, target, "math.concept.functions", ["quadratic_signal"], "Quadratic or parabola language found.");
+    addSuggestion(suggestions, target, "math.concept.functions.quadratic", ["quadratic_signal"], "Quadratic unit signal found.");
+    addSuggestion(suggestions, target, "math.method.algebraic_manipulation.factor", ["quadratic_factor_signal"], "Quadratic factoring signal found.");
   }
 
   if (has(/difference of squares|x\^2\s*-\s*y\^2|a\^2\s*-\s*b\^2/)) {
-    addSuggestion(suggestions, target, "subskill.difference_of_squares", ["difference_of_squares_signal"], "Difference of squares pattern found.");
+    addSuggestion(suggestions, target, "math.concept.algebra.expressions.polynomial_expressions", ["difference_of_squares_signal"], "Difference of squares pattern found.");
   }
 
   if (has(/vertex|vertex form/)) {
-    addSuggestion(suggestions, target, "subskill.vertex_form", ["vertex_form_signal"], "Vertex form language found.");
+    addSuggestion(suggestions, target, "math.concept.functions.quadratic.vertex_form", ["vertex_form_signal"], "Vertex form language found.");
   }
 
   if (has(/slope|intercept|linear function|rate of change|y-intercept|y intercept/)) {
-    addSuggestion(suggestions, target, "domain.algebra", ["linear_signal"], "Linear function signal found.");
-    addSuggestion(suggestions, target, "unit.functions", ["linear_function_signal"], "Function unit signal found.");
-    addSuggestion(suggestions, target, "skill.linear_function_interpretation", ["linear_function_signal"], "Linear function interpretation signal found.");
-    addSuggestion(suggestions, target, "skill.slope_intercept", ["slope_intercept_signal"], "Slope/intercept signal found.");
+    addSuggestion(suggestions, target, "math.concept.algebra", ["linear_signal"], "Linear function signal found.");
+    addSuggestion(suggestions, target, "math.concept.functions", ["linear_function_signal"], "Function unit signal found.");
+    addSuggestion(suggestions, target, "math.concept.functions.linear", ["linear_function_signal"], "Linear function interpretation signal found.");
+    addSuggestion(suggestions, target, "math.concept.functions.linear.slope_intercept_form", ["slope_intercept_signal"], "Slope/intercept signal found.");
   }
 
   if (has(/two points|points \(|slope from/)) {
-    addSuggestion(suggestions, target, "subskill.slope_from_two_points", ["slope_from_points_signal"], "Slope from two points signal found.");
+    addSuggestion(suggestions, target, "math.concept.functions.linear.slope", ["slope_from_points_signal"], "Slope from two points signal found.");
   }
 
   if (has(/system|intersection|two equations|simultaneous/)) {
-    addSuggestion(suggestions, target, "unit.systems_of_equations", ["systems_signal"], "Systems of equations signal found.");
-    addSuggestion(suggestions, target, "skill.systems_solution", ["systems_solution_signal"], "Systems solution signal found.");
+    addSuggestion(suggestions, target, "math.concept.algebra.equations.systems_linear", ["systems_signal"], "Systems of equations signal found.");
+    addSuggestion(suggestions, target, "math.method.equation_solving.system_elimination", ["systems_solution_signal"], "Systems solution signal found.");
   }
 
   if (has(/circle|radius|center|\(x\s*[-+]\s*h\)\^2|\(y\s*[-+]\s*k\)\^2/)) {
-    addSuggestion(suggestions, target, "domain.geometry_trigonometry", ["circle_signal"], "Geometry/circle signal found.");
-    addSuggestion(suggestions, target, "unit.circles", ["circle_signal"], "Circle unit signal found.");
-    addSuggestion(suggestions, target, "skill.circle_equation", ["circle_equation_signal"], "Circle equation signal found.");
+    addSuggestion(suggestions, target, "math.concept.geometry", ["circle_signal"], "Geometry/circle signal found.");
+    addSuggestion(suggestions, target, "math.concept.geometry.circles", ["circle_signal"], "Circle unit signal found.");
+    addSuggestion(suggestions, target, "math.concept.geometry.circles", ["circle_equation_signal"], "Circle equation signal found.");
   }
 
   if (has(/mean|median|standard deviation/)) {
-    addSuggestion(suggestions, target, "unit.statistics", ["statistics_signal"], "Statistics signal found.");
-    addSuggestion(suggestions, target, has(/standard deviation/) ? "skill.standard_deviation" : "skill.mean_median", ["statistics_skill_signal"], "Statistics skill signal found.");
+    addSuggestion(suggestions, target, "math.concept.statistics_probability.center_spread", ["statistics_signal"], "Statistics signal found.");
+    addSuggestion(suggestions, target, has(/standard deviation/) ? "math.concept.statistics_probability.center_spread" : "math.concept.statistics_probability.center_spread", ["statistics_skill_signal"], "Statistics skill signal found.");
   }
 
   if (has(/probability|given that|two-way|two way|conditional|table/)) {
-    addSuggestion(suggestions, target, "unit.probability", ["probability_signal"], "Probability signal found.");
-    addSuggestion(suggestions, target, "skill.conditional_probability", ["conditional_probability_signal"], "Conditional probability signal found.");
+    addSuggestion(suggestions, target, "math.concept.statistics_probability.probability_basics", ["probability_signal"], "Probability signal found.");
+    addSuggestion(suggestions, target, "math.concept.statistics_probability.conditional_probability", ["conditional_probability_signal"], "Conditional probability signal found.");
     if (has(/table|two-way|two way/)) {
-      addSuggestion(suggestions, target, "skill.two_way_table", ["two_way_table_signal"], "Two-way table signal found.");
+      addSuggestion(suggestions, target, "math.concept.statistics_probability.two_way_tables", ["two_way_table_signal"], "Two-way table signal found.");
     }
   }
 
   if (has(/percent|percentage|%|ratio|proportion/)) {
-    addSuggestion(suggestions, target, "unit.ratios_percentages", ["ratio_percent_signal"], "Ratio/percent signal found.");
-    addSuggestion(suggestions, target, has(/percent|percentage|%/) ? "skill.percent_change" : "skill.ratio_proportion", ["ratio_percent_skill_signal"], "Ratio/percent skill signal found.");
+    addSuggestion(suggestions, target, "math.concept.number_quantity.ratios_rates_proportions", ["ratio_percent_signal"], "Ratio/percent signal found.");
+    addSuggestion(suggestions, target, has(/percent|percentage|%/) ? "math.concept.number_quantity.fractions_decimals_percents" : "math.concept.number_quantity.ratios_rates_proportions", ["ratio_percent_skill_signal"], "Ratio/percent skill signal found.");
   }
 
   if (target.choiceMarkerCount > 0 || has(/\b[a-d]\./)) {
-    addSuggestion(suggestions, target, "format.multiple_choice", ["choice_marker_signal"], "Choice markers found.", {
+    addSuggestion(suggestions, target, "math.form.symbolic.expression", ["choice_marker_signal"], "Choice markers found.", {
       evidenceKind: "marker_hint",
       source: "preanalysis_hint",
     });
   }
 
   if (has(/free response|explain|justify|show your work/)) {
-    addSuggestion(suggestions, target, "format.free_response", ["free_response_signal"], "Free-response language found.", {
+    addSuggestion(suggestions, target, "math.form.verbal.word_problem", ["free_response_signal"], "Free-response language found.", {
       evidenceKind: "format_hint",
     });
   }
 
   if (has(/graph|coordinate plane/)) {
-    addSuggestion(suggestions, target, "format.graph_based", ["graph_signal"], "Graph signal found.");
+    addSuggestion(suggestions, target, "math.form.visual.coordinate_graph", ["graph_signal"], "Graph signal found.");
   }
 
   if (has(/table|two-way|two way/)) {
-    addSuggestion(suggestions, target, "format.table_based", ["table_signal"], "Table signal found.");
+    addSuggestion(suggestions, target, "math.form.table.data_table", ["table_signal"], "Table signal found.");
   }
 
   if (target.assetRefCount > 0 || target.packetKind.includes("asset")) {
-    addSuggestion(suggestions, target, "format.image_based", ["asset_ref_signal"], "Asset reference found.", {
+    addSuggestion(suggestions, target, "math.form.visual.diagram", ["asset_ref_signal"], "Asset reference found.", {
       evidenceKind: "asset_hint",
       source: "packet_hint",
     });
-    addSuggestion(suggestions, target, "format.diagram_based", ["diagram_ref_signal"], "Diagram/image context found.", {
+    addSuggestion(suggestions, target, "math.form.visual.diagram", ["diagram_ref_signal"], "Diagram/image context found.", {
       evidenceKind: "asset_hint",
       source: "packet_hint",
     });
   }
 
   if (has(/multi-step|multi step|more than one step|both/)) {
-    addSuggestion(suggestions, target, "cognitive.multi_step_reasoning", ["multi_step_signal"], "Multi-step language found.");
+    addSuggestion(suggestions, target, "math.task.explain.explain_reasoning", ["multi_step_signal"], "Multi-step language found.");
   } else if (mathSignal) {
-    addSuggestion(suggestions, target, "cognitive.application", ["application_signal"], "Application-style math signal found.", {
+    addSuggestion(suggestions, target, "math.task.model.build_model", ["application_signal"], "Application-style math signal found.", {
       confidence: 0.62,
     });
   }
 
   if (!suggestions.length) {
-    addSuggestion(suggestions, target, "subject.unknown", ["no_strong_signal"], "No strong taxonomy signal found.", {
+    addSuggestion(suggestions, target, "math", ["no_strong_signal"], "No strong taxonomy signal found.", {
       confidence: 0.35,
       evidenceKind: "packet_kind",
       source: "packet_hint",
     });
-    addSuggestion(suggestions, target, "format.unknown", ["no_strong_format_signal"], "No strong format signal found.", {
+    addSuggestion(suggestions, target, "math.form", ["no_strong_format_signal"], "No strong format signal found.", {
       confidence: 0.35,
       evidenceKind: "packet_kind",
       source: "packet_hint",
@@ -793,14 +753,16 @@ export function validateTaggingTarget(
 
 function buildTarget({
   aiPdfImport,
+  taxonomy,
   target,
 }: {
   aiPdfImport: Record<string, unknown>;
+  taxonomy: AITaxonomyTag[];
   target: TaggingTargetInput;
 }): AITaggingTarget {
   const warnings: string[] = [];
   const normalizedSuggestions = buildRuleBasedTagSuggestionsForTarget(target).map(
-    normalizeTagSuggestion,
+    (suggestion) => normalizeTagSuggestion(suggestion, taxonomy),
   );
   let suggestions = capSuggestions(normalizedSuggestions, warnings);
   const validation = validateTaggingTarget(suggestions);
@@ -889,8 +851,12 @@ function fallbackTargetsFromPreanalysis(
 
 export function buildAITaggingV2PlanFromSummary(
   aiPdfImport: Record<string, unknown>,
+  taxonomy: AITaxonomyTag[] = DEFAULT_TAXONOMY,
 ): AITaggingV2Plan {
   const warnings = ["tagging_v2_planning_only", "tagging_v2_no_ai_ranking"];
+  if (!taxonomy.length) {
+    warnings.push("tagging_v2_missing_db_taxonomy");
+  }
   const sourceKind = sourceKindFromSummary(aiPdfImport);
   const packetPlan = asRecord(aiPdfImport.packetPlan);
   const packets = asArray(packetPlan.packets).map(asRecord);
@@ -908,7 +874,9 @@ export function buildAITaggingV2PlanFromSummary(
     targetInputs = targetInputs.slice(0, MAX_TARGETS);
   }
 
-  const targets = targetInputs.map((target) => buildTarget({ aiPdfImport, target }));
+  const targets = targetInputs.map((target) =>
+    buildTarget({ aiPdfImport, taxonomy, target }),
+  );
   const stats = planStats(targets);
 
   if (stats.genericOnlyCount > 0) {

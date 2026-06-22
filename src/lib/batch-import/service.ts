@@ -100,12 +100,9 @@ async function loadImportContext({
   }
 
   const loadedTags = ((tags ?? []) as {
-    label: string;
     tag_id: string;
   }[]).map((tag) => ({
     id: tag.tag_id,
-    name: tag.label,
-    slug: tag.tag_id,
   }));
   const loadedQuestions = (questions ?? []) as { question_code: string }[];
 

@@ -4,14 +4,16 @@ import type {
   TaxonomyCatalogView,
   TaxonomyNodeView,
 } from "@/components/tags/taxonomy-tag-tree-picker";
+import { taxonomyDisplayLabelFromId } from "@/lib/tags/taxonomy-display";
 
 type TaxonomySupabaseLike = {
   from: (table: string) => any;
 };
 
 type FacetRow = TaxonomyCatalogView["facets"][number];
-type NodeRow = Omit<TaxonomyNodeView, "aliases" | "parent_tag_ids"> & {
+type NodeRow = Omit<TaxonomyNodeView, "aliases" | "parent_tag_ids" | "label"> & {
   is_assignable: boolean;
+  label: string;
   sort_order?: number | null;
 };
 type EdgeRow = {
@@ -97,12 +99,12 @@ export async function loadTaxonomyCatalog(
   }
 
   const catalogNodes: TaxonomyNodeView[] = ((nodes ?? []) as NodeRow[])
-    .filter((node) => node.is_assignable || node.tag_id === node.facet_key)
     .map((node) => ({
       aliases: aliasesByTagId.get(node.tag_id) ?? [],
       description: node.description,
       facet_key: node.facet_key,
-      label: node.label,
+      is_assignable: node.is_assignable,
+      label: taxonomyDisplayLabelFromId(node.tag_id),
       parent_tag_ids: parentsByTagId.get(node.tag_id) ?? [],
       tag_id: node.tag_id,
     }));
