@@ -11,6 +11,11 @@ const links = [
     body: "Browse published AP questions with difficulty and tags.",
   },
   {
+    href: "/practice",
+    title: "Practice Agent",
+    body: "Try the local-session MVP for agent-driven multi-round practice.",
+  },
+  {
     href: "/videos",
     title: "Videos",
     body: "Browse published explanations linked to their source question.",
@@ -37,7 +42,7 @@ export default function HomePage() {
           scope for this phase.
         </p>
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         {links.map((item) => (
           <Card key={item.href}>
             <CardHeader>

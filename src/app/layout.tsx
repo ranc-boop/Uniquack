@@ -41,6 +41,9 @@ export default function RootLayout({
                   <Link href="/questions">Questions</Link>
                 </Button>
                 <Button asChild variant="ghost" size="sm">
+                  <Link href="/practice">Practice</Link>
+                </Button>
+                <Button asChild variant="ghost" size="sm">
                   <Link href="/videos">Videos</Link>
                 </Button>
                 <Button asChild variant="outline" size="sm">
