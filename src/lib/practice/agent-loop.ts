@@ -399,6 +399,33 @@ function makeToolResultMessage(toolCall: PracticeToolCall, observation: unknown)
   };
 }
 
+async function rejectPracticeToolCall({
+  iteration,
+  reason,
+  state,
+  toolCall,
+}: {
+  iteration: number;
+  reason: string;
+  state: ToolExecutionState;
+  toolCall: PracticeToolCall;
+}) {
+  const toolName = toolCall.function.name;
+  const observation = `TOOL_REJECTED tool=${toolName} reason=${reason}`;
+
+  await pushTrace(state, {
+    error: reason,
+    inputSummary: toolName,
+    iteration,
+    outputSummary: observation,
+    phase: "recommendation",
+    toolCallId: toolCall.id,
+    toolName,
+  });
+
+  return makeToolResultMessage(toolCall, observation);
+}
+
 function asBrowseRequests(value: unknown): BrowseTaxonomyBatchRequest[] {
   if (!Array.isArray(value)) return [];
 
@@ -769,21 +796,40 @@ export async function runPracticeRecommendationAgent({
     const allowedToolNames = new Set(tools.map((tool) => tool.function.name));
     for (const toolCall of modelResult.toolCalls) {
       if (toolCallsUsed >= maxToolCalls) {
-        break;
-      }
-
-      if (!allowedToolNames.has(toolCall.function.name)) {
+        messages.push(await rejectPracticeToolCall({
+          iteration,
+          reason: "tool call limit already reached",
+          state,
+          toolCall,
+        }));
         continue;
       }
 
       toolCallsUsed += 1;
+
+      if (state.finalized) {
+        messages.push(await rejectPracticeToolCall({
+          iteration,
+          reason: "recommendation already finalized",
+          state,
+          toolCall,
+        }));
+        continue;
+      }
+
+      if (!allowedToolNames.has(toolCall.function.name)) {
+        messages.push(await rejectPracticeToolCall({
+          iteration,
+          reason: `tool is not available in this step; available tools: ${Array.from(allowedToolNames).join(",")}`,
+          state,
+          toolCall,
+        }));
+        continue;
+      }
+
       const args = parsePracticeToolArguments(toolCall.function.arguments);
       const toolMessage = await executePracticeTool({ args, iteration, state, toolCall });
       messages.push(toolMessage);
-
-      if (state.finalized) {
-        break;
-      }
     }
 
     if (state.finalized) {
