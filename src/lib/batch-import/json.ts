@@ -6,6 +6,8 @@ import {
   normalizeQuestionOptions,
   optionsToJson,
 } from "@/lib/questions/answer-spec";
+import { parseImportQuestionsJsonWithLatexRepair } from "@/lib/import-json/latex-repair";
+import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
 
 const importItemSchema = z
@@ -198,21 +200,87 @@ function idReferenceArray(values: string[] | undefined) {
   return stringArray(values).slice(0, 50);
 }
 
-export function parseBatchImportJson(jsonText: string) {
-  const parsed = JSON.parse(jsonText) as unknown;
+function renderImportContentSource({
+  html,
+  source,
+  sourceFormat,
+}: {
+  html: string | null | undefined;
+  source: string | null | undefined;
+  sourceFormat: "markdown_latex" | "html";
+}) {
+  const cleanHtml = html?.trim() ?? "";
+  const cleanSource = source?.trim() ?? "";
+  const renderable = cleanHtml || cleanSource;
 
-  if (Array.isArray(parsed)) return parsed;
-
-  if (
-    parsed &&
-    typeof parsed === "object" &&
-    "questions" in parsed &&
-    Array.isArray(parsed.questions)
-  ) {
-    return parsed.questions;
+  if (!renderable) {
+    return {
+      html: "",
+      source: "",
+    };
   }
 
-  throw new Error("JSON must be an array or an object with a questions array.");
+  if (sourceFormat === "markdown_latex" && cleanSource) {
+    return {
+      html: markdownLatexToHtml(cleanSource),
+      source: cleanSource,
+    };
+  }
+
+  return {
+    html: renderable,
+    source: cleanSource || renderable,
+  };
+}
+
+function normalizeContentFormat(value: "markdown_latex" | "html" | undefined) {
+  return value ?? "html";
+}
+
+export function normalizeQuestionContent(item: z.infer<typeof importItemSchema>) {
+  const contentSourceFormat = normalizeContentFormat(item.content_source_format);
+  const solutionSourceFormat = normalizeContentFormat(item.solution_source_format);
+  const content = renderImportContentSource({
+    html: item.content_html,
+    source: item.content_source,
+    sourceFormat: contentSourceFormat,
+  });
+  const solution = renderImportContentSource({
+    html: item.solution_html,
+    source: item.solution_source,
+    sourceFormat: solutionSourceFormat,
+  });
+  const normalizedOptions = normalizeQuestionOptions(item.options ?? item.choices).map(
+    (option) => {
+      const optionContent = renderImportContentSource({
+        html: option.content_html,
+        source: option.content_source,
+        sourceFormat: "html",
+      });
+
+      return {
+        ...option,
+        content_html: sanitizeContentHtml(optionContent.html),
+        content_source: optionContent.source,
+      };
+    },
+  );
+
+  return {
+    content_html: sanitizeContentHtml(content.html),
+    content_source: content.source,
+    content_source_format: contentSourceFormat,
+    options: normalizedOptions,
+    raw_content_html: content.html,
+    raw_solution_html: solution.html || null,
+    solution_html: solution.html ? sanitizeContentHtml(solution.html) : null,
+    solution_source: solution.source || null,
+    solution_source_format: solutionSourceFormat,
+  };
+}
+
+export function parseBatchImportJson(jsonText: string) {
+  return parseImportQuestionsJsonWithLatexRepair(jsonText);
 }
 
 export function evaluateBatchImportItems({
@@ -247,16 +315,13 @@ export function evaluateBatchImportItems({
     const item = parsed.data;
     const questionCode = normalizeCode(item.question_code ?? item.code);
     const title = normalizeTitle(item.title);
-    const contentHtml = item.content_html?.trim() ?? "";
-    const contentSource = item.content_source || contentHtml;
-    const contentSourceFormat = item.content_source_format ?? "html";
-    const solutionHtml = item.solution_html?.trim() || null;
-    const solutionSource = item.solution_source || solutionHtml;
-    const solutionSourceFormat = item.solution_source_format ?? "html";
+    const normalizedContent = normalizeQuestionContent(item);
 
     if (!questionCode) errors.push("Missing code or question_code.");
     if (!title) errors.push("Missing title.");
-    if (!contentHtml) errors.push("Missing content_html.");
+    if (!normalizedContent.content_html) {
+      errors.push("Missing content_html or content_source.");
+    }
 
     const codeKey = questionCode.toLowerCase();
     if (questionCode && existingQuestionCodes.has(codeKey)) {
@@ -274,12 +339,10 @@ export function evaluateBatchImportItems({
       }
     }
 
-    const sanitizedContent = sanitizeContentHtml(contentHtml);
-    const sanitizedSolution = solutionHtml
-      ? sanitizeContentHtml(solutionHtml)
-      : null;
-
-    if (sanitizedContent !== contentHtml || sanitizedSolution !== solutionHtml) {
+    if (
+      normalizedContent.content_html !== normalizedContent.raw_content_html ||
+      normalizedContent.solution_html !== normalizedContent.raw_solution_html
+    ) {
       warnings.push("Unsafe HTML will be sanitized before saving.");
     }
 
@@ -294,7 +357,7 @@ export function evaluateBatchImportItems({
     const sourceFileIds = idReferenceArray(item.source_file_ids);
     const sourceFiles = stringArray(item.source_files).slice(0, 50);
     const questionAssetIds = idReferenceArray(item.question_asset_ids);
-    const options = normalizeQuestionOptions(item.options ?? item.choices);
+    const options = normalizedContent.options;
     const correctAnswerValues = looseStringArray(
       item.correct_answers ?? item.correct_answer ?? item.answer,
     );
@@ -373,12 +436,12 @@ export function evaluateBatchImportItems({
             ),
             status: "draft",
             tag_ids: tagIds,
-            content_html: sanitizedContent,
-            content_source: contentSource,
-            content_source_format: contentSourceFormat,
-            solution_html: sanitizedSolution,
-            solution_source: solutionSource,
-            solution_source_format: solutionSourceFormat,
+            content_html: normalizedContent.content_html,
+            content_source: normalizedContent.content_source,
+            content_source_format: normalizedContent.content_source_format,
+            solution_html: normalizedContent.solution_html,
+            solution_source: normalizedContent.solution_source,
+            solution_source_format: normalizedContent.solution_source_format,
             image_urls: imageUrls,
             image_files: imageFiles,
             source_file_ids: sourceFileIds,

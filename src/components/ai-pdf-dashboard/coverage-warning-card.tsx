@@ -1,3 +1,4 @@
+import { FeedbackText } from "@/components/math-content";
 import { Badge } from "@/components/ui/badge";
 
 type CoverageRisk = {
@@ -286,7 +287,13 @@ export function CoverageWarningCard({
 
               return (
                 <li key={windowId}>
-                  {reason}: pages {formatPageRanges(pages)}
+                  <FeedbackText
+                    className="inline border-none bg-transparent p-0 text-xs text-amber-950"
+                    compact
+                    inline
+                    value={reason}
+                  />
+                  : pages {formatPageRanges(pages)}
                 </li>
               );
             })}

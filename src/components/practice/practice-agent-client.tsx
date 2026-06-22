@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { RichHtml } from "@/components/rich-html";
+import {
+  FeedbackText,
+  OptionText,
+  QuestionText,
+  SolutionText,
+} from "@/components/math-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -443,7 +448,10 @@ function QuestionAnswerInput({
               />
               <div className="space-y-1">
                 <span className="font-mono text-xs text-muted-foreground">{option.label}</span>
-                <RichHtml className="border-none p-0" html={option.content_html} />
+                <OptionText
+                  className="border-none bg-transparent p-0"
+                  value={option.content_html}
+                />
               </div>
             </label>
           );
@@ -820,9 +828,11 @@ export function PracticeAgentClient() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <CardTitle className="text-base">Recommended round</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {recommendation.roundGoal}
-                    </p>
+                    <FeedbackText
+                      className="mt-1 border-none bg-transparent p-0 text-muted-foreground"
+                      compact
+                      value={recommendation.roundGoal}
+                    />
                     <p className="mt-1 text-xs text-muted-foreground">
                       Tool-call budget: max {recommendation.maxToolCalls} calls including finalization.
                     </p>
@@ -852,12 +862,22 @@ export function PracticeAgentClient() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <RichHtml html={question.contentHtml} />
+                      <QuestionText value={question.contentHtml} />
                       <div className="rounded-md border bg-muted/20 p-3 text-sm">
                         <p className="font-medium">Why this question</p>
-                        <p className="mt-1 text-muted-foreground">{question.reason}</p>
+                        <FeedbackText
+                          className="mt-1 border-none bg-transparent p-0 text-muted-foreground"
+                          compact
+                          value={question.reason}
+                        />
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Expected skill: {question.expectedSkill}
+                          Expected skill:{" "}
+                          <FeedbackText
+                            className="inline border-none bg-transparent p-0 text-xs text-muted-foreground"
+                            compact
+                            inline
+                            value={question.expectedSkill}
+                          />
                         </p>
                       </div>
                       <QuestionAnswerInput
@@ -885,20 +905,29 @@ export function PracticeAgentClient() {
                           {hints[question.id].map((hint, hintIndex) => (
                             <div key={`${question.id}-hint-${hintIndex}`} className="rounded-md border bg-muted/30 p-3 text-sm">
                               <span className="font-medium">Hint {hintIndex + 1}: </span>
-                              <span className="text-muted-foreground">{hint}</span>
+                              <FeedbackText
+                                className="inline border-none bg-transparent p-0 text-muted-foreground"
+                                compact
+                                inline
+                                value={hint}
+                              />
                             </div>
                           ))}
                         </div>
                       ) : null}
                       {phase === "feedback" && resultsById.get(question.id) ? (
                         <div className="space-y-3 rounded-md border p-3">
-                          <p className="text-sm text-muted-foreground">
-                            {resultsById.get(question.id)?.explanation}
-                          </p>
+                          <FeedbackText
+                            className="border-none bg-transparent p-0 text-muted-foreground"
+                            compact
+                            value={resultsById.get(question.id)?.explanation}
+                          />
                           {resultsById.get(question.id)?.solutionHtml ? (
                             <div className="space-y-2">
                               <p className="text-sm font-medium">Solution</p>
-                              <RichHtml html={resultsById.get(question.id)?.solutionHtml ?? ""} />
+                              <SolutionText
+                                value={resultsById.get(question.id)?.solutionHtml ?? ""}
+                              />
                             </div>
                           ) : null}
                         </div>
@@ -925,7 +954,11 @@ export function PracticeAgentClient() {
                     <CardTitle className="text-base">Previous feedback used</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">{session.memory}</p>
+                    <FeedbackText
+                      className="border-none bg-transparent p-0 text-muted-foreground"
+                      compact
+                      value={session.memory}
+                    />
                   </CardContent>
                 </Card>
               ) : null}
@@ -940,7 +973,11 @@ export function PracticeAgentClient() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <CardTitle className="text-base">Round review</CardTitle>
-                <p className="mt-1 text-sm text-muted-foreground">{review.summary}</p>
+                <FeedbackText
+                  className="mt-1 border-none bg-transparent p-0 text-muted-foreground"
+                  compact
+                  value={review.summary}
+                />
               </div>
               <Badge variant="outline">{review.mode}</Badge>
             </div>
@@ -948,7 +985,11 @@ export function PracticeAgentClient() {
           <CardContent className="space-y-4">
             <div className="rounded-md border bg-muted/20 p-3 text-sm">
               <p className="font-medium">Next round direction</p>
-              <p className="mt-1 text-muted-foreground">{review.nextRoundGoal}</p>
+              <FeedbackText
+                className="mt-1 border-none bg-transparent p-0 text-muted-foreground"
+                compact
+                value={review.nextRoundGoal}
+              />
             </div>
             <Button onClick={() => requestRecommendation(review.nextRoundGoal)} type="button">
               Generate next round from feedback

@@ -7,6 +7,7 @@ import {
   inferBulkAssetMimeType,
   type BulkAssetFileKind,
 } from "@/lib/bulk-asset-import/matching";
+import { parseImportQuestionsJsonWithLatexRepair } from "@/lib/import-json/latex-repair";
 import type { ZipEntryData } from "@/lib/package-import/zip";
 
 export type PackageQuestionReference = {
@@ -77,22 +78,15 @@ export function isUnsafePackagePath(path: string) {
 }
 
 export function parsePackageQuestionsJson(jsonText: string) {
-  const parsed = JSON.parse(jsonText) as unknown;
+  try {
+    return parseImportQuestionsJsonWithLatexRepair(jsonText);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("JSON must be")) {
+      throw new Error("questions.json must be an array or an object with questions.");
+    }
 
-  if (Array.isArray(parsed)) {
-    return parsed;
+    throw error;
   }
-
-  if (
-    parsed &&
-    typeof parsed === "object" &&
-    "questions" in parsed &&
-    Array.isArray(parsed.questions)
-  ) {
-    return parsed.questions;
-  }
-
-  throw new Error("questions.json must be an array or an object with questions.");
 }
 
 export function extractPackageQuestionReferences(rawItems: unknown[]) {
