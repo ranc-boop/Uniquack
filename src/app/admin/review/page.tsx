@@ -1,16 +1,19 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
-import { bulkUpdateQuestions } from "@/app/admin/questions/actions";
-import { FormSubmitButton } from "@/components/form-submit-button";
-import { Badge } from "@/components/ui/badge";
+import { updateQuestionFromReview } from "@/app/admin/review/actions";
+import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
+import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
+import { DraftReviewCard } from "@/components/draft-review-card";
+import { PageFeedback } from "@/components/page-feedback";
+import type { EditableQuestion } from "@/components/question-editor";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   countImportAssetReferences,
   extractImportAssetReferences,
   type ImportAssetReferences,
 } from "@/lib/batch-import/asset-references";
+import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,18 +22,24 @@ export const dynamic = "force-dynamic";
 type ReviewPageProps = {
   searchParams: Promise<{
     batch?: string;
+    error?: string;
+    saved?: string;
     search?: string;
   }>;
 };
 
 type ReviewQuestion = {
   content_html: string | null;
+  content_source: string | null;
+  content_source_format: string | null;
   created_at: string;
   difficulty_rating: number;
   id: string;
   question_code: string;
   question_type: string;
   solution_html: string | null;
+  solution_source: string | null;
+  solution_source_format: string | null;
   status: string;
   title: string;
 };
@@ -95,32 +104,6 @@ function stringList(values: unknown) {
   return values
     .map((value) => String(value).trim())
     .filter(Boolean);
-}
-
-function ImportedAssetReferenceBadges({
-  refs,
-}: {
-  refs: ImportAssetReferences | null;
-}) {
-  if (!refs) {
-    return <Badge variant="outline">No imported asset refs</Badge>;
-  }
-
-  const counts = countImportAssetReferences(refs);
-
-  if (!counts.total) {
-    return <Badge variant="outline">No imported asset refs</Badge>;
-  }
-
-  return (
-    <>
-      <Badge variant="secondary">Has imported asset refs</Badge>
-      <Badge variant="outline">Needs media review</Badge>
-      <Badge variant="outline">Image URLs: {counts.imageUrls}</Badge>
-      <Badge variant="outline">PDF refs: {counts.sourceFileIds}</Badge>
-      <Badge variant="outline">Asset refs: {counts.questionAssetIds}</Badge>
-    </>
-  );
 }
 
 export default async function AdminReviewPage({
@@ -189,7 +172,7 @@ export default async function AdminReviewPage({
     let questionsQuery = supabase
       .from("questions")
       .select(
-        "id, question_code, title, question_type, difficulty_rating, status, content_html, solution_html, created_at",
+        "id, question_code, title, question_type, difficulty_rating, status, content_html, content_source, content_source_format, solution_html, solution_source, solution_source_format, created_at",
       )
       .eq("status", "draft")
       .order("created_at", { ascending: false })
@@ -244,13 +227,17 @@ export default async function AdminReviewPage({
           .limit(1000),
         supabase
           .from("question_assets")
-          .select("question_id, id")
+          .select(
+            "question_id, id, object_path, original_filename, display_on_detail",
+          )
           .in("question_id", questionIds)
           .eq("status", "ready")
           .limit(1000),
         supabase
           .from("question_source_files")
-          .select("question_id, id")
+          .select(
+            "question_id, id, original_filename, mime_type, size_bytes, status",
+          )
           .in("question_id", questionIds)
           .neq("status", "deleted")
           .limit(1000),
@@ -271,11 +258,11 @@ export default async function AdminReviewPage({
       tag.review_status,
     ]),
   );
-  const tagIdsByQuestionId = new Map<string, string[]>();
-  const pendingTagCountByQuestionId = new Map<string, number>();
-  const approvedTagCountByQuestionId = new Map<string, number>();
-  const imageCountByQuestionId = new Map<string, number>();
-  const sourceFileCountByQuestionId = new Map<string, number>();
+  const tagsByQuestionId = new Map<string, string[]>();
+  const draftTagCountByQuestionId = new Map<string, number>();
+  const publishedTagCountByQuestionId = new Map<string, number>();
+  const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
+  const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
   const aiMetadataByQuestionId = new Map<string, AIReviewMetadata>();
   const importWarningsByQuestionId = new Map<string, string[]>();
   const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
@@ -307,14 +294,23 @@ export default async function AdminReviewPage({
   }
 
   for (const asset of questionAssets ?? []) {
-    if (!asset.question_id) {
+    if (!asset.question_id || !asset.object_path) {
       continue;
     }
 
-    imageCountByQuestionId.set(
-      asset.question_id,
-      (imageCountByQuestionId.get(asset.question_id) ?? 0) + 1,
-    );
+    const { data } = supabase.storage
+      .from(QUESTION_ASSETS_BUCKET)
+      .getPublicUrl(asset.object_path);
+
+    const current = assetsByQuestionId.get(asset.question_id) ?? [];
+    current.push({
+      id: asset.id,
+      questionId: asset.question_id,
+      originalFilename: asset.original_filename,
+      publicUrl: data.publicUrl,
+      displayOnDetail: asset.display_on_detail,
+    });
+    assetsByQuestionId.set(asset.question_id, current);
   }
 
   for (const sourceFile of sourceFiles ?? []) {
@@ -322,10 +318,16 @@ export default async function AdminReviewPage({
       continue;
     }
 
-    sourceFileCountByQuestionId.set(
-      sourceFile.question_id,
-      (sourceFileCountByQuestionId.get(sourceFile.question_id) ?? 0) + 1,
-    );
+    const current = sourceFilesByQuestionId.get(sourceFile.question_id) ?? [];
+    current.push({
+      id: sourceFile.id,
+      questionId: sourceFile.question_id,
+      originalFilename: sourceFile.original_filename,
+      mimeType: sourceFile.mime_type,
+      sizeBytes: sourceFile.size_bytes,
+      status: sourceFile.status as QuestionSourceFileView["status"],
+    });
+    sourceFilesByQuestionId.set(sourceFile.question_id, current);
   }
 
   for (const item of importItems ?? []) {
@@ -350,6 +352,8 @@ export default async function AdminReviewPage({
     }
   }
 
+  const updateAction = updateQuestionFromReview.bind(null, batchId || null);
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -359,6 +363,7 @@ export default async function AdminReviewPage({
           reviewer roles are intentionally out of scope for this phase.
         </p>
       </div>
+      <PageFeedback error={params.error} saved={params.saved} />
       <form className="flex flex-wrap items-end gap-2 rounded-md border p-3">
         <div className="min-w-64 flex-1 space-y-1">
           <label htmlFor="search" className="text-sm font-medium">
@@ -443,12 +448,15 @@ export default async function AdminReviewPage({
       </form>
       <div className="grid gap-4">
         {draftQuestions.map((question) => {
-          const tagIds = tagIdsByQuestionId.get(question.id) ?? [];
-          const pendingTagCount = pendingTagCountByQuestionId.get(question.id) ?? 0;
-          const approvedTagCount =
-            approvedTagCountByQuestionId.get(question.id) ?? 0;
-          const imageCount = imageCountByQuestionId.get(question.id) ?? 0;
-          const sourceFileCount = sourceFileCountByQuestionId.get(question.id) ?? 0;
+          const tagNames = tagsByQuestionId.get(question.id) ?? [];
+          const draftTagCount = draftTagCountByQuestionId.get(question.id) ?? 0;
+          const publishedTagCount =
+            publishedTagCountByQuestionId.get(question.id) ?? 0;
+          const assets = assetsByQuestionId.get(question.id) ?? [];
+          const questionSourceFiles =
+            sourceFilesByQuestionId.get(question.id) ?? [];
+          const imageCount = assets.length;
+          const sourceFileCount = questionSourceFiles.length;
           const aiMetadata = aiMetadataByQuestionId.get(question.id);
           const aiPageRefs = stringList(aiMetadata?.page_refs);
           const aiCreatedTags = stringList(
@@ -461,8 +469,6 @@ export default async function AdminReviewPage({
           const aiCropCount = aiMetadata?.asset_placeholders?.length ?? 0;
           const importRefs = importRefsByQuestionId.get(question.id) ?? null;
           const importedAt = importedAtByQuestionId.get(question.id);
-          const hasImportedRefs =
-            importRefs && countImportAssetReferences(importRefs).total > 0;
           const readiness = getQuestionReadiness({
             contentHtml: question.content_html,
             difficultyRating: question.difficulty_rating,
@@ -473,140 +479,52 @@ export default async function AdminReviewPage({
             tagCount: approvedTagCount,
           });
 
+          const editableQuestion: EditableQuestion = {
+            content_html: question.content_html ?? "",
+            content_source: question.content_source,
+            content_source_format:
+              question.content_source_format as EditableQuestion["content_source_format"],
+            difficulty_rating: question.difficulty_rating,
+            id: question.id,
+            question_code: question.question_code,
+            question_type: question.question_type,
+            solution_html: question.solution_html,
+            solution_source: question.solution_source,
+            solution_source_format:
+              question.solution_source_format as EditableQuestion["solution_source_format"],
+            status: question.status,
+            title: question.title,
+          };
+
           return (
-            <Card key={question.id}>
-              <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <input
-                      aria-label={`Select question ${question.question_code}`}
-                      className="mt-1 size-4 rounded border"
-                      form="admin-review-bulk-form"
-                      name="question_id"
-                      type="checkbox"
-                      value={question.id}
-                    />
-                    <div>
-                      <CardTitle className="text-base">
-                        {question.question_code}
-                      </CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {question.title}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="secondary">{question.status}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-2 text-sm md:grid-cols-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Type</p>
-                    <p>{question.question_type}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Difficulty</p>
-                    <p>{question.difficulty_rating}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Created</p>
-                    <p>{formatDate(question.created_at)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Imported</p>
-                    <p>{formatDate(importedAt)}</p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {pendingTagCount ? (
-                    <Badge variant="outline">
-                      Needs taxonomy review: {pendingTagCount}
-                    </Badge>
-                  ) : null}
-                  {tagIds.length ? (
-                    tagIds.map((tagId) => (
-                      <Badge key={tagId} variant="outline" title={tagId}>
-                        {tagId}
-                      </Badge>
-                    ))
-                  ) : (
-                    <Badge variant="outline">No taxonomy tags</Badge>
-                  )}
-                  {approvedTagCount ? (
-                    <Badge variant="secondary">
-                      Approved taxonomy tags: {approvedTagCount}
-                    </Badge>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={readiness.isReady ? "secondary" : "outline"}>
-                    {readiness.summaryLabel}
-                  </Badge>
-                  <Badge variant={readiness.hasContent ? "secondary" : "outline"}>
-                    {readiness.hasContent ? "Has content" : "Needs content"}
-                  </Badge>
-                  <Badge variant={readiness.hasSolution ? "secondary" : "outline"}>
-                    {readiness.hasSolution ? "Has solution" : "Needs solution"}
-                  </Badge>
-                  <Badge variant={readiness.hasTags ? "secondary" : "outline"}>
-                    {readiness.hasTags ? "Has tags" : "Needs tags"}
-                  </Badge>
-                  <Badge
-                    variant={readiness.hasDifficulty ? "secondary" : "outline"}
-                  >
-                    {readiness.hasDifficulty
-                      ? "Has difficulty"
-                      : "Needs difficulty"}
-                  </Badge>
-                  <Badge variant="outline">Images: {imageCount}</Badge>
-                  <Badge variant="outline">PDF source files: {sourceFileCount}</Badge>
-                  <ImportedAssetReferenceBadges refs={importRefs} />
-                </div>
-                {hasImportedRefs ? (
-                  <p className="text-xs text-muted-foreground">
-                    Imported asset refs need manual media review before publish.
-                  </p>
-                ) : null}
-                {aiMetadata ? (
-                  <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="secondary">AI PDF import</Badge>
-                      <Badge variant="outline">
-                        {aiMetadata.provider?.name ?? "Unknown provider"}
-                      </Badge>
-                      <Badge variant="outline">
-                        {aiMetadata.provider?.model ?? "Unknown model"}
-                      </Badge>
-                    </div>
-                    <p>
-                      Pages: {aiPageRefs.length ? aiPageRefs.join(", ") : "Unknown"}
-                      {" | "}
-                      Image crop refs: {aiCropCount}
-                    </p>
-                    {aiCreatedTags.length ? (
-                      <p>Created draft tags: {aiCreatedTags.join(", ")}</p>
-                    ) : null}
-                    {aiWarnings.length ? (
-                      <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
-                        <p className="font-medium">AI/import warnings</p>
-                        <ul className="mt-1 list-disc space-y-1 pl-4">
-                          {aiWarnings.map((warning) => (
-                            <li key={warning}>{warning}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                <Button asChild size="sm">
-                  <Link
-                    href={`/admin/questions?edit=${question.id}`}
-                  >
-                    Edit question
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
+            <DraftReviewCard
+              key={question.id}
+              questionCode={question.question_code}
+              title={question.title}
+              status={question.status}
+              questionType={question.question_type}
+              difficultyRating={question.difficulty_rating}
+              formattedCreatedAt={formatDate(question.created_at)}
+              formattedImportedAt={formatDate(importedAt)}
+              tagNames={tagNames}
+              draftTagCount={draftTagCount}
+              publishedTagCount={publishedTagCount}
+              imageCount={imageCount}
+              sourceFileCount={sourceFileCount}
+              importedAssetReferences={importRefs}
+              readiness={readiness}
+              isAiImport={Boolean(aiMetadata)}
+              aiProviderName={aiMetadata?.provider?.name ?? null}
+              aiProviderModel={aiMetadata?.provider?.model ?? null}
+              aiPageRefs={aiPageRefs}
+              aiCreatedTags={aiCreatedTags}
+              aiWarnings={aiWarnings}
+              aiCropCount={aiCropCount}
+              editableQuestion={editableQuestion}
+              assets={assets}
+              sourceFiles={questionSourceFiles}
+              updateAction={updateAction}
+            />
           );
         })}
         {!draftQuestions.length ? (
