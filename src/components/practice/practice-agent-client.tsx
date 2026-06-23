@@ -103,57 +103,6 @@ function normalizeTagContext(value: unknown, goal: string): PracticeTagContext {
   };
 }
 
-function normalizeSavedSession(value: unknown): SavedSession | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const record = value as Partial<SavedSession> & { rounds?: unknown[] };
-  const goal = typeof record.goal === "string" ? record.goal : "";
-
-  if (!goal) {
-    return null;
-  }
-
-  return compactPersistedSession({
-    completedQuestionIds: Array.isArray(record.completedQuestionIds)
-      ? record.completedQuestionIds.map(String).filter(Boolean)
-      : [],
-    goal,
-    memory: typeof record.memory === "string" ? record.memory : `Goal: ${goal}.`,
-    rounds: Array.isArray(record.rounds)
-      ? record.rounds.map((round) => {
-          const item = round && typeof round === "object" ? round as Record<string, unknown> : {};
-          const score = item.score && typeof item.score === "object" ? item.score as Record<string, unknown> : {};
-
-          return {
-            hintCounts: item.hintCounts && typeof item.hintCounts === "object" ? item.hintCounts as Record<string, number> : {},
-            missedQuestionIds: Array.isArray(item.missedQuestionIds) ? item.missedQuestionIds.map(String) : [],
-            nextRoundGoal: typeof item.nextRoundGoal === "string" ? item.nextRoundGoal : "",
-            recommendedQuestionIds: Array.isArray(item.recommendedQuestionIds) ? item.recommendedQuestionIds.map(String) : [],
-            reviewSummary: typeof item.reviewSummary === "string" ? item.reviewSummary : "",
-            roundGoal: typeof item.roundGoal === "string" ? item.roundGoal : "",
-            score: {
-              correct: typeof score.correct === "number" ? score.correct : 0,
-              total: typeof score.total === "number" ? score.total : 0,
-            },
-          };
-        })
-      : [],
-    sessionId: typeof record.sessionId === "string" ? record.sessionId : crypto.randomUUID(),
-    tagContext: normalizeTagContext(record.tagContext, goal),
-  });
-}
-
-function loadSavedSession() {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? normalizeSavedSession(JSON.parse(raw)) : null;
-  } catch {
-    return null;
-  }
-}
-
 function formatTrace(event: PracticeTraceEvent) {
   return [
     event.toolName,
@@ -489,23 +438,7 @@ export function PracticeAgentClient() {
   const thinkingEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    queueMicrotask(() => {
-      if (cancelled) {
-        return;
-      }
-
-      const saved = loadSavedSession();
-      if (saved) {
-        setSession(saved);
-        setGoal(saved.goal);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    window.localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   useEffect(() => {
@@ -638,24 +571,20 @@ export function PracticeAgentClient() {
 
     startTransition(async () => {
       try {
-        const grade = await postJson<{ results: PracticeGradeResult[]; trace: PracticeTraceEvent[] }>(
-          "/api/practice/grade",
-          { attempts },
-        );
-        setLiveTrace(grade.trace);
-        const resultsById = new Map(grade.results.map((result) => [result.questionId, result]));
         const reviewPayloadAttempts = attempts.map((attempt) => {
           const recommended = recommendation.recommendations.find((item) => item.id === attempt.questionId);
-          const result = resultsById.get(attempt.questionId);
-
-          if (!result) {
-            throw new Error(`Missing grading result for ${attempt.questionId}`);
-          }
 
           return {
             ...attempt,
             questionCode: recommended?.questionCode,
-            result,
+            result: {
+              explanation: "Pending AI review.",
+              gradingMode: "manual" as const,
+              isCorrect: null,
+              questionId: attempt.questionId,
+              score: null,
+              solutionHtml: null,
+            },
             title: recommended?.title,
           };
         });
@@ -663,26 +592,25 @@ export function PracticeAgentClient() {
           attempts: reviewPayloadAttempts,
           goal: activeSession.goal,
           recommendations: recommendation.recommendations.map((question) => ({
-            difficulty: question.difficulty,
+            contentHtml: question.contentHtml,
             id: question.id,
+            options: question.options,
             questionCode: question.questionCode,
             questionType: question.questionType,
-            reason: question.reason,
-            tagIds: question.tagIds,
             title: question.title,
           })),
           sessionMemory: activeSession.memory,
         });
+        const finalResults = reviewResponse.results ?? [];
         const completedQuestionIds = Array.from(
           new Set([
             ...activeSession.completedQuestionIds,
             ...recommendation.recommendations.map((question) => question.id),
           ]),
         );
-        const autoResults = grade.results.filter((result) => result.gradingMode === "auto");
         const savedRound: SavedRoundSummary = {
           hintCounts: Object.fromEntries(attempts.map((attempt) => [attempt.questionId, attempt.hintCount ?? 0])),
-          missedQuestionIds: grade.results
+          missedQuestionIds: finalResults
             .filter((result) => result.isCorrect === false)
             .map((result) => result.questionId),
           nextRoundGoal: reviewResponse.nextRoundGoal,
@@ -690,16 +618,17 @@ export function PracticeAgentClient() {
           reviewSummary: reviewResponse.summary,
           roundGoal: recommendation.roundGoal,
           score: {
-            correct: autoResults.filter((result) => result.isCorrect === true).length,
-            total: autoResults.length,
+            correct: finalResults.filter((result) => result.isCorrect === true).length,
+            total: finalResults.filter((result) => result.isCorrect !== null).length,
           },
         };
 
-        setResults(grade.results);
+        setResults(finalResults);
         setReview(reviewResponse);
-        setReviewTrace([...grade.trace, ...reviewResponse.trace]);
-        setLiveTrace([...grade.trace, ...reviewResponse.trace]);
+        setReviewTrace(reviewResponse.trace);
+        setLiveTrace(reviewResponse.trace);
         setIsTraceCollapsed(true);
+        setGoal(reviewResponse.nextRoundGoal);
         setSession({
           ...activeSession,
           completedQuestionIds,
@@ -991,8 +920,17 @@ export function PracticeAgentClient() {
                 value={review.nextRoundGoal}
               />
             </div>
-            <Button onClick={() => requestRecommendation(review.nextRoundGoal)} type="button">
-              Generate next round from feedback
+            <div className="space-y-2">
+              <Label htmlFor="next-round-goal">Adjust next round goal</Label>
+              <Input
+                id="next-round-goal"
+                onChange={(event) => setGoal(event.target.value)}
+                placeholder="Add a focus or constraint for the next round"
+                value={goal}
+              />
+            </div>
+            <Button onClick={() => requestRecommendation(goal || review.nextRoundGoal)} type="button">
+              Generate next round
             </Button>
           </CardContent>
         </Card>

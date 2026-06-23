@@ -133,6 +133,14 @@ function optionsForModel(candidate: PracticeQuestionCandidate) {
     .join("; ");
 }
 
+function shortTagId(tagId: string) {
+  return tagId.split(".").filter(Boolean).pop() ?? tagId;
+}
+
+function shortTagIds(tagIds: string[]) {
+  return Array.from(new Set(tagIds.map(shortTagId).filter(Boolean)));
+}
+
 export function formatPracticeSearchBatchForModel({
   mode,
   poolSize,
@@ -165,7 +173,7 @@ export function formatPracticeSearchBatchForModel({
         candidate.questionCode,
         candidate.questionType,
         `d=${candidate.difficulty}`,
-        `tags=${candidate.tagIds.slice(0, 8).join(",") || "none"}`,
+        `tags=${shortTagIds(candidate.tagIds).slice(0, 8).join(",") || "none"}`,
         `match=${short?.match_quality ?? mode}/${short?.match_source ?? "unknown"}`,
       ].join(" | "),
     );
@@ -582,7 +590,7 @@ export async function practiceSearchBatch({
         match_source: row?.laneId ?? "unknown",
         question_code: candidate.questionCode,
         question_type: candidate.questionType,
-        tag_ids: candidate.tagIds.slice(0, 8),
+        tag_ids: shortTagIds(candidate.tagIds).slice(0, 8),
         title_excerpt: candidate.title.slice(0, 160),
       };
     }),

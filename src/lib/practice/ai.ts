@@ -94,26 +94,43 @@ export function parsePracticeToolArguments(value: string) {
   try {
     return JSON.parse(value) as Record<string, unknown>;
   } catch {
-    return parsePossiblyMalformedJson(value) as Record<string, unknown>;
+    try {
+      const parsed = parsePossiblyMalformedJson(value);
+      return parsed && typeof parsed === "object"
+        ? parsed as Record<string, unknown>
+        : { _raw_arguments: String(parsed ?? "") };
+    } catch (error) {
+      return {
+        _parse_error: error instanceof Error ? error.message : String(error),
+        _raw_arguments: value.slice(0, 2000),
+      };
+    }
   }
+}
+
+function isDeepSeekProfile(profile: LoadedProfile) {
+  return /deepseek/i.test([profile.provider, profile.name, profile.model, profile.base_url].join(" "));
 }
 
 export async function callPracticeChatModel({
   debugContext,
   messages,
   profile,
+  responseFormatJson,
   toolChoice,
   tools,
 }: {
   debugContext?: Record<string, unknown>;
   messages: PracticeChatMessage[];
   profile: LoadedProfile;
+  responseFormatJson?: boolean;
   toolChoice?: "auto" | "none" | { type: "function"; function: { name: string } };
   tools?: PracticeToolDefinition[];
 }): Promise<PracticeChatModelResult> {
   const body = {
     messages,
     model: profile.model,
+    ...(responseFormatJson && isDeepSeekProfile(profile) ? { response_format: { type: "json_object" } } : {}),
     ...(tools?.length ? { tools } : {}),
     ...(toolChoice ? { tool_choice: toolChoice } : {}),
   };
@@ -257,7 +274,7 @@ export async function callPracticeJsonModel<T>({
   messages: PracticeChatMessage[];
   profile: LoadedProfile;
 }): Promise<{ parsed: T; providerLabel: string; rawText: string }> {
-  const result = await callPracticeChatModel({ debugContext, messages, profile, toolChoice: "none" });
+  const result = await callPracticeChatModel({ debugContext, messages, profile, responseFormatJson: true });
   const contentText = result.contentText || JSON.stringify(result.rawPayload);
 
   return {

@@ -121,7 +121,12 @@ export type PracticeReviewRequest = {
   goal: string;
   recommendations?: Pick<
     PracticeRecommendation,
-    "id" | "questionCode" | "title" | "questionType" | "difficulty" | "tagIds" | "reason"
+    | "id"
+    | "questionCode"
+    | "title"
+    | "questionType"
+    | "contentHtml"
+    | "options"
   >[];
   sessionMemory?: string;
 };
@@ -130,6 +135,7 @@ export type PracticeReviewResponse = {
   mode: "ai" | "heuristic";
   nextRoundGoal: string;
   providerLabel?: string;
+  results?: PracticeGradeResult[];
   summary: string;
   trace: PracticeTraceEvent[];
   updatedSessionMemory: string;
