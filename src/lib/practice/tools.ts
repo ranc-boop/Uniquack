@@ -15,6 +15,7 @@ const BROWSE_REQUEST_LIMIT = 8;
 const BROWSE_TAG_LIMIT = 15;
 const SEARCH_LANE_LIMIT = 4;
 const DEFAULT_SEARCH_LIMIT = 8;
+const SEARCH_BUFFER_MULTIPLIER = 3;
 
 type TaxonomyNodeLite = {
   aliases: string[];
@@ -115,7 +116,7 @@ function cleanProtocolText(value: string, maxLength: number) {
 }
 
 function stemForModel(candidate: PracticeQuestionCandidate) {
-  return cleanProtocolText(htmlToPlainTextExcerpt(candidate.contentHtml, 900), 900);
+  return cleanProtocolText(htmlToPlainTextExcerpt(candidate.contentHtml, 620), 620);
 }
 
 function optionsForModel(candidate: PracticeQuestionCandidate) {
@@ -127,7 +128,7 @@ function optionsForModel(candidate: PracticeQuestionCandidate) {
     .slice(0, 6)
     .map((option) => {
       const label = cleanProtocolText(option.label || "?", 12);
-      const content = cleanProtocolText(htmlToPlainTextExcerpt(option.content_html, 180), 180);
+      const content = cleanProtocolText(htmlToPlainTextExcerpt(option.content_html, 130), 130);
       return `${label} ${content}`.trim();
     })
     .join("; ");
@@ -453,7 +454,7 @@ function uniqueStrings(values: string[], limit = 32) {
 
 function searchLimit(value: unknown, fallback: number) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.min(20, Math.max(4, Math.trunc(parsed))) : fallback;
+  return Number.isFinite(parsed) ? Math.min(16, Math.max(1, Math.trunc(parsed))) : fallback;
 }
 
 function matchQuality(mode: PracticeSearchMode, tags: string[], queryText: string | undefined) {
@@ -480,6 +481,7 @@ export async function practiceSearchBatch({
   supabase: SupabaseLike;
 }): Promise<PracticeSearchBatchResult> {
   const limitedLanes = lanes.slice(0, SEARCH_LANE_LIMIT);
+  const visibleCandidateCap = Math.max(1, Math.trunc(questionCount) * 2);
   const candidateRows: Array<{
     difficulty_rating: number;
     laneId: string;
@@ -497,7 +499,11 @@ export async function practiceSearchBatch({
     const requestedTags = uniqueStrings(lane.confirmed_tag_ids);
     const effectiveTags = mode === "strict" ? requestedTags : requestedTags;
     const normalizedQueryText = mode === "relaxed" ? lane.query_text?.slice(0, 120) || null : null;
-    const limit = searchLimit(lane.limit, Math.max(DEFAULT_SEARCH_LIMIT, questionCount * 2));
+    const remainingVisibleSlots = Math.max(0, visibleCandidateCap - candidateRows.length);
+    const limit = Math.min(
+      remainingVisibleSlots || visibleCandidateCap,
+      searchLimit(lane.limit, Math.max(DEFAULT_SEARCH_LIMIT, visibleCandidateCap)),
+    );
     const quality = matchQuality(mode, effectiveTags, normalizedQueryText ?? undefined);
     const result = await supabase.rpc("search_questions_by_taxonomy", {
       assignment_review_status: "approved",
@@ -505,7 +511,7 @@ export async function practiceSearchBatch({
       difficulty_min: Math.min(1000, Math.max(0, Math.trunc(difficultyMin))),
       exclude_tag_ids: [],
       include_tag_ids: effectiveTags,
-      page_limit: Math.max(limit, questionCount * 2),
+      page_limit: Math.max(limit * SEARCH_BUFFER_MULTIPLIER, visibleCandidateCap),
       page_offset: 0,
       query_text: normalizedQueryText,
       question_status: "published",
@@ -524,7 +530,10 @@ export async function practiceSearchBatch({
       title: string;
     }>).filter((row) => !completedQuestionIds.includes(row.question_id));
 
-    for (const row of rows.slice(0, limit)) {
+    for (const row of rows) {
+      if (candidateRows.length >= visibleCandidateCap) {
+        break;
+      }
       if (seenQuestionIds.has(row.question_id)) {
         continue;
       }

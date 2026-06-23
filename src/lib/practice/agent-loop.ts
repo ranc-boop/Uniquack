@@ -21,6 +21,7 @@ import {
   formatPracticeSearchBatchForModel,
   practiceSearchBatch,
   type BrowseTaxonomyBatchRequest,
+  type BrowseTagResult,
   type PracticeSearchBatchLane,
   type PracticeSearchMode,
 } from "@/lib/practice/tools";
@@ -41,16 +42,25 @@ type PracticeProfile = Parameters<typeof callPracticeChatModel>[0]["profile"];
 
 type FinalizeArgs = {
   expected_skills?: Record<string, string>;
+  keep_tags?: string[];
   question_ids?: string[];
   reasons?: Record<string, string>;
   round_goal?: string;
   session_memory?: string;
-  tag_context?: PracticeTagContext;
   visible_thought?: string;
 };
 
+type RetainedBrowseTag = {
+  searchableQuestionCount?: number;
+  tagId: string;
+};
+
 type ToolExecutionState = {
+  awaitingBrowseRetention: boolean;
+  browseCandidateByTagId: Map<string, BrowseTagResult>;
   browseCallsUsed: number;
+  browseFoldSummaryByToolCallId: Map<string, string>;
+  browseToolMessageIdsToFold: string[];
   candidatePool: Map<string, PracticeQuestionCandidate>;
   completedQuestionIds: string[];
   confirmedTargetTagIds: Set<string>;
@@ -58,6 +68,7 @@ type ToolExecutionState = {
   goal: string;
   onTrace?: (event: PracticeTraceEvent) => void | Promise<void>;
   questionCount: number;
+  retainedBrowseTags: Map<string, RetainedBrowseTag>;
   searchCallsUsed: number;
   sessionMemory: string;
   supabase: SupabaseLike;
@@ -193,6 +204,12 @@ const browseTool: PracticeToolDefinition = {
       "Batch browse known taxonomy tags. Facets are already known: curriculum, concept, method, task, form. Use only when tag_context is insufficient or you need target tag ids/searchable counts.",
     parameters: schema(
       {
+        keep_tags: {
+          description:
+            "Optional full taxonomy tag ids to keep from the immediately preceding browse_taxonomy_batch result. Use only when you just received browse results.",
+          items: { type: "string" },
+          type: "array",
+        },
         requests: {
           description: "At most 8 requests. Each returns at most 15 tag ids.",
           items: {
@@ -226,6 +243,12 @@ const searchTool: PracticeToolDefinition = {
       "Batch search published approved question candidates. First call must be strict and use only confirmed target tag subtrees. Second call may be relaxed with parent/adjacent tag subtrees or small keyword text.",
     parameters: schema(
       {
+        keep_tags: {
+          description:
+            "Full taxonomy tag ids to keep from the immediately preceding browse_taxonomy_batch result. Include only right after a browse call.",
+          items: { type: "string" },
+          type: "array",
+        },
         lanes: {
           description: "At most 4 search lanes.",
           items: {
@@ -233,7 +256,7 @@ const searchTool: PracticeToolDefinition = {
             properties: {
               confirmed_tag_ids: { items: { type: "string" }, type: "array" },
               lane_id: { type: "string" },
-              limit: { default: 8, minimum: 4, maximum: 20, type: "integer" },
+              limit: { default: 8, minimum: 1, maximum: 16, type: "integer" },
               query_text: { type: "string" },
               rationale: { type: "string" },
             },
@@ -262,6 +285,12 @@ const finalizeTool: PracticeToolDefinition = {
           description: "Map question id to expected skill.",
           type: "object",
         },
+        keep_tags: {
+          description:
+            "Optional final full taxonomy tag ids to keep in backend-generated tag_context. Usually omit unless confirming tags from recent browse/search.",
+          items: { type: "string" },
+          type: "array",
+        },
         question_ids: {
           description: "Exact question ids selected from candidates already returned by practice_search_batch.",
           items: { type: "string" },
@@ -277,30 +306,6 @@ const finalizeTool: PracticeToolDefinition = {
           description: "Updated compact session memory, max 1600 chars. Do not copy full question stems.",
           type: "string",
         },
-        tag_context: {
-          additionalProperties: false,
-          description: "Compact reusable tag state for the next recommendation round.",
-          properties: {
-            confirmedTagIds: { items: { type: "string" }, type: "array" },
-            lastGoal: { type: "string" },
-            usefulTags: {
-              items: {
-                additionalProperties: false,
-                properties: {
-                  searchableQuestionCount: { type: "integer" },
-                  source: { enum: ["memory", "browse", "search"], type: "string" },
-                  tagId: { type: "string" },
-                },
-                required: ["tagId", "source"],
-                type: "object",
-              },
-              type: "array",
-            },
-            version: { const: 1, type: "integer" },
-          },
-          required: ["version", "confirmedTagIds", "usefulTags"],
-          type: "object",
-        },
       },
       [
         "visible_thought",
@@ -309,7 +314,6 @@ const finalizeTool: PracticeToolDefinition = {
         "expected_skills",
         "round_goal",
         "session_memory",
-        "tag_context",
       ],
     ),
   },
@@ -399,6 +403,25 @@ function makeToolResultMessage(toolCall: PracticeToolCall, observation: unknown)
   };
 }
 
+function foldConsumedBrowseToolMessages(messages: PracticeChatMessage[], state: ToolExecutionState) {
+  if (!state.browseToolMessageIdsToFold.length) {
+    return;
+  }
+
+  const idsToFold = new Set(state.browseToolMessageIdsToFold);
+
+  for (const message of messages) {
+    if (message.role !== "tool" || !message.tool_call_id || !idsToFold.has(message.tool_call_id)) {
+      continue;
+    }
+
+    message.content = state.browseFoldSummaryByToolCallId.get(message.tool_call_id) ??
+      "BROWSE_FOLDED kept=none";
+  }
+
+  state.browseToolMessageIdsToFold = [];
+}
+
 async function rejectPracticeToolCall({
   iteration,
   reason,
@@ -455,43 +478,122 @@ function asSearchLanes(value: unknown, state: ToolExecutionState): PracticeSearc
     return {
       confirmed_tag_ids: asStringArray(record.confirmed_tag_ids, 12),
       lane_id: asString(record.lane_id, `lane-${index + 1}`),
-      limit: asNumber(record.limit, Math.max(state.questionCount * 2, 8), 4, 20),
+      limit: asNumber(record.limit, Math.max(state.questionCount * 2, 8), 1, 16),
       query_text: asString(record.query_text) || undefined,
       rationale: asString(record.rationale, "Candidate search lane."),
     };
   });
 }
 
-function mergeBrowseIntoTagContext(state: ToolExecutionState, result: Awaited<ReturnType<typeof browseTaxonomyBatch>>) {
-  const usefulTags = [...state.tagContext.usefulTags];
-
+function rememberBrowseCandidates(state: ToolExecutionState, result: Awaited<ReturnType<typeof browseTaxonomyBatch>>) {
   for (const item of result.results) {
     for (const tag of item.tags) {
-      if (tag.is_assignable && tag.searchable_question_count > 0) {
-        state.confirmedTargetTagIds.add(tag.tag_id);
-      }
-      usefulTags.push({
-        searchableQuestionCount: tag.searchable_question_count,
-        source: "browse",
-        tagId: tag.tag_id,
-      });
+      state.browseCandidateByTagId.set(tag.tag_id, tag);
     }
   }
 
-  state.tagContext = compactTagContext({
+  state.awaitingBrowseRetention = true;
+}
+
+function asKeepTags(value: unknown) {
+  return asStringArray(value, 16);
+}
+
+function retainBrowseTagsById(state: ToolExecutionState, tagIds: string[]) {
+  const kept: string[] = [];
+  const invalid: string[] = [];
+
+  for (const tagId of Array.from(new Set(tagIds))) {
+    const browseTag = state.browseCandidateByTagId.get(tagId);
+
+    if (!browseTag) {
+      if (state.confirmedTargetTagIds.has(tagId) || state.tagContext.confirmedTagIds.includes(tagId)) {
+        state.retainedBrowseTags.set(tagId, { tagId });
+        kept.push(tagId);
+        continue;
+      }
+      invalid.push(tagId);
+      continue;
+    }
+
+    state.retainedBrowseTags.set(tagId, {
+      searchableQuestionCount: browseTag.searchable_question_count,
+      tagId,
+    });
+    if (browseTag.is_assignable && browseTag.searchable_question_count > 0) {
+      state.confirmedTargetTagIds.add(tagId);
+    }
+    kept.push(tagId);
+  }
+
+  return { invalid, kept };
+}
+
+function processKeepTags({
+  args,
+  state,
+  toolName,
+}: {
+  args: Record<string, unknown>;
+  state: ToolExecutionState;
+  toolName: string;
+}) {
+  const requested = asKeepTags(args.keep_tags);
+  const warnings: string[] = [];
+  let kept: string[] = [];
+  let invalid: string[] = [];
+
+  if (requested.length) {
+    const result = retainBrowseTagsById(state, requested);
+    kept = result.kept;
+    invalid = result.invalid;
+
+    if (!state.awaitingBrowseRetention && toolName !== "finalize_recommendation") {
+      warnings.push("keep_tags is only needed immediately after browse_taxonomy_batch; extra keep_tags was ignored except for valid recent browse tag ids.");
+    }
+    if (invalid.length) {
+      warnings.push(`Unknown keep_tags ignored: ${invalid.slice(0, 6).join(",")}. Use full tag_id values from the latest browse result.`);
+    }
+  } else if (state.awaitingBrowseRetention) {
+    warnings.push("No keep_tags provided after browse_taxonomy_batch; unsearched browse-only tags will be folded unless used in this tool call.");
+  }
+
+  if (state.awaitingBrowseRetention) {
+    for (const id of state.browseToolMessageIdsToFold) {
+      state.browseFoldSummaryByToolCallId.set(
+        id,
+        `BROWSE_FOLDED kept=${kept.join(",") || "none"} retained=${state.retainedBrowseTags.size}${invalid.length ? ` invalid_keep_tags=${invalid.length}` : ""}`,
+      );
+    }
+    state.awaitingBrowseRetention = false;
+  }
+
+  return { invalid, kept, requested, warnings };
+}
+
+function buildGeneratedTagContext(state: ToolExecutionState): PracticeTagContext {
+  return compactTagContext({
     confirmedTagIds: [
       ...state.tagContext.confirmedTagIds,
       ...Array.from(state.confirmedTargetTagIds),
+      ...Array.from(state.retainedBrowseTags.keys()),
     ],
     lastGoal: state.goal,
-    usefulTags,
+    usefulTags: [
+      ...state.tagContext.usefulTags,
+      ...Array.from(state.retainedBrowseTags.values()).map((tag) => ({
+        searchableQuestionCount: tag.searchableQuestionCount,
+        source: "browse" as const,
+        tagId: tag.tagId,
+      })),
+    ],
     version: 1,
   });
 }
 
 function mergeSearchIntoTagContext(state: ToolExecutionState, result: Awaited<ReturnType<typeof practiceSearchBatch>>) {
   const searchedTags = result.laneSummaries.flatMap((lane) => lane.effective_tags);
-  const matchedTags = result.shortCandidates.flatMap((candidate) => candidate.tag_ids);
+  const matchedTags = result.candidates.flatMap((candidate) => candidate.tagIds);
 
   for (const tagId of searchedTags) {
     state.confirmedTargetTagIds.add(tagId);
@@ -499,13 +601,13 @@ function mergeSearchIntoTagContext(state: ToolExecutionState, result: Awaited<Re
 
   state.tagContext = compactTagContext({
     confirmedTagIds: [
-      ...state.tagContext.confirmedTagIds,
+      ...buildGeneratedTagContext(state).confirmedTagIds,
       ...Array.from(state.confirmedTargetTagIds),
       ...searchedTags,
     ],
     lastGoal: state.goal,
     usefulTags: [
-      ...state.tagContext.usefulTags,
+      ...buildGeneratedTagContext(state).usefulTags,
       ...searchedTags.map((tagId) => ({ source: "search" as const, tagId })),
       ...matchedTags.map((tagId) => ({ source: "search" as const, tagId })),
     ],
@@ -529,6 +631,7 @@ async function executePracticeTool({
   const started = Date.now();
 
   try {
+    const retention = processKeepTags({ args, state, toolName });
     let logObservation: unknown;
     let modelObservation: unknown;
     let resultCount: number | undefined;
@@ -538,14 +641,23 @@ async function executePracticeTool({
       state.browseCallsUsed += 1;
       const requests = asBrowseRequests(args.requests);
       const result = await browseTaxonomyBatch({ requests, supabase: state.supabase });
-      mergeBrowseIntoTagContext(state, result);
+      rememberBrowseCandidates(state, result);
+      state.browseToolMessageIdsToFold.push(toolCall.id);
+      state.browseFoldSummaryByToolCallId.set(
+        toolCall.id,
+        `BROWSE_FOLDED retained=${state.retainedBrowseTags.size} candidates=${result.results.reduce((sum, item) => sum + item.tags.length, 0)}`,
+      );
       logObservation = result;
-      modelObservation = formatBrowseTaxonomyBatchForModel(result);
+      modelObservation = [
+        formatBrowseTaxonomyBatchForModel(result),
+        "NEXT_CALL_REQUIREMENT: if any browsed tag should remain in context, include keep_tags with full tag_id values on your next tool call. Do not use short refs.",
+        ...retention.warnings.map((warning) => `KEEP_TAGS_NOTE: ${warning}`),
+      ].join("\n");
       resultCount = result.results.reduce((sum, item) => sum + item.tags.length, 0);
       outputSummary = [
         `browse_call=${state.browseCallsUsed}/${SOFT_BROWSE_CALL_LIMIT}`,
         `requests=${result.results.length}`,
-        `confirmed=${state.tagContext.confirmedTagIds.slice(0, 8).join(",") || "none"}`,
+        `retained=${state.retainedBrowseTags.size}`,
       ].join("; ");
     } else if (toolName === "practice_search_batch") {
       state.searchCallsUsed += 1;
@@ -571,40 +683,58 @@ async function executePracticeTool({
         lane_summaries: result.laneSummaries,
         mode,
         search_call: state.searchCallsUsed,
+        tag_retention: {
+          invalid: retention.invalid,
+          kept: retention.kept,
+          warnings: retention.warnings,
+        },
       };
-      modelObservation = formatPracticeSearchBatchForModel({
-        mode,
-        poolSize: state.candidatePool.size,
-        questionCount: state.questionCount,
-        result,
-      });
+      modelObservation = [
+        ...retention.warnings.map((warning) => `KEEP_TAGS_NOTE: ${warning}`),
+        formatPracticeSearchBatchForModel({
+          mode,
+          poolSize: state.candidatePool.size,
+          questionCount: state.questionCount,
+          result,
+        }),
+      ].filter(Boolean).join("\n");
       resultCount = result.shortCandidates.length;
       outputSummary = [
         `search_call=${state.searchCallsUsed}/${SEARCH_CALL_LIMIT}`,
         `mode=${mode}`,
         `lanes=${result.laneSummaries.map((lane) => `${lane.lane_id}:${lane.result_count}:${lane.match_quality}`).join(",")}`,
         `pool=${state.candidatePool.size}`,
-      ].join("; ");
+        retention.warnings.length ? `keep_tags_note=${retention.warnings.length}` : "",
+      ].filter(Boolean).join("; ");
     } else if (toolName === "finalize_recommendation") {
+      const generatedTagContext = buildGeneratedTagContext(state);
       state.finalized = {
         expected_skills: typeof args.expected_skills === "object" && args.expected_skills ? args.expected_skills as Record<string, string> : {},
+        keep_tags: retention.kept,
         question_ids: asStringArray(args.question_ids),
         reasons: typeof args.reasons === "object" && args.reasons ? args.reasons as Record<string, string> : {},
         round_goal: asString(args.round_goal, state.goal),
         session_memory: asString(args.session_memory, state.sessionMemory).slice(0, 1600),
-        tag_context: normalizeTagContext(args.tag_context, state.goal),
         visible_thought: visibleThought,
       };
-      state.tagContext = compactTagContext(state.finalized.tag_context ?? state.tagContext);
+      state.tagContext = generatedTagContext;
       logObservation = {
         accepted: true,
         candidate_pool_size: state.candidatePool.size,
         selected_question_ids: state.finalized.question_ids,
         tag_context_size: state.tagContext.confirmedTagIds.length,
+        tag_retention: {
+          invalid: retention.invalid,
+          kept: retention.kept,
+          warnings: retention.warnings,
+        },
       };
-      modelObservation = `FINALIZE accepted=true selected=${state.finalized.question_ids?.join(",") || "none"} pool=${state.candidatePool.size} tag_context=${state.tagContext.confirmedTagIds.length}`;
+      modelObservation = [
+        ...retention.warnings.map((warning) => `KEEP_TAGS_NOTE: ${warning}`),
+        `FINALIZE accepted=true selected=${state.finalized.question_ids?.join(",") || "none"} pool=${state.candidatePool.size} tag_context=${state.tagContext.confirmedTagIds.length}`,
+      ].filter(Boolean).join("\n");
       resultCount = state.finalized.question_ids?.length ?? 0;
-      outputSummary = `selected=${state.finalized.question_ids?.join(",") || "none"}; tag_context=${state.tagContext.confirmedTagIds.length}`;
+      outputSummary = `selected=${state.finalized.question_ids?.join(",") || "none"}; tag_context=${state.tagContext.confirmedTagIds.length}${retention.warnings.length ? `; keep_tags_note=${retention.warnings.length}` : ""}`;
     } else {
       logObservation = { error: `Unknown practice tool: ${toolName}` };
       modelObservation = `ERROR unknown_tool=${toolName}`;
@@ -667,16 +797,19 @@ function buildSystemPrompt(maxToolCalls: number) {
     "browse_taxonomy_batch is limited to 2 normal calls, with a hard safety cap of 3. Each call has at most 8 requests and each request returns at most 15 tag ids.",
     "searchable_question_count means searchable published approved question count for the full tag subtree, including child tags. direct_question_count is only diagnostic.",
     "browse_taxonomy_batch returns a compact text protocol, not verbose JSON. Example: r1: [{\"t\":\"math.concept.calculus.derivatives.chain_rule\",\"q\":4,\"a\":1,\"c\":0}]. Here t=tag_id, q=searchable subtree question count, a=assignable 1/0, c=children count, d=direct count if present.",
+    "Browse results are temporary. Only on the tool call immediately after browse_taxonomy_batch, include keep_tags with the full tag_id values worth carrying forward, for example keep_tags:[\"math.concept.calculus.derivatives.chain_rule\"].",
+    "Do not include keep_tags on unrelated later tool calls unless you are correcting or confirming a recent browsed tag. Never invent short tag refs.",
     "If browse finds a concrete is_assignable tag with searchable_question_count > 0, use it directly for strict search. Do not expand children for that tag.",
     "Only browse children when the tag is not assignable, has zero searchable count, or is clearly broad such as math.concept.calculus or integrals.",
     "practice_search_batch is limited to 2 calls. First call must be strict and use only this round's confirmed target tag subtrees. Strict search must not jump to parent tags, neighboring tags, calculus, or integrals just because a specific tag may be sparse.",
+    "Each practice_search_batch returns at most 2 * question_count visible candidates across all lanes.",
     "Second search may be relaxed: use parent tag subtree, adjacent tag subtree, or a small keyword query. When finalizing relaxed candidates, say the match is broader.",
     "practice_search_batch returns thin text: SEARCH_RESULT header, LANE rows, then q blocks with id, question_code, type, difficulty, tags, STEM, and OPTIONS. Use the id= value for finalize_recommendation question_ids.",
     "Example search block: q1 | id=<uuid> | O2I-CALC-HARD-013 | mcq | d=690 | tags=math.concept.calculus.derivatives.chain_rule | match=strict/lane-1; STEM: If G(x)=... what is G'(x)?; OPTIONS: A ...; B ...; C ...; D ...",
     "After two searches, finalize with the current candidate pool. Do not ask for broad_pool. Recommendation phase cannot see answer_spec or solution_html. It can see compact plain-text stems/options only from practice_search_batch.",
     `You have at most ${maxToolCalls} tool calls total including finalize_recommendation.`,
     "Every tool call must include visible_thought: a short UI-safe process summary. This is not private chain-of-thought.",
-    "finalize_recommendation must include tag_context for the next round. Keep it compact and reusable.",
+    "finalize_recommendation does not need tag_context; backend generates compact tag_context from kept browse tags, searched tags, and selected candidates.",
   ].join("\n");
 }
 
@@ -705,13 +838,18 @@ export async function runPracticeRecommendationAgent({
   const compactMemory = compactSessionMemory(sessionMemory, goal);
   const normalizedTagContext = normalizeTagContext(tagContext, goal);
   const state: ToolExecutionState = {
+    awaitingBrowseRetention: false,
+    browseCandidateByTagId: new Map(),
     browseCallsUsed: 0,
+    browseFoldSummaryByToolCallId: new Map(),
+    browseToolMessageIdsToFold: [],
     candidatePool: new Map(),
     completedQuestionIds,
     confirmedTargetTagIds: new Set(normalizedTagContext.confirmedTagIds),
     goal,
     onTrace,
     questionCount,
+    retainedBrowseTags: new Map(),
     searchCallsUsed: 0,
     sessionMemory: compactMemory,
     supabase,
@@ -767,6 +905,7 @@ export async function runPracticeRecommendationAgent({
     });
     providerLabel = modelResult.providerLabel;
 
+    foldConsumedBrowseToolMessages(messages, state);
     messages.push(buildAssistantMessageForToolContinuation(modelResult));
 
     await pushTrace(state, {
@@ -860,6 +999,6 @@ export async function runPracticeRecommendationAgent({
     recommendations,
     roundGoal: state.finalized?.round_goal?.trim() || goal,
     sessionMemory: state.finalized?.session_memory?.trim().slice(0, 1600) || compactMemory,
-    tagContext: compactTagContext(state.finalized?.tag_context ?? state.tagContext),
+    tagContext: buildGeneratedTagContext(state),
   };
 }
