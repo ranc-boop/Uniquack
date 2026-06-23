@@ -252,7 +252,11 @@ function resultBadge(result: PracticeGradeResult | undefined) {
   }
 
   if (result.isCorrect === true) {
-    return <Badge variant="secondary">correct</Badge>;
+    return (
+      <Badge className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600">
+        correct
+      </Badge>
+    );
   }
 
   if (result.isCorrect === false) {
@@ -260,6 +264,18 @@ function resultBadge(result: PracticeGradeResult | undefined) {
   }
 
   return <Badge variant="outline">manual review</Badge>;
+}
+
+function formatDuration(ms: number) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (!minutes) {
+    return `${seconds}s`;
+  }
+
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
 }
 
 function latestProcessSummary(trace: PracticeTraceEvent[]) {
@@ -433,9 +449,12 @@ export function PracticeAgentClient() {
   const [reviewTrace, setReviewTrace] = useState<PracticeTraceEvent[]>([]);
   const [isTraceCollapsed, setIsTraceCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [thinkingElapsedMs, setThinkingElapsedMs] = useState(0);
+  const [lastThinkingDurationMs, setLastThinkingDurationMs] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const resultTopRef = useRef<HTMLDivElement | null>(null);
   const thinkingEndRef = useRef<HTMLDivElement | null>(null);
+  const thinkingStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     window.localStorage.removeItem(STORAGE_KEY);
@@ -459,6 +478,22 @@ export function PracticeAgentClient() {
     }
   }, [phase]);
 
+  useEffect(() => {
+    if (phase !== "thinking") {
+      return;
+    }
+
+    const updateElapsed = () => {
+      const startedAt = thinkingStartedAtRef.current;
+      setThinkingElapsedMs(startedAt ? Date.now() - startedAt : 0);
+    };
+
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [phase]);
+
   const activeSession = useMemo(() => session ?? (goal.trim() ? newSession(goal.trim()) : null), [goal, session]);
   const latestTrace = useMemo(() => {
     if (phase === "feedback" && review) {
@@ -480,6 +515,25 @@ export function PracticeAgentClient() {
     setReviewTrace([]);
   }
 
+  function beginThinking() {
+    const now = Date.now();
+    thinkingStartedAtRef.current = now;
+    setThinkingElapsedMs(0);
+    setLastThinkingDurationMs(null);
+    setPhase("thinking");
+  }
+
+  function finishThinking(nextPhase: Phase) {
+    const startedAt = thinkingStartedAtRef.current;
+
+    if (startedAt) {
+      setLastThinkingDurationMs(Date.now() - startedAt);
+    }
+
+    thinkingStartedAtRef.current = null;
+    setPhase(nextPhase);
+  }
+
   function requestRecommendation(nextGoal?: string) {
     const trimmedGoal = (nextGoal ?? goal).trim();
 
@@ -491,7 +545,7 @@ export function PracticeAgentClient() {
     const currentSession = session ?? newSession(trimmedGoal);
     setSession(currentSession);
     setError(null);
-    setPhase("thinking");
+    beginThinking();
     setLiveTrace([]);
     setReviewTrace([]);
     setIsTraceCollapsed(false);
@@ -520,10 +574,10 @@ export function PracticeAgentClient() {
           memory: response.sessionMemory,
           tagContext: response.tagContext,
         });
-        setPhase("recommended");
+        finishThinking("recommended");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
-        setPhase("start");
+        finishThinking("start");
       }
     });
   }
@@ -565,7 +619,7 @@ export function PracticeAgentClient() {
     }));
 
     setError(null);
-    setPhase("thinking");
+    beginThinking();
     setLiveTrace([]);
     setIsTraceCollapsed(false);
 
@@ -628,19 +682,33 @@ export function PracticeAgentClient() {
         setReviewTrace(reviewResponse.trace);
         setLiveTrace(reviewResponse.trace);
         setIsTraceCollapsed(true);
-        setGoal(reviewResponse.nextRoundGoal);
+        setGoal("");
         setSession({
           ...activeSession,
           completedQuestionIds,
           memory: reviewResponse.updatedSessionMemory,
           rounds: [...activeSession.rounds, savedRound],
         });
-        setPhase("feedback");
+        finishThinking("feedback");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
-        setPhase("practicing");
+        finishThinking("practicing");
       }
     });
+  }
+
+  function requestFeedbackNextRound() {
+    if (!review) {
+      requestRecommendation();
+      return;
+    }
+
+    const studentThought = goal.trim();
+    const nextGoal = studentThought
+      ? `${review.nextRoundGoal} Student added: ${studentThought}`
+      : review.nextRoundGoal;
+
+    requestRecommendation(nextGoal);
   }
 
   function clearSession() {
@@ -648,6 +716,9 @@ export function PracticeAgentClient() {
     setSession(null);
     setRecommendation(null);
     setGoal("");
+    setLastThinkingDurationMs(null);
+    setThinkingElapsedMs(0);
+    thinkingStartedAtRef.current = null;
     resetRoundState();
     setPhase("start");
   }
@@ -683,17 +754,44 @@ export function PracticeAgentClient() {
         </div>
       ) : null}
 
+      {phase === "thinking" ? (
+        <div className="sticky top-3 z-20 flex items-center justify-between gap-3 rounded-md border bg-background/95 px-4 py-3 text-sm shadow-sm backdrop-blur">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />
+            </span>
+            <span className="truncate font-medium">
+              {recommendation ? "Reviewing your round" : "Thinking"}
+            </span>
+          </div>
+          <span className="font-mono text-xs text-muted-foreground">
+            {formatDuration(thinkingElapsedMs)}
+          </span>
+        </div>
+      ) : lastThinkingDurationMs !== null && (phase === "recommended" || phase === "feedback") ? (
+        <div className="rounded-md border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+          Thought for <span className="font-mono text-foreground">{formatDuration(lastThinkingDurationMs)}</span>
+        </div>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Goal</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-[1fr_9rem_auto]">
           <div className="space-y-2">
-            <Label htmlFor="goal">What do you want to practice?</Label>
+            <Label htmlFor="goal">
+              {phase === "feedback" ? "Add your thoughts for the next round" : "What do you want to practice?"}
+            </Label>
             <Input
               id="goal"
               onChange={(event) => setGoal(event.target.value)}
-              placeholder="e.g. AP Calculus implicit differentiation, harder MCQ first"
+              placeholder={
+                phase === "feedback"
+                  ? "Optional: ask for a focus, pace, or difficulty change"
+                  : "e.g. AP Calculus implicit differentiation, harder MCQ first"
+              }
               value={goal}
             />
           </div>
@@ -709,7 +807,11 @@ export function PracticeAgentClient() {
             />
           </div>
           <div className="flex items-end">
-            <Button disabled={isPending} onClick={() => requestRecommendation()} type="button">
+            <Button
+              disabled={isPending}
+              onClick={() => (phase === "feedback" ? requestFeedbackNextRound() : requestRecommendation())}
+              type="button"
+            >
               {session?.rounds.length ? "Start next round" : "Generate round"}
             </Button>
           </div>
@@ -912,24 +1014,16 @@ export function PracticeAgentClient() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-md border bg-muted/20 p-3 text-sm">
-              <p className="font-medium">Next round direction</p>
-              <FeedbackText
-                className="mt-1 border-none bg-transparent p-0 text-muted-foreground"
-                compact
-                value={review.nextRoundGoal}
-              />
-            </div>
             <div className="space-y-2">
-              <Label htmlFor="next-round-goal">Adjust next round goal</Label>
+              <Label htmlFor="next-round-goal">Add your thoughts for the next round</Label>
               <Input
                 id="next-round-goal"
                 onChange={(event) => setGoal(event.target.value)}
-                placeholder="Add a focus or constraint for the next round"
+                placeholder="Optional: ask for a focus, pace, or difficulty change"
                 value={goal}
               />
             </div>
-            <Button onClick={() => requestRecommendation(goal || review.nextRoundGoal)} type="button">
+            <Button onClick={requestFeedbackNextRound} type="button">
               Generate next round
             </Button>
           </CardContent>

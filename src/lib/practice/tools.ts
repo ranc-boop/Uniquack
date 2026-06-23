@@ -39,6 +39,7 @@ export type BrowseTagResult = {
   children_count: number;
   direct_question_count: number;
   is_assignable: boolean;
+  matched_keywords?: string[];
   searchable_question_count: number;
   tag_id: string;
 };
@@ -90,7 +91,7 @@ export type PracticeSearchBatchResult = {
 export function formatBrowseTaxonomyBatchForModel(result: BrowseTaxonomyBatchResult) {
   const lines = [
     `BROWSE_RESULT requests=${result.results.length} truncated=${result.truncated_requests ? "true" : "false"}`,
-    "Legend: t=tag_id, q=searchable subtree question count, a=assignable 1/0, c=children count, d=direct question count.",
+    "Legend: t=tag_id, q=searchable subtree question count, a=assignable 1/0, c=children count, d=direct question count, m=query keywords matched on this node's terminal content.",
   ];
 
   for (const item of result.results) {
@@ -100,6 +101,7 @@ export function formatBrowseTaxonomyBatchForModel(result: BrowseTaxonomyBatchRes
       a: tag.is_assignable ? 1 : 0,
       c: tag.children_count,
       ...(tag.direct_question_count ? { d: tag.direct_question_count } : {}),
+      ...(tag.matched_keywords?.length ? { m: tag.matched_keywords } : {}),
     }));
     lines.push(`${item.request_id}: ${JSON.stringify(compactTags)}${item.truncated ? " truncated=true" : ""}`);
   }
@@ -192,6 +194,21 @@ function tokenize(value: string) {
     .split(/[\s_.-]+/)
     .map((item) => item.trim())
     .filter((item) => item.length >= 3);
+}
+
+function terminalTagSegment(tagId: string) {
+  return tagId.split(".").filter(Boolean).pop() ?? tagId;
+}
+
+function terminalSearchText(node: TaxonomyNodeLite) {
+  return [
+    terminalTagSegment(node.tag_id),
+    node.label,
+    ...node.aliases,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 function nodeHaystack(node: TaxonomyNodeLite) {
@@ -334,11 +351,13 @@ async function loadQuestionCounts({
 function statsForNode({
   childrenByParent,
   directCountByTag,
+  matchedKeywords,
   node,
   searchableCountByTag,
 }: {
   childrenByParent: Map<string, TaxonomyNodeLite[]>;
   directCountByTag: Map<string, number>;
+  matchedKeywords?: string[];
   node: TaxonomyNodeLite;
   searchableCountByTag: Map<string, number>;
 }): BrowseTagResult {
@@ -346,9 +365,28 @@ function statsForNode({
     children_count: childrenByParent.get(node.tag_id)?.length ?? 0,
     direct_question_count: directCountByTag.get(node.tag_id) ?? 0,
     is_assignable: Boolean(node.is_assignable),
+    matched_keywords: matchedKeywords?.length ? matchedKeywords : undefined,
     searchable_question_count: searchableCountByTag.get(node.tag_id) ?? 0,
     tag_id: node.tag_id,
   };
+}
+
+function terminalQueryMatches(nodes: TaxonomyNodeLite[], query: string) {
+  const tokens = tokenize(query);
+  if (!tokens.length) return [];
+
+  return nodes
+    .map((node) => {
+      const terminalText = terminalSearchText(node);
+      const matchedKeywords = tokens.filter((token) => terminalText.includes(token));
+      return { matchedKeywords, node };
+    })
+    .filter((item) => item.matchedKeywords.length > 0)
+    .sort(
+      (left, right) =>
+        right.matchedKeywords.length - left.matchedKeywords.length ||
+        left.node.tag_id.localeCompare(right.node.tag_id),
+    );
 }
 
 function rankedQueryMatches(nodes: TaxonomyNodeLite[], query: string) {
@@ -405,6 +443,7 @@ export async function browseTaxonomyBatch({
   return {
     results: limitedRequests.map((request) => {
       const candidateMap = new Map<string, TaxonomyNodeLite>();
+      const matchedKeywordsByTagId = new Map<string, string[]>();
 
       if (request.parent_tag_id) {
         for (const child of childrenByParent.get(request.parent_tag_id) ?? []) {
@@ -422,8 +461,19 @@ export async function browseTaxonomyBatch({
       }
 
       if (request.query) {
-        for (const node of rankedQueryMatches(nodes, request.query)) {
-          candidateMap.set(node.tag_id, node);
+        const terminalMatches = terminalQueryMatches(nodes, request.query);
+
+        for (const item of terminalMatches) {
+          candidateMap.set(item.node.tag_id, item.node);
+          matchedKeywordsByTagId.set(item.node.tag_id, item.matchedKeywords);
+        }
+
+        if (!terminalMatches.length) {
+          for (const node of rankedQueryMatches(nodes, request.query)) {
+            if (!candidateMap.has(node.tag_id)) {
+              candidateMap.set(node.tag_id, node);
+            }
+          }
         }
       }
 
@@ -434,7 +484,13 @@ export async function browseTaxonomyBatch({
           return rightCount - leftCount || left.tag_id.localeCompare(right.tag_id);
         });
       const limitedTags = candidates.slice(0, BROWSE_TAG_LIMIT).map((node) =>
-        statsForNode({ childrenByParent, directCountByTag, node, searchableCountByTag }),
+        statsForNode({
+          childrenByParent,
+          directCountByTag,
+          matchedKeywords: matchedKeywordsByTagId.get(node.tag_id),
+          node,
+          searchableCountByTag,
+        }),
       );
 
       return {
@@ -463,6 +519,92 @@ function matchQuality(mode: PracticeSearchMode, tags: string[], queryText: strin
   return queryText ? "keyword" as const : "relaxed" as const;
 }
 
+type PracticeSearchRow = {
+  difficulty_rating: number;
+  laneId: string;
+  matchQuality: "strict" | "relaxed" | "keyword";
+  matched_tag_ids?: string[];
+  question_code: string;
+  question_id: string;
+  question_type: QuestionType;
+  title: string;
+};
+
+function addUniqueCandidateRow({
+  candidateRows,
+  row,
+  seenQuestionIds,
+  visibleCandidateCap,
+}: {
+  candidateRows: PracticeSearchRow[];
+  row: PracticeSearchRow;
+  seenQuestionIds: Set<string>;
+  visibleCandidateCap: number;
+}) {
+  if (candidateRows.length >= visibleCandidateCap || seenQuestionIds.has(row.question_id)) {
+    return false;
+  }
+
+  seenQuestionIds.add(row.question_id);
+  candidateRows.push(row);
+  return true;
+}
+
+function allocateVisibleRowsFairly({
+  candidateRows,
+  laneRows,
+  seenQuestionIds,
+  visibleCandidateCap,
+}: {
+  candidateRows: PracticeSearchRow[];
+  laneRows: PracticeSearchRow[][];
+  seenQuestionIds: Set<string>;
+  visibleCandidateCap: number;
+}) {
+  const nonEmptyLaneCount = laneRows.filter((rows) => rows.length > 0).length;
+  const guaranteedPerLane = nonEmptyLaneCount
+    ? Math.max(1, Math.min(2, Math.floor(visibleCandidateCap / nonEmptyLaneCount)))
+    : 0;
+  const cursors = laneRows.map(() => 0);
+
+  const addNextUniqueFromLane = (laneIndex: number) => {
+    const rows = laneRows[laneIndex] ?? [];
+
+    while (cursors[laneIndex] < rows.length) {
+      const row = rows[cursors[laneIndex]];
+      cursors[laneIndex] += 1;
+
+      if (addUniqueCandidateRow({ candidateRows, row, seenQuestionIds, visibleCandidateCap })) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  for (let round = 0; round < guaranteedPerLane; round += 1) {
+    for (let laneIndex = 0; laneIndex < laneRows.length; laneIndex += 1) {
+      addNextUniqueFromLane(laneIndex);
+    }
+  }
+
+  while (candidateRows.length < visibleCandidateCap) {
+    let addedThisRound = false;
+
+    for (let laneIndex = 0; laneIndex < laneRows.length; laneIndex += 1) {
+      addedThisRound = addNextUniqueFromLane(laneIndex) || addedThisRound;
+
+      if (candidateRows.length >= visibleCandidateCap) {
+        break;
+      }
+    }
+
+    if (!addedThisRound) {
+      break;
+    }
+  }
+}
+
 export async function practiceSearchBatch({
   completedQuestionIds,
   difficultyMax = 1000,
@@ -482,16 +624,8 @@ export async function practiceSearchBatch({
 }): Promise<PracticeSearchBatchResult> {
   const limitedLanes = lanes.slice(0, SEARCH_LANE_LIMIT);
   const visibleCandidateCap = Math.max(1, Math.trunc(questionCount) * 2);
-  const candidateRows: Array<{
-    difficulty_rating: number;
-    laneId: string;
-    matchQuality: "strict" | "relaxed" | "keyword";
-    matched_tag_ids?: string[];
-    question_code: string;
-    question_id: string;
-    question_type: QuestionType;
-    title: string;
-  }> = [];
+  const candidateRows: PracticeSearchRow[] = [];
+  const laneRows: PracticeSearchRow[][] = [];
   const laneSummaries: PracticeSearchBatchResult["laneSummaries"] = [];
   const seenQuestionIds = new Set<string>();
 
@@ -499,11 +633,7 @@ export async function practiceSearchBatch({
     const requestedTags = uniqueStrings(lane.confirmed_tag_ids);
     const effectiveTags = mode === "strict" ? requestedTags : requestedTags;
     const normalizedQueryText = mode === "relaxed" ? lane.query_text?.slice(0, 120) || null : null;
-    const remainingVisibleSlots = Math.max(0, visibleCandidateCap - candidateRows.length);
-    const limit = Math.min(
-      remainingVisibleSlots || visibleCandidateCap,
-      searchLimit(lane.limit, Math.max(DEFAULT_SEARCH_LIMIT, visibleCandidateCap)),
-    );
+    const limit = searchLimit(lane.limit, Math.max(DEFAULT_SEARCH_LIMIT, visibleCandidateCap));
     const quality = matchQuality(mode, effectiveTags, normalizedQueryText ?? undefined);
     const result = await supabase.rpc("search_questions_by_taxonomy", {
       assignment_review_status: "approved",
@@ -530,16 +660,10 @@ export async function practiceSearchBatch({
       title: string;
     }>).filter((row) => !completedQuestionIds.includes(row.question_id));
 
-    for (const row of rows) {
-      if (candidateRows.length >= visibleCandidateCap) {
-        break;
-      }
-      if (seenQuestionIds.has(row.question_id)) {
-        continue;
-      }
-      seenQuestionIds.add(row.question_id);
-      candidateRows.push({ ...row, laneId: lane.lane_id, matchQuality: quality });
-    }
+    const laneVisibleBuffer = Math.max(limit, Math.min(2, visibleCandidateCap));
+    laneRows.push(
+      rows.slice(0, laneVisibleBuffer).map((row) => ({ ...row, laneId: lane.lane_id, matchQuality: quality })),
+    );
 
     laneSummaries.push({
       effective_tags: effectiveTags,
@@ -550,6 +674,8 @@ export async function practiceSearchBatch({
       result_count: rows.length,
     });
   }
+
+  allocateVisibleRowsFairly({ candidateRows, laneRows, seenQuestionIds, visibleCandidateCap });
 
   const orderedIds = candidateRows.map((row) => row.question_id);
   const order = new Map(orderedIds.map((id, index) => [id, index]));
