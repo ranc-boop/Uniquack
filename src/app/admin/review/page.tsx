@@ -1,6 +1,7 @@
 ﻿import Link from "next/link";
 
 import { bulkUpdateQuestions } from "@/app/admin/questions/actions";
+import { AdminReviewBulkSelection } from "@/components/admin-review-bulk-selection";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,15 @@ function reviewPath({ batch, search }: { batch?: string; search?: string }) {
   const serialized = query.toString();
 
   return serialized ? `/admin/review?${serialized}` : "/admin/review";
+}
+
+function questionEditPath(questionId: string, returnTo: string) {
+  const query = new URLSearchParams({
+    edit: questionId,
+    return_to: returnTo,
+  });
+
+  return "/admin/questions?" + query.toString();
 }
 
 function getAIReviewMetadata(value: unknown): AIReviewMetadata | null {
@@ -410,6 +420,7 @@ export default async function AdminReviewPage({
         className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-3 text-sm"
       >
         <input type="hidden" name="return_to" value={currentPath} />
+        <AdminReviewBulkSelection formId="admin-review-bulk-form" />
         <select
           name="status"
           className="h-9 rounded-md border bg-background px-2 text-sm"
@@ -600,7 +611,7 @@ export default async function AdminReviewPage({
                 ) : null}
                 <Button asChild size="sm">
                   <Link
-                    href={`/admin/questions?edit=${question.id}`}
+                    href={questionEditPath(question.id, currentPath)}
                   >
                     Edit question
                   </Link>

@@ -51,6 +51,7 @@ type AdminQuestionEditDetailsProps = {
   importedAssetReferences: ImportAssetReferences | null;
   question: EditableQuestion;
   readiness: QuestionReadiness;
+  returnTo?: string;
   selectedTaxonomyTagIds?: SelectedTaxonomyTagMap;
   sourceFiles?: QuestionSourceFileView[];
   taxonomyCatalog: TaxonomyCatalogView;
@@ -206,6 +207,7 @@ export function AdminQuestionEditDetails({
   importedAssetReferences,
   question,
   readiness,
+  returnTo,
   selectedTaxonomyTagIds = {},
   sourceFiles = [],
   taxonomyCatalog,
@@ -223,6 +225,9 @@ export function AdminQuestionEditDetails({
           className="mt-3 grid gap-4 rounded-md border bg-background p-4 lg:grid-cols-2"
         >
           <input type="hidden" name="id" value={question.id} />
+          {returnTo ? (
+            <input type="hidden" name="return_to" value={returnTo} />
+          ) : null}
           <div className="space-y-1">
             <Label>Code</Label>
             <Input
