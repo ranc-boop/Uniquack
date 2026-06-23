@@ -55,6 +55,7 @@ type AdminQuestionsPageProps = {
     edit?: string;
     q?: string;
     page?: string;
+    return_to?: string | string[];
     saved?: string;
     status?: string;
   }>;
@@ -166,6 +167,7 @@ export default async function AdminQuestionsPage({
   const focusedQuestionId = uuidPattern.test(firstParam(params.edit) ?? "")
     ? firstParam(params.edit)!.trim()
     : "";
+  const editReturnTo = firstParam(params.return_to) ?? "";
   const selectedStatus = safeStatusFilter(params.status);
   const { catalog: taxonomyCatalog, errorMessage: taxonomyCatalogError } =
     await loadTaxonomyCatalog(supabase);
@@ -713,6 +715,7 @@ export default async function AdminQuestionsPage({
                 importedAssetReferences={importedAssetReferences}
                 question={question}
                 readiness={readiness}
+                returnTo={editReturnTo}
                 selectedTaxonomyTagIds={selectedTaxonomyTagMapFromAssignments(
                   taxonomyAssignmentsByQuestionId.get(question.id),
                 )}
@@ -862,6 +865,7 @@ export default async function AdminQuestionsPage({
                         importedAssetReferences={importedAssetReferences}
                         question={question}
                         readiness={readiness}
+                        returnTo={currentPath}
                         selectedTaxonomyTagIds={selectedTaxonomyTagMapFromAssignments(
                           taxonomyAssignmentsByQuestionId.get(question.id),
                         )}

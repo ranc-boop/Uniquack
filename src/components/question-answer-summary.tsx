@@ -1,4 +1,8 @@
 import {
+  InlineMathText,
+  OptionText,
+} from "@/components/math-content";
+import {
   normalizeAnswerSpec,
   normalizeQuestionOptions,
 } from "@/lib/questions/answer-spec";
@@ -31,7 +35,11 @@ export function QuestionAnswerSummary({
               {normalizedOptions.map((option) => (
                 <li key={option.id}>
                   <span className="font-mono">{option.id}</span>.{" "}
-                  {option.content_source ?? option.content_html}
+                  <OptionText
+                    className="inline border-none bg-transparent p-0 text-muted-foreground"
+                    inline
+                    value={option.content_source ?? option.content_html}
+                  />
                 </li>
               ))}
             </ul>
@@ -49,15 +57,17 @@ export function QuestionAnswerSummary({
           <div className="space-y-1">
             <p>
               Final answers:{" "}
-              <span className="font-mono text-foreground">
-                {normalizedAnswerSpec.final_answers?.join(", ") || "Not set"}
-              </span>
+              <InlineMathText
+                className="font-mono text-foreground"
+                value={normalizedAnswerSpec.final_answers?.join(", ") || "Not set"}
+              />
             </p>
             <p>
               Accepted answers:{" "}
-              <span className="font-mono text-foreground">
-                {normalizedAnswerSpec.accepted_answers?.join(", ") || "Not set"}
-              </span>
+              <InlineMathText
+                className="font-mono text-foreground"
+                value={normalizedAnswerSpec.accepted_answers?.join(", ") || "Not set"}
+              />
             </p>
             <p>Equivalence: {normalizedAnswerSpec.equivalence ?? "math"}</p>
           </div>

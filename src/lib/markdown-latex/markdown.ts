@@ -57,13 +57,14 @@ export function markdownLatexToHtml(markdown: string) {
       continue;
     }
 
-    if (line === "$$") {
+    if (line === "$$" || line === "\\[") {
       flushParagraph();
       flushLists();
       const mathLines: string[] = [];
+      const closeDelimiter = line === "$$" ? "$$" : "\\]";
 
       index += 1;
-      while (index < lines.length && lines[index].trim() !== "$$") {
+      while (index < lines.length && lines[index].trim() !== closeDelimiter) {
         mathLines.push(lines[index]);
         index += 1;
       }
@@ -169,10 +170,22 @@ function escapeAttribute(value: string) {
 
 function getWrappedInlineMathSource(value: string) {
   const trimmed = value.trim();
-  const doubleDollar = /^\$\$([^$]+?)\$\$$/.exec(trimmed);
+  const doubleDollar = /^\$\$([\s\S]+?)\$\$$/.exec(trimmed);
 
   if (doubleDollar) {
     return doubleDollar[1].trim();
+  }
+
+  const bracket = /^\\\[([\s\S]+?)\\\]$/.exec(trimmed);
+
+  if (bracket) {
+    return bracket[1].trim();
+  }
+
+  const paren = /^\\\(([^]+?)\\\)$/.exec(trimmed);
+
+  if (paren) {
+    return paren[1].trim();
   }
 
   const singleDollar = /^\$([^$\n]+?)\$$/.exec(trimmed);
@@ -241,10 +254,19 @@ function renderInlineMarkdown(value: string) {
   });
 
   rendered = rendered.replace(
-    /\$\$([^$]+?)\$\$|\$([^$\n]+?)\$/g,
-    (_, blockLatex: string | undefined, inlineLatex: string | undefined) => {
-      const latex = blockLatex ?? inlineLatex ?? "";
-      const index = htmlTokens.push(renderInlineMath(latex)) - 1;
+    /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([^]+?)\\\)|\$([^$\n]+?)\$/g,
+    (
+      _,
+      dollarBlockLatex: string | undefined,
+      bracketBlockLatex: string | undefined,
+      parenInlineLatex: string | undefined,
+      dollarInlineLatex: string | undefined,
+    ) => {
+      const blockLatex = dollarBlockLatex ?? bracketBlockLatex;
+      const inlineLatex = parenInlineLatex ?? dollarInlineLatex;
+      const index = htmlTokens.push(
+        blockLatex ? renderBlockMath(blockLatex) : renderInlineMath(inlineLatex ?? ""),
+      ) - 1;
       return `@@HTML_${index}@@`;
     },
   );

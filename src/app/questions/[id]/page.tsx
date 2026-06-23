@@ -7,7 +7,11 @@ import {
   type QuestionDetailImage,
 } from "@/components/question-detail-image-gallery";
 import { QuestionAnswerSummary } from "@/components/question-answer-summary";
-import { RichHtml } from "@/components/rich-html";
+import {
+  OptionText,
+  QuestionText,
+  SolutionText,
+} from "@/components/math-content";
 import {
   TaxonomyTagChips,
   type TaxonomyTagChipAssignment,
@@ -235,7 +239,7 @@ export default async function QuestionDetailPage({
           <Card>
             <CardContent className="space-y-8 p-6">
               <QuestionSection title="Description">
-                <RichHtml html={question.content_html} />
+                <QuestionText value={question.content_html} />
               </QuestionSection>
 
               {question.question_type === "mcq" && questionOptions.length ? (
@@ -249,9 +253,9 @@ export default async function QuestionDetailPage({
                         <span className="flex size-8 items-center justify-center rounded-md border bg-background font-mono text-sm font-semibold">
                           {option.label || option.id}
                         </span>
-                        <RichHtml
+                        <OptionText
                           className="border-none bg-transparent p-0"
-                          html={option.content_html}
+                          value={option.content_html}
                         />
                       </div>
                     ))}
@@ -276,7 +280,7 @@ export default async function QuestionDetailPage({
                       </AccordionTrigger>
                       <AccordionContent>
                         <div className="pt-2">
-                          <RichHtml html={question.solution_html} />
+                          <SolutionText value={question.solution_html} />
                         </div>
                       </AccordionContent>
                     </AccordionItem>

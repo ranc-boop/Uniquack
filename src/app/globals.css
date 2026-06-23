@@ -59,7 +59,8 @@
 
 @layer components {
   .rich-html {
-    @apply text-foreground leading-7;
+    @apply min-w-0 text-foreground leading-7;
+    overflow-wrap: anywhere;
   }
 
   .rich-html > :first-child {
@@ -208,11 +209,32 @@
   }
 
   .rich-html [data-type="inline-math"] {
-    @apply inline-block align-baseline;
+    @apply inline-block max-w-full align-baseline;
+    line-height: 1.45;
+    vertical-align: -0.08em;
   }
 
   .rich-html [data-type="block-math"] {
-    @apply my-4 block overflow-x-auto text-center;
+    @apply my-4 block max-w-full overflow-x-auto overflow-y-visible py-1 text-center;
+    min-width: 0;
+  }
+
+  .rich-html .katex {
+    @apply max-w-full;
+    line-height: 1.35;
+    white-space: normal;
+  }
+
+  .rich-html .katex-display {
+    @apply my-4 max-w-full overflow-x-auto overflow-y-visible py-1;
+  }
+
+  .rich-html .katex-html {
+    overflow: visible;
+  }
+
+  .rich-html :where(.katex, .katex-display, [data-type="inline-math"], [data-type="block-math"]) {
+    min-width: 0;
   }
 
   summary::-webkit-details-marker {

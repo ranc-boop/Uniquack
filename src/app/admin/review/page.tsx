@@ -1,9 +1,11 @@
 import Link from "next/link";
 
-import { updateQuestionFromReview } from "@/app/admin/review/actions";
+import { bulkUpdateQuestions, updateQuestion } from "@/app/admin/questions/actions";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
+import { AdminReviewBulkSelection } from "@/components/admin-review-bulk-selection";
 import { DraftReviewCard } from "@/components/draft-review-card";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import type { EditableQuestion } from "@/components/question-editor";
 import { Button } from "@/components/ui/button";
@@ -16,6 +18,7 @@ import {
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 
 export const dynamic = "force-dynamic";
 
@@ -29,12 +32,14 @@ type ReviewPageProps = {
 };
 
 type ReviewQuestion = {
+  answer_spec: unknown;
   content_html: string | null;
   content_source: string | null;
   content_source_format: string | null;
   created_at: string;
   difficulty_rating: number;
   id: string;
+  options: unknown;
   question_code: string;
   question_type: string;
   solution_html: string | null;
@@ -115,6 +120,7 @@ export default async function AdminReviewPage({
   const batchId = (params.batch ?? "").trim();
   const currentPath = reviewPath({ batch: params.batch, search: params.search });
   const supabase = await createClient();
+  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   let batchFilter:
     | {
         createdAt: string | null;
@@ -172,7 +178,7 @@ export default async function AdminReviewPage({
     let questionsQuery = supabase
       .from("questions")
       .select(
-        "id, question_code, title, question_type, difficulty_rating, status, content_html, content_source, content_source_format, solution_html, solution_source, solution_source_format, created_at",
+        "id, question_code, title, question_type, difficulty_rating, status, answer_spec, options, content_html, content_source, content_source_format, solution_html, solution_source, solution_source_format, created_at",
       )
       .eq("status", "draft")
       .order("created_at", { ascending: false })
@@ -222,7 +228,7 @@ export default async function AdminReviewPage({
           .limit(1000),
         supabase
           .from("taxonomy_nodes")
-          .select("tag_id, label, status")
+          .select("tag_id, label, status, facet_key")
           .eq("status", "active")
           .limit(1000),
         supabase
@@ -252,6 +258,9 @@ export default async function AdminReviewPage({
       ];
 
   const activeTagIds = new Set((tags ?? []).map((tag) => tag.tag_id));
+  const facetByTagId = new Map(
+    (tags ?? []).map((tag) => [tag.tag_id, tag.facet_key]),
+  );
   const tagStatusById = new Map(
     (questionTags ?? []).map((tag) => [
       `${tag.question_id}:${tag.tag_id}`,
@@ -261,6 +270,10 @@ export default async function AdminReviewPage({
   const tagsByQuestionId = new Map<string, string[]>();
   const draftTagCountByQuestionId = new Map<string, number>();
   const publishedTagCountByQuestionId = new Map<string, number>();
+  const selectedTaxonomyTagIdsByQuestionId = new Map<
+    string,
+    Partial<Record<string, string[]>>
+  >();
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
   const aiMetadataByQuestionId = new Map<string, AIReviewMetadata>();
@@ -269,28 +282,38 @@ export default async function AdminReviewPage({
   const importedAtByQuestionId = new Map<string, string>();
 
   for (const binding of questionTags ?? []) {
-    const tagStatus = tagStatusById.get(`${binding.question_id}:${binding.tag_id}`);
+    const tagStatus = tagStatusById.get(
+      `${binding.question_id}:${binding.tag_id}`,
+    );
 
     if (!activeTagIds.has(binding.tag_id)) {
       continue;
     }
 
     if (tagStatus === "pending_review" || tagStatus === "needs_review") {
-      pendingTagCountByQuestionId.set(
+      draftTagCountByQuestionId.set(
         binding.question_id,
-        (pendingTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
+        (draftTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
       );
     } else if (tagStatus === "approved") {
-      approvedTagCountByQuestionId.set(
+      publishedTagCountByQuestionId.set(
         binding.question_id,
-        (approvedTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
+        (publishedTagCountByQuestionId.get(binding.question_id) ?? 0) + 1,
       );
     }
 
-    tagIdsByQuestionId.set(binding.question_id, [
-      ...(tagIdsByQuestionId.get(binding.question_id) ?? []),
+    tagsByQuestionId.set(binding.question_id, [
+      ...(tagsByQuestionId.get(binding.question_id) ?? []),
       binding.tag_id,
     ]);
+
+    const facetKey = facetByTagId.get(binding.tag_id);
+    if (facetKey) {
+      const selected =
+        selectedTaxonomyTagIdsByQuestionId.get(binding.question_id) ?? {};
+      selected[facetKey] = [...(selected[facetKey] ?? []), binding.tag_id];
+      selectedTaxonomyTagIdsByQuestionId.set(binding.question_id, selected);
+    }
   }
 
   for (const asset of questionAssets ?? []) {
@@ -351,8 +374,6 @@ export default async function AdminReviewPage({
       aiMetadataByQuestionId.set(item.created_question_id, aiMetadata);
     }
   }
-
-  const updateAction = updateQuestionFromReview.bind(null, batchId || null);
 
   return (
     <div className="space-y-6">
@@ -415,6 +436,7 @@ export default async function AdminReviewPage({
         className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-3 text-sm"
       >
         <input type="hidden" name="return_to" value={currentPath} />
+        <AdminReviewBulkSelection formId="admin-review-bulk-form" />
         <select
           name="status"
           className="h-9 rounded-md border bg-background px-2 text-sm"
@@ -476,16 +498,18 @@ export default async function AdminReviewPage({
             importedAssetReferences: importRefs,
             solutionHtml: question.solution_html,
             sourceFileCount,
-            tagCount: approvedTagCount,
+            tagCount: publishedTagCount,
           });
 
           const editableQuestion: EditableQuestion = {
+            answer_spec: question.answer_spec,
             content_html: question.content_html ?? "",
             content_source: question.content_source,
             content_source_format:
               question.content_source_format as EditableQuestion["content_source_format"],
             difficulty_rating: question.difficulty_rating,
             id: question.id,
+            options: question.options,
             question_code: question.question_code,
             question_type: question.question_type,
             solution_html: question.solution_html,
@@ -499,6 +523,8 @@ export default async function AdminReviewPage({
           return (
             <DraftReviewCard
               key={question.id}
+              questionId={question.id}
+              selectionFormId="admin-review-bulk-form"
               questionCode={question.question_code}
               title={question.title}
               status={question.status}
@@ -522,8 +548,13 @@ export default async function AdminReviewPage({
               aiCropCount={aiCropCount}
               editableQuestion={editableQuestion}
               assets={assets}
+              returnTo={currentPath}
+              selectedTaxonomyTagIds={
+                selectedTaxonomyTagIdsByQuestionId.get(question.id) ?? {}
+              }
               sourceFiles={questionSourceFiles}
-              updateAction={updateAction}
+              taxonomyCatalog={taxonomyCatalog}
+              updateAction={updateQuestion}
             />
           );
         })}

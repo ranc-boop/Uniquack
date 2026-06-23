@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { SupabaseConfigNotice } from "@/components/config-notice";
-import { RichHtml } from "@/components/rich-html";
+import { QuestionText } from "@/components/math-content";
 import {
   TaxonomyTagChips,
   type TaxonomyTagChipAssignment,
@@ -240,7 +240,11 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <RichHtml html={question.content_html} className="rich-html--compact" />
+                <QuestionText
+                  className="border-none bg-transparent p-0"
+                  compact
+                  value={question.content_html}
+                />
                 <div className="flex flex-wrap gap-2">
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/questions/${question.id}`}>

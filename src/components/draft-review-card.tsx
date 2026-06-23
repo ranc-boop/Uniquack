@@ -4,7 +4,11 @@ import { useState } from "react";
 
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
-import { QuestionEditor, type EditableQuestion } from "@/components/question-editor";
+import {
+  QuestionEditor,
+  type EditableQuestion,
+} from "@/components/question-editor";
+import type { TaxonomyCatalogView } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +20,8 @@ import type { QuestionReadiness } from "@/lib/questions/readiness";
 
 type DraftReviewCardProps = {
   // Card display fields
+  questionId: string;
+  selectionFormId?: string;
   questionCode: string;
   title: string;
   status: string;
@@ -41,7 +47,10 @@ type DraftReviewCardProps = {
   // QuestionEditor data
   editableQuestion: EditableQuestion;
   assets: QuestionAssetView[];
+  returnTo?: string;
+  selectedTaxonomyTagIds?: Partial<Record<string, string[]>>;
   sourceFiles: QuestionSourceFileView[];
+  taxonomyCatalog?: TaxonomyCatalogView;
   updateAction: (formData: FormData) => void | Promise<void>;
 };
 
@@ -72,6 +81,8 @@ function ImportedAssetReferenceBadges({
 }
 
 export function DraftReviewCard({
+  questionId,
+  selectionFormId,
   questionCode,
   title,
   status,
@@ -95,7 +106,10 @@ export function DraftReviewCard({
   aiCropCount,
   editableQuestion,
   assets,
+  returnTo,
+  selectedTaxonomyTagIds,
   sourceFiles,
+  taxonomyCatalog,
   updateAction,
 }: DraftReviewCardProps) {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -107,9 +121,21 @@ export function DraftReviewCard({
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">{questionCode}</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">{title}</p>
+          <div className="flex items-start gap-3">
+            {selectionFormId ? (
+              <input
+                aria-label={`Select question ${questionCode}`}
+                className="mt-1 size-4 rounded border"
+                form={selectionFormId}
+                name="question_id"
+                type="checkbox"
+                value={questionId}
+              />
+            ) : null}
+            <div>
+              <CardTitle className="text-base">{questionCode}</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">{title}</p>
+            </div>
           </div>
           <Badge variant="secondary">{status}</Badge>
         </div>
@@ -226,7 +252,10 @@ export function DraftReviewCard({
             importedAssetReferences={importedAssetReferences}
             question={editableQuestion}
             readiness={readiness}
+            returnTo={returnTo}
+            selectedTaxonomyTagIds={selectedTaxonomyTagIds}
             sourceFiles={sourceFiles}
+            taxonomyCatalog={taxonomyCatalog}
           />
         ) : null}
       </CardContent>

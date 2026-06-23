@@ -248,9 +248,11 @@ export async function createQuestion(formData: FormData) {
 
 export async function updateQuestion(formData: FormData) {
   let questionId = "";
+  let returnTo = "/admin/questions";
 
   try {
     const profile = await requireAdmin();
+    returnTo = safeReturnTo(String(formData.get("return_to") ?? returnTo));
     const parsed = questionUpdateSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
     const { id, ...values } = parsed;
@@ -282,7 +284,7 @@ export async function updateQuestion(formData: FormData) {
     });
 
   } catch (error) {
-    redirectWithError("/admin/questions", formatActionError(error));
+    redirectWithError(returnTo, formatActionError(error));
   }
 
   revalidatePath("/admin/questions");
@@ -290,7 +292,7 @@ export async function updateQuestion(formData: FormData) {
   revalidatePath(`/questions/${questionId}`);
   revalidatePath("/videos");
   revalidatePath("/admin/videos");
-  redirectWithSaved("/admin/questions", "Question updated.");
+  redirectWithSaved(returnTo, "Question updated.");
 }
 
 export async function updateQuestionStatus(formData: FormData) {

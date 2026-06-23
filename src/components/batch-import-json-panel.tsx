@@ -10,6 +10,7 @@ import {
   importManualJsonDrafts,
   previewManualJsonImport,
 } from "@/app/admin/imports/actions";
+import { FeedbackText } from "@/components/math-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -377,7 +378,14 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
                 <p className="font-medium">Import issues</p>
                 <ul className="mt-1 list-disc space-y-1 pl-4">
                   {summary.validationErrorReasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
+                    <li key={reason}>
+                      <FeedbackText
+                        className="inline border-none bg-transparent p-0 text-xs text-amber-900"
+                        compact
+                        inline
+                        value={reason}
+                      />
+                    </li>
                   ))}
                 </ul>
               </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { MathContent } from "@/components/math-content";
 import {
   TaxonomyTagChips,
   type TaxonomyTagChipAssignment,
@@ -91,9 +92,11 @@ export function QuestionsTable({
                   {question.title}
                 </ClickableCell>
                 <ClickableCell href={href} label={label} className="max-w-md">
-                  <p className="line-clamp-3 text-sm text-muted-foreground">
-                    {question.content_excerpt || "Open question to view content."}
-                  </p>
+                  <MathContent
+                    className="line-clamp-3 border-none bg-transparent p-0 text-muted-foreground"
+                    compact
+                    value={question.content_excerpt || "Open question to view content."}
+                  />
                 </ClickableCell>
                 <ClickableCell href={href} label={label}>
                   <TaxonomyTagChips
