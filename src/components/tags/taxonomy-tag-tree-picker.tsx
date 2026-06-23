@@ -168,9 +168,8 @@ function TreeNode({
   const canSelect = selectable === "all" || node.is_assignable !== false;
   const shouldOpen =
     Boolean(query) ||
-    isSelected ||
-    hasSelectedDescendant(node, selected, childrenById) ||
-    level === 0;
+    (level > 0 &&
+      (isSelected || hasSelectedDescendant(node, selected, childrenById)));
 
   return (
     <details className="group" open={shouldOpen}>
