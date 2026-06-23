@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { compactSessionMemory, compactText, traced } from "@/lib/practice/context";
+import { persistRoundReview } from "@/lib/practice/persistence";
 import type {
   PracticeGradeResult,
+  PracticeRecommendation,
   PracticeReviewRequest,
   PracticeReviewResponse,
   PracticeTraceEvent,
@@ -80,6 +82,28 @@ function optionText(options: unknown) {
   });
 }
 
+function recommendationFromRoundQuestion(row: Record<string, unknown>): PracticeRecommendation {
+  const snapshot =
+    row.question_snapshot && typeof row.question_snapshot === "object" && !Array.isArray(row.question_snapshot)
+      ? (row.question_snapshot as Partial<PracticeRecommendation>)
+      : {};
+
+  return {
+    contentExcerpt: String(snapshot.contentExcerpt ?? ""),
+    contentHtml: String(snapshot.contentHtml ?? row.content_html ?? ""),
+    difficulty: Number(snapshot.difficulty ?? row.difficulty_rating ?? 0),
+    expectedSkill: String(snapshot.expectedSkill ?? row.expected_skill ?? ""),
+    id: String(row.source_question_id ?? row.question_id ?? snapshot.id ?? ""),
+    options: Array.isArray(snapshot.options) ? snapshot.options : [],
+    questionCode: String(snapshot.questionCode ?? row.question_code ?? "snapshot"),
+    questionType: (snapshot.questionType ?? row.question_type ?? "mixed") as PracticeRecommendation["questionType"],
+    reason: String(snapshot.reason ?? row.reason ?? ""),
+    source: snapshot.source,
+    tagIds: Array.isArray(snapshot.tagIds) ? snapshot.tagIds : [],
+    title: String(snapshot.title ?? row.title ?? "Saved question"),
+  };
+}
+
 function normalizeModelResults({
   aiResults,
   attempts,
@@ -136,11 +160,33 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as PracticeReviewRequest;
   const goal = (body.goal ?? "").trim().slice(0, 500);
+  const sessionId = (body.sessionId ?? "").trim();
+  const roundId = (body.roundId ?? "").trim();
   const trace: PracticeTraceEvent[] = [];
 
   if (!goal) {
     return NextResponse.json({ error: "Practice goal is required." }, { status: 400 });
   }
+
+  if (!sessionId || !roundId) {
+    return NextResponse.json({ error: "sessionId and roundId are required." }, { status: 400 });
+  }
+
+  const { data: roundQuestions, error: roundQuestionsError } = await supabase
+    .from("practice_round_questions")
+    .select("*")
+    .eq("user_id", auth.user.id)
+    .eq("session_id", sessionId)
+    .eq("round_id", roundId)
+    .order("position", { ascending: true });
+
+  if (roundQuestionsError) {
+    return NextResponse.json({ error: roundQuestionsError.message }, { status: 500 });
+  }
+
+  const persistedRecommendations = ((roundQuestions ?? []) as Record<string, unknown>[])
+    .map(recommendationFromRoundQuestion)
+    .filter((question) => question.id);
 
   const attempts = body.attempts ?? [];
   const sessionMemory = compactSessionMemory(body.sessionMemory, goal);
@@ -222,12 +268,25 @@ export async function POST(request: Request) {
       nextRoundGoal: aiResult.parsed.next_round_goal?.trim() || fallback.nextRoundGoal,
       providerLabel: aiResult.providerLabel,
       results: modelResults,
+      sessionId,
       summary: aiResult.parsed.summary?.trim() || fallback.summary,
       trace,
       updatedSessionMemory:
         aiResult.parsed.updated_session_memory?.trim().slice(0, 1600) ||
         fallback.updatedSessionMemory,
     };
+
+    await persistRoundReview({
+      attempts,
+      hintsByQuestionId: body.hintsByQuestionId,
+      recommendations: persistedRecommendations,
+      results: modelResults,
+      review: response,
+      roundId,
+      sessionId,
+      supabase,
+      userId: auth.user.id,
+    });
 
     return NextResponse.json(response);
   } catch (error) {
@@ -242,10 +301,23 @@ export async function POST(request: Request) {
       mode: "heuristic",
       nextRoundGoal: fallback.nextRoundGoal,
       results: fallback.results,
+      sessionId,
       summary: fallback.summary,
       trace,
       updatedSessionMemory: fallback.updatedSessionMemory,
     };
+
+    await persistRoundReview({
+      attempts,
+      hintsByQuestionId: body.hintsByQuestionId,
+      recommendations: persistedRecommendations,
+      results: fallback.results,
+      review: response,
+      roundId,
+      sessionId,
+      supabase,
+      userId: auth.user.id,
+    });
 
     return NextResponse.json(response);
   }
