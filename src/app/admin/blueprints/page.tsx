@@ -16,6 +16,10 @@ import {
   buildBlueprintGenerationRequestPlan,
   type BlueprintGenerationRequestPlan,
 } from "@/lib/taxonomy/question-blueprint-generation";
+import {
+  buildBlueprintProviderRunPlan,
+  type BlueprintProviderRunPlan,
+} from "@/lib/taxonomy/question-blueprint-provider-runner";
 import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -560,6 +564,77 @@ function GenerationDrafts({
   );
 }
 
+function ProviderRunDrafts({ runPlan }: { runPlan: BlueprintProviderRunPlan }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Provider run shadow plan</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="rounded-md border bg-muted/30 p-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">Shadow only - no AI call yet</Badge>
+            <Badge variant="outline">{runPlan.summary.runCount} run drafts</Badge>
+            <Badge variant="outline">{runPlan.summary.readyRunCount} ready</Badge>
+            <Badge variant="outline">{runPlan.summary.blockedRunCount} blocked</Badge>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Provider payloads are previews for routing review only. They do not
+            execute, call a model, persist generated questions, or write Review
+            Drafts.
+          </p>
+        </div>
+        {runPlan.runs.length ? (
+          runPlan.runs.map((run) => (
+            <div className="rounded-md border p-3 text-sm" key={run.runId}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{run.runId}</span>
+                <Badge variant={run.status === "ready" ? "secondary" : "outline"}>
+                  {run.status}
+                </Badge>
+                <Badge variant="outline">{run.providerKind}</Badge>
+                <Badge variant="outline">{run.modelName}</Badge>
+                <Badge variant="outline">realCall: {String(run.realCall)}</Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Request {run.requestId}; question type{" "}
+                {run.promptPayloadPreview.questionType}; count{" "}
+                {run.promptPayloadPreview.count}; difficulty{" "}
+                {run.promptPayloadPreview.difficultyRange.min}-
+                {run.promptPayloadPreview.difficultyRange.max}
+              </p>
+              <div className="mt-3 rounded-md bg-muted/30 p-3">
+                <p className="text-xs font-medium">Prompt preview summary</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {run.promptPayloadPreview.user}
+                </p>
+              </div>
+              <div className="mt-3 rounded-md bg-muted/30 p-3">
+                <p className="text-xs font-medium">Expected output schema</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {run.expectedOutputSchema.root}:{" "}
+                  {run.expectedOutputSchema.fields.join(", ")}
+                </p>
+              </div>
+              {run.warnings.length ? (
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                  {run.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+            No provider run drafts are needed for this preview.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ModelRoutingPlan({ plan }: { plan: QuestionBlueprintPlan }) {
   return (
     <Card>
@@ -610,6 +685,10 @@ export default async function AdminBlueprintsPage({
     catalog,
     generatedAt: "preview",
     plan,
+  });
+  const providerRunPlan = buildBlueprintProviderRunPlan({
+    generatedAt: "preview",
+    generationPlan,
   });
 
   return (
@@ -738,6 +817,7 @@ export default async function AdminBlueprintsPage({
         </div>
       </div>
 
+      <ProviderRunDrafts runPlan={providerRunPlan} />
       <ModelRoutingPlan plan={plan} />
     </main>
   );
