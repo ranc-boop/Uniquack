@@ -87,6 +87,7 @@ console.log("PASS practice client uses persisted sessions and wrong-question rec
 const blueprint = await read("src/lib/taxonomy/question-blueprint.ts");
 const aiBlueprint = await read("src/lib/ai-pdf-import/blueprint-builder.ts");
 const blueprintGeneration = await read("src/lib/taxonomy/question-blueprint-generation.ts");
+const blueprintProviderRunner = await read("src/lib/taxonomy/question-blueprint-provider-runner.ts");
 for (const exportName of [
   "QuestionBlueprintPlan",
   "QuestionBlueprintSection",
@@ -203,6 +204,90 @@ assert(!blueprintGeneration.includes(".delete("), "blueprint generation builder 
 assert(!blueprintGeneration.includes("fetch("), "blueprint generation builder must not call providers");
 console.log("PASS question blueprint generation requests are draft-only and taxonomy-backed");
 
+for (const exportName of [
+  "buildBlueprintProviderRunPlan",
+  "buildBlueprintProviderPayloadDrafts",
+  "validateBlueprintProviderRunPlan",
+  "summarizeBlueprintProviderRunPlan",
+  "failedBlueprintProviderRunPlan",
+]) {
+  assert(
+    blueprintProviderRunner.includes(exportName),
+    `blueprint provider runner is missing ${exportName}`,
+  );
+}
+for (const requiredShape of [
+  "runId",
+  "requestId",
+  "providerKind",
+  "modelName",
+  'mode: "shadow_only"',
+  "realCall: false",
+  "promptPayloadPreview",
+  "expectedOutputSchema",
+  "safety",
+  'status: "ready" | "blocked" | "skipped"',
+]) {
+  assert(
+    blueprintProviderRunner.includes(requiredShape),
+    `blueprint provider run schema is missing ${requiredShape}`,
+  );
+}
+for (const outputField of [
+  "draftQuestions",
+  "title",
+  "questionType",
+  "contentHtml",
+  "solutionHtml",
+  "options",
+  "answerSpec",
+  "taxonomyTagIds",
+  "difficulty",
+  "rationale",
+]) {
+  assert(
+    blueprintProviderRunner.includes(outputField),
+    `blueprint provider expected output schema is missing ${outputField}`,
+  );
+}
+for (const modelName of [
+  "deepseek-v4-flash",
+  "deepseek-v4-flash-thinking",
+  "gemini-flash-family",
+  "gemini-flash-lite",
+  "gpt-5.4-mini",
+  "gpt-5.4",
+]) {
+  assert(
+    blueprintProviderRunner.includes(modelName),
+    `blueprint provider route mapping is missing ${modelName}`,
+  );
+}
+for (const guard of [
+  "provider_run_real_call_enabled",
+  "provider_run_not_shadow_only",
+  "provider_run_safety_flags_missing",
+  "provider_run_schema_missing_taxonomy_tags",
+  "noDbWrite: true",
+  "noGeneratedQuestionPersistence: true",
+  "noProviderCall: true",
+  "noReviewDraftWrite: true",
+  "shadowOnly: true",
+]) {
+  assert(
+    blueprintProviderRunner.includes(guard),
+    `blueprint provider guard is missing ${guard}`,
+  );
+}
+assert(!blueprintProviderRunner.includes("question_tags"), "blueprint provider runner must not use legacy question_tags");
+assert(!blueprintProviderRunner.includes("video_tags"), "blueprint provider runner must not use legacy video_tags");
+assert(!blueprintProviderRunner.includes("supabase.from("), "blueprint provider runner must not query the database");
+assert(!blueprintProviderRunner.includes(".insert("), "blueprint provider runner must not insert database rows");
+assert(!blueprintProviderRunner.includes(".update("), "blueprint provider runner must not update database rows");
+assert(!blueprintProviderRunner.includes(".delete("), "blueprint provider runner must not delete database rows");
+assert(!blueprintProviderRunner.includes("fetch("), "blueprint provider runner must not call providers");
+console.log("PASS question blueprint provider runner is shadow-only and provider-call-free");
+
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 for (const expectedText of [
   "Question blueprint preview",
@@ -219,10 +304,15 @@ for (const expectedText of [
   "Model routing plan",
   "Draft only - no AI call yet",
   "Selected model route",
+  "Provider run shadow plan",
+  "Shadow only - no AI call yet",
+  "Prompt preview summary",
+  "Expected output schema",
 ]) {
   assert(blueprintPage.includes(expectedText), `blueprint page is missing ${expectedText}`);
 }
 for (const helperName of [
+  "buildBlueprintProviderRunPlan",
   "buildBlueprintGenerationRequestPlan",
   "buildQuestionBlueprintPlan",
   "loadTaxonomyCatalog",
