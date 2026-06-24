@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
   }
@@ -19,7 +19,12 @@ export async function GET() {
   }
 
   try {
-    const wrongQuestions = await listActiveWrongQuestions({ supabase, userId: auth.user.id });
+    const { searchParams } = new URL(request.url);
+    const wrongQuestions = await listActiveWrongQuestions({
+      sessionId: searchParams.get("sessionId"),
+      supabase,
+      userId: auth.user.id,
+    });
     return NextResponse.json({ wrongQuestions });
   } catch (error) {
     return NextResponse.json(

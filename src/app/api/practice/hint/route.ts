@@ -137,12 +137,17 @@ export async function POST(request: Request) {
       return NextResponse.json(response);
     }
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : String(error),
-        trace,
-      },
-      { status: 500 },
-    );
+    trace.push({
+      error: error instanceof Error ? error.message : String(error),
+      inputSummary: "Question lookup failed; generic fallback hint used.",
+      phase: "hint",
+      toolName: "get_hint_safe_question_context",
+    });
+
+    return NextResponse.json({
+      hint: fallbackHint(hintLevel),
+      mode: "heuristic",
+      trace,
+    } satisfies PracticeHintResponse);
   }
 }

@@ -75,6 +75,15 @@ function hintsFromJson(value: unknown) {
   return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
 
+function isUniqueConstraintError(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "23505",
+  );
+}
+
 function sessionSummaryFromRow(row: PracticeSession & { round_count?: number }): PracticeSessionSummary {
   return {
     completedQuestionIds: asStringArray(row.completed_question_ids),
@@ -259,19 +268,32 @@ export async function getPracticeSession({
     })),
     id: round.id,
     nextRoundGoal: round.next_round_goal,
-    questions: (questionsByRound.get(round.id) ?? []).map((question) => ({
-      contentHtml: question.content_html,
-      difficulty: Number(question.difficulty_rating ?? 0),
-      expectedSkill: question.expected_skill ?? "",
-      id: question.question_id,
-      position: question.position,
-      questionCode: question.question_code ?? "snapshot",
-      questionId: question.question_id,
-      questionType: question.question_type ?? "mixed",
-      reason: question.reason ?? "",
-      sourceQuestionId: question.source_question_id,
-      title: question.title,
-    })),
+    questions: (questionsByRound.get(round.id) ?? []).map((question) => {
+      const snapshot =
+        question.question_snapshot &&
+        typeof question.question_snapshot === "object" &&
+        !Array.isArray(question.question_snapshot)
+          ? (question.question_snapshot as Partial<PracticeRecommendation>)
+          : {};
+
+      return {
+        contentExcerpt: String(snapshot.contentExcerpt ?? ""),
+        contentHtml: String(snapshot.contentHtml ?? question.content_html ?? ""),
+        difficulty: Number(snapshot.difficulty ?? question.difficulty_rating ?? 0),
+        expectedSkill: String(snapshot.expectedSkill ?? question.expected_skill ?? ""),
+        id: String(question.source_question_id ?? question.question_id ?? snapshot.id ?? ""),
+        options: Array.isArray(snapshot.options) ? snapshot.options : [],
+        position: question.position,
+        questionCode: String(snapshot.questionCode ?? question.question_code ?? "snapshot"),
+        questionId: question.question_id,
+        questionType: String(snapshot.questionType ?? question.question_type ?? "mixed"),
+        reason: String(snapshot.reason ?? question.reason ?? ""),
+        source: typeof snapshot.source === "string" ? snapshot.source : null,
+        sourceQuestionId: question.source_question_id,
+        tagIds: Array.isArray(snapshot.tagIds) ? snapshot.tagIds.map(String) : [],
+        title: String(snapshot.title ?? question.title ?? "Saved question"),
+      };
+    }),
     reviewSummary: round.review_summary,
     roundGoal: round.round_goal,
     score: {
@@ -408,43 +430,62 @@ export async function persistRecommendationRound({
   trace: PracticeTraceEvent[];
   userId: string;
 }) {
-  const countResult = await supabase
-    .from("practice_rounds")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("session_id", sessionId);
+  let insertedRound:
+    | {
+        data: { id: string } | null;
+        error: { code?: string; message: string } | null;
+      }
+    | undefined;
 
-  if (countResult.error) {
-    throw new Error(countResult.error.message);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const latestRound = await supabase
+      .from("practice_rounds")
+      .select("round_index")
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+      .order("round_index", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestRound.error) {
+      throw new Error(latestRound.error.message);
+    }
+
+    const roundIndex = (Number(latestRound.data?.round_index) || 0) + 1;
+    const attemptedRound = await supabase
+      .from("practice_rounds")
+      .insert({
+        mode: response.mode,
+        provider_label: response.providerLabel ?? null,
+        round_goal: response.roundGoal,
+        round_index: roundIndex,
+        session_id: sessionId,
+        trace: trace as unknown as Json,
+        user_id: userId,
+      })
+      .select("id")
+      .single();
+
+    insertedRound = attemptedRound;
+
+    if (!attemptedRound.error || !isUniqueConstraintError(attemptedRound.error)) {
+      break;
+    }
   }
 
-  const roundIndex = (countResult.count ?? 0) + 1;
-  const insertedRound = await supabase
-    .from("practice_rounds")
-    .insert({
-      mode: response.mode,
-      provider_label: response.providerLabel ?? null,
-      round_goal: response.roundGoal,
-      round_index: roundIndex,
-      session_id: sessionId,
-      trace: trace as unknown as Json,
-      user_id: userId,
-    })
-    .select("id")
-    .single();
-
-  if (insertedRound.error) {
-    throw new Error(insertedRound.error.message);
+  if (!insertedRound || insertedRound.error || !insertedRound.data) {
+    throw new Error(insertedRound?.error?.message ?? "Failed to persist recommendation round.");
   }
 
-  const roundId = insertedRound.data.id as string;
+  const persistedRound = insertedRound.data;
+  const roundId = persistedRound.id as string;
   const questionRows = recommendations.map((question, index) => ({
     content_html: question.contentHtml,
     difficulty_rating: question.difficulty,
     expected_skill: question.expectedSkill,
     position: index + 1,
     question_code: question.questionCode,
-    question_id: question.id,
+    question_id: null,
     question_snapshot: question as unknown as Json,
     question_type: question.questionType,
     reason: question.reason,
@@ -667,19 +708,26 @@ export async function persistRoundReview({
 }
 
 export async function listActiveWrongQuestions({
+  sessionId,
   supabase,
   userId,
 }: {
+  sessionId?: string | null;
   supabase: SupabaseLike;
   userId: string;
 }): Promise<PracticeWrongQuestionView[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("practice_wrong_questions")
     .select("*")
     .eq("user_id", userId)
     .is("mastered_at", null)
-    .order("last_missed_at", { ascending: false })
-    .limit(50);
+    .order("last_missed_at", { ascending: false });
+
+  if (sessionId) {
+    query = query.eq("last_session_id", sessionId);
+  }
+
+  const { data, error } = await query.limit(50);
 
   if (error) {
     throw new Error(error.message);

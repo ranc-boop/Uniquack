@@ -4,7 +4,7 @@ import { SupabaseConfigNotice } from "@/components/config-notice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { QuestionsTable } from "@/components/questions-table";
+import { QuestionBankClient } from "@/components/question-bank-client";
 import type { TaxonomyTagChipAssignment } from "@/components/tags/taxonomy-tag-chips";
 import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -165,15 +165,24 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Questions</h1>
-        <p className="text-sm text-muted-foreground">
-          Published AP questions with official taxonomy tags and difficulty.
-          Draft and archived records are excluded by query and RLS.
-        </p>
+    <div className="space-y-5">
+      <div className="rounded-md border bg-muted/20 p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Question Bank
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight">Build your next practice round</h1>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              Search published questions, add a focused basket, or open one question for detail-first practice.
+            </p>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/mistakes">Review mistakes</Link>
+          </Button>
+        </div>
       </div>
-      <form className="grid gap-3 rounded-md border p-4 md:grid-cols-[1.5fr_1fr_1fr_auto]">
+      <form className="grid gap-3 rounded-md border bg-background p-4 md:grid-cols-[minmax(0,1.5fr)_10rem_10rem_auto]">
         <div className="space-y-2">
           <Label htmlFor="q">Search</Label>
           <Input
@@ -213,19 +222,20 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
         </div>
       </form>
       {error || questionsError ? (
-        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error?.message ?? questionsError?.message}
         </p>
       ) : null}
       {questionRows.length ? (
-        <QuestionsTable
+        <QuestionBankClient
           taxonomyTagsByQuestionId={taxonomyTagsByQuestionIdObject}
           taxonomyCatalog={taxonomyCatalog}
           questions={questionRows}
+          totalCount={totalCount}
         />
       ) : (
         <div className="rounded-md border">
-          <div className="h-24 text-center text-sm text-muted-foreground">
+          <div className="flex h-24 items-center justify-center text-center text-sm text-muted-foreground">
             No published questions match these filters.
           </div>
         </div>

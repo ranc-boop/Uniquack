@@ -40,8 +40,21 @@ function heuristicReview(body: PracticeReviewRequest) {
     .map((attempt) => attempt.questionCode ?? attempt.questionId)
     .join(", ");
   const summary = total
-    ? `Auto-graded score: ${correct}/${total}. ${missed ? `Missed: ${missed}.` : "No auto-graded misses."}`
-    : "This round was saved, but the questions need manual or AI review for scoring.";
+    ? [
+        `Score: ${correct}/${total}.`,
+        correct
+          ? "What went well: you showed enough control on the correctly graded questions to keep moving."
+          : "What went well: this round still gives a useful baseline for what to train next.",
+        missed
+          ? `Needs training: revisit ${missed}; slow down on the underlying setup, definitions, and answer form before raising difficulty.`
+          : "Needs training: keep checking notation, units, and edge cases so the correct work stays reliable.",
+        "Next step: do a short reinforcement round before broadening the goal.",
+      ].join(" ")
+    : [
+        "This round was saved, but the questions need manual or AI review for scoring.",
+        "What went well: your submitted work is now attached to the session, so the next round can still use the attempt context.",
+        "Needs training: compare your answer structure with the solution and identify the first step where uncertainty appears.",
+      ].join(" ");
   const nextRoundGoal = missed
     ? `${body.goal} — reinforce the skills behind the missed questions before raising difficulty.`
     : `${body.goal} — continue with a slightly broader or harder set.`;
@@ -241,9 +254,12 @@ export async function POST(request: Request) {
                 "Borrow Codex-style context management: preserve stable facts, do not copy full old history, and write a compact summary for future rounds.",
                 "Ignore prior recommendation/tool context. Judge correctness from the provided question, options, answer_spec, solution excerpt, and student answer.",
                 "For every attempt, decide is_correct with the model as the final authority. Use null only when the provided data is insufficient.",
+                "Write summary as a coaching review, not a one-line score. Use 120-220 words.",
+                "The summary must mention: what the student did well, what needs training, and what to practice next.",
+                "Be specific to the submitted attempts. Name question codes or skill patterns when useful.",
                 "Return JSON only with keys: summary, results, next_round_goal, updated_session_memory.",
                 "Schema example: {\"summary\":\"...\",\"results\":[{\"question_id\":\"q1\",\"is_correct\":true,\"score\":1,\"explanation\":\"...\"}],\"next_round_goal\":\"...\",\"updated_session_memory\":\"...\"}.",
-                "Do not invent question IDs. Keep feedback short and actionable.",
+                "Do not invent question IDs. Keep per-question explanations concise, but make the round summary substantial and actionable.",
               ].join("\n"),
             },
             {

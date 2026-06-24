@@ -7,6 +7,7 @@ import {
   type QuestionDetailImage,
 } from "@/components/question-detail-image-gallery";
 import { QuestionAnswerSummary } from "@/components/question-answer-summary";
+import { QuestionPracticePanel } from "@/components/practice/question-practice-panel";
 import {
   OptionText,
   QuestionText,
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/accordion";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
+import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { normalizeQuestionOptions } from "@/lib/questions/answer-spec";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
@@ -38,6 +40,9 @@ export const dynamic = "force-dynamic";
 type QuestionDetailPageProps = {
   params: Promise<{
     id: string;
+  }>;
+  searchParams?: Promise<{
+    mode?: string;
   }>;
 };
 
@@ -106,8 +111,10 @@ function SidebarCard({
 
 export default async function QuestionDetailPage({
   params,
+  searchParams,
 }: QuestionDetailPageProps) {
   const { id } = await params;
+  const pageMode = (await searchParams)?.mode === "practice" ? "practice" : "browse";
 
   if (!isSupabaseConfigured()) {
     return <SupabaseConfigNotice />;
@@ -205,6 +212,21 @@ export default async function QuestionDetailPage({
     };
   });
   const questionOptions = normalizeQuestionOptions(question.options);
+  const practiceSolution = question.solution_html;
+  const practiceQuestion = {
+    contentExcerpt: htmlToPlainTextExcerpt(question.content_html),
+    contentHtml: question.content_html,
+    difficulty: question.difficulty_rating,
+    expectedSkill: "Single-question practice",
+    id: question.id,
+    options: questionOptions,
+    questionCode: question.question_code,
+    questionType: question.question_type,
+    reason: "Opened directly from the question detail page.",
+    source: question.source,
+    tagIds: publicTaxonomyAssignments.map((assignment) => assignment.tag_id),
+    title: question.title,
+  };
 
   return (
     <div className="space-y-6">
@@ -227,7 +249,13 @@ export default async function QuestionDetailPage({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button asChild size="sm">
+            <Button asChild size="sm" variant={pageMode === "browse" ? "default" : "outline"}>
+              <Link href={`/questions/${question.id}`}>Browse mode</Link>
+            </Button>
+            <Button asChild size="sm" variant={pageMode === "practice" ? "default" : "outline"}>
+              <Link href={`/questions/${question.id}?mode=practice`}>Practice mode</Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
               <Link href="/questions">Back to questions</Link>
             </Button>
           </div>
@@ -236,6 +264,14 @@ export default async function QuestionDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-6">
+          {pageMode === "practice" ? (
+            <QuestionPracticePanel
+              answerSpec={question.answer_spec}
+              question={practiceQuestion}
+              solutionContent={practiceSolution}
+            />
+          ) : null}
+
           <Card>
             <CardContent className="space-y-8 p-6">
               <QuestionSection title="Description">
@@ -269,28 +305,36 @@ export default async function QuestionDetailPage({
                 </QuestionSection>
               ) : null}
 
-              <QuestionSection title="Solution">
-                {question.solution_html ? (
-                  <Accordion type="single" collapsible>
-                    <AccordionItem value="solution">
-                      <AccordionTrigger>
-                        <span className="text-base font-semibold">
-                          View solution
-                        </span>
-                      </AccordionTrigger>
-                      <AccordionContent>
-                        <div className="pt-2">
-                          <SolutionText value={question.solution_html} />
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  </Accordion>
-                ) : (
+              {pageMode === "browse" ? (
+                <QuestionSection title="Solution">
+                  {question.solution_html ? (
+                    <Accordion type="single" collapsible>
+                      <AccordionItem value="solution">
+                        <AccordionTrigger>
+                          <span className="text-base font-semibold">
+                            View solution
+                          </span>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="pt-2">
+                            <SolutionText value={question.solution_html} />
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  ) : (
+                    <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+                      No solution content available.
+                    </div>
+                  )}
+                </QuestionSection>
+              ) : (
+                <QuestionSection title="Solution">
                   <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-                    No solution content available.
+                    Hidden during practice mode. Submit your answer or switch back to browse mode to review it.
                   </div>
-                )}
-              </QuestionSection>
+                </QuestionSection>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -343,13 +387,15 @@ export default async function QuestionDetailPage({
             />
           </SidebarCard>
 
-          <SidebarCard title="Answer data">
-            <QuestionAnswerSummary
-              answerSpec={question.answer_spec}
-              options={question.options}
-              questionType={question.question_type}
-            />
-          </SidebarCard>
+          {pageMode === "browse" ? (
+            <SidebarCard title="Answer data">
+              <QuestionAnswerSummary
+                answerSpec={question.answer_spec}
+                options={question.options}
+                questionType={question.question_type}
+              />
+            </SidebarCard>
+          ) : null}
 
           {video ? (
             <SidebarCard title="Video explanation">

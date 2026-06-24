@@ -179,16 +179,20 @@ export type PracticeRoundHistory = {
   id: string;
   nextRoundGoal: string | null;
   questions: Array<{
+    contentExcerpt: string;
     contentHtml: string;
     difficulty: number;
     expectedSkill: string;
-    id: string | null;
+    id: string;
+    options: QuestionOption[];
     position: number;
     questionCode: string;
     questionId: string | null;
     questionType: string;
     reason: string;
+    source: string | null;
     sourceQuestionId: string | null;
+    tagIds: string[];
     title: string;
   }>;
   reviewSummary: string | null;

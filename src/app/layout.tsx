@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "O2I Content Platform",
-  description: "Minimal teaching research and content management MVP",
+  title: "O2I Practice",
+  description: "Student-first AP practice workspace",
 };
 
 export default function RootLayout({
@@ -29,19 +29,19 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <header className="border-b">
-            <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+            <div className="mx-auto flex min-h-14 max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
               <Link href="/" className="text-sm font-semibold">
-                O2I Content
+                O2I Practice
               </Link>
-              <nav className="flex items-center gap-2">
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/">Home</Link>
-                </Button>
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/questions">Questions</Link>
-                </Button>
+              <nav className="flex flex-wrap items-center gap-2">
                 <Button asChild variant="ghost" size="sm">
                   <Link href="/practice">Practice</Link>
+                </Button>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/questions">Question Bank</Link>
+                </Button>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/mistakes">Mistakes</Link>
                 </Button>
                 <Button asChild variant="ghost" size="sm">
                   <Link href="/videos">Videos</Link>
@@ -53,7 +53,7 @@ export default function RootLayout({
               </nav>
             </div>
           </header>
-          <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+          <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
           <Toaster />
         </ThemeProvider>
       </body>

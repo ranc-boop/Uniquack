@@ -18,10 +18,10 @@ import type {
   PracticeAttemptInput,
   PracticeGradeResult,
   PracticeHintResponse,
-  PracticePreferenceResponse,
   PracticeRecommendRequest,
   PracticeRecommendResponse,
   PracticeRecommendation,
+  PracticeRoundHistory,
   PracticeReviewResponse,
   PracticeSessionDetail,
   PracticeSessionSummary,
@@ -167,6 +167,36 @@ function formatTrace(event: PracticeTraceEvent) {
     event.outputSummary ? `-> ${event.outputSummary}` : "",
     event.error ? `Error: ${event.error}` : "",
   ].filter(Boolean).join(" ");
+}
+
+function recommendationFromHistoryQuestion(
+  question: PracticeRoundHistory["questions"][number],
+): PracticeRecommendation {
+  return {
+    contentExcerpt: question.contentExcerpt,
+    contentHtml: question.contentHtml,
+    difficulty: question.difficulty,
+    expectedSkill: question.expectedSkill,
+    id: question.sourceQuestionId ?? question.id,
+    options: question.options,
+    questionCode: question.questionCode,
+    questionType: question.questionType as PracticeRecommendation["questionType"],
+    reason: question.reason || "Saved from this practice session.",
+    source: question.source,
+    tagIds: question.tagIds,
+    title: question.title,
+  };
+}
+
+function resultsFromHistoryRound(round: PracticeRoundHistory): PracticeGradeResult[] {
+  return round.attempts.map((attempt) => ({
+    explanation: attempt.explanation ?? "No saved explanation.",
+    gradingMode: "manual" as const,
+    isCorrect: attempt.isCorrect,
+    questionId: attempt.sourceQuestionId ?? attempt.questionId ?? "",
+    score: attempt.score,
+    solutionHtml: attempt.solutionHtml,
+  })).filter((result) => result.questionId);
 }
 
 function TracePanel({
@@ -318,9 +348,6 @@ export function PracticeAgentClient() {
   const [liveTrace, setLiveTrace] = useState<PracticeTraceEvent[]>([]);
   const [reviewTrace, setReviewTrace] = useState<PracticeTraceEvent[]>([]);
   const [isTraceCollapsed, setIsTraceCollapsed] = useState(false);
-  const [preference, setPreference] = useState<PracticePreferenceResponse | null>(null);
-  const [preferenceDraft, setPreferenceDraft] = useState("");
-  const [mergeStatus, setMergeStatus] = useState<"idle" | "running" | "failed" | "succeeded">("idle");
   const [wrongQuestions, setWrongQuestions] = useState<PracticeWrongQuestionView[]>([]);
   const [selectedWrongQuestionIds, setSelectedWrongQuestionIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -332,14 +359,10 @@ export function PracticeAgentClient() {
   const thinkingStartedAtRef = useRef<number | null>(null);
 
   async function refreshPracticeState(preferredSessionId?: string) {
-    const [sessionPayload, preferencePayload, wrongPayload] = await Promise.all([
-      jsonRequest<{
-        activeSession: PracticeSessionDetail | null;
-        sessions: PracticeSessionSummary[];
-      }>("/api/practice/sessions"),
-      jsonRequest<PracticePreferenceResponse>("/api/practice/preferences"),
-      jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>("/api/practice/wrong-questions"),
-    ]);
+    const sessionPayload = await jsonRequest<{
+      activeSession: PracticeSessionDetail | null;
+      sessions: PracticeSessionSummary[];
+    }>("/api/practice/sessions");
 
     let nextSession = sessionPayload.activeSession;
     if (preferredSessionId) {
@@ -351,19 +374,99 @@ export function PracticeAgentClient() {
 
     setSessions(sessionPayload.sessions);
     setActiveSession(nextSession);
-    setPreference(preferencePayload);
-    setPreferenceDraft(preferencePayload.longTermPreference);
+    const wrongPayload = nextSession
+      ? await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
+          `/api/practice/wrong-questions?sessionId=${encodeURIComponent(nextSession.id)}`,
+        )
+      : { wrongQuestions: [] };
     setWrongQuestions(wrongPayload.wrongQuestions);
+
+    return nextSession;
+  }
+
+  function restoreRoundFromHistory(round: PracticeRoundHistory, session = activeSession) {
+    if (!session || !round.questions.length) return;
+
+    const restoredRecommendations = round.questions
+      .map(recommendationFromHistoryQuestion)
+      .filter((question) => question.id);
+    if (!restoredRecommendations.length) return;
+
+    const restoredRecommendation: PracticeRecommendResponse = {
+      maxToolCalls: 0,
+      mode: "heuristic",
+      recommendations: restoredRecommendations,
+      roundId: round.id,
+      roundGoal: round.roundGoal || session.goal,
+      sessionId: session.id,
+      sessionMemory: session.sessionMemory,
+      tagContext: session.tagContext,
+      trace: [],
+    };
+    const restoredResults = resultsFromHistoryRound(round);
+    const restoredAnswers: AnswersState = {};
+    const restoredHints: HintsState = {};
+
+    for (const attempt of round.attempts) {
+      const questionId = attempt.sourceQuestionId ?? attempt.questionId;
+      if (!questionId) continue;
+      restoredAnswers[questionId] = attempt.answer;
+      restoredHints[questionId] = attempt.hints;
+    }
+
+    setRecommendation(restoredRecommendation);
+    setAnswers(restoredAnswers);
+    setHints(restoredHints);
+    setResults(restoredResults);
+    setLiveTrace([]);
+    setReviewTrace([]);
+    setIsTraceCollapsed(true);
+    setGoal(round.nextRoundGoal ?? "");
+
+    if (round.reviewSummary || restoredResults.length) {
+      setReview({
+        mode: "heuristic",
+        nextRoundGoal: round.nextRoundGoal ?? session.goal,
+        results: restoredResults,
+        sessionId: session.id,
+        summary: round.reviewSummary ?? "This round has saved review results.",
+        trace: [],
+        updatedSessionMemory: session.sessionMemory,
+      });
+      setPhase("feedback");
+    } else {
+      setReview(null);
+      setPhase("recommended");
+    }
   }
 
   useEffect(() => {
     startTransition(async () => {
       try {
-        await refreshPracticeState();
+        const restoredSession = await refreshPracticeState();
+        const pendingRoundRaw = window.sessionStorage.getItem("o2i:pendingPracticeRound");
+        if (pendingRoundRaw) {
+          const pendingRound = JSON.parse(pendingRoundRaw) as PracticeRecommendResponse;
+          window.sessionStorage.removeItem("o2i:pendingPracticeRound");
+          if (pendingRound.roundId && pendingRound.recommendations?.length) {
+            setRecommendation(pendingRound);
+            setGoal(pendingRound.roundGoal);
+            setLiveTrace(pendingRound.trace ?? []);
+            setIsTraceCollapsed(true);
+            setPhase("recommended");
+            if (pendingRound.sessionId) {
+              await refreshPracticeState(pendingRound.sessionId);
+            }
+          }
+        } else if (restoredSession?.rounds.length) {
+          restoreRoundFromHistory(restoredSession.rounds[restoredSession.rounds.length - 1], restoredSession);
+        }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     });
+    // Run once on page entry to restore the latest persisted round.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -425,17 +528,13 @@ export function PracticeAgentClient() {
   }
 
   async function runPreferenceMerge() {
-    setMergeStatus("running");
     try {
-      const merged = await jsonRequest<PracticePreferenceResponse & { status: string }>(
+      await jsonRequest<{ status: string }>(
         "/api/practice/preferences/merge/run",
         { method: "POST", body: "{}" },
       );
-      setPreference(merged);
-      setPreferenceDraft(merged.longTermPreference);
-      setMergeStatus(merged.status === "idle" ? "idle" : "succeeded");
     } catch {
-      setMergeStatus("failed");
+      // Preference merge is intentionally opportunistic and should not block practice.
     }
   }
 
@@ -609,9 +708,17 @@ export function PracticeAgentClient() {
           `/api/practice/sessions/${sessionId}`,
         );
         setActiveSession(payload.session);
+        const wrongPayload = await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
+          `/api/practice/wrong-questions?sessionId=${encodeURIComponent(payload.session.id)}`,
+        );
+        setWrongQuestions(wrongPayload.wrongQuestions);
         resetRoundState();
-        setGoal("");
-        setPhase("start");
+        if (payload.session.rounds.length) {
+          restoreRoundFromHistory(payload.session.rounds[payload.session.rounds.length - 1], payload.session);
+        } else {
+          setGoal("");
+          setPhase("start");
+        }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -649,35 +756,6 @@ export function PracticeAgentClient() {
     });
   }
 
-  function savePreference() {
-    startTransition(async () => {
-      try {
-        const payload = await jsonRequest<PracticePreferenceResponse>("/api/practice/preferences", {
-          body: JSON.stringify({ longTermPreference: preferenceDraft }),
-          method: "PATCH",
-        });
-        setPreference(payload);
-        setPreferenceDraft(payload.longTermPreference);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
-    });
-  }
-
-  function clearPreference() {
-    startTransition(async () => {
-      try {
-        const payload = await jsonRequest<PracticePreferenceResponse>("/api/practice/preferences", {
-          method: "DELETE",
-        });
-        setPreference(payload);
-        setPreferenceDraft("");
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
-    });
-  }
-
   function practiceWrongQuestion(question: PracticeWrongQuestionView) {
     const nextGoal = `Re-practice missed question ${question.questionCode}: ${question.title}`;
     setGoal(nextGoal);
@@ -693,7 +771,7 @@ export function PracticeAgentClient() {
             <Badge variant="secondary">Practice Agent</Badge>
             <h1 className="text-3xl font-semibold tracking-tight">O2I Practice Agent</h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              Sessions, round history, long-term preference, and active missed questions are saved to your account.
+              Pick a session, continue its latest round, and keep session memory and missed questions in view while you practice.
             </p>
           </div>
           <Button disabled={isPending} onClick={createNewSession} type="button" variant="outline">
@@ -708,33 +786,61 @@ export function PracticeAgentClient() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[280px_1fr_340px]">
-        <aside className="space-y-4">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <aside className="order-2 space-y-4 xl:col-start-2 xl:row-start-1">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Sessions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {sessions.length ? sessions.map((item) => (
-                <div key={item.id} className="rounded-md border p-2">
+                <div
+                  key={item.id}
+                  className={`group overflow-hidden rounded-md border transition-colors ${
+                    activeSession?.id === item.id
+                      ? "border-primary/50 bg-primary/10 shadow-sm"
+                      : "bg-background hover:border-primary/30 hover:bg-muted/40"
+                  }`}
+                >
                   <button
-                    className="block w-full text-left text-sm font-medium"
+                    aria-current={activeSession?.id === item.id ? "true" : undefined}
+                    className="flex w-full cursor-pointer items-stretch gap-3 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => switchSession(item.id)}
                     type="button"
                   >
-                    {item.title}
+                    <span
+                      className={`mt-0.5 h-auto w-1 rounded-full ${
+                        activeSession?.id === item.id ? "bg-primary" : "bg-transparent group-hover:bg-primary/30"
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1 space-y-2">
+                      <span className="block truncate text-sm font-semibold">{item.title}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {item.roundCount} round{item.roundCount === 1 ? "" : "s"} ·{" "}
+                        {new Date(item.lastActivityAt).toLocaleString()}
+                      </span>
+                      <span className="flex flex-wrap items-center gap-2 text-xs">
+                        {activeSession?.id === item.id ? (
+                          <span className="rounded-full bg-primary px-2 py-0.5 font-medium text-primary-foreground">
+                            Current session
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground group-hover:text-foreground">Click to switch</span>
+                        )}
+                        {item.roundCount ? (
+                          <span className="text-muted-foreground">Latest round restores automatically</span>
+                        ) : null}
+                      </span>
+                    </span>
                   </button>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {item.roundCount} rounds · {new Date(item.lastActivityAt).toLocaleString()}
-                  </p>
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    {activeSession?.id === item.id ? <Badge variant="secondary">active</Badge> : <span />}
+                  <div className="border-t px-3 py-2">
                     <Button
+                      className="w-full"
                       disabled={isPending}
                       onClick={() => deleteSession(item.id)}
                       size="sm"
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                     >
                       Delete
                     </Button>
@@ -746,47 +852,25 @@ export function PracticeAgentClient() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Long-term preference</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Textarea
-                maxLength={1000}
-                onChange={(event) => setPreferenceDraft(event.target.value.slice(0, 1000))}
-                placeholder="Preferred pacing, recurring weak spots, style notes..."
-                value={preferenceDraft}
-              />
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{preferenceDraft.length}/1000</span>
-                <span>
-                  {mergeStatus === "running"
-                    ? "Merging..."
-                    : mergeStatus === "failed"
-                      ? "Merge failed"
-                      : preference?.pendingMergeCount
-                        ? `${preference.pendingMergeCount} pending`
-                        : "Up to date"}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button disabled={isPending || preferenceDraft.length > 1000} onClick={savePreference} size="sm" type="button">
-                  Save
-                </Button>
-                <Button disabled={isPending} onClick={clearPreference} size="sm" type="button" variant="outline">
-                  Clear
-                </Button>
-                {preference?.pendingMergeCount || mergeStatus === "failed" ? (
-                  <Button disabled={mergeStatus === "running"} onClick={runPreferenceMerge} size="sm" type="button" variant="outline">
-                    Run merge
-                  </Button>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+          {activeSession ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Session memory</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {activeSession.sessionMemory ? (
+                  <FeedbackText className="border-none bg-transparent p-0 text-sm text-muted-foreground" compact value={activeSession.sessionMemory} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Submit a round and the agent will summarize useful context for this session here.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
         </aside>
 
-        <main className="space-y-4">
+        <main className="order-1 min-w-0 space-y-4 xl:col-start-1 xl:row-span-2 xl:row-start-1">
           {phase === "thinking" ? (
             <div className="sticky top-3 z-20 flex items-center justify-between gap-3 rounded-md border bg-background/95 px-4 py-3 text-sm shadow-sm backdrop-blur">
               <div className="flex min-w-0 items-center gap-3">
@@ -808,35 +892,45 @@ export function PracticeAgentClient() {
             <CardHeader>
               <CardTitle className="text-base">Goal</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-[1fr_9rem_auto]">
-              <div className="space-y-2">
-                <Label htmlFor="goal">
-                  {phase === "feedback" ? "Add your thoughts for the next round" : "What do you want to practice?"}
-                </Label>
-                <Input
-                  id="goal"
-                  onChange={(event) => setGoal(event.target.value)}
-                  placeholder={
-                    phase === "feedback"
-                      ? "Optional: ask for a focus, pace, or difficulty change"
-                      : "e.g. AP Calculus implicit differentiation, harder MCQ first"
-                  }
-                  value={goal}
-                />
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_9rem]">
+                <div className="space-y-2">
+                  <Label htmlFor="goal">
+                    {phase === "feedback" ? "Add your thoughts for the next round" : "What do you want to practice?"}
+                  </Label>
+                  <Input
+                    id="goal"
+                    onChange={(event) => setGoal(event.target.value)}
+                    placeholder={
+                      phase === "feedback"
+                        ? "Optional: ask for a focus, pace, or difficulty change"
+                        : "e.g. AP Calculus implicit differentiation, harder MCQ first"
+                    }
+                    value={goal}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="count">Questions</Label>
+                  <Input
+                    id="count"
+                    max={8}
+                    min={1}
+                    onChange={(event) => setQuestionCount(Number(event.target.value))}
+                    type="number"
+                    value={questionCount}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="count">Questions</Label>
-                <Input
-                  id="count"
-                  max={8}
-                  min={1}
-                  onChange={(event) => setQuestionCount(Number(event.target.value))}
-                  type="number"
-                  value={questionCount}
-                />
-              </div>
-              <div className="flex items-end">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {selectedWrongQuestionIds.length
+                    ? `${selectedWrongQuestionIds.length} missed question selected for priority practice.`
+                    : activeSession
+                      ? `Current session: ${activeSession.title}`
+                      : "Create a session by generating your first round."}
+                </p>
                 <Button
+                  className="w-full sm:w-auto"
                   disabled={isPending}
                   onClick={() => (phase === "feedback" ? requestFeedbackNextRound() : requestRecommendation())}
                   type="button"
@@ -990,39 +1084,12 @@ export function PracticeAgentClient() {
             </Card>
           ) : null}
 
-          {activeSession?.rounds.length ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Saved history</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {activeSession.rounds.slice(-5).reverse().map((round) => (
-                  <details key={round.id} className="rounded-md border p-3">
-                    <summary className="cursor-pointer text-sm font-medium">
-                      {round.roundGoal || "Practice round"} · {round.score.correct}/{round.score.total}
-                    </summary>
-                    {round.reviewSummary ? (
-                      <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm text-muted-foreground" compact value={round.reviewSummary} />
-                    ) : null}
-                    <div className="mt-3 space-y-2">
-                      {round.questions.map((question) => (
-                        <div key={`${round.id}-${question.position}`} className="rounded-md border bg-muted/20 p-2 text-sm">
-                          <p className="font-medium">{question.position}. {question.title}</p>
-                          <p className="text-xs text-muted-foreground">{question.questionCode}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                ))}
-              </CardContent>
-            </Card>
-          ) : null}
         </main>
 
-        <aside className="space-y-4">
+        <aside className="order-3 space-y-4 xl:col-start-2 xl:row-start-2">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Active missed questions</CardTitle>
+              <CardTitle className="text-base">Missed questions in this session</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {wrongQuestions.length ? wrongQuestions.map((question) => (
@@ -1049,21 +1116,10 @@ export function PracticeAgentClient() {
                   ) : null}
                 </div>
               )) : (
-                <p className="text-sm text-muted-foreground">No active missed questions.</p>
+                <p className="text-sm text-muted-foreground">No active missed questions in this session.</p>
               )}
             </CardContent>
           </Card>
-
-          {activeSession ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Session memory</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <FeedbackText className="border-none bg-transparent p-0 text-sm text-muted-foreground" compact value={activeSession.sessionMemory} />
-              </CardContent>
-            </Card>
-          ) : null}
         </aside>
       </div>
     </div>
