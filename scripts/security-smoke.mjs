@@ -135,3 +135,39 @@ assert(!aiBlueprint.includes(".update("), "AI PDF blueprint builder must not upd
 assert(!aiBlueprint.includes(".delete("), "AI PDF blueprint builder must not delete database rows");
 assert(!aiBlueprint.includes("fetch("), "AI PDF blueprint builder must not call providers");
 console.log("PASS question blueprint builder is planning-only and taxonomy-backed");
+
+const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
+for (const expectedText of [
+  "Question blueprint preview",
+  "Target taxonomy tags",
+  "Total question count",
+  "Difficulty distribution",
+  "Question type distribution",
+  "Reviewed-only candidates",
+  "Blueprint summary",
+  "Facet coverage",
+  "Candidate question sets",
+  "Missing coverage gaps",
+  "Generation request drafts",
+  "Model routing plan",
+]) {
+  assert(blueprintPage.includes(expectedText), `blueprint page is missing ${expectedText}`);
+}
+for (const helperName of [
+  "buildQuestionBlueprintPlan",
+  "loadTaxonomyCatalog",
+  "TaxonomyTagTreePicker",
+]) {
+  assert(blueprintPage.includes(helperName), `blueprint page does not use ${helperName}`);
+}
+assert(blueprintPage.includes("question_taxonomy_assignments"), "blueprint page must use taxonomy assignments for candidates");
+assert(blueprintPage.includes("review_status"), "blueprint page must support reviewed-only candidates");
+assert(!blueprintPage.includes("question_tags"), "blueprint page must not use legacy question_tags");
+assert(!blueprintPage.includes("video_tags"), "blueprint page must not use legacy video_tags");
+assert(!blueprintPage.includes("fetch("), "blueprint page must not call providers or network APIs directly");
+assert(!blueprintPage.includes(".insert("), "blueprint page must not insert database rows");
+assert(!blueprintPage.includes(".update("), "blueprint page must not update database rows");
+assert(!blueprintPage.includes(".delete("), "blueprint page must not delete database rows");
+assert(!blueprintPage.includes("createQuestion"), "blueprint page must not create questions");
+assert(!blueprintPage.includes("createImport"), "blueprint page must not create review drafts");
+console.log("PASS question blueprint preview UI is preview-only and taxonomy-backed");
