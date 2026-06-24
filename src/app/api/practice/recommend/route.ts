@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { loadPracticeAIProfile } from "@/lib/practice/ai";
 import { runPracticeRecommendationAgent } from "@/lib/practice/agent-loop";
+import {
+  getOrCreatePracticePreference,
+  normalizePracticeTagContext,
+  persistRecommendationRound,
+} from "@/lib/practice/persistence";
 import type {
   PracticeRecommendRequest,
   PracticeRecommendResponse,
@@ -20,6 +25,8 @@ type RecommendationRequestContext = {
   completedQuestionIds: string[];
   goal: string;
   questionCount: number;
+  sessionId: string;
+  wrongQuestionIds: string[];
 };
 
 function normalizeQuestionCount(value: unknown) {
@@ -34,15 +41,22 @@ function normalizeQuestionCount(value: unknown) {
 
 function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequestContext | NextResponse {
   const goal = (body.goal ?? "").trim().slice(0, 500);
+  const sessionId = (body.sessionId ?? "").trim();
 
   if (!goal) {
     return NextResponse.json({ error: "Practice goal is required." }, { status: 400 });
+  }
+
+  if (!sessionId) {
+    return NextResponse.json({ error: "sessionId is required." }, { status: 400 });
   }
 
   return {
     completedQuestionIds: Array.from(new Set(body.completedQuestionIds ?? [])),
     goal,
     questionCount: normalizeQuestionCount(body.questionCount),
+    sessionId,
+    wrongQuestionIds: Array.from(new Set(body.wrongQuestionIds ?? [])),
   };
 }
 
@@ -71,8 +85,37 @@ export async function POST(request: Request) {
     return parsed;
   }
 
-  const { completedQuestionIds, goal, questionCount } = parsed;
+  const { completedQuestionIds, goal, questionCount, sessionId, wrongQuestionIds } = parsed;
   const trace: PracticeTraceEvent[] = [];
+  const sessionResult = await supabase
+    .from("practice_sessions")
+    .select("completed_question_ids,session_memory,tag_context")
+    .eq("user_id", auth.user.id)
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (sessionResult.error) {
+    return NextResponse.json({ error: sessionResult.error.message }, { status: 500 });
+  }
+
+  if (!sessionResult.data) {
+    return NextResponse.json({ error: "Practice session not found." }, { status: 404 });
+  }
+
+  const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
+  const completedFromSession = Array.isArray(sessionResult.data.completed_question_ids)
+    ? sessionResult.data.completed_question_ids.map(String)
+    : [];
+  const wrongSet = new Set(wrongQuestionIds);
+  const effectiveCompletedQuestionIds = Array.from(
+    new Set([...completedFromSession, ...completedQuestionIds]),
+  ).filter((questionId) => !wrongSet.has(questionId));
+  const baseMemory = String(sessionResult.data.session_memory ?? body.sessionMemory ?? "");
+  const longTermPreference = preference.long_term_preference.trim();
+  const effectiveSessionMemory = longTermPreference
+    ? `${baseMemory}\nLong-term preference: ${longTermPreference}`.slice(0, 2400)
+    : baseMemory;
+  const tagContext = normalizePracticeTagContext(sessionResult.data.tag_context, goal);
 
   if (wantsEventStream(request)) {
     const encoder = new TextEncoder();
@@ -87,14 +130,14 @@ export async function POST(request: Request) {
           send("start", { goal, questionCount });
           const profile = await loadPracticeAIProfile(supabase);
           const agentResult = await runPracticeRecommendationAgent({
-            completedQuestionIds,
+            completedQuestionIds: effectiveCompletedQuestionIds,
             goal,
             onTrace: (event) => send("trace", event),
             profile,
             questionCount,
-            sessionMemory: body.sessionMemory,
+            sessionMemory: effectiveSessionMemory,
             supabase,
-            tagContext: body.tagContext,
+            tagContext,
             trace,
           });
 
@@ -113,9 +156,19 @@ export async function POST(request: Request) {
             recommendations: agentResult.recommendations,
             roundGoal: agentResult.roundGoal,
             sessionMemory: agentResult.sessionMemory,
+            sessionId,
             tagContext: agentResult.tagContext,
             trace,
           };
+
+          response.roundId = await persistRecommendationRound({
+            recommendations: agentResult.recommendations,
+            response,
+            sessionId,
+            supabase,
+            trace,
+            userId: auth.user.id,
+          });
 
           send("result", response);
         } catch (error) {
@@ -141,13 +194,13 @@ export async function POST(request: Request) {
   try {
     const profile = await loadPracticeAIProfile(supabase);
     const agentResult = await runPracticeRecommendationAgent({
-      completedQuestionIds,
+      completedQuestionIds: effectiveCompletedQuestionIds,
       goal,
       profile,
       questionCount,
-      sessionMemory: body.sessionMemory,
+      sessionMemory: effectiveSessionMemory,
       supabase,
-      tagContext: body.tagContext,
+      tagContext,
       trace,
     });
 
@@ -168,9 +221,19 @@ export async function POST(request: Request) {
       recommendations: agentResult.recommendations,
       roundGoal: agentResult.roundGoal,
       sessionMemory: agentResult.sessionMemory,
+      sessionId,
       tagContext: agentResult.tagContext,
       trace,
     };
+
+    response.roundId = await persistRecommendationRound({
+      recommendations: agentResult.recommendations,
+      response,
+      sessionId,
+      supabase,
+      trace,
+      userId: auth.user.id,
+    });
 
     return NextResponse.json(response);
   } catch (error) {

@@ -53,11 +53,59 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    background:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.08), transparent 30rem),
+      linear-gradient(180deg, hsl(210 40% 98%), hsl(var(--background)) 18rem);
   }
 }
 
 @layer components {
+  .student-shell {
+    @apply mx-auto w-full max-w-[92rem] px-4 py-6 sm:px-6 lg:px-8;
+  }
+
+  .student-hero {
+    @apply rounded-lg border border-slate-200/70 bg-white/80 p-5 shadow-none ring-1 ring-slate-950/5;
+  }
+
+  .student-panel {
+    @apply rounded-lg border border-slate-200/80 bg-white/95 shadow-[0_16px_42px_-34px_rgba(15,23,42,0.55)] ring-1 ring-slate-950/5;
+  }
+
+  .student-soft-panel {
+    @apply rounded-lg border border-sky-100 bg-sky-50/60 shadow-[0_14px_36px_-34px_rgba(3,105,161,0.65)];
+  }
+
+  .student-card-hover {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-[0_18px_42px_-34px_rgba(15,23,42,0.65)];
+  }
+
+  .student-eyebrow {
+    @apply text-xs font-bold uppercase tracking-[0.16em] text-sky-700;
+  }
+
+  .student-muted {
+    @apply text-sm leading-6 text-slate-600;
+  }
+
+  .student-enter {
+    @apply animate-in fade-in slide-in-from-bottom-2 duration-300;
+  }
+
+  .student-focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .student-card-hover,
+    .student-enter {
+      animation: none !important;
+      transform: none !important;
+      transition-duration: 1ms !important;
+    }
+  }
+
   .rich-html {
     @apply min-w-0 text-foreground leading-7;
     overflow-wrap: anywhere;

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
+import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import {
   FeedbackText,
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   PracticeAttemptInput,
@@ -21,124 +23,35 @@ import type {
   PracticeRecommendRequest,
   PracticeRecommendResponse,
   PracticeRecommendation,
+  PracticeRoundHistory,
   PracticeReviewResponse,
-  PracticeTagContext,
+  PracticeSessionDetail,
+  PracticeSessionSummary,
   PracticeTraceEvent,
+  PracticeWrongQuestionView,
 } from "@/lib/practice/types";
 
-const STORAGE_KEY = "o2i.practice-agent.mvp";
-
 type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback";
-
-type SavedRoundSummary = {
-  hintCounts: Record<string, number>;
-  missedQuestionIds: string[];
-  nextRoundGoal: string;
-  recommendedQuestionIds: string[];
-  reviewSummary: string;
-  roundGoal: string;
-  score: {
-    correct: number;
-    total: number;
-  };
-};
-
-type SavedSession = {
-  completedQuestionIds: string[];
-  goal: string;
-  memory: string;
-  rounds: SavedRoundSummary[];
-  sessionId: string;
-  tagContext: PracticeTagContext;
-};
-
 type AnswersState = Record<string, string | string[]>;
 type HintsState = Record<string, string[]>;
+type ApiError = { error?: string };
 
-type ApiError = {
-  error?: string;
-};
+const starterGoals = [
+  "AP Calculus: implicit differentiation with harder MCQs",
+  "Review missed integration questions and explain traps",
+  "Build a short mixed round on limits and continuity",
+  "Practice FRQ-style derivative applications",
+];
 
-function newSession(goal: string): SavedSession {
-  return {
-    completedQuestionIds: [],
-    goal,
-    memory: `Goal: ${goal}. No completed rounds yet.`,
-    rounds: [],
-    sessionId: crypto.randomUUID(),
-    tagContext: { confirmedTagIds: [], lastGoal: goal, usefulTags: [], version: 1 },
-  };
-}
-
-function normalizeTagContext(value: unknown, goal: string): PracticeTagContext {
-  if (!value || typeof value !== "object") {
-    return { confirmedTagIds: [], lastGoal: goal, usefulTags: [], version: 1 };
-  }
-
-  const record = value as Partial<PracticeTagContext>;
-  return {
-    confirmedTagIds: Array.isArray(record.confirmedTagIds)
-      ? Array.from(new Set(record.confirmedTagIds.map(String).filter(Boolean))).slice(0, 24)
-      : [],
-    lastGoal: typeof record.lastGoal === "string" ? record.lastGoal.slice(0, 240) : goal,
-    usefulTags: Array.isArray(record.usefulTags)
-      ? record.usefulTags.map((tag) => {
-          const item = tag && typeof tag === "object" ? tag as Record<string, unknown> : {};
-          const searchableQuestionCount = Number(item.searchableQuestionCount);
-          const source: PracticeTagContext["usefulTags"][number]["source"] =
-            item.source === "browse" || item.source === "search" || item.source === "memory"
-            ? item.source
-            : "memory";
-
-          return {
-            searchableQuestionCount: Number.isFinite(searchableQuestionCount)
-              ? Math.max(0, Math.trunc(searchableQuestionCount))
-              : undefined,
-            source,
-            tagId: String(item.tagId ?? "").trim(),
-          };
-        }).filter((tag) => tag.tagId).slice(0, 24)
-      : [],
-    version: 1,
-  };
-}
-
-function formatTrace(event: PracticeTraceEvent) {
-  return [
-    event.toolName,
-    event.outputSummary ? `→ ${event.outputSummary}` : "",
-    event.error ? `Error: ${event.error}` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function compactPersistedSession(session: SavedSession): SavedSession {
-  return {
-    completedQuestionIds: Array.from(new Set(session.completedQuestionIds)).slice(-300),
-    goal: session.goal,
-    memory: session.memory.slice(0, 1600),
-    rounds: session.rounds.slice(-12).map((round) => ({
-      hintCounts: round.hintCounts,
-      missedQuestionIds: round.missedQuestionIds.slice(0, 16),
-      nextRoundGoal: round.nextRoundGoal.slice(0, 500),
-      recommendedQuestionIds: round.recommendedQuestionIds.slice(0, 12),
-      reviewSummary: round.reviewSummary.slice(0, 700),
-      roundGoal: round.roundGoal.slice(0, 500),
-      score: round.score,
-    })),
-    sessionId: session.sessionId,
-    tagContext: normalizeTagContext(session.tagContext, session.goal),
-  };
-}
-
-async function postJson<T>(url: string, body: unknown): Promise<T> {
+async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
-    body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
   });
-  const payload = (await response.json()) as T & ApiError;
+  const payload = (await response.json().catch(() => ({}))) as T & ApiError;
 
   if (!response.ok) {
     throw new Error(payload.error || `Request failed with ${response.status}`);
@@ -163,11 +76,7 @@ function parseSseEvents(buffer: string) {
         }
       }
 
-      if (!dataLines.length) {
-        return null;
-      }
-
-      return { data: dataLines.join("\n"), event };
+      return dataLines.length ? { data: dataLines.join("\n"), event } : null;
     })
     .filter((event): event is { data: string; event: string } => event !== null);
 
@@ -194,7 +103,6 @@ async function postRecommendationStream({
     const payload = (await response.json().catch(() => null)) as ApiError | null;
     throw new Error(payload?.error || `Request failed with ${response.status}`);
   }
-
   if (!response.body) {
     throw new Error("Streaming response body is not available.");
   }
@@ -212,57 +120,38 @@ async function postRecommendationStream({
 
     for (const item of parsed.events) {
       const payload = JSON.parse(item.data);
-
       if (item.event === "trace") {
         onTrace(payload as PracticeTraceEvent);
       } else if (item.event === "result") {
         result = payload as PracticeRecommendResponse;
       } else if (item.event === "error") {
         const errorPayload = payload as ApiError & { trace?: PracticeTraceEvent[] };
-        if (errorPayload.trace?.length) {
-          errorPayload.trace.forEach(onTrace);
-        }
+        errorPayload.trace?.forEach(onTrace);
         throw new Error(errorPayload.error || "Practice recommendation failed.");
       }
     }
 
-    if (done) {
-      break;
-    }
+    if (done) break;
   }
 
   if (!result) {
     throw new Error("Practice recommendation stream ended before a result was returned.");
   }
-
   return result;
 }
 
 function answerValue(answer: string | string[] | undefined) {
-  if (Array.isArray(answer)) {
-    return answer.join(", ");
-  }
-
-  return answer ?? "";
+  return Array.isArray(answer) ? answer.join(", ") : answer ?? "";
 }
 
 function resultBadge(result: PracticeGradeResult | undefined) {
-  if (!result) {
-    return null;
-  }
-
+  if (!result) return null;
   if (result.isCorrect === true) {
-    return (
-      <Badge className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600">
-        correct
-      </Badge>
-    );
+    return <Badge className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600">correct</Badge>;
   }
-
   if (result.isCorrect === false) {
     return <Badge variant="destructive">incorrect</Badge>;
   }
-
   return <Badge variant="outline">manual review</Badge>;
 }
 
@@ -270,24 +159,53 @@ function formatDuration(ms: number) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-
-  if (!minutes) {
-    return `${seconds}s`;
-  }
-
-  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+  return minutes ? `${minutes}m ${seconds.toString().padStart(2, "0")}s` : `${seconds}s`;
 }
 
 function latestProcessSummary(trace: PracticeTraceEvent[]) {
   const latest = [...trace]
     .reverse()
     .find((event) => event.thoughtSummary || event.outputSummary || event.inputSummary || event.error);
+  return latest?.thoughtSummary || latest?.outputSummary || latest?.inputSummary || latest?.error ||
+    "Waiting for the agent to choose its first step.";
+}
 
-  if (!latest) {
-    return "Waiting for the agent to choose its first step.";
-  }
+function formatTrace(event: PracticeTraceEvent) {
+  return [
+    event.toolName,
+    event.outputSummary ? `-> ${event.outputSummary}` : "",
+    event.error ? `Error: ${event.error}` : "",
+  ].filter(Boolean).join(" ");
+}
 
-  return latest.thoughtSummary || latest.outputSummary || latest.inputSummary || latest.error || "";
+function recommendationFromHistoryQuestion(
+  question: PracticeRoundHistory["questions"][number],
+): PracticeRecommendation {
+  return {
+    contentExcerpt: question.contentExcerpt,
+    contentHtml: question.contentHtml,
+    difficulty: question.difficulty,
+    expectedSkill: question.expectedSkill,
+    id: question.sourceQuestionId ?? question.id,
+    options: question.options,
+    questionCode: question.questionCode,
+    questionType: question.questionType as PracticeRecommendation["questionType"],
+    reason: question.reason || "Saved from this practice session.",
+    source: question.source,
+    tagIds: question.tagIds,
+    title: question.title,
+  };
+}
+
+function resultsFromHistoryRound(round: PracticeRoundHistory): PracticeGradeResult[] {
+  return round.attempts.map((attempt) => ({
+    explanation: attempt.explanation ?? "No saved explanation.",
+    gradingMode: "manual" as const,
+    isCorrect: attempt.isCorrect,
+    questionId: attempt.sourceQuestionId ?? attempt.questionId ?? "",
+    score: attempt.score,
+    solutionHtml: attempt.solutionHtml,
+  })).filter((result) => result.questionId);
 }
 
 function TracePanel({
@@ -301,9 +219,7 @@ function TracePanel({
   onToggle?: () => void;
   trace: PracticeTraceEvent[];
 }) {
-  if (!trace.length && !active) {
-    return null;
-  }
+  if (!trace.length && !active) return null;
 
   return (
     <Card className={active ? "animate-in fade-in slide-in-from-bottom-2 duration-300" : undefined}>
@@ -312,7 +228,7 @@ function TracePanel({
           <div>
             <CardTitle className="text-base">Generation process</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              Shows UI-safe process notes from the model plus compact backend summaries of tool inputs and outputs.
+              UI-safe process notes plus compact backend summaries.
             </p>
           </div>
           {trace.length ? (
@@ -336,45 +252,46 @@ function TracePanel({
               <span className="text-muted-foreground">{latestProcessSummary(trace)}</span>
             </div>
           </div>
-        ) : null}
-        <div className="space-y-2">
-          {!collapsed && trace.map((event, index) => (
-            <details
-              key={`${event.toolName}-${index}`}
-              className="animate-in fade-in slide-in-from-bottom-1 rounded-md border bg-muted/20 p-3 text-xs duration-300"
-              open={active ? index >= trace.length - 3 : index >= trace.length - 2}
-            >
-              <summary className="cursor-pointer list-none">
-                <div className="inline-flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{event.phase}</Badge>
-                  {event.iteration ? <Badge variant="secondary">step {event.iteration}</Badge> : null}
-                  <span className="font-mono">{event.toolName}</span>
-                  {event.elapsedMs !== undefined ? (
-                    <span className="text-muted-foreground">{event.elapsedMs}ms</span>
-                  ) : null}
-                </div>
-              </summary>
-              {event.thoughtSummary ? (
-                <div className="mt-3 rounded-md border bg-background p-2">
-                  <p className="font-medium">Process note</p>
-                  <p className="mt-1 text-muted-foreground">{event.thoughtSummary}</p>
-                </div>
-              ) : null}
-              {event.inputSummary ? (
+        ) : (
+          <div className="space-y-2">
+            {trace.map((event, index) => (
+              <details
+                key={`${event.toolName}-${index}`}
+                className="rounded-md border bg-muted/20 p-3 text-xs"
+                open={active ? index >= trace.length - 3 : index >= trace.length - 2}
+              >
+                <summary className="cursor-pointer list-none">
+                  <div className="inline-flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{event.phase}</Badge>
+                    {event.iteration ? <Badge variant="secondary">step {event.iteration}</Badge> : null}
+                    <span className="font-mono">{event.toolName}</span>
+                    {event.elapsedMs !== undefined ? (
+                      <span className="text-muted-foreground">{event.elapsedMs}ms</span>
+                    ) : null}
+                  </div>
+                </summary>
+                {event.thoughtSummary ? (
+                  <div className="mt-3 rounded-md border bg-background p-2">
+                    <p className="font-medium">Process note</p>
+                    <p className="mt-1 text-muted-foreground">{event.thoughtSummary}</p>
+                  </div>
+                ) : null}
+                {event.inputSummary ? (
+                  <div className="mt-2 rounded-md border bg-background p-2">
+                    <p className="font-medium">Tool input summary</p>
+                    <p className="mt-1 break-words text-muted-foreground">{event.inputSummary}</p>
+                  </div>
+                ) : null}
                 <div className="mt-2 rounded-md border bg-background p-2">
-                  <p className="font-medium">Tool input summary</p>
-                  <p className="mt-1 break-words text-muted-foreground">{event.inputSummary}</p>
+                  <p className="font-medium">Tool output summary</p>
+                  <p className={event.error ? "mt-1 text-destructive" : "mt-1 break-words text-muted-foreground"}>
+                    {formatTrace(event)}
+                  </p>
                 </div>
-              ) : null}
-              <div className="mt-2 rounded-md border bg-background p-2">
-                <p className="font-medium">Tool output summary</p>
-                <p className={event.error ? "mt-1 text-destructive" : "mt-1 break-words text-muted-foreground"}>
-                  {formatTrace(event)}
-                </p>
-              </div>
-            </details>
-          ))}
-        </div>
+              </details>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -395,15 +312,9 @@ function QuestionAnswerInput({
     return (
       <div className="space-y-2">
         {question.options.map((option) => {
-          const selected = Array.isArray(answer)
-            ? answer.includes(option.id)
-            : answer === option.id;
-
+          const selected = Array.isArray(answer) ? answer.includes(option.id) : answer === option.id;
           return (
-            <label
-              key={option.id}
-              className="grid cursor-pointer gap-3 rounded-md border bg-background p-3 sm:grid-cols-[1.5rem_1fr]"
-            >
+            <label key={option.id} className="grid cursor-pointer gap-3 rounded-md border bg-background p-3 sm:grid-cols-[1.5rem_1fr]">
               <input
                 checked={selected}
                 disabled={disabled}
@@ -413,10 +324,7 @@ function QuestionAnswerInput({
               />
               <div className="space-y-1">
                 <span className="font-mono text-xs text-muted-foreground">{option.label}</span>
-                <OptionText
-                  className="border-none bg-transparent p-0"
-                  value={option.content_html}
-                />
+                <OptionText className="border-none bg-transparent p-0" value={option.content_html} />
               </div>
             </label>
           );
@@ -437,7 +345,8 @@ function QuestionAnswerInput({
 
 export function PracticeAgentClient() {
   const [phase, setPhase] = useState<Phase>("start");
-  const [session, setSession] = useState<SavedSession | null>(null);
+  const [sessions, setSessions] = useState<PracticeSessionSummary[]>([]);
+  const [activeSession, setActiveSession] = useState<PracticeSessionDetail | null>(null);
   const [goal, setGoal] = useState("");
   const [questionCount, setQuestionCount] = useState(4);
   const [recommendation, setRecommendation] = useState<PracticeRecommendResponse | null>(null);
@@ -448,6 +357,12 @@ export function PracticeAgentClient() {
   const [liveTrace, setLiveTrace] = useState<PracticeTraceEvent[]>([]);
   const [reviewTrace, setReviewTrace] = useState<PracticeTraceEvent[]>([]);
   const [isTraceCollapsed, setIsTraceCollapsed] = useState(false);
+  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
+  const [wrongQuestions, setWrongQuestions] = useState<PracticeWrongQuestionView[]>([]);
+  const [selectedWrongQuestionIds, setSelectedWrongQuestionIds] = useState<string[]>([]);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [thinkingElapsedMs, setThinkingElapsedMs] = useState(0);
   const [lastThinkingDurationMs, setLastThinkingDurationMs] = useState<number | null>(null);
@@ -456,15 +371,116 @@ export function PracticeAgentClient() {
   const thinkingEndRef = useRef<HTMLDivElement | null>(null);
   const thinkingStartedAtRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    window.localStorage.removeItem(STORAGE_KEY);
-  }, []);
+  async function refreshPracticeState(preferredSessionId?: string) {
+    const sessionPayload = await jsonRequest<{
+      activeSession: PracticeSessionDetail | null;
+      sessions: PracticeSessionSummary[];
+    }>("/api/practice/sessions");
+
+    let nextSession = sessionPayload.activeSession;
+    if (preferredSessionId) {
+      const detail = await jsonRequest<{ session: PracticeSessionDetail }>(
+        `/api/practice/sessions/${preferredSessionId}`,
+      );
+      nextSession = detail.session;
+    }
+
+    setSessions(sessionPayload.sessions);
+    setActiveSession(nextSession);
+    const wrongPayload = nextSession
+      ? await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
+          `/api/practice/wrong-questions?sessionId=${encodeURIComponent(nextSession.id)}`,
+        )
+      : { wrongQuestions: [] };
+    setWrongQuestions(wrongPayload.wrongQuestions);
+
+    return nextSession;
+  }
+
+  function restoreRoundFromHistory(round: PracticeRoundHistory, session = activeSession) {
+    if (!session || !round.questions.length) return;
+
+    const restoredRecommendations = round.questions
+      .map(recommendationFromHistoryQuestion)
+      .filter((question) => question.id);
+    if (!restoredRecommendations.length) return;
+
+    const restoredRecommendation: PracticeRecommendResponse = {
+      maxToolCalls: 0,
+      mode: "heuristic",
+      recommendations: restoredRecommendations,
+      roundId: round.id,
+      roundGoal: round.roundGoal || session.goal,
+      sessionId: session.id,
+      sessionMemory: session.sessionMemory,
+      tagContext: session.tagContext,
+      trace: [],
+    };
+    const restoredResults = resultsFromHistoryRound(round);
+    const restoredAnswers: AnswersState = {};
+    const restoredHints: HintsState = {};
+
+    for (const attempt of round.attempts) {
+      const questionId = attempt.sourceQuestionId ?? attempt.questionId;
+      if (!questionId) continue;
+      restoredAnswers[questionId] = attempt.answer;
+      restoredHints[questionId] = attempt.hints;
+    }
+
+    setRecommendation(restoredRecommendation);
+    setAnswers(restoredAnswers);
+    setHints(restoredHints);
+    setResults(restoredResults);
+    setLiveTrace([]);
+    setReviewTrace([]);
+    setIsTraceCollapsed(true);
+    setGoal(round.nextRoundGoal ?? "");
+
+    if (round.reviewSummary || restoredResults.length) {
+      setReview({
+        mode: "heuristic",
+        nextRoundGoal: round.nextRoundGoal ?? session.goal,
+        results: restoredResults,
+        sessionId: session.id,
+        summary: round.reviewSummary ?? "This round has saved review results.",
+        trace: [],
+        updatedSessionMemory: session.sessionMemory,
+      });
+      setPhase("feedback");
+    } else {
+      setReview(null);
+      setPhase("recommended");
+    }
+  }
 
   useEffect(() => {
-    if (session) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(compactPersistedSession(session)));
-    }
-  }, [session]);
+    startTransition(async () => {
+      try {
+        const restoredSession = await refreshPracticeState();
+        const pendingRoundRaw = window.sessionStorage.getItem("o2i:pendingPracticeRound");
+        if (pendingRoundRaw) {
+          const pendingRound = JSON.parse(pendingRoundRaw) as PracticeRecommendResponse;
+          window.sessionStorage.removeItem("o2i:pendingPracticeRound");
+          if (pendingRound.roundId && pendingRound.recommendations?.length) {
+            setRecommendation(pendingRound);
+            setGoal(pendingRound.roundGoal);
+            setLiveTrace(pendingRound.trace ?? []);
+            setIsTraceCollapsed(true);
+            setPhase("recommended");
+            if (pendingRound.sessionId) {
+              await refreshPracticeState(pendingRound.sessionId);
+            }
+          }
+        } else if (restoredSession?.rounds.length) {
+          restoreRoundFromHistory(restoredSession.rounds[restoredSession.rounds.length - 1], restoredSession);
+        }
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+    // Run once on page entry to restore the latest persisted round.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (phase === "thinking" && liveTrace.length) {
@@ -479,33 +495,34 @@ export function PracticeAgentClient() {
   }, [phase]);
 
   useEffect(() => {
-    if (phase !== "thinking") {
-      return;
-    }
-
+    if (phase !== "thinking") return;
     const updateElapsed = () => {
       const startedAt = thinkingStartedAtRef.current;
       setThinkingElapsedMs(startedAt ? Date.now() - startedAt : 0);
     };
-
     updateElapsed();
     const timer = window.setInterval(updateElapsed, 1000);
-
     return () => window.clearInterval(timer);
   }, [phase]);
 
-  const activeSession = useMemo(() => session ?? (goal.trim() ? newSession(goal.trim()) : null), [goal, session]);
   const latestTrace = useMemo(() => {
-    if (phase === "feedback" && review) {
-      return reviewTrace;
-    }
-
-    if (phase === "thinking") {
-      return liveTrace;
-    }
-
+    if (phase === "feedback" && review) return reviewTrace;
+    if (phase === "thinking") return liveTrace;
     return recommendation?.trace ?? liveTrace;
   }, [phase, liveTrace, recommendation, review, reviewTrace]);
+  const isStarterPractice =
+    phase === "start" &&
+    !recommendation &&
+    !activeSession?.rounds.length &&
+    !selectedWrongQuestionIds.length;
+  const practiceGridStyle = {
+    "--practice-left": isLeftSidebarCollapsed ? "3.75rem" : "18rem",
+    "--practice-right": isRightSidebarCollapsed ? "3.75rem" : "18rem",
+  } as CSSProperties;
+
+  const resultsById = new Map<string, PracticeGradeResult>(
+    results.map((result) => [result.questionId, result]),
+  );
 
   function resetRoundState() {
     setAnswers({});
@@ -513,11 +530,12 @@ export function PracticeAgentClient() {
     setResults([]);
     setReview(null);
     setReviewTrace([]);
+    setRecommendation(null);
   }
 
   function beginThinking() {
-    const now = Date.now();
-    thinkingStartedAtRef.current = now;
+    // eslint-disable-next-line react-hooks/purity
+    thinkingStartedAtRef.current = Date.now();
     setThinkingElapsedMs(0);
     setLastThinkingDurationMs(null);
     setPhase("thinking");
@@ -525,59 +543,113 @@ export function PracticeAgentClient() {
 
   function finishThinking(nextPhase: Phase) {
     const startedAt = thinkingStartedAtRef.current;
-
-    if (startedAt) {
-      setLastThinkingDurationMs(Date.now() - startedAt);
-    }
-
+    // eslint-disable-next-line react-hooks/purity
+    if (startedAt) setLastThinkingDurationMs(Date.now() - startedAt);
     thinkingStartedAtRef.current = null;
     setPhase(nextPhase);
   }
 
-  function requestRecommendation(nextGoal?: string) {
-    const trimmedGoal = (nextGoal ?? goal).trim();
+  async function runPreferenceMerge() {
+    try {
+      await jsonRequest<{ status: string }>(
+        "/api/practice/preferences/merge/run",
+        { method: "POST", body: "{}" },
+      );
+    } catch {
+      // Preference merge is intentionally opportunistic and should not block practice.
+    }
+  }
 
+  async function updateSessionTitle(sessionId: string, title: string) {
+    const payload = await jsonRequest<{ session: PracticeSessionDetail }>(
+      `/api/practice/sessions/${sessionId}`,
+      {
+        body: JSON.stringify({ title }),
+        method: "PATCH",
+      },
+    );
+    setActiveSession((current) => (current?.id === sessionId ? payload.session : current));
+    setSessions((current) =>
+      current.map((item) => (item.id === sessionId ? { ...item, title: payload.session.title } : item)),
+    );
+    return payload.session;
+  }
+
+  async function autoNameSession(sessionId: string, trimmedGoal: string) {
+    try {
+      const payload = await jsonRequest<{ title: string }>("/api/practice/sessions/title", {
+        body: JSON.stringify({ goal: trimmedGoal }),
+        method: "POST",
+      });
+      if (payload.title) {
+        await updateSessionTitle(sessionId, payload.title);
+      }
+    } catch {
+      // Auto naming is a convenience; recommendation should keep moving if it fails.
+    }
+  }
+
+  async function ensureSession(trimmedGoal: string) {
+    if (activeSession) return activeSession;
+    const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
+      body: JSON.stringify({ goal: trimmedGoal, title: "New practice session" }),
+      method: "POST",
+    });
+    setActiveSession(payload.session);
+    await refreshPracticeState(payload.session.id);
+    void runPreferenceMerge();
+    return payload.session;
+  }
+
+  function requestRecommendation(nextGoal?: string, wrongIds = selectedWrongQuestionIds) {
+    const trimmedGoal = (nextGoal ?? goal).trim();
     if (!trimmedGoal) {
       setError("Enter a practice goal first.");
       return;
     }
 
-    const currentSession = session ?? newSession(trimmedGoal);
-    setSession(currentSession);
     setError(null);
     beginThinking();
     setLiveTrace([]);
     setReviewTrace([]);
     setIsTraceCollapsed(false);
-    setRecommendation(null);
     resetRoundState();
 
     startTransition(async () => {
       try {
-        const response = await postRecommendationStream({
+        const currentSession = await ensureSession(trimmedGoal);
+        const shouldAutoName =
+          currentSession.title === "New practice session" &&
+          !currentSession.rounds.length;
+        const titlePromise = shouldAutoName
+          ? autoNameSession(currentSession.id, trimmedGoal)
+          : Promise.resolve();
+        const responsePromise = postRecommendationStream({
           body: {
-          completedQuestionIds: currentSession.completedQuestionIds,
-          goal: trimmedGoal,
-          questionCount,
-          sessionMemory: currentSession.memory,
-          tagContext: currentSession.tagContext,
+            goal: trimmedGoal,
+            questionCount,
+            sessionId: currentSession.id,
+            wrongQuestionIds: wrongIds,
           },
           onTrace: (event) => setLiveTrace((current) => [...current, event]),
         });
+        const [response] = await Promise.all([responsePromise, titlePromise]);
         setRecommendation(response);
         setLiveTrace(response.trace);
         setIsTraceCollapsed(true);
         setGoal(trimmedGoal);
-        setSession({
+        setSelectedWrongQuestionIds([]);
+        setActiveSession({
           ...currentSession,
-          goal: trimmedGoal,
-          memory: response.sessionMemory,
+          goal: response.roundGoal,
+          sessionMemory: response.sessionMemory,
           tagContext: response.tagContext,
         });
+        await refreshPracticeState(currentSession.id);
         finishThinking("recommended");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
-        finishThinking("start");
+        finishThinking(activeSession ? "start" : "start");
       }
     });
   }
@@ -591,16 +663,17 @@ export function PracticeAgentClient() {
     startTransition(async () => {
       try {
         const previousHints = hints[question.id] ?? [];
-        const response = await postJson<PracticeHintResponse>("/api/practice/hint", {
-          currentAnswer: answers[question.id] ?? "",
-          hintLevel: previousHints.length + 1,
-          previousHints,
-          questionId: question.id,
+        const response = await jsonRequest<PracticeHintResponse>("/api/practice/hint", {
+          body: JSON.stringify({
+            currentAnswer: answers[question.id] ?? "",
+            hintLevel: previousHints.length + 1,
+            previousHints,
+            questionId: question.id,
+            sessionId: activeSession?.id,
+          }),
+          method: "POST",
         });
-        setHints((current) => ({
-          ...current,
-          [question.id]: [...previousHints, response.hint],
-        }));
+        setHints((current) => ({ ...current, [question.id]: [...previousHints, response.hint] }));
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -608,9 +681,7 @@ export function PracticeAgentClient() {
   }
 
   function submitRound() {
-    if (!recommendation || !activeSession) {
-      return;
-    }
+    if (!recommendation || !activeSession || !recommendation.roundId) return;
 
     const attempts: PracticeAttemptInput[] = recommendation.recommendations.map((question) => ({
       answer: answers[question.id] ?? "",
@@ -627,7 +698,6 @@ export function PracticeAgentClient() {
       try {
         const reviewPayloadAttempts = attempts.map((attempt) => {
           const recommended = recommendation.recommendations.find((item) => item.id === attempt.questionId);
-
           return {
             ...attempt,
             questionCode: recommended?.questionCode,
@@ -642,53 +712,33 @@ export function PracticeAgentClient() {
             title: recommended?.title,
           };
         });
-        const reviewResponse = await postJson<PracticeReviewResponse>("/api/practice/review", {
-          attempts: reviewPayloadAttempts,
-          goal: activeSession.goal,
-          recommendations: recommendation.recommendations.map((question) => ({
-            contentHtml: question.contentHtml,
-            id: question.id,
-            options: question.options,
-            questionCode: question.questionCode,
-            questionType: question.questionType,
-            title: question.title,
-          })),
-          sessionMemory: activeSession.memory,
+        const reviewResponse = await jsonRequest<PracticeReviewResponse>("/api/practice/review", {
+          body: JSON.stringify({
+            attempts: reviewPayloadAttempts,
+            goal: activeSession.goal || recommendation.roundGoal,
+            hintsByQuestionId: hints,
+            recommendations: recommendation.recommendations.map((question) => ({
+              contentHtml: question.contentHtml,
+              id: question.id,
+              options: question.options,
+              questionCode: question.questionCode,
+              questionType: question.questionType,
+              title: question.title,
+            })),
+            roundId: recommendation.roundId,
+            sessionId: activeSession.id,
+            sessionMemory: activeSession.sessionMemory,
+          }),
+          method: "POST",
         });
-        const finalResults = reviewResponse.results ?? [];
-        const completedQuestionIds = Array.from(
-          new Set([
-            ...activeSession.completedQuestionIds,
-            ...recommendation.recommendations.map((question) => question.id),
-          ]),
-        );
-        const savedRound: SavedRoundSummary = {
-          hintCounts: Object.fromEntries(attempts.map((attempt) => [attempt.questionId, attempt.hintCount ?? 0])),
-          missedQuestionIds: finalResults
-            .filter((result) => result.isCorrect === false)
-            .map((result) => result.questionId),
-          nextRoundGoal: reviewResponse.nextRoundGoal,
-          recommendedQuestionIds: recommendation.recommendations.map((question) => question.id),
-          reviewSummary: reviewResponse.summary,
-          roundGoal: recommendation.roundGoal,
-          score: {
-            correct: finalResults.filter((result) => result.isCorrect === true).length,
-            total: finalResults.filter((result) => result.isCorrect !== null).length,
-          },
-        };
 
-        setResults(finalResults);
+        setResults(reviewResponse.results ?? []);
         setReview(reviewResponse);
         setReviewTrace(reviewResponse.trace);
         setLiveTrace(reviewResponse.trace);
         setIsTraceCollapsed(true);
         setGoal("");
-        setSession({
-          ...activeSession,
-          completedQuestionIds,
-          memory: reviewResponse.updatedSessionMemory,
-          rounds: [...activeSession.rounds, savedRound],
-        });
+        await refreshPracticeState(activeSession.id);
         finishThinking("feedback");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -702,333 +752,710 @@ export function PracticeAgentClient() {
       requestRecommendation();
       return;
     }
-
     const studentThought = goal.trim();
     const nextGoal = studentThought
       ? `${review.nextRoundGoal} Student added: ${studentThought}`
       : review.nextRoundGoal;
-
     requestRecommendation(nextGoal);
   }
 
-  function clearSession() {
-    window.localStorage.removeItem(STORAGE_KEY);
-    setSession(null);
-    setRecommendation(null);
-    setGoal("");
-    setLastThinkingDurationMs(null);
-    setThinkingElapsedMs(0);
-    thinkingStartedAtRef.current = null;
-    resetRoundState();
-    setPhase("start");
+  function beginRenameSession(session: PracticeSessionSummary) {
+    setRenamingSessionId(session.id);
+    setRenameValue(session.title);
   }
 
-  const resultsById = new Map<string, PracticeGradeResult>(
-    results.map((result) => [result.questionId, result]),
-  );
+  function submitRenameSession(sessionId: string) {
+    const title = renameValue.trim();
+    if (!title) {
+      setRenamingSessionId(null);
+      setRenameValue("");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await updateSessionTitle(sessionId, title);
+        setRenamingSessionId(null);
+        setRenameValue("");
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+  }
+
+  function switchSession(sessionId: string) {
+    startTransition(async () => {
+      try {
+        const payload = await jsonRequest<{ session: PracticeSessionDetail }>(
+          `/api/practice/sessions/${sessionId}`,
+        );
+        setActiveSession(payload.session);
+        const wrongPayload = await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
+          `/api/practice/wrong-questions?sessionId=${encodeURIComponent(payload.session.id)}`,
+        );
+        setWrongQuestions(wrongPayload.wrongQuestions);
+        resetRoundState();
+        if (payload.session.rounds.length) {
+          restoreRoundFromHistory(payload.session.rounds[payload.session.rounds.length - 1], payload.session);
+        } else {
+          setGoal("");
+          setPhase("start");
+        }
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+  }
+
+  function createNewSession() {
+    startTransition(async () => {
+      try {
+        const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
+          body: JSON.stringify({ goal: "", title: "New practice session" }),
+          method: "POST",
+        });
+        setActiveSession(payload.session);
+        resetRoundState();
+        setPhase("start");
+        await refreshPracticeState(payload.session.id);
+        void runPreferenceMerge();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+  }
+
+  function deleteSession(sessionId: string) {
+    startTransition(async () => {
+      try {
+        await jsonRequest<{ ok: boolean }>(`/api/practice/sessions/${sessionId}`, { method: "DELETE" });
+        resetRoundState();
+        setPhase("start");
+        await refreshPracticeState();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+  }
+
+  function practiceWrongQuestion(question: PracticeWrongQuestionView) {
+    const nextGoal = `Re-practice missed question ${question.questionCode}: ${question.title}`;
+    setGoal(nextGoal);
+    setSelectedWrongQuestionIds([question.sourceQuestionId]);
+    requestRecommendation(nextGoal, [question.sourceQuestionId]);
+  }
+
+  function selectStarterGoal(nextGoal: string) {
+    setGoal(nextGoal);
+    requestRecommendation(nextGoal, []);
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-md border bg-gradient-to-r from-muted/50 to-background p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <Badge variant="secondary">Practice Agent MVP</Badge>
-            <h1 className="text-3xl font-semibold tracking-tight">O2I Practice Agent</h1>
-            <p className="max-w-3xl text-sm text-muted-foreground">
-              A no-database-change MVP: only compact memory, completed ids,
-              score summaries, missed ids, and hint counts are persisted locally.
-              Current question HTML, solutions, and raw traces are not saved in localStorage.
-            </p>
-          </div>
-          {session ? (
-            <Button onClick={clearSession} type="button" variant="outline">
-              Clear local session
+    <div
+      className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
+      style={practiceGridStyle}
+    >
+      <aside className="transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+        {isLeftSidebarCollapsed ? (
+          <div className="hidden h-full min-h-64 flex-col items-center border-r border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
+            <Button
+              aria-label="Expand sessions sidebar"
+              className="size-10 rounded-xl bg-slate-200/70 text-slate-900 hover:bg-slate-200"
+              onClick={() => setIsLeftSidebarCollapsed(false)}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <ChevronsRight className="size-4" aria-hidden="true" />
             </Button>
-          ) : null}
+            <div className="mt-8 flex flex-col items-center gap-4">
+              <Button
+                aria-label="New practice session"
+                className="size-10"
+                disabled={isPending}
+                onClick={createNewSession}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <Plus className="size-5" aria-hidden="true" />
+              </Button>
+              <Button
+                aria-label="Show sessions"
+                className="size-10"
+                onClick={() => setIsLeftSidebarCollapsed(false)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <MoreHorizontal className="size-5" aria-hidden="true" />
+              </Button>
+            </div>
+            <div className="mt-auto flex size-9 items-center justify-center rounded-full bg-slate-400 text-xs font-bold text-white">
+              O2
+            </div>
+          </div>
+        ) : (
+        <div className="flex min-h-full flex-col border-r border-slate-200 bg-slate-50/80 px-4 py-6">
+        <section>
+          <div className="sticky top-3 z-30 mb-9 bg-slate-50/95 pb-2">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="student-eyebrow">Practice</p>
+                <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">Sessions</h2>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  {sessions.length} saved thread{sessions.length === 1 ? "" : "s"}
+                </p>
+              </div>
+              <Button
+                aria-label="Collapse sessions sidebar"
+                className="hidden size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 xl:inline-flex"
+                onClick={() => setIsLeftSidebarCollapsed(true)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <ChevronsLeft className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-16">
+            <button
+              className="student-focus-ring group flex w-full cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-3 text-left ring-1 ring-slate-200/80 transition-all duration-200 hover:bg-sky-50 hover:ring-sky-200"
+              disabled={isPending}
+              onClick={createNewSession}
+              type="button"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-sky-600 text-white shadow-sm shadow-sky-950/10 transition-colors group-hover:bg-sky-700">
+                <Plus className="size-4" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold text-slate-900">New practice session</span>
+                <span className="block truncate text-xs text-slate-500">Start a fresh practice thread</span>
+              </span>
+            </button>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <p className="text-sm font-bold text-slate-950">Recent</p>
+                <span className="h-px flex-1 bg-slate-100 ml-3" />
+              </div>
+              <div className="space-y-1">
+              {sessions.length ? sessions.map((item) => (
+                <div
+                  key={item.id}
+                  className={`group flex items-center gap-1 rounded-xl pr-1 transition-all duration-200 ${
+                    activeSession?.id === item.id
+                      ? "bg-white shadow-sm ring-1 ring-slate-200"
+                      : "bg-transparent hover:bg-slate-50"
+                  }`}
+                >
+                  <button
+                    aria-current={activeSession?.id === item.id ? "true" : undefined}
+                    className="student-focus-ring flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left"
+                    onClick={() => switchSession(item.id)}
+                    type="button"
+                  >
+                    <span
+                      className={`h-7 w-1 shrink-0 rounded-full ${
+                        activeSession?.id === item.id ? "bg-sky-600" : "bg-slate-200 group-hover:bg-sky-300"
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1">
+                      {renamingSessionId === item.id ? (
+                        <Input
+                          autoFocus
+                          className="h-8 border-sky-200 bg-white text-sm font-bold"
+                          onBlur={() => submitRenameSession(item.id)}
+                          onChange={(event) => setRenameValue(event.target.value)}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              submitRenameSession(item.id);
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setRenamingSessionId(null);
+                              setRenameValue("");
+                            }
+                          }}
+                          value={renameValue}
+                        />
+                      ) : (
+                        <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
+                      )}
+                      <span className="block truncate text-xs leading-5 text-slate-500">
+                        {item.roundCount} round{item.roundCount === 1 ? "" : "s"} ·{" "}
+                        {new Date(item.lastActivityAt).toLocaleString()}
+                      </span>
+                    </span>
+                  </button>
+                  {activeSession?.id === item.id ? (
+                    <span className="size-2 rounded-full bg-sky-600" aria-label="Current session" />
+                  ) : null}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        aria-label={`Session actions for ${item.title}`}
+                        className="size-8 shrink-0 text-slate-500 opacity-70 hover:text-slate-900 group-hover:opacity-100"
+                        disabled={isPending}
+                        onClick={(event) => event.stopPropagation()}
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <MoreHorizontal className="size-4" aria-hidden="true" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-44 p-1">
+                    <Button
+                      className="h-9 w-full justify-start px-2 text-slate-700"
+                      disabled={isPending}
+                      onClick={() => beginRenameSession(item)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Pencil className="size-4" aria-hidden="true" />
+                      Rename session
+                    </Button>
+                    <Button
+                      className="h-9 w-full justify-start px-2 text-destructive hover:text-destructive"
+                        disabled={isPending}
+                        onClick={() => deleteSession(item.id)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Trash2 className="size-4" aria-hidden="true" />
+                        Delete
+                      </Button>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )) : (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm leading-6 text-slate-600">
+                  No saved sessions yet. Generate your first round to start a reusable study thread.
+                </div>
+              )}
+              </div>
+            </div>
+          </div>
+        </section>
+        <div className="mt-auto rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
+          Session history stays here while the center stays focused on the current round.
         </div>
-      </div>
+        </div>
+        )}
+      </aside>
 
       {error ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive xl:col-span-2">
           {error}
         </div>
       ) : null}
 
-      {phase === "thinking" ? (
-        <div className="sticky top-3 z-20 flex items-center justify-between gap-3 rounded-md border bg-background/95 px-4 py-3 text-sm shadow-sm backdrop-blur">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="relative flex h-3 w-3 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />
-            </span>
-            <span className="truncate font-medium">
-              {recommendation ? "Reviewing your round" : "Thinking"}
-            </span>
-          </div>
-          <span className="font-mono text-xs text-muted-foreground">
-            {formatDuration(thinkingElapsedMs)}
-          </span>
-        </div>
-      ) : lastThinkingDurationMs !== null && (phase === "recommended" || phase === "feedback") ? (
-        <div className="rounded-md border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          Thought for <span className="font-mono text-foreground">{formatDuration(lastThinkingDurationMs)}</span>
-        </div>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Goal</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-[1fr_9rem_auto]">
-          <div className="space-y-2">
-            <Label htmlFor="goal">
-              {phase === "feedback" ? "Add your thoughts for the next round" : "What do you want to practice?"}
-            </Label>
-            <Input
-              id="goal"
-              onChange={(event) => setGoal(event.target.value)}
-              placeholder={
-                phase === "feedback"
-                  ? "Optional: ask for a focus, pace, or difficulty change"
-                  : "e.g. AP Calculus implicit differentiation, harder MCQ first"
-              }
-              value={goal}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="count">Questions</Label>
-            <Input
-              id="count"
-              max={8}
-              min={1}
-              onChange={(event) => setQuestionCount(Number(event.target.value))}
-              type="number"
-              value={questionCount}
-            />
-          </div>
-          <div className="flex items-end">
-            <Button
-              disabled={isPending}
-              onClick={() => (phase === "feedback" ? requestFeedbackNextRound() : requestRecommendation())}
-              type="button"
-            >
-              {session?.rounds.length ? "Start next round" : "Generate round"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {phase === "thinking" ? (
-        <div className="space-y-4">
-          <Card>
-            <CardContent className="space-y-3 p-6">
-              <div className="flex items-center gap-3 text-sm">
-                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
-                <span className="font-medium">
-                  {recommendation ? "Reviewing your round" : "Generating your question set"}
-                </span>
+        <main className="min-w-0 space-y-4 px-0 xl:px-2">
+          {isStarterPractice ? (
+            <section className="flex min-h-[calc(100vh-10rem)] items-center justify-center py-10">
+              <div className="mx-auto w-full max-w-6xl space-y-8 text-center">
+                <div className="space-y-3">
+                  <Badge className="border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
+                    Practice Agent
+                  </Badge>
+                  <h1 className="text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">
+                    Ready when you are.
+                  </h1>
+                  <p className="mx-auto max-w-2xl text-base leading-7 text-slate-600">
+                    Tell O2I what you want to practice, or pick a starter goal below.
+                  </p>
+                </div>
+                <div className="mx-auto max-w-5xl rounded-full border border-slate-200 bg-white p-2 shadow-[0_24px_70px_-42px_rgba(15,23,42,0.75)] ring-1 ring-slate-950/5">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="flex min-w-0 flex-1 items-center px-3">
+                      <Input
+                        aria-label="Practice goal"
+                        className="h-14 border-0 bg-transparent px-0 text-base shadow-none ring-offset-0 placeholder:text-slate-400 focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-lg"
+                        id="goal"
+                        onChange={(event) => setGoal(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            requestRecommendation();
+                          }
+                        }}
+                        placeholder="What do you want to practice?"
+                        value={goal}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 px-2 sm:justify-end">
+                      <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+                        <SlidersHorizontal className="size-4" aria-hidden="true" />
+                        <span>Questions</span>
+                        <input
+                          aria-label="Question count"
+                          className="w-10 bg-transparent text-center font-mono text-slate-900 outline-none"
+                          max={8}
+                          min={1}
+                          onChange={(event) => setQuestionCount(Number(event.target.value))}
+                          type="number"
+                          value={questionCount}
+                        />
+                      </label>
+                      <Button
+                        aria-label="Generate round"
+                        className="size-12 rounded-full p-0"
+                        disabled={isPending}
+                        onClick={() => requestRecommendation()}
+                        type="button"
+                      >
+                        <ArrowUp className="size-5" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <div className="mx-auto grid max-w-5xl gap-2 sm:grid-cols-2">
+                  {starterGoals.map((starterGoal) => (
+                    <button
+                      className="student-focus-ring rounded-full border border-slate-200 bg-white/80 px-4 py-3 text-left text-sm font-semibold text-slate-600 shadow-sm transition-all duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 hover:shadow-md"
+                      disabled={isPending}
+                      key={starterGoal}
+                      onClick={() => selectStarterGoal(starterGoal)}
+                      type="button"
+                    >
+                      {starterGoal}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {recommendation
-                  ? "The agent is grading submitted answers and preparing a compact round review."
-                  : "The agent is choosing a retrieval path, calling question-bank tools, and preparing recommendations."}
-              </p>
-            </CardContent>
-          </Card>
-          <TracePanel
-            active
-            collapsed={isTraceCollapsed}
-            onToggle={() => setIsTraceCollapsed((current) => !current)}
-            trace={latestTrace}
-          />
-          <div ref={thinkingEndRef} />
-        </div>
-      ) : null}
-
-      {recommendation && (phase === "recommended" || phase === "practicing" || phase === "feedback") ? (
-        <div ref={resultTopRef} className="scroll-mt-4 space-y-4">
-          <TracePanel
-            collapsed={isTraceCollapsed}
-            onToggle={() => setIsTraceCollapsed((current) => !current)}
-            trace={latestTrace}
-          />
-          <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-            <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <CardTitle className="text-base">Recommended round</CardTitle>
-                    <FeedbackText
-                      className="mt-1 border-none bg-transparent p-0 text-muted-foreground"
-                      compact
-                      value={recommendation.roundGoal}
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Tool-call budget: max {recommendation.maxToolCalls} calls including finalization.
+            </section>
+          ) : (
+            <section className="student-hero">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <Badge className="border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
+                      Practice Agent
+                    </Badge>
+                    <h1 className="text-2xl font-bold tracking-tight text-slate-950">Practice session</h1>
+                    <p className="max-w-3xl text-base leading-7 text-slate-600">
+                      {activeSession
+                        ? `Current session: ${activeSession.title}`
+                        : "Create a session by generating your first round."}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">{recommendation.mode}</Badge>
-                    {recommendation.providerLabel ? (
-                      <Badge variant="secondary">{recommendation.providerLabel}</Badge>
-                    ) : null}
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                    <p className="font-semibold text-slate-950">{activeSession?.rounds.length ?? 0} saved rounds</p>
+                    <p className="mt-1 text-slate-500">{wrongQuestions.length} active misses</p>
                   </div>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                    Current focus
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-700">
+                    {recommendation?.roundGoal || activeSession?.goal || "This session goal is set from the first prompt."}
+                  </p>
+                </div>
+                <p className="text-sm leading-6 text-slate-500">
+                  {selectedWrongQuestionIds.length
+                    ? `${selectedWrongQuestionIds.length} missed question selected for priority practice.`
+                    : "This focus carries through the current practice session."}
+                </p>
+              </div>
+            </section>
+          )}
+
+          {phase === "thinking" ? (
+            <div className="sticky top-24 z-20 flex items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/95 px-4 py-3 text-sm shadow-lg shadow-sky-950/5 backdrop-blur">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="relative flex h-3 w-3 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-600 opacity-60" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-sky-600" />
+                </span>
+                <span className="truncate font-bold text-slate-900">{recommendation ? "Reviewing your round" : "Thinking"}</span>
+              </div>
+              <span className="font-mono text-sm text-slate-500">{formatDuration(thinkingElapsedMs)}</span>
+            </div>
+          ) : lastThinkingDurationMs !== null && (phase === "recommended" || phase === "feedback") ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              Thought for <span className="font-mono font-semibold">{formatDuration(lastThinkingDurationMs)}</span>
+            </div>
+          ) : null}
+
+          {phase === "thinking" ? (
+            <div className="space-y-4">
+              <Card className="student-panel student-enter">
+                <CardContent className="space-y-3 p-6">
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-sky-600" />
+                    <span className="font-bold text-slate-900">
+                      {recommendation ? "Reviewing your round" : "Generating your question set"}
+                    </span>
+                  </div>
+                  <p className="text-sm leading-6 text-slate-600">
+                    The agent is using your saved session memory, long-term preference, and question history.
+                  </p>
+                </CardContent>
+              </Card>
+              <TracePanel
+                active
+                collapsed={isTraceCollapsed}
+                onToggle={() => setIsTraceCollapsed((current) => !current)}
+                trace={latestTrace}
+              />
+              <div ref={thinkingEndRef} />
+            </div>
+          ) : null}
+
+          {recommendation && (phase === "recommended" || phase === "practicing" || phase === "feedback") ? (
+            <div ref={resultTopRef} className="scroll-mt-4 space-y-4">
+              <TracePanel
+                collapsed={isTraceCollapsed}
+                onToggle={() => setIsTraceCollapsed((current) => !current)}
+                trace={latestTrace}
+              />
+              <Card className="student-panel student-enter">
+                <CardHeader>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-2xl">Recommended round</CardTitle>
+                      <FeedbackText className="mt-2 border-none bg-transparent p-0 text-base text-slate-600" compact value={recommendation.roundGoal} />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline">{recommendation.mode}</Badge>
+                      {recommendation.providerLabel ? <Badge variant="secondary">{recommendation.providerLabel}</Badge> : null}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {recommendation.recommendations.map((question, index) => (
+                    <Card key={question.id} className="student-card-hover border-slate-200 shadow-sm">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex min-w-0 gap-3">
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-sm font-bold text-white">
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0">
+                              <CardTitle className="text-xl leading-snug">{question.title}</CardTitle>
+                              <p className="mt-2 text-sm font-medium text-slate-500">
+                                {question.questionCode} / {question.questionType} / difficulty {question.difficulty}
+                              </p>
+                            </div>
+                          </div>
+                          {resultBadge(resultsById.get(question.id))}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <QuestionText value={question.contentHtml} />
+                        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-sm">
+                          <p className="font-bold text-amber-950">Why this question</p>
+                          <FeedbackText className="mt-2 border-none bg-transparent p-0 text-amber-900" compact value={question.reason} />
+                          <p className="mt-2 text-sm text-amber-900/80">
+                            Expected skill:{" "}
+                            <FeedbackText className="inline border-none bg-transparent p-0 text-sm text-amber-900/80" compact inline value={question.expectedSkill} />
+                          </p>
+                        </div>
+                        <QuestionAnswerInput
+                          answer={answers[question.id]}
+                          disabled={phase === "feedback"}
+                          onChange={(value) => updateAnswer(question.id, value)}
+                          question={question}
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button disabled={isPending || phase === "feedback"} onClick={() => requestHint(question)} size="sm" type="button" variant="outline">
+                            Hint
+                          </Button>
+                          <span className="text-sm text-slate-500">Hints are saved with the submitted round.</span>
+                        </div>
+                        {hints[question.id]?.length ? (
+                          <div className="space-y-2">
+                            {hints[question.id].map((hint, hintIndex) => (
+                              <div key={`${question.id}-hint-${hintIndex}`} className="rounded-lg border border-sky-100 bg-sky-50/70 p-3 text-sm">
+                                <span className="font-bold text-sky-900">Hint {hintIndex + 1}: </span>
+                                <FeedbackText className="inline border-none bg-transparent p-0 text-sky-900/80" compact inline value={hint} />
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {phase === "feedback" && resultsById.get(question.id) ? (
+                          <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
+                            <FeedbackText className="border-none bg-transparent p-0 text-emerald-950" compact value={resultsById.get(question.id)?.explanation} />
+                            {resultsById.get(question.id)?.solutionHtml ? (
+                              <div className="space-y-2">
+                                <p className="text-sm font-bold text-emerald-950">Solution</p>
+                                <SolutionText value={resultsById.get(question.id)?.solutionHtml ?? ""} />
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {phase !== "feedback" ? (
+                    <div className="flex justify-end">
+                      <Button className="h-11 px-6" disabled={isPending || !recommendation.roundId} onClick={submitRound} type="button">
+                        Submit round
+                      </Button>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
+          {phase === "feedback" && review ? (
+            <Card className="student-panel">
+              <CardHeader>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-xl">Round review</CardTitle>
+                    <FeedbackText className="mt-2 border-none bg-transparent p-0 text-slate-600" compact value={review.summary} />
+                  </div>
+                  <Badge variant="outline">{review.mode}</Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {recommendation.recommendations.map((question, index) => (
-                  <Card key={question.id} className="shadow-none">
-                    <CardHeader>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <CardTitle className="text-base">
-                            {index + 1}. {question.title}
-                          </CardTitle>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {question.questionCode} / {question.questionType} / difficulty {question.difficulty}
-                          </p>
-                        </div>
-                        {resultBadge(resultsById.get(question.id))}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <QuestionText value={question.contentHtml} />
-                      <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                        <p className="font-medium">Why this question</p>
-                        <FeedbackText
-                          className="mt-1 border-none bg-transparent p-0 text-muted-foreground"
-                          compact
-                          value={question.reason}
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Expected skill:{" "}
-                          <FeedbackText
-                            className="inline border-none bg-transparent p-0 text-xs text-muted-foreground"
-                            compact
-                            inline
-                            value={question.expectedSkill}
-                          />
-                        </p>
-                      </div>
-                      <QuestionAnswerInput
-                        answer={answers[question.id]}
-                        disabled={phase === "feedback"}
-                        onChange={(value) => updateAnswer(question.id, value)}
-                        question={question}
-                      />
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          disabled={isPending || phase === "feedback"}
-                          onClick={() => requestHint(question)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          Hint
-                        </Button>
-                        <span className="text-xs text-muted-foreground">
-                          Hint calls are isolated and do not share the main agent context.
-                        </span>
-                      </div>
-                      {hints[question.id]?.length ? (
-                        <div className="space-y-2">
-                          {hints[question.id].map((hint, hintIndex) => (
-                            <div key={`${question.id}-hint-${hintIndex}`} className="rounded-md border bg-muted/30 p-3 text-sm">
-                              <span className="font-medium">Hint {hintIndex + 1}: </span>
-                              <FeedbackText
-                                className="inline border-none bg-transparent p-0 text-muted-foreground"
-                                compact
-                                inline
-                                value={hint}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {phase === "feedback" && resultsById.get(question.id) ? (
-                        <div className="space-y-3 rounded-md border p-3">
-                          <FeedbackText
-                            className="border-none bg-transparent p-0 text-muted-foreground"
-                            compact
-                            value={resultsById.get(question.id)?.explanation}
-                          />
-                          {resultsById.get(question.id)?.solutionHtml ? (
-                            <div className="space-y-2">
-                              <p className="text-sm font-medium">Solution</p>
-                              <SolutionText
-                                value={resultsById.get(question.id)?.solutionHtml ?? ""}
-                              />
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-                ))}
-
-                {phase !== "feedback" ? (
-                  <div className="flex justify-end">
-                    <Button disabled={isPending} onClick={submitRound} type="button">
-                      Submit round
-                    </Button>
+                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Next round focus</p>
+                  <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={review.nextRoundGoal} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="next-round-goal">Add your thoughts for the next round</Label>
+                  <Input
+                    id="next-round-goal"
+                    onChange={(event) => setGoal(event.target.value)}
+                    placeholder="Optional: ask for a focus, pace, or difficulty change"
+                    value={goal}
+                  />
+                </div>
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-800" htmlFor="review-next-count">
+                      Questions
+                    </Label>
+                    <Input
+                      className="h-11 w-28 border-slate-200 bg-white text-base shadow-sm"
+                      id="review-next-count"
+                      max={8}
+                      min={1}
+                      onChange={(event) => setQuestionCount(Number(event.target.value))}
+                      type="number"
+                      value={questionCount}
+                    />
                   </div>
-                ) : null}
+                  <Button className="h-11 px-6" disabled={isPending} onClick={requestFeedbackNextRound} type="button">
+                    Start next round
+                  </Button>
+                </div>
               </CardContent>
             </Card>
-            </div>
+          ) : null}
 
-            <div className="space-y-4">
-              {session?.rounds.length ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Previous feedback used</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <FeedbackText
-                      className="border-none bg-transparent p-0 text-muted-foreground"
-                      compact
-                      value={session.memory}
-                    />
-                  </CardContent>
-                </Card>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+        </main>
 
-      {phase === "feedback" && review ? (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle className="text-base">Round review</CardTitle>
-                <FeedbackText
-                  className="mt-1 border-none bg-transparent p-0 text-muted-foreground"
-                  compact
-                  value={review.summary}
-                />
+        <aside className="transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+          {isRightSidebarCollapsed ? (
+            <div className="hidden h-full min-h-64 flex-col items-center border-l border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
+              <Button
+                aria-label="Expand study sidebar"
+                className="size-10 rounded-xl bg-slate-200/70 text-slate-900 hover:bg-slate-200"
+                onClick={() => setIsRightSidebarCollapsed(false)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <ChevronsLeft className="size-4" aria-hidden="true" />
+              </Button>
+              <div className="mt-8 flex flex-col items-center gap-4">
+                <Button
+                  aria-label="Show study state"
+                  className="size-10"
+                  onClick={() => setIsRightSidebarCollapsed(false)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <SlidersHorizontal className="size-5" aria-hidden="true" />
+                </Button>
               </div>
-              <Badge variant="outline">{review.mode}</Badge>
+              <div className="mt-auto flex size-9 items-center justify-center rounded-full bg-slate-400 text-xs font-bold text-white">
+                O2
+              </div>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="next-round-goal">Add your thoughts for the next round</Label>
-              <Input
-                id="next-round-goal"
-                onChange={(event) => setGoal(event.target.value)}
-                placeholder="Optional: ask for a focus, pace, or difficulty change"
-                value={goal}
-              />
-            </div>
-            <Button onClick={requestFeedbackNextRound} type="button">
-              Generate next round
+          ) : (
+          <div className="min-h-full border-l border-slate-200 bg-slate-50/80 px-4 py-6">
+          <div className="sticky top-3 z-30 mb-7 flex items-center justify-between gap-2 bg-slate-50/95 pb-2">
+            <p className="student-eyebrow xl:hidden">Study State</p>
+            <p className="hidden text-sm font-bold text-slate-950 xl:block">
+              Study state
+            </p>
+            <Button
+              aria-label="Collapse study sidebar"
+              className="hidden size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 xl:inline-flex"
+              onClick={() => setIsRightSidebarCollapsed(true)}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <ChevronsRight className="size-4" aria-hidden="true" />
             </Button>
-          </CardContent>
-        </Card>
-      ) : null}
+          </div>
+          {activeSession ? (
+            <Card className="border-0 bg-white shadow-none ring-1 ring-slate-200/80">
+              <CardHeader>
+                <CardTitle className="text-lg">Session memory</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {activeSession.sessionMemory ? (
+                  <FeedbackText className="border-none bg-transparent p-0 text-sm leading-6 text-slate-600" compact value={activeSession.sessionMemory} />
+                ) : (
+                  <p className="text-sm leading-6 text-slate-600">
+                    Submit a round and the agent will summarize useful context for this session here.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <Card className="mt-4 border-0 bg-white shadow-none ring-1 ring-slate-200/80">
+            <CardHeader>
+              <CardTitle className="text-lg">Missed questions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {wrongQuestions.length ? wrongQuestions.map((question) => (
+                <div key={question.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-bold leading-snug text-slate-900">{question.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        {question.questionCode} · missed {question.missCount} time{question.missCount === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <Button disabled={isPending} onClick={() => practiceWrongQuestion(question)} size="sm" type="button" variant="outline">
+                      Practice
+                    </Button>
+                  </div>
+                  {question.lastExplanation ? (
+                    <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm text-slate-600" compact value={question.lastExplanation} />
+                  ) : null}
+                  {question.contentHtml ? (
+                    <details className="mt-2 rounded-md border border-slate-200 bg-slate-50/70 p-2 text-xs">
+                      <summary className="cursor-pointer font-medium">Saved question snapshot</summary>
+                      <QuestionText className="mt-2 border-none bg-transparent p-0" compact value={question.contentHtml} />
+                    </details>
+                  ) : null}
+                </div>
+              )) : (
+                <p className="text-sm text-muted-foreground">No active missed questions in this session.</p>
+              )}
+            </CardContent>
+          </Card>
+          <div className="mt-4 rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
+            Misses and memory update as you submit rounds.
+          </div>
+          </div>
+          )}
+        </aside>
     </div>
   );
 }

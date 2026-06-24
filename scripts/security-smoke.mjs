@@ -17,7 +17,8 @@ async function read(relativePath) {
 const migration = await read("supabase/migrations/0011_math_taxonomy_source_of_truth.sql");
 assert(migration.includes("create table if not exists public.taxonomy_nodes"), "taxonomy_nodes table is missing");
 assert(migration.includes("create table if not exists public.question_taxonomy_assignments"), "question taxonomy assignments table is missing");
-assert(migration.includes("math.concept.algebra.equations"), "math-prefixed taxonomy seed is missing");
+const developmentTaxonomySeed = await read("supabase/development/reset_math_taxonomy_seed_development_only.sql");
+assert(developmentTaxonomySeed.includes("math.concept.algebra.equations"), "math-prefixed taxonomy seed is missing");
 const legacySubjectRoot = ["subject", "math"].join(".");
 assert(!migration.includes(legacySubjectRoot), `${legacySubjectRoot} should not exist in replacement taxonomy`);
 console.log("PASS math-prefixed taxonomy schema and seed are present");
@@ -44,3 +45,41 @@ assert(batchJson.includes("tag_ids"), "batch import does not accept tag_ids");
 assert(!batchJson.includes(`tag_${"slugs"}`), "batch import still accepts legacy tag identifier arrays");
 assert(!batchJson.includes(`tag_${"names"}`), "batch import still accepts legacy tag name arrays");
 console.log("PASS batch import uses exact tag_ids only");
+
+const practicePersistence = await read("supabase/migrations/0014_practice_persistence.sql");
+for (const table of [
+  "practice_sessions",
+  "practice_rounds",
+  "practice_round_questions",
+  "practice_attempts",
+  "practice_wrong_questions",
+  "user_practice_preferences",
+  "practice_preference_merge_jobs",
+]) {
+  assert(
+    practicePersistence.includes(`alter table public.${table} enable row level security`),
+    `${table} is missing RLS`,
+  );
+  assert(
+    practicePersistence.includes(`on public.${table} for select`) &&
+      practicePersistence.includes("using ((select auth.uid()) = user_id)"),
+    `${table} is missing owner select policy`,
+  );
+}
+assert(
+  practicePersistence.includes("long_term_preference text not null default ''") &&
+    practicePersistence.includes("check (length(long_term_preference) <= 1000)"),
+  "practice preference 1000-character constraint is missing",
+);
+assert(
+  practicePersistence.includes("question_snapshot jsonb") &&
+    practicePersistence.includes("references public.questions(id) on delete set null"),
+  "practice history must preserve snapshots when source questions are deleted",
+);
+console.log("PASS practice persistence has owner RLS, preference limit, and snapshot-safe question links");
+
+const practiceClient = await read("src/components/practice/practice-agent-client.tsx");
+assert(!practiceClient.includes("localStorage"), "practice client still uses localStorage");
+assert(practiceClient.includes("/api/practice/sessions"), "practice client does not load database sessions");
+assert(practiceClient.includes("/api/practice/wrong-questions"), "practice client does not load wrong-question records");
+console.log("PASS practice client uses persisted sessions and wrong-question records");

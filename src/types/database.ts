@@ -290,6 +290,124 @@ export type ImportBatchAsset = {
   updated_at: string;
 };
 
+export type PracticeSession = {
+  id: string;
+  user_id: string;
+  title: string;
+  goal: string;
+  session_memory: string;
+  tag_context: Json;
+  completed_question_ids: string[];
+  status: "active" | "archived";
+  preference_merged_at: string | null;
+  last_activity_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PracticeRound = {
+  id: string;
+  user_id: string;
+  session_id: string;
+  round_index: number;
+  round_goal: string;
+  review_summary: string | null;
+  next_round_goal: string | null;
+  score_correct: number;
+  score_total: number;
+  mode: string | null;
+  provider_label: string | null;
+  trace: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PracticeRoundQuestion = {
+  id: string;
+  user_id: string;
+  session_id: string;
+  round_id: string;
+  question_id: string | null;
+  source_question_id: string | null;
+  question_code: string | null;
+  title: string;
+  content_html: string;
+  question_type: string | null;
+  difficulty_rating: number | null;
+  position: number;
+  question_snapshot: Json;
+  reason: string | null;
+  expected_skill: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PracticeAttempt = {
+  id: string;
+  user_id: string;
+  session_id: string;
+  round_id: string;
+  question_id: string | null;
+  source_question_id: string | null;
+  question_code: string | null;
+  question_title: string;
+  question_snapshot: Json;
+  answer: Json;
+  hint_count: number;
+  hints: Json;
+  grading_mode: "auto" | "manual";
+  is_correct: boolean | null;
+  score: number | null;
+  explanation: string | null;
+  solution_html: string | null;
+  result: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PracticeWrongQuestion = {
+  id: string;
+  user_id: string;
+  question_id: string | null;
+  source_question_id: string;
+  question_code: string | null;
+  question_title: string;
+  question_snapshot: Json;
+  last_session_id: string | null;
+  last_round_id: string | null;
+  last_attempt_id: string | null;
+  miss_count: number;
+  last_answer: Json;
+  last_explanation: string | null;
+  last_missed_at: string;
+  mastered_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserPracticePreference = {
+  user_id: string;
+  long_term_preference: string;
+  last_agent_updated_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PracticePreferenceMergeJob = {
+  id: string;
+  user_id: string;
+  source_session_id: string | null;
+  status: "pending" | "running" | "succeeded" | "failed";
+  previous_preference: string;
+  source_session_memory: string;
+  result_preference: string | null;
+  error_message: string | null;
+  claimed_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type TableDefinition<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
   Row: Row;
   Insert: Insert;
@@ -333,6 +451,13 @@ export type Database = {
       import_batches: TableDefinition<ImportBatch>;
       import_batch_items: TableDefinition<ImportBatchItem>;
       import_batch_assets: TableDefinition<ImportBatchAsset>;
+      practice_sessions: TableDefinition<PracticeSession>;
+      practice_rounds: TableDefinition<PracticeRound>;
+      practice_round_questions: TableDefinition<PracticeRoundQuestion>;
+      practice_attempts: TableDefinition<PracticeAttempt>;
+      practice_wrong_questions: TableDefinition<PracticeWrongQuestion>;
+      user_practice_preferences: TableDefinition<UserPracticePreference>;
+      practice_preference_merge_jobs: TableDefinition<PracticePreferenceMergeJob>;
       user_question_attempts: TableDefinition<{
         id: string;
         user_id: string;

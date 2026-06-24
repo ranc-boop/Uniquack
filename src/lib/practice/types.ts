@@ -54,8 +54,10 @@ export type PracticeRecommendRequest = {
   completedQuestionIds?: string[];
   goal: string;
   questionCount?: number;
+  sessionId?: string;
   sessionMemory?: string;
   tagContext?: PracticeTagContext;
+  wrongQuestionIds?: string[];
 };
 
 export type PracticeRecommendResponse = {
@@ -63,8 +65,10 @@ export type PracticeRecommendResponse = {
   mode: "ai" | "heuristic";
   providerLabel?: string;
   recommendations: PracticeRecommendation[];
+  roundId?: string;
   roundGoal: string;
   sessionMemory: string;
+  sessionId?: string;
   tagContext: PracticeTagContext;
   trace: PracticeTraceEvent[];
 };
@@ -74,6 +78,7 @@ export type PracticeHintRequest = {
   hintLevel?: number;
   previousHints?: string[];
   questionId: string;
+  sessionId?: string;
 };
 
 export type PracticeHintResponse = {
@@ -119,6 +124,7 @@ export type PracticeReviewAttempt = PracticeAttemptInput & {
 export type PracticeReviewRequest = {
   attempts: PracticeReviewAttempt[];
   goal: string;
+  hintsByQuestionId?: Record<string, string[]>;
   recommendations?: Pick<
     PracticeRecommendation,
     | "id"
@@ -128,6 +134,8 @@ export type PracticeReviewRequest = {
     | "contentHtml"
     | "options"
   >[];
+  roundId?: string;
+  sessionId?: string;
   sessionMemory?: string;
 };
 
@@ -136,7 +144,85 @@ export type PracticeReviewResponse = {
   nextRoundGoal: string;
   providerLabel?: string;
   results?: PracticeGradeResult[];
+  sessionId?: string;
   summary: string;
   trace: PracticeTraceEvent[];
   updatedSessionMemory: string;
+};
+
+export type PracticeSessionSummary = {
+  completedQuestionIds: string[];
+  createdAt: string;
+  goal: string;
+  id: string;
+  lastActivityAt: string;
+  roundCount: number;
+  sessionMemory: string;
+  status: "active" | "archived";
+  tagContext: PracticeTagContext;
+  title: string;
+};
+
+export type PracticeRoundHistory = {
+  attempts: Array<{
+    answer: string | string[];
+    explanation: string | null;
+    hintCount: number;
+    hints: string[];
+    id: string;
+    isCorrect: boolean | null;
+    questionId: string | null;
+    score: number | null;
+    solutionHtml: string | null;
+    sourceQuestionId: string | null;
+  }>;
+  id: string;
+  nextRoundGoal: string | null;
+  questions: Array<{
+    contentExcerpt: string;
+    contentHtml: string;
+    difficulty: number;
+    expectedSkill: string;
+    id: string;
+    options: QuestionOption[];
+    position: number;
+    questionCode: string;
+    questionId: string | null;
+    questionType: string;
+    reason: string;
+    source: string | null;
+    sourceQuestionId: string | null;
+    tagIds: string[];
+    title: string;
+  }>;
+  reviewSummary: string | null;
+  roundGoal: string;
+  score: {
+    correct: number;
+    total: number;
+  };
+};
+
+export type PracticeSessionDetail = PracticeSessionSummary & {
+  rounds: PracticeRoundHistory[];
+};
+
+export type PracticeWrongQuestionView = {
+  contentHtml: string;
+  id: string;
+  lastAnswer: string | string[];
+  lastExplanation: string | null;
+  lastMissedAt: string;
+  masteredAt: string | null;
+  missCount: number;
+  questionCode: string;
+  questionId: string | null;
+  sourceQuestionId: string;
+  title: string;
+};
+
+export type PracticePreferenceResponse = {
+  lastAgentUpdatedAt: string | null;
+  longTermPreference: string;
+  pendingMergeCount: number;
 };
