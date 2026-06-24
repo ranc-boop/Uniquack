@@ -138,15 +138,15 @@ export function QuestionBankClient({
 
   return (
     <div className="space-y-4">
-      <Card className="border-sky-200 bg-sky-50/40 shadow-none">
+      <Card className="student-soft-panel sticky top-20 z-20">
         <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border bg-background">
-              <ClipboardList className="size-4 text-sky-700" aria-hidden="true" />
+            <div className="mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-lg border border-sky-100 bg-white shadow-sm">
+              <ClipboardList className="size-5 text-sky-700" aria-hidden="true" />
             </div>
             <div className="min-w-0 space-y-1">
-              <p className="text-sm font-semibold">Question basket</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-base font-bold text-slate-950">Question basket</p>
+              <p className="text-sm leading-6 text-slate-600">
                 {selectedIds.length
                   ? `${selectedIds.length} selected for a custom practice round.`
                   : `Choose from ${totalCount} published questions, then practice them in your current session.`}
@@ -206,7 +206,9 @@ export function QuestionBankClient({
           return (
             <Card
               key={question.id}
-              className="shadow-none transition-colors duration-200 hover:border-sky-300"
+              className={`student-panel student-card-hover ${
+                isSelected ? "border-sky-300 bg-sky-50/40" : ""
+              }`}
             >
               <CardContent className="grid gap-4 p-4 md:grid-cols-[2rem_minmax(0,1fr)_auto] md:items-start">
                 <div className="flex items-center md:block">
@@ -232,7 +234,7 @@ export function QuestionBankClient({
                     ) : null}
                   </div>
                   <div className="space-y-1">
-                    <h2 className="text-base font-semibold leading-snug">
+                    <h2 className="text-lg font-bold leading-snug text-slate-950">
                       <Link className="hover:underline underline-offset-4" href={`/questions/${question.id}`}>
                         {question.title}
                       </Link>

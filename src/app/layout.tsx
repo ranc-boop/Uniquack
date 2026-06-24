@@ -6,8 +6,14 @@ import "./globals.css";
 
 import { AuthNav } from "@/components/auth-nav";
 import { ThemeProvider } from "@/components/theme-provider";
-import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
+
+const studentNavItems = [
+  { href: "/practice", label: "Practice" },
+  { href: "/questions", label: "Question Bank" },
+  { href: "/mistakes", label: "Mistakes" },
+  { href: "/videos", label: "Videos" },
+];
 
 export const metadata: Metadata = {
   title: "O2I Practice",
@@ -28,32 +34,35 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <header className="border-b">
-            <div className="mx-auto flex min-h-14 max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
-              <Link href="/" className="text-sm font-semibold">
-                O2I Practice
+          <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur">
+            <div className="mx-auto flex min-h-16 max-w-[92rem] flex-col gap-3 px-4 py-3 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
+              <Link href="/" className="flex items-center gap-3 text-sm font-bold tracking-tight">
+                <span className="flex size-9 items-center justify-center rounded-lg bg-sky-600 text-sm font-black text-white shadow-sm">
+                  O2I
+                </span>
+                <span>Practice</span>
               </Link>
-              <nav className="flex flex-wrap items-center gap-2">
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/practice">Practice</Link>
-                </Button>
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/questions">Question Bank</Link>
-                </Button>
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/mistakes">Mistakes</Link>
-                </Button>
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/videos">Videos</Link>
-                </Button>
-                <Button asChild variant="outline" size="sm">
-                  <Link href="/admin">Admin</Link>
-                </Button>
+              <nav className="flex flex-wrap items-center gap-1.5">
+                {studentNavItems.map((item) => (
+                  <Link
+                    className="rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition-colors duration-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+                    href={item.href}
+                    key={item.href}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+                <Link
+                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+                  href="/admin"
+                >
+                  Admin
+                </Link>
                 <AuthNav />
               </nav>
             </div>
           </header>
-          <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+          <main className="student-shell">{children}</main>
           <Toaster />
         </ThemeProvider>
       </body>

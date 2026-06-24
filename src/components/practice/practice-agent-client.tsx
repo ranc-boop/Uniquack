@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
+import { ArrowUp, ChevronsLeft, ChevronsRight, Plus, SlidersHorizontal } from "lucide-react";
 
 import {
   FeedbackText,
@@ -33,6 +34,13 @@ type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback";
 type AnswersState = Record<string, string | string[]>;
 type HintsState = Record<string, string[]>;
 type ApiError = { error?: string };
+
+const starterGoals = [
+  "AP Calculus: implicit differentiation with harder MCQs",
+  "Review missed integration questions and explain traps",
+  "Build a short mixed round on limits and continuity",
+  "Practice FRQ-style derivative applications",
+];
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -348,6 +356,8 @@ export function PracticeAgentClient() {
   const [liveTrace, setLiveTrace] = useState<PracticeTraceEvent[]>([]);
   const [reviewTrace, setReviewTrace] = useState<PracticeTraceEvent[]>([]);
   const [isTraceCollapsed, setIsTraceCollapsed] = useState(false);
+  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
   const [wrongQuestions, setWrongQuestions] = useState<PracticeWrongQuestionView[]>([]);
   const [selectedWrongQuestionIds, setSelectedWrongQuestionIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -497,6 +507,15 @@ export function PracticeAgentClient() {
     if (phase === "thinking") return liveTrace;
     return recommendation?.trace ?? liveTrace;
   }, [phase, liveTrace, recommendation, review, reviewTrace]);
+  const isStarterPractice =
+    phase === "start" &&
+    !recommendation &&
+    !activeSession?.rounds.length &&
+    !selectedWrongQuestionIds.length;
+  const practiceGridStyle = {
+    "--practice-left": isLeftSidebarCollapsed ? "3.75rem" : "16rem",
+    "--practice-right": isRightSidebarCollapsed ? "3.75rem" : "18rem",
+  } as CSSProperties;
 
   const resultsById = new Map<string, PracticeGradeResult>(
     results.map((result) => [result.questionId, result]),
@@ -763,195 +782,291 @@ export function PracticeAgentClient() {
     requestRecommendation(nextGoal, [question.sourceQuestionId]);
   }
 
+  function selectStarterGoal(nextGoal: string) {
+    setGoal(nextGoal);
+    requestRecommendation(nextGoal, []);
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="rounded-md border bg-muted/20 p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <Badge variant="secondary">Practice Agent</Badge>
-            <h1 className="text-3xl font-semibold tracking-tight">O2I Practice Agent</h1>
-            <p className="max-w-3xl text-sm text-muted-foreground">
-              Pick a session, continue its latest round, and keep session memory and missed questions in view while you practice.
+    <div
+      className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
+      style={practiceGridStyle}
+    >
+      <aside className="space-y-4 transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5.5rem)] xl:overflow-y-auto">
+        {isLeftSidebarCollapsed ? (
+          <div className="student-panel hidden h-full min-h-64 flex-col items-center gap-3 p-2 xl:flex">
+            <Button
+              aria-label="Expand sessions sidebar"
+              className="size-10"
+              onClick={() => setIsLeftSidebarCollapsed(false)}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <ChevronsRight className="size-4" aria-hidden="true" />
+            </Button>
+            <div className="h-px w-8 bg-slate-200" />
+            <p className="origin-center rotate-90 whitespace-nowrap text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+              Sessions
             </p>
           </div>
-          <Button disabled={isPending} onClick={createNewSession} type="button" variant="outline">
-            New session
-          </Button>
-        </div>
-      </div>
+        ) : (
+        <Card className="student-panel">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="student-eyebrow">Practice</p>
+                <CardTitle className="mt-2 text-lg">Sessions</CardTitle>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button disabled={isPending} onClick={createNewSession} size="sm" type="button">
+                  New
+                </Button>
+                <Button
+                  aria-label="Collapse sessions sidebar"
+                  className="hidden xl:inline-flex"
+                  onClick={() => setIsLeftSidebarCollapsed(true)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <ChevronsLeft className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {sessions.length ? sessions.map((item) => (
+              <div
+                key={item.id}
+                className={`group overflow-hidden rounded-lg border transition-all duration-200 ${
+                  activeSession?.id === item.id
+                    ? "border-sky-300 bg-sky-50 shadow-sm"
+                    : "border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/50"
+                }`}
+              >
+                <button
+                  aria-current={activeSession?.id === item.id ? "true" : undefined}
+                  className="student-focus-ring flex w-full cursor-pointer items-stretch gap-3 p-3 text-left"
+                  onClick={() => switchSession(item.id)}
+                  type="button"
+                >
+                  <span
+                    className={`mt-1 h-auto w-1 rounded-full ${
+                      activeSession?.id === item.id ? "bg-sky-600" : "bg-slate-200 group-hover:bg-sky-300"
+                    }`}
+                  />
+                  <span className="min-w-0 flex-1 space-y-2">
+                    <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
+                    <span className="block text-xs leading-5 text-slate-500">
+                      {item.roundCount} round{item.roundCount === 1 ? "" : "s"} ·{" "}
+                      {new Date(item.lastActivityAt).toLocaleString()}
+                    </span>
+                    {activeSession?.id === item.id ? (
+                      <span className="inline-flex rounded-full bg-sky-600 px-2 py-0.5 text-xs font-semibold text-white">
+                        Current
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+                <div className="border-t border-slate-200/80 px-3 py-2">
+                  <Button
+                    className="h-8 w-full text-slate-500 hover:text-destructive"
+                    disabled={isPending}
+                    onClick={() => deleteSession(item.id)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm leading-6 text-slate-600">
+                No saved sessions yet. Generate your first round to start a reusable study thread.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        )}
+      </aside>
 
       {error ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive xl:col-span-2">
           {error}
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <aside className="order-2 space-y-4 xl:col-start-2 xl:row-start-1">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Sessions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {sessions.length ? sessions.map((item) => (
-                <div
-                  key={item.id}
-                  className={`group overflow-hidden rounded-md border transition-colors ${
-                    activeSession?.id === item.id
-                      ? "border-primary/50 bg-primary/10 shadow-sm"
-                      : "bg-background hover:border-primary/30 hover:bg-muted/40"
-                  }`}
-                >
-                  <button
-                    aria-current={activeSession?.id === item.id ? "true" : undefined}
-                    className="flex w-full cursor-pointer items-stretch gap-3 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() => switchSession(item.id)}
-                    type="button"
-                  >
-                    <span
-                      className={`mt-0.5 h-auto w-1 rounded-full ${
-                        activeSession?.id === item.id ? "bg-primary" : "bg-transparent group-hover:bg-primary/30"
-                      }`}
-                    />
-                    <span className="min-w-0 flex-1 space-y-2">
-                      <span className="block truncate text-sm font-semibold">{item.title}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {item.roundCount} round{item.roundCount === 1 ? "" : "s"} ·{" "}
-                        {new Date(item.lastActivityAt).toLocaleString()}
-                      </span>
-                      <span className="flex flex-wrap items-center gap-2 text-xs">
-                        {activeSession?.id === item.id ? (
-                          <span className="rounded-full bg-primary px-2 py-0.5 font-medium text-primary-foreground">
-                            Current session
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground group-hover:text-foreground">Click to switch</span>
-                        )}
-                        {item.roundCount ? (
-                          <span className="text-muted-foreground">Latest round restores automatically</span>
-                        ) : null}
-                      </span>
-                    </span>
-                  </button>
-                  <div className="border-t px-3 py-2">
-                    <Button
-                      className="w-full"
-                      disabled={isPending}
-                      onClick={() => deleteSession(item.id)}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      Delete
-                    </Button>
+        <main className="min-w-0 space-y-4 px-0 xl:px-2">
+          {isStarterPractice ? (
+            <section className="flex min-h-[calc(100vh-10rem)] items-center justify-center py-10">
+              <div className="mx-auto w-full max-w-6xl space-y-8 text-center">
+                <div className="space-y-3">
+                  <Badge className="border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
+                    Practice Agent
+                  </Badge>
+                  <h1 className="text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">
+                    Ready when you are.
+                  </h1>
+                  <p className="mx-auto max-w-2xl text-base leading-7 text-slate-600">
+                    Tell O2I what you want to practice, or pick a starter goal below.
+                  </p>
+                </div>
+                <div className="mx-auto max-w-5xl rounded-full border border-slate-200 bg-white p-2 shadow-[0_24px_70px_-42px_rgba(15,23,42,0.75)] ring-1 ring-slate-950/5">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="flex min-w-0 flex-1 items-center gap-3 px-3">
+                      <Plus className="size-6 shrink-0 text-slate-500" aria-hidden="true" />
+                      <Input
+                        aria-label="Practice goal"
+                        className="h-14 border-0 bg-transparent px-0 text-base shadow-none ring-offset-0 placeholder:text-slate-400 focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-lg"
+                        id="goal"
+                        onChange={(event) => setGoal(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            requestRecommendation();
+                          }
+                        }}
+                        placeholder="What do you want to practice?"
+                        value={goal}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 px-2 sm:justify-end">
+                      <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+                        <SlidersHorizontal className="size-4" aria-hidden="true" />
+                        <span>Questions</span>
+                        <input
+                          aria-label="Question count"
+                          className="w-10 bg-transparent text-center font-mono text-slate-900 outline-none"
+                          max={8}
+                          min={1}
+                          onChange={(event) => setQuestionCount(Number(event.target.value))}
+                          type="number"
+                          value={questionCount}
+                        />
+                      </label>
+                      <Button
+                        aria-label="Generate round"
+                        className="size-12 rounded-full p-0"
+                        disabled={isPending}
+                        onClick={() => requestRecommendation()}
+                        type="button"
+                      >
+                        <ArrowUp className="size-5" aria-hidden="true" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              )) : (
-                <p className="text-sm text-muted-foreground">No saved sessions yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {activeSession ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Session memory</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {activeSession.sessionMemory ? (
-                  <FeedbackText className="border-none bg-transparent p-0 text-sm text-muted-foreground" compact value={activeSession.sessionMemory} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Submit a round and the agent will summarize useful context for this session here.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ) : null}
-        </aside>
-
-        <main className="order-1 min-w-0 space-y-4 xl:col-start-1 xl:row-span-2 xl:row-start-1">
-          {phase === "thinking" ? (
-            <div className="sticky top-3 z-20 flex items-center justify-between gap-3 rounded-md border bg-background/95 px-4 py-3 text-sm shadow-sm backdrop-blur">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="relative flex h-3 w-3 shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
-                  <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />
-                </span>
-                <span className="truncate font-medium">{recommendation ? "Reviewing your round" : "Thinking"}</span>
-              </div>
-              <span className="font-mono text-xs text-muted-foreground">{formatDuration(thinkingElapsedMs)}</span>
-            </div>
-          ) : lastThinkingDurationMs !== null && (phase === "recommended" || phase === "feedback") ? (
-            <div className="rounded-md border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-              Thought for <span className="font-mono text-foreground">{formatDuration(lastThinkingDurationMs)}</span>
-            </div>
-          ) : null}
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Goal</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_9rem]">
-                <div className="space-y-2">
-                  <Label htmlFor="goal">
-                    {phase === "feedback" ? "Add your thoughts for the next round" : "What do you want to practice?"}
-                  </Label>
-                  <Input
-                    id="goal"
-                    onChange={(event) => setGoal(event.target.value)}
-                    placeholder={
-                      phase === "feedback"
-                        ? "Optional: ask for a focus, pace, or difficulty change"
-                        : "e.g. AP Calculus implicit differentiation, harder MCQ first"
-                    }
-                    value={goal}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="count">Questions</Label>
-                  <Input
-                    id="count"
-                    max={8}
-                    min={1}
-                    onChange={(event) => setQuestionCount(Number(event.target.value))}
-                    type="number"
-                    value={questionCount}
-                  />
+                <div className="mx-auto grid max-w-5xl gap-2 sm:grid-cols-2">
+                  {starterGoals.map((starterGoal) => (
+                    <button
+                      className="student-focus-ring rounded-full border border-slate-200 bg-white/80 px-4 py-3 text-left text-sm font-semibold text-slate-600 shadow-sm transition-all duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 hover:shadow-md"
+                      disabled={isPending}
+                      key={starterGoal}
+                      onClick={() => selectStarterGoal(starterGoal)}
+                      type="button"
+                    >
+                      {starterGoal}
+                    </button>
+                  ))}
                 </div>
               </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-muted-foreground">
+            </section>
+          ) : (
+            <section className="student-hero">
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <Badge className="border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
+                      Practice Agent
+                    </Badge>
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-950">Build the next focused round</h1>
+                    <p className="max-w-3xl text-base leading-7 text-slate-600">
+                      {activeSession
+                        ? `Current session: ${activeSession.title}`
+                        : "Create a session by generating your first round."}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                    <p className="font-semibold text-slate-950">{activeSession?.rounds.length ?? 0} saved rounds</p>
+                    <p className="mt-1 text-slate-500">{wrongQuestions.length} active misses</p>
+                  </div>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_8rem_auto] lg:items-end">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-800" htmlFor="goal">
+                      {phase === "feedback" ? "Next-round note" : "Practice goal"}
+                    </Label>
+                    <Input
+                      className="h-12 border-slate-200 bg-white text-base shadow-sm"
+                      id="goal"
+                      onChange={(event) => setGoal(event.target.value)}
+                      placeholder={
+                        phase === "feedback"
+                          ? "Optional: ask for a focus, pace, or difficulty change"
+                          : "e.g. AP Calculus implicit differentiation, harder MCQ first"
+                      }
+                      value={goal}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-800" htmlFor="count">Questions</Label>
+                    <Input
+                      className="h-12 border-slate-200 bg-white text-base shadow-sm"
+                      id="count"
+                      max={8}
+                      min={1}
+                      onChange={(event) => setQuestionCount(Number(event.target.value))}
+                      type="number"
+                      value={questionCount}
+                    />
+                  </div>
+                  <Button
+                    className="h-12 w-full px-6 lg:w-auto"
+                    disabled={isPending}
+                    onClick={() => (phase === "feedback" ? requestFeedbackNextRound() : requestRecommendation())}
+                    type="button"
+                  >
+                    {activeSession?.rounds.length ? "Start next round" : "Generate round"}
+                  </Button>
+                </div>
+                <p className="text-sm leading-6 text-slate-600">
                   {selectedWrongQuestionIds.length
                     ? `${selectedWrongQuestionIds.length} missed question selected for priority practice.`
-                    : activeSession
-                      ? `Current session: ${activeSession.title}`
-                      : "Create a session by generating your first round."}
+                    : "Goal stays attached to the current session and feeds the agent's next recommendation."}
                 </p>
-                <Button
-                  className="w-full sm:w-auto"
-                  disabled={isPending}
-                  onClick={() => (phase === "feedback" ? requestFeedbackNextRound() : requestRecommendation())}
-                  type="button"
-                >
-                  {activeSession?.rounds.length ? "Start next round" : "Generate round"}
-                </Button>
               </div>
-            </CardContent>
-          </Card>
+            </section>
+          )}
+
+          {phase === "thinking" ? (
+            <div className="sticky top-24 z-20 flex items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/95 px-4 py-3 text-sm shadow-lg shadow-sky-950/5 backdrop-blur">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="relative flex h-3 w-3 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-600 opacity-60" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-sky-600" />
+                </span>
+                <span className="truncate font-bold text-slate-900">{recommendation ? "Reviewing your round" : "Thinking"}</span>
+              </div>
+              <span className="font-mono text-sm text-slate-500">{formatDuration(thinkingElapsedMs)}</span>
+            </div>
+          ) : lastThinkingDurationMs !== null && (phase === "recommended" || phase === "feedback") ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              Thought for <span className="font-mono font-semibold">{formatDuration(lastThinkingDurationMs)}</span>
+            </div>
+          ) : null}
 
           {phase === "thinking" ? (
             <div className="space-y-4">
-              <Card>
+              <Card className="student-panel student-enter">
                 <CardContent className="space-y-3 p-6">
                   <div className="flex items-center gap-3 text-sm">
-                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
-                    <span className="font-medium">
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-sky-600" />
+                    <span className="font-bold text-slate-900">
                       {recommendation ? "Reviewing your round" : "Generating your question set"}
                     </span>
                   </div>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm leading-6 text-slate-600">
                     The agent is using your saved session memory, long-term preference, and question history.
                   </p>
                 </CardContent>
@@ -973,12 +1088,12 @@ export function PracticeAgentClient() {
                 onToggle={() => setIsTraceCollapsed((current) => !current)}
                 trace={latestTrace}
               />
-              <Card>
+              <Card className="student-panel student-enter">
                 <CardHeader>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <CardTitle className="text-base">Recommended round</CardTitle>
-                      <FeedbackText className="mt-1 border-none bg-transparent p-0 text-muted-foreground" compact value={recommendation.roundGoal} />
+                      <CardTitle className="text-2xl">Recommended round</CardTitle>
+                      <FeedbackText className="mt-2 border-none bg-transparent p-0 text-base text-slate-600" compact value={recommendation.roundGoal} />
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="outline">{recommendation.mode}</Badge>
@@ -988,26 +1103,31 @@ export function PracticeAgentClient() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {recommendation.recommendations.map((question, index) => (
-                    <Card key={question.id} className="shadow-none">
+                    <Card key={question.id} className="student-card-hover border-slate-200 shadow-sm">
                       <CardHeader>
                         <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <CardTitle className="text-base">{index + 1}. {question.title}</CardTitle>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {question.questionCode} / {question.questionType} / difficulty {question.difficulty}
-                            </p>
+                          <div className="flex min-w-0 gap-3">
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-sm font-bold text-white">
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0">
+                              <CardTitle className="text-xl leading-snug">{question.title}</CardTitle>
+                              <p className="mt-2 text-sm font-medium text-slate-500">
+                                {question.questionCode} / {question.questionType} / difficulty {question.difficulty}
+                              </p>
+                            </div>
                           </div>
                           {resultBadge(resultsById.get(question.id))}
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <QuestionText value={question.contentHtml} />
-                        <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                          <p className="font-medium">Why this question</p>
-                          <FeedbackText className="mt-1 border-none bg-transparent p-0 text-muted-foreground" compact value={question.reason} />
-                          <p className="mt-1 text-xs text-muted-foreground">
+                        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-sm">
+                          <p className="font-bold text-amber-950">Why this question</p>
+                          <FeedbackText className="mt-2 border-none bg-transparent p-0 text-amber-900" compact value={question.reason} />
+                          <p className="mt-2 text-sm text-amber-900/80">
                             Expected skill:{" "}
-                            <FeedbackText className="inline border-none bg-transparent p-0 text-xs text-muted-foreground" compact inline value={question.expectedSkill} />
+                            <FeedbackText className="inline border-none bg-transparent p-0 text-sm text-amber-900/80" compact inline value={question.expectedSkill} />
                           </p>
                         </div>
                         <QuestionAnswerInput
@@ -1020,24 +1140,24 @@ export function PracticeAgentClient() {
                           <Button disabled={isPending || phase === "feedback"} onClick={() => requestHint(question)} size="sm" type="button" variant="outline">
                             Hint
                           </Button>
-                          <span className="text-xs text-muted-foreground">Hints are saved with the submitted round.</span>
+                          <span className="text-sm text-slate-500">Hints are saved with the submitted round.</span>
                         </div>
                         {hints[question.id]?.length ? (
                           <div className="space-y-2">
                             {hints[question.id].map((hint, hintIndex) => (
-                              <div key={`${question.id}-hint-${hintIndex}`} className="rounded-md border bg-muted/30 p-3 text-sm">
-                                <span className="font-medium">Hint {hintIndex + 1}: </span>
-                                <FeedbackText className="inline border-none bg-transparent p-0 text-muted-foreground" compact inline value={hint} />
+                              <div key={`${question.id}-hint-${hintIndex}`} className="rounded-lg border border-sky-100 bg-sky-50/70 p-3 text-sm">
+                                <span className="font-bold text-sky-900">Hint {hintIndex + 1}: </span>
+                                <FeedbackText className="inline border-none bg-transparent p-0 text-sky-900/80" compact inline value={hint} />
                               </div>
                             ))}
                           </div>
                         ) : null}
                         {phase === "feedback" && resultsById.get(question.id) ? (
-                          <div className="space-y-3 rounded-md border p-3">
-                            <FeedbackText className="border-none bg-transparent p-0 text-muted-foreground" compact value={resultsById.get(question.id)?.explanation} />
+                          <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
+                            <FeedbackText className="border-none bg-transparent p-0 text-emerald-950" compact value={resultsById.get(question.id)?.explanation} />
                             {resultsById.get(question.id)?.solutionHtml ? (
                               <div className="space-y-2">
-                                <p className="text-sm font-medium">Solution</p>
+                                <p className="text-sm font-bold text-emerald-950">Solution</p>
                                 <SolutionText value={resultsById.get(question.id)?.solutionHtml ?? ""} />
                               </div>
                             ) : null}
@@ -1048,7 +1168,7 @@ export function PracticeAgentClient() {
                   ))}
                   {phase !== "feedback" ? (
                     <div className="flex justify-end">
-                      <Button disabled={isPending || !recommendation.roundId} onClick={submitRound} type="button">
+                      <Button className="h-11 px-6" disabled={isPending || !recommendation.roundId} onClick={submitRound} type="button">
                         Submit round
                       </Button>
                     </div>
@@ -1059,12 +1179,12 @@ export function PracticeAgentClient() {
           ) : null}
 
           {phase === "feedback" && review ? (
-            <Card>
+            <Card className="student-panel">
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <CardTitle className="text-base">Round review</CardTitle>
-                    <FeedbackText className="mt-1 border-none bg-transparent p-0 text-muted-foreground" compact value={review.summary} />
+                    <CardTitle className="text-xl">Round review</CardTitle>
+                    <FeedbackText className="mt-2 border-none bg-transparent p-0 text-slate-600" compact value={review.summary} />
                   </div>
                   <Badge variant="outline">{review.mode}</Badge>
                 </div>
@@ -1086,18 +1206,67 @@ export function PracticeAgentClient() {
 
         </main>
 
-        <aside className="order-3 space-y-4 xl:col-start-2 xl:row-start-2">
-          <Card>
+        <aside className="space-y-4 transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5.5rem)] xl:overflow-y-auto">
+          {isRightSidebarCollapsed ? (
+            <div className="student-panel hidden h-full min-h-64 flex-col items-center gap-3 p-2 xl:flex">
+              <Button
+                aria-label="Expand study sidebar"
+                className="size-10"
+                onClick={() => setIsRightSidebarCollapsed(false)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <ChevronsLeft className="size-4" aria-hidden="true" />
+              </Button>
+              <div className="h-px w-8 bg-slate-200" />
+              <p className="origin-center rotate-90 whitespace-nowrap text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+                Study State
+              </p>
+            </div>
+          ) : (
+          <>
+          <div className="flex items-center justify-between gap-2 xl:justify-end">
+            <p className="student-eyebrow xl:hidden">Study State</p>
+            <Button
+              aria-label="Collapse study sidebar"
+              className="hidden xl:inline-flex"
+              onClick={() => setIsRightSidebarCollapsed(true)}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <ChevronsRight className="size-4" aria-hidden="true" />
+            </Button>
+          </div>
+          {activeSession ? (
+            <Card className="student-panel">
+              <CardHeader>
+                <CardTitle className="text-lg">Session memory</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {activeSession.sessionMemory ? (
+                  <FeedbackText className="border-none bg-transparent p-0 text-sm leading-6 text-slate-600" compact value={activeSession.sessionMemory} />
+                ) : (
+                  <p className="text-sm leading-6 text-slate-600">
+                    Submit a round and the agent will summarize useful context for this session here.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <Card className="student-panel">
             <CardHeader>
-              <CardTitle className="text-base">Missed questions in this session</CardTitle>
+              <CardTitle className="text-lg">Missed questions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {wrongQuestions.length ? wrongQuestions.map((question) => (
-                <div key={question.id} className="rounded-md border p-3">
+                <div key={question.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm font-medium">{question.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="text-sm font-bold leading-snug text-slate-900">{question.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
                         {question.questionCode} · missed {question.missCount} time{question.missCount === 1 ? "" : "s"}
                       </p>
                     </div>
@@ -1106,10 +1275,10 @@ export function PracticeAgentClient() {
                     </Button>
                   </div>
                   {question.lastExplanation ? (
-                    <FeedbackText className="mt-2 border-none bg-transparent p-0 text-xs text-muted-foreground" compact value={question.lastExplanation} />
+                    <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm text-slate-600" compact value={question.lastExplanation} />
                   ) : null}
                   {question.contentHtml ? (
-                    <details className="mt-2 rounded-md border bg-muted/20 p-2 text-xs">
+                    <details className="mt-2 rounded-md border border-slate-200 bg-slate-50/70 p-2 text-xs">
                       <summary className="cursor-pointer font-medium">Saved question snapshot</summary>
                       <QuestionText className="mt-2 border-none bg-transparent p-0" compact value={question.contentHtml} />
                     </details>
@@ -1120,8 +1289,9 @@ export function PracticeAgentClient() {
               )}
             </CardContent>
           </Card>
+          </>
+          )}
         </aside>
-      </div>
     </div>
   );
 }

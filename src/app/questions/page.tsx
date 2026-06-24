@@ -166,14 +166,14 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
 
   return (
     <div className="space-y-5">
-      <div className="rounded-md border bg-muted/20 p-5">
+      <div className="student-hero">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="student-eyebrow">
               Question Bank
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight">Build your next practice round</h1>
-            <p className="max-w-2xl text-sm text-muted-foreground">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Build your next practice round</h1>
+            <p className="max-w-2xl text-base leading-7 text-slate-600">
               Search published questions, add a focused basket, or open one question for detail-first practice.
             </p>
           </div>
@@ -182,10 +182,11 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           </Button>
         </div>
       </div>
-      <form className="grid gap-3 rounded-md border bg-background p-4 md:grid-cols-[minmax(0,1.5fr)_10rem_10rem_auto]">
+      <form className="student-panel grid gap-4 p-4 md:grid-cols-[minmax(0,1.5fr)_10rem_10rem_auto]">
         <div className="space-y-2">
-          <Label htmlFor="q">Search</Label>
+          <Label className="font-bold text-slate-800" htmlFor="q">Search</Label>
           <Input
+            className="h-11 border-slate-200 bg-white shadow-sm"
             id="q"
             name="q"
             defaultValue={search}
@@ -193,8 +194,9 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="min">Min difficulty</Label>
+          <Label className="font-bold text-slate-800" htmlFor="min">Min difficulty</Label>
           <Input
+            className="h-11 border-slate-200 bg-white shadow-sm"
             id="min"
             name="min"
             type="number"
@@ -204,8 +206,9 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="max">Max difficulty</Label>
+          <Label className="font-bold text-slate-800" htmlFor="max">Max difficulty</Label>
           <Input
+            className="h-11 border-slate-200 bg-white shadow-sm"
             id="max"
             name="max"
             type="number"
@@ -215,7 +218,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           />
         </div>
         <div className="flex items-end gap-2">
-          <Button type="submit">Filter</Button>
+          <Button className="h-11" type="submit">Filter</Button>
           <Button asChild type="button" variant="outline">
             <Link href="/questions">Reset</Link>
           </Button>
@@ -234,8 +237,8 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           totalCount={totalCount}
         />
       ) : (
-        <div className="rounded-md border">
-          <div className="flex h-24 items-center justify-center text-center text-sm text-muted-foreground">
+        <div className="student-panel">
+          <div className="flex h-32 items-center justify-center text-center text-sm text-slate-600">
             No published questions match these filters.
           </div>
         </div>

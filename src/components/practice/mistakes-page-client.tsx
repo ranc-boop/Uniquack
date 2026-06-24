@@ -111,14 +111,14 @@ export function MistakesPageClient() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-md border bg-muted/20 p-5">
+      <div className="student-hero">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="student-eyebrow">
               Mistakes
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight">Active missed questions</h1>
-            <p className="max-w-2xl text-sm text-muted-foreground">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Active missed questions</h1>
+            <p className="max-w-2xl text-base leading-7 text-slate-600">
               These records use saved snapshots, so you can still review context even if a source question changes later.
             </p>
           </div>
@@ -143,7 +143,7 @@ export function MistakesPageClient() {
       {wrongQuestions.length ? (
         <div className="grid gap-4">
           {wrongQuestions.map((question) => (
-            <Card key={question.id} className="shadow-none">
+            <Card key={question.id} className="student-panel student-card-hover">
               <CardHeader>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 space-y-2">
@@ -156,7 +156,7 @@ export function MistakesPageClient() {
                         Last missed {new Date(question.lastMissedAt).toLocaleString()}
                       </span>
                     </div>
-                    <CardTitle className="text-base leading-snug">{question.title}</CardTitle>
+                    <CardTitle className="text-xl leading-snug text-slate-950">{question.title}</CardTitle>
                   </div>
                   <Button
                     className="w-full lg:w-auto"
@@ -178,22 +178,22 @@ export function MistakesPageClient() {
                   {question.contentHtml ? (
                     <QuestionText value={question.contentHtml} />
                   ) : (
-                    <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm text-slate-600">
                       The saved snapshot did not include a question stem.
                     </div>
                   )}
                 </div>
                 <div className="space-y-3">
-                  <div className="rounded-md border bg-muted/20 p-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Last answer</p>
-                    <p className="mt-2 break-words text-sm">{answerPreview(question.lastAnswer)}</p>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                    <p className="student-eyebrow">Last answer</p>
+                    <p className="mt-2 break-words text-sm leading-6 text-slate-800">{answerPreview(question.lastAnswer)}</p>
                   </div>
-                  <div className="rounded-md border bg-muted/20 p-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Last explanation</p>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">Last explanation</p>
                     {question.lastExplanation ? (
-                      <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm text-muted-foreground" compact value={question.lastExplanation} />
+                      <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm text-amber-950" compact value={question.lastExplanation} />
                     ) : (
-                      <p className="mt-2 text-sm text-muted-foreground">No saved explanation.</p>
+                      <p className="mt-2 text-sm text-amber-900">No saved explanation.</p>
                     )}
                   </div>
                 </div>
@@ -202,10 +202,10 @@ export function MistakesPageClient() {
           ))}
         </div>
       ) : (
-        <Card className="shadow-none">
+        <Card className="student-panel">
           <CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
-            <p className="text-base font-medium">No active missed questions</p>
-            <p className="max-w-md text-sm text-muted-foreground">
+            <p className="text-xl font-bold text-slate-950">No active missed questions</p>
+            <p className="max-w-md text-sm leading-6 text-slate-600">
               Missed questions appear here after a practice review marks an answer incorrect.
             </p>
             <Button asChild>
