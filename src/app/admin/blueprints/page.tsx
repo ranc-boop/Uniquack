@@ -12,6 +12,10 @@ import {
   type QuestionBlueprintQuestionType,
   type QuestionBlueprintRequest,
 } from "@/lib/taxonomy/question-blueprint";
+import {
+  buildBlueprintGenerationRequestPlan,
+  type BlueprintGenerationRequestPlan,
+} from "@/lib/taxonomy/question-blueprint-generation";
 import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -497,28 +501,52 @@ function CoverageGaps({ plan }: { plan: QuestionBlueprintPlan }) {
   );
 }
 
-function GenerationDrafts({ plan }: { plan: QuestionBlueprintPlan }) {
+function GenerationDrafts({
+  generationPlan,
+}: {
+  generationPlan: BlueprintGenerationRequestPlan;
+}) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Generation request drafts</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {plan.generationRequests.length ? (
-          plan.generationRequests.map((request) => (
+      <CardContent className="space-y-3">
+        <div className="rounded-md border bg-muted/30 p-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">Draft only - no AI call yet</Badge>
+            <Badge variant="outline">{generationPlan.summary.draftCount} drafts</Badge>
+            <Badge variant="outline">
+              {generationPlan.summary.totalRequestedQuestions} planned questions
+            </Badge>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            These request drafts translate target coverage gaps into future
+            generation prompts and model routing metadata. They do not execute,
+            create questions, or write Review Drafts.
+          </p>
+        </div>
+        {generationPlan.requests.length ? (
+          generationPlan.requests.map((request) => (
             <div className="rounded-md border p-3 text-sm" key={request.requestId}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{request.requestId}</span>
                 <Badge variant="outline">{request.status}</Badge>
-                <Badge variant="outline">review required</Badge>
+                <Badge variant="outline">{request.questionType}</Badge>
+                <Badge variant="outline">{request.modelRoute.providerFamily}</Badge>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 Draft count {request.count}; difficulty{" "}
                 {request.difficultyRange.min}-{request.difficultyRange.max}; types{" "}
-                {request.questionTypes.join(", ")}
+                {request.questionType}; purpose: {request.promptPlan.targetCoverage}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Selected model route: {request.modelRoute.modelHint}
               </p>
               <div className="mt-2">
-                <SelectedTagList tagIds={request.targetTagIds} />
+                <SelectedTagList
+                  tagIds={request.targetTags.map((targetTag) => targetTag.tagId)}
+                />
               </div>
             </div>
           ))
@@ -577,6 +605,11 @@ export default async function AdminBlueprintsPage({
     catalog,
     generatedAt: "preview",
     request,
+  });
+  const generationPlan = buildBlueprintGenerationRequestPlan({
+    catalog,
+    generatedAt: "preview",
+    plan,
   });
 
   return (
@@ -701,7 +734,7 @@ export default async function AdminBlueprintsPage({
         </div>
         <div className="space-y-6">
           <CoverageGaps plan={plan} />
-          <GenerationDrafts plan={plan} />
+          <GenerationDrafts generationPlan={generationPlan} />
         </div>
       </div>
 

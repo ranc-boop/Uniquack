@@ -86,6 +86,7 @@ console.log("PASS practice client uses persisted sessions and wrong-question rec
 
 const blueprint = await read("src/lib/taxonomy/question-blueprint.ts");
 const aiBlueprint = await read("src/lib/ai-pdf-import/blueprint-builder.ts");
+const blueprintGeneration = await read("src/lib/taxonomy/question-blueprint-generation.ts");
 for (const exportName of [
   "QuestionBlueprintPlan",
   "QuestionBlueprintSection",
@@ -136,6 +137,72 @@ assert(!aiBlueprint.includes(".delete("), "AI PDF blueprint builder must not del
 assert(!aiBlueprint.includes("fetch("), "AI PDF blueprint builder must not call providers");
 console.log("PASS question blueprint builder is planning-only and taxonomy-backed");
 
+for (const exportName of [
+  "buildBlueprintGenerationRequestPlan",
+  "buildBlueprintGenerationRequests",
+  "validateBlueprintGenerationRequest",
+  "summarizeBlueprintGenerationRequestPlan",
+]) {
+  assert(
+    blueprintGeneration.includes(exportName),
+    `blueprint generation builder is missing ${exportName}`,
+  );
+}
+for (const requiredShape of [
+  "requestId",
+  "blueprintId",
+  "targetTags",
+  "questionType",
+  "difficultyRange",
+  "promptPlan",
+  "modelRoute",
+  "safety",
+  'status: "draft"',
+]) {
+  assert(
+    blueprintGeneration.includes(requiredShape),
+    `blueprint generation request schema is missing ${requiredShape}`,
+  );
+}
+for (const routeHint of [
+  "deepseek-v4-flash non-thinking",
+  "deepseek-v4-flash thinking or OpenAI GPT-5.4 mini",
+  "Gemini Flash family",
+  "Gemini Flash-Lite",
+  "OpenAI GPT-5.4 mini / GPT-5.4",
+]) {
+  assert(
+    blueprintGeneration.includes(routeHint),
+    `blueprint generation route hint is missing ${routeHint}`,
+  );
+}
+for (const guard of [
+  "generation_request_invalid_taxonomy_tag",
+  "generation_request_wrong_facet",
+  "generation_request_tag_not_active_assignable_leaf",
+  "generation_request_not_a_coverage_gap",
+  "generation_request_count_invalid",
+  "generation_request_difficulty_range_invalid",
+  "generation_request_question_type_invalid",
+  "noDbWrite: true",
+  "noGeneratedQuestions: true",
+  "noProviderCall: true",
+  "noReviewDraftWrite: true",
+]) {
+  assert(
+    blueprintGeneration.includes(guard),
+    `blueprint generation guard is missing ${guard}`,
+  );
+}
+assert(!blueprintGeneration.includes("question_tags"), "blueprint generation builder must not use legacy question_tags");
+assert(!blueprintGeneration.includes("video_tags"), "blueprint generation builder must not use legacy video_tags");
+assert(!blueprintGeneration.includes("supabase.from("), "blueprint generation builder must not query the database");
+assert(!blueprintGeneration.includes(".insert("), "blueprint generation builder must not insert database rows");
+assert(!blueprintGeneration.includes(".update("), "blueprint generation builder must not update database rows");
+assert(!blueprintGeneration.includes(".delete("), "blueprint generation builder must not delete database rows");
+assert(!blueprintGeneration.includes("fetch("), "blueprint generation builder must not call providers");
+console.log("PASS question blueprint generation requests are draft-only and taxonomy-backed");
+
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 for (const expectedText of [
   "Question blueprint preview",
@@ -150,10 +217,13 @@ for (const expectedText of [
   "Missing coverage gaps",
   "Generation request drafts",
   "Model routing plan",
+  "Draft only - no AI call yet",
+  "Selected model route",
 ]) {
   assert(blueprintPage.includes(expectedText), `blueprint page is missing ${expectedText}`);
 }
 for (const helperName of [
+  "buildBlueprintGenerationRequestPlan",
   "buildQuestionBlueprintPlan",
   "loadTaxonomyCatalog",
   "TaxonomyTagTreePicker",
