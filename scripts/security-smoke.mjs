@@ -88,6 +88,7 @@ const blueprint = await read("src/lib/taxonomy/question-blueprint.ts");
 const aiBlueprint = await read("src/lib/ai-pdf-import/blueprint-builder.ts");
 const blueprintGeneration = await read("src/lib/taxonomy/question-blueprint-generation.ts");
 const blueprintProviderRunner = await read("src/lib/taxonomy/question-blueprint-provider-runner.ts");
+const blueprintExecution = await read("src/lib/taxonomy/question-blueprint-execution.ts");
 for (const exportName of [
   "QuestionBlueprintPlan",
   "QuestionBlueprintSection",
@@ -288,6 +289,53 @@ assert(!blueprintProviderRunner.includes(".delete("), "blueprint provider runner
 assert(!blueprintProviderRunner.includes("fetch("), "blueprint provider runner must not call providers");
 console.log("PASS question blueprint provider runner is shadow-only and provider-call-free");
 
+for (const exportName of [
+  "executeBlueprintGenerationRequestWithDeepSeek",
+  "parseBlueprintGeneratedQuestions",
+  "validateBlueprintGeneratedQuestion",
+  "buildBlueprintGeneratedDrafts",
+]) {
+  assert(
+    blueprintExecution.includes(exportName),
+    `blueprint DeepSeek execution is missing ${exportName}`,
+  );
+}
+for (const guard of [
+  'import "server-only"',
+  "Blueprint generation V1 only supports DeepSeek text-only runs.",
+  "response_format: { type: \"json_object\" }",
+  "reviewRequired: true",
+  'status: "draft"',
+  "Generated questions are draft-only and require review.",
+]) {
+  assert(blueprintExecution.includes(guard), `blueprint DeepSeek execution guard is missing ${guard}`);
+}
+for (const outputField of [
+  "title",
+  "questionType",
+  "contentHtml",
+  "solutionHtml",
+  "options",
+  "answerSpec",
+  "taxonomyTagIds",
+  "difficulty",
+]) {
+  assert(
+    blueprintExecution.includes(outputField),
+    `blueprint DeepSeek generated draft schema is missing ${outputField}`,
+  );
+}
+assert(blueprintExecution.includes("fetch("), "DeepSeek execution helper must contain the manual provider call");
+assert(!blueprintExecution.includes("question_tags"), "blueprint DeepSeek execution must not use legacy question_tags");
+assert(!blueprintExecution.includes("video_tags"), "blueprint DeepSeek execution must not use legacy video_tags");
+assert(!blueprintExecution.includes("gemini"), "blueprint DeepSeek execution must not call Gemini");
+assert(!blueprintExecution.includes("gpt-"), "blueprint DeepSeek execution must not call OpenAI fallback models");
+assert(!blueprintExecution.includes("supabase.from("), "blueprint DeepSeek execution must not query the database");
+assert(!blueprintExecution.includes(".insert("), "blueprint DeepSeek execution must not insert database rows");
+assert(!blueprintExecution.includes(".update("), "blueprint DeepSeek execution must not update database rows");
+assert(!blueprintExecution.includes(".delete("), "blueprint DeepSeek execution must not delete database rows");
+console.log("PASS question blueprint DeepSeek execution is manual, server-only, and draft-only");
+
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 for (const expectedText of [
   "Question blueprint preview",
@@ -308,13 +356,18 @@ for (const expectedText of [
   "Shadow only - no AI call yet",
   "Prompt preview summary",
   "Expected output schema",
+  "Run DeepSeek draft generation",
+  "Provider result preview",
+  "Generated questions are draft-only and require review.",
 ]) {
   assert(blueprintPage.includes(expectedText), `blueprint page is missing ${expectedText}`);
 }
 for (const helperName of [
+  "executeBlueprintGenerationRequestWithDeepSeek",
   "buildBlueprintProviderRunPlan",
   "buildBlueprintGenerationRequestPlan",
   "buildQuestionBlueprintPlan",
+  "loadAIProviderProfileForUse",
   "loadTaxonomyCatalog",
   "TaxonomyTagTreePicker",
 ]) {

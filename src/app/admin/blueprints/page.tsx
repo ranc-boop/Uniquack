@@ -1,4 +1,12 @@
+import { redirect } from "next/navigation";
+
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { requireAdmin } from "@/lib/auth/guards";
+import { inferAiProviderMode } from "@/lib/ai-providers/adapters";
+import {
+  listEnabledAIProviderProfiles,
+  loadAIProviderProfileForUse,
+} from "@/lib/ai-providers/profiles";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import { taxonomyDisplayLabelFromId } from "@/lib/tags/taxonomy-display";
@@ -20,6 +28,7 @@ import {
   buildBlueprintProviderRunPlan,
   type BlueprintProviderRunPlan,
 } from "@/lib/taxonomy/question-blueprint-provider-runner";
+import { executeBlueprintGenerationRequestWithDeepSeek } from "@/lib/taxonomy/question-blueprint-execution";
 import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,6 +105,47 @@ function numericParam(
   const numeric = Number(firstParam(value));
   if (!Number.isFinite(numeric)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(numeric)));
+}
+
+function blueprintHrefWithResult({
+  params,
+  result,
+}: {
+  params: Record<string, string | string[] | undefined>;
+  result: Record<string, string | number>;
+}) {
+  const query = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (key.startsWith("blueprint_result_")) continue;
+    for (const item of Array.isArray(value) ? value : value ? [value] : []) {
+      query.append(key, item);
+    }
+  }
+
+  for (const [key, value] of Object.entries(result)) {
+    query.set(`blueprint_result_${key}`, String(value));
+  }
+
+  const serialized = query.toString();
+  return serialized ? `/admin/blueprints?${serialized}` : "/admin/blueprints";
+}
+
+function blueprintExecutionResultFromParams(
+  params: Record<string, string | string[] | undefined>,
+) {
+  const status = firstParam(params.blueprint_result_status);
+  if (!status) return null;
+
+  return {
+    draftCount: firstParam(params.blueprint_result_draft_count) ?? "0",
+    error: firstParam(params.blueprint_result_error) ?? "",
+    model: firstParam(params.blueprint_result_model) ?? "-",
+    provider: firstParam(params.blueprint_result_provider) ?? "-",
+    requestId: firstParam(params.blueprint_result_request_id) ?? "-",
+    status,
+    warningCount: firstParam(params.blueprint_result_warning_count) ?? "0",
+  };
 }
 
 function defaultTargetTagsByFacet({
@@ -564,7 +614,49 @@ function GenerationDrafts({
   );
 }
 
-function ProviderRunDrafts({ runPlan }: { runPlan: BlueprintProviderRunPlan }) {
+function ProviderResultPreview({
+  result,
+}: {
+  result: ReturnType<typeof blueprintExecutionResultFromParams>;
+}) {
+  if (!result) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Provider result preview</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={result.status === "succeeded" ? "secondary" : "destructive"}>
+            {result.status}
+          </Badge>
+          <Badge variant="outline">Request {result.requestId}</Badge>
+          <Badge variant="outline">{result.provider}</Badge>
+          <Badge variant="outline">{result.model}</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Generated draft count: {result.draftCount}; validation warnings:{" "}
+          {result.warningCount}.{" "}
+          {"Generated questions are draft-only and require review."}
+        </p>
+        {result.error ? (
+          <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            {result.error}
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProviderRunDrafts({
+  executeAction,
+  runPlan,
+}: {
+  executeAction: (formData: FormData) => Promise<void>;
+  runPlan: BlueprintProviderRunPlan;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -623,6 +715,18 @@ function ProviderRunDrafts({ runPlan }: { runPlan: BlueprintProviderRunPlan }) {
                   ))}
                 </ul>
               ) : null}
+              {run.providerKind === "deepseek" && run.status === "ready" ? (
+                <form action={executeAction} className="mt-3">
+                  <input name="request_id" type="hidden" value={run.requestId} />
+                  <FormSubmitButton pendingLabel="Running DeepSeek..." size="sm">
+                    Run DeepSeek draft generation
+                  </FormSubmitButton>
+                </form>
+              ) : (
+                <Button className="mt-3" disabled size="sm" type="button" variant="outline">
+                  Run DeepSeek draft generation
+                </Button>
+              )}
             </div>
           ))
         ) : (
@@ -690,6 +794,96 @@ export default async function AdminBlueprintsPage({
     generatedAt: "preview",
     generationPlan,
   });
+  const executionResult = blueprintExecutionResultFromParams(params);
+
+  async function runDeepSeekBlueprintGeneration(formData: FormData) {
+    "use server";
+
+    await requireAdmin();
+    const requestId = String(formData.get("request_id") ?? "");
+    const selectedRequest = generationPlan.requests.find(
+      (requestItem) => requestItem.requestId === requestId,
+    );
+    const selectedRun = providerRunPlan.runs.find(
+      (runItem) => runItem.requestId === requestId,
+    );
+
+    if (!selectedRequest || !selectedRun || selectedRun.status !== "ready") {
+      redirect(
+        blueprintHrefWithResult({
+          params,
+          result: {
+            error: "Selected DeepSeek blueprint request is not ready.",
+            request_id: requestId || "-",
+            status: "failed",
+          },
+        }),
+      );
+    }
+
+    const actionSupabase = await createClient();
+    const safeProfiles = await listEnabledAIProviderProfiles(actionSupabase);
+    const deepSeekProfile = safeProfiles.find(
+      (profile) => inferAiProviderMode(profile) === "deepseek_openai",
+    );
+
+    if (!deepSeekProfile) {
+      redirect(
+        blueprintHrefWithResult({
+          params,
+          result: {
+            error: "No enabled DeepSeek provider profile is configured.",
+            request_id: requestId,
+            status: "failed",
+          },
+        }),
+      );
+    }
+
+    let result: Awaited<
+      ReturnType<typeof executeBlueprintGenerationRequestWithDeepSeek>
+    >;
+    try {
+      const profile = await loadAIProviderProfileForUse({
+        profileId: deepSeekProfile.id,
+        supabase: actionSupabase,
+      });
+      result = await executeBlueprintGenerationRequestWithDeepSeek({
+        catalog,
+        profile,
+        request: selectedRequest,
+        run: selectedRun,
+      });
+    } catch (error) {
+      redirect(
+        blueprintHrefWithResult({
+          params,
+          result: {
+            error:
+              error instanceof Error
+                ? error.message.slice(0, 300)
+                : "Unknown DeepSeek execution error.",
+            request_id: requestId,
+            status: "failed",
+          },
+        }),
+      );
+    }
+
+    redirect(
+      blueprintHrefWithResult({
+        params,
+        result: {
+          draft_count: result.generatedDraftCount,
+          model: result.modelName,
+          provider: result.providerName,
+          request_id: result.requestId,
+          status: result.status,
+          warning_count: result.warnings.length,
+        },
+      }),
+    );
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8">
@@ -805,6 +999,7 @@ export default async function AdminBlueprintsPage({
       </form>
 
       <BlueprintSummary plan={plan} />
+      <ProviderResultPreview result={executionResult} />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
         <div className="space-y-6">
@@ -817,7 +1012,10 @@ export default async function AdminBlueprintsPage({
         </div>
       </div>
 
-      <ProviderRunDrafts runPlan={providerRunPlan} />
+      <ProviderRunDrafts
+        executeAction={runDeepSeekBlueprintGeneration}
+        runPlan={providerRunPlan}
+      />
       <ModelRoutingPlan plan={plan} />
     </main>
   );
