@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
-import { ArrowUp, ChevronsLeft, ChevronsRight, Plus, SlidersHorizontal } from "lucide-react";
+import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import {
   FeedbackText,
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   PracticeAttemptInput,
@@ -360,6 +361,8 @@ export function PracticeAgentClient() {
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
   const [wrongQuestions, setWrongQuestions] = useState<PracticeWrongQuestionView[]>([]);
   const [selectedWrongQuestionIds, setSelectedWrongQuestionIds] = useState<string[]>([]);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [thinkingElapsedMs, setThinkingElapsedMs] = useState(0);
   const [lastThinkingDurationMs, setLastThinkingDurationMs] = useState<number | null>(null);
@@ -513,7 +516,7 @@ export function PracticeAgentClient() {
     !activeSession?.rounds.length &&
     !selectedWrongQuestionIds.length;
   const practiceGridStyle = {
-    "--practice-left": isLeftSidebarCollapsed ? "3.75rem" : "16rem",
+    "--practice-left": isLeftSidebarCollapsed ? "3.75rem" : "18rem",
     "--practice-right": isRightSidebarCollapsed ? "3.75rem" : "18rem",
   } as CSSProperties;
 
@@ -557,10 +560,39 @@ export function PracticeAgentClient() {
     }
   }
 
+  async function updateSessionTitle(sessionId: string, title: string) {
+    const payload = await jsonRequest<{ session: PracticeSessionDetail }>(
+      `/api/practice/sessions/${sessionId}`,
+      {
+        body: JSON.stringify({ title }),
+        method: "PATCH",
+      },
+    );
+    setActiveSession((current) => (current?.id === sessionId ? payload.session : current));
+    setSessions((current) =>
+      current.map((item) => (item.id === sessionId ? { ...item, title: payload.session.title } : item)),
+    );
+    return payload.session;
+  }
+
+  async function autoNameSession(sessionId: string, trimmedGoal: string) {
+    try {
+      const payload = await jsonRequest<{ title: string }>("/api/practice/sessions/title", {
+        body: JSON.stringify({ goal: trimmedGoal }),
+        method: "POST",
+      });
+      if (payload.title) {
+        await updateSessionTitle(sessionId, payload.title);
+      }
+    } catch {
+      // Auto naming is a convenience; recommendation should keep moving if it fails.
+    }
+  }
+
   async function ensureSession(trimmedGoal: string) {
     if (activeSession) return activeSession;
     const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
-      body: JSON.stringify({ goal: trimmedGoal, title: trimmedGoal || "New practice session" }),
+      body: JSON.stringify({ goal: trimmedGoal, title: "New practice session" }),
       method: "POST",
     });
     setActiveSession(payload.session);
@@ -586,7 +618,13 @@ export function PracticeAgentClient() {
     startTransition(async () => {
       try {
         const currentSession = await ensureSession(trimmedGoal);
-        const response = await postRecommendationStream({
+        const shouldAutoName =
+          currentSession.title === "New practice session" &&
+          !currentSession.rounds.length;
+        const titlePromise = shouldAutoName
+          ? autoNameSession(currentSession.id, trimmedGoal)
+          : Promise.resolve();
+        const responsePromise = postRecommendationStream({
           body: {
             goal: trimmedGoal,
             questionCount,
@@ -595,6 +633,7 @@ export function PracticeAgentClient() {
           },
           onTrace: (event) => setLiveTrace((current) => [...current, event]),
         });
+        const [response] = await Promise.all([responsePromise, titlePromise]);
         setRecommendation(response);
         setLiveTrace(response.trace);
         setIsTraceCollapsed(true);
@@ -720,6 +759,29 @@ export function PracticeAgentClient() {
     requestRecommendation(nextGoal);
   }
 
+  function beginRenameSession(session: PracticeSessionSummary) {
+    setRenamingSessionId(session.id);
+    setRenameValue(session.title);
+  }
+
+  function submitRenameSession(sessionId: string) {
+    const title = renameValue.trim();
+    if (!title) {
+      setRenamingSessionId(null);
+      setRenameValue("");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await updateSessionTitle(sessionId, title);
+        setRenamingSessionId(null);
+        setRenameValue("");
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+  }
+
   function switchSession(sessionId: string) {
     startTransition(async () => {
       try {
@@ -748,7 +810,7 @@ export function PracticeAgentClient() {
     startTransition(async () => {
       try {
         const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
-          body: JSON.stringify({ goal: goal.trim(), title: goal.trim() || "New practice session" }),
+          body: JSON.stringify({ goal: "", title: "New practice session" }),
           method: "POST",
         });
         setActiveSession(payload.session);
@@ -792,12 +854,12 @@ export function PracticeAgentClient() {
       className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
       style={practiceGridStyle}
     >
-      <aside className="space-y-4 transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5.5rem)] xl:overflow-y-auto">
+      <aside className="transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
         {isLeftSidebarCollapsed ? (
-          <div className="student-panel hidden h-full min-h-64 flex-col items-center gap-3 p-2 xl:flex">
+          <div className="hidden h-full min-h-64 flex-col items-center border-r border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
             <Button
               aria-label="Expand sessions sidebar"
-              className="size-10"
+              className="size-10 rounded-xl bg-slate-200/70 text-slate-900 hover:bg-slate-200"
               onClick={() => setIsLeftSidebarCollapsed(false)}
               size="icon"
               type="button"
@@ -805,90 +867,184 @@ export function PracticeAgentClient() {
             >
               <ChevronsRight className="size-4" aria-hidden="true" />
             </Button>
-            <div className="h-px w-8 bg-slate-200" />
-            <p className="origin-center rotate-90 whitespace-nowrap text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-              Sessions
-            </p>
+            <div className="mt-8 flex flex-col items-center gap-4">
+              <Button
+                aria-label="New practice session"
+                className="size-10"
+                disabled={isPending}
+                onClick={createNewSession}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <Plus className="size-5" aria-hidden="true" />
+              </Button>
+              <Button
+                aria-label="Show sessions"
+                className="size-10"
+                onClick={() => setIsLeftSidebarCollapsed(false)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <MoreHorizontal className="size-5" aria-hidden="true" />
+              </Button>
+            </div>
+            <div className="mt-auto flex size-9 items-center justify-center rounded-full bg-slate-400 text-xs font-bold text-white">
+              O2
+            </div>
           </div>
         ) : (
-        <Card className="student-panel">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between gap-3">
+        <div className="flex min-h-full flex-col border-r border-slate-200 bg-slate-50/80 px-4 py-6">
+        <section>
+          <div className="sticky top-3 z-30 mb-9 bg-slate-50/95 pb-2">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="student-eyebrow">Practice</p>
-                <CardTitle className="mt-2 text-lg">Sessions</CardTitle>
+                <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">Sessions</h2>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  {sessions.length} saved thread{sessions.length === 1 ? "" : "s"}
+                </p>
               </div>
-              <div className="flex items-center gap-1">
-                <Button disabled={isPending} onClick={createNewSession} size="sm" type="button">
-                  New
-                </Button>
-                <Button
-                  aria-label="Collapse sessions sidebar"
-                  className="hidden xl:inline-flex"
-                  onClick={() => setIsLeftSidebarCollapsed(true)}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
+              <Button
+                aria-label="Collapse sessions sidebar"
+                className="hidden size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 xl:inline-flex"
+                onClick={() => setIsLeftSidebarCollapsed(true)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <ChevronsLeft className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-16">
+            <button
+              className="student-focus-ring group flex w-full cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-3 text-left ring-1 ring-slate-200/80 transition-all duration-200 hover:bg-sky-50 hover:ring-sky-200"
+              disabled={isPending}
+              onClick={createNewSession}
+              type="button"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-sky-600 text-white shadow-sm shadow-sky-950/10 transition-colors group-hover:bg-sky-700">
+                <Plus className="size-4" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold text-slate-900">New practice session</span>
+                <span className="block truncate text-xs text-slate-500">Start a fresh practice thread</span>
+              </span>
+            </button>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <p className="text-sm font-bold text-slate-950">Recent</p>
+                <span className="h-px flex-1 bg-slate-100 ml-3" />
+              </div>
+              <div className="space-y-1">
+              {sessions.length ? sessions.map((item) => (
+                <div
+                  key={item.id}
+                  className={`group flex items-center gap-1 rounded-xl pr-1 transition-all duration-200 ${
+                    activeSession?.id === item.id
+                      ? "bg-white shadow-sm ring-1 ring-slate-200"
+                      : "bg-transparent hover:bg-slate-50"
+                  }`}
                 >
-                  <ChevronsLeft className="size-4" aria-hidden="true" />
-                </Button>
+                  <button
+                    aria-current={activeSession?.id === item.id ? "true" : undefined}
+                    className="student-focus-ring flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left"
+                    onClick={() => switchSession(item.id)}
+                    type="button"
+                  >
+                    <span
+                      className={`h-7 w-1 shrink-0 rounded-full ${
+                        activeSession?.id === item.id ? "bg-sky-600" : "bg-slate-200 group-hover:bg-sky-300"
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1">
+                      {renamingSessionId === item.id ? (
+                        <Input
+                          autoFocus
+                          className="h-8 border-sky-200 bg-white text-sm font-bold"
+                          onBlur={() => submitRenameSession(item.id)}
+                          onChange={(event) => setRenameValue(event.target.value)}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              submitRenameSession(item.id);
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setRenamingSessionId(null);
+                              setRenameValue("");
+                            }
+                          }}
+                          value={renameValue}
+                        />
+                      ) : (
+                        <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
+                      )}
+                      <span className="block truncate text-xs leading-5 text-slate-500">
+                        {item.roundCount} round{item.roundCount === 1 ? "" : "s"} ·{" "}
+                        {new Date(item.lastActivityAt).toLocaleString()}
+                      </span>
+                    </span>
+                  </button>
+                  {activeSession?.id === item.id ? (
+                    <span className="size-2 rounded-full bg-sky-600" aria-label="Current session" />
+                  ) : null}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        aria-label={`Session actions for ${item.title}`}
+                        className="size-8 shrink-0 text-slate-500 opacity-70 hover:text-slate-900 group-hover:opacity-100"
+                        disabled={isPending}
+                        onClick={(event) => event.stopPropagation()}
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <MoreHorizontal className="size-4" aria-hidden="true" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-44 p-1">
+                    <Button
+                      className="h-9 w-full justify-start px-2 text-slate-700"
+                      disabled={isPending}
+                      onClick={() => beginRenameSession(item)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Pencil className="size-4" aria-hidden="true" />
+                      Rename session
+                    </Button>
+                    <Button
+                      className="h-9 w-full justify-start px-2 text-destructive hover:text-destructive"
+                        disabled={isPending}
+                        onClick={() => deleteSession(item.id)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Trash2 className="size-4" aria-hidden="true" />
+                        Delete
+                      </Button>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )) : (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm leading-6 text-slate-600">
+                  No saved sessions yet. Generate your first round to start a reusable study thread.
+                </div>
+              )}
               </div>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {sessions.length ? sessions.map((item) => (
-              <div
-                key={item.id}
-                className={`group overflow-hidden rounded-lg border transition-all duration-200 ${
-                  activeSession?.id === item.id
-                    ? "border-sky-300 bg-sky-50 shadow-sm"
-                    : "border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/50"
-                }`}
-              >
-                <button
-                  aria-current={activeSession?.id === item.id ? "true" : undefined}
-                  className="student-focus-ring flex w-full cursor-pointer items-stretch gap-3 p-3 text-left"
-                  onClick={() => switchSession(item.id)}
-                  type="button"
-                >
-                  <span
-                    className={`mt-1 h-auto w-1 rounded-full ${
-                      activeSession?.id === item.id ? "bg-sky-600" : "bg-slate-200 group-hover:bg-sky-300"
-                    }`}
-                  />
-                  <span className="min-w-0 flex-1 space-y-2">
-                    <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
-                    <span className="block text-xs leading-5 text-slate-500">
-                      {item.roundCount} round{item.roundCount === 1 ? "" : "s"} ·{" "}
-                      {new Date(item.lastActivityAt).toLocaleString()}
-                    </span>
-                    {activeSession?.id === item.id ? (
-                      <span className="inline-flex rounded-full bg-sky-600 px-2 py-0.5 text-xs font-semibold text-white">
-                        Current
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-                <div className="border-t border-slate-200/80 px-3 py-2">
-                  <Button
-                    className="h-8 w-full text-slate-500 hover:text-destructive"
-                    disabled={isPending}
-                    onClick={() => deleteSession(item.id)}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            )) : (
-              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm leading-6 text-slate-600">
-                No saved sessions yet. Generate your first round to start a reusable study thread.
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
+        <div className="mt-auto rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
+          Session history stays here while the center stays focused on the current round.
+        </div>
+        </div>
         )}
       </aside>
 
@@ -915,8 +1071,7 @@ export function PracticeAgentClient() {
                 </div>
                 <div className="mx-auto max-w-5xl rounded-full border border-slate-200 bg-white p-2 shadow-[0_24px_70px_-42px_rgba(15,23,42,0.75)] ring-1 ring-slate-950/5">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <div className="flex min-w-0 flex-1 items-center gap-3 px-3">
-                      <Plus className="size-6 shrink-0 text-slate-500" aria-hidden="true" />
+                    <div className="flex min-w-0 flex-1 items-center px-3">
                       <Input
                         aria-label="Practice goal"
                         className="h-14 border-0 bg-transparent px-0 text-base shadow-none ring-offset-0 placeholder:text-slate-400 focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-lg"
@@ -974,13 +1129,13 @@ export function PracticeAgentClient() {
             </section>
           ) : (
             <section className="student-hero">
-              <div className="flex flex-col gap-5">
-                <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
                   <div className="space-y-2">
                     <Badge className="border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
                       Practice Agent
                     </Badge>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-950">Build the next focused round</h1>
+                    <h1 className="text-2xl font-bold tracking-tight text-slate-950">Practice session</h1>
                     <p className="max-w-3xl text-base leading-7 text-slate-600">
                       {activeSession
                         ? `Current session: ${activeSession.title}`
@@ -992,48 +1147,18 @@ export function PracticeAgentClient() {
                     <p className="mt-1 text-slate-500">{wrongQuestions.length} active misses</p>
                   </div>
                 </div>
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_8rem_auto] lg:items-end">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-bold text-slate-800" htmlFor="goal">
-                      {phase === "feedback" ? "Next-round note" : "Practice goal"}
-                    </Label>
-                    <Input
-                      className="h-12 border-slate-200 bg-white text-base shadow-sm"
-                      id="goal"
-                      onChange={(event) => setGoal(event.target.value)}
-                      placeholder={
-                        phase === "feedback"
-                          ? "Optional: ask for a focus, pace, or difficulty change"
-                          : "e.g. AP Calculus implicit differentiation, harder MCQ first"
-                      }
-                      value={goal}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm font-bold text-slate-800" htmlFor="count">Questions</Label>
-                    <Input
-                      className="h-12 border-slate-200 bg-white text-base shadow-sm"
-                      id="count"
-                      max={8}
-                      min={1}
-                      onChange={(event) => setQuestionCount(Number(event.target.value))}
-                      type="number"
-                      value={questionCount}
-                    />
-                  </div>
-                  <Button
-                    className="h-12 w-full px-6 lg:w-auto"
-                    disabled={isPending}
-                    onClick={() => (phase === "feedback" ? requestFeedbackNextRound() : requestRecommendation())}
-                    type="button"
-                  >
-                    {activeSession?.rounds.length ? "Start next round" : "Generate round"}
-                  </Button>
+                <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                    Current focus
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-700">
+                    {recommendation?.roundGoal || activeSession?.goal || "This session goal is set from the first prompt."}
+                  </p>
                 </div>
-                <p className="text-sm leading-6 text-slate-600">
+                <p className="text-sm leading-6 text-slate-500">
                   {selectedWrongQuestionIds.length
                     ? `${selectedWrongQuestionIds.length} missed question selected for priority practice.`
-                    : "Goal stays attached to the current session and feeds the agent's next recommendation."}
+                    : "This focus carries through the current practice session."}
                 </p>
               </div>
             </section>
@@ -1190,6 +1315,10 @@ export function PracticeAgentClient() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Next round focus</p>
+                  <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={review.nextRoundGoal} />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="next-round-goal">Add your thoughts for the next round</Label>
                   <Input
@@ -1199,19 +1328,37 @@ export function PracticeAgentClient() {
                     value={goal}
                   />
                 </div>
-                <Button onClick={requestFeedbackNextRound} type="button">Generate next round</Button>
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-800" htmlFor="review-next-count">
+                      Questions
+                    </Label>
+                    <Input
+                      className="h-11 w-28 border-slate-200 bg-white text-base shadow-sm"
+                      id="review-next-count"
+                      max={8}
+                      min={1}
+                      onChange={(event) => setQuestionCount(Number(event.target.value))}
+                      type="number"
+                      value={questionCount}
+                    />
+                  </div>
+                  <Button className="h-11 px-6" disabled={isPending} onClick={requestFeedbackNextRound} type="button">
+                    Start next round
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ) : null}
 
         </main>
 
-        <aside className="space-y-4 transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5.5rem)] xl:overflow-y-auto">
+        <aside className="transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
           {isRightSidebarCollapsed ? (
-            <div className="student-panel hidden h-full min-h-64 flex-col items-center gap-3 p-2 xl:flex">
+            <div className="hidden h-full min-h-64 flex-col items-center border-l border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
               <Button
                 aria-label="Expand study sidebar"
-                className="size-10"
+                className="size-10 rounded-xl bg-slate-200/70 text-slate-900 hover:bg-slate-200"
                 onClick={() => setIsRightSidebarCollapsed(false)}
                 size="icon"
                 type="button"
@@ -1219,18 +1366,32 @@ export function PracticeAgentClient() {
               >
                 <ChevronsLeft className="size-4" aria-hidden="true" />
               </Button>
-              <div className="h-px w-8 bg-slate-200" />
-              <p className="origin-center rotate-90 whitespace-nowrap text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-                Study State
-              </p>
+              <div className="mt-8 flex flex-col items-center gap-4">
+                <Button
+                  aria-label="Show study state"
+                  className="size-10"
+                  onClick={() => setIsRightSidebarCollapsed(false)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <SlidersHorizontal className="size-5" aria-hidden="true" />
+                </Button>
+              </div>
+              <div className="mt-auto flex size-9 items-center justify-center rounded-full bg-slate-400 text-xs font-bold text-white">
+                O2
+              </div>
             </div>
           ) : (
-          <>
-          <div className="flex items-center justify-between gap-2 xl:justify-end">
+          <div className="min-h-full border-l border-slate-200 bg-slate-50/80 px-4 py-6">
+          <div className="sticky top-3 z-30 mb-7 flex items-center justify-between gap-2 bg-slate-50/95 pb-2">
             <p className="student-eyebrow xl:hidden">Study State</p>
+            <p className="hidden text-sm font-bold text-slate-950 xl:block">
+              Study state
+            </p>
             <Button
               aria-label="Collapse study sidebar"
-              className="hidden xl:inline-flex"
+              className="hidden size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 xl:inline-flex"
               onClick={() => setIsRightSidebarCollapsed(true)}
               size="icon"
               type="button"
@@ -1240,7 +1401,7 @@ export function PracticeAgentClient() {
             </Button>
           </div>
           {activeSession ? (
-            <Card className="student-panel">
+            <Card className="border-0 bg-white shadow-none ring-1 ring-slate-200/80">
               <CardHeader>
                 <CardTitle className="text-lg">Session memory</CardTitle>
               </CardHeader>
@@ -1256,7 +1417,7 @@ export function PracticeAgentClient() {
             </Card>
           ) : null}
 
-          <Card className="student-panel">
+          <Card className="mt-4 border-0 bg-white shadow-none ring-1 ring-slate-200/80">
             <CardHeader>
               <CardTitle className="text-lg">Missed questions</CardTitle>
             </CardHeader>
@@ -1289,7 +1450,10 @@ export function PracticeAgentClient() {
               )}
             </CardContent>
           </Card>
-          </>
+          <div className="mt-4 rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
+            Misses and memory update as you submit rounds.
+          </div>
+          </div>
           )}
         </aside>
     </div>
