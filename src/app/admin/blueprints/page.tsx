@@ -29,6 +29,7 @@ import {
   type BlueprintProviderRunPlan,
 } from "@/lib/taxonomy/question-blueprint-provider-runner";
 import { executeBlueprintGenerationRequestWithDeepSeek } from "@/lib/taxonomy/question-blueprint-execution";
+import { persistBlueprintReviewDrafts } from "@/lib/taxonomy/question-blueprint-review-drafts";
 import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -138,10 +139,13 @@ function blueprintExecutionResultFromParams(
   if (!status) return null;
 
   return {
+    createdCount: firstParam(params.blueprint_result_created_count) ?? "0",
     draftCount: firstParam(params.blueprint_result_draft_count) ?? "0",
     error: firstParam(params.blueprint_result_error) ?? "",
     model: firstParam(params.blueprint_result_model) ?? "-",
     provider: firstParam(params.blueprint_result_provider) ?? "-",
+    reviewBatchId: firstParam(params.blueprint_result_review_batch_id) ?? "",
+    reviewUrl: firstParam(params.blueprint_result_review_url) ?? "",
     requestId: firstParam(params.blueprint_result_request_id) ?? "-",
     status,
     warningCount: firstParam(params.blueprint_result_warning_count) ?? "0",
@@ -640,6 +644,20 @@ function ProviderResultPreview({
           {result.warningCount}.{" "}
           {"Generated questions are draft-only and require review."}
         </p>
+        {result.reviewBatchId ? (
+          <div className="rounded-md border bg-muted/30 p-3 text-sm">
+            <p className="font-medium">Send generated drafts to Review</p>
+            <p className="mt-1 text-muted-foreground">
+              Created draft count: {result.createdCount}. Review batch:{" "}
+              {result.reviewBatchId}.
+            </p>
+            {result.reviewUrl ? (
+              <Button asChild className="mt-3" size="sm" variant="outline">
+                <a href={result.reviewUrl}>Open Review Drafts</a>
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         {result.error ? (
           <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
             {result.error}
@@ -719,8 +737,11 @@ function ProviderRunDrafts({
                 <form action={executeAction} className="mt-3">
                   <input name="request_id" type="hidden" value={run.requestId} />
                   <FormSubmitButton pendingLabel="Running DeepSeek..." size="sm">
-                    Run DeepSeek draft generation
+                    Run DeepSeek and send generated drafts to Review
                   </FormSubmitButton>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Send generated drafts to Review only after validation passes.
+                  </p>
                 </form>
               ) : (
                 <Button className="mt-3" disabled size="sm" type="button" variant="outline">
@@ -799,7 +820,7 @@ export default async function AdminBlueprintsPage({
   async function runDeepSeekBlueprintGeneration(formData: FormData) {
     "use server";
 
-    await requireAdmin();
+    const adminProfile = await requireAdmin();
     const requestId = String(formData.get("request_id") ?? "");
     const selectedRequest = generationPlan.requests.find(
       (requestItem) => requestItem.requestId === requestId,
@@ -843,6 +864,8 @@ export default async function AdminBlueprintsPage({
     let result: Awaited<
       ReturnType<typeof executeBlueprintGenerationRequestWithDeepSeek>
     >;
+    let reviewSummary: Awaited<ReturnType<typeof persistBlueprintReviewDrafts>> | null =
+      null;
     try {
       const profile = await loadAIProviderProfileForUse({
         profileId: deepSeekProfile.id,
@@ -853,6 +876,24 @@ export default async function AdminBlueprintsPage({
         profile,
         request: selectedRequest,
         run: selectedRun,
+      });
+      if (result.status !== "succeeded") {
+        throw new Error(
+          result.validationErrors.length
+            ? `Generated drafts failed validation: ${result.validationErrors
+                .slice(0, 4)
+                .join("; ")}`
+            : "Generated drafts failed validation.",
+        );
+      }
+      reviewSummary = await persistBlueprintReviewDrafts({
+        blueprintId: selectedRequest.blueprintId,
+        catalog,
+        drafts: result.generatedDrafts,
+        profileId: adminProfile.id,
+        provider: "deepseek",
+        requestId: selectedRequest.requestId,
+        supabase: actionSupabase,
       });
     } catch (error) {
       redirect(
@@ -875,11 +916,15 @@ export default async function AdminBlueprintsPage({
         params,
         result: {
           draft_count: result.generatedDraftCount,
+          created_count: reviewSummary?.createdDraftCount ?? 0,
           model: result.modelName,
           provider: result.providerName,
+          review_batch_id: reviewSummary?.batchId ?? "",
+          review_url: reviewSummary?.reviewUrl ?? "",
           request_id: result.requestId,
           status: result.status,
-          warning_count: result.warnings.length,
+          warning_count:
+            result.warnings.length + (reviewSummary?.warningCount ?? 0),
         },
       }),
     );
