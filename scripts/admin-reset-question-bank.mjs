@@ -22,11 +22,18 @@ const preservedTables = [
   "public.taxonomy_edges",
   "public.taxonomy_node_closure",
   "public.taxonomy_aliases",
+  "public.videos",
 ];
 
 const resetTables = [
   ["taxonomy_review_actions", "Review actions tied to old imported questions."],
   ["question_taxonomy_assignments", "Question taxonomy assignments tied to old questions."],
+  ["five_facet_video_tag_assignments", "Historical five-facet video tag assignments."],
+  ["five_facet_tag_review_actions", "Historical five-facet review actions."],
+  ["five_facet_question_tag_assignments", "Historical five-facet question assignments."],
+  ["video_tags", "Deprecated legacy video tag join rows."],
+  ["question_tags", "Deprecated legacy question tag join rows."],
+  ["tags", "Deprecated legacy tag catalog rows."],
   ["import_batch_items", "Batch import item previews and created-question links."],
   ["import_batch_assets", "Private AI import source/working asset metadata."],
   ["import_batches", "Manual/package/AI import batches for the old question bank."],
@@ -34,7 +41,6 @@ const resetTables = [
   ["question_source_files", "Admin-only question source file metadata."],
   ["user_question_attempts", "Student/user attempts tied to old questions."],
   ["question_rubric_steps", "Rubric steps tied to old questions."],
-  ["videos", "Videos inherit taxonomy through deleted questions."],
   ["questions", "Old question bank drafts/published/archive rows."],
 ].map(([table, reason]) => ({
   deleteFilter: { column: "id", op: "not", value: null },

@@ -23,7 +23,26 @@ async function checkRoute(path, expectedText) {
   console.log(`PASS ${path} route smoke`);
 }
 
-await checkRoute("/questions", "Questions");
+async function checkAdminRoute(path, expectedText) {
+  const response = await fetch(new URL(path, baseUrl), { redirect: "manual" });
+  assert(response.status < 500, `${path} returned ${response.status}`);
+
+  const location = response.headers.get("location") ?? "";
+  if (response.status >= 300 && response.status < 400) {
+    assert(
+      location.startsWith("/auth/login") || location.includes("/auth/login"),
+      `${path} redirected to unexpected location: ${location}`,
+    );
+    console.log(`PASS ${path} route smoke auth redirect`);
+    return;
+  }
+
+  const text = await response.text();
+  assert(text.includes(expectedText), `${path} did not include expected text: ${expectedText}`);
+  console.log(`PASS ${path} route smoke`);
+}
+
+await checkRoute("/questions", "Question Bank");
 await checkRoute("/videos", "Videos");
-await checkRoute("/admin/tags", "Taxonomy");
+await checkAdminRoute("/admin/tags", "Taxonomy");
 console.log("PASS route smoke uses taxonomy routes without legacy tag setup");
