@@ -45,4 +45,5 @@ async function checkAdminRoute(path, expectedText) {
 await checkRoute("/questions", "Question Bank");
 await checkRoute("/videos", "Videos");
 await checkAdminRoute("/admin/tags", "Taxonomy");
+await checkAdminRoute("/admin/blueprints", "Question blueprint preview");
 console.log("PASS route smoke uses taxonomy routes without legacy tag setup");
