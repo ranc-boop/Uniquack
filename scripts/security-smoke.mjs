@@ -83,3 +83,55 @@ assert(!practiceClient.includes("localStorage"), "practice client still uses loc
 assert(practiceClient.includes("/api/practice/sessions"), "practice client does not load database sessions");
 assert(practiceClient.includes("/api/practice/wrong-questions"), "practice client does not load wrong-question records");
 console.log("PASS practice client uses persisted sessions and wrong-question records");
+
+const blueprint = await read("src/lib/taxonomy/question-blueprint.ts");
+const aiBlueprint = await read("src/lib/ai-pdf-import/blueprint-builder.ts");
+for (const exportName of [
+  "QuestionBlueprintPlan",
+  "QuestionBlueprintSection",
+  "QuestionBlueprintRequirement",
+  "QuestionBlueprintCandidateSet",
+  "QuestionBlueprintCoverageGap",
+  "QuestionBlueprintGenerationRequest",
+  "QuestionBlueprintModelRoutingPlan",
+  "buildQuestionBlueprintPlan",
+  "validateQuestionBlueprintRequest",
+  "buildBlueprintCandidatePlan",
+  "buildBlueprintCoverageGaps",
+  "buildBlueprintModelRoutingPlan",
+  "summarizeQuestionBlueprintPlan",
+]) {
+  assert(blueprint.includes(exportName), `blueprint builder is missing ${exportName}`);
+}
+for (const facet of ["curriculum", "concept", "method", "task", "form"]) {
+  assert(blueprint.includes(`"${facet}"`), `blueprint builder is missing ${facet} facet`);
+}
+for (const guard of [
+  "invalid_taxonomy_tag",
+  "wrong_facet",
+  "tag_not_active_assignable_leaf",
+  "difficulty_distribution_sum_mismatch",
+  "question_type_distribution_sum_mismatch",
+  "search_questions_by_taxonomy",
+  "noDbWrite: true",
+  "noGeneratedQuestions: true",
+  "noProviderCall: true",
+  "noReviewDraftWrite: true",
+]) {
+  assert(blueprint.includes(guard), `blueprint guard is missing: ${guard}`);
+}
+assert(!blueprint.includes("question_tags"), "blueprint builder must not use legacy question_tags");
+assert(!blueprint.includes("video_tags"), "blueprint builder must not use legacy video_tags");
+assert(!blueprint.includes("supabase.from("), "blueprint builder must not write or query the database directly");
+assert(!blueprint.includes(".insert("), "blueprint builder must not insert database rows");
+assert(!blueprint.includes(".update("), "blueprint builder must not update database rows");
+assert(!blueprint.includes(".delete("), "blueprint builder must not delete database rows");
+assert(!blueprint.includes("fetch("), "blueprint builder must not call providers or network APIs");
+assert(aiBlueprint.includes("questionBlueprintPlan"), "AI PDF blueprint summary field is missing");
+assert(aiBlueprint.includes("mergeQuestionBlueprintPlanIntoAIPdfSummary"), "AI PDF blueprint merge helper is missing");
+assert(!aiBlueprint.includes("supabase.from("), "AI PDF blueprint builder must not write the database");
+assert(!aiBlueprint.includes(".insert("), "AI PDF blueprint builder must not insert database rows");
+assert(!aiBlueprint.includes(".update("), "AI PDF blueprint builder must not update database rows");
+assert(!aiBlueprint.includes(".delete("), "AI PDF blueprint builder must not delete database rows");
+assert(!aiBlueprint.includes("fetch("), "AI PDF blueprint builder must not call providers");
+console.log("PASS question blueprint builder is planning-only and taxonomy-backed");
