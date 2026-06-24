@@ -89,6 +89,7 @@ const aiBlueprint = await read("src/lib/ai-pdf-import/blueprint-builder.ts");
 const blueprintGeneration = await read("src/lib/taxonomy/question-blueprint-generation.ts");
 const blueprintProviderRunner = await read("src/lib/taxonomy/question-blueprint-provider-runner.ts");
 const blueprintExecution = await read("src/lib/taxonomy/question-blueprint-execution.ts");
+const blueprintReviewDrafts = await read("src/lib/taxonomy/question-blueprint-review-drafts.ts");
 for (const exportName of [
   "QuestionBlueprintPlan",
   "QuestionBlueprintSection",
@@ -336,6 +337,39 @@ assert(!blueprintExecution.includes(".update("), "blueprint DeepSeek execution m
 assert(!blueprintExecution.includes(".delete("), "blueprint DeepSeek execution must not delete database rows");
 console.log("PASS question blueprint DeepSeek execution is manual, server-only, and draft-only");
 
+for (const exportName of [
+  "buildBlueprintReviewDrafts",
+  "validateBlueprintReviewDraft",
+  "persistBlueprintReviewDrafts",
+  "summarizeBlueprintReviewDraftPersistence",
+]) {
+  assert(
+    blueprintReviewDrafts.includes(exportName),
+    `blueprint review draft helper is missing ${exportName}`,
+  );
+}
+for (const guard of [
+  'import "server-only"',
+  'source: "blueprint_generation"',
+  'reviewRequired: true',
+  'status: "draft"',
+  "blueprint_review_draft_must_remain_draft",
+  "blueprint_review_draft_invalid_taxonomy_tag",
+  "blueprint_review_draft_answer_spec_required",
+  "importBatchImportJson",
+  "/admin/review?batch=",
+]) {
+  assert(
+    blueprintReviewDrafts.includes(guard),
+    `blueprint review draft guard is missing ${guard}`,
+  );
+}
+assert(!blueprintReviewDrafts.includes("fetch("), "blueprint review drafts must not call providers");
+assert(!blueprintReviewDrafts.includes("loadAIProviderProfileForUse"), "blueprint review drafts must not load provider keys");
+assert(!blueprintReviewDrafts.includes("executeBlueprintGenerationRequestWithDeepSeek"), "blueprint review drafts must not execute providers");
+assert(!blueprintReviewDrafts.includes("published"), "blueprint review drafts must not publish generated questions");
+console.log("PASS question blueprint generated drafts are persisted through draft review queue only");
+
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 for (const expectedText of [
   "Question blueprint preview",
@@ -357,6 +391,8 @@ for (const expectedText of [
   "Prompt preview summary",
   "Expected output schema",
   "Run DeepSeek draft generation",
+  "Send generated drafts to Review",
+  "Open Review Drafts",
   "Provider result preview",
   "Generated questions are draft-only and require review.",
 ]) {
@@ -369,6 +405,7 @@ for (const helperName of [
   "buildQuestionBlueprintPlan",
   "loadAIProviderProfileForUse",
   "loadTaxonomyCatalog",
+  "persistBlueprintReviewDrafts",
   "TaxonomyTagTreePicker",
 ]) {
   assert(blueprintPage.includes(helperName), `blueprint page does not use ${helperName}`);
@@ -382,5 +419,4 @@ assert(!blueprintPage.includes(".insert("), "blueprint page must not insert data
 assert(!blueprintPage.includes(".update("), "blueprint page must not update database rows");
 assert(!blueprintPage.includes(".delete("), "blueprint page must not delete database rows");
 assert(!blueprintPage.includes("createQuestion"), "blueprint page must not create questions");
-assert(!blueprintPage.includes("createImport"), "blueprint page must not create review drafts");
-console.log("PASS question blueprint preview UI is preview-only and taxonomy-backed");
+console.log("PASS question blueprint preview UI is taxonomy-backed and sends validated drafts to Review only");
