@@ -796,10 +796,15 @@ assert(
   "blueprint library page must expose manual BP6 generation and review handoff copy",
 );
 assert(
-  blueprintPage.includes("Edit taxonomy targets") &&
+    blueprintPage.includes("Edit taxonomy targets") &&
     blueprintPage.includes("selectable=\"assignable_leaf\"") &&
     blueprintPage.includes("Needs more evidence") &&
     blueprintPage.includes("Rejected") &&
+    blueprintPage.includes("Grouped taxonomy targets") &&
+    blueprintPage.includes("Short pattern summary") &&
+    blueprintPage.includes("Source refs and internal notes") &&
+    blueprintPage.includes("Draft ID:") &&
+    blueprintPage.includes("overflowWrap: \"anywhere\"") &&
     blueprintPage.includes("Debug details") &&
     blueprintPage.includes("Raw reason:") &&
     blueprintPage.includes("This blueprint came from observation cluster") &&

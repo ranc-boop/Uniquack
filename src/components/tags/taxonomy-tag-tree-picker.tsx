@@ -175,9 +175,9 @@ function TreeNode({
       (isSelected || hasSelectedDescendant(node, selected, childrenById)));
 
   return (
-    <details className="group" open={shouldOpen}>
+    <details className="group min-w-0" open={shouldOpen}>
       <summary
-        className="flex cursor-pointer list-none items-start gap-2 rounded-md border bg-background px-2 py-1.5 text-sm transition hover:bg-muted/40"
+        className="flex min-w-0 cursor-pointer list-none items-start gap-2 rounded-md border bg-background px-2 py-1.5 text-sm transition hover:bg-muted/40"
         style={{ marginLeft: `${level * 14}px` }}
       >
         <span className="mt-0.5 w-3 text-xs text-muted-foreground group-open:hidden">
@@ -209,7 +209,10 @@ function TreeNode({
               </span>
             ) : null}
           </span>
-          <span className="block break-all text-[11px] text-muted-foreground">
+          <span
+            className="block font-mono text-[11px] text-muted-foreground"
+            style={{ overflowWrap: "anywhere" }}
+          >
             {node.tag_id}
           </span>
           {aliases.length ? (
