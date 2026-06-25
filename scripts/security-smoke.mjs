@@ -86,6 +86,8 @@ console.log("PASS practice client uses persisted sessions and wrong-question rec
 
 const blueprintObservation = await read("src/lib/ai-pdf-import/blueprint-observation.ts");
 const questionBlueprintAnalyzer = await read("src/lib/ai-pdf-import/question-blueprint-analyzer.ts");
+const questionBlueprintReview = await read("src/lib/blueprints/question-blueprint-review.ts");
+const questionBlueprintLibrary = await read("src/lib/blueprints/question-blueprint-library.ts");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
@@ -241,6 +243,97 @@ assert(!questionBlueprintAnalyzer.includes(".update("), "question blueprint anal
 assert(!questionBlueprintAnalyzer.includes(".delete("), "question blueprint analyzer must not delete database rows");
 console.log("PASS question blueprint analyzer is text-only, bounded, and draft-free");
 
+for (const exportName of [
+  "QuestionBlueprintReviewActionPlan",
+  "QuestionBlueprintReviewAction",
+  "buildQuestionBlueprintReviewActionPlan",
+  "validateQuestionBlueprintReviewActionPlan",
+  "mergeQuestionBlueprintReviewPlanIntoSummary",
+  "summarizeQuestionBlueprintReviewActionPlan",
+]) {
+  assert(
+    questionBlueprintReview.includes(exportName),
+    `question blueprint review module is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "question_blueprint_review_plan_v1",
+  "summary.aiPdfImport.questionBlueprintReviewPlan",
+  "approve_blueprint",
+  "reject_blueprint",
+  "edit_blueprint",
+  "merge_similar_blueprint",
+  "mark_needs_more_evidence",
+  "pending_review",
+  "reviewRequired: true",
+  "question_blueprint_review_planning_only",
+  "question_blueprint_review_no_generated_questions",
+  "question_blueprint_review_no_review_draft_write",
+  "question_blueprint_review_no_db_write",
+  "question_blueprint_review_no_provider_call",
+  "generatedQuestionCount: 0",
+  "reviewDraftWriteCount: 0",
+  "libraryWriteCount: 0",
+  "rawStorageCount: 0",
+]) {
+  assert(
+    questionBlueprintReview.includes(expectedText),
+    `question blueprint review guard is missing ${expectedText}`,
+  );
+}
+assert(!questionBlueprintReview.includes("fetch("), "question blueprint review must not call providers");
+assert(!questionBlueprintReview.includes("importBatchImportJson"), "question blueprint review must not write Review Drafts");
+assert(!questionBlueprintReview.includes("supabase.from("), "question blueprint review must not query the database");
+assert(!questionBlueprintReview.includes(".insert("), "question blueprint review must not insert database rows");
+assert(!questionBlueprintReview.includes(".update("), "question blueprint review must not update database rows");
+assert(!questionBlueprintReview.includes(".delete("), "question blueprint review must not delete database rows");
+console.log("PASS question blueprint review plan is pending-review and write-free");
+
+for (const exportName of [
+  "QuestionBlueprintLibraryEntry",
+  "QuestionBlueprintLibraryPersistencePlan",
+  "buildQuestionBlueprintLibraryPersistencePlan",
+  "validateQuestionBlueprintLibraryPersistencePlan",
+  "mergeQuestionBlueprintLibraryPersistencePlanIntoSummary",
+  "summarizeQuestionBlueprintLibraryPersistencePlan",
+]) {
+  assert(
+    questionBlueprintLibrary.includes(exportName),
+    `question blueprint library module is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "question_blueprint_library_persistence_plan_v1",
+  "summary.aiPdfImport.questionBlueprintLibraryPersistencePlan",
+  "ownerScope",
+  "system",
+  "school",
+  "teacher",
+  "private",
+  "status: \"draft\"",
+  "question_blueprint_library_persistence_planning_only",
+  "question_blueprint_library_no_db_write",
+  "question_blueprint_library_no_generated_questions",
+  "question_blueprint_library_no_review_draft_write",
+  "question_blueprint_library_pending_human_approval",
+  "libraryWriteCount: 0",
+  "generatedQuestionCount: 0",
+  "reviewDraftWriteCount: 0",
+  "rawStorageCount: 0",
+]) {
+  assert(
+    questionBlueprintLibrary.includes(expectedText),
+    `question blueprint library guard is missing ${expectedText}`,
+  );
+}
+assert(!questionBlueprintLibrary.includes("fetch("), "question blueprint library must not call providers");
+assert(!questionBlueprintLibrary.includes("importBatchImportJson"), "question blueprint library must not write Review Drafts");
+assert(!questionBlueprintLibrary.includes("supabase.from("), "question blueprint library must not query the database");
+assert(!questionBlueprintLibrary.includes(".insert("), "question blueprint library must not insert database rows");
+assert(!questionBlueprintLibrary.includes(".update("), "question blueprint library must not update database rows");
+assert(!questionBlueprintLibrary.includes(".delete("), "question blueprint library must not delete database rows");
+console.log("PASS question blueprint library persistence is contract-only and write-free");
+
 for (const expectedText of [
   "blueprint_observation",
   "processAIPdfBlueprintObservation",
@@ -250,10 +343,15 @@ for (const expectedText of [
   "loadDeepSeekBlueprintAnalyzerProvider",
   "executeDeepSeekQuestionBlueprintAnalyzer",
   "mergeQuestionBlueprintDraftPlanIntoSummary",
+  "buildQuestionBlueprintReviewActionPlan",
+  "mergeQuestionBlueprintReviewPlanIntoSummary",
+  "buildQuestionBlueprintLibraryPersistencePlan",
+  "mergeQuestionBlueprintLibraryPersistencePlanIntoSummary",
   "generateWithGeminiNativePdf",
   "mockBlueprintObservationProviderResponse",
-  "Blueprint Observation Mode completed. Question blueprint drafts were analyzed without creating questions.",
+  "Blueprint Observation Mode completed. Question blueprint review/library plans were created without generating questions.",
   "Question blueprint analyzer finished. No generated questions or Review Drafts were created.",
+  "Blueprint review/library planning finished. Library persistence is planned only.",
   "status: \"ready\"",
   "createdCount: 0",
   "createdQuestions: []",
@@ -320,6 +418,14 @@ assert(
     aiPdfDashboard.includes("Review required: yes") &&
     aiPdfDashboard.includes("No questions generated yet."),
   "AI PDF dashboard must surface question blueprint draft metadata",
+);
+assert(
+  aiPdfDashboard.includes("Question Blueprint Review") &&
+    aiPdfDashboard.includes("Drafts pending review:") &&
+    aiPdfDashboard.includes("Approved-ready actions:") &&
+    aiPdfDashboard.includes("Library persistence:") &&
+    aiPdfDashboard.includes("planned only"),
+  "AI PDF dashboard must surface question blueprint review/library metadata",
 );
 console.log("PASS blueprint observation mode is explicit, summary-only, and draft-free");
 

@@ -186,6 +186,16 @@ import {
   QUESTION_BLUEPRINT_ANALYZER_MISSING_DEEPSEEK_WARNING,
   type AIQuestionBlueprintDraftPlan,
 } from "@/lib/ai-pdf-import/question-blueprint-analyzer";
+import {
+  buildQuestionBlueprintLibraryPersistencePlan,
+  mergeQuestionBlueprintLibraryPersistencePlanIntoSummary,
+  type QuestionBlueprintLibraryPersistencePlan,
+} from "@/lib/blueprints/question-blueprint-library";
+import {
+  buildQuestionBlueprintReviewActionPlan,
+  mergeQuestionBlueprintReviewPlanIntoSummary,
+  type QuestionBlueprintReviewActionPlan,
+} from "@/lib/blueprints/question-blueprint-review";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -494,6 +504,45 @@ async function updateAIQuestionBlueprintDraftPlan({
       updatedAt: new Date().toISOString(),
     }),
     questionBlueprintDraftPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function updateQuestionBlueprintReviewAndLibraryPlans({
+  input,
+  libraryPersistencePlan,
+  reviewPlan,
+}: {
+  input: ProcessInput;
+  libraryPersistencePlan: QuestionBlueprintLibraryPersistencePlan;
+  reviewPlan: QuestionBlueprintReviewActionPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeQuestionBlueprintLibraryPersistencePlanIntoSummary(
+    mergeQuestionBlueprintReviewPlanIntoSummary(
+      mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+        fileName: input.fileName,
+        jobId: input.jobId,
+        sourceAssetId: input.sourceAssetId,
+        sourceObjectPath: input.sourceObjectPath,
+        updatedAt: new Date().toISOString(),
+      }),
+      reviewPlan,
+    ),
+    libraryPersistencePlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -2688,6 +2737,61 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
   return questionBlueprintDraftPlan;
 }
 
+async function buildAndStoreQuestionBlueprintReviewPlans({
+  input,
+  pageCount,
+  providerInput,
+  providerSummary,
+  questionBlueprintDraftPlan,
+}: {
+  input: ProcessInput;
+  pageCount: number;
+  providerInput: ReturnType<typeof describeAiPdfProviderInput>;
+  providerSummary: { id: string; model: string; name: string; provider: string };
+  questionBlueprintDraftPlan: AIQuestionBlueprintDraftPlan;
+}) {
+  await updateAIPdfBatchProgress(input, {
+    detail:
+      "Planning human review actions and blueprint library persistence contracts.",
+    pageCount,
+    phase: "question_blueprint_review_planning",
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+  });
+
+  const reviewPlan = buildQuestionBlueprintReviewActionPlan({
+    draftPlan: questionBlueprintDraftPlan,
+  });
+  const libraryPersistencePlan = buildQuestionBlueprintLibraryPersistencePlan({
+    draftPlan: questionBlueprintDraftPlan,
+    reviewPlan,
+  });
+
+  await updateQuestionBlueprintReviewAndLibraryPlans({
+    input,
+    libraryPersistencePlan,
+    reviewPlan,
+  });
+  await updateAIPdfBatchProgress(input, {
+    detail:
+      "Blueprint review/library planning finished. Library persistence is planned only.",
+    pageCount,
+    phase: "question_blueprint_review_planned",
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+    warnings: uniqueStrings([
+      ...questionBlueprintDraftPlan.warnings,
+      ...reviewPlan.warnings,
+      ...libraryPersistencePlan.warnings,
+    ]),
+  });
+
+  return {
+    libraryPersistencePlan,
+    reviewPlan,
+  };
+}
+
 async function processAIPdfBlueprintObservation({
   input,
   pageCount,
@@ -2773,32 +2877,48 @@ async function processAIPdfBlueprintObservation({
       providerInput,
       providerSummary,
     });
+    const { libraryPersistencePlan, reviewPlan } =
+      await buildAndStoreQuestionBlueprintReviewPlans({
+        input,
+        pageCount,
+        providerInput,
+        providerSummary,
+        questionBlueprintDraftPlan,
+      });
 
     const currentBeforeFinal = await loadCurrentAIPdfSummary(input);
-    const finalAiPdfImport = mergeQuestionBlueprintDraftPlanIntoSummary(
-      mergeAIBlueprintObservationPlanIntoSummary(
-        mergeAIPdfImportChunkingSummary(currentBeforeFinal.aiPdfImport, {
-          createdQuestionCount: 0,
-          detail:
-            "Blueprint Observation Mode completed. Question blueprint drafts were analyzed without creating questions.",
-          executionMode: "blueprint_observation",
-          fileName: input.fileName,
-          jobId: input.jobId,
-          pageCount,
-          phase: "question_blueprint_analyzed",
-          provider: providerSummary,
-          sourceAssetId: input.sourceAssetId,
-          sourceInput: providerInput.strategy,
-          sourceObjectPath: input.sourceObjectPath,
-          uploadedCropCount: 0,
-          warnings: uniqueStrings([
-            ...blueprintObservationPlan.warnings,
-            ...questionBlueprintDraftPlan.warnings,
-          ]),
-        }),
-        blueprintObservationPlan,
+    const finalAiPdfImport = mergeQuestionBlueprintLibraryPersistencePlanIntoSummary(
+      mergeQuestionBlueprintReviewPlanIntoSummary(
+        mergeQuestionBlueprintDraftPlanIntoSummary(
+          mergeAIBlueprintObservationPlanIntoSummary(
+            mergeAIPdfImportChunkingSummary(currentBeforeFinal.aiPdfImport, {
+              createdQuestionCount: 0,
+              detail:
+                "Blueprint Observation Mode completed. Question blueprint review/library plans were created without generating questions.",
+              executionMode: "blueprint_observation",
+              fileName: input.fileName,
+              jobId: input.jobId,
+              pageCount,
+              phase: "question_blueprint_review_planned",
+              provider: providerSummary,
+              sourceAssetId: input.sourceAssetId,
+              sourceInput: providerInput.strategy,
+              sourceObjectPath: input.sourceObjectPath,
+              uploadedCropCount: 0,
+              warnings: uniqueStrings([
+                ...blueprintObservationPlan.warnings,
+                ...questionBlueprintDraftPlan.warnings,
+                ...reviewPlan.warnings,
+                ...libraryPersistencePlan.warnings,
+              ]),
+            }),
+            blueprintObservationPlan,
+          ),
+          questionBlueprintDraftPlan,
+        ),
+        reviewPlan,
       ),
-      questionBlueprintDraftPlan,
+      libraryPersistencePlan,
     );
     const finalSummary = {
       ...currentBeforeFinal.summary,
