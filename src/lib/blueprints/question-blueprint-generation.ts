@@ -1,6 +1,10 @@
 import "server-only";
 
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
+import {
+  formatBlueprintQualityError,
+  validateQuestionBlueprintQuality,
+} from "@/lib/blueprints/question-blueprint-quality";
 import type { QuestionBlueprintRow } from "@/lib/blueprints/question-blueprint-persistence";
 
 export type QuestionBlueprintGenerationProvider = {
@@ -44,6 +48,7 @@ export type QuestionBlueprintGenerationRequest = {
   blueprint: Pick<
     QuestionBlueprintRow,
     | "answer_spec_pattern"
+    | "deleted_at"
     | "difficulty_profile"
     | "distractor_pattern"
     | "generation_constraints"
@@ -203,10 +208,27 @@ export function buildQuestionBlueprintGenerationRequest({
   const normalizedDifficulty = difficultyTarget == null
     ? null
     : clampDifficulty(difficultyTarget);
+  const normalizedQuestionType = normalizeQuestionType(questionType);
+  const quality = validateQuestionBlueprintQuality({
+    blueprint,
+    evidenceSnippets: sourceEvidenceSnippets,
+    knownAssignableTagIds: knownTaxonomyTagIds,
+    requestedQuestionType: normalizedQuestionType,
+  });
+
+  if (!quality.generationReady) {
+    throw new Error(
+      formatBlueprintQualityError({
+        heading: "Blueprint is not generation-ready:",
+        reasons: quality.generationBlockingReasons,
+      }),
+    );
+  }
 
   return {
     blueprint: {
       answer_spec_pattern: blueprint.answer_spec_pattern,
+      deleted_at: blueprint.deleted_at,
       difficulty_profile: blueprint.difficulty_profile,
       distractor_pattern: stringList(blueprint.distractor_pattern, 12),
       generation_constraints: stringList(blueprint.generation_constraints, 16),
@@ -228,7 +250,7 @@ export function buildQuestionBlueprintGenerationRequest({
       mode: "manual_deepseek_text_only",
       provider: "deepseek",
     },
-    questionType: normalizeQuestionType(questionType),
+    questionType: normalizedQuestionType,
     requestId: requestIdFor(blueprintId),
     safety: {
       noAutoPublish: true,

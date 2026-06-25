@@ -25,6 +25,10 @@ const blueprintMigration = await readFile(
   resolve(root, "supabase/migrations/0015_question_blueprint_library.sql"),
   "utf8",
 );
+const blueprintActions = await readFile(
+  resolve(root, "src/app/admin/blueprints/actions.ts"),
+  "utf8",
+);
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",
@@ -41,6 +45,19 @@ for (const tableName of [
   );
 }
 assert(!blueprintMigration.includes("to anon"), "question blueprint tables must not grant anon access");
+assert(
+  blueprintMigration.includes("deleted_at timestamptz") &&
+    blueprintMigration.includes("status in ('draft', 'approved', 'deprecated')"),
+  "question blueprint migration must support lifecycle status and soft delete",
+);
+assert(
+  blueprintActions.includes("archiveQuestionBlueprint") &&
+    blueprintActions.includes("restoreQuestionBlueprint") &&
+    blueprintActions.includes("moveQuestionBlueprintToTrash") &&
+    blueprintActions.includes("deleted_at: new Date().toISOString()") &&
+    !blueprintActions.includes(".delete("),
+  "question blueprint lifecycle must use admin soft-delete actions and never hard-delete",
+);
 console.log("PASS question blueprint migration enables admin-only RLS");
 
 const anon = createClient(supabaseUrl, supabaseAnonKey);

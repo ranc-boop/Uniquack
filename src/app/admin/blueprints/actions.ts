@@ -24,6 +24,7 @@ import {
 } from "@/lib/blueprints/question-blueprint-generation-review";
 import {
   buildQuestionBlueprintReviewActionRowsFromImportSummary,
+  getQuestionBlueprintApprovalReadinessFromReviewAction,
   type QuestionBlueprintRow,
   persistApprovedQuestionBlueprints,
 } from "@/lib/blueprints/question-blueprint-persistence";
@@ -103,6 +104,52 @@ async function loadDeepSeekBlueprintGenerationProvider(
   });
 }
 
+async function recordBlueprintLifecycleAudit({
+  action,
+  blueprint,
+  profileId,
+  reason,
+  supabase,
+}: {
+  action: "archive" | "restore" | "trash";
+  blueprint: Record<string, unknown>;
+  profileId: string;
+  reason: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const blueprintId = String(blueprint.id ?? "");
+
+  if (!blueprintId) {
+    return;
+  }
+
+  const { error } = await (supabase as any)
+    .from("question_blueprint_review_actions")
+    .insert({
+      action_id: `blueprint-lifecycle-${action}-${blueprintId}-${Date.now().toString(36)}`,
+      action_kind: "mark_needs_more_evidence",
+      blueprint_draft_id: blueprintId,
+      created_by: profileId,
+      draft_snapshot: {
+        blueprintId,
+        status: blueprint.status ?? null,
+        title: blueprint.title ?? "Question blueprint",
+      },
+      evidence: {
+        action,
+        blueprintId,
+        source: "blueprint_lifecycle_admin_action",
+      },
+      reason,
+      status: "archived",
+      updated_by: profileId,
+    });
+
+  if (error) {
+    throw new Error(setupMessage(error));
+  }
+}
+
 export async function storeBlueprintReviewActionsFromImportBatch(
   formData: FormData,
 ) {
@@ -167,8 +214,35 @@ export async function approveQuestionBlueprintReviewAction(formData: FormData) {
     }
 
     const supabase = await createClient();
+    const knownAssignableTagIds = await loadActiveAssignableTaxonomyTagIds(supabase);
+    const { data: rows, error: loadError } = await (supabase as any)
+      .from("question_blueprint_review_actions")
+      .select("draft_snapshot")
+      .eq("id", actionId)
+      .eq("status", "pending_review")
+      .limit(1);
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+
+    const readiness = getQuestionBlueprintApprovalReadinessFromReviewAction(
+      rows?.[0] ?? { draft_snapshot: null },
+      knownAssignableTagIds,
+    );
+
+    if (!readiness.approvalReady) {
+      throw new Error(
+        [
+          "Blueprint is not approval-ready:",
+          ...readiness.approvalBlockingReasons.map((reason) => `- ${reason}`),
+        ].join("\n"),
+      );
+    }
+
     await persistApprovedQuestionBlueprints({
       actionIds: [actionId],
+      knownAssignableTagIds,
       reviewerId: profile.id,
       supabase: supabase as any,
     });
@@ -244,6 +318,158 @@ export async function markQuestionBlueprintNeedsEvidence(formData: FormData) {
   redirectWithSaved("/admin/blueprints", "Blueprint marked as needing more evidence.");
 }
 
+export async function archiveQuestionBlueprint(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const blueprintId = formString(formData, "blueprint_id");
+
+    if (!blueprintId) {
+      throw new Error("Select a blueprint to deprecate.");
+    }
+
+    const supabase = await createClient();
+    const { data: blueprint, error: loadError } = await (supabase as any)
+      .from("question_blueprints")
+      .select("id, title, status")
+      .eq("id", blueprintId)
+      .maybeSingle();
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+    if (!blueprint) {
+      throw new Error("Blueprint was not found.");
+    }
+
+    const { error } = await (supabase as any)
+      .from("question_blueprints")
+      .update({
+        deleted_at: null,
+        status: "deprecated",
+        updated_by: profile.id,
+      })
+      .eq("id", blueprintId);
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+
+    await recordBlueprintLifecycleAudit({
+      action: "archive",
+      blueprint,
+      profileId: profile.id,
+      reason: "Blueprint deprecated/archived by admin. Generated-question lineage is preserved.",
+      supabase,
+    });
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint deprecated and archived.");
+}
+
+export async function restoreQuestionBlueprint(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const blueprintId = formString(formData, "blueprint_id");
+
+    if (!blueprintId) {
+      throw new Error("Select a blueprint to restore.");
+    }
+
+    const supabase = await createClient();
+    const { data: blueprint, error: loadError } = await (supabase as any)
+      .from("question_blueprints")
+      .select("id, title, status")
+      .eq("id", blueprintId)
+      .maybeSingle();
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+    if (!blueprint) {
+      throw new Error("Blueprint was not found.");
+    }
+
+    const { error } = await (supabase as any)
+      .from("question_blueprints")
+      .update({
+        deleted_at: null,
+        status: "approved",
+        updated_by: profile.id,
+      })
+      .eq("id", blueprintId);
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+
+    await recordBlueprintLifecycleAudit({
+      action: "restore",
+      blueprint,
+      profileId: profile.id,
+      reason: "Blueprint restored by admin.",
+      supabase,
+    });
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint restored.");
+}
+
+export async function moveQuestionBlueprintToTrash(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const blueprintId = formString(formData, "blueprint_id");
+
+    if (!blueprintId) {
+      throw new Error("Select a blueprint to move to trash.");
+    }
+
+    const supabase = await createClient();
+    const { data: blueprint, error: loadError } = await (supabase as any)
+      .from("question_blueprints")
+      .select("id, title, status")
+      .eq("id", blueprintId)
+      .maybeSingle();
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+    if (!blueprint) {
+      throw new Error("Blueprint was not found.");
+    }
+
+    const { error } = await (supabase as any)
+      .from("question_blueprints")
+      .update({
+        deleted_at: new Date().toISOString(),
+        updated_by: profile.id,
+      })
+      .eq("id", blueprintId);
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+
+    await recordBlueprintLifecycleAudit({
+      action: "trash",
+      blueprint,
+      profileId: profile.id,
+      reason: "Blueprint moved to trash by admin. Permanent delete is deferred to preserve lineage.",
+      supabase,
+    });
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint moved to trash.");
+}
+
 export async function generateOriginalQuestionsFromApprovedBlueprint(
   formData: FormData,
 ) {
@@ -261,10 +487,11 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
     const { data: blueprint, error: blueprintError } = await (supabase as any)
       .from("question_blueprints")
       .select(
-        "id, title, status, owner_scope, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, difficulty_profile, generation_constraints, originality_constraints, source_refs, version",
+        "id, title, status, owner_scope, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, difficulty_profile, generation_constraints, originality_constraints, source_refs, version, deleted_at",
       )
       .eq("id", blueprintId)
       .eq("status", "approved")
+      .is("deleted_at", null)
       .maybeSingle();
 
     if (blueprintError) {
@@ -286,7 +513,6 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
     }
 
     const knownTaxonomyTagIds = await loadActiveAssignableTaxonomyTagIds(supabase);
-    const provider = await loadDeepSeekBlueprintGenerationProvider(supabase);
     const sourceEvidenceSnippets = ((examples ?? []) as { evidence_snippets?: unknown }[])
       .flatMap((example) => stringList(example.evidence_snippets))
       .slice(0, 8);
@@ -302,6 +528,7 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
       sourceEvidenceSnippets,
       variationNote: formString(formData, "variation_note"),
     });
+    const provider = await loadDeepSeekBlueprintGenerationProvider(supabase);
     const generationResult = await executeDeepSeekBlueprintGeneration({
       provider,
       request,

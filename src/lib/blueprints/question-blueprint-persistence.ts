@@ -9,6 +9,10 @@ import type {
   QuestionBlueprintReviewActionKind,
   QuestionBlueprintReviewActionPlan,
 } from "@/lib/blueprints/question-blueprint-review";
+import {
+  formatBlueprintQualityError,
+  validateQuestionBlueprintQuality,
+} from "@/lib/blueprints/question-blueprint-quality";
 
 type SupabaseLike = {
   from: (table: string) => any;
@@ -24,6 +28,7 @@ export type QuestionBlueprintReviewActionStatus =
 export type QuestionBlueprintRow = {
   answer_spec_pattern: Record<string, unknown>;
   created_by?: string | null;
+  deleted_at?: string | null;
   difficulty_profile: Record<string, unknown>;
   distractor_pattern: string[];
   generation_constraints: string[];
@@ -361,11 +366,48 @@ export function validateQuestionBlueprintRow(row: QuestionBlueprintRow) {
   };
 }
 
+export function getQuestionBlueprintApprovalReadinessFromReviewAction(
+  action: { draft_snapshot: unknown },
+  knownAssignableTagIds?: ReadonlySet<string>,
+) {
+  const draft = normalizeDraft(action.draft_snapshot);
+
+  if (!draft) {
+    return {
+      approvalBlockingReasons: ["Blueprint review action is missing a valid draft snapshot."],
+      approvalReady: false,
+      generationBlockingReasons: ["Blueprint review action is missing a valid draft snapshot."],
+      generationReady: false,
+    };
+  }
+
+  return validateQuestionBlueprintQuality({
+    blueprint: {
+      answer_spec_pattern: draft.answerSpecPattern,
+      deleted_at: null,
+      distractor_pattern: draft.distractorPattern,
+      originality_constraints: draft.originalityConstraints,
+      question_pattern: {
+        pattern: draft.questionPattern,
+        representationPattern: draft.representationPattern,
+        variablePattern: draft.variablePattern,
+      },
+      required_elements: draft.requiredElements,
+      status: "approved",
+      taxonomy_targets: draft.taxonomyTargets,
+    },
+    evidenceSnippets: draft.evidence.boundedSnippets,
+    knownAssignableTagIds,
+  });
+}
+
 function buildQuestionBlueprintRowFromAction({
   action,
+  knownAssignableTagIds,
   reviewerId,
 }: {
   action: StoredQuestionBlueprintReviewAction;
+  knownAssignableTagIds?: ReadonlySet<string>;
   reviewerId: string;
 }) {
   const draft = normalizeDraft(action.draft_snapshot);
@@ -417,6 +459,20 @@ function buildQuestionBlueprintRowFromAction({
       reviewActionId: action.action_id,
     },
   };
+  const quality = validateQuestionBlueprintQuality({
+    blueprint: blueprintRow,
+    evidenceSnippets: exampleRow.evidence_snippets,
+    knownAssignableTagIds,
+  });
+
+  if (!quality.approvalReady) {
+    throw new Error(
+      formatBlueprintQualityError({
+        heading: "Blueprint is not approval-ready:",
+        reasons: quality.approvalBlockingReasons,
+      }),
+    );
+  }
 
   return {
     blueprintRow,
@@ -426,9 +482,11 @@ function buildQuestionBlueprintRowFromAction({
 
 export function buildQuestionBlueprintRowsFromApprovedActions({
   actions,
+  knownAssignableTagIds,
   reviewerId,
 }: {
   actions: StoredQuestionBlueprintReviewAction[];
+  knownAssignableTagIds?: ReadonlySet<string>;
   reviewerId: string;
 }) {
   return actions
@@ -440,6 +498,7 @@ export function buildQuestionBlueprintRowsFromApprovedActions({
     .map((action) =>
       buildQuestionBlueprintRowFromAction({
         action,
+        knownAssignableTagIds,
         reviewerId,
       }),
     );
@@ -470,10 +529,12 @@ export function buildQuestionBlueprintLibrarySeedPlan({
 
 export async function persistApprovedQuestionBlueprints({
   actionIds,
+  knownAssignableTagIds,
   reviewerId,
   supabase,
 }: {
   actionIds: string[];
+  knownAssignableTagIds?: ReadonlySet<string>;
   reviewerId: string;
   supabase: SupabaseLike;
 }) {
@@ -509,6 +570,7 @@ export async function persistApprovedQuestionBlueprints({
     };
     const { blueprintRow, exampleRow } = buildQuestionBlueprintRowFromAction({
       action: approvedAction,
+      knownAssignableTagIds,
       reviewerId,
     });
     const { data: blueprint, error: blueprintError } = await supabase

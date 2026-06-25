@@ -1,10 +1,13 @@
 import Link from "next/link";
 
 import {
+  archiveQuestionBlueprint,
   approveQuestionBlueprintReviewAction,
   generateOriginalQuestionsFromApprovedBlueprint,
   markQuestionBlueprintNeedsEvidence,
+  moveQuestionBlueprintToTrash,
   rejectQuestionBlueprintReviewAction,
+  restoreQuestionBlueprint,
   storeBlueprintReviewActionsFromImportBatch,
 } from "@/app/admin/blueprints/actions";
 import { FormSubmitButton } from "@/components/form-submit-button";
@@ -15,8 +18,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   buildQuestionBlueprintLibrarySeedPlan,
+  getQuestionBlueprintApprovalReadinessFromReviewAction,
   summarizeQuestionBlueprintLibrary,
 } from "@/lib/blueprints/question-blueprint-persistence";
+import { validateQuestionBlueprintQuality } from "@/lib/blueprints/question-blueprint-quality";
 import { createClient } from "@/lib/supabase/server";
 import { taxonomyDisplayLabelFromId } from "@/lib/tags/taxonomy-display";
 
@@ -45,7 +50,12 @@ type BlueprintReviewRow = {
 };
 
 type BlueprintRow = {
+  answer_spec_pattern: unknown;
+  deleted_at: string | null;
+  distractor_pattern: unknown;
+  generation_constraints: unknown;
   id: string;
+  originality_constraints: unknown;
   owner_scope: string;
   question_pattern: unknown;
   required_elements: unknown;
@@ -54,6 +64,11 @@ type BlueprintRow = {
   taxonomy_targets: unknown;
   title: string;
   updated_at: string;
+};
+
+type BlueprintExampleRow = {
+  blueprint_id: string;
+  evidence_snippets: unknown;
 };
 
 type ImportBatchRow = {
@@ -150,6 +165,21 @@ function TaxonomyTargets({ targets }: { targets: unknown }) {
   );
 }
 
+function ReasonList({ reasons }: { reasons: string[] }) {
+  if (!reasons.length) return null;
+
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+      <p className="font-medium">Quality gate blockers</p>
+      <ul className="mt-1 list-disc space-y-1 pl-4">
+        {reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
   const draft = asRecord(snapshot);
   const evidence = asRecord(draft.evidence);
@@ -208,8 +238,19 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
   );
 }
 
-function ReviewActionCard({ action }: { action: BlueprintReviewRow }) {
+function ReviewActionCard({
+  action,
+  knownAssignableTagIds,
+}: {
+  action: BlueprintReviewRow;
+  knownAssignableTagIds: ReadonlySet<string>;
+}) {
   const isApproveReady = action.action_kind === "approve_blueprint";
+  const readiness = getQuestionBlueprintApprovalReadinessFromReviewAction(
+    action,
+    knownAssignableTagIds,
+  );
+  const canApprove = isApproveReady && readiness.approvalReady;
 
   return (
     <Card>
@@ -234,7 +275,7 @@ function ReviewActionCard({ action }: { action: BlueprintReviewRow }) {
         />
         <DraftSnapshotSummary snapshot={action.draft_snapshot} />
         <div className="flex flex-wrap gap-2">
-          {isApproveReady ? (
+          {canApprove ? (
             <form action={approveQuestionBlueprintReviewAction}>
               <input name="id" type="hidden" value={action.id} />
               <FormSubmitButton pendingLabel="Approving..." size="sm">
@@ -242,7 +283,7 @@ function ReviewActionCard({ action }: { action: BlueprintReviewRow }) {
               </FormSubmitButton>
             </form>
           ) : (
-            <Badge variant="outline">Needs edit before approval</Badge>
+            <Badge variant="outline">Needs more evidence before approval</Badge>
           )}
           <form action={markQuestionBlueprintNeedsEvidence}>
             <input name="id" type="hidden" value={action.id} />
@@ -257,15 +298,77 @@ function ReviewActionCard({ action }: { action: BlueprintReviewRow }) {
             </FormSubmitButton>
           </form>
         </div>
+        {!canApprove ? (
+          <ReasonList reasons={readiness.approvalBlockingReasons} />
+        ) : null}
       </CardContent>
     </Card>
   );
 }
 
-function LibraryCard({ blueprint }: { blueprint: BlueprintRow }) {
+function LifecycleActions({
+  blueprint,
+}: {
+  blueprint: BlueprintRow;
+}) {
+  const trashed = Boolean(blueprint.deleted_at);
+  const archived = blueprint.status === "deprecated" && !trashed;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {trashed || archived ? (
+        <form action={restoreQuestionBlueprint}>
+          <input name="blueprint_id" type="hidden" value={blueprint.id} />
+          <FormSubmitButton pendingLabel="Restoring..." size="sm" variant="outline">
+            Restore
+          </FormSubmitButton>
+        </form>
+      ) : (
+        <form action={archiveQuestionBlueprint}>
+          <input name="blueprint_id" type="hidden" value={blueprint.id} />
+          <FormSubmitButton pendingLabel="Archiving..." size="sm" variant="outline">
+            Deprecate
+          </FormSubmitButton>
+        </form>
+      )}
+      {!trashed ? (
+        <form action={moveQuestionBlueprintToTrash}>
+          <input name="blueprint_id" type="hidden" value={blueprint.id} />
+          <FormSubmitButton pendingLabel="Moving..." size="sm" variant="destructive">
+            Move to trash
+          </FormSubmitButton>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
+function LibraryCard({
+  blueprint,
+  evidenceSnippets,
+  knownAssignableTagIds,
+}: {
+  blueprint: BlueprintRow;
+  evidenceSnippets: string[];
+  knownAssignableTagIds: ReadonlySet<string>;
+}) {
   const questionPattern = asRecord(blueprint.question_pattern);
   const requiredElements = stringList(blueprint.required_elements).slice(0, 6);
-  const approved = blueprint.status === "approved";
+  const approved = blueprint.status === "approved" && !blueprint.deleted_at;
+  const quality = validateQuestionBlueprintQuality({
+    blueprint: {
+      answer_spec_pattern: asRecord(blueprint.answer_spec_pattern),
+      deleted_at: blueprint.deleted_at,
+      distractor_pattern: stringList(blueprint.distractor_pattern),
+      originality_constraints: stringList(blueprint.originality_constraints),
+      question_pattern: asRecord(blueprint.question_pattern),
+      required_elements: stringList(blueprint.required_elements),
+      status: blueprint.status as "draft" | "approved" | "deprecated",
+      taxonomy_targets: asRecord(blueprint.taxonomy_targets) as Record<string, string[]>,
+    },
+    evidenceSnippets,
+    knownAssignableTagIds,
+  });
 
   return (
     <Card>
@@ -295,7 +398,8 @@ function LibraryCard({ blueprint }: { blueprint: BlueprintRow }) {
           Owner scope: {blueprint.owner_scope} | Updated{" "}
           {new Date(blueprint.updated_at).toLocaleString()}
         </p>
-        {approved ? (
+        <LifecycleActions blueprint={blueprint} />
+        {approved && quality.generationReady ? (
           <div className="rounded-md border bg-muted/20 p-3">
             <div className="space-y-1">
               <p className="text-sm font-medium">
@@ -363,6 +467,14 @@ function LibraryCard({ blueprint }: { blueprint: BlueprintRow }) {
               </div>
             </form>
           </div>
+        ) : approved ? (
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="text-sm font-medium">Generation disabled</p>
+            <p className="text-xs text-muted-foreground">
+              This blueprint must pass quality gates before DeepSeek generation.
+            </p>
+            <ReasonList reasons={quality.generationBlockingReasons} />
+          </div>
         ) : null}
       </CardContent>
     </Card>
@@ -380,6 +492,8 @@ export default async function AdminBlueprintsPage({
     reviewActionsResult,
     blueprintsResult,
     importBatchesResult,
+    blueprintExamplesResult,
+    taxonomyNodesResult,
   ] = await Promise.all([
     (supabase as any)
       .from("question_blueprint_review_actions")
@@ -392,25 +506,57 @@ export default async function AdminBlueprintsPage({
     (supabase as any)
       .from("question_blueprints")
       .select(
-        "id, title, status, owner_scope, taxonomy_targets, question_pattern, required_elements, source_refs, updated_at",
+        "id, title, status, owner_scope, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, generation_constraints, originality_constraints, source_refs, deleted_at, updated_at",
       )
       .order("updated_at", { ascending: false })
-      .limit(20),
+      .limit(50),
     supabase
       .from("import_batches")
       .select("id, status, summary, created_at")
       .order("created_at", { ascending: false })
       .limit(20),
+    (supabase as any)
+      .from("question_blueprint_examples")
+      .select("blueprint_id, evidence_snippets")
+      .limit(200),
+    supabase
+      .from("taxonomy_nodes")
+      .select("tag_id")
+      .eq("status", "active")
+      .eq("is_assignable", true)
+      .limit(5000),
   ]);
   const setupNeeded =
     isMissingBlueprintTableError(reviewActionsResult.error) ||
-    isMissingBlueprintTableError(blueprintsResult.error);
+    isMissingBlueprintTableError(blueprintsResult.error) ||
+    isMissingBlueprintTableError(blueprintExamplesResult.error);
   const reviewActions = setupNeeded
     ? []
     : ((reviewActionsResult.data ?? []) as BlueprintReviewRow[]);
   const blueprints = setupNeeded
     ? []
     : ((blueprintsResult.data ?? []) as BlueprintRow[]);
+  const knownAssignableTagIds = new Set(
+    ((taxonomyNodesResult.data ?? []) as { tag_id: string }[]).map(
+      (row) => row.tag_id,
+    ),
+  );
+  const evidenceByBlueprintId = new Map<string, string[]>();
+
+  for (const example of (blueprintExamplesResult.data ?? []) as BlueprintExampleRow[]) {
+    const current = evidenceByBlueprintId.get(example.blueprint_id) ?? [];
+    evidenceByBlueprintId.set(example.blueprint_id, [
+      ...current,
+      ...stringList(example.evidence_snippets),
+    ]);
+  }
+  const activeBlueprints = blueprints.filter(
+    (blueprint) => !blueprint.deleted_at && blueprint.status !== "deprecated",
+  );
+  const archivedBlueprints = blueprints.filter(
+    (blueprint) => !blueprint.deleted_at && blueprint.status === "deprecated",
+  );
+  const trashedBlueprints = blueprints.filter((blueprint) => blueprint.deleted_at);
   const importBatches = ((importBatchesResult.data ?? []) as ImportBatchRow[])
     .map((batch) => ({
       ...batch,
@@ -421,7 +567,7 @@ export default async function AdminBlueprintsPage({
     .slice(0, 5);
   const summary = summarizeQuestionBlueprintLibrary({
     approvedBlueprintCount: blueprints.filter(
-      (blueprint) => blueprint.status === "approved",
+      (blueprint) => blueprint.status === "approved" && !blueprint.deleted_at,
     ).length,
     pendingReviewActionCount: reviewActions.length,
     rejectedReviewActionCount: 0,
@@ -575,7 +721,11 @@ export default async function AdminBlueprintsPage({
         {reviewActions.length ? (
           <div className="grid gap-4 xl:grid-cols-2">
             {reviewActions.map((action) => (
-              <ReviewActionCard action={action} key={action.id} />
+              <ReviewActionCard
+                action={action}
+                key={action.id}
+                knownAssignableTagIds={knownAssignableTagIds}
+              />
             ))}
           </div>
         ) : (
@@ -589,22 +739,55 @@ export default async function AdminBlueprintsPage({
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-xl font-semibold">Approved blueprint library</h2>
+          <h2 className="text-xl font-semibold">Active library</h2>
           <p className="text-sm text-muted-foreground">
             Approved blueprints can manually create original draft questions for
             Review Drafts. They are never published automatically.
           </p>
         </div>
-        {blueprints.length ? (
+        {activeBlueprints.length ? (
           <div className="grid gap-4 xl:grid-cols-2">
-            {blueprints.map((blueprint) => (
-              <LibraryCard blueprint={blueprint} key={blueprint.id} />
+            {activeBlueprints.map((blueprint) => (
+              <LibraryCard
+                blueprint={blueprint}
+                evidenceSnippets={evidenceByBlueprintId.get(blueprint.id) ?? []}
+                key={blueprint.id}
+                knownAssignableTagIds={knownAssignableTagIds}
+              />
             ))}
           </div>
         ) : (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
               No approved blueprints yet.
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-xl font-semibold">Archived / Trash</h2>
+          <p className="text-sm text-muted-foreground">
+            Deprecated and trashed blueprints are preserved for lineage. Permanent
+            hard delete is intentionally deferred.
+          </p>
+        </div>
+        {archivedBlueprints.length || trashedBlueprints.length ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {[...archivedBlueprints, ...trashedBlueprints].map((blueprint) => (
+              <LibraryCard
+                blueprint={blueprint}
+                evidenceSnippets={evidenceByBlueprintId.get(blueprint.id) ?? []}
+                key={blueprint.id}
+                knownAssignableTagIds={knownAssignableTagIds}
+              />
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="pt-6 text-sm text-muted-foreground">
+              No archived or trashed blueprints.
             </CardContent>
           </Card>
         )}
