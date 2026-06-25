@@ -744,11 +744,14 @@ function ProviderResultPreview({
   if (!result) return null;
 
   return (
-    <Card>
+    <Card className="border-primary/30 bg-primary/5">
       <CardHeader>
-        <CardTitle>Provider result preview</CardTitle>
+        <CardTitle>Generation result and Review handoff</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        <p className="text-xs font-medium text-muted-foreground">
+          Provider result preview
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={result.status === "succeeded" ? "secondary" : "destructive"}>
             {result.status}
@@ -786,6 +789,81 @@ function ProviderResultPreview({
   );
 }
 
+function GenerateMissingQuestionsCta({
+  executeAction,
+  generationPlan,
+  runPlan,
+}: {
+  executeAction: (formData: FormData) => Promise<void>;
+  generationPlan: BlueprintGenerationRequestPlan;
+  runPlan: BlueprintProviderRunPlan;
+}) {
+  const readyDeepSeekRuns = runPlan.runs.filter(
+    (run) => run.providerKind === "deepseek" && run.status === "ready",
+  );
+  const primaryRun = readyDeepSeekRuns[0];
+  if (!primaryRun) return null;
+
+  const totalReadyDraftCount = readyDeepSeekRuns.reduce(
+    (total, run) => total + run.promptPayloadPreview.count,
+    0,
+  );
+
+  return (
+    <Card className="border-primary/30">
+      <CardHeader>
+        <CardTitle>Generate missing questions with DeepSeek</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">Manual DeepSeek call</Badge>
+          <Badge variant="outline">
+            Missing coverage: {generationPlan.summary.coverageGapCount}
+          </Badge>
+          <Badge variant="outline">
+            Planned drafts: {primaryRun.promptPayloadPreview.count}
+          </Badge>
+          <Badge variant="outline">Provider/model: DeepSeek / {primaryRun.modelName}</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Generate missing questions runs the first ready DeepSeek request for
+          this blueprint. Generated questions will be draft-only and sent to
+          Review. Review Drafts is the human review step before publishing.
+        </p>
+        {readyDeepSeekRuns.length > 1 ? (
+          <p className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+            This primary action runs 1 of {readyDeepSeekRuns.length} ready
+            DeepSeek requests. Total planned drafts across ready requests:{" "}
+            {totalReadyDraftCount}. Use Advanced provider run details for a
+            specific request.
+          </p>
+        ) : null}
+        <div>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            Selected target tags
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {primaryRun.promptPayloadPreview.targetTags.map((tag) => (
+              <Badge key={tag.tagId} variant="outline">
+                {tag.label}
+                <span className="ml-1 font-mono text-[10px] opacity-70">
+                  {tag.tagId}
+                </span>
+              </Badge>
+            ))}
+          </div>
+        </div>
+        <form action={executeAction}>
+          <input name="request_id" type="hidden" value={primaryRun.requestId} />
+          <FormSubmitButton pendingLabel="Generating missing questions...">
+            Generate missing questions with DeepSeek
+          </FormSubmitButton>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ProviderRunDrafts({
   executeAction,
   runPlan,
@@ -794,11 +872,15 @@ function ProviderRunDrafts({
   runPlan: BlueprintProviderRunPlan;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Provider run shadow plan</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <details className="rounded-md border p-3">
+      <summary className="cursor-pointer text-sm font-semibold">
+        Advanced provider run details
+      </summary>
+      <Card className="mt-3 border-0 shadow-none">
+        <CardHeader className="px-0">
+          <CardTitle>Provider run shadow plan</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 px-0">
         <div className="rounded-md border bg-muted/30 p-3 text-sm">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">Shadow only - no AI call yet</Badge>
@@ -873,8 +955,9 @@ function ProviderRunDrafts({
             No provider run drafts are needed for this preview.
           </p>
         )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </details>
   );
 }
 
@@ -1183,6 +1266,11 @@ export default async function AdminBlueprintsPage({
 
       <BlueprintSummary catalog={catalog} plan={plan} />
       <ProviderResultPreview result={executionResult} />
+      <GenerateMissingQuestionsCta
+        executeAction={runDeepSeekBlueprintGeneration}
+        generationPlan={generationPlan}
+        runPlan={providerRunPlan}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
         <div className="space-y-6">
