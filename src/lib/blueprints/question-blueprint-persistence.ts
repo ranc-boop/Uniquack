@@ -2,6 +2,7 @@ import "server-only";
 
 import type {
   AIQuestionBlueprintDraft,
+  AIQuestionBlueprintTaxonomyGroundingStatus,
   AIQuestionBlueprintDraftPlan,
 } from "@/lib/ai-pdf-import/question-blueprint-analyzer";
 import type {
@@ -97,6 +98,27 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
+function groundingStatusFromTargets(
+  targets: AIQuestionBlueprintDraft["taxonomyTargets"],
+): AIQuestionBlueprintTaxonomyGroundingStatus {
+  const count =
+    Number(targets.concept.length > 0) +
+    Number(targets.form.length > 0) +
+    Number(targets.method.length > 0 || targets.task.length > 0);
+
+  if (count === 3) return "grounded";
+  if (count > 0) return "partially_grounded";
+  return "unresolved";
+}
+
+function groundingStatus(value: unknown, targets: AIQuestionBlueprintDraft["taxonomyTargets"]) {
+  return value === "grounded" ||
+    value === "partially_grounded" ||
+    value === "unresolved"
+    ? value
+    : groundingStatusFromTargets(targets);
+}
+
 function boundedText(value: unknown, maxLength = 240) {
   return typeof value === "string"
     ? value.replace(/\s+/g, " ").trim().slice(0, maxLength)
@@ -114,6 +136,18 @@ function normalizeDraft(value: unknown): AIQuestionBlueprintDraft | null {
   if (!draftId) {
     return null;
   }
+
+  const taxonomyTargets = {
+    concept: stringList(asRecord(draft.taxonomyTargets).concept),
+    curriculum: stringList(asRecord(draft.taxonomyTargets).curriculum),
+    form: stringList(asRecord(draft.taxonomyTargets).form),
+    method: stringList(asRecord(draft.taxonomyTargets).method),
+    task: stringList(asRecord(draft.taxonomyTargets).task),
+  };
+  const taxonomyGroundingStatus = groundingStatus(
+    draft.taxonomyGroundingStatus,
+    taxonomyTargets,
+  );
 
   return {
     answerSpecPattern: {
@@ -167,13 +201,15 @@ function normalizeDraft(value: unknown): AIQuestionBlueprintDraft | null {
     requiredElements: stringList(draft.requiredElements).slice(0, 16),
     reviewRequired: true,
     sourcePacketIds: stringList(draft.sourcePacketIds).slice(0, 12),
-    taxonomyTargets: {
-      concept: stringList(asRecord(draft.taxonomyTargets).concept),
-      curriculum: stringList(asRecord(draft.taxonomyTargets).curriculum),
-      form: stringList(asRecord(draft.taxonomyTargets).form),
-      method: stringList(asRecord(draft.taxonomyTargets).method),
-      task: stringList(asRecord(draft.taxonomyTargets).task),
-    },
+    specificityScore: Number.isFinite(Number(draft.specificityScore))
+      ? Math.min(1, Math.max(0, Number(draft.specificityScore)))
+      : 0.5,
+    specificityWarnings: stringList(draft.specificityWarnings).slice(0, 8),
+    taxonomyGroundingStatus,
+    taxonomyTargetHints: stringList(draft.taxonomyTargetHints).slice(0, 12),
+    taxonomyTargets,
+    taxonomyUnresolved:
+      draft.taxonomyUnresolved === true || taxonomyGroundingStatus !== "grounded",
     title: boundedText(draft.title, 160) || "Question blueprint draft",
     variablePattern: stringList(draft.variablePattern).slice(0, 12),
     warnings: stringList(draft.warnings).slice(0, 12),

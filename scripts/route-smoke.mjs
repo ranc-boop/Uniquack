@@ -64,6 +64,9 @@ assert(
     blueprintPage.includes("Open Review Drafts") &&
     blueprintPage.includes("Active library") &&
     blueprintPage.includes("Archived / Trash") &&
+    blueprintPage.includes("Needs more evidence") &&
+    blueprintPage.includes("Rejected") &&
+    blueprintPage.includes("Edit taxonomy targets") &&
     blueprintPage.includes("Quality gate blockers") &&
     blueprintPage.includes("Generation disabled"),
   "/admin/blueprints source is missing BP6 manual generation CTA or review link",
@@ -73,6 +76,8 @@ assert(
     blueprintActions.includes("archiveQuestionBlueprint") &&
     blueprintActions.includes("restoreQuestionBlueprint") &&
     blueprintActions.includes("moveQuestionBlueprintToTrash") &&
+    blueprintActions.includes("updateBlueprintReviewActionTaxonomyTargets") &&
+    blueprintActions.includes("loadActiveAssignableLeafTaxonomyByFacet") &&
     blueprintActions.includes("importBatchImportJson") &&
     blueprintActions.includes("executeDeepSeekBlueprintGeneration") &&
     blueprintActions.includes("loadActiveAssignableTaxonomyTagIds") &&

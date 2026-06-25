@@ -114,6 +114,10 @@ function actionKindForDraft(
   draft: AIQuestionBlueprintDraft,
   duplicatePatternCount: number,
 ): QuestionBlueprintReviewActionKind {
+  if (draft.taxonomyGroundingStatus !== "grounded" || draft.taxonomyUnresolved) {
+    return "mark_needs_more_evidence";
+  }
+
   if (!hasUsefulEvidence(draft)) {
     return "mark_needs_more_evidence";
   }
@@ -146,6 +150,10 @@ function reasonForAction(
   }
 
   if (actionKind === "mark_needs_more_evidence") {
+    if (draft.taxonomyGroundingStatus !== "grounded" || draft.taxonomyUnresolved) {
+      return "This blueprint needs taxonomy mapping before it can become a reusable library entry.";
+    }
+
     return "Blueprint draft needs more bounded evidence before it can become a reusable library entry.";
   }
 

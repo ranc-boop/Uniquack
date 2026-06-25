@@ -29,11 +29,19 @@ import {
   persistApprovedQuestionBlueprints,
 } from "@/lib/blueprints/question-blueprint-persistence";
 import { createClient } from "@/lib/supabase/server";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 
 function formString(formData: FormData, key: string) {
   const value = formData.get(key);
 
   return typeof value === "string" ? value.trim() : "";
+}
+
+function formStringList(formData: FormData, key: string) {
+  return formData
+    .getAll(key)
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
 }
 
 function formNumber(formData: FormData, key: string, fallback: number) {
@@ -48,6 +56,12 @@ function stringList(value: unknown) {
         .map((item) => (typeof item === "string" ? item.trim() : ""))
         .filter(Boolean)
     : [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function isMissingBlueprintTableError(error: unknown) {
@@ -74,18 +88,75 @@ function blueprintActionError(error: unknown) {
 }
 
 async function loadActiveAssignableTaxonomyTagIds(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data, error } = await supabase
-    .from("taxonomy_nodes")
-    .select("tag_id")
-    .eq("status", "active")
-    .eq("is_assignable", true)
-    .limit(5000);
+  const { catalog, errorMessage } = await loadTaxonomyCatalog(supabase);
 
-  if (error) {
-    throw new Error(error.message);
+  if (errorMessage) {
+    throw new Error(errorMessage);
   }
 
-  return new Set(((data ?? []) as { tag_id: string }[]).map((row) => row.tag_id));
+  const parentTagIds = new Set(
+    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  );
+
+  return new Set(
+    catalog.nodes
+      .filter(
+        (node) =>
+          node.is_assignable &&
+          !parentTagIds.has(node.tag_id) &&
+          node.facet_key,
+      )
+      .map((node) => node.tag_id),
+  );
+}
+
+async function loadActiveAssignableLeafTaxonomyByFacet(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+) {
+  const { catalog, errorMessage } = await loadTaxonomyCatalog(supabase);
+
+  if (errorMessage) {
+    throw new Error(errorMessage);
+  }
+
+  const parentTagIds = new Set(
+    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  );
+  const byFacet = new Map<string, Set<string>>();
+
+  for (const node of catalog.nodes) {
+    if (
+      node.facet_key &&
+      node.is_assignable &&
+      !parentTagIds.has(node.tag_id)
+    ) {
+      byFacet.set(node.facet_key, byFacet.get(node.facet_key) ?? new Set());
+      byFacet.get(node.facet_key)?.add(node.tag_id);
+    }
+  }
+
+  return byFacet;
+}
+
+function taxonomyTargetsFromForm(formData: FormData) {
+  return {
+    curriculum: formStringList(formData, "blueprint_tax_curriculum"),
+    concept: formStringList(formData, "blueprint_tax_concept"),
+    form: formStringList(formData, "blueprint_tax_form"),
+    method: formStringList(formData, "blueprint_tax_method"),
+    task: formStringList(formData, "blueprint_tax_task"),
+  };
+}
+
+function groundingStatusFromTargets(targets: Record<string, string[]>) {
+  const count =
+    Number((targets.concept ?? []).length > 0) +
+    Number((targets.form ?? []).length > 0) +
+    Number((targets.method ?? []).length > 0 || (targets.task ?? []).length > 0);
+
+  if (count === 3) return "grounded";
+  if (count > 0) return "partially_grounded";
+  return "unresolved";
 }
 
 async function loadDeepSeekBlueprintGenerationProvider(
@@ -202,6 +273,104 @@ export async function storeBlueprintReviewActionsFromImportBatch(
 
   revalidatePath("/admin/blueprints");
   redirectWithSaved("/admin/blueprints", "Blueprint review actions stored.");
+}
+
+export async function updateBlueprintReviewActionTaxonomyTargets(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const actionId = formString(formData, "id");
+
+    if (!actionId) {
+      throw new Error("Select a blueprint review action to edit.");
+    }
+
+    const supabase = await createClient();
+    const allowedByFacet = await loadActiveAssignableLeafTaxonomyByFacet(supabase);
+    const taxonomyTargets = taxonomyTargetsFromForm(formData);
+    const invalidSelections: string[] = [];
+
+    for (const [facet, tagIds] of Object.entries(taxonomyTargets)) {
+      const allowed = allowedByFacet.get(facet) ?? new Set<string>();
+
+      for (const tagId of tagIds) {
+        if (!allowed.has(tagId)) {
+          invalidSelections.push(`${tagId} is not an active assignable ${facet} leaf`);
+        }
+      }
+    }
+
+    if (invalidSelections.length) {
+      throw new Error(
+        [
+          "Parent taxonomy nodes cannot be used directly. Choose a specific assignable leaf tag.",
+          ...invalidSelections.map((selection) => `- ${selection}`),
+        ].join("\n"),
+      );
+    }
+
+    const { data: action, error: loadError } = await (supabase as any)
+      .from("question_blueprint_review_actions")
+      .select("draft_snapshot")
+      .eq("id", actionId)
+      .in("status", ["pending_review", "needs_more_evidence"])
+      .maybeSingle();
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+
+    if (!action) {
+      throw new Error("Blueprint review action was not found or cannot be edited.");
+    }
+
+    const draftSnapshot = asRecord(action.draft_snapshot);
+    const taxonomyGroundingStatus = groundingStatusFromTargets(taxonomyTargets);
+    const nextSnapshot = {
+      ...draftSnapshot,
+      specificityWarnings:
+        taxonomyGroundingStatus === "grounded"
+          ? stringList(draftSnapshot.specificityWarnings).filter(
+              (warning) => !/taxonomy/i.test(warning),
+            )
+          : [
+              ...stringList(draftSnapshot.specificityWarnings),
+              "Manual taxonomy mapping is still incomplete.",
+            ],
+      taxonomyGroundingStatus,
+      taxonomyTargetHints: stringList(draftSnapshot.taxonomyTargetHints),
+      taxonomyTargets,
+      taxonomyUnresolved: taxonomyGroundingStatus !== "grounded",
+      warnings:
+        taxonomyGroundingStatus === "grounded"
+          ? stringList(draftSnapshot.warnings).filter(
+              (warning) =>
+                warning !==
+                "question_blueprint_analyzer_taxonomy_grounding_unresolved",
+            )
+          : stringList(draftSnapshot.warnings),
+    };
+
+    const { error } = await (supabase as any)
+      .from("question_blueprint_review_actions")
+      .update({
+        draft_snapshot: nextSnapshot,
+        reviewed_at: null,
+        reviewer_id: null,
+        status: "pending_review",
+        updated_by: profile.id,
+      })
+      .eq("id", actionId)
+      .in("status", ["pending_review", "needs_more_evidence"]);
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint taxonomy targets updated.");
 }
 
 export async function approveQuestionBlueprintReviewAction(formData: FormData) {

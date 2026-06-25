@@ -186,12 +186,14 @@ import {
 } from "@/lib/ai-pdf-import/blueprint-observation-clustering";
 import {
   buildQuestionBlueprintDraftPlanFromClusteredDraftPlans,
+  buildQuestionBlueprintTaxonomyCandidateList,
   executeDeepSeekQuestionBlueprintAnalyzer,
   failedQuestionBlueprintDraftPlan,
   mergeQuestionBlueprintDraftPlanIntoSummary,
   skippedQuestionBlueprintDraftPlan,
   QUESTION_BLUEPRINT_ANALYZER_MISSING_DEEPSEEK_WARNING,
   type AIQuestionBlueprintDraftPlan,
+  type AIQuestionBlueprintTaxonomyCandidate,
 } from "@/lib/ai-pdf-import/question-blueprint-analyzer";
 import {
   buildQuestionBlueprintLibraryPersistencePlan,
@@ -219,6 +221,9 @@ type SupabaseLike = {
 type ActiveTag = {
   id: string;
   facet_key: string | null;
+  label?: string | null;
+  description?: string | null;
+  aliases?: string[];
 };
 
 type ProcessInput = {
@@ -2214,6 +2219,38 @@ async function loadActiveTags(supabase: SupabaseLike) {
   }));
 }
 
+async function loadActiveLeafTaxonomyCandidates(supabase: SupabaseLike) {
+  const { catalog, errorMessage } = await loadTaxonomyCatalog(supabase);
+
+  if (errorMessage) {
+    throw new Error(errorMessage);
+  }
+
+  const parentTagIds = new Set(
+    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  );
+
+  return catalog.nodes
+    .filter(
+      (node) =>
+        node.facet_key &&
+        ["curriculum", "concept", "method", "task", "form"].includes(
+          node.facet_key,
+        ) &&
+        node.is_assignable &&
+        !parentTagIds.has(node.tag_id),
+    )
+    .map(
+      (node): AIQuestionBlueprintTaxonomyCandidate => ({
+        aliases: node.aliases ?? [],
+        description: node.description ?? null,
+        facetKey: node.facet_key as AIQuestionBlueprintTaxonomyCandidate["facetKey"],
+        label: node.label,
+        tagId: node.tag_id,
+      }),
+    );
+}
+
 async function buildImportJson({
   activeTags,
   batchId,
@@ -2708,6 +2745,7 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
 
   const warnings: string[] = [];
   let activeTags: ActiveTag[] = [];
+  let taxonomyCandidates: AIQuestionBlueprintTaxonomyCandidate[] = [];
 
   try {
     activeTags = await loadActiveTags(input.supabase);
@@ -2718,9 +2756,20 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
       }`,
     );
   }
+  try {
+    taxonomyCandidates = await loadActiveLeafTaxonomyCandidates(input.supabase);
+  } catch (error) {
+    warnings.push(
+      `Question blueprint analyzer could not load active assignable leaf taxonomy candidates: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 
-  const knownTaxonomyTagIds = activeTags.length
-    ? new Set(activeTags.map((tag) => tag.id))
+  const knownTaxonomyTagIds = taxonomyCandidates.length
+    ? new Set(taxonomyCandidates.map((tag) => tag.tagId))
+    : activeTags.length
+      ? new Set(activeTags.map((tag) => tag.id))
     : undefined;
   const analyzerProvider = await loadDeepSeekBlueprintAnalyzerProvider(input);
   warnings.push(...analyzerProvider.warnings);
@@ -2765,6 +2814,10 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
           knownTaxonomyTagIds,
           observationPlan: clusterAnalyzerPlan.observationPlan,
           provider: analyzerProvider.provider,
+          taxonomyCandidatesByFacet: buildQuestionBlueprintTaxonomyCandidateList({
+            candidates: taxonomyCandidates,
+            observationPlan: clusterAnalyzerPlan.observationPlan,
+          }),
         });
 
         clusterDraftPlans.push({

@@ -9,9 +9,14 @@ import {
   rejectQuestionBlueprintReviewAction,
   restoreQuestionBlueprint,
   storeBlueprintReviewActionsFromImportBatch,
+  updateBlueprintReviewActionTaxonomyTargets,
 } from "@/app/admin/blueprints/actions";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { MathContent } from "@/components/math-content";
+import {
+  TaxonomyTagTreePicker,
+  type TaxonomyCatalogView,
+} from "@/components/tags/taxonomy-tag-tree-picker";
 import { PageFeedback } from "@/components/page-feedback";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +29,7 @@ import {
 import { validateQuestionBlueprintQuality } from "@/lib/blueprints/question-blueprint-quality";
 import { createClient } from "@/lib/supabase/server";
 import { taxonomyDisplayLabelFromId } from "@/lib/tags/taxonomy-display";
+import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 
 type AdminBlueprintsPageProps = {
   searchParams: Promise<{
@@ -135,6 +141,56 @@ function taxonomyGroups(value: unknown) {
   ] as const;
 }
 
+function selectedTaxonomyTargets(value: unknown) {
+  const targets = asRecord(value);
+
+  return {
+    concept: stringList(targets.concept),
+    curriculum: stringList(targets.curriculum),
+    form: stringList(targets.form),
+    method: stringList(targets.method),
+    task: stringList(targets.task),
+  };
+}
+
+function leafAssignableTagIds(catalog: TaxonomyCatalogView) {
+  const parentTagIds = new Set(
+    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  );
+
+  return new Set(
+    catalog.nodes
+      .filter(
+        (node) =>
+          node.facet_key &&
+          node.is_assignable &&
+          !parentTagIds.has(node.tag_id),
+      )
+      .map((node) => node.tag_id),
+  );
+}
+
+function readableReviewReason(action: BlueprintReviewRow) {
+  const draft = asRecord(action.draft_snapshot);
+  const status = firstString(draft.taxonomyGroundingStatus, "unresolved");
+  const sourcePacketIds = stringList(draft.sourcePacketIds);
+  const clusterIndex = sourcePacketIds.findIndex((id) =>
+    id.includes("blueprint-observation-cluster-"),
+  );
+
+  if (status !== "grounded" || draft.taxonomyUnresolved === true) {
+    return clusterIndex >= 0
+      ? `This blueprint came from observation cluster ${clusterIndex + 1} and needs taxonomy mapping before approval.`
+      : "This blueprint needs taxonomy mapping before approval.";
+  }
+
+  if (/question_blueprint_analyzer_cluster_source:/i.test(action.reason)) {
+    return "This blueprint came from a focused observation cluster and is ready for human review.";
+  }
+
+  return action.reason;
+}
+
 function TaxonomyTargets({ targets }: { targets: unknown }) {
   const groups = taxonomyGroups(targets);
 
@@ -186,6 +242,8 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
   const snippets = stringList(evidence.boundedSnippets).slice(0, 3);
   const requiredElements = stringList(draft.requiredElements).slice(0, 6);
   const generationConstraints = stringList(draft.generationConstraints).slice(0, 5);
+  const taxonomyTargetHints = stringList(draft.taxonomyTargetHints).slice(0, 8);
+  const specificityWarnings = stringList(draft.specificityWarnings).slice(0, 4);
 
   return (
     <div className="space-y-3">
@@ -199,7 +257,38 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
           value={firstString(draft.questionPattern, "No reusable pattern summary.")}
         />
       </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <Badge variant="outline">
+          Taxonomy grounding:{" "}
+          {firstString(draft.taxonomyGroundingStatus, "unresolved").replaceAll(
+            "_",
+            " ",
+          )}
+        </Badge>
+        <Badge variant="outline">
+          Specificity:{" "}
+          {Number.isFinite(Number(draft.specificityScore))
+            ? Number(draft.specificityScore).toFixed(2)
+            : "0.50"}
+        </Badge>
+      </div>
       <TaxonomyTargets targets={draft.taxonomyTargets} />
+      {taxonomyTargetHints.length ? (
+        <div>
+          <p className="text-xs font-medium">Taxonomy target hints</p>
+          <p className="text-xs text-muted-foreground">
+            {taxonomyTargetHints.join("; ")}
+          </p>
+        </div>
+      ) : null}
+      {specificityWarnings.length ? (
+        <div>
+          <p className="text-xs font-medium">Specificity warnings</p>
+          <p className="text-xs text-muted-foreground">
+            {specificityWarnings.join("; ")}
+          </p>
+        </div>
+      ) : null}
       {requiredElements.length ? (
         <div>
           <p className="text-xs font-medium">Required elements</p>
@@ -241,16 +330,21 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
 function ReviewActionCard({
   action,
   knownAssignableTagIds,
+  taxonomyCatalog,
 }: {
   action: BlueprintReviewRow;
   knownAssignableTagIds: ReadonlySet<string>;
+  taxonomyCatalog: TaxonomyCatalogView;
 }) {
-  const isApproveReady = action.action_kind === "approve_blueprint";
   const readiness = getQuestionBlueprintApprovalReadinessFromReviewAction(
     action,
     knownAssignableTagIds,
   );
-  const canApprove = isApproveReady && readiness.approvalReady;
+  const canApprove = action.status === "pending_review" && readiness.approvalReady;
+  const draft = asRecord(action.draft_snapshot);
+  const selectedTagIds = selectedTaxonomyTargets(draft.taxonomyTargets);
+  const rawWarnings = stringList(draft.warnings);
+  const canEdit = action.status === "pending_review" || action.status === "needs_more_evidence";
 
   return (
     <Card>
@@ -271,9 +365,35 @@ function ReviewActionCard({
         <MathContent
           className="text-sm text-muted-foreground"
           format="plain"
-          value={action.reason}
+          value={readableReviewReason(action)}
         />
         <DraftSnapshotSummary snapshot={action.draft_snapshot} />
+        {canEdit ? (
+          <details className="rounded-md border bg-muted/20 p-3">
+            <summary className="cursor-pointer text-sm font-medium">
+              Edit taxonomy targets
+            </summary>
+            <form action={updateBlueprintReviewActionTaxonomyTargets} className="mt-3 space-y-3">
+              <input name="id" type="hidden" value={action.id} />
+              <TaxonomyTagTreePicker
+                defaultOpenFacetKeys={["concept", "method", "task", "form"]}
+                namePrefix="blueprint_tax"
+                selectable="assignable_leaf"
+                selectedTagIds={selectedTagIds}
+                taxonomyCatalog={taxonomyCatalog}
+                title="Edit taxonomy targets"
+              />
+              <p className="text-xs text-muted-foreground">
+                Parent taxonomy nodes cannot be used directly. Choose a specific
+                assignable leaf tag.
+              </p>
+              <FormSubmitButton pendingLabel="Updating..." size="sm" variant="outline">
+                Save taxonomy targets
+              </FormSubmitButton>
+            </form>
+          </details>
+        ) : null}
+        {action.status !== "rejected" ? (
         <div className="flex flex-wrap gap-2">
           {canApprove ? (
             <form action={approveQuestionBlueprintReviewAction}>
@@ -285,12 +405,14 @@ function ReviewActionCard({
           ) : (
             <Badge variant="outline">Needs more evidence before approval</Badge>
           )}
-          <form action={markQuestionBlueprintNeedsEvidence}>
-            <input name="id" type="hidden" value={action.id} />
-            <FormSubmitButton pendingLabel="Marking..." size="sm" variant="outline">
-              Needs more evidence
-            </FormSubmitButton>
-          </form>
+          {action.status === "pending_review" ? (
+            <form action={markQuestionBlueprintNeedsEvidence}>
+              <input name="id" type="hidden" value={action.id} />
+              <FormSubmitButton pendingLabel="Marking..." size="sm" variant="outline">
+                Needs more evidence
+              </FormSubmitButton>
+            </form>
+          ) : null}
           <form action={rejectQuestionBlueprintReviewAction}>
             <input name="id" type="hidden" value={action.id} />
             <FormSubmitButton pendingLabel="Rejecting..." size="sm" variant="destructive">
@@ -298,9 +420,27 @@ function ReviewActionCard({
             </FormSubmitButton>
           </form>
         </div>
+        ) : null}
         {!canApprove ? (
           <ReasonList reasons={readiness.approvalBlockingReasons} />
         ) : null}
+        <details className="rounded-md border bg-muted/10 px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+            Debug details
+          </summary>
+          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+            <div className="break-all">
+              Raw reason:{" "}
+              <MathContent format="plain" value={action.reason} />
+            </div>
+            {rawWarnings.length ? (
+              <div className="break-all">
+                Raw warnings:{" "}
+                <MathContent format="plain" value={rawWarnings.join("; ")} />
+              </div>
+            ) : null}
+          </div>
+        </details>
       </CardContent>
     </Card>
   );
@@ -493,16 +633,16 @@ export default async function AdminBlueprintsPage({
     blueprintsResult,
     importBatchesResult,
     blueprintExamplesResult,
-    taxonomyNodesResult,
+    taxonomyCatalogResult,
   ] = await Promise.all([
     (supabase as any)
       .from("question_blueprint_review_actions")
       .select(
         "id, action_id, blueprint_draft_id, action_kind, status, reason, evidence, draft_snapshot, import_batch_id, created_at",
       )
-      .eq("status", "pending_review")
+      .in("status", ["pending_review", "needs_more_evidence", "rejected"])
       .order("created_at", { ascending: false })
-      .limit(20),
+      .limit(60),
     (supabase as any)
       .from("question_blueprints")
       .select(
@@ -519,12 +659,7 @@ export default async function AdminBlueprintsPage({
       .from("question_blueprint_examples")
       .select("blueprint_id, evidence_snippets")
       .limit(200),
-    supabase
-      .from("taxonomy_nodes")
-      .select("tag_id")
-      .eq("status", "active")
-      .eq("is_assignable", true)
-      .limit(5000),
+    loadTaxonomyCatalog(supabase),
   ]);
   const setupNeeded =
     isMissingBlueprintTableError(reviewActionsResult.error) ||
@@ -536,10 +671,16 @@ export default async function AdminBlueprintsPage({
   const blueprints = setupNeeded
     ? []
     : ((blueprintsResult.data ?? []) as BlueprintRow[]);
-  const knownAssignableTagIds = new Set(
-    ((taxonomyNodesResult.data ?? []) as { tag_id: string }[]).map(
-      (row) => row.tag_id,
-    ),
+  const taxonomyCatalog = taxonomyCatalogResult.catalog;
+  const knownAssignableTagIds = leafAssignableTagIds(taxonomyCatalog);
+  const pendingReviewActions = reviewActions.filter(
+    (action) => action.status === "pending_review",
+  );
+  const needsMoreEvidenceActions = reviewActions.filter(
+    (action) => action.status === "needs_more_evidence",
+  );
+  const rejectedReviewActions = reviewActions.filter(
+    (action) => action.status === "rejected",
   );
   const evidenceByBlueprintId = new Map<string, string[]>();
 
@@ -569,12 +710,12 @@ export default async function AdminBlueprintsPage({
     approvedBlueprintCount: blueprints.filter(
       (blueprint) => blueprint.status === "approved" && !blueprint.deleted_at,
     ).length,
-    pendingReviewActionCount: reviewActions.length,
-    rejectedReviewActionCount: 0,
+    pendingReviewActionCount: pendingReviewActions.length,
+    rejectedReviewActionCount: rejectedReviewActions.length,
   });
   const seedPlan = buildQuestionBlueprintLibrarySeedPlan({
     existingBlueprintCount: blueprints.length,
-    pendingReviewActionCount: reviewActions.length,
+    pendingReviewActionCount: pendingReviewActions.length,
     sourceImportBatchCount: importBatches.length,
   });
 
@@ -645,6 +786,14 @@ export default async function AdminBlueprintsPage({
         </Card>
         <Card>
           <CardContent className="pt-6">
+            <p className="text-xs text-muted-foreground">Needs more evidence</p>
+            <p className="text-2xl font-semibold">
+              {needsMoreEvidenceActions.length}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">Approved library</p>
             <p className="text-2xl font-semibold">
               {summary.approvedBlueprintCount}
@@ -653,19 +802,8 @@ export default async function AdminBlueprintsPage({
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-xs text-muted-foreground">Import plans found</p>
-            <p className="text-2xl font-semibold">
-              {seedPlan.sourceImportBatchCount}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-xs text-muted-foreground">Safety</p>
-            <p className="text-sm font-medium">Manual generation only</p>
-            <p className="text-xs text-muted-foreground">
-              Review Drafts required before publishing
-            </p>
+            <p className="text-xs text-muted-foreground">Rejected</p>
+            <p className="text-2xl font-semibold">{rejectedReviewActions.length}</p>
           </CardContent>
         </Card>
       </div>
@@ -718,13 +856,14 @@ export default async function AdminBlueprintsPage({
             requests do not generate questions.
           </p>
         </div>
-        {reviewActions.length ? (
+        {pendingReviewActions.length ? (
           <div className="grid gap-4 xl:grid-cols-2">
-            {reviewActions.map((action) => (
+            {pendingReviewActions.map((action) => (
               <ReviewActionCard
                 action={action}
                 key={action.id}
                 knownAssignableTagIds={knownAssignableTagIds}
+                taxonomyCatalog={taxonomyCatalog}
               />
             ))}
           </div>
@@ -732,6 +871,62 @@ export default async function AdminBlueprintsPage({
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
               No pending blueprint review actions.
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-xl font-semibold">Needs more evidence</h2>
+          <p className="text-sm text-muted-foreground">
+            These blueprint drafts are preserved for follow-up. Add taxonomy
+            targets or gather stronger source evidence, then save edits to move
+            them back to pending review.
+          </p>
+        </div>
+        {needsMoreEvidenceActions.length ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {needsMoreEvidenceActions.map((action) => (
+              <ReviewActionCard
+                action={action}
+                key={action.id}
+                knownAssignableTagIds={knownAssignableTagIds}
+                taxonomyCatalog={taxonomyCatalog}
+              />
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="pt-6 text-sm text-muted-foreground">
+              No blueprint drafts currently need more evidence.
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-xl font-semibold">Rejected</h2>
+          <p className="text-sm text-muted-foreground">
+            Rejected blueprint drafts remain visible for audit and comparison.
+          </p>
+        </div>
+        {rejectedReviewActions.length ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {rejectedReviewActions.map((action) => (
+              <ReviewActionCard
+                action={action}
+                key={action.id}
+                knownAssignableTagIds={knownAssignableTagIds}
+                taxonomyCatalog={taxonomyCatalog}
+              />
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="pt-6 text-sm text-muted-foreground">
+              No rejected blueprint drafts.
             </CardContent>
           </Card>
         )}
