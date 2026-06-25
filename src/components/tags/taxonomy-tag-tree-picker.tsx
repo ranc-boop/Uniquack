@@ -35,7 +35,7 @@ type TaxonomyTagTreePickerProps = {
   namePrefix: string;
   searchName?: string;
   searchQuery?: string;
-  selectable?: "all" | "assignable";
+  selectable?: "all" | "assignable" | "assignable_leaf";
   selectedTagIds?: SelectedTagMap;
   taxonomyCatalog: TaxonomyCatalogView;
   title?: string;
@@ -152,7 +152,7 @@ function TreeNode({
   namePrefix: string;
   node: TaxonomyNodeView;
   query: string;
-  selectable: "all" | "assignable";
+  selectable: "all" | "assignable" | "assignable_leaf";
   selected: Set<string>;
 }) {
   const children = (childrenById.get(node.tag_id) ?? []).filter(
@@ -165,7 +165,10 @@ function TreeNode({
 
   const aliases = node.aliases ?? [];
   const isSelected = selected.has(node.tag_id);
-  const canSelect = selectable === "all" || node.is_assignable !== false;
+  const canSelect =
+    selectable === "all" ||
+    (node.is_assignable !== false &&
+      (selectable !== "assignable_leaf" || children.length === 0));
   const shouldOpen =
     Boolean(query) ||
     (level > 0 &&
@@ -195,7 +198,7 @@ function TreeNode({
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{nodeLabel(node)}</span>
-            {node.is_assignable === false ? (
+            {!canSelect ? (
               <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 group
               </span>

@@ -395,6 +395,8 @@ for (const expectedText of [
   "Open Review Drafts",
   "Provider result preview",
   "Generated questions are draft-only and require review.",
+  "Parent taxonomy nodes cannot be used directly. Choose a specific assignable leaf tag.",
+  "No active assignable leaf taxonomy tags are available.",
 ]) {
   assert(blueprintPage.includes(expectedText), `blueprint page is missing ${expectedText}`);
 }
@@ -407,9 +409,17 @@ for (const helperName of [
   "loadTaxonomyCatalog",
   "persistBlueprintReviewDrafts",
   "TaxonomyTagTreePicker",
+  "activeAssignableLeafNodes",
+  "strippedTargetWarnings",
+  "selectedTagsByFacet",
+  'selectable="assignable_leaf"',
 ]) {
   assert(blueprintPage.includes(helperName), `blueprint page does not use ${helperName}`);
 }
+assert(
+  blueprintPage.includes("targetSelection.warnings"),
+  "blueprint page must show readable warnings when parent target tags are stripped",
+);
 assert(blueprintPage.includes("question_taxonomy_assignments"), "blueprint page must use taxonomy assignments for candidates");
 assert(blueprintPage.includes("review_status"), "blueprint page must support reviewed-only candidates");
 assert(!blueprintPage.includes("question_tags"), "blueprint page must not use legacy question_tags");
