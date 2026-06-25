@@ -5,6 +5,7 @@ import type {
   AIBlueprintObservationPlan,
   AINormalizedBlueprintObservationPacket,
 } from "@/lib/ai-pdf-import/blueprint-observation";
+import type { AIBlueprintObservationCluster } from "@/lib/ai-pdf-import/blueprint-observation-clustering";
 
 export type AIQuestionBlueprintDraftPlanVersion =
   "question_blueprint_draft_plan_v1";
@@ -401,6 +402,7 @@ export function buildQuestionBlueprintAnalyzerPrompt({
     AI_QUESTION_BLUEPRINT_ANALYZER_PROMPT_CONTRACT,
     "",
     "You receive only normalized text-only observation packets from the website.",
+    "If packet IDs include blueprint observation cluster prefixes, analyze only that cluster and do not merge it with other clusters.",
     "Never request or infer raw PDF text, image bytes, base64, private URLs, provider response text, or secrets.",
     "Do not write final taxonomy assignments. Use exact taxonomy tag IDs only if they are clearly present in packet hints; otherwise leave targets empty and preserve short hints as generation constraints.",
     "Every draft must be reviewRequired: true and must describe reusable structure, not finished question content.",
@@ -668,6 +670,95 @@ export function buildQuestionBlueprintDraftPlanFromAnalyzerResponse({
         ? "completed_with_warnings"
         : "completed",
     warnings,
+  });
+}
+
+export function buildQuestionBlueprintDraftPlanFromClusteredDraftPlans({
+  clusterDraftPlans,
+  observationPlan,
+  warnings = [],
+}: {
+  clusterDraftPlans: {
+    cluster: AIBlueprintObservationCluster;
+    draftPlan: AIQuestionBlueprintDraftPlan;
+  }[];
+  observationPlan: AIBlueprintObservationPlan;
+  warnings?: string[];
+}) {
+  const blueprintDrafts = clusterDraftPlans.flatMap(
+    ({ cluster, draftPlan }, clusterIndex) =>
+      draftPlan.blueprintDrafts.map((draft, draftIndex) => ({
+        ...draft,
+        draftId: boundedText(
+          `${cluster.clusterId}-${draft.draftId || `draft-${draftIndex + 1}`}`,
+          80,
+        ),
+        evidence: {
+          ...draft.evidence,
+          boundedSnippets: uniqueStrings([
+            `Blueprint observation cluster: ${cluster.representativeTitle}`,
+            ...draft.evidence.boundedSnippets,
+          ]).slice(0, 8),
+        },
+        generationConstraints: uniqueStrings([
+          `Blueprint observation cluster: ${cluster.clusterId}`,
+          `Cluster title: ${cluster.representativeTitle}`,
+          ...draft.generationConstraints,
+        ]).slice(0, 12),
+        sourcePacketIds: uniqueStrings([
+          ...cluster.normalizedAnalyzerPacketIds,
+          ...draft.sourcePacketIds,
+        ]).slice(0, 12),
+        title:
+          draft.title ||
+          `Cluster ${clusterIndex + 1} blueprint draft ${draftIndex + 1}`,
+        warnings: uniqueStrings([
+          `question_blueprint_analyzer_cluster_source:${cluster.clusterId}`,
+          ...cluster.warnings,
+          ...draft.warnings,
+        ]),
+      })),
+  );
+  const mergedWarnings = uniqueStrings([
+    ...warnings,
+    ...clusterDraftPlans.flatMap(({ cluster, draftPlan }) => [
+      ...cluster.warnings,
+      ...draftPlan.warnings.map(
+        (warning) => `${cluster.clusterId}: ${warning}`,
+      ),
+    ]),
+    ...(clusterDraftPlans.length
+      ? []
+      : ["question_blueprint_analyzer_missing_clustered_inputs"]),
+  ]);
+  const analyzerProviderCallCount = clusterDraftPlans.reduce(
+    (total, { draftPlan }) =>
+      total + draftPlan.stats.analyzerProviderCallCount,
+    0,
+  );
+  const normalizedPacketCount =
+    clusterDraftPlans.reduce(
+      (total, { cluster }) =>
+        total + cluster.normalizedAnalyzerPacketIds.length,
+      0,
+    ) || observationPlan.stats.normalizedPacketCount;
+  const hasFailedCluster = clusterDraftPlans.some(
+    ({ draftPlan }) => draftPlan.status === "failed",
+  );
+
+  return buildPlan({
+    analyzerProviderCallCount,
+    blueprintDrafts,
+    normalizedPacketCount,
+    sourceObservationPlanRef: sourceObservationRef(observationPlan),
+    status: blueprintDrafts.length
+      ? mergedWarnings.length || hasFailedCluster
+        ? "completed_with_warnings"
+        : "completed"
+      : hasFailedCluster
+        ? "failed"
+        : "skipped",
+    warnings: mergedWarnings,
   });
 }
 
