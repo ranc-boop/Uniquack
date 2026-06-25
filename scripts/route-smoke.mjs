@@ -60,16 +60,25 @@ const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 assert(
   blueprintPage.includes("Generate original draft questions") &&
     blueprintPage.includes("Manual DeepSeek call") &&
-    blueprintPage.includes("Open Review Drafts"),
+    blueprintPage.includes("Open Review Drafts") &&
+    blueprintPage.includes("Active library") &&
+    blueprintPage.includes("Archived / Trash") &&
+    blueprintPage.includes("Quality gate blockers") &&
+    blueprintPage.includes("Generation disabled"),
   "/admin/blueprints source is missing BP6 manual generation CTA or review link",
 );
 assert(
   blueprintActions.includes("generateOriginalQuestionsFromApprovedBlueprint") &&
+    blueprintActions.includes("archiveQuestionBlueprint") &&
+    blueprintActions.includes("restoreQuestionBlueprint") &&
+    blueprintActions.includes("moveQuestionBlueprintToTrash") &&
     blueprintActions.includes("importBatchImportJson") &&
     blueprintActions.includes("executeDeepSeekBlueprintGeneration") &&
+    blueprintActions.includes("loadActiveAssignableTaxonomyTagIds") &&
+    !blueprintActions.includes(".delete(") &&
     !blueprintActions.includes("generateWithGeminiNativePdf") &&
     !blueprintActions.includes("callAIPdfExtractionProvider"),
   "/admin/blueprints action must use manual DeepSeek generation without AI PDF extraction",
 );
-console.log("PASS /admin/blueprints source exposes manual DeepSeek draft generation safely");
+console.log("PASS /admin/blueprints source exposes lifecycle-gated DeepSeek draft generation safely");
 console.log("PASS route smoke uses taxonomy routes without legacy tag setup");

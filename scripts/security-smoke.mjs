@@ -91,6 +91,7 @@ const questionBlueprintLibrary = await read("src/lib/blueprints/question-bluepri
 const questionBlueprintPersistence = await read("src/lib/blueprints/question-blueprint-persistence.ts");
 const questionBlueprintGeneration = await read("src/lib/blueprints/question-blueprint-generation.ts");
 const questionBlueprintGenerationReview = await read("src/lib/blueprints/question-blueprint-generation-review.ts");
+const questionBlueprintQuality = await read("src/lib/blueprints/question-blueprint-quality.ts");
 const questionBlueprintMigration = await read("supabase/migrations/0015_question_blueprint_library.sql");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
@@ -405,6 +406,40 @@ assert(!questionBlueprintPersistence.includes("importBatchImportJson"), "questio
 assert(!questionBlueprintPersistence.includes("callAIPdfExtractionProvider"), "question blueprint persistence must not run extraction");
 console.log("PASS question blueprint DB migration and persistence helpers are admin-only");
 
+for (const expectedText of [
+  "validateQuestionBlueprintQuality",
+  "generationReady",
+  "generationBlockingReasons",
+  "approvalReady",
+  "approvalBlockingReasons",
+  "At least one active assignable concept leaf is required.",
+  "At least one active assignable method or task leaf is required.",
+  "At least one active assignable form leaf is required.",
+  "Originality constraints must be provided.",
+  "Bounded source evidence is required.",
+  "MCQ option and correct-answer guidance is required.",
+  "MCQ distractor pattern is required.",
+  "Fill-blank answer structure guidance is required.",
+]) {
+  assert(
+    questionBlueprintQuality.includes(expectedText),
+    `question blueprint quality gate is missing ${expectedText}`,
+  );
+}
+assert(
+  questionBlueprintPersistence.includes("getQuestionBlueprintApprovalReadinessFromReviewAction") &&
+    questionBlueprintPersistence.includes("knownAssignableTagIds") &&
+    questionBlueprintPersistence.includes("Blueprint is not approval-ready:"),
+  "question blueprint persistence must enforce approval quality gates before approval",
+);
+assert(
+  !questionBlueprintQuality.includes("fetch(") &&
+    !questionBlueprintQuality.includes("supabase.from(") &&
+    !questionBlueprintQuality.includes("importBatchImportJson"),
+  "question blueprint quality helper must be pure and provider/DB-free",
+);
+console.log("PASS question blueprint quality gates block invalid approval/generation inputs");
+
 for (const exportName of [
   "buildQuestionBlueprintGenerationRequest",
   "buildQuestionBlueprintGenerationPrompt",
@@ -430,6 +465,7 @@ for (const expectedText of [
   "reviewRequired: true",
   "response_format: { type: \"json_object\" }",
   "DeepSeek blueprint generation failed with provider status",
+  "Blueprint is not generation-ready:",
 ]) {
   assert(
     questionBlueprintGeneration.includes(expectedText),
@@ -594,7 +630,7 @@ assert(
 );
 assert(
   blueprintPage.includes("Pending blueprint review actions") &&
-    blueprintPage.includes("Approved blueprint library") &&
+    blueprintPage.includes("Active library") &&
     blueprintPage.includes("Store review actions") &&
     blueprintPage.includes("Approve blueprint") &&
     blueprintPage.includes("Needs more evidence") &&
@@ -619,6 +655,10 @@ assert(
 );
 assert(
   blueprintActions.includes("generateOriginalQuestionsFromApprovedBlueprint") &&
+    blueprintActions.includes("archiveQuestionBlueprint") &&
+    blueprintActions.includes("restoreQuestionBlueprint") &&
+    blueprintActions.includes("moveQuestionBlueprintToTrash") &&
+    blueprintActions.includes("loadActiveAssignableTaxonomyTagIds") &&
     blueprintActions.includes("loadDeepSeekBlueprintGenerationProvider") &&
     blueprintActions.includes("executeDeepSeekBlueprintGeneration") &&
     blueprintActions.includes("importBatchImportJson") &&
@@ -626,6 +666,18 @@ assert(
     blueprintActions.includes("originalityChecked: true") &&
     blueprintActions.includes("DeepSeek provider is not configured or not enabled."),
   "blueprint generation action must be admin-only, DeepSeek-only, and Review-Draft-only",
+);
+assert(
+  blueprintActions.includes("deleted_at: new Date().toISOString()") &&
+    blueprintActions.includes("status: \"deprecated\"") &&
+    blueprintActions.includes("Permanent delete is deferred to preserve lineage.") &&
+    !blueprintActions.includes(".delete("),
+  "blueprint lifecycle actions must use soft delete/archive and avoid hard delete",
+);
+assert(
+  blueprintActions.indexOf("buildQuestionBlueprintGenerationRequest") <
+    blueprintActions.indexOf("loadDeepSeekBlueprintGenerationProvider"),
+  "blueprint generation readiness must be checked before loading/calling DeepSeek",
 );
 assert(
   !blueprintActions.includes("generateWithGeminiNativePdf") &&
@@ -649,4 +701,16 @@ for (const removedBlueprintSurface of [
     `old blueprint product surface remains on library page: ${removedBlueprintSurface}`,
   );
 }
-console.log("PASS question blueprint library admin surface is admin-only with manual DeepSeek Review-Draft handoff");
+assert(
+  blueprintPage.includes("Active library") &&
+    blueprintPage.includes("Archived / Trash") &&
+    blueprintPage.includes("Quality gate blockers") &&
+    blueprintPage.includes("Generation disabled") &&
+    blueprintPage.includes("Deprecate") &&
+    blueprintPage.includes("Move to trash") &&
+    blueprintPage.includes("Restore") &&
+    blueprintPage.includes("Permanent") &&
+    blueprintPage.includes("hard delete is intentionally deferred"),
+  "blueprint page must expose lifecycle controls and readable quality blockers",
+);
+console.log("PASS question blueprint library admin surface has lifecycle gates and manual Review-Draft handoff");
