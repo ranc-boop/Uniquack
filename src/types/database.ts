@@ -300,6 +300,13 @@ export type PracticeSession = {
   completed_question_ids: string[];
   course_framework_id: string | null;
   course_framework_snapshot: Json | null;
+  session_plan: Json;
+  session_thread_messages: Json;
+  session_state: Json;
+  outline_user_notes: string;
+  next_user_notes: string;
+  cache_prefix_version: string;
+  preference_dirty_at: string | null;
   status: "active" | "archived";
   preference_merged_at: string | null;
   last_activity_at: string;
@@ -431,6 +438,9 @@ export type PracticeAgentEpisode = {
   round_id: string | null;
   episode_index: number;
   recommend_context: Json;
+  round_contract: Json;
+  episode_card: Json;
+  cache_thread_entry: Json;
   tool_trace_summary: Json;
   student_attempt_summary: Json;
   review_diagnosis: Json;

@@ -230,7 +230,16 @@ export async function callPracticeChatModel({
       : null
     : undefined;
   const contentText = typeof message.content === "string" ? message.content : "";
-  const rawToolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  const legacyFunctionCall = message.function_call?.name
+    ? [{
+      function: message.function_call,
+      id: `practice-tool-${Date.now()}-legacy`,
+      type: "function",
+    }]
+    : [];
+  const rawToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length
+    ? message.tool_calls
+    : legacyFunctionCall;
   const toolCalls: PracticeToolCall[] = rawToolCalls
     .filter((item: any) => item?.function?.name)
     .map((item: any, index: number) => ({

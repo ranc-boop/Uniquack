@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
+import { isPracticeFullCallLogEnabled, isPracticeStatsLogEnabled } from "@/lib/practice/context";
 import {
   countPendingPreferenceJobs,
   getOrCreatePracticePreference,
@@ -28,6 +29,8 @@ export async function GET() {
     lastAgentUpdatedAt: preference.last_agent_updated_at,
     longTermPreference: preference.long_term_preference,
     pendingMergeCount,
+    cacheStatsEnabled: isPracticeStatsLogEnabled(),
+    fullCallLogsEnabled: isPracticeFullCallLogEnabled(),
   });
 }
 
@@ -76,6 +79,8 @@ export async function PATCH(request: Request) {
     lastAgentUpdatedAt: data.last_agent_updated_at,
     longTermPreference: data.long_term_preference,
     pendingMergeCount,
+    cacheStatsEnabled: isPracticeStatsLogEnabled(),
+    fullCallLogsEnabled: isPracticeFullCallLogEnabled(),
   });
 }
 
@@ -112,5 +117,7 @@ export async function DELETE() {
     lastAgentUpdatedAt: data.last_agent_updated_at,
     longTermPreference: data.long_term_preference,
     pendingMergeCount,
+    cacheStatsEnabled: isPracticeStatsLogEnabled(),
+    fullCallLogsEnabled: isPracticeFullCallLogEnabled(),
   });
 }

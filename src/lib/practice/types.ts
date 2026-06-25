@@ -11,9 +11,12 @@ export type PracticeTraceEvent = {
   elapsedMs?: number;
   error?: string;
   inputSummary?: string;
+  inputPayload?: unknown;
   iteration?: number;
   llmUsage?: Record<string, unknown> | null;
+  modelThought?: string;
   outputSummary?: string;
+  outputPayload?: unknown;
   phase: PracticePhase | "context";
   resultCount?: number;
   savedFullPayload?: boolean;
@@ -59,6 +62,7 @@ export type PracticeRecommendRequest = {
   sessionId?: string;
   sessionMemory?: string;
   tagContext?: PracticeTagContext;
+  userNextRoundNote?: string;
   wrongQuestionIds?: string[];
 };
 
@@ -68,10 +72,13 @@ export type PracticeRecommendResponse = {
   mode: "ai" | "heuristic";
   providerLabel?: string;
   recommendations: PracticeRecommendation[];
+  roundContract?: unknown;
   roundId?: string;
   roundGoal: string;
   sessionMemory: string;
   sessionId?: string;
+  sessionPlan?: unknown;
+  sessionState?: unknown;
   tagContext: PracticeTagContext;
   trace: PracticeTraceEvent[];
 };
@@ -156,9 +163,11 @@ export type PracticeReviewRequest = {
   roundId?: string;
   sessionId?: string;
   sessionMemory?: string;
+  userNextRoundNote?: string;
 };
 
 export type PracticeReviewResponse = {
+  episodeCard?: unknown;
   llmUsage?: Record<string, unknown>[];
   memoryUpdate?: PracticeMemoryUpdate;
   mode: "ai" | "heuristic";
@@ -168,6 +177,7 @@ export type PracticeReviewResponse = {
   results?: PracticeGradeResult[];
   roundPatterns?: string[];
   sessionId?: string;
+  sessionState?: unknown;
   summary: string;
   trace: PracticeTraceEvent[];
   updatedSessionMemory: string;
@@ -185,6 +195,7 @@ export type PracticeCourseFrameworkSummary = {
 };
 
 export type PracticeSessionSummary = {
+  cachePrefixVersion?: string;
   completedQuestionIds: string[];
   courseFrameworkId?: string | null;
   courseFrameworkSnapshot?: unknown;
@@ -192,8 +203,12 @@ export type PracticeSessionSummary = {
   goal: string;
   id: string;
   lastActivityAt: string;
+  outlineUserNotes?: string;
   roundCount: number;
   sessionMemory: string;
+  sessionPlan?: unknown;
+  sessionState?: unknown;
+  sessionThreadMessages?: unknown[];
   status: "active" | "archived";
   tagContext: PracticeTagContext;
   title: string;
@@ -237,6 +252,7 @@ export type PracticeRoundHistory = {
     correct: number;
     total: number;
   };
+  trace: PracticeTraceEvent[];
 };
 
 export type PracticeSessionDetail = PracticeSessionSummary & {
@@ -258,6 +274,8 @@ export type PracticeWrongQuestionView = {
 };
 
 export type PracticePreferenceResponse = {
+  cacheStatsEnabled?: boolean;
+  fullCallLogsEnabled?: boolean;
   lastAgentUpdatedAt: string | null;
   longTermPreference: string;
   pendingMergeCount: number;

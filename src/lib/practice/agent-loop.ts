@@ -8,7 +8,7 @@ import {
   type PracticeToolCall,
   type PracticeToolDefinition,
 } from "@/lib/practice/ai";
-import { buildToolDigest, compactSessionMemory, summarizeLLMUsage, writePracticeFullCallLog } from "@/lib/practice/context";
+import { buildToolDigest, buildUsageEnvelope, compactSessionMemory, stableHash, stableStringify, summarizeLLMUsage, writePracticeFullCallLog, writePracticeStatsLog } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import type {
   PracticeQuestionCandidate,
@@ -46,8 +46,10 @@ type FinalizeArgs = {
   keep_tags?: string[];
   question_ids?: string[];
   reasons?: Record<string, string>;
+  round_contract?: Record<string, unknown>;
   round_goal?: string;
   session_memory?: string;
+  session_state?: Record<string, unknown>;
   visible_thought?: string;
 };
 
@@ -171,7 +173,7 @@ function asNumber(value: unknown, fallback: number, min: number, max: number) {
 }
 
 function compactObservation(value: unknown, maxChars = 5200) {
-  return JSON.stringify(value).replace(/\s+/g, " ").slice(0, maxChars);
+  return stableStringify(value).replace(/\s+/g, " ").slice(0, maxChars);
 }
 
 async function pushTrace(state: Pick<ToolExecutionState, "onTrace" | "trace">, event: PracticeTraceEvent) {
@@ -185,7 +187,7 @@ function schema(properties: Record<string, unknown>, required: string[] = ["visi
     properties: {
       visible_thought: {
         description:
-          "A short UI-safe process summary explaining why this tool is useful now. Do not include hidden chain-of-thought.",
+          "A UI-visible process note explaining why this step is useful now and what decision it supports. Do not include hidden chain-of-thought.",
         type: "string",
       },
       ...properties,
@@ -301,9 +303,19 @@ const finalizeTool: PracticeToolDefinition = {
           type: "object",
         },
         round_goal: { type: "string" },
+        round_contract: {
+          additionalProperties: true,
+          description: "Structured contract for this round: plan node, recommendation intent, selected question diagnostic purposes, and drift guard.",
+          type: "object",
+        },
         session_memory: {
-          description: "Updated compact session memory, max 1600 chars. Do not copy full question stems.",
+          description: "Short human-readable session note for UI compatibility. Do not use this as the only thread memory and do not copy full question stems.",
           type: "string",
+        },
+        session_state: {
+          additionalProperties: true,
+          description: "Volatile current session state such as current focus, active misconceptions, strengths, and next-round constraints.",
+          type: "object",
         },
       },
       [
@@ -318,22 +330,23 @@ const finalizeTool: PracticeToolDefinition = {
   },
 };
 
-function availableTools(state: ToolExecutionState): PracticeToolDefinition[] {
-  if (state.searchCallsUsed >= SEARCH_CALL_LIMIT) {
-    return [finalizeTool];
+const ALL_RECOMMENDATION_TOOLS: PracticeToolDefinition[] = [browseTool, searchTool, finalizeTool];
+
+function allowedToolNamesForState(state: ToolExecutionState) {
+  const allowed = new Set<string>([finalizeTool.function.name]);
+
+  if (state.searchCallsUsed < SEARCH_CALL_LIMIT) {
+    allowed.add(searchTool.function.name);
   }
 
-  const tools = [searchTool, finalizeTool];
-
-  if (state.browseCallsUsed < SOFT_BROWSE_CALL_LIMIT) {
-    return [browseTool, ...tools];
+  if (
+    state.browseCallsUsed < SOFT_BROWSE_CALL_LIMIT ||
+    (state.browseCallsUsed < HARD_BROWSE_CALL_LIMIT && !state.confirmedTargetTagIds.size)
+  ) {
+    allowed.add(browseTool.function.name);
   }
 
-  if (state.browseCallsUsed < HARD_BROWSE_CALL_LIMIT && !state.confirmedTargetTagIds.size) {
-    return [browseTool, ...tools];
-  }
-
-  return tools;
+  return allowed;
 }
 
 function fallbackRecommendations({
@@ -601,7 +614,7 @@ async function executePracticeTool({
   toolCall: PracticeToolCall;
 }) {
   const toolName = toolCall.function.name;
-  const visibleThought = asString(args.visible_thought).slice(0, 500);
+  const visibleThought = asString(args.visible_thought).slice(0, 2000);
   const started = Date.now();
 
   try {
@@ -682,8 +695,14 @@ async function executePracticeTool({
         keep_tags: retention.kept,
         question_ids: asStringArray(args.question_ids),
         reasons: typeof args.reasons === "object" && args.reasons ? args.reasons as Record<string, string> : {},
+        round_contract: typeof args.round_contract === "object" && args.round_contract
+          ? args.round_contract as Record<string, unknown>
+          : undefined,
         round_goal: asString(args.round_goal, state.goal),
         session_memory: asString(args.session_memory, state.sessionMemory).slice(0, 1600),
+        session_state: typeof args.session_state === "object" && args.session_state
+          ? args.session_state as Record<string, unknown>
+          : undefined,
         visible_thought: visibleThought,
       };
       state.tagContext = generatedTagContext;
@@ -719,8 +738,10 @@ async function executePracticeTool({
     await pushTrace(state, {
       elapsedMs: Date.now() - started,
       inputSummary: buildToolDigest([{ args, tool: toolName }]).slice(0, 800),
+      inputPayload: { args, tool: toolName },
       iteration,
       outputSummary,
+      outputPayload: logObservation,
       phase: "recommendation",
       resultCount,
       savedFullPayload,
@@ -742,6 +763,7 @@ async function executePracticeTool({
       elapsedMs: Date.now() - started,
       error: errorMessage,
       inputSummary: buildToolDigest([{ args, tool: toolName }]).slice(0, 800),
+      inputPayload: { args, tool: toolName },
       iteration,
       phase: "recommendation",
       savedFullPayload,
@@ -762,76 +784,122 @@ async function buildSystemPrompt(maxToolCalls: number) {
   return prompt.replaceAll("{{MAX_TOOL_CALLS}}", String(maxToolCalls));
 }
 
-function buildRecommendationDynamicContext({
+function compactThreadMessages(value: unknown, limit = 24) {
+  return Array.isArray(value) ? value.slice(-limit) : [];
+}
+
+function buildRecommendationPromptParts({
+  cachePrefixVersion,
   completedQuestionIds,
   courseFrameworkSnapshot,
   goal,
   longTermMemory,
+  outlineUserNotes,
   questionCount,
   sessionMemory,
+  sessionPlan,
+  sessionState,
+  sessionThreadMessages,
   tagContext,
+  userNextRoundNote,
 }: {
+  cachePrefixVersion?: string;
   completedQuestionIds: string[];
   courseFrameworkSnapshot?: unknown;
   goal: string;
   longTermMemory?: string;
+  outlineUserNotes?: string;
   questionCount: number;
   sessionMemory: string;
+  sessionPlan?: unknown;
+  sessionState?: unknown;
+  sessionThreadMessages?: unknown;
   tagContext: PracticeTagContext;
+  userNextRoundNote?: string;
 }) {
-  return {
-    available_facets: ["curriculum", "concept", "method", "task", "form"],
-    completed_question_ids: completedQuestionIds.slice(-120),
+  const stablePrefix = {
+    cache_policy: {
+      cache_prefix_version: cachePrefixVersion ?? "practice-core-v1",
+      dynamic_suffix_rule: "All volatile ids, current answers, current user notes, completed ids, and tool results stay after this stable prefix.",
+      tools_schema_policy: "The backend always sends the same tool schema; per-step availability is controlled by tool_policy in the suffix.",
+    },
     course_framework: courseFrameworkSnapshot ?? null,
+    session_plan: sessionPlan ?? null,
+    thread_policy: {
+      current_call: "recommend_next_round",
+      inheritance: "Use append-only episode cards and round contracts as the main thread. Session memory is only a UI fallback.",
+      user_opinion_priority: "User outline notes and next-round notes are appended at the tail and should outweigh automatic assumptions when safe.",
+    },
+  };
+
+  const threadEntries = compactThreadMessages(sessionThreadMessages).map((entry, index) => ({
+    content: stableStringify(entry),
+    name: `practice_thread_${index + 1}`,
+    role: "assistant" as const,
+  }));
+
+  const dynamicSuffix = {
+    available_facets: ["curriculum", "concept", "method", "task", "form"],
+    completed_question_ids: completedQuestionIds.slice(-160),
     current_round_request: {
       goal,
       question_count: questionCount,
+      user_next_round_note: userNextRoundNote?.trim() || "",
     },
     memory_context: {
       long_term_memory: longTermMemory?.trim() || "No long-term memory yet.",
-      session_memory: sessionMemory,
+      session_memory_ui_fallback: sessionMemory,
+      session_state: sessionState ?? {},
     },
     tag_context: tagContext,
-    thread_policy: {
-      current_call: "recommend_next_round",
-      inherit_across_rounds: [
-        "specific learning patterns from memory_context",
-        "current session focus and recent evidence",
-        "completed question ids for repetition control",
-      ],
-      do_not_inherit_verbatim: [
-        "old tool outputs",
-        "old candidate pools",
-        "unverified guesses about the student",
-      ],
+    tool_policy: {
+      browse_taxonomy_batch: "allowed until browse limit or confirmed tag context is enough",
+      finalize_recommendation: "always available; required to finish",
+      practice_search_batch: "allowed until search limit",
     },
+    user_outline_notes: outlineUserNotes?.trim() || "",
+    volatile_notice: "This suffix intentionally contains changing IDs, user notes, current goal, and current session state to protect the cached prefix.",
   };
+
+  return { dynamicSuffix, stablePrefix, threadEntries };
 }
 
 export async function runPracticeRecommendationAgent({
+  cachePrefixVersion,
   completedQuestionIds,
   courseFrameworkSnapshot,
   goal,
   longTermMemory,
   onTrace,
+  outlineUserNotes,
   profile,
   questionCount,
   sessionMemory,
+  sessionPlan,
+  sessionState,
+  sessionThreadMessages,
   supabase,
   tagContext,
   trace,
+  userNextRoundNote,
 }: {
+  cachePrefixVersion?: string;
   completedQuestionIds: string[];
   courseFrameworkSnapshot?: unknown;
   goal: string;
   longTermMemory?: string;
   onTrace?: (event: PracticeTraceEvent) => void | Promise<void>;
+  outlineUserNotes?: string;
   profile: PracticeProfile;
   questionCount: number;
   sessionMemory?: string;
+  sessionPlan?: unknown;
+  sessionState?: unknown;
+  sessionThreadMessages?: unknown;
   supabase: SupabaseLike;
   tagContext?: PracticeTagContext;
   trace: PracticeTraceEvent[];
+  userNextRoundNote?: string;
 }) {
   const maxToolCalls = envToolCallLimit();
   const compactMemory = compactSessionMemory(sessionMemory, goal);
@@ -854,26 +922,32 @@ export async function runPracticeRecommendationAgent({
     trace,
   };
   const systemPrompt = await buildSystemPrompt(maxToolCalls);
+  const { dynamicSuffix, stablePrefix, threadEntries } = buildRecommendationPromptParts({
+    cachePrefixVersion,
+    completedQuestionIds,
+    courseFrameworkSnapshot,
+    goal,
+    longTermMemory,
+    outlineUserNotes,
+    questionCount,
+    sessionMemory: compactMemory,
+    sessionPlan,
+    sessionState,
+    sessionThreadMessages,
+    tagContext: normalizedTagContext,
+    userNextRoundNote,
+  });
   const messages: PracticeChatMessage[] = [
     { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: JSON.stringify(buildRecommendationDynamicContext({
-        completedQuestionIds,
-        courseFrameworkSnapshot,
-        goal,
-        longTermMemory,
-        questionCount,
-        sessionMemory: compactMemory,
-        tagContext: normalizedTagContext,
-      })),
-    },
+    { role: "system", content: stableStringify(stablePrefix) },
+    ...threadEntries,
+    { role: "user", content: stableStringify(dynamicSuffix) },
   ];
 
   await pushTrace(state, {
     inputSummary:
-      "Stable base prompt + fixed facets + compact memory + tag_context. Tool results remain compact and do not include full stems/options.",
-    outputSummary: `memory=${compactMemory.length} chars; completed=${completedQuestionIds.length}; tag_context=${normalizedTagContext.confirmedTagIds.length}; max_tool_calls=${maxToolCalls}`,
+      "Cache-first context: stable prefix + append-only episode cards + volatile tail suffix. Dynamic IDs and user notes are kept at the tail.",
+    outputSummary: `prefix_hash=${stableHash(stablePrefix)}; suffix_hash=${stableHash(dynamicSuffix)}; thread_entries=${threadEntries.length}; memory=${compactMemory.length} chars; completed=${completedQuestionIds.length}; tag_context=${normalizedTagContext.confirmedTagIds.length}; max_tool_calls=${maxToolCalls}`,
     phase: "context",
     toolName: "compact_agent_context",
   });
@@ -883,7 +957,8 @@ export async function runPracticeRecommendationAgent({
   const llmUsage: Record<string, unknown>[] = [];
 
   for (let iteration = 1; toolCallsUsed < maxToolCalls; iteration += 1) {
-    const tools = availableTools(state);
+    const tools = ALL_RECOMMENDATION_TOOLS;
+    const allowedToolNames = allowedToolNamesForState(state);
     await pushTrace(state, {
       inputSummary: `Calling ${profile.name} / ${profile.model} for next tool choice.`,
       iteration,
@@ -891,6 +966,7 @@ export async function runPracticeRecommendationAgent({
         `browse=${state.browseCallsUsed}/${SOFT_BROWSE_CALL_LIMIT}`,
         `search=${state.searchCallsUsed}/${SEARCH_CALL_LIMIT}`,
         `tools=${tools.map((tool) => tool.function.name).join(",")}`,
+        `allowed=${Array.from(allowedToolNames).join(",")}`,
         `pool=${state.candidatePool.size}`,
       ].join("; "),
       phase: "recommendation",
@@ -905,11 +981,18 @@ export async function runPracticeRecommendationAgent({
     });
     providerLabel = modelResult.providerLabel;
     if (modelResult.usage) {
-      llmUsage.push({
-        iteration,
+      const usageEnvelope = buildUsageEnvelope({
+        cachePrefixVersion,
         phase: "recommendation",
+        prefixPayload: stablePrefix,
         providerLabel,
+        suffixPayload: dynamicSuffix,
         usage: modelResult.usage,
+      });
+      llmUsage.push({ iteration, ...usageEnvelope });
+      void writePracticeStatsLog({
+        context: { goal, iteration, phase: "recommendation", questionCount },
+        payload: usageEnvelope,
       });
     }
 
@@ -918,6 +1001,7 @@ export async function runPracticeRecommendationAgent({
     await pushTrace(state, {
       inputSummary: modelResult.contentText.slice(0, 600),
       iteration,
+      modelThought: modelResult.contentText,
       outputSummary: modelResult.toolCalls.length
         ? `requested tools: ${modelResult.toolCalls.map((toolCall) => toolCall.function.name).join(", ")}`
         : "no tool call requested",
@@ -950,7 +1034,6 @@ export async function runPracticeRecommendationAgent({
       break;
     }
 
-    const allowedToolNames = new Set(tools.map((tool) => tool.function.name));
     for (const toolCall of modelResult.toolCalls) {
       if (toolCallsUsed >= maxToolCalls) {
         messages.push(await rejectPracticeToolCall({
@@ -1016,8 +1099,10 @@ export async function runPracticeRecommendationAgent({
     providerLabel,
     llmUsage,
     recommendations,
+    roundContract: state.finalized?.round_contract ?? null,
     roundGoal: state.finalized?.round_goal?.trim() || goal,
-    sessionMemory: state.finalized?.session_memory?.trim().slice(0, 1600) || compactMemory,
+    sessionMemory: state.finalized?.session_memory?.trim() || compactMemory,
+    sessionState: state.finalized?.session_state ?? null,
     tagContext: buildGeneratedTagContext(state),
   };
 }

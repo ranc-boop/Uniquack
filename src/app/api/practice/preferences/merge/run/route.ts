@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
-import { compactText } from "@/lib/practice/context";
+import { buildUsageEnvelope, compactText, stableStringify, writePracticeStatsLog } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import {
   countPendingPreferenceJobs,
@@ -57,6 +57,7 @@ export async function POST() {
     previous_preference: string;
     source_session_id: string | null;
     source_session_memory: string;
+    source_summary?: unknown;
   };
 
   const claimed = await supabase
@@ -76,7 +77,7 @@ export async function POST() {
   try {
     const { data: recentEpisodes, error: recentEpisodesError } = await supabase
       .from("practice_agent_episodes")
-      .select("episode_index,memory_update,review_diagnosis,student_attempt_summary")
+      .select("episode_index,episode_card,memory_update,review_diagnosis,student_attempt_summary")
       .eq("user_id", auth.user.id)
       .eq("session_id", job.source_session_id ?? "")
       .order("episode_index", { ascending: false })
@@ -97,20 +98,37 @@ export async function POST() {
         },
         {
           role: "user",
-          content: JSON.stringify({
+          content: stableStringify({
+            merge_policy: "Update only durable user-managed learning memory. Use goals, wrong/correct evidence, user option choices, review notes, and outline/next-round notes. Do not store one-off mistakes.",
             previous_long_term_preference: compactText(job.previous_preference, 1000),
             recent_episode_evidence: (recentEpisodes ?? []).map((episode) => ({
+              episode_card: compactText(stableStringify(episode.episode_card ?? {}), 1800),
               episode_index: episode.episode_index,
               memory_update: compactText(episode.memory_update, 900),
-              review_diagnosis: compactText(JSON.stringify(episode.review_diagnosis ?? {}), 1400),
-              student_attempt_summary: compactText(JSON.stringify(episode.student_attempt_summary ?? []), 800),
+              review_diagnosis: compactText(stableStringify(episode.review_diagnosis ?? {}), 1400),
+              student_attempt_summary: compactText(stableStringify(episode.student_attempt_summary ?? []), 1000),
             })),
             source_session_memory: compactText(job.source_session_memory, 1600),
+            source_summary: job.source_summary ?? {},
           }),
         },
       ],
       profile,
     });
+    if (aiResult.usage) {
+      const usageEnvelope = buildUsageEnvelope({
+        cachePrefixVersion: "practice-memory-merge-v1",
+        phase: "memory_merge",
+        providerLabel: aiResult.providerLabel,
+        suffixPayload: { sourceSessionId: job.source_session_id },
+        usage: aiResult.usage,
+      });
+      void writePracticeStatsLog({
+        context: { phase: "memory_merge", sourceSessionId: job.source_session_id },
+        payload: usageEnvelope,
+      });
+    }
+
     const nextPreference = compactText(aiResult.parsed.long_term_preference, 1000);
 
     const preferenceResult = await supabase
@@ -147,7 +165,7 @@ export async function POST() {
     if (job.source_session_id) {
       await supabase
         .from("practice_sessions")
-        .update({ preference_merged_at: new Date().toISOString() })
+        .update({ preference_dirty_at: null, preference_merged_at: new Date().toISOString() })
         .eq("user_id", auth.user.id)
         .eq("id", job.source_session_id);
     }

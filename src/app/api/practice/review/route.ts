@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
-import { compactSessionMemory, compactText, summarizeLLMUsage, traced } from "@/lib/practice/context";
+import { buildUsageEnvelope, compactSessionMemory, compactText, stableHash, stableStringify, summarizeLLMUsage, traced, writePracticeStatsLog } from "@/lib/practice/context";
 import { getOrCreatePracticePreference, persistRoundReview } from "@/lib/practice/persistence";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import type {
@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+
 type AIReviewResponse = {
   next_round_goal?: string;
   results?: Array<{
@@ -28,9 +29,11 @@ type AIReviewResponse = {
     question_id?: string;
     score?: number | null;
   }>;
+  episode_card?: unknown;
   memory_update?: PracticeMemoryUpdate;
   question_reviews?: PracticeQuestionReview[];
   round_patterns?: string[];
+  session_state?: unknown;
   summary?: string;
   updated_session_memory?: string;
 };
@@ -160,13 +163,29 @@ function normalizeMemoryUpdate(value: unknown): PracticeMemoryUpdate {
   };
 }
 
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function normalizeEpisodeCard(value: unknown, fallback: Record<string, unknown>) {
+  const item = asObject(value);
+  return Object.keys(item).length ? item : fallback;
+}
+
+function normalizeSessionState(value: unknown, fallback: Record<string, unknown>) {
+  const item = asObject(value);
+  return Object.keys(item).length ? item : fallback;
+}
+
 function compactAnswerSpec(value: unknown) {
   if (!value) {
     return null;
   }
 
   try {
-    return compactText(JSON.stringify(value), 900);
+    return compactText(stableStringify(value), 900);
   } catch {
     return compactText(String(value), 900);
   }
@@ -290,7 +309,7 @@ export async function POST(request: Request) {
   }
   const { data: sessionRecord, error: sessionRecordError } = await supabase
     .from("practice_sessions")
-    .select("course_framework_snapshot")
+    .select("cache_prefix_version,course_framework_snapshot,outline_user_notes,next_user_notes,session_plan,session_state,session_thread_messages")
     .eq("user_id", auth.user.id)
     .eq("id", sessionId)
     .maybeSingle();
@@ -298,6 +317,27 @@ export async function POST(request: Request) {
   if (sessionRecordError) {
     return NextResponse.json({ error: sessionRecordError.message }, { status: 500 });
   }
+
+  const { data: episodeRecord, error: episodeRecordError } = await supabase
+    .from("practice_agent_episodes")
+    .select("round_contract,episode_card,cache_thread_entry")
+    .eq("user_id", auth.user.id)
+    .eq("round_id", roundId)
+    .maybeSingle();
+
+  if (episodeRecordError) {
+    return NextResponse.json({ error: episodeRecordError.message }, { status: 500 });
+  }
+
+  const cachePrefixVersion = String(sessionRecord?.cache_prefix_version ?? "practice-core-v1");
+  const sessionPlan = sessionRecord?.session_plan ?? null;
+  const sessionState = sessionRecord?.session_state ?? {};
+  const sessionThreadMessages = Array.isArray(sessionRecord?.session_thread_messages)
+    ? sessionRecord.session_thread_messages.slice(-24)
+    : [];
+  const outlineUserNotes = String(sessionRecord?.outline_user_notes ?? "");
+  const userNextRoundNote = String(body.userNextRoundNote ?? sessionRecord?.next_user_notes ?? "").trim().slice(0, 1200);
+  const roundContract = episodeRecord?.round_contract ?? {};
 
   const persistedRecommendations = ((roundQuestions ?? []) as Record<string, unknown>[])
     .map(recommendationFromRoundQuestion)
@@ -308,10 +348,10 @@ export async function POST(request: Request) {
   const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
   const longTermMemory = compactText(preference.long_term_preference, 1000);
   const questionIds = Array.from(new Set(attempts.map((attempt) => attempt.questionId).filter(Boolean)));
-  const reviewQuestions = await loadQuestionsForReview({ questionIds, supabase });
-  const questionById = new Map(reviewQuestions.map((question) => [question.id, question]));
-  const recommendationById = new Map((body.recommendations ?? []).map((question) => [question.id, question]));
-  const solutionByQuestionId = new Map(reviewQuestions.map((question) => [question.id, question.solution_html]));
+  const reviewQuestions = await loadQuestionsForReview({ questionIds, supabase }) as any[];
+  const questionById = new Map<string, any>(reviewQuestions.map((question) => [String(question.id), question]));
+  const recommendationById = new Map<string, any>((body.recommendations ?? []).map((question) => [String(question.id), question]));
+  const solutionByQuestionId = new Map<string, string | null | undefined>(reviewQuestions.map((question) => [String(question.id), question.solution_html]));
   const compactAttempts = attempts.map((attempt) => {
     const stored = questionById.get(attempt.questionId);
     const recommended = recommendationById.get(attempt.questionId);
@@ -331,8 +371,8 @@ export async function POST(request: Request) {
   });
 
   trace.push({
-    inputSummary: "Review context contains the last-round questions, options, answer specs, solution excerpts, submitted answers, hint counts, and compact memory. Recommendation tool context is intentionally discarded.",
-    outputSummary: `attempts=${compactAttempts.length}; previous memory=${sessionMemory.length} chars`,
+    inputSummary: "Cache-first review context: stable session plan + append-only episode cards + round_contract + volatile attempts suffix.",
+    outputSummary: `prefix_hash=${stableHash({ sessionPlan, sessionThreadMessages, roundContract })}; attempts=${compactAttempts.length}; user_note=${userNextRoundNote.length}; previous memory=${sessionMemory.length} chars`,
     phase: "context",
     toolName: "compact_review_context",
   });
@@ -341,73 +381,122 @@ export async function POST(request: Request) {
   try {
     const profile = await loadPracticeAIProfile(supabase);
     const systemPrompt = await loadPracticePrompt("review-system");
+    const fallback = heuristicReview(body);
+    const stableReviewPrefix = {
+      cache_policy: {
+        cache_prefix_version: cachePrefixVersion,
+        dynamic_suffix_rule: "Attempts, answers, ids, and user notes stay in the final user message.",
+        review_policy: "Per-question review judges correctness; aggregator decides next round using session_plan and round_contract.",
+      },
+      course_framework: sessionRecord?.course_framework_snapshot ?? null,
+      round_contract: roundContract,
+      session_plan: sessionPlan,
+    };
+    const threadMessages = sessionThreadMessages.map((entry, index) => ({
+      content: stableStringify(entry),
+      name: `practice_thread_${index + 1}`,
+      role: "assistant" as const,
+    }));
+    const reviewSuffix = {
+      attempts: compactAttempts,
+      goal,
+      long_term_memory: longTermMemory || "No long-term memory yet.",
+      outline_user_notes: outlineUserNotes,
+      previous_session_memory: sessionMemory,
+      session_state: sessionState,
+      task_type: "round_review",
+      user_next_round_note: userNextRoundNote,
+      volatile_notice: "This suffix contains current attempts, answers, ids, solution excerpts, and user notes.",
+    };
+
     const aiResult = await traced({
-      inputSummary: `DS review JSON call with ${compactAttempts.length} attempts.`,
+      inputSummary: `Single-pass review JSON call with ${compactAttempts.length} attempts.`,
       outputSummary: (value) => `provider=${value.providerLabel}`,
       phase: "review",
       trace,
       toolName: "ds_review_round",
-      run: () =>
-        callPracticeJsonModel<AIReviewResponse>({
-          debugContext: { goal, phase: "review" },
-          profile,
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt,
-            },
-            {
-              role: "user",
-              content: JSON.stringify({
-                attempts: compactAttempts,
-                course_framework: sessionRecord?.course_framework_snapshot ?? null,
-                goal,
-                long_term_memory: longTermMemory || "No long-term memory yet.",
-                previous_session_memory: sessionMemory,
-              }),
-            },
-          ],
-        }),
+      run: () => callPracticeJsonModel<AIReviewResponse>({
+        debugContext: { goal, phase: "review", roundId, sessionId },
+        profile,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "system", content: stableStringify(stableReviewPrefix) },
+          ...threadMessages,
+          { role: "user", content: stableStringify(reviewSuffix) },
+        ],
+      }),
     });
-    const fallback = heuristicReview(body);
-    const questionReviews = normalizeQuestionReviews({
-      attempts,
-      value: aiResult.parsed.question_reviews,
-    });
-    const roundPatterns = normalizeRoundPatterns(aiResult.parsed.round_patterns);
-    const memoryUpdate = normalizeMemoryUpdate(aiResult.parsed.memory_update);
+
+    const usageEnvelopes: Record<string, unknown>[] = [];
     if (aiResult.usage) {
+      const usageEnvelope = buildUsageEnvelope({
+        cachePrefixVersion,
+        phase: "review",
+        prefixPayload: { stableReviewPrefix, sessionThreadMessages },
+        providerLabel: aiResult.providerLabel,
+        suffixPayload: { attemptCount: compactAttempts.length, goal, userNextRoundNote },
+        usage: aiResult.usage,
+      });
+      usageEnvelopes.push(usageEnvelope);
+      void writePracticeStatsLog({
+        context: { goal, phase: "review", roundId, sessionId },
+        payload: usageEnvelope,
+      });
       trace.push({
-        inputSummary: "Provider usage for prompt caching/token monitoring.",
+        inputSummary: "Provider usage for review prompt caching/token monitoring.",
         llmUsage: aiResult.usage,
         outputSummary: summarizeLLMUsage(aiResult.usage),
         phase: "review",
         toolName: "model_usage",
       });
     }
+
+    const questionReviews = normalizeQuestionReviews({
+      attempts,
+      value: aiResult.parsed.question_reviews,
+    });
     const modelResults = normalizeModelResults({
       aiResults: aiResult.parsed.results,
       attempts,
       solutionByQuestionId,
     });
+    const roundPatterns = normalizeRoundPatterns(aiResult.parsed.round_patterns);
+    const memoryUpdate = normalizeMemoryUpdate(aiResult.parsed.memory_update);
+    const nextRoundGoal = aiResult.parsed.next_round_goal?.trim() || fallback.nextRoundGoal;
+    const summary = aiResult.parsed.summary?.trim() || fallback.summary;
+    const episodeCard = normalizeEpisodeCard(aiResult.parsed.episode_card, {
+      next_round_constraint: nextRoundGoal,
+      review_diagnosis: { question_reviews: questionReviews, round_patterns: roundPatterns, summary },
+      student_attempt_summary: modelResults.map((result) => ({
+        is_correct: result.isCorrect,
+        question_id: result.questionId,
+        score: result.score,
+      })),
+    });
+    const nextSessionState = normalizeSessionState(aiResult.parsed.session_state, {
+      ...(asObject(sessionState)),
+      current_focus: nextRoundGoal,
+      last_review_summary: summary,
+      next_round_constraints: roundPatterns.length ? roundPatterns : fallback.roundPatterns,
+      user_next_round_note: userNextRoundNote,
+      version: 1,
+    });
     const response: PracticeReviewResponse = {
-      llmUsage: aiResult.usage ? [{
-        phase: "review",
-        providerLabel: aiResult.providerLabel,
-        usage: aiResult.usage,
-      }] : [],
+      episodeCard,
+      llmUsage: usageEnvelopes,
       memoryUpdate,
       mode: "ai",
-      nextRoundGoal: aiResult.parsed.next_round_goal?.trim() || fallback.nextRoundGoal,
+      nextRoundGoal,
       providerLabel: aiResult.providerLabel,
       questionReviews,
       results: modelResults,
       roundPatterns: roundPatterns.length ? roundPatterns : fallback.roundPatterns,
       sessionId,
-      summary: aiResult.parsed.summary?.trim() || fallback.summary,
+      sessionState: nextSessionState,
+      summary,
       trace,
       updatedSessionMemory:
-        aiResult.parsed.updated_session_memory?.trim().slice(0, 1600) ||
+        aiResult.parsed.updated_session_memory?.trim() ||
         fallback.updatedSessionMemory,
     };
 
@@ -433,6 +522,10 @@ export async function POST(request: Request) {
     });
     const fallback = heuristicReview(body);
     const response: PracticeReviewResponse = {
+      episodeCard: {
+        next_round_constraint: fallback.nextRoundGoal,
+        review_diagnosis: { question_reviews: fallback.questionReviews, round_patterns: fallback.roundPatterns, summary: fallback.summary },
+      },
       llmUsage: [],
       memoryUpdate: fallback.memoryUpdate,
       mode: "heuristic",
@@ -441,6 +534,13 @@ export async function POST(request: Request) {
       results: fallback.results,
       roundPatterns: fallback.roundPatterns,
       sessionId,
+      sessionState: {
+        current_focus: fallback.nextRoundGoal,
+        last_review_summary: fallback.summary,
+        next_round_constraints: fallback.roundPatterns,
+        user_next_round_note: body.userNextRoundNote ?? "",
+        version: 1,
+      },
       summary: fallback.summary,
       trace,
       updatedSessionMemory: fallback.updatedSessionMemory,
