@@ -121,6 +121,8 @@ export function friendlyAIPdfPhaseLabel(phase: string) {
     preparing_pdf_input: "Preparing full PDF input",
     preparing_provider_input: "Preparing provider input",
     provider_response_validated: "AI response received",
+    question_blueprint_analyzed: "Question blueprint analyzer finished",
+    question_blueprint_analyzing: "Question blueprint analyzer running",
     queued: "Queued",
     rendering_page_images: "Rendering page images",
     segmentation_confirmed: "Masked boundaries confirmed",
@@ -189,7 +191,8 @@ function statusLabel({
 
   if (
     phase === "blueprint_observation_completed" ||
-    phase === "blueprint_observation_normalized"
+    phase === "blueprint_observation_normalized" ||
+    phase === "question_blueprint_analyzed"
   ) {
     return "Blueprint Observation";
   }
@@ -198,6 +201,7 @@ function statusLabel({
     status === "validating" ||
     [
       "blueprint_observation_calling_provider",
+      "question_blueprint_analyzing",
       "starting_extraction",
       "extracting",
       "counting_pages",

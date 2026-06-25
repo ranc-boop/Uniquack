@@ -158,6 +158,7 @@ function phaseRank(phase: string) {
     rendering_page_images: 7,
     blueprint_observation_calling_provider: 8,
     calling_provider: 8,
+    question_blueprint_analyzing: 8,
     blueprint_observation_normalized: 9,
     provider_response_validated: 9,
     building_import_json: 10,
@@ -165,6 +166,7 @@ function phaseRank(phase: string) {
     cropping_assets: 12,
     completed: 13,
     blueprint_observation_completed: 13,
+    question_blueprint_analyzed: 13,
   };
 
   return ranks[phase] ?? 0;
@@ -412,6 +414,21 @@ export function AIPdfControlDashboard({
                 firstNumber(blueprintObservationStats, [
                   "normalizedPacketCount",
                 ]) ?? 0;
+              const questionBlueprintDraftPlan = asRecord(
+                ai.questionBlueprintDraftPlan,
+              );
+              const questionBlueprintDraftStats = asRecord(
+                questionBlueprintDraftPlan.stats,
+              );
+              const hasQuestionBlueprintDraftPlan =
+                questionBlueprintDraftPlan.version ===
+                "question_blueprint_draft_plan_v1";
+              const questionBlueprintDraftCount =
+                firstNumber(questionBlueprintDraftStats, [
+                  "blueprintDraftCount",
+                ]) ?? 0;
+              const questionBlueprintWarningCount =
+                firstNumber(questionBlueprintDraftStats, ["warningCount"]) ?? 0;
               const technicalError = display.warnings.technicalDetail;
               const ctaLabel = display.ctaLabel;
 
@@ -542,6 +559,28 @@ export function AIPdfControlDashboard({
                             {normalizedObservationPacketCount}
                           </p>
                           <p>No questions were created.</p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {hasQuestionBlueprintDraftPlan ? (
+                      <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">Question Blueprint Drafts</p>
+                          <Badge variant="outline">
+                            Status:{" "}
+                            {firstString(
+                              questionBlueprintDraftPlan,
+                              ["status"],
+                              "unknown",
+                            )}
+                          </Badge>
+                        </div>
+                        <div className="mt-2 grid gap-2 text-xs text-muted-foreground md:grid-cols-4">
+                          <p>Draft count: {questionBlueprintDraftCount}</p>
+                          <p>Review required: yes</p>
+                          <p>No questions generated yet.</p>
+                          <p>Warnings: {questionBlueprintWarningCount}</p>
                         </div>
                       </div>
                     ) : null}

@@ -85,6 +85,7 @@ assert(practiceClient.includes("/api/practice/wrong-questions"), "practice clien
 console.log("PASS practice client uses persisted sessions and wrong-question records");
 
 const blueprintObservation = await read("src/lib/ai-pdf-import/blueprint-observation.ts");
+const questionBlueprintAnalyzer = await read("src/lib/ai-pdf-import/question-blueprint-analyzer.ts");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
@@ -172,14 +173,87 @@ assert(
 );
 console.log("PASS blueprint observation schema is planning-only, bounded, and provider-free");
 
+for (const exportName of [
+  "AIQuestionBlueprintDraftPlan",
+  "AIQuestionBlueprintDraft",
+  "buildQuestionBlueprintAnalyzerPrompt",
+  "buildQuestionBlueprintDraftPlanFromObservationPlan",
+  "buildQuestionBlueprintDraftPlanFromAnalyzerResponse",
+  "parseQuestionBlueprintAnalyzerProviderText",
+  "executeDeepSeekQuestionBlueprintAnalyzer",
+  "skippedQuestionBlueprintDraftPlan",
+  "failedQuestionBlueprintDraftPlan",
+  "mergeQuestionBlueprintDraftPlanIntoSummary",
+  "summarizeQuestionBlueprintDraftPlan",
+]) {
+  assert(
+    questionBlueprintAnalyzer.includes(exportName),
+    `question blueprint analyzer is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "question_blueprint_draft_plan_v1",
+  "summary.aiPdfImport.questionBlueprintDraftPlan",
+  "analysis_only",
+  "DeepSeek provider is not configured or not enabled.",
+  "You are analyzing the style and structure of a source question.",
+  "Do not generate a new question.",
+  "Do not solve the question.",
+  "Do not copy wording.",
+  "Return JSON only.",
+  "textOnlyForAnalyzer",
+  "rawStorageCount: 0",
+  "generatedQuestionCount: 0",
+  "reviewDraftWriteCount: 0",
+  "question_blueprint_analyzer_text_only_packets",
+  "question_blueprint_analyzer_no_generated_questions",
+  "question_blueprint_analyzer_no_review_draft_write",
+  "question_blueprint_analyzer_no_raw_pdf_storage",
+  "question_blueprint_analyzer_no_image_or_base64_storage",
+]) {
+  assert(
+    questionBlueprintAnalyzer.includes(expectedText),
+    `question blueprint analyzer guard is missing ${expectedText}`,
+  );
+}
+assert(
+  questionBlueprintAnalyzer.includes("boundedText("),
+  "question blueprint analyzer must bound evidence snippets",
+);
+assert(
+  questionBlueprintAnalyzer.includes("buildQuestionBlueprintAnalyzerPrompt") &&
+    questionBlueprintAnalyzer.includes("normalizedPacketsForAnalyzer"),
+  "question blueprint analyzer must build prompts from normalized packets",
+);
+assert(
+  questionBlueprintAnalyzer.includes("fetch("),
+  "question blueprint analyzer should contain the DeepSeek text-only provider runner",
+);
+assert(
+  !questionBlueprintAnalyzer.includes("importBatchImportJson"),
+  "question blueprint analyzer must not write generated drafts to Review",
+);
+assert(!questionBlueprintAnalyzer.includes("question_tags"), "question blueprint analyzer must not use legacy question_tags");
+assert(!questionBlueprintAnalyzer.includes("video_tags"), "question blueprint analyzer must not use legacy video_tags");
+assert(!questionBlueprintAnalyzer.includes("supabase.from("), "question blueprint analyzer must not query the database");
+assert(!questionBlueprintAnalyzer.includes(".insert("), "question blueprint analyzer must not insert database rows");
+assert(!questionBlueprintAnalyzer.includes(".update("), "question blueprint analyzer must not update database rows");
+assert(!questionBlueprintAnalyzer.includes(".delete("), "question blueprint analyzer must not delete database rows");
+console.log("PASS question blueprint analyzer is text-only, bounded, and draft-free");
+
 for (const expectedText of [
   "blueprint_observation",
   "processAIPdfBlueprintObservation",
   "buildAIBlueprintObservationProviderPrompt",
   "parseAIBlueprintObservationProviderText",
+  "buildAndStoreQuestionBlueprintDraftPlan",
+  "loadDeepSeekBlueprintAnalyzerProvider",
+  "executeDeepSeekQuestionBlueprintAnalyzer",
+  "mergeQuestionBlueprintDraftPlanIntoSummary",
   "generateWithGeminiNativePdf",
   "mockBlueprintObservationProviderResponse",
-  "Blueprint Observation Mode completed. No draft questions were created.",
+  "Blueprint Observation Mode completed. Question blueprint drafts were analyzed without creating questions.",
+  "Question blueprint analyzer finished. No generated questions or Review Drafts were created.",
   "status: \"ready\"",
   "createdCount: 0",
   "createdQuestions: []",
@@ -214,6 +288,11 @@ assert(
   "blueprint observation mode must not attach question crops",
 );
 assert(
+  aiPdfService.includes("QUESTION_BLUEPRINT_ANALYZER_MISSING_DEEPSEEK_WARNING") &&
+    aiPdfService.includes("skippedQuestionBlueprintDraftPlan"),
+  "blueprint observation mode must handle missing DeepSeek config safely",
+);
+assert(
   aiPdfService.includes("providerInput.strategy !== \"gemini_native_pdf\"") &&
     aiPdfService.includes("providerInput.strategy !== \"mock\""),
   "blueprint observation mode must guard provider strategy",
@@ -234,6 +313,13 @@ assert(
     aiPdfDashboard.includes("Normalized analyzer packets:") &&
     aiPdfDashboard.includes("No questions were created."),
   "AI PDF dashboard must surface blueprint observation metadata",
+);
+assert(
+  aiPdfDashboard.includes("Question Blueprint Drafts") &&
+    aiPdfDashboard.includes("Draft count:") &&
+    aiPdfDashboard.includes("Review required: yes") &&
+    aiPdfDashboard.includes("No questions generated yet."),
+  "AI PDF dashboard must surface question blueprint draft metadata",
 );
 console.log("PASS blueprint observation mode is explicit, summary-only, and draft-free");
 
