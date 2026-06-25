@@ -30,7 +30,10 @@ import {
 } from "@/lib/taxonomy/question-blueprint-provider-runner";
 import { executeBlueprintGenerationRequestWithDeepSeek } from "@/lib/taxonomy/question-blueprint-execution";
 import { persistBlueprintReviewDrafts } from "@/lib/taxonomy/question-blueprint-review-drafts";
-import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
+import {
+  TaxonomyTagTreePicker,
+  type TaxonomyCatalogView,
+} from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -98,6 +101,71 @@ function tagIdList(value: string | string[] | undefined) {
     .filter(Boolean);
 }
 
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function taxonomyParentTagIds(catalog: TaxonomyCatalogView) {
+  return new Set(catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []));
+}
+
+function activeAssignableLeafNodes({
+  catalog,
+  facet,
+  parentTagIds = taxonomyParentTagIds(catalog),
+}: {
+  catalog: TaxonomyCatalogView;
+  facet: QuestionBlueprintFacet;
+  parentTagIds?: Set<string>;
+}) {
+  return catalog.nodes.filter(
+    (node) =>
+      node.facet_key === facet &&
+      node.is_assignable !== false &&
+      !parentTagIds.has(node.tag_id),
+  );
+}
+
+function tagDisplay(catalog: TaxonomyCatalogView, tagId: string) {
+  const node = catalog.nodes.find((item) => item.tag_id === tagId);
+  return `${node?.label ?? taxonomyDisplayLabelFromId(tagId)} (${tagId})`;
+}
+
+function strippedTargetWarnings({
+  catalog,
+  parentTagIds,
+  strippedTagIds,
+}: {
+  catalog: TaxonomyCatalogView;
+  parentTagIds: Set<string>;
+  strippedTagIds: string[];
+}) {
+  const parentLike = strippedTagIds.filter((tagId) => {
+    const node = catalog.nodes.find((item) => item.tag_id === tagId);
+    return Boolean(node && (parentTagIds.has(tagId) || node.is_assignable === false));
+  });
+  const otherInvalid = strippedTagIds.filter((tagId) => !parentLike.includes(tagId));
+  const warnings: string[] = [];
+
+  if (parentLike.length) {
+    warnings.push(
+      `Parent taxonomy nodes cannot be used directly. Choose a specific assignable leaf tag. Removed: ${parentLike
+        .map((tagId) => tagDisplay(catalog, tagId))
+        .join(", ")}.`,
+    );
+  }
+
+  if (otherInvalid.length) {
+    warnings.push(
+      `Only active assignable leaf taxonomy tags can be used. Removed: ${otherInvalid
+        .map((tagId) => tagDisplay(catalog, tagId))
+        .join(", ")}.`,
+    );
+  }
+
+  return warnings;
+}
+
 function numericParam(
   value: string | string[] | undefined,
   fallback: number,
@@ -155,22 +223,14 @@ function blueprintExecutionResultFromParams(
 function defaultTargetTagsByFacet({
   catalog,
 }: {
-  catalog: Awaited<ReturnType<typeof loadTaxonomyCatalog>>["catalog"];
+  catalog: TaxonomyCatalogView;
 }) {
-  const parentTagIds = new Set(
-    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
-  );
+  const parentTagIds = taxonomyParentTagIds(catalog);
 
   return Object.fromEntries(
     QUESTION_BLUEPRINT_FACETS.map((facet) => [
       facet,
-      catalog.nodes
-        .filter(
-          (node) =>
-            node.facet_key === facet &&
-            node.is_assignable !== false &&
-            !parentTagIds.has(node.tag_id),
-        )
+      activeAssignableLeafNodes({ catalog, facet, parentTagIds })
         .slice(0, facet === "concept" ? 2 : 1)
         .map((node) => node.tag_id),
     ]),
@@ -178,18 +238,42 @@ function defaultTargetTagsByFacet({
 }
 
 function selectedTagsByFacet({
+  catalog,
   defaults,
   params,
 }: {
+  catalog: TaxonomyCatalogView;
   defaults: Partial<Record<QuestionBlueprintFacet, string[]>>;
   params: Record<string, string | string[] | undefined>;
 }) {
-  return Object.fromEntries(
+  const parentTagIds = taxonomyParentTagIds(catalog);
+  const warnings: string[] = [];
+  const targetTagsByFacet = Object.fromEntries(
     QUESTION_BLUEPRINT_FACETS.map((facet) => {
       const selected = tagIdList(params[`target_${facet}`]);
-      return [facet, selected.length ? selected : (defaults[facet] ?? [])];
+      if (!selected.length) {
+        return [facet, defaults[facet] ?? []];
+      }
+
+      const allowedLeafTagIds = new Set(
+        activeAssignableLeafNodes({ catalog, facet, parentTagIds }).map(
+          (node) => node.tag_id,
+        ),
+      );
+      const accepted = selected.filter((tagId) => allowedLeafTagIds.has(tagId));
+      const stripped = selected.filter((tagId) => !allowedLeafTagIds.has(tagId));
+      warnings.push(
+        ...strippedTargetWarnings({ catalog, parentTagIds, strippedTagIds: stripped }),
+      );
+
+      return [facet, accepted];
     }),
   ) as Partial<Record<QuestionBlueprintFacet, string[]>>;
+
+  return {
+    targetTagsByFacet,
+    warnings: uniqueStrings(warnings),
+  };
 }
 
 function buildRequest({
@@ -377,7 +461,41 @@ function coverageGapReasonText(value: string) {
   return value;
 }
 
-function BlueprintSummary({ plan }: { plan: QuestionBlueprintPlan }) {
+function validationIssueText({
+  catalog,
+  error,
+}: {
+  catalog: TaxonomyCatalogView;
+  error: string;
+}) {
+  if (error.startsWith("tag_not_active_assignable_leaf:")) {
+    const tagId = error.split(":")[1] ?? "";
+    return `Parent taxonomy nodes cannot be used directly. Choose a specific assignable leaf tag: ${tagDisplay(
+      catalog,
+      tagId,
+    )}.`;
+  }
+
+  if (error.startsWith("invalid_taxonomy_tag:")) {
+    const tagId = error.split(":")[1] ?? "";
+    return `Unknown taxonomy tag: ${tagId}. Choose an active assignable leaf tag.`;
+  }
+
+  if (error.startsWith("wrong_facet:")) {
+    const [, tagId, expectedFacet, actualFacet] = error.split(":");
+    return `${tagDisplay(catalog, tagId)} belongs to ${actualFacet}, not ${expectedFacet}.`;
+  }
+
+  return error.replaceAll("_", " ");
+}
+
+function BlueprintSummary({
+  catalog,
+  plan,
+}: {
+  catalog: TaxonomyCatalogView;
+  plan: QuestionBlueprintPlan;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -408,7 +526,7 @@ function BlueprintSummary({ plan }: { plan: QuestionBlueprintPlan }) {
             <p className="font-medium text-destructive">Validation issues</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               {plan.validation.errors.map((error) => (
-                <li key={error}>{error}</li>
+                <li key={error}>{validationIssueText({ catalog, error })}</li>
               ))}
             </ul>
           </div>
@@ -794,7 +912,11 @@ export default async function AdminBlueprintsPage({
     await loadTaxonomyCatalog(supabase);
   const reviewedOnly = checkboxParam(params.reviewed_only, true);
   const defaults = defaultTargetTagsByFacet({ catalog });
-  const targetTagsByFacet = selectedTagsByFacet({ defaults, params });
+  const targetSelection = selectedTagsByFacet({ catalog, defaults, params });
+  const { targetTagsByFacet } = targetSelection;
+  const hasAssignableLeafDefaults = Object.values(defaults).some(
+    (tagIds) => (tagIds ?? []).length > 0,
+  );
   const request = buildRequest({ params, targetTagsByFacet });
   const { candidates, message: candidateMessage } = await loadCandidateInputs({
     reviewedOnly,
@@ -952,13 +1074,29 @@ export default async function AdminBlueprintsPage({
           {candidateMessage}
         </div>
       ) : null}
+      {!hasAssignableLeafDefaults ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          No active assignable leaf taxonomy tags are available. Seed or activate
+          specific leaf tags before building a blueprint.
+        </div>
+      ) : null}
+      {targetSelection.warnings.length ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          <p className="font-medium">Target tags were adjusted</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {targetSelection.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <form className="space-y-4 rounded-md border p-4" method="get">
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <TaxonomyTagTreePicker
             defaultOpenFacetKeys={["curriculum", "concept"]}
             namePrefix="target"
-            selectable="assignable"
+            selectable="assignable_leaf"
             selectedTagIds={targetTagsByFacet}
             taxonomyCatalog={catalog}
             title="Target taxonomy tags"
@@ -1043,7 +1181,7 @@ export default async function AdminBlueprintsPage({
         </div>
       </form>
 
-      <BlueprintSummary plan={plan} />
+      <BlueprintSummary catalog={catalog} plan={plan} />
       <ProviderResultPreview result={executionResult} />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
