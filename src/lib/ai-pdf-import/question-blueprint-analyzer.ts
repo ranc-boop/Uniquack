@@ -23,6 +23,30 @@ export type AIQuestionBlueprintAnswerKind =
   | "mixed"
   | "unknown";
 
+export type AIQuestionBlueprintTaxonomyGroundingStatus =
+  | "grounded"
+  | "partially_grounded"
+  | "unresolved";
+
+export type AIQuestionBlueprintTaxonomyFacet =
+  | "curriculum"
+  | "concept"
+  | "method"
+  | "task"
+  | "form";
+
+export type AIQuestionBlueprintTaxonomyCandidate = {
+  aliases?: string[];
+  description?: string | null;
+  facetKey: AIQuestionBlueprintTaxonomyFacet;
+  label?: string | null;
+  tagId: string;
+};
+
+export type AIQuestionBlueprintTaxonomyCandidatesByFacet = Partial<
+  Record<AIQuestionBlueprintTaxonomyFacet, AIQuestionBlueprintTaxonomyCandidate[]>
+>;
+
 export interface AIQuestionBlueprintDraftPlan {
   blueprintDrafts: AIQuestionBlueprintDraft[];
   generatedAt: string;
@@ -58,6 +82,10 @@ export interface AIQuestionBlueprintDraft {
   requiredElements: string[];
   reviewRequired: true;
   sourcePacketIds: string[];
+  specificityScore: number;
+  specificityWarnings: string[];
+  taxonomyGroundingStatus: AIQuestionBlueprintTaxonomyGroundingStatus;
+  taxonomyTargetHints: string[];
   taxonomyTargets: {
     curriculum: string[];
     concept: string[];
@@ -65,6 +93,7 @@ export interface AIQuestionBlueprintDraft {
     method: string[];
     task: string[];
   };
+  taxonomyUnresolved: boolean;
   title: string;
   variablePattern: string[];
   warnings: string[];
@@ -125,6 +154,16 @@ export const QUESTION_BLUEPRINT_ANALYZER_BASE_WARNINGS = [
   "question_blueprint_analyzer_no_image_or_base64_storage",
 ] as const;
 
+const TAXONOMY_FACETS: AIQuestionBlueprintTaxonomyFacet[] = [
+  "curriculum",
+  "concept",
+  "method",
+  "task",
+  "form",
+];
+
+const TAXONOMY_CANDIDATE_LIMIT_PER_FACET = 18;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -172,6 +211,12 @@ function clampConfidence(value: unknown) {
   return Math.min(1, Math.max(0, numeric));
 }
 
+function clampSpecificityScore(value: unknown, fallback = 0.5) {
+  const numeric = numberValue(value, fallback);
+
+  return Math.min(1, Math.max(0, Number(numeric.toFixed(2))));
+}
+
 function clampDifficulty(value: unknown) {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -209,6 +254,132 @@ function sourceObservationRef(plan: AIBlueprintObservationPlan | null | undefine
     plan.stats.normalizedPacketCount,
     plan.stats.observationPacketCount,
   ].join(":");
+}
+
+function taxonomyTargetsHaveGrounding(
+  targets: AIQuestionBlueprintDraft["taxonomyTargets"],
+) {
+  return {
+    concept: targets.concept.length > 0,
+    form: targets.form.length > 0,
+    methodOrTask: targets.method.length > 0 || targets.task.length > 0,
+  };
+}
+
+function taxonomyGroundingStatusFromTargets(
+  targets: AIQuestionBlueprintDraft["taxonomyTargets"],
+): AIQuestionBlueprintTaxonomyGroundingStatus {
+  const grounding = taxonomyTargetsHaveGrounding(targets);
+  const count =
+    Number(grounding.concept) +
+    Number(grounding.form) +
+    Number(grounding.methodOrTask);
+
+  if (count === 3) return "grounded";
+  if (count > 0) return "partially_grounded";
+  return "unresolved";
+}
+
+function taxonomyCandidateText(candidate: AIQuestionBlueprintTaxonomyCandidate) {
+  return [
+    candidate.tagId,
+    candidate.label,
+    candidate.description,
+    ...(candidate.aliases ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function taxonomySignalTokensFromObservationPlan(
+  observationPlan: AIBlueprintObservationPlan,
+) {
+  const tokens = observationPlan.normalizedPackets.flatMap((packet) => [
+    ...packet.taxonomySignalHints,
+    ...packet.representationHints,
+    ...packet.answerPatternHints,
+    ...packet.styleConstraints,
+    packet.boundedObservationSummary,
+  ]);
+
+  return uniqueStrings(
+    tokens
+      .join(" ")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length >= 4)
+      .slice(0, 120),
+  );
+}
+
+function scoreTaxonomyCandidate({
+  candidate,
+  tokens,
+}: {
+  candidate: AIQuestionBlueprintTaxonomyCandidate;
+  tokens: string[];
+}) {
+  const haystack = taxonomyCandidateText(candidate);
+  let score = 0;
+
+  for (const token of tokens) {
+    if (haystack.includes(token)) score += 1;
+  }
+
+  if (candidate.facetKey === "concept") score += 0.25;
+
+  return score;
+}
+
+export function buildQuestionBlueprintTaxonomyCandidateList({
+  candidates,
+  observationPlan,
+}: {
+  candidates: AIQuestionBlueprintTaxonomyCandidate[];
+  observationPlan: AIBlueprintObservationPlan;
+}): AIQuestionBlueprintTaxonomyCandidatesByFacet {
+  const tokens = taxonomySignalTokensFromObservationPlan(observationPlan);
+  const byFacet: AIQuestionBlueprintTaxonomyCandidatesByFacet = {};
+
+  for (const facet of TAXONOMY_FACETS) {
+    byFacet[facet] = candidates
+      .filter((candidate) => candidate.facetKey === facet)
+      .map((candidate) => ({
+        candidate,
+        score: scoreTaxonomyCandidate({ candidate, tokens }),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) =>
+        right.score === left.score
+          ? left.candidate.tagId.localeCompare(right.candidate.tagId)
+          : right.score - left.score,
+      )
+      .slice(0, TAXONOMY_CANDIDATE_LIMIT_PER_FACET)
+      .map((entry) => entry.candidate);
+  }
+
+  return byFacet;
+}
+
+function compactTaxonomyCandidates(
+  candidatesByFacet?: AIQuestionBlueprintTaxonomyCandidatesByFacet,
+) {
+  if (!candidatesByFacet) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    TAXONOMY_FACETS.map((facet) => [
+      facet,
+      (candidatesByFacet[facet] ?? []).map((candidate) => ({
+        aliases: (candidate.aliases ?? []).slice(0, 4),
+        description: boundedText(candidate.description ?? "", 160),
+        label: boundedText(candidate.label ?? "", 80),
+        tagId: candidate.tagId,
+      })),
+    ]),
+  );
 }
 
 function taxonomyTargetsFrom(
@@ -395,8 +566,10 @@ function normalizedPacketsForAnalyzer(plan: AIBlueprintObservationPlan) {
 
 export function buildQuestionBlueprintAnalyzerPrompt({
   observationPlan,
+  taxonomyCandidatesByFacet,
 }: {
   observationPlan: AIBlueprintObservationPlan;
+  taxonomyCandidatesByFacet?: AIQuestionBlueprintTaxonomyCandidatesByFacet;
 }) {
   return [
     AI_QUESTION_BLUEPRINT_ANALYZER_PROMPT_CONTRACT,
@@ -404,7 +577,8 @@ export function buildQuestionBlueprintAnalyzerPrompt({
     "You receive only normalized text-only observation packets from the website.",
     "If packet IDs include blueprint observation cluster prefixes, analyze only that cluster and do not merge it with other clusters.",
     "Never request or infer raw PDF text, image bytes, base64, private URLs, provider response text, or secrets.",
-    "Do not write final taxonomy assignments. Use exact taxonomy tag IDs only if they are clearly present in packet hints; otherwise leave targets empty and preserve short hints as generation constraints.",
+    "Use exact active assignable leaf taxonomy tag IDs only from the bounded candidate list. Do not invent taxonomy IDs. Do not use parent IDs or shortened IDs.",
+    "If no exact candidate fits a facet, leave that facet empty, add taxonomyTargetHints, and set taxonomyUnresolved: true.",
     "Every draft must be reviewRequired: true and must describe reusable structure, not finished question content.",
     "",
     "Return ONLY JSON with this shape:",
@@ -437,6 +611,10 @@ export function buildQuestionBlueprintAnalyzerPrompt({
             requiredElements: ["element or relationship"],
             reviewRequired: true,
             sourcePacketIds: ["normalized-packet-id"],
+            specificityScore: 0.8,
+            specificityWarnings: [],
+            taxonomyGroundingStatus: "grounded",
+            taxonomyTargetHints: ["short unresolved topic hint if needed"],
             taxonomyTargets: {
               concept: [],
               curriculum: [],
@@ -444,6 +622,7 @@ export function buildQuestionBlueprintAnalyzerPrompt({
               method: [],
               task: [],
             },
+            taxonomyUnresolved: false,
             title: "Reusable blueprint title",
             variablePattern: ["variable or parameter pattern"],
             warnings: [],
@@ -454,6 +633,9 @@ export function buildQuestionBlueprintAnalyzerPrompt({
       null,
       2,
     ),
+    "",
+    "Bounded active assignable leaf taxonomy candidates by facet:",
+    JSON.stringify(compactTaxonomyCandidates(taxonomyCandidatesByFacet), null, 2),
     "",
     "Normalized observation packets:",
     JSON.stringify(normalizedPacketsForAnalyzer(observationPlan), null, 2),
@@ -478,9 +660,15 @@ export function buildQuestionBlueprintDraftPlanFromObservationPlan({
         },
         knownTaxonomyTagIds,
       );
+      const taxonomyGroundingStatus = taxonomyGroundingStatusFromTargets(
+        taxonomy.targets,
+      );
       const warnings = uniqueStrings([
         ...packet.warnings,
         ...taxonomy.warnings,
+        ...(taxonomyGroundingStatus === "grounded"
+          ? []
+          : ["question_blueprint_analyzer_taxonomy_grounding_unresolved"]),
         "question_blueprint_analyzer_deterministic_fallback_used",
       ]);
 
@@ -515,7 +703,15 @@ export function buildQuestionBlueprintDraftPlanFromObservationPlan({
         requiredElements: packet.answerPatternHints.slice(0, 6),
         reviewRequired: true as const,
         sourcePacketIds: [packet.normalizedPacketId],
+        specificityScore: 0.5,
+        specificityWarnings:
+          taxonomyGroundingStatus === "grounded"
+            ? []
+            : ["Taxonomy targets need manual review."],
+        taxonomyGroundingStatus,
+        taxonomyTargetHints: packet.taxonomySignalHints.slice(0, 8),
         taxonomyTargets: taxonomy.targets,
+        taxonomyUnresolved: taxonomyGroundingStatus !== "grounded",
         title: `Blueprint draft ${index + 1}`,
         variablePattern: [],
         warnings,
@@ -551,6 +747,21 @@ function normalizeBlueprintDraft({
   const answerSpecRecord = asRecord(record.answerSpecPattern);
   const difficultyRecord = asRecord(record.difficultyProfile);
   const taxonomy = taxonomyTargetsFrom(record.taxonomyTargets, knownTaxonomyTagIds);
+  const taxonomyGroundingStatus =
+    stringValue(record.taxonomyGroundingStatus) === "grounded" ||
+    stringValue(record.taxonomyGroundingStatus) === "partially_grounded" ||
+    stringValue(record.taxonomyGroundingStatus) === "unresolved"
+      ? (stringValue(
+          record.taxonomyGroundingStatus,
+        ) as AIQuestionBlueprintTaxonomyGroundingStatus)
+      : taxonomyGroundingStatusFromTargets(taxonomy.targets);
+  const taxonomyTargetHints = boundedList(record.taxonomyTargetHints, 12, 160);
+  const specificityWarnings = uniqueStrings([
+    ...boundedList(record.specificityWarnings, 8, 160),
+    ...(taxonomyGroundingStatus === "grounded"
+      ? []
+      : ["Taxonomy targets need manual review."]),
+  ]);
   const sourcePacketIds = uniqueStrings([
     ...boundedList(record.sourcePacketIds, 12, 120),
     ...fallbackPackets.map((packet) => packet.normalizedPacketId),
@@ -563,6 +774,9 @@ function normalizeBlueprintDraft({
   const warnings = uniqueStrings([
     ...boundedList(record.warnings, 12, 180),
     ...taxonomy.warnings,
+    ...(taxonomyGroundingStatus === "grounded"
+      ? []
+      : ["question_blueprint_analyzer_taxonomy_grounding_unresolved"]),
     ...(originalityConstraints.length
       ? []
       : ["question_blueprint_analyzer_missing_originality_constraints"]),
@@ -605,7 +819,13 @@ function normalizeBlueprintDraft({
     requiredElements: boundedList(record.requiredElements, 12, 120),
     reviewRequired: true,
     sourcePacketIds,
+    specificityScore: clampSpecificityScore(record.specificityScore),
+    specificityWarnings,
+    taxonomyGroundingStatus,
+    taxonomyTargetHints,
     taxonomyTargets: taxonomy.targets,
+    taxonomyUnresolved:
+      record.taxonomyUnresolved === true || taxonomyGroundingStatus !== "grounded",
     title: boundedText(record.title, 120) || `Blueprint draft ${index + 1}`,
     variablePattern: boundedList(record.variablePattern, 8, 120),
     warnings,
@@ -789,17 +1009,22 @@ export async function executeDeepSeekQuestionBlueprintAnalyzer({
   knownTaxonomyTagIds,
   observationPlan,
   provider,
+  taxonomyCandidatesByFacet,
 }: {
   debugContext?: AnalyzerDebugContext;
   knownTaxonomyTagIds?: ReadonlySet<string>;
   observationPlan: AIBlueprintObservationPlan;
   provider: QuestionBlueprintAnalyzerProvider;
+  taxonomyCandidatesByFacet?: AIQuestionBlueprintTaxonomyCandidatesByFacet;
 }) {
   const response = await fetch(endpoint(provider.base_url), {
     body: JSON.stringify({
       messages: [
         {
-          content: buildQuestionBlueprintAnalyzerPrompt({ observationPlan }),
+          content: buildQuestionBlueprintAnalyzerPrompt({
+            observationPlan,
+            taxonomyCandidatesByFacet,
+          }),
           role: "user",
         },
       ],

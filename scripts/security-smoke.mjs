@@ -286,6 +286,17 @@ for (const expectedText of [
   "rawStorageCount: 0",
   "generatedQuestionCount: 0",
   "reviewDraftWriteCount: 0",
+  "taxonomyGroundingStatus",
+  "taxonomyTargetHints",
+  "taxonomyUnresolved",
+  "specificityScore",
+  "specificityWarnings",
+  "Bounded active assignable leaf taxonomy candidates by facet:",
+  "Use exact active assignable leaf taxonomy tag IDs only",
+  "Do not invent taxonomy IDs.",
+  "Do not use parent IDs",
+  "set taxonomyUnresolved: true",
+  "buildQuestionBlueprintTaxonomyCandidateList",
   "question_blueprint_analyzer_text_only_packets",
   "question_blueprint_analyzer_no_generated_questions",
   "question_blueprint_analyzer_no_review_draft_write",
@@ -354,6 +365,8 @@ for (const expectedText of [
   "reviewDraftWriteCount: 0",
   "libraryWriteCount: 0",
   "rawStorageCount: 0",
+  "This blueprint needs taxonomy mapping before it can become a reusable library entry.",
+  "draft.taxonomyGroundingStatus !== \"grounded\"",
 ]) {
   assert(
     questionBlueprintReview.includes(expectedText),
@@ -466,6 +479,11 @@ for (const expectedText of [
   "question_blueprints",
   "question_blueprint_examples",
   "question_blueprint_review_actions",
+  "taxonomyGroundingStatus",
+  "taxonomyTargetHints",
+  "taxonomyUnresolved",
+  "specificityScore",
+  "specificityWarnings",
   "question_blueprint_library_seed_plan_no_question_generation",
   "question_blueprint_library_seed_plan_no_review_draft_write",
   "question_blueprint_library_seed_plan_no_provider_call",
@@ -734,6 +752,7 @@ assert(
 assert(
   blueprintActions.includes("requireAdmin") &&
     blueprintActions.includes("storeBlueprintReviewActionsFromImportBatch") &&
+    blueprintActions.includes("updateBlueprintReviewActionTaxonomyTargets") &&
     blueprintActions.includes("approveQuestionBlueprintReviewAction") &&
     blueprintActions.includes("rejectQuestionBlueprintReviewAction") &&
     blueprintActions.includes("markQuestionBlueprintNeedsEvidence") &&
@@ -741,11 +760,30 @@ assert(
   "blueprint library actions must be admin-only and use persistence helpers",
 );
 assert(
+  blueprintActions.includes("loadActiveAssignableLeafTaxonomyByFacet") &&
+    blueprintActions.includes("Parent taxonomy nodes cannot be used directly. Choose a specific assignable leaf tag.") &&
+    blueprintActions.includes("taxonomyGroundingStatus") &&
+    blueprintActions.includes("status: \"pending_review\"") &&
+    blueprintActions.includes("draft_snapshot: nextSnapshot"),
+  "blueprint taxonomy manual edit action must validate active assignable leaf tags and reopen review",
+);
+assert(
   blueprintPage.includes("Generate original draft questions") &&
     blueprintPage.includes("Manual DeepSeek call") &&
     blueprintPage.includes("Open Review Drafts") &&
     blueprintPage.includes("never published automatically"),
   "blueprint library page must expose manual BP6 generation and review handoff copy",
+);
+assert(
+  blueprintPage.includes("Edit taxonomy targets") &&
+    blueprintPage.includes("selectable=\"assignable_leaf\"") &&
+    blueprintPage.includes("Needs more evidence") &&
+    blueprintPage.includes("Rejected") &&
+    blueprintPage.includes("Debug details") &&
+    blueprintPage.includes("Raw reason:") &&
+    blueprintPage.includes("This blueprint came from observation cluster") &&
+    blueprintPage.includes("needs taxonomy mapping before approval"),
+  "blueprint library page must expose manual taxonomy edit, status sections, and readable cluster copy",
 );
 assert(
   blueprintActions.includes("generateOriginalQuestionsFromApprovedBlueprint") &&
