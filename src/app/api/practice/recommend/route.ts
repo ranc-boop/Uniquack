@@ -89,7 +89,7 @@ export async function POST(request: Request) {
   const trace: PracticeTraceEvent[] = [];
   const sessionResult = await supabase
     .from("practice_sessions")
-    .select("completed_question_ids,session_memory,tag_context")
+    .select("completed_question_ids,course_framework_snapshot,session_memory,tag_context")
     .eq("user_id", auth.user.id)
     .eq("id", sessionId)
     .maybeSingle();
@@ -102,20 +102,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Practice session not found." }, { status: 404 });
   }
 
+  const sessionData = sessionResult.data;
   const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
-  const completedFromSession = Array.isArray(sessionResult.data.completed_question_ids)
-    ? sessionResult.data.completed_question_ids.map(String)
+  const completedFromSession = Array.isArray(sessionData.completed_question_ids)
+    ? sessionData.completed_question_ids.map(String)
     : [];
   const wrongSet = new Set(wrongQuestionIds);
   const effectiveCompletedQuestionIds = Array.from(
     new Set([...completedFromSession, ...completedQuestionIds]),
   ).filter((questionId) => !wrongSet.has(questionId));
-  const baseMemory = String(sessionResult.data.session_memory ?? body.sessionMemory ?? "");
+  const baseMemory = String(sessionData.session_memory ?? body.sessionMemory ?? "");
   const longTermPreference = preference.long_term_preference.trim();
-  const effectiveSessionMemory = longTermPreference
-    ? `${baseMemory}\nLong-term preference: ${longTermPreference}`.slice(0, 2400)
-    : baseMemory;
-  const tagContext = normalizePracticeTagContext(sessionResult.data.tag_context, goal);
+  const tagContext = normalizePracticeTagContext(sessionData.tag_context, goal);
+  const courseFrameworkSnapshot = sessionData.course_framework_snapshot;
 
   if (wantsEventStream(request)) {
     const encoder = new TextEncoder();
@@ -131,11 +130,13 @@ export async function POST(request: Request) {
           const profile = await loadPracticeAIProfile(supabase);
           const agentResult = await runPracticeRecommendationAgent({
             completedQuestionIds: effectiveCompletedQuestionIds,
+            courseFrameworkSnapshot,
             goal,
+            longTermMemory: longTermPreference,
             onTrace: (event) => send("trace", event),
             profile,
             questionCount,
-            sessionMemory: effectiveSessionMemory,
+            sessionMemory: baseMemory,
             supabase,
             tagContext,
             trace,
@@ -150,6 +151,7 @@ export async function POST(request: Request) {
           }
 
           const response: PracticeRecommendResponse = {
+            llmUsage: agentResult.llmUsage,
             maxToolCalls: agentResult.maxToolCalls,
             mode: "ai",
             providerLabel: agentResult.providerLabel,
@@ -162,6 +164,8 @@ export async function POST(request: Request) {
           };
 
           response.roundId = await persistRecommendationRound({
+            courseFrameworkSnapshot,
+            llmUsage: agentResult.llmUsage,
             recommendations: agentResult.recommendations,
             response,
             sessionId,
@@ -195,10 +199,12 @@ export async function POST(request: Request) {
     const profile = await loadPracticeAIProfile(supabase);
     const agentResult = await runPracticeRecommendationAgent({
       completedQuestionIds: effectiveCompletedQuestionIds,
+            courseFrameworkSnapshot,
       goal,
+      longTermMemory: longTermPreference,
       profile,
       questionCount,
-      sessionMemory: effectiveSessionMemory,
+      sessionMemory: baseMemory,
       supabase,
       tagContext,
       trace,
@@ -215,6 +221,7 @@ export async function POST(request: Request) {
     }
 
     const response: PracticeRecommendResponse = {
+      llmUsage: agentResult.llmUsage,
       maxToolCalls: agentResult.maxToolCalls,
       mode: "ai",
       providerLabel: agentResult.providerLabel,
@@ -227,6 +234,8 @@ export async function POST(request: Request) {
     };
 
     response.roundId = await persistRecommendationRound({
+      courseFrameworkSnapshot,
+      llmUsage: agentResult.llmUsage,
       recommendations: agentResult.recommendations,
       response,
       sessionId,

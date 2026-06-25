@@ -20,6 +20,8 @@ import type {
   PracticeAttemptInput,
   PracticeGradeResult,
   PracticeHintResponse,
+  PracticeCourseFrameworkSummary,
+  PracticeQuestionReview,
   PracticeRecommendRequest,
   PracticeRecommendResponse,
   PracticeRecommendation,
@@ -343,6 +345,42 @@ function QuestionAnswerInput({
   );
 }
 
+function QuestionReviewDiagnostic({ review }: { review?: PracticeQuestionReview }) {
+  if (!review) return null;
+
+  const rows = [
+    ["What happened", review.observedError],
+    ["Missing or extra", review.missingOrExtraParts],
+    ["Answer form", review.answerFormIssue],
+    ["Concept gap", review.conceptGap],
+    ["Personal pattern", review.personalizationLink],
+    ["Fix next", review.fixNext],
+  ].filter((row): row is [string, string] => Boolean(row[1]?.trim()));
+
+  if (!rows.length) return null;
+
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <p className="text-sm font-bold text-sky-950">Review diagnosis</p>
+        {review.verdict ? (
+          <Badge className="border-sky-200 bg-white text-sky-900 hover:bg-white" variant="outline">
+            {review.verdict}
+          </Badge>
+        ) : null}
+      </div>
+      <div className="space-y-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="rounded-md border border-sky-100 bg-white/70 p-3">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-sky-700">{label}</p>
+            <FeedbackText className="mt-1 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={value} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function PracticeAgentClient() {
   const [phase, setPhase] = useState<Phase>("start");
   const [sessions, setSessions] = useState<PracticeSessionSummary[]>([]);
@@ -356,6 +394,9 @@ export function PracticeAgentClient() {
   const [review, setReview] = useState<PracticeReviewResponse | null>(null);
   const [liveTrace, setLiveTrace] = useState<PracticeTraceEvent[]>([]);
   const [reviewTrace, setReviewTrace] = useState<PracticeTraceEvent[]>([]);
+  const [longTermMemory, setLongTermMemory] = useState("");
+  const [courseFrameworks, setCourseFrameworks] = useState<PracticeCourseFrameworkSummary[]>([]);
+  const [selectedCourseFrameworkId, setSelectedCourseFrameworkId] = useState("");
   const [isTraceCollapsed, setIsTraceCollapsed] = useState(false);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
@@ -393,6 +434,15 @@ export function PracticeAgentClient() {
         )
       : { wrongQuestions: [] };
     setWrongQuestions(wrongPayload.wrongQuestions);
+    const preferencePayload = await jsonRequest<{
+      longTermPreference: string;
+      pendingMergeCount: number;
+    }>("/api/practice/preferences");
+    setLongTermMemory(preferencePayload.longTermPreference);
+    const frameworkPayload = await jsonRequest<{
+      frameworks: PracticeCourseFrameworkSummary[];
+    }>("/api/practice/course-frameworks");
+    setCourseFrameworks(frameworkPayload.frameworks);
 
     return nextSession;
   }
@@ -523,6 +573,9 @@ export function PracticeAgentClient() {
   const resultsById = new Map<string, PracticeGradeResult>(
     results.map((result) => [result.questionId, result]),
   );
+  const questionReviewsById = new Map<string, PracticeQuestionReview>(
+    (review?.questionReviews ?? []).map((item) => [item.questionId, item]),
+  );
 
   function resetRoundState() {
     setAnswers({});
@@ -555,6 +608,10 @@ export function PracticeAgentClient() {
         "/api/practice/preferences/merge/run",
         { method: "POST", body: "{}" },
       );
+      const preferencePayload = await jsonRequest<{ longTermPreference: string }>(
+        "/api/practice/preferences",
+      );
+      setLongTermMemory(preferencePayload.longTermPreference);
     } catch {
       // Preference merge is intentionally opportunistic and should not block practice.
     }
@@ -592,7 +649,11 @@ export function PracticeAgentClient() {
   async function ensureSession(trimmedGoal: string) {
     if (activeSession) return activeSession;
     const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
-      body: JSON.stringify({ goal: trimmedGoal, title: "New practice session" }),
+      body: JSON.stringify({
+        courseFrameworkId: selectedCourseFrameworkId || null,
+        goal: trimmedGoal,
+        title: "New practice session",
+      }),
       method: "POST",
     });
     setActiveSession(payload.session);
@@ -810,7 +871,11 @@ export function PracticeAgentClient() {
     startTransition(async () => {
       try {
         const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
-          body: JSON.stringify({ goal: "", title: "New practice session" }),
+          body: JSON.stringify({
+            courseFrameworkId: selectedCourseFrameworkId || null,
+            goal: "",
+            title: "New practice session",
+          }),
           method: "POST",
         });
         setActiveSession(payload.session);
@@ -1041,8 +1106,20 @@ export function PracticeAgentClient() {
             </div>
           </div>
         </section>
-        <div className="mt-auto rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
-          Session history stays here while the center stays focused on the current round.
+        <div className="mt-auto space-y-3">
+          <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
+            <summary className="cursor-pointer text-sm font-bold text-slate-900">Long-term memory</summary>
+            {longTermMemory.trim() ? (
+              <FeedbackText className="mt-3 border-none bg-transparent p-0 text-xs leading-5 text-slate-600" compact value={longTermMemory} />
+            ) : (
+              <p className="mt-3 text-slate-500">
+                No durable learning pattern has been saved yet. It will appear here after enough session evidence.
+              </p>
+            )}
+          </details>
+          <div className="rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
+            Session history stays here while the center stays focused on the current round.
+          </div>
         </div>
         </div>
         )}
@@ -1087,6 +1164,23 @@ export function PracticeAgentClient() {
                       />
                     </div>
                     <div className="flex items-center justify-between gap-2 px-2 sm:justify-end">
+                      {courseFrameworks.length ? (
+                        <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+                          <span>Framework</span>
+                          <select
+                            className="max-w-44 bg-transparent text-sm font-bold text-slate-900 outline-none"
+                            onChange={(event) => setSelectedCourseFrameworkId(event.target.value)}
+                            value={selectedCourseFrameworkId}
+                          >
+                            <option value="">None</option>
+                            {courseFrameworks.map((framework) => (
+                              <option key={framework.id} value={framework.id}>
+                                {framework.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
                       <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
                         <SlidersHorizontal className="size-4" aria-hidden="true" />
                         <span>Questions</span>
@@ -1280,6 +1374,7 @@ export function PracticeAgentClient() {
                         {phase === "feedback" && resultsById.get(question.id) ? (
                           <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
                             <FeedbackText className="border-none bg-transparent p-0 text-emerald-950" compact value={resultsById.get(question.id)?.explanation} />
+                            <QuestionReviewDiagnostic review={questionReviewsById.get(question.id)} />
                             {resultsById.get(question.id)?.solutionHtml ? (
                               <div className="space-y-2">
                                 <p className="text-sm font-bold text-emerald-950">Solution</p>
@@ -1315,6 +1410,27 @@ export function PracticeAgentClient() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {review.roundPatterns?.length ? (
+                  <div className="rounded-lg border border-sky-100 bg-sky-50/70 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Round patterns</p>
+                    <div className="mt-3 space-y-2">
+                      {review.roundPatterns.map((pattern, index) => (
+                        <FeedbackText
+                          className="border-none bg-transparent p-0 text-sm leading-6 text-slate-700"
+                          compact
+                          key={`${pattern}-${index}`}
+                          value={pattern}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {review.memoryUpdate?.sessionMemoryNote ? (
+                  <div className="rounded-lg border border-amber-100 bg-amber-50/70 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Memory note</p>
+                    <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-amber-950" compact value={review.memoryUpdate.sessionMemoryNote} />
+                  </div>
+                ) : null}
                 <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Next round focus</p>
                   <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={review.nextRoundGoal} />

@@ -49,12 +49,14 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => ({}))) as {
+    courseFrameworkId?: string | null;
     goal?: string;
     title?: string;
   };
 
   try {
     const session = await createPracticeSession({
+      courseFrameworkId: body.courseFrameworkId,
       goal: body.goal ?? "",
       supabase,
       title: body.title,

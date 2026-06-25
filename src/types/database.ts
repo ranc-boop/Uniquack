@@ -298,6 +298,8 @@ export type PracticeSession = {
   session_memory: string;
   tag_context: Json;
   completed_question_ids: string[];
+  course_framework_id: string | null;
+  course_framework_snapshot: Json | null;
   status: "active" | "archived";
   preference_merged_at: string | null;
   last_activity_at: string;
@@ -408,6 +410,36 @@ export type PracticePreferenceMergeJob = {
   updated_at: string;
 };
 
+export type PracticeCourseFramework = {
+  id: string;
+  title: string;
+  description: string;
+  framework_prompt: string;
+  learning_path: Json;
+  allowed_tag_ids: string[];
+  priority_rules: string;
+  status: "active" | "archived";
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PracticeAgentEpisode = {
+  id: string;
+  user_id: string;
+  session_id: string;
+  round_id: string | null;
+  episode_index: number;
+  recommend_context: Json;
+  tool_trace_summary: Json;
+  student_attempt_summary: Json;
+  review_diagnosis: Json;
+  memory_update: string;
+  llm_usage: Json;
+  created_at: string;
+  updated_at: string;
+};
+
 type TableDefinition<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
   Row: Row;
   Insert: Insert;
@@ -458,6 +490,8 @@ export type Database = {
       practice_wrong_questions: TableDefinition<PracticeWrongQuestion>;
       user_practice_preferences: TableDefinition<UserPracticePreference>;
       practice_preference_merge_jobs: TableDefinition<PracticePreferenceMergeJob>;
+      practice_course_frameworks: TableDefinition<PracticeCourseFramework>;
+      practice_agent_episodes: TableDefinition<PracticeAgentEpisode>;
       user_question_attempts: TableDefinition<{
         id: string;
         user_id: string;

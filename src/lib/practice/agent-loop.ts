@@ -8,7 +8,8 @@ import {
   type PracticeToolCall,
   type PracticeToolDefinition,
 } from "@/lib/practice/ai";
-import { buildToolDigest, compactSessionMemory, writePracticeFullCallLog } from "@/lib/practice/context";
+import { buildToolDigest, compactSessionMemory, summarizeLLMUsage, writePracticeFullCallLog } from "@/lib/practice/context";
+import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import type {
   PracticeQuestionCandidate,
   PracticeRecommendation,
@@ -59,8 +60,6 @@ type ToolExecutionState = {
   awaitingBrowseRetention: boolean;
   browseCandidateByTagId: Map<string, BrowseTagResult>;
   browseCallsUsed: number;
-  browseFoldSummaryByToolCallId: Map<string, string>;
-  browseToolMessageIdsToFold: string[];
   candidatePool: Map<string, PracticeQuestionCandidate>;
   completedQuestionIds: string[];
   confirmedTargetTagIds: Set<string>;
@@ -403,25 +402,6 @@ function makeToolResultMessage(toolCall: PracticeToolCall, observation: unknown)
   };
 }
 
-function foldConsumedBrowseToolMessages(messages: PracticeChatMessage[], state: ToolExecutionState) {
-  if (!state.browseToolMessageIdsToFold.length) {
-    return;
-  }
-
-  const idsToFold = new Set(state.browseToolMessageIdsToFold);
-
-  for (const message of messages) {
-    if (message.role !== "tool" || !message.tool_call_id || !idsToFold.has(message.tool_call_id)) {
-      continue;
-    }
-
-    message.content = state.browseFoldSummaryByToolCallId.get(message.tool_call_id) ??
-      "BROWSE_FOLDED kept=none";
-  }
-
-  state.browseToolMessageIdsToFold = [];
-}
-
 async function rejectPracticeToolCall({
   iteration,
   reason,
@@ -559,12 +539,6 @@ function processKeepTags({
   }
 
   if (state.awaitingBrowseRetention) {
-    for (const id of state.browseToolMessageIdsToFold) {
-      state.browseFoldSummaryByToolCallId.set(
-        id,
-        `BROWSE_FOLDED kept=${kept.join(",") || "none"} retained=${state.retainedBrowseTags.size}${invalid.length ? ` invalid_keep_tags=${invalid.length}` : ""}`,
-      );
-    }
     state.awaitingBrowseRetention = false;
   }
 
@@ -642,11 +616,6 @@ async function executePracticeTool({
       const requests = asBrowseRequests(args.requests);
       const result = await browseTaxonomyBatch({ requests, supabase: state.supabase });
       rememberBrowseCandidates(state, result);
-      state.browseToolMessageIdsToFold.push(toolCall.id);
-      state.browseFoldSummaryByToolCallId.set(
-        toolCall.id,
-        `BROWSE_FOLDED retained=${state.retainedBrowseTags.size} candidates=${result.results.reduce((sum, item) => sum + item.tags.length, 0)}`,
-      );
       logObservation = result;
       modelObservation = [
         formatBrowseTaxonomyBatchForModel(result),
@@ -788,35 +757,62 @@ async function executePracticeTool({
   }
 }
 
-function buildSystemPrompt(maxToolCalls: number) {
-  return [
-    "You are O2I Practice Recommendation Agent.",
-    "You are running in a controlled backend tool loop. Backend state and tools are the source of truth.",
-    "Available taxonomy facets are fixed and already known: curriculum, concept, method, task, form. Do not call a tool to list facets.",
-    "Tool policy: use only browse_taxonomy_batch, practice_search_batch, and finalize_recommendation.",
-    "browse_taxonomy_batch is limited to 2 normal calls, with a hard safety cap of 3. Each call has at most 8 requests and each request returns at most 15 tag ids.",
-    "searchable_question_count means searchable published approved question count for the full tag subtree, including child tags. direct_question_count is only diagnostic.",
-    "browse_taxonomy_batch returns a compact text protocol, not verbose JSON. Example: r1: [{\"t\":\"math.concept.calculus.derivatives.chain_rule\",\"q\":4,\"a\":1,\"c\":0,\"m\":[\"chain\"]}]. Here t=tag_id, q=searchable subtree question count, a=assignable 1/0, c=children count, d=direct count if present, m=query keywords matched on this node's terminal content.",
-    "Browse results are temporary. Only on the tool call immediately after browse_taxonomy_batch, include keep_tags with the full tag_id values worth carrying forward, for example keep_tags:[\"math.concept.calculus.derivatives.chain_rule\"].",
-    "Do not include keep_tags on unrelated later tool calls unless you are correcting or confirming a recent browsed tag. Never invent short tag refs.",
-    "If browse finds a concrete is_assignable tag with searchable_question_count > 0, use it directly for strict search. Do not expand children for that tag.",
-    "Only browse children when the tag is not assignable, has zero searchable count, or is clearly broad such as math.concept.calculus or integrals.",
-    "practice_search_batch is limited to 2 calls. First call must be strict and use only this round's confirmed target tag subtrees. Strict search must not jump to parent tags, neighboring tags, calculus, or integrals just because a specific tag may be sparse.",
-    "Each practice_search_batch returns at most 2 * question_count visible candidates across all lanes.",
-    "When using multiple search lanes, each non-empty lane gets a small fair visible sample before remaining slots are filled round-robin; use lanes to represent genuinely different tag hypotheses.",
-    "Second search may be relaxed: use parent tag subtree, adjacent tag subtree, or a small keyword query. When finalizing relaxed candidates, say the match is broader.",
-    "practice_search_batch returns thin text: SEARCH_RESULT header, LANE rows, then q blocks with id, question_code, type, difficulty, tags, STEM, and OPTIONS. Use the id= value for finalize_recommendation question_ids.",
-    "Example search block: q1 | id=<uuid> | O2I-CALC-HARD-013 | mcq | d=690 | tags=math.concept.calculus.derivatives.chain_rule | match=strict/lane-1; STEM: If G(x)=... what is G'(x)?; OPTIONS: A ...; B ...; C ...; D ...",
-    "After two searches, finalize with the current candidate pool. Do not ask for broad_pool. Recommendation phase cannot see answer_spec or solution_html. It can see compact plain-text stems/options only from practice_search_batch.",
-    `You have at most ${maxToolCalls} tool calls total including finalize_recommendation.`,
-    "Every tool call must include visible_thought: a short UI-safe process summary. This is not private chain-of-thought.",
-    "finalize_recommendation does not need tag_context; backend generates compact tag_context from kept browse tags, searched tags, and selected candidates.",
-  ].join("\n");
+async function buildSystemPrompt(maxToolCalls: number) {
+  const prompt = await loadPracticePrompt("recommendation-system");
+  return prompt.replaceAll("{{MAX_TOOL_CALLS}}", String(maxToolCalls));
+}
+
+function buildRecommendationDynamicContext({
+  completedQuestionIds,
+  courseFrameworkSnapshot,
+  goal,
+  longTermMemory,
+  questionCount,
+  sessionMemory,
+  tagContext,
+}: {
+  completedQuestionIds: string[];
+  courseFrameworkSnapshot?: unknown;
+  goal: string;
+  longTermMemory?: string;
+  questionCount: number;
+  sessionMemory: string;
+  tagContext: PracticeTagContext;
+}) {
+  return {
+    available_facets: ["curriculum", "concept", "method", "task", "form"],
+    completed_question_ids: completedQuestionIds.slice(-120),
+    course_framework: courseFrameworkSnapshot ?? null,
+    current_round_request: {
+      goal,
+      question_count: questionCount,
+    },
+    memory_context: {
+      long_term_memory: longTermMemory?.trim() || "No long-term memory yet.",
+      session_memory: sessionMemory,
+    },
+    tag_context: tagContext,
+    thread_policy: {
+      current_call: "recommend_next_round",
+      inherit_across_rounds: [
+        "specific learning patterns from memory_context",
+        "current session focus and recent evidence",
+        "completed question ids for repetition control",
+      ],
+      do_not_inherit_verbatim: [
+        "old tool outputs",
+        "old candidate pools",
+        "unverified guesses about the student",
+      ],
+    },
+  };
 }
 
 export async function runPracticeRecommendationAgent({
   completedQuestionIds,
+  courseFrameworkSnapshot,
   goal,
+  longTermMemory,
   onTrace,
   profile,
   questionCount,
@@ -826,7 +822,9 @@ export async function runPracticeRecommendationAgent({
   trace,
 }: {
   completedQuestionIds: string[];
+  courseFrameworkSnapshot?: unknown;
   goal: string;
+  longTermMemory?: string;
   onTrace?: (event: PracticeTraceEvent) => void | Promise<void>;
   profile: PracticeProfile;
   questionCount: number;
@@ -842,8 +840,6 @@ export async function runPracticeRecommendationAgent({
     awaitingBrowseRetention: false,
     browseCandidateByTagId: new Map(),
     browseCallsUsed: 0,
-    browseFoldSummaryByToolCallId: new Map(),
-    browseToolMessageIdsToFold: [],
     candidatePool: new Map(),
     completedQuestionIds,
     confirmedTargetTagIds: new Set(normalizedTagContext.confirmedTagIds),
@@ -857,18 +853,20 @@ export async function runPracticeRecommendationAgent({
     tagContext: normalizedTagContext,
     trace,
   };
+  const systemPrompt = await buildSystemPrompt(maxToolCalls);
   const messages: PracticeChatMessage[] = [
-    { role: "system", content: buildSystemPrompt(maxToolCalls) },
+    { role: "system", content: systemPrompt },
     {
       role: "user",
-      content: JSON.stringify({
-        available_facets: ["curriculum", "concept", "method", "task", "form"],
-        completed_question_ids: completedQuestionIds.slice(-120),
+      content: JSON.stringify(buildRecommendationDynamicContext({
+        completedQuestionIds,
+        courseFrameworkSnapshot,
         goal,
-        question_count: questionCount,
-        session_memory: compactMemory,
-        tag_context: normalizedTagContext,
-      }),
+        longTermMemory,
+        questionCount,
+        sessionMemory: compactMemory,
+        tagContext: normalizedTagContext,
+      })),
     },
   ];
 
@@ -882,6 +880,7 @@ export async function runPracticeRecommendationAgent({
 
   let providerLabel = "";
   let toolCallsUsed = 0;
+  const llmUsage: Record<string, unknown>[] = [];
 
   for (let iteration = 1; toolCallsUsed < maxToolCalls; iteration += 1) {
     const tools = availableTools(state);
@@ -905,8 +904,15 @@ export async function runPracticeRecommendationAgent({
       tools,
     });
     providerLabel = modelResult.providerLabel;
+    if (modelResult.usage) {
+      llmUsage.push({
+        iteration,
+        phase: "recommendation",
+        providerLabel,
+        usage: modelResult.usage,
+      });
+    }
 
-    foldConsumedBrowseToolMessages(messages, state);
     messages.push(buildAssistantMessageForToolContinuation(modelResult));
 
     await pushTrace(state, {
@@ -916,9 +922,20 @@ export async function runPracticeRecommendationAgent({
         ? `requested tools: ${modelResult.toolCalls.map((toolCall) => toolCall.function.name).join(", ")}`
         : "no tool call requested",
       phase: "recommendation",
+      llmUsage: modelResult.usage,
       savedFullPayload: modelResult.fullCallLogSaved,
       toolName: "model_tool_choice",
     });
+    if (modelResult.usage) {
+      await pushTrace(state, {
+        inputSummary: "Provider usage for prompt caching/token monitoring.",
+        iteration,
+        llmUsage: modelResult.usage,
+        outputSummary: summarizeLLMUsage(modelResult.usage),
+        phase: "recommendation",
+        toolName: "model_usage",
+      });
+    }
 
     if (!modelResult.toolCalls.length) {
       await pushTrace(state, {
@@ -997,6 +1014,7 @@ export async function runPracticeRecommendationAgent({
   return {
     maxToolCalls,
     providerLabel,
+    llmUsage,
     recommendations,
     roundGoal: state.finalized?.round_goal?.trim() || goal,
     sessionMemory: state.finalized?.session_memory?.trim().slice(0, 1600) || compactMemory,

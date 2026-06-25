@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
-import { compactSessionMemory, compactText, traced } from "@/lib/practice/context";
-import { persistRoundReview } from "@/lib/practice/persistence";
+import { compactSessionMemory, compactText, summarizeLLMUsage, traced } from "@/lib/practice/context";
+import { getOrCreatePracticePreference, persistRoundReview } from "@/lib/practice/persistence";
+import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import type {
   PracticeGradeResult,
+  PracticeMemoryUpdate,
+  PracticeQuestionReview,
   PracticeRecommendation,
   PracticeReviewRequest,
   PracticeReviewResponse,
@@ -25,6 +28,9 @@ type AIReviewResponse = {
     question_id?: string;
     score?: number | null;
   }>;
+  memory_update?: PracticeMemoryUpdate;
+  question_reviews?: PracticeQuestionReview[];
+  round_patterns?: string[];
   summary?: string;
   updated_session_memory?: string;
 };
@@ -61,10 +67,96 @@ function heuristicReview(body: PracticeReviewRequest) {
   const previous = compactSessionMemory(body.sessionMemory, body.goal);
 
   return {
+    memoryUpdate: {
+      longTermCandidate: missed
+        ? `Possible recurring pattern to watch: missed ${missed} under goal "${body.goal}". Confirm across more rounds before treating as durable.`
+        : null,
+      sessionMemoryNote: missed
+        ? `This round showed misses on ${missed}; next training should identify the exact first failing step before raising difficulty.`
+        : "This round did not surface an auto-graded miss; keep checking answer form and edge cases.",
+    },
     nextRoundGoal,
+    questionReviews: body.attempts.map((attempt) => ({
+      fixNext: attempt.result.isCorrect === false
+        ? "Redo this skill with one simpler variant and name the first uncertain step before calculating."
+        : "Use one nearby variant to confirm the answer form stays reliable.",
+      observedError: attempt.result.explanation,
+      personalizationLink: attempt.result.isCorrect === false
+        ? "This miss should influence the next round until a follow-up attempt is correct."
+        : null,
+      questionId: attempt.questionId,
+      verdict: attempt.result.isCorrect === true
+        ? "correct"
+        : attempt.result.isCorrect === false
+          ? "incorrect"
+          : "needs review",
+    })),
+    roundPatterns: missed
+      ? [`Missed questions this round: ${missed}.`]
+      : ["No auto-graded misses in this round."],
     results: body.attempts.map((attempt) => attempt.result),
     summary,
     updatedSessionMemory: `${previous} Latest round: ${summary}`.slice(0, 1600),
+  };
+}
+
+function normalizeQuestionReviews({
+  attempts,
+  value,
+}: {
+  attempts: PracticeReviewRequest["attempts"];
+  value: unknown;
+}): PracticeQuestionReview[] {
+  const allowedIds = new Set(attempts.map((attempt) => attempt.questionId));
+  const rows = Array.isArray(value) ? value : [];
+  const byId = new Map<string, PracticeQuestionReview>();
+
+  for (const row of rows) {
+    const item = row && typeof row === "object" ? row as Record<string, unknown> : {};
+    const questionId = String(item.questionId ?? item.question_id ?? "").trim();
+
+    if (!allowedIds.has(questionId)) {
+      continue;
+    }
+
+    byId.set(questionId, {
+      answerFormIssue: compactText(String(item.answerFormIssue ?? item.answer_form_issue ?? ""), 360) || null,
+      conceptGap: compactText(String(item.conceptGap ?? item.concept_gap ?? ""), 360) || null,
+      fixNext: compactText(String(item.fixNext ?? item.fix_next ?? item.next_micro_drill ?? ""), 420) || null,
+      missingOrExtraParts: compactText(String(item.missingOrExtraParts ?? item.missing_or_extra_parts ?? ""), 360) || null,
+      observedError: compactText(String(item.observedError ?? item.observed_error ?? ""), 420) || null,
+      personalizationLink: compactText(String(item.personalizationLink ?? item.personalization_link ?? ""), 420) || null,
+      questionId,
+      verdict: compactText(String(item.verdict ?? ""), 120) || null,
+    });
+  }
+
+  return attempts.map((attempt) => byId.get(attempt.questionId) ?? {
+    fixNext: attempt.result.isCorrect === false
+      ? "Use the solution to locate the first incorrect or missing step, then request a simpler follow-up."
+      : "Try one nearby variant to make sure the same answer form remains stable.",
+    observedError: attempt.result.explanation,
+    questionId: attempt.questionId,
+    verdict: attempt.result.isCorrect === true
+      ? "correct"
+      : attempt.result.isCorrect === false
+        ? "incorrect"
+        : "needs review",
+  });
+}
+
+function normalizeRoundPatterns(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => compactText(String(item), 260)).filter(Boolean).slice(0, 5)
+    : [];
+}
+
+function normalizeMemoryUpdate(value: unknown): PracticeMemoryUpdate {
+  const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
+
+  return {
+    longTermCandidate: compactText(String(item.longTermCandidate ?? item.long_term_candidate ?? ""), 520) || null,
+    sessionMemoryNote: compactText(String(item.sessionMemoryNote ?? item.session_memory_note ?? ""), 520) || null,
   };
 }
 
@@ -196,6 +288,16 @@ export async function POST(request: Request) {
   if (roundQuestionsError) {
     return NextResponse.json({ error: roundQuestionsError.message }, { status: 500 });
   }
+  const { data: sessionRecord, error: sessionRecordError } = await supabase
+    .from("practice_sessions")
+    .select("course_framework_snapshot")
+    .eq("user_id", auth.user.id)
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (sessionRecordError) {
+    return NextResponse.json({ error: sessionRecordError.message }, { status: 500 });
+  }
 
   const persistedRecommendations = ((roundQuestions ?? []) as Record<string, unknown>[])
     .map(recommendationFromRoundQuestion)
@@ -203,6 +305,8 @@ export async function POST(request: Request) {
 
   const attempts = body.attempts ?? [];
   const sessionMemory = compactSessionMemory(body.sessionMemory, goal);
+  const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
+  const longTermMemory = compactText(preference.long_term_preference, 1000);
   const questionIds = Array.from(new Set(attempts.map((attempt) => attempt.questionId).filter(Boolean)));
   const reviewQuestions = await loadQuestionsForReview({ questionIds, supabase });
   const questionById = new Map(reviewQuestions.map((question) => [question.id, question]));
@@ -236,6 +340,7 @@ export async function POST(request: Request) {
 
   try {
     const profile = await loadPracticeAIProfile(supabase);
+    const systemPrompt = await loadPracticePrompt("review-system");
     const aiResult = await traced({
       inputSummary: `DS review JSON call with ${compactAttempts.length} attempts.`,
       outputSummary: (value) => `provider=${value.providerLabel}`,
@@ -249,24 +354,15 @@ export async function POST(request: Request) {
           messages: [
             {
               role: "system",
-              content: [
-                "You are O2I Practice Review Agent. Review the completed round and update compact session memory. Return valid json only.",
-                "Borrow Codex-style context management: preserve stable facts, do not copy full old history, and write a compact summary for future rounds.",
-                "Ignore prior recommendation/tool context. Judge correctness from the provided question, options, answer_spec, solution excerpt, and student answer.",
-                "For every attempt, decide is_correct with the model as the final authority. Use null only when the provided data is insufficient.",
-                "Write summary as a coaching review, not a one-line score. Use 120-220 words.",
-                "The summary must mention: what the student did well, what needs training, and what to practice next.",
-                "Be specific to the submitted attempts. Name question codes or skill patterns when useful.",
-                "Return JSON only with keys: summary, results, next_round_goal, updated_session_memory.",
-                "Schema example: {\"summary\":\"...\",\"results\":[{\"question_id\":\"q1\",\"is_correct\":true,\"score\":1,\"explanation\":\"...\"}],\"next_round_goal\":\"...\",\"updated_session_memory\":\"...\"}.",
-                "Do not invent question IDs. Keep per-question explanations concise, but make the round summary substantial and actionable.",
-              ].join("\n"),
+              content: systemPrompt,
             },
             {
               role: "user",
               content: JSON.stringify({
                 attempts: compactAttempts,
+                course_framework: sessionRecord?.course_framework_snapshot ?? null,
                 goal,
+                long_term_memory: longTermMemory || "No long-term memory yet.",
                 previous_session_memory: sessionMemory,
               }),
             },
@@ -274,16 +370,39 @@ export async function POST(request: Request) {
         }),
     });
     const fallback = heuristicReview(body);
+    const questionReviews = normalizeQuestionReviews({
+      attempts,
+      value: aiResult.parsed.question_reviews,
+    });
+    const roundPatterns = normalizeRoundPatterns(aiResult.parsed.round_patterns);
+    const memoryUpdate = normalizeMemoryUpdate(aiResult.parsed.memory_update);
+    if (aiResult.usage) {
+      trace.push({
+        inputSummary: "Provider usage for prompt caching/token monitoring.",
+        llmUsage: aiResult.usage,
+        outputSummary: summarizeLLMUsage(aiResult.usage),
+        phase: "review",
+        toolName: "model_usage",
+      });
+    }
     const modelResults = normalizeModelResults({
       aiResults: aiResult.parsed.results,
       attempts,
       solutionByQuestionId,
     });
     const response: PracticeReviewResponse = {
+      llmUsage: aiResult.usage ? [{
+        phase: "review",
+        providerLabel: aiResult.providerLabel,
+        usage: aiResult.usage,
+      }] : [],
+      memoryUpdate,
       mode: "ai",
       nextRoundGoal: aiResult.parsed.next_round_goal?.trim() || fallback.nextRoundGoal,
       providerLabel: aiResult.providerLabel,
+      questionReviews,
       results: modelResults,
+      roundPatterns: roundPatterns.length ? roundPatterns : fallback.roundPatterns,
       sessionId,
       summary: aiResult.parsed.summary?.trim() || fallback.summary,
       trace,
@@ -314,9 +433,13 @@ export async function POST(request: Request) {
     });
     const fallback = heuristicReview(body);
     const response: PracticeReviewResponse = {
+      llmUsage: [],
+      memoryUpdate: fallback.memoryUpdate,
       mode: "heuristic",
       nextRoundGoal: fallback.nextRoundGoal,
+      questionReviews: fallback.questionReviews,
       results: fallback.results,
+      roundPatterns: fallback.roundPatterns,
       sessionId,
       summary: fallback.summary,
       trace,

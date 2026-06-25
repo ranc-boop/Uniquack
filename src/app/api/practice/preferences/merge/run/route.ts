@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { compactText } from "@/lib/practice/context";
+import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import {
   countPendingPreferenceJobs,
   getOrCreatePracticePreference,
@@ -73,24 +74,37 @@ export async function POST() {
   }
 
   try {
+    const { data: recentEpisodes, error: recentEpisodesError } = await supabase
+      .from("practice_agent_episodes")
+      .select("episode_index,memory_update,review_diagnosis,student_attempt_summary")
+      .eq("user_id", auth.user.id)
+      .eq("session_id", job.source_session_id ?? "")
+      .order("episode_index", { ascending: false })
+      .limit(8);
+
+    if (recentEpisodesError) {
+      throw new Error(recentEpisodesError.message);
+    }
+
     const profile = await loadPracticeAIProfile(supabase);
+    const systemPrompt = await loadPracticePrompt("preference-merge-system");
     const aiResult = await callPracticeJsonModel<MergeResponse>({
       debugContext: { phase: "preference_merge", sourceSessionId: job.source_session_id },
       messages: [
         {
           role: "system",
-          content: [
-            "You update a student's long-term Practice Agent preference.",
-            "Input contains the previous long-term preference and a completed session memory.",
-            "Return JSON only: {\"long_term_preference\":\"...\"}.",
-            "Keep durable preferences, learning needs, pacing, and style notes. Remove one-off goals.",
-            "The final value must be at most 1000 characters.",
-          ].join("\n"),
+          content: systemPrompt,
         },
         {
           role: "user",
           content: JSON.stringify({
             previous_long_term_preference: compactText(job.previous_preference, 1000),
+            recent_episode_evidence: (recentEpisodes ?? []).map((episode) => ({
+              episode_index: episode.episode_index,
+              memory_update: compactText(episode.memory_update, 900),
+              review_diagnosis: compactText(JSON.stringify(episode.review_diagnosis ?? {}), 1400),
+              student_attempt_summary: compactText(JSON.stringify(episode.student_attempt_summary ?? []), 800),
+            })),
             source_session_memory: compactText(job.source_session_memory, 1600),
           }),
         },

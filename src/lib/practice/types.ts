@@ -12,6 +12,7 @@ export type PracticeTraceEvent = {
   error?: string;
   inputSummary?: string;
   iteration?: number;
+  llmUsage?: Record<string, unknown> | null;
   outputSummary?: string;
   phase: PracticePhase | "context";
   resultCount?: number;
@@ -51,6 +52,7 @@ export type PracticeRecommendation = PracticeQuestionCandidate & {
 };
 
 export type PracticeRecommendRequest = {
+  courseFrameworkId?: string | null;
   completedQuestionIds?: string[];
   goal: string;
   questionCount?: number;
@@ -61,6 +63,7 @@ export type PracticeRecommendRequest = {
 };
 
 export type PracticeRecommendResponse = {
+  llmUsage?: Record<string, unknown>[];
   maxToolCalls: number;
   mode: "ai" | "heuristic";
   providerLabel?: string;
@@ -71,6 +74,22 @@ export type PracticeRecommendResponse = {
   sessionId?: string;
   tagContext: PracticeTagContext;
   trace: PracticeTraceEvent[];
+};
+
+export type PracticeQuestionReview = {
+  answerFormIssue?: string | null;
+  conceptGap?: string | null;
+  fixNext?: string | null;
+  missingOrExtraParts?: string | null;
+  observedError?: string | null;
+  personalizationLink?: string | null;
+  questionId: string;
+  verdict?: string | null;
+};
+
+export type PracticeMemoryUpdate = {
+  longTermCandidate?: string | null;
+  sessionMemoryNote?: string | null;
 };
 
 export type PracticeHintRequest = {
@@ -140,18 +159,35 @@ export type PracticeReviewRequest = {
 };
 
 export type PracticeReviewResponse = {
+  llmUsage?: Record<string, unknown>[];
+  memoryUpdate?: PracticeMemoryUpdate;
   mode: "ai" | "heuristic";
   nextRoundGoal: string;
   providerLabel?: string;
+  questionReviews?: PracticeQuestionReview[];
   results?: PracticeGradeResult[];
+  roundPatterns?: string[];
   sessionId?: string;
   summary: string;
   trace: PracticeTraceEvent[];
   updatedSessionMemory: string;
 };
 
+export type PracticeCourseFrameworkSummary = {
+  allowedTagIds: string[];
+  description: string;
+  frameworkPrompt: string;
+  id: string;
+  learningPath: unknown;
+  priorityRules: string;
+  status: "active" | "archived";
+  title: string;
+};
+
 export type PracticeSessionSummary = {
   completedQuestionIds: string[];
+  courseFrameworkId?: string | null;
+  courseFrameworkSnapshot?: unknown;
   createdAt: string;
   goal: string;
   id: string;

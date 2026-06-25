@@ -49,6 +49,7 @@ export type PracticeChatModelResult = {
   rawPayload: unknown;
   reasoningContent?: string | null;
   toolCalls: PracticeToolCall[];
+  usage?: Record<string, unknown> | null;
 };
 
 type LoadedProfile = Awaited<ReturnType<typeof loadAIProviderProfileForUse>>;
@@ -219,6 +220,9 @@ export async function callPracticeChatModel({
   }
 
   const message = payload?.choices?.[0]?.message ?? {};
+  const usage = payload?.usage && typeof payload.usage === "object" && !Array.isArray(payload.usage)
+    ? payload.usage as Record<string, unknown>
+    : null;
   const hasReasoningContent = Object.prototype.hasOwnProperty.call(message, "reasoning_content");
   const reasoningContent = hasReasoningContent
     ? typeof message.reasoning_content === "string"
@@ -246,6 +250,7 @@ export async function callPracticeChatModel({
     rawPayload: payload,
     reasoningContent,
     toolCalls,
+    usage,
   };
 }
 
@@ -273,7 +278,7 @@ export async function callPracticeJsonModel<T>({
   debugContext?: Record<string, unknown>;
   messages: PracticeChatMessage[];
   profile: LoadedProfile;
-}): Promise<{ parsed: T; providerLabel: string; rawText: string }> {
+}): Promise<{ parsed: T; providerLabel: string; rawText: string; usage?: Record<string, unknown> | null }> {
   const result = await callPracticeChatModel({ debugContext, messages, profile, responseFormatJson: true });
   const contentText = result.contentText || JSON.stringify(result.rawPayload);
 
@@ -281,5 +286,6 @@ export async function callPracticeJsonModel<T>({
     parsed: parsePossiblyMalformedJson(contentText) as T,
     providerLabel: result.providerLabel,
     rawText: contentText,
+    usage: result.usage,
   };
 }

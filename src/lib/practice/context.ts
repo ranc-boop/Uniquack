@@ -56,6 +56,29 @@ export function buildToolDigest(items: unknown[]) {
   return JSON.stringify(items).replace(/\s+/g, " ").slice(0, MAX_DIGEST_CHARS);
 }
 
+export function summarizeLLMUsage(usage: Record<string, unknown> | null | undefined) {
+  if (!usage) {
+    return "";
+  }
+
+  const record = usage as Record<string, any>;
+  const promptTokens = record.prompt_tokens ?? record.input_tokens;
+  const completionTokens = record.completion_tokens ?? record.output_tokens;
+  const totalTokens = record.total_tokens;
+  const cachedTokens =
+    record.prompt_tokens_details?.cached_tokens ??
+    record.input_token_details?.cache_read ??
+    record.cache_read_input_tokens ??
+    record.cached_tokens;
+
+  return [
+    promptTokens !== undefined ? `prompt=${promptTokens}` : "",
+    completionTokens !== undefined ? `completion=${completionTokens}` : "",
+    totalTokens !== undefined ? `total=${totalTokens}` : "",
+    cachedTokens !== undefined ? `cached=${cachedTokens}` : "",
+  ].filter(Boolean).join("; ");
+}
+
 export async function writePracticeFullCallLog({
   context,
   event,
