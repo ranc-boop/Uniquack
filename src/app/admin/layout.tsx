@@ -17,6 +17,7 @@ const navItems = [
   { href: "/admin/imports/assets", label: "Bulk Assets" },
   { href: "/admin/imports/package", label: "Package Import" },
   { href: "/admin/imports/pdf", label: "AI PDF Import" },
+  { href: "/admin/blueprints", label: "Blueprint Library" },
   { href: "/admin/ai-settings", label: "AI Settings" },
   { href: "/admin/users", label: "Users" },
 ];

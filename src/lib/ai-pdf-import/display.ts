@@ -124,7 +124,7 @@ export function friendlyAIPdfPhaseLabel(phase: string) {
     question_blueprint_analyzed: "Question blueprint analyzer finished",
     question_blueprint_analyzing: "Question blueprint analyzer running",
     question_blueprint_clustering: "Blueprint observation clustering",
-    question_blueprint_review_planned: "Question blueprint review planned",
+    question_blueprint_review_planned: "Blueprint observation completed",
     question_blueprint_review_planning: "Question blueprint review planning",
     queued: "Queued",
     rendering_page_images: "Rendering page images",
@@ -140,6 +140,10 @@ export function friendlyAIPdfPhaseLabel(phase: string) {
   };
 
   return labels[phase] ?? phase.replaceAll("_", " ");
+}
+
+export function isAIPdfBlueprintObservationCompletePhase(phase: unknown) {
+  return phase === "question_blueprint_review_planned";
 }
 
 export function isFailedAIPdfStatus(status: unknown) {
@@ -196,7 +200,7 @@ function statusLabel({
     phase === "blueprint_observation_completed" ||
     phase === "blueprint_observation_normalized" ||
     phase === "question_blueprint_analyzed" ||
-    phase === "question_blueprint_review_planned"
+    isAIPdfBlueprintObservationCompletePhase(phase)
   ) {
     return "Blueprint Observation";
   }

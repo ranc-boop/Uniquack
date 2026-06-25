@@ -8,6 +8,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import Link from "next/link";
 import {
   useId,
   useMemo,
@@ -40,6 +41,7 @@ import {
   deriveAIPdfBatchDisplayState,
   deriveAIPdfPhase,
   friendlyAIPdfPhaseLabel,
+  isAIPdfBlueprintObservationCompletePhase,
   sanitizeAIPdfErrorForDisplay,
   summarizeAIPdfError as summarizeSharedAIPdfError,
 } from "@/lib/ai-pdf-import/display";
@@ -350,6 +352,31 @@ function ThinkingIndicator({
   );
 }
 
+function BlueprintObservationCompletionCallout() {
+  return (
+    <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+      <div className="space-y-1">
+        <p className="font-medium">Blueprint observation completed</p>
+        <p>No questions were created by design.</p>
+        <p>
+          Next step: Open Blueprint Library to review extracted question
+          blueprints.
+        </p>
+      </div>
+      <Button asChild className="w-fit" size="sm" variant="outline">
+        <Link href="/admin/blueprints">
+          Open Blueprint Library
+          <ExternalLink className="size-4" />
+        </Link>
+      </Button>
+      <p className="text-xs text-emerald-900/80">
+        Safety notes: no generated questions, no Review Draft writes, and no
+        official taxonomy writes happened during observation.
+      </p>
+    </div>
+  );
+}
+
 export function AIPdfImportPanel({
   providers,
   sources = [],
@@ -504,8 +531,12 @@ export function AIPdfImportPanel({
     );
   }
 
-  function isTerminalStatus(status: string | undefined) {
-    return status === "failed" || status === "imported";
+  function isTerminalStatus(status: string | undefined, phase: string) {
+    return (
+      status === "failed" ||
+      status === "imported" ||
+      isAIPdfBlueprintObservationCompletePhase(phase)
+    );
   }
 
   function resultFromStatusSnapshot(snapshot: any): NonNullable<ImportResult> {
@@ -564,7 +595,7 @@ export function AIPdfImportPanel({
           );
         }
 
-        if (isTerminalStatus(snapshot.batch?.status)) {
+        if (isTerminalStatus(snapshot.batch?.status, phase)) {
           return snapshot;
         }
 
@@ -1039,6 +1070,10 @@ export function AIPdfImportPanel({
         ]);
       }
 
+      const finalPhase = getAIPdfPhase(nextResult.summary);
+      const isBlueprintObservationComplete =
+        isAIPdfBlueprintObservationCompletePhase(finalPhase);
+
       if (nextResult.status === "failed") {
         finishOperation(
           operationId,
@@ -1052,10 +1087,18 @@ export function AIPdfImportPanel({
         finishOperation(
           operationId,
           "success",
-          "AI extraction completed.",
-          `Created ${aiImportSummary?.createdQuestionCount ?? 0} draft questions.`,
+          isBlueprintObservationComplete
+            ? "Blueprint observation completed."
+            : "AI extraction completed.",
+          isBlueprintObservationComplete
+            ? "Open Blueprint Library to review extracted question blueprints."
+            : `Created ${aiImportSummary?.createdQuestionCount ?? 0} draft questions.`,
         );
-        toast.success("AI PDF import completed.");
+        toast.success(
+          isBlueprintObservationComplete
+            ? "Blueprint observation completed."
+            : "AI PDF import completed.",
+        );
       }
     } catch (error) {
       const message = formatError(error, "AI PDF import failed.");
@@ -1171,14 +1214,20 @@ export function AIPdfImportPanel({
               const ai = display.ai;
               const phase = display.phase;
               const warnings = display.warnings;
+              const isBlueprintObservationComplete =
+                isAIPdfBlueprintObservationCompletePhase(phase);
 
               return (
                 <div className="space-y-3">
-                  {operation.state === "running" ? (
+                  {operation.state === "running" &&
+                  !isBlueprintObservationComplete ? (
                     <ThinkingIndicator
                       detail={ai?.detail ? String(ai.detail) : undefined}
                       phase={phase}
                     />
+                  ) : null}
+                  {isBlueprintObservationComplete ? (
+                    <BlueprintObservationCompletionCallout />
                   ) : null}
                   <div className="grid gap-2 rounded-md border bg-background px-3 py-2 text-xs md:grid-cols-3">
                     <p>Batch: {statusSnapshot.batch.status}</p>
@@ -1246,7 +1295,9 @@ export function AIPdfImportPanel({
               );
             })()
           ) : null}
-          {operation.state === "running" && !statusSnapshot?.batch ? (
+          {operation.state === "running" &&
+          !statusSnapshot?.batch &&
+          !isAIPdfBlueprintObservationCompletePhase(getAIPdfPhase(result?.summary)) ? (
             <ThinkingIndicator
               detail={operation.detail}
               phase={getAIPdfPhase(result?.summary)}
@@ -1623,7 +1674,7 @@ export function AIPdfImportPanel({
             pageCount={selectedSource.pageCount}
           />
         ) : null}
-        {extracting ? (
+        {extracting && !isAIPdfBlueprintObservationCompletePhase(activePhase) ? (
           <ThinkingIndicator detail={activeDetail} phase={activePhase} />
         ) : null}
         {!extractableProviderOptions.length ? (

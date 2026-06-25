@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   deriveAIPdfBatchDisplayState,
+  isAIPdfBlueprintObservationCompletePhase,
   type AiProviderMode,
 } from "@/lib/ai-pdf-import/display";
 import {
@@ -476,6 +477,13 @@ export function AIPdfControlDashboard({
               const hasQuestionBlueprintLibraryPlan =
                 questionBlueprintLibraryPlan.version ===
                 "question_blueprint_library_persistence_plan_v1";
+              const hasBlueprintLibraryHandoff =
+                hasBlueprintObservationPlan &&
+                hasQuestionBlueprintDraftPlan &&
+                hasQuestionBlueprintReviewPlan &&
+                hasQuestionBlueprintLibraryPlan;
+              const isBlueprintObservationComplete =
+                isAIPdfBlueprintObservationCompletePhase(phase);
               const technicalError = display.warnings.technicalDetail;
               const ctaLabel = display.ctaLabel;
 
@@ -587,9 +595,19 @@ export function AIPdfControlDashboard({
                     />
 
                     {hasBlueprintObservationPlan ? (
-                      <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                      <div
+                        className={`rounded-md border p-3 text-sm ${
+                          isBlueprintObservationComplete
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                            : "bg-muted/20"
+                        }`}
+                      >
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium">Blueprint Observation Mode</p>
+                          <p className="font-medium">
+                            {isBlueprintObservationComplete
+                              ? "Blueprint observation completed"
+                              : "Blueprint Observation Mode"}
+                          </p>
                           <Badge variant="outline">
                             Status:{" "}
                             {firstString(
@@ -605,8 +623,14 @@ export function AIPdfControlDashboard({
                             Normalized analyzer packets:{" "}
                             {normalizedObservationPacketCount}
                           </p>
-                          <p>No questions were created.</p>
+                          <p>No questions were created by design.</p>
                         </div>
+                        {isBlueprintObservationComplete ? (
+                          <p className="mt-2 text-xs text-emerald-900/80">
+                            Next step: Open Blueprint Library to review
+                            extracted question blueprints.
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -694,6 +718,28 @@ export function AIPdfControlDashboard({
                           </p>
                           <p>No questions generated yet.</p>
                         </div>
+                      </div>
+                    ) : null}
+
+                    {hasBlueprintLibraryHandoff ? (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                        <div className="space-y-1">
+                          <p className="font-medium">Open Blueprint Library</p>
+                          <p className="text-xs text-emerald-900/80">
+                            Review and approve extracted question blueprints
+                            before using them to generate original questions.
+                          </p>
+                          <p className="text-xs text-emerald-900/80">
+                            Safety notes: no generated questions, Review Draft
+                            writes, or official taxonomy writes happened during
+                            observation.
+                          </p>
+                        </div>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href="/admin/blueprints">
+                            Open Blueprint Library
+                          </Link>
+                        </Button>
                       </div>
                     ) : null}
 

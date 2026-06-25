@@ -98,6 +98,7 @@ const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
+const adminLayout = await read("src/app/admin/layout.tsx");
 for (const exportName of [
   "AIBlueprintObservationPlan",
   "AIBlueprintObservationPacket",
@@ -694,10 +695,10 @@ assert(
   "AI PDF panel must expose blueprint observation mode with safe copy",
 );
 assert(
-  aiPdfDashboard.includes("Blueprint Observation Mode") &&
+    aiPdfDashboard.includes("Blueprint Observation Mode") &&
     aiPdfDashboard.includes("Observation packets:") &&
     aiPdfDashboard.includes("Normalized analyzer packets:") &&
-    aiPdfDashboard.includes("No questions were created."),
+    aiPdfDashboard.includes("No questions were created by design."),
   "AI PDF dashboard must surface blueprint observation metadata",
 );
 assert(
@@ -723,6 +724,26 @@ assert(
     aiPdfDashboard.includes("Library persistence:") &&
     aiPdfDashboard.includes("planned only"),
   "AI PDF dashboard must surface question blueprint review/library metadata",
+);
+assert(
+  aiPdfDashboard.includes("Blueprint observation completed") &&
+    aiPdfDashboard.includes("Open Blueprint Library") &&
+    aiPdfDashboard.includes("Review and approve extracted question blueprints") &&
+    aiPdfDashboard.includes("No questions were created by design."),
+  "AI PDF dashboard must show blueprint observation completion handoff",
+);
+assert(
+  aiPdfPanel.includes("isAIPdfBlueprintObservationCompletePhase") &&
+    aiPdfPanel.includes("BlueprintObservationCompletionCallout") &&
+    aiPdfPanel.includes("Open Blueprint Library") &&
+    aiPdfPanel.includes("No questions were created by design.") &&
+    aiPdfPanel.includes("!isAIPdfBlueprintObservationCompletePhase(activePhase)"),
+  "AI PDF live panel must suppress the running spinner after blueprint observation completion",
+);
+assert(
+  adminLayout.includes("Blueprint Library") &&
+    adminLayout.includes("/admin/blueprints"),
+  "admin navigation must expose Blueprint Library",
 );
 console.log("PASS blueprint observation mode is explicit, summary-only, and draft-free");
 

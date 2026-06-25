@@ -58,6 +58,14 @@ await checkAdminRoute(
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
+const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
+const adminLayout = await read("src/app/admin/layout.tsx");
+assert(
+  adminLayout.includes("Blueprint Library") &&
+    adminLayout.includes("/admin/blueprints"),
+  "admin navigation must include Blueprint Library",
+);
+console.log("PASS admin navigation exposes Blueprint Library");
 assert(
   blueprintPage.includes("Generate original draft questions") &&
     blueprintPage.includes("Manual DeepSeek call") &&
@@ -94,4 +102,19 @@ assert(
   "AI PDF dashboard must show blueprint observation clustering metadata",
 );
 console.log("PASS AI PDF dashboard source surfaces blueprint observation clusters");
+assert(
+  aiPdfDashboard.includes("Blueprint observation completed") &&
+    aiPdfDashboard.includes("Open Blueprint Library") &&
+    aiPdfDashboard.includes("Review and approve extracted question blueprints") &&
+    aiPdfDashboard.includes("No questions were created by design."),
+  "AI PDF dashboard must show completed blueprint observation handoff",
+);
+assert(
+  aiPdfPanel.includes("isAIPdfBlueprintObservationCompletePhase") &&
+    aiPdfPanel.includes("BlueprintObservationCompletionCallout") &&
+    aiPdfPanel.includes("Open Blueprint Library") &&
+    aiPdfPanel.includes("No questions were created by design."),
+  "AI PDF live panel must stop spinner and show blueprint completion handoff",
+);
+console.log("PASS AI PDF blueprint observation completion handoff is visible");
 console.log("PASS route smoke uses taxonomy routes without legacy tag setup");
