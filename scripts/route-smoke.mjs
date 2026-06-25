@@ -47,6 +47,6 @@ await checkRoute("/videos", "Videos");
 await checkAdminRoute("/admin/tags", "Taxonomy");
 await checkAdminRoute(
   "/admin/blueprints",
-  "Blueprint Engine is being rebuilt around AI Parsing observation.",
+  "Question Blueprint Library",
 );
 console.log("PASS route smoke uses taxonomy routes without legacy tag setup");

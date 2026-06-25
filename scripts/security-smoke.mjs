@@ -88,6 +88,8 @@ const blueprintObservation = await read("src/lib/ai-pdf-import/blueprint-observa
 const questionBlueprintAnalyzer = await read("src/lib/ai-pdf-import/question-blueprint-analyzer.ts");
 const questionBlueprintReview = await read("src/lib/blueprints/question-blueprint-review.ts");
 const questionBlueprintLibrary = await read("src/lib/blueprints/question-blueprint-library.ts");
+const questionBlueprintPersistence = await read("src/lib/blueprints/question-blueprint-persistence.ts");
+const questionBlueprintMigration = await read("supabase/migrations/0015_question_blueprint_library.sql");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
@@ -334,6 +336,73 @@ assert(!questionBlueprintLibrary.includes(".update("), "question blueprint libra
 assert(!questionBlueprintLibrary.includes(".delete("), "question blueprint library must not delete database rows");
 console.log("PASS question blueprint library persistence is contract-only and write-free");
 
+for (const tableName of [
+  "question_blueprints",
+  "question_blueprint_examples",
+  "question_blueprint_review_actions",
+]) {
+  assert(
+    questionBlueprintMigration.includes(`create table if not exists public.${tableName}`),
+    `question blueprint migration is missing ${tableName}`,
+  );
+  assert(
+    questionBlueprintMigration.includes(`alter table public.${tableName} enable row level security`),
+    `${tableName} must enable RLS`,
+  );
+  assert(
+    questionBlueprintMigration.includes(`${tableName}_admin_crud`),
+    `${tableName} must have admin-only CRUD policy`,
+  );
+}
+for (const expectedText of [
+  "owner_scope in ('system', 'school', 'teacher', 'private')",
+  "status in ('draft', 'approved', 'deprecated')",
+  "status in ('pending_review', 'approved', 'rejected', 'needs_more_evidence', 'archived')",
+  "private.is_admin()",
+  "to authenticated",
+]) {
+  assert(
+    questionBlueprintMigration.includes(expectedText),
+    `question blueprint migration guard is missing ${expectedText}`,
+  );
+}
+assert(
+  !questionBlueprintMigration.includes("to anon"),
+  "question blueprint migration must not grant anon access",
+);
+
+for (const exportName of [
+  "validateQuestionBlueprintRow",
+  "buildQuestionBlueprintRowsFromApprovedActions",
+  "buildQuestionBlueprintLibrarySeedPlan",
+  "persistApprovedQuestionBlueprints",
+  "summarizeQuestionBlueprintLibrary",
+  "buildQuestionBlueprintReviewActionRowsFromImportSummary",
+]) {
+  assert(
+    questionBlueprintPersistence.includes(exportName),
+    `question blueprint persistence helper is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "QUESTION_BLUEPRINT_DB_TABLES",
+  "question_blueprints",
+  "question_blueprint_examples",
+  "question_blueprint_review_actions",
+  "question_blueprint_library_seed_plan_no_question_generation",
+  "question_blueprint_library_seed_plan_no_review_draft_write",
+  "question_blueprint_library_seed_plan_no_provider_call",
+]) {
+  assert(
+    questionBlueprintPersistence.includes(expectedText),
+    `question blueprint persistence guard is missing ${expectedText}`,
+  );
+}
+assert(!questionBlueprintPersistence.includes("fetch("), "question blueprint persistence must not call providers");
+assert(!questionBlueprintPersistence.includes("importBatchImportJson"), "question blueprint persistence must not write Review Drafts");
+assert(!questionBlueprintPersistence.includes("callAIPdfExtractionProvider"), "question blueprint persistence must not run extraction");
+console.log("PASS question blueprint DB migration and persistence helpers are admin-only");
+
 for (const expectedText of [
   "blueprint_observation",
   "processAIPdfBlueprintObservation",
@@ -430,11 +499,40 @@ assert(
 console.log("PASS blueprint observation mode is explicit, summary-only, and draft-free");
 
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
+const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 assert(
-  blueprintPage.includes("Blueprint Engine is being rebuilt around AI Parsing observation."),
-  "blueprint rollback placeholder is missing",
+  blueprintPage.includes("Question Blueprint Library") &&
+    blueprintPage.includes("Extract and review reusable assessment patterns from source questions.") &&
+    blueprintPage.includes("Approved blueprints can later generate original draft questions"),
+  "question blueprint library page copy is missing",
 );
-assert(blueprintPage.includes("requireAdmin"), "blueprint placeholder must remain admin-only");
+assert(blueprintPage.includes("requireAdmin"), "blueprint library page must remain admin-only");
+assert(
+  blueprintPage.includes("Setup needed") &&
+    blueprintPage.includes("0015_question_blueprint_library.sql"),
+  "blueprint library page must show setup-needed message when tables are missing",
+);
+assert(
+  blueprintPage.includes("Pending blueprint review actions") &&
+    blueprintPage.includes("Approved blueprint library") &&
+    blueprintPage.includes("Store review actions") &&
+    blueprintPage.includes("Approve blueprint") &&
+    blueprintPage.includes("Needs more evidence") &&
+    blueprintPage.includes("Reject"),
+  "blueprint library page must expose admin review workflow",
+);
+assert(
+  blueprintActions.includes("requireAdmin") &&
+    blueprintActions.includes("storeBlueprintReviewActionsFromImportBatch") &&
+    blueprintActions.includes("approveQuestionBlueprintReviewAction") &&
+    blueprintActions.includes("rejectQuestionBlueprintReviewAction") &&
+    blueprintActions.includes("markQuestionBlueprintNeedsEvidence") &&
+    blueprintActions.includes("persistApprovedQuestionBlueprints"),
+  "blueprint library actions must be admin-only and use persistence helpers",
+);
+assert(!blueprintActions.includes("fetch("), "blueprint library actions must not call providers");
+assert(!blueprintActions.includes("importBatchImportJson"), "blueprint library actions must not write Review Drafts");
+assert(!blueprintActions.includes("callAIPdfExtractionProvider"), "blueprint library actions must not run extraction");
 for (const removedBlueprintSurface of [
   "Question blueprint preview",
   "QuestionBlueprintPlan",
@@ -447,15 +545,11 @@ for (const removedBlueprintSurface of [
   "buildQuestionBlueprintPlan",
   "buildBlueprintProviderRunPlan",
   "buildBlueprintGenerationRequestPlan",
-  "question_taxonomy_assignments",
   "fetch(",
-  ".insert(",
-  ".update(",
-  ".delete(",
 ]) {
   assert(
     !blueprintPage.includes(removedBlueprintSurface),
-    `old blueprint surface remains on placeholder page: ${removedBlueprintSurface}`,
+    `old blueprint product surface remains on library page: ${removedBlueprintSurface}`,
   );
 }
-console.log("PASS old blueprint product surface is rolled back to an admin-only placeholder");
+console.log("PASS question blueprint library admin surface is admin-only and generation-free");
