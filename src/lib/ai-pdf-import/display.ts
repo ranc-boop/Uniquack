@@ -104,6 +104,9 @@ export function stringAIPdfList(value: unknown) {
 export function friendlyAIPdfPhaseLabel(phase: string) {
   const labels: Record<string, string> = {
     building_import_json: "Normalizing questions",
+    blueprint_observation_calling_provider: "Blueprint Observation Mode",
+    blueprint_observation_completed: "Blueprint observation completed",
+    blueprint_observation_normalized: "Blueprint observations normalized",
     calling_provider: "AI request sent",
     completed: "Completed",
     counting_pages: "Counting pages",
@@ -185,8 +188,16 @@ function statusLabel({
   }
 
   if (
+    phase === "blueprint_observation_completed" ||
+    phase === "blueprint_observation_normalized"
+  ) {
+    return "Blueprint Observation";
+  }
+
+  if (
     status === "validating" ||
     [
+      "blueprint_observation_calling_provider",
       "starting_extraction",
       "extracting",
       "counting_pages",

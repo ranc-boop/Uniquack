@@ -1,3 +1,5 @@
+import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
+
 export type AIBlueprintObservationPlanVersion =
   "blueprint_observation_plan_v1";
 
@@ -130,6 +132,60 @@ export const BLUEPRINT_OBSERVATION_BASE_WARNINGS = [
   "blueprint_observation_no_raw_pdf_storage",
   "blueprint_observation_no_base64_storage",
 ] as const;
+
+export function buildAIBlueprintObservationProviderPrompt({
+  fileName,
+  pageCount,
+}: {
+  fileName: string;
+  pageCount: number;
+}) {
+  return [
+    AI_BLUEPRINT_OBSERVATION_FUTURE_PROMPT_CONTRACT,
+    "",
+    "Observe the PDF/image/question source and return ONLY JSON.",
+    "Do not solve any problem. Do not generate new questions. Do not write final tags.",
+    "Keep every evidence snippet bounded and short. Do not copy full source text.",
+    "Use asset references only; never return image bytes, base64, private URLs, or provider secrets.",
+    "",
+    `File: ${fileName}`,
+    `Source page count: ${pageCount}`,
+    "",
+    "Required JSON shape:",
+    JSON.stringify(
+      {
+        observationPackets: [
+          {
+            confidence: 0.8,
+            observedQuestionBlocks: [
+              {
+                answerStructureHint: "short hint or null",
+                boundedEvidenceSnippets: ["bounded snippet, max 280 chars"],
+                cognitiveDemandHint: "short hint or null",
+                distractorPatternHint: "short hint or null",
+                promptVerb: "determine",
+                representationHints: ["graph", "table", "symbolic", "text"],
+                stemPattern: "short pattern or null",
+                styleNotes: ["short style observation"],
+                taxonomySignalHints: ["short signal hints only, not final tags"],
+                visualDescription: "bounded visual description or null",
+                warnings: [],
+              },
+            ],
+            sourceRefs: {
+              assetRefs: ["figure/page-ref only"],
+              pageNumbers: [1],
+            },
+            warnings: [],
+          },
+        ],
+        warnings: [],
+      },
+      null,
+      2,
+    ),
+  ].join("\n");
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -370,6 +426,180 @@ function packetFromSeed(seed: BlueprintObservationPacketSeed): AIBlueprintObserv
     },
     warnings: uniqueStrings([...seed.warnings, ...block.warnings]),
   };
+}
+
+function observedBlockFromProvider(
+  blockValue: unknown,
+  packetId: string,
+  index: number,
+): AIBlueprintObservedQuestionBlock {
+  const block = asRecord(blockValue);
+  const evidence = stringArrayFrom(block.boundedEvidenceSnippets)
+    .map((snippet) => boundedText(snippet))
+    .filter(Boolean)
+    .slice(0, 3);
+  const promptVerb = stringValue(block.promptVerb).trim() || null;
+  const representationHints = stringArrayFrom(block.representationHints);
+
+  return {
+    answerStructureHint: stringValue(block.answerStructureHint).trim() || null,
+    blockId:
+      stringValue(block.blockId).trim() ||
+      `${packetId}-provider-block-${index + 1}`,
+    boundedEvidenceSnippets: evidence,
+    cognitiveDemandHint: stringValue(block.cognitiveDemandHint).trim() || null,
+    confidence: Math.max(0, Math.min(1, numberValue(block.confidence, 0.6))),
+    distractorPatternHint: stringValue(block.distractorPatternHint).trim() || null,
+    promptVerb,
+    representationHints: representationHints.length
+      ? representationHints
+      : ["text"],
+    stemPattern: stringValue(block.stemPattern).trim() || null,
+    styleNotes: stringArrayFrom(block.styleNotes),
+    taxonomySignalHints: stringArrayFrom(block.taxonomySignalHints),
+    visualDescription: stringValue(block.visualDescription).trim() || null,
+    warnings: stringArrayFrom(block.warnings),
+  };
+}
+
+function packetFromProvider(
+  packetValue: unknown,
+  index: number,
+): AIBlueprintObservationPacket | null {
+  const packet = asRecord(packetValue);
+  const sourceRefs = asRecord(packet.sourceRefs);
+  const packetId =
+    stringValue(packet.packetId).trim() || `provider-observation-${index + 1}`;
+  const observedQuestionBlocks = asArray(packet.observedQuestionBlocks)
+    .map((block, blockIndex) =>
+      observedBlockFromProvider(block, packetId, blockIndex),
+    )
+    .filter(
+      (block) =>
+        block.boundedEvidenceSnippets.length > 0 ||
+        block.representationHints.length > 0 ||
+        block.taxonomySignalHints.length > 0 ||
+        Boolean(block.visualDescription),
+    );
+
+  if (!observedQuestionBlocks.length) {
+    return null;
+  }
+
+  const assetRefs = stringArrayFrom(sourceRefs.assetRefs);
+  const pageNumbers = pageNumbersFrom(sourceRefs.pageNumbers);
+  const packetHash =
+    stringValue(packet.packetHash).trim() ||
+    hashStableJson({
+      assetRefs,
+      observedQuestionBlocks,
+      pageNumbers,
+      packetId,
+    });
+
+  return {
+    confidence: Math.max(0, Math.min(1, numberValue(packet.confidence, 0.65))),
+    observedQuestionBlocks,
+    packetHash,
+    packetId,
+    sourceRefs: {
+      assetRefs,
+      draftIds: stringArrayFrom(sourceRefs.draftIds),
+      pageNumbers,
+      questionIds: stringArrayFrom(sourceRefs.questionIds),
+    },
+    warnings: uniqueStrings([
+      ...stringArrayFrom(packet.warnings),
+      ...observedQuestionBlocks.flatMap((block) => block.warnings),
+    ]),
+  };
+}
+
+export function buildAIBlueprintObservationPlanFromProviderResponse({
+  generatedAt = new Date().toISOString(),
+  providerResponse,
+  summary,
+}: {
+  generatedAt?: string;
+  providerResponse: unknown;
+  summary: unknown;
+}): AIBlueprintObservationPlan {
+  const aiPdfImport = aiPdfImportFromSummary(summary);
+  const response = asRecord(providerResponse);
+  const providerPackets = asArray(response.observationPackets)
+    .map(packetFromProvider)
+    .filter((packet): packet is AIBlueprintObservationPacket => Boolean(packet))
+    .slice(0, BLUEPRINT_OBSERVATION_PACKET_LIMIT);
+  const observationPackets = providerPackets.length
+    ? providerPackets
+    : buildBlueprintObservationPackets(summary);
+  const normalizedPackets = normalizeBlueprintObservationPackets(observationPackets);
+  const warnings = uniqueStrings([
+    ...BLUEPRINT_OBSERVATION_BASE_WARNINGS,
+    "blueprint_observation_provider_observation_mode",
+    ...stringArrayFrom(response.warnings),
+    ...(providerPackets.length
+      ? []
+      : ["blueprint_observation_provider_packets_missing"]),
+    ...(asRecord(aiPdfImport.preanalysis).version
+      ? []
+      : ["blueprint_observation_missing_preanalysis"]),
+    ...(asRecord(aiPdfImport.packetPlan).version
+      ? []
+      : ["blueprint_observation_missing_packet_plan"]),
+  ]);
+  const plan: AIBlueprintObservationPlan = {
+    generatedAt,
+    mode: "planning_only",
+    normalizedPackets,
+    observationPackets,
+    sourceKind: sourceKindFrom(aiPdfImport),
+    stats: {
+      assetRefCount: 0,
+      evidenceSnippetCount: 0,
+      generatedQuestionCount: 0,
+      maxEvidenceCharsPerSnippet: BLUEPRINT_OBSERVATION_EVIDENCE_SNIPPET_MAX_CHARS,
+      normalizedPacketCount: 0,
+      observedBlockCount: 0,
+      observationPacketCount: 0,
+      providerCallCount: 0,
+      rawStorageCount: 0,
+      reviewDraftWriteCount: 0,
+      warningCount: 0,
+    },
+    status:
+      observationPackets.length &&
+      warnings.length <= BLUEPRINT_OBSERVATION_BASE_WARNINGS.length + 1
+        ? "completed"
+        : observationPackets.length
+          ? "completed_with_warnings"
+          : "skipped",
+    version: "blueprint_observation_plan_v1",
+    warnings,
+  };
+
+  return {
+    ...plan,
+    stats: summarizeBlueprintObservationPlan(plan),
+  };
+}
+
+export function parseAIBlueprintObservationProviderText({
+  generatedAt,
+  providerText,
+  summary,
+}: {
+  generatedAt?: string;
+  providerText: string;
+  summary: unknown;
+}) {
+  const parsed = parsePossiblyMalformedJson(providerText);
+
+  return buildAIBlueprintObservationPlanFromProviderResponse({
+    generatedAt,
+    providerResponse: parsed,
+    summary,
+  });
 }
 
 function packetSeedsFromPacketPlan(
