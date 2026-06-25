@@ -76,7 +76,12 @@ assert(
     blueprintPage.includes("Rejected") &&
     blueprintPage.includes("Edit taxonomy targets") &&
     blueprintPage.includes("Quality gate blockers") &&
-    blueprintPage.includes("Generation disabled"),
+    blueprintPage.includes("Generation disabled") &&
+    blueprintPage.includes("Grouped taxonomy targets") &&
+    blueprintPage.includes("Short pattern summary") &&
+    blueprintPage.includes("Source refs and internal notes") &&
+    blueprintPage.includes("Draft ID:") &&
+    blueprintPage.includes("overflowWrap: \"anywhere\""),
   "/admin/blueprints source is missing BP6 manual generation CTA or review link",
 );
 assert(

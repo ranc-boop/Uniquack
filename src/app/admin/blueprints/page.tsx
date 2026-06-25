@@ -199,16 +199,29 @@ function TaxonomyTargets({ targets }: { targets: unknown }) {
   }
 
   return (
-    <div className="grid gap-2 text-xs md:grid-cols-2">
+    <div className="grid gap-3 text-xs sm:grid-cols-2 2xl:grid-cols-5">
       {groups.map(([label, ids]) =>
         ids.length ? (
-          <div key={label} className="space-y-1">
-            <p className="font-medium">{label}</p>
-            <div className="flex flex-wrap gap-1">
+          <div
+            key={label}
+            className="min-w-0 space-y-2 rounded-md border bg-muted/20 p-3"
+          >
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {label}
+            </p>
+            <div className="flex min-w-0 flex-wrap gap-2">
               {ids.map((id) => (
-                <span key={id} className="rounded-md border px-2 py-1">
-                  {taxonomyDisplayLabelFromId(id)}
-                  <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+                <span
+                  key={id}
+                  className="max-w-full rounded-md border bg-background px-2.5 py-1.5"
+                >
+                  <span className="block font-medium leading-snug">
+                    {taxonomyDisplayLabelFromId(id)}
+                  </span>
+                  <span
+                    className="block font-mono text-[10px] leading-snug text-muted-foreground"
+                    style={{ overflowWrap: "anywhere" }}
+                  >
                     {id}
                   </span>
                 </span>
@@ -246,13 +259,13 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
   const specificityWarnings = stringList(draft.specificityWarnings).slice(0, 4);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div>
-        <p className="text-sm font-medium">
-          {firstString(draft.title, "Blueprint draft")}
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Short pattern summary
         </p>
         <MathContent
-          className="mt-1 text-xs text-muted-foreground"
+          className="mt-1 text-sm text-muted-foreground"
           format="plain"
           value={firstString(draft.questionPattern, "No reusable pattern summary.")}
         />
@@ -272,55 +285,59 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
             : "0.50"}
         </Badge>
       </div>
-      <TaxonomyTargets targets={draft.taxonomyTargets} />
-      {taxonomyTargetHints.length ? (
-        <div>
-          <p className="text-xs font-medium">Taxonomy target hints</p>
-          <p className="text-xs text-muted-foreground">
-            {taxonomyTargetHints.join("; ")}
-          </p>
-        </div>
-      ) : null}
-      {specificityWarnings.length ? (
-        <div>
-          <p className="text-xs font-medium">Specificity warnings</p>
-          <p className="text-xs text-muted-foreground">
-            {specificityWarnings.join("; ")}
-          </p>
-        </div>
-      ) : null}
-      {requiredElements.length ? (
-        <div>
-          <p className="text-xs font-medium">Required elements</p>
-          <MathContent
-            className="text-xs text-muted-foreground"
-            format="plain"
-            value={requiredElements.join("; ")}
-          />
-        </div>
-      ) : null}
-      {generationConstraints.length ? (
-        <div>
-          <p className="text-xs font-medium">Generation constraints</p>
-          <MathContent
-            className="text-xs text-muted-foreground"
-            format="plain"
-            value={generationConstraints.join("; ")}
-          />
-        </div>
-      ) : null}
-      {snippets.length ? (
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Grouped taxonomy targets
+        </p>
+        <TaxonomyTargets targets={draft.taxonomyTargets} />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {requiredElements.length ? (
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="text-xs font-medium">Required elements</p>
+            <MathContent
+              className="mt-1 text-xs text-muted-foreground"
+              format="plain"
+              value={requiredElements.join("; ")}
+            />
+          </div>
+        ) : null}
+        {generationConstraints.length ? (
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="text-xs font-medium">Generation constraints</p>
+            <MathContent
+              className="mt-1 text-xs text-muted-foreground"
+              format="plain"
+              value={generationConstraints.join("; ")}
+            />
+          </div>
+        ) : null}
+      </div>
+      {snippets.length || taxonomyTargetHints.length || specificityWarnings.length ? (
         <details className="rounded-md border bg-muted/20 px-3 py-2">
           <summary className="cursor-pointer text-xs font-medium">
-            Source example refs
+            Source refs and internal notes
           </summary>
-          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-            {snippets.map((snippet) => (
-              <li key={snippet}>
-                <MathContent format="plain" value={snippet} />
-              </li>
-            ))}
-          </ul>
+          <div className="mt-2 space-y-3 text-xs text-muted-foreground">
+            {snippets.length ? (
+              <div>
+                <p className="font-medium text-foreground">Source example refs</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {snippets.map((snippet) => (
+                    <li key={snippet}>
+                      <MathContent format="plain" value={snippet} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {taxonomyTargetHints.length ? (
+              <p>Taxonomy hints: {taxonomyTargetHints.join("; ")}</p>
+            ) : null}
+            {specificityWarnings.length ? (
+              <p>Specificity warnings: {specificityWarnings.join("; ")}</p>
+            ) : null}
+          </div>
         </details>
       ) : null}
     </div>
@@ -345,20 +362,26 @@ function ReviewActionCard({
   const selectedTagIds = selectedTaxonomyTargets(draft.taxonomyTargets);
   const rawWarnings = stringList(draft.warnings);
   const canEdit = action.status === "pending_review" || action.status === "needs_more_evidence";
+  const draftTitle = firstString(draft.title, "Blueprint draft");
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">
-              {action.action_kind.replaceAll("_", " ")}
+          <div className="min-w-0 flex-1 space-y-1">
+            <CardTitle className="break-words text-base">
+              {draftTitle}
             </CardTitle>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">
-              {action.blueprint_draft_id}
+            <p className="text-xs text-muted-foreground">
+              Review action: {action.action_kind.replaceAll("_", " ")}
             </p>
           </div>
-          <Badge variant="outline">{action.status}</Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline">{action.status}</Badge>
+            <Badge variant={canApprove ? "secondary" : "outline"}>
+              {canApprove ? "Approval ready" : "Needs review"}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -394,32 +417,37 @@ function ReviewActionCard({
           </details>
         ) : null}
         {action.status !== "rejected" ? (
-        <div className="flex flex-wrap gap-2">
-          {canApprove ? (
-            <form action={approveQuestionBlueprintReviewAction}>
-              <input name="id" type="hidden" value={action.id} />
-              <FormSubmitButton pendingLabel="Approving..." size="sm">
-                Approve blueprint
-              </FormSubmitButton>
-            </form>
-          ) : (
-            <Badge variant="outline">Needs more evidence before approval</Badge>
-          )}
-          {action.status === "pending_review" ? (
-            <form action={markQuestionBlueprintNeedsEvidence}>
-              <input name="id" type="hidden" value={action.id} />
-              <FormSubmitButton pendingLabel="Marking..." size="sm" variant="outline">
-                Needs more evidence
-              </FormSubmitButton>
-            </form>
-          ) : null}
-          <form action={rejectQuestionBlueprintReviewAction}>
-            <input name="id" type="hidden" value={action.id} />
-            <FormSubmitButton pendingLabel="Rejecting..." size="sm" variant="destructive">
-              Reject
-            </FormSubmitButton>
-          </form>
-        </div>
+          <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Actions
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {canApprove ? (
+                <form action={approveQuestionBlueprintReviewAction}>
+                  <input name="id" type="hidden" value={action.id} />
+                  <FormSubmitButton pendingLabel="Approving..." size="sm">
+                    Approve blueprint
+                  </FormSubmitButton>
+                </form>
+              ) : (
+                <Badge variant="outline">Needs more evidence before approval</Badge>
+              )}
+              {action.status === "pending_review" ? (
+                <form action={markQuestionBlueprintNeedsEvidence}>
+                  <input name="id" type="hidden" value={action.id} />
+                  <FormSubmitButton pendingLabel="Marking..." size="sm" variant="outline">
+                    Needs more evidence
+                  </FormSubmitButton>
+                </form>
+              ) : null}
+              <form action={rejectQuestionBlueprintReviewAction}>
+                <input name="id" type="hidden" value={action.id} />
+                <FormSubmitButton pendingLabel="Rejecting..." size="sm" variant="destructive">
+                  Reject
+                </FormSubmitButton>
+              </form>
+            </div>
+          </div>
         ) : null}
         {!canApprove ? (
           <ReasonList reasons={readiness.approvalBlockingReasons} />
@@ -429,6 +457,10 @@ function ReviewActionCard({
             Debug details
           </summary>
           <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+            <div className="break-all">
+              Draft ID:{" "}
+              <span className="font-mono">{action.blueprint_draft_id}</span>
+            </div>
             <div className="break-all">
               Raw reason:{" "}
               <MathContent format="plain" value={action.reason} />
@@ -857,7 +889,7 @@ export default async function AdminBlueprintsPage({
           </p>
         </div>
         {pendingReviewActions.length ? (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-4">
             {pendingReviewActions.map((action) => (
               <ReviewActionCard
                 action={action}
@@ -886,7 +918,7 @@ export default async function AdminBlueprintsPage({
           </p>
         </div>
         {needsMoreEvidenceActions.length ? (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-4">
             {needsMoreEvidenceActions.map((action) => (
               <ReviewActionCard
                 action={action}
@@ -913,7 +945,7 @@ export default async function AdminBlueprintsPage({
           </p>
         </div>
         {rejectedReviewActions.length ? (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-4">
             {rejectedReviewActions.map((action) => (
               <ReviewActionCard
                 action={action}
@@ -941,7 +973,7 @@ export default async function AdminBlueprintsPage({
           </p>
         </div>
         {activeBlueprints.length ? (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4 2xl:grid-cols-2">
             {activeBlueprints.map((blueprint) => (
               <LibraryCard
                 blueprint={blueprint}
@@ -969,7 +1001,7 @@ export default async function AdminBlueprintsPage({
           </p>
         </div>
         {archivedBlueprints.length || trashedBlueprints.length ? (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4 2xl:grid-cols-2">
             {[...archivedBlueprints, ...trashedBlueprints].map((blueprint) => (
               <LibraryCard
                 blueprint={blueprint}
