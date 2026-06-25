@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,6 +7,7 @@ import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const root = resolve(__dirname, "..");
 dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -18,6 +20,28 @@ function assert(condition, message) {
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
 }
+
+const blueprintMigration = await readFile(
+  resolve(root, "supabase/migrations/0015_question_blueprint_library.sql"),
+  "utf8",
+);
+for (const tableName of [
+  "question_blueprints",
+  "question_blueprint_examples",
+  "question_blueprint_review_actions",
+]) {
+  assert(
+    blueprintMigration.includes(`alter table public.${tableName} enable row level security`),
+    `${tableName} is missing RLS`,
+  );
+  assert(
+    blueprintMigration.includes(`${tableName}_admin_crud`) &&
+      blueprintMigration.includes("private.is_admin()"),
+    `${tableName} is missing admin-only policy`,
+  );
+}
+assert(!blueprintMigration.includes("to anon"), "question blueprint tables must not grant anon access");
+console.log("PASS question blueprint migration enables admin-only RLS");
 
 const anon = createClient(supabaseUrl, supabaseAnonKey);
 const { data: nodes, error: nodesError } = await anon
