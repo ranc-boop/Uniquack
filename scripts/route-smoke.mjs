@@ -1,4 +1,5 @@
 import { dirname, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import dotenv from "dotenv";
@@ -8,6 +9,7 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
 
 const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL ?? "http://localhost:3000";
+const root = resolve(__dirname, "..");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -42,6 +44,10 @@ async function checkAdminRoute(path, expectedText) {
   console.log(`PASS ${path} route smoke`);
 }
 
+async function read(relativePath) {
+  return readFile(resolve(root, relativePath), "utf8");
+}
+
 await checkRoute("/questions", "Question Bank");
 await checkRoute("/videos", "Videos");
 await checkAdminRoute("/admin/tags", "Taxonomy");
@@ -49,4 +55,21 @@ await checkAdminRoute(
   "/admin/blueprints",
   "Question Blueprint Library",
 );
+const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
+const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
+assert(
+  blueprintPage.includes("Generate original draft questions") &&
+    blueprintPage.includes("Manual DeepSeek call") &&
+    blueprintPage.includes("Open Review Drafts"),
+  "/admin/blueprints source is missing BP6 manual generation CTA or review link",
+);
+assert(
+  blueprintActions.includes("generateOriginalQuestionsFromApprovedBlueprint") &&
+    blueprintActions.includes("importBatchImportJson") &&
+    blueprintActions.includes("executeDeepSeekBlueprintGeneration") &&
+    !blueprintActions.includes("generateWithGeminiNativePdf") &&
+    !blueprintActions.includes("callAIPdfExtractionProvider"),
+  "/admin/blueprints action must use manual DeepSeek generation without AI PDF extraction",
+);
+console.log("PASS /admin/blueprints source exposes manual DeepSeek draft generation safely");
 console.log("PASS route smoke uses taxonomy routes without legacy tag setup");

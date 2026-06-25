@@ -1,5 +1,8 @@
+import Link from "next/link";
+
 import {
   approveQuestionBlueprintReviewAction,
+  generateOriginalQuestionsFromApprovedBlueprint,
   markQuestionBlueprintNeedsEvidence,
   rejectQuestionBlueprintReviewAction,
   storeBlueprintReviewActionsFromImportBatch,
@@ -19,8 +22,12 @@ import { taxonomyDisplayLabelFromId } from "@/lib/tags/taxonomy-display";
 
 type AdminBlueprintsPageProps = {
   searchParams: Promise<{
+    blocked?: string;
     error?: string;
+    generated?: string;
+    reviewBatch?: string;
     saved?: string;
+    warnings?: string;
   }>;
 };
 
@@ -258,6 +265,7 @@ function ReviewActionCard({ action }: { action: BlueprintReviewRow }) {
 function LibraryCard({ blueprint }: { blueprint: BlueprintRow }) {
   const questionPattern = asRecord(blueprint.question_pattern);
   const requiredElements = stringList(blueprint.required_elements).slice(0, 6);
+  const approved = blueprint.status === "approved";
 
   return (
     <Card>
@@ -287,6 +295,75 @@ function LibraryCard({ blueprint }: { blueprint: BlueprintRow }) {
           Owner scope: {blueprint.owner_scope} | Updated{" "}
           {new Date(blueprint.updated_at).toLocaleString()}
         </p>
+        {approved ? (
+          <div className="rounded-md border bg-muted/20 p-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">
+                Generate original draft questions
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Manual DeepSeek call. Generated questions are draft-only and
+                require Review Drafts approval before publishing.
+              </p>
+            </div>
+            <form
+              action={generateOriginalQuestionsFromApprovedBlueprint}
+              className="mt-3 grid gap-3 sm:grid-cols-2"
+            >
+              <input name="blueprint_id" type="hidden" value={blueprint.id} />
+              <label className="space-y-1 text-xs font-medium">
+                Count
+                <input
+                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue={1}
+                  max={10}
+                  min={1}
+                  name="count"
+                  type="number"
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Question type
+                <select
+                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue="frq"
+                  name="question_type"
+                >
+                  <option value="frq">FRQ</option>
+                  <option value="mcq">MCQ</option>
+                  <option value="fill_blank">Fill blank</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Difficulty target
+                <input
+                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  max={1000}
+                  min={0}
+                  name="difficulty_target"
+                  placeholder="Optional, 0-1000"
+                  type="number"
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium sm:col-span-2">
+                Variation note
+                <input
+                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  maxLength={240}
+                  name="variation_note"
+                  placeholder="Optional: e.g. use a different scenario"
+                  type="text"
+                />
+              </label>
+              <div className="sm:col-span-2">
+                <FormSubmitButton pendingLabel="Generating..." size="sm">
+                  Generate original draft questions
+                </FormSubmitButton>
+              </div>
+            </form>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -371,6 +448,29 @@ export default async function AdminBlueprintsPage({
 
       <PageFeedback error={params.error} saved={params.saved} />
 
+      {params.reviewBatch ? (
+        <Card className="border-emerald-300 bg-emerald-50">
+          <CardHeader>
+            <CardTitle className="text-base">
+              Generated drafts sent to Review
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-emerald-950">
+            <p>
+              Generated drafts: {params.generated ?? "0"} | Blocked drafts:{" "}
+              {params.blocked ?? "0"} | Warnings: {params.warnings ?? "0"}
+            </p>
+            <p className="font-mono text-xs">Batch: {params.reviewBatch}</p>
+            <Link
+              className="inline-flex rounded-md border border-emerald-700 px-3 py-1 text-sm font-medium"
+              href={`/admin/review?batch=${params.reviewBatch}`}
+            >
+              Open Review Drafts
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {setupNeeded ? (
         <Card className="border-amber-300 bg-amber-50">
           <CardHeader>
@@ -416,8 +516,10 @@ export default async function AdminBlueprintsPage({
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">Safety</p>
-            <p className="text-sm font-medium">No question generation</p>
-            <p className="text-xs text-muted-foreground">No Review Draft writes</p>
+            <p className="text-sm font-medium">Manual generation only</p>
+            <p className="text-xs text-muted-foreground">
+              Review Drafts required before publishing
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -489,8 +591,8 @@ export default async function AdminBlueprintsPage({
         <div>
           <h2 className="text-xl font-semibold">Approved blueprint library</h2>
           <p className="text-sm text-muted-foreground">
-            Approved blueprints are reusable library entries, not generated
-            questions.
+            Approved blueprints can manually create original draft questions for
+            Review Drafts. They are never published automatically.
           </p>
         </div>
         {blueprints.length ? (

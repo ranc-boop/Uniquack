@@ -89,6 +89,8 @@ const questionBlueprintAnalyzer = await read("src/lib/ai-pdf-import/question-blu
 const questionBlueprintReview = await read("src/lib/blueprints/question-blueprint-review.ts");
 const questionBlueprintLibrary = await read("src/lib/blueprints/question-blueprint-library.ts");
 const questionBlueprintPersistence = await read("src/lib/blueprints/question-blueprint-persistence.ts");
+const questionBlueprintGeneration = await read("src/lib/blueprints/question-blueprint-generation.ts");
+const questionBlueprintGenerationReview = await read("src/lib/blueprints/question-blueprint-generation-review.ts");
 const questionBlueprintMigration = await read("supabase/migrations/0015_question_blueprint_library.sql");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
@@ -403,6 +405,84 @@ assert(!questionBlueprintPersistence.includes("importBatchImportJson"), "questio
 assert(!questionBlueprintPersistence.includes("callAIPdfExtractionProvider"), "question blueprint persistence must not run extraction");
 console.log("PASS question blueprint DB migration and persistence helpers are admin-only");
 
+for (const exportName of [
+  "buildQuestionBlueprintGenerationRequest",
+  "buildQuestionBlueprintGenerationPrompt",
+  "executeDeepSeekBlueprintGeneration",
+  "parseQuestionBlueprintGenerationProviderText",
+  "runBlueprintOriginalityGuard",
+  "summarizeQuestionBlueprintGenerationResult",
+]) {
+  assert(
+    questionBlueprintGeneration.includes(exportName),
+    `question blueprint generation helper is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "Generate original questions that follow the approved blueprint structure.",
+  "Do not copy the source question wording, numbers, scenario, or surface details.",
+  "Preserve concept/method/task/form and cognitive demand.",
+  "Return JSON only.",
+  "Only approved question blueprints can generate draft questions.",
+  "manual_deepseek_text_only",
+  "noGeminiCall: true",
+  "noOpenAICall: true",
+  "reviewRequired: true",
+  "response_format: { type: \"json_object\" }",
+  "DeepSeek blueprint generation failed with provider status",
+]) {
+  assert(
+    questionBlueprintGeneration.includes(expectedText),
+    `question blueprint generation guard is missing ${expectedText}`,
+  );
+}
+assert(
+  questionBlueprintGeneration.includes("copiedPhraseCount >= 2") &&
+    questionBlueprintGeneration.includes("Missing originality constraints from approved blueprint."),
+  "question blueprint generation must include deterministic originality blocking",
+);
+assert(
+  !questionBlueprintGeneration.includes("generateWithGeminiNativePdf") &&
+    !questionBlueprintGeneration.includes("callAIPdfExtractionProvider"),
+  "question blueprint generation must not call Gemini or AI PDF extraction",
+);
+assert(
+  !questionBlueprintGeneration.includes("supabase.from(") &&
+    !questionBlueprintGeneration.includes(".insert(") &&
+    !questionBlueprintGeneration.includes(".update(") &&
+    !questionBlueprintGeneration.includes(".delete("),
+  "question blueprint generation helper must not write the database directly",
+);
+for (const exportName of [
+  "buildBlueprintGeneratedReviewDrafts",
+  "buildBlueprintGeneratedBatchImportJson",
+  "validateBlueprintGeneratedReviewDraft",
+  "summarizeBlueprintGeneratedReviewDraftPersistence",
+]) {
+  assert(
+    questionBlueprintGenerationReview.includes(exportName),
+    `question blueprint review handoff helper is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "source: \"blueprint_generation\"",
+  "provider: \"deepseek\"",
+  "reviewRequired: true",
+  "originalityChecked: true",
+  "status: \"draft\"",
+]) {
+  assert(
+    questionBlueprintGenerationReview.includes(expectedText),
+    `question blueprint review handoff guard is missing ${expectedText}`,
+  );
+}
+assert(
+  !questionBlueprintGenerationReview.includes("fetch(") &&
+    !questionBlueprintGenerationReview.includes("supabase.from("),
+  "question blueprint review handoff helper must not call providers or DB directly",
+);
+console.log("PASS question blueprint generation is DeepSeek-only, original-draft, and Review-only");
+
 for (const expectedText of [
   "blueprint_observation",
   "processAIPdfBlueprintObservation",
@@ -530,26 +610,43 @@ assert(
     blueprintActions.includes("persistApprovedQuestionBlueprints"),
   "blueprint library actions must be admin-only and use persistence helpers",
 );
-assert(!blueprintActions.includes("fetch("), "blueprint library actions must not call providers");
-assert(!blueprintActions.includes("importBatchImportJson"), "blueprint library actions must not write Review Drafts");
+assert(
+  blueprintPage.includes("Generate original draft questions") &&
+    blueprintPage.includes("Manual DeepSeek call") &&
+    blueprintPage.includes("Open Review Drafts") &&
+    blueprintPage.includes("never published automatically"),
+  "blueprint library page must expose manual BP6 generation and review handoff copy",
+);
+assert(
+  blueprintActions.includes("generateOriginalQuestionsFromApprovedBlueprint") &&
+    blueprintActions.includes("loadDeepSeekBlueprintGenerationProvider") &&
+    blueprintActions.includes("executeDeepSeekBlueprintGeneration") &&
+    blueprintActions.includes("importBatchImportJson") &&
+    blueprintActions.includes("reviewRequired: true") &&
+    blueprintActions.includes("originalityChecked: true") &&
+    blueprintActions.includes("DeepSeek provider is not configured or not enabled."),
+  "blueprint generation action must be admin-only, DeepSeek-only, and Review-Draft-only",
+);
+assert(
+  !blueprintActions.includes("generateWithGeminiNativePdf") &&
+    !blueprintActions.includes("callAIPdfExtractionProvider"),
+  "blueprint generation action must not run Gemini or AI PDF extraction",
+);
 assert(!blueprintActions.includes("callAIPdfExtractionProvider"), "blueprint library actions must not run extraction");
 for (const removedBlueprintSurface of [
   "Question blueprint preview",
   "QuestionBlueprintPlan",
-  "Generate missing questions with DeepSeek",
   "Run DeepSeek draft generation",
   "Provider run shadow plan",
   "executeBlueprintGenerationRequestWithDeepSeek",
   "persistBlueprintReviewDrafts",
-  "loadAIProviderProfileForUse",
   "buildQuestionBlueprintPlan",
   "buildBlueprintProviderRunPlan",
   "buildBlueprintGenerationRequestPlan",
-  "fetch(",
 ]) {
   assert(
     !blueprintPage.includes(removedBlueprintSurface),
     `old blueprint product surface remains on library page: ${removedBlueprintSurface}`,
   );
 }
-console.log("PASS question blueprint library admin surface is admin-only and generation-free");
+console.log("PASS question blueprint library admin surface is admin-only with manual DeepSeek Review-Draft handoff");
