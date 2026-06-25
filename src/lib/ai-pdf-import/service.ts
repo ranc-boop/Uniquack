@@ -3,11 +3,13 @@ import { generateWithGeminiNativePdf } from "@/lib/ai-providers/gemini-native";
 import {
   AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE,
   describeAiPdfProviderInput,
+  inferAiProviderMode,
   supportsAIPdfSequentialChunkExtraction,
   type AiPdfInputStrategy,
 } from "@/lib/ai-providers/adapters";
 import { isMockAIProviderUrl } from "@/lib/ai-providers/mock";
 import {
+  listEnabledAIProviderProfiles,
   loadAIProviderProfileForUse,
   loadSafeAIProviderProfileForUse,
 } from "@/lib/ai-providers/profiles";
@@ -176,6 +178,14 @@ import {
   parseAIBlueprintObservationProviderText,
   type AIBlueprintObservationPlan,
 } from "@/lib/ai-pdf-import/blueprint-observation";
+import {
+  executeDeepSeekQuestionBlueprintAnalyzer,
+  failedQuestionBlueprintDraftPlan,
+  mergeQuestionBlueprintDraftPlanIntoSummary,
+  skippedQuestionBlueprintDraftPlan,
+  QUESTION_BLUEPRINT_ANALYZER_MISSING_DEEPSEEK_WARNING,
+  type AIQuestionBlueprintDraftPlan,
+} from "@/lib/ai-pdf-import/question-blueprint-analyzer";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -450,6 +460,40 @@ async function updateAIBlueprintObservationPlan({
       updatedAt: new Date().toISOString(),
     }),
     blueprintObservationPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function updateAIQuestionBlueprintDraftPlan({
+  input,
+  questionBlueprintDraftPlan,
+}: {
+  input: ProcessInput;
+  questionBlueprintDraftPlan: AIQuestionBlueprintDraftPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeQuestionBlueprintDraftPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    questionBlueprintDraftPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -2495,6 +2539,155 @@ function mockBlueprintObservationProviderResponse(pageCount: number) {
   };
 }
 
+async function loadDeepSeekBlueprintAnalyzerProvider(input: ProcessInput) {
+  try {
+    const profiles = await listEnabledAIProviderProfiles(input.supabase);
+    const profile = profiles.find(
+      (item) => inferAiProviderMode(item) === "deepseek_openai",
+    );
+
+    if (!profile) {
+      return {
+        provider: null,
+        warnings: [QUESTION_BLUEPRINT_ANALYZER_MISSING_DEEPSEEK_WARNING],
+      };
+    }
+
+    return {
+      provider: await loadAIProviderProfileForUse({
+        profileId: profile.id,
+        supabase: input.supabase,
+      }),
+      warnings: [] as string[],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    return {
+      provider: null,
+      warnings: uniqueStrings([
+        QUESTION_BLUEPRINT_ANALYZER_MISSING_DEEPSEEK_WARNING,
+        `DeepSeek blueprint analyzer could not be loaded: ${message}`,
+      ]),
+    };
+  }
+}
+
+async function buildAndStoreQuestionBlueprintDraftPlan({
+  blueprintObservationPlan,
+  input,
+  pageCount,
+  providerInput,
+  providerSummary,
+}: {
+  blueprintObservationPlan: AIBlueprintObservationPlan;
+  input: ProcessInput;
+  pageCount: number;
+  providerInput: ReturnType<typeof describeAiPdfProviderInput>;
+  providerSummary: { id: string; model: string; name: string; provider: string };
+}) {
+  await updateAIPdfBatchProgress(input, {
+    detail:
+      "Running DeepSeek text-only blueprint analyzer on normalized observation packets.",
+    pageCount,
+    phase: "question_blueprint_analyzing",
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+  });
+
+  const warnings: string[] = [];
+  let activeTags: ActiveTag[] = [];
+
+  try {
+    activeTags = await loadActiveTags(input.supabase);
+  } catch (error) {
+    warnings.push(
+      `Question blueprint analyzer could not validate taxonomy IDs: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  const knownTaxonomyTagIds = activeTags.length
+    ? new Set(activeTags.map((tag) => tag.id))
+    : undefined;
+  const analyzerProvider = await loadDeepSeekBlueprintAnalyzerProvider(input);
+  warnings.push(...analyzerProvider.warnings);
+
+  let questionBlueprintDraftPlan: AIQuestionBlueprintDraftPlan;
+
+  if (!analyzerProvider.provider) {
+    questionBlueprintDraftPlan = skippedQuestionBlueprintDraftPlan({
+      observationPlan: blueprintObservationPlan,
+      warnings,
+    });
+  } else {
+    try {
+      questionBlueprintDraftPlan = await executeDeepSeekQuestionBlueprintAnalyzer({
+        debugContext: {
+          batchId: input.batchId,
+          fileName: input.fileName,
+          jobId: input.jobId,
+          providerProfileId: analyzerProvider.provider.id,
+          sourceAssetId: input.sourceAssetId,
+          sourceObjectPath: input.sourceObjectPath,
+        },
+        knownTaxonomyTagIds,
+        observationPlan: blueprintObservationPlan,
+        provider: analyzerProvider.provider,
+      });
+
+      if (warnings.length) {
+        questionBlueprintDraftPlan = {
+          ...questionBlueprintDraftPlan,
+          warnings: uniqueStrings([
+            ...questionBlueprintDraftPlan.warnings,
+            ...warnings,
+          ]),
+          stats: {
+            ...questionBlueprintDraftPlan.stats,
+            warningCount:
+              questionBlueprintDraftPlan.stats.warningCount + warnings.length,
+          },
+          status:
+            questionBlueprintDraftPlan.status === "completed"
+              ? "completed_with_warnings"
+              : questionBlueprintDraftPlan.status,
+        };
+      }
+    } catch (error) {
+      questionBlueprintDraftPlan = failedQuestionBlueprintDraftPlan({
+        observationPlan: blueprintObservationPlan,
+        warnings: uniqueStrings([
+          ...warnings,
+          `DeepSeek blueprint analyzer failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        ]),
+      });
+    }
+  }
+
+  await updateAIQuestionBlueprintDraftPlan({
+    input,
+    questionBlueprintDraftPlan,
+  });
+  await updateAIPdfBatchProgress(input, {
+    detail:
+      "Question blueprint analyzer finished. No generated questions or Review Drafts were created.",
+    pageCount,
+    phase: "question_blueprint_analyzed",
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+    warnings: uniqueStrings([
+      ...blueprintObservationPlan.warnings,
+      ...questionBlueprintDraftPlan.warnings,
+    ]),
+  });
+
+  return questionBlueprintDraftPlan;
+}
+
 async function processAIPdfBlueprintObservation({
   input,
   pageCount,
@@ -2573,26 +2766,39 @@ async function processAIPdfBlueprintObservation({
       phase: "blueprint_observation_normalized",
       warnings: blueprintObservationPlan.warnings,
     });
+    const questionBlueprintDraftPlan = await buildAndStoreQuestionBlueprintDraftPlan({
+      blueprintObservationPlan,
+      input,
+      pageCount,
+      providerInput,
+      providerSummary,
+    });
 
     const currentBeforeFinal = await loadCurrentAIPdfSummary(input);
-    const finalAiPdfImport = mergeAIBlueprintObservationPlanIntoSummary(
-      mergeAIPdfImportChunkingSummary(currentBeforeFinal.aiPdfImport, {
-        createdQuestionCount: 0,
-        detail:
-          "Blueprint Observation Mode completed. No draft questions were created.",
-        executionMode: "blueprint_observation",
-        fileName: input.fileName,
-        jobId: input.jobId,
-        pageCount,
-        phase: "blueprint_observation_completed",
-        provider: providerSummary,
-        sourceAssetId: input.sourceAssetId,
-        sourceInput: providerInput.strategy,
-        sourceObjectPath: input.sourceObjectPath,
-        uploadedCropCount: 0,
-        warnings: blueprintObservationPlan.warnings,
-      }),
-      blueprintObservationPlan,
+    const finalAiPdfImport = mergeQuestionBlueprintDraftPlanIntoSummary(
+      mergeAIBlueprintObservationPlanIntoSummary(
+        mergeAIPdfImportChunkingSummary(currentBeforeFinal.aiPdfImport, {
+          createdQuestionCount: 0,
+          detail:
+            "Blueprint Observation Mode completed. Question blueprint drafts were analyzed without creating questions.",
+          executionMode: "blueprint_observation",
+          fileName: input.fileName,
+          jobId: input.jobId,
+          pageCount,
+          phase: "question_blueprint_analyzed",
+          provider: providerSummary,
+          sourceAssetId: input.sourceAssetId,
+          sourceInput: providerInput.strategy,
+          sourceObjectPath: input.sourceObjectPath,
+          uploadedCropCount: 0,
+          warnings: uniqueStrings([
+            ...blueprintObservationPlan.warnings,
+            ...questionBlueprintDraftPlan.warnings,
+          ]),
+        }),
+        blueprintObservationPlan,
+      ),
+      questionBlueprintDraftPlan,
     );
     const finalSummary = {
       ...currentBeforeFinal.summary,
