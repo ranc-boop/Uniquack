@@ -608,6 +608,14 @@ function TracePanel({
                       compact
                       value={event.inputSummary || event.modelThought || "The model requested the next tool call."}
                     />
+                    {event.reasoningContent ? (
+                      <details className="mt-3 rounded-md border border-amber-200 bg-amber-50/70 p-3">
+                        <summary className="cursor-pointer font-semibold text-amber-800">Raw reasoning content</summary>
+                        <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-[11px] leading-5 text-slate-600 ring-1 ring-slate-200">
+                          {event.reasoningContent}
+                        </pre>
+                      </details>
+                    ) : null}
                     {event.modelThought && event.modelThought !== event.inputSummary ? (
                       <details className="mt-3 rounded-md border border-slate-200 bg-slate-50/70 p-3">
                         <summary className="cursor-pointer font-semibold text-slate-700">Full original model text</summary>

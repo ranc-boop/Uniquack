@@ -1006,6 +1006,7 @@ export async function runPracticeRecommendationAgent({
         ? `requested tools: ${modelResult.toolCalls.map((toolCall) => toolCall.function.name).join(", ")}`
         : "no tool call requested",
       phase: "recommendation",
+      reasoningContent: modelResult.reasoningContent,
       llmUsage: modelResult.usage,
       savedFullPayload: modelResult.fullCallLogSaved,
       toolName: "model_tool_choice",
@@ -1026,8 +1027,10 @@ export async function runPracticeRecommendationAgent({
         error: "Model returned no tool call; stopping loop and using current candidate pool if possible.",
         inputSummary: modelResult.contentText.slice(0, 600),
         iteration,
+        modelThought: modelResult.contentText,
         outputSummary: modelResult.hasReasoningContent ? "Provider returned hidden reasoning_content; no further tool request is sent from this loop turn." : undefined,
         phase: "recommendation",
+        reasoningContent: modelResult.reasoningContent,
         savedFullPayload: modelResult.fullCallLogSaved,
         toolName: "model_tool_choice",
       });
