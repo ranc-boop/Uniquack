@@ -123,6 +123,8 @@ export function friendlyAIPdfPhaseLabel(phase: string) {
     provider_response_validated: "AI response received",
     question_blueprint_analyzed: "Question blueprint analyzer finished",
     question_blueprint_analyzing: "Question blueprint analyzer running",
+    question_blueprint_review_planned: "Question blueprint review planned",
+    question_blueprint_review_planning: "Question blueprint review planning",
     queued: "Queued",
     rendering_page_images: "Rendering page images",
     segmentation_confirmed: "Masked boundaries confirmed",
@@ -192,7 +194,8 @@ function statusLabel({
   if (
     phase === "blueprint_observation_completed" ||
     phase === "blueprint_observation_normalized" ||
-    phase === "question_blueprint_analyzed"
+    phase === "question_blueprint_analyzed" ||
+    phase === "question_blueprint_review_planned"
   ) {
     return "Blueprint Observation";
   }
@@ -202,6 +205,7 @@ function statusLabel({
     [
       "blueprint_observation_calling_provider",
       "question_blueprint_analyzing",
+      "question_blueprint_review_planning",
       "starting_extraction",
       "extracting",
       "counting_pages",

@@ -159,6 +159,7 @@ function phaseRank(phase: string) {
     blueprint_observation_calling_provider: 8,
     calling_provider: 8,
     question_blueprint_analyzing: 8,
+    question_blueprint_review_planning: 8,
     blueprint_observation_normalized: 9,
     provider_response_validated: 9,
     building_import_json: 10,
@@ -167,6 +168,7 @@ function phaseRank(phase: string) {
     completed: 13,
     blueprint_observation_completed: 13,
     question_blueprint_analyzed: 13,
+    question_blueprint_review_planned: 13,
   };
 
   return ranks[phase] ?? 0;
@@ -429,6 +431,29 @@ export function AIPdfControlDashboard({
                 ]) ?? 0;
               const questionBlueprintWarningCount =
                 firstNumber(questionBlueprintDraftStats, ["warningCount"]) ?? 0;
+              const questionBlueprintReviewPlan = asRecord(
+                ai.questionBlueprintReviewPlan,
+              );
+              const questionBlueprintReviewStats = asRecord(
+                questionBlueprintReviewPlan.stats,
+              );
+              const hasQuestionBlueprintReviewPlan =
+                questionBlueprintReviewPlan.version ===
+                "question_blueprint_review_plan_v1";
+              const pendingBlueprintReviewCount =
+                firstNumber(questionBlueprintReviewStats, [
+                  "pendingReviewActionCount",
+                ]) ?? 0;
+              const approveReadyBlueprintActionCount =
+                firstNumber(questionBlueprintReviewStats, [
+                  "approveReadyActionCount",
+                ]) ?? 0;
+              const questionBlueprintLibraryPlan = asRecord(
+                ai.questionBlueprintLibraryPersistencePlan,
+              );
+              const hasQuestionBlueprintLibraryPlan =
+                questionBlueprintLibraryPlan.version ===
+                "question_blueprint_library_persistence_plan_v1";
               const technicalError = display.warnings.technicalDetail;
               const ctaLabel = display.ctaLabel;
 
@@ -581,6 +606,38 @@ export function AIPdfControlDashboard({
                           <p>Review required: yes</p>
                           <p>No questions generated yet.</p>
                           <p>Warnings: {questionBlueprintWarningCount}</p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {hasQuestionBlueprintReviewPlan ? (
+                      <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">Question Blueprint Review</p>
+                          <Badge variant="outline">
+                            Status:{" "}
+                            {firstString(
+                              questionBlueprintReviewPlan,
+                              ["status"],
+                              "unknown",
+                            )}
+                          </Badge>
+                        </div>
+                        <div className="mt-2 grid gap-2 text-xs text-muted-foreground md:grid-cols-4">
+                          <p>
+                            Drafts pending review: {pendingBlueprintReviewCount}
+                          </p>
+                          <p>
+                            Approved-ready actions:{" "}
+                            {approveReadyBlueprintActionCount}
+                          </p>
+                          <p>
+                            Library persistence:{" "}
+                            {hasQuestionBlueprintLibraryPlan
+                              ? "planned only"
+                              : "not planned"}
+                          </p>
+                          <p>No questions generated yet.</p>
                         </div>
                       </div>
                     ) : null}
