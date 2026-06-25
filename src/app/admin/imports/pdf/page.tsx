@@ -139,9 +139,11 @@ export default async function AdminAIPdfImportPage() {
     const executionMode:
       | "single_full_pdf"
       | "segmented_full_pdf"
-      | "page_image_chunks" =
+      | "page_image_chunks"
+      | "blueprint_observation" =
       ai.executionMode === "segmented_full_pdf" ||
-      ai.executionMode === "page_image_chunks"
+      ai.executionMode === "page_image_chunks" ||
+      ai.executionMode === "blueprint_observation"
         ? ai.executionMode
         : "single_full_pdf";
 

@@ -58,7 +58,7 @@ type AIPdfSourceOption = {
   assetStatus?: string;
   canDelete?: boolean;
   fileName: string;
-  executionMode?: "single_full_pdf" | "segmented_full_pdf" | "page_image_chunks";
+  executionMode?: AIPdfExecutionMode;
   pageCount?: number;
   segmentationConfirmed?: boolean;
   sizeBytes?: number;
@@ -66,6 +66,12 @@ type AIPdfSourceOption = {
   sourceObjectPath?: string;
   status: string;
 };
+
+type AIPdfExecutionMode =
+  | "single_full_pdf"
+  | "segmented_full_pdf"
+  | "page_image_chunks"
+  | "blueprint_observation";
 
 type ImportResult =
   | {
@@ -263,7 +269,8 @@ function sourceFromUpload(result: SourceUploadResult): AIPdfSourceOption | null 
       "Uploaded PDF source",
     executionMode:
       ai.executionMode === "segmented_full_pdf" ||
-      ai.executionMode === "page_image_chunks"
+      ai.executionMode === "page_image_chunks" ||
+      ai.executionMode === "blueprint_observation"
         ? ai.executionMode
         : "single_full_pdf",
     pageCount: ai.pageCount,
@@ -377,9 +384,7 @@ export function AIPdfImportPanel({
   const [providerProfileId, setProviderProfileId] = useState(
     defaultProviderOption?.profile.id ?? "",
   );
-  const [executionMode, setExecutionMode] = useState<
-    "single_full_pdf" | "segmented_full_pdf" | "page_image_chunks"
-  >(
+  const [executionMode, setExecutionMode] = useState<AIPdfExecutionMode>(
     sources.find(canExtractSource)?.executionMode ?? "single_full_pdf",
   );
   const [segmentationConfirmed, setSegmentationConfirmed] = useState(
@@ -1532,9 +1537,7 @@ export function AIPdfImportPanel({
               onChange={(event) => {
                 setExecutionMode(
                   event.target.value as
-                    | "single_full_pdf"
-                    | "segmented_full_pdf"
-                    | "page_image_chunks",
+                    AIPdfExecutionMode,
                 );
               }}
               value={
@@ -1549,6 +1552,9 @@ export function AIPdfImportPanel({
                   <option value="segmented_full_pdf">
                     Split into masked PDF chunks
                   </option>
+                  <option value="blueprint_observation">
+                    Blueprint observation only
+                  </option>
                 </>
               ) : (
                 <option value="page_image_chunks">Page-image chunks</option>
@@ -1556,7 +1562,7 @@ export function AIPdfImportPanel({
             </select>
             <p className="text-xs text-muted-foreground">
               {selectedProviderUsesFullPdf
-                ? "Split mode is available for PDFs of any length and requires reviewing each blue split line. Short PDFs can usually stay in single full-PDF mode."
+                ? "Split mode imports draft questions from masked chunks. Blueprint observation only stores safe structure/style metadata and creates no questions."
                 : "This provider receives rendered page images using the existing overlap workflow."}
             </p>
           </div>

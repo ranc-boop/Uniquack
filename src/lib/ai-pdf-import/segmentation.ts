@@ -6,7 +6,8 @@ import type {
 export type AIPdfExecutionMode =
   | "single_full_pdf"
   | "segmented_full_pdf"
-  | "page_image_chunks";
+  | "page_image_chunks"
+  | "blueprint_observation";
 
 export const DEFAULT_SEGMENT_TARGET_PAGES = 50;
 

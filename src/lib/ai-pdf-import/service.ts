@@ -1,10 +1,12 @@
 import { callAIPdfExtractionProvider } from "@/lib/ai-providers/chat";
+import { generateWithGeminiNativePdf } from "@/lib/ai-providers/gemini-native";
 import {
   AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE,
   describeAiPdfProviderInput,
   supportsAIPdfSequentialChunkExtraction,
   type AiPdfInputStrategy,
 } from "@/lib/ai-providers/adapters";
+import { isMockAIProviderUrl } from "@/lib/ai-providers/mock";
 import {
   loadAIProviderProfileForUse,
   loadSafeAIProviderProfileForUse,
@@ -165,6 +167,15 @@ import {
   mergeAICoverageRecoveryMergePlanIntoSummary,
   type AICoverageRecoveryMergePlan,
 } from "@/lib/ai-pdf-import/coverage-recovery-merge";
+import {
+  buildAIBlueprintObservationPlanFromProviderResponse,
+  buildAIBlueprintObservationPlanFromSummary,
+  buildAIBlueprintObservationProviderPrompt,
+  failedAIBlueprintObservationPlan,
+  mergeAIBlueprintObservationPlanIntoSummary,
+  parseAIBlueprintObservationProviderText,
+  type AIBlueprintObservationPlan,
+} from "@/lib/ai-pdf-import/blueprint-observation";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -405,6 +416,40 @@ async function updateAIPdfPacketPlan({
       updatedAt: new Date().toISOString(),
     }),
     packetPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function updateAIBlueprintObservationPlan({
+  input,
+  blueprintObservationPlan,
+}: {
+  input: ProcessInput;
+  blueprintObservationPlan: AIBlueprintObservationPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIBlueprintObservationPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    blueprintObservationPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -2417,6 +2462,215 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
+function mockBlueprintObservationProviderResponse(pageCount: number) {
+  return {
+    observationPackets: [
+      {
+        confidence: 0.82,
+        observedQuestionBlocks: [
+          {
+            answerStructureHint: "manual_response_or_structured_work",
+            boundedEvidenceSnippets: [
+              "Mock blueprint observation evidence: visible prompt asks for mathematical reasoning.",
+            ],
+            cognitiveDemandHint: "reasoning_or_explanation",
+            distractorPatternHint: null,
+            promptVerb: "determine",
+            representationHints: ["text", "symbolic"],
+            stemPattern: "determine_prompt",
+            styleNotes: ["mock observation mode", "bounded evidence only"],
+            taxonomySignalHints: ["math_structure_signal"],
+            visualDescription: null,
+            warnings: [],
+          },
+        ],
+        sourceRefs: {
+          assetRefs: [],
+          pageNumbers: pageCount > 0 ? [1] : [],
+        },
+        warnings: ["Mock blueprint observation provider response used."],
+      },
+    ],
+    warnings: ["Mock blueprint observation provider response used."],
+  };
+}
+
+async function processAIPdfBlueprintObservation({
+  input,
+  pageCount,
+  provider,
+  providerInput,
+  providerSummary,
+}: {
+  input: ProcessInput;
+  pageCount: number;
+  provider: Awaited<ReturnType<typeof loadAIProviderProfileForUse>>;
+  providerInput: ReturnType<typeof describeAiPdfProviderInput>;
+  providerSummary: { id: string; model: string; name: string; provider: string };
+}) {
+  if (input.chunkIndex !== undefined) {
+    throw new Error(
+      "Blueprint observation mode runs against the full selected source, not a single extraction chunk.",
+    );
+  }
+
+  const baseProgress = {
+    pageCount,
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+  };
+
+  await updateAIPdfBatchProgress(input, {
+    ...baseProgress,
+    detail:
+      "Running Blueprint Observation Mode. This observes source structure and does not create questions.",
+    phase: "blueprint_observation_calling_provider",
+  });
+
+  try {
+    const currentBeforeProvider = await loadCurrentAIPdfSummary(input);
+    const prompt = buildAIBlueprintObservationProviderPrompt({
+      fileName: input.fileName,
+      pageCount,
+    });
+    const blueprintObservationPlan = isMockAIProviderUrl(provider.base_url)
+      ? buildAIBlueprintObservationPlanFromProviderResponse({
+          providerResponse: mockBlueprintObservationProviderResponse(pageCount),
+          summary: currentBeforeProvider.summary,
+        })
+      : parseAIBlueprintObservationProviderText({
+          providerText: (
+            await generateWithGeminiNativePdf({
+              apiKey: provider.apiKey,
+              baseUrl: provider.base_url,
+              debugContext: {
+                batchId: input.batchId,
+                fileName: input.fileName,
+                jobId: input.jobId,
+                mode: "blueprint_observation",
+                pageCount,
+                providerProfileId: input.providerProfileId,
+                sourceAssetId: input.sourceAssetId,
+                sourceObjectPath: input.sourceObjectPath,
+              },
+              fileName: input.fileName,
+              model: provider.model,
+              pdfBytes: input.pdfBuffer,
+              prompt,
+            })
+          ).text,
+          summary: currentBeforeProvider.summary,
+        });
+
+    await updateAIBlueprintObservationPlan({
+      blueprintObservationPlan,
+      input,
+    });
+    await updateAIPdfBatchProgress(input, {
+      ...baseProgress,
+      detail:
+        "Blueprint observation response was normalized into text-only analyzer packets.",
+      phase: "blueprint_observation_normalized",
+      warnings: blueprintObservationPlan.warnings,
+    });
+
+    const currentBeforeFinal = await loadCurrentAIPdfSummary(input);
+    const finalAiPdfImport = mergeAIBlueprintObservationPlanIntoSummary(
+      mergeAIPdfImportChunkingSummary(currentBeforeFinal.aiPdfImport, {
+        createdQuestionCount: 0,
+        detail:
+          "Blueprint Observation Mode completed. No draft questions were created.",
+        executionMode: "blueprint_observation",
+        fileName: input.fileName,
+        jobId: input.jobId,
+        pageCount,
+        phase: "blueprint_observation_completed",
+        provider: providerSummary,
+        sourceAssetId: input.sourceAssetId,
+        sourceInput: providerInput.strategy,
+        sourceObjectPath: input.sourceObjectPath,
+        uploadedCropCount: 0,
+        warnings: blueprintObservationPlan.warnings,
+      }),
+      blueprintObservationPlan,
+    );
+    const finalSummary = {
+      ...currentBeforeFinal.summary,
+      createdCount: 0,
+      createdQuestions: [],
+      duplicateCount: 0,
+      errorCount: 0,
+      invalidCount: 0,
+      skippedCount: 0,
+      unknownTagCount: 0,
+      validCount: 0,
+      aiPdfImport: finalAiPdfImport,
+    };
+    const { error } = await input.supabase
+      .from("import_batches")
+      .update({
+        status: "ready",
+        summary: finalSummary,
+      })
+      .eq("id", input.batchId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return finalSummary;
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Blueprint observation provider mode failed.";
+    const currentBeforeFailure = await loadCurrentAIPdfSummary(input);
+    const blueprintObservationPlan = failedAIBlueprintObservationPlan({
+      sourceKind: "import_batch",
+      warnings: [`blueprint observation failed: ${message}`],
+    });
+    const finalAiPdfImport = mergeAIBlueprintObservationPlanIntoSummary(
+      mergeAIPdfImportChunkingSummary(currentBeforeFailure.aiPdfImport, {
+        createdQuestionCount: 0,
+        detail: "Blueprint Observation Mode failed before metadata could be completed.",
+        error: message,
+        executionMode: "blueprint_observation",
+        fileName: input.fileName,
+        jobId: input.jobId,
+        pageCount,
+        phase: "failed",
+        phaseFailedAt: new Date().toISOString(),
+        provider: providerSummary,
+        sourceAssetId: input.sourceAssetId,
+        sourceInput: providerInput.strategy,
+        sourceObjectPath: input.sourceObjectPath,
+        uploadedCropCount: 0,
+        warnings: blueprintObservationPlan.warnings,
+      }),
+      blueprintObservationPlan,
+    );
+    const finalSummary = {
+      ...currentBeforeFailure.summary,
+      createdCount: 0,
+      createdQuestions: [],
+      aiPdfImport: finalAiPdfImport,
+    };
+    const { error: updateError } = await input.supabase
+      .from("import_batches")
+      .update({
+        status: "failed",
+        summary: finalSummary,
+      })
+      .eq("id", input.batchId);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    return finalSummary;
+  }
+}
+
 async function processAIPdfSinglePass({
   activeTags,
   input,
@@ -2635,6 +2889,30 @@ export async function processAIPdfImport(input: ProcessInput) {
 
   if (!providerInput.implemented) {
     throw new Error(providerInput.reason ?? AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE);
+  }
+
+  const currentAfterProvider = await loadCurrentAIPdfSummary(input);
+  const requestedExecutionMode = String(
+    currentAfterProvider.aiPdfImport.executionMode ?? "",
+  );
+
+  if (requestedExecutionMode === "blueprint_observation") {
+    if (
+      providerInput.strategy !== "gemini_native_pdf" &&
+      providerInput.strategy !== "mock"
+    ) {
+      throw new Error(
+        "Blueprint observation mode requires a Gemini Native full PDF provider or the mock provider.",
+      );
+    }
+
+    return processAIPdfBlueprintObservation({
+      input,
+      pageCount,
+      provider,
+      providerInput,
+      providerSummary,
+    });
   }
 
   await updateAIPdfBatchProgress(input, {

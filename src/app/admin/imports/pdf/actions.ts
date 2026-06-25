@@ -44,7 +44,12 @@ import type { Json } from "@/types/database";
 const extractionInputSchema = z.object({
   batchId: uuidSchema,
   executionMode: z
-    .enum(["single_full_pdf", "segmented_full_pdf", "page_image_chunks"])
+    .enum([
+      "single_full_pdf",
+      "segmented_full_pdf",
+      "page_image_chunks",
+      "blueprint_observation",
+    ])
     .optional(),
   providerProfileId: uuidSchema,
 });
@@ -1602,6 +1607,15 @@ export async function startAIPdfExtraction(input: {
   ) {
     throw new Error(
       "Masked full-PDF chunks require a provider configured for native/full PDF input.",
+    );
+  }
+
+  if (
+    parsed.executionMode === "blueprint_observation" &&
+    !["gemini_native_pdf", "mock"].includes(providerInput.strategy)
+  ) {
+    throw new Error(
+      "Blueprint observation mode requires a Gemini Native full PDF provider or the mock provider.",
     );
   }
 

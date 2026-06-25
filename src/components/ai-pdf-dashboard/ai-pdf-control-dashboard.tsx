@@ -156,12 +156,15 @@ function phaseRank(phase: string) {
     preparing_native_pdf_input: 7,
     preparing_provider_input: 7,
     rendering_page_images: 7,
+    blueprint_observation_calling_provider: 8,
     calling_provider: 8,
+    blueprint_observation_normalized: 9,
     provider_response_validated: 9,
     building_import_json: 10,
     importing_questions: 11,
     cropping_assets: 12,
     completed: 13,
+    blueprint_observation_completed: 13,
   };
 
   return ranks[phase] ?? 0;
@@ -392,6 +395,23 @@ export function AIPdfControlDashboard({
               const sourceFilename =
                 batch.sourceAsset?.original_filename ??
                 firstString(ai, ["fileName"], "-");
+              const blueprintObservationPlan = asRecord(
+                ai.blueprintObservationPlan,
+              );
+              const blueprintObservationStats = asRecord(
+                blueprintObservationPlan.stats,
+              );
+              const hasBlueprintObservationPlan =
+                blueprintObservationPlan.version ===
+                "blueprint_observation_plan_v1";
+              const observationPacketCount =
+                firstNumber(blueprintObservationStats, [
+                  "observationPacketCount",
+                ]) ?? 0;
+              const normalizedObservationPacketCount =
+                firstNumber(blueprintObservationStats, [
+                  "normalizedPacketCount",
+                ]) ?? 0;
               const technicalError = display.warnings.technicalDetail;
               const ctaLabel = display.ctaLabel;
 
@@ -501,6 +521,30 @@ export function AIPdfControlDashboard({
                       uploadedCropCount={uploadedCropCount}
                       warningCount={warnings.length}
                     />
+
+                    {hasBlueprintObservationPlan ? (
+                      <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">Blueprint Observation Mode</p>
+                          <Badge variant="outline">
+                            Status:{" "}
+                            {firstString(
+                              blueprintObservationPlan,
+                              ["status"],
+                              "unknown",
+                            )}
+                          </Badge>
+                        </div>
+                        <div className="mt-2 grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
+                          <p>Observation packets: {observationPacketCount}</p>
+                          <p>
+                            Normalized analyzer packets:{" "}
+                            {normalizedObservationPacketCount}
+                          </p>
+                          <p>No questions were created.</p>
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
                       <div className="space-y-3">

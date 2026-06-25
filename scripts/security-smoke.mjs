@@ -85,6 +85,10 @@ assert(practiceClient.includes("/api/practice/wrong-questions"), "practice clien
 console.log("PASS practice client uses persisted sessions and wrong-question records");
 
 const blueprintObservation = await read("src/lib/ai-pdf-import/blueprint-observation.ts");
+const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
+const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
+const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
+const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
 for (const exportName of [
   "AIBlueprintObservationPlan",
   "AIBlueprintObservationPacket",
@@ -97,6 +101,9 @@ for (const exportName of [
   "mergeAIBlueprintObservationPlanIntoSummary",
   "failedAIBlueprintObservationPlan",
   "summarizeBlueprintObservationPlan",
+  "buildAIBlueprintObservationProviderPrompt",
+  "buildAIBlueprintObservationPlanFromProviderResponse",
+  "parseAIBlueprintObservationProviderText",
 ]) {
   assert(
     blueprintObservation.includes(exportName),
@@ -164,6 +171,71 @@ assert(
   "blueprint observation must not restore the old QuestionBlueprintPlan",
 );
 console.log("PASS blueprint observation schema is planning-only, bounded, and provider-free");
+
+for (const expectedText of [
+  "blueprint_observation",
+  "processAIPdfBlueprintObservation",
+  "buildAIBlueprintObservationProviderPrompt",
+  "parseAIBlueprintObservationProviderText",
+  "generateWithGeminiNativePdf",
+  "mockBlueprintObservationProviderResponse",
+  "Blueprint Observation Mode completed. No draft questions were created.",
+  "status: \"ready\"",
+  "createdCount: 0",
+  "createdQuestions: []",
+]) {
+  assert(
+    aiPdfService.includes(expectedText),
+    `AI PDF service is missing blueprint observation mode wiring: ${expectedText}`,
+  );
+}
+const observationProcessor = aiPdfService.slice(
+  aiPdfService.indexOf("async function processAIPdfBlueprintObservation"),
+  aiPdfService.indexOf("async function processAIPdfSinglePass"),
+);
+assert(
+  observationProcessor.includes("generateWithGeminiNativePdf"),
+  "blueprint observation mode must use Gemini Native provider path when not mocked",
+);
+assert(
+  observationProcessor.includes("isMockAIProviderUrl"),
+  "blueprint observation mode must support mocked provider responses for tests",
+);
+assert(
+  !observationProcessor.includes("importBatchImportJson"),
+  "blueprint observation mode must not create Review Drafts",
+);
+assert(
+  !observationProcessor.includes("buildImportJson"),
+  "blueprint observation mode must not build question import JSON",
+);
+assert(
+  !observationProcessor.includes("attachCroppedAssets"),
+  "blueprint observation mode must not attach question crops",
+);
+assert(
+  aiPdfService.includes("providerInput.strategy !== \"gemini_native_pdf\"") &&
+    aiPdfService.includes("providerInput.strategy !== \"mock\""),
+  "blueprint observation mode must guard provider strategy",
+);
+assert(
+  aiPdfActions.includes("\"blueprint_observation\"") &&
+    aiPdfActions.includes("Blueprint observation mode requires a Gemini Native full PDF provider"),
+  "AI PDF actions must validate blueprint observation mode before queueing",
+);
+assert(
+  aiPdfPanel.includes("Blueprint observation only") &&
+    aiPdfPanel.includes("stores safe structure/style metadata and creates no questions"),
+  "AI PDF panel must expose blueprint observation mode with safe copy",
+);
+assert(
+  aiPdfDashboard.includes("Blueprint Observation Mode") &&
+    aiPdfDashboard.includes("Observation packets:") &&
+    aiPdfDashboard.includes("Normalized analyzer packets:") &&
+    aiPdfDashboard.includes("No questions were created."),
+  "AI PDF dashboard must surface blueprint observation metadata",
+);
+console.log("PASS blueprint observation mode is explicit, summary-only, and draft-free");
 
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 assert(
