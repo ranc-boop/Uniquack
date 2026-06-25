@@ -179,6 +179,13 @@ import {
   type AIBlueprintObservationPlan,
 } from "@/lib/ai-pdf-import/blueprint-observation";
 import {
+  buildAIBlueprintObservationClusterPlan,
+  buildClusteredBlueprintObservationAnalyzerPlans,
+  mergeAIBlueprintObservationClusterPlanIntoSummary,
+  type AIBlueprintObservationClusterPlan,
+} from "@/lib/ai-pdf-import/blueprint-observation-clustering";
+import {
+  buildQuestionBlueprintDraftPlanFromClusteredDraftPlans,
   executeDeepSeekQuestionBlueprintAnalyzer,
   failedQuestionBlueprintDraftPlan,
   mergeQuestionBlueprintDraftPlanIntoSummary,
@@ -470,6 +477,40 @@ async function updateAIBlueprintObservationPlan({
       updatedAt: new Date().toISOString(),
     }),
     blueprintObservationPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function updateAIBlueprintObservationClusterPlan({
+  blueprintObservationClusterPlan,
+  input,
+}: {
+  blueprintObservationClusterPlan: AIBlueprintObservationClusterPlan;
+  input: ProcessInput;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIBlueprintObservationClusterPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    blueprintObservationClusterPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -2637,11 +2678,32 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
 }) {
   await updateAIPdfBatchProgress(input, {
     detail:
-      "Running DeepSeek text-only blueprint analyzer on normalized observation packets.",
+      "Clustering observed question blocks into focused blueprint candidates.",
+    pageCount,
+    phase: "question_blueprint_clustering",
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+  });
+
+  const blueprintObservationClusterPlan = buildAIBlueprintObservationClusterPlan({
+    observationPlan: blueprintObservationPlan,
+  });
+  await updateAIBlueprintObservationClusterPlan({
+    blueprintObservationClusterPlan,
+    input,
+  });
+  const clusterAnalyzerPlans = buildClusteredBlueprintObservationAnalyzerPlans({
+    clusterPlan: blueprintObservationClusterPlan,
+    observationPlan: blueprintObservationPlan,
+  });
+
+  await updateAIPdfBatchProgress(input, {
+    detail: `Running DeepSeek text-only blueprint analyzer on ${clusterAnalyzerPlans.length} observation cluster(s).`,
     pageCount,
     phase: "question_blueprint_analyzing",
     provider: providerSummary,
     sourceInput: providerInput.strategy,
+    warnings: blueprintObservationClusterPlan.warnings,
   });
 
   const warnings: string[] = [];
@@ -2665,56 +2727,78 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
 
   let questionBlueprintDraftPlan: AIQuestionBlueprintDraftPlan;
 
-  if (!analyzerProvider.provider) {
+  if (!clusterAnalyzerPlans.length) {
     questionBlueprintDraftPlan = skippedQuestionBlueprintDraftPlan({
       observationPlan: blueprintObservationPlan,
-      warnings,
+      warnings: uniqueStrings([
+        ...warnings,
+        ...blueprintObservationClusterPlan.warnings,
+        "question_blueprint_analyzer_missing_clustered_inputs",
+      ]),
+    });
+  } else if (!analyzerProvider.provider) {
+    questionBlueprintDraftPlan = skippedQuestionBlueprintDraftPlan({
+      observationPlan: blueprintObservationPlan,
+      warnings: uniqueStrings([
+        ...warnings,
+        ...blueprintObservationClusterPlan.warnings,
+      ]),
     });
   } else {
-    try {
-      questionBlueprintDraftPlan = await executeDeepSeekQuestionBlueprintAnalyzer({
-        debugContext: {
-          batchId: input.batchId,
-          fileName: input.fileName,
-          jobId: input.jobId,
-          providerProfileId: analyzerProvider.provider.id,
-          sourceAssetId: input.sourceAssetId,
-          sourceObjectPath: input.sourceObjectPath,
-        },
-        knownTaxonomyTagIds,
-        observationPlan: blueprintObservationPlan,
-        provider: analyzerProvider.provider,
-      });
+    const clusterDraftPlans: {
+      cluster: (typeof clusterAnalyzerPlans)[number]["cluster"];
+      draftPlan: AIQuestionBlueprintDraftPlan;
+    }[] = [];
+    const clusterWarnings: string[] = [];
 
-      if (warnings.length) {
-        questionBlueprintDraftPlan = {
-          ...questionBlueprintDraftPlan,
-          warnings: uniqueStrings([
-            ...questionBlueprintDraftPlan.warnings,
-            ...warnings,
-          ]),
-          stats: {
-            ...questionBlueprintDraftPlan.stats,
-            warningCount:
-              questionBlueprintDraftPlan.stats.warningCount + warnings.length,
+    for (const clusterAnalyzerPlan of clusterAnalyzerPlans) {
+      try {
+        const draftPlan = await executeDeepSeekQuestionBlueprintAnalyzer({
+          debugContext: {
+            batchId: input.batchId,
+            fileName: input.fileName,
+            jobId: input.jobId,
+            providerProfileId: analyzerProvider.provider.id,
+            sourceAssetId: input.sourceAssetId,
+            sourceObjectPath: input.sourceObjectPath,
           },
-          status:
-            questionBlueprintDraftPlan.status === "completed"
-              ? "completed_with_warnings"
-              : questionBlueprintDraftPlan.status,
-        };
+          knownTaxonomyTagIds,
+          observationPlan: clusterAnalyzerPlan.observationPlan,
+          provider: analyzerProvider.provider,
+        });
+
+        clusterDraftPlans.push({
+          cluster: clusterAnalyzerPlan.cluster,
+          draftPlan,
+        });
+      } catch (error) {
+        const warning = `DeepSeek blueprint analyzer failed for cluster ${clusterAnalyzerPlan.cluster.clusterId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+        clusterWarnings.push(warning);
+        clusterDraftPlans.push({
+          cluster: clusterAnalyzerPlan.cluster,
+          draftPlan: failedQuestionBlueprintDraftPlan({
+            observationPlan: clusterAnalyzerPlan.observationPlan,
+            warnings: uniqueStrings([
+              warning,
+              ...clusterAnalyzerPlan.cluster.warnings,
+            ]),
+          }),
+        });
       }
-    } catch (error) {
-      questionBlueprintDraftPlan = failedQuestionBlueprintDraftPlan({
+    }
+
+    questionBlueprintDraftPlan =
+      buildQuestionBlueprintDraftPlanFromClusteredDraftPlans({
+        clusterDraftPlans,
         observationPlan: blueprintObservationPlan,
         warnings: uniqueStrings([
           ...warnings,
-          `DeepSeek blueprint analyzer failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          ...blueprintObservationClusterPlan.warnings,
+          ...clusterWarnings,
         ]),
       });
-    }
   }
 
   await updateAIQuestionBlueprintDraftPlan({

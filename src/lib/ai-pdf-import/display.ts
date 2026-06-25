@@ -123,6 +123,7 @@ export function friendlyAIPdfPhaseLabel(phase: string) {
     provider_response_validated: "AI response received",
     question_blueprint_analyzed: "Question blueprint analyzer finished",
     question_blueprint_analyzing: "Question blueprint analyzer running",
+    question_blueprint_clustering: "Blueprint observation clustering",
     question_blueprint_review_planned: "Question blueprint review planned",
     question_blueprint_review_planning: "Question blueprint review planning",
     queued: "Queued",
@@ -204,6 +205,7 @@ function statusLabel({
     status === "validating" ||
     [
       "blueprint_observation_calling_provider",
+      "question_blueprint_clustering",
       "question_blueprint_analyzing",
       "question_blueprint_review_planning",
       "starting_extraction",

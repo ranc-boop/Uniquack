@@ -85,6 +85,7 @@ assert(practiceClient.includes("/api/practice/wrong-questions"), "practice clien
 console.log("PASS practice client uses persisted sessions and wrong-question records");
 
 const blueprintObservation = await read("src/lib/ai-pdf-import/blueprint-observation.ts");
+const blueprintObservationClustering = await read("src/lib/ai-pdf-import/blueprint-observation-clustering.ts");
 const questionBlueprintAnalyzer = await read("src/lib/ai-pdf-import/question-blueprint-analyzer.ts");
 const questionBlueprintReview = await read("src/lib/blueprints/question-blueprint-review.ts");
 const questionBlueprintLibrary = await read("src/lib/blueprints/question-blueprint-library.ts");
@@ -181,11 +182,83 @@ assert(
 console.log("PASS blueprint observation schema is planning-only, bounded, and provider-free");
 
 for (const exportName of [
+  "AIBlueprintObservationClusterPlan",
+  "AIBlueprintObservationCluster",
+  "buildAIBlueprintObservationClusterPlan",
+  "buildClusteredBlueprintObservationAnalyzerPlans",
+  "mergeAIBlueprintObservationClusterPlanIntoSummary",
+  "summarizeBlueprintObservationClusterPlan",
+]) {
+  assert(
+    blueprintObservationClustering.includes(exportName),
+    `blueprint observation clustering is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "blueprint_observation_cluster_plan_v1",
+  "summary.aiPdfImport.blueprintObservationClusterPlan",
+  "sourceBlockIds",
+  "normalizedAnalyzerPacketIds",
+  "singleBlockClusterCount",
+  "mixedSourceWarningCount",
+  "megaClusterAvoidedCount",
+  "blueprint_observation_clustering_planning_only",
+  "blueprint_observation_clustering_deterministic",
+  "blueprint_observation_clustering_no_generation",
+  "blueprint_observation_clustering_no_review_draft_write",
+  "blueprint_observation_clustering_no_db_write",
+  "blueprint_observation_clustering_no_provider_call",
+  "blueprint_observation_cluster_uncertain_split",
+  "blueprint_observation_cluster_mixed_signals_split",
+  "blueprint_observation_cluster_mega_cluster_split",
+  "textOnlyForAnalyzer: true",
+  "rawPdfStored: false",
+  "rawImageStored: false",
+  "base64Stored: false",
+  "providerResponseStored: false",
+  "generatedQuestionCount: 0",
+  "providerCallCount: 0",
+  "reviewDraftWriteCount: 0",
+  "rawStorageCount: 0",
+]) {
+  assert(
+    blueprintObservationClustering.includes(expectedText),
+    `blueprint observation clustering guard is missing ${expectedText}`,
+  );
+}
+assert(
+  blueprintObservationClustering.includes("taxonomySignals.join") &&
+    blueprintObservationClustering.includes("representationGroup") &&
+    blueprintObservationClustering.includes("promptVerb") &&
+    blueprintObservationClustering.includes("answerStructure"),
+  "blueprint observation clustering must fingerprint mixed-topic signals before analysis",
+);
+assert(
+  blueprintObservationClustering.includes("MEGA_CLUSTER_MAX_BLOCKS") &&
+    blueprintObservationClustering.includes("splitMegaClusters"),
+  "blueprint observation clustering must avoid a single mega-cluster",
+);
+assert(
+  !blueprintObservationClustering.includes("fetch("),
+  "blueprint observation clustering must not call providers",
+);
+assert(
+  !blueprintObservationClustering.includes("importBatchImportJson"),
+  "blueprint observation clustering must not write Review Drafts",
+);
+assert(!blueprintObservationClustering.includes("supabase.from("), "blueprint observation clustering must not query the database");
+assert(!blueprintObservationClustering.includes(".insert("), "blueprint observation clustering must not insert database rows");
+assert(!blueprintObservationClustering.includes(".update("), "blueprint observation clustering must not update database rows");
+assert(!blueprintObservationClustering.includes(".delete("), "blueprint observation clustering must not delete database rows");
+console.log("PASS blueprint observation clustering is deterministic, bounded, and write-free");
+
+for (const exportName of [
   "AIQuestionBlueprintDraftPlan",
   "AIQuestionBlueprintDraft",
   "buildQuestionBlueprintAnalyzerPrompt",
   "buildQuestionBlueprintDraftPlanFromObservationPlan",
   "buildQuestionBlueprintDraftPlanFromAnalyzerResponse",
+  "buildQuestionBlueprintDraftPlanFromClusteredDraftPlans",
   "parseQuestionBlueprintAnalyzerProviderText",
   "executeDeepSeekQuestionBlueprintAnalyzer",
   "skippedQuestionBlueprintDraftPlan",
@@ -207,6 +280,7 @@ for (const expectedText of [
   "Do not generate a new question.",
   "Do not solve the question.",
   "Do not copy wording.",
+  "If packet IDs include blueprint observation cluster prefixes, analyze only that cluster and do not merge it with other clusters.",
   "Return JSON only.",
   "textOnlyForAnalyzer",
   "rawStorageCount: 0",
@@ -525,8 +599,14 @@ for (const expectedText of [
   "buildAIBlueprintObservationProviderPrompt",
   "parseAIBlueprintObservationProviderText",
   "buildAndStoreQuestionBlueprintDraftPlan",
+  "buildAIBlueprintObservationClusterPlan",
+  "buildClusteredBlueprintObservationAnalyzerPlans",
+  "mergeAIBlueprintObservationClusterPlanIntoSummary",
+  "updateAIBlueprintObservationClusterPlan",
+  "question_blueprint_clustering",
   "loadDeepSeekBlueprintAnalyzerProvider",
   "executeDeepSeekQuestionBlueprintAnalyzer",
+  "buildQuestionBlueprintDraftPlanFromClusteredDraftPlans",
   "mergeQuestionBlueprintDraftPlanIntoSummary",
   "buildQuestionBlueprintReviewActionPlan",
   "mergeQuestionBlueprintReviewPlanIntoSummary",
@@ -576,6 +656,11 @@ assert(
   "blueprint observation mode must handle missing DeepSeek config safely",
 );
 assert(
+  aiPdfService.includes("for (const clusterAnalyzerPlan of clusterAnalyzerPlans)") &&
+    !aiPdfService.includes("Promise.all(clusterAnalyzerPlans"),
+  "blueprint observation clustering must analyze clusters sequentially, not with unordered Promise.all",
+);
+assert(
   aiPdfService.includes("providerInput.strategy !== \"gemini_native_pdf\"") &&
     aiPdfService.includes("providerInput.strategy !== \"mock\""),
   "blueprint observation mode must guard provider strategy",
@@ -596,6 +681,15 @@ assert(
     aiPdfDashboard.includes("Normalized analyzer packets:") &&
     aiPdfDashboard.includes("No questions were created."),
   "AI PDF dashboard must surface blueprint observation metadata",
+);
+assert(
+  aiPdfDashboard.includes("Blueprint Observation Clusters") &&
+    aiPdfDashboard.includes("Clusters:") &&
+    aiPdfDashboard.includes("Single-block clusters:") &&
+    aiPdfDashboard.includes("Mixed-source warnings:") &&
+    aiPdfDashboard.includes("Source questions were split into separate blueprint") &&
+    aiPdfDashboard.includes("candidates before DeepSeek analysis."),
+  "AI PDF dashboard must surface blueprint observation cluster metadata",
 );
 assert(
   aiPdfDashboard.includes("Question Blueprint Drafts") &&

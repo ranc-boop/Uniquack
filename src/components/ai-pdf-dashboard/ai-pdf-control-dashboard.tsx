@@ -158,6 +158,7 @@ function phaseRank(phase: string) {
     rendering_page_images: 7,
     blueprint_observation_calling_provider: 8,
     calling_provider: 8,
+    question_blueprint_clustering: 8,
     question_blueprint_analyzing: 8,
     question_blueprint_review_planning: 8,
     blueprint_observation_normalized: 9,
@@ -416,6 +417,27 @@ export function AIPdfControlDashboard({
                 firstNumber(blueprintObservationStats, [
                   "normalizedPacketCount",
                 ]) ?? 0;
+              const blueprintObservationClusterPlan = asRecord(
+                ai.blueprintObservationClusterPlan,
+              );
+              const blueprintObservationClusterStats = asRecord(
+                blueprintObservationClusterPlan.stats,
+              );
+              const hasBlueprintObservationClusterPlan =
+                blueprintObservationClusterPlan.version ===
+                "blueprint_observation_cluster_plan_v1";
+              const blueprintObservationClusterCount =
+                firstNumber(blueprintObservationClusterStats, [
+                  "clusterCount",
+                ]) ?? 0;
+              const blueprintObservationSingleBlockClusterCount =
+                firstNumber(blueprintObservationClusterStats, [
+                  "singleBlockClusterCount",
+                ]) ?? 0;
+              const blueprintObservationMixedSourceWarningCount =
+                firstNumber(blueprintObservationClusterStats, [
+                  "mixedSourceWarningCount",
+                ]) ?? 0;
               const questionBlueprintDraftPlan = asRecord(
                 ai.questionBlueprintDraftPlan,
               );
@@ -584,6 +606,39 @@ export function AIPdfControlDashboard({
                             {normalizedObservationPacketCount}
                           </p>
                           <p>No questions were created.</p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {hasBlueprintObservationClusterPlan ? (
+                      <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">
+                            Blueprint Observation Clusters
+                          </p>
+                          <Badge variant="outline">
+                            Status:{" "}
+                            {firstString(
+                              blueprintObservationClusterPlan,
+                              ["status"],
+                              "unknown",
+                            )}
+                          </Badge>
+                        </div>
+                        <div className="mt-2 grid gap-2 text-xs text-muted-foreground md:grid-cols-4">
+                          <p>Clusters: {blueprintObservationClusterCount}</p>
+                          <p>
+                            Single-block clusters:{" "}
+                            {blueprintObservationSingleBlockClusterCount}
+                          </p>
+                          <p>
+                            Mixed-source warnings:{" "}
+                            {blueprintObservationMixedSourceWarningCount}
+                          </p>
+                          <p>
+                            Source questions were split into separate blueprint
+                            candidates before DeepSeek analysis.
+                          </p>
                         </div>
                       </div>
                     ) : null}

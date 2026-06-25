@@ -57,6 +57,7 @@ await checkAdminRoute(
 );
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
+const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
 assert(
   blueprintPage.includes("Generate original draft questions") &&
     blueprintPage.includes("Manual DeepSeek call") &&
@@ -81,4 +82,11 @@ assert(
   "/admin/blueprints action must use manual DeepSeek generation without AI PDF extraction",
 );
 console.log("PASS /admin/blueprints source exposes lifecycle-gated DeepSeek draft generation safely");
+assert(
+  aiPdfDashboard.includes("Blueprint Observation Clusters") &&
+    aiPdfDashboard.includes("Source questions were split into separate blueprint") &&
+    aiPdfDashboard.includes("candidates before DeepSeek analysis."),
+  "AI PDF dashboard must show blueprint observation clustering metadata",
+);
+console.log("PASS AI PDF dashboard source surfaces blueprint observation clusters");
 console.log("PASS route smoke uses taxonomy routes without legacy tag setup");
