@@ -84,6 +84,87 @@ assert(practiceClient.includes("/api/practice/sessions"), "practice client does 
 assert(practiceClient.includes("/api/practice/wrong-questions"), "practice client does not load wrong-question records");
 console.log("PASS practice client uses persisted sessions and wrong-question records");
 
+const blueprintObservation = await read("src/lib/ai-pdf-import/blueprint-observation.ts");
+for (const exportName of [
+  "AIBlueprintObservationPlan",
+  "AIBlueprintObservationPacket",
+  "AIBlueprintObservedQuestionBlock",
+  "AINormalizedBlueprintObservationPacket",
+  "buildAIBlueprintObservationPlanFromSummary",
+  "buildBlueprintObservationPackets",
+  "normalizeBlueprintObservationPackets",
+  "validateBlueprintObservationPlan",
+  "mergeAIBlueprintObservationPlanIntoSummary",
+  "failedAIBlueprintObservationPlan",
+  "summarizeBlueprintObservationPlan",
+]) {
+  assert(
+    blueprintObservation.includes(exportName),
+    `blueprint observation schema is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "blueprint_observation_plan_v1",
+  "summary.aiPdfImport.blueprintObservationPlan",
+  "blueprintObservationPlan",
+  "textOnlyForAnalyzer: true",
+  "rawPdfStored: false",
+  "rawImageStored: false",
+  "base64Stored: false",
+  "providerResponseStored: false",
+  "BLUEPRINT_OBSERVATION_EVIDENCE_SNIPPET_MAX_CHARS = 280",
+  "blueprint_observation_planning_only",
+  "blueprint_observation_no_provider_call",
+  "blueprint_observation_no_generation",
+  "blueprint_observation_no_review_draft_write",
+  "blueprint_observation_no_raw_pdf_storage",
+  "blueprint_observation_no_base64_storage",
+  "blueprint_observation_missing_preanalysis",
+  "blueprint_observation_missing_packet_plan",
+  "You are not solving the problem.",
+  "Only extract bounded structure/style observations",
+  "generatedQuestionCount: 0",
+  "providerCallCount: 0",
+  "reviewDraftWriteCount: 0",
+  "rawStorageCount: 0",
+]) {
+  assert(
+    blueprintObservation.includes(expectedText),
+    `blueprint observation guard is missing ${expectedText}`,
+  );
+}
+assert(
+  blueprintObservation.includes("boundedText("),
+  "blueprint observation must bound evidence and summaries",
+);
+assert(
+  blueprintObservation.includes("assetRefs"),
+  "blueprint observation must keep asset references",
+);
+assert(
+  !blueprintObservation.includes("fetch("),
+  "blueprint observation must not call providers or network APIs",
+);
+assert(
+  !blueprintObservation.includes("importBatchImportJson"),
+  "blueprint observation must not write generated drafts to Review",
+);
+assert(!blueprintObservation.includes("question_tags"), "blueprint observation must not use legacy question_tags");
+assert(!blueprintObservation.includes("video_tags"), "blueprint observation must not use legacy video_tags");
+assert(!blueprintObservation.includes("supabase.from("), "blueprint observation must not query the database");
+assert(!blueprintObservation.includes(".insert("), "blueprint observation must not insert database rows");
+assert(!blueprintObservation.includes(".update("), "blueprint observation must not update database rows");
+assert(!blueprintObservation.includes(".delete("), "blueprint observation must not delete database rows");
+assert(
+  !blueprintObservation.includes("executeBlueprintGenerationRequestWithDeepSeek"),
+  "blueprint observation must not restore old DeepSeek execution",
+);
+assert(
+  !blueprintObservation.includes("QuestionBlueprintPlan"),
+  "blueprint observation must not restore the old QuestionBlueprintPlan",
+);
+console.log("PASS blueprint observation schema is planning-only, bounded, and provider-free");
+
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 assert(
   blueprintPage.includes("Blueprint Engine is being rebuilt around AI Parsing observation."),
