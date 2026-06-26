@@ -142,10 +142,22 @@ type ImportBatchRow = {
   summary: unknown;
 };
 
+const BLUEPRINT_REVIEW_PAGE_SIZE = 50;
+const BLUEPRINT_LIBRARY_PAGE_SIZE = 50;
+const BLUEPRINT_HISTORY_PAGE_SIZE = 50;
+const BLUEPRINT_SOURCE_PAGE_SIZE = 25;
+const BLUEPRINT_OVERVIEW_PREVIEW_LIMIT = 6;
+const blueprintFolderIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function skippedResult<T>() {
+  return { count: 0, data: [] as T[], error: null };
 }
 
 function asArray(value: unknown): unknown[] {
@@ -1809,68 +1821,149 @@ export async function BlueprintWorkspace({
   await requireAdmin();
   const supabase = await createClient();
 
+  const requestedFolderParam = firstString(params.folder, "all");
+  const loadReviewActions =
+    view === "overview" || view === "review" || view === "history";
+  const loadBlueprintLibrary =
+    view === "overview" || view === "library" || view === "history";
+  const loadFolders =
+    view === "overview" || view === "library" || view === "history";
+  const loadImportSources = view === "overview" || view === "sources";
+  const isRequestedFolderId = blueprintFolderIdPattern.test(requestedFolderParam);
+  const reviewStatuses =
+    view === "history"
+      ? ["rejected"]
+      : view === "review"
+        ? ["pending_review", "needs_more_evidence"]
+        : ["pending_review", "needs_more_evidence", "rejected"];
+  const reviewLimit =
+    view === "overview" ? BLUEPRINT_OVERVIEW_PREVIEW_LIMIT : BLUEPRINT_REVIEW_PAGE_SIZE;
+  const blueprintLimit =
+    view === "overview"
+      ? BLUEPRINT_OVERVIEW_PREVIEW_LIMIT
+      : view === "history"
+        ? BLUEPRINT_HISTORY_PAGE_SIZE
+        : BLUEPRINT_LIBRARY_PAGE_SIZE;
+  const sourceLimit =
+    view === "overview" ? BLUEPRINT_OVERVIEW_PREVIEW_LIMIT : BLUEPRINT_SOURCE_PAGE_SIZE;
+
+  let blueprintsQuery = (supabase as any)
+    .from("question_blueprints")
+    .select(
+      "id, title, status, owner_scope, folder_id, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, difficulty_profile, generation_constraints, originality_constraints, source_refs, deleted_at, updated_at, version, generation_readiness, last_calibrated_at, last_calibration_run_id",
+    )
+    .order("updated_at", { ascending: false })
+    .limit(blueprintLimit);
+
+  if (view === "history") {
+    blueprintsQuery = blueprintsQuery.or("status.eq.deprecated,deleted_at.not.is.null");
+  } else if (view === "library") {
+    blueprintsQuery = blueprintsQuery.eq("status", "approved").is("deleted_at", null);
+    if (requestedFolderParam === "unfiled") {
+      blueprintsQuery = blueprintsQuery.is("folder_id", null);
+    } else if (requestedFolderParam !== "all" && isRequestedFolderId) {
+      blueprintsQuery = blueprintsQuery.eq("folder_id", requestedFolderParam);
+    }
+  } else {
+    blueprintsQuery = blueprintsQuery.eq("status", "approved").is("deleted_at", null);
+  }
+
   const [
     reviewActionsResult,
     blueprintsResult,
     importBatchesResult,
-    blueprintExamplesResult,
     blueprintFoldersResult,
-    calibrationRunsResult,
-    blueprintVersionsResult,
     taxonomyCatalogResult,
+    pendingReviewCountResult,
+    needsEvidenceCountResult,
+    rejectedReviewCountResult,
+    approvedBlueprintCountResult,
+    archivedBlueprintCountResult,
+    trashedBlueprintCountResult,
+    unfiledBlueprintCountResult,
   ] = await Promise.all([
-    (supabase as any)
-      .from("question_blueprint_review_actions")
-      .select(
-        "id, action_id, blueprint_draft_id, action_kind, status, reason, evidence, draft_snapshot, import_batch_id, created_at",
-      )
-      .in("status", ["pending_review", "needs_more_evidence", "rejected"])
-      .order("created_at", { ascending: false })
-      .limit(60),
-    (supabase as any)
-      .from("question_blueprints")
-      .select(
-        "id, title, status, owner_scope, folder_id, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, difficulty_profile, generation_constraints, originality_constraints, source_refs, deleted_at, updated_at, version, generation_readiness, last_calibrated_at, last_calibration_run_id",
-      )
-      .order("updated_at", { ascending: false })
-      .limit(50),
-    supabase
-      .from("import_batches")
-      .select("id, status, summary, created_at")
-      .order("created_at", { ascending: false })
-      .limit(20),
-    (supabase as any)
-      .from("question_blueprint_examples")
-      .select("blueprint_id, evidence_snippets")
-      .limit(200),
-    (supabase as any)
-      .from("question_blueprint_folders")
-      .select(
-        "id, owner_scope, owner_id, parent_id, name, slug, description, sort_order, deleted_at",
-      )
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true }),
-    (supabase as any)
-      .from("question_blueprint_calibration_runs")
-      .select(
-        "id, blueprint_id, blueprint_version, sample_count, sample_previews, validation_summary, adherence_summary, originality_summary, diversity_summary, readiness_result, blocking_reasons, model_name, created_at",
-      )
-      .order("created_at", { ascending: false })
-      .limit(100),
-    (supabase as any)
-      .from("question_blueprint_versions")
-      .select("id, blueprint_id, version, change_reason, created_at")
-      .order("created_at", { ascending: false })
-      .limit(200),
+    loadReviewActions
+      ? (supabase as any)
+          .from("question_blueprint_review_actions")
+          .select(
+            "id, action_id, blueprint_draft_id, action_kind, status, reason, evidence, draft_snapshot, import_batch_id, created_at",
+          )
+          .in("status", reviewStatuses)
+          .order("created_at", { ascending: false })
+          .limit(reviewLimit)
+      : Promise.resolve(skippedResult<BlueprintReviewRow>()),
+    loadBlueprintLibrary
+      ? blueprintsQuery
+      : Promise.resolve(skippedResult<BlueprintRow>()),
+    loadImportSources
+      ? supabase
+          .from("import_batches")
+          .select("id, status, summary, created_at")
+          .order("created_at", { ascending: false })
+          .limit(sourceLimit)
+      : Promise.resolve(skippedResult<ImportBatchRow>()),
+    loadFolders
+      ? (supabase as any)
+          .from("question_blueprint_folders")
+          .select(
+            "id, owner_scope, owner_id, parent_id, name, slug, description, sort_order, deleted_at",
+          )
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true })
+      : Promise.resolve(skippedResult<QuestionBlueprintFolderRow>()),
     loadTaxonomyCatalog(supabase),
+    view === "overview"
+      ? (supabase as any)
+          .from("question_blueprint_review_actions")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending_review")
+      : Promise.resolve(skippedResult<never>()),
+    view === "overview"
+      ? (supabase as any)
+          .from("question_blueprint_review_actions")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "needs_more_evidence")
+      : Promise.resolve(skippedResult<never>()),
+    view === "overview"
+      ? (supabase as any)
+          .from("question_blueprint_review_actions")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "rejected")
+      : Promise.resolve(skippedResult<never>()),
+    view === "overview"
+      ? (supabase as any)
+          .from("question_blueprints")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "approved")
+          .is("deleted_at", null)
+      : Promise.resolve(skippedResult<never>()),
+    view === "overview"
+      ? (supabase as any)
+          .from("question_blueprints")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "deprecated")
+          .is("deleted_at", null)
+      : Promise.resolve(skippedResult<never>()),
+    view === "overview"
+      ? (supabase as any)
+          .from("question_blueprints")
+          .select("id", { count: "exact", head: true })
+          .not("deleted_at", "is", null)
+      : Promise.resolve(skippedResult<never>()),
+    view === "overview"
+      ? (supabase as any)
+          .from("question_blueprints")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "approved")
+          .is("deleted_at", null)
+          .is("folder_id", null)
+      : Promise.resolve(skippedResult<never>()),
   ]);
   const setupNeeded =
     isMissingBlueprintTableError(reviewActionsResult.error) ||
     isMissingBlueprintTableError(blueprintsResult.error) ||
-    isMissingBlueprintTableError(blueprintExamplesResult.error) ||
     isMissingBlueprintTableError(blueprintFoldersResult.error) ||
-    isMissingBlueprintTableError(calibrationRunsResult.error) ||
-    isMissingBlueprintTableError(blueprintVersionsResult.error);
+    isMissingBlueprintTableError(importBatchesResult.error);
   const reviewActions = setupNeeded
     ? []
     : ((reviewActionsResult.data ?? []) as BlueprintReviewRow[]);
@@ -1880,10 +1973,51 @@ export async function BlueprintWorkspace({
   const folders = setupNeeded
     ? []
     : ((blueprintFoldersResult.data ?? []) as QuestionBlueprintFolderRow[]);
-  const calibrationRuns = setupNeeded
+  const loadedBlueprintIds = blueprints.map((blueprint) => blueprint.id);
+  const loadBlueprintDetailSummaries =
+    !setupNeeded &&
+    loadedBlueprintIds.length > 0 &&
+    (view === "library" || view === "history");
+  const [
+    blueprintExamplesResult,
+    calibrationRunsResult,
+    blueprintVersionsResult,
+  ] = await Promise.all([
+    loadBlueprintDetailSummaries
+      ? (supabase as any)
+          .from("question_blueprint_examples")
+          .select("blueprint_id, evidence_snippets")
+          .in("blueprint_id", loadedBlueprintIds)
+          .limit(loadedBlueprintIds.length * 3)
+      : Promise.resolve(skippedResult<BlueprintExampleRow>()),
+    loadBlueprintDetailSummaries
+      ? (supabase as any)
+          .from("question_blueprint_calibration_runs")
+          .select(
+            "id, blueprint_id, blueprint_version, sample_count, sample_previews, validation_summary, adherence_summary, originality_summary, diversity_summary, readiness_result, blocking_reasons, model_name, created_at",
+          )
+          .in("blueprint_id", loadedBlueprintIds)
+          .order("created_at", { ascending: false })
+          .limit(loadedBlueprintIds.length * 3)
+      : Promise.resolve(skippedResult<BlueprintCalibrationRunRow>()),
+    loadBlueprintDetailSummaries
+      ? (supabase as any)
+          .from("question_blueprint_versions")
+          .select("id, blueprint_id, version, change_reason, created_at")
+          .in("blueprint_id", loadedBlueprintIds)
+          .order("created_at", { ascending: false })
+          .limit(loadedBlueprintIds.length * 3)
+      : Promise.resolve(skippedResult<BlueprintVersionRow>()),
+  ]);
+  const detailSetupNeeded =
+    isMissingBlueprintTableError(blueprintExamplesResult.error) ||
+    isMissingBlueprintTableError(calibrationRunsResult.error) ||
+    isMissingBlueprintTableError(blueprintVersionsResult.error);
+  const workspaceSetupNeeded = setupNeeded || detailSetupNeeded;
+  const calibrationRuns = workspaceSetupNeeded
     ? []
     : ((calibrationRunsResult.data ?? []) as BlueprintCalibrationRunRow[]);
-  const blueprintVersions = setupNeeded
+  const blueprintVersions = workspaceSetupNeeded
     ? []
     : ((blueprintVersionsResult.data ?? []) as BlueprintVersionRow[]);
   const taxonomyCatalog = taxonomyCatalogResult.catalog;
@@ -1923,9 +2057,9 @@ export async function BlueprintWorkspace({
   const archivedFolders = folders.filter((folder) => folder.deleted_at);
   const folderTree = buildQuestionBlueprintFolderTree(folders);
   const folderOptions = flattenQuestionBlueprintFolderTree(folderTree);
-  const requestedFolder = firstString(params.folder, "all");
+  const requestedFolder = requestedFolderParam;
   const selectedFolder =
-    requestedFolder !== "all" && requestedFolder !== "unfiled"
+    requestedFolder !== "all" && requestedFolder !== "unfiled" && isRequestedFolderId
       ? activeFolders.find((folder) => folder.id === requestedFolder)
       : undefined;
   const selectedFolderId =
@@ -1949,6 +2083,30 @@ export async function BlueprintWorkspace({
     (blueprint) => !blueprint.deleted_at && blueprint.status === "deprecated",
   );
   const trashedBlueprints = blueprints.filter((blueprint) => blueprint.deleted_at);
+  const pendingReviewCount =
+    view === "overview"
+      ? (pendingReviewCountResult.count ?? pendingReviewActions.length)
+      : pendingReviewActions.length;
+  const needsEvidenceCount =
+    view === "overview"
+      ? (needsEvidenceCountResult.count ?? needsMoreEvidenceActions.length)
+      : needsMoreEvidenceActions.length;
+  const rejectedReviewCount =
+    view === "overview"
+      ? (rejectedReviewCountResult.count ?? rejectedReviewActions.length)
+      : rejectedReviewActions.length;
+  const approvedBlueprintCount =
+    view === "overview"
+      ? (approvedBlueprintCountResult.count ?? filteredActiveBlueprints.length)
+      : filteredActiveBlueprints.length;
+  const archivedTrashBlueprintCount =
+    view === "overview"
+      ? (archivedBlueprintCountResult.count ?? 0) + (trashedBlueprintCountResult.count ?? 0)
+      : archivedBlueprints.length + trashedBlueprints.length;
+  const unfiledBlueprintCount =
+    view === "overview"
+      ? (unfiledBlueprintCountResult.count ?? 0)
+      : activeBlueprints.filter((blueprint) => !blueprint.folder_id).length;
   const importBatches = ((importBatchesResult.data ?? []) as ImportBatchRow[])
     .map((batch) => ({
       ...batch,
@@ -1958,15 +2116,13 @@ export async function BlueprintWorkspace({
     .filter((batch) => batch.reviewActionCount > 0)
     .slice(0, 5);
   const summary = summarizeQuestionBlueprintLibrary({
-    approvedBlueprintCount: blueprints.filter(
-      (blueprint) => blueprint.status === "approved" && !blueprint.deleted_at,
-    ).length,
-    pendingReviewActionCount: pendingReviewActions.length,
-    rejectedReviewActionCount: rejectedReviewActions.length,
+    approvedBlueprintCount,
+    pendingReviewActionCount: pendingReviewCount,
+    rejectedReviewActionCount: rejectedReviewCount,
   });
   const seedPlan = buildQuestionBlueprintLibrarySeedPlan({
-    existingBlueprintCount: blueprints.length,
-    pendingReviewActionCount: pendingReviewActions.length,
+    existingBlueprintCount: approvedBlueprintCount + archivedTrashBlueprintCount,
+    pendingReviewActionCount: pendingReviewCount,
     sourceImportBatchCount: importBatches.length,
   });
   const workspaceCopy = BLUEPRINT_WORKSPACE_COPY[view];
@@ -2014,7 +2170,7 @@ export async function BlueprintWorkspace({
         </Card>
       ) : null}
 
-      {setupNeeded ? (
+      {workspaceSetupNeeded ? (
         <Card className="border-amber-300 bg-amber-50">
           <CardHeader>
             <CardTitle className="text-base">Setup needed</CardTitle>
@@ -2045,7 +2201,7 @@ export async function BlueprintWorkspace({
           <OverviewMetricCard
             href="/admin/blueprints/review"
             label="Needs more evidence"
-            value={needsMoreEvidenceActions.length}
+            value={needsEvidenceCount}
           />
           <OverviewMetricCard
             href="/admin/blueprints/library"
@@ -2060,12 +2216,12 @@ export async function BlueprintWorkspace({
           <OverviewMetricCard
             href="/admin/blueprints/history"
             label="Archived / Trash"
-            value={archivedBlueprints.length + trashedBlueprints.length}
+            value={archivedTrashBlueprintCount}
           />
           <OverviewMetricCard
             href="/admin/blueprints/library?folder=unfiled"
             label="Unfiled"
-            value={activeBlueprints.filter((blueprint) => !blueprint.folder_id).length}
+            value={unfiledBlueprintCount}
           />
           <OverviewMetricCard
             href="/admin/blueprints/library"
@@ -2125,7 +2281,7 @@ export async function BlueprintWorkspace({
                     {batch.id} | {new Date(batch.created_at).toLocaleString()}
                   </p>
                 </div>
-                {!setupNeeded ? (
+                {!workspaceSetupNeeded ? (
                   <form action={storeBlueprintReviewActionsFromImportBatch}>
                     <input name="import_batch_id" type="hidden" value={batch.id} />
                     <FormSubmitButton pendingLabel="Storing..." size="sm">
@@ -2241,7 +2397,7 @@ export async function BlueprintWorkspace({
       </section>
       ) : null}
 
-      {view === "library" && !setupNeeded ? (
+      {view === "library" && !workspaceSetupNeeded ? (
         <BlueprintFolderPanel
           archivedFolders={archivedFolders}
           folderOptions={folderOptions}

@@ -62,6 +62,8 @@ const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
 const adminLayout = await read("src/app/admin/layout.tsx");
+const adminQuestionsPage = await read("src/app/admin/questions/page.tsx");
+const publicQuestionsPage = await read("src/app/questions/page.tsx");
 const adminReviewPage = await read("src/app/admin/review/page.tsx");
 const bulkAssetsPage = await read("src/app/admin/imports/assets/page.tsx");
 const videosPage = await read("src/app/videos/page.tsx");
@@ -83,6 +85,33 @@ assert(
   "videos route must use paged video loading instead of a fixed 100-row initial query",
 );
 console.log("PASS route data loading stays paged on review, assets, and videos");
+assert(
+  adminQuestionsPage.includes("ADMIN_QUESTION_PAGE_SIZE = 50") &&
+    adminQuestionsPage.includes("ADMIN_QUESTION_SUMMARY_SELECT") &&
+    adminQuestionsPage.includes("ADMIN_QUESTION_DETAIL_SELECT") &&
+    adminQuestionsPage.includes("focusedQuestionId && orderedQuestionIds.length") &&
+    !adminQuestionsPage.includes('select("*"'),
+  "admin questions must use summary-first paged list loading and focused detail loading",
+);
+assert(
+  publicQuestionsPage.includes("const pageSize = 25") &&
+    publicQuestionsPage.includes("search_questions_by_taxonomy") &&
+    publicQuestionsPage.includes("page_limit: pageSize") &&
+    publicQuestionsPage.includes("id, question_code, title, content_html, difficulty_rating, status"),
+  "public questions must keep bounded taxonomy RPC summary loading",
+);
+assert(
+  blueprintWorkspace.includes("BLUEPRINT_REVIEW_PAGE_SIZE = 50") &&
+    blueprintWorkspace.includes("BLUEPRINT_LIBRARY_PAGE_SIZE = 50") &&
+    blueprintWorkspace.includes("BLUEPRINT_SOURCE_PAGE_SIZE = 25") &&
+    blueprintWorkspace.includes("loadReviewActions") &&
+    blueprintWorkspace.includes("loadBlueprintLibrary") &&
+    blueprintWorkspace.includes("loadImportSources") &&
+    blueprintWorkspace.includes("loadBlueprintDetailSummaries") &&
+    blueprintWorkspace.includes(".in(\"blueprint_id\", loadedBlueprintIds)"),
+  "blueprint workspace must keep route-scoped bounded data loading",
+);
+console.log("PASS question and blueprint data loading stays summary-first and route-scoped");
 assert(
   adminLayout.includes("Blueprint Library") &&
     adminLayout.includes("/admin/blueprints"),
