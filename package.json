@@ -8,6 +8,7 @@
     "start": "next start",
     "analyze": "cross-env ANALYZE=true next build --webpack",
     "perf:audit": "node scripts/site-performance-audit.mjs",
+    "perf:budget": "node scripts/performance-budget-smoke.mjs",
     "deadcode:audit": "knip --reporter compact",
     "lint": "node scripts/check-math-content-usage.mjs && node ./node_modules/eslint/bin/eslint.js .",
     "lint:math-content": "node scripts/check-math-content-usage.mjs",

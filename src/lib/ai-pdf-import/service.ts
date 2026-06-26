@@ -2210,6 +2210,7 @@ async function loadActiveTags(supabase: SupabaseLike) {
     .eq("status", "active")
     .order("facet_key", { ascending: true })
     .order("tag_id", { ascending: true })
+    // perf-budget-allow-large-query: AI PDF normalization validates against the bounded active leaf taxonomy catalog.
     .limit(1000);
 
   if (error) {
