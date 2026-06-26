@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { BulkAssetUploadPanel } from "@/components/bulk-asset-upload-panel";
+import { BulkAssetUploadPanelLoader } from "@/components/bulk-asset-upload-panel-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
@@ -13,15 +13,17 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+const BULK_ASSET_DRAFT_QUESTION_LIMIT = 250;
+
 export default async function AdminImportAssetsPage() {
   await requireAdmin();
   const supabase = await createClient();
-  const { data: questions, error } = await supabase
+  const { count: totalDraftQuestions, data: questions, error } = await supabase
     .from("questions")
-    .select("id, question_code, title")
+    .select("id, question_code, title", { count: "exact" })
     .eq("status", "draft")
     .order("question_code", { ascending: true })
-    .limit(1000);
+    .limit(BULK_ASSET_DRAFT_QUESTION_LIMIT);
   const draftQuestions: BulkAssetQuestionMatch[] = (questions ?? []).map(
     (question) => ({
       id: question.id,
@@ -95,6 +97,15 @@ export default async function AdminImportAssetsPage() {
             draft match or more than one possible match, it is skipped for manual
             review.
           </p>
+          {typeof totalDraftQuestions === "number" &&
+          totalDraftQuestions > BULK_ASSET_DRAFT_QUESTION_LIMIT ? (
+            <p>
+              Performance note: matching is limited to the first{" "}
+              {BULK_ASSET_DRAFT_QUESTION_LIMIT} draft questions by question
+              code. Use Review Drafts or Question Bank filters to narrow older
+              drafts before uploading large asset batches.
+            </p>
+          ) : null}
           <p>
             Supported files: PNG, JPEG, WebP, GIF, and PDF. SVG and other file
             types are rejected. Existing Storage size limits still apply.
@@ -111,7 +122,7 @@ export default async function AdminImportAssetsPage() {
           {error.message}
         </p>
       ) : (
-        <BulkAssetUploadPanel
+        <BulkAssetUploadPanelLoader
           draftQuestions={draftQuestions}
           existingFilesByQuestionId={existingFilesByQuestionId}
         />

@@ -120,7 +120,7 @@ type OperationState = {
   title: string;
 };
 
-type AIPdfImportPanelProps = {
+export type AIPdfImportPanelProps = {
   providers: SafeAIProviderProfile[];
   sources?: AIPdfSourceOption[];
 };

@@ -1,4 +1,6 @@
-import { BatchImportJsonPanel } from "@/components/batch-import-json-panel";
+import Link from "next/link";
+
+import { BatchImportJsonPanelLoader } from "@/components/batch-import-json-panel-loader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +15,6 @@ import {
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
-import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -118,7 +119,7 @@ export default async function AdminImportsPage() {
           <CardTitle className="text-base">Manual JSON import</CardTitle>
         </CardHeader>
         <CardContent>
-          <BatchImportJsonPanel tagIds={importPromptTagIds} />
+          <BatchImportJsonPanelLoader tagIds={importPromptTagIds} />
         </CardContent>
       </Card>
 

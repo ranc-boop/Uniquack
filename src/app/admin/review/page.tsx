@@ -215,7 +215,6 @@ export default async function AdminReviewPage({
 
   const [
     { data: questionTags },
-    { data: tags },
     { data: questionAssets },
     { data: sourceFiles },
     { data: importItems },
@@ -225,11 +224,6 @@ export default async function AdminReviewPage({
           .from("question_taxonomy_assignments")
           .select("question_id, tag_id, review_status")
           .in("question_id", questionIds)
-          .limit(1000),
-        supabase
-          .from("taxonomy_nodes")
-          .select("tag_id, label, status, facet_key")
-          .eq("status", "active")
           .limit(1000),
         supabase
           .from("question_assets")
@@ -254,12 +248,13 @@ export default async function AdminReviewPage({
         { data: [] },
         { data: [] },
         { data: [] },
-        { data: [] },
       ];
 
-  const activeTagIds = new Set((tags ?? []).map((tag) => tag.tag_id));
+  const activeTagIds = new Set(
+    taxonomyCatalog.nodes.map((node) => node.tag_id),
+  );
   const facetByTagId = new Map(
-    (tags ?? []).map((tag) => [tag.tag_id, tag.facet_key]),
+    taxonomyCatalog.nodes.map((node) => [node.tag_id, node.facet_key]),
   );
   const tagStatusById = new Map(
     (questionTags ?? []).map((tag) => [

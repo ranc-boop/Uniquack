@@ -252,6 +252,84 @@ Do not combine these with dead-code deletion:
 - Likely files: CI workflow, `scripts/site-performance-audit.mjs`, package scripts, budget config.
 - Tests: CI dry run, lint, build, `perf:audit`.
 
+## PERF1 Active Bundle And Render Weight Reduction
+
+PERF1 focused on active route chunk weight and initial render/data volume without deleting features.
+
+### Files Changed
+
+- `src/app/practice/page.tsx`
+- `src/components/practice/practice-agent-loader.tsx`
+- `src/app/admin/imports/pdf/page.tsx`
+- `src/components/ai-pdf-import-panel.tsx`
+- `src/components/ai-pdf-import-panel-loader.tsx`
+- `src/app/admin/imports/page.tsx`
+- `src/components/batch-import-json-panel-loader.tsx`
+- `src/app/admin/imports/assets/page.tsx`
+- `src/components/bulk-asset-upload-panel-loader.tsx`
+- `src/app/admin/imports/package/page.tsx`
+- `src/components/package-import-panel-loader.tsx`
+- `src/app/admin/review/page.tsx`
+
+### Bundle Before / After
+
+Measured with:
+
+```bash
+npm.cmd run build
+npm.cmd run perf:audit
+npm.cmd run analyze
+```
+
+Route client chunks:
+
+| Route | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| `/practice` | 59.5 KB / 14.8 KB gzip | 3.6 KB / 1.4 KB gzip | -55.9 KB |
+| `/admin/imports/pdf` | 52.4 KB / 15.7 KB gzip | 3.7 KB / 1.4 KB gzip | -48.7 KB |
+| `/admin/imports` | 21.0 KB / 7.1 KB gzip | 3.7 KB / 1.4 KB gzip | -17.3 KB |
+| `/admin/imports/assets` | 18.3 KB / 5.7 KB gzip | 3.7 KB / 1.4 KB gzip | -14.6 KB |
+| `/admin/imports/package` | 26.4 KB / 8.4 KB gzip | 3.7 KB / 1.4 KB gzip | -22.7 KB |
+| `/admin/review` | 7.2 KB / 2.3 KB gzip | 7.2 KB / 2.3 KB gzip | unchanged client chunk; server data query reduced |
+| `/admin/questions` | 1.0 KB / 562 B gzip | 1.0 KB / 562 B gzip | unchanged |
+| `/videos` | 4.2 KB / 1.9 KB gzip | 4.2 KB / 1.9 KB gzip | unchanged |
+
+Server bundles:
+
+| Route | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| `/practice` | 121.0 KB / 36.5 KB gzip | 28.1 KB / 9.4 KB gzip | -92.9 KB |
+| `/admin/imports/pdf` | 441.2 KB / 113.8 KB gzip | 400.5 KB / 102.2 KB gzip | -40.7 KB |
+| `/admin/imports` | 49.6 KB / 15.8 KB gzip | 33.9 KB / 11.0 KB gzip | -15.7 KB |
+| `/admin/imports/assets` | 49.2 KB / 15.7 KB gzip | 34.1 KB / 11.4 KB gzip | -15.1 KB |
+| `/admin/imports/package` | 49.0 KB / 15.8 KB gzip | 27.0 KB / 9.3 KB gzip | -22.0 KB |
+
+### What Changed
+
+- Added small client loader islands with `next/dynamic` and `ssr: false` for:
+  - Practice workspace.
+  - AI PDF import controls.
+  - Manual JSON import editor.
+  - Bulk asset upload matcher.
+  - Package import controls.
+- The heavy interactive tools are still available, but the route shell no longer carries their full client code as the first route chunk.
+- `/admin/imports/assets` now loads the first 250 draft questions by default instead of 1000, with clear UI copy when more draft questions exist.
+- `/admin/review` now reuses the already-loaded taxonomy catalog instead of issuing a duplicate active `taxonomy_nodes` support query.
+
+### Intentional Non-Changes
+
+- The large source files still exist. PERF1 reduces active route chunks, not internal source complexity.
+- `PracticeAgentClient` and `AIPdfImportPanel` were not internally split yet; they are deferred into async chunks. Deeper component refactors remain PERF2.
+- `/admin/tags` still loads the full taxonomy tree. That route needs a dedicated tree pagination/search design before reducing the query.
+- `/admin/questions` and `/videos` were left unchanged because their current route chunks are already small and their data loading is paginated or bounded enough for this pass.
+
+### PERF1 Follow-Ups
+
+- PERF2 should split `PracticeAgentClient` into smaller interactive islands so the deferred chunk itself becomes smaller.
+- PERF2 should split `AIPdfImportPanel` into upload/source/status/segmentation islands.
+- PERF3 should add deeper pagination or search-first loading for taxonomy and Review Draft support data.
+- PERF4 should turn the route chunk table from `perf:audit` into a CI budget once the baseline is accepted.
+
 ## Commands Run
 
 ```bash

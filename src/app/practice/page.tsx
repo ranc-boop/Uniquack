@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { SupabaseConfigNotice } from "@/components/config-notice";
-import { PracticeAgentClient } from "@/components/practice/practice-agent-client";
+import { PracticeAgentLoader } from "@/components/practice/practice-agent-loader";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,5 +21,5 @@ export default async function PracticePage() {
     redirect("/auth/login?next=/practice");
   }
 
-  return <PracticeAgentClient />;
+  return <PracticeAgentLoader />;
 }

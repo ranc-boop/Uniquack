@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { PackageImportPanel } from "@/components/package-import-panel";
+import { PackageImportPanelLoader } from "@/components/package-import-panel-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
@@ -49,7 +49,7 @@ export default async function AdminPackageImportPage() {
         </CardContent>
       </Card>
 
-      <PackageImportPanel />
+      <PackageImportPanelLoader />
     </div>
   );
 }
