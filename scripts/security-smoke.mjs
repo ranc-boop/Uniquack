@@ -1023,29 +1023,55 @@ assert(
 console.log("PASS blueprint observation mode is explicit, summary-only, and draft-free");
 
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
+const blueprintReviewPage = await read("src/app/admin/blueprints/review/page.tsx");
+const blueprintLibraryPage = await read("src/app/admin/blueprints/library/page.tsx");
+const blueprintHistoryPage = await read("src/app/admin/blueprints/history/page.tsx");
+const blueprintSourcesPage = await read("src/app/admin/blueprints/sources/page.tsx");
+const blueprintWorkspace = await read("src/components/blueprints/blueprint-workspace.tsx");
 const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 assert(
-  blueprintPage.includes("Question Blueprint Library") &&
-    blueprintPage.includes("Extract and review reusable assessment patterns from source questions.") &&
-    blueprintPage.includes("Approved blueprints can later generate original draft questions"),
-  "question blueprint library page copy is missing",
+  blueprintPage.includes("view=\"overview\"") &&
+    blueprintReviewPage.includes("view=\"review\"") &&
+    blueprintLibraryPage.includes("view=\"library\"") &&
+    blueprintHistoryPage.includes("view=\"history\"") &&
+    blueprintSourcesPage.includes("view=\"sources\"") &&
+    blueprintWorkspace.includes("Question Blueprint Workspace") &&
+    blueprintWorkspace.includes("Blueprint Review Queue") &&
+    blueprintWorkspace.includes("Approved Blueprint Library") &&
+    blueprintWorkspace.includes("History / Archive / Trash") &&
+    blueprintWorkspace.includes("Blueprint Import Sources"),
+  "question blueprint workspace routes or page copy are missing",
 );
-assert(blueprintPage.includes("requireAdmin"), "blueprint library page must remain admin-only");
 assert(
-    blueprintPage.includes("Setup needed") &&
-    blueprintPage.includes("0015_question_blueprint_library.sql") &&
-    blueprintPage.includes("0016_question_blueprint_folders.sql") &&
-    blueprintPage.includes("0018_question_blueprint_calibration.sql") &&
-    blueprintPage.includes("0019_question_blueprint_versions.sql"),
+  blueprintWorkspace.includes("BlueprintWorkspaceNav") &&
+    blueprintWorkspace.includes("Review blueprints") &&
+    blueprintWorkspace.includes("Open library") &&
+    blueprintWorkspace.includes("Manage folders") &&
+    blueprintWorkspace.includes("Open sources") &&
+    blueprintWorkspace.includes("ReviewActionPreview") &&
+    blueprintWorkspace.includes("LibraryBlueprintPreview") &&
+    blueprintWorkspace.includes("view === \"sources\" || view === \"overview\"") &&
+    blueprintWorkspace.includes("view === \"review\" || view === \"overview\"") &&
+    blueprintWorkspace.includes("view === \"library\" || view === \"overview\"") &&
+    blueprintWorkspace.includes("view === \"history\""),
+  "blueprint workspace must split overview/review/library/sources/history instead of one long debug page",
+);
+assert(blueprintWorkspace.includes("requireAdmin"), "blueprint workspace must remain admin-only");
+assert(
+    blueprintWorkspace.includes("Setup needed") &&
+    blueprintWorkspace.includes("0015_question_blueprint_library.sql") &&
+    blueprintWorkspace.includes("0016_question_blueprint_folders.sql") &&
+    blueprintWorkspace.includes("0018_question_blueprint_calibration.sql") &&
+    blueprintWorkspace.includes("0019_question_blueprint_versions.sql"),
   "blueprint library page must show setup-needed message when tables are missing",
 );
 assert(
-  blueprintPage.includes("Pending blueprint review actions") &&
-    blueprintPage.includes("Active library") &&
-    blueprintPage.includes("Store review actions") &&
-    blueprintPage.includes("Approve blueprint") &&
-    blueprintPage.includes("Needs more evidence") &&
-    blueprintPage.includes("Reject"),
+  blueprintWorkspace.includes("Pending blueprint review actions") &&
+    blueprintWorkspace.includes("Active library") &&
+    blueprintWorkspace.includes("Store review actions") &&
+    blueprintWorkspace.includes("Approve blueprint") &&
+    blueprintWorkspace.includes("Needs more evidence") &&
+    blueprintWorkspace.includes("Reject"),
   "blueprint library page must expose admin review workflow",
 );
 assert(
@@ -1059,14 +1085,14 @@ assert(
   "blueprint library actions must be admin-only and use persistence helpers",
 );
 assert(
-  blueprintPage.includes("Blueprint folders") &&
-    blueprintPage.includes("All blueprints") &&
-    blueprintPage.includes("Unfiled") &&
-    blueprintPage.includes("Folder tree") &&
-    blueprintPage.includes("Create folder") &&
-    blueprintPage.includes("Move to folder") &&
-    blueprintPage.includes("No blueprints in this folder yet.") &&
-    blueprintPage.includes("never hard-deleted by folder actions"),
+  blueprintWorkspace.includes("Blueprint folders") &&
+    blueprintWorkspace.includes("All blueprints") &&
+    blueprintWorkspace.includes("Unfiled") &&
+    blueprintWorkspace.includes("Folder tree") &&
+    blueprintWorkspace.includes("Create folder") &&
+    blueprintWorkspace.includes("Move to folder") &&
+    blueprintWorkspace.includes("No blueprints in this folder yet.") &&
+    blueprintWorkspace.includes("never hard-deleted by folder actions"),
   "blueprint library page must expose folder tree, unfiled, and move-to-folder UI",
 );
 assert(
@@ -1083,17 +1109,17 @@ assert(
   "blueprint folder actions must be admin-only, cycle-safe, and soft-delete only",
 );
 assert(
-  blueprintPage.includes("Calibration status") &&
-    blueprintPage.includes("Run calibration preview") &&
-    blueprintPage.includes("Repair failed samples automatically") &&
-    blueprintPage.includes("rerun calibration using Quality mode") &&
-    blueprintPage.includes("Temporary calibration samples") &&
-    blueprintPage.includes("not saved as questions") &&
-    blueprintPage.includes("sent to Review") &&
-    blueprintPage.includes("Run a successful calibration preview before generating Review Draft questions.") &&
-    blueprintPage.includes("Blueprint changed after the last successful calibration.") &&
-    blueprintPage.includes("Re-run calibration for the current version.") &&
-    blueprintPage.includes("Generation disabled"),
+  blueprintWorkspace.includes("Calibration status") &&
+    blueprintWorkspace.includes("Run calibration preview") &&
+    blueprintWorkspace.includes("Repair failed samples automatically") &&
+    blueprintWorkspace.includes("rerun calibration using Quality mode") &&
+    blueprintWorkspace.includes("Temporary calibration samples") &&
+    blueprintWorkspace.includes("not saved as questions") &&
+    blueprintWorkspace.includes("sent to Review") &&
+    blueprintWorkspace.includes("Run a successful calibration preview before generating Review Draft questions.") &&
+    blueprintWorkspace.includes("Blueprint changed after the last successful calibration.") &&
+    blueprintWorkspace.includes("Re-run calibration for the current version.") &&
+    blueprintWorkspace.includes("Generation disabled"),
   "blueprint library page must show calibration status and gate full generation",
 );
 assert(
@@ -1121,27 +1147,27 @@ assert(
   "blueprint taxonomy manual edit action must validate active assignable leaf tags and reopen review",
 );
 assert(
-  blueprintPage.includes("Generate original draft questions") &&
-    blueprintPage.includes("Manual DeepSeek call") &&
-    blueprintPage.includes("Repair failed drafts automatically") &&
-    blueprintPage.includes("Open Review Drafts") &&
-    blueprintPage.includes("never published automatically"),
+  blueprintWorkspace.includes("Generate original draft questions") &&
+    blueprintWorkspace.includes("Manual DeepSeek call") &&
+    blueprintWorkspace.includes("Repair failed drafts automatically") &&
+    blueprintWorkspace.includes("Open Review Drafts") &&
+    blueprintWorkspace.includes("never published automatically"),
   "blueprint library page must expose manual BP6 generation and review handoff copy",
 );
 assert(
-    blueprintPage.includes("Edit taxonomy targets") &&
-    blueprintPage.includes("selectable=\"assignable_leaf\"") &&
-    blueprintPage.includes("Needs more evidence") &&
-    blueprintPage.includes("Rejected") &&
-    blueprintPage.includes("Grouped taxonomy targets") &&
-    blueprintPage.includes("Short pattern summary") &&
-    blueprintPage.includes("Source refs and internal notes") &&
-    blueprintPage.includes("Draft ID:") &&
-    blueprintPage.includes("overflowWrap: \"anywhere\"") &&
-    blueprintPage.includes("Debug details") &&
-    blueprintPage.includes("Raw reason:") &&
-    blueprintPage.includes("This blueprint came from observation cluster") &&
-    blueprintPage.includes("needs taxonomy mapping before approval"),
+    blueprintWorkspace.includes("Edit taxonomy targets") &&
+    blueprintWorkspace.includes("selectable=\"assignable_leaf\"") &&
+    blueprintWorkspace.includes("Needs more evidence") &&
+    blueprintWorkspace.includes("Rejected") &&
+    blueprintWorkspace.includes("Grouped taxonomy targets") &&
+    blueprintWorkspace.includes("Short pattern summary") &&
+    blueprintWorkspace.includes("Source refs and internal notes") &&
+    blueprintWorkspace.includes("Draft ID:") &&
+    blueprintWorkspace.includes("overflowWrap: \"anywhere\"") &&
+    blueprintWorkspace.includes("Debug details") &&
+    blueprintWorkspace.includes("Raw reason:") &&
+    blueprintWorkspace.includes("This blueprint came from observation cluster") &&
+    blueprintWorkspace.includes("needs taxonomy mapping before approval"),
   "blueprint library page must expose manual taxonomy edit, status sections, and readable cluster copy",
 );
 assert(
@@ -1198,34 +1224,34 @@ for (const removedBlueprintSurface of [
   "buildBlueprintGenerationRequestPlan",
 ]) {
   assert(
-    !blueprintPage.includes(removedBlueprintSurface),
+    !blueprintWorkspace.includes(removedBlueprintSurface),
     `old blueprint product surface remains on library page: ${removedBlueprintSurface}`,
   );
 }
 assert(
-  blueprintPage.includes("Active library") &&
-    blueprintPage.includes("Archived / Trash") &&
-    blueprintPage.includes("Quality gate blockers") &&
-    blueprintPage.includes("Generation disabled") &&
-    blueprintPage.includes("Deprecate") &&
-    blueprintPage.includes("Move to trash") &&
-    blueprintPage.includes("Restore") &&
-    blueprintPage.includes("Permanent") &&
-    blueprintPage.includes("hard delete is intentionally deferred"),
+  blueprintWorkspace.includes("Active library") &&
+    blueprintWorkspace.includes("Archived / Trash") &&
+    blueprintWorkspace.includes("Quality gate blockers") &&
+    blueprintWorkspace.includes("Generation disabled") &&
+    blueprintWorkspace.includes("Deprecate") &&
+    blueprintWorkspace.includes("Move to trash") &&
+    blueprintWorkspace.includes("Restore") &&
+    blueprintWorkspace.includes("Permanent") &&
+    blueprintWorkspace.includes("hard delete is intentionally deferred"),
   "blueprint page must expose lifecycle controls and readable quality blockers",
 );
 assert(
-  blueprintPage.includes("Edit, version, split / merge") &&
-    blueprintPage.includes("Version history") &&
-    blueprintPage.includes("Current version:") &&
-    blueprintPage.includes("Edit blueprint fields") &&
-    blueprintPage.includes("Save blueprint edit") &&
-    blueprintPage.includes("Saving a meaningful edit sets generation readiness to uncalibrated.") &&
-    blueprintPage.includes("Advanced split / merge") &&
-    blueprintPage.includes("Split blueprint") &&
-    blueprintPage.includes("Merge preview") &&
-    blueprintPage.includes("Deprecate and replace") &&
-    blueprintPage.includes("question_blueprint_versions"),
+  blueprintWorkspace.includes("Edit, version, split / merge") &&
+    blueprintWorkspace.includes("Version history") &&
+    blueprintWorkspace.includes("Current version:") &&
+    blueprintWorkspace.includes("Edit blueprint fields") &&
+    blueprintWorkspace.includes("Save blueprint edit") &&
+    blueprintWorkspace.includes("Saving a meaningful edit sets generation readiness to uncalibrated.") &&
+    blueprintWorkspace.includes("Advanced split / merge") &&
+    blueprintWorkspace.includes("Split blueprint") &&
+    blueprintWorkspace.includes("Merge preview") &&
+    blueprintWorkspace.includes("Deprecate and replace") &&
+    blueprintWorkspace.includes("question_blueprint_versions"),
   "blueprint page must expose edit/version/split/merge UI and version history",
 );
 assert(

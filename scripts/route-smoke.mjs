@@ -51,11 +51,13 @@ async function read(relativePath) {
 await checkRoute("/questions", "Question Bank");
 await checkRoute("/videos", "Videos");
 await checkAdminRoute("/admin/tags", "Taxonomy");
-await checkAdminRoute(
-  "/admin/blueprints",
-  "Question Blueprint Library",
-);
+await checkAdminRoute("/admin/blueprints", "Question Blueprint Workspace");
+await checkAdminRoute("/admin/blueprints/review", "Blueprint Review Queue");
+await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library");
+await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
+await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
+const blueprintWorkspace = await read("src/components/blueprints/blueprint-workspace.tsx");
 const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
@@ -67,41 +69,50 @@ assert(
 );
 console.log("PASS admin navigation exposes Blueprint Library");
 assert(
-  blueprintPage.includes("Generate original draft questions") &&
-    blueprintPage.includes("Manual DeepSeek call") &&
-    blueprintPage.includes("Open Review Drafts") &&
-    blueprintPage.includes("Active library") &&
-    blueprintPage.includes("Archived / Trash") &&
-    blueprintPage.includes("Needs more evidence") &&
-    blueprintPage.includes("Rejected") &&
-    blueprintPage.includes("Edit taxonomy targets") &&
-    blueprintPage.includes("Quality gate blockers") &&
-    blueprintPage.includes("Generation disabled") &&
-    blueprintPage.includes("Grouped taxonomy targets") &&
-    blueprintPage.includes("Short pattern summary") &&
-    blueprintPage.includes("Source refs and internal notes") &&
-    blueprintPage.includes("Draft ID:") &&
-    blueprintPage.includes("overflowWrap: \"anywhere\"") &&
-    blueprintPage.includes("Blueprint folders") &&
-    blueprintPage.includes("All blueprints") &&
-    blueprintPage.includes("Unfiled") &&
-    blueprintPage.includes("Folder tree") &&
-    blueprintPage.includes("Move to folder") &&
-    blueprintPage.includes("No blueprints in this folder yet.") &&
-    blueprintPage.includes("Calibration status") &&
-    blueprintPage.includes("Run calibration preview") &&
-    blueprintPage.includes("Repair failed samples automatically") &&
-    blueprintPage.includes("rerun calibration using Quality mode") &&
-    blueprintPage.includes("Temporary calibration samples") &&
-    blueprintPage.includes("Run a successful calibration preview before generating Review Draft questions.") &&
-    blueprintPage.includes("Blueprint changed after the last successful calibration.") &&
-    blueprintPage.includes("Edit, version, split / merge") &&
-    blueprintPage.includes("Version history") &&
-    blueprintPage.includes("Edit blueprint fields") &&
-    blueprintPage.includes("Advanced split / merge") &&
-    blueprintPage.includes("Deprecate and replace") &&
-    blueprintPage.includes("Repair failed drafts automatically"),
-  "/admin/blueprints source is missing BP6 manual generation CTA or review link",
+  blueprintPage.includes("view=\"overview\"") &&
+    blueprintWorkspace.includes("Question Blueprint Workspace") &&
+    blueprintWorkspace.includes("Blueprint Review Queue") &&
+    blueprintWorkspace.includes("Approved Blueprint Library") &&
+    blueprintWorkspace.includes("History / Archive / Trash") &&
+    blueprintWorkspace.includes("Blueprint Import Sources") &&
+    blueprintWorkspace.includes("Review blueprints") &&
+    blueprintWorkspace.includes("Open library") &&
+    blueprintWorkspace.includes("Open sources") &&
+    blueprintWorkspace.includes("Generate original draft questions") &&
+    blueprintWorkspace.includes("Manual DeepSeek call") &&
+    blueprintWorkspace.includes("Open Review Drafts") &&
+    blueprintWorkspace.includes("Active library") &&
+    blueprintWorkspace.includes("Archived / Trash") &&
+    blueprintWorkspace.includes("Needs more evidence") &&
+    blueprintWorkspace.includes("Rejected") &&
+    blueprintWorkspace.includes("Edit taxonomy targets") &&
+    blueprintWorkspace.includes("Quality gate blockers") &&
+    blueprintWorkspace.includes("Generation disabled") &&
+    blueprintWorkspace.includes("Grouped taxonomy targets") &&
+    blueprintWorkspace.includes("Short pattern summary") &&
+    blueprintWorkspace.includes("Source refs and internal notes") &&
+    blueprintWorkspace.includes("Draft ID:") &&
+    blueprintWorkspace.includes("overflowWrap: \"anywhere\"") &&
+    blueprintWorkspace.includes("Blueprint folders") &&
+    blueprintWorkspace.includes("All blueprints") &&
+    blueprintWorkspace.includes("Unfiled") &&
+    blueprintWorkspace.includes("Folder tree") &&
+    blueprintWorkspace.includes("Move to folder") &&
+    blueprintWorkspace.includes("No blueprints in this folder yet.") &&
+    blueprintWorkspace.includes("Calibration status") &&
+    blueprintWorkspace.includes("Run calibration preview") &&
+    blueprintWorkspace.includes("Repair failed samples automatically") &&
+    blueprintWorkspace.includes("rerun calibration using Quality mode") &&
+    blueprintWorkspace.includes("Temporary calibration samples") &&
+    blueprintWorkspace.includes("Run a successful calibration preview before generating Review Draft questions.") &&
+    blueprintWorkspace.includes("Blueprint changed after the last successful calibration.") &&
+    blueprintWorkspace.includes("Edit, version, split / merge") &&
+    blueprintWorkspace.includes("Version history") &&
+    blueprintWorkspace.includes("Edit blueprint fields") &&
+    blueprintWorkspace.includes("Advanced split / merge") &&
+    blueprintWorkspace.includes("Deprecate and replace") &&
+    blueprintWorkspace.includes("Repair failed drafts automatically"),
+  "blueprint workspace source is missing BP14 sections, BP15 repair controls, or existing BP6 controls",
 );
 assert(
   blueprintActions.includes("generateOriginalQuestionsFromApprovedBlueprint") &&
