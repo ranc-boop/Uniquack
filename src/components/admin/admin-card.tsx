@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { AdminInfoTip } from "@/components/admin/admin-info-tip";
 import { cn } from "@/lib/utils";
 
 type AdminCardProps = {
@@ -17,6 +17,8 @@ type AdminCardProps = {
   compact?: boolean;
   contentClassName?: string;
   description?: ReactNode;
+  help?: ReactNode;
+  helpLabel?: string;
   title: ReactNode;
 };
 
@@ -28,6 +30,8 @@ export function AdminCard({
   compact = false,
   contentClassName,
   description,
+  help,
+  helpLabel,
   title,
 }: AdminCardProps) {
   return (
@@ -42,10 +46,15 @@ export function AdminCard({
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle className="text-base leading-6">{title}</CardTitle>
+              {help ? (
+                <AdminInfoTip label={helpLabel}>{help}</AdminInfoTip>
+              ) : null}
               {badge}
             </div>
             {description ? (
-              <CardDescription className="leading-6">{description}</CardDescription>
+              <div className="text-sm leading-6 text-muted-foreground">
+                {description}
+              </div>
             ) : null}
           </div>
           {actions ? (

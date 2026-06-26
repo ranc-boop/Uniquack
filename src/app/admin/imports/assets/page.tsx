@@ -80,14 +80,18 @@ export default async function AdminImportAssetsPage() {
             <Link href="/admin/imports">Back to imports</Link>
           </Button>
         }
-        description="Upload images and PDF source files after draft questions exist. Files are matched by question-code filename prefix before anything is uploaded."
+        description="Attach assets to draft questions."
         eyebrow="Import tools"
+        help="Upload images and PDF source files after draft questions exist. Files are matched by question-code filename prefix before anything is uploaded."
+        helpLabel="Bulk asset upload details"
         title="Bulk asset upload"
       />
 
       <AdminCard
         badge={<AdminStatusBadge status="pending">Review matches</AdminStatusBadge>}
-        description="Use this after draft questions exist. The tool previews filename matches first so skipped or ambiguous files can be reviewed before upload."
+        description="Preview matches before upload."
+        help="Use this after draft questions exist. The tool previews filename matches first so skipped or ambiguous files can be reviewed before upload."
+        helpLabel="Bulk asset matching workflow details"
         title="Bulk asset matching workflow"
       >
         <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-4">
@@ -112,29 +116,30 @@ export default async function AdminImportAssetsPage() {
 
       <AdminCard
         badge={<AdminStatusBadge status="info">Filename rules</AdminStatusBadge>}
-        description="Only files that match a draft question code are attached. Everything else remains skipped for manual review."
+        description="Match by question-code prefix."
+        help={
+          <>
+            <p>
+              Only files that match a draft question code are attached.
+              Everything else remains skipped for manual review.
+            </p>
+            {typeof totalDraftQuestions === "number" &&
+            totalDraftQuestions > BULK_ASSET_DRAFT_QUESTION_LIMIT ? (
+              <p className="mt-2">
+                Matching is limited to the first{" "}
+                {BULK_ASSET_DRAFT_QUESTION_LIMIT} draft questions by question
+                code, and existing file checks are bounded to{" "}
+                {BULK_ASSET_EXISTING_FILE_LIMIT} records.
+              </p>
+            ) : null}
+          </>
+        }
+        helpLabel="Filename matching details"
         title="Matching rules"
       >
         <div className="space-y-2 text-sm text-muted-foreground">
           <p>
-            This MVP matches against draft question codes only. If a file has no
-            draft match or more than one possible match, it is skipped for manual
-            review.
-          </p>
-          {typeof totalDraftQuestions === "number" &&
-          totalDraftQuestions > BULK_ASSET_DRAFT_QUESTION_LIMIT ? (
-            <p>
-              Performance note: matching is limited to the first{" "}
-              {BULK_ASSET_DRAFT_QUESTION_LIMIT} draft questions by question
-              code, and existing file checks are bounded to{" "}
-              {BULK_ASSET_EXISTING_FILE_LIMIT} records for that window. Use
-              Review Drafts or Question Bank filters to narrow older drafts
-              before uploading large asset batches.
-            </p>
-          ) : null}
-          <p>
-            Supported files: PNG, JPEG, WebP, GIF, and PDF. SVG and other file
-            types are rejected. Existing Storage size limits still apply.
+            Supported: PNG, JPEG, WebP, GIF, and PDF.
           </p>
           <p className="font-mono text-xs">
             Q1001_diagram.png -&gt; Q1001, Q1002_source.pdf -&gt; Q1002,

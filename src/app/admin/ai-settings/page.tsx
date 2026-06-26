@@ -64,8 +64,10 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Super admin settings for PDF import and blueprint model providers. API keys are encrypted server-side and never displayed back in the UI."
+        description="Configure AI providers."
         eyebrow="Settings"
+        help="Super admin settings for PDF import and blueprint model providers. API keys are encrypted server-side and never displayed back in the UI."
+        helpLabel="AI settings details"
         title="AI Settings"
       />
       <PageFeedback error={params.error} saved={params.saved} />

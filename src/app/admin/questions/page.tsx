@@ -473,8 +473,10 @@ export default async function AdminQuestionsPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Search, filter, edit, and maintain the official question bank. Publishing still flows through explicit admin review."
+        description="Manage the official question bank."
         eyebrow="Content management"
+        help="Search, filter, edit, and maintain the official question bank. Publishing still flows through explicit admin review."
+        helpLabel="Question bank details"
         title="Questions"
       />
       <PageFeedback error={params.error} saved={params.saved} />

@@ -25,8 +25,10 @@ export default async function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Manage admin role assignments. Password reset and account disabling remain outside this route."
+        description="Manage admin roles."
         eyebrow="Settings"
+        help="Manage admin role assignments. Password reset and account disabling remain outside this route."
+        helpLabel="Users admin details"
         title="Users"
       />
       {error ? (

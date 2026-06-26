@@ -206,14 +206,18 @@ export default async function AdminAIPdfImportPage() {
           ) : null}
           </>
         }
-        description="Upload one private PDF, run a configured multimodal provider, and send extracted draft questions or blueprint observations into the admin review workflow."
+        description="Upload private PDFs for AI parsing."
         eyebrow="AI Parsing"
+        help="Run configured multimodal providers against private source PDFs. Normal extraction creates draft questions, while blueprint observation creates reviewable blueprint metadata."
+        helpLabel="AI PDF Import details"
         title="AI PDF Import"
       />
 
       <AdminCard
         badge={<AdminStatusBadge status="info">AI Parsing</AdminStatusBadge>}
-        description="Upload a private source, choose an approved provider path, and keep every output in draft or planning review until an admin approves it."
+        description="Five-step draft-safe flow."
+        help="Upload a private source, choose an approved provider path, and keep every output in draft or planning review until an admin approves it."
+        helpLabel="AI parsing workflow details"
         title="AI parsing workflow"
       >
         <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-5">
@@ -239,7 +243,9 @@ export default async function AdminAIPdfImportPage() {
 
       <AdminCard
         badge={<AdminStatusBadge status="draft">Draft-only</AdminStatusBadge>}
-        description="Source files stay private. Normal extraction creates draft questions; blueprint observation creates reviewable planning metadata without questions."
+        description="Drafts or observation metadata only."
+        help="Source files stay private. Normal extraction creates draft questions; blueprint observation creates reviewable planning metadata without questions."
+        helpLabel="AI PDF draft behavior"
         title="Import PDF with AI"
       >
         <div>
@@ -264,8 +270,8 @@ export default async function AdminAIPdfImportPage() {
           ) : null}
           <p className="mb-4 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
             {canViewAllImports
-              ? "Super admins can see all AI PDF imports. Regular admins only see imports they created."
-              : "Showing only AI PDF imports uploaded by your account."}
+              ? "Scope: all AI PDF imports."
+              : "Scope: your AI PDF imports."}
           </p>
           <AIPdfImportPanelLoader providers={providers} sources={sourceOptions} />
         </div>

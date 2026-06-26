@@ -27,8 +27,10 @@ export default async function PracticeFrameworksPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Upload course frameworks that constrain practice direction while still allowing personalized remediation."
+        description="Manage practice frameworks."
         eyebrow="Practice"
+        help="Upload course frameworks that constrain practice direction while still allowing personalized remediation."
+        helpLabel="Practice framework details"
         title="Practice Frameworks"
       />
       <PageFeedback error={params.error ?? error?.message} saved={params.saved ? "Framework saved." : undefined} />
