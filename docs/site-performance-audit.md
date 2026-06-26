@@ -812,6 +812,73 @@ When a budget fails:
 4. If a large query is truly required, add a local `perf-budget-allow-large-query` comment with a concrete reason.
 5. If a removed dependency is intentionally reintroduced, add a `perf-budget-allow-dependency` note with the package name and rationale.
 
+## PERF5 Progressive Loading UX
+
+PERF5 improves perceived loading speed for the largest question, review, and Blueprint surfaces without changing their data queries or product behavior.
+
+### Routes Updated
+
+- `/admin/questions`
+- `/questions`
+- `/admin/review`
+- `/admin/blueprints`
+- `/admin/blueprints/review`
+- `/admin/blueprints/library`
+- `/admin/blueprints/history`
+- `/admin/blueprints/sources`
+
+### Progressive Loading Pattern
+
+- Added route-level `loading.tsx` shells for the target pages.
+- Each loading shell renders the page title, purpose copy, key navigation/controls, and a bounded list skeleton.
+- The real async page continues to own data loading, filtering, pagination, actions, and business logic.
+- This preserves PERF3/PERF3B page-sized queries while avoiding blank space during route transitions.
+
+### Skeleton Components Added
+
+- `src/components/questions/question-list-skeleton.tsx`
+  - Admin table-style skeleton rows.
+  - Public question card skeletons.
+- `src/components/review/review-draft-list-skeleton.tsx`
+  - Review Draft card skeletons with action/status placeholders.
+- `src/components/blueprints/blueprint-list-skeleton.tsx`
+  - Blueprint workspace shell, subnav, folder shell, blueprint cards, and import source plan skeletons.
+
+No skeleton dependency was added.
+
+### Behavior Preserved
+
+- Question taxonomy search, difficulty filters, pagination, focused admin edit mode, bulk update, and delete behavior are unchanged.
+- Public question basket/practice client behavior is unchanged.
+- Review Draft edit, publish/reject/status changes, taxonomy support, and pagination are unchanged.
+- Blueprint review, folder filtering, lifecycle actions, calibration, generation readiness, generation controls, source storage, and history/restore behavior are unchanged.
+- No provider calls, question generation changes, Review Draft writes, DB migrations, AI Parsing behavior changes, or auto-publish behavior were added.
+
+### Bundle Impact
+
+Baseline before PERF5:
+
+- `/questions` client route: 13.3 KB, gzip 4.3 KB.
+- `/admin/questions` client route: 1.0 KB, gzip 562 B.
+- `/admin/review` client route: 7.2 KB, gzip 2.3 KB.
+- `/practice` shell remains 3.6 KB, gzip 1.4 KB.
+- Blueprint route client chunks remain tiny because the Blueprint workspace is server-rendered.
+
+PERF5 mostly adds server-rendered loading shell code, so client bundle impact should stay minimal. Validate with:
+
+```bash
+npm.cmd run build
+npm.cmd run perf:audit
+npm.cmd run analyze
+npm.cmd run perf:budget
+```
+
+### Remaining Perceived-Performance Risks
+
+- Route-level loading shells make navigation feel faster, but the final dataful render still waits for the same server queries.
+- If Blueprint workspace data grows further, split the actual workspace into smaller async server sections with component-level Suspense.
+- Public `/questions` still fetches `content_html` to build excerpts; a precomputed excerpt field would reduce server payload further.
+
 ## Commands Run
 
 ```bash
