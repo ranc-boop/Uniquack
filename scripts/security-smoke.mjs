@@ -94,9 +94,12 @@ const questionBlueprintGeneration = await read("src/lib/blueprints/question-blue
 const questionBlueprintGenerationReview = await read("src/lib/blueprints/question-blueprint-generation-review.ts");
 const questionBlueprintCalibration = await read("src/lib/blueprints/question-blueprint-calibration.ts");
 const questionBlueprintQuality = await read("src/lib/blueprints/question-blueprint-quality.ts");
+const questionBlueprintEditing = await read("src/lib/blueprints/question-blueprint-editing.ts");
+const questionBlueprintVersioning = await read("src/lib/blueprints/question-blueprint-versioning.ts");
 const questionBlueprintMigration = await read("supabase/migrations/0015_question_blueprint_library.sql");
 const questionBlueprintFolderMigration = await read("supabase/migrations/0016_question_blueprint_folders.sql");
 const questionBlueprintCalibrationMigration = await read("supabase/migrations/0018_question_blueprint_calibration.sql");
+const questionBlueprintVersionMigration = await read("supabase/migrations/0019_question_blueprint_versions.sql");
 const questionBlueprintFolders = await read("src/lib/blueprints/question-blueprint-folders.ts");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
@@ -537,6 +540,73 @@ assert(!questionBlueprintFolders.includes("fetch("), "question blueprint folder 
 assert(!questionBlueprintFolders.includes("supabase.from("), "question blueprint folder helper must stay DB-free");
 console.log("PASS question blueprint DB migration and persistence helpers are admin-only");
 
+assert(
+  questionBlueprintVersionMigration.includes("create table if not exists public.question_blueprint_versions") &&
+    questionBlueprintVersionMigration.includes("references public.question_blueprints(id) on delete cascade") &&
+    questionBlueprintVersionMigration.includes("snapshot jsonb not null") &&
+    questionBlueprintVersionMigration.includes("alter table public.question_blueprint_versions enable row level security") &&
+    questionBlueprintVersionMigration.includes("question_blueprint_versions_admin_crud") &&
+    questionBlueprintVersionMigration.includes("private.is_admin()") &&
+    questionBlueprintVersionMigration.includes("to authenticated") &&
+    !questionBlueprintVersionMigration.includes("to anon"),
+  "question blueprint version migration must be admin-only and avoid anon grants",
+);
+for (const exportName of [
+  "createBlueprintVersionSnapshot",
+  "summarizeBlueprintVersionHistory",
+]) {
+  assert(
+    questionBlueprintVersioning.includes(exportName),
+    `question blueprint version helper is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "answer_spec_pattern",
+  "generation_readiness",
+  "last_calibrated_at",
+  "last_calibration_run_id",
+  "taxonomy_targets",
+  "changeReason",
+]) {
+  assert(
+    questionBlueprintVersioning.includes(expectedText),
+    `question blueprint version helper must snapshot ${expectedText}`,
+  );
+}
+assert(!questionBlueprintVersioning.includes("fetch("), "question blueprint version helper must not call providers");
+assert(!questionBlueprintVersioning.includes("supabase.from("), "question blueprint version helper must stay DB-free");
+for (const exportName of [
+  "validateBlueprintEdit",
+  "blueprintEditInputFromParts",
+  "applyBlueprintEdit",
+  "buildBlueprintSplitDrafts",
+  "buildBlueprintMergePreview",
+  "createMergedBlueprintDraft",
+  "markBlueprintReplacement",
+]) {
+  assert(
+    questionBlueprintEditing.includes(exportName),
+    `question blueprint editing helper is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "generation_readiness: \"uncalibrated\"",
+  "last_calibrated_at: null",
+  "last_calibration_run_id: null",
+  "status: \"draft\"",
+  "mergedFromBlueprintIds",
+  "replacedByBlueprintId",
+]) {
+  assert(
+    questionBlueprintEditing.includes(expectedText),
+    `question blueprint editing helper guard is missing ${expectedText}`,
+  );
+}
+assert(!questionBlueprintEditing.includes("fetch("), "question blueprint editing helper must not call providers");
+assert(!questionBlueprintEditing.includes("supabase.from("), "question blueprint editing helper must stay DB-free");
+assert(!questionBlueprintEditing.includes("importBatchImportJson"), "question blueprint editing helper must not write Review Drafts");
+console.log("PASS question blueprint editing and versioning are admin-scoped, draft-safe, and provider-free");
+
 for (const expectedText of [
   "validateQuestionBlueprintQuality",
   "generationReady",
@@ -867,7 +937,8 @@ assert(
     blueprintPage.includes("Setup needed") &&
     blueprintPage.includes("0015_question_blueprint_library.sql") &&
     blueprintPage.includes("0016_question_blueprint_folders.sql") &&
-    blueprintPage.includes("0018_question_blueprint_calibration.sql"),
+    blueprintPage.includes("0018_question_blueprint_calibration.sql") &&
+    blueprintPage.includes("0019_question_blueprint_versions.sql"),
   "blueprint library page must show setup-needed message when tables are missing",
 );
 assert(
@@ -1024,5 +1095,36 @@ assert(
     blueprintPage.includes("Permanent") &&
     blueprintPage.includes("hard delete is intentionally deferred"),
   "blueprint page must expose lifecycle controls and readable quality blockers",
+);
+assert(
+  blueprintPage.includes("Edit, version, split / merge") &&
+    blueprintPage.includes("Version history") &&
+    blueprintPage.includes("Current version:") &&
+    blueprintPage.includes("Edit blueprint fields") &&
+    blueprintPage.includes("Save blueprint edit") &&
+    blueprintPage.includes("Saving a meaningful edit sets generation readiness to uncalibrated.") &&
+    blueprintPage.includes("Advanced split / merge") &&
+    blueprintPage.includes("Split blueprint") &&
+    blueprintPage.includes("Merge preview") &&
+    blueprintPage.includes("Deprecate and replace") &&
+    blueprintPage.includes("question_blueprint_versions"),
+  "blueprint page must expose edit/version/split/merge UI and version history",
+);
+assert(
+  blueprintActions.includes("updateQuestionBlueprintFields") &&
+    blueprintActions.includes("splitQuestionBlueprint") &&
+    blueprintActions.includes("createMergedQuestionBlueprintDraft") &&
+    blueprintActions.includes("replaceQuestionBlueprint") &&
+    blueprintActions.includes("insertBlueprintVersionSnapshot") &&
+    blueprintActions.includes("question_blueprint_versions") &&
+    blueprintActions.includes("applyBlueprintEdit") &&
+    blueprintActions.includes("buildBlueprintSplitDrafts") &&
+    blueprintActions.includes("createMergedBlueprintDraft") &&
+    blueprintActions.includes("markBlueprintReplacement") &&
+    blueprintActions.includes("Blueprint updated. Calibration was invalidated") &&
+    blueprintActions.includes("Source blueprints were not deleted.") &&
+    blueprintActions.includes("Blueprint deprecated and linked to its replacement.") &&
+    !blueprintActions.includes(".delete("),
+  "blueprint actions must snapshot before edits and use draft/soft-delete edit workflows",
 );
 console.log("PASS question blueprint library admin surface has lifecycle gates and manual Review-Draft handoff");
