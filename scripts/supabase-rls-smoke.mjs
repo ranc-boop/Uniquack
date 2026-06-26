@@ -33,6 +33,10 @@ const blueprintCalibrationMigration = await readFile(
   resolve(root, "supabase/migrations/0018_question_blueprint_calibration.sql"),
   "utf8",
 );
+const blueprintVersionMigration = await readFile(
+  resolve(root, "supabase/migrations/0019_question_blueprint_versions.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -72,6 +76,15 @@ assert(
   "question blueprint calibration migration must enable admin-only RLS and avoid anon grants",
 );
 assert(
+  blueprintVersionMigration.includes("create table if not exists public.question_blueprint_versions") &&
+    blueprintVersionMigration.includes("alter table public.question_blueprint_versions enable row level security") &&
+    blueprintVersionMigration.includes("question_blueprint_versions_admin_crud") &&
+    blueprintVersionMigration.includes("private.is_admin()") &&
+    blueprintVersionMigration.includes("snapshot jsonb not null") &&
+    !blueprintVersionMigration.includes("to anon"),
+  "question blueprint version migration must enable admin-only RLS and avoid anon grants",
+);
+assert(
   blueprintMigration.includes("deleted_at timestamptz") &&
     blueprintMigration.includes("status in ('draft', 'approved', 'deprecated')"),
   "question blueprint migration must support lifecycle status and soft delete",
@@ -83,9 +96,14 @@ assert(
     blueprintActions.includes("archiveQuestionBlueprintFolder") &&
     blueprintActions.includes("restoreQuestionBlueprintFolder") &&
     blueprintActions.includes("moveQuestionBlueprintToFolder") &&
+    blueprintActions.includes("updateQuestionBlueprintFields") &&
+    blueprintActions.includes("splitQuestionBlueprint") &&
+    blueprintActions.includes("createMergedQuestionBlueprintDraft") &&
+    blueprintActions.includes("replaceQuestionBlueprint") &&
+    blueprintActions.includes("question_blueprint_versions") &&
     blueprintActions.includes("deleted_at: new Date().toISOString()") &&
     !blueprintActions.includes(".delete("),
-  "question blueprint lifecycle must use admin soft-delete actions and never hard-delete",
+  "question blueprint lifecycle/editing must use admin snapshots, soft-delete actions, and never hard-delete",
 );
 console.log("PASS question blueprint migration enables admin-only RLS");
 

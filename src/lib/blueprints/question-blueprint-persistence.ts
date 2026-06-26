@@ -82,6 +82,7 @@ export const QUESTION_BLUEPRINT_DB_TABLES = [
   "question_blueprint_review_actions",
   "question_blueprint_folders",
   "question_blueprint_calibration_runs",
+  "question_blueprint_versions",
 ] as const;
 
 function asRecord(value: unknown): Record<string, unknown> {

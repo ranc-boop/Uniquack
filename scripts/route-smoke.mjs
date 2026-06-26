@@ -91,7 +91,12 @@ assert(
     blueprintPage.includes("Calibration status") &&
     blueprintPage.includes("Run calibration preview") &&
     blueprintPage.includes("Temporary calibration samples") &&
-    blueprintPage.includes("Run a successful calibration preview before generating Review Draft questions."),
+    blueprintPage.includes("Run a successful calibration preview before generating Review Draft questions.") &&
+    blueprintPage.includes("Edit, version, split / merge") &&
+    blueprintPage.includes("Version history") &&
+    blueprintPage.includes("Edit blueprint fields") &&
+    blueprintPage.includes("Advanced split / merge") &&
+    blueprintPage.includes("Deprecate and replace"),
   "/admin/blueprints source is missing BP6 manual generation CTA or review link",
 );
 assert(
@@ -109,6 +114,11 @@ assert(
     blueprintActions.includes("executeDeepSeekBlueprintGeneration") &&
     blueprintActions.includes("loadActiveAssignableTaxonomyTagIds") &&
     blueprintActions.includes("question_blueprint_calibration_runs") &&
+    blueprintActions.includes("updateQuestionBlueprintFields") &&
+    blueprintActions.includes("splitQuestionBlueprint") &&
+    blueprintActions.includes("createMergedQuestionBlueprintDraft") &&
+    blueprintActions.includes("replaceQuestionBlueprint") &&
+    blueprintActions.includes("question_blueprint_versions") &&
     blueprintActions.includes("generation_readiness !== \"generation_ready\"") &&
     !blueprintActions.includes(".delete(") &&
     !blueprintActions.includes("generateWithGeminiNativePdf") &&

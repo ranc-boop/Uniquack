@@ -5,6 +5,7 @@ import {
   archiveQuestionBlueprint,
   approveQuestionBlueprintReviewAction,
   createQuestionBlueprintFolder,
+  createMergedQuestionBlueprintDraft,
   generateOriginalQuestionsFromApprovedBlueprint,
   markQuestionBlueprintNeedsEvidence,
   moveQuestionBlueprintToTrash,
@@ -12,10 +13,13 @@ import {
   moveQuestionBlueprintToFolder,
   renameQuestionBlueprintFolder,
   rejectQuestionBlueprintReviewAction,
+  replaceQuestionBlueprint,
   runBlueprintCalibrationPreview,
+  splitQuestionBlueprint,
   restoreQuestionBlueprintFolder,
   restoreQuestionBlueprint,
   storeBlueprintReviewActionsFromImportBatch,
+  updateQuestionBlueprintFields,
   updateBlueprintReviewActionTaxonomyTargets,
 } from "@/app/admin/blueprints/actions";
 import { FormSubmitButton } from "@/components/form-submit-button";
@@ -73,6 +77,7 @@ type BlueprintReviewRow = {
 type BlueprintRow = {
   answer_spec_pattern: unknown;
   deleted_at: string | null;
+  difficulty_profile: unknown;
   distractor_pattern: unknown;
   folder_id: string | null;
   generation_constraints: unknown;
@@ -89,6 +94,7 @@ type BlueprintRow = {
   taxonomy_targets: unknown;
   title: string;
   updated_at: string;
+  version: number;
 };
 
 type BlueprintExampleRow = {
@@ -109,6 +115,14 @@ type BlueprintCalibrationRunRow = {
   sample_count: number;
   sample_previews: unknown;
   validation_summary: unknown;
+};
+
+type BlueprintVersionRow = {
+  blueprint_id: string;
+  change_reason: string;
+  created_at: string;
+  id: string;
+  version: number;
 };
 
 type ImportBatchRow = {
@@ -187,6 +201,47 @@ function selectedTaxonomyTargets(value: unknown) {
     method: stringList(targets.method),
     task: stringList(targets.task),
   };
+}
+
+function textareaValue(value: unknown) {
+  return stringList(value).join("\n");
+}
+
+function questionPatternValue(value: unknown) {
+  const pattern = asRecord(value).pattern;
+
+  return firstString(pattern, typeof value === "string" ? value : "");
+}
+
+function answerSpecKindValue(value: unknown) {
+  const kind = asRecord(value).kind;
+
+  return firstString(kind, "frq");
+}
+
+function answerSpecNotesValue(value: unknown) {
+  const record = asRecord(value);
+
+  return [
+    ...stringList(record.acceptedAnswerGuidance),
+    ...stringList(record.requiredAnswerFields),
+    ...stringList(record.correctAnswerGuidance),
+    ...stringList(record.optionGuidance),
+  ].join("\n");
+}
+
+function difficultyEstimateValue(value: unknown) {
+  const estimate = asRecord(value).estimatedDifficulty;
+
+  return Number.isFinite(Number(estimate)) ? String(Math.round(Number(estimate))) : "";
+}
+
+function difficultyDriversValue(value: unknown) {
+  return textareaValue(asRecord(value).difficultyDrivers);
+}
+
+function adminEvidenceNotesValue(value: unknown) {
+  return textareaValue(asRecord(value).adminEvidenceNotes);
 }
 
 function leafAssignableTagIds(catalog: TaxonomyCatalogView) {
@@ -947,18 +1002,294 @@ function LifecycleActions({
   );
 }
 
+function BlueprintEditPanel({
+  allBlueprints,
+  blueprint,
+  taxonomyCatalog,
+  versionRows,
+}: {
+  allBlueprints: BlueprintRow[];
+  blueprint: BlueprintRow;
+  taxonomyCatalog: TaxonomyCatalogView;
+  versionRows: BlueprintVersionRow[];
+}) {
+  const otherBlueprints = allBlueprints.filter(
+    (candidate) => candidate.id !== blueprint.id && !candidate.deleted_at,
+  );
+  const targets = selectedTaxonomyTargets(blueprint.taxonomy_targets);
+
+  return (
+    <details className="rounded-md border bg-muted/20 p-3">
+      <summary className="cursor-pointer text-sm font-medium">
+        Edit, version, split / merge
+      </summary>
+      <div className="mt-3 space-y-4">
+        <div className="rounded-md border bg-background p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium">Version history</p>
+              <p className="text-xs text-muted-foreground">
+                Current version: {blueprint.version}. Meaningful edits create a
+                snapshot and invalidate calibration.
+              </p>
+            </div>
+            <Badge variant="outline">{versionRows.length} snapshots</Badge>
+          </div>
+          {versionRows.length ? (
+            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+              {versionRows.slice(0, 3).map((row) => (
+                <li key={row.id}>
+                  v{row.version} - {row.change_reason} -{" "}
+                  {new Date(row.created_at).toLocaleString()}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">
+              No version snapshots yet.
+            </p>
+          )}
+        </div>
+
+        <details className="rounded-md border bg-background p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Edit blueprint fields
+          </summary>
+          <form action={updateQuestionBlueprintFields} className="mt-3 space-y-4">
+            <input name="blueprint_id" type="hidden" value={blueprint.id} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 text-xs font-medium">
+                Title
+                <input
+                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue={blueprint.title}
+                  maxLength={180}
+                  name="edit_title"
+                  required
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Change reason
+                <input
+                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  maxLength={240}
+                  name="change_reason"
+                  placeholder="Why this blueprint changed"
+                />
+              </label>
+            </div>
+
+            <TaxonomyTagTreePicker
+              defaultOpenFacetKeys={["concept", "method", "task", "form"]}
+              namePrefix="edit_tax"
+              selectable="assignable_leaf"
+              selectedTagIds={targets}
+              taxonomyCatalog={taxonomyCatalog}
+              title="Edit taxonomy targets"
+            />
+
+            <label className="block space-y-1 text-xs font-medium">
+              Question pattern
+              <textarea
+                className="min-h-24 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                defaultValue={questionPatternValue(blueprint.question_pattern)}
+                maxLength={1200}
+                name="edit_question_pattern"
+                required
+              />
+            </label>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 text-xs font-medium">
+                Required elements
+                <textarea
+                  className="min-h-24 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue={textareaValue(blueprint.required_elements)}
+                  name="edit_required_elements"
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Generation constraints
+                <textarea
+                  className="min-h-24 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue={textareaValue(blueprint.generation_constraints)}
+                  name="edit_generation_constraints"
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Originality constraints
+                <textarea
+                  className="min-h-24 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue={textareaValue(blueprint.originality_constraints)}
+                  name="edit_originality_constraints"
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Distractor pattern
+                <textarea
+                  className="min-h-24 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue={textareaValue(blueprint.distractor_pattern)}
+                  name="edit_distractor_pattern"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="space-y-1 text-xs font-medium">
+                Answer kind
+                <select
+                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue={answerSpecKindValue(blueprint.answer_spec_pattern)}
+                  name="edit_answer_spec_kind"
+                >
+                  <option value="frq">FRQ</option>
+                  <option value="mcq">MCQ</option>
+                  <option value="fill_blank">Fill blank</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Difficulty estimate
+                <input
+                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue={difficultyEstimateValue(blueprint.difficulty_profile)}
+                  max={1000}
+                  min={0}
+                  name="edit_difficulty_estimate"
+                  type="number"
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Difficulty drivers
+                <textarea
+                  className="min-h-16 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                  defaultValue={difficultyDriversValue(blueprint.difficulty_profile)}
+                  name="edit_difficulty_drivers"
+                />
+              </label>
+            </div>
+
+            <label className="block space-y-1 text-xs font-medium">
+              Answer structure notes
+              <textarea
+                className="min-h-20 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                defaultValue={answerSpecNotesValue(blueprint.answer_spec_pattern)}
+                name="edit_answer_spec_notes"
+              />
+            </label>
+
+            <label className="block space-y-1 text-xs font-medium">
+              Source evidence notes / bounded refs
+              <textarea
+                className="min-h-20 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                defaultValue={adminEvidenceNotesValue(blueprint.source_refs)}
+                name="edit_source_evidence_notes"
+                placeholder="Short admin notes only. Do not paste raw PDFs or provider responses."
+              />
+            </label>
+
+            <div className="rounded-md border bg-amber-50 p-2 text-xs text-amber-900">
+              Saving a meaningful edit sets generation readiness to uncalibrated.
+              Re-run calibration before generating draft questions.
+            </div>
+
+            <FormSubmitButton pendingLabel="Saving..." size="sm">
+              Save blueprint edit
+            </FormSubmitButton>
+          </form>
+        </details>
+
+        <details className="rounded-md border bg-background p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Advanced split / merge
+          </summary>
+          <div className="mt-3 grid gap-4 lg:grid-cols-3">
+            <form action={splitQuestionBlueprint} className="space-y-2">
+              <input name="blueprint_id" type="hidden" value={blueprint.id} />
+              <p className="text-sm font-medium">Split blueprint</p>
+              <p className="text-xs text-muted-foreground">
+                Creates draft copies. The original blueprint is unchanged.
+              </p>
+              <textarea
+                className="min-h-24 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                name="split_titles"
+                placeholder="One new draft title per line"
+              />
+              <FormSubmitButton pendingLabel="Creating..." size="sm" variant="outline">
+                Split blueprint
+              </FormSubmitButton>
+            </form>
+
+            <form action={createMergedQuestionBlueprintDraft} className="space-y-2">
+              <input name="source_blueprint_id" type="hidden" value={blueprint.id} />
+              <p className="text-sm font-medium">Merge preview</p>
+              <p className="text-xs text-muted-foreground">
+                Creates a merged draft and keeps both source blueprints.
+              </p>
+              <select
+                className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                name="target_blueprint_id"
+                required
+              >
+                <option value="">Choose target blueprint</option>
+                {otherBlueprints.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.title}
+                  </option>
+                ))}
+              </select>
+              <FormSubmitButton pendingLabel="Creating..." size="sm" variant="outline">
+                Create merged draft
+              </FormSubmitButton>
+            </form>
+
+            <form action={replaceQuestionBlueprint} className="space-y-2">
+              <input name="blueprint_id" type="hidden" value={blueprint.id} />
+              <p className="text-sm font-medium">Deprecate and replace</p>
+              <p className="text-xs text-muted-foreground">
+                Links this blueprint to a replacement without deleting lineage.
+              </p>
+              <select
+                className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                name="replacement_blueprint_id"
+                required
+              >
+                <option value="">Choose replacement blueprint</option>
+                {otherBlueprints.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.title}
+                  </option>
+                ))}
+              </select>
+              <FormSubmitButton pendingLabel="Deprecating..." size="sm" variant="outline">
+                Deprecate and replace
+              </FormSubmitButton>
+            </form>
+          </div>
+        </details>
+      </div>
+    </details>
+  );
+}
+
 function LibraryCard({
+  allBlueprints,
   blueprint,
   evidenceSnippets,
   folderOptions,
   knownAssignableTagIds,
   latestCalibrationRun,
+  versionRows,
+  taxonomyCatalog,
 }: {
+  allBlueprints: BlueprintRow[];
   blueprint: BlueprintRow;
   evidenceSnippets: string[];
   folderOptions: QuestionBlueprintFolderTreeNode[];
   knownAssignableTagIds: ReadonlySet<string>;
   latestCalibrationRun?: BlueprintCalibrationRunRow;
+  taxonomyCatalog: TaxonomyCatalogView;
+  versionRows: BlueprintVersionRow[];
 }) {
   const questionPattern = asRecord(blueprint.question_pattern);
   const requiredElements = stringList(blueprint.required_elements).slice(0, 6);
@@ -1012,9 +1343,15 @@ function LibraryCard({
           />
         ) : null}
         <p className="text-xs text-muted-foreground">
-          Owner scope: {blueprint.owner_scope} | Updated{" "}
+          Owner scope: {blueprint.owner_scope} | Version {blueprint.version} | Updated{" "}
           {new Date(blueprint.updated_at).toLocaleString()}
         </p>
+        <BlueprintEditPanel
+          allBlueprints={allBlueprints}
+          blueprint={blueprint}
+          taxonomyCatalog={taxonomyCatalog}
+          versionRows={versionRows}
+        />
         {approved ? (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1217,6 +1554,7 @@ export default async function AdminBlueprintsPage({
     blueprintExamplesResult,
     blueprintFoldersResult,
     calibrationRunsResult,
+    blueprintVersionsResult,
     taxonomyCatalogResult,
   ] = await Promise.all([
     (supabase as any)
@@ -1230,7 +1568,7 @@ export default async function AdminBlueprintsPage({
     (supabase as any)
       .from("question_blueprints")
       .select(
-        "id, title, status, owner_scope, folder_id, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, generation_constraints, originality_constraints, source_refs, deleted_at, updated_at, generation_readiness, last_calibrated_at, last_calibration_run_id",
+        "id, title, status, owner_scope, folder_id, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, difficulty_profile, generation_constraints, originality_constraints, source_refs, deleted_at, updated_at, version, generation_readiness, last_calibrated_at, last_calibration_run_id",
       )
       .order("updated_at", { ascending: false })
       .limit(50),
@@ -1257,6 +1595,11 @@ export default async function AdminBlueprintsPage({
       )
       .order("created_at", { ascending: false })
       .limit(100),
+    (supabase as any)
+      .from("question_blueprint_versions")
+      .select("id, blueprint_id, version, change_reason, created_at")
+      .order("created_at", { ascending: false })
+      .limit(200),
     loadTaxonomyCatalog(supabase),
   ]);
   const setupNeeded =
@@ -1264,7 +1607,8 @@ export default async function AdminBlueprintsPage({
     isMissingBlueprintTableError(blueprintsResult.error) ||
     isMissingBlueprintTableError(blueprintExamplesResult.error) ||
     isMissingBlueprintTableError(blueprintFoldersResult.error) ||
-    isMissingBlueprintTableError(calibrationRunsResult.error);
+    isMissingBlueprintTableError(calibrationRunsResult.error) ||
+    isMissingBlueprintTableError(blueprintVersionsResult.error);
   const reviewActions = setupNeeded
     ? []
     : ((reviewActionsResult.data ?? []) as BlueprintReviewRow[]);
@@ -1277,6 +1621,9 @@ export default async function AdminBlueprintsPage({
   const calibrationRuns = setupNeeded
     ? []
     : ((calibrationRunsResult.data ?? []) as BlueprintCalibrationRunRow[]);
+  const blueprintVersions = setupNeeded
+    ? []
+    : ((blueprintVersionsResult.data ?? []) as BlueprintVersionRow[]);
   const taxonomyCatalog = taxonomyCatalogResult.catalog;
   const knownAssignableTagIds = leafAssignableTagIds(taxonomyCatalog);
   const pendingReviewActions = reviewActions.filter(
@@ -1290,6 +1637,7 @@ export default async function AdminBlueprintsPage({
   );
   const evidenceByBlueprintId = new Map<string, string[]>();
   const latestCalibrationByBlueprintId = new Map<string, BlueprintCalibrationRunRow>();
+  const versionsByBlueprintId = new Map<string, BlueprintVersionRow[]>();
 
   for (const example of (blueprintExamplesResult.data ?? []) as BlueprintExampleRow[]) {
     const current = evidenceByBlueprintId.get(example.blueprint_id) ?? [];
@@ -1302,6 +1650,12 @@ export default async function AdminBlueprintsPage({
     if (!latestCalibrationByBlueprintId.has(run.blueprint_id)) {
       latestCalibrationByBlueprintId.set(run.blueprint_id, run);
     }
+  }
+  for (const version of blueprintVersions) {
+    versionsByBlueprintId.set(version.blueprint_id, [
+      ...(versionsByBlueprintId.get(version.blueprint_id) ?? []),
+      version,
+    ]);
   }
   const activeFolders = folders.filter((folder) => !folder.deleted_at);
   const archivedFolders = folders.filter((folder) => folder.deleted_at);
@@ -1408,6 +1762,7 @@ export default async function AdminBlueprintsPage({
               <p>supabase/migrations/0015_question_blueprint_library.sql</p>
               <p>supabase/migrations/0016_question_blueprint_folders.sql</p>
               <p>supabase/migrations/0018_question_blueprint_calibration.sql</p>
+              <p>supabase/migrations/0019_question_blueprint_versions.sql</p>
             </div>
           </CardContent>
         </Card>
@@ -1601,12 +1956,15 @@ export default async function AdminBlueprintsPage({
           <div className="grid gap-4 2xl:grid-cols-2">
             {filteredActiveBlueprints.map((blueprint) => (
               <LibraryCard
+                allBlueprints={blueprints}
                 blueprint={blueprint}
                 evidenceSnippets={evidenceByBlueprintId.get(blueprint.id) ?? []}
                 folderOptions={folderOptions}
                 key={blueprint.id}
                 knownAssignableTagIds={knownAssignableTagIds}
                 latestCalibrationRun={latestCalibrationByBlueprintId.get(blueprint.id)}
+                taxonomyCatalog={taxonomyCatalog}
+                versionRows={versionsByBlueprintId.get(blueprint.id) ?? []}
               />
             ))}
           </div>
@@ -1633,12 +1991,15 @@ export default async function AdminBlueprintsPage({
           <div className="grid gap-4 2xl:grid-cols-2">
             {[...archivedBlueprints, ...trashedBlueprints].map((blueprint) => (
               <LibraryCard
+                allBlueprints={blueprints}
                 blueprint={blueprint}
                 evidenceSnippets={evidenceByBlueprintId.get(blueprint.id) ?? []}
                 folderOptions={folderOptions}
                 key={blueprint.id}
                 knownAssignableTagIds={knownAssignableTagIds}
                 latestCalibrationRun={latestCalibrationByBlueprintId.get(blueprint.id)}
+                taxonomyCatalog={taxonomyCatalog}
+                versionRows={versionsByBlueprintId.get(blueprint.id) ?? []}
               />
             ))}
           </div>

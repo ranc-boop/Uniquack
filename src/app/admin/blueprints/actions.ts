@@ -24,6 +24,13 @@ import {
   summarizeQuestionBlueprintCalibration,
 } from "@/lib/blueprints/question-blueprint-calibration";
 import {
+  applyBlueprintEdit,
+  blueprintEditInputFromParts,
+  buildBlueprintSplitDrafts,
+  createMergedBlueprintDraft,
+  markBlueprintReplacement,
+} from "@/lib/blueprints/question-blueprint-editing";
+import {
   normalizeQuestionBlueprintFolderName,
   slugifyQuestionBlueprintFolderName,
   wouldCreateQuestionBlueprintFolderCycle,
@@ -38,6 +45,7 @@ import {
   type QuestionBlueprintRow,
   persistApprovedQuestionBlueprints,
 } from "@/lib/blueprints/question-blueprint-persistence";
+import { createBlueprintVersionSnapshot } from "@/lib/blueprints/question-blueprint-versioning";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 
@@ -51,6 +59,13 @@ function formStringList(formData: FormData, key: string) {
   return formData
     .getAll(key)
     .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+}
+
+function formTextList(formData: FormData, key: string) {
+  return formString(formData, key)
+    .split(/\r?\n|,/g)
+    .map((value) => value.trim())
     .filter(Boolean);
 }
 
@@ -181,6 +196,19 @@ function taxonomyTargetsFromForm(formData: FormData) {
   };
 }
 
+function editTaxonomyTargetsFromForm(formData: FormData) {
+  return {
+    curriculum: formStringList(formData, "edit_tax_curriculum"),
+    concept: formStringList(formData, "edit_tax_concept"),
+    form: formStringList(formData, "edit_tax_form"),
+    method: formStringList(formData, "edit_tax_method"),
+    task: formStringList(formData, "edit_tax_task"),
+  };
+}
+
+const BLUEPRINT_SELECT =
+  "id, title, status, owner_scope, folder_id, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, difficulty_profile, generation_constraints, originality_constraints, source_refs, version, deleted_at, generation_readiness, last_calibrated_at, last_calibration_run_id";
+
 function groundingStatusFromTargets(targets: Record<string, string[]>) {
   const count =
     Number((targets.concept ?? []).length > 0) +
@@ -252,6 +280,44 @@ async function recordBlueprintLifecycleAudit({
   if (error) {
     throw new Error(setupMessage(error));
   }
+}
+
+async function insertBlueprintVersionSnapshot({
+  blueprint,
+  blueprintId,
+  changeReason,
+  createdBy,
+  supabase,
+}: {
+  blueprint: QuestionBlueprintRow;
+  blueprintId: string;
+  changeReason: string;
+  createdBy: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const snapshot = createBlueprintVersionSnapshot({
+    blueprint,
+    blueprintId,
+    changeReason,
+  });
+  const { error } = await (supabase as any)
+    .from("question_blueprint_versions")
+    .upsert(
+      {
+        blueprint_id: blueprintId,
+        change_reason: snapshot.changeReason,
+        created_by: createdBy,
+        snapshot: snapshot.snapshot,
+        version: snapshot.version,
+      },
+      { onConflict: "blueprint_id,version" },
+    );
+
+  if (error) {
+    throw new Error(setupMessage(error));
+  }
+
+  return snapshot;
 }
 
 export async function storeBlueprintReviewActionsFromImportBatch(
@@ -765,6 +831,274 @@ export async function moveQuestionBlueprintToFolder(formData: FormData) {
 
   revalidatePath("/admin/blueprints");
   redirectWithSaved("/admin/blueprints", "Blueprint moved to folder.");
+}
+
+export async function updateQuestionBlueprintFields(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const blueprintId = formString(formData, "blueprint_id");
+
+    if (!blueprintId) {
+      throw new Error("Select a blueprint to edit.");
+    }
+
+    const supabase = await createClient();
+    const { data: blueprint, error: loadError } = await (supabase as any)
+      .from("question_blueprints")
+      .select(BLUEPRINT_SELECT)
+      .eq("id", blueprintId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+    if (!blueprint) {
+      throw new Error("Blueprint was not found or is in trash.");
+    }
+
+    const knownAssignableTagIds = await loadActiveAssignableTaxonomyTagIds(supabase);
+    const input = blueprintEditInputFromParts({
+      answerSpecKind: formString(formData, "edit_answer_spec_kind"),
+      answerSpecNotes: formTextList(formData, "edit_answer_spec_notes"),
+      difficultyDrivers: formTextList(formData, "edit_difficulty_drivers"),
+      difficultyEstimate: formString(formData, "edit_difficulty_estimate"),
+      distractorPattern: formTextList(formData, "edit_distractor_pattern"),
+      generationConstraints: formTextList(formData, "edit_generation_constraints"),
+      originalityConstraints: formTextList(formData, "edit_originality_constraints"),
+      questionPattern: formString(formData, "edit_question_pattern"),
+      requiredElements: formTextList(formData, "edit_required_elements"),
+      sourceEvidenceNotes: formTextList(formData, "edit_source_evidence_notes"),
+      taxonomyTargets: editTaxonomyTargetsFromForm(formData),
+      title: formString(formData, "edit_title"),
+    });
+    const edit = applyBlueprintEdit({
+      blueprint: blueprint as QuestionBlueprintRow,
+      input,
+      knownAssignableTagIds,
+    });
+
+    await insertBlueprintVersionSnapshot({
+      blueprint: blueprint as QuestionBlueprintRow,
+      blueprintId,
+      changeReason:
+        formString(formData, "change_reason") ||
+        "Blueprint edited by admin. Calibration invalidated.",
+      createdBy: profile.id,
+      supabase,
+    });
+
+    const { error: updateError } = await (supabase as any)
+      .from("question_blueprints")
+      .update({
+        ...edit.updatePayload,
+        updated_by: profile.id,
+      })
+      .eq("id", blueprintId)
+      .is("deleted_at", null);
+
+    if (updateError) {
+      throw new Error(setupMessage(updateError));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved(
+    "/admin/blueprints",
+    "Blueprint updated. Calibration was invalidated and must be rerun before generation.",
+  );
+}
+
+export async function splitQuestionBlueprint(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const blueprintId = formString(formData, "blueprint_id");
+    const titles = formTextList(formData, "split_titles");
+
+    if (!blueprintId || !titles.length) {
+      throw new Error("Choose a blueprint and enter at least one split draft title.");
+    }
+
+    const supabase = await createClient();
+    const { data: blueprint, error: loadError } = await (supabase as any)
+      .from("question_blueprints")
+      .select(BLUEPRINT_SELECT)
+      .eq("id", blueprintId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+    if (!blueprint) {
+      throw new Error("Blueprint was not found.");
+    }
+
+    await insertBlueprintVersionSnapshot({
+      blueprint: blueprint as QuestionBlueprintRow,
+      blueprintId,
+      changeReason: "Blueprint split draft created by admin.",
+      createdBy: profile.id,
+      supabase,
+    });
+
+    const rows = buildBlueprintSplitDrafts({
+      blueprint: {
+        ...(blueprint as QuestionBlueprintRow),
+        source_refs: {
+          ...asRecord(blueprint.source_refs),
+          blueprintId,
+        },
+      },
+      titles,
+    }).map((row) => ({
+      ...row,
+      created_by: profile.id,
+      source_refs: {
+        ...asRecord(row.source_refs),
+        splitFromBlueprintId: blueprintId,
+      },
+      updated_by: profile.id,
+    }));
+
+    const { error: insertError } = await (supabase as any)
+      .from("question_blueprints")
+      .insert(rows);
+
+    if (insertError) {
+      throw new Error(setupMessage(insertError));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Split draft blueprints created.");
+}
+
+export async function createMergedQuestionBlueprintDraft(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const sourceBlueprintId = formString(formData, "source_blueprint_id");
+    const targetBlueprintId = formString(formData, "target_blueprint_id");
+
+    if (!sourceBlueprintId || !targetBlueprintId || sourceBlueprintId === targetBlueprintId) {
+      throw new Error("Choose two different blueprints to merge.");
+    }
+
+    const supabase = await createClient();
+    const { data: blueprints, error: loadError } = await (supabase as any)
+      .from("question_blueprints")
+      .select(BLUEPRINT_SELECT)
+      .in("id", [sourceBlueprintId, targetBlueprintId])
+      .is("deleted_at", null);
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+
+    const source = (blueprints ?? []).find((row: Record<string, unknown>) => row.id === sourceBlueprintId);
+    const target = (blueprints ?? []).find((row: Record<string, unknown>) => row.id === targetBlueprintId);
+
+    if (!source || !target) {
+      throw new Error("Both source and target blueprints must exist.");
+    }
+
+    await insertBlueprintVersionSnapshot({
+      blueprint: source as QuestionBlueprintRow,
+      blueprintId: sourceBlueprintId,
+      changeReason: "Blueprint merge preview created by admin.",
+      createdBy: profile.id,
+      supabase,
+    });
+
+    const row = createMergedBlueprintDraft({
+      source: {
+        ...(source as QuestionBlueprintRow),
+        id: sourceBlueprintId,
+      },
+      target: {
+        ...(target as QuestionBlueprintRow),
+        id: targetBlueprintId,
+      },
+    });
+    const { error: insertError } = await (supabase as any)
+      .from("question_blueprints")
+      .insert({
+        ...row,
+        created_by: profile.id,
+        updated_by: profile.id,
+      });
+
+    if (insertError) {
+      throw new Error(setupMessage(insertError));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Merged draft blueprint created. Source blueprints were not deleted.");
+}
+
+export async function replaceQuestionBlueprint(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const blueprintId = formString(formData, "blueprint_id");
+    const replacementBlueprintId = formString(formData, "replacement_blueprint_id");
+
+    if (!blueprintId || !replacementBlueprintId || blueprintId === replacementBlueprintId) {
+      throw new Error("Choose a blueprint and a different replacement blueprint.");
+    }
+
+    const supabase = await createClient();
+    const { data: blueprints, error: loadError } = await (supabase as any)
+      .from("question_blueprints")
+      .select(BLUEPRINT_SELECT)
+      .in("id", [blueprintId, replacementBlueprintId])
+      .is("deleted_at", null);
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+
+    const blueprint = (blueprints ?? []).find((row: Record<string, unknown>) => row.id === blueprintId);
+    const replacement = (blueprints ?? []).find((row: Record<string, unknown>) => row.id === replacementBlueprintId);
+
+    if (!blueprint || !replacement) {
+      throw new Error("Both blueprints must exist before marking a replacement.");
+    }
+
+    await insertBlueprintVersionSnapshot({
+      blueprint: blueprint as QuestionBlueprintRow,
+      blueprintId,
+      changeReason: `Blueprint deprecated and replaced by ${replacementBlueprintId}.`,
+      createdBy: profile.id,
+      supabase,
+    });
+
+    const { error: updateError } = await (supabase as any)
+      .from("question_blueprints")
+      .update({
+        ...markBlueprintReplacement({
+          blueprint: blueprint as QuestionBlueprintRow,
+          replacementBlueprintId,
+        }),
+        updated_by: profile.id,
+      })
+      .eq("id", blueprintId);
+
+    if (updateError) {
+      throw new Error(setupMessage(updateError));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint deprecated and linked to its replacement.");
 }
 
 export async function archiveQuestionBlueprint(formData: FormData) {
