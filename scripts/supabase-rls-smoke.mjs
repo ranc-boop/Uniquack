@@ -25,6 +25,10 @@ const blueprintMigration = await readFile(
   resolve(root, "supabase/migrations/0015_question_blueprint_library.sql"),
   "utf8",
 );
+const blueprintFolderMigration = await readFile(
+  resolve(root, "supabase/migrations/0016_question_blueprint_folders.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -46,6 +50,15 @@ for (const tableName of [
 }
 assert(!blueprintMigration.includes("to anon"), "question blueprint tables must not grant anon access");
 assert(
+  blueprintFolderMigration.includes("create table if not exists public.question_blueprint_folders") &&
+    blueprintFolderMigration.includes("add column if not exists folder_id") &&
+    blueprintFolderMigration.includes("alter table public.question_blueprint_folders enable row level security") &&
+    blueprintFolderMigration.includes("question_blueprint_folders_admin_crud") &&
+    blueprintFolderMigration.includes("private.is_admin()") &&
+    !blueprintFolderMigration.includes("to anon"),
+  "question blueprint folder migration must enable admin-only RLS and avoid anon grants",
+);
+assert(
   blueprintMigration.includes("deleted_at timestamptz") &&
     blueprintMigration.includes("status in ('draft', 'approved', 'deprecated')"),
   "question blueprint migration must support lifecycle status and soft delete",
@@ -54,6 +67,9 @@ assert(
   blueprintActions.includes("archiveQuestionBlueprint") &&
     blueprintActions.includes("restoreQuestionBlueprint") &&
     blueprintActions.includes("moveQuestionBlueprintToTrash") &&
+    blueprintActions.includes("archiveQuestionBlueprintFolder") &&
+    blueprintActions.includes("restoreQuestionBlueprintFolder") &&
+    blueprintActions.includes("moveQuestionBlueprintToFolder") &&
     blueprintActions.includes("deleted_at: new Date().toISOString()") &&
     !blueprintActions.includes(".delete("),
   "question blueprint lifecycle must use admin soft-delete actions and never hard-delete",

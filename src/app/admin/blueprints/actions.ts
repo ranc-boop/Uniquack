@@ -19,6 +19,11 @@ import {
   executeDeepSeekBlueprintGeneration,
 } from "@/lib/blueprints/question-blueprint-generation";
 import {
+  normalizeQuestionBlueprintFolderName,
+  slugifyQuestionBlueprintFolderName,
+  wouldCreateQuestionBlueprintFolderCycle,
+} from "@/lib/blueprints/question-blueprint-folders";
+import {
   buildBlueprintGeneratedBatchImportJson,
   summarizeBlueprintGeneratedReviewDraftPersistence,
 } from "@/lib/blueprints/question-blueprint-generation-review";
@@ -71,13 +76,15 @@ function isMissingBlueprintTableError(error: unknown) {
 
   return (
     record.code === "42P01" ||
-    /question_blueprint|relation .* does not exist|schema cache/i.test(message)
+    /folder_id|question_blueprint|relation .* does not exist|schema cache/i.test(
+      message,
+    )
   );
 }
 
 function setupMessage(error: unknown) {
   if (isMissingBlueprintTableError(error)) {
-    return "Question Blueprint Library tables are not applied yet. Apply the BP5 migration before using review actions.";
+    return "Question Blueprint Library tables are not applied yet. Apply the latest blueprint migrations before using review actions.";
   }
 
   return error instanceof Error ? error.message : String(error);
@@ -85,6 +92,14 @@ function setupMessage(error: unknown) {
 
 function blueprintActionError(error: unknown) {
   redirectWithError("/admin/blueprints", setupMessage(error));
+}
+
+function nullableFolderIdFromForm(formData: FormData, key = "folder_id") {
+  const value = formString(formData, key);
+
+  return value && value !== "all" && value !== "unfiled" && value !== "root"
+    ? value
+    : null;
 }
 
 async function loadActiveAssignableTaxonomyTagIds(supabase: Awaited<ReturnType<typeof createClient>>) {
@@ -485,6 +500,253 @@ export async function markQuestionBlueprintNeedsEvidence(formData: FormData) {
 
   revalidatePath("/admin/blueprints");
   redirectWithSaved("/admin/blueprints", "Blueprint marked as needing more evidence.");
+}
+
+export async function createQuestionBlueprintFolder(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const name = normalizeQuestionBlueprintFolderName(formString(formData, "name"));
+
+    if (!name) {
+      throw new Error("Folder name is required.");
+    }
+
+    const parentId = nullableFolderIdFromForm(formData, "parent_id");
+    const supabase = await createClient();
+
+    if (parentId) {
+      const { data: parent, error: parentError } = await (supabase as any)
+        .from("question_blueprint_folders")
+        .select("id")
+        .eq("id", parentId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (parentError) {
+        throw new Error(setupMessage(parentError));
+      }
+
+      if (!parent) {
+        throw new Error("Parent folder was not found.");
+      }
+    }
+
+    const { error } = await (supabase as any)
+      .from("question_blueprint_folders")
+      .insert({
+        created_by: profile.id,
+        description: formString(formData, "description") || null,
+        name,
+        owner_scope: "system",
+        parent_id: parentId,
+        slug: slugifyQuestionBlueprintFolderName(name),
+        updated_by: profile.id,
+      });
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint folder created.");
+}
+
+export async function renameQuestionBlueprintFolder(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const folderId = formString(formData, "folder_id");
+    const name = normalizeQuestionBlueprintFolderName(formString(formData, "name"));
+
+    if (!folderId || !name) {
+      throw new Error("Choose a folder and enter a folder name.");
+    }
+
+    const supabase = await createClient();
+    const { error } = await (supabase as any)
+      .from("question_blueprint_folders")
+      .update({
+        description: formString(formData, "description") || null,
+        name,
+        slug: slugifyQuestionBlueprintFolderName(name),
+        updated_by: profile.id,
+      })
+      .eq("id", folderId)
+      .is("deleted_at", null);
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint folder updated.");
+}
+
+export async function moveQuestionBlueprintFolder(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const folderId = formString(formData, "folder_id");
+    const parentId = nullableFolderIdFromForm(formData, "parent_id");
+
+    if (!folderId) {
+      throw new Error("Choose a folder to move.");
+    }
+
+    const supabase = await createClient();
+    const { data: folders, error: loadError } = await (supabase as any)
+      .from("question_blueprint_folders")
+      .select("id, parent_id")
+      .is("deleted_at", null);
+
+    if (loadError) {
+      throw new Error(setupMessage(loadError));
+    }
+
+    if (
+      wouldCreateQuestionBlueprintFolderCycle({
+        folderId,
+        folders: folders ?? [],
+        parentId,
+      })
+    ) {
+      throw new Error("A folder cannot be moved into itself or one of its children.");
+    }
+
+    const { error } = await (supabase as any)
+      .from("question_blueprint_folders")
+      .update({
+        parent_id: parentId,
+        updated_by: profile.id,
+      })
+      .eq("id", folderId)
+      .is("deleted_at", null);
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint folder moved.");
+}
+
+export async function archiveQuestionBlueprintFolder(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const folderId = formString(formData, "folder_id");
+
+    if (!folderId) {
+      throw new Error("Choose a folder to archive.");
+    }
+
+    const supabase = await createClient();
+    const { error } = await (supabase as any)
+      .from("question_blueprint_folders")
+      .update({
+        deleted_at: new Date().toISOString(),
+        updated_by: profile.id,
+      })
+      .eq("id", folderId)
+      .is("deleted_at", null);
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved(
+    "/admin/blueprints",
+    "Blueprint folder archived. Filed blueprints are preserved and remain visible in All blueprints.",
+  );
+}
+
+export async function restoreQuestionBlueprintFolder(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const folderId = formString(formData, "folder_id");
+
+    if (!folderId) {
+      throw new Error("Choose a folder to restore.");
+    }
+
+    const supabase = await createClient();
+    const { error } = await (supabase as any)
+      .from("question_blueprint_folders")
+      .update({
+        deleted_at: null,
+        updated_by: profile.id,
+      })
+      .eq("id", folderId);
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint folder restored.");
+}
+
+export async function moveQuestionBlueprintToFolder(formData: FormData) {
+  try {
+    const profile = await requireAdmin();
+    const blueprintId = formString(formData, "blueprint_id");
+    const folderId = nullableFolderIdFromForm(formData);
+
+    if (!blueprintId) {
+      throw new Error("Choose an approved blueprint to move.");
+    }
+
+    const supabase = await createClient();
+
+    if (folderId) {
+      const { data: folder, error: folderError } = await (supabase as any)
+        .from("question_blueprint_folders")
+        .select("id")
+        .eq("id", folderId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (folderError) {
+        throw new Error(setupMessage(folderError));
+      }
+
+      if (!folder) {
+        throw new Error("Destination folder was not found.");
+      }
+    }
+
+    const { error } = await (supabase as any)
+      .from("question_blueprints")
+      .update({
+        folder_id: folderId,
+        updated_by: profile.id,
+      })
+      .eq("id", blueprintId)
+      .eq("status", "approved")
+      .is("deleted_at", null);
+
+    if (error) {
+      throw new Error(setupMessage(error));
+    }
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirectWithSaved("/admin/blueprints", "Blueprint moved to folder.");
 }
 
 export async function archiveQuestionBlueprint(formData: FormData) {

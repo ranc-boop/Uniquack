@@ -32,6 +32,7 @@ export type QuestionBlueprintRow = {
   deleted_at?: string | null;
   difficulty_profile: Record<string, unknown>;
   distractor_pattern: string[];
+  folder_id?: string | null;
   generation_constraints: string[];
   originality_constraints: string[];
   owner_id?: string | null;
@@ -76,6 +77,7 @@ export const QUESTION_BLUEPRINT_DB_TABLES = [
   "question_blueprints",
   "question_blueprint_examples",
   "question_blueprint_review_actions",
+  "question_blueprint_folders",
 ] as const;
 
 function asRecord(value: unknown): Record<string, unknown> {
