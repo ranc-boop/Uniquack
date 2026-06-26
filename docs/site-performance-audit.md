@@ -635,6 +635,84 @@ PERF3 focused on routes that can become slow even when client bundles are small,
 - Add a dedicated `search_videos_by_taxonomy` RPC if public video search needs exact counts across video fields, question fields, difficulty, and taxonomy filters.
 - Consider a lightweight count/summary query for large Review Draft batch filters if admins need exact search counts inside a very large batch.
 
+## PERF3B Question And Blueprint Data Loading
+
+PERF3B continued the route data-loading pass for the remaining high-growth question and Blueprint surfaces.
+
+### Routes Optimized
+
+- `/admin/questions`
+- `/questions`
+- `/admin/blueprints`
+- `/admin/blueprints/review`
+- `/admin/blueprints/library`
+- `/admin/blueprints/history`
+- `/admin/blueprints/sources`
+
+### Question Bank Loading Changes
+
+- `src/app/admin/questions/page.tsx`
+  - Keeps the existing bounded `ADMIN_QUESTION_PAGE_SIZE = 50` paging behavior.
+  - Replaced list `select("*")` with explicit `ADMIN_QUESTION_SUMMARY_SELECT`.
+  - Loads `ADMIN_QUESTION_DETAIL_SELECT` only for focused `?edit=<questionId>` editing.
+  - Stops fetching question assets, source files, and imported asset metadata for the default list page.
+  - List rows now show a summary row with taxonomy chips plus an Edit link into focused detail mode.
+  - User-facing copy now clarifies that the page is bounded and admins should use search, filters, or next page to find more.
+- `src/app/questions/page.tsx`
+  - Already used a bounded `pageSize = 25` taxonomy RPC query and summary fields only.
+  - No product UI change was needed; route-smoke now protects the bounded RPC behavior.
+
+### Blueprint Workspace Loading Changes
+
+- `src/components/blueprints/blueprint-workspace.tsx`
+  - Added bounded route constants:
+    - review queue: 50
+    - library: 50
+    - history: 50
+    - sources: 25
+    - overview previews: 6
+  - Replaced the shared all-status loader with view-aware scoped queries:
+    - overview loads counts plus small previews
+    - review loads pending and needs-more-evidence review actions
+    - library loads approved active blueprints, scoped by folder or Unfiled
+    - history loads rejected review actions plus archived/trash blueprints
+    - sources loads recent AI import source plans only
+  - Blueprint evidence, calibration runs, and version snapshots are loaded only for the current library/history page of blueprint IDs.
+  - Folder filtering no longer requires loading all blueprints before applying folder scope.
+
+### Query Limits Changed
+
+- Admin question list details: `select("*")` removed from the default list path.
+- Admin question related rows: assets/source files/import metadata now load only in focused edit mode.
+- Blueprint detail side data: examples/calibration/version rows now use `loadedBlueprintIds` and per-page bounded limits instead of broad global limits.
+- Blueprint import sources use the route-specific source limit instead of sharing the overview loader.
+
+### Before / After Measurements
+
+Baseline before PERF3B:
+
+- `/questions` client route: 13.3 KB, gzip 4.3 KB.
+- `/admin/questions` client route: 1.0 KB, gzip 562 B.
+- `/admin/blueprints/history` server route appeared in the largest server bundle list at 22.9 KB, gzip 7.7 KB.
+- `src/components/blueprints/blueprint-workspace.tsx`: 89.2 KB source.
+
+After PERF3B, the main improvement is server query payload size rather than client bundle size. Final `perf:audit` should be compared against these baseline values; the Blueprint component source can remain large because this pass scoped data loading rather than splitting UI code.
+
+### Behavior Preserved
+
+- Taxonomy search/filter behavior remains backed by `search_questions_by_taxonomy`.
+- Public question preview/open behavior is unchanged.
+- Admin question create, edit, bulk update, delete, taxonomy assignment, assets, and source-file workflows remain available.
+- Blueprint review, approval, folders, archive/trash, calibration, generation readiness, and Review Draft handoff behavior remain unchanged.
+- No provider calls, generation behavior, DB schema, AI Parsing behavior, Review Draft publishing behavior, or auto-publish behavior changed.
+
+### Remaining PERF3B Bottlenecks
+
+- `src/components/blueprints/blueprint-workspace.tsx` is still a large server component; a future pass can split the UI by route once the route-scoped loader has stabilized.
+- Blueprint overview counts use multiple small count queries. If this grows further, a single summary RPC/view would be cleaner.
+- Public `/questions` still sends `content_html` to build excerpts. A future DB summary/excerpt column could remove that HTML from list queries.
+- Admin question focused edit still loads full editor payload by design.
+
 ## Commands Run
 
 ```bash

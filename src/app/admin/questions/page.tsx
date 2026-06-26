@@ -63,6 +63,40 @@ type AdminQuestionsPageProps = {
 
 const questionStatuses = ["draft", "published", "archived"] as const;
 type QuestionRow = Database["public"]["Tables"]["questions"]["Row"];
+type AdminQuestionSummaryRow = Pick<
+  QuestionRow,
+  | "created_at"
+  | "difficulty_rating"
+  | "id"
+  | "question_code"
+  | "question_type"
+  | "status"
+  | "title"
+  | "updated_at"
+>;
+type AdminQuestionDetailRow = Pick<
+  QuestionRow,
+  | "answer_spec"
+  | "content_html"
+  | "content_source"
+  | "content_source_format"
+  | "difficulty_rating"
+  | "id"
+  | "options"
+  | "question_code"
+  | "question_type"
+  | "solution_html"
+  | "solution_source"
+  | "solution_source_format"
+  | "status"
+  | "title"
+>;
+type AdminQuestionRow = AdminQuestionSummaryRow | AdminQuestionDetailRow;
+const ADMIN_QUESTION_PAGE_SIZE = 50;
+const ADMIN_QUESTION_SUMMARY_SELECT =
+  "id, question_code, title, question_type, difficulty_rating, status, created_at, updated_at";
+const ADMIN_QUESTION_DETAIL_SELECT =
+  "id, question_code, title, question_type, difficulty_rating, status, answer_spec, options, content_html, content_source, content_source_format, solution_html, solution_source, solution_source_format";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -157,6 +191,12 @@ function isMissingTaxonomyTableError(error: unknown) {
   );
 }
 
+function hasQuestionDetailFields(
+  question: AdminQuestionRow,
+): question is AdminQuestionDetailRow {
+  return "content_html" in question && "solution_html" in question;
+}
+
 export default async function AdminQuestionsPage({
   searchParams,
 }: AdminQuestionsPageProps) {
@@ -192,7 +232,7 @@ export default async function AdminQuestionsPage({
   const selectedTaxonomyExclude = taxonomyFilter.exclude;
   const page = parsePage(params.page);
   const currentPath = pageHref(params, page);
-  const pageSize = 50;
+  const pageSize = ADMIN_QUESTION_PAGE_SIZE;
   const includeTagIds = Object.values(taxonomyFilter.include).flat();
   const excludeTagIds = Object.values(taxonomyFilter.exclude).flat();
   const difficultyMin = Number.isFinite(taxonomyFilter.difficulty.min)
@@ -246,14 +286,17 @@ export default async function AdminQuestionsPage({
   );
   let fallbackQuestionsResult: {
     count: number | null;
-    data: QuestionRow[] | null;
+    data: AdminQuestionRow[] | null;
     error: { message?: string } | null;
   } | null = null;
-
   if (taxonomyRpcError) {
-    let fallbackQuery = supabase
-      .from("questions")
-      .select("*", { count: "exact" });
+    let fallbackQuery = focusedQuestionId
+      ? supabase
+          .from("questions")
+          .select(ADMIN_QUESTION_DETAIL_SELECT, { count: "exact" })
+      : supabase
+          .from("questions")
+          .select(ADMIN_QUESTION_SUMMARY_SELECT, { count: "exact" });
 
     if (selectedStatus) {
       fallbackQuery = fallbackQuery.eq("status", selectedStatus);
@@ -295,9 +338,17 @@ export default async function AdminQuestionsPage({
       fallbackQuestionsResult
         ? Promise.resolve(fallbackQuestionsResult)
         : orderedQuestionIds.length
-          ? supabase.from("questions").select("*").in("id", orderedQuestionIds)
+          ? focusedQuestionId
+            ? supabase
+                .from("questions")
+                .select(ADMIN_QUESTION_DETAIL_SELECT)
+                .in("id", orderedQuestionIds)
+            : supabase
+                .from("questions")
+                .select(ADMIN_QUESTION_SUMMARY_SELECT)
+                .in("id", orderedQuestionIds)
           : Promise.resolve({ data: [], error: null }),
-      orderedQuestionIds.length
+      focusedQuestionId && orderedQuestionIds.length
         ? supabase
             .from("question_assets")
             .select(
@@ -306,7 +357,7 @@ export default async function AdminQuestionsPage({
             .eq("status", "ready")
             .in("question_id", orderedQuestionIds)
         : Promise.resolve({ data: [], error: null }),
-      orderedQuestionIds.length
+      focusedQuestionId && orderedQuestionIds.length
         ? supabase
             .from("question_source_files")
             .select(
@@ -335,7 +386,7 @@ export default async function AdminQuestionsPage({
       ? "Taxonomy search RPC is unavailable. Apply migrations 0011 and 0012."
       : `Taxonomy search is unavailable: ${taxonomyRpcError.message}`
     : null;
-  const { data: importItems } = questionIds.length
+  const { data: importItems } = focusedQuestionId && questionIds.length
     ? await supabase
         .from("import_batch_items")
         .select("created_question_id, normalized_question_json")
@@ -660,8 +711,9 @@ export default async function AdminQuestionsPage({
           </form>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <p>
-              Showing {filteredQuestions.length} of {totalQuestions} matching
-              questions.
+              Showing {filteredQuestions.length} questions from a page size of{" "}
+              {ADMIN_QUESTION_PAGE_SIZE}. Use search, filters, or the next page
+              to find more. Total matching questions: {totalQuestions}.
             </p>
             <div className="flex items-center gap-2">
               <Button asChild disabled={page <= 1} size="sm" variant="outline">
@@ -691,6 +743,9 @@ export default async function AdminQuestionsPage({
       {focusedQuestionId ? (
         <div className="space-y-4">
           {filteredQuestions.map((question) => {
+            if (!hasQuestionDetailFields(question)) {
+              return null;
+            }
             const importedAssetReferences =
               importRefsByQuestionId.get(question.id) ?? null;
             const imageCount = assetsByQuestionId.get(question.id)?.length ?? 0;
@@ -786,23 +841,6 @@ export default async function AdminQuestionsPage({
           </TableHeader>
           <TableBody>
             {filteredQuestions.map((question) => {
-              const importedAssetReferences =
-                importRefsByQuestionId.get(question.id) ?? null;
-              const imageCount =
-                assetsByQuestionId.get(question.id)?.length ?? 0;
-              const sourceFileCount =
-                sourceFilesByQuestionId.get(question.id)?.length ?? 0;
-              const readiness = getQuestionReadiness({
-                contentHtml: question.content_html,
-                difficultyRating: question.difficulty_rating,
-                imageCount,
-                importedAssetReferences,
-                solutionHtml: question.solution_html,
-                sourceFileCount,
-                tagCount:
-                  taxonomyAssignmentsByQuestionId.get(question.id)?.length ?? 0,
-              });
-
               return (
                 <Fragment key={question.id}>
                   <TableRow>
@@ -837,41 +875,23 @@ export default async function AdminQuestionsPage({
                       <Badge variant="secondary">{question.status}</Badge>
                     </TableCell>
                     <TableCell>
-                      <form action={deleteQuestion}>
-                        <input type="hidden" name="id" value={question.id} />
-                        <DeleteSubmitButton
-                          label={`question ${question.question_code}`}
-                        />
-                      </form>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell colSpan={8} className="bg-muted/20 p-3">
-                      <details className="mb-3 rounded-md border bg-background px-3 py-2">
-                        <summary className="cursor-pointer text-sm font-medium">
-                          Official taxonomy tags
-                        </summary>
-                        <div className="mt-2">
-                          <TaxonomyTagChips
-                            assignments={taxonomyAssignmentsByQuestionId.get(
-                              question.id,
-                            )}
-                            taxonomyCatalog={taxonomyCatalog}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button asChild size="sm" variant="outline">
+                          <Link
+                            href={`/admin/questions?edit=${question.id}&return_to=${encodeURIComponent(
+                              currentPath,
+                            )}`}
+                          >
+                            Edit
+                          </Link>
+                        </Button>
+                        <form action={deleteQuestion}>
+                          <input type="hidden" name="id" value={question.id} />
+                          <DeleteSubmitButton
+                            label={`question ${question.question_code}`}
                           />
-                        </div>
-                      </details>
-                      <AdminQuestionEditDetails
-                        assets={assetsByQuestionId.get(question.id)}
-                        importedAssetReferences={importedAssetReferences}
-                        question={question}
-                        readiness={readiness}
-                        returnTo={currentPath}
-                        selectedTaxonomyTagIds={selectedTaxonomyTagMapFromAssignments(
-                          taxonomyAssignmentsByQuestionId.get(question.id),
-                        )}
-                        sourceFiles={sourceFilesByQuestionId.get(question.id)}
-                        taxonomyCatalog={taxonomyCatalog}
-                      />
+                        </form>
+                      </div>
                     </TableCell>
                   </TableRow>
                 </Fragment>
