@@ -23,7 +23,13 @@ import {
   updateQuestionBlueprintFields,
   updateBlueprintReviewActionTaxonomyTargets,
 } from "@/app/admin/blueprints/actions";
+import { AdminActionGroup } from "@/components/admin/admin-action-group";
+import { AdminCard } from "@/components/admin/admin-card";
+import { AdminDangerZone } from "@/components/admin/admin-danger-zone";
+import { AdminDebugDisclosure } from "@/components/admin/admin-debug-disclosure";
+import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { MathContent } from "@/components/math-content";
 import {
@@ -859,11 +865,8 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
         ) : null}
       </div>
       {snippets.length || taxonomyTargetHints.length || specificityWarnings.length ? (
-        <details className="rounded-md border bg-muted/20 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-medium">
-            Source refs and internal notes
-          </summary>
-          <div className="mt-2 space-y-3 text-xs text-muted-foreground">
+        <AdminDebugDisclosure title="Source refs and internal notes">
+          <div className="space-y-3 text-xs text-muted-foreground">
             {snippets.length ? (
               <div>
                 <p className="font-medium text-foreground">Source example refs</p>
@@ -883,7 +886,7 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
               <p>Specificity warnings: {specificityWarnings.join("; ")}</p>
             ) : null}
           </div>
-        </details>
+        </AdminDebugDisclosure>
       ) : null}
     </div>
   );
@@ -906,7 +909,7 @@ function ReviewActionPreview({ action }: { action: BlueprintReviewRow }) {
             {readableReviewReason(action)}
           </p>
         </div>
-        <Badge variant="outline">{action.status.replaceAll("_", " ")}</Badge>
+        <AdminStatusBadge status={action.status} />
       </div>
     </Link>
   );
@@ -926,7 +929,7 @@ function LibraryBlueprintPreview({ blueprint }: { blueprint: BlueprintRow }) {
             {blueprint.version}
           </p>
         </div>
-        <Badge variant="secondary">Approved</Badge>
+        <AdminStatusBadge status="approved" />
       </div>
     </Link>
   );
@@ -953,26 +956,19 @@ function ReviewActionCard({
   const draftTitle = firstString(draft.title, "Blueprint draft");
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 space-y-1">
-            <CardTitle className="break-words text-base">
-              {draftTitle}
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Review action: {action.action_kind.replaceAll("_", " ")}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">{action.status}</Badge>
-            <Badge variant={canApprove ? "secondary" : "outline"}>
-              {canApprove ? "Approval ready" : "Needs review"}
-            </Badge>
-          </div>
+    <AdminCard
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <AdminStatusBadge status={action.status} />
+          <AdminStatusBadge status={canApprove ? "approved" : "needs_review"}>
+            {canApprove ? "Approval ready" : "Needs review"}
+          </AdminStatusBadge>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      }
+      description={`Review action: ${action.action_kind.replaceAll("_", " ")}`}
+      title={<span className="break-words">{draftTitle}</span>}
+    >
+      <div className="space-y-4">
         <MathContent
           className="text-sm text-muted-foreground"
           format="plain"
@@ -1009,42 +1005,49 @@ function ReviewActionCard({
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Actions
             </p>
-            <div className="flex flex-wrap gap-2">
-              {canApprove ? (
-                <form action={approveQuestionBlueprintReviewAction}>
-                  <input name="id" type="hidden" value={action.id} />
-                  <FormSubmitButton pendingLabel="Approving..." size="sm">
-                    Approve blueprint
-                  </FormSubmitButton>
-                </form>
-              ) : (
-                <Badge variant="outline">Needs more evidence before approval</Badge>
-              )}
-              {action.status === "pending_review" ? (
-                <form action={markQuestionBlueprintNeedsEvidence}>
-                  <input name="id" type="hidden" value={action.id} />
-                  <FormSubmitButton pendingLabel="Marking..." size="sm" variant="outline">
-                    Needs more evidence
-                  </FormSubmitButton>
-                </form>
-              ) : null}
+            <AdminActionGroup
+              primary={
+                canApprove ? (
+                  <form action={approveQuestionBlueprintReviewAction}>
+                    <input name="id" type="hidden" value={action.id} />
+                    <FormSubmitButton pendingLabel="Approving..." size="sm">
+                      Approve blueprint
+                    </FormSubmitButton>
+                  </form>
+                ) : (
+                  <AdminStatusBadge status="needs_more_evidence">
+                    Needs more evidence before approval
+                  </AdminStatusBadge>
+                )
+              }
+              secondary={
+                action.status === "pending_review" ? (
+                  <form action={markQuestionBlueprintNeedsEvidence}>
+                    <input name="id" type="hidden" value={action.id} />
+                    <FormSubmitButton pendingLabel="Marking..." size="sm" variant="outline">
+                      Needs more evidence
+                    </FormSubmitButton>
+                  </form>
+                ) : null
+              }
+              destructive={
+                <AdminDangerZone compact title="Reject blueprint draft">
               <form action={rejectQuestionBlueprintReviewAction}>
                 <input name="id" type="hidden" value={action.id} />
                 <FormSubmitButton pendingLabel="Rejecting..." size="sm" variant="destructive">
                   Reject
                 </FormSubmitButton>
               </form>
-            </div>
+                </AdminDangerZone>
+              }
+            />
           </div>
         ) : null}
         {!canApprove ? (
           <ReasonList reasons={readiness.approvalBlockingReasons} />
         ) : null}
-        <details className="rounded-md border bg-muted/10 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-            Debug details
-          </summary>
-          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+        <AdminDebugDisclosure title="Debug details">
+          <div className="space-y-1 text-xs text-muted-foreground">
             <div className="break-all">
               Draft ID:{" "}
               <span className="font-mono">{action.blueprint_draft_id}</span>
@@ -1060,9 +1063,9 @@ function ReviewActionCard({
               </div>
             ) : null}
           </div>
-        </details>
-      </CardContent>
-    </Card>
+        </AdminDebugDisclosure>
+      </div>
+    </AdminCard>
   );
 }
 
@@ -1075,31 +1078,37 @@ function LifecycleActions({
   const archived = blueprint.status === "deprecated" && !trashed;
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {trashed || archived ? (
-        <form action={restoreQuestionBlueprint}>
-          <input name="blueprint_id" type="hidden" value={blueprint.id} />
-          <FormSubmitButton pendingLabel="Restoring..." size="sm" variant="outline">
-            Restore
-          </FormSubmitButton>
-        </form>
-      ) : (
-        <form action={archiveQuestionBlueprint}>
-          <input name="blueprint_id" type="hidden" value={blueprint.id} />
-          <FormSubmitButton pendingLabel="Archiving..." size="sm" variant="outline">
-            Deprecate
-          </FormSubmitButton>
-        </form>
-      )}
-      {!trashed ? (
-        <form action={moveQuestionBlueprintToTrash}>
-          <input name="blueprint_id" type="hidden" value={blueprint.id} />
-          <FormSubmitButton pendingLabel="Moving..." size="sm" variant="destructive">
-            Move to trash
-          </FormSubmitButton>
-        </form>
-      ) : null}
-    </div>
+    <AdminActionGroup
+      secondary={
+        trashed || archived ? (
+          <form action={restoreQuestionBlueprint}>
+            <input name="blueprint_id" type="hidden" value={blueprint.id} />
+            <FormSubmitButton pendingLabel="Restoring..." size="sm" variant="outline">
+              Restore
+            </FormSubmitButton>
+          </form>
+        ) : (
+          <form action={archiveQuestionBlueprint}>
+            <input name="blueprint_id" type="hidden" value={blueprint.id} />
+            <FormSubmitButton pendingLabel="Archiving..." size="sm" variant="outline">
+              Deprecate
+            </FormSubmitButton>
+          </form>
+        )
+      }
+      destructive={
+        !trashed ? (
+          <AdminDangerZone compact title="Move blueprint to trash">
+            <form action={moveQuestionBlueprintToTrash}>
+              <input name="blueprint_id" type="hidden" value={blueprint.id} />
+              <FormSubmitButton pendingLabel="Moving..." size="sm" variant="destructive">
+                Move to trash
+              </FormSubmitButton>
+            </form>
+          </AdminDangerZone>
+        ) : null
+      }
+    />
   );
 }
 
@@ -1427,16 +1436,14 @@ function LibraryCard({
   ];
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <CardTitle className="text-base">{blueprint.title}</CardTitle>
-          <Badge variant={blueprint.status === "approved" ? "secondary" : "outline"}>
-            {blueprint.status}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
+    <AdminCard
+      actions={<AdminStatusBadge status={blueprint.deleted_at ? "trash" : blueprint.status} />}
+      description={`Owner scope: ${blueprint.owner_scope} | Version ${blueprint.version} | Updated ${new Date(
+        blueprint.updated_at,
+      ).toLocaleString()}`}
+      title={blueprint.title}
+    >
+      <div className="space-y-3 text-sm">
         <MathContent
           className="text-muted-foreground"
           format="plain"
@@ -1450,10 +1457,6 @@ function LibraryCard({
             value={`Required: ${requiredElements.join("; ")}`}
           />
         ) : null}
-        <p className="text-xs text-muted-foreground">
-          Owner scope: {blueprint.owner_scope} | Version {blueprint.version} | Updated{" "}
-          {new Date(blueprint.updated_at).toLocaleString()}
-        </p>
         <BlueprintEditPanel
           allBlueprints={allBlueprints}
           blueprint={blueprint}
@@ -1476,9 +1479,9 @@ function LibraryCard({
                 </p>
               ) : null}
             </div>
-              <Badge variant={calibrationReady ? "secondary" : "outline"}>
+              <AdminStatusBadge status={calibrationReady ? "generation_ready" : blueprint.generation_readiness}>
                 {calibrationLabel(blueprint.generation_readiness)}
-              </Badge>
+              </AdminStatusBadge>
             </div>
             <CalibrationRunSummary run={latestCalibrationRun} />
             <details className="rounded-md border bg-background px-3 py-2" open={!calibrationReady}>
@@ -1709,8 +1712,8 @@ function LibraryCard({
             <ReasonList reasons={generationBlockingReasons} />
           </div>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </AdminCard>
   );
 }
 
@@ -1793,24 +1796,26 @@ function OverviewMetricCard({
 }) {
   return (
     <Link
-      className="rounded-lg border bg-background p-4 transition-colors hover:bg-muted/30"
+      className="block transition-transform hover:-translate-y-0.5"
       href={href}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <AdminCard
+        compact
+        description="Open this workspace section"
+        title={label}
+      >
+        <p className="text-2xl font-semibold tabular-nums">{value}</p>
+      </AdminCard>
     </Link>
   );
 }
 
 function EmptyWorkspaceState({ children }: { children: ReactNode }) {
   return (
-    <Card>
-      <CardContent className="pt-6 text-sm text-muted-foreground">
-        {children}
-      </CardContent>
-    </Card>
+    <AdminEmptyState
+      description={children}
+      title="Nothing to show here yet."
+    />
   );
 }
 
@@ -2145,13 +2150,12 @@ export async function BlueprintWorkspace({
       <BlueprintWorkspaceNav activeView={view} />
 
       {params.reviewBatch ? (
-        <Card className="border-emerald-300 bg-emerald-50">
-          <CardHeader>
-            <CardTitle className="text-base">
-              Generated drafts sent to Review
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-emerald-950">
+        <AdminCard
+          badge={<AdminStatusBadge status="success" />}
+          className="border-emerald-300 bg-emerald-50"
+          title="Generated drafts sent to Review"
+        >
+          <div className="space-y-2 text-sm text-emerald-950">
             <p>
               Generated drafts: {params.generated ?? "0"} | Blocked drafts:{" "}
               {params.blocked ?? "0"} | Warnings: {params.warnings ?? "0"}
@@ -2163,16 +2167,17 @@ export async function BlueprintWorkspace({
             >
               Open Review Drafts
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       ) : null}
 
       {workspaceSetupNeeded ? (
-        <Card className="border-amber-300 bg-amber-50">
-          <CardHeader>
-            <CardTitle className="text-base">Setup needed</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-amber-900">
+        <AdminCard
+          badge={<AdminStatusBadge status="warning" />}
+          className="border-amber-300 bg-amber-50"
+          title="Setup needed"
+        >
+          <div className="space-y-2 text-sm text-amber-900">
             <p>
               Question Blueprint Library tables or folder columns are not applied
               yet. Apply the latest blueprint migrations before using review
@@ -2184,8 +2189,8 @@ export async function BlueprintWorkspace({
               <p>supabase/migrations/0018_question_blueprint_calibration.sql</p>
               <p>supabase/migrations/0019_question_blueprint_versions.sql</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       ) : null}
 
       {view === "overview" ? (
@@ -2234,11 +2239,11 @@ export async function BlueprintWorkspace({
       ) : null}
 
       {view === "overview" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Quick links</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <AdminCard
+          description="Jump into the main Blueprint Library workflows."
+          title="Quick links"
+        >
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {[
               ["Review blueprints", "/admin/blueprints/review"],
               ["Open library", "/admin/blueprints/library"],
@@ -2253,30 +2258,33 @@ export async function BlueprintWorkspace({
                 {label}
               </Link>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       ) : null}
 
       {view === "sources" || view === "overview" ? (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">AI import blueprint plans</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <AdminCard
+        description="Review and store blueprint review actions extracted from AI Parsing observation runs."
+        title="AI import blueprint plans"
+      >
+        <div className="space-y-3">
           {visibleImportBatches.length ? (
             visibleImportBatches.map((batch) => (
               <div
                 key={batch.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-3 py-3 text-sm"
               >
                 <div>
                   <p className="font-medium">
                     {batch.reviewActionCount} review actions from{" "}
                     {batch.blueprintDraftCount} blueprint drafts
                   </p>
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {batch.id} | {new Date(batch.created_at).toLocaleString()}
+                  <p className="text-xs text-muted-foreground">
+                    Created {new Date(batch.created_at).toLocaleString()}
                   </p>
+                  <AdminDebugDisclosure className="mt-2" title="Import batch ID">
+                    <p className="font-mono break-all">{batch.id}</p>
+                  </AdminDebugDisclosure>
                 </div>
                 {!workspaceSetupNeeded ? (
                   <form action={storeBlueprintReviewActionsFromImportBatch}>
@@ -2286,14 +2294,15 @@ export async function BlueprintWorkspace({
                     </FormSubmitButton>
                   </form>
                 ) : (
-                  <Badge variant="outline">Apply migration first</Badge>
+                  <AdminStatusBadge status="warning">Apply migration first</AdminStatusBadge>
                 )}
               </div>
             ))
           ) : (
-            <p className="text-sm text-muted-foreground">
-              No AI import blueprint review plans found yet.
-            </p>
+            <AdminEmptyState
+              description="Run AI Parsing in blueprint observation mode, then return here to store review actions."
+              title="No AI import blueprint review plans found yet."
+            />
           )}
           {view === "overview" && importBatches.length > visibleImportBatches.length ? (
             <Link
@@ -2303,8 +2312,8 @@ export async function BlueprintWorkspace({
               Open all blueprint import sources
             </Link>
           ) : null}
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
       ) : null}
 
       {view === "review" || view === "overview" ? (
