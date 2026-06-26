@@ -1,7 +1,7 @@
 import type { QuestionType } from "@/types/database";
 import type { QuestionOption } from "@/lib/questions/answer-spec";
 
-export type PracticePhase =
+type PracticePhase =
   | "recommendation"
   | "hint"
   | "grading"
@@ -100,7 +100,7 @@ export type PracticeQuestionReview = {
   verdict?: string | null;
 };
 
-export type PracticeMemoryUpdate = {
+type PracticeMemoryUpdate = {
   longTermCandidate?: string | null;
   sessionMemoryNote?: string | null;
 };
@@ -147,7 +147,7 @@ export type PracticeGradeResponse = {
   trace: PracticeTraceEvent[];
 };
 
-export type PracticeReviewAttempt = PracticeAttemptInput & {
+type PracticeReviewAttempt = PracticeAttemptInput & {
   questionCode?: string;
   result: PracticeGradeResult;
   title?: string;
@@ -280,7 +280,7 @@ export type PracticeWrongQuestionView = {
   title: string;
 };
 
-export type PracticePreferenceResponse = {
+type PracticePreferenceResponse = {
   cacheStatsEnabled?: boolean;
   fullCallLogsEnabled?: boolean;
   lastAgentUpdatedAt: string | null;

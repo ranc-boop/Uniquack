@@ -64,7 +64,7 @@ export type PracticeSearchBatchLane = {
   rationale: string;
 };
 
-export type PracticeSearchShortCandidate = {
+type PracticeSearchShortCandidate = {
   difficulty: number;
   id: string;
   match_quality: "strict" | "relaxed" | "keyword";

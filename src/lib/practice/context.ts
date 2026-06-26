@@ -8,7 +8,6 @@ import { CURRENT_PRACTICE_SESSION_SCHEMA_VERSION } from "@/lib/practice/schema";
 import type { PracticeTraceEvent } from "@/lib/practice/types";
 
 const LOG_ROOT = path.join(process.cwd(), "log", "llm", "practice_agent");
-const MAX_MEMORY_CHARS = 1600;
 const MAX_DIGEST_CHARS = 4500;
 
 function enabled(value: string | undefined) {
@@ -27,7 +26,7 @@ export function stableHash(value: unknown) {
   return crypto.createHash("sha256").update(typeof value === "string" ? value : stableStringify(value)).digest("hex").slice(0, 16);
 }
 
-export function sortKeysDeep(value: unknown): unknown {
+function sortKeysDeep(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeysDeep);
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(
@@ -62,19 +61,6 @@ export function compactText(value: string | null | undefined, maxLength = 800) {
   return `${text.slice(0, maxLength).trimEnd()}...`;
 }
 
-export function compactSessionMemory(value: string | undefined, fallbackGoal: string) {
-  const normalized = (value ?? "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, MAX_MEMORY_CHARS);
-
-  if (normalized) {
-    return normalized;
-  }
-
-  return `Goal: ${fallbackGoal.slice(0, 240)}. No completed rounds yet.`;
-}
-
 export function buildToolDigest(items: unknown[]) {
   return stableStringify(items).replace(/\s+/g, " ").slice(0, MAX_DIGEST_CHARS);
 }
@@ -84,7 +70,7 @@ function numberish(value: unknown) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export function normalizeLLMUsage(usage: Record<string, unknown> | null | undefined) {
+function normalizeLLMUsage(usage: Record<string, unknown> | null | undefined) {
   const record = (usage ?? {}) as Record<string, any>;
   const cacheHitTokens = numberish(
     record.prompt_cache_hit_tokens ??
