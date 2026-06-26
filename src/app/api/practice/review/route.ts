@@ -3,8 +3,17 @@ import { NextResponse } from "next/server";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeChatModelStream, callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { buildUsageEnvelope, compactText, stableHash, stableStringify, summarizeLLMUsage, traced, writePracticeStatsLog } from "@/lib/practice/context";
-import { getOrCreatePracticePreference, persistQuestionReviewResults, persistRoundReviewSummary } from "@/lib/practice/persistence";
+import {
+  CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
+  getOrCreatePracticePreference,
+  persistQuestionReviewResults,
+  persistRoundReviewSummary,
+} from "@/lib/practice/persistence";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
+import {
+  isCurrentPracticeQuestionSnapshot,
+  PRACTICE_SESSION_EXPIRED_MESSAGE,
+} from "@/lib/practice/schema";
 import type {
   PracticeGradeResult,
   PracticeQuestionReview,
@@ -60,25 +69,26 @@ function optionText(options: unknown) {
   });
 }
 
-function recommendationFromRoundQuestion(row: Record<string, unknown>): PracticeRecommendation {
-  const snapshot =
-    row.question_snapshot && typeof row.question_snapshot === "object" && !Array.isArray(row.question_snapshot)
-      ? (row.question_snapshot as Partial<PracticeRecommendation>)
-      : {};
+function recommendationFromRoundQuestion(row: Record<string, unknown>): PracticeRecommendation | null {
+  if (!isCurrentPracticeQuestionSnapshot(row.question_snapshot)) {
+    return null;
+  }
+
+  const snapshot = row.question_snapshot as Partial<PracticeRecommendation>;
 
   return {
     contentExcerpt: String(snapshot.contentExcerpt ?? ""),
-    contentHtml: String(snapshot.contentHtml ?? row.content_html ?? ""),
-    difficulty: Number(snapshot.difficulty ?? row.difficulty_rating ?? 0),
-    expectedSkill: String(snapshot.expectedSkill ?? row.expected_skill ?? ""),
-    id: String(row.source_question_id ?? row.question_id ?? snapshot.id ?? ""),
+    contentHtml: String(snapshot.contentHtml ?? ""),
+    difficulty: Number(snapshot.difficulty ?? 0),
+    expectedSkill: String(snapshot.expectedSkill ?? ""),
+    id: String(row.source_question_id ?? snapshot.id ?? ""),
     options: Array.isArray(snapshot.options) ? snapshot.options : [],
-    questionCode: String(snapshot.questionCode ?? row.question_code ?? "snapshot"),
-    questionType: (snapshot.questionType ?? row.question_type ?? "mixed") as PracticeRecommendation["questionType"],
-    reason: String(snapshot.reason ?? row.reason ?? ""),
+    questionCode: String(snapshot.questionCode ?? "snapshot"),
+    questionType: (snapshot.questionType ?? "mixed") as PracticeRecommendation["questionType"],
+    reason: String(snapshot.reason ?? ""),
     source: snapshot.source,
     tagIds: Array.isArray(snapshot.tagIds) ? snapshot.tagIds : [],
-    title: String(snapshot.title ?? row.title ?? "Saved question"),
+    title: String(snapshot.title ?? "Saved question"),
   };
 }
 
@@ -205,6 +215,9 @@ export async function POST(request: Request) {
 
         if (sessionRecordError) throw new Error(sessionRecordError.message);
         if (!sessionRecord) throw new Error("Practice session not found.");
+        if (sessionRecord.cache_prefix_version !== CURRENT_PRACTICE_SESSION_SCHEMA_VERSION) {
+          throw new Error(PRACTICE_SESSION_EXPIRED_MESSAGE);
+        }
 
         const { data: episodeRecord, error: episodeRecordError } = await supabase
           .from("practice_agent_episodes")
@@ -220,7 +233,7 @@ export async function POST(request: Request) {
 
         const persistedRecommendations = ((roundQuestions ?? []) as Record<string, unknown>[])
           .map(recommendationFromRoundQuestion)
-          .filter((question) => question.id);
+          .filter((question): question is PracticeRecommendation => Boolean(question?.id));
         const recommendationById = new Map<string, any>((body.recommendations ?? []).map((question) => [String(question.id), question]));
         const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
         const lockedLongTermMemory = String(sessionRecord.long_term_memory_snapshot ?? "").trim() ||
@@ -242,7 +255,7 @@ export async function POST(request: Request) {
         const sessionThreadMessages = Array.isArray(sessionRecord.session_thread_messages)
           ? sessionRecord.session_thread_messages.slice(-24)
           : [];
-        const cachePrefixVersion = String(sessionRecord.cache_prefix_version ?? "practice-core-v1");
+        const cachePrefixVersion = CURRENT_PRACTICE_SESSION_SCHEMA_VERSION;
         const profile = await loadPracticeAIProfile(supabase);
         const systemPrompt = await loadPracticePrompt("review-system");
         const usageEnvelopes: Record<string, unknown>[] = [];

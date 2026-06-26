@@ -9,6 +9,7 @@ import { FeedbackText, QuestionText } from "@/components/math-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY } from "@/lib/practice/schema";
 import type {
   PracticeRecommendResponse,
   PracticeSessionDetail,
@@ -100,7 +101,10 @@ export function MistakesPageClient() {
           }),
           method: "POST",
         });
-        window.sessionStorage.setItem("o2i:pendingPracticeRound", JSON.stringify(round));
+        window.sessionStorage.setItem(
+          CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY,
+          JSON.stringify(round),
+        );
         router.push("/practice");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));

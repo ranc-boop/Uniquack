@@ -4,10 +4,12 @@ import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { loadPracticeAIProfile } from "@/lib/practice/ai";
 import { runPracticeRecommendationAgent } from "@/lib/practice/agent-loop";
 import {
+  CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
   getOrCreatePracticePreference,
   normalizePracticeTagContext,
   persistRecommendationRound,
 } from "@/lib/practice/persistence";
+import { PRACTICE_SESSION_EXPIRED_MESSAGE } from "@/lib/practice/schema";
 import type {
   PracticeRecommendRequest,
   PracticeRecommendResponse,
@@ -105,6 +107,9 @@ export async function POST(request: Request) {
   }
 
   const sessionData = sessionResult.data;
+  if (sessionData.cache_prefix_version !== CURRENT_PRACTICE_SESSION_SCHEMA_VERSION) {
+    return NextResponse.json({ error: PRACTICE_SESSION_EXPIRED_MESSAGE }, { status: 410 });
+  }
   const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
   const completedFromSession = Array.isArray(sessionData.completed_question_ids)
     ? sessionData.completed_question_ids.map(String)
@@ -124,7 +129,7 @@ export async function POST(request: Request) {
   }
   const tagContext = normalizePracticeTagContext(sessionData.tag_context, goal);
   const courseFrameworkSnapshot = sessionData.course_framework_snapshot;
-  const cachePrefixVersion = String(sessionData.cache_prefix_version ?? "practice-core-v1");
+  const cachePrefixVersion = CURRENT_PRACTICE_SESSION_SCHEMA_VERSION;
   const outlineUserNotes = String(sessionData.outline_user_notes ?? "");
   const sessionPlan = sessionData.session_plan ?? null;
   const sessionThreadMessages = sessionData.session_thread_messages ?? [];

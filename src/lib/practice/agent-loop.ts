@@ -10,6 +10,7 @@ import {
 } from "@/lib/practice/ai";
 import { buildToolDigest, buildUsageEnvelope, stableHash, stableStringify, summarizeLLMUsage, writePracticeFullCallLog, writePracticeStatsLog } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
+import { CURRENT_PRACTICE_SESSION_SCHEMA_VERSION } from "@/lib/practice/schema";
 import type {
   PracticeQuestionCandidate,
   PracticeRecommendation,
@@ -798,7 +799,7 @@ function buildRecommendationPromptParts({
 }) {
   const stablePrefix = {
     cache_policy: {
-      cache_prefix_version: cachePrefixVersion ?? "practice-core-v1",
+      cache_prefix_version: cachePrefixVersion ?? CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
       dynamic_suffix_rule: "All volatile ids, current answers, current user notes, completed ids, and tool results stay after this stable prefix.",
       tools_schema_policy: "The backend always sends the same tool schema; per-step availability is controlled by tool_policy in the suffix.",
     },
