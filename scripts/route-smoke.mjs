@@ -90,6 +90,8 @@ assert(
     blueprintPage.includes("No blueprints in this folder yet.") &&
     blueprintPage.includes("Calibration status") &&
     blueprintPage.includes("Run calibration preview") &&
+    blueprintPage.includes("Repair failed samples automatically") &&
+    blueprintPage.includes("rerun calibration using Quality mode") &&
     blueprintPage.includes("Temporary calibration samples") &&
     blueprintPage.includes("Run a successful calibration preview before generating Review Draft questions.") &&
     blueprintPage.includes("Blueprint changed after the last successful calibration.") &&
@@ -97,7 +99,8 @@ assert(
     blueprintPage.includes("Version history") &&
     blueprintPage.includes("Edit blueprint fields") &&
     blueprintPage.includes("Advanced split / merge") &&
-    blueprintPage.includes("Deprecate and replace"),
+    blueprintPage.includes("Deprecate and replace") &&
+    blueprintPage.includes("Repair failed drafts automatically"),
   "/admin/blueprints source is missing BP6 manual generation CTA or review link",
 );
 assert(
@@ -113,6 +116,8 @@ assert(
     blueprintActions.includes("loadActiveAssignableLeafTaxonomyByFacet") &&
     blueprintActions.includes("importBatchImportJson") &&
     blueprintActions.includes("executeDeepSeekBlueprintGeneration") &&
+    blueprintActions.includes("repairQuestionBlueprintGenerationResult") &&
+    blueprintActions.includes("modelQualityMode") &&
     blueprintActions.includes("loadActiveAssignableTaxonomyTagIds") &&
     blueprintActions.includes("question_blueprint_calibration_runs") &&
     blueprintActions.includes("updateQuestionBlueprintFields") &&
@@ -147,6 +152,8 @@ assert(
 assert(
   aiPdfPanel.includes("isAIPdfBlueprintObservationCompletePhase") &&
     aiPdfPanel.includes("BlueprintObservationCompletionCallout") &&
+    aiPdfPanel.includes("Blueprint AI quality mode") &&
+    aiPdfPanel.includes("blueprintModelQualityMode") &&
     aiPdfPanel.includes("Open Blueprint Library") &&
     aiPdfPanel.includes("No questions were created by design."),
   "AI PDF live panel must stop spinner and show blueprint completion handoff",

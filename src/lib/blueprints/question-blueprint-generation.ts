@@ -6,6 +6,7 @@ import {
   validateQuestionBlueprintQuality,
 } from "@/lib/blueprints/question-blueprint-quality";
 import type { QuestionBlueprintRow } from "@/lib/blueprints/question-blueprint-persistence";
+import type { QuestionBlueprintRepairAttempt } from "@/lib/blueprints/question-blueprint-repair";
 
 export type QuestionBlueprintGenerationProvider = {
   apiKey: string;
@@ -84,11 +85,13 @@ export type QuestionBlueprintGenerationResult = {
   blockedDrafts: GeneratedBlueprintQuestionDraft[];
   generatedAt: string;
   provider: "deepseek";
+  repairAttempts?: QuestionBlueprintRepairAttempt[];
   request: QuestionBlueprintGenerationRequest;
   stats: {
     acceptedCount: number;
     blockedCount: number;
-    providerCallCount: 1;
+    providerCallCount: number;
+    repairAttemptCount?: number;
     reviewDraftWriteCount: 0;
   };
   warnings: string[];
@@ -563,6 +566,7 @@ export function summarizeQuestionBlueprintGenerationResult(
     provider: result.provider,
     requestId: result.request.requestId,
     reviewDraftWriteCount: 0,
+    repairAttemptCount: result.stats.repairAttemptCount ?? result.repairAttempts?.length ?? 0,
     warningCount:
       result.warnings.length +
       result.acceptedDrafts.reduce(

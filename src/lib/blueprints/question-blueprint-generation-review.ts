@@ -46,6 +46,38 @@ function questionCode({
   return `${safeCodePart(codePrefix) || "BP"}-${index + 1}-${titlePart}`.slice(0, 80);
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function optionIds(options: unknown[]) {
+  return options
+    .map((option) => asRecord(option).id)
+    .map((id) => (typeof id === "string" ? id.trim() : ""))
+    .filter(Boolean);
+}
+
+function answerSpecKind(value: unknown) {
+  const kind = asRecord(value).kind;
+
+  return typeof kind === "string" ? kind.trim().toLowerCase() : "";
+}
+
+function correctOptionReference(answerSpec: unknown) {
+  const record = asRecord(answerSpec);
+  const candidates = [
+    record.correctOptionId,
+    record.correct_option_id,
+    record.correctAnswer,
+    record.correct_answer,
+    record.answer,
+  ];
+
+  return candidates.find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
+}
+
 export function validateBlueprintGeneratedReviewDraft(
   draft: GeneratedBlueprintQuestionDraft,
 ) {
@@ -57,6 +89,17 @@ export function validateBlueprintGeneratedReviewDraft(
   if (!draft.taxonomyTagIds.length) errors.push("Generated draft needs taxonomy tags.");
   if (draft.questionType === "mcq" && !draft.options.length) {
     errors.push("Generated MCQ draft needs options.");
+  }
+  if (draft.questionType === "mcq") {
+    const ids = optionIds(draft.options);
+    const correctRef = correctOptionReference(draft.answerSpec);
+
+    if (answerSpecKind(draft.answerSpec) !== "mcq") {
+      errors.push("Generated MCQ draft needs answerSpec kind mcq.");
+    }
+    if (!correctRef || !ids.includes(correctRef)) {
+      errors.push("Generated MCQ draft needs a valid correct option reference.");
+    }
   }
   if (!draft.originality.originalityChecked) {
     errors.push("Generated draft must pass originality checks.");
@@ -88,6 +131,7 @@ export function buildBlueprintGeneratedReviewDrafts({
           blockedDraftCount: result.blockedDrafts.length,
           blueprintId: result.request.blueprintId,
           provider: "deepseek",
+          repairAttemptCount: result.repairAttempts?.length ?? 0,
           requestId: result.request.requestId,
           reviewRequired: true,
           source: "blueprint_generation",
