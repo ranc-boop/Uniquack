@@ -8,6 +8,8 @@ import {
   QuestionEditor,
   type EditableQuestion,
 } from "@/components/question-editor";
+import { AdminDebugDisclosure } from "@/components/admin/admin-debug-disclosure";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import type { TaxonomyCatalogView } from "@/components/tags/taxonomy-tag-tree-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -118,26 +120,41 @@ export function DraftReviewCard({
     countImportAssetReferences(importedAssetReferences).total > 0;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b bg-muted/10">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             {selectionFormId ? (
               <input
                 aria-label={`Select question ${questionCode}`}
-                className="mt-1 size-4 rounded border"
+                className="mt-1 size-4 shrink-0 rounded border"
                 form={selectionFormId}
                 name="question_id"
                 type="checkbox"
                 value={questionId}
               />
             ) : null}
-            <div>
-              <CardTitle className="text-base">{questionCode}</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">{title}</p>
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="font-mono" variant="outline">
+                  {questionCode}
+                </Badge>
+                <AdminStatusBadge status={status} />
+              </div>
+              <CardTitle className="text-base leading-6">{title}</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Draft imported/generated to teacher review to edits if needed
+                to publish or reject.
+              </p>
             </div>
           </div>
-          <Badge variant="secondary">{status}</Badge>
+          <Button
+            size="sm"
+            variant={isEditorOpen ? "secondary" : "default"}
+            onClick={() => setIsEditorOpen((open) => !open)}
+          >
+            {isEditorOpen ? "Close editor" : "Edit / Review"}
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -159,7 +176,11 @@ export function DraftReviewCard({
             <p>{formattedImportedAt}</p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Taxonomy review
+          </p>
+          <div className="flex min-w-0 flex-wrap gap-1.5">
           {draftTagCount ? (
             <Badge variant="outline">
               Needs tag review: {draftTagCount} draft
@@ -179,8 +200,13 @@ export function DraftReviewCard({
               Published tags: {publishedTagCount}
             </Badge>
           ) : null}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-2 rounded-md border bg-muted/10 p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Publish readiness
+          </p>
+          <div className="flex flex-wrap gap-2">
           <Badge variant={readiness.isReady ? "secondary" : "outline"}>
             {readiness.summaryLabel}
           </Badge>
@@ -199,6 +225,7 @@ export function DraftReviewCard({
           <Badge variant="outline">Images: {imageCount}</Badge>
           <Badge variant="outline">PDF source files: {sourceFileCount}</Badge>
           <ImportedAssetReferenceBadges refs={importedAssetReferences} />
+          </div>
         </div>
         {hasImportedRefs ? (
           <p className="text-xs text-muted-foreground">
@@ -206,45 +233,41 @@ export function DraftReviewCard({
           </p>
         ) : null}
         {isAiImport ? (
-          <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">AI PDF import</Badge>
-              <Badge variant="outline">
-                {aiProviderName ?? "Unknown provider"}
-              </Badge>
-              <Badge variant="outline">
-                {aiProviderModel ?? "Unknown model"}
-              </Badge>
-            </div>
-            <p>
-              Pages: {aiPageRefs.length ? aiPageRefs.join(", ") : "Unknown"}
-              {" | "}
-              Image crop refs: {aiCropCount}
-            </p>
-            {aiCreatedTags.length ? (
-              <p>Created draft tags: {aiCreatedTags.join(", ")}</p>
-            ) : null}
-            {aiWarnings.length ? (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
-                <p className="font-medium">AI/import warnings</p>
-                <ul className="mt-1 list-disc space-y-1 pl-4">
-                  {aiWarnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <div>
-          <Button
-            size="sm"
-            variant={isEditorOpen ? "secondary" : "default"}
-            onClick={() => setIsEditorOpen((open) => !open)}
+          <AdminDebugDisclosure
+            title="Source and AI import details"
+            description="Provider, page, and import warning details are kept secondary so review actions stay primary."
           >
-            {isEditorOpen ? "Close editor" : "Edit question"}
-          </Button>
-        </div>
+            <div className="space-y-3 text-muted-foreground">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">AI PDF import</Badge>
+                <Badge variant="outline">
+                  {aiProviderName ?? "Unknown provider"}
+                </Badge>
+                <Badge variant="outline">
+                  {aiProviderModel ?? "Unknown model"}
+                </Badge>
+              </div>
+              <p>
+                Pages: {aiPageRefs.length ? aiPageRefs.join(", ") : "Unknown"}
+                {" | "}
+                Image crop refs: {aiCropCount}
+              </p>
+              {aiCreatedTags.length ? (
+                <p>Created draft tags: {aiCreatedTags.join(", ")}</p>
+              ) : null}
+              {aiWarnings.length ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
+                  <p className="font-medium">AI/import warnings</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-4">
+                    {aiWarnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </AdminDebugDisclosure>
+        ) : null}
         {isEditorOpen ? (
           <QuestionEditor
             action={updateAction}

@@ -88,6 +88,7 @@ const publicQuestionsPage = await read("src/app/questions/page.tsx");
 const publicQuestionsLoading = await read("src/app/questions/loading.tsx");
 const adminReviewPage = await read("src/app/admin/review/page.tsx");
 const adminReviewLoading = await read("src/app/admin/review/loading.tsx");
+const draftReviewCard = await read("src/components/draft-review-card.tsx");
 const blueprintLoading = await read("src/components/blueprints/blueprint-list-skeleton.tsx");
 const bulkAssetsPage = await read("src/app/admin/imports/assets/page.tsx");
 const videosPage = await read("src/app/videos/page.tsx");
@@ -198,6 +199,38 @@ assert(
   "admin pages must use shared primitives without replacing server-action forms",
 );
 console.log("PASS shared admin primitives render server-compatible patterns");
+assert(
+  adminReviewPage.includes("AdminCard") &&
+    adminReviewPage.includes("AdminActionGroup") &&
+    adminReviewPage.includes("AdminEmptyState") &&
+    adminReviewPage.includes("Review workflow") &&
+    adminReviewPage.includes("Find draft questions") &&
+    adminReviewPage.includes("Review selected drafts") &&
+    adminReviewPage.includes("action={bulkUpdateQuestions}") &&
+    draftReviewCard.includes("AdminDebugDisclosure") &&
+    draftReviewCard.includes("AdminStatusBadge") &&
+    draftReviewCard.includes("Edit / Review") &&
+    draftReviewCard.includes("Source and AI import details") &&
+    draftReviewCard.includes("Publish readiness") &&
+    draftReviewCard.includes("Taxonomy review"),
+  "review drafts UI must use shared primitives, clear workflow copy, and collapsed source/import details",
+);
+assert(
+  adminQuestionsPage.includes("AdminCard") &&
+    adminQuestionsPage.includes("AdminStatusBadge") &&
+    adminQuestionsPage.includes("AdminActionGroup") &&
+    adminQuestionsPage.includes("AdminEmptyState") &&
+    adminQuestionsPage.includes("Content library filters") &&
+    adminQuestionsPage.includes("Question library") &&
+    adminQuestionsPage.includes("action={bulkUpdateQuestions}") &&
+    adminQuestionsPage.includes("action={deleteQuestion}") &&
+    publicQuestionsPage.includes("Published question filters") &&
+    publicQuestionsPage.includes("official difficulty") &&
+    publicQuestionsPage.includes("No published questions match these filters.") &&
+    publicQuestionsLoading.includes("QuestionListSkeleton"),
+  "question bank UI must keep bounded list behavior while rendering polished filter, list, and empty states",
+);
+console.log("PASS review and question bank UI polish keeps server-action behavior intact");
 assert(
   adminQuestionsLoading.includes("Loading questions...") &&
     adminQuestionsLoading.includes("Showing first 50 questions") &&

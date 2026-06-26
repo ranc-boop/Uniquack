@@ -5,8 +5,12 @@ import {
 } from "@/app/admin/questions/actions";
 import { Fragment } from "react";
 import Link from "next/link";
+import { AdminActionGroup } from "@/components/admin/admin-action-group";
+import { AdminCard } from "@/components/admin/admin-card";
 import { AdminDangerZone } from "@/components/admin/admin-danger-zone";
+import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
 import { AdminQuestionEditDetails } from "@/components/admin-question-edit-details";
@@ -22,9 +26,7 @@ import {
   type TaxonomyTagChipAssignment,
 } from "@/components/tags/taxonomy-tag-chips";
 import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -486,11 +488,7 @@ export default async function AdminQuestionsPage({
             </p>
           </div>
         </summary>
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle className="text-base">Create question</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <div className="mt-4 rounded-md border bg-background p-4">
           <form
             id="create-question-form"
             action={createQuestion}
@@ -591,16 +589,15 @@ export default async function AdminQuestionsPage({
               </FormSubmitButton>
             </div>
           </form>
-        </CardContent>
-      </Card>
+        </div>
       </details>
       ) : null}
       {!focusedQuestionId ? (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Find questions</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <AdminCard
+        compact
+        title="Content library filters"
+        description="Search the official question bank without loading full question bodies until you open edit mode."
+      >
           <form className="grid gap-3 md:grid-cols-[1.5fr_1fr_auto]">
             <div className="space-y-2">
               <Label htmlFor="q">Search</Label>
@@ -709,7 +706,7 @@ export default async function AdminQuestionsPage({
               ) : null}
             </div>
           </form>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
             <p>
               Showing {filteredQuestions.length} questions from a page size of{" "}
               {ADMIN_QUESTION_PAGE_SIZE}. Use search, filters, or the next page
@@ -732,8 +729,7 @@ export default async function AdminQuestionsPage({
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </AdminCard>
       ) : null}
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -786,46 +782,63 @@ export default async function AdminQuestionsPage({
           ) : null}
         </div>
       ) : (
-      <div className="rounded-md border">
+      <AdminCard
+        title="Question library"
+        description="Manage matching questions in bounded pages. Open edit mode for full content, taxonomy, assets, and source files."
+        badge={<AdminStatusBadge status="info">{totalQuestions} matching</AdminStatusBadge>}
+        contentClassName="p-0"
+      >
         <form
           id="admin-questions-bulk-form"
           action={bulkUpdateQuestions}
-          className="flex flex-wrap items-center gap-2 border-b p-3 text-sm"
+          className="border-b p-3 text-sm"
         >
           <input type="hidden" name="return_to" value={currentPath} />
-          <select
-            name="status"
-            className="h-9 rounded-md border bg-background px-2 text-sm"
-            defaultValue="draft"
-          >
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="archived">Archived</option>
-          </select>
-          <FormSubmitButton
-            name="bulk_action"
-            value="status"
-            size="sm"
-            variant="outline"
-            pendingLabel="Updating..."
-          >
-            Update selected status
-          </FormSubmitButton>
-          <AdminDangerZone compact title="Delete selected questions">
-            <FormSubmitButton
-              name="bulk_action"
-              value="delete"
-              size="sm"
-              variant="destructive"
-              pendingLabel="Deleting..."
-            >
-              Delete selected
-            </FormSubmitButton>
-          </AdminDangerZone>
-          <span className="text-xs text-muted-foreground">
-            Select rows below before applying a bulk action.
-          </span>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <AdminStatusBadge status="pending">Bulk actions</AdminStatusBadge>
+            <span className="text-xs text-muted-foreground">
+              Select rows below before applying a status update or delete action.
+            </span>
+          </div>
+          <AdminActionGroup
+            secondary={
+              <select
+                name="status"
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+                defaultValue="draft"
+              >
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+                <option value="archived">Archived</option>
+              </select>
+            }
+            primary={
+              <FormSubmitButton
+                name="bulk_action"
+                value="status"
+                size="sm"
+                variant="outline"
+                pendingLabel="Updating..."
+              >
+                Update selected status
+              </FormSubmitButton>
+            }
+            destructive={
+              <AdminDangerZone compact title="Delete selected questions">
+                <FormSubmitButton
+                  name="bulk_action"
+                  value="delete"
+                  size="sm"
+                  variant="destructive"
+                  pendingLabel="Deleting..."
+                >
+                  Delete selected
+                </FormSubmitButton>
+              </AdminDangerZone>
+            }
+          />
         </form>
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -874,7 +887,7 @@ export default async function AdminQuestionsPage({
                     </TableCell>
                     <TableCell>{question.difficulty_rating}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{question.status}</Badge>
+                      <AdminStatusBadge status={question.status} />
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-2">
@@ -902,15 +915,25 @@ export default async function AdminQuestionsPage({
             {!filteredQuestions.length ? (
               <TableRow>
                 <TableCell colSpan={8} className="h-24 text-center">
-                  {(questions ?? []).length
-                    ? "No questions match these filters."
-                    : "No questions yet. Create a draft or use demo seed data from the admin dashboard."}
+                  <AdminEmptyState
+                    title={
+                      (questions ?? []).length
+                        ? "No questions match these filters."
+                        : "No questions yet."
+                    }
+                    description={
+                      (questions ?? []).length
+                        ? "Adjust search, status, taxonomy, or difficulty filters to broaden the question library."
+                        : "Create a draft, import questions, or use demo seed data from the admin dashboard."
+                    }
+                  />
                 </TableCell>
               </TableRow>
             ) : null}
           </TableBody>
         </Table>
-      </div>
+        </div>
+      </AdminCard>
       )}
     </div>
   );
