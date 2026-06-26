@@ -821,6 +821,7 @@ PERF5 improves perceived loading speed for the largest question, review, and Blu
 - `/admin/questions`
 - `/questions`
 - `/admin/review`
+- `/admin/imports/pdf`
 - `/admin/blueprints`
 - `/admin/blueprints/review`
 - `/admin/blueprints/library`
@@ -841,6 +842,8 @@ PERF5 improves perceived loading speed for the largest question, review, and Blu
   - Public question card skeletons.
 - `src/components/review/review-draft-list-skeleton.tsx`
   - Review Draft card skeletons with action/status placeholders.
+- `src/components/ai-pdf-import-loading-skeleton.tsx`
+  - AI PDF upload/provider/source selection shell, private source PDF placeholders, extraction control placeholders, and recent batch dashboard skeletons.
 - `src/components/blueprints/blueprint-list-skeleton.tsx`
   - Blueprint workspace shell, subnav, folder shell, blueprint cards, and import source plan skeletons.
 
@@ -851,6 +854,7 @@ No skeleton dependency was added.
 - Question taxonomy search, difficulty filters, pagination, focused admin edit mode, bulk update, and delete behavior are unchanged.
 - Public question basket/practice client behavior is unchanged.
 - Review Draft edit, publish/reject/status changes, taxonomy support, and pagination are unchanged.
+- AI PDF upload, provider selection, private source PDF handling, extraction, polling, reset/delete, and dashboard behavior are unchanged.
 - Blueprint review, folder filtering, lifecycle actions, calibration, generation readiness, generation controls, source storage, and history/restore behavior are unchanged.
 - No provider calls, question generation changes, Review Draft writes, DB migrations, AI Parsing behavior changes, or auto-publish behavior were added.
 
@@ -861,6 +865,7 @@ Baseline before PERF5:
 - `/questions` client route: 13.3 KB, gzip 4.3 KB.
 - `/admin/questions` client route: 1.0 KB, gzip 562 B.
 - `/admin/review` client route: 7.2 KB, gzip 2.3 KB.
+- `/admin/imports/pdf` client route: 3.7 KB, gzip 1.4 KB.
 - `/practice` shell remains 3.6 KB, gzip 1.4 KB.
 - Blueprint route client chunks remain tiny because the Blueprint workspace is server-rendered.
 

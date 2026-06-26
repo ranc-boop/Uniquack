@@ -61,6 +61,8 @@ const blueprintWorkspace = await read("src/components/blueprints/blueprint-works
 const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
+const aiPdfImportLoading = await read("src/app/admin/imports/pdf/loading.tsx");
+const aiPdfImportLoadingSkeleton = await read("src/components/ai-pdf-import-loading-skeleton.tsx");
 const adminLayout = await read("src/app/admin/layout.tsx");
 const adminSidebar = await read("src/components/admin/admin-sidebar.tsx");
 const adminPageHeader = await read("src/components/admin/admin-page-header.tsx");
@@ -166,13 +168,21 @@ assert(
     blueprintLoading.includes("SourcePlanSkeleton"),
   "blueprint routes must expose shell-first subnav and skeleton workspace content",
 );
-console.log("PASS progressive loading shells are present for questions, review, and blueprints");
 assert(
-  adminLayout.includes("Blueprint Library") &&
-    adminLayout.includes("/admin/blueprints"),
+  aiPdfImportLoading.includes("AIPdfImportLoadingSkeleton") &&
+    aiPdfImportLoadingSkeleton.includes("Loading AI PDF import controls...") &&
+    aiPdfImportLoadingSkeleton.includes("Uploaded PDF sources") &&
+    aiPdfImportLoadingSkeleton.includes("Loading provider and private source PDF access") &&
+    aiPdfImportLoadingSkeleton.includes("Loading AI PDF import dashboard"),
+  "AI PDF import route must expose shell-first loading copy, source skeletons, and dashboard skeletons",
+);
+console.log("PASS progressive loading shells are present for questions, review, blueprints, and AI PDF import");
+assert(
+  adminSidebar.includes("Blueprint Library") &&
+    adminSidebar.includes("/admin/blueprints"),
   "admin navigation must include Blueprint Library",
 );
-console.log("PASS progressive loading shells are present for questions, review, and blueprints");
+console.log("PASS admin navigation includes Blueprint Library");
 assert(
   blueprintPage.includes("view=\"overview\"") &&
     blueprintWorkspace.includes("Question Blueprint Workspace") &&
