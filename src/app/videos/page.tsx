@@ -28,8 +28,13 @@ type VideosPageProps = {
     q?: string;
     min?: string;
     max?: string;
+    page?: string;
   }>;
 };
+
+const VIDEOS_PAGE_SIZE = 25;
+const VIDEO_QUESTION_PREFILTER_LIMIT = 500;
+const VIDEO_SEARCH_QUESTION_LIMIT = 100;
 
 function parseDifficulty(value: string | undefined, fallback: number) {
   const parsed = Number(value);
@@ -39,6 +44,38 @@ function parseDifficulty(value: string | undefined, fallback: number) {
   }
 
   return Math.min(1000, Math.max(0, Math.trunc(parsed)));
+}
+
+function parsePage(value: string | undefined) {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.trunc(parsed) : 1;
+}
+
+function postgrestLikePattern(value: string) {
+  return value.replace(/[,%_]/g, " ").trim();
+}
+
+function pageHref({
+  maxDifficulty,
+  minDifficulty,
+  page,
+  search,
+}: {
+  maxDifficulty: number;
+  minDifficulty: number;
+  page: number;
+  search: string;
+}) {
+  const params = new URLSearchParams();
+
+  if (search) params.set("q", search);
+  if (minDifficulty !== 0) params.set("min", String(minDifficulty));
+  if (maxDifficulty !== 1000) params.set("max", String(maxDifficulty));
+  if (page > 1) params.set("page", String(page));
+
+  const query = params.toString();
+  return query ? `/videos?${query}` : "/videos";
 }
 
 function isMissingTaxonomyTableError(error: unknown) {
@@ -59,6 +96,9 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
   const search = (params.q ?? "").trim().toLowerCase();
   const minDifficulty = parseDifficulty(params.min, 0);
   const maxDifficulty = parseDifficulty(params.max, 1000);
+  const page = parsePage(params.page);
+  const from = (page - 1) * VIDEOS_PAGE_SIZE;
+  const to = from + VIDEOS_PAGE_SIZE - 1;
 
   if (!isSupabaseConfigured()) {
     return <SupabaseConfigNotice />;
@@ -66,12 +106,64 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
 
   const supabase = await createClient();
   const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
-  const { data: videos, error } = await supabase
+  const searchPattern = postgrestLikePattern(search);
+  const difficultyFiltered = minDifficulty !== 0 || maxDifficulty !== 1000;
+  const { data: difficultyQuestions } = difficultyFiltered
+    ? await supabase
+        .from("questions")
+        .select("id")
+        .eq("status", "published")
+        .gte("difficulty_rating", minDifficulty)
+        .lte("difficulty_rating", maxDifficulty)
+        .limit(VIDEO_QUESTION_PREFILTER_LIMIT)
+    : { data: null };
+  const difficultyQuestionIds = (difficultyQuestions ?? []).map(
+    (question) => question.id,
+  );
+  const { data: searchQuestions } = searchPattern
+    ? await supabase
+        .from("questions")
+        .select("id")
+        .eq("status", "published")
+        .or(
+          `question_code.ilike.%${searchPattern}%,title.ilike.%${searchPattern}%`,
+        )
+        .limit(VIDEO_SEARCH_QUESTION_LIMIT)
+    : { data: null };
+  const searchQuestionIds = (searchQuestions ?? []).map(
+    (question) => question.id,
+  );
+  let videosQuery = supabase
     .from("videos")
-    .select("id, title, question_id, provider, embed_url, status")
+    .select("id, title, question_id, provider, embed_url, status", {
+      count: "exact",
+    })
     .eq("status", "published")
-    .order("created_at", { ascending: false })
-    .limit(100);
+    .order("created_at", { ascending: false });
+
+  if (difficultyFiltered) {
+    videosQuery = difficultyQuestionIds.length
+      ? videosQuery.in("question_id", difficultyQuestionIds)
+      : videosQuery.eq("question_id", "00000000-0000-0000-0000-000000000000");
+  }
+
+  if (searchPattern) {
+    const orParts = [
+      `title.ilike.%${searchPattern}%`,
+      `provider.ilike.%${searchPattern}%`,
+      ...(
+        searchQuestionIds.length
+          ? [`question_id.in.(${searchQuestionIds.join(",")})`]
+          : []
+      ),
+    ];
+    videosQuery = videosQuery.or(orParts.join(","));
+  }
+
+  const { count: totalVideos, data: videos, error } = await videosQuery.range(
+    from,
+    to,
+  );
   const questionIds = (videos ?? []).map((video) => video.question_id);
   const { data: questions, error: questionsError } = questionIds.length
     ? await supabase
@@ -130,6 +222,10 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
 
     return difficultyMatches && searchMatches;
   });
+  const totalPages = Math.max(
+    1,
+    Math.ceil((totalVideos ?? filteredVideos.length) / VIDEOS_PAGE_SIZE),
+  );
 
   return (
     <div className="space-y-4">
@@ -183,6 +279,14 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error?.message ??
             questionsError?.message}
+        </p>
+      ) : null}
+      {difficultyFiltered &&
+      difficultyQuestionIds.length === VIDEO_QUESTION_PREFILTER_LIMIT ? (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Video difficulty filtering is using the first{" "}
+          {VIDEO_QUESTION_PREFILTER_LIMIT} matching published questions. Narrow
+          the difficulty range if expected videos are missing.
         </p>
       ) : null}
       <div className="rounded-md border">
@@ -270,6 +374,44 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
             ) : null}
           </TableBody>
         </Table>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+        <p>
+          Showing {filteredVideos.length ? from + 1 : 0}-
+          {from + filteredVideos.length} of {totalVideos ?? filteredVideos.length}{" "}
+          published videos.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button asChild size="sm" variant="outline" disabled={page <= 1}>
+            <Link
+              aria-disabled={page <= 1}
+              href={pageHref({
+                maxDifficulty,
+                minDifficulty,
+                page: Math.max(1, page - 1),
+                search,
+              })}
+            >
+              Previous
+            </Link>
+          </Button>
+          <span>
+            Page {Math.min(page, totalPages)} of {totalPages}
+          </span>
+          <Button asChild size="sm" variant="outline" disabled={page >= totalPages}>
+            <Link
+              aria-disabled={page >= totalPages}
+              href={pageHref({
+                maxDifficulty,
+                minDifficulty,
+                page: Math.min(totalPages, page + 1),
+                search,
+              })}
+            >
+              Next
+            </Link>
+          </Button>
+        </div>
       </div>
     </div>
   );

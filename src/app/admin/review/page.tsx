@@ -26,10 +26,14 @@ type ReviewPageProps = {
   searchParams: Promise<{
     batch?: string;
     error?: string;
+    page?: string;
     saved?: string;
     search?: string;
   }>;
 };
+
+const REVIEW_PAGE_SIZE = 50;
+const REVIEW_RELATED_ROW_LIMIT = REVIEW_PAGE_SIZE * 8;
 
 type ReviewQuestion = {
   answer_spec: unknown;
@@ -76,10 +80,29 @@ function shortId(value: string) {
   return value.slice(0, 8);
 }
 
-function reviewPath({ batch, search }: { batch?: string; search?: string }) {
+function parsePage(value: string | undefined) {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.trunc(parsed) : 1;
+}
+
+function postgrestLikePattern(value: string) {
+  return value.replace(/[,%_]/g, " ").trim();
+}
+
+function reviewPath({
+  batch,
+  page,
+  search,
+}: {
+  batch?: string;
+  page?: number;
+  search?: string;
+}) {
   const query = new URLSearchParams();
   if (batch) query.set("batch", batch);
   if (search) query.set("search", search);
+  if (page && page > 1) query.set("page", String(page));
   const serialized = query.toString();
 
   return serialized ? `/admin/review?${serialized}` : "/admin/review";
@@ -118,7 +141,14 @@ export default async function AdminReviewPage({
   const profile = await requireAdmin();
   const search = (params.search ?? "").trim().toLowerCase();
   const batchId = (params.batch ?? "").trim();
-  const currentPath = reviewPath({ batch: params.batch, search: params.search });
+  const page = parsePage(params.page);
+  const pageFrom = (page - 1) * REVIEW_PAGE_SIZE;
+  const pageTo = pageFrom + REVIEW_PAGE_SIZE - 1;
+  const currentPath = reviewPath({
+    batch: params.batch,
+    page,
+    search: params.search,
+  });
   const supabase = await createClient();
   const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   let batchFilter:
@@ -130,6 +160,7 @@ export default async function AdminReviewPage({
     | null = null;
   let batchQuestionIds: string[] | null = null;
   let batchFilterMissing = false;
+  let totalDraftQuestions = 0;
 
   if (batchId) {
     let batchQuery = supabase
@@ -150,13 +181,14 @@ export default async function AdminReviewPage({
         sourceType: batch.source_type,
       };
 
-      const { data: batchItems } = await supabase
+      const { count: batchItemCount, data: batchItems } = await supabase
         .from("import_batch_items")
-        .select("created_question_id")
+        .select("created_question_id", { count: "exact" })
         .eq("batch_id", batch.id)
         .eq("status", "imported")
         .not("created_question_id", "is", null)
-        .limit(1000);
+        .order("created_at", { ascending: false })
+        .range(pageFrom, pageTo);
 
       batchQuestionIds = Array.from(
         new Set(
@@ -165,6 +197,7 @@ export default async function AdminReviewPage({
             .filter((id): id is string => Boolean(id)),
         ),
       );
+      totalDraftQuestions = batchItemCount ?? 0;
     } else {
       batchQuestionIds = [];
       batchFilterMissing = true;
@@ -179,18 +212,30 @@ export default async function AdminReviewPage({
       .from("questions")
       .select(
         "id, question_code, title, question_type, difficulty_rating, status, answer_spec, options, content_html, content_source, content_source_format, solution_html, solution_source, solution_source_format, created_at",
+        { count: "exact" },
       )
       .eq("status", "draft")
-      .order("created_at", { ascending: false })
-      .limit(100);
+      .order("created_at", { ascending: false });
 
     if (batchQuestionIds) {
       questionsQuery = questionsQuery.in("id", batchQuestionIds);
+    } else {
+      questionsQuery = questionsQuery.range(pageFrom, pageTo);
+    }
+
+    const searchPattern = postgrestLikePattern(search);
+    if (searchPattern) {
+      questionsQuery = questionsQuery.or(
+        `question_code.ilike.%${searchPattern}%,title.ilike.%${searchPattern}%`,
+      );
     }
 
     const result = await questionsQuery;
     questions = (result.data ?? []) as ReviewQuestion[];
     error = result.error;
+    if (!batchFilter) {
+      totalDraftQuestions = result.count ?? 0;
+    }
   }
 
   const draftQuestions = ((questions ?? []) as ReviewQuestion[]).filter(
@@ -200,6 +245,10 @@ export default async function AdminReviewPage({
       question.title.toLowerCase().includes(search),
   );
   const questionIds = draftQuestions.map((question) => question.id);
+  const relatedRowLimit = Math.max(
+    REVIEW_PAGE_SIZE,
+    Math.min(REVIEW_RELATED_ROW_LIMIT, questionIds.length * 8),
+  );
   let importItemsQuery = supabase
     .from("import_batch_items")
     .select(
@@ -207,7 +256,7 @@ export default async function AdminReviewPage({
     )
     .eq("status", "imported")
     .in("created_question_id", questionIds)
-    .limit(1000);
+    .limit(relatedRowLimit);
 
   if (batchFilter) {
     importItemsQuery = importItemsQuery.eq("batch_id", batchFilter.id);
@@ -224,7 +273,7 @@ export default async function AdminReviewPage({
           .from("question_taxonomy_assignments")
           .select("question_id, tag_id, review_status")
           .in("question_id", questionIds)
-          .limit(1000),
+          .limit(relatedRowLimit),
         supabase
           .from("question_assets")
           .select(
@@ -232,7 +281,7 @@ export default async function AdminReviewPage({
           )
           .in("question_id", questionIds)
           .eq("status", "ready")
-          .limit(1000),
+          .limit(relatedRowLimit),
         supabase
           .from("question_source_files")
           .select(
@@ -240,7 +289,7 @@ export default async function AdminReviewPage({
           )
           .in("question_id", questionIds)
           .neq("status", "deleted")
-          .limit(1000),
+          .limit(relatedRowLimit),
         importItemsQuery,
       ])
     : [
@@ -249,6 +298,7 @@ export default async function AdminReviewPage({
         { data: [] },
         { data: [] },
       ];
+  const totalPages = Math.max(1, Math.ceil(totalDraftQuestions / REVIEW_PAGE_SIZE));
 
   const activeTagIds = new Set(
     taxonomyCatalog.nodes.map((node) => node.tag_id),
@@ -424,6 +474,49 @@ export default async function AdminReviewPage({
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error.message}
         </p>
+      ) : null}
+      {totalDraftQuestions > REVIEW_PAGE_SIZE || page > 1 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">
+          <p>
+            Showing {draftQuestions.length ? pageFrom + 1 : 0}-
+            {pageFrom + draftQuestions.length} of {totalDraftQuestions} draft
+            questions.
+          </p>
+          <div className="flex items-center gap-2">
+            <Button asChild size="sm" variant="outline" disabled={page <= 1}>
+              <Link
+                aria-disabled={page <= 1}
+                href={reviewPath({
+                  batch: params.batch,
+                  page: Math.max(1, page - 1),
+                  search: params.search,
+                })}
+              >
+                Previous
+              </Link>
+            </Button>
+            <span>
+              Page {Math.min(page, totalPages)} of {totalPages}
+            </span>
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              disabled={page >= totalPages}
+            >
+              <Link
+                aria-disabled={page >= totalPages}
+                href={reviewPath({
+                  batch: params.batch,
+                  page: Math.min(totalPages, page + 1),
+                  search: params.search,
+                })}
+              >
+                Next
+              </Link>
+            </Button>
+          </div>
+        </div>
       ) : null}
       <form
         id="admin-review-bulk-form"

@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 const BULK_ASSET_DRAFT_QUESTION_LIMIT = 250;
+const BULK_ASSET_EXISTING_FILE_LIMIT = BULK_ASSET_DRAFT_QUESTION_LIMIT * 4;
 
 export default async function AdminImportAssetsPage() {
   await requireAdmin();
@@ -39,13 +40,13 @@ export default async function AdminImportAssetsPage() {
             .from("question_assets")
             .select("question_id, original_filename, object_path")
             .in("question_id", questionIds)
-            .limit(2000),
+            .limit(BULK_ASSET_EXISTING_FILE_LIMIT),
           supabase
             .from("question_source_files")
             .select("question_id, original_filename, object_path")
             .in("question_id", questionIds)
             .neq("status", "deleted")
-            .limit(2000),
+            .limit(BULK_ASSET_EXISTING_FILE_LIMIT),
         ])
       : [{ data: [] }, { data: [] }];
   const existingFileRecords: BulkAssetExistingFileRecord[] = [
@@ -102,8 +103,10 @@ export default async function AdminImportAssetsPage() {
             <p>
               Performance note: matching is limited to the first{" "}
               {BULK_ASSET_DRAFT_QUESTION_LIMIT} draft questions by question
-              code. Use Review Drafts or Question Bank filters to narrow older
-              drafts before uploading large asset batches.
+              code, and existing file checks are bounded to{" "}
+              {BULK_ASSET_EXISTING_FILE_LIMIT} records for that window. Use
+              Review Drafts or Question Bank filters to narrow older drafts
+              before uploading large asset batches.
             </p>
           ) : null}
           <p>
