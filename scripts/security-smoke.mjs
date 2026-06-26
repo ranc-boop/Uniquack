@@ -906,7 +906,11 @@ assert(
   aiPdfDashboard.includes("Blueprint observation completed") &&
     aiPdfDashboard.includes("Open Blueprint Library") &&
     aiPdfDashboard.includes("Review and approve extracted question blueprints") &&
-    aiPdfDashboard.includes("No questions were created by design."),
+    aiPdfDashboard.includes("No questions were created by design.") &&
+    aiPdfDashboard.includes("Clusters:") &&
+    aiPdfDashboard.includes("Drafts pending review:") &&
+    aiPdfDashboard.includes("Approved-ready actions:") &&
+    aiPdfDashboard.includes("Safety notes: no generated questions"),
   "AI PDF dashboard must show blueprint observation completion handoff",
 );
 assert(
@@ -991,6 +995,8 @@ assert(
     blueprintPage.includes("not saved as questions") &&
     blueprintPage.includes("sent to Review") &&
     blueprintPage.includes("Run a successful calibration preview before generating Review Draft questions.") &&
+    blueprintPage.includes("Blueprint changed after the last successful calibration.") &&
+    blueprintPage.includes("Re-run calibration for the current version.") &&
     blueprintPage.includes("Generation disabled"),
   "blueprint library page must show calibration status and gate full generation",
 );
@@ -1000,6 +1006,8 @@ assert(
     blueprintActions.includes("question_blueprint_calibration_runs") &&
     blueprintActions.includes("generation_readiness: summary.readiness") &&
     blueprintActions.includes("last_calibration_run_id") &&
+    blueprintActions.includes("Number(calibrationRun.blueprint_version) !== Number(blueprint.version)") &&
+    blueprintActions.includes("Blueprint changed after the last successful calibration. Re-run calibration for the current version.") &&
     blueprintActions.includes("Run a successful calibration preview before generating Review Draft questions.") &&
     blueprintActions.indexOf("generation_readiness !== \"generation_ready\"") <
       blueprintActions.lastIndexOf("executeDeepSeekBlueprintGeneration"),
@@ -1047,8 +1055,17 @@ assert(
     blueprintActions.includes("importBatchImportJson") &&
     blueprintActions.includes("reviewRequired: true") &&
     blueprintActions.includes("originalityChecked: true") &&
+    blueprintActions.includes("Generated draft questions were sent to Review Drafts.") &&
     blueprintActions.includes("DeepSeek provider is not configured or not enabled."),
   "blueprint generation action must be admin-only, DeepSeek-only, and Review-Draft-only",
+);
+assert(
+  questionBlueprintGenerationReview.includes("status: \"draft\"") &&
+    questionBlueprintGenerationReview.includes("source: \"blueprint_generation\"") &&
+    questionBlueprintGenerationReview.includes("provider: \"deepseek\"") &&
+    questionBlueprintGenerationReview.includes("reviewRequired: true") &&
+    questionBlueprintGenerationReview.includes("tag_ids: draft.taxonomyTagIds"),
+  "blueprint generation review handoff must create draft-only taxonomy-tagged Review payloads",
 );
 assert(
   blueprintActions.includes("deleted_at: new Date().toISOString()") &&

@@ -92,6 +92,7 @@ assert(
     blueprintPage.includes("Run calibration preview") &&
     blueprintPage.includes("Temporary calibration samples") &&
     blueprintPage.includes("Run a successful calibration preview before generating Review Draft questions.") &&
+    blueprintPage.includes("Blueprint changed after the last successful calibration.") &&
     blueprintPage.includes("Edit, version, split / merge") &&
     blueprintPage.includes("Version history") &&
     blueprintPage.includes("Edit blueprint fields") &&
@@ -119,6 +120,7 @@ assert(
     blueprintActions.includes("createMergedQuestionBlueprintDraft") &&
     blueprintActions.includes("replaceQuestionBlueprint") &&
     blueprintActions.includes("question_blueprint_versions") &&
+    blueprintActions.includes("Number(calibrationRun.blueprint_version) !== Number(blueprint.version)") &&
     blueprintActions.includes("generation_readiness !== \"generation_ready\"") &&
     !blueprintActions.includes(".delete(") &&
     !blueprintActions.includes("generateWithGeminiNativePdf") &&
@@ -129,7 +131,9 @@ console.log("PASS /admin/blueprints source exposes lifecycle-gated DeepSeek draf
 assert(
   aiPdfDashboard.includes("Blueprint Observation Clusters") &&
     aiPdfDashboard.includes("Source questions were split into separate blueprint") &&
-    aiPdfDashboard.includes("candidates before DeepSeek analysis."),
+    aiPdfDashboard.includes("candidates before DeepSeek analysis.") &&
+    aiPdfDashboard.includes("Clusters:") &&
+    aiPdfDashboard.includes("Drafts pending review:"),
   "AI PDF dashboard must show blueprint observation clustering metadata",
 );
 console.log("PASS AI PDF dashboard source surfaces blueprint observation clusters");
