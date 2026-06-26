@@ -330,6 +330,94 @@ Server bundles:
 - PERF3 should add deeper pagination or search-first loading for taxonomy and Review Draft support data.
 - PERF4 should turn the route chunk table from `perf:audit` into a CI budget once the baseline is accepted.
 
+## PERF2 Dead Code And Unused Dependency Cleanup
+
+PERF2 re-ran Knip after PERF1 and removed only candidates with no imports, no route conventions, and no current manual smoke requirement.
+
+### Deleted Files
+
+- `src/components/editor/tiptap-extensions.ts`
+- `src/components/questions-table.tsx`
+- `src/components/ui/command.tsx`
+- `src/components/ui/form.tsx`
+- `src/components/ui/pagination.tsx`
+- `src/components/ui/slider.tsx`
+- `src/components/ui/tooltip.tsx`
+
+### Removed Dependencies
+
+- `@hookform/resolvers`
+- `@radix-ui/react-slider`
+- `@radix-ui/react-tooltip`
+- `@tanstack/react-table`
+- `@tiptap/extension-mathematics`
+- `@tiptap/react`
+- `@tiptap/starter-kit`
+- `cmdk`
+- `react-hook-form`
+- `@types/katex`
+
+`katex` itself stayed because `MathContent` and the markdown/LaTeX smoke tests still use it directly.
+
+### Knip Classification
+
+Safe to delete now:
+
+- The old Tiptap extension helper and Tiptap dependencies. `rg` found no imports outside the helper itself.
+- The unused `QuestionsTable` component. Current question bank routes use other table/client components.
+- The unused shadcn-style `command`, `form`, `pagination`, `slider`, and `tooltip` component files and their direct dependencies.
+
+Probably used dynamically / keep:
+
+- `scripts/route-smoke.mjs`. It is intentionally run directly in CI/manual checks even though Knip does not see it through `package.json`.
+- `scripts/admin-reset-question-bank.mjs`. It is an admin-only manual safety tool and should not be removed just because it is not part of normal app imports.
+- `scripts/markdown-latex-editor-browser-smoke.mjs`. It remains a manual browser smoke for editor behavior; the node markdown smoke still runs in automated checks.
+
+Needs manual follow-up:
+
+- Unused exported helpers/types in AI PDF import, Blueprint, taxonomy, provider, and batch-import modules. Many are planning contracts, smoke fixtures, or future integration boundaries. Removing them should happen module-by-module with owner review, not as broad PERF2 deletion.
+- Unused shadcn sub-exports such as `CardFooter`, `CardDescription`, table/dialog subcomponents, and variant helper exports. These are low impact and may be used by upcoming UI work.
+
+Dependency can be removed:
+
+- The Tiptap, React Hook Form, cmdk, React Table, Radix slider, and Radix tooltip packages listed above.
+
+Dependency must stay:
+
+- `katex`, because runtime math rendering and smoke tests import it.
+- Core Radix primitives still imported by active UI components, such as accordion, checkbox, dialog, label, popover, and slot.
+
+### PERF2 Non-Changes
+
+- No route files, server actions, migrations, AI provider code, AI parsing logic, Blueprint logic, Review Draft behavior, or question generation behavior changed.
+- No attempt was made to prune public exported planning contracts from AI/Blueprint modules in this pass.
+- `deadcode:audit` is still expected to return non-zero because the remaining findings are intentionally classified as keep/follow-up.
+
+### PERF2 Verification
+
+Commands run:
+
+```bash
+npm.cmd run deadcode:audit
+npm.cmd run lint
+npm.cmd run build
+node scripts/security-smoke.mjs
+node scripts/route-smoke.mjs
+node scripts/supabase-rls-smoke.mjs
+node scripts/batch-import-smoke.mjs
+node scripts/question-assets-security-smoke.mjs
+node scripts/bulk-asset-import-smoke.mjs
+node scripts/package-import-smoke.mjs
+node scripts/markdown-latex-editor-smoke.mjs
+npm.cmd run smoke
+npm.cmd run perf:audit
+npm.cmd run analyze
+```
+
+Manual route checks also verified that `/practice`, admin import routes, Blueprint routes, Review Drafts, Admin Questions, `/questions`, and `/videos` still render or auth-redirect without server errors.
+
+`deadcode:audit` remains non-zero after cleanup, but no unused dependencies remain. The remaining unused files are intentionally kept manual scripts, and the remaining unused exports/types are follow-up candidates.
+
 ## Commands Run
 
 ```bash
