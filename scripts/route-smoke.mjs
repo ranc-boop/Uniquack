@@ -61,12 +61,18 @@ const blueprintWorkspace = await read("src/components/blueprints/blueprint-works
 const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
+const aiPdfImportLoading = await read("src/app/admin/imports/pdf/loading.tsx");
+const aiPdfImportLoadingSkeleton = await read("src/components/ai-pdf-import-loading-skeleton.tsx");
 const adminLayout = await read("src/app/admin/layout.tsx");
 const adminSidebar = await read("src/components/admin/admin-sidebar.tsx");
 const adminPageHeader = await read("src/components/admin/admin-page-header.tsx");
 const adminQuestionsPage = await read("src/app/admin/questions/page.tsx");
+const adminQuestionsLoading = await read("src/app/admin/questions/loading.tsx");
 const publicQuestionsPage = await read("src/app/questions/page.tsx");
+const publicQuestionsLoading = await read("src/app/questions/loading.tsx");
 const adminReviewPage = await read("src/app/admin/review/page.tsx");
+const adminReviewLoading = await read("src/app/admin/review/loading.tsx");
+const blueprintLoading = await read("src/components/blueprints/blueprint-list-skeleton.tsx");
 const bulkAssetsPage = await read("src/app/admin/imports/assets/page.tsx");
 const videosPage = await read("src/app/videos/page.tsx");
 assert(
@@ -138,6 +144,45 @@ assert(
   "admin shell must expose grouped navigation, active state, and shared page header",
 );
 console.log("PASS admin shell exposes grouped navigation and shared page header");
+assert(
+  adminQuestionsLoading.includes("Loading questions...") &&
+    adminQuestionsLoading.includes("Showing first 50 questions") &&
+    adminQuestionsLoading.includes("QuestionListSkeleton"),
+  "admin questions route must expose shell-first loading copy and skeleton rows",
+);
+assert(
+  publicQuestionsLoading.includes("Loading questions...") &&
+    publicQuestionsLoading.includes("Showing first 25 published questions") &&
+    publicQuestionsLoading.includes("QuestionListSkeleton"),
+  "public questions route must expose shell-first loading copy and skeleton cards",
+);
+assert(
+  adminReviewLoading.includes("Loading Review Drafts...") &&
+    adminReviewLoading.includes("ReviewDraftListSkeleton"),
+  "admin review route must expose shell-first loading copy and skeleton cards",
+);
+assert(
+  blueprintLoading.includes("BlueprintWorkspaceLoading") &&
+    blueprintLoading.includes("Loading blueprint workspace...") &&
+    blueprintLoading.includes("BlueprintSubnav") &&
+    blueprintLoading.includes("SourcePlanSkeleton"),
+  "blueprint routes must expose shell-first subnav and skeleton workspace content",
+);
+assert(
+  aiPdfImportLoading.includes("AIPdfImportLoadingSkeleton") &&
+    aiPdfImportLoadingSkeleton.includes("Loading AI PDF import controls...") &&
+    aiPdfImportLoadingSkeleton.includes("Uploaded PDF sources") &&
+    aiPdfImportLoadingSkeleton.includes("Loading provider and private source PDF access") &&
+    aiPdfImportLoadingSkeleton.includes("Loading AI PDF import dashboard"),
+  "AI PDF import route must expose shell-first loading copy, source skeletons, and dashboard skeletons",
+);
+console.log("PASS progressive loading shells are present for questions, review, blueprints, and AI PDF import");
+assert(
+  adminSidebar.includes("Blueprint Library") &&
+    adminSidebar.includes("/admin/blueprints"),
+  "admin navigation must include Blueprint Library",
+);
+console.log("PASS admin navigation includes Blueprint Library");
 assert(
   blueprintPage.includes("view=\"overview\"") &&
     blueprintWorkspace.includes("Question Blueprint Workspace") &&
