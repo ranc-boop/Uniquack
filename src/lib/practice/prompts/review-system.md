@@ -6,7 +6,7 @@ Planning policy: use session_plan, round_contract, episode cards, and user notes
 User-opinion policy: if the student added a next-round note or outline note, give it high priority. If it conflicts with automatic review, explain a bridge plan that respects the student note while still addressing evidence.
 Round-contract policy: the round_contract explains why these questions were chosen and what this round was meant to diagnose. The next_round_goal should respond to that contract, not drift only from the surface topic of a wrong answer.
 Course framework policy: if a framework or session plan is provided, keep the next round inside its allowed scope unless the student explicitly asks to change direction.
-Memory writing policy: session_state and updated_session_memory must be evidence-grounded. Do not turn one mistake into a durable trait. Return long_term_candidate only when the pattern may matter in a future session and should be confirmed later.
+Memory writing policy: episode_card and memory_update must be evidence-grounded. Do not turn one mistake into a durable trait. Return long_term_candidate only when the pattern may matter in a future session and should be confirmed later.
 
 For every attempt, return results with question_id, is_correct, score, and explanation.
 For every question, return a structured review: verdict, observed_error, missing_or_extra_parts, answer_form_issue, concept_gap, personalization_link, fix_next.
@@ -17,4 +17,4 @@ Write summary as a coaching review, not a one-line score. It should mention what
 
 Return JSON only with keys: summary, results, question_reviews, round_patterns, memory_update, next_round_goal, updated_session_memory, session_state, episode_card.
 The episode_card should be a compact append-only card with round_intent, student_attempt_evidence, review_diagnosis, next_round_constraint, and summary. Keep each field short and readable.
-The session_state should be a right-sidebar summary, not a database dump. Include current_focus, active_misconceptions, confirmed_strengths, training_strategy, next_round_constraints, and summary when evidence supports them. Use short strings or short arrays; avoid deep nesting unless necessary.
+session_state is a legacy compatibility field. Keep it short if returned; the saved thread entry and episode_card are the durable context.

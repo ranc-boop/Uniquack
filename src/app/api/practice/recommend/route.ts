@@ -91,7 +91,7 @@ export async function POST(request: Request) {
   const trace: PracticeTraceEvent[] = [];
   const sessionResult = await supabase
     .from("practice_sessions")
-    .select("cache_prefix_version,completed_question_ids,course_framework_snapshot,outline_user_notes,session_memory,session_plan,session_state,session_thread_messages,tag_context")
+    .select("cache_prefix_version,completed_question_ids,course_framework_snapshot,long_term_memory_snapshot,outline_user_notes,session_plan,session_thread_messages,tag_context")
     .eq("user_id", auth.user.id)
     .eq("id", sessionId)
     .maybeSingle();
@@ -113,14 +113,20 @@ export async function POST(request: Request) {
   const effectiveCompletedQuestionIds = Array.from(
     new Set([...completedFromSession, ...completedQuestionIds]),
   ).filter((questionId) => !wrongSet.has(questionId));
-  const baseMemory = String(sessionData.session_memory ?? body.sessionMemory ?? "");
-  const longTermPreference = preference.long_term_preference.trim();
+  const lockedLongTermMemory = String(sessionData.long_term_memory_snapshot ?? "").trim() ||
+    preference.long_term_preference.trim();
+  if (!String(sessionData.long_term_memory_snapshot ?? "").trim() && lockedLongTermMemory) {
+    await supabase
+      .from("practice_sessions")
+      .update({ long_term_memory_snapshot: lockedLongTermMemory.slice(0, 1000) })
+      .eq("user_id", auth.user.id)
+      .eq("id", sessionId);
+  }
   const tagContext = normalizePracticeTagContext(sessionData.tag_context, goal);
   const courseFrameworkSnapshot = sessionData.course_framework_snapshot;
   const cachePrefixVersion = String(sessionData.cache_prefix_version ?? "practice-core-v1");
   const outlineUserNotes = String(sessionData.outline_user_notes ?? "");
   const sessionPlan = sessionData.session_plan ?? null;
-  const sessionState = sessionData.session_state ?? null;
   const sessionThreadMessages = sessionData.session_thread_messages ?? [];
 
   if (wantsEventStream(request)) {
@@ -140,14 +146,12 @@ export async function POST(request: Request) {
             completedQuestionIds: effectiveCompletedQuestionIds,
             courseFrameworkSnapshot,
             goal,
-            longTermMemory: longTermPreference,
+            longTermMemory: lockedLongTermMemory,
             outlineUserNotes,
             onTrace: (event) => send("trace", event),
             profile,
             questionCount,
-            sessionMemory: baseMemory,
             sessionPlan,
-            sessionState,
             sessionThreadMessages,
             supabase,
             tagContext,
@@ -174,7 +178,7 @@ export async function POST(request: Request) {
             sessionMemory: agentResult.sessionMemory,
             sessionId,
             sessionPlan,
-            sessionState: agentResult.sessionState ?? sessionState,
+            sessionState: agentResult.sessionState,
             tagContext: agentResult.tagContext,
             trace,
           };
@@ -183,7 +187,7 @@ export async function POST(request: Request) {
             courseFrameworkSnapshot,
             llmUsage: agentResult.llmUsage,
             recommendations: agentResult.recommendations,
-            response,
+            response: { ...response, currentTaskSuffix: agentResult.currentTaskSuffix },
             sessionId,
             supabase,
             trace,
@@ -218,13 +222,11 @@ export async function POST(request: Request) {
       completedQuestionIds: effectiveCompletedQuestionIds,
       courseFrameworkSnapshot,
       goal,
-      longTermMemory: longTermPreference,
+      longTermMemory: lockedLongTermMemory,
       outlineUserNotes,
       profile,
       questionCount,
-      sessionMemory: baseMemory,
       sessionPlan,
-      sessionState,
       sessionThreadMessages,
       supabase,
       tagContext,
@@ -253,7 +255,7 @@ export async function POST(request: Request) {
       sessionMemory: agentResult.sessionMemory,
       sessionId,
       sessionPlan,
-      sessionState: agentResult.sessionState ?? sessionState,
+      sessionState: agentResult.sessionState,
       tagContext: agentResult.tagContext,
       trace,
     };
@@ -262,7 +264,7 @@ export async function POST(request: Request) {
       courseFrameworkSnapshot,
       llmUsage: agentResult.llmUsage,
       recommendations: agentResult.recommendations,
-      response,
+      response: { ...response, currentTaskSuffix: agentResult.currentTaskSuffix },
       sessionId,
       supabase,
       trace,

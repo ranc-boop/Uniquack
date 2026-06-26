@@ -300,6 +300,7 @@ export type PracticeSession = {
   completed_question_ids: string[];
   course_framework_id: string | null;
   course_framework_snapshot: Json | null;
+  long_term_memory_snapshot: string;
   session_plan: Json;
   session_thread_messages: Json;
   session_state: Json;
@@ -409,6 +410,7 @@ export type PracticePreferenceMergeJob = {
   status: "pending" | "running" | "succeeded" | "failed";
   previous_preference: string;
   source_session_memory: string;
+  source_summary: Json;
   result_preference: string | null;
   error_message: string | null;
   claimed_at: string | null;

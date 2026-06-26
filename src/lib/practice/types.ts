@@ -204,6 +204,7 @@ export type PracticeSessionSummary = {
   goal: string;
   id: string;
   lastActivityAt: string;
+  longTermMemorySnapshot?: string;
   outlineUserNotes?: string;
   roundCount: number;
   sessionMemory: string;

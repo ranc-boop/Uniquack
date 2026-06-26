@@ -8,7 +8,7 @@ import {
   type PracticeToolCall,
   type PracticeToolDefinition,
 } from "@/lib/practice/ai";
-import { buildToolDigest, buildUsageEnvelope, compactSessionMemory, stableHash, stableStringify, summarizeLLMUsage, writePracticeFullCallLog, writePracticeStatsLog } from "@/lib/practice/context";
+import { buildToolDigest, buildUsageEnvelope, stableHash, stableStringify, summarizeLLMUsage, writePracticeFullCallLog, writePracticeStatsLog } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import type {
   PracticeQuestionCandidate,
@@ -48,8 +48,6 @@ type FinalizeArgs = {
   reasons?: Record<string, string>;
   round_contract?: Record<string, unknown>;
   round_goal?: string;
-  session_memory?: string;
-  session_state?: Record<string, unknown>;
   visible_thought?: string;
 };
 
@@ -71,7 +69,6 @@ type ToolExecutionState = {
   questionCount: number;
   retainedBrowseTags: Map<string, RetainedBrowseTag>;
   searchCallsUsed: number;
-  sessionMemory: string;
   supabase: SupabaseLike;
   tagContext: PracticeTagContext;
   trace: PracticeTraceEvent[];
@@ -308,15 +305,6 @@ const finalizeTool: PracticeToolDefinition = {
           description: "Structured contract for this round: plan node, recommendation intent, selected question diagnostic purposes, and drift guard.",
           type: "object",
         },
-        session_memory: {
-          description: "Short human-readable session note for UI compatibility. Do not use this as the only thread memory and do not copy full question stems.",
-          type: "string",
-        },
-        session_state: {
-          additionalProperties: true,
-          description: "Volatile current session state such as current focus, active misconceptions, strengths, and next-round constraints.",
-          type: "object",
-        },
       },
       [
         "visible_thought",
@@ -324,7 +312,6 @@ const finalizeTool: PracticeToolDefinition = {
         "reasons",
         "expected_skills",
         "round_goal",
-        "session_memory",
       ],
     ),
   },
@@ -699,10 +686,6 @@ async function executePracticeTool({
           ? args.round_contract as Record<string, unknown>
           : undefined,
         round_goal: asString(args.round_goal, state.goal),
-        session_memory: asString(args.session_memory, state.sessionMemory).slice(0, 1600),
-        session_state: typeof args.session_state === "object" && args.session_state
-          ? args.session_state as Record<string, unknown>
-          : undefined,
         visible_thought: visibleThought,
       };
       state.tagContext = generatedTagContext;
@@ -796,9 +779,7 @@ function buildRecommendationPromptParts({
   longTermMemory,
   outlineUserNotes,
   questionCount,
-  sessionMemory,
   sessionPlan,
-  sessionState,
   sessionThreadMessages,
   tagContext,
   userNextRoundNote,
@@ -810,9 +791,7 @@ function buildRecommendationPromptParts({
   longTermMemory?: string;
   outlineUserNotes?: string;
   questionCount: number;
-  sessionMemory: string;
   sessionPlan?: unknown;
-  sessionState?: unknown;
   sessionThreadMessages?: unknown;
   tagContext: PracticeTagContext;
   userNextRoundNote?: string;
@@ -827,7 +806,7 @@ function buildRecommendationPromptParts({
     session_plan: sessionPlan ?? null,
     thread_policy: {
       current_call: "recommend_next_round",
-      inheritance: "Use append-only episode cards and round contracts as the main thread. Session memory is only a UI fallback.",
+      inheritance: "Use append-only current task entries, episode cards, and thread checkpoints as the main thread.",
       user_opinion_priority: "User outline notes and next-round notes are appended at the tail and should outweigh automatic assumptions when safe.",
     },
   };
@@ -848,8 +827,7 @@ function buildRecommendationPromptParts({
     },
     memory_context: {
       long_term_memory: longTermMemory?.trim() || "No long-term memory yet.",
-      session_memory_ui_fallback: sessionMemory,
-      session_state: sessionState ?? {},
+      snapshot_policy: "This is the long-term memory snapshot locked when the session was created. Do not assume later global preference edits apply to this session.",
     },
     tag_context: tagContext,
     tool_policy: {
@@ -858,7 +836,7 @@ function buildRecommendationPromptParts({
       practice_search_batch: "allowed until search limit",
     },
     user_outline_notes: outlineUserNotes?.trim() || "",
-    volatile_notice: "This suffix intentionally contains changing IDs, user notes, current goal, and current session state to protect the cached prefix.",
+    volatile_notice: "This suffix intentionally contains changing IDs, user notes, current goal, completed ids, tags, and locked memory to protect the cached prefix.",
   };
 
   return { dynamicSuffix, stablePrefix, threadEntries };
@@ -874,9 +852,7 @@ export async function runPracticeRecommendationAgent({
   outlineUserNotes,
   profile,
   questionCount,
-  sessionMemory,
   sessionPlan,
-  sessionState,
   sessionThreadMessages,
   supabase,
   tagContext,
@@ -892,9 +868,7 @@ export async function runPracticeRecommendationAgent({
   outlineUserNotes?: string;
   profile: PracticeProfile;
   questionCount: number;
-  sessionMemory?: string;
   sessionPlan?: unknown;
-  sessionState?: unknown;
   sessionThreadMessages?: unknown;
   supabase: SupabaseLike;
   tagContext?: PracticeTagContext;
@@ -902,7 +876,6 @@ export async function runPracticeRecommendationAgent({
   userNextRoundNote?: string;
 }) {
   const maxToolCalls = envToolCallLimit();
-  const compactMemory = compactSessionMemory(sessionMemory, goal);
   const normalizedTagContext = normalizeTagContext(tagContext, goal);
   const state: ToolExecutionState = {
     awaitingBrowseRetention: false,
@@ -916,7 +889,6 @@ export async function runPracticeRecommendationAgent({
     questionCount,
     retainedBrowseTags: new Map(),
     searchCallsUsed: 0,
-    sessionMemory: compactMemory,
     supabase,
     tagContext: normalizedTagContext,
     trace,
@@ -930,9 +902,7 @@ export async function runPracticeRecommendationAgent({
     longTermMemory,
     outlineUserNotes,
     questionCount,
-    sessionMemory: compactMemory,
     sessionPlan,
-    sessionState,
     sessionThreadMessages,
     tagContext: normalizedTagContext,
     userNextRoundNote,
@@ -947,7 +917,7 @@ export async function runPracticeRecommendationAgent({
   await pushTrace(state, {
     inputSummary:
       "Cache-first context: stable prefix + append-only episode cards + volatile tail suffix. Dynamic IDs and user notes are kept at the tail.",
-    outputSummary: `prefix_hash=${stableHash(stablePrefix)}; suffix_hash=${stableHash(dynamicSuffix)}; thread_entries=${threadEntries.length}; memory=${compactMemory.length} chars; completed=${completedQuestionIds.length}; tag_context=${normalizedTagContext.confirmedTagIds.length}; max_tool_calls=${maxToolCalls}`,
+    outputSummary: `prefix_hash=${stableHash(stablePrefix)}; suffix_hash=${stableHash(dynamicSuffix)}; thread_entries=${threadEntries.length}; locked_memory=${(longTermMemory ?? "").trim().length} chars; completed=${completedQuestionIds.length}; tag_context=${normalizedTagContext.confirmedTagIds.length}; max_tool_calls=${maxToolCalls}`,
     phase: "context",
     toolName: "compact_agent_context",
   });
@@ -1100,12 +1070,13 @@ export async function runPracticeRecommendationAgent({
   return {
     maxToolCalls,
     providerLabel,
+    currentTaskSuffix: dynamicSuffix,
     llmUsage,
     recommendations,
     roundContract: state.finalized?.round_contract ?? null,
     roundGoal: state.finalized?.round_goal?.trim() || goal,
-    sessionMemory: state.finalized?.session_memory?.trim() || compactMemory,
-    sessionState: state.finalized?.session_state ?? null,
+    sessionMemory: "",
+    sessionState: null,
     tagContext: buildGeneratedTagContext(state),
   };
 }

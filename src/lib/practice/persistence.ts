@@ -98,6 +98,42 @@ function appendThreadEntry(current: unknown, entry: Record<string, unknown>, lim
   return [...asArray(current), entry].slice(-limit);
 }
 
+function compactJsonForThread(value: unknown, maxLength = 2200) {
+  let text = "";
+  try {
+    text = JSON.stringify(value ?? {});
+  } catch {
+    text = String(value ?? "");
+  }
+
+  return text.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function buildThreadCheckpoint({
+  entries,
+  episodeCard,
+  review,
+  roundIndex,
+}: {
+  entries: unknown[];
+  episodeCard: unknown;
+  review: { nextRoundGoal: string; roundPatterns?: string[]; summary: string };
+  roundIndex: number;
+}) {
+  return {
+    created_at: new Date().toISOString(),
+    kind: "thread_checkpoint",
+    summary: {
+      latest_review: review.summary,
+      next_round_goal: review.nextRoundGoal,
+      recent_entries: entries.slice(-20).map((entry) => compactJsonForThread(entry, 1800)),
+      round_patterns: review.roundPatterns ?? [],
+      terminal_episode: compactJsonForThread(episodeCard, 2400),
+    },
+    through_round_index: roundIndex,
+  };
+}
+
 function buildRoundContract({
   recommendations,
   response,
@@ -123,16 +159,32 @@ function buildRoundContract({
 }
 
 function buildRecommendThreadEntry({
+  currentTaskSuffix,
   roundContract,
+  roundId,
   roundIndex,
+  recommendations,
 }: {
+  currentTaskSuffix?: unknown;
   roundContract: unknown;
+  roundId: string;
   roundIndex: number;
+  recommendations: PracticeRecommendation[];
 }) {
   const contract = asObject(roundContract);
   return {
     kind: "current_task",
+    current_task_suffix: currentTaskSuffix ?? {},
+    round_contract: roundContract,
+    round_goal: contract.round_goal ?? "Practice round",
+    round_id: roundId,
     round_index: roundIndex,
+    selected_question_purposes: recommendations.map((question) => ({
+      expected_skill: question.expectedSkill,
+      question_code: question.questionCode,
+      question_id: question.id,
+      reason: question.reason,
+    })),
     summary: {
       plan_node_id: contract.plan_node_id ?? "current_focus",
       recommendation_intent: contract.recommendation_intent ?? contract.round_goal ?? "Practice round",
@@ -184,27 +236,6 @@ function buildEpisodeCard({
       question_code: question.questionCode,
       score: resultById.get(question.id)?.score ?? null,
     })),
-  };
-}
-
-function buildNextSessionState({
-  current,
-  review,
-}: {
-  current: unknown;
-  review: { nextRoundGoal: string; roundPatterns?: string[]; sessionState?: unknown; summary: string };
-}) {
-  const explicit = asObject(review.sessionState);
-  if (Object.keys(explicit).length) {
-    return explicit;
-  }
-  const previous = asObject(current);
-  return {
-    ...previous,
-    current_focus: review.nextRoundGoal,
-    last_review_summary: review.summary,
-    next_round_constraints: review.roundPatterns ?? [],
-    version: 1,
   };
 }
 
@@ -305,6 +336,7 @@ function sessionSummaryFromRow(row: PracticeSession & { round_count?: number }):
     goal: row.goal,
     id: row.id,
     lastActivityAt: row.last_activity_at,
+    longTermMemorySnapshot: String(record.long_term_memory_snapshot ?? ""),
     outlineUserNotes: String(record.outline_user_notes ?? ""),
     roundCount: Number(row.round_count ?? 0),
     sessionMemory: row.session_memory,
@@ -599,18 +631,14 @@ export async function createPracticeSession({
   const trimmedGoal = goal.trim().slice(0, 500);
   const sessionTitle =
     (title?.trim() || trimmedGoal || "New practice session").slice(0, 160);
-  const sessionMemory = trimmedGoal
-    ? `Goal: ${trimmedGoal}. No completed rounds yet.`
-    : "No completed rounds yet.";
-
   await maybeQueuePreferenceMergeJob({ supabase, userId });
+  const preference = await getOrCreatePracticePreference({ supabase, userId });
   const courseFramework = courseFrameworkId
     ? await loadPracticeCourseFramework({ frameworkId: courseFrameworkId, supabase })
     : null;
   const sessionPlan = trimmedGoal || courseFramework
     ? buildDefaultSessionPlan({ courseFramework, goal: trimmedGoal })
     : {};
-  const sessionState = buildInitialSessionState(trimmedGoal);
 
   const { data, error } = await supabase
     .from("practice_sessions")
@@ -619,9 +647,10 @@ export async function createPracticeSession({
       course_framework_id: courseFramework?.id ?? null,
       course_framework_snapshot: courseFramework ? courseFramework as unknown as Json : null,
       goal: trimmedGoal,
-      session_memory: sessionMemory,
+      long_term_memory_snapshot: preference.long_term_preference.trim().slice(0, 1000),
+      session_memory: "",
       session_plan: sessionPlan as unknown as Json,
-      session_state: sessionState as unknown as Json,
+      session_state: {} as unknown as Json,
       session_thread_messages: [] as unknown as Json,
       tag_context: { ...DEFAULT_TAG_CONTEXT, lastGoal: trimmedGoal },
       title: sessionTitle,
@@ -727,6 +756,7 @@ export async function persistRecommendationRound({
     providerLabel?: string;
     roundContract?: unknown;
     roundGoal: string;
+    currentTaskSuffix?: unknown;
     sessionMemory: string;
     sessionState?: unknown;
     tagContext: PracticeTagContext;
@@ -796,7 +826,13 @@ export async function persistRecommendationRound({
   }
   const roundIndex = Number(roundMeta?.round_index ?? 1);
   const roundContract = buildRoundContract({ recommendations, response });
-  const recommendThreadEntry = buildRecommendThreadEntry({ roundContract, roundIndex });
+  const recommendThreadEntry = buildRecommendThreadEntry({
+    currentTaskSuffix: response.currentTaskSuffix,
+    recommendations,
+    roundContract,
+    roundId,
+    roundIndex,
+  });
   const questionRows = recommendations.map((question, index) => ({
     content_html: question.contentHtml,
     difficulty_rating: question.difficulty,
@@ -823,7 +859,7 @@ export async function persistRecommendationRound({
 
   const { data: currentSession, error: currentSessionError } = await supabase
     .from("practice_sessions")
-    .select("session_thread_messages,session_state")
+    .select("session_thread_messages")
     .eq("user_id", userId)
     .eq("id", sessionId)
     .maybeSingle();
@@ -837,8 +873,6 @@ export async function persistRecommendationRound({
     .update({
       goal: response.roundGoal.slice(0, 500),
       last_activity_at: new Date().toISOString(),
-      session_memory: response.sessionMemory,
-      session_state: (response.sessionState ?? currentSession?.session_state ?? {}) as unknown as Json,
       session_thread_messages: appendThreadEntry(currentSession?.session_thread_messages, recommendThreadEntry) as unknown as Json,
       tag_context: response.tagContext as unknown as Json,
     })
@@ -861,7 +895,6 @@ export async function persistRecommendationRound({
       })),
       roundContract,
       roundGoal: response.roundGoal,
-      sessionMemory: response.sessionMemory,
       tagContext: response.tagContext,
     },
     roundContract,
@@ -1029,7 +1062,7 @@ export async function persistRoundReview({
 
   const existingRoundResult = await supabase
     .from("practice_rounds")
-    .select("trace")
+    .select("round_index,trace")
     .eq("user_id", userId)
     .eq("id", roundId)
     .maybeSingle();
@@ -1069,7 +1102,7 @@ export async function persistRoundReview({
 
   const { data: currentSession, error: sessionLoadError } = await supabase
     .from("practice_sessions")
-    .select("completed_question_ids,session_thread_messages,session_state")
+    .select("completed_question_ids,session_thread_messages")
     .eq("user_id", userId)
     .eq("id", sessionId)
     .single();
@@ -1095,22 +1128,29 @@ export async function persistRoundReview({
     round_id: roundId,
     summary: episodeCard,
   };
-  const nextSessionState = buildNextSessionState({
-    current: currentSession?.session_state,
-    review,
-  });
   const mergedCompleted = Array.from(
     new Set([...asStringArray(currentSession?.completed_question_ids), ...completedQuestionIds]),
   );
+  const roundIndex = Number(existingRoundResult.data?.round_index ?? 0);
+  const nextThreadMessages = appendThreadEntry(
+    currentSession?.session_thread_messages,
+    reviewThreadEntry,
+  );
+  const persistedThreadMessages = roundIndex > 0 && roundIndex % 10 === 0
+    ? [buildThreadCheckpoint({
+        entries: nextThreadMessages,
+        episodeCard,
+        review,
+        roundIndex,
+      })]
+    : nextThreadMessages;
   const sessionUpdate = await supabase
     .from("practice_sessions")
     .update({
       completed_question_ids: mergedCompleted,
       last_activity_at: new Date().toISOString(),
       preference_dirty_at: new Date().toISOString(),
-      session_memory: review.updatedSessionMemory,
-      session_state: nextSessionState as unknown as Json,
-      session_thread_messages: appendThreadEntry(currentSession?.session_thread_messages, reviewThreadEntry) as unknown as Json,
+      session_thread_messages: persistedThreadMessages as unknown as Json,
     })
     .eq("user_id", userId)
     .eq("id", sessionId);
@@ -1133,7 +1173,6 @@ export async function persistRoundReview({
       memoryUpdate: review.memoryUpdate ?? null,
       questionReviews: review.questionReviews ?? [],
       roundPatterns: review.roundPatterns ?? [],
-      sessionState: nextSessionState,
       summary: review.summary,
     },
     roundContract: existingEpisode?.round_contract ?? {},

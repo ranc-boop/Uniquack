@@ -267,6 +267,26 @@ function objectHighlights(value: unknown, limit = 5): Array<{ label: string; val
     .slice(0, limit);
 }
 
+function threadStudyContext(session: PracticeSessionDetail | null) {
+  const entries = session?.sessionThreadMessages ?? [];
+  const records = entries.map(asRecord).filter((entry): entry is Record<string, unknown> => Boolean(entry));
+  const checkpoint = [...records].reverse().find((entry) => entry.kind === "thread_checkpoint");
+  const currentTask = [...records].reverse().find((entry) => entry.kind === "current_task");
+  const episode = [...records].reverse().find((entry) => entry.kind === "episode_card");
+
+  if (!checkpoint && !currentTask && !episode) {
+    return session?.sessionState || session?.sessionMemory || null;
+  }
+
+  return {
+    checkpoint: checkpoint?.summary ?? checkpoint ?? null,
+    latest_episode: episode?.summary ?? episode ?? null,
+    latest_task: currentTask?.summary ?? currentTask ?? null,
+    locked_long_term_memory: session?.longTermMemorySnapshot || "",
+    thread_entries: records.length,
+  };
+}
+
 function readableProcessLabel(event: PracticeTraceEvent) {
   if (event.error) return "Needs attention";
   if (event.toolName === "model_tool_choice") return "Model thought";
@@ -1184,7 +1204,7 @@ export function PracticeAgentClient() {
             })),
             roundId: recommendation.roundId,
             sessionId: activeSession.id,
-            sessionMemory: activeSession.sessionMemory,
+            sessionMemory: "",
             userNextRoundNote: nextRoundNote,
           }),
           method: "POST",
@@ -1629,7 +1649,7 @@ export function PracticeAgentClient() {
                 <Button disabled={isPending || !longTermMemory.trim()} onClick={clearLongTermMemory} size="sm" type="button" variant="ghost">Clear</Button>
               </div>
               <p className="text-[11px] text-slate-400">
-                Token stats: {cacheStatsEnabled ? "on" : "off"}; full call logs: {fullCallLogsEnabled ? "on" : "off"}.
+                Applies to newly created sessions. Token stats: {cacheStatsEnabled ? "on" : "off"}; full call logs: {fullCallLogsEnabled ? "on" : "off"}.
               </p>
             </div>
           </details>
@@ -1802,7 +1822,7 @@ export function PracticeAgentClient() {
                     </span>
                   </div>
                   <p className="text-sm leading-6 text-slate-600">
-                    The agent is using your saved session memory, long-term preference, and question history.
+                    The agent is using your saved practice thread, locked long-term memory snapshot, and question history.
                   </p>
                 </CardContent>
               </Card>
@@ -2075,24 +2095,10 @@ export function PracticeAgentClient() {
                 />
               ) : null}
               <ReadableDataCard
-                empty="No session state yet. After a review, this will show the current focus and next training move."
-                title="Current learning state"
-                value={activeSession.sessionState}
+                empty="No saved practice thread yet. After a round, this will show the latest task, review evidence, and checkpoints."
+                title="Practice thread"
+                value={threadStudyContext(activeSession)}
               />
-              <Card className="border-0 bg-white shadow-none ring-1 ring-slate-200/80">
-                <CardHeader>
-                  <CardTitle className="text-lg">Session memory</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {activeSession.sessionMemory ? (
-                    <FeedbackText className="border-none bg-transparent p-0 text-sm leading-6 text-slate-600" compact value={activeSession.sessionMemory} />
-                  ) : (
-                    <p className="text-sm leading-6 text-slate-600">
-                      Submit a round and the agent will summarize useful context for this session here.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
             </div>
           ) : null}
 

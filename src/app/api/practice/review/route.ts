@@ -309,7 +309,7 @@ export async function POST(request: Request) {
   }
   const { data: sessionRecord, error: sessionRecordError } = await supabase
     .from("practice_sessions")
-    .select("cache_prefix_version,course_framework_snapshot,outline_user_notes,next_user_notes,session_plan,session_state,session_thread_messages")
+    .select("cache_prefix_version,course_framework_snapshot,long_term_memory_snapshot,outline_user_notes,next_user_notes,session_plan,session_thread_messages")
     .eq("user_id", auth.user.id)
     .eq("id", sessionId)
     .maybeSingle();
@@ -331,22 +331,30 @@ export async function POST(request: Request) {
 
   const cachePrefixVersion = String(sessionRecord?.cache_prefix_version ?? "practice-core-v1");
   const sessionPlan = sessionRecord?.session_plan ?? null;
-  const sessionState = sessionRecord?.session_state ?? {};
   const sessionThreadMessages = Array.isArray(sessionRecord?.session_thread_messages)
     ? sessionRecord.session_thread_messages.slice(-24)
     : [];
   const outlineUserNotes = String(sessionRecord?.outline_user_notes ?? "");
   const userNextRoundNote = String(body.userNextRoundNote ?? sessionRecord?.next_user_notes ?? "").trim().slice(0, 1200);
   const roundContract = episodeRecord?.round_contract ?? {};
+  const currentRoundThreadEntry = episodeRecord?.cache_thread_entry ?? {};
 
   const persistedRecommendations = ((roundQuestions ?? []) as Record<string, unknown>[])
     .map(recommendationFromRoundQuestion)
     .filter((question) => question.id);
 
   const attempts = body.attempts ?? [];
-  const sessionMemory = compactSessionMemory(body.sessionMemory, goal);
   const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
-  const longTermMemory = compactText(preference.long_term_preference, 1000);
+  const lockedLongTermMemory = String(sessionRecord?.long_term_memory_snapshot ?? "").trim() ||
+    preference.long_term_preference.trim();
+  if (!String(sessionRecord?.long_term_memory_snapshot ?? "").trim() && lockedLongTermMemory) {
+    await supabase
+      .from("practice_sessions")
+      .update({ long_term_memory_snapshot: lockedLongTermMemory.slice(0, 1000) })
+      .eq("user_id", auth.user.id)
+      .eq("id", sessionId);
+  }
+  const longTermMemory = compactText(lockedLongTermMemory, 1000);
   const questionIds = Array.from(new Set(attempts.map((attempt) => attempt.questionId).filter(Boolean)));
   const reviewQuestions = await loadQuestionsForReview({ questionIds, supabase }) as any[];
   const questionById = new Map<string, any>(reviewQuestions.map((question) => [String(question.id), question]));
@@ -371,8 +379,8 @@ export async function POST(request: Request) {
   });
 
   trace.push({
-    inputSummary: "Cache-first review context: stable session plan + append-only episode cards + round_contract + volatile attempts suffix.",
-    outputSummary: `prefix_hash=${stableHash({ sessionPlan, sessionThreadMessages, roundContract })}; attempts=${compactAttempts.length}; user_note=${userNextRoundNote.length}; previous memory=${sessionMemory.length} chars`,
+    inputSummary: "Cache-first review context: stable session plan + append-only prior thread entries + volatile current round suffix.",
+    outputSummary: `prefix_hash=${stableHash({ sessionPlan, sessionThreadMessages })}; suffix_hash=${stableHash({ roundContract, roundId, attempts: compactAttempts.length, userNextRoundNote })}; attempts=${compactAttempts.length}; user_note=${userNextRoundNote.length}; locked_memory=${longTermMemory.length} chars`,
     phase: "context",
     toolName: "compact_review_context",
   });
@@ -386,27 +394,30 @@ export async function POST(request: Request) {
       cache_policy: {
         cache_prefix_version: cachePrefixVersion,
         dynamic_suffix_rule: "Attempts, answers, ids, and user notes stay in the final user message.",
-        review_policy: "Per-question review judges correctness; aggregator decides next round using session_plan and round_contract.",
+        review_policy: "Per-question review judges correctness; aggregator decides next round using session_plan and the current round contract from the suffix.",
       },
       course_framework: sessionRecord?.course_framework_snapshot ?? null,
-      round_contract: roundContract,
       session_plan: sessionPlan,
     };
-    const threadMessages = sessionThreadMessages.map((entry, index) => ({
+    const stableThreadMessages = sessionThreadMessages.filter((entry) => {
+      const item = asObject(entry);
+      return !(item.kind === "current_task" && item.round_id === roundId);
+    });
+    const threadMessages = stableThreadMessages.map((entry, index) => ({
       content: stableStringify(entry),
       name: `practice_thread_${index + 1}`,
       role: "assistant" as const,
     }));
     const reviewSuffix = {
       attempts: compactAttempts,
+      current_round_thread_entry: currentRoundThreadEntry,
       goal,
       long_term_memory: longTermMemory || "No long-term memory yet.",
       outline_user_notes: outlineUserNotes,
-      previous_session_memory: sessionMemory,
-      session_state: sessionState,
+      round_contract: roundContract,
       task_type: "round_review",
       user_next_round_note: userNextRoundNote,
-      volatile_notice: "This suffix contains current attempts, answers, ids, solution excerpts, and user notes.",
+      volatile_notice: "This suffix contains the current round contract, current task entry, attempts, answers, ids, solution excerpts, locked memory snapshot, and user notes.",
     };
 
     const aiResult = await traced({
@@ -432,9 +443,9 @@ export async function POST(request: Request) {
       const usageEnvelope = buildUsageEnvelope({
         cachePrefixVersion,
         phase: "review",
-        prefixPayload: { stableReviewPrefix, sessionThreadMessages },
+        prefixPayload: { stableReviewPrefix, stableThreadMessages },
         providerLabel: aiResult.providerLabel,
-        suffixPayload: { attemptCount: compactAttempts.length, goal, userNextRoundNote },
+        suffixPayload: reviewSuffix,
         usage: aiResult.usage,
       });
       usageEnvelopes.push(usageEnvelope);
@@ -474,7 +485,6 @@ export async function POST(request: Request) {
       })),
     });
     const nextSessionState = normalizeSessionState(aiResult.parsed.session_state, {
-      ...(asObject(sessionState)),
       current_focus: nextRoundGoal,
       last_review_summary: summary,
       next_round_constraints: roundPatterns.length ? roundPatterns : fallback.roundPatterns,

@@ -43,7 +43,7 @@ export default function HomePage() {
                 Practice, review, and recover mistakes in one focused loop.
               </h1>
               <p className="max-w-3xl text-base leading-7 text-slate-600">
-                O2I keeps your question bank, AI-guided rounds, saved session memory, and missed-question review connected so each study session has a clear next step.
+                O2I keeps your question bank, AI-guided rounds, saved practice thread, and missed-question review connected so each study session has a clear next step.
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">

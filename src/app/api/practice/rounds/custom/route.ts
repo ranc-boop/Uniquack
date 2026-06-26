@@ -226,7 +226,19 @@ export async function POST(request: Request) {
 
   response.roundId = await persistRecommendationRound({
     recommendations,
-    response,
+    response: {
+      ...response,
+      currentTaskSuffix: {
+        current_round_request: {
+          goal,
+          question_count: recommendations.length,
+          source: "custom_question_selection",
+        },
+        selected_question_ids: recommendations.map((question) => question.id),
+        tag_context: tagContext,
+        volatile_notice: "Custom practice round selected directly by the user.",
+      },
+    },
     sessionId,
     supabase,
     trace,
