@@ -20,14 +20,18 @@ export default async function AdminPackageImportPage() {
             <Link href="/admin/imports">Back to imports</Link>
           </Button>
         }
-        description="Import one ZIP package containing questions.json, images, and PDFs. The system previews everything first, creates draft questions, then attaches referenced assets for admin review."
+        description="Preview a ZIP before importing."
         eyebrow="Import tools"
+        help="Import one ZIP package containing questions.json, images, and PDFs. The system previews everything first, creates draft questions, then attaches referenced assets for admin review."
+        helpLabel="Package import details"
         title="Package import"
       />
 
       <AdminCard
         badge={<AdminStatusBadge status="pending_review">Preview first</AdminStatusBadge>}
-        description="Validate a ZIP package, inspect the import preview, then create draft questions and attach assets for Review Drafts."
+        description="Validate, preview, then import."
+        help="Validate a ZIP package, inspect the import preview, then create draft questions and attach assets for Review Drafts."
+        helpLabel="Package workflow details"
         title="Package import workflow"
       >
         <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-4">
@@ -52,18 +56,14 @@ export default async function AdminPackageImportPage() {
 
       <AdminCard
         badge={<AdminStatusBadge status="info">ZIP contract</AdminStatusBadge>}
-        description="Keep package paths predictable and safe. Imported questions remain drafts until reviewed."
+        description="Use safe predictable paths."
+        help="Allowed files are images/*.png, images/*.jpg, images/*.jpeg, images/*.webp, images/*.gif, and pdfs/*.pdf. SVG, nested ZIPs, path traversal, absolute paths, and unknown file types are rejected. Imported questions remain drafts until reviewed."
+        helpLabel="ZIP package contract details"
         title="Supported package format"
       >
         <div className="space-y-2 text-sm text-muted-foreground">
           <p>
-            Required: questions.json at the ZIP root. Optional files can be
-            placed directly under images/ and pdfs/.
-          </p>
-          <p>
-            Allowed: images/*.png, images/*.jpg, images/*.jpeg,
-            images/*.webp, images/*.gif, and pdfs/*.pdf. SVG, nested ZIPs,
-            path traversal, absolute paths, and unknown file types are rejected.
+            Required: questions.json at the ZIP root.
           </p>
           <p className="font-mono text-xs">
             questions.json references files using image_files and source_files,

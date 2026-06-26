@@ -75,6 +75,7 @@ const adminCard = await read("src/components/admin/admin-card.tsx");
 const adminDangerZone = await read("src/components/admin/admin-danger-zone.tsx");
 const adminDebugDisclosure = await read("src/components/admin/admin-debug-disclosure.tsx");
 const adminEmptyState = await read("src/components/admin/admin-empty-state.tsx");
+const adminInfoTip = await read("src/components/admin/admin-info-tip.tsx");
 const adminLayout = await read("src/app/admin/layout.tsx");
 const adminLoadingState = await read("src/components/admin/admin-loading-state.tsx");
 const adminPage = await read("src/app/admin/page.tsx");
@@ -171,6 +172,7 @@ assert(
     adminDangerZone.includes("AdminDangerZone") &&
     adminDebugDisclosure.includes("AdminDebugDisclosure") &&
     adminEmptyState.includes("AdminEmptyState") &&
+    adminInfoTip.includes("AdminInfoTip") &&
     adminLoadingState.includes("AdminLoadingState") &&
     adminStatusBadge.includes("AdminStatusBadge"),
   "shared admin primitives must exist",
@@ -182,6 +184,7 @@ assert(
     adminDangerZone,
     adminDebugDisclosure,
     adminEmptyState,
+    adminInfoTip,
     adminLoadingState,
     adminStatusBadge,
   ].every((source) => !source.trimStart().startsWith("\"use client\"") && !source.trimStart().startsWith("'use client'")),
@@ -191,6 +194,8 @@ assert(
   adminPage.includes("AdminCard") &&
     adminPage.includes("AdminActionGroup") &&
     adminPage.includes("action={createDemoContent}") &&
+    adminCard.includes("AdminInfoTip") &&
+    adminPageHeader.includes("AdminInfoTip") &&
     adminImportsPage.includes("AdminStatusBadge") &&
     adminImportsPage.includes("AdminDebugDisclosure") &&
     adminImportsPage.includes("AdminEmptyState") &&
@@ -206,11 +211,15 @@ console.log("PASS shared admin primitives render server-compatible patterns");
 assert(
   adminImportsPage.includes("Import Tools") &&
     adminImportsPage.includes("AI PDF / Image Parsing") &&
-    adminImportsPage.includes("nothing is published automatically") &&
+    adminImportsPage.includes("Nothing") &&
+    adminImportsPage.includes("is published automatically") &&
+    adminImportsPage.includes("helpLabel=") &&
     adminImportsPdfPage.includes("AdminCard") &&
     adminImportsPdfPage.includes("AI parsing workflow") &&
     adminImportsPdfPage.includes("Blueprint Library") &&
+    adminImportsPdfPage.includes("helpLabel=") &&
     adminImportsPdfPage.includes("AIPdfImportPanelLoader") &&
+    aiPdfPanel.includes("AdminInfoTip") &&
     aiPdfPanel.includes("Upload private PDF source") &&
     aiPdfPanel.includes("Choose uploaded source") &&
     aiPdfPanel.includes("Choose mode and run") &&
@@ -219,11 +228,15 @@ assert(
     aiPdfPanel.includes("observation creates reviewable blueprint metadata") &&
     bulkAssetsPage.includes("Bulk asset matching workflow") &&
     bulkAssetsPage.includes("Matching rules") &&
+    bulkAssetsPage.includes("helpLabel=") &&
+    bulkAssetPanel.includes("AdminInfoTip") &&
     bulkAssetPanel.includes("Select assets for preview") &&
     bulkAssetPanel.includes("No asset files selected") &&
     bulkAssetPanel.includes("Confirm upload/import") &&
     adminImportsPackagePage.includes("Package import workflow") &&
     adminImportsPackagePage.includes("ZIP contract") &&
+    adminImportsPackagePage.includes("helpLabel=") &&
+    packageImportPanel.includes("AdminInfoTip") &&
     packageImportPanel.includes("Select package for preview") &&
     packageImportPanel.includes("No package selected") &&
     packageImportPanel.includes("Confirm package import"),

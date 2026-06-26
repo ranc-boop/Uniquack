@@ -189,8 +189,10 @@ export default async function AdminVideosPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Manage external video links and their question bindings. Videos inherit official taxonomy visibility through linked questions."
+        description="Manage linked video content."
         eyebrow="Content management"
+        help="Manage external video links and their question bindings. Videos inherit official taxonomy visibility through linked questions."
+        helpLabel="Videos admin details"
         title="Videos"
       />
       <PageFeedback error={params.error} saved={params.saved} />

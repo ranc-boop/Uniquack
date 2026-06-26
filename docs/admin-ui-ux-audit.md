@@ -985,6 +985,8 @@ AI PDF / Image Parsing:
   and the existing dashboard/loaders unchanged.
 - Improves empty-state and step copy inside the client panel without changing
   upload, reset, delete, signed URL, or extraction handlers.
+- Moves long provider/source/mode explanations behind compact question-mark
+  help controls so the main form stays scannable.
 
 Bulk Asset Matching and Package Import:
 
@@ -992,6 +994,7 @@ Bulk Asset Matching and Package Import:
   ZIP package validation.
 - Improves empty states in the client panels while preserving preview-first
   confirmation and existing upload/import handlers.
+- Uses the same help-control pattern for longer rules and safety details.
 
 ## Commands Run
 

@@ -14,6 +14,7 @@ import {
   reserveQuestionSourceFileUpload,
 } from "@/app/admin/questions/source-file-actions";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
+import { AdminInfoTip } from "@/components/admin/admin-info-tip";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -304,16 +305,21 @@ export function BulkAssetUploadPanel({
       <div className="space-y-3 rounded-md border bg-muted/20 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-3xl space-y-1">
-            <p className="text-sm font-medium">Select assets for preview</p>
-            <p className="text-xs text-muted-foreground">
-              Files are matched to draft questions by question-code filename
-              prefix, then uploaded only after confirmation. Examples:
-              Q1001_diagram.png -&gt; Q1001, Q1002_source.pdf -&gt; Q1002.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Image assets are hidden from public detail pages by default.
-              Source PDFs remain admin-only through signed URLs.
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium">Select assets for preview</p>
+              <AdminInfoTip label="Bulk asset preview details">
+                <p>
+                  Files are matched to draft questions by question-code filename
+                  prefix, then uploaded only after confirmation. Examples:
+                  Q1001_diagram.png -&gt; Q1001, Q1002_source.pdf -&gt; Q1002.
+                </p>
+                <p className="mt-2">
+                  Image assets are hidden from public detail pages by default.
+                  Source PDFs remain admin-only through signed URLs.
+                </p>
+              </AdminInfoTip>
+            </div>
+            <p className="text-xs text-muted-foreground">Preview before upload.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <label
@@ -372,7 +378,7 @@ export function BulkAssetUploadPanel({
             <div>
               <p className="text-sm font-medium">Preview before upload</p>
               <p className="text-xs text-muted-foreground">
-                Unmatched, ambiguous, invalid, and duplicate files are skipped.
+                Skipped files stay unuploaded.
               </p>
             </div>
             <Button

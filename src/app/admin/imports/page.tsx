@@ -56,13 +56,15 @@ export default async function AdminImportsPage() {
             </Button>
           </>
         }
-        description={
-          <>
-            Choose the right import workflow. Every path creates private draft
-            review work first; nothing is published automatically.
-          </>
-        }
+        description="Choose an import workflow."
         eyebrow="Import tools"
+        help={
+          <p>
+            Every import path creates private draft review work first. Nothing
+            is published automatically.
+          </p>
+        }
+        helpLabel="Import workflow details"
         title="Import Tools"
       />
 
@@ -79,7 +81,9 @@ export default async function AdminImportsPage() {
           }
           compact
           badge={<AdminStatusBadge status="draft">Draft-only</AdminStatusBadge>}
-          description="Best for validated structured question data pasted from a trusted tool."
+          description="Paste JSON, validate, import drafts."
+          help="Use this for validated structured question data pasted from a trusted tool."
+          helpLabel="Manual JSON Import details"
           title="Manual JSON Import"
         />
         <AdminCard
@@ -94,7 +98,9 @@ export default async function AdminImportsPage() {
           }
           compact
           badge={<AdminStatusBadge status="pending">Review matches</AdminStatusBadge>}
-          description="Best after drafts exist and files can be matched by question-code filename prefix."
+          description="Attach files to existing drafts."
+          help="Use this after drafts exist and files can be matched by question-code filename prefix."
+          helpLabel="Bulk Asset Matching details"
           title="Bulk Asset Matching"
         />
         <AdminCard
@@ -109,7 +115,9 @@ export default async function AdminImportsPage() {
           }
           compact
           badge={<AdminStatusBadge status="pending_review">Preview first</AdminStatusBadge>}
-          description="Best for one ZIP containing questions.json plus referenced image and PDF files."
+          description="Validate a ZIP before import."
+          help="Use this for one ZIP containing questions.json plus referenced image and PDF files."
+          helpLabel="Package Import details"
           title="Package Import"
         />
         <AdminCard
@@ -124,14 +132,18 @@ export default async function AdminImportsPage() {
           }
           compact
           badge={<AdminStatusBadge status="info">AI Parsing</AdminStatusBadge>}
-          description="Best for private PDFs or images that need AI extraction or blueprint observation."
+          description="Parse private PDFs or images."
+          help="Use this for private PDFs or images that need AI extraction or blueprint observation."
+          helpLabel="AI PDF and image parsing details"
           title="AI PDF / Image Parsing"
         />
       </div>
 
       <AdminCard
         title="Manual JSON import"
-        description="Validate first, then import only valid items as private draft questions for Review Drafts."
+        description="Validate, then import drafts."
+        help="Only valid items are imported, and they are saved as private draft questions for Review Drafts."
+        helpLabel="Manual JSON draft behavior"
       >
         <BatchImportJsonPanelLoader tagIds={importPromptTagIds} />
       </AdminCard>

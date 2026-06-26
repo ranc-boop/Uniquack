@@ -282,8 +282,10 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Manage the official mathematics taxonomy used by questions, videos, imports, and blueprint workflows."
+        description="Manage official taxonomy."
         eyebrow="Advanced tools"
+        help="Manage the official mathematics taxonomy used by questions, videos, imports, and blueprint workflows."
+        helpLabel="Taxonomy details"
         title="Taxonomy"
       />
       <PageFeedback error={params.error} saved={params.saved} />

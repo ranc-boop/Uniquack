@@ -429,8 +429,10 @@ export default async function AdminReviewPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Review draft questions, fix readiness blockers, then publish only when an admin explicitly approves the draft."
+        description="Review private draft questions."
         eyebrow="Review queue"
+        help="Review draft questions, fix readiness blockers, then publish only when an admin explicitly approves the draft."
+        helpLabel="Review Drafts details"
         title="Review Drafts"
       />
       <PageFeedback error={params.error} saved={params.saved} />

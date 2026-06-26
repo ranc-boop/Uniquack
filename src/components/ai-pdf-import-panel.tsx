@@ -30,6 +30,7 @@ import {
   startAIPdfExtraction,
 } from "@/app/admin/imports/pdf/actions";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
+import { AdminInfoTip } from "@/components/admin/admin-info-tip";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { AIPdfSegmentationPlanner } from "@/components/ai-pdf-segmentation-planner";
@@ -1131,11 +1132,15 @@ export function AIPdfImportPanel({
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-medium">Upload private PDF source</p>
-            <p className="text-xs text-muted-foreground">
-              Choose one or more private PDF sources. Upload starts immediately
-              after selection and runs sequentially to avoid blocking the UI.
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium">Upload private PDF source</p>
+              <AdminInfoTip label="Upload private PDF source details">
+                Choose one or more private PDF sources. Upload starts
+                immediately after selection and runs sequentially to avoid
+                blocking the UI.
+              </AdminInfoTip>
+            </div>
+            <p className="text-xs text-muted-foreground">Private PDF upload.</p>
           </div>
           <label
             htmlFor={fileInputId}
@@ -1172,9 +1177,7 @@ export function AIPdfImportPanel({
         </div>
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           {uploading ? <LoaderCircle className="size-3 animate-spin" /> : null}
-          Upload is available even when no AI provider is configured. Limits:{" "}
-          {AI_PDF_IMPORT_MAX_PAGES} pages / 50MB per file. If an upload times out, select the file
-          again to retry.
+          Available before provider setup. Limit: {AI_PDF_IMPORT_MAX_PAGES} pages / 50MB.
         </p>
       </form>
 
@@ -1335,12 +1338,15 @@ export function AIPdfImportPanel({
       <div className="space-y-3 rounded-md border bg-muted/20 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-medium">Choose uploaded source</p>
-            <p className="text-xs text-muted-foreground">
-              Private import-level files stored in ai-import-sources. Use a
-              source for extraction, open it with a short-lived URL, or delete
-              the private source PDF when it is no longer needed.
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium">Choose uploaded source</p>
+              <AdminInfoTip label="Uploaded source actions">
+                Private import-level files are stored in ai-import-sources. Use
+                a source for extraction, open it with a short-lived URL, or
+                delete the private source PDF when it is no longer needed.
+              </AdminInfoTip>
+            </div>
+            <p className="text-xs text-muted-foreground">Pick a ready source.</p>
           </div>
           <Badge variant="secondary">{sourceChoices.length} files</Badge>
         </div>
@@ -1477,17 +1483,22 @@ export function AIPdfImportPanel({
           />
         )}
         <div className="rounded-md border bg-background/70 p-3 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">File binding model</p>
-          <p>
-            Source PDFs are private import-level assets:
-            import_batch_assets.source_pdf -&gt; import_batches.id. They are not
-            bound to any question before extraction.
-          </p>
-          <p>
-            After AI extraction creates draft questions, only confirmed image
-            crops are uploaded as question_assets and bound to questions.id for
-            preview, delete, and detail-page display.
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-foreground">File binding model</p>
+            <AdminInfoTip label="File binding model details">
+              <p>
+                Source PDFs are private import-level assets:
+                import_batch_assets.source_pdf -&gt; import_batches.id. They
+                are not bound to any question before extraction.
+              </p>
+              <p className="mt-2">
+                After AI extraction creates draft questions, only confirmed
+                image crops are uploaded as question_assets and bound to
+                questions.id for preview, delete, and detail-page display.
+              </p>
+            </AdminInfoTip>
+          </div>
+          <p>Private source first, question assets after extraction.</p>
         </div>
       </div>
 
@@ -1499,12 +1510,15 @@ export function AIPdfImportPanel({
         className="space-y-4 rounded-md border bg-muted/20 p-4"
       >
         <div className="space-y-1">
-          <p className="text-sm font-medium">Choose mode and run</p>
-          <p className="text-xs text-muted-foreground">
-            Normal extraction creates draft questions for review. Blueprint
-            observation creates reviewable blueprint metadata without creating
-            questions.
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">Choose mode and run</p>
+            <AdminInfoTip label="AI extraction mode details">
+              Normal extraction creates draft questions for review. Blueprint
+              observation creates reviewable blueprint metadata without
+              creating questions.
+            </AdminInfoTip>
+          </div>
+          <p className="text-xs text-muted-foreground">Select provider and mode.</p>
         </div>
         <div className="grid gap-4 xl:grid-cols-[1fr_1fr_0.9fr_auto]">
           <div className="space-y-2">
@@ -1538,9 +1552,18 @@ export function AIPdfImportPanel({
             </select>
           </div>
           <div className="space-y-2">
-            <label htmlFor="provider_profile_id" className="text-sm font-medium">
-              Provider profile
-            </label>
+            <div className="flex items-center gap-2">
+              <label htmlFor="provider_profile_id" className="text-sm font-medium">
+                Provider profile
+              </label>
+              <AdminInfoTip label="Provider strategy details">
+                DeepSeek text/json providers are blocked from PDF extraction
+                unless explicitly configured for page images. Gemini
+                OpenAI-compatible providers use page images, not full PDF file
+                input. Gemini Native providers can use full PDF input when
+                native/full PDF is enabled.
+              </AdminInfoTip>
+            </div>
             <select
               id="provider_profile_id"
               name="provider_profile_id"
@@ -1587,18 +1610,21 @@ export function AIPdfImportPanel({
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                DeepSeek text/json providers are blocked from PDF extraction
-                unless explicitly configured for page images. Gemini
-                OpenAI-compatible providers use page images, not full PDF file
-                input. Gemini Native providers can use full PDF input when
-                native/full PDF is enabled.
+                Only supported PDF/image providers are enabled.
               </p>
             )}
           </div>
           <div className="space-y-2">
-            <label htmlFor="execution_mode" className="text-sm font-medium">
-              Execution mode
-            </label>
+            <div className="flex items-center gap-2">
+              <label htmlFor="execution_mode" className="text-sm font-medium">
+                Execution mode
+              </label>
+              <AdminInfoTip label="Execution mode details">
+                {selectedProviderUsesFullPdf
+                  ? "Split mode imports draft questions from masked chunks. Blueprint observation only stores safe structure/style metadata and creates no questions."
+                  : "This provider receives rendered page images using the existing overlap workflow."}
+              </AdminInfoTip>
+            </div>
             <select
               id="execution_mode"
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
@@ -1631,18 +1657,25 @@ export function AIPdfImportPanel({
             </select>
             <p className="text-xs text-muted-foreground">
               {selectedProviderUsesFullPdf
-                ? "Split mode imports draft questions from masked chunks. Blueprint observation only stores safe structure/style metadata and creates no questions."
-                : "This provider receives rendered page images using the existing overlap workflow."}
+                ? "Full PDF or observation mode."
+                : "Page-image chunk mode."}
             </p>
           </div>
           {selectedProviderUsesFullPdf && executionMode === "blueprint_observation" ? (
             <div className="space-y-2">
-              <label
-                htmlFor="blueprint_model_quality_mode"
-                className="text-sm font-medium"
-              >
-                Blueprint AI quality mode
-              </label>
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="blueprint_model_quality_mode"
+                  className="text-sm font-medium"
+                >
+                  Blueprint AI quality mode
+                </label>
+                <AdminInfoTip label="Blueprint AI quality mode details">
+                  Affects DeepSeek blueprint analysis only. Gemini still
+                  performs the same PDF observation step. If no Quality model is
+                  configured, the server falls back to Fast.
+                </AdminInfoTip>
+              </div>
               <select
                 id="blueprint_model_quality_mode"
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
@@ -1658,9 +1691,7 @@ export function AIPdfImportPanel({
                 <option value="quality">Quality</option>
               </select>
               <p className="text-xs text-muted-foreground">
-                Affects DeepSeek blueprint analysis only. Gemini still performs
-                the same PDF observation step. If no Quality model is configured,
-                the server falls back to Fast.
+                Analysis model only.
               </p>
             </div>
           ) : null}
