@@ -1,8 +1,12 @@
 import Link from "next/link";
 
 import { bulkUpdateQuestions, updateQuestion } from "@/app/admin/questions/actions";
+import { AdminActionGroup } from "@/components/admin/admin-action-group";
+import { AdminCard } from "@/components/admin/admin-card";
 import { AdminDangerZone } from "@/components/admin/admin-danger-zone";
+import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
 import { AdminReviewBulkSelection } from "@/components/admin-review-bulk-selection";
@@ -430,27 +434,56 @@ export default async function AdminReviewPage({
         title="Review Drafts"
       />
       <PageFeedback error={params.error} saved={params.saved} />
-      <form className="flex flex-wrap items-end gap-2 rounded-md border p-3">
-        <div className="min-w-64 flex-1 space-y-1">
-          <label htmlFor="search" className="text-sm font-medium">
-            Search drafts
-          </label>
-          <input
-            id="search"
-            name="search"
-            defaultValue={params.search ?? ""}
-            placeholder="Code or title"
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-          />
+      <AdminCard
+        compact
+        title="Review workflow"
+        description="Imported or generated drafts stay private until a teacher reviews, edits, and explicitly publishes them."
+      >
+        <div className="grid gap-3 text-sm md:grid-cols-3">
+          {[
+            ["1", "Draft imported/generated", "AI import, package import, or generation creates private draft questions."],
+            ["2", "Teacher reviews", "Fix readiness blockers, taxonomy, media, and solution quality before publishing."],
+            ["3", "Publish or reject", "Publishing is explicit. Reject and delete actions stay separated from the primary path."],
+          ].map(([step, title, description]) => (
+            <div className="rounded-md border bg-background p-3" key={step}>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                  {step}
+                </span>
+                <p className="font-medium">{title}</p>
+              </div>
+              <p className="text-muted-foreground">{description}</p>
+            </div>
+          ))}
         </div>
-        <Button type="submit">Filter</Button>
-        <Button asChild type="button" variant="outline">
-          <Link href="/admin/review">Reset</Link>
-        </Button>
-        {batchFilter ? (
-          <input type="hidden" name="batch" value={batchFilter.id} />
-        ) : null}
-      </form>
+      </AdminCard>
+      <AdminCard
+        compact
+        title="Find draft questions"
+        description="Filter the private review queue by question code, title, or a selected import batch."
+      >
+        <form className="flex flex-wrap items-end gap-2">
+          <div className="min-w-64 flex-1 space-y-1">
+            <label htmlFor="search" className="text-sm font-medium">
+              Search drafts
+            </label>
+            <input
+              id="search"
+              name="search"
+              defaultValue={params.search ?? ""}
+              placeholder="Code or title"
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            />
+          </div>
+          <Button type="submit">Filter</Button>
+          <Button asChild type="button" variant="outline">
+            <Link href="/admin/review">Reset</Link>
+          </Button>
+          {batchFilter ? (
+            <input type="hidden" name="batch" value={batchFilter.id} />
+          ) : null}
+        </form>
+      </AdminCard>
       {batchFilter ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2 text-sm">
           <span>
@@ -521,42 +554,55 @@ export default async function AdminReviewPage({
       <form
         id="admin-review-bulk-form"
         action={bulkUpdateQuestions}
-        className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-3 text-sm"
+        className="rounded-md border bg-card p-3 text-sm"
       >
         <input type="hidden" name="return_to" value={currentPath} />
-        <AdminReviewBulkSelection formId="admin-review-bulk-form" />
-        <select
-          name="status"
-          className="h-9 rounded-md border bg-background px-2 text-sm"
-          defaultValue="published"
-        >
-          <option value="draft">Draft</option>
-          <option value="published">Published</option>
-          <option value="archived">Archived</option>
-        </select>
-        <FormSubmitButton
-          name="bulk_action"
-          value="status"
-          size="sm"
-          variant="outline"
-          pendingLabel="Updating..."
-        >
-          Update selected status
-        </FormSubmitButton>
-        <AdminDangerZone compact title="Delete selected drafts">
-          <FormSubmitButton
-            name="bulk_action"
-            value="delete"
-            size="sm"
-            variant="destructive"
-            pendingLabel="Deleting..."
-          >
-            Delete selected
-          </FormSubmitButton>
-        </AdminDangerZone>
-        <span className="text-xs text-muted-foreground">
-          Select draft cards below before applying a bulk action.
-        </span>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <AdminStatusBadge status="pending_review">Review selected drafts</AdminStatusBadge>
+          <span className="text-xs text-muted-foreground">
+            Select draft cards below before applying a bulk action.
+          </span>
+        </div>
+        <AdminActionGroup
+          secondary={
+            <>
+              <AdminReviewBulkSelection formId="admin-review-bulk-form" />
+              <select
+                name="status"
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+                defaultValue="published"
+              >
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+                <option value="archived">Archived</option>
+              </select>
+            </>
+          }
+          primary={
+            <FormSubmitButton
+              name="bulk_action"
+              value="status"
+              size="sm"
+              variant="outline"
+              pendingLabel="Updating..."
+            >
+              Update selected status
+            </FormSubmitButton>
+          }
+          destructive={
+            <AdminDangerZone compact title="Delete selected drafts">
+              <FormSubmitButton
+                name="bulk_action"
+                value="delete"
+                size="sm"
+                variant="destructive"
+                pendingLabel="Deleting..."
+              >
+                Delete selected
+              </FormSubmitButton>
+            </AdminDangerZone>
+          }
+        />
       </form>
       <div className="grid gap-4">
         {draftQuestions.map((question) => {
@@ -649,24 +695,33 @@ export default async function AdminReviewPage({
           );
         })}
         {!draftQuestions.length ? (
-          <div className="space-y-3 rounded-md border p-8 text-center text-sm text-muted-foreground">
-            {batchFilter ? (
-              <>
-                <p className="font-medium text-foreground">
-                  No drafts found for this batch yet.
-                </p>
+          <AdminEmptyState
+            title={
+              batchFilter
+                ? "No drafts found for this batch yet."
+                : "No draft questions match this review queue."
+            }
+            description={
+              batchFilter ? (
                 <p>
                   Extraction may still be running or no usable questions were
                   created.
                 </p>
+              ) : (
+                <p>
+                  Import, generate, or create drafts, then return here for
+                  explicit teacher review before publishing.
+                </p>
+              )
+            }
+            actions={
+              batchFilter ? (
                 <Button asChild size="sm" variant="outline">
                   <Link href="/admin/review">Clear filter</Link>
                 </Button>
-              </>
-            ) : (
-              <p>No draft questions match this review queue.</p>
-            )}
-          </div>
+              ) : null
+            }
+          />
         ) : null}
       </div>
     </div>

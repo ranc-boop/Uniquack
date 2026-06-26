@@ -182,7 +182,22 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           </Button>
         </div>
       </div>
-      <form className="student-panel grid gap-4 p-4 md:grid-cols-[minmax(0,1.5fr)_10rem_10rem_auto]">
+      <form className="student-panel space-y-4 p-4">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-base font-bold text-slate-950">
+              Published question filters
+            </h2>
+            <p className="text-sm leading-6 text-slate-600">
+              Search by title or code, then narrow by the official difficulty
+              range.
+            </p>
+          </div>
+          <p className="text-sm text-slate-500">
+            Showing {pageSize} questions per page
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_10rem_10rem_auto]">
         <div className="space-y-2">
           <Label className="font-bold text-slate-800" htmlFor="q">Search</Label>
           <Input
@@ -223,6 +238,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
             <Link href="/questions">Reset</Link>
           </Button>
         </div>
+        </div>
       </form>
       {error || questionsError ? (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -237,13 +253,21 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           totalCount={totalCount}
         />
       ) : (
-        <div className="student-panel">
-          <div className="flex h-32 items-center justify-center text-center text-sm text-slate-600">
-            No published questions match these filters.
+        <div className="student-panel border-dashed">
+          <div className="flex min-h-40 items-center justify-center p-6 text-center">
+            <div className="max-w-md space-y-2">
+              <h2 className="text-base font-bold text-slate-950">
+                No published questions match these filters.
+              </h2>
+              <p className="text-sm leading-6 text-slate-600">
+                Try a broader search term or widen the difficulty range to find
+                more practice options.
+              </p>
+            </div>
           </div>
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+      <div className="student-panel flex flex-wrap items-center justify-between gap-3 p-3 text-sm text-slate-600">
         <p>
           Showing {questionRows.length ? from + 1 : 0}-
           {from + questionRows.length} of {totalCount} published questions.

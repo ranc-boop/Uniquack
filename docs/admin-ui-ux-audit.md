@@ -935,6 +935,35 @@ For later visual implementation PRs, add manual screenshots for:
 - `/admin/tags`
 - `/admin/videos`
 
+## ADMIN-UI4 Implementation Notes
+
+ADMIN-UI4 polishes Review Drafts and the Question Bank without changing publish,
+delete, taxonomy, practice, or data-loading behavior.
+
+Review Drafts:
+
+- Adds a workflow-first summary for draft review, teacher review, and explicit
+  publish/reject decisions.
+- Uses shared admin cards, status badges, empty states, action groups, and
+  danger grouping around search, batch filters, bulk actions, and empty states.
+- Keeps AI import/source metadata secondary by collapsing it inside draft cards.
+- Preserves existing server-action forms for bulk status updates and deletion.
+
+Admin Question Bank:
+
+- Reframes filters as a content library toolbar while preserving summary-first
+  paged loading and focused edit-mode detail loading.
+- Uses shared admin cards, status badges, empty states, and action grouping for
+  the question list and bulk actions.
+- Keeps destructive delete controls visually separated from normal status
+  updates.
+
+Public Question Bank:
+
+- Keeps the student-facing question basket and practice selection behavior.
+- Improves filter copy, empty states, and pagination/status presentation without
+  changing public access or taxonomy search behavior.
+
 ## Commands Run
 
 ADMIN-UI0 validation completed on branch `codex/admin-ui-ux-audit`:
