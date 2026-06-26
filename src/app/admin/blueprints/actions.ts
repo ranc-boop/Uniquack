@@ -1462,6 +1462,12 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
       throw new Error("Run a successful calibration preview before generating Review Draft questions.");
     }
 
+    if (Number(calibrationRun.blueprint_version) !== Number(blueprint.version)) {
+      throw new Error(
+        "Blueprint changed after the last successful calibration. Re-run calibration for the current version.",
+      );
+    }
+
     const { data: examples, error: examplesError } = await (supabase as any)
       .from("question_blueprint_examples")
       .select("evidence_snippets")

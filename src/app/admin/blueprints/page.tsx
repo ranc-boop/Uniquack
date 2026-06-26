@@ -106,6 +106,7 @@ type BlueprintCalibrationRunRow = {
   adherence_summary: unknown;
   blocking_reasons: unknown;
   blueprint_id: string;
+  blueprint_version: number;
   created_at: string;
   diversity_summary: unknown;
   id: string;
@@ -1310,9 +1311,16 @@ function LibraryCard({
   });
   const calibrationReady =
     blueprint.generation_readiness === "generation_ready" &&
-    latestCalibrationRun?.readiness_result === "generation_ready";
+    latestCalibrationRun?.readiness_result === "generation_ready" &&
+    Number(latestCalibrationRun.blueprint_version) === Number(blueprint.version);
+  const calibrationVersionMismatch =
+    latestCalibrationRun?.readiness_result === "generation_ready" &&
+    Number(latestCalibrationRun.blueprint_version) !== Number(blueprint.version);
   const generationBlockingReasons = [
     ...quality.generationBlockingReasons,
+    ...(calibrationVersionMismatch
+      ? ["Blueprint changed after the last successful calibration. Re-run calibration for the current version."]
+      : []),
     ...(calibrationReady
       ? []
       : ["Run a successful calibration preview before generating Review Draft questions."]),
@@ -1357,11 +1365,17 @@ function LibraryCard({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-medium">Calibration status</p>
-                <p className="text-xs text-muted-foreground">
-                  Temporary calibration samples - not saved as questions and not
-                  sent to Review.
+              <p className="text-xs text-muted-foreground">
+                Temporary calibration samples - not saved as questions and not
+                sent to Review.
+              </p>
+              {calibrationVersionMismatch ? (
+                <p className="text-xs text-amber-700">
+                  The latest passing calibration belongs to an older blueprint
+                  version. Re-run calibration for the current version.
                 </p>
-              </div>
+              ) : null}
+            </div>
               <Badge variant={calibrationReady ? "secondary" : "outline"}>
                 {calibrationLabel(blueprint.generation_readiness)}
               </Badge>
@@ -1591,7 +1605,7 @@ export default async function AdminBlueprintsPage({
     (supabase as any)
       .from("question_blueprint_calibration_runs")
       .select(
-        "id, blueprint_id, sample_count, sample_previews, validation_summary, adherence_summary, originality_summary, diversity_summary, readiness_result, blocking_reasons, model_name, created_at",
+        "id, blueprint_id, blueprint_version, sample_count, sample_previews, validation_summary, adherence_summary, originality_summary, diversity_summary, readiness_result, blocking_reasons, model_name, created_at",
       )
       .order("created_at", { ascending: false })
       .limit(100),
