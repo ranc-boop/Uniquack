@@ -1,11 +1,12 @@
 import Link from "next/link";
 
 import { createDemoContent } from "@/app/admin/actions";
+import { AdminActionGroup } from "@/components/admin/admin-action-group";
+import { AdminCard } from "@/components/admin/admin-card";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const cards = [
   {
@@ -58,36 +59,32 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         title="Dashboard"
       />
       <PageFeedback error={params.error} saved={params.saved} />
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Demo seed data</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Creates AP Physics and AP Calculus tags, one published question, and
-            one published video through the signed-in admin session. No
-            elevated server key is used.
-          </p>
-          <form action={createDemoContent}>
-            <FormSubmitButton pendingLabel="Creating demo data...">
-              Create demo records
-            </FormSubmitButton>
-          </form>
-        </CardContent>
-      </Card>
+      <AdminCard
+        description="Creates AP Physics and AP Calculus tags, one published question, and one published video through the signed-in admin session. No elevated server key is used."
+        title="Demo seed data"
+      >
+        <form action={createDemoContent}>
+          <FormSubmitButton pendingLabel="Creating demo data...">
+            Create demo records
+          </FormSubmitButton>
+        </form>
+      </AdminCard>
       <div className="grid gap-4 md:grid-cols-2">
         {cards.map((card) => (
-          <Card key={card.href}>
-            <CardHeader>
-              <CardTitle className="text-base">{card.title}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">{card.body}</p>
-              <Button asChild size="sm">
-                <Link href={card.href}>Open</Link>
-              </Button>
-            </CardContent>
-          </Card>
+          <AdminCard
+            actions={
+              <AdminActionGroup
+                primary={
+                  <Button asChild size="sm">
+                    <Link href={card.href}>Open</Link>
+                  </Button>
+                }
+              />
+            }
+            description={card.body}
+            key={card.href}
+            title={card.title}
+          />
         ))}
       </div>
     </div>

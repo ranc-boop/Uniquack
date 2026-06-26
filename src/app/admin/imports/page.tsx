@@ -1,10 +1,13 @@
 import Link from "next/link";
 
+import { AdminActionGroup } from "@/components/admin/admin-action-group";
+import { AdminCard } from "@/components/admin/admin-card";
+import { AdminDebugDisclosure } from "@/components/admin/admin-debug-disclosure";
+import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { BatchImportJsonPanelLoader } from "@/components/batch-import-json-panel-loader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -65,112 +68,119 @@ export default async function AdminImportsPage() {
       />
 
       <div className="grid gap-3 md:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">JSON Import</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>Create draft questions from structured JSON.</p>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/admin/imports">Open JSON Import</Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Bulk Asset Upload</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>Attach selected image and PDF files to existing drafts.</p>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/admin/imports/assets">Open Bulk Asset Upload</Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Package Import</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>Import questions.json with referenced images and PDFs in one ZIP.</p>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/admin/imports/package">Open Package Import</Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">AI PDF Import</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              Parse a PDF with a configured multimodal model into draft
-              questions.
-            </p>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/admin/imports/pdf">Open AI PDF Import</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <AdminCard
+          actions={
+            <AdminActionGroup
+              secondary={
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/admin/imports">Open JSON Import</Link>
+                </Button>
+              }
+            />
+          }
+          compact
+          description="Create draft questions from structured JSON."
+          title="JSON Import"
+        />
+        <AdminCard
+          actions={
+            <AdminActionGroup
+              secondary={
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/admin/imports/assets">Open Bulk Asset Upload</Link>
+                </Button>
+              }
+            />
+          }
+          compact
+          description="Attach selected image and PDF files to existing drafts."
+          title="Bulk Asset Upload"
+        />
+        <AdminCard
+          actions={
+            <AdminActionGroup
+              secondary={
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/admin/imports/package">Open Package Import</Link>
+                </Button>
+              }
+            />
+          }
+          compact
+          description="Import questions.json with referenced images and PDFs in one ZIP."
+          title="Package Import"
+        />
+        <AdminCard
+          actions={
+            <AdminActionGroup
+              secondary={
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/admin/imports/pdf">Open AI PDF Import</Link>
+                </Button>
+              }
+            />
+          }
+          compact
+          description="Parse a PDF with a configured multimodal model into draft questions."
+          title="AI PDF Import"
+        />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Manual JSON import</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <BatchImportJsonPanelLoader tagIds={importPromptTagIds} />
-        </CardContent>
-      </Card>
+      <AdminCard title="Manual JSON import">
+        <BatchImportJsonPanelLoader tagIds={importPromptTagIds} />
+      </AdminCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent import batches</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {error ? (
-            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error.message}
-            </p>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Summary</TableHead>
+      <AdminCard title="Recent import batches">
+        {error ? (
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error.message}
+          </p>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Summary</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(batches ?? []).map((batch) => (
+                  <TableRow key={batch.id}>
+                    <TableCell className="text-xs">
+                      {new Date(batch.created_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell>{batch.source_type}</TableCell>
+                    <TableCell>
+                      <AdminStatusBadge status={batch.status} />
+                    </TableCell>
+                    <TableCell className="min-w-64">
+                      <AdminDebugDisclosure title="Batch summary">
+                        <pre className="whitespace-pre-wrap break-words">
+                          {JSON.stringify(batch.summary, null, 2)}
+                        </pre>
+                      </AdminDebugDisclosure>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(batches ?? []).map((batch) => (
-                    <TableRow key={batch.id}>
-                      <TableCell className="text-xs">
-                        {new Date(batch.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>{batch.source_type}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{batch.status}</Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {JSON.stringify(batch.summary)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!batches?.length ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="h-24 text-center">
-                        No import batches yet.
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+                {!batches?.length ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center">
+                      <AdminEmptyState
+                        className="border-0 bg-transparent p-4"
+                        description="Run a JSON, package, asset, or AI PDF import to create draft review work."
+                        title="No import batches yet."
+                      />
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </AdminCard>
     </div>
   );
 }

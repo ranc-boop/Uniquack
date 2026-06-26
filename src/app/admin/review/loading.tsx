@@ -1,3 +1,4 @@
+import { AdminLoadingState } from "@/components/admin/admin-loading-state";
 import { ReviewDraftListSkeleton } from "@/components/review/review-draft-list-skeleton";
 
 export default function AdminReviewLoading() {
@@ -15,14 +16,20 @@ export default function AdminReviewLoading() {
         <div className="h-10 w-24 rounded-md border bg-muted/40" />
         <div className="h-10 w-24 rounded-md border bg-muted/40" />
       </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-3 text-sm">
-        <div className="h-9 w-28 rounded-md border bg-muted/40" />
-        <div className="h-9 w-36 rounded-md border bg-muted/40" />
-        <div className="h-9 w-36 rounded-md border bg-muted/40" />
-        <span className="text-xs text-muted-foreground">
-          Select draft cards below before applying a bulk action.
-        </span>
-      </div>
+      <AdminLoadingState
+        className="p-3"
+        label="Loading review bulk actions..."
+        rows={0}
+      >
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div className="h-9 w-28 rounded-md border bg-muted/40" />
+          <div className="h-9 w-36 rounded-md border bg-muted/40" />
+          <div className="h-9 w-36 rounded-md border bg-muted/40" />
+          <span className="text-xs text-muted-foreground">
+            Select draft cards below before applying a bulk action.
+          </span>
+        </div>
+      </AdminLoadingState>
       <ReviewDraftListSkeleton />
     </div>
   );

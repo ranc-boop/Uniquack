@@ -50,6 +50,13 @@ async function read(relativePath) {
 
 await checkRoute("/questions", "Question Bank");
 await checkRoute("/videos", "Videos");
+await checkAdminRoute("/admin", "Dashboard");
+await checkAdminRoute("/admin/questions", "Questions");
+await checkAdminRoute("/admin/review", "Review Drafts");
+await checkAdminRoute("/admin/imports", "Manual JSON Import");
+await checkAdminRoute("/admin/imports/pdf", "AI PDF Import");
+await checkAdminRoute("/admin/imports/assets", "Bulk asset upload");
+await checkAdminRoute("/admin/imports/package", "Package Import");
 await checkAdminRoute("/admin/tags", "Taxonomy");
 await checkAdminRoute("/admin/blueprints", "Question Blueprint Workspace");
 await checkAdminRoute("/admin/blueprints/review", "Blueprint Review Queue");
@@ -63,9 +70,18 @@ const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-contro
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
 const aiPdfImportLoading = await read("src/app/admin/imports/pdf/loading.tsx");
 const aiPdfImportLoadingSkeleton = await read("src/components/ai-pdf-import-loading-skeleton.tsx");
+const adminActionGroup = await read("src/components/admin/admin-action-group.tsx");
+const adminCard = await read("src/components/admin/admin-card.tsx");
+const adminDangerZone = await read("src/components/admin/admin-danger-zone.tsx");
+const adminDebugDisclosure = await read("src/components/admin/admin-debug-disclosure.tsx");
+const adminEmptyState = await read("src/components/admin/admin-empty-state.tsx");
 const adminLayout = await read("src/app/admin/layout.tsx");
+const adminLoadingState = await read("src/components/admin/admin-loading-state.tsx");
+const adminPage = await read("src/app/admin/page.tsx");
+const adminImportsPage = await read("src/app/admin/imports/page.tsx");
 const adminSidebar = await read("src/components/admin/admin-sidebar.tsx");
 const adminPageHeader = await read("src/components/admin/admin-page-header.tsx");
+const adminStatusBadge = await read("src/components/admin/admin-status-badge.tsx");
 const adminQuestionsPage = await read("src/app/admin/questions/page.tsx");
 const adminQuestionsLoading = await read("src/app/admin/questions/loading.tsx");
 const publicQuestionsPage = await read("src/app/questions/page.tsx");
@@ -144,6 +160,44 @@ assert(
   "admin shell must expose grouped navigation, active state, and shared page header",
 );
 console.log("PASS admin shell exposes grouped navigation and shared page header");
+assert(
+  adminActionGroup.includes("AdminActionGroup") &&
+    adminCard.includes("AdminCard") &&
+    adminDangerZone.includes("AdminDangerZone") &&
+    adminDebugDisclosure.includes("AdminDebugDisclosure") &&
+    adminEmptyState.includes("AdminEmptyState") &&
+    adminLoadingState.includes("AdminLoadingState") &&
+    adminStatusBadge.includes("AdminStatusBadge"),
+  "shared admin primitives must exist",
+);
+assert(
+  [
+    adminActionGroup,
+    adminCard,
+    adminDangerZone,
+    adminDebugDisclosure,
+    adminEmptyState,
+    adminLoadingState,
+    adminStatusBadge,
+  ].every((source) => !source.trimStart().startsWith("\"use client\"") && !source.trimStart().startsWith("'use client'")),
+  "shared admin primitives must stay server-compatible by default",
+);
+assert(
+  adminPage.includes("AdminCard") &&
+    adminPage.includes("AdminActionGroup") &&
+    adminPage.includes("action={createDemoContent}") &&
+    adminImportsPage.includes("AdminStatusBadge") &&
+    adminImportsPage.includes("AdminDebugDisclosure") &&
+    adminImportsPage.includes("AdminEmptyState") &&
+    adminQuestionsPage.includes("AdminDangerZone") &&
+    adminQuestionsPage.includes("action={bulkUpdateQuestions}") &&
+    adminReviewPage.includes("AdminDangerZone") &&
+    adminReviewPage.includes("action={bulkUpdateQuestions}") &&
+    adminQuestionsLoading.includes("AdminLoadingState") &&
+    adminReviewLoading.includes("AdminLoadingState"),
+  "admin pages must use shared primitives without replacing server-action forms",
+);
+console.log("PASS shared admin primitives render server-compatible patterns");
 assert(
   adminQuestionsLoading.includes("Loading questions...") &&
     adminQuestionsLoading.includes("Showing first 50 questions") &&
