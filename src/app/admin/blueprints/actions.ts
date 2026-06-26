@@ -17,7 +17,12 @@ import { importBatchImportJson } from "@/lib/batch-import/service";
 import {
   buildQuestionBlueprintGenerationRequest,
   executeDeepSeekBlueprintGeneration,
+  type QuestionBlueprintGenerationQuestionType,
 } from "@/lib/blueprints/question-blueprint-generation";
+import {
+  runQuestionBlueprintCalibration,
+  summarizeQuestionBlueprintCalibration,
+} from "@/lib/blueprints/question-blueprint-calibration";
 import {
   normalizeQuestionBlueprintFolderName,
   slugifyQuestionBlueprintFolderName,
@@ -76,7 +81,7 @@ function isMissingBlueprintTableError(error: unknown) {
 
   return (
     record.code === "42P01" ||
-    /folder_id|question_blueprint|relation .* does not exist|schema cache/i.test(
+    /folder_id|generation_readiness|question_blueprint|relation .* does not exist|schema cache/i.test(
       message,
     )
   );
@@ -100,6 +105,19 @@ function nullableFolderIdFromForm(formData: FormData, key = "folder_id") {
   return value && value !== "all" && value !== "unfiled" && value !== "root"
     ? value
     : null;
+}
+
+function blueprintQuestionType(value: string): QuestionBlueprintGenerationQuestionType {
+  return value === "mcq" ||
+    value === "fill_blank" ||
+    value === "frq" ||
+    value === "mixed"
+    ? value
+    : "frq";
+}
+
+function boundedJsonSummary(value: unknown) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 async function loadActiveAssignableTaxonomyTagIds(supabase: Awaited<ReturnType<typeof createClient>>) {
@@ -901,6 +919,160 @@ export async function moveQuestionBlueprintToTrash(formData: FormData) {
   redirectWithSaved("/admin/blueprints", "Blueprint moved to trash.");
 }
 
+export async function runBlueprintCalibrationPreview(formData: FormData) {
+  let redirectPath = "/admin/blueprints";
+
+  try {
+    const profile = await requireAdmin();
+    const blueprintId = formString(formData, "blueprint_id");
+
+    if (!blueprintId) {
+      throw new Error("Select an approved blueprint before running calibration.");
+    }
+
+    const supabase = await createClient();
+    const { data: blueprint, error: blueprintError } = await (supabase as any)
+      .from("question_blueprints")
+      .select(
+        "id, title, status, owner_scope, folder_id, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, difficulty_profile, generation_constraints, originality_constraints, source_refs, version, deleted_at, generation_readiness, last_calibrated_at, last_calibration_run_id",
+      )
+      .eq("id", blueprintId)
+      .eq("status", "approved")
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (blueprintError) {
+      throw new Error(setupMessage(blueprintError));
+    }
+
+    if (!blueprint) {
+      throw new Error("Only approved active blueprints can run calibration.");
+    }
+
+    const { data: examples, error: examplesError } = await (supabase as any)
+      .from("question_blueprint_examples")
+      .select("evidence_snippets")
+      .eq("blueprint_id", blueprintId)
+      .limit(5);
+
+    if (examplesError) {
+      throw new Error(setupMessage(examplesError));
+    }
+
+    const knownTaxonomyTagIds = await loadActiveAssignableTaxonomyTagIds(supabase);
+    const sourceEvidenceSnippets = ((examples ?? []) as { evidence_snippets?: unknown }[])
+      .flatMap((example) => stringList(example.evidence_snippets))
+      .slice(0, 8);
+    const provider = await loadDeepSeekBlueprintGenerationProvider(supabase);
+    const calibrationRun = await runQuestionBlueprintCalibration({
+      blueprint: blueprint as QuestionBlueprintRow,
+      blueprintId,
+      difficultyTarget: formString(formData, "calibration_difficulty_target")
+        ? formNumber(formData, "calibration_difficulty_target", 500)
+        : null,
+      knownTaxonomyTagIds,
+      provider,
+      questionType: blueprintQuestionType(formString(formData, "calibration_question_type")),
+      sampleCount: formNumber(formData, "sample_count", 2),
+      sourceEvidenceSnippets,
+      variationNote: formString(formData, "calibration_variation_note"),
+    });
+    const summary = summarizeQuestionBlueprintCalibration(calibrationRun);
+    const samplePreviews = calibrationRun.samples.map((sample) => ({
+      adherenceScore: sample.adherenceScore,
+      answerReady: sample.answerReady,
+      blocked: sample.blocked,
+      contentPreview: sample.contentPreview,
+      difficulty: sample.difficulty,
+      questionType: sample.questionType,
+      schemaValid: sample.schemaValid,
+      taxonomyTagIds: sample.taxonomyTagIds,
+      title: sample.title,
+      warnings: [
+        ...sample.validationWarnings,
+        ...sample.adherenceWarnings,
+        ...sample.originality.warnings,
+        ...sample.diversityWarnings,
+      ].slice(0, 12),
+    }));
+    const { data: insertedRun, error: insertError } = await (supabase as any)
+      .from("question_blueprint_calibration_runs")
+      .insert({
+        adherence_summary: boundedJsonSummary({
+          score: summary.adherenceScore,
+          warnings: calibrationRun.samples.flatMap((sample) => sample.adherenceWarnings).slice(0, 20),
+        }),
+        blocking_reasons: summary.blockingReasons,
+        blueprint_id: blueprintId,
+        blueprint_version: Number(blueprint.version ?? 1),
+        created_by: profile.id,
+        diversity_summary: boundedJsonSummary({
+          score: summary.diversityScore,
+          warnings: calibrationRun.samples.flatMap((sample) => sample.diversityWarnings).slice(0, 20),
+        }),
+        model_name: provider.model,
+        originality_summary: boundedJsonSummary({
+          copiedPhraseCount: calibrationRun.samples.reduce(
+            (total, sample) => total + sample.originality.copiedPhraseCount,
+            0,
+          ),
+          tooCloseToEvidenceCount: calibrationRun.samples.filter(
+            (sample) => sample.originality.tooCloseToEvidence,
+          ).length,
+          warnings: calibrationRun.samples.flatMap((sample) => sample.originality.warnings).slice(0, 20),
+        }),
+        provider_kind: "deepseek",
+        readiness_result: summary.readiness,
+        sample_count: calibrationRun.samples.length,
+        sample_previews: samplePreviews,
+        status: summary.readiness,
+        validation_summary: boundedJsonSummary({
+          validSampleCount: summary.validSampleCount,
+          warningCount: summary.warningCount,
+          warnings: calibrationRun.samples.flatMap((sample) => sample.validationWarnings).slice(0, 20),
+        }),
+      })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      throw new Error(setupMessage(insertError));
+    }
+
+    const { error: updateError } = await (supabase as any)
+      .from("question_blueprints")
+      .update({
+        generation_readiness: summary.readiness,
+        last_calibrated_at: new Date().toISOString(),
+        last_calibration_run_id: insertedRun.id,
+        updated_by: profile.id,
+      })
+      .eq("id", blueprintId)
+      .eq("status", "approved")
+      .is("deleted_at", null);
+
+    if (updateError) {
+      throw new Error(setupMessage(updateError));
+    }
+
+    const params = new URLSearchParams({
+      calibration: summary.readiness,
+      samples: String(summary.sampleCount),
+      saved:
+        summary.readiness === "generation_ready"
+          ? "Calibration passed. Blueprint is ready for generation."
+          : "Calibration completed. Review blockers before generation.",
+      warnings: String(summary.warningCount),
+    });
+    redirectPath = `/admin/blueprints?${params.toString()}`;
+  } catch (error) {
+    blueprintActionError(error);
+  }
+
+  revalidatePath("/admin/blueprints");
+  redirect(redirectPath);
+}
+
 export async function generateOriginalQuestionsFromApprovedBlueprint(
   formData: FormData,
 ) {
@@ -918,7 +1090,7 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
     const { data: blueprint, error: blueprintError } = await (supabase as any)
       .from("question_blueprints")
       .select(
-        "id, title, status, owner_scope, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, difficulty_profile, generation_constraints, originality_constraints, source_refs, version, deleted_at",
+        "id, title, status, owner_scope, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, difficulty_profile, generation_constraints, originality_constraints, source_refs, version, deleted_at, generation_readiness, last_calibrated_at, last_calibration_run_id",
       )
       .eq("id", blueprintId)
       .eq("status", "approved")
@@ -931,6 +1103,29 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
 
     if (!blueprint) {
       throw new Error("Approved blueprint was not found.");
+    }
+
+    if (
+      blueprint.generation_readiness !== "generation_ready" ||
+      !blueprint.last_calibration_run_id
+    ) {
+      throw new Error("Run a successful calibration preview before generating Review Draft questions.");
+    }
+
+    const { data: calibrationRun, error: calibrationError } = await (supabase as any)
+      .from("question_blueprint_calibration_runs")
+      .select("id, readiness_result, blueprint_version")
+      .eq("id", blueprint.last_calibration_run_id)
+      .eq("blueprint_id", blueprintId)
+      .eq("readiness_result", "generation_ready")
+      .maybeSingle();
+
+    if (calibrationError) {
+      throw new Error(setupMessage(calibrationError));
+    }
+
+    if (!calibrationRun) {
+      throw new Error("Run a successful calibration preview before generating Review Draft questions.");
     }
 
     const { data: examples, error: examplesError } = await (supabase as any)

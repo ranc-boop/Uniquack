@@ -29,6 +29,10 @@ const blueprintFolderMigration = await readFile(
   resolve(root, "supabase/migrations/0016_question_blueprint_folders.sql"),
   "utf8",
 );
+const blueprintCalibrationMigration = await readFile(
+  resolve(root, "supabase/migrations/0018_question_blueprint_calibration.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -57,6 +61,15 @@ assert(
     blueprintFolderMigration.includes("private.is_admin()") &&
     !blueprintFolderMigration.includes("to anon"),
   "question blueprint folder migration must enable admin-only RLS and avoid anon grants",
+);
+assert(
+  blueprintCalibrationMigration.includes("create table if not exists public.question_blueprint_calibration_runs") &&
+    blueprintCalibrationMigration.includes("alter table public.question_blueprint_calibration_runs enable row level security") &&
+    blueprintCalibrationMigration.includes("question_blueprint_calibration_runs_admin_crud") &&
+    blueprintCalibrationMigration.includes("private.is_admin()") &&
+    blueprintCalibrationMigration.includes("generation_readiness") &&
+    !blueprintCalibrationMigration.includes("to anon"),
+  "question blueprint calibration migration must enable admin-only RLS and avoid anon grants",
 );
 assert(
   blueprintMigration.includes("deleted_at timestamptz") &&
