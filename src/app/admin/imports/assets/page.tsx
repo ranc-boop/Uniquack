@@ -1,9 +1,10 @@
 import Link from "next/link";
 
+import { AdminCard } from "@/components/admin/admin-card";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { BulkAssetUploadPanelLoader } from "@/components/bulk-asset-upload-panel-loader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   buildBulkAssetExistingFileIndex,
@@ -84,11 +85,37 @@ export default async function AdminImportAssetsPage() {
         title="Bulk asset upload"
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Filename matching rules</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
+      <AdminCard
+        badge={<AdminStatusBadge status="pending">Review matches</AdminStatusBadge>}
+        description="Use this after draft questions exist. The tool previews filename matches first so skipped or ambiguous files can be reviewed before upload."
+        title="Bulk asset matching workflow"
+      >
+        <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-4">
+          {[
+            ["1", "Select image or PDF assets"],
+            ["2", "Match by question-code prefix"],
+            ["3", "Review skipped and duplicate matches"],
+            ["4", "Confirm upload and apply links"],
+          ].map(([step, label]) => (
+            <div
+              className="rounded-md border bg-muted/20 p-3 leading-6"
+              key={step}
+            >
+              <span className="mb-2 inline-flex size-6 items-center justify-center rounded-full border bg-background text-xs font-semibold text-foreground">
+                {step}
+              </span>
+              <p>{label}</p>
+            </div>
+          ))}
+        </div>
+      </AdminCard>
+
+      <AdminCard
+        badge={<AdminStatusBadge status="info">Filename rules</AdminStatusBadge>}
+        description="Only files that match a draft question code are attached. Everything else remains skipped for manual review."
+        title="Matching rules"
+      >
+        <div className="space-y-2 text-sm text-muted-foreground">
           <p>
             This MVP matches against draft question codes only. If a file has no
             draft match or more than one possible match, it is skipped for manual
@@ -113,8 +140,8 @@ export default async function AdminImportAssetsPage() {
             Q1001_diagram.png -&gt; Q1001, Q1002_source.pdf -&gt; Q1002,
             ASSET_MULTI_101_cart.png -&gt; ASSET_MULTI_101
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
 
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

@@ -964,6 +964,35 @@ Public Question Bank:
 - Improves filter copy, empty states, and pagination/status presentation without
   changing public access or taxonomy search behavior.
 
+## ADMIN-UI5 Implementation Notes
+
+ADMIN-UI5 polishes AI Parsing and import tools without changing provider,
+import, review, package parsing, bulk asset matching, or publication behavior.
+
+Import Tools overview:
+
+- Reframes `/admin/imports` as a workflow chooser for Manual JSON, Bulk Asset
+  Matching, Package Import, and AI PDF / Image Parsing.
+- Adds draft-safe status badges and copy that makes Review Drafts the next step
+  before anything can be published.
+- Keeps the existing Manual JSON import loader and validation/import actions.
+
+AI PDF / Image Parsing:
+
+- Adds workflow-first cards for private source upload, provider/mode selection,
+  dashboard review, and Blueprint Library handoff.
+- Keeps AI provider routing, extraction modes, blueprint observation behavior,
+  and the existing dashboard/loaders unchanged.
+- Improves empty-state and step copy inside the client panel without changing
+  upload, reset, delete, signed URL, or extraction handlers.
+
+Bulk Asset Matching and Package Import:
+
+- Adds compact workflow cards and clear safety rules for filename matching and
+  ZIP package validation.
+- Improves empty states in the client panels while preserving preview-first
+  confirmation and existing upload/import handlers.
+
 ## Commands Run
 
 ADMIN-UI0 validation completed on branch `codex/admin-ui-ux-audit`:

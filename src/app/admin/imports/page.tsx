@@ -58,13 +58,12 @@ export default async function AdminImportsPage() {
         }
         description={
           <>
-            Manual JSON import creates draft questions for review. Asset
-            references are preserved for review only; use Bulk asset upload to
-            attach files by filename prefix.
+            Choose the right import workflow. Every path creates private draft
+            review work first; nothing is published automatically.
           </>
         }
         eyebrow="Import tools"
-        title="Manual JSON Import"
+        title="Import Tools"
       />
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -79,8 +78,9 @@ export default async function AdminImportsPage() {
             />
           }
           compact
-          description="Create draft questions from structured JSON."
-          title="JSON Import"
+          badge={<AdminStatusBadge status="draft">Draft-only</AdminStatusBadge>}
+          description="Best for validated structured question data pasted from a trusted tool."
+          title="Manual JSON Import"
         />
         <AdminCard
           actions={
@@ -93,8 +93,9 @@ export default async function AdminImportsPage() {
             />
           }
           compact
-          description="Attach selected image and PDF files to existing drafts."
-          title="Bulk Asset Upload"
+          badge={<AdminStatusBadge status="pending">Review matches</AdminStatusBadge>}
+          description="Best after drafts exist and files can be matched by question-code filename prefix."
+          title="Bulk Asset Matching"
         />
         <AdminCard
           actions={
@@ -107,7 +108,8 @@ export default async function AdminImportsPage() {
             />
           }
           compact
-          description="Import questions.json with referenced images and PDFs in one ZIP."
+          badge={<AdminStatusBadge status="pending_review">Preview first</AdminStatusBadge>}
+          description="Best for one ZIP containing questions.json plus referenced image and PDF files."
           title="Package Import"
         />
         <AdminCard
@@ -121,12 +123,16 @@ export default async function AdminImportsPage() {
             />
           }
           compact
-          description="Parse a PDF with a configured multimodal model into draft questions."
-          title="AI PDF Import"
+          badge={<AdminStatusBadge status="info">AI Parsing</AdminStatusBadge>}
+          description="Best for private PDFs or images that need AI extraction or blueprint observation."
+          title="AI PDF / Image Parsing"
         />
       </div>
 
-      <AdminCard title="Manual JSON import">
+      <AdminCard
+        title="Manual JSON import"
+        description="Validate first, then import only valid items as private draft questions for Review Drafts."
+      >
         <BatchImportJsonPanelLoader tagIds={importPromptTagIds} />
       </AdminCard>
 

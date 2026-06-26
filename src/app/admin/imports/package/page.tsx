@@ -1,9 +1,10 @@
 import Link from "next/link";
 
+import { AdminCard } from "@/components/admin/admin-card";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { PackageImportPanelLoader } from "@/components/package-import-panel-loader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
 
 export const dynamic = "force-dynamic";
@@ -24,11 +25,37 @@ export default async function AdminPackageImportPage() {
         title="Package import"
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Supported package format</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
+      <AdminCard
+        badge={<AdminStatusBadge status="pending_review">Preview first</AdminStatusBadge>}
+        description="Validate a ZIP package, inspect the import preview, then create draft questions and attach assets for Review Drafts."
+        title="Package import workflow"
+      >
+        <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-4">
+          {[
+            ["1", "Choose a ZIP package"],
+            ["2", "Validate questions.json and assets"],
+            ["3", "Preview questions and file references"],
+            ["4", "Confirm package import"],
+          ].map(([step, label]) => (
+            <div
+              className="rounded-md border bg-muted/20 p-3 leading-6"
+              key={step}
+            >
+              <span className="mb-2 inline-flex size-6 items-center justify-center rounded-full border bg-background text-xs font-semibold text-foreground">
+                {step}
+              </span>
+              <p>{label}</p>
+            </div>
+          ))}
+        </div>
+      </AdminCard>
+
+      <AdminCard
+        badge={<AdminStatusBadge status="info">ZIP contract</AdminStatusBadge>}
+        description="Keep package paths predictable and safe. Imported questions remain drafts until reviewed."
+        title="Supported package format"
+      >
+        <div className="space-y-2 text-sm text-muted-foreground">
           <p>
             Required: questions.json at the ZIP root. Optional files can be
             placed directly under images/ and pdfs/.
@@ -42,8 +69,8 @@ export default async function AdminPackageImportPage() {
             questions.json references files using image_files and source_files,
             for example images/Q1001_diagram.png and pdfs/Q1001_source.pdf.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
 
       <PackageImportPanelLoader />
     </div>

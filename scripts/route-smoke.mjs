@@ -79,6 +79,8 @@ const adminLayout = await read("src/app/admin/layout.tsx");
 const adminLoadingState = await read("src/components/admin/admin-loading-state.tsx");
 const adminPage = await read("src/app/admin/page.tsx");
 const adminImportsPage = await read("src/app/admin/imports/page.tsx");
+const adminImportsPdfPage = await read("src/app/admin/imports/pdf/page.tsx");
+const adminImportsPackagePage = await read("src/app/admin/imports/package/page.tsx");
 const adminSidebar = await read("src/components/admin/admin-sidebar.tsx");
 const adminPageHeader = await read("src/components/admin/admin-page-header.tsx");
 const adminStatusBadge = await read("src/components/admin/admin-status-badge.tsx");
@@ -91,6 +93,8 @@ const adminReviewLoading = await read("src/app/admin/review/loading.tsx");
 const draftReviewCard = await read("src/components/draft-review-card.tsx");
 const blueprintLoading = await read("src/components/blueprints/blueprint-list-skeleton.tsx");
 const bulkAssetsPage = await read("src/app/admin/imports/assets/page.tsx");
+const bulkAssetPanel = await read("src/components/bulk-asset-upload-panel.tsx");
+const packageImportPanel = await read("src/components/package-import-panel.tsx");
 const videosPage = await read("src/app/videos/page.tsx");
 assert(
   adminReviewPage.includes("REVIEW_PAGE_SIZE") &&
@@ -199,6 +203,33 @@ assert(
   "admin pages must use shared primitives without replacing server-action forms",
 );
 console.log("PASS shared admin primitives render server-compatible patterns");
+assert(
+  adminImportsPage.includes("Import Tools") &&
+    adminImportsPage.includes("AI PDF / Image Parsing") &&
+    adminImportsPage.includes("nothing is published automatically") &&
+    adminImportsPdfPage.includes("AdminCard") &&
+    adminImportsPdfPage.includes("AI parsing workflow") &&
+    adminImportsPdfPage.includes("Blueprint Library") &&
+    adminImportsPdfPage.includes("AIPdfImportPanelLoader") &&
+    aiPdfPanel.includes("Upload private PDF source") &&
+    aiPdfPanel.includes("Choose uploaded source") &&
+    aiPdfPanel.includes("Choose mode and run") &&
+    aiPdfPanel.includes("No uploaded AI PDF sources yet") &&
+    aiPdfPanel.includes("Blueprint") &&
+    aiPdfPanel.includes("observation creates reviewable blueprint metadata") &&
+    bulkAssetsPage.includes("Bulk asset matching workflow") &&
+    bulkAssetsPage.includes("Matching rules") &&
+    bulkAssetPanel.includes("Select assets for preview") &&
+    bulkAssetPanel.includes("No asset files selected") &&
+    bulkAssetPanel.includes("Confirm upload/import") &&
+    adminImportsPackagePage.includes("Package import workflow") &&
+    adminImportsPackagePage.includes("ZIP contract") &&
+    packageImportPanel.includes("Select package for preview") &&
+    packageImportPanel.includes("No package selected") &&
+    packageImportPanel.includes("Confirm package import"),
+  "import tools UI must expose workflow-first cards, draft-safe copy, and polished empty states without removing loaders/actions",
+);
+console.log("PASS import tools UI polish keeps loaders and manual confirmation flow");
 assert(
   adminReviewPage.includes("AdminCard") &&
     adminReviewPage.includes("AdminActionGroup") &&

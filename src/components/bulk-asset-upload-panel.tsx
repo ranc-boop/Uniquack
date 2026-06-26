@@ -13,6 +13,7 @@ import {
   finalizeQuestionSourceFileUpload,
   reserveQuestionSourceFileUpload,
 } from "@/app/admin/questions/source-file-actions";
+import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -303,7 +304,7 @@ export function BulkAssetUploadPanel({
       <div className="space-y-3 rounded-md border bg-muted/20 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-3xl space-y-1">
-            <p className="text-sm font-medium">Upload image and PDF files</p>
+            <p className="text-sm font-medium">Select assets for preview</p>
             <p className="text-xs text-muted-foreground">
               Files are matched to draft questions by question-code filename
               prefix, then uploaded only after confirmation. Examples:
@@ -464,9 +465,10 @@ export function BulkAssetUploadPanel({
           </div>
         </div>
       ) : (
-        <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Select files to preview filename matches before upload.
-        </div>
+        <AdminEmptyState
+          description="Select files to preview filename matches, skipped files, duplicates, and ambiguous matches before upload."
+          title="No asset files selected"
+        />
       )}
 
       {summary ? (
