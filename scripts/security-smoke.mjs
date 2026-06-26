@@ -79,6 +79,7 @@ assert(
 console.log("PASS practice persistence has owner RLS, preference limit, and snapshot-safe question links");
 
 const practiceClient = await read("src/components/practice/practice-agent-client.tsx");
+const practiceClientHelpers = await read("src/lib/practice/client-helpers.ts");
 const practiceSchema = await read("src/lib/practice/schema.ts");
 const practicePersistenceSource = await read("src/lib/practice/persistence.ts");
 const practiceRecommendRoute = await read("src/app/api/practice/recommend/route.ts");
@@ -97,9 +98,10 @@ assert(
   "practice runtime must use one current session/schema version and ignore old snapshots",
 );
 assert(
-  practiceClient.includes("CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY") &&
-    practiceClient.includes("LEGACY_PRACTICE_STORAGE_KEYS") &&
-    !practiceClient.includes("o2i:pendingPracticeRound"),
+  practiceClientHelpers.includes("CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY") &&
+    practiceClientHelpers.includes("LEGACY_PRACTICE_STORAGE_KEYS") &&
+    !practiceClient.includes("o2i:pendingPracticeRound") &&
+    !practiceClientHelpers.includes("o2i:pendingPracticeRound"),
   "practice client must stop reading old pending-round storage keys",
 );
 for (const source of [practiceRecommendRoute, practiceReviewRoute, practiceCustomRoundRoute]) {

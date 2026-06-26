@@ -534,6 +534,54 @@ PERF2B inspected only the Practice page/runtime surface after the route-level la
 - Trace/detail rendering could be split into an optional lazy panel later if diagnostics remain a measurable client-side cost.
 - Practice search/recommendation server helpers remain broad because they are part of active agent behavior and need product-level review before any deeper pruning.
 
+## PERF2C Practice Agent Client Split
+
+PERF2C keeps the `/practice` route shell from PERF1 and splits the loaded Practice island into focused UI modules.
+
+### Before / After
+
+- Baseline `practice-agent-client.tsx`: 99.9 KB source in `perf:audit`.
+- After split `practice-agent-client.tsx`: 67.3 KB source in `perf:audit`.
+- New lazy trace/debug panel: `practice-trace-panel.tsx`, 16.2 KB source, loaded only when the agent trace UI is rendered.
+- `/practice` route shell remains 3.6 KB client gzip 1.4 KB.
+
+### Components Split
+
+- `src/components/practice/practice-question-card.tsx`
+  - Per-question prompt, answer input, hints, grading badge, solution, and question-level diagnosis.
+- `src/components/practice/practice-round-review-panel.tsx`
+  - Round review summary, memory note, next-round focus, and next-round controls.
+- `src/components/practice/practice-readable-data-card.tsx`
+  - Readable study-state cards for session outline, round rationale, and practice thread details.
+- `src/components/practice/practice-trace-panel.tsx`
+  - Agent trace/debug display and model/tool detail formatting.
+- `src/lib/practice/client-helpers.ts`
+  - Client-only duration formatting, history restoration helpers, and pending-round storage handoff.
+
+### Lazy Panels Added
+
+- `TracePanel` is imported through `next/dynamic` with `ssr: false`.
+- The initial starter/workspace path no longer carries the trace formatting component in the main Practice client source.
+- Session sidebar, answering, hints, review, wrong-question practice, and persisted session restoration are still eagerly available because they are active workflow UI.
+
+### Behavior Preserved
+
+- Practice workspace loading.
+- New session creation and session switching.
+- Taxonomy-based recommendation flow.
+- Question answering for MCQ and written responses.
+- Hint requests.
+- Streaming review fallback and per-question feedback.
+- Wrong-question retry flow.
+- Current pending-round storage handoff.
+- Persisted session history restoration.
+
+### Remaining Practice Risks
+
+- The main Practice client is still 67.3 KB because it owns orchestration, sidebars, session state, and network transitions.
+- A future PR could split left/right sidebars into presentational components once the current behavior is manually QA'd after this split.
+- Trace panel code is lazy, but the right-side study-state cards remain eager because they are visible in the default desktop workspace.
+
 ## Commands Run
 
 ```bash

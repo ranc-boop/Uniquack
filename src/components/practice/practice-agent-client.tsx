@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, ChevronsLeft, ChevronsRight, LoaderCircle, MoreHorizontal, Pencil, Plus, Search, SlidersHorizontal, Sparkles, Trash2, Wrench } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import {
   FeedbackText,
-  OptionText,
   QuestionText,
-  SolutionText,
 } from "@/components/math-content";
+import { PracticeQuestionCard } from "@/components/practice/practice-question-card";
+import { ReadableDataCard, threadStudyContext } from "@/components/practice/practice-readable-data-card";
+import { PracticeRoundReviewPanel } from "@/components/practice/practice-round-review-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,9 +19,12 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY,
-  LEGACY_PRACTICE_STORAGE_KEYS,
-} from "@/lib/practice/schema";
+  clearLegacyPracticeStorage,
+  formatDuration,
+  readPendingPracticeRound,
+  recommendationFromHistoryQuestion,
+  resultsFromHistoryRound,
+} from "@/lib/practice/client-helpers";
 import type {
   PracticeAttemptInput,
   PracticeGradeResult,
@@ -37,6 +42,14 @@ import type {
   PracticeTraceEvent,
   PracticeWrongQuestionView,
 } from "@/lib/practice/types";
+
+const TracePanel = dynamic(
+  () => import("@/components/practice/practice-trace-panel").then((module) => module.TracePanel),
+  {
+    loading: () => null,
+    ssr: false,
+  },
+);
 
 type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback";
 type AnswersState = Record<string, string | string[]>;
@@ -227,658 +240,6 @@ async function postReviewStream({
     throw new Error("Practice review stream ended before a result was returned.");
   }
   return result;
-}
-
-function answerValue(answer: string | string[] | undefined) {
-  return Array.isArray(answer) ? answer.join(", ") : answer ?? "";
-}
-
-function resultBadge(result: PracticeGradeResult | undefined) {
-  if (!result) return null;
-  if (result.isCorrect === true) {
-    return <Badge className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600">correct</Badge>;
-  }
-  if (result.isCorrect === false) {
-    return <Badge variant="destructive">incorrect</Badge>;
-  }
-  return <Badge variant="outline">manual review</Badge>;
-}
-
-function reviewingBadge() {
-  return (
-    <Badge className="gap-1.5 border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
-      <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
-      Reviewing
-    </Badge>
-  );
-}
-
-function formatDuration(ms: number) {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return minutes ? `${minutes}m ${seconds.toString().padStart(2, "0")}s` : `${seconds}s`;
-}
-
-function formatTrace(event: PracticeTraceEvent) {
-  return [
-    event.outputSummary,
-    event.error ? `Error: ${event.error}` : "",
-  ].filter(Boolean).join(" ");
-}
-
-function isTraceNoise(event: PracticeTraceEvent) {
-  return event.toolName === "model_usage" ||
-    event.toolName === "model_tool_choice_start" ||
-    event.toolName === "compact_agent_context";
-}
-
-function displayTraceEvents(trace: PracticeTraceEvent[]) {
-  return trace.filter((event) => !isTraceNoise(event));
-}
-
-function latestDisplayTrace(trace: PracticeTraceEvent[]) {
-  return displayTraceEvents(trace).at(-1) ?? trace.at(-1);
-}
-
-function compactJson(value: unknown, maxLength = 1600) {
-  try {
-    const text = JSON.stringify(value ?? {}, null, 2);
-    return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}...` : text;
-  } catch {
-    return String(value ?? "");
-  }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function humanizeKey(key: string) {
-  return key
-    .replace(/[_-]+/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function plainText(value: unknown, maxLength = 260): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value.length > maxLength ? `${value.slice(0, maxLength).trimEnd()}...` : value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => plainText(item, 90))
-      .filter(Boolean)
-      .slice(0, 4)
-      .join("; ");
-  }
-  const record = asRecord(value);
-  if (!record) return "";
-  const preferred = ["summary", "focus", "current_focus", "recommendation_intent", "drift_guard", "next_round_constraints"];
-  for (const key of preferred) {
-    const text = plainText(record[key], maxLength);
-    if (text) return text;
-  }
-  return Object.entries(record)
-    .filter(([, nestedValue]) => typeof nestedValue !== "object" || nestedValue === null)
-    .slice(0, 3)
-    .map(([key, nestedValue]) => `${humanizeKey(key)}: ${plainText(nestedValue, 80)}`)
-    .join(" · ");
-}
-
-function objectHighlights(value: unknown, limit = 5): Array<{ label: string; value: string }> {
-  const record = asRecord(value);
-  if (!record) return [];
-  const priorityKeys = [
-    "summary",
-    "current_focus",
-    "active_misconceptions",
-    "confirmed_strengths",
-    "training_strategy",
-    "next_round_constraints",
-    "recommendation_intent",
-    "drift_guard",
-    "plan_node_id",
-  ];
-  const entries = [
-    ...priorityKeys.filter((key) => key in record),
-    ...Object.keys(record).filter((key) => !priorityKeys.includes(key)),
-  ];
-
-  return entries
-    .map((key) => ({ label: humanizeKey(key), value: plainText(record[key]) }))
-    .filter((item) => item.value)
-    .slice(0, limit);
-}
-
-function threadStudyContext(session: PracticeSessionDetail | null) {
-  const entries = session?.sessionThreadMessages ?? [];
-  const records = entries.map(asRecord).filter((entry): entry is Record<string, unknown> => Boolean(entry));
-  const checkpoint = [...records].reverse().find((entry) => entry.kind === "thread_checkpoint");
-  const currentTask = [...records].reverse().find((entry) => entry.kind === "current_task");
-  const episode = [...records].reverse().find((entry) => entry.kind === "episode_card");
-
-  if (!checkpoint && !currentTask && !episode) {
-    return session?.sessionState || session?.sessionMemory || null;
-  }
-
-  return {
-    checkpoint: checkpoint?.summary ?? checkpoint ?? null,
-    latest_episode: episode?.summary ?? episode ?? null,
-    latest_task: currentTask?.summary ?? currentTask ?? null,
-    locked_long_term_memory: session?.longTermMemorySnapshot || "",
-    thread_entries: records.length,
-  };
-}
-
-function readableProcessLabel(event: PracticeTraceEvent) {
-  if (event.error) return "Needs attention";
-  if (event.toolName === "model_tool_choice") return "Model thought";
-  if (event.toolName.includes("browse")) return "Finding the right topic";
-  if (event.toolName.includes("search")) return "Looking through question candidates";
-  if (event.toolName.includes("finalize")) return "Choosing the round";
-  if (event.toolName.includes("review") || event.phase === "review") return "Reviewing your answers";
-  return event.phase === "context" ? "Reading session context" : "Thinking";
-}
-
-function traceIcon(event: PracticeTraceEvent) {
-  if (event.toolName === "model_tool_choice") return <Sparkles className="size-4" aria-hidden="true" />;
-  if (event.toolName.includes("search") || event.toolName.includes("browse")) return <Search className="size-4" aria-hidden="true" />;
-  if (event.toolName.includes("finalize")) return <Sparkles className="size-4" aria-hidden="true" />;
-  if (event.toolName.includes("tool")) return <Wrench className="size-4" aria-hidden="true" />;
-  return <Sparkles className="size-4" aria-hidden="true" />;
-}
-
-type ToolPill = {
-  label?: string;
-  value: string;
-};
-
-function asRecordArray(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.map(asRecord).filter((item): item is Record<string, unknown> => Boolean(item)) : [];
-}
-
-function pushPill(pills: ToolPill[], value: unknown, label?: string, maxLength = 80) {
-  const text = plainText(value, maxLength);
-  if (text) pills.push({ label, value: text });
-}
-
-function toolInputPills(event: PracticeTraceEvent): ToolPill[] {
-  const payload = asRecord(event.inputPayload);
-  const args = asRecord(payload?.args);
-  const tool = String(payload?.tool ?? event.toolName);
-  const pills: ToolPill[] = [];
-
-  if (!args) return pills;
-
-  if (tool === "browse_taxonomy_batch") {
-    for (const request of asRecordArray(args.requests).slice(0, 6)) {
-      pushPill(pills, request.query ?? request.guess_path ?? request.parent_tag_id ?? request.request_id, String(request.source ?? "request"));
-    }
-    for (const tagId of Array.isArray(args.keep_tags) ? args.keep_tags.slice(0, 4) : []) {
-      pushPill(pills, tagId, "keep");
-    }
-  } else if (tool === "practice_search_batch") {
-    pushPill(pills, args.mode, "mode");
-    for (const lane of asRecordArray(args.lanes).slice(0, 5)) {
-      pushPill(pills, lane.query_text || lane.rationale || lane.lane_id, String(lane.lane_id ?? "lane"));
-      const tags = Array.isArray(lane.confirmed_tag_ids) ? lane.confirmed_tag_ids : [];
-      for (const tagId of tags.slice(0, 3)) pushPill(pills, tagId, "tag");
-      if (tags.length > 3) pushPill(pills, `+${tags.length - 3}`, "more");
-    }
-  } else if (tool === "finalize_recommendation") {
-    pushPill(pills, args.round_goal, "goal");
-    for (const questionId of Array.isArray(args.question_ids) ? args.question_ids.slice(0, 6) : []) {
-      pushPill(pills, questionId, "select");
-    }
-    const contract = asRecord(args.round_contract);
-    pushPill(pills, contract?.plan_node_id, "plan");
-  } else {
-    for (const [key, value] of Object.entries(args).filter(([key]) => key !== "visible_thought").slice(0, 6)) {
-      pushPill(pills, value, humanizeKey(key));
-    }
-  }
-
-  return pills;
-}
-
-function toolOutputPills(event: PracticeTraceEvent): ToolPill[] {
-  const output = asRecord(event.outputPayload);
-  const pills: ToolPill[] = [];
-
-  if (!output) {
-    pushPill(pills, formatTrace(event));
-    return pills;
-  }
-
-  if ("results" in output) {
-    const results = asRecordArray(output.results);
-    pushPill(pills, results.length, "requests");
-    for (const result of results.slice(0, 4)) {
-      pushPill(pills, result.query ?? result.request_id, "result");
-      const tags = asRecordArray(result.tags);
-      if (tags.length) pushPill(pills, `${tags.length} tags`, "found");
-    }
-  } else if ("candidates" in output || "lane_summaries" in output) {
-    const candidates = asRecordArray(output.candidates);
-    const laneSummaries = asRecordArray(output.lane_summaries);
-    pushPill(pills, output.mode, "mode");
-    pushPill(pills, output.candidate_pool_size, "pool");
-    pushPill(pills, candidates.length, "candidates");
-    for (const lane of laneSummaries.slice(0, 4)) {
-      pushPill(pills, `${lane.result_count ?? 0} ${lane.match_quality ?? ""}`.trim(), String(lane.lane_id ?? "lane"));
-    }
-  } else if ("selected_question_ids" in output) {
-    pushPill(pills, output.accepted ? "accepted" : "not accepted", "status");
-    for (const questionId of Array.isArray(output.selected_question_ids) ? output.selected_question_ids.slice(0, 6) : []) {
-      pushPill(pills, questionId, "selected");
-    }
-    pushPill(pills, output.candidate_pool_size, "pool");
-    pushPill(pills, output.tag_context_size, "tags");
-  } else {
-    for (const [key, value] of Object.entries(output).slice(0, 8)) {
-      pushPill(pills, value, humanizeKey(key));
-    }
-  }
-
-  if (event.error) pushPill(pills, event.error, "error", 140);
-  return pills;
-}
-
-function PillList({ empty, pills }: { empty: string; pills: ToolPill[] }) {
-  if (!pills.length) {
-    return <p className="mt-1 text-sm leading-6 text-slate-600">{empty}</p>;
-  }
-
-  return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {pills.map((pill, index) => (
-        <span
-          className="inline-flex max-w-full items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm leading-5 text-slate-700"
-          key={`${pill.label ?? "pill"}-${pill.value}-${index}`}
-          title={pill.label ? `${pill.label}: ${pill.value}` : pill.value}
-        >
-          {pill.label ? <span className="font-semibold text-slate-500">{pill.label}</span> : null}
-          <span className="truncate">{pill.value}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function traceSummaryText(event: PracticeTraceEvent | undefined) {
-  if (!event) return "Waiting for the agent to start.";
-  return event.thoughtSummary || event.inputSummary || event.outputSummary || event.error || "Working through the next step.";
-}
-
-function traceEventKey(event: PracticeTraceEvent | undefined) {
-  if (!event) return "empty";
-  return [
-    event.toolName,
-    event.iteration ?? "n",
-    event.toolCallId ?? "call",
-    event.inputSummary ?? "",
-    event.outputSummary ?? "",
-  ].join(":");
-}
-
-function TraceEventSummary({
-  animated = false,
-  event,
-}: {
-  animated?: boolean;
-  event: PracticeTraceEvent;
-}) {
-  return (
-    <div
-      className={[
-        "flex min-w-0 items-center gap-3",
-        animated ? "animate-in fade-in slide-in-from-bottom-3 duration-300" : "",
-      ].filter(Boolean).join(" ")}
-    >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
-        {traceIcon(event)}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-bold text-slate-900">{readableProcessLabel(event)}</span>
-        <span className="mt-0.5 block truncate text-xs leading-5 text-slate-500">
-          {traceSummaryText(event)}
-        </span>
-      </span>
-      {event.elapsedMs !== undefined ? (
-        <span className="shrink-0 text-[11px] font-medium text-slate-400">{event.elapsedMs}ms</span>
-      ) : null}
-    </div>
-  );
-}
-
-function ReadableDataCard({
-  children,
-  empty,
-  title,
-  value,
-}: {
-  children?: ReactNode;
-  empty: string;
-  title: string;
-  value: unknown;
-}) {
-  const summary = plainText(value);
-  const highlights = objectHighlights(value);
-  const hasValue = Boolean(summary || highlights.length);
-
-  return (
-    <Card className="border-0 bg-white shadow-none ring-1 ring-slate-200/80">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {hasValue ? (
-          <>
-            {summary ? (
-              <FeedbackText className="border-none bg-transparent p-0 text-sm leading-6 text-slate-600" compact value={summary} />
-            ) : null}
-            {highlights.length ? (
-              <div className="space-y-2">
-                {highlights.map((item) => (
-                  <div key={`${title}-${item.label}`} className="rounded-lg border border-slate-100 bg-slate-50/70 p-3">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{item.label}</p>
-                    <FeedbackText className="mt-1 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={item.value} />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <details className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-xs">
-              <summary className="cursor-pointer font-semibold text-slate-700">Show raw details</summary>
-              <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-[11px] leading-5 text-slate-500 ring-1 ring-slate-200">
-                {compactJson(value, 2400)}
-              </pre>
-            </details>
-          </>
-        ) : (
-          <p className="text-sm leading-6 text-slate-600">{empty}</p>
-        )}
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
-
-function recommendationFromHistoryQuestion(
-  question: PracticeRoundHistory["questions"][number],
-): PracticeRecommendation {
-  return {
-    contentExcerpt: question.contentExcerpt,
-    contentHtml: question.contentHtml,
-    difficulty: question.difficulty,
-    expectedSkill: question.expectedSkill,
-    id: question.sourceQuestionId ?? question.id,
-    options: question.options,
-    questionCode: question.questionCode,
-    questionType: question.questionType as PracticeRecommendation["questionType"],
-    reason: question.reason || "Saved from this practice session.",
-    source: question.source,
-    tagIds: question.tagIds,
-    title: question.title,
-  };
-}
-
-function resultsFromHistoryRound(round: PracticeRoundHistory): PracticeGradeResult[] {
-  return round.attempts.map((attempt) => ({
-    explanation: attempt.explanation ?? "No saved explanation.",
-    gradingMode: "manual" as const,
-    isCorrect: attempt.isCorrect,
-    questionId: attempt.sourceQuestionId ?? attempt.questionId ?? "",
-    score: attempt.score,
-    solutionHtml: attempt.solutionHtml,
-  })).filter((result) => result.questionId);
-}
-
-function clearLegacyPracticeStorage() {
-  for (const key of LEGACY_PRACTICE_STORAGE_KEYS) {
-    window.sessionStorage.removeItem(key);
-  }
-}
-
-function readPendingPracticeRound() {
-  const pendingRoundRaw = window.sessionStorage.getItem(
-    CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY,
-  );
-  if (!pendingRoundRaw) {
-    return null;
-  }
-
-  window.sessionStorage.removeItem(CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY);
-  try {
-    const pendingRound = JSON.parse(pendingRoundRaw) as PracticeRecommendResponse;
-    return pendingRound.roundId && pendingRound.recommendations?.length
-      ? pendingRound
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function TracePanel({
-  active = false,
-  collapsed = false,
-  onToggle,
-  trace,
-}: {
-  active?: boolean;
-  collapsed?: boolean;
-  onToggle?: () => void;
-  trace: PracticeTraceEvent[];
-}) {
-  if (!trace.length && !active) return null;
-  const displayTrace = displayTraceEvents(trace);
-  const latestEvent = latestDisplayTrace(trace);
-  const latestKey = traceEventKey(latestEvent);
-
-  return (
-    <Card className={active ? "animate-in fade-in slide-in-from-bottom-2 border-sky-100 bg-sky-50/40 duration-300" : "border-slate-200/80"}>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">How the agent is working</CardTitle>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              A short, student-safe view of the model&apos;s analysis, searches, and recommendation choices.
-            </p>
-          </div>
-          {trace.length ? (
-            <Button onClick={onToggle} size="sm" type="button" variant="outline">
-              {collapsed ? "Show details" : "Hide details"}
-            </Button>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {active && !collapsed && latestEvent ? (
-          <div className="mb-4 rounded-xl border border-sky-200 bg-white/90 p-3 text-sm shadow-sm shadow-sky-950/5">
-            <div key={`active-${latestKey}`} className="relative">
-              <span className="absolute -left-1 top-3 flex size-2">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-sky-500 opacity-60" />
-                <span className="relative inline-flex size-2 rounded-full bg-sky-600" />
-              </span>
-              <div className="pl-4">
-                <TraceEventSummary animated event={latestEvent} />
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {collapsed ? (
-          latestEvent ? (
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
-              <div key={`collapsed-${latestKey}`}>
-                <TraceEventSummary animated event={latestEvent} />
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600">
-              Waiting for the agent to start.
-            </div>
-          )
-        ) : (
-          <div className="space-y-2">
-            {displayTrace.map((event, index) => (
-              <details
-                key={`${event.toolName}-${index}`}
-                className="group rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-sm transition-colors duration-200 open:border-sky-200 open:bg-sky-50/40"
-                open={active ? index === displayTrace.length - 1 : false}
-              >
-                <summary className="cursor-pointer list-none">
-                  <TraceEventSummary event={event} />
-                </summary>
-                {event.toolName === "model_tool_choice" ? (
-                  <div className="mt-3 rounded-lg border border-sky-100 bg-white p-3">
-                    <p className="font-bold text-slate-900">Model-generated thought overview</p>
-                    <FeedbackText
-                      className="mt-1 border-none bg-transparent p-0 leading-5 text-slate-600"
-                      compact
-                      value={event.inputSummary || event.modelThought || "The model requested the next tool call."}
-                    />
-                    {event.reasoningContent ? (
-                      <details className="mt-3 rounded-md border border-amber-200 bg-amber-50/70 p-3">
-                        <summary className="cursor-pointer font-semibold text-amber-800">Raw reasoning content</summary>
-                        <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-[11px] leading-5 text-slate-600 ring-1 ring-slate-200">
-                          {event.reasoningContent}
-                        </pre>
-                      </details>
-                    ) : null}
-                    {event.modelThought && event.modelThought !== event.inputSummary ? (
-                      <details className="mt-3 rounded-md border border-slate-200 bg-slate-50/70 p-3">
-                        <summary className="cursor-pointer font-semibold text-slate-700">Full original model text</summary>
-                        <FeedbackText className="mt-2 border-none bg-transparent p-0 leading-5 text-slate-600" compact value={event.modelThought} />
-                      </details>
-                    ) : null}
-                    {event.outputSummary ? (
-                      <p className="mt-2 text-xs leading-5 text-slate-500">{event.outputSummary}</p>
-                    ) : null}
-                  </div>
-                ) : (
-                  <>
-                    {event.thoughtSummary ? (
-                      <div className="mt-3 rounded-lg border border-sky-100 bg-white p-3">
-                        <p className="font-bold text-slate-900">Tool thought</p>
-                        <FeedbackText className="mt-1 border-none bg-transparent p-0 leading-5 text-slate-600" compact value={event.thoughtSummary} />
-                      </div>
-                    ) : null}
-                    <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
-                      <p className="font-bold text-slate-900">What it checked</p>
-                      {event.inputPayload ? (
-                        <PillList empty="No key input details saved for this step." pills={toolInputPills(event)} />
-                      ) : (
-                        <FeedbackText className="mt-1 break-words border-none bg-transparent p-0 leading-5 text-slate-600" compact value={event.inputSummary ?? "No input details saved for this step."} />
-                      )}
-                    </div>
-                    {(event.outputPayload || event.outputSummary || event.error) ? (
-                      <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
-                        <p className="font-bold text-slate-900">What came back</p>
-                        {event.outputPayload ? (
-                          <PillList empty="No key output details saved for this step." pills={toolOutputPills(event)} />
-                        ) : (
-                          <FeedbackText
-                            className={event.error ? "mt-1 border-none bg-transparent p-0 leading-5 text-destructive" : "mt-1 break-words border-none bg-transparent p-0 leading-5 text-slate-600"}
-                            compact
-                            value={formatTrace(event)}
-                          />
-                        )}
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </details>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function QuestionAnswerInput({
-  answer,
-  disabled,
-  onChange,
-  question,
-}: {
-  answer: string | string[] | undefined;
-  disabled?: boolean;
-  onChange: (value: string | string[]) => void;
-  question: PracticeRecommendation;
-}) {
-  if (question.questionType === "mcq" && question.options.length) {
-    return (
-      <div className="space-y-2">
-        {question.options.map((option) => {
-          const selected = Array.isArray(answer) ? answer.includes(option.id) : answer === option.id;
-          return (
-            <label key={option.id} className="grid cursor-pointer gap-3 rounded-md border bg-background p-3 sm:grid-cols-[1.5rem_1fr]">
-              <input
-                checked={selected}
-                disabled={disabled}
-                name={`answer-${question.id}`}
-                onChange={() => onChange(option.id)}
-                type="radio"
-              />
-              <div className="space-y-1">
-                <span className="font-mono text-xs text-muted-foreground">{option.label}</span>
-                <OptionText className="border-none bg-transparent p-0" value={option.content_html} />
-              </div>
-            </label>
-          );
-        })}
-      </div>
-    );
-  }
-
-  return (
-    <Textarea
-      disabled={disabled}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
-      value={answerValue(answer)}
-    />
-  );
-}
-
-function QuestionReviewDiagnostic({ review }: { review?: PracticeQuestionReview }) {
-  if (!review) return null;
-
-  const rows = [
-    ["Judgment", review.judgmentReason ?? review.observedError],
-    ["Solution key points", review.solutionKeyPoints],
-    ["Missing or extra", review.missingOrExtraParts],
-    ["Answer form", review.answerFormIssue],
-    ["Concept gap", review.conceptGap],
-    ["Personal pattern", review.personalizationLink],
-    ["Fix next", review.fixNext],
-  ].filter((row): row is [string, string] => Boolean(row[1]?.trim()));
-
-  if (!rows.length) return null;
-
-  return (
-    <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <p className="text-sm font-bold text-sky-950">Review diagnosis</p>
-        {review.verdict ? (
-          <Badge className="border-sky-200 bg-white text-sky-900 hover:bg-white" variant="outline">
-            {review.verdict}
-          </Badge>
-        ) : null}
-      </div>
-      <div className="space-y-2">
-        {rows.map(([label, value]) => (
-          <div key={label} className="rounded-md border border-sky-100 bg-white/70 p-3">
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-sky-700">{label}</p>
-            <FeedbackText className="mt-1 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={value} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 export function PracticeAgentClient() {
@@ -2040,69 +1401,19 @@ export function PracticeAgentClient() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {recommendation.recommendations.map((question, index) => (
-                    <Card key={question.id} className="student-card-hover border-slate-200 shadow-sm">
-                      <CardHeader>
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="flex min-w-0 gap-3">
-                            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-sm font-bold text-white">
-                              {index + 1}
-                            </span>
-                            <div className="min-w-0">
-                              <CardTitle className="text-xl leading-snug">{question.title}</CardTitle>
-                              <p className="mt-2 text-sm font-medium text-slate-500">
-                                {question.questionCode} / {question.questionType} / difficulty {question.difficulty}
-                              </p>
-                            </div>
-                          </div>
-                          {resultBadge(resultsById.get(question.id)) ?? (phase === "feedback" ? reviewingBadge() : null)}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <QuestionText value={question.contentHtml} />
-                        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-sm">
-                          <p className="font-bold text-amber-950">Why this question</p>
-                          <FeedbackText className="mt-2 border-none bg-transparent p-0 text-amber-900" compact value={question.reason} />
-                          <p className="mt-2 text-sm text-amber-900/80">
-                            Expected skill:{" "}
-                            <FeedbackText className="inline border-none bg-transparent p-0 text-sm text-amber-900/80" compact inline value={question.expectedSkill} />
-                          </p>
-                        </div>
-                        <QuestionAnswerInput
-                          answer={answers[question.id]}
-                          disabled={phase === "feedback"}
-                          onChange={(value) => updateAnswer(question.id, value)}
-                          question={question}
-                        />
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button disabled={isPending || phase === "feedback"} onClick={() => requestHint(question)} size="sm" type="button" variant="outline">
-                            Hint
-                          </Button>
-                          <span className="text-sm text-slate-500">Hints are saved with the submitted round.</span>
-                        </div>
-                        {hints[question.id]?.length ? (
-                          <div className="space-y-2">
-                            {hints[question.id].map((hint, hintIndex) => (
-                              <div key={`${question.id}-hint-${hintIndex}`} className="rounded-lg border border-sky-100 bg-sky-50/70 p-3 text-sm">
-                                <span className="font-bold text-sky-900">Hint {hintIndex + 1}: </span>
-                                <FeedbackText className="inline border-none bg-transparent p-0 text-sky-900/80" compact inline value={hint} />
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                        {phase === "feedback" && resultsById.get(question.id) ? (
-                          <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
-                            <FeedbackText className="border-none bg-transparent p-0 text-emerald-950" compact value={resultsById.get(question.id)?.explanation} />
-                            <QuestionReviewDiagnostic review={questionReviewsById.get(question.id)} />
-                            {resultsById.get(question.id)?.solutionHtml ? (
-                              <div className="space-y-2">
-                                <p className="text-sm font-bold text-emerald-950">Solution</p>
-                                <SolutionText value={resultsById.get(question.id)?.solutionHtml ?? ""} />
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </CardContent>
-                    </Card>
+                    <PracticeQuestionCard
+                      currentAnswer={answers[question.id]}
+                      hints={hints[question.id] ?? []}
+                      index={index}
+                      isPending={isPending}
+                      key={question.id}
+                      onAnswerChange={(value) => updateAnswer(question.id, value)}
+                      onHintRequest={requestHint}
+                      phase={phase}
+                      question={question}
+                      result={resultsById.get(question.id)}
+                      review={questionReviewsById.get(question.id)}
+                    />
                   ))}
                   {phase !== "feedback" ? (
                     <div className="flex justify-end">
@@ -2117,72 +1428,15 @@ export function PracticeAgentClient() {
           ) : null}
 
           {phase === "feedback" && review ? (
-            <Card className="student-panel">
-              <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <CardTitle className="text-xl">Round review</CardTitle>
-                    <FeedbackText className="mt-2 border-none bg-transparent p-0 text-slate-600" compact value={review.summary} />
-                  </div>
-                  <Badge variant="outline">{review.mode}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {review.roundPatterns?.length ? (
-                  <div className="rounded-lg border border-sky-100 bg-sky-50/70 p-4">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Round patterns</p>
-                    <div className="mt-3 space-y-2">
-                      {review.roundPatterns.map((pattern, index) => (
-                        <FeedbackText
-                          className="border-none bg-transparent p-0 text-sm leading-6 text-slate-700"
-                          compact
-                          key={`${pattern}-${index}`}
-                          value={pattern}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {review.memoryUpdate?.sessionMemoryNote ? (
-                  <div className="rounded-lg border border-amber-100 bg-amber-50/70 p-4">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Memory note</p>
-                    <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-amber-950" compact value={review.memoryUpdate.sessionMemoryNote} />
-                  </div>
-                ) : null}
-                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Next round focus</p>
-                  <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={review.nextRoundGoal} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="next-round-goal">Add your thoughts for the next round</Label>
-                  <Input
-                    id="next-round-goal"
-                    onChange={(event) => setNextRoundNote(event.target.value)}
-                    placeholder="Optional: ask for a focus, pace, or difficulty change"
-                    value={nextRoundNote}
-                  />
-                </div>
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-bold text-slate-800" htmlFor="review-next-count">
-                      Questions
-                    </Label>
-                    <Input
-                      className="h-11 w-28 border-slate-200 bg-white text-base shadow-sm"
-                      id="review-next-count"
-                      max={8}
-                      min={1}
-                      onChange={(event) => setQuestionCount(Number(event.target.value))}
-                      type="number"
-                      value={questionCount}
-                    />
-                  </div>
-                  <Button className="h-11 px-6" disabled={isPending} onClick={requestFeedbackNextRound} type="button">
-                    Start next round
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <PracticeRoundReviewPanel
+              isPending={isPending}
+              nextRoundNote={nextRoundNote}
+              onNextRoundNoteChange={setNextRoundNote}
+              onQuestionCountChange={setQuestionCount}
+              onStartNextRound={requestFeedbackNextRound}
+              questionCount={questionCount}
+              review={review}
+            />
           ) : null}
 
         </main>
