@@ -3,10 +3,15 @@ import { NextResponse } from "next/server";
 import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import {
+  CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
   createPracticeSession,
   normalizePracticeTagContext,
   persistRecommendationRound,
 } from "@/lib/practice/persistence";
+import {
+  isCurrentPracticeQuestionSnapshot,
+  PRACTICE_SESSION_EXPIRED_MESSAGE,
+} from "@/lib/practice/schema";
 import type {
   PracticeRecommendation,
   PracticeRecommendResponse,
@@ -62,10 +67,11 @@ function recommendationFromQuestion(
 }
 
 function recommendationFromWrongSnapshot(row: Record<string, unknown>): PracticeRecommendation | null {
-  const snapshot =
-    row.question_snapshot && typeof row.question_snapshot === "object" && !Array.isArray(row.question_snapshot)
-      ? (row.question_snapshot as Partial<PracticeRecommendation>)
-      : {};
+  if (!isCurrentPracticeQuestionSnapshot(row.question_snapshot)) {
+    return null;
+  }
+
+  const snapshot = row.question_snapshot as Partial<PracticeRecommendation>;
   const sourceQuestionId = String(row.source_question_id ?? snapshot.id ?? "").trim();
 
   if (!sourceQuestionId) {
@@ -120,7 +126,7 @@ export async function POST(request: Request) {
 
   const { data: session, error: sessionError } = await supabase
     .from("practice_sessions")
-    .select("id,session_memory,tag_context")
+    .select("cache_prefix_version,id,session_memory,tag_context")
     .eq("user_id", auth.user.id)
     .eq("id", sessionId)
     .maybeSingle();
@@ -131,6 +137,9 @@ export async function POST(request: Request) {
 
   if (!session) {
     return NextResponse.json({ error: "Practice session not found." }, { status: 404 });
+  }
+  if (session.cache_prefix_version !== CURRENT_PRACTICE_SESSION_SCHEMA_VERSION) {
+    return NextResponse.json({ error: PRACTICE_SESSION_EXPIRED_MESSAGE }, { status: 410 });
   }
 
   const { data: questions, error: questionsError } = await supabase

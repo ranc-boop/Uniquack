@@ -79,10 +79,37 @@ assert(
 console.log("PASS practice persistence has owner RLS, preference limit, and snapshot-safe question links");
 
 const practiceClient = await read("src/components/practice/practice-agent-client.tsx");
+const practiceSchema = await read("src/lib/practice/schema.ts");
+const practicePersistenceSource = await read("src/lib/practice/persistence.ts");
+const practiceRecommendRoute = await read("src/app/api/practice/recommend/route.ts");
+const practiceReviewRoute = await read("src/app/api/practice/review/route.ts");
+const practiceCustomRoundRoute = await read("src/app/api/practice/rounds/custom/route.ts");
 assert(!practiceClient.includes("localStorage"), "practice client still uses localStorage");
 assert(practiceClient.includes("/api/practice/sessions"), "practice client does not load database sessions");
 assert(practiceClient.includes("/api/practice/wrong-questions"), "practice client does not load wrong-question records");
-console.log("PASS practice client uses persisted sessions and wrong-question records");
+assert(
+  practiceSchema.includes("CURRENT_PRACTICE_SESSION_SCHEMA_VERSION") &&
+    practiceSchema.includes("practice-session-v2") &&
+    practicePersistenceSource.includes("cache_prefix_version: CURRENT_PRACTICE_SESSION_SCHEMA_VERSION") &&
+    practicePersistenceSource.includes(".eq(\"cache_prefix_version\", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)") &&
+    practicePersistenceSource.includes("CURRENT_PRACTICE_QUESTION_SNAPSHOT_SCHEMA_VERSION") &&
+    practicePersistenceSource.includes("isCurrentPracticeQuestionSnapshot"),
+  "practice runtime must use one current session/schema version and ignore old snapshots",
+);
+assert(
+  practiceClient.includes("CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY") &&
+    practiceClient.includes("LEGACY_PRACTICE_STORAGE_KEYS") &&
+    !practiceClient.includes("o2i:pendingPracticeRound"),
+  "practice client must stop reading old pending-round storage keys",
+);
+for (const source of [practiceRecommendRoute, practiceReviewRoute, practiceCustomRoundRoute]) {
+  assert(
+    source.includes("CURRENT_PRACTICE_SESSION_SCHEMA_VERSION") &&
+      source.includes("PRACTICE_SESSION_EXPIRED_MESSAGE"),
+    "practice API routes must reject expired session schema versions",
+  );
+}
+console.log("PASS practice client uses current persisted schema and ignores old practice history");
 
 const blueprintObservation = await read("src/lib/ai-pdf-import/blueprint-observation.ts");
 const blueprintObservationClustering = await read("src/lib/ai-pdf-import/blueprint-observation-clustering.ts");

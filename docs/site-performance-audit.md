@@ -418,6 +418,59 @@ Manual route checks also verified that `/practice`, admin import routes, Bluepri
 
 `deadcode:audit` remains non-zero after cleanup, but no unused dependencies remain. The remaining unused files are intentionally kept manual scripts, and the remaining unused exports/types are follow-up candidates.
 
+## PERF2B Practice History Schema Cutover
+
+PERF2B makes the current database-backed Practice runtime the only supported active session format.
+
+### Current Supported Practice Schema
+
+- Current session schema/version: `CURRENT_PRACTICE_SESSION_SCHEMA_VERSION = "practice-session-v2"`.
+- Current question snapshot schema/version: `CURRENT_PRACTICE_QUESTION_SNAPSHOT_SCHEMA_VERSION = "practice-question-snapshot-v2"`.
+- `practice_sessions.cache_prefix_version` is the runtime gate for resumable sessions.
+- New practice sessions write the current session schema version.
+- New round, attempt, and wrong-question snapshots include the current snapshot schema version.
+
+### Old Compatibility Paths Removed
+
+- Practice session list/detail loading now only returns rows with the current `cache_prefix_version`.
+- Recommendation, review, and custom-round API routes reject old session versions with:
+  `This practice session uses an old format and cannot be resumed. Start a new practice session.`
+- Old question snapshots are not normalized through old row-field fallbacks. They are ignored unless they include the current snapshot version.
+- Missed-question custom rounds no longer recover from old unversioned wrong-question snapshots.
+- Preference merge job creation only considers current-schema sessions.
+
+### Browser Storage Handling
+
+- Current pending-round handoff key: `o2i:practice:v2:pendingRound`.
+- The old `o2i:pendingPracticeRound` practice key is removed on Practice page load.
+- No unrelated browser storage is cleared.
+- The Practice client still does not use `localStorage`.
+
+### Old History Behavior
+
+- Old database sessions are not hard-deleted and no destructive migration was added.
+- Old sessions are omitted from the current session list and cannot be resumed through current practice APIs.
+- Old/wrong snapshot rows are filtered out rather than rendered through compatibility adapters.
+- Users can start a new current-schema practice session normally.
+
+### Files Simplified
+
+- `src/lib/practice/schema.ts`
+- `src/lib/practice/persistence.ts`
+- `src/lib/practice/agent-loop.ts`
+- `src/lib/practice/context.ts`
+- `src/app/api/practice/recommend/route.ts`
+- `src/app/api/practice/review/route.ts`
+- `src/app/api/practice/rounds/custom/route.ts`
+- `src/components/practice/practice-agent-client.tsx`
+- `src/components/practice/mistakes-page-client.tsx`
+- `scripts/security-smoke.mjs`
+
+### Remaining Follow-Ups
+
+- A future migration can add an explicit `schema_version` column if the project needs richer lifecycle reporting for expired practice sessions.
+- A future UI polish pass can add a dedicated expired-session empty state if old session links become visible somewhere outside the current session list.
+
 ## Commands Run
 
 ```bash

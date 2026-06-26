@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { CURRENT_PRACTICE_SESSION_SCHEMA_VERSION } from "@/lib/practice/schema";
 import type { PracticeTraceEvent } from "@/lib/practice/types";
 
 const LOG_ROOT = path.join(process.cwd(), "log", "llm", "practice_agent");
@@ -164,7 +165,7 @@ export function buildUsageEnvelope({
     cache_hit_rate: normalized.cacheHitRate ?? null,
     cache_hit_tokens: normalized.cacheHitTokens ?? null,
     cache_miss_tokens: normalized.cacheMissTokens ?? null,
-    cache_prefix_version: cachePrefixVersion ?? "practice-core-v1",
+    cache_prefix_version: cachePrefixVersion ?? CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
     completion_tokens: normalized.completionTokens ?? null,
     phase,
     prefix_hash: prefixPayload === undefined ? null : stableHash(prefixPayload),

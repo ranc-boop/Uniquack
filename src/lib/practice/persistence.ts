@@ -13,6 +13,11 @@ import type {
   PracticeTraceEvent,
   PracticeWrongQuestionView,
 } from "@/lib/practice/types";
+import {
+  CURRENT_PRACTICE_QUESTION_SNAPSHOT_SCHEMA_VERSION,
+  CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
+  isCurrentPracticeQuestionSnapshot,
+} from "@/lib/practice/schema";
 import type { Json, PracticeSession } from "@/types/database";
 
 type SupabaseLike = {
@@ -25,7 +30,7 @@ const DEFAULT_TAG_CONTEXT: PracticeTagContext = {
   version: 1,
 };
 
-const DEFAULT_CACHE_PREFIX_VERSION = "practice-core-v1";
+export { CURRENT_PRACTICE_SESSION_SCHEMA_VERSION };
 
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -314,6 +319,15 @@ function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
 
+function buildPracticeQuestionSnapshot(question: PracticeRecommendation): PracticeRecommendation & {
+  practiceSchemaVersion: typeof CURRENT_PRACTICE_QUESTION_SNAPSHOT_SCHEMA_VERSION;
+} {
+  return {
+    ...question,
+    practiceSchemaVersion: CURRENT_PRACTICE_QUESTION_SNAPSHOT_SCHEMA_VERSION,
+  };
+}
+
 function answerFromJson(value: unknown): string | string[] {
   if (Array.isArray(value)) {
     return value.map(String);
@@ -363,7 +377,7 @@ function sessionSummaryFromRow(row: PracticeSession & { round_count?: number }):
     : buildInitialSessionState(row.goal);
 
   return {
-    cachePrefixVersion: String(record.cache_prefix_version ?? DEFAULT_CACHE_PREFIX_VERSION),
+    cachePrefixVersion: CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
     completedQuestionIds: asStringArray(row.completed_question_ids),
     courseFrameworkId: row.course_framework_id,
     courseFrameworkSnapshot: row.course_framework_snapshot,
@@ -513,6 +527,7 @@ export async function listPracticeSessions({
     .from("practice_sessions")
     .select("*,practice_rounds(id)")
     .eq("user_id", userId)
+    .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
     .order("last_activity_at", { ascending: false });
 
   if (error) {
@@ -538,6 +553,7 @@ export async function getPracticeSession({
     .select("*")
     .eq("user_id", userId)
     .eq("id", sessionId)
+    .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
     .maybeSingle();
 
   if (sessionError) {
@@ -609,31 +625,30 @@ export async function getPracticeSession({
     })),
     id: round.id,
     nextRoundGoal: round.next_round_goal,
-    questions: (questionsByRound.get(round.id) ?? []).map((question) => {
-      const snapshot =
-        question.question_snapshot &&
-        typeof question.question_snapshot === "object" &&
-        !Array.isArray(question.question_snapshot)
-          ? (question.question_snapshot as Partial<PracticeRecommendation>)
-          : {};
+    questions: (questionsByRound.get(round.id) ?? []).flatMap((question) => {
+      if (!isCurrentPracticeQuestionSnapshot(question.question_snapshot)) {
+        return [];
+      }
 
-      return {
+      const snapshot = question.question_snapshot as Partial<PracticeRecommendation>;
+
+      return [{
         contentExcerpt: String(snapshot.contentExcerpt ?? ""),
-        contentHtml: String(snapshot.contentHtml ?? question.content_html ?? ""),
-        difficulty: Number(snapshot.difficulty ?? question.difficulty_rating ?? 0),
+        contentHtml: String(snapshot.contentHtml ?? ""),
+        difficulty: Number(snapshot.difficulty ?? 0),
         expectedSkill: String(snapshot.expectedSkill ?? question.expected_skill ?? ""),
-        id: String(question.source_question_id ?? question.question_id ?? snapshot.id ?? ""),
+        id: String(question.source_question_id ?? snapshot.id ?? ""),
         options: Array.isArray(snapshot.options) ? snapshot.options : [],
-        position: question.position,
-        questionCode: String(snapshot.questionCode ?? question.question_code ?? "snapshot"),
+        position: Number(question.position ?? 0),
+        questionCode: String(snapshot.questionCode ?? "snapshot"),
         questionId: question.question_id,
-        questionType: String(snapshot.questionType ?? question.question_type ?? "mixed"),
+        questionType: String(snapshot.questionType ?? "mixed"),
         reason: String(snapshot.reason ?? question.reason ?? ""),
         source: typeof snapshot.source === "string" ? snapshot.source : null,
         sourceQuestionId: question.source_question_id,
         tagIds: Array.isArray(snapshot.tagIds) ? snapshot.tagIds.map(String) : [],
-        title: String(snapshot.title ?? question.title ?? "Saved question"),
-      };
+        title: String(snapshot.title ?? "Saved question"),
+      }];
     }),
     reviewSummary: round.review_summary,
     roundGoal: round.round_goal,
@@ -678,7 +693,7 @@ export async function createPracticeSession({
   const { data, error } = await supabase
     .from("practice_sessions")
     .insert({
-      cache_prefix_version: DEFAULT_CACHE_PREFIX_VERSION,
+      cache_prefix_version: CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
       course_framework_id: courseFramework?.id ?? null,
       course_framework_snapshot: courseFramework ? courseFramework as unknown as Json : null,
       goal: trimmedGoal,
@@ -713,6 +728,7 @@ export async function maybeQueuePreferenceMergeJob({
     .from("practice_sessions")
     .select("id,goal,session_memory,session_state,session_thread_messages,outline_user_notes,next_user_notes,preference_merged_at,preference_dirty_at,last_activity_at")
     .eq("user_id", userId)
+    .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
     .lt("last_activity_at", cutoff)
     .or("preference_merged_at.is.null,preference_dirty_at.not.is.null")
     .order("last_activity_at", { ascending: false })
@@ -875,7 +891,7 @@ export async function persistRecommendationRound({
     position: index + 1,
     question_code: question.questionCode,
     question_id: null,
-    question_snapshot: question as unknown as Json,
+    question_snapshot: buildPracticeQuestionSnapshot(question) as unknown as Json,
     question_type: question.questionType,
     reason: question.reason,
     round_id: roundId,
@@ -1052,7 +1068,9 @@ export async function persistQuestionReviewResults({
       is_correct: result?.isCorrect ?? null,
       question_code: question?.questionCode ?? null,
       question_id: null,
-      question_snapshot: (question ?? {}) as unknown as Json,
+      question_snapshot: question
+        ? buildPracticeQuestionSnapshot(question) as unknown as Json
+        : {} as Json,
       question_title: question?.title ?? "",
       result: (result ?? {}) as unknown as Json,
       round_id: roundId,
@@ -1231,7 +1249,7 @@ export async function persistQuestionReviewResults({
           miss_count: Number(existing.data?.miss_count ?? 0) + 1,
           question_code: question.questionCode,
           question_id: null,
-          question_snapshot: question as unknown as Json,
+          question_snapshot: buildPracticeQuestionSnapshot(question) as unknown as Json,
           question_title: question.title,
           source_question_id: question.id,
           user_id: userId,
@@ -1439,7 +1457,9 @@ export async function persistRoundReview({
       is_correct: result?.isCorrect ?? null,
       question_code: question?.questionCode ?? null,
       question_id: null,
-      question_snapshot: (question ?? {}) as unknown as Json,
+      question_snapshot: question
+        ? buildPracticeQuestionSnapshot(question) as unknown as Json
+        : {} as Json,
       question_title: question?.title ?? "",
       result: (result ?? {}) as unknown as Json,
       round_id: roundId,
@@ -1623,7 +1643,7 @@ export async function persistRoundReview({
         mastered_at: null,
         question_code: question.questionCode,
         question_id: null,
-        question_snapshot: question as unknown as Json,
+        question_snapshot: buildPracticeQuestionSnapshot(question) as unknown as Json,
         question_title: question.title,
         source_question_id: question.id,
         user_id: userId,
@@ -1693,14 +1713,15 @@ export async function listActiveWrongQuestions({
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as any[]).map((row) => {
-    const snapshot =
-      row.question_snapshot && typeof row.question_snapshot === "object" && !Array.isArray(row.question_snapshot)
-        ? (row.question_snapshot as Record<string, unknown>)
-        : {};
+  return ((data ?? []) as any[]).flatMap((row) => {
+    if (!isCurrentPracticeQuestionSnapshot(row.question_snapshot)) {
+      return [];
+    }
 
-    return {
-      contentHtml: String(snapshot.contentHtml ?? row.question_snapshot?.content_html ?? ""),
+    const snapshot = row.question_snapshot as Record<string, unknown>;
+
+    return [{
+      contentHtml: String(snapshot.contentHtml ?? ""),
       id: row.id,
       lastAnswer: answerFromJson(row.last_answer),
       lastExplanation: row.last_explanation,
@@ -1711,6 +1732,6 @@ export async function listActiveWrongQuestions({
       questionId: row.question_id,
       sourceQuestionId: row.source_question_id,
       title: row.question_title || String(snapshot.title ?? "Saved question"),
-    };
+    }];
   });
 }

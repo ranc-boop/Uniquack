@@ -16,6 +16,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY,
+  LEGACY_PRACTICE_STORAGE_KEYS,
+} from "@/lib/practice/schema";
 import type {
   PracticeAttemptInput,
   PracticeGradeResult,
@@ -632,6 +636,31 @@ function resultsFromHistoryRound(round: PracticeRoundHistory): PracticeGradeResu
   })).filter((result) => result.questionId);
 }
 
+function clearLegacyPracticeStorage() {
+  for (const key of LEGACY_PRACTICE_STORAGE_KEYS) {
+    window.sessionStorage.removeItem(key);
+  }
+}
+
+function readPendingPracticeRound() {
+  const pendingRoundRaw = window.sessionStorage.getItem(
+    CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY,
+  );
+  if (!pendingRoundRaw) {
+    return null;
+  }
+
+  window.sessionStorage.removeItem(CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY);
+  try {
+    const pendingRound = JSON.parse(pendingRoundRaw) as PracticeRecommendResponse;
+    return pendingRound.roundId && pendingRound.recommendations?.length
+      ? pendingRound
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function TracePanel({
   active = false,
   collapsed = false,
@@ -993,20 +1022,17 @@ export function PracticeAgentClient() {
   useEffect(() => {
     startTransition(async () => {
       try {
+        clearLegacyPracticeStorage();
         const restoredSession = await refreshPracticeState();
-        const pendingRoundRaw = window.sessionStorage.getItem("o2i:pendingPracticeRound");
-        if (pendingRoundRaw) {
-          const pendingRound = JSON.parse(pendingRoundRaw) as PracticeRecommendResponse;
-          window.sessionStorage.removeItem("o2i:pendingPracticeRound");
-          if (pendingRound.roundId && pendingRound.recommendations?.length) {
-            setRecommendation(pendingRound);
-            setGoal(pendingRound.roundGoal);
-            setLiveTrace(pendingRound.trace ?? []);
-            setIsTraceCollapsed(true);
-            setPhase("recommended");
-            if (pendingRound.sessionId) {
-              await refreshPracticeState(pendingRound.sessionId);
-            }
+        const pendingRound = readPendingPracticeRound();
+        if (pendingRound) {
+          setRecommendation(pendingRound);
+          setGoal(pendingRound.roundGoal);
+          setLiveTrace(pendingRound.trace ?? []);
+          setIsTraceCollapsed(true);
+          setPhase("recommended");
+          if (pendingRound.sessionId) {
+            await refreshPracticeState(pendingRound.sessionId);
           }
         } else if (restoredSession?.rounds.length) {
           restoreRoundFromHistory(restoredSession.rounds[restoredSession.rounds.length - 1], restoredSession);
