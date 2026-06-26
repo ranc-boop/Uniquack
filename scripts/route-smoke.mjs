@@ -62,6 +62,27 @@ const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
 const adminLayout = await read("src/app/admin/layout.tsx");
+const adminReviewPage = await read("src/app/admin/review/page.tsx");
+const bulkAssetsPage = await read("src/app/admin/imports/assets/page.tsx");
+const videosPage = await read("src/app/videos/page.tsx");
+assert(
+  adminReviewPage.includes("REVIEW_PAGE_SIZE") &&
+    adminReviewPage.includes(".range(pageFrom, pageTo)") &&
+    !adminReviewPage.includes(".limit(1000)"),
+  "admin review route must keep draft and related data page-sized",
+);
+assert(
+  bulkAssetsPage.includes("BULK_ASSET_EXISTING_FILE_LIMIT") &&
+    !bulkAssetsPage.includes(".limit(2000)"),
+  "bulk asset import route must keep existing-file lookup bounded to the draft window",
+);
+assert(
+  videosPage.includes("VIDEOS_PAGE_SIZE") &&
+    videosPage.includes(".range(") &&
+    !videosPage.includes(".limit(100);"),
+  "videos route must use paged video loading instead of a fixed 100-row initial query",
+);
+console.log("PASS route data loading stays paged on review, assets, and videos");
 assert(
   adminLayout.includes("Blueprint Library") &&
     adminLayout.includes("/admin/blueprints"),

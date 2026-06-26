@@ -582,6 +582,59 @@ PERF2C keeps the `/practice` route shell from PERF1 and splits the loaded Practi
 - A future PR could split left/right sidebars into presentational components once the current behavior is manually QA'd after this split.
 - Trace panel code is lazy, but the right-side study-state cards remain eager because they are visible in the default desktop workspace.
 
+## PERF3 Data Loading And Pagination
+
+PERF3 focused on routes that can become slow even when client bundles are small, because their server components were pulling fixed large batches of related rows.
+
+### Routes Inspected
+
+- `/admin/review`
+- `/admin/questions`
+- `/admin/imports/assets`
+- `/admin/blueprints`
+- `/admin/blueprints/review`
+- `/admin/blueprints/library`
+- `/admin/blueprints/history`
+- `/admin/blueprints/sources`
+- `/questions`
+- `/videos`
+
+### Changes Made
+
+- `src/app/admin/review/page.tsx`
+  - Added page-sized review queue loading with `REVIEW_PAGE_SIZE = 50`.
+  - Batch-scoped review now pages `import_batch_items` instead of loading up to 1000 imported IDs.
+  - Draft search is applied in the database query before rendering.
+  - Related import items, taxonomy assignments, assets, and source files are bounded to the visible page window.
+  - Added Previous / Next controls for large Review Draft queues.
+- `src/app/admin/imports/assets/page.tsx`
+  - Kept the existing 250 draft-question matching window.
+  - Bounded existing asset/source-file lookups to that draft window instead of using two independent 2000-row lookups.
+- `src/app/videos/page.tsx`
+  - Replaced the fixed 100-video initial load with `VIDEOS_PAGE_SIZE = 25` pagination.
+  - Added bounded question prefilters for difficulty and question-text search.
+  - Added Previous / Next controls and a clear note when difficulty filtering reaches its bounded question prefilter.
+- `scripts/route-smoke.mjs`
+  - Added route regression checks that Review Drafts, bulk asset import, and Videos keep paged/bounded loading.
+
+### Routes Already Healthy
+
+- `/admin/questions` already uses the taxonomy search RPC with page limit/offset and only fetches current-page question details.
+- `/questions` already uses the taxonomy search RPC with page limit/offset and only fetches current-page public question summaries.
+- Blueprint routes already use bounded 20/50/60-level query windows. They still share one workspace loader, which is acceptable for this pass but remains a future split candidate.
+
+### Compatibility Notes
+
+- No DB schema, storage policy, AI provider behavior, AI Parsing behavior, Blueprint generation logic, Review Draft publishing behavior, or Practice behavior changed.
+- Import service context queries that load taxonomy candidates or existing question codes were left unchanged because those are import validation paths, not initial route-render paths.
+- `/videos` still avoids adding a new RPC. Its pagination is bounded with existing tables; a future dedicated video-search RPC would make cross-video/question search and counts more exact.
+
+### Remaining PERF3 Follow-Ups
+
+- Split the Blueprint workspace loader by tab so `/admin/blueprints/review`, `/library`, `/history`, and `/sources` only run the queries needed by that view.
+- Add a dedicated `search_videos_by_taxonomy` RPC if public video search needs exact counts across video fields, question fields, difficulty, and taxonomy filters.
+- Consider a lightweight count/summary query for large Review Draft batch filters if admins need exact search counts inside a very large batch.
+
 ## Commands Run
 
 ```bash
