@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { bulkUpdateQuestions, updateQuestion } from "@/app/admin/questions/actions";
+import { AdminDangerZone } from "@/components/admin/admin-danger-zone";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
@@ -542,15 +543,17 @@ export default async function AdminReviewPage({
         >
           Update selected status
         </FormSubmitButton>
-        <FormSubmitButton
-          name="bulk_action"
-          value="delete"
-          size="sm"
-          variant="destructive"
-          pendingLabel="Deleting..."
-        >
-          Delete selected
-        </FormSubmitButton>
+        <AdminDangerZone compact title="Delete selected drafts">
+          <FormSubmitButton
+            name="bulk_action"
+            value="delete"
+            size="sm"
+            variant="destructive"
+            pendingLabel="Deleting..."
+          >
+            Delete selected
+          </FormSubmitButton>
+        </AdminDangerZone>
         <span className="text-xs text-muted-foreground">
           Select draft cards below before applying a bulk action.
         </span>
