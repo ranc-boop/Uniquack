@@ -137,6 +137,7 @@ const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
 const adminLayout = await read("src/app/admin/layout.tsx");
+const adminSidebar = await read("src/components/admin/admin-sidebar.tsx");
 for (const exportName of [
   "AIBlueprintObservationPlan",
   "AIBlueprintObservationPacket",
@@ -1045,9 +1046,18 @@ assert(
   "AI PDF live panel must suppress the running spinner after blueprint observation completion",
 );
 assert(
-  adminLayout.includes("Blueprint Library") &&
-    adminLayout.includes("/admin/blueprints"),
-  "admin navigation must expose Blueprint Library",
+  adminLayout.includes("AdminShell") &&
+    adminSidebar.includes("Primary") &&
+    adminSidebar.includes("Advanced tools") &&
+    adminSidebar.includes("Settings") &&
+    adminSidebar.includes("Blueprint Library") &&
+    adminSidebar.includes("AI Parsing") &&
+    adminSidebar.includes("Review Drafts") &&
+    adminSidebar.includes("Manual JSON Import") &&
+    adminSidebar.includes("/admin/blueprints") &&
+    adminSidebar.includes("/admin/imports/pdf") &&
+    adminSidebar.includes("aria-current"),
+  "admin navigation must expose grouped primary, advanced, and settings links",
 );
 console.log("PASS blueprint observation mode is explicit, summary-only, and draft-free");
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { bulkUpdateQuestions, updateQuestion } from "@/app/admin/questions/actions";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
 import { AdminReviewBulkSelection } from "@/components/admin-review-bulk-selection";
@@ -422,13 +423,11 @@ export default async function AdminReviewPage({
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Review Drafts</h1>
-        <p className="text-sm text-muted-foreground">
-          Lightweight queue for tutor/admin review before publishing. AI and
-          reviewer roles are intentionally out of scope for this phase.
-        </p>
-      </div>
+      <AdminPageHeader
+        description="Review draft questions, fix readiness blockers, then publish only when an admin explicitly approves the draft."
+        eyebrow="Review queue"
+        title="Review Drafts"
+      />
       <PageFeedback error={params.error} saved={params.saved} />
       <form className="flex flex-wrap items-end gap-2 rounded-md border p-3">
         <div className="min-w-64 flex-1 space-y-1">

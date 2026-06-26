@@ -62,6 +62,8 @@ const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
 const adminLayout = await read("src/app/admin/layout.tsx");
+const adminSidebar = await read("src/components/admin/admin-sidebar.tsx");
+const adminPageHeader = await read("src/components/admin/admin-page-header.tsx");
 const adminQuestionsPage = await read("src/app/admin/questions/page.tsx");
 const publicQuestionsPage = await read("src/app/questions/page.tsx");
 const adminReviewPage = await read("src/app/admin/review/page.tsx");
@@ -113,11 +115,29 @@ assert(
 );
 console.log("PASS question and blueprint data loading stays summary-first and route-scoped");
 assert(
-  adminLayout.includes("Blueprint Library") &&
-    adminLayout.includes("/admin/blueprints"),
-  "admin navigation must include Blueprint Library",
+  adminLayout.includes("AdminShell") &&
+    adminSidebar.includes("Primary") &&
+    adminSidebar.includes("Advanced tools") &&
+    adminSidebar.includes("Settings") &&
+    adminSidebar.includes("Dashboard") &&
+    adminSidebar.includes("Questions") &&
+    adminSidebar.includes("Review Drafts") &&
+    adminSidebar.includes("Blueprint Library") &&
+    adminSidebar.includes("AI Parsing") &&
+    adminSidebar.includes("Practice") &&
+    adminSidebar.includes("Videos") &&
+    adminSidebar.includes("Manual JSON Import") &&
+    adminSidebar.includes("Bulk Assets") &&
+    adminSidebar.includes("Package Import") &&
+    adminSidebar.includes("Taxonomy") &&
+    adminSidebar.includes("/admin/blueprints") &&
+    adminSidebar.includes("/admin/imports/pdf") &&
+    adminSidebar.includes("aria-current") &&
+    adminPageHeader.includes("title") &&
+    adminPageHeader.includes("description"),
+  "admin shell must expose grouped navigation, active state, and shared page header",
 );
-console.log("PASS admin navigation exposes Blueprint Library");
+console.log("PASS admin shell exposes grouped navigation and shared page header");
 assert(
   blueprintPage.includes("view=\"overview\"") &&
     blueprintWorkspace.includes("Question Blueprint Workspace") &&

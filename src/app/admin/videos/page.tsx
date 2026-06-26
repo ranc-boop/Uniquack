@@ -4,6 +4,7 @@ import {
   updateVideo,
 } from "@/app/admin/videos/actions";
 import { Fragment } from "react";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
@@ -187,14 +188,11 @@ export default async function AdminVideosPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Videos</h1>
-        <p className="text-sm text-muted-foreground">
-          External video CRUD skeleton. The unique question binding is enforced
-          by the database. Official taxonomy tags are the visible video
-          taxonomy.
-        </p>
-      </div>
+      <AdminPageHeader
+        description="Manage external video links and their question bindings. Videos inherit official taxonomy visibility through linked questions."
+        eyebrow="Content management"
+        title="Videos"
+      />
       <PageFeedback error={params.error} saved={params.saved} />
       <Card>
         <CardHeader>

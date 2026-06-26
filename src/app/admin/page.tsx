@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { createDemoContent } from "@/app/admin/actions";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import { Button } from "@/components/ui/button";
@@ -51,12 +52,11 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Admin dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Foundation skeleton for content CRUD and role-protected management.
-        </p>
-      </div>
+      <AdminPageHeader
+        description="Review drafts, manage content, run imports, and keep the question library ready for teachers and students."
+        eyebrow="Admin"
+        title="Dashboard"
+      />
       <PageFeedback error={params.error} saved={params.saved} />
       <Card>
         <CardHeader>

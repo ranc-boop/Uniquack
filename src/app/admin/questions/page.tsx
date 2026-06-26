@@ -5,6 +5,7 @@ import {
 } from "@/app/admin/questions/actions";
 import { Fragment } from "react";
 import Link from "next/link";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
 import { AdminQuestionEditDetails } from "@/components/admin-question-edit-details";
@@ -468,13 +469,11 @@ export default async function AdminQuestionsPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Questions</h1>
-        <p className="text-sm text-muted-foreground">
-          CRUD skeleton for the question bank. Rich editor integration comes
-          later.
-        </p>
-      </div>
+      <AdminPageHeader
+        description="Search, filter, edit, and maintain the official question bank. Publishing still flows through explicit admin review."
+        eyebrow="Content management"
+        title="Questions"
+      />
       <PageFeedback error={params.error} saved={params.saved} />
       {!focusedQuestionId ? (
       <details className="rounded-lg border bg-card p-5 shadow-sm">

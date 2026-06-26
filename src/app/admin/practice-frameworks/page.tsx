@@ -1,4 +1,5 @@
 import { archivePracticeFramework, createPracticeFramework } from "@/app/admin/practice-frameworks/actions";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { PageFeedback } from "@/components/page-feedback";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,12 +26,11 @@ export default async function PracticeFrameworksPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Practice Frameworks</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Upload course frameworks that constrain practice direction while still allowing personalized remediation.
-        </p>
-      </div>
+      <AdminPageHeader
+        description="Upload course frameworks that constrain practice direction while still allowing personalized remediation."
+        eyebrow="Practice"
+        title="Practice Frameworks"
+      />
       <PageFeedback error={params.error ?? error?.message} saved={params.saved ? "Framework saved." : undefined} />
       <Card>
         <CardHeader>
