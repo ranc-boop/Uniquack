@@ -1,12 +1,18 @@
 import Link from "next/link";
 
 import {
+  archiveQuestionBlueprintFolder,
   archiveQuestionBlueprint,
   approveQuestionBlueprintReviewAction,
+  createQuestionBlueprintFolder,
   generateOriginalQuestionsFromApprovedBlueprint,
   markQuestionBlueprintNeedsEvidence,
   moveQuestionBlueprintToTrash,
+  moveQuestionBlueprintFolder,
+  moveQuestionBlueprintToFolder,
+  renameQuestionBlueprintFolder,
   rejectQuestionBlueprintReviewAction,
+  restoreQuestionBlueprintFolder,
   restoreQuestionBlueprint,
   storeBlueprintReviewActionsFromImportBatch,
   updateBlueprintReviewActionTaxonomyTargets,
@@ -22,6 +28,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
+  buildQuestionBlueprintFolderTree,
+  flattenQuestionBlueprintFolderTree,
+  summarizeQuestionBlueprintFolders,
+  type QuestionBlueprintFolderRow,
+  type QuestionBlueprintFolderTreeNode,
+} from "@/lib/blueprints/question-blueprint-folders";
+import {
   buildQuestionBlueprintLibrarySeedPlan,
   getQuestionBlueprintApprovalReadinessFromReviewAction,
   summarizeQuestionBlueprintLibrary,
@@ -35,6 +48,7 @@ type AdminBlueprintsPageProps = {
   searchParams: Promise<{
     blocked?: string;
     error?: string;
+    folder?: string;
     generated?: string;
     reviewBatch?: string;
     saved?: string;
@@ -59,6 +73,7 @@ type BlueprintRow = {
   answer_spec_pattern: unknown;
   deleted_at: string | null;
   distractor_pattern: unknown;
+  folder_id: string | null;
   generation_constraints: unknown;
   id: string;
   originality_constraints: unknown;
@@ -111,7 +126,9 @@ function isMissingBlueprintTableError(error: unknown) {
 
   return (
     record.code === "42P01" ||
-    /question_blueprint|relation .* does not exist|schema cache/i.test(message)
+    /folder_id|question_blueprint|relation .* does not exist|schema cache/i.test(
+      message,
+    )
   );
 }
 
@@ -231,6 +248,299 @@ function TaxonomyTargets({ targets }: { targets: unknown }) {
         ) : null,
       )}
     </div>
+  );
+}
+
+function folderFilterHref(folderId: string) {
+  return folderId === "all"
+    ? "/admin/blueprints"
+    : `/admin/blueprints?folder=${encodeURIComponent(folderId)}`;
+}
+
+function FolderSelect({
+  defaultValue,
+  folderOptions,
+  includeRoot = false,
+  includeUnfiled = false,
+  name = "folder_id",
+}: {
+  defaultValue?: string | null;
+  folderOptions: QuestionBlueprintFolderTreeNode[];
+  includeRoot?: boolean;
+  includeUnfiled?: boolean;
+  name?: string;
+}) {
+  return (
+    <select
+      className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+      defaultValue={defaultValue ?? (includeRoot ? "root" : "unfiled")}
+      name={name}
+    >
+      {includeRoot ? <option value="root">Top level</option> : null}
+      {includeUnfiled ? <option value="unfiled">Unfiled</option> : null}
+      {folderOptions.map((folder) => (
+        <option key={folder.id} value={folder.id}>
+          {"--".repeat(folder.depth)}
+          {folder.depth ? " " : ""}
+          {folder.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function BlueprintFolderTree({
+  nodes,
+  selectedFolderId,
+}: {
+  nodes: QuestionBlueprintFolderTreeNode[];
+  selectedFolderId: string;
+}) {
+  if (!nodes.length) {
+    return (
+      <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+        No folders yet.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="space-y-1">
+      {nodes.map((node) => (
+        <li key={node.id}>
+          <Link
+            className={`block rounded-md border px-2 py-1.5 text-sm ${
+              selectedFolderId === node.id
+                ? "bg-primary text-primary-foreground"
+                : "bg-background hover:bg-muted/40"
+            }`}
+            href={folderFilterHref(node.id)}
+          >
+            <span className="block font-medium">{node.name}</span>
+            {node.description ? (
+              <span className="block truncate text-xs opacity-75">
+                {node.description}
+              </span>
+            ) : null}
+          </Link>
+          {node.children.length ? (
+            <div className="ml-3 mt-1 border-l pl-2">
+              <BlueprintFolderTree
+                nodes={node.children}
+                selectedFolderId={selectedFolderId}
+              />
+            </div>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function BlueprintFolderPanel({
+  archivedFolders,
+  folderOptions,
+  folderSummary,
+  folderTree,
+  selectedFolder,
+  selectedFolderId,
+}: {
+  archivedFolders: QuestionBlueprintFolderRow[];
+  folderOptions: QuestionBlueprintFolderTreeNode[];
+  folderSummary: ReturnType<typeof summarizeQuestionBlueprintFolders>;
+  folderTree: QuestionBlueprintFolderTreeNode[];
+  selectedFolder?: QuestionBlueprintFolderRow;
+  selectedFolderId: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Blueprint folders</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <div className="grid gap-2 text-xs sm:grid-cols-4">
+          <p className="rounded-md border bg-muted/20 p-2">
+            Active folders: {folderSummary.activeFolderCount}
+          </p>
+          <p className="rounded-md border bg-muted/20 p-2">
+            Filed: {folderSummary.filedBlueprintCount}
+          </p>
+          <p className="rounded-md border bg-muted/20 p-2">
+            Unfiled: {folderSummary.unfiledBlueprintCount}
+          </p>
+          <p className="rounded-md border bg-muted/20 p-2">
+            Archived folders: {folderSummary.archivedFolderCount}
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Link
+                className={`block rounded-md border px-2 py-1.5 text-sm ${
+                  selectedFolderId === "all"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background hover:bg-muted/40"
+                }`}
+                href="/admin/blueprints"
+              >
+                All blueprints
+              </Link>
+              <Link
+                className={`block rounded-md border px-2 py-1.5 text-sm ${
+                  selectedFolderId === "unfiled"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background hover:bg-muted/40"
+                }`}
+                href={folderFilterHref("unfiled")}
+              >
+                Unfiled
+              </Link>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Folder tree
+              </p>
+              <BlueprintFolderTree
+                nodes={folderTree}
+                selectedFolderId={selectedFolderId}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <details className="rounded-md border bg-muted/20 p-3" open>
+              <summary className="cursor-pointer text-sm font-medium">
+                Create folder
+              </summary>
+              <form action={createQuestionBlueprintFolder} className="mt-3 grid gap-3 md:grid-cols-2">
+                <label className="space-y-1 text-xs font-medium">
+                  Name
+                  <input
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    maxLength={120}
+                    name="name"
+                    placeholder="Applications of Integration"
+                    required
+                  />
+                </label>
+                <label className="space-y-1 text-xs font-medium">
+                  Parent folder
+                  <FolderSelect
+                    folderOptions={folderOptions}
+                    includeRoot
+                    name="parent_id"
+                  />
+                </label>
+                <label className="space-y-1 text-xs font-medium md:col-span-2">
+                  Description
+                  <input
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    maxLength={500}
+                    name="description"
+                    placeholder="Optional note for admins"
+                  />
+                </label>
+                <div className="md:col-span-2">
+                  <FormSubmitButton pendingLabel="Creating..." size="sm">
+                    Create folder
+                  </FormSubmitButton>
+                </div>
+              </form>
+            </details>
+
+            {selectedFolder ? (
+              <details className="rounded-md border bg-muted/20 p-3" open>
+                <summary className="cursor-pointer text-sm font-medium">
+                  Selected folder controls
+                </summary>
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <form action={renameQuestionBlueprintFolder} className="space-y-2">
+                    <input name="folder_id" type="hidden" value={selectedFolder.id} />
+                    <label className="space-y-1 text-xs font-medium">
+                      Rename
+                      <input
+                        className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                        defaultValue={selectedFolder.name}
+                        maxLength={120}
+                        name="name"
+                        required
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-medium">
+                      Description
+                      <input
+                        className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                        defaultValue={selectedFolder.description ?? ""}
+                        maxLength={500}
+                        name="description"
+                      />
+                    </label>
+                    <FormSubmitButton pendingLabel="Saving..." size="sm" variant="outline">
+                      Rename folder
+                    </FormSubmitButton>
+                  </form>
+                  <form action={moveQuestionBlueprintFolder} className="space-y-2">
+                    <input name="folder_id" type="hidden" value={selectedFolder.id} />
+                    <label className="space-y-1 text-xs font-medium">
+                      Move under
+                      <FolderSelect
+                        defaultValue={selectedFolder.parent_id ?? "root"}
+                        folderOptions={folderOptions}
+                        includeRoot
+                        name="parent_id"
+                      />
+                    </label>
+                    <FormSubmitButton pendingLabel="Moving..." size="sm" variant="outline">
+                      Move folder
+                    </FormSubmitButton>
+                  </form>
+                  <form action={archiveQuestionBlueprintFolder} className="lg:col-span-2">
+                    <input name="folder_id" type="hidden" value={selectedFolder.id} />
+                    <FormSubmitButton pendingLabel="Archiving..." size="sm" variant="destructive">
+                      Archive folder
+                    </FormSubmitButton>
+                  </form>
+                </div>
+              </details>
+            ) : null}
+
+            <details className="rounded-md border bg-muted/20 p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                Archived folders
+              </summary>
+              <div className="mt-3 space-y-2">
+                {archivedFolders.length ? (
+                  archivedFolders.map((folder) => (
+                    <form
+                      action={restoreQuestionBlueprintFolder}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-2"
+                      key={folder.id}
+                    >
+                      <input name="folder_id" type="hidden" value={folder.id} />
+                      <span className="text-sm">{folder.name}</span>
+                      <FormSubmitButton pendingLabel="Restoring..." size="sm" variant="outline">
+                        Restore folder
+                      </FormSubmitButton>
+                    </form>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No archived folders.
+                  </p>
+                )}
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Archiving a folder hides it from the active folder tree. Blueprints are
+          never hard-deleted by folder actions and remain available from All
+          blueprints.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -518,10 +828,12 @@ function LifecycleActions({
 function LibraryCard({
   blueprint,
   evidenceSnippets,
+  folderOptions,
   knownAssignableTagIds,
 }: {
   blueprint: BlueprintRow;
   evidenceSnippets: string[];
+  folderOptions: QuestionBlueprintFolderTreeNode[];
   knownAssignableTagIds: ReadonlySet<string>;
 }) {
   const questionPattern = asRecord(blueprint.question_pattern);
@@ -570,6 +882,32 @@ function LibraryCard({
           Owner scope: {blueprint.owner_scope} | Updated{" "}
           {new Date(blueprint.updated_at).toLocaleString()}
         </p>
+        {approved && !blueprint.deleted_at ? (
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="text-sm font-medium">Move to folder</p>
+            <p className="text-xs text-muted-foreground">
+              Use folders to organize approved blueprint patterns. Unfiled keeps
+              the blueprint in the library without a folder.
+            </p>
+            <form
+              action={moveQuestionBlueprintToFolder}
+              className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end"
+            >
+              <input name="blueprint_id" type="hidden" value={blueprint.id} />
+              <label className="min-w-0 flex-1 space-y-1 text-xs font-medium">
+                Destination
+                <FolderSelect
+                  defaultValue={blueprint.folder_id ?? "unfiled"}
+                  folderOptions={folderOptions}
+                  includeUnfiled
+                />
+              </label>
+              <FormSubmitButton pendingLabel="Moving..." size="sm" variant="outline">
+                Move to folder
+              </FormSubmitButton>
+            </form>
+          </div>
+        ) : null}
         <LifecycleActions blueprint={blueprint} />
         {approved && quality.generationReady ? (
           <div className="rounded-md border bg-muted/20 p-3">
@@ -665,6 +1003,7 @@ export default async function AdminBlueprintsPage({
     blueprintsResult,
     importBatchesResult,
     blueprintExamplesResult,
+    blueprintFoldersResult,
     taxonomyCatalogResult,
   ] = await Promise.all([
     (supabase as any)
@@ -678,7 +1017,7 @@ export default async function AdminBlueprintsPage({
     (supabase as any)
       .from("question_blueprints")
       .select(
-        "id, title, status, owner_scope, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, generation_constraints, originality_constraints, source_refs, deleted_at, updated_at",
+        "id, title, status, owner_scope, folder_id, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, generation_constraints, originality_constraints, source_refs, deleted_at, updated_at",
       )
       .order("updated_at", { ascending: false })
       .limit(50),
@@ -691,18 +1030,29 @@ export default async function AdminBlueprintsPage({
       .from("question_blueprint_examples")
       .select("blueprint_id, evidence_snippets")
       .limit(200),
+    (supabase as any)
+      .from("question_blueprint_folders")
+      .select(
+        "id, owner_scope, owner_id, parent_id, name, slug, description, sort_order, deleted_at",
+      )
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
     loadTaxonomyCatalog(supabase),
   ]);
   const setupNeeded =
     isMissingBlueprintTableError(reviewActionsResult.error) ||
     isMissingBlueprintTableError(blueprintsResult.error) ||
-    isMissingBlueprintTableError(blueprintExamplesResult.error);
+    isMissingBlueprintTableError(blueprintExamplesResult.error) ||
+    isMissingBlueprintTableError(blueprintFoldersResult.error);
   const reviewActions = setupNeeded
     ? []
     : ((reviewActionsResult.data ?? []) as BlueprintReviewRow[]);
   const blueprints = setupNeeded
     ? []
     : ((blueprintsResult.data ?? []) as BlueprintRow[]);
+  const folders = setupNeeded
+    ? []
+    : ((blueprintFoldersResult.data ?? []) as QuestionBlueprintFolderRow[]);
   const taxonomyCatalog = taxonomyCatalogResult.catalog;
   const knownAssignableTagIds = leafAssignableTagIds(taxonomyCatalog);
   const pendingReviewActions = reviewActions.filter(
@@ -723,9 +1073,32 @@ export default async function AdminBlueprintsPage({
       ...stringList(example.evidence_snippets),
     ]);
   }
+  const activeFolders = folders.filter((folder) => !folder.deleted_at);
+  const archivedFolders = folders.filter((folder) => folder.deleted_at);
+  const folderTree = buildQuestionBlueprintFolderTree(folders);
+  const folderOptions = flattenQuestionBlueprintFolderTree(folderTree);
+  const requestedFolder = firstString(params.folder, "all");
+  const selectedFolder =
+    requestedFolder !== "all" && requestedFolder !== "unfiled"
+      ? activeFolders.find((folder) => folder.id === requestedFolder)
+      : undefined;
+  const selectedFolderId =
+    requestedFolder === "unfiled" || selectedFolder ? requestedFolder : "all";
+  const folderSummary = summarizeQuestionBlueprintFolders({
+    blueprints,
+    folders,
+  });
   const activeBlueprints = blueprints.filter(
     (blueprint) => !blueprint.deleted_at && blueprint.status !== "deprecated",
   );
+  const filteredActiveBlueprints =
+    selectedFolderId === "unfiled"
+      ? activeBlueprints.filter((blueprint) => !blueprint.folder_id)
+      : selectedFolder
+        ? activeBlueprints.filter(
+            (blueprint) => blueprint.folder_id === selectedFolder.id,
+          )
+        : activeBlueprints;
   const archivedBlueprints = blueprints.filter(
     (blueprint) => !blueprint.deleted_at && blueprint.status === "deprecated",
   );
@@ -797,12 +1170,14 @@ export default async function AdminBlueprintsPage({
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-amber-900">
             <p>
-              Question Blueprint Library tables are not applied yet. Apply the
-              BP5 migration before using review actions.
+              Question Blueprint Library tables or folder columns are not applied
+              yet. Apply the latest blueprint migrations before using review
+              actions.
             </p>
-            <p className="font-mono text-xs">
-              supabase/migrations/0015_question_blueprint_library.sql
-            </p>
+            <div className="space-y-1 font-mono text-xs">
+              <p>supabase/migrations/0015_question_blueprint_library.sql</p>
+              <p>supabase/migrations/0016_question_blueprint_folders.sql</p>
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -964,6 +1339,17 @@ export default async function AdminBlueprintsPage({
         )}
       </section>
 
+      {!setupNeeded ? (
+        <BlueprintFolderPanel
+          archivedFolders={archivedFolders}
+          folderOptions={folderOptions}
+          folderSummary={folderSummary}
+          folderTree={folderTree}
+          selectedFolder={selectedFolder}
+          selectedFolderId={selectedFolderId}
+        />
+      ) : null}
+
       <section className="space-y-3">
         <div>
           <h2 className="text-xl font-semibold">Active library</h2>
@@ -971,13 +1357,22 @@ export default async function AdminBlueprintsPage({
             Approved blueprints can manually create original draft questions for
             Review Drafts. They are never published automatically.
           </p>
+          {selectedFolderId !== "all" ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Folder filter:{" "}
+              {selectedFolderId === "unfiled"
+                ? "Unfiled"
+                : selectedFolder?.name ?? "All blueprints"}
+            </p>
+          ) : null}
         </div>
-        {activeBlueprints.length ? (
+        {filteredActiveBlueprints.length ? (
           <div className="grid gap-4 2xl:grid-cols-2">
-            {activeBlueprints.map((blueprint) => (
+            {filteredActiveBlueprints.map((blueprint) => (
               <LibraryCard
                 blueprint={blueprint}
                 evidenceSnippets={evidenceByBlueprintId.get(blueprint.id) ?? []}
+                folderOptions={folderOptions}
                 key={blueprint.id}
                 knownAssignableTagIds={knownAssignableTagIds}
               />
@@ -986,7 +1381,9 @@ export default async function AdminBlueprintsPage({
         ) : (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
-              No approved blueprints yet.
+              {selectedFolderId === "all"
+                ? "No approved blueprints yet."
+                : "No blueprints in this folder yet."}
             </CardContent>
           </Card>
         )}
@@ -1006,6 +1403,7 @@ export default async function AdminBlueprintsPage({
               <LibraryCard
                 blueprint={blueprint}
                 evidenceSnippets={evidenceByBlueprintId.get(blueprint.id) ?? []}
+                folderOptions={folderOptions}
                 key={blueprint.id}
                 knownAssignableTagIds={knownAssignableTagIds}
               />

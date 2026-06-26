@@ -81,7 +81,13 @@ assert(
     blueprintPage.includes("Short pattern summary") &&
     blueprintPage.includes("Source refs and internal notes") &&
     blueprintPage.includes("Draft ID:") &&
-    blueprintPage.includes("overflowWrap: \"anywhere\""),
+    blueprintPage.includes("overflowWrap: \"anywhere\"") &&
+    blueprintPage.includes("Blueprint folders") &&
+    blueprintPage.includes("All blueprints") &&
+    blueprintPage.includes("Unfiled") &&
+    blueprintPage.includes("Folder tree") &&
+    blueprintPage.includes("Move to folder") &&
+    blueprintPage.includes("No blueprints in this folder yet."),
   "/admin/blueprints source is missing BP6 manual generation CTA or review link",
 );
 assert(
@@ -89,6 +95,9 @@ assert(
     blueprintActions.includes("archiveQuestionBlueprint") &&
     blueprintActions.includes("restoreQuestionBlueprint") &&
     blueprintActions.includes("moveQuestionBlueprintToTrash") &&
+    blueprintActions.includes("createQuestionBlueprintFolder") &&
+    blueprintActions.includes("moveQuestionBlueprintToFolder") &&
+    blueprintActions.includes("archiveQuestionBlueprintFolder") &&
     blueprintActions.includes("updateBlueprintReviewActionTaxonomyTargets") &&
     blueprintActions.includes("loadActiveAssignableLeafTaxonomyByFacet") &&
     blueprintActions.includes("importBatchImportJson") &&

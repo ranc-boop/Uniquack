@@ -94,6 +94,8 @@ const questionBlueprintGeneration = await read("src/lib/blueprints/question-blue
 const questionBlueprintGenerationReview = await read("src/lib/blueprints/question-blueprint-generation-review.ts");
 const questionBlueprintQuality = await read("src/lib/blueprints/question-blueprint-quality.ts");
 const questionBlueprintMigration = await read("supabase/migrations/0015_question_blueprint_library.sql");
+const questionBlueprintFolderMigration = await read("supabase/migrations/0016_question_blueprint_folders.sql");
+const questionBlueprintFolders = await read("src/lib/blueprints/question-blueprint-folders.ts");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
@@ -497,6 +499,40 @@ for (const expectedText of [
 assert(!questionBlueprintPersistence.includes("fetch("), "question blueprint persistence must not call providers");
 assert(!questionBlueprintPersistence.includes("importBatchImportJson"), "question blueprint persistence must not write Review Drafts");
 assert(!questionBlueprintPersistence.includes("callAIPdfExtractionProvider"), "question blueprint persistence must not run extraction");
+for (const expectedText of [
+  "create table if not exists public.question_blueprint_folders",
+  "alter table public.question_blueprints",
+  "add column if not exists folder_id",
+  "alter table public.question_blueprint_folders enable row level security",
+  "question_blueprint_folders_admin_crud",
+  "private.is_admin()",
+  "to authenticated",
+  "Deleting a folder does not delete blueprints",
+]) {
+  assert(
+    questionBlueprintFolderMigration.includes(expectedText),
+    `question blueprint folder migration is missing ${expectedText}`,
+  );
+}
+assert(
+  !questionBlueprintFolderMigration.includes("to anon"),
+  "question blueprint folder migration must not grant anon access",
+);
+for (const expectedText of [
+  "buildQuestionBlueprintFolderTree",
+  "flattenQuestionBlueprintFolderTree",
+  "wouldCreateQuestionBlueprintFolderCycle",
+  "summarizeQuestionBlueprintFolders",
+  "normalizeQuestionBlueprintFolderName",
+  "slugifyQuestionBlueprintFolderName",
+]) {
+  assert(
+    questionBlueprintFolders.includes(expectedText),
+    `question blueprint folder helper is missing ${expectedText}`,
+  );
+}
+assert(!questionBlueprintFolders.includes("fetch("), "question blueprint folder helper must not call providers");
+assert(!questionBlueprintFolders.includes("supabase.from("), "question blueprint folder helper must stay DB-free");
 console.log("PASS question blueprint DB migration and persistence helpers are admin-only");
 
 for (const expectedText of [
@@ -758,7 +794,8 @@ assert(
 assert(blueprintPage.includes("requireAdmin"), "blueprint library page must remain admin-only");
 assert(
   blueprintPage.includes("Setup needed") &&
-    blueprintPage.includes("0015_question_blueprint_library.sql"),
+    blueprintPage.includes("0015_question_blueprint_library.sql") &&
+    blueprintPage.includes("0016_question_blueprint_folders.sql"),
   "blueprint library page must show setup-needed message when tables are missing",
 );
 assert(
@@ -779,6 +816,30 @@ assert(
     blueprintActions.includes("markQuestionBlueprintNeedsEvidence") &&
     blueprintActions.includes("persistApprovedQuestionBlueprints"),
   "blueprint library actions must be admin-only and use persistence helpers",
+);
+assert(
+  blueprintPage.includes("Blueprint folders") &&
+    blueprintPage.includes("All blueprints") &&
+    blueprintPage.includes("Unfiled") &&
+    blueprintPage.includes("Folder tree") &&
+    blueprintPage.includes("Create folder") &&
+    blueprintPage.includes("Move to folder") &&
+    blueprintPage.includes("No blueprints in this folder yet.") &&
+    blueprintPage.includes("never hard-deleted by folder actions"),
+  "blueprint library page must expose folder tree, unfiled, and move-to-folder UI",
+);
+assert(
+  blueprintActions.includes("createQuestionBlueprintFolder") &&
+    blueprintActions.includes("renameQuestionBlueprintFolder") &&
+    blueprintActions.includes("moveQuestionBlueprintFolder") &&
+    blueprintActions.includes("archiveQuestionBlueprintFolder") &&
+    blueprintActions.includes("restoreQuestionBlueprintFolder") &&
+    blueprintActions.includes("moveQuestionBlueprintToFolder") &&
+    blueprintActions.includes("wouldCreateQuestionBlueprintFolderCycle") &&
+    blueprintActions.includes("folder_id: folderId") &&
+    blueprintActions.includes("Filed blueprints are preserved") &&
+    !blueprintActions.includes("question_blueprint_folders\").delete("),
+  "blueprint folder actions must be admin-only, cycle-safe, and soft-delete only",
 );
 assert(
   blueprintActions.includes("loadActiveAssignableLeafTaxonomyByFacet") &&
