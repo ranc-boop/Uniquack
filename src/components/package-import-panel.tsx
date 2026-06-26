@@ -17,6 +17,7 @@ import {
   finalizeQuestionSourceFileUpload,
   reserveQuestionSourceFileUpload,
 } from "@/app/admin/questions/source-file-actions";
+import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -328,7 +329,7 @@ export function PackageImportPanel() {
       <div className="space-y-3 rounded-md border bg-muted/20 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-3xl space-y-1">
-            <p className="text-sm font-medium">Upload one ZIP package</p>
+            <p className="text-sm font-medium">Select package for preview</p>
             <p className="text-xs text-muted-foreground">
               Required: questions.json. Optional: images/* and pdfs/*. Asset
               files must be referenced explicitly by image_files and
@@ -537,9 +538,10 @@ export function PackageImportPanel() {
           </div>
         </div>
       ) : (
-        <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Select a ZIP package to preview before anything is saved.
-        </div>
+        <AdminEmptyState
+          description="Choose one ZIP package to validate questions.json, preview asset references, and confirm draft import only after review."
+          title="No package selected"
+        />
       )}
 
       {summary ? (

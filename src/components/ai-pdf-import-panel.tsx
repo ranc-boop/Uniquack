@@ -29,6 +29,7 @@ import {
   runQueuedAIPdfExtraction,
   startAIPdfExtraction,
 } from "@/app/admin/imports/pdf/actions";
+import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { AIPdfSegmentationPlanner } from "@/components/ai-pdf-segmentation-planner";
@@ -1130,7 +1131,7 @@ export function AIPdfImportPanel({
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-medium">Step 1: Upload PDF source</p>
+            <p className="text-sm font-medium">Upload private PDF source</p>
             <p className="text-xs text-muted-foreground">
               Choose one or more private PDF sources. Upload starts immediately
               after selection and runs sequentially to avoid blocking the UI.
@@ -1334,7 +1335,7 @@ export function AIPdfImportPanel({
       <div className="space-y-3 rounded-md border bg-muted/20 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-medium">Uploaded PDF sources</p>
+            <p className="text-sm font-medium">Choose uploaded source</p>
             <p className="text-xs text-muted-foreground">
               Private import-level files stored in ai-import-sources. Use a
               source for extraction, open it with a short-lived URL, or delete
@@ -1469,9 +1470,11 @@ export function AIPdfImportPanel({
             })}
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            No uploaded AI PDF sources yet.
-          </p>
+          <AdminEmptyState
+            className="p-6"
+            description="Upload a private PDF source first. It will appear here with its status, page count, and extraction actions."
+            title="No uploaded AI PDF sources yet"
+          />
         )}
         <div className="rounded-md border bg-background/70 p-3 text-xs text-muted-foreground">
           <p className="font-medium text-foreground">File binding model</p>
@@ -1495,6 +1498,14 @@ export function AIPdfImportPanel({
         }}
         className="space-y-4 rounded-md border bg-muted/20 p-4"
       >
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Choose mode and run</p>
+          <p className="text-xs text-muted-foreground">
+            Normal extraction creates draft questions for review. Blueprint
+            observation creates reviewable blueprint metadata without creating
+            questions.
+          </p>
+        </div>
         <div className="grid gap-4 xl:grid-cols-[1fr_1fr_0.9fr_auto]">
           <div className="space-y-2">
             <label htmlFor="source_batch_id" className="text-sm font-medium">
@@ -1528,7 +1539,7 @@ export function AIPdfImportPanel({
           </div>
           <div className="space-y-2">
             <label htmlFor="provider_profile_id" className="text-sm font-medium">
-              Step 2: Start AI extraction
+              Provider profile
             </label>
             <select
               id="provider_profile_id"

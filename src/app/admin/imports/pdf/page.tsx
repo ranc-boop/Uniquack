@@ -1,13 +1,14 @@
 import Link from "next/link";
 
+import { AdminCard } from "@/components/admin/admin-card";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import {
   AIPdfControlDashboard,
   type AIPdfControlDashboardBatch,
 } from "@/components/ai-pdf-control-dashboard";
 import { AIPdfImportPanelLoader } from "@/components/ai-pdf-import-panel-loader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   listEnabledAIProviderProfiles,
@@ -210,11 +211,38 @@ export default async function AdminAIPdfImportPage() {
         title="AI PDF Import"
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Import PDF with AI</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <AdminCard
+        badge={<AdminStatusBadge status="info">AI Parsing</AdminStatusBadge>}
+        description="Upload a private source, choose an approved provider path, and keep every output in draft or planning review until an admin approves it."
+        title="AI parsing workflow"
+      >
+        <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-5">
+          {[
+            ["1", "Upload private PDF"],
+            ["2", "Choose source and provider"],
+            ["3", "Run extraction or blueprint observation"],
+            ["4", "Review dashboard status"],
+            ["5", "Open Review Drafts or Blueprint Library"],
+          ].map(([step, label]) => (
+            <div
+              className="rounded-md border bg-muted/20 p-3 leading-6"
+              key={step}
+            >
+              <span className="mb-2 inline-flex size-6 items-center justify-center rounded-full border bg-background text-xs font-semibold text-foreground">
+                {step}
+              </span>
+              <p>{label}</p>
+            </div>
+          ))}
+        </div>
+      </AdminCard>
+
+      <AdminCard
+        badge={<AdminStatusBadge status="draft">Draft-only</AdminStatusBadge>}
+        description="Source files stay private. Normal extraction creates draft questions; blueprint observation creates reviewable planning metadata without questions."
+        title="Import PDF with AI"
+      >
+        <div>
           {providerError ? (
             <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               AI provider configuration is not available yet. Apply the AI PDF
@@ -240,8 +268,8 @@ export default async function AdminAIPdfImportPage() {
               : "Showing only AI PDF imports uploaded by your account."}
           </p>
           <AIPdfImportPanelLoader providers={providers} sources={sourceOptions} />
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
 
       <AIPdfControlDashboard batches={dashboardBatches} />
     </div>
