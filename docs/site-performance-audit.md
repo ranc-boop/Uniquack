@@ -471,6 +471,69 @@ PERF2B makes the current database-backed Practice runtime the only supported act
 - A future migration can add an explicit `schema_version` column if the project needs richer lifecycle reporting for expired practice sessions.
 - A future UI polish pass can add a dedicated expired-session empty state if old session links become visible somewhere outside the current session list.
 
+## PERF2B Practice Page Dead-Code Cleanup
+
+PERF2B inspected only the Practice page/runtime surface after the route-level lazy loading from PERF1 and the general dead-code pass from PERF2.
+
+### Practice Files Inspected
+
+- `src/app/practice/page.tsx`
+- `src/components/practice/practice-agent-loader.tsx`
+- `src/components/practice/practice-agent-client.tsx`
+- `src/components/practice/mistakes-page-client.tsx`
+- `src/components/practice/question-practice-panel.tsx`
+- `src/lib/practice/agent-loop.ts`
+- `src/lib/practice/ai.ts`
+- `src/lib/practice/context.ts`
+- `src/lib/practice/grading.ts`
+- `src/lib/practice/persistence.ts`
+- `src/lib/practice/schema.ts`
+- `src/lib/practice/tools.ts`
+- `src/lib/practice/types.ts`
+
+### Code Removed Or Simplified
+
+- Removed the unused `compactSessionMemory` helper from `src/lib/practice/context.ts`.
+- Removed the unused old `persistRoundReview` persistence path from `src/lib/practice/persistence.ts`.
+- Removed the now-unused `buildEpisodeCard` helper that existed only for the old `persistRoundReview` path.
+- Converted internal-only Practice helpers/types from exported API surface to module-local declarations:
+  - `sortKeysDeep`
+  - `normalizeLLMUsage`
+  - `loadPracticeCourseFramework`
+  - `maybeQueuePreferenceMergeJob`
+  - `upsertPracticeAgentEpisode`
+  - `PracticeSearchShortCandidate`
+  - `PracticePhase`
+  - `PracticeMemoryUpdate`
+  - `PracticeReviewAttempt`
+  - `PracticePreferenceResponse`
+
+### Compatibility Code Removed
+
+- The old one-shot round review persistence branch was removed because the current review route uses the split current flow:
+  - `persistQuestionReviewResults`
+  - `persistRoundReviewSummary`
+- No old session/snapshot compatibility adapters were restored. Practice still only resumes the current `practice-session-v2` format.
+
+### Code Intentionally Kept
+
+- The Practice client trace panel remains available but collapsed/secondary; it supports current streaming diagnostics and is not loaded as a separate default debug route.
+- Wrong-question practice, hints, review diagnostics, pending-round handoff, and persisted session loading were left unchanged.
+- Server-side recommendation/search tooling was left intact because it is active Practice runtime behavior, not dead UI code.
+- The dynamic Practice island from PERF1 remains the route shell boundary.
+
+### Bundle / Render Impact
+
+- Removed roughly 350 lines of old server-side Practice persistence/helper code.
+- Reduced the public export surface of Practice server modules to make future dead-code audits less noisy.
+- No user-facing Practice flow was redesigned, so initial `/practice` shell behavior and the lazy-loaded client boundary remain unchanged.
+
+### Remaining Practice Risks
+
+- `src/components/practice/practice-agent-client.tsx` is still a large client island. Further reduction should be a focused UI split with manual Practice QA, not a dead-code deletion pass.
+- Trace/detail rendering could be split into an optional lazy panel later if diagnostics remain a measurable client-side cost.
+- Practice search/recommendation server helpers remain broad because they are part of active agent behavior and need product-level review before any deeper pruning.
+
 ## Commands Run
 
 ```bash

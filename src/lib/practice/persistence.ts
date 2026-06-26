@@ -199,52 +199,6 @@ function buildRecommendThreadEntry({
   };
 }
 
-function buildEpisodeCard({
-  attempts,
-  recommendations,
-  results,
-  review,
-}: {
-  attempts: PracticeAttemptInput[];
-  recommendations: PracticeRecommendation[];
-  results: PracticeGradeResult[];
-  review: {
-    episodeCard?: unknown;
-    nextRoundGoal: string;
-    questionReviews?: unknown[];
-    roundPatterns?: string[];
-    summary: string;
-  };
-}) {
-  const explicit = asObject(review.episodeCard);
-  if (Object.keys(explicit).length) {
-    return explicit;
-  }
-
-  const resultById = new Map(results.map((result) => [result.questionId, result]));
-  const attemptById = new Map(attempts.map((attempt) => [attempt.questionId, attempt]));
-  return {
-    next_round_constraint: review.nextRoundGoal,
-    recommended_questions: recommendations.map((question) => ({
-      expected_skill: question.expectedSkill,
-      question_code: question.questionCode,
-      reason: question.reason,
-    })),
-    review_diagnosis: {
-      question_reviews: review.questionReviews ?? [],
-      round_patterns: review.roundPatterns ?? [],
-      summary: review.summary,
-    },
-    student_attempt_summary: recommendations.map((question) => ({
-      answer: attemptById.get(question.id)?.answer ?? "",
-      hint_count: attemptById.get(question.id)?.hintCount ?? 0,
-      is_correct: resultById.get(question.id)?.isCorrect ?? null,
-      question_code: question.questionCode,
-      score: resultById.get(question.id)?.score ?? null,
-    })),
-  };
-}
-
 function formatAnswerForThread(answer: string | string[] | null | undefined) {
   return Array.isArray(answer) ? answer.join(", ") : String(answer ?? "");
 }
@@ -429,7 +383,7 @@ export async function listActivePracticeCourseFrameworks({
   return ((data ?? []) as Record<string, unknown>[]).map(courseFrameworkSummaryFromRow);
 }
 
-export async function loadPracticeCourseFramework({
+async function loadPracticeCourseFramework({
   frameworkId,
   supabase,
 }: {
@@ -716,7 +670,7 @@ export async function createPracticeSession({
   return sessionSummaryFromRow({ ...(data as PracticeSession), round_count: 0 });
 }
 
-export async function maybeQueuePreferenceMergeJob({
+async function maybeQueuePreferenceMergeJob({
   supabase,
   userId,
 }: {
@@ -960,7 +914,7 @@ export async function persistRecommendationRound({
   return roundId;
 }
 
-export async function upsertPracticeAgentEpisode({
+async function upsertPracticeAgentEpisode({
   cacheThreadEntry,
   episodeCard,
   llmUsage,
@@ -1403,288 +1357,6 @@ export async function persistRoundReviewSummary({
     toolTraceSummary: trace,
     userId,
   });
-}
-
-export async function persistRoundReview({
-  attempts,
-  hintsByQuestionId,
-  recommendations,
-  results,
-  review,
-  roundId,
-  sessionId,
-  supabase,
-  userId,
-}: {
-  attempts: PracticeAttemptInput[];
-  hintsByQuestionId?: Record<string, string[]>;
-  recommendations: PracticeRecommendation[];
-  results: PracticeGradeResult[];
-  review: {
-    episodeCard?: unknown;
-    llmUsage?: Record<string, unknown>[];
-    memoryUpdate?: {
-      longTermCandidate?: string | null;
-      sessionMemoryNote?: string | null;
-    };
-    mode: "ai" | "heuristic";
-    nextRoundGoal: string;
-    providerLabel?: string;
-    questionReviews?: unknown[];
-    roundPatterns?: string[];
-    sessionState?: unknown;
-    summary: string;
-    trace: PracticeTraceEvent[];
-    updatedSessionMemory: string;
-  };
-  roundId: string;
-  sessionId: string;
-  supabase: SupabaseLike;
-  userId: string;
-}) {
-  const resultByQuestionId = new Map(results.map((result) => [result.questionId, result]));
-  const recommendationById = new Map(recommendations.map((question) => [question.id, question]));
-  const rows = attempts.map((attempt) => {
-    const result = resultByQuestionId.get(attempt.questionId);
-    const question = recommendationById.get(attempt.questionId);
-
-    return {
-      answer: attempt.answer as unknown as Json,
-      explanation: result?.explanation ?? null,
-      grading_mode: result?.gradingMode ?? "manual",
-      hint_count: attempt.hintCount ?? 0,
-      hints: (hintsByQuestionId?.[attempt.questionId] ?? []) as unknown as Json,
-      is_correct: result?.isCorrect ?? null,
-      question_code: question?.questionCode ?? null,
-      question_id: null,
-      question_snapshot: question
-        ? buildPracticeQuestionSnapshot(question) as unknown as Json
-        : {} as Json,
-      question_title: question?.title ?? "",
-      result: (result ?? {}) as unknown as Json,
-      round_id: roundId,
-      score: result?.score ?? null,
-      session_id: sessionId,
-      solution_html: result?.solutionHtml ?? null,
-      source_question_id: attempt.questionId,
-      user_id: userId,
-    };
-  });
-
-  const inserted = rows.length
-    ? await supabase.from("practice_attempts").upsert(rows, { onConflict: "round_id,source_question_id" }).select("*")
-    : { data: [], error: null };
-
-  if (inserted.error) {
-    throw new Error(inserted.error.message);
-  }
-
-  const insertedAttempts = (inserted.data ?? []) as Array<{
-    answer: Json;
-    id: string;
-    is_correct: boolean | null;
-    question_id: string | null;
-    source_question_id: string | null;
-  }>;
-  const attemptByQuestionId = new Map(
-    insertedAttempts.map((attempt) => [attempt.source_question_id ?? attempt.question_id ?? "", attempt]),
-  );
-
-  const correct = results.filter((result) => result.isCorrect === true).length;
-  const total = results.filter((result) => result.isCorrect !== null).length;
-  const completedQuestionIds = Array.from(new Set(recommendations.map((question) => question.id)));
-
-  const existingRoundResult = await supabase
-    .from("practice_rounds")
-    .select("round_index,trace")
-    .eq("user_id", userId)
-    .eq("id", roundId)
-    .maybeSingle();
-
-  if (existingRoundResult.error) {
-    throw new Error(existingRoundResult.error.message);
-  }
-
-  const existingTrace = traceEventsFromJson(existingRoundResult.data?.trace);
-  const mergedTrace = [
-    ...existingTrace,
-    ...review.trace.filter((event) => !existingTrace.some((existing) =>
-      existing.toolName === event.toolName &&
-      existing.iteration === event.iteration &&
-      existing.inputSummary === event.inputSummary &&
-      existing.outputSummary === event.outputSummary
-    )),
-  ];
-
-  const roundUpdate = await supabase
-    .from("practice_rounds")
-    .update({
-      mode: review.mode,
-      next_round_goal: review.nextRoundGoal,
-      provider_label: review.providerLabel ?? null,
-      review_summary: review.summary,
-      score_correct: correct,
-      score_total: total,
-      trace: mergedTrace as unknown as Json,
-    })
-    .eq("user_id", userId)
-    .eq("id", roundId);
-
-  if (roundUpdate.error) {
-    throw new Error(roundUpdate.error.message);
-  }
-
-  const { data: currentSession, error: sessionLoadError } = await supabase
-    .from("practice_sessions")
-    .select("completed_question_ids,session_thread_messages")
-    .eq("user_id", userId)
-    .eq("id", sessionId)
-    .single();
-
-  if (sessionLoadError) {
-    throw new Error(sessionLoadError.message);
-  }
-
-  const { data: existingEpisode, error: existingEpisodeError } = await supabase
-    .from("practice_agent_episodes")
-    .select("round_contract,cache_thread_entry")
-    .eq("user_id", userId)
-    .eq("round_id", roundId)
-    .maybeSingle();
-
-  if (existingEpisodeError) {
-    throw new Error(existingEpisodeError.message);
-  }
-
-  const episodeCard = buildEpisodeCard({ attempts, recommendations, results, review });
-  const reviewThreadEntry = {
-    kind: "episode_card",
-    round_id: roundId,
-    summary: episodeCard,
-  };
-  const mergedCompleted = Array.from(
-    new Set([...asStringArray(currentSession?.completed_question_ids), ...completedQuestionIds]),
-  );
-  const roundIndex = Number(existingRoundResult.data?.round_index ?? 0);
-  const nextThreadMessages = appendThreadEntry(
-    currentSession?.session_thread_messages,
-    reviewThreadEntry,
-  );
-  const persistedThreadMessages = roundIndex > 0 && roundIndex % 10 === 0
-    ? [buildThreadCheckpoint({
-        entries: nextThreadMessages,
-        episodeCard,
-        review,
-        roundIndex,
-      })]
-    : nextThreadMessages;
-  const sessionUpdate = await supabase
-    .from("practice_sessions")
-    .update({
-      completed_question_ids: mergedCompleted,
-      last_activity_at: new Date().toISOString(),
-      preference_dirty_at: new Date().toISOString(),
-      session_thread_messages: persistedThreadMessages as unknown as Json,
-    })
-    .eq("user_id", userId)
-    .eq("id", sessionId);
-
-  if (sessionUpdate.error) {
-    throw new Error(sessionUpdate.error.message);
-  }
-
-  await upsertPracticeAgentEpisode({
-    cacheThreadEntry: existingEpisode?.cache_thread_entry ?? {},
-    episodeCard,
-    llmUsage: review.llmUsage ?? [],
-    memoryUpdate: [
-      review.updatedSessionMemory,
-      review.memoryUpdate?.sessionMemoryNote ? `Session note: ${review.memoryUpdate.sessionMemoryNote}` : "",
-      review.memoryUpdate?.longTermCandidate ? `Long-term candidate: ${review.memoryUpdate.longTermCandidate}` : "",
-    ].filter(Boolean).join("\n").slice(0, 4000),
-    reviewDiagnosis: {
-      episodeCard,
-      memoryUpdate: review.memoryUpdate ?? null,
-      questionReviews: review.questionReviews ?? [],
-      roundPatterns: review.roundPatterns ?? [],
-      summary: review.summary,
-    },
-    roundContract: existingEpisode?.round_contract ?? {},
-    roundId,
-    sessionId,
-    studentAttemptSummary: rows.map((row) => ({
-      answer: row.answer,
-      hintCount: row.hint_count,
-      isCorrect: row.is_correct,
-      questionCode: row.question_code,
-      questionId: row.source_question_id,
-      score: row.score,
-    })),
-    supabase,
-    toolTraceSummary: review.trace,
-    userId,
-  });
-
-  for (const result of results) {
-    const question = recommendationById.get(result.questionId);
-    if (!question) {
-      continue;
-    }
-    const attempt = attemptByQuestionId.get(result.questionId);
-
-    if (result.isCorrect === false) {
-      const wrongRow = {
-        last_answer: (attempt?.answer ?? "") as Json,
-        last_attempt_id: attempt?.id ?? null,
-        last_explanation: result.explanation,
-        last_missed_at: new Date().toISOString(),
-        last_round_id: roundId,
-        last_session_id: sessionId,
-        mastered_at: null,
-        question_code: question.questionCode,
-        question_id: null,
-        question_snapshot: buildPracticeQuestionSnapshot(question) as unknown as Json,
-        question_title: question.title,
-        source_question_id: question.id,
-        user_id: userId,
-      };
-      const existing = await supabase
-        .from("practice_wrong_questions")
-        .select("miss_count")
-        .eq("user_id", userId)
-        .eq("source_question_id", question.id)
-        .maybeSingle();
-
-      if (existing.error) {
-        throw new Error(existing.error.message);
-      }
-
-      const upserted = await supabase.from("practice_wrong_questions").upsert(
-        {
-          ...wrongRow,
-          miss_count: Number(existing.data?.miss_count ?? 0) + 1,
-        },
-        { onConflict: "user_id,source_question_id" },
-      );
-      if (upserted.error) {
-        throw new Error(upserted.error.message);
-      }
-    } else if (result.isCorrect === true) {
-      const mastered = await supabase
-        .from("practice_wrong_questions")
-        .update({
-          last_attempt_id: attempt?.id ?? null,
-          mastered_at: new Date().toISOString(),
-        })
-        .eq("user_id", userId)
-        .eq("source_question_id", question.id)
-        .is("mastered_at", null);
-
-      if (mastered.error) {
-        throw new Error(mastered.error.message);
-      }
-    }
-  }
 }
 
 export async function listActiveWrongQuestions({
