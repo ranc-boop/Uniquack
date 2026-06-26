@@ -9,6 +9,7 @@
     "lint": "node scripts/check-math-content-usage.mjs && node ./node_modules/eslint/bin/eslint.js .",
     "lint:math-content": "node scripts/check-math-content-usage.mjs",
     "smoke": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-all.mjs",
+    "smoke:practice-thread-cache": "node scripts/practice-thread-cache-refactor-smoke.mjs",
     "smoke:import-json-latex": "node scripts/import-json-latex-repair-smoke.mjs",
     "smoke:rls": "node scripts/supabase-rls-smoke.mjs",
     "smoke:assets-security": "node scripts/question-assets-security-smoke.mjs"

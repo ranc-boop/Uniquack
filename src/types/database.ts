@@ -298,6 +298,16 @@ export type PracticeSession = {
   session_memory: string;
   tag_context: Json;
   completed_question_ids: string[];
+  course_framework_id: string | null;
+  course_framework_snapshot: Json | null;
+  long_term_memory_snapshot: string;
+  session_plan: Json;
+  session_thread_messages: Json;
+  session_state: Json;
+  outline_user_notes: string;
+  next_user_notes: string;
+  cache_prefix_version: string;
+  preference_dirty_at: string | null;
   status: "active" | "archived";
   preference_merged_at: string | null;
   last_activity_at: string;
@@ -400,10 +410,44 @@ export type PracticePreferenceMergeJob = {
   status: "pending" | "running" | "succeeded" | "failed";
   previous_preference: string;
   source_session_memory: string;
+  source_summary: Json;
   result_preference: string | null;
   error_message: string | null;
   claimed_at: string | null;
   completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PracticeCourseFramework = {
+  id: string;
+  title: string;
+  description: string;
+  framework_prompt: string;
+  learning_path: Json;
+  allowed_tag_ids: string[];
+  priority_rules: string;
+  status: "active" | "archived";
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PracticeAgentEpisode = {
+  id: string;
+  user_id: string;
+  session_id: string;
+  round_id: string | null;
+  episode_index: number;
+  recommend_context: Json;
+  round_contract: Json;
+  episode_card: Json;
+  cache_thread_entry: Json;
+  tool_trace_summary: Json;
+  student_attempt_summary: Json;
+  review_diagnosis: Json;
+  memory_update: string;
+  llm_usage: Json;
   created_at: string;
   updated_at: string;
 };
@@ -458,6 +502,8 @@ export type Database = {
       practice_wrong_questions: TableDefinition<PracticeWrongQuestion>;
       user_practice_preferences: TableDefinition<UserPracticePreference>;
       practice_preference_merge_jobs: TableDefinition<PracticePreferenceMergeJob>;
+      practice_course_frameworks: TableDefinition<PracticeCourseFramework>;
+      practice_agent_episodes: TableDefinition<PracticeAgentEpisode>;
       user_question_attempts: TableDefinition<{
         id: string;
         user_id: string;

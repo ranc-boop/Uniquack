@@ -26,6 +26,7 @@ type RecommendationRequestContext = {
   goal: string;
   questionCount: number;
   sessionId: string;
+  userNextRoundNote: string;
   wrongQuestionIds: string[];
 };
 
@@ -56,6 +57,7 @@ function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequest
     goal,
     questionCount: normalizeQuestionCount(body.questionCount),
     sessionId,
+    userNextRoundNote: String(body.userNextRoundNote ?? "").trim().slice(0, 1200),
     wrongQuestionIds: Array.from(new Set(body.wrongQuestionIds ?? [])),
   };
 }
@@ -85,11 +87,11 @@ export async function POST(request: Request) {
     return parsed;
   }
 
-  const { completedQuestionIds, goal, questionCount, sessionId, wrongQuestionIds } = parsed;
+  const { completedQuestionIds, goal, questionCount, sessionId, userNextRoundNote, wrongQuestionIds } = parsed;
   const trace: PracticeTraceEvent[] = [];
   const sessionResult = await supabase
     .from("practice_sessions")
-    .select("completed_question_ids,session_memory,tag_context")
+    .select("cache_prefix_version,completed_question_ids,course_framework_snapshot,long_term_memory_snapshot,outline_user_notes,session_plan,session_thread_messages,tag_context")
     .eq("user_id", auth.user.id)
     .eq("id", sessionId)
     .maybeSingle();
@@ -102,20 +104,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Practice session not found." }, { status: 404 });
   }
 
+  const sessionData = sessionResult.data;
   const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
-  const completedFromSession = Array.isArray(sessionResult.data.completed_question_ids)
-    ? sessionResult.data.completed_question_ids.map(String)
+  const completedFromSession = Array.isArray(sessionData.completed_question_ids)
+    ? sessionData.completed_question_ids.map(String)
     : [];
   const wrongSet = new Set(wrongQuestionIds);
   const effectiveCompletedQuestionIds = Array.from(
     new Set([...completedFromSession, ...completedQuestionIds]),
   ).filter((questionId) => !wrongSet.has(questionId));
-  const baseMemory = String(sessionResult.data.session_memory ?? body.sessionMemory ?? "");
-  const longTermPreference = preference.long_term_preference.trim();
-  const effectiveSessionMemory = longTermPreference
-    ? `${baseMemory}\nLong-term preference: ${longTermPreference}`.slice(0, 2400)
-    : baseMemory;
-  const tagContext = normalizePracticeTagContext(sessionResult.data.tag_context, goal);
+  const lockedLongTermMemory = String(sessionData.long_term_memory_snapshot ?? "").trim() ||
+    preference.long_term_preference.trim();
+  if (!String(sessionData.long_term_memory_snapshot ?? "").trim() && lockedLongTermMemory) {
+    await supabase
+      .from("practice_sessions")
+      .update({ long_term_memory_snapshot: lockedLongTermMemory.slice(0, 1000) })
+      .eq("user_id", auth.user.id)
+      .eq("id", sessionId);
+  }
+  const tagContext = normalizePracticeTagContext(sessionData.tag_context, goal);
+  const courseFrameworkSnapshot = sessionData.course_framework_snapshot;
+  const cachePrefixVersion = String(sessionData.cache_prefix_version ?? "practice-core-v1");
+  const outlineUserNotes = String(sessionData.outline_user_notes ?? "");
+  const sessionPlan = sessionData.session_plan ?? null;
+  const sessionThreadMessages = sessionData.session_thread_messages ?? [];
 
   if (wantsEventStream(request)) {
     const encoder = new TextEncoder();
@@ -130,15 +142,21 @@ export async function POST(request: Request) {
           send("start", { goal, questionCount });
           const profile = await loadPracticeAIProfile(supabase);
           const agentResult = await runPracticeRecommendationAgent({
+            cachePrefixVersion,
             completedQuestionIds: effectiveCompletedQuestionIds,
+            courseFrameworkSnapshot,
             goal,
+            longTermMemory: lockedLongTermMemory,
+            outlineUserNotes,
             onTrace: (event) => send("trace", event),
             profile,
             questionCount,
-            sessionMemory: effectiveSessionMemory,
+            sessionPlan,
+            sessionThreadMessages,
             supabase,
             tagContext,
             trace,
+            userNextRoundNote,
           });
 
           if (!agentResult.recommendations.length) {
@@ -150,20 +168,26 @@ export async function POST(request: Request) {
           }
 
           const response: PracticeRecommendResponse = {
+            llmUsage: agentResult.llmUsage,
             maxToolCalls: agentResult.maxToolCalls,
             mode: "ai",
             providerLabel: agentResult.providerLabel,
             recommendations: agentResult.recommendations,
+            roundContract: agentResult.roundContract,
             roundGoal: agentResult.roundGoal,
             sessionMemory: agentResult.sessionMemory,
             sessionId,
+            sessionPlan,
+            sessionState: agentResult.sessionState,
             tagContext: agentResult.tagContext,
             trace,
           };
 
           response.roundId = await persistRecommendationRound({
+            courseFrameworkSnapshot,
+            llmUsage: agentResult.llmUsage,
             recommendations: agentResult.recommendations,
-            response,
+            response: { ...response, currentTaskSuffix: agentResult.currentTaskSuffix },
             sessionId,
             supabase,
             trace,
@@ -194,14 +218,20 @@ export async function POST(request: Request) {
   try {
     const profile = await loadPracticeAIProfile(supabase);
     const agentResult = await runPracticeRecommendationAgent({
+      cachePrefixVersion,
       completedQuestionIds: effectiveCompletedQuestionIds,
+      courseFrameworkSnapshot,
       goal,
+      longTermMemory: lockedLongTermMemory,
+      outlineUserNotes,
       profile,
       questionCount,
-      sessionMemory: effectiveSessionMemory,
+      sessionPlan,
+      sessionThreadMessages,
       supabase,
       tagContext,
       trace,
+      userNextRoundNote,
     });
 
     if (!agentResult.recommendations.length) {
@@ -215,20 +245,26 @@ export async function POST(request: Request) {
     }
 
     const response: PracticeRecommendResponse = {
+      llmUsage: agentResult.llmUsage,
       maxToolCalls: agentResult.maxToolCalls,
       mode: "ai",
       providerLabel: agentResult.providerLabel,
       recommendations: agentResult.recommendations,
+      roundContract: agentResult.roundContract,
       roundGoal: agentResult.roundGoal,
       sessionMemory: agentResult.sessionMemory,
       sessionId,
+      sessionPlan,
+      sessionState: agentResult.sessionState,
       tagContext: agentResult.tagContext,
       trace,
     };
 
     response.roundId = await persistRecommendationRound({
+      courseFrameworkSnapshot,
+      llmUsage: agentResult.llmUsage,
       recommendations: agentResult.recommendations,
-      response,
+      response: { ...response, currentTaskSuffix: agentResult.currentTaskSuffix },
       sessionId,
       supabase,
       trace,

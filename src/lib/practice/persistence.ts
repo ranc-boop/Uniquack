@@ -2,7 +2,9 @@ import "server-only";
 
 import type {
   PracticeAttemptInput,
+  PracticeCourseFrameworkSummary,
   PracticeGradeResult,
+  PracticeQuestionReview,
   PracticeRecommendation,
   PracticeRoundHistory,
   PracticeSessionDetail,
@@ -22,6 +24,255 @@ const DEFAULT_TAG_CONTEXT: PracticeTagContext = {
   usefulTags: [],
   version: 1,
 };
+
+const DEFAULT_CACHE_PREFIX_VERSION = "practice-core-v1";
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function hasObjectKeys(value: unknown) {
+  return Object.keys(asObject(value)).length > 0;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function compactLine(value: unknown, maxLength = 500) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function buildDefaultSessionPlan({
+  courseFramework,
+  goal,
+}: {
+  courseFramework?: PracticeCourseFrameworkSummary | null;
+  goal: string;
+}) {
+  const trimmedGoal = compactLine(goal, 500);
+  if (courseFramework) {
+    return {
+      allowed_scope: courseFramework.allowedTagIds,
+      framework_id: courseFramework.id,
+      framework_title: courseFramework.title,
+      kind: "framework_snapshot",
+      learning_path: courseFramework.learningPath,
+      priority_rules: courseFramework.priorityRules,
+      root_goal: trimmedGoal || courseFramework.title,
+      user_note_policy: "User outline/next-round notes are appended at the dynamic suffix and should be prioritized when they do not contradict the framework.",
+    };
+  }
+
+  return {
+    allowed_scope: [],
+    kind: "ai_draft_outline",
+    learning_path: [
+      { node_id: "diagnostic", goal: "Start with a short diagnostic round aligned to the user goal." },
+      { node_id: "targeted_bridge", goal: "Use review evidence to add bridge drills for active misconceptions." },
+      { node_id: "challenge_variants", goal: "Increase difficulty or mix formats after the student shows stability." },
+    ],
+    remediation_rules: [
+      "If the student says the miss was careless, verify once before lowering difficulty.",
+      "If the student requests a direction after review, prefer that request unless it clearly leaves the session scope.",
+      "Do not move far away from the root goal without explicit user intent.",
+    ],
+    root_goal: trimmedGoal || "New practice session",
+    user_note_policy: "This outline is a soft guide. User notes on the outline and next round are appended after the cached prefix and should be weighted more than automatic assumptions.",
+  };
+}
+
+function buildInitialSessionState(goal: string) {
+  return {
+    active_misconceptions: [],
+    confirmed_strengths: [],
+    current_focus: compactLine(goal, 500) || "Waiting for the first practice goal.",
+    next_round_constraints: [],
+    training_strategy: [],
+    version: 1,
+  };
+}
+
+function appendThreadEntry(current: unknown, entry: Record<string, unknown>, limit = 80) {
+  return [...asArray(current), entry].slice(-limit);
+}
+
+function compactJsonForThread(value: unknown, maxLength = 2200) {
+  let text = "";
+  try {
+    text = JSON.stringify(value ?? {});
+  } catch {
+    text = String(value ?? "");
+  }
+
+  return text.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function buildThreadCheckpoint({
+  entries,
+  episodeCard,
+  review,
+  roundIndex,
+}: {
+  entries: unknown[];
+  episodeCard: unknown;
+  review: { nextRoundGoal: string; roundPatterns?: string[]; summary: string };
+  roundIndex: number;
+}) {
+  return {
+    created_at: new Date().toISOString(),
+    kind: "thread_checkpoint",
+    summary: {
+      latest_review: review.summary,
+      next_round_goal: review.nextRoundGoal,
+      recent_entries: entries.slice(-20).map((entry) => compactJsonForThread(entry, 1800)),
+      round_patterns: review.roundPatterns ?? [],
+      terminal_episode: compactJsonForThread(episodeCard, 2400),
+    },
+    through_round_index: roundIndex,
+  };
+}
+
+function buildRoundContract({
+  recommendations,
+  response,
+}: {
+  recommendations: PracticeRecommendation[];
+  response: { roundContract?: unknown; roundGoal: string; tagContext: PracticeTagContext };
+}) {
+  const explicit = asObject(response.roundContract);
+  return {
+    plan_node_id: compactLine(explicit.plan_node_id ?? explicit.planNodeId ?? "current_focus", 160),
+    recommendation_intent: compactLine(explicit.recommendation_intent ?? explicit.intent ?? response.roundGoal, 900),
+    round_goal: response.roundGoal,
+    search_strategy: explicit.search_strategy ?? { tag_context: response.tagContext },
+    selected_questions: recommendations.map((question) => ({
+      diagnostic_purpose: compactLine((explicit.diagnostic_purposes as Record<string, unknown> | undefined)?.[question.id] ?? question.reason, 500),
+      expected_skill: question.expectedSkill,
+      question_code: question.questionCode,
+      question_id: question.id,
+      reason: question.reason,
+    })),
+    user_note_policy: "When the student adds an outline or next-round note, prefer it over automatic drift unless it contradicts explicit correctness evidence.",
+  };
+}
+
+function buildRecommendThreadEntry({
+  currentTaskSuffix,
+  roundContract,
+  roundId,
+  roundIndex,
+  recommendations,
+}: {
+  currentTaskSuffix?: unknown;
+  roundContract: unknown;
+  roundId: string;
+  roundIndex: number;
+  recommendations: PracticeRecommendation[];
+}) {
+  const contract = asObject(roundContract);
+  return {
+    kind: "current_task",
+    current_task_suffix: currentTaskSuffix ?? {},
+    round_contract: roundContract,
+    round_goal: contract.round_goal ?? "Practice round",
+    round_id: roundId,
+    round_index: roundIndex,
+    selected_question_purposes: recommendations.map((question) => ({
+      expected_skill: question.expectedSkill,
+      question_code: question.questionCode,
+      question_id: question.id,
+      reason: question.reason,
+    })),
+    summary: {
+      plan_node_id: contract.plan_node_id ?? "current_focus",
+      recommendation_intent: contract.recommendation_intent ?? contract.round_goal ?? "Practice round",
+      round_goal: contract.round_goal ?? "Practice round",
+    },
+  };
+}
+
+function buildEpisodeCard({
+  attempts,
+  recommendations,
+  results,
+  review,
+}: {
+  attempts: PracticeAttemptInput[];
+  recommendations: PracticeRecommendation[];
+  results: PracticeGradeResult[];
+  review: {
+    episodeCard?: unknown;
+    nextRoundGoal: string;
+    questionReviews?: unknown[];
+    roundPatterns?: string[];
+    summary: string;
+  };
+}) {
+  const explicit = asObject(review.episodeCard);
+  if (Object.keys(explicit).length) {
+    return explicit;
+  }
+
+  const resultById = new Map(results.map((result) => [result.questionId, result]));
+  const attemptById = new Map(attempts.map((attempt) => [attempt.questionId, attempt]));
+  return {
+    next_round_constraint: review.nextRoundGoal,
+    recommended_questions: recommendations.map((question) => ({
+      expected_skill: question.expectedSkill,
+      question_code: question.questionCode,
+      reason: question.reason,
+    })),
+    review_diagnosis: {
+      question_reviews: review.questionReviews ?? [],
+      round_patterns: review.roundPatterns ?? [],
+      summary: review.summary,
+    },
+    student_attempt_summary: recommendations.map((question) => ({
+      answer: attemptById.get(question.id)?.answer ?? "",
+      hint_count: attemptById.get(question.id)?.hintCount ?? 0,
+      is_correct: resultById.get(question.id)?.isCorrect ?? null,
+      question_code: question.questionCode,
+      score: resultById.get(question.id)?.score ?? null,
+    })),
+  };
+}
+
+function formatAnswerForThread(answer: string | string[] | null | undefined) {
+  return Array.isArray(answer) ? answer.join(", ") : String(answer ?? "");
+}
+
+function verdictText(isCorrect: boolean | null | undefined) {
+  if (isCorrect === true) return "correct";
+  if (isCorrect === false) return "incorrect";
+  return "needs review";
+}
+
+function buildQuestionReviewThreadText({
+  questionReviews,
+  recommendations,
+}: {
+  questionReviews: PracticeQuestionReview[];
+  recommendations: PracticeRecommendation[];
+}) {
+  const questionById = new Map(recommendations.map((question) => [question.id, question]));
+  return questionReviews
+    .map((review, index) => {
+      const question = questionById.get(review.questionId);
+      const label = question?.questionCode || `Question ${index + 1}`;
+      const answer = compactLine(formatAnswerForThread(review.studentAnswer), 220) || "(blank)";
+      const reason = compactLine(review.judgmentReason || review.observedError || "", 420);
+      return `${label}: student answered "${answer}"; verdict ${verdictText(review.isCorrect)}${reason ? `; reason: ${reason}` : ""}.`;
+    })
+    .join("\n")
+    .slice(0, 5000);
+}
+
+function buildRoundReviewThreadText(summary: string) {
+  return compactLine(summary, 2400);
+}
 
 export function normalizePracticeTagContext(value: unknown, goal = ""): PracticeTagContext {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -75,6 +326,16 @@ function hintsFromJson(value: unknown) {
   return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
 
+function traceEventsFromJson(value: unknown): PracticeTraceEvent[] {
+  return Array.isArray(value)
+    ? value.filter((event): event is PracticeTraceEvent => Boolean(
+      event &&
+      typeof event === "object" &&
+      "toolName" in event,
+    ))
+    : [];
+}
+
 function isUniqueConstraintError(error: unknown) {
   return Boolean(
     error &&
@@ -85,18 +346,98 @@ function isUniqueConstraintError(error: unknown) {
 }
 
 function sessionSummaryFromRow(row: PracticeSession & { round_count?: number }): PracticeSessionSummary {
+  const record = row as PracticeSession & Record<string, unknown>;
+  const courseFrameworkSnapshot = hasObjectKeys(row.course_framework_snapshot)
+    ? asObject(row.course_framework_snapshot) as PracticeCourseFrameworkSummary
+    : null;
+  const sessionPlan = hasObjectKeys(record.session_plan)
+    ? asObject(record.session_plan)
+    : row.goal || courseFrameworkSnapshot
+      ? buildDefaultSessionPlan({
+        courseFramework: courseFrameworkSnapshot,
+        goal: row.goal,
+      })
+      : {};
+  const sessionState = hasObjectKeys(record.session_state)
+    ? asObject(record.session_state)
+    : buildInitialSessionState(row.goal);
+
   return {
+    cachePrefixVersion: String(record.cache_prefix_version ?? DEFAULT_CACHE_PREFIX_VERSION),
     completedQuestionIds: asStringArray(row.completed_question_ids),
+    courseFrameworkId: row.course_framework_id,
+    courseFrameworkSnapshot: row.course_framework_snapshot,
     createdAt: row.created_at,
     goal: row.goal,
     id: row.id,
     lastActivityAt: row.last_activity_at,
+    longTermMemorySnapshot: String(record.long_term_memory_snapshot ?? ""),
+    outlineUserNotes: String(record.outline_user_notes ?? ""),
     roundCount: Number(row.round_count ?? 0),
     sessionMemory: row.session_memory,
+    sessionPlan,
+    sessionState,
+    sessionThreadMessages: asArray(record.session_thread_messages),
     status: row.status,
     tagContext: normalizePracticeTagContext(row.tag_context, row.goal),
     title: row.title,
   };
+}
+
+function courseFrameworkSummaryFromRow(row: Record<string, unknown>): PracticeCourseFrameworkSummary {
+  return {
+    allowedTagIds: Array.isArray(row.allowed_tag_ids) ? row.allowed_tag_ids.map(String).filter(Boolean) : [],
+    description: String(row.description ?? ""),
+    frameworkPrompt: String(row.framework_prompt ?? ""),
+    id: String(row.id ?? ""),
+    learningPath: row.learning_path ?? [],
+    priorityRules: String(row.priority_rules ?? ""),
+    status: row.status === "archived" ? "archived" : "active",
+    title: String(row.title ?? ""),
+  };
+}
+
+export async function listActivePracticeCourseFrameworks({
+  supabase,
+}: {
+  supabase: SupabaseLike;
+}) {
+  const { data, error } = await supabase
+    .from("practice_course_frameworks")
+    .select("*")
+    .eq("status", "active")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return ((data ?? []) as Record<string, unknown>[]).map(courseFrameworkSummaryFromRow);
+}
+
+export async function loadPracticeCourseFramework({
+  frameworkId,
+  supabase,
+}: {
+  frameworkId: string;
+  supabase: SupabaseLike;
+}) {
+  if (!frameworkId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("practice_course_frameworks")
+    .select("*")
+    .eq("id", frameworkId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? courseFrameworkSummaryFromRow(data as Record<string, unknown>) : null;
 }
 
 export async function getOrCreatePracticePreference({
@@ -300,6 +641,7 @@ export async function getPracticeSession({
       correct: round.score_correct,
       total: round.score_total,
     },
+    trace: traceEventsFromJson(round.trace),
   }));
 
   return {
@@ -309,11 +651,13 @@ export async function getPracticeSession({
 }
 
 export async function createPracticeSession({
+  courseFrameworkId,
   goal,
   supabase,
   title,
   userId,
 }: {
+  courseFrameworkId?: string | null;
   goal: string;
   supabase: SupabaseLike;
   title?: string;
@@ -322,17 +666,27 @@ export async function createPracticeSession({
   const trimmedGoal = goal.trim().slice(0, 500);
   const sessionTitle =
     (title?.trim() || trimmedGoal || "New practice session").slice(0, 160);
-  const sessionMemory = trimmedGoal
-    ? `Goal: ${trimmedGoal}. No completed rounds yet.`
-    : "No completed rounds yet.";
-
   await maybeQueuePreferenceMergeJob({ supabase, userId });
+  const preference = await getOrCreatePracticePreference({ supabase, userId });
+  const courseFramework = courseFrameworkId
+    ? await loadPracticeCourseFramework({ frameworkId: courseFrameworkId, supabase })
+    : null;
+  const sessionPlan = trimmedGoal || courseFramework
+    ? buildDefaultSessionPlan({ courseFramework, goal: trimmedGoal })
+    : {};
 
   const { data, error } = await supabase
     .from("practice_sessions")
     .insert({
+      cache_prefix_version: DEFAULT_CACHE_PREFIX_VERSION,
+      course_framework_id: courseFramework?.id ?? null,
+      course_framework_snapshot: courseFramework ? courseFramework as unknown as Json : null,
       goal: trimmedGoal,
-      session_memory: sessionMemory,
+      long_term_memory_snapshot: preference.long_term_preference.trim().slice(0, 1000),
+      session_memory: "",
+      session_plan: sessionPlan as unknown as Json,
+      session_state: {} as unknown as Json,
+      session_thread_messages: [] as unknown as Json,
       tag_context: { ...DEFAULT_TAG_CONTEXT, lastGoal: trimmedGoal },
       title: sessionTitle,
       user_id: userId,
@@ -357,10 +711,10 @@ export async function maybeQueuePreferenceMergeJob({
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const { data: source, error: sourceError } = await supabase
     .from("practice_sessions")
-    .select("id,session_memory,preference_merged_at,last_activity_at")
+    .select("id,goal,session_memory,session_state,session_thread_messages,outline_user_notes,next_user_notes,preference_merged_at,preference_dirty_at,last_activity_at")
     .eq("user_id", userId)
     .lt("last_activity_at", cutoff)
-    .is("preference_merged_at", null)
+    .or("preference_merged_at.is.null,preference_dirty_at.not.is.null")
     .order("last_activity_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -379,7 +733,7 @@ export async function maybeQueuePreferenceMergeJob({
     .select("id")
     .eq("user_id", userId)
     .eq("source_session_id", source.id)
-    .in("status", ["pending", "running", "succeeded"])
+    .in("status", ["pending", "running"])
     .limit(1)
     .maybeSingle();
 
@@ -397,6 +751,15 @@ export async function maybeQueuePreferenceMergeJob({
       previous_preference: preference.long_term_preference,
       source_session_id: source.id,
       source_session_memory: source.session_memory,
+      source_summary: {
+        goal: source.goal,
+        outline_user_notes: source.outline_user_notes,
+        next_user_notes: source.next_user_notes,
+        session_state: source.session_state,
+        session_thread_messages: Array.isArray(source.session_thread_messages)
+          ? source.session_thread_messages.slice(-12)
+          : [],
+      } as unknown as Json,
       user_id: userId,
     })
     .select("id")
@@ -410,6 +773,8 @@ export async function maybeQueuePreferenceMergeJob({
 }
 
 export async function persistRecommendationRound({
+  courseFrameworkSnapshot,
+  llmUsage,
   recommendations,
   response,
   sessionId,
@@ -417,12 +782,18 @@ export async function persistRecommendationRound({
   trace,
   userId,
 }: {
+  courseFrameworkSnapshot?: unknown;
+  llmUsage?: Record<string, unknown>[];
   recommendations: PracticeRecommendation[];
   response: {
+    llmUsage?: Record<string, unknown>[];
     mode: "ai" | "heuristic";
     providerLabel?: string;
+    roundContract?: unknown;
     roundGoal: string;
+    currentTaskSuffix?: unknown;
     sessionMemory: string;
+    sessionState?: unknown;
     tagContext: PracticeTagContext;
   };
   sessionId: string;
@@ -479,6 +850,24 @@ export async function persistRecommendationRound({
 
   const persistedRound = insertedRound.data;
   const roundId = persistedRound.id as string;
+  const { data: roundMeta, error: roundMetaError } = await supabase
+    .from("practice_rounds")
+    .select("round_index")
+    .eq("user_id", userId)
+    .eq("id", roundId)
+    .maybeSingle();
+  if (roundMetaError) {
+    throw new Error(roundMetaError.message);
+  }
+  const roundIndex = Number(roundMeta?.round_index ?? 1);
+  const roundContract = buildRoundContract({ recommendations, response });
+  const recommendThreadEntry = buildRecommendThreadEntry({
+    currentTaskSuffix: response.currentTaskSuffix,
+    recommendations,
+    roundContract,
+    roundId,
+    roundIndex,
+  });
   const questionRows = recommendations.map((question, index) => ({
     content_html: question.contentHtml,
     difficulty_rating: question.difficulty,
@@ -503,12 +892,23 @@ export async function persistRecommendationRound({
     }
   }
 
+  const { data: currentSession, error: currentSessionError } = await supabase
+    .from("practice_sessions")
+    .select("session_thread_messages")
+    .eq("user_id", userId)
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (currentSessionError) {
+    throw new Error(currentSessionError.message);
+  }
+
   const { error: sessionError } = await supabase
     .from("practice_sessions")
     .update({
       goal: response.roundGoal.slice(0, 500),
       last_activity_at: new Date().toISOString(),
-      session_memory: response.sessionMemory,
+      session_thread_messages: appendThreadEntry(currentSession?.session_thread_messages, recommendThreadEntry) as unknown as Json,
       tag_context: response.tagContext as unknown as Json,
     })
     .eq("user_id", userId)
@@ -518,7 +918,473 @@ export async function persistRecommendationRound({
     throw new Error(sessionError.message);
   }
 
+  await upsertPracticeAgentEpisode({
+    llmUsage: llmUsage ?? response.llmUsage ?? [],
+    recommendContext: {
+      courseFrameworkSnapshot: courseFrameworkSnapshot ?? null,
+      recommendationReasons: recommendations.map((question) => ({
+        expectedSkill: question.expectedSkill,
+        questionCode: question.questionCode,
+        questionId: question.id,
+        reason: question.reason,
+      })),
+      roundContract,
+      roundGoal: response.roundGoal,
+      tagContext: response.tagContext,
+    },
+    roundContract,
+    cacheThreadEntry: recommendThreadEntry,
+    roundId,
+    sessionId,
+    supabase,
+    toolTraceSummary: trace,
+    userId,
+  });
+
   return roundId;
+}
+
+export async function upsertPracticeAgentEpisode({
+  cacheThreadEntry,
+  episodeCard,
+  llmUsage,
+  memoryUpdate,
+  recommendContext,
+  reviewDiagnosis,
+  roundContract,
+  roundId,
+  sessionId,
+  studentAttemptSummary,
+  supabase,
+  toolTraceSummary,
+  userId,
+}: {
+  cacheThreadEntry?: unknown;
+  episodeCard?: unknown;
+  llmUsage?: unknown[];
+  memoryUpdate?: string;
+  recommendContext?: unknown;
+  reviewDiagnosis?: unknown;
+  roundContract?: unknown;
+  roundId: string;
+  sessionId: string;
+  studentAttemptSummary?: unknown;
+  supabase: SupabaseLike;
+  toolTraceSummary?: unknown[];
+  userId: string;
+}) {
+  const { data: latestRound, error: latestRoundError } = await supabase
+    .from("practice_rounds")
+    .select("round_index")
+    .eq("user_id", userId)
+    .eq("id", roundId)
+    .maybeSingle();
+
+  if (latestRoundError) {
+    throw new Error(latestRoundError.message);
+  }
+
+  const row = {
+    episode_index: Number(latestRound?.round_index ?? 1),
+    llm_usage: (llmUsage ?? []) as unknown as Json,
+    cache_thread_entry: (cacheThreadEntry ?? {}) as unknown as Json,
+    episode_card: (episodeCard ?? {}) as unknown as Json,
+    memory_update: (memoryUpdate ?? "").slice(0, 4000),
+    recommend_context: (recommendContext ?? {}) as unknown as Json,
+    review_diagnosis: (reviewDiagnosis ?? {}) as unknown as Json,
+    round_contract: (roundContract ?? {}) as unknown as Json,
+    round_id: roundId,
+    session_id: sessionId,
+    student_attempt_summary: (studentAttemptSummary ?? []) as unknown as Json,
+    tool_trace_summary: (toolTraceSummary ?? []) as unknown as Json,
+    user_id: userId,
+  };
+  const { error } = await supabase
+    .from("practice_agent_episodes")
+    .upsert(row, { onConflict: "round_id" });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function persistQuestionReviewResults({
+  attempts,
+  hintsByQuestionId,
+  llmUsage,
+  providerLabel,
+  questionReviews,
+  recommendations,
+  results,
+  roundId,
+  sessionId,
+  supabase,
+  trace,
+  userId,
+}: {
+  attempts: PracticeAttemptInput[];
+  hintsByQuestionId?: Record<string, string[]>;
+  llmUsage?: Record<string, unknown>[];
+  providerLabel?: string;
+  questionReviews: PracticeQuestionReview[];
+  recommendations: PracticeRecommendation[];
+  results: PracticeGradeResult[];
+  roundId: string;
+  sessionId: string;
+  supabase: SupabaseLike;
+  trace: PracticeTraceEvent[];
+  userId: string;
+}) {
+  const resultByQuestionId = new Map(results.map((result) => [result.questionId, result]));
+  const reviewByQuestionId = new Map(questionReviews.map((review) => [review.questionId, review]));
+  const recommendationById = new Map(recommendations.map((question) => [question.id, question]));
+  const rows = attempts.map((attempt) => {
+    const result = resultByQuestionId.get(attempt.questionId);
+    const review = reviewByQuestionId.get(attempt.questionId);
+    const question = recommendationById.get(attempt.questionId);
+
+    return {
+      answer: attempt.answer as unknown as Json,
+      explanation: result?.explanation ?? review?.judgmentReason ?? null,
+      grading_mode: result?.gradingMode ?? "manual",
+      hint_count: attempt.hintCount ?? 0,
+      hints: (hintsByQuestionId?.[attempt.questionId] ?? []) as unknown as Json,
+      is_correct: result?.isCorrect ?? null,
+      question_code: question?.questionCode ?? null,
+      question_id: null,
+      question_snapshot: (question ?? {}) as unknown as Json,
+      question_title: question?.title ?? "",
+      result: (result ?? {}) as unknown as Json,
+      round_id: roundId,
+      score: result?.score ?? null,
+      session_id: sessionId,
+      solution_html: result?.solutionHtml ?? null,
+      source_question_id: attempt.questionId,
+      user_id: userId,
+    };
+  });
+
+  const inserted = rows.length
+    ? await supabase.from("practice_attempts").upsert(rows, { onConflict: "round_id,source_question_id" }).select("*")
+    : { data: [], error: null };
+
+  if (inserted.error) {
+    throw new Error(inserted.error.message);
+  }
+
+  const insertedAttempts = (inserted.data ?? []) as Array<{
+    answer: Json;
+    id: string;
+    question_id: string | null;
+    source_question_id: string | null;
+  }>;
+  const attemptByQuestionId = new Map(
+    insertedAttempts.map((attempt) => [attempt.source_question_id ?? attempt.question_id ?? "", attempt]),
+  );
+  const correct = results.filter((result) => result.isCorrect === true).length;
+  const total = results.filter((result) => result.isCorrect !== null).length;
+  const completedQuestionIds = Array.from(new Set(recommendations.map((question) => question.id)));
+
+  const existingRoundResult = await supabase
+    .from("practice_rounds")
+    .select("round_index,trace")
+    .eq("user_id", userId)
+    .eq("id", roundId)
+    .maybeSingle();
+
+  if (existingRoundResult.error) {
+    throw new Error(existingRoundResult.error.message);
+  }
+
+  const existingTrace = traceEventsFromJson(existingRoundResult.data?.trace);
+  const mergedTrace = [
+    ...existingTrace,
+    ...trace.filter((event) => !existingTrace.some((existing) =>
+      existing.toolName === event.toolName &&
+      existing.iteration === event.iteration &&
+      existing.inputSummary === event.inputSummary &&
+      existing.outputSummary === event.outputSummary
+    )),
+  ];
+  const roundUpdate = await supabase
+    .from("practice_rounds")
+    .update({
+      mode: "ai",
+      provider_label: providerLabel ?? null,
+      score_correct: correct,
+      score_total: total,
+      trace: mergedTrace as unknown as Json,
+    })
+    .eq("user_id", userId)
+    .eq("id", roundId);
+
+  if (roundUpdate.error) {
+    throw new Error(roundUpdate.error.message);
+  }
+
+  const { data: currentSession, error: sessionLoadError } = await supabase
+    .from("practice_sessions")
+    .select("completed_question_ids,session_thread_messages")
+    .eq("user_id", userId)
+    .eq("id", sessionId)
+    .single();
+
+  if (sessionLoadError) {
+    throw new Error(sessionLoadError.message);
+  }
+
+  const { data: existingEpisode, error: existingEpisodeError } = await supabase
+    .from("practice_agent_episodes")
+    .select("cache_thread_entry,episode_card,llm_usage,memory_update,recommend_context,round_contract")
+    .eq("user_id", userId)
+    .eq("round_id", roundId)
+    .maybeSingle();
+
+  if (existingEpisodeError) {
+    throw new Error(existingEpisodeError.message);
+  }
+
+  const roundIndex = Number(existingRoundResult.data?.round_index ?? 0);
+  const questionReviewText = buildQuestionReviewThreadText({ questionReviews, recommendations });
+  const questionReviewThreadEntry = {
+    kind: "question_review",
+    round_id: roundId,
+    round_index: roundIndex,
+    text: questionReviewText,
+  };
+  const nextThreadMessages = appendThreadEntry(
+    currentSession?.session_thread_messages,
+    questionReviewThreadEntry,
+  );
+  const mergedCompleted = Array.from(
+    new Set([...asStringArray(currentSession?.completed_question_ids), ...completedQuestionIds]),
+  );
+  const sessionUpdate = await supabase
+    .from("practice_sessions")
+    .update({
+      completed_question_ids: mergedCompleted,
+      last_activity_at: new Date().toISOString(),
+      preference_dirty_at: new Date().toISOString(),
+      session_thread_messages: nextThreadMessages as unknown as Json,
+    })
+    .eq("user_id", userId)
+    .eq("id", sessionId);
+
+  if (sessionUpdate.error) {
+    throw new Error(sessionUpdate.error.message);
+  }
+
+  await upsertPracticeAgentEpisode({
+    cacheThreadEntry: existingEpisode?.cache_thread_entry ?? {},
+    episodeCard: existingEpisode?.episode_card ?? {},
+    llmUsage: llmUsage?.length ? llmUsage : asArray(existingEpisode?.llm_usage),
+    memoryUpdate: String(existingEpisode?.memory_update ?? ""),
+    recommendContext: existingEpisode?.recommend_context ?? {},
+    reviewDiagnosis: {
+      questionReviews,
+      questionReviewThreadText: questionReviewText,
+    },
+    roundContract: existingEpisode?.round_contract ?? {},
+    roundId,
+    sessionId,
+    studentAttemptSummary: rows.map((row) => ({
+      answer: row.answer,
+      hintCount: row.hint_count,
+      isCorrect: row.is_correct,
+      questionCode: row.question_code,
+      questionId: row.source_question_id,
+      score: row.score,
+    })),
+    supabase,
+    toolTraceSummary: trace,
+    userId,
+  });
+
+  for (const result of results) {
+    const question = recommendationById.get(result.questionId);
+    if (!question) {
+      continue;
+    }
+    const attempt = attemptByQuestionId.get(result.questionId);
+
+    if (result.isCorrect === false) {
+      const existing = await supabase
+        .from("practice_wrong_questions")
+        .select("miss_count")
+        .eq("user_id", userId)
+        .eq("source_question_id", question.id)
+        .maybeSingle();
+
+      if (existing.error) {
+        throw new Error(existing.error.message);
+      }
+
+      const upserted = await supabase.from("practice_wrong_questions").upsert(
+        {
+          last_answer: (attempt?.answer ?? "") as Json,
+          last_attempt_id: attempt?.id ?? null,
+          last_explanation: result.explanation,
+          last_missed_at: new Date().toISOString(),
+          last_round_id: roundId,
+          last_session_id: sessionId,
+          mastered_at: null,
+          miss_count: Number(existing.data?.miss_count ?? 0) + 1,
+          question_code: question.questionCode,
+          question_id: null,
+          question_snapshot: question as unknown as Json,
+          question_title: question.title,
+          source_question_id: question.id,
+          user_id: userId,
+        },
+        { onConflict: "user_id,source_question_id" },
+      );
+
+      if (upserted.error) {
+        throw new Error(upserted.error.message);
+      }
+    } else if (result.isCorrect === true) {
+      const mastered = await supabase
+        .from("practice_wrong_questions")
+        .update({
+          last_attempt_id: attempt?.id ?? null,
+          mastered_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .eq("source_question_id", question.id)
+        .is("mastered_at", null);
+
+      if (mastered.error) {
+        throw new Error(mastered.error.message);
+      }
+    }
+  }
+}
+
+export async function persistRoundReviewSummary({
+  providerLabel,
+  roundId,
+  sessionId,
+  summary,
+  supabase,
+  trace,
+  userId,
+}: {
+  providerLabel?: string;
+  roundId: string;
+  sessionId: string;
+  summary: string;
+  supabase: SupabaseLike;
+  trace: PracticeTraceEvent[];
+  userId: string;
+}) {
+  const existingRoundResult = await supabase
+    .from("practice_rounds")
+    .select("round_index,trace")
+    .eq("user_id", userId)
+    .eq("id", roundId)
+    .maybeSingle();
+
+  if (existingRoundResult.error) {
+    throw new Error(existingRoundResult.error.message);
+  }
+
+  const existingTrace = traceEventsFromJson(existingRoundResult.data?.trace);
+  const mergedTrace = [
+    ...existingTrace,
+    ...trace.filter((event) => !existingTrace.some((existing) =>
+      existing.toolName === event.toolName &&
+      existing.iteration === event.iteration &&
+      existing.inputSummary === event.inputSummary &&
+      existing.outputSummary === event.outputSummary
+    )),
+  ];
+  const roundUpdate = await supabase
+    .from("practice_rounds")
+    .update({
+      mode: "ai",
+      provider_label: providerLabel ?? null,
+      review_summary: summary,
+      trace: mergedTrace as unknown as Json,
+    })
+    .eq("user_id", userId)
+    .eq("id", roundId);
+
+  if (roundUpdate.error) {
+    throw new Error(roundUpdate.error.message);
+  }
+
+  const { data: currentSession, error: sessionLoadError } = await supabase
+    .from("practice_sessions")
+    .select("session_thread_messages")
+    .eq("user_id", userId)
+    .eq("id", sessionId)
+    .single();
+
+  if (sessionLoadError) {
+    throw new Error(sessionLoadError.message);
+  }
+
+  const roundIndex = Number(existingRoundResult.data?.round_index ?? 0);
+  const nextThreadMessages = appendThreadEntry(
+    currentSession?.session_thread_messages,
+    {
+      kind: "round_review",
+      round_id: roundId,
+      round_index: roundIndex,
+      text: buildRoundReviewThreadText(summary),
+    },
+  );
+  const persistedThreadMessages = roundIndex > 0 && roundIndex % 10 === 0
+    ? [buildThreadCheckpoint({
+        entries: nextThreadMessages,
+        episodeCard: { summary },
+        review: { nextRoundGoal: "", summary },
+        roundIndex,
+      })]
+    : nextThreadMessages;
+  const sessionUpdate = await supabase
+    .from("practice_sessions")
+    .update({
+      last_activity_at: new Date().toISOString(),
+      preference_dirty_at: new Date().toISOString(),
+      session_thread_messages: persistedThreadMessages as unknown as Json,
+    })
+    .eq("user_id", userId)
+    .eq("id", sessionId);
+
+  if (sessionUpdate.error) {
+    throw new Error(sessionUpdate.error.message);
+  }
+
+  const { data: existingEpisode, error: episodeError } = await supabase
+    .from("practice_agent_episodes")
+    .select("cache_thread_entry,episode_card,llm_usage,memory_update,recommend_context,review_diagnosis,round_contract,student_attempt_summary")
+    .eq("user_id", userId)
+    .eq("round_id", roundId)
+    .maybeSingle();
+
+  if (episodeError) {
+    throw new Error(episodeError.message);
+  }
+
+  await upsertPracticeAgentEpisode({
+    cacheThreadEntry: existingEpisode?.cache_thread_entry ?? {},
+    episodeCard: existingEpisode?.episode_card ?? {},
+    llmUsage: asArray(existingEpisode?.llm_usage),
+    memoryUpdate: String(existingEpisode?.memory_update ?? ""),
+    recommendContext: existingEpisode?.recommend_context ?? {},
+    reviewDiagnosis: {
+      ...asObject(existingEpisode?.review_diagnosis),
+      roundReviewSummary: summary,
+    },
+    roundContract: existingEpisode?.round_contract ?? {},
+    roundId,
+    sessionId,
+    studentAttemptSummary: asArray(existingEpisode?.student_attempt_summary),
+    supabase,
+    toolTraceSummary: trace,
+    userId,
+  });
 }
 
 export async function persistRoundReview({
@@ -537,9 +1403,18 @@ export async function persistRoundReview({
   recommendations: PracticeRecommendation[];
   results: PracticeGradeResult[];
   review: {
+    episodeCard?: unknown;
+    llmUsage?: Record<string, unknown>[];
+    memoryUpdate?: {
+      longTermCandidate?: string | null;
+      sessionMemoryNote?: string | null;
+    };
     mode: "ai" | "heuristic";
     nextRoundGoal: string;
     providerLabel?: string;
+    questionReviews?: unknown[];
+    roundPatterns?: string[];
+    sessionState?: unknown;
     summary: string;
     trace: PracticeTraceEvent[];
     updatedSessionMemory: string;
@@ -599,6 +1474,28 @@ export async function persistRoundReview({
   const total = results.filter((result) => result.isCorrect !== null).length;
   const completedQuestionIds = Array.from(new Set(recommendations.map((question) => question.id)));
 
+  const existingRoundResult = await supabase
+    .from("practice_rounds")
+    .select("round_index,trace")
+    .eq("user_id", userId)
+    .eq("id", roundId)
+    .maybeSingle();
+
+  if (existingRoundResult.error) {
+    throw new Error(existingRoundResult.error.message);
+  }
+
+  const existingTrace = traceEventsFromJson(existingRoundResult.data?.trace);
+  const mergedTrace = [
+    ...existingTrace,
+    ...review.trace.filter((event) => !existingTrace.some((existing) =>
+      existing.toolName === event.toolName &&
+      existing.iteration === event.iteration &&
+      existing.inputSummary === event.inputSummary &&
+      existing.outputSummary === event.outputSummary
+    )),
+  ];
+
   const roundUpdate = await supabase
     .from("practice_rounds")
     .update({
@@ -608,7 +1505,7 @@ export async function persistRoundReview({
       review_summary: review.summary,
       score_correct: correct,
       score_total: total,
-      trace: review.trace as unknown as Json,
+      trace: mergedTrace as unknown as Json,
     })
     .eq("user_id", userId)
     .eq("id", roundId);
@@ -619,7 +1516,7 @@ export async function persistRoundReview({
 
   const { data: currentSession, error: sessionLoadError } = await supabase
     .from("practice_sessions")
-    .select("completed_question_ids")
+    .select("completed_question_ids,session_thread_messages")
     .eq("user_id", userId)
     .eq("id", sessionId)
     .single();
@@ -628,15 +1525,46 @@ export async function persistRoundReview({
     throw new Error(sessionLoadError.message);
   }
 
+  const { data: existingEpisode, error: existingEpisodeError } = await supabase
+    .from("practice_agent_episodes")
+    .select("round_contract,cache_thread_entry")
+    .eq("user_id", userId)
+    .eq("round_id", roundId)
+    .maybeSingle();
+
+  if (existingEpisodeError) {
+    throw new Error(existingEpisodeError.message);
+  }
+
+  const episodeCard = buildEpisodeCard({ attempts, recommendations, results, review });
+  const reviewThreadEntry = {
+    kind: "episode_card",
+    round_id: roundId,
+    summary: episodeCard,
+  };
   const mergedCompleted = Array.from(
     new Set([...asStringArray(currentSession?.completed_question_ids), ...completedQuestionIds]),
   );
+  const roundIndex = Number(existingRoundResult.data?.round_index ?? 0);
+  const nextThreadMessages = appendThreadEntry(
+    currentSession?.session_thread_messages,
+    reviewThreadEntry,
+  );
+  const persistedThreadMessages = roundIndex > 0 && roundIndex % 10 === 0
+    ? [buildThreadCheckpoint({
+        entries: nextThreadMessages,
+        episodeCard,
+        review,
+        roundIndex,
+      })]
+    : nextThreadMessages;
   const sessionUpdate = await supabase
     .from("practice_sessions")
     .update({
       completed_question_ids: mergedCompleted,
       last_activity_at: new Date().toISOString(),
-      session_memory: review.updatedSessionMemory,
+      preference_dirty_at: new Date().toISOString(),
+      session_thread_messages: persistedThreadMessages as unknown as Json,
     })
     .eq("user_id", userId)
     .eq("id", sessionId);
@@ -644,6 +1572,38 @@ export async function persistRoundReview({
   if (sessionUpdate.error) {
     throw new Error(sessionUpdate.error.message);
   }
+
+  await upsertPracticeAgentEpisode({
+    cacheThreadEntry: existingEpisode?.cache_thread_entry ?? {},
+    episodeCard,
+    llmUsage: review.llmUsage ?? [],
+    memoryUpdate: [
+      review.updatedSessionMemory,
+      review.memoryUpdate?.sessionMemoryNote ? `Session note: ${review.memoryUpdate.sessionMemoryNote}` : "",
+      review.memoryUpdate?.longTermCandidate ? `Long-term candidate: ${review.memoryUpdate.longTermCandidate}` : "",
+    ].filter(Boolean).join("\n").slice(0, 4000),
+    reviewDiagnosis: {
+      episodeCard,
+      memoryUpdate: review.memoryUpdate ?? null,
+      questionReviews: review.questionReviews ?? [],
+      roundPatterns: review.roundPatterns ?? [],
+      summary: review.summary,
+    },
+    roundContract: existingEpisode?.round_contract ?? {},
+    roundId,
+    sessionId,
+    studentAttemptSummary: rows.map((row) => ({
+      answer: row.answer,
+      hintCount: row.hint_count,
+      isCorrect: row.is_correct,
+      questionCode: row.question_code,
+      questionId: row.source_question_id,
+      score: row.score,
+    })),
+    supabase,
+    toolTraceSummary: review.trace,
+    userId,
+  });
 
   for (const result of results) {
     const question = recommendationById.get(result.questionId);

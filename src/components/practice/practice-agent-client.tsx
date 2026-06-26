@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
-import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
+import { ArrowUp, ChevronsLeft, ChevronsRight, LoaderCircle, MoreHorizontal, Pencil, Plus, Search, SlidersHorizontal, Sparkles, Trash2, Wrench } from "lucide-react";
 
 import {
   FeedbackText,
@@ -20,10 +20,13 @@ import type {
   PracticeAttemptInput,
   PracticeGradeResult,
   PracticeHintResponse,
+  PracticeCourseFrameworkSummary,
+  PracticeQuestionReview,
   PracticeRecommendRequest,
   PracticeRecommendResponse,
   PracticeRecommendation,
   PracticeRoundHistory,
+  PracticeReviewRequest,
   PracticeReviewResponse,
   PracticeSessionDetail,
   PracticeSessionSummary,
@@ -42,6 +45,16 @@ const starterGoals = [
   "Build a short mixed round on limits and continuity",
   "Practice FRQ-style derivative applications",
 ];
+
+const COLLAPSED_SIDEBAR_WIDTH = 60;
+const DEFAULT_LEFT_SIDEBAR_WIDTH = 304;
+const DEFAULT_RIGHT_SIDEBAR_WIDTH = 384;
+const MIN_SIDEBAR_WIDTH = 240;
+const MAX_SIDEBAR_WIDTH = 560;
+
+function clampSidebarWidth(value: number) {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, Math.round(value)));
+}
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -140,6 +153,78 @@ async function postRecommendationStream({
   return result;
 }
 
+async function postReviewStream({
+  body,
+  onQuestionReview,
+  onResult,
+  onRoundReviewDelta,
+  onRoundReviewStart,
+  onTrace,
+}: {
+  body: PracticeReviewRequest;
+  onQuestionReview: (payload: { result: PracticeGradeResult; review: PracticeQuestionReview }) => void;
+  onResult: (response: PracticeReviewResponse) => void;
+  onRoundReviewDelta: (text: string) => void;
+  onRoundReviewStart: () => void;
+  onTrace: (event: PracticeTraceEvent) => void;
+}) {
+  const response = await fetch("/api/practice/review", {
+    body: JSON.stringify(body),
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiError | null;
+    throw new Error(payload?.error || `Request failed with ${response.status}`);
+  }
+  if (!response.body) {
+    throw new Error("Streaming response body is not available.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: PracticeReviewResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const parsed = parseSseEvents(buffer);
+    buffer = parsed.rest;
+
+    for (const item of parsed.events) {
+      const payload = JSON.parse(item.data);
+      if (item.event === "trace") {
+        onTrace(payload as PracticeTraceEvent);
+      } else if (item.event === "question_review") {
+        onQuestionReview(payload as { result: PracticeGradeResult; review: PracticeQuestionReview });
+      } else if (item.event === "round_review_start") {
+        onRoundReviewStart();
+      } else if (item.event === "round_review_delta") {
+        onRoundReviewDelta(String((payload as { text?: string }).text ?? ""));
+      } else if (item.event === "result") {
+        result = payload as PracticeReviewResponse;
+        onResult(result);
+      } else if (item.event === "error") {
+        const errorPayload = payload as ApiError & { trace?: PracticeTraceEvent[] };
+        errorPayload.trace?.forEach(onTrace);
+        throw new Error(errorPayload.error || "Practice review failed.");
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (!result) {
+    throw new Error("Practice review stream ended before a result was returned.");
+  }
+  return result;
+}
+
 function answerValue(answer: string | string[] | undefined) {
   return Array.isArray(answer) ? answer.join(", ") : answer ?? "";
 }
@@ -155,6 +240,15 @@ function resultBadge(result: PracticeGradeResult | undefined) {
   return <Badge variant="outline">manual review</Badge>;
 }
 
+function reviewingBadge() {
+  return (
+    <Badge className="gap-1.5 border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
+      <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
+      Reviewing
+    </Badge>
+  );
+}
+
 function formatDuration(ms: number) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -162,20 +256,350 @@ function formatDuration(ms: number) {
   return minutes ? `${minutes}m ${seconds.toString().padStart(2, "0")}s` : `${seconds}s`;
 }
 
-function latestProcessSummary(trace: PracticeTraceEvent[]) {
-  const latest = [...trace]
-    .reverse()
-    .find((event) => event.thoughtSummary || event.outputSummary || event.inputSummary || event.error);
-  return latest?.thoughtSummary || latest?.outputSummary || latest?.inputSummary || latest?.error ||
-    "Waiting for the agent to choose its first step.";
-}
-
 function formatTrace(event: PracticeTraceEvent) {
   return [
-    event.toolName,
-    event.outputSummary ? `-> ${event.outputSummary}` : "",
+    event.outputSummary,
     event.error ? `Error: ${event.error}` : "",
   ].filter(Boolean).join(" ");
+}
+
+function isTraceNoise(event: PracticeTraceEvent) {
+  return event.toolName === "model_usage" ||
+    event.toolName === "model_tool_choice_start" ||
+    event.toolName === "compact_agent_context";
+}
+
+function displayTraceEvents(trace: PracticeTraceEvent[]) {
+  return trace.filter((event) => !isTraceNoise(event));
+}
+
+function latestDisplayTrace(trace: PracticeTraceEvent[]) {
+  return displayTraceEvents(trace).at(-1) ?? trace.at(-1);
+}
+
+function compactJson(value: unknown, maxLength = 1600) {
+  try {
+    const text = JSON.stringify(value ?? {}, null, 2);
+    return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}...` : text;
+  } catch {
+    return String(value ?? "");
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function humanizeKey(key: string) {
+  return key
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function plainText(value: unknown, maxLength = 260): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.length > maxLength ? `${value.slice(0, maxLength).trimEnd()}...` : value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => plainText(item, 90))
+      .filter(Boolean)
+      .slice(0, 4)
+      .join("; ");
+  }
+  const record = asRecord(value);
+  if (!record) return "";
+  const preferred = ["summary", "focus", "current_focus", "recommendation_intent", "drift_guard", "next_round_constraints"];
+  for (const key of preferred) {
+    const text = plainText(record[key], maxLength);
+    if (text) return text;
+  }
+  return Object.entries(record)
+    .filter(([, nestedValue]) => typeof nestedValue !== "object" || nestedValue === null)
+    .slice(0, 3)
+    .map(([key, nestedValue]) => `${humanizeKey(key)}: ${plainText(nestedValue, 80)}`)
+    .join(" · ");
+}
+
+function objectHighlights(value: unknown, limit = 5): Array<{ label: string; value: string }> {
+  const record = asRecord(value);
+  if (!record) return [];
+  const priorityKeys = [
+    "summary",
+    "current_focus",
+    "active_misconceptions",
+    "confirmed_strengths",
+    "training_strategy",
+    "next_round_constraints",
+    "recommendation_intent",
+    "drift_guard",
+    "plan_node_id",
+  ];
+  const entries = [
+    ...priorityKeys.filter((key) => key in record),
+    ...Object.keys(record).filter((key) => !priorityKeys.includes(key)),
+  ];
+
+  return entries
+    .map((key) => ({ label: humanizeKey(key), value: plainText(record[key]) }))
+    .filter((item) => item.value)
+    .slice(0, limit);
+}
+
+function threadStudyContext(session: PracticeSessionDetail | null) {
+  const entries = session?.sessionThreadMessages ?? [];
+  const records = entries.map(asRecord).filter((entry): entry is Record<string, unknown> => Boolean(entry));
+  const checkpoint = [...records].reverse().find((entry) => entry.kind === "thread_checkpoint");
+  const currentTask = [...records].reverse().find((entry) => entry.kind === "current_task");
+  const episode = [...records].reverse().find((entry) => entry.kind === "episode_card");
+
+  if (!checkpoint && !currentTask && !episode) {
+    return session?.sessionState || session?.sessionMemory || null;
+  }
+
+  return {
+    checkpoint: checkpoint?.summary ?? checkpoint ?? null,
+    latest_episode: episode?.summary ?? episode ?? null,
+    latest_task: currentTask?.summary ?? currentTask ?? null,
+    locked_long_term_memory: session?.longTermMemorySnapshot || "",
+    thread_entries: records.length,
+  };
+}
+
+function readableProcessLabel(event: PracticeTraceEvent) {
+  if (event.error) return "Needs attention";
+  if (event.toolName === "model_tool_choice") return "Model thought";
+  if (event.toolName.includes("browse")) return "Finding the right topic";
+  if (event.toolName.includes("search")) return "Looking through question candidates";
+  if (event.toolName.includes("finalize")) return "Choosing the round";
+  if (event.toolName.includes("review") || event.phase === "review") return "Reviewing your answers";
+  return event.phase === "context" ? "Reading session context" : "Thinking";
+}
+
+function traceIcon(event: PracticeTraceEvent) {
+  if (event.toolName === "model_tool_choice") return <Sparkles className="size-4" aria-hidden="true" />;
+  if (event.toolName.includes("search") || event.toolName.includes("browse")) return <Search className="size-4" aria-hidden="true" />;
+  if (event.toolName.includes("finalize")) return <Sparkles className="size-4" aria-hidden="true" />;
+  if (event.toolName.includes("tool")) return <Wrench className="size-4" aria-hidden="true" />;
+  return <Sparkles className="size-4" aria-hidden="true" />;
+}
+
+type ToolPill = {
+  label?: string;
+  value: string;
+};
+
+function asRecordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.map(asRecord).filter((item): item is Record<string, unknown> => Boolean(item)) : [];
+}
+
+function pushPill(pills: ToolPill[], value: unknown, label?: string, maxLength = 80) {
+  const text = plainText(value, maxLength);
+  if (text) pills.push({ label, value: text });
+}
+
+function toolInputPills(event: PracticeTraceEvent): ToolPill[] {
+  const payload = asRecord(event.inputPayload);
+  const args = asRecord(payload?.args);
+  const tool = String(payload?.tool ?? event.toolName);
+  const pills: ToolPill[] = [];
+
+  if (!args) return pills;
+
+  if (tool === "browse_taxonomy_batch") {
+    for (const request of asRecordArray(args.requests).slice(0, 6)) {
+      pushPill(pills, request.query ?? request.guess_path ?? request.parent_tag_id ?? request.request_id, String(request.source ?? "request"));
+    }
+    for (const tagId of Array.isArray(args.keep_tags) ? args.keep_tags.slice(0, 4) : []) {
+      pushPill(pills, tagId, "keep");
+    }
+  } else if (tool === "practice_search_batch") {
+    pushPill(pills, args.mode, "mode");
+    for (const lane of asRecordArray(args.lanes).slice(0, 5)) {
+      pushPill(pills, lane.query_text || lane.rationale || lane.lane_id, String(lane.lane_id ?? "lane"));
+      const tags = Array.isArray(lane.confirmed_tag_ids) ? lane.confirmed_tag_ids : [];
+      for (const tagId of tags.slice(0, 3)) pushPill(pills, tagId, "tag");
+      if (tags.length > 3) pushPill(pills, `+${tags.length - 3}`, "more");
+    }
+  } else if (tool === "finalize_recommendation") {
+    pushPill(pills, args.round_goal, "goal");
+    for (const questionId of Array.isArray(args.question_ids) ? args.question_ids.slice(0, 6) : []) {
+      pushPill(pills, questionId, "select");
+    }
+    const contract = asRecord(args.round_contract);
+    pushPill(pills, contract?.plan_node_id, "plan");
+  } else {
+    for (const [key, value] of Object.entries(args).filter(([key]) => key !== "visible_thought").slice(0, 6)) {
+      pushPill(pills, value, humanizeKey(key));
+    }
+  }
+
+  return pills;
+}
+
+function toolOutputPills(event: PracticeTraceEvent): ToolPill[] {
+  const output = asRecord(event.outputPayload);
+  const pills: ToolPill[] = [];
+
+  if (!output) {
+    pushPill(pills, formatTrace(event));
+    return pills;
+  }
+
+  if ("results" in output) {
+    const results = asRecordArray(output.results);
+    pushPill(pills, results.length, "requests");
+    for (const result of results.slice(0, 4)) {
+      pushPill(pills, result.query ?? result.request_id, "result");
+      const tags = asRecordArray(result.tags);
+      if (tags.length) pushPill(pills, `${tags.length} tags`, "found");
+    }
+  } else if ("candidates" in output || "lane_summaries" in output) {
+    const candidates = asRecordArray(output.candidates);
+    const laneSummaries = asRecordArray(output.lane_summaries);
+    pushPill(pills, output.mode, "mode");
+    pushPill(pills, output.candidate_pool_size, "pool");
+    pushPill(pills, candidates.length, "candidates");
+    for (const lane of laneSummaries.slice(0, 4)) {
+      pushPill(pills, `${lane.result_count ?? 0} ${lane.match_quality ?? ""}`.trim(), String(lane.lane_id ?? "lane"));
+    }
+  } else if ("selected_question_ids" in output) {
+    pushPill(pills, output.accepted ? "accepted" : "not accepted", "status");
+    for (const questionId of Array.isArray(output.selected_question_ids) ? output.selected_question_ids.slice(0, 6) : []) {
+      pushPill(pills, questionId, "selected");
+    }
+    pushPill(pills, output.candidate_pool_size, "pool");
+    pushPill(pills, output.tag_context_size, "tags");
+  } else {
+    for (const [key, value] of Object.entries(output).slice(0, 8)) {
+      pushPill(pills, value, humanizeKey(key));
+    }
+  }
+
+  if (event.error) pushPill(pills, event.error, "error", 140);
+  return pills;
+}
+
+function PillList({ empty, pills }: { empty: string; pills: ToolPill[] }) {
+  if (!pills.length) {
+    return <p className="mt-1 text-sm leading-6 text-slate-600">{empty}</p>;
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {pills.map((pill, index) => (
+        <span
+          className="inline-flex max-w-full items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm leading-5 text-slate-700"
+          key={`${pill.label ?? "pill"}-${pill.value}-${index}`}
+          title={pill.label ? `${pill.label}: ${pill.value}` : pill.value}
+        >
+          {pill.label ? <span className="font-semibold text-slate-500">{pill.label}</span> : null}
+          <span className="truncate">{pill.value}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function traceSummaryText(event: PracticeTraceEvent | undefined) {
+  if (!event) return "Waiting for the agent to start.";
+  return event.thoughtSummary || event.inputSummary || event.outputSummary || event.error || "Working through the next step.";
+}
+
+function traceEventKey(event: PracticeTraceEvent | undefined) {
+  if (!event) return "empty";
+  return [
+    event.toolName,
+    event.iteration ?? "n",
+    event.toolCallId ?? "call",
+    event.inputSummary ?? "",
+    event.outputSummary ?? "",
+  ].join(":");
+}
+
+function TraceEventSummary({
+  animated = false,
+  event,
+}: {
+  animated?: boolean;
+  event: PracticeTraceEvent;
+}) {
+  return (
+    <div
+      className={[
+        "flex min-w-0 items-center gap-3",
+        animated ? "animate-in fade-in slide-in-from-bottom-3 duration-300" : "",
+      ].filter(Boolean).join(" ")}
+    >
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
+        {traceIcon(event)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold text-slate-900">{readableProcessLabel(event)}</span>
+        <span className="mt-0.5 block truncate text-xs leading-5 text-slate-500">
+          {traceSummaryText(event)}
+        </span>
+      </span>
+      {event.elapsedMs !== undefined ? (
+        <span className="shrink-0 text-[11px] font-medium text-slate-400">{event.elapsedMs}ms</span>
+      ) : null}
+    </div>
+  );
+}
+
+function ReadableDataCard({
+  children,
+  empty,
+  title,
+  value,
+}: {
+  children?: ReactNode;
+  empty: string;
+  title: string;
+  value: unknown;
+}) {
+  const summary = plainText(value);
+  const highlights = objectHighlights(value);
+  const hasValue = Boolean(summary || highlights.length);
+
+  return (
+    <Card className="border-0 bg-white shadow-none ring-1 ring-slate-200/80">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {hasValue ? (
+          <>
+            {summary ? (
+              <FeedbackText className="border-none bg-transparent p-0 text-sm leading-6 text-slate-600" compact value={summary} />
+            ) : null}
+            {highlights.length ? (
+              <div className="space-y-2">
+                {highlights.map((item) => (
+                  <div key={`${title}-${item.label}`} className="rounded-lg border border-slate-100 bg-slate-50/70 p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{item.label}</p>
+                    <FeedbackText className="mt-1 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={item.value} />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <details className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-xs">
+              <summary className="cursor-pointer font-semibold text-slate-700">Show raw details</summary>
+              <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-[11px] leading-5 text-slate-500 ring-1 ring-slate-200">
+                {compactJson(value, 2400)}
+              </pre>
+            </details>
+          </>
+        ) : (
+          <p className="text-sm leading-6 text-slate-600">{empty}</p>
+        )}
+        {children}
+      </CardContent>
+    </Card>
+  );
 }
 
 function recommendationFromHistoryQuestion(
@@ -220,74 +644,122 @@ function TracePanel({
   trace: PracticeTraceEvent[];
 }) {
   if (!trace.length && !active) return null;
+  const displayTrace = displayTraceEvents(trace);
+  const latestEvent = latestDisplayTrace(trace);
+  const latestKey = traceEventKey(latestEvent);
 
   return (
-    <Card className={active ? "animate-in fade-in slide-in-from-bottom-2 duration-300" : undefined}>
+    <Card className={active ? "animate-in fade-in slide-in-from-bottom-2 border-sky-100 bg-sky-50/40 duration-300" : "border-slate-200/80"}>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-base">Generation process</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">
-              UI-safe process notes plus compact backend summaries.
+            <CardTitle className="text-base">How the agent is working</CardTitle>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              A short, student-safe view of the model&apos;s analysis, searches, and recommendation choices.
             </p>
           </div>
           {trace.length ? (
             <Button onClick={onToggle} size="sm" type="button" variant="outline">
-              {collapsed ? "Expand" : "Collapse"}
+              {collapsed ? "Show details" : "Hide details"}
             </Button>
           ) : null}
         </div>
       </CardHeader>
       <CardContent>
-        {active ? (
-          <div className="mb-4 flex items-center gap-3 rounded-md border bg-muted/20 p-3 text-sm">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
-            <span className="text-muted-foreground">{latestProcessSummary(trace)}</span>
+        {active && !collapsed && latestEvent ? (
+          <div className="mb-4 rounded-xl border border-sky-200 bg-white/90 p-3 text-sm shadow-sm shadow-sky-950/5">
+            <div key={`active-${latestKey}`} className="relative">
+              <span className="absolute -left-1 top-3 flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-sky-500 opacity-60" />
+                <span className="relative inline-flex size-2 rounded-full bg-sky-600" />
+              </span>
+              <div className="pl-4">
+                <TraceEventSummary animated event={latestEvent} />
+              </div>
+            </div>
           </div>
         ) : null}
         {collapsed ? (
-          <div className="rounded-md border bg-muted/20 p-3 text-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{trace.length} events</Badge>
-              <span className="text-muted-foreground">{latestProcessSummary(trace)}</span>
+          latestEvent ? (
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
+              <div key={`collapsed-${latestKey}`}>
+                <TraceEventSummary animated event={latestEvent} />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600">
+              Waiting for the agent to start.
+            </div>
+          )
         ) : (
           <div className="space-y-2">
-            {trace.map((event, index) => (
+            {displayTrace.map((event, index) => (
               <details
                 key={`${event.toolName}-${index}`}
-                className="rounded-md border bg-muted/20 p-3 text-xs"
-                open={active ? index >= trace.length - 3 : index >= trace.length - 2}
+                className="group rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-sm transition-colors duration-200 open:border-sky-200 open:bg-sky-50/40"
+                open={active ? index === displayTrace.length - 1 : false}
               >
                 <summary className="cursor-pointer list-none">
-                  <div className="inline-flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">{event.phase}</Badge>
-                    {event.iteration ? <Badge variant="secondary">step {event.iteration}</Badge> : null}
-                    <span className="font-mono">{event.toolName}</span>
-                    {event.elapsedMs !== undefined ? (
-                      <span className="text-muted-foreground">{event.elapsedMs}ms</span>
+                  <TraceEventSummary event={event} />
+                </summary>
+                {event.toolName === "model_tool_choice" ? (
+                  <div className="mt-3 rounded-lg border border-sky-100 bg-white p-3">
+                    <p className="font-bold text-slate-900">Model-generated thought overview</p>
+                    <FeedbackText
+                      className="mt-1 border-none bg-transparent p-0 leading-5 text-slate-600"
+                      compact
+                      value={event.inputSummary || event.modelThought || "The model requested the next tool call."}
+                    />
+                    {event.reasoningContent ? (
+                      <details className="mt-3 rounded-md border border-amber-200 bg-amber-50/70 p-3">
+                        <summary className="cursor-pointer font-semibold text-amber-800">Raw reasoning content</summary>
+                        <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-[11px] leading-5 text-slate-600 ring-1 ring-slate-200">
+                          {event.reasoningContent}
+                        </pre>
+                      </details>
+                    ) : null}
+                    {event.modelThought && event.modelThought !== event.inputSummary ? (
+                      <details className="mt-3 rounded-md border border-slate-200 bg-slate-50/70 p-3">
+                        <summary className="cursor-pointer font-semibold text-slate-700">Full original model text</summary>
+                        <FeedbackText className="mt-2 border-none bg-transparent p-0 leading-5 text-slate-600" compact value={event.modelThought} />
+                      </details>
+                    ) : null}
+                    {event.outputSummary ? (
+                      <p className="mt-2 text-xs leading-5 text-slate-500">{event.outputSummary}</p>
                     ) : null}
                   </div>
-                </summary>
-                {event.thoughtSummary ? (
-                  <div className="mt-3 rounded-md border bg-background p-2">
-                    <p className="font-medium">Process note</p>
-                    <p className="mt-1 text-muted-foreground">{event.thoughtSummary}</p>
-                  </div>
-                ) : null}
-                {event.inputSummary ? (
-                  <div className="mt-2 rounded-md border bg-background p-2">
-                    <p className="font-medium">Tool input summary</p>
-                    <p className="mt-1 break-words text-muted-foreground">{event.inputSummary}</p>
-                  </div>
-                ) : null}
-                <div className="mt-2 rounded-md border bg-background p-2">
-                  <p className="font-medium">Tool output summary</p>
-                  <p className={event.error ? "mt-1 text-destructive" : "mt-1 break-words text-muted-foreground"}>
-                    {formatTrace(event)}
-                  </p>
-                </div>
+                ) : (
+                  <>
+                    {event.thoughtSummary ? (
+                      <div className="mt-3 rounded-lg border border-sky-100 bg-white p-3">
+                        <p className="font-bold text-slate-900">Tool thought</p>
+                        <FeedbackText className="mt-1 border-none bg-transparent p-0 leading-5 text-slate-600" compact value={event.thoughtSummary} />
+                      </div>
+                    ) : null}
+                    <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+                      <p className="font-bold text-slate-900">What it checked</p>
+                      {event.inputPayload ? (
+                        <PillList empty="No key input details saved for this step." pills={toolInputPills(event)} />
+                      ) : (
+                        <FeedbackText className="mt-1 break-words border-none bg-transparent p-0 leading-5 text-slate-600" compact value={event.inputSummary ?? "No input details saved for this step."} />
+                      )}
+                    </div>
+                    {(event.outputPayload || event.outputSummary || event.error) ? (
+                      <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+                        <p className="font-bold text-slate-900">What came back</p>
+                        {event.outputPayload ? (
+                          <PillList empty="No key output details saved for this step." pills={toolOutputPills(event)} />
+                        ) : (
+                          <FeedbackText
+                            className={event.error ? "mt-1 border-none bg-transparent p-0 leading-5 text-destructive" : "mt-1 break-words border-none bg-transparent p-0 leading-5 text-slate-600"}
+                            compact
+                            value={formatTrace(event)}
+                          />
+                        )}
+                      </div>
+                    ) : null}
+                  </>
+                )}
               </details>
             ))}
           </div>
@@ -343,6 +815,43 @@ function QuestionAnswerInput({
   );
 }
 
+function QuestionReviewDiagnostic({ review }: { review?: PracticeQuestionReview }) {
+  if (!review) return null;
+
+  const rows = [
+    ["Judgment", review.judgmentReason ?? review.observedError],
+    ["Solution key points", review.solutionKeyPoints],
+    ["Missing or extra", review.missingOrExtraParts],
+    ["Answer form", review.answerFormIssue],
+    ["Concept gap", review.conceptGap],
+    ["Personal pattern", review.personalizationLink],
+    ["Fix next", review.fixNext],
+  ].filter((row): row is [string, string] => Boolean(row[1]?.trim()));
+
+  if (!rows.length) return null;
+
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <p className="text-sm font-bold text-sky-950">Review diagnosis</p>
+        {review.verdict ? (
+          <Badge className="border-sky-200 bg-white text-sky-900 hover:bg-white" variant="outline">
+            {review.verdict}
+          </Badge>
+        ) : null}
+      </div>
+      <div className="space-y-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="rounded-md border border-sky-100 bg-white/70 p-3">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-sky-700">{label}</p>
+            <FeedbackText className="mt-1 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={value} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function PracticeAgentClient() {
   const [phase, setPhase] = useState<Phase>("start");
   const [sessions, setSessions] = useState<PracticeSessionSummary[]>([]);
@@ -356,9 +865,21 @@ export function PracticeAgentClient() {
   const [review, setReview] = useState<PracticeReviewResponse | null>(null);
   const [liveTrace, setLiveTrace] = useState<PracticeTraceEvent[]>([]);
   const [reviewTrace, setReviewTrace] = useState<PracticeTraceEvent[]>([]);
+  const [longTermMemory, setLongTermMemory] = useState("");
+  const [longTermMemoryDraft, setLongTermMemoryDraft] = useState("");
+  const [memoryEditing, setMemoryEditing] = useState(false);
+  const [cacheStatsEnabled, setCacheStatsEnabled] = useState(false);
+  const [fullCallLogsEnabled, setFullCallLogsEnabled] = useState(false);
+  const [outlineNotes, setOutlineNotes] = useState("");
+  const [outlineSaving, setOutlineSaving] = useState(false);
+  const [nextRoundNote, setNextRoundNote] = useState("");
+  const [courseFrameworks, setCourseFrameworks] = useState<PracticeCourseFrameworkSummary[]>([]);
+  const [selectedCourseFrameworkId, setSelectedCourseFrameworkId] = useState("");
   const [isTraceCollapsed, setIsTraceCollapsed] = useState(false);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(DEFAULT_LEFT_SIDEBAR_WIDTH);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(DEFAULT_RIGHT_SIDEBAR_WIDTH);
   const [wrongQuestions, setWrongQuestions] = useState<PracticeWrongQuestionView[]>([]);
   const [selectedWrongQuestionIds, setSelectedWrongQuestionIds] = useState<string[]>([]);
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
@@ -387,12 +908,27 @@ export function PracticeAgentClient() {
 
     setSessions(sessionPayload.sessions);
     setActiveSession(nextSession);
+    setOutlineNotes(nextSession?.outlineUserNotes ?? "");
     const wrongPayload = nextSession
       ? await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
           `/api/practice/wrong-questions?sessionId=${encodeURIComponent(nextSession.id)}`,
         )
       : { wrongQuestions: [] };
     setWrongQuestions(wrongPayload.wrongQuestions);
+    const preferencePayload = await jsonRequest<{
+      cacheStatsEnabled?: boolean;
+      fullCallLogsEnabled?: boolean;
+      longTermPreference: string;
+      pendingMergeCount: number;
+    }>("/api/practice/preferences");
+    setLongTermMemory(preferencePayload.longTermPreference);
+    setLongTermMemoryDraft(preferencePayload.longTermPreference);
+    setCacheStatsEnabled(Boolean(preferencePayload.cacheStatsEnabled));
+    setFullCallLogsEnabled(Boolean(preferencePayload.fullCallLogsEnabled));
+    const frameworkPayload = await jsonRequest<{
+      frameworks: PracticeCourseFrameworkSummary[];
+    }>("/api/practice/course-frameworks");
+    setCourseFrameworks(frameworkPayload.frameworks);
 
     return nextSession;
   }
@@ -414,7 +950,7 @@ export function PracticeAgentClient() {
       sessionId: session.id,
       sessionMemory: session.sessionMemory,
       tagContext: session.tagContext,
-      trace: [],
+      trace: round.trace ?? [],
     };
     const restoredResults = resultsFromHistoryRound(round);
     const restoredAnswers: AnswersState = {};
@@ -431,7 +967,7 @@ export function PracticeAgentClient() {
     setAnswers(restoredAnswers);
     setHints(restoredHints);
     setResults(restoredResults);
-    setLiveTrace([]);
+    setLiveTrace(round.trace ?? []);
     setReviewTrace([]);
     setIsTraceCollapsed(true);
     setGoal(round.nextRoundGoal ?? "");
@@ -443,9 +979,10 @@ export function PracticeAgentClient() {
         results: restoredResults,
         sessionId: session.id,
         summary: round.reviewSummary ?? "This round has saved review results.",
-        trace: [],
+        trace: round.trace ?? [],
         updatedSessionMemory: session.sessionMemory,
       });
+      setReviewTrace(round.trace ?? []);
       setPhase("feedback");
     } else {
       setReview(null);
@@ -516,12 +1053,15 @@ export function PracticeAgentClient() {
     !activeSession?.rounds.length &&
     !selectedWrongQuestionIds.length;
   const practiceGridStyle = {
-    "--practice-left": isLeftSidebarCollapsed ? "3.75rem" : "18rem",
-    "--practice-right": isRightSidebarCollapsed ? "3.75rem" : "18rem",
+    "--practice-left": `${isLeftSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : leftSidebarWidth}px`,
+    "--practice-right": `${isRightSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : rightSidebarWidth}px`,
   } as CSSProperties;
 
   const resultsById = new Map<string, PracticeGradeResult>(
     results.map((result) => [result.questionId, result]),
+  );
+  const questionReviewsById = new Map<string, PracticeQuestionReview>(
+    (review?.questionReviews ?? []).map((item) => [item.questionId, item]),
   );
 
   function resetRoundState() {
@@ -529,8 +1069,16 @@ export function PracticeAgentClient() {
     setHints({});
     setResults([]);
     setReview(null);
+    setLiveTrace([]);
     setReviewTrace([]);
     setRecommendation(null);
+  }
+
+  function resetSessionScopedDrafts() {
+    setNextRoundNote("");
+    setSelectedWrongQuestionIds([]);
+    setRenamingSessionId(null);
+    setRenameValue("");
   }
 
   function beginThinking() {
@@ -555,6 +1103,10 @@ export function PracticeAgentClient() {
         "/api/practice/preferences/merge/run",
         { method: "POST", body: "{}" },
       );
+      const preferencePayload = await jsonRequest<{ longTermPreference: string }>(
+        "/api/practice/preferences",
+      );
+      setLongTermMemory(preferencePayload.longTermPreference);
     } catch {
       // Preference merge is intentionally opportunistic and should not block practice.
     }
@@ -592,7 +1144,11 @@ export function PracticeAgentClient() {
   async function ensureSession(trimmedGoal: string) {
     if (activeSession) return activeSession;
     const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
-      body: JSON.stringify({ goal: trimmedGoal, title: "New practice session" }),
+      body: JSON.stringify({
+        courseFrameworkId: selectedCourseFrameworkId || null,
+        goal: trimmedGoal,
+        title: "New practice session",
+      }),
       method: "POST",
     });
     setActiveSession(payload.session);
@@ -612,7 +1168,7 @@ export function PracticeAgentClient() {
     beginThinking();
     setLiveTrace([]);
     setReviewTrace([]);
-    setIsTraceCollapsed(false);
+    setIsTraceCollapsed(true);
     resetRoundState();
 
     startTransition(async () => {
@@ -629,6 +1185,7 @@ export function PracticeAgentClient() {
             goal: trimmedGoal,
             questionCount,
             sessionId: currentSession.id,
+            userNextRoundNote: nextRoundNote,
             wrongQuestionIds: wrongIds,
           },
           onTrace: (event) => setLiveTrace((current) => [...current, event]),
@@ -639,10 +1196,13 @@ export function PracticeAgentClient() {
         setIsTraceCollapsed(true);
         setGoal(trimmedGoal);
         setSelectedWrongQuestionIds([]);
+        setNextRoundNote("");
         setActiveSession({
           ...currentSession,
           goal: response.roundGoal,
           sessionMemory: response.sessionMemory,
+          sessionPlan: response.sessionPlan ?? currentSession.sessionPlan,
+          sessionState: response.sessionState ?? currentSession.sessionState,
           tagContext: response.tagContext,
         });
         await refreshPracticeState(currentSession.id);
@@ -690,9 +1250,25 @@ export function PracticeAgentClient() {
     }));
 
     setError(null);
-    beginThinking();
+    // eslint-disable-next-line react-hooks/purity
+    thinkingStartedAtRef.current = Date.now();
+    setThinkingElapsedMs(0);
+    setLastThinkingDurationMs(null);
     setLiveTrace([]);
-    setIsTraceCollapsed(false);
+    setReviewTrace([]);
+    setResults([]);
+    setReview({
+      mode: "ai",
+      nextRoundGoal: activeSession.goal || recommendation.roundGoal,
+      questionReviews: [],
+      results: [],
+      sessionId: activeSession.id,
+      summary: "Generating round review...",
+      trace: [],
+      updatedSessionMemory: "",
+    });
+    setPhase("feedback");
+    setIsTraceCollapsed(true);
 
     startTransition(async () => {
       try {
@@ -702,7 +1278,7 @@ export function PracticeAgentClient() {
             ...attempt,
             questionCode: recommended?.questionCode,
             result: {
-              explanation: "Pending AI review.",
+              explanation: "Reviewer judgment pending.",
               gradingMode: "manual" as const,
               isCorrect: null,
               questionId: attempt.questionId,
@@ -712,8 +1288,8 @@ export function PracticeAgentClient() {
             title: recommended?.title,
           };
         });
-        const reviewResponse = await jsonRequest<PracticeReviewResponse>("/api/practice/review", {
-          body: JSON.stringify({
+        await postReviewStream({
+          body: {
             attempts: reviewPayloadAttempts,
             goal: activeSession.goal || recommendation.roundGoal,
             hintsByQuestionId: hints,
@@ -727,22 +1303,80 @@ export function PracticeAgentClient() {
             })),
             roundId: recommendation.roundId,
             sessionId: activeSession.id,
-            sessionMemory: activeSession.sessionMemory,
-          }),
-          method: "POST",
+            sessionMemory: "",
+            userNextRoundNote: nextRoundNote,
+          },
+          onQuestionReview: ({ result, review: questionReview }) => {
+            setResults((current) => [
+              ...current.filter((item) => item.questionId !== result.questionId),
+              result,
+            ]);
+            setReview((current) => ({
+              ...(current ?? {
+                mode: "ai",
+                nextRoundGoal: activeSession.goal || recommendation.roundGoal,
+                results: [],
+                sessionId: activeSession.id,
+                summary: "Generating round review...",
+                trace: [],
+                updatedSessionMemory: "",
+              }),
+              questionReviews: [
+                ...((current?.questionReviews ?? []).filter((item) => item.questionId !== questionReview.questionId)),
+                questionReview,
+              ],
+              results: [
+                ...((current?.results ?? []).filter((item) => item.questionId !== result.questionId)),
+                result,
+              ],
+            }));
+          },
+          onResult: (reviewResponse) => {
+            setResults(reviewResponse.results ?? []);
+            setReview(reviewResponse);
+            setReviewTrace(reviewResponse.trace);
+            setLiveTrace(reviewResponse.trace);
+          },
+          onRoundReviewDelta: (text) => {
+            setReview((current) => ({
+              ...(current ?? {
+                mode: "ai",
+                nextRoundGoal: activeSession.goal || recommendation.roundGoal,
+                questionReviews: [],
+                results: [],
+                sessionId: activeSession.id,
+                trace: [],
+                updatedSessionMemory: "",
+              }),
+              summary: `${current?.summary === "Generating round review..." ? "" : current?.summary ?? ""}${text}`,
+            }));
+          },
+          onRoundReviewStart: () => {
+            setReview((current) => ({
+              ...(current ?? {
+                mode: "ai",
+                nextRoundGoal: activeSession.goal || recommendation.roundGoal,
+                questionReviews: [],
+                results: [],
+                sessionId: activeSession.id,
+                trace: [],
+                updatedSessionMemory: "",
+              }),
+              summary: "",
+            }));
+          },
+          onTrace: (event) => {
+            setReviewTrace((current) => [...current, event]);
+            setLiveTrace((current) => [...current, event]);
+          },
         });
-
-        setResults(reviewResponse.results ?? []);
-        setReview(reviewResponse);
-        setReviewTrace(reviewResponse.trace);
-        setLiveTrace(reviewResponse.trace);
         setIsTraceCollapsed(true);
         setGoal("");
         await refreshPracticeState(activeSession.id);
         finishThinking("feedback");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
-        finishThinking("practicing");
+        finishThinking("feedback");
       }
     });
   }
@@ -752,11 +1386,7 @@ export function PracticeAgentClient() {
       requestRecommendation();
       return;
     }
-    const studentThought = goal.trim();
-    const nextGoal = studentThought
-      ? `${review.nextRoundGoal} Student added: ${studentThought}`
-      : review.nextRoundGoal;
-    requestRecommendation(nextGoal);
+    requestRecommendation(review.nextRoundGoal || activeSession?.goal || recommendation?.roundGoal || "");
   }
 
   function beginRenameSession(session: PracticeSessionSummary) {
@@ -793,7 +1423,9 @@ export function PracticeAgentClient() {
           `/api/practice/wrong-questions?sessionId=${encodeURIComponent(payload.session.id)}`,
         );
         setWrongQuestions(wrongPayload.wrongQuestions);
+        setOutlineNotes(payload.session.outlineUserNotes ?? "");
         resetRoundState();
+        resetSessionScopedDrafts();
         if (payload.session.rounds.length) {
           restoreRoundFromHistory(payload.session.rounds[payload.session.rounds.length - 1], payload.session);
         } else {
@@ -810,11 +1442,19 @@ export function PracticeAgentClient() {
     startTransition(async () => {
       try {
         const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
-          body: JSON.stringify({ goal: "", title: "New practice session" }),
+          body: JSON.stringify({
+            courseFrameworkId: selectedCourseFrameworkId || null,
+            goal: "",
+            title: "New practice session",
+          }),
           method: "POST",
         });
         setActiveSession(payload.session);
+        setOutlineNotes(payload.session.outlineUserNotes ?? "");
+        setWrongQuestions([]);
         resetRoundState();
+        resetSessionScopedDrafts();
+        setGoal("");
         setPhase("start");
         await refreshPracticeState(payload.session.id);
         void runPreferenceMerge();
@@ -829,8 +1469,61 @@ export function PracticeAgentClient() {
       try {
         await jsonRequest<{ ok: boolean }>(`/api/practice/sessions/${sessionId}`, { method: "DELETE" });
         resetRoundState();
+        resetSessionScopedDrafts();
+        setGoal("");
         setPhase("start");
         await refreshPracticeState();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+  }
+
+  function saveOutlineNotes() {
+    if (!activeSession) return;
+    setOutlineSaving(true);
+    startTransition(async () => {
+      try {
+        const payload = await jsonRequest<{ session: PracticeSessionDetail }>(
+          `/api/practice/sessions/${activeSession.id}`,
+          {
+            body: JSON.stringify({ outlineUserNotes: outlineNotes }),
+            method: "PATCH",
+          },
+        );
+        setActiveSession(payload.session);
+        setOutlineNotes(payload.session.outlineUserNotes ?? "");
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setOutlineSaving(false);
+      }
+    });
+  }
+
+  function saveLongTermMemory() {
+    startTransition(async () => {
+      try {
+        const payload = await jsonRequest<{ longTermPreference: string }>("/api/practice/preferences", {
+          body: JSON.stringify({ longTermPreference: longTermMemoryDraft }),
+          method: "PATCH",
+        });
+        setLongTermMemory(payload.longTermPreference);
+        setLongTermMemoryDraft(payload.longTermPreference);
+        setMemoryEditing(false);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+  }
+
+  function clearLongTermMemory() {
+    startTransition(async () => {
+      try {
+        const payload = await jsonRequest<{ longTermPreference: string }>("/api/practice/preferences", { method: "DELETE" });
+        setLongTermMemory(payload.longTermPreference);
+        setLongTermMemoryDraft(payload.longTermPreference);
+        setMemoryEditing(false);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -849,12 +1542,54 @@ export function PracticeAgentClient() {
     requestRecommendation(nextGoal, []);
   }
 
+  function beginSidebarResize(side: "left" | "right", event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = side === "left" ? leftSidebarWidth : rightSidebarWidth;
+
+    const handlePointerMove = (pointerEvent: PointerEvent) => {
+      const delta = pointerEvent.clientX - startX;
+      const nextWidth = side === "left"
+        ? startWidth + delta
+        : startWidth - delta;
+
+      if (side === "left") {
+        setLeftSidebarWidth(clampSidebarWidth(nextWidth));
+      } else {
+        setRightSidebarWidth(clampSidebarWidth(nextWidth));
+      }
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  }
+
   return (
     <div
       className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
       style={practiceGridStyle}
     >
-      <aside className="transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+      <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+        {!isLeftSidebarCollapsed ? (
+          <button
+            aria-label="Resize sessions sidebar"
+            className="student-focus-ring group absolute -right-2 top-0 z-40 hidden h-full w-4 cursor-col-resize rounded-full bg-transparent xl:block"
+            onPointerDown={(event) => beginSidebarResize("left", event)}
+            type="button"
+          >
+            <span className="absolute left-1/2 top-4 h-[calc(100%-2rem)] w-px -translate-x-1/2 rounded-full bg-slate-200 transition-all duration-200 group-hover:w-1 group-hover:bg-sky-400 group-active:w-1 group-active:bg-sky-600" />
+            <span className="absolute left-1/2 top-1/2 h-12 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100" />
+          </button>
+        ) : null}
         {isLeftSidebarCollapsed ? (
           <div className="hidden h-full min-h-64 flex-col items-center border-r border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
             <Button
@@ -1041,8 +1776,42 @@ export function PracticeAgentClient() {
             </div>
           </div>
         </section>
-        <div className="mt-auto rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
-          Session history stays here while the center stays focused on the current round.
+        <div className="mt-auto space-y-3">
+          <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
+            <summary className="cursor-pointer text-sm font-bold text-slate-900">Long-term memory</summary>
+            <div className="mt-3 space-y-2">
+              {memoryEditing ? (
+                <Textarea
+                  className="min-h-28 bg-white text-xs"
+                  onChange={(event) => setLongTermMemoryDraft(event.target.value)}
+                  value={longTermMemoryDraft}
+                />
+              ) : longTermMemory.trim() ? (
+                <FeedbackText className="border-none bg-transparent p-0 text-xs leading-5 text-slate-600" compact value={longTermMemory} />
+              ) : (
+                <p className="text-slate-500">
+                  No durable learning pattern has been saved yet. It will update when a new session starts and old session evidence needs merging.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {memoryEditing ? (
+                  <>
+                    <Button disabled={isPending} onClick={saveLongTermMemory} size="sm" type="button" variant="secondary">Save</Button>
+                    <Button disabled={isPending} onClick={() => { setMemoryEditing(false); setLongTermMemoryDraft(longTermMemory); }} size="sm" type="button" variant="outline">Cancel</Button>
+                  </>
+                ) : (
+                  <Button disabled={isPending} onClick={() => setMemoryEditing(true)} size="sm" type="button" variant="outline">Edit</Button>
+                )}
+                <Button disabled={isPending || !longTermMemory.trim()} onClick={clearLongTermMemory} size="sm" type="button" variant="ghost">Clear</Button>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Applies to newly created sessions. Token stats: {cacheStatsEnabled ? "on" : "off"}; full call logs: {fullCallLogsEnabled ? "on" : "off"}.
+              </p>
+            </div>
+          </details>
+          <div className="rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
+            Session history stays here while the center stays focused on the current round.
+          </div>
         </div>
         </div>
         )}
@@ -1087,6 +1856,23 @@ export function PracticeAgentClient() {
                       />
                     </div>
                     <div className="flex items-center justify-between gap-2 px-2 sm:justify-end">
+                      {courseFrameworks.length ? (
+                        <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+                          <span>Framework</span>
+                          <select
+                            className="max-w-44 bg-transparent text-sm font-bold text-slate-900 outline-none"
+                            onChange={(event) => setSelectedCourseFrameworkId(event.target.value)}
+                            value={selectedCourseFrameworkId}
+                          >
+                            <option value="">None</option>
+                            {courseFrameworks.map((framework) => (
+                              <option key={framework.id} value={framework.id}>
+                                {framework.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
                       <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
                         <SlidersHorizontal className="size-4" aria-hidden="true" />
                         <span>Questions</span>
@@ -1192,7 +1978,7 @@ export function PracticeAgentClient() {
                     </span>
                   </div>
                   <p className="text-sm leading-6 text-slate-600">
-                    The agent is using your saved session memory, long-term preference, and question history.
+                    The agent is using your saved practice thread, locked long-term memory snapshot, and question history.
                   </p>
                 </CardContent>
               </Card>
@@ -1242,7 +2028,7 @@ export function PracticeAgentClient() {
                               </p>
                             </div>
                           </div>
-                          {resultBadge(resultsById.get(question.id))}
+                          {resultBadge(resultsById.get(question.id)) ?? (phase === "feedback" ? reviewingBadge() : null)}
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -1280,6 +2066,7 @@ export function PracticeAgentClient() {
                         {phase === "feedback" && resultsById.get(question.id) ? (
                           <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
                             <FeedbackText className="border-none bg-transparent p-0 text-emerald-950" compact value={resultsById.get(question.id)?.explanation} />
+                            <QuestionReviewDiagnostic review={questionReviewsById.get(question.id)} />
                             {resultsById.get(question.id)?.solutionHtml ? (
                               <div className="space-y-2">
                                 <p className="text-sm font-bold text-emerald-950">Solution</p>
@@ -1315,6 +2102,27 @@ export function PracticeAgentClient() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {review.roundPatterns?.length ? (
+                  <div className="rounded-lg border border-sky-100 bg-sky-50/70 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Round patterns</p>
+                    <div className="mt-3 space-y-2">
+                      {review.roundPatterns.map((pattern, index) => (
+                        <FeedbackText
+                          className="border-none bg-transparent p-0 text-sm leading-6 text-slate-700"
+                          compact
+                          key={`${pattern}-${index}`}
+                          value={pattern}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {review.memoryUpdate?.sessionMemoryNote ? (
+                  <div className="rounded-lg border border-amber-100 bg-amber-50/70 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Memory note</p>
+                    <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-amber-950" compact value={review.memoryUpdate.sessionMemoryNote} />
+                  </div>
+                ) : null}
                 <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Next round focus</p>
                   <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={review.nextRoundGoal} />
@@ -1323,9 +2131,9 @@ export function PracticeAgentClient() {
                   <Label htmlFor="next-round-goal">Add your thoughts for the next round</Label>
                   <Input
                     id="next-round-goal"
-                    onChange={(event) => setGoal(event.target.value)}
+                    onChange={(event) => setNextRoundNote(event.target.value)}
                     placeholder="Optional: ask for a focus, pace, or difficulty change"
-                    value={goal}
+                    value={nextRoundNote}
                   />
                 </div>
                 <div className="flex flex-wrap items-end justify-between gap-3">
@@ -1353,7 +2161,18 @@ export function PracticeAgentClient() {
 
         </main>
 
-        <aside className="transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+        <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+          {!isRightSidebarCollapsed ? (
+            <button
+              aria-label="Resize study sidebar"
+              className="student-focus-ring group absolute -left-2 top-0 z-40 hidden h-full w-4 cursor-col-resize rounded-full bg-transparent xl:block"
+              onPointerDown={(event) => beginSidebarResize("right", event)}
+              type="button"
+            >
+              <span className="absolute left-1/2 top-4 h-[calc(100%-2rem)] w-px -translate-x-1/2 rounded-full bg-slate-200 transition-all duration-200 group-hover:w-1 group-hover:bg-sky-400 group-active:w-1 group-active:bg-sky-600" />
+              <span className="absolute left-1/2 top-1/2 h-12 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100" />
+            </button>
+          ) : null}
           {isRightSidebarCollapsed ? (
             <div className="hidden h-full min-h-64 flex-col items-center border-l border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
               <Button
@@ -1401,20 +2220,42 @@ export function PracticeAgentClient() {
             </Button>
           </div>
           {activeSession ? (
-            <Card className="border-0 bg-white shadow-none ring-1 ring-slate-200/80">
-              <CardHeader>
-                <CardTitle className="text-lg">Session memory</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {activeSession.sessionMemory ? (
-                  <FeedbackText className="border-none bg-transparent p-0 text-sm leading-6 text-slate-600" compact value={activeSession.sessionMemory} />
-                ) : (
-                  <p className="text-sm leading-6 text-slate-600">
-                    Submit a round and the agent will summarize useful context for this session here.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+            <div key={activeSession.id} className="space-y-4">
+              <ReadableDataCard
+                empty="No outline yet. Generate a round and the agent will form a lightweight study path here."
+                title="Session outline"
+                value={activeSession.sessionPlan}
+              >
+                <details className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-xs">
+                  <summary className="cursor-pointer font-semibold text-slate-700">Guide the outline</summary>
+                  <div className="mt-3 space-y-2">
+                    <Label htmlFor="outline-notes">Your notes</Label>
+                    <Textarea
+                      className="min-h-24 bg-white text-sm"
+                      id="outline-notes"
+                      onChange={(event) => setOutlineNotes(event.target.value)}
+                      placeholder="Prioritize, skip, slow down, or change difficulty."
+                      value={outlineNotes}
+                    />
+                    <Button disabled={outlineSaving || isPending} onClick={saveOutlineNotes} size="sm" type="button" variant="outline">
+                      Save notes
+                    </Button>
+                  </div>
+                </details>
+              </ReadableDataCard>
+              {recommendation?.roundContract ? (
+                <ReadableDataCard
+                  empty="Generate a round to see why these questions were chosen."
+                  title="Why this round"
+                  value={recommendation.roundContract}
+                />
+              ) : null}
+              <ReadableDataCard
+                empty="No saved practice thread yet. After a round, this will show the latest task, review evidence, and checkpoints."
+                title="Practice thread"
+                value={threadStudyContext(activeSession)}
+              />
+            </div>
           ) : null}
 
           <Card className="mt-4 border-0 bg-white shadow-none ring-1 ring-slate-200/80">

@@ -44,10 +44,15 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 
   const body = (await request.json().catch(() => ({}))) as {
+    nextUserNotes?: string;
+    outlineUserNotes?: string;
     status?: "active" | "archived";
     title?: string;
   };
   const patch: {
+    next_user_notes?: string;
+    outline_user_notes?: string;
+    preference_dirty_at?: string;
     status?: "active" | "archived";
     title?: string;
   } = {};
@@ -57,6 +62,14 @@ export async function PATCH(request: Request, { params }: Params) {
     if (title) {
       patch.title = title;
     }
+  }
+  if (typeof body.outlineUserNotes === "string") {
+    patch.outline_user_notes = body.outlineUserNotes.trim().slice(0, 4000);
+    patch.preference_dirty_at = new Date().toISOString();
+  }
+  if (typeof body.nextUserNotes === "string") {
+    patch.next_user_notes = body.nextUserNotes.trim().slice(0, 4000);
+    patch.preference_dirty_at = new Date().toISOString();
   }
   if (body.status === "active" || body.status === "archived") {
     patch.status = body.status;

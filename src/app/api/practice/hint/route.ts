@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
-import { compactText, traced } from "@/lib/practice/context";
+import { compactText, summarizeLLMUsage, traced } from "@/lib/practice/context";
+import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import type {
   PracticeHintRequest,
   PracticeHintResponse,
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
 
     try {
       const profile = await loadPracticeAIProfile(supabase);
+      const systemPrompt = await loadPracticePrompt("hint-system");
       const aiResult = await traced({
         inputSummary: `DS hint call for ${question.questionCode}, level ${hintLevel}.`,
         outputSummary: (value) => `provider=${value.providerLabel}`,
@@ -83,12 +85,7 @@ export async function POST(request: Request) {
             messages: [
               {
                 role: "system",
-                content: [
-                  "You are O2I Hint Agent. Give one short hint for the current question only.",
-                  "This is a separate call and has no access to the main recommendation/review context.",
-                  "Do not reveal the final answer, correct option, or full solution. Do not mention hidden answer data.",
-                  "Return JSON only: {\"hint\":\"...\"}.",
-                ].join("\n"),
+                content: systemPrompt,
               },
               {
                 role: "user",
@@ -113,6 +110,15 @@ export async function POST(request: Request) {
             ],
           }),
       });
+      if (aiResult.usage) {
+        trace.push({
+          inputSummary: "Provider usage for prompt caching/token monitoring.",
+          llmUsage: aiResult.usage,
+          outputSummary: summarizeLLMUsage(aiResult.usage),
+          phase: "hint",
+          toolName: "model_usage",
+        });
+      }
       const response: PracticeHintResponse = {
         hint: aiResult.parsed.hint?.trim() || fallbackHint(hintLevel),
         mode: "ai",

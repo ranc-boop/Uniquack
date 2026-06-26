@@ -13,6 +13,7 @@ const navItems = [
   { href: "/admin/questions", label: "Questions" },
   { href: "/admin/tags", label: "Tags" },
   { href: "/admin/videos", label: "Videos" },
+  { href: "/admin/practice-frameworks", label: "Practice Frameworks" },
   { href: "/admin/imports", label: "Imports" },
   { href: "/admin/imports/assets", label: "Bulk Assets" },
   { href: "/admin/imports/package", label: "Package Import" },
