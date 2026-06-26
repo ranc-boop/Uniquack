@@ -4,7 +4,7 @@ import {
   AIPdfControlDashboard,
   type AIPdfControlDashboardBatch,
 } from "@/components/ai-pdf-control-dashboard";
-import { AIPdfImportPanel } from "@/components/ai-pdf-import-panel";
+import { AIPdfImportPanelLoader } from "@/components/ai-pdf-import-panel-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/guards";
@@ -241,7 +241,7 @@ export default async function AdminAIPdfImportPage() {
               ? "Super admins can see all AI PDF imports. Regular admins only see imports they created."
               : "Showing only AI PDF imports uploaded by your account."}
           </p>
-          <AIPdfImportPanel providers={providers} sources={sourceOptions} />
+          <AIPdfImportPanelLoader providers={providers} sources={sourceOptions} />
         </CardContent>
       </Card>
 
