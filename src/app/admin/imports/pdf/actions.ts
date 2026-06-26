@@ -43,6 +43,7 @@ import type { Json } from "@/types/database";
 
 const extractionInputSchema = z.object({
   batchId: uuidSchema,
+  blueprintModelQualityMode: z.enum(["fast", "quality"]).optional(),
   executionMode: z
     .enum([
       "single_full_pdf",
@@ -1352,12 +1353,14 @@ async function ensureBatchCanExtract({
 
 async function acquireExtractionLease({
   batchId,
+  blueprintModelQualityMode,
   executionMode,
   providerProfileId,
   sourceAsset,
   supabase,
 }: {
   batchId: string;
+  blueprintModelQualityMode?: "fast" | "quality";
   executionMode?: AIPdfExecutionMode;
   providerProfileId: string;
   sourceAsset: Awaited<ReturnType<typeof loadSourceAsset>>;
@@ -1387,6 +1390,10 @@ async function acquireExtractionLease({
     ...existingSummary,
     aiPdfImport: mergeAIPdfImportSummary(existingAiPdfImport, {
       detail: "AI extraction was queued and is waiting for the client to run the leased job.",
+      blueprintModelQualityMode:
+        executionMode === "blueprint_observation"
+          ? blueprintModelQualityMode ?? "fast"
+          : existingAiPdfImport.blueprintModelQualityMode,
       executionMode: executionMode ?? existingAiPdfImport.executionMode,
       fileName: sourceAsset.original_filename,
       jobId,
@@ -1589,6 +1596,7 @@ async function runAIPdfExtractionJob({
 
 export async function startAIPdfExtraction(input: {
   batchId: string;
+  blueprintModelQualityMode?: "fast" | "quality";
   executionMode?: AIPdfExecutionMode;
   providerProfileId: string;
 }) {
@@ -1625,6 +1633,7 @@ export async function startAIPdfExtraction(input: {
   });
   const lease = await acquireExtractionLease({
     batchId: parsed.batchId,
+    blueprintModelQualityMode: parsed.blueprintModelQualityMode,
     executionMode: parsed.executionMode,
     providerProfileId: parsed.providerProfileId,
     supabase,

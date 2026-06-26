@@ -15,6 +15,12 @@ import {
   type BlueprintQualityValidationResult,
 } from "@/lib/blueprints/question-blueprint-quality";
 import type { QuestionBlueprintRow } from "@/lib/blueprints/question-blueprint-persistence";
+import type { QuestionBlueprintModelQualityMode } from "@/lib/blueprints/question-blueprint-model-routing";
+import {
+  runBlueprintDraftRepair,
+  summarizeBlueprintRepairAttempt,
+  type QuestionBlueprintRepairAttempt,
+} from "@/lib/blueprints/question-blueprint-repair";
 
 export type QuestionBlueprintCalibrationReadiness =
   | "uncalibrated"
@@ -32,6 +38,8 @@ export type QuestionBlueprintCalibrationRequest = {
   sampleCount: number;
   sourceEvidenceSnippets: string[];
   variationNote: string;
+  modelQualityMode?: QuestionBlueprintModelQualityMode;
+  repairEnabled?: boolean;
 };
 
 export type QuestionBlueprintCalibrationSample = {
@@ -46,6 +54,7 @@ export type QuestionBlueprintCalibrationSample = {
     warnings: string[];
   };
   questionType: QuestionBlueprintGenerationQuestionType;
+  repairAttempt?: ReturnType<typeof summarizeBlueprintRepairAttempt>;
   schemaValid: boolean;
   taxonomyTagIds: string[];
   title: string;
@@ -56,8 +65,9 @@ export type QuestionBlueprintCalibrationResult = {
   adherenceScore: number;
   blockingReasons: string[];
   diversityScore: number;
-  providerCallCount: 1;
+  providerCallCount: number;
   readiness: Exclude<QuestionBlueprintCalibrationReadiness, "uncalibrated" | "calibrating">;
+  repairAttemptCount: number;
   sampleCount: number;
 };
 
@@ -65,6 +75,8 @@ export type QuestionBlueprintCalibrationRun = {
   generatedAt: string;
   modelName: string;
   provider: "deepseek";
+  repairAttempts: QuestionBlueprintRepairAttempt[];
+  repairEnabled: boolean;
   request: QuestionBlueprintGenerationRequest;
   result: QuestionBlueprintCalibrationResult;
   samples: QuestionBlueprintCalibrationSample[];
@@ -76,6 +88,7 @@ export type QuestionBlueprintCalibrationRun = {
     noRawProviderResponseStorage: true;
     noReviewDraftWrite: true;
   };
+  modelQualityMode: QuestionBlueprintModelQualityMode;
   validationSummary: {
     validSampleCount: number;
     warningCount: number;
@@ -359,11 +372,13 @@ export function deriveBlueprintGenerationReadiness({
   diversityScore,
   diversityWarnings,
   quality,
+  repairAttemptCount = 0,
   samples,
 }: {
   diversityScore: number;
   diversityWarnings: string[];
   quality: BlueprintQualityValidationResult;
+  repairAttemptCount?: number;
   samples: QuestionBlueprintCalibrationSample[];
 }): QuestionBlueprintCalibrationResult {
   const blockingReasons: string[] = [];
@@ -413,8 +428,9 @@ export function deriveBlueprintGenerationReadiness({
       : 0,
     blockingReasons: uniqueReasons,
     diversityScore,
-    providerCallCount: 1,
+    providerCallCount: 1 + repairAttemptCount,
     readiness,
+    repairAttemptCount,
     sampleCount: samples.length,
   };
 }
@@ -422,10 +438,12 @@ export function deriveBlueprintGenerationReadiness({
 function calibrationSampleFromDraft({
   draft,
   knownTaxonomyTagIds,
+  repairAttempt,
   request,
 }: {
   draft: GeneratedBlueprintQuestionDraft;
   knownTaxonomyTagIds?: ReadonlySet<string>;
+  repairAttempt?: ReturnType<typeof summarizeBlueprintRepairAttempt>;
   request: QuestionBlueprintGenerationRequest;
 }): QuestionBlueprintCalibrationSample {
   const validation = validateQuestionBlueprintCalibrationSample({
@@ -458,6 +476,7 @@ function calibrationSampleFromDraft({
       warnings: originality.warnings,
     },
     questionType: draft.questionType,
+    repairAttempt,
     schemaValid: validation.schemaValid,
     taxonomyTagIds: draft.taxonomyTagIds.slice(0, 12),
     title: boundedText(draft.title, 180),
@@ -486,8 +505,10 @@ export async function runQuestionBlueprintCalibration({
   blueprintId,
   difficultyTarget,
   knownTaxonomyTagIds,
+  modelQualityMode = "fast",
   provider,
   questionType = "frq",
+  repairEnabled = true,
   sampleCount: requestedSampleCount = 2,
   sourceEvidenceSnippets = [],
   variationNote = "",
@@ -512,15 +533,88 @@ export async function runQuestionBlueprintCalibration({
       provider,
       request,
     });
-  const samples = [...generationResult.acceptedDrafts, ...generationResult.blockedDrafts]
-    .slice(0, request.count)
-    .map((draft) =>
-      calibrationSampleFromDraft({
-        draft,
-        knownTaxonomyTagIds,
-        request,
-      }),
-    );
+  const repairAttempts: QuestionBlueprintRepairAttempt[] = [];
+  const samples: QuestionBlueprintCalibrationSample[] = [];
+
+  for (const draft of [...generationResult.acceptedDrafts, ...generationResult.blockedDrafts].slice(
+    0,
+    request.count,
+  )) {
+    const initialSample = calibrationSampleFromDraft({
+      draft,
+      knownTaxonomyTagIds,
+      request,
+    });
+
+    if (!repairEnabled || !initialSample.blocked) {
+      samples.push(initialSample);
+      continue;
+    }
+
+    try {
+      const repairResult = await runBlueprintDraftRepair({
+        provider,
+        repairRequest: {
+          attemptIndex: repairAttempts.length + 1,
+          context: "calibration",
+          failedDraft: draft,
+          modelQualityMode,
+          request,
+          validatorBlockers: uniqueStrings([
+            ...initialSample.validationWarnings,
+            ...initialSample.adherenceWarnings,
+            ...initialSample.originality.warnings,
+            ...initialSample.diversityWarnings,
+          ]),
+        },
+      });
+      repairAttempts.push(repairResult.attempt);
+
+      if (repairResult.attempt.status === "succeeded") {
+        samples.push(
+          calibrationSampleFromDraft({
+            draft: repairResult.draft,
+            knownTaxonomyTagIds,
+            repairAttempt: summarizeBlueprintRepairAttempt(repairResult.attempt),
+            request,
+          }),
+        );
+      } else {
+        samples.push({
+          ...initialSample,
+          repairAttempt: summarizeBlueprintRepairAttempt(repairResult.attempt),
+          validationWarnings: uniqueStrings([
+            ...initialSample.validationWarnings,
+            "Automatic repair was attempted but validation blockers remain.",
+            ...repairResult.attempt.remainingBlockers,
+          ]),
+        });
+      }
+    } catch (error) {
+      const attempt: QuestionBlueprintRepairAttempt = {
+        attemptIndex: repairAttempts.length + 1,
+        blockerCount: initialSample.validationWarnings.length,
+        context: "calibration",
+        modelName: provider.model,
+        modelQualityMode,
+        provider: "deepseek",
+        remainingBlockers: [
+          error instanceof Error ? error.message : "Blueprint repair failed.",
+        ],
+        repairInstructions: [],
+        status: "failed",
+      };
+      repairAttempts.push(attempt);
+      samples.push({
+        ...initialSample,
+        repairAttempt: summarizeBlueprintRepairAttempt(attempt),
+        validationWarnings: uniqueStrings([
+          ...initialSample.validationWarnings,
+          "Automatic repair could not complete.",
+        ]),
+      });
+    }
+  }
   const diversity = evaluateCalibrationDiversity(samples);
 
   for (const sample of samples) {
@@ -537,6 +631,7 @@ export async function runQuestionBlueprintCalibration({
     diversityScore: diversity.diversityScore,
     diversityWarnings: diversity.diversityWarnings,
     quality,
+    repairAttemptCount: repairAttempts.length,
     samples,
   });
   const warningCount = samples.reduce(
@@ -546,13 +641,20 @@ export async function runQuestionBlueprintCalibration({
       sample.adherenceWarnings.length +
       sample.originality.warnings.length +
       sample.diversityWarnings.length,
-    generationResult.warnings.length,
+    generationResult.warnings.length +
+      repairAttempts.reduce(
+        (total, attempt) => total + attempt.remainingBlockers.length,
+        0,
+      ),
   );
 
   return {
     generatedAt: new Date().toISOString(),
     modelName: provider.model,
+    modelQualityMode,
     provider: "deepseek",
+    repairAttempts,
+    repairEnabled,
     request,
     result,
     samples,

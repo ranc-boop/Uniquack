@@ -3,7 +3,6 @@ import { generateWithGeminiNativePdf } from "@/lib/ai-providers/gemini-native";
 import {
   AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE,
   describeAiPdfProviderInput,
-  inferAiProviderMode,
   supportsAIPdfSequentialChunkExtraction,
   type AiPdfInputStrategy,
 } from "@/lib/ai-providers/adapters";
@@ -205,6 +204,10 @@ import {
   mergeQuestionBlueprintReviewPlanIntoSummary,
   type QuestionBlueprintReviewActionPlan,
 } from "@/lib/blueprints/question-blueprint-review";
+import {
+  normalizeQuestionBlueprintModelQualityMode,
+  selectQuestionBlueprintDeepSeekProfile,
+} from "@/lib/blueprints/question-blueprint-model-routing";
 import { importBatchImportJson } from "@/lib/batch-import/service";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
 import {
@@ -240,6 +243,9 @@ type ProcessInput = {
 };
 
 type AIPdfProgress = {
+  blueprintModelQualityFallbackReason?: string;
+  blueprintModelQualityMode?: string;
+  blueprintModelQualityRequestedMode?: string;
   detail?: string;
   error?: string;
   pageCount?: number;
@@ -2668,30 +2674,45 @@ function mockBlueprintObservationProviderResponse(pageCount: number) {
 
 async function loadDeepSeekBlueprintAnalyzerProvider(input: ProcessInput) {
   try {
-    const profiles = await listEnabledAIProviderProfiles(input.supabase);
-    const profile = profiles.find(
-      (item) => inferAiProviderMode(item) === "deepseek_openai",
+    const current = await loadCurrentAIPdfSummary(input);
+    const requestedMode = normalizeQuestionBlueprintModelQualityMode(
+      current.aiPdfImport.blueprintModelQualityMode,
     );
+    const profiles = await listEnabledAIProviderProfiles(input.supabase);
+    const selection = selectQuestionBlueprintDeepSeekProfile({
+      profiles,
+      requestedMode,
+    });
+    const profile = selection.profile;
 
     if (!profile) {
       return {
+        actualMode: selection.actualMode,
+        fallbackReason: selection.fallbackReason,
         provider: null,
+        requestedMode: selection.requestedMode,
         warnings: [QUESTION_BLUEPRINT_ANALYZER_MISSING_DEEPSEEK_WARNING],
       };
     }
 
     return {
+      actualMode: selection.actualMode,
+      fallbackReason: selection.fallbackReason,
       provider: await loadAIProviderProfileForUse({
         profileId: profile.id,
         supabase: input.supabase,
       }),
-      warnings: [] as string[],
+      requestedMode: selection.requestedMode,
+      warnings: selection.fallbackReason ? [selection.fallbackReason] : ([] as string[]),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
     return {
+      actualMode: "fast" as const,
+      fallbackReason: null,
       provider: null,
+      requestedMode: "fast" as const,
       warnings: uniqueStrings([
         QUESTION_BLUEPRINT_ANALYZER_MISSING_DEEPSEEK_WARNING,
         `DeepSeek blueprint analyzer could not be loaded: ${message}`,
@@ -2773,6 +2794,22 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
     : undefined;
   const analyzerProvider = await loadDeepSeekBlueprintAnalyzerProvider(input);
   warnings.push(...analyzerProvider.warnings);
+  await updateAIPdfBatchProgress(input, {
+    ...(analyzerProvider.fallbackReason
+      ? { blueprintModelQualityFallbackReason: analyzerProvider.fallbackReason }
+      : {}),
+    blueprintModelQualityMode: analyzerProvider.actualMode,
+    blueprintModelQualityRequestedMode: analyzerProvider.requestedMode,
+    detail: `Running DeepSeek text-only blueprint analyzer on ${clusterAnalyzerPlans.length} observation cluster(s).`,
+    pageCount,
+    phase: "question_blueprint_analyzing",
+    provider: providerSummary,
+    sourceInput: providerInput.strategy,
+    warnings: uniqueStrings([
+      ...blueprintObservationClusterPlan.warnings,
+      ...warnings,
+    ]),
+  });
 
   let questionBlueprintDraftPlan: AIQuestionBlueprintDraftPlan;
 

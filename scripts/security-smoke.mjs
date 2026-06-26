@@ -93,6 +93,8 @@ const questionBlueprintPersistence = await read("src/lib/blueprints/question-blu
 const questionBlueprintGeneration = await read("src/lib/blueprints/question-blueprint-generation.ts");
 const questionBlueprintGenerationReview = await read("src/lib/blueprints/question-blueprint-generation-review.ts");
 const questionBlueprintCalibration = await read("src/lib/blueprints/question-blueprint-calibration.ts");
+const questionBlueprintRepair = await read("src/lib/blueprints/question-blueprint-repair.ts");
+const questionBlueprintModelRouting = await read("src/lib/blueprints/question-blueprint-model-routing.ts");
 const questionBlueprintQuality = await read("src/lib/blueprints/question-blueprint-quality.ts");
 const questionBlueprintEditing = await read("src/lib/blueprints/question-blueprint-editing.ts");
 const questionBlueprintVersioning = await read("src/lib/blueprints/question-blueprint-versioning.ts");
@@ -707,6 +709,8 @@ for (const expectedText of [
   "reviewRequired: true",
   "originalityChecked: true",
   "status: \"draft\"",
+  "Generated MCQ draft needs answerSpec kind mcq.",
+  "Generated MCQ draft needs a valid correct option reference.",
 ]) {
   assert(
     questionBlueprintGenerationReview.includes(expectedText),
@@ -719,6 +723,83 @@ assert(
   "question blueprint review handoff helper must not call providers or DB directly",
 );
 console.log("PASS question blueprint generation is DeepSeek-only, original-draft, and Review-only");
+
+for (const exportName of [
+  "QuestionBlueprintRepairRequest",
+  "QuestionBlueprintRepairAttempt",
+  "QuestionBlueprintRepairResult",
+  "buildBlueprintRepairPrompt",
+  "runBlueprintDraftRepair",
+  "validateRepairedBlueprintDraft",
+  "summarizeBlueprintRepairAttempt",
+  "repairQuestionBlueprintGenerationResult",
+]) {
+  assert(
+    questionBlueprintRepair.includes(exportName),
+    `question blueprint repair helper is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "You are not the final judge. The app will re-run local validators after this repair.",
+  "Do not weaken, reinterpret, or bypass validation blockers.",
+  "Return a complete MCQ draft with a clear question stem.",
+  "Include exactly four answer options with stable A/B/C/D ids.",
+  "answerSpec.correctOptionId",
+  "Do not silently convert this blueprint to FRQ",
+  "Do not invent taxonomy ids. Reuse only the provided taxonomyTagIds.",
+  "Change scenario, wording, and numeric surface details",
+  "response_format: { type: \"json_object\" }",
+  "DeepSeek blueprint repair failed with provider status",
+]) {
+  assert(
+    questionBlueprintRepair.includes(expectedText),
+    `question blueprint repair guard is missing ${expectedText}`,
+  );
+}
+assert(
+  questionBlueprintRepair.includes("request.taxonomyTagIds") &&
+    questionBlueprintRepair.includes("invalidTags"),
+  "question blueprint repair must reject invented taxonomy ids",
+);
+assert(
+  !questionBlueprintRepair.includes("importBatchImportJson") &&
+    !questionBlueprintRepair.includes("supabase.from(") &&
+    !questionBlueprintRepair.includes(".insert(") &&
+    !questionBlueprintRepair.includes(".update(") &&
+    !questionBlueprintRepair.includes(".delete(") &&
+    !questionBlueprintRepair.includes("generateWithGeminiNativePdf") &&
+    !questionBlueprintRepair.includes("callAIPdfExtractionProvider"),
+  "question blueprint repair helper must not write DB, Review Drafts, Gemini, or AI PDF extraction",
+);
+for (const exportName of [
+  "normalizeQuestionBlueprintModelQualityMode",
+  "selectQuestionBlueprintDeepSeekProfile",
+]) {
+  assert(
+    questionBlueprintModelRouting.includes(exportName),
+    `question blueprint model routing helper is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "Quality model is not configured. Falling back to Fast.",
+  "deepseek_openai",
+  "\"fast\"",
+  "\"quality\"",
+]) {
+  assert(
+    questionBlueprintModelRouting.includes(expectedText),
+    `question blueprint model quality routing guard is missing ${expectedText}`,
+  );
+}
+assert(
+  !questionBlueprintModelRouting.includes("fetch(") &&
+    !questionBlueprintModelRouting.includes("supabase.from(") &&
+    !questionBlueprintModelRouting.includes(".insert(") &&
+    !questionBlueprintModelRouting.includes(".update(") &&
+    !questionBlueprintModelRouting.includes(".delete("),
+  "question blueprint model routing must be provider-selection only",
+);
+console.log("PASS question blueprint repair loop is bounded, validator-guided, and model-quality aware");
 
 for (const expectedText of [
   "create table if not exists public.question_blueprint_calibration_runs",
@@ -769,6 +850,10 @@ for (const expectedText of [
   "MCQ calibration sample needs a valid correct option reference.",
   "Calibration sample is too close to bounded source evidence.",
   "Calibration samples are near-duplicates.",
+  "runBlueprintDraftRepair",
+  "repairEnabled",
+  "repairAttemptCount",
+  "Automatic repair was attempted but validation blockers remain.",
   "generation_ready",
   "needs_edit",
   "blocked",
@@ -852,6 +937,12 @@ assert(
   "blueprint observation mode must handle missing DeepSeek config safely",
 );
 assert(
+  aiPdfService.includes("selectQuestionBlueprintDeepSeekProfile") &&
+    aiPdfService.includes("blueprintModelQualityMode") &&
+    aiPdfService.includes("blueprintModelQualityFallbackReason"),
+  "blueprint observation analyzer must preserve model quality mode metadata",
+);
+assert(
   aiPdfService.includes("for (const clusterAnalyzerPlan of clusterAnalyzerPlans)") &&
     !aiPdfService.includes("Promise.all(clusterAnalyzerPlans"),
   "blueprint observation clustering must analyze clusters sequentially, not with unordered Promise.all",
@@ -868,7 +959,10 @@ assert(
 );
 assert(
   aiPdfPanel.includes("Blueprint observation only") &&
-    aiPdfPanel.includes("stores safe structure/style metadata and creates no questions"),
+    aiPdfPanel.includes("stores safe structure/style metadata and creates no questions") &&
+    aiPdfPanel.includes("Blueprint AI quality mode") &&
+    aiPdfPanel.includes("setBlueprintModelQualityMode") &&
+    aiPdfPanel.includes("blueprintModelQualityMode"),
   "AI PDF panel must expose blueprint observation mode with safe copy",
 );
 assert(
@@ -991,6 +1085,8 @@ assert(
 assert(
   blueprintPage.includes("Calibration status") &&
     blueprintPage.includes("Run calibration preview") &&
+    blueprintPage.includes("Repair failed samples automatically") &&
+    blueprintPage.includes("rerun calibration using Quality mode") &&
     blueprintPage.includes("Temporary calibration samples") &&
     blueprintPage.includes("not saved as questions") &&
     blueprintPage.includes("sent to Review") &&
@@ -1003,6 +1099,9 @@ assert(
 assert(
   blueprintActions.includes("runBlueprintCalibrationPreview") &&
     blueprintActions.includes("runQuestionBlueprintCalibration") &&
+    blueprintActions.includes("repairEnabled") &&
+    blueprintActions.includes("modelQualityMode") &&
+    blueprintActions.includes("qualityFallbackReason") &&
     blueprintActions.includes("question_blueprint_calibration_runs") &&
     blueprintActions.includes("generation_readiness: summary.readiness") &&
     blueprintActions.includes("last_calibration_run_id") &&
@@ -1024,6 +1123,7 @@ assert(
 assert(
   blueprintPage.includes("Generate original draft questions") &&
     blueprintPage.includes("Manual DeepSeek call") &&
+    blueprintPage.includes("Repair failed drafts automatically") &&
     blueprintPage.includes("Open Review Drafts") &&
     blueprintPage.includes("never published automatically"),
   "blueprint library page must expose manual BP6 generation and review handoff copy",
@@ -1052,6 +1152,7 @@ assert(
     blueprintActions.includes("loadActiveAssignableTaxonomyTagIds") &&
     blueprintActions.includes("loadDeepSeekBlueprintGenerationProvider") &&
     blueprintActions.includes("executeDeepSeekBlueprintGeneration") &&
+    blueprintActions.includes("repairQuestionBlueprintGenerationResult") &&
     blueprintActions.includes("importBatchImportJson") &&
     blueprintActions.includes("reviewRequired: true") &&
     blueprintActions.includes("originalityChecked: true") &&

@@ -414,6 +414,9 @@ export function AIPdfImportPanel({
   const [executionMode, setExecutionMode] = useState<AIPdfExecutionMode>(
     sources.find(canExtractSource)?.executionMode ?? "single_full_pdf",
   );
+  const [blueprintModelQualityMode, setBlueprintModelQualityMode] = useState<
+    "fast" | "quality"
+  >("fast");
   const [segmentationConfirmed, setSegmentationConfirmed] = useState(
     sources.find(canExtractSource)?.segmentationConfirmed ?? false,
   );
@@ -1020,6 +1023,10 @@ export function AIPdfImportPanel({
       appendOperationStep(operationId, "Queueing AI extraction on the server.");
       const queuedResult = await startAIPdfExtraction({
         batchId,
+        blueprintModelQualityMode:
+          resolvedExecutionMode === "blueprint_observation"
+            ? blueprintModelQualityMode
+            : undefined,
         executionMode: resolvedExecutionMode,
         providerProfileId,
       });
@@ -1617,6 +1624,35 @@ export function AIPdfImportPanel({
                 : "This provider receives rendered page images using the existing overlap workflow."}
             </p>
           </div>
+          {selectedProviderUsesFullPdf && executionMode === "blueprint_observation" ? (
+            <div className="space-y-2">
+              <label
+                htmlFor="blueprint_model_quality_mode"
+                className="text-sm font-medium"
+              >
+                Blueprint AI quality mode
+              </label>
+              <select
+                id="blueprint_model_quality_mode"
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                disabled={extracting}
+                onChange={(event) =>
+                  setBlueprintModelQualityMode(
+                    event.target.value === "quality" ? "quality" : "fast",
+                  )
+                }
+                value={blueprintModelQualityMode}
+              >
+                <option value="fast">Fast</option>
+                <option value="quality">Quality</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Affects DeepSeek blueprint analysis only. Gemini still performs
+                the same PDF observation step. If no Quality model is configured,
+                the server falls back to Fast.
+              </p>
+            </div>
+          ) : null}
           <div className="flex items-end">
             <Button
               type="submit"

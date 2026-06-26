@@ -7,7 +7,6 @@ import {
   redirectWithError,
   redirectWithSaved,
 } from "@/lib/actions/feedback";
-import { inferAiProviderMode } from "@/lib/ai-providers/adapters";
 import {
   listEnabledAIProviderProfiles,
   loadAIProviderProfileForUse,
@@ -40,11 +39,20 @@ import {
   summarizeBlueprintGeneratedReviewDraftPersistence,
 } from "@/lib/blueprints/question-blueprint-generation-review";
 import {
+  normalizeQuestionBlueprintModelQualityMode,
+  selectQuestionBlueprintDeepSeekProfile,
+  type QuestionBlueprintModelQualityMode,
+} from "@/lib/blueprints/question-blueprint-model-routing";
+import {
   buildQuestionBlueprintReviewActionRowsFromImportSummary,
   getQuestionBlueprintApprovalReadinessFromReviewAction,
   type QuestionBlueprintRow,
   persistApprovedQuestionBlueprints,
 } from "@/lib/blueprints/question-blueprint-persistence";
+import {
+  repairQuestionBlueprintGenerationResult,
+  summarizeBlueprintRepairAttempt,
+} from "@/lib/blueprints/question-blueprint-repair";
 import { createBlueprintVersionSnapshot } from "@/lib/blueprints/question-blueprint-versioning";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
@@ -73,6 +81,26 @@ function formNumber(formData: FormData, key: string, fallback: number) {
   const value = Number(formData.get(key));
 
   return Number.isFinite(value) ? value : fallback;
+}
+
+function formBoolean(formData: FormData, key: string, fallback: boolean) {
+  const values = formData
+    .getAll(key)
+    .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""));
+
+  if (!values.length) {
+    return fallback;
+  }
+
+  if (values.some((value) => value === "1" || value === "true" || value === "on")) {
+    return true;
+  }
+
+  if (values.some((value) => value === "0" || value === "false" || value === "off")) {
+    return false;
+  }
+
+  return fallback;
 }
 
 function stringList(value: unknown) {
@@ -222,18 +250,28 @@ function groundingStatusFromTargets(targets: Record<string, string[]>) {
 
 async function loadDeepSeekBlueprintGenerationProvider(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  requestedMode: QuestionBlueprintModelQualityMode = "fast",
 ) {
   const profiles = await listEnabledAIProviderProfiles(supabase);
-  const selected = profiles.find((profile) => inferAiProviderMode(profile) === "deepseek_openai");
+  const selection = selectQuestionBlueprintDeepSeekProfile({
+    profiles,
+    requestedMode,
+  });
+  const selected = selection.profile;
 
   if (!selected) {
     throw new Error("DeepSeek provider is not configured or not enabled.");
   }
 
-  return loadAIProviderProfileForUse({
-    profileId: selected.id,
-    supabase,
-  });
+  return {
+    actualMode: selection.actualMode,
+    fallbackReason: selection.fallbackReason,
+    profile: await loadAIProviderProfileForUse({
+      profileId: selected.id,
+      supabase,
+    }),
+    requestedMode: selection.requestedMode,
+  };
 }
 
 async function recordBlueprintLifecycleAudit({
@@ -1297,7 +1335,15 @@ export async function runBlueprintCalibrationPreview(formData: FormData) {
     const sourceEvidenceSnippets = ((examples ?? []) as { evidence_snippets?: unknown }[])
       .flatMap((example) => stringList(example.evidence_snippets))
       .slice(0, 8);
-    const provider = await loadDeepSeekBlueprintGenerationProvider(supabase);
+    const requestedQualityMode = normalizeQuestionBlueprintModelQualityMode(
+      formString(formData, "model_quality_mode"),
+    );
+    const repairEnabled = formBoolean(formData, "repair_enabled", true);
+    const providerSelection = await loadDeepSeekBlueprintGenerationProvider(
+      supabase,
+      requestedQualityMode,
+    );
+    const provider = providerSelection.profile;
     const calibrationRun = await runQuestionBlueprintCalibration({
       blueprint: blueprint as QuestionBlueprintRow,
       blueprintId,
@@ -1305,8 +1351,10 @@ export async function runBlueprintCalibrationPreview(formData: FormData) {
         ? formNumber(formData, "calibration_difficulty_target", 500)
         : null,
       knownTaxonomyTagIds,
+      modelQualityMode: providerSelection.actualMode,
       provider,
       questionType: blueprintQuestionType(formString(formData, "calibration_question_type")),
+      repairEnabled,
       sampleCount: formNumber(formData, "sample_count", 2),
       sourceEvidenceSnippets,
       variationNote: formString(formData, "calibration_variation_note"),
@@ -1322,6 +1370,7 @@ export async function runBlueprintCalibrationPreview(formData: FormData) {
       schemaValid: sample.schemaValid,
       taxonomyTagIds: sample.taxonomyTagIds,
       title: sample.title,
+      repairAttempt: sample.repairAttempt ?? null,
       warnings: [
         ...sample.validationWarnings,
         ...sample.adherenceWarnings,
@@ -1361,6 +1410,15 @@ export async function runBlueprintCalibrationPreview(formData: FormData) {
         sample_previews: samplePreviews,
         status: summary.readiness,
         validation_summary: boundedJsonSummary({
+          modelQualityMode: calibrationRun.modelQualityMode,
+          providerCallCount: calibrationRun.result.providerCallCount,
+          qualityFallbackReason: providerSelection.fallbackReason,
+          repairAttemptCount: calibrationRun.repairAttempts.length,
+          repairAttempts: calibrationRun.repairAttempts
+            .map(summarizeBlueprintRepairAttempt)
+            .slice(0, 6),
+          repairEnabled: calibrationRun.repairEnabled,
+          requestedModelQualityMode: providerSelection.requestedMode,
           validSampleCount: summary.validSampleCount,
           warningCount: summary.warningCount,
           warnings: calibrationRun.samples.flatMap((sample) => sample.validationWarnings).slice(0, 20),
@@ -1391,11 +1449,15 @@ export async function runBlueprintCalibrationPreview(formData: FormData) {
 
     const params = new URLSearchParams({
       calibration: summary.readiness,
+      qualityMode: providerSelection.actualMode,
+      repairAttempts: String(calibrationRun.repairAttempts.length),
       samples: String(summary.sampleCount),
       saved:
         summary.readiness === "generation_ready"
           ? "Calibration passed. Blueprint is ready for generation."
-          : "Calibration completed. Review blockers before generation.",
+          : providerSelection.fallbackReason
+            ? `Calibration completed. ${providerSelection.fallbackReason} Review blockers before generation.`
+            : "Calibration completed. Review blockers before generation.",
       warnings: String(summary.warningCount),
     });
     redirectPath = `/admin/blueprints?${params.toString()}`;
@@ -1494,10 +1556,24 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
       sourceEvidenceSnippets,
       variationNote: formString(formData, "variation_note"),
     });
-    const provider = await loadDeepSeekBlueprintGenerationProvider(supabase);
-    const generationResult = await executeDeepSeekBlueprintGeneration({
+    const requestedQualityMode = normalizeQuestionBlueprintModelQualityMode(
+      formString(formData, "model_quality_mode"),
+    );
+    const repairEnabled = formBoolean(formData, "repair_enabled", true);
+    const providerSelection = await loadDeepSeekBlueprintGenerationProvider(
+      supabase,
+      requestedQualityMode,
+    );
+    const provider = providerSelection.profile;
+    const initialGenerationResult = await executeDeepSeekBlueprintGeneration({
       provider,
       request,
+    });
+    const generationResult = await repairQuestionBlueprintGenerationResult({
+      generationResult: initialGenerationResult,
+      modelQualityMode: providerSelection.actualMode,
+      provider,
+      repairEnabled,
     });
     const persistenceSummary =
       summarizeBlueprintGeneratedReviewDraftPersistence(generationResult);
@@ -1505,7 +1581,8 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
     if (!generationResult.acceptedDrafts.length) {
       throw new Error(
         [
-          "No generated drafts passed validation or originality checks.",
+          "Blueprint is not generation-ready:",
+          "No generated drafts passed validation or originality checks after automatic repair.",
           ...persistenceSummary.warnings,
         ]
           .filter(Boolean)
@@ -1523,6 +1600,15 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
         blueprintGeneration: {
           ...persistenceSummary,
           provider: "deepseek",
+          modelName: provider.model,
+          modelQualityMode: providerSelection.actualMode,
+          qualityFallbackReason: providerSelection.fallbackReason,
+          repairAttemptCount: generationResult.repairAttempts?.length ?? 0,
+          repairAttempts: (generationResult.repairAttempts ?? [])
+            .map(summarizeBlueprintRepairAttempt)
+            .slice(0, 6),
+          repairEnabled,
+          requestedModelQualityMode: providerSelection.requestedMode,
           requestId: generationResult.request.requestId,
           reviewRequired: true,
           originalityChecked: true,
@@ -1540,8 +1626,12 @@ export async function generateOriginalQuestionsFromApprovedBlueprint(
     const params = new URLSearchParams({
       blocked: String(generationResult.blockedDrafts.length),
       generated: String(importSummary.createdCount),
+      qualityMode: providerSelection.actualMode,
+      repairAttempts: String(generationResult.repairAttempts?.length ?? 0),
       reviewBatch: importSummary.batchId ?? "",
-      saved: "Generated draft questions were sent to Review Drafts.",
+      saved: providerSelection.fallbackReason
+        ? `Generated draft questions were sent to Review Drafts. ${providerSelection.fallbackReason}`
+        : "Generated draft questions were sent to Review Drafts.",
       warnings: String(persistenceSummary.warnings.length),
     });
     redirectPath = `/admin/blueprints?${params.toString()}`;

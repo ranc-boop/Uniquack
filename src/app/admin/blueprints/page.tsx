@@ -366,6 +366,9 @@ function CalibrationRunSummary({
   const diversitySummary = asRecord(run.diversity_summary);
   const samples = asArray(run.sample_previews).slice(0, 3);
   const blockers = stringList(run.blocking_reasons).slice(0, 8);
+  const repairAttemptCount = Number(validationSummary.repairAttemptCount ?? 0);
+  const modelQualityMode = firstString(validationSummary.modelQualityMode, "fast");
+  const qualityFallbackReason = firstString(validationSummary.qualityFallbackReason);
 
   return (
     <div className="space-y-3 rounded-md border bg-background p-3">
@@ -385,8 +388,18 @@ function CalibrationRunSummary({
       </div>
       <p className="text-xs text-muted-foreground">
         Latest calibration: {new Date(run.created_at).toLocaleString()} | Model:{" "}
-        {run.model_name}
+        {run.model_name} | Quality: {modelQualityMode}
       </p>
+      {qualityFallbackReason ? (
+        <p className="text-xs text-amber-700">{qualityFallbackReason}</p>
+      ) : null}
+      {repairAttemptCount > 0 ? (
+        <p className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          Automatic repair attempted {repairAttemptCount} time
+          {repairAttemptCount === 1 ? "" : "s"}. Repaired samples were
+          revalidated locally before affecting readiness.
+        </p>
+      ) : null}
       {samples.length ? (
         <details className="rounded-md border bg-muted/10 px-3 py-2">
           <summary className="cursor-pointer text-xs font-medium">
@@ -396,12 +409,20 @@ function CalibrationRunSummary({
             {samples.map((sample, index) => {
               const record = asRecord(sample);
               const warnings = stringList(record.warnings).slice(0, 5);
+              const repairAttempt = asRecord(record.repairAttempt);
+              const repairStatus = firstString(repairAttempt.status);
 
               return (
                 <div className="rounded-md border bg-background p-2" key={`${run.id}-${index}`}>
                   <p className="text-sm font-medium">
                     {firstString(record.title, `Sample ${index + 1}`)}
                   </p>
+                  {repairStatus ? (
+                    <p className="text-xs text-muted-foreground">
+                      Initial validation failed. Repair attempted:{" "}
+                      <span className="font-medium">{repairStatus}</span>.
+                    </p>
+                  ) : null}
                   <MathContent
                     className="text-xs text-muted-foreground"
                     format="plain"
@@ -415,9 +436,23 @@ function CalibrationRunSummary({
         </details>
       ) : null}
       {blockers.length ? (
-        <div>
+        <div className="space-y-2">
           <p className="text-xs font-medium">Readiness blockers</p>
+          {repairAttemptCount > 0 ? (
+            <p className="rounded-md border bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              The system tried to repair failed samples automatically, but
+              validation blockers still remain. Edit the blueprint, add answer
+              requirements, or rerun calibration with Quality mode.
+            </p>
+          ) : null}
           <ReasonList reasons={blockers} />
+          {blockers.some((blocker) => /mcq|option|correct|distractor/i.test(blocker)) ? (
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Suggested fixes: keep as MCQ and add option/distractor
+              requirements, or edit the blueprint to FRQ if open response is
+              intended, then rerun calibration using Quality mode.
+            </div>
+          ) : null}
         </div>
       ) : null}
       {Number(originalitySummary.tooCloseToEvidenceCount ?? 0) > 0 ? (
@@ -1415,6 +1450,36 @@ function LibraryCard({
                   </select>
                 </label>
                 <label className="space-y-1 text-xs font-medium">
+                  Model quality
+                  <select
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    defaultValue="fast"
+                    name="model_quality_mode"
+                  >
+                    <option value="fast">Fast</option>
+                    <option value="quality">Quality</option>
+                  </select>
+                </label>
+                <input name="repair_enabled" type="hidden" value="false" />
+                <label className="flex items-start gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs">
+                  <input
+                    className="mt-0.5"
+                    defaultChecked
+                    name="repair_enabled"
+                    type="checkbox"
+                    value="true"
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      Repair failed samples automatically
+                    </span>
+                    <span className="text-muted-foreground">
+                      One bounded DeepSeek repair attempt, then local validators
+                      decide readiness.
+                    </span>
+                  </span>
+                </label>
+                <label className="space-y-1 text-xs font-medium">
                   Difficulty target
                   <input
                     className="w-full rounded-md border bg-background px-2 py-1 text-sm"
@@ -1498,9 +1563,9 @@ function LibraryCard({
                   type="number"
                 />
               </label>
-              <label className="space-y-1 text-xs font-medium">
-                Question type
-                <select
+                <label className="space-y-1 text-xs font-medium">
+                  Question type
+                  <select
                   className="w-full rounded-md border bg-background px-2 py-1 text-sm"
                   defaultValue="frq"
                   name="question_type"
@@ -1508,11 +1573,41 @@ function LibraryCard({
                   <option value="frq">FRQ</option>
                   <option value="mcq">MCQ</option>
                   <option value="fill_blank">Fill blank</option>
-                  <option value="mixed">Mixed</option>
-                </select>
-              </label>
-              <label className="space-y-1 text-xs font-medium">
-                Difficulty target
+                    <option value="mixed">Mixed</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-xs font-medium">
+                  Model quality
+                  <select
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    defaultValue="fast"
+                    name="model_quality_mode"
+                  >
+                    <option value="fast">Fast</option>
+                    <option value="quality">Quality</option>
+                  </select>
+                </label>
+                <input name="repair_enabled" type="hidden" value="false" />
+                <label className="flex items-start gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs">
+                  <input
+                    className="mt-0.5"
+                    defaultChecked
+                    name="repair_enabled"
+                    type="checkbox"
+                    value="true"
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      Repair failed drafts automatically
+                    </span>
+                    <span className="text-muted-foreground">
+                      Invalid repaired drafts stay blocked and are not sent to
+                      Review Drafts.
+                    </span>
+                  </span>
+                </label>
+                <label className="space-y-1 text-xs font-medium">
+                  Difficulty target
                 <input
                   className="w-full rounded-md border bg-background px-2 py-1 text-sm"
                   max={1000}
