@@ -12,6 +12,7 @@ import {
   moveQuestionBlueprintToFolder,
   renameQuestionBlueprintFolder,
   rejectQuestionBlueprintReviewAction,
+  runBlueprintCalibrationPreview,
   restoreQuestionBlueprintFolder,
   restoreQuestionBlueprint,
   storeBlueprintReviewActionsFromImportBatch,
@@ -75,7 +76,10 @@ type BlueprintRow = {
   distractor_pattern: unknown;
   folder_id: string | null;
   generation_constraints: unknown;
+  generation_readiness: string;
   id: string;
+  last_calibrated_at: string | null;
+  last_calibration_run_id: string | null;
   originality_constraints: unknown;
   owner_scope: string;
   question_pattern: unknown;
@@ -90,6 +94,21 @@ type BlueprintRow = {
 type BlueprintExampleRow = {
   blueprint_id: string;
   evidence_snippets: unknown;
+};
+
+type BlueprintCalibrationRunRow = {
+  adherence_summary: unknown;
+  blocking_reasons: unknown;
+  blueprint_id: string;
+  created_at: string;
+  diversity_summary: unknown;
+  id: string;
+  model_name: string;
+  originality_summary: unknown;
+  readiness_result: string;
+  sample_count: number;
+  sample_previews: unknown;
+  validation_summary: unknown;
 };
 
 type ImportBatchRow = {
@@ -126,7 +145,7 @@ function isMissingBlueprintTableError(error: unknown) {
 
   return (
     record.code === "42P01" ||
-    /folder_id|question_blueprint|relation .* does not exist|schema cache/i.test(
+    /folder_id|generation_readiness|question_blueprint|relation .* does not exist|schema cache/i.test(
       message,
     )
   );
@@ -247,6 +266,109 @@ function TaxonomyTargets({ targets }: { targets: unknown }) {
           </div>
         ) : null,
       )}
+    </div>
+  );
+}
+
+function calibrationLabel(value: unknown) {
+  switch (value) {
+    case "generation_ready":
+      return "Ready";
+    case "needs_edit":
+      return "Needs edit";
+    case "blocked":
+      return "Blocked";
+    case "calibrating":
+      return "Calibrating";
+    default:
+      return "Uncalibrated";
+  }
+}
+
+function scoreText(value: unknown) {
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric.toFixed(2) : "-";
+}
+
+function CalibrationRunSummary({
+  run,
+}: {
+  run?: BlueprintCalibrationRunRow;
+}) {
+  if (!run) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No calibration preview has been run yet.
+      </p>
+    );
+  }
+
+  const validationSummary = asRecord(run.validation_summary);
+  const adherenceSummary = asRecord(run.adherence_summary);
+  const originalitySummary = asRecord(run.originality_summary);
+  const diversitySummary = asRecord(run.diversity_summary);
+  const samples = asArray(run.sample_previews).slice(0, 3);
+  const blockers = stringList(run.blocking_reasons).slice(0, 8);
+
+  return (
+    <div className="space-y-3 rounded-md border bg-background p-3">
+      <div className="grid gap-2 text-xs sm:grid-cols-4">
+        <p className="rounded-md border bg-muted/20 p-2">
+          Samples: {run.sample_count}
+        </p>
+        <p className="rounded-md border bg-muted/20 p-2">
+          Valid: {String(validationSummary.validSampleCount ?? "-")}
+        </p>
+        <p className="rounded-md border bg-muted/20 p-2">
+          Adherence: {scoreText(adherenceSummary.score)}
+        </p>
+        <p className="rounded-md border bg-muted/20 p-2">
+          Diversity: {scoreText(diversitySummary.score)}
+        </p>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Latest calibration: {new Date(run.created_at).toLocaleString()} | Model:{" "}
+        {run.model_name}
+      </p>
+      {samples.length ? (
+        <details className="rounded-md border bg-muted/10 px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium">
+            Generated sample previews
+          </summary>
+          <div className="mt-2 space-y-2">
+            {samples.map((sample, index) => {
+              const record = asRecord(sample);
+              const warnings = stringList(record.warnings).slice(0, 5);
+
+              return (
+                <div className="rounded-md border bg-background p-2" key={`${run.id}-${index}`}>
+                  <p className="text-sm font-medium">
+                    {firstString(record.title, `Sample ${index + 1}`)}
+                  </p>
+                  <MathContent
+                    className="text-xs text-muted-foreground"
+                    format="plain"
+                    value={firstString(record.contentPreview, "No preview.")}
+                  />
+                  {warnings.length ? <ReasonList reasons={warnings} /> : null}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      ) : null}
+      {blockers.length ? (
+        <div>
+          <p className="text-xs font-medium">Readiness blockers</p>
+          <ReasonList reasons={blockers} />
+        </div>
+      ) : null}
+      {Number(originalitySummary.tooCloseToEvidenceCount ?? 0) > 0 ? (
+        <p className="text-xs text-destructive">
+          Originality guard blocked at least one calibration sample.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -830,11 +952,13 @@ function LibraryCard({
   evidenceSnippets,
   folderOptions,
   knownAssignableTagIds,
+  latestCalibrationRun,
 }: {
   blueprint: BlueprintRow;
   evidenceSnippets: string[];
   folderOptions: QuestionBlueprintFolderTreeNode[];
   knownAssignableTagIds: ReadonlySet<string>;
+  latestCalibrationRun?: BlueprintCalibrationRunRow;
 }) {
   const questionPattern = asRecord(blueprint.question_pattern);
   const requiredElements = stringList(blueprint.required_elements).slice(0, 6);
@@ -853,6 +977,15 @@ function LibraryCard({
     evidenceSnippets,
     knownAssignableTagIds,
   });
+  const calibrationReady =
+    blueprint.generation_readiness === "generation_ready" &&
+    latestCalibrationRun?.readiness_result === "generation_ready";
+  const generationBlockingReasons = [
+    ...quality.generationBlockingReasons,
+    ...(calibrationReady
+      ? []
+      : ["Run a successful calibration preview before generating Review Draft questions."]),
+  ];
 
   return (
     <Card>
@@ -882,6 +1015,84 @@ function LibraryCard({
           Owner scope: {blueprint.owner_scope} | Updated{" "}
           {new Date(blueprint.updated_at).toLocaleString()}
         </p>
+        {approved ? (
+          <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium">Calibration status</p>
+                <p className="text-xs text-muted-foreground">
+                  Temporary calibration samples - not saved as questions and not
+                  sent to Review.
+                </p>
+              </div>
+              <Badge variant={calibrationReady ? "secondary" : "outline"}>
+                {calibrationLabel(blueprint.generation_readiness)}
+              </Badge>
+            </div>
+            <CalibrationRunSummary run={latestCalibrationRun} />
+            <details className="rounded-md border bg-background px-3 py-2" open={!calibrationReady}>
+              <summary className="cursor-pointer text-xs font-medium">
+                Run calibration preview
+              </summary>
+              <form
+                action={runBlueprintCalibrationPreview}
+                className="mt-3 grid gap-3 sm:grid-cols-2"
+              >
+                <input name="blueprint_id" type="hidden" value={blueprint.id} />
+                <label className="space-y-1 text-xs font-medium">
+                  Sample count
+                  <input
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    defaultValue={2}
+                    max={3}
+                    min={1}
+                    name="sample_count"
+                    type="number"
+                  />
+                </label>
+                <label className="space-y-1 text-xs font-medium">
+                  Question type
+                  <select
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    defaultValue="frq"
+                    name="calibration_question_type"
+                  >
+                    <option value="frq">FRQ</option>
+                    <option value="mcq">MCQ</option>
+                    <option value="fill_blank">Fill blank</option>
+                    <option value="mixed">Mixed</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-xs font-medium">
+                  Difficulty target
+                  <input
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    max={1000}
+                    min={0}
+                    name="calibration_difficulty_target"
+                    placeholder="Optional, 0-1000"
+                    type="number"
+                  />
+                </label>
+                <label className="space-y-1 text-xs font-medium sm:col-span-2">
+                  Variation note
+                  <input
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    maxLength={240}
+                    name="calibration_variation_note"
+                    placeholder="Optional: e.g. vary context while preserving the blueprint"
+                    type="text"
+                  />
+                </label>
+                <div className="sm:col-span-2">
+                  <FormSubmitButton pendingLabel="Calibrating..." size="sm" variant="outline">
+                    Run calibration preview
+                  </FormSubmitButton>
+                </div>
+              </form>
+            </details>
+          </div>
+        ) : null}
         {approved && !blueprint.deleted_at ? (
           <div className="rounded-md border bg-muted/20 p-3">
             <p className="text-sm font-medium">Move to folder</p>
@@ -909,7 +1120,7 @@ function LibraryCard({
           </div>
         ) : null}
         <LifecycleActions blueprint={blueprint} />
-        {approved && quality.generationReady ? (
+        {approved && quality.generationReady && calibrationReady ? (
           <div className="rounded-md border bg-muted/20 p-3">
             <div className="space-y-1">
               <p className="text-sm font-medium">
@@ -981,9 +1192,10 @@ function LibraryCard({
           <div className="rounded-md border bg-muted/20 p-3">
             <p className="text-sm font-medium">Generation disabled</p>
             <p className="text-xs text-muted-foreground">
-              This blueprint must pass quality gates before DeepSeek generation.
+              This blueprint must pass quality gates and calibration before
+              DeepSeek generation.
             </p>
-            <ReasonList reasons={quality.generationBlockingReasons} />
+            <ReasonList reasons={generationBlockingReasons} />
           </div>
         ) : null}
       </CardContent>
@@ -1004,6 +1216,7 @@ export default async function AdminBlueprintsPage({
     importBatchesResult,
     blueprintExamplesResult,
     blueprintFoldersResult,
+    calibrationRunsResult,
     taxonomyCatalogResult,
   ] = await Promise.all([
     (supabase as any)
@@ -1017,7 +1230,7 @@ export default async function AdminBlueprintsPage({
     (supabase as any)
       .from("question_blueprints")
       .select(
-        "id, title, status, owner_scope, folder_id, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, generation_constraints, originality_constraints, source_refs, deleted_at, updated_at",
+        "id, title, status, owner_scope, folder_id, taxonomy_targets, question_pattern, required_elements, answer_spec_pattern, distractor_pattern, generation_constraints, originality_constraints, source_refs, deleted_at, updated_at, generation_readiness, last_calibrated_at, last_calibration_run_id",
       )
       .order("updated_at", { ascending: false })
       .limit(50),
@@ -1037,13 +1250,21 @@ export default async function AdminBlueprintsPage({
       )
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true }),
+    (supabase as any)
+      .from("question_blueprint_calibration_runs")
+      .select(
+        "id, blueprint_id, sample_count, sample_previews, validation_summary, adherence_summary, originality_summary, diversity_summary, readiness_result, blocking_reasons, model_name, created_at",
+      )
+      .order("created_at", { ascending: false })
+      .limit(100),
     loadTaxonomyCatalog(supabase),
   ]);
   const setupNeeded =
     isMissingBlueprintTableError(reviewActionsResult.error) ||
     isMissingBlueprintTableError(blueprintsResult.error) ||
     isMissingBlueprintTableError(blueprintExamplesResult.error) ||
-    isMissingBlueprintTableError(blueprintFoldersResult.error);
+    isMissingBlueprintTableError(blueprintFoldersResult.error) ||
+    isMissingBlueprintTableError(calibrationRunsResult.error);
   const reviewActions = setupNeeded
     ? []
     : ((reviewActionsResult.data ?? []) as BlueprintReviewRow[]);
@@ -1053,6 +1274,9 @@ export default async function AdminBlueprintsPage({
   const folders = setupNeeded
     ? []
     : ((blueprintFoldersResult.data ?? []) as QuestionBlueprintFolderRow[]);
+  const calibrationRuns = setupNeeded
+    ? []
+    : ((calibrationRunsResult.data ?? []) as BlueprintCalibrationRunRow[]);
   const taxonomyCatalog = taxonomyCatalogResult.catalog;
   const knownAssignableTagIds = leafAssignableTagIds(taxonomyCatalog);
   const pendingReviewActions = reviewActions.filter(
@@ -1065,6 +1289,7 @@ export default async function AdminBlueprintsPage({
     (action) => action.status === "rejected",
   );
   const evidenceByBlueprintId = new Map<string, string[]>();
+  const latestCalibrationByBlueprintId = new Map<string, BlueprintCalibrationRunRow>();
 
   for (const example of (blueprintExamplesResult.data ?? []) as BlueprintExampleRow[]) {
     const current = evidenceByBlueprintId.get(example.blueprint_id) ?? [];
@@ -1072,6 +1297,11 @@ export default async function AdminBlueprintsPage({
       ...current,
       ...stringList(example.evidence_snippets),
     ]);
+  }
+  for (const run of calibrationRuns) {
+    if (!latestCalibrationByBlueprintId.has(run.blueprint_id)) {
+      latestCalibrationByBlueprintId.set(run.blueprint_id, run);
+    }
   }
   const activeFolders = folders.filter((folder) => !folder.deleted_at);
   const archivedFolders = folders.filter((folder) => folder.deleted_at);
@@ -1177,6 +1407,7 @@ export default async function AdminBlueprintsPage({
             <div className="space-y-1 font-mono text-xs">
               <p>supabase/migrations/0015_question_blueprint_library.sql</p>
               <p>supabase/migrations/0016_question_blueprint_folders.sql</p>
+              <p>supabase/migrations/0018_question_blueprint_calibration.sql</p>
             </div>
           </CardContent>
         </Card>
@@ -1375,6 +1606,7 @@ export default async function AdminBlueprintsPage({
                 folderOptions={folderOptions}
                 key={blueprint.id}
                 knownAssignableTagIds={knownAssignableTagIds}
+                latestCalibrationRun={latestCalibrationByBlueprintId.get(blueprint.id)}
               />
             ))}
           </div>
@@ -1406,6 +1638,7 @@ export default async function AdminBlueprintsPage({
                 folderOptions={folderOptions}
                 key={blueprint.id}
                 knownAssignableTagIds={knownAssignableTagIds}
+                latestCalibrationRun={latestCalibrationByBlueprintId.get(blueprint.id)}
               />
             ))}
           </div>

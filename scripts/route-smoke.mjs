@@ -87,11 +87,16 @@ assert(
     blueprintPage.includes("Unfiled") &&
     blueprintPage.includes("Folder tree") &&
     blueprintPage.includes("Move to folder") &&
-    blueprintPage.includes("No blueprints in this folder yet."),
+    blueprintPage.includes("No blueprints in this folder yet.") &&
+    blueprintPage.includes("Calibration status") &&
+    blueprintPage.includes("Run calibration preview") &&
+    blueprintPage.includes("Temporary calibration samples") &&
+    blueprintPage.includes("Run a successful calibration preview before generating Review Draft questions."),
   "/admin/blueprints source is missing BP6 manual generation CTA or review link",
 );
 assert(
   blueprintActions.includes("generateOriginalQuestionsFromApprovedBlueprint") &&
+    blueprintActions.includes("runBlueprintCalibrationPreview") &&
     blueprintActions.includes("archiveQuestionBlueprint") &&
     blueprintActions.includes("restoreQuestionBlueprint") &&
     blueprintActions.includes("moveQuestionBlueprintToTrash") &&
@@ -103,6 +108,8 @@ assert(
     blueprintActions.includes("importBatchImportJson") &&
     blueprintActions.includes("executeDeepSeekBlueprintGeneration") &&
     blueprintActions.includes("loadActiveAssignableTaxonomyTagIds") &&
+    blueprintActions.includes("question_blueprint_calibration_runs") &&
+    blueprintActions.includes("generation_readiness !== \"generation_ready\"") &&
     !blueprintActions.includes(".delete(") &&
     !blueprintActions.includes("generateWithGeminiNativePdf") &&
     !blueprintActions.includes("callAIPdfExtractionProvider"),

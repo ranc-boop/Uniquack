@@ -92,9 +92,11 @@ const questionBlueprintLibrary = await read("src/lib/blueprints/question-bluepri
 const questionBlueprintPersistence = await read("src/lib/blueprints/question-blueprint-persistence.ts");
 const questionBlueprintGeneration = await read("src/lib/blueprints/question-blueprint-generation.ts");
 const questionBlueprintGenerationReview = await read("src/lib/blueprints/question-blueprint-generation-review.ts");
+const questionBlueprintCalibration = await read("src/lib/blueprints/question-blueprint-calibration.ts");
 const questionBlueprintQuality = await read("src/lib/blueprints/question-blueprint-quality.ts");
 const questionBlueprintMigration = await read("supabase/migrations/0015_question_blueprint_library.sql");
 const questionBlueprintFolderMigration = await read("supabase/migrations/0016_question_blueprint_folders.sql");
+const questionBlueprintCalibrationMigration = await read("supabase/migrations/0018_question_blueprint_calibration.sql");
 const questionBlueprintFolders = await read("src/lib/blueprints/question-blueprint-folders.ts");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
@@ -649,6 +651,75 @@ assert(
 console.log("PASS question blueprint generation is DeepSeek-only, original-draft, and Review-only");
 
 for (const expectedText of [
+  "create table if not exists public.question_blueprint_calibration_runs",
+  "sample_count integer not null check (sample_count between 1 and 3)",
+  "sample_previews jsonb not null default '[]'::jsonb",
+  "generation_readiness",
+  "last_calibrated_at",
+  "last_calibration_run_id",
+  "alter table public.question_blueprint_calibration_runs enable row level security",
+  "question_blueprint_calibration_runs_admin_crud",
+  "private.is_admin()",
+  "to authenticated",
+  "never raw provider responses",
+]) {
+  assert(
+    questionBlueprintCalibrationMigration.includes(expectedText),
+    `question blueprint calibration migration is missing ${expectedText}`,
+  );
+}
+assert(
+  !questionBlueprintCalibrationMigration.includes("to anon"),
+  "question blueprint calibration migration must not grant anon access",
+);
+for (const exportName of [
+  "runQuestionBlueprintCalibration",
+  "validateQuestionBlueprintCalibrationSample",
+  "evaluateBlueprintAdherence",
+  "evaluateCalibrationDiversity",
+  "summarizeQuestionBlueprintCalibration",
+  "deriveBlueprintGenerationReadiness",
+]) {
+  assert(
+    questionBlueprintCalibration.includes(exportName),
+    `question blueprint calibration helper is missing ${exportName}`,
+  );
+}
+for (const expectedText of [
+  "function sampleCount",
+  "Math.min(3, Math.max(1",
+  "executeDeepSeekBlueprintGeneration",
+  "noReviewDraftWrite: true",
+  "noDbWrite: true",
+  "noGeminiCall: true",
+  "noOpenAICall: true",
+  "noRawProviderResponseStorage: true",
+  "Calibration sample needs taxonomy leaf IDs.",
+  "MCQ calibration sample requires at least two options.",
+  "MCQ calibration sample needs a valid correct option reference.",
+  "Calibration sample is too close to bounded source evidence.",
+  "Calibration samples are near-duplicates.",
+  "generation_ready",
+  "needs_edit",
+  "blocked",
+]) {
+  assert(
+    questionBlueprintCalibration.includes(expectedText),
+    `question blueprint calibration guard is missing ${expectedText}`,
+  );
+}
+assert(
+  !questionBlueprintCalibration.includes("importBatchImportJson") &&
+    !questionBlueprintCalibration.includes("supabase.from(") &&
+    !questionBlueprintCalibration.includes(".insert(") &&
+    !questionBlueprintCalibration.includes(".update(") &&
+    !questionBlueprintCalibration.includes("generateWithGeminiNativePdf") &&
+    !questionBlueprintCalibration.includes("callAIPdfExtractionProvider"),
+  "question blueprint calibration helper must not write DB, Review Drafts, Gemini, or AI PDF extraction",
+);
+console.log("PASS question blueprint calibration is DeepSeek-only, temporary, and readiness-gated");
+
+for (const expectedText of [
   "blueprint_observation",
   "processAIPdfBlueprintObservation",
   "buildAIBlueprintObservationProviderPrompt",
@@ -793,9 +864,10 @@ assert(
 );
 assert(blueprintPage.includes("requireAdmin"), "blueprint library page must remain admin-only");
 assert(
-  blueprintPage.includes("Setup needed") &&
+    blueprintPage.includes("Setup needed") &&
     blueprintPage.includes("0015_question_blueprint_library.sql") &&
-    blueprintPage.includes("0016_question_blueprint_folders.sql"),
+    blueprintPage.includes("0016_question_blueprint_folders.sql") &&
+    blueprintPage.includes("0018_question_blueprint_calibration.sql"),
   "blueprint library page must show setup-needed message when tables are missing",
 );
 assert(
@@ -840,6 +912,27 @@ assert(
     blueprintActions.includes("Filed blueprints are preserved") &&
     !blueprintActions.includes("question_blueprint_folders\").delete("),
   "blueprint folder actions must be admin-only, cycle-safe, and soft-delete only",
+);
+assert(
+  blueprintPage.includes("Calibration status") &&
+    blueprintPage.includes("Run calibration preview") &&
+    blueprintPage.includes("Temporary calibration samples") &&
+    blueprintPage.includes("not saved as questions") &&
+    blueprintPage.includes("sent to Review") &&
+    blueprintPage.includes("Run a successful calibration preview before generating Review Draft questions.") &&
+    blueprintPage.includes("Generation disabled"),
+  "blueprint library page must show calibration status and gate full generation",
+);
+assert(
+  blueprintActions.includes("runBlueprintCalibrationPreview") &&
+    blueprintActions.includes("runQuestionBlueprintCalibration") &&
+    blueprintActions.includes("question_blueprint_calibration_runs") &&
+    blueprintActions.includes("generation_readiness: summary.readiness") &&
+    blueprintActions.includes("last_calibration_run_id") &&
+    blueprintActions.includes("Run a successful calibration preview before generating Review Draft questions.") &&
+    blueprintActions.indexOf("generation_readiness !== \"generation_ready\"") <
+      blueprintActions.lastIndexOf("executeDeepSeekBlueprintGeneration"),
+  "blueprint actions must run manual calibration and block full generation before provider execution",
 );
 assert(
   blueprintActions.includes("loadActiveAssignableLeafTaxonomyByFacet") &&
