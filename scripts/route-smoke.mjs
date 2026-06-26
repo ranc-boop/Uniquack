@@ -284,6 +284,29 @@ assert(
   "blueprint workspace source is missing BP14 sections, BP15 repair controls, or existing BP6 controls",
 );
 assert(
+  blueprintWorkspace.includes("AdminCard") &&
+    blueprintWorkspace.includes("AdminStatusBadge") &&
+    blueprintWorkspace.includes("AdminActionGroup") &&
+    blueprintWorkspace.includes("AdminDangerZone") &&
+    blueprintWorkspace.includes("AdminDebugDisclosure") &&
+    blueprintWorkspace.includes("AdminEmptyState") &&
+    blueprintWorkspace.includes("No AI import blueprint review plans found yet.") &&
+    blueprintWorkspace.includes("AI import blueprint plans") &&
+    blueprintWorkspace.includes("Generated drafts sent to Review") &&
+    blueprintWorkspace.includes("Nothing to show here yet."),
+  "blueprint workspace must use shared admin primitives for readable cards, statuses, empty states, and debug disclosure",
+);
+assert(
+  blueprintWorkspace.includes("action={approveQuestionBlueprintReviewAction}") &&
+    blueprintWorkspace.includes("action={rejectQuestionBlueprintReviewAction}") &&
+    blueprintWorkspace.includes("action={storeBlueprintReviewActionsFromImportBatch}") &&
+    blueprintWorkspace.includes("action={generateOriginalQuestionsFromApprovedBlueprint}") &&
+    blueprintWorkspace.includes("Reject blueprint draft") &&
+    blueprintWorkspace.includes("Move blueprint to trash"),
+  "blueprint workspace must preserve server-action forms while separating destructive actions",
+);
+console.log("PASS blueprint workspace uses shared admin primitives without changing action wiring");
+assert(
   blueprintActions.includes("generateOriginalQuestionsFromApprovedBlueprint") &&
     blueprintActions.includes("runBlueprintCalibrationPreview") &&
     blueprintActions.includes("archiveQuestionBlueprint") &&
