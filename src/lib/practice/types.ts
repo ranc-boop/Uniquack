@@ -88,10 +88,15 @@ export type PracticeQuestionReview = {
   answerFormIssue?: string | null;
   conceptGap?: string | null;
   fixNext?: string | null;
+  isCorrect?: boolean | null;
+  judgmentReason?: string | null;
   missingOrExtraParts?: string | null;
   observedError?: string | null;
   personalizationLink?: string | null;
   questionId: string;
+  score?: number | null;
+  solutionKeyPoints?: string | null;
+  studentAnswer?: string | string[] | null;
   verdict?: string | null;
 };
 
@@ -172,7 +177,7 @@ export type PracticeReviewResponse = {
   llmUsage?: Record<string, unknown>[];
   memoryUpdate?: PracticeMemoryUpdate;
   mode: "ai" | "heuristic";
-  nextRoundGoal: string;
+  nextRoundGoal?: string;
   providerLabel?: string;
   questionReviews?: PracticeQuestionReview[];
   results?: PracticeGradeResult[];

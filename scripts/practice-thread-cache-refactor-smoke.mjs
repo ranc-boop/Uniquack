@@ -27,18 +27,19 @@ assertIncludes(recommendRoute, "lockedLongTermMemory", "recommend locked memory 
 assertIncludes(reviewRoute, "lockedLongTermMemory", "review locked memory snapshot");
 assertIncludes(agentLoop, "currentTaskSuffix: dynamicSuffix", "recommend current task suffix return");
 assertIncludes(persistence, "current_task_suffix: currentTaskSuffix", "current task suffix persistence");
+assertIncludes(persistence, "kind: \"question_review\"", "question review thread entry");
+assertIncludes(persistence, "kind: \"round_review\"", "round review thread entry");
 assertIncludes(persistence, "kind: \"thread_checkpoint\"", "round checkpoint entry");
 assertIncludes(persistence, "roundIndex % 10 === 0", "round-10 checkpoint trigger");
+assertIncludes(reviewRoute, "question_review", "streamed per-question review event");
+assertIncludes(reviewRoute, "round_review_delta", "streamed round review delta event");
+assertIncludes(reviewRoute, "toolChoice: \"none\"", "main-thread round review disables tools");
+assertIncludes(reviewRoute, "persistQuestionReviewResults", "question review persistence");
+assertIncludes(reviewRoute, "persistRoundReviewSummary", "round review persistence");
 
-const stablePrefixStart = reviewRoute.indexOf("const stableReviewPrefix = {");
-const stablePrefixEnd = reviewRoute.indexOf("const stableThreadMessages", stablePrefixStart);
-const stablePrefixBlock = reviewRoute.slice(stablePrefixStart, stablePrefixEnd);
-assertNotIncludes(stablePrefixBlock, "round_contract", "round_contract in stable review prefix");
-
-const suffixStart = reviewRoute.indexOf("const reviewSuffix = {");
-const suffixEnd = reviewRoute.indexOf("const aiResult", suffixStart);
-const suffixBlock = reviewRoute.slice(suffixStart, suffixEnd);
-assertIncludes(suffixBlock, "round_contract: roundContract", "round_contract in review suffix");
-assertIncludes(suffixBlock, "current_round_thread_entry", "current round thread entry in review suffix");
+const reviewerPrompt = read("src/lib/practice/prompts/review-system.md");
+assertIncludes(reviewerPrompt, "review exactly one submitted question", "single-question reviewer scope");
+assertNotIncludes(reviewerPrompt, "next_round_goal", "reviewer next-round goal generation");
+assertNotIncludes(reviewerPrompt, "episode_card", "reviewer episode card generation");
 
 console.log("practice thread cache refactor smoke passed");

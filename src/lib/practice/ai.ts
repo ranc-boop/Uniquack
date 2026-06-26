@@ -263,6 +263,160 @@ export async function callPracticeChatModel({
   };
 }
 
+function parseStreamEvents(buffer: string) {
+  const parts = buffer.split(/\n\n/);
+  const rest = parts.pop() ?? "";
+  const events = parts.flatMap((part) =>
+    part
+      .split(/\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trim()),
+  );
+
+  return { events, rest };
+}
+
+export async function callPracticeChatModelStream({
+  debugContext,
+  messages,
+  onDelta,
+  profile,
+  toolChoice,
+}: {
+  debugContext?: Record<string, unknown>;
+  messages: PracticeChatMessage[];
+  onDelta: (text: string) => void | Promise<void>;
+  profile: LoadedProfile;
+  toolChoice?: "auto" | "none" | { type: "function"; function: { name: string } };
+}): Promise<PracticeChatModelResult> {
+  const body = {
+    messages,
+    model: profile.model,
+    stream: true,
+    ...(toolChoice ? { tool_choice: toolChoice } : {}),
+  };
+  const requestLogSaved = await writePracticeFullCallLog({
+    context: {
+      ...debugContext,
+      model: profile.model,
+      provider: profile.provider,
+      providerName: profile.name,
+    },
+    event: "request",
+    payload: {
+      body,
+      endpoint: endpoint(profile.base_url),
+      headers: {
+        Authorization: "Bearer [redacted]",
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  });
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint(profile.base_url), {
+      body: JSON.stringify(body),
+      headers: {
+        Authorization: `Bearer ${profile.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+      signal: AbortSignal.timeout(PRACTICE_AGENT_TIMEOUT_MS),
+    });
+  } catch (error) {
+    await writePracticeFullCallLog({
+      context: debugContext,
+      event: "error",
+      payload: {
+        message: error instanceof Error ? error.message : String(error),
+        name: error instanceof Error ? error.name : "UnknownError",
+        requestLogSaved,
+      },
+    });
+    throw error;
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    await writePracticeFullCallLog({
+      context: debugContext,
+      event: "error",
+      payload: {
+        body: text,
+        status: response.status,
+        statusText: response.statusText,
+      },
+    });
+    throw new Error(`Practice AI provider failed (${response.status}): ${text.slice(0, 800)}`);
+  }
+
+  if (!response.body) {
+    throw new Error("Practice AI provider stream body is not available.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let contentText = "";
+  const rawEvents: unknown[] = [];
+  let usage: Record<string, unknown> | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const parsed = parseStreamEvents(buffer);
+    buffer = parsed.rest;
+
+    for (const event of parsed.events) {
+      if (event === "[DONE]") {
+        continue;
+      }
+
+      let payload: any;
+      try {
+        payload = JSON.parse(event);
+      } catch {
+        continue;
+      }
+      rawEvents.push(payload);
+      if (payload?.usage && typeof payload.usage === "object" && !Array.isArray(payload.usage)) {
+        usage = payload.usage as Record<string, unknown>;
+      }
+      const delta = payload?.choices?.[0]?.delta?.content;
+      if (typeof delta === "string" && delta) {
+        contentText += delta;
+        await onDelta(delta);
+      }
+    }
+
+    if (done) break;
+  }
+
+  await writePracticeFullCallLog({
+    context: debugContext,
+    event: "response",
+    payload: {
+      body: contentText,
+      eventCount: rawEvents.length,
+      requestLogSaved,
+      status: response.status,
+      statusText: response.statusText,
+    },
+  });
+
+  return {
+    contentText,
+    fullCallLogSaved: requestLogSaved,
+    hasReasoningContent: false,
+    providerLabel: providerLabel(profile),
+    rawPayload: rawEvents,
+    toolCalls: [],
+    usage,
+  };
+}
+
 export function buildAssistantMessageForToolContinuation(result: PracticeChatModelResult): PracticeChatMessage {
   const message: PracticeChatMessage = {
     content: result.contentText || null,

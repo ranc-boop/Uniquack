@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, Search, SlidersHorizontal, Sparkles, Trash2, Wrench } from "lucide-react";
+import { ArrowUp, ChevronsLeft, ChevronsRight, LoaderCircle, MoreHorizontal, Pencil, Plus, Search, SlidersHorizontal, Sparkles, Trash2, Wrench } from "lucide-react";
 
 import {
   FeedbackText,
@@ -26,6 +26,7 @@ import type {
   PracticeRecommendResponse,
   PracticeRecommendation,
   PracticeRoundHistory,
+  PracticeReviewRequest,
   PracticeReviewResponse,
   PracticeSessionDetail,
   PracticeSessionSummary,
@@ -152,6 +153,78 @@ async function postRecommendationStream({
   return result;
 }
 
+async function postReviewStream({
+  body,
+  onQuestionReview,
+  onResult,
+  onRoundReviewDelta,
+  onRoundReviewStart,
+  onTrace,
+}: {
+  body: PracticeReviewRequest;
+  onQuestionReview: (payload: { result: PracticeGradeResult; review: PracticeQuestionReview }) => void;
+  onResult: (response: PracticeReviewResponse) => void;
+  onRoundReviewDelta: (text: string) => void;
+  onRoundReviewStart: () => void;
+  onTrace: (event: PracticeTraceEvent) => void;
+}) {
+  const response = await fetch("/api/practice/review", {
+    body: JSON.stringify(body),
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiError | null;
+    throw new Error(payload?.error || `Request failed with ${response.status}`);
+  }
+  if (!response.body) {
+    throw new Error("Streaming response body is not available.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: PracticeReviewResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const parsed = parseSseEvents(buffer);
+    buffer = parsed.rest;
+
+    for (const item of parsed.events) {
+      const payload = JSON.parse(item.data);
+      if (item.event === "trace") {
+        onTrace(payload as PracticeTraceEvent);
+      } else if (item.event === "question_review") {
+        onQuestionReview(payload as { result: PracticeGradeResult; review: PracticeQuestionReview });
+      } else if (item.event === "round_review_start") {
+        onRoundReviewStart();
+      } else if (item.event === "round_review_delta") {
+        onRoundReviewDelta(String((payload as { text?: string }).text ?? ""));
+      } else if (item.event === "result") {
+        result = payload as PracticeReviewResponse;
+        onResult(result);
+      } else if (item.event === "error") {
+        const errorPayload = payload as ApiError & { trace?: PracticeTraceEvent[] };
+        errorPayload.trace?.forEach(onTrace);
+        throw new Error(errorPayload.error || "Practice review failed.");
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (!result) {
+    throw new Error("Practice review stream ended before a result was returned.");
+  }
+  return result;
+}
+
 function answerValue(answer: string | string[] | undefined) {
   return Array.isArray(answer) ? answer.join(", ") : answer ?? "";
 }
@@ -165,6 +238,15 @@ function resultBadge(result: PracticeGradeResult | undefined) {
     return <Badge variant="destructive">incorrect</Badge>;
   }
   return <Badge variant="outline">manual review</Badge>;
+}
+
+function reviewingBadge() {
+  return (
+    <Badge className="gap-1.5 border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
+      <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
+      Reviewing
+    </Badge>
+  );
 }
 
 function formatDuration(ms: number) {
@@ -737,7 +819,8 @@ function QuestionReviewDiagnostic({ review }: { review?: PracticeQuestionReview 
   if (!review) return null;
 
   const rows = [
-    ["What happened", review.observedError],
+    ["Judgment", review.judgmentReason ?? review.observedError],
+    ["Solution key points", review.solutionKeyPoints],
     ["Missing or extra", review.missingOrExtraParts],
     ["Answer form", review.answerFormIssue],
     ["Concept gap", review.conceptGap],
@@ -1167,8 +1250,24 @@ export function PracticeAgentClient() {
     }));
 
     setError(null);
-    beginThinking();
+    // eslint-disable-next-line react-hooks/purity
+    thinkingStartedAtRef.current = Date.now();
+    setThinkingElapsedMs(0);
+    setLastThinkingDurationMs(null);
     setLiveTrace([]);
+    setReviewTrace([]);
+    setResults([]);
+    setReview({
+      mode: "ai",
+      nextRoundGoal: activeSession.goal || recommendation.roundGoal,
+      questionReviews: [],
+      results: [],
+      sessionId: activeSession.id,
+      summary: "Generating round review...",
+      trace: [],
+      updatedSessionMemory: "",
+    });
+    setPhase("feedback");
     setIsTraceCollapsed(true);
 
     startTransition(async () => {
@@ -1179,7 +1278,7 @@ export function PracticeAgentClient() {
             ...attempt,
             questionCode: recommended?.questionCode,
             result: {
-              explanation: "Pending AI review.",
+              explanation: "Reviewer judgment pending.",
               gradingMode: "manual" as const,
               isCorrect: null,
               questionId: attempt.questionId,
@@ -1189,8 +1288,8 @@ export function PracticeAgentClient() {
             title: recommended?.title,
           };
         });
-        const reviewResponse = await jsonRequest<PracticeReviewResponse>("/api/practice/review", {
-          body: JSON.stringify({
+        await postReviewStream({
+          body: {
             attempts: reviewPayloadAttempts,
             goal: activeSession.goal || recommendation.roundGoal,
             hintsByQuestionId: hints,
@@ -1206,21 +1305,78 @@ export function PracticeAgentClient() {
             sessionId: activeSession.id,
             sessionMemory: "",
             userNextRoundNote: nextRoundNote,
-          }),
-          method: "POST",
+          },
+          onQuestionReview: ({ result, review: questionReview }) => {
+            setResults((current) => [
+              ...current.filter((item) => item.questionId !== result.questionId),
+              result,
+            ]);
+            setReview((current) => ({
+              ...(current ?? {
+                mode: "ai",
+                nextRoundGoal: activeSession.goal || recommendation.roundGoal,
+                results: [],
+                sessionId: activeSession.id,
+                summary: "Generating round review...",
+                trace: [],
+                updatedSessionMemory: "",
+              }),
+              questionReviews: [
+                ...((current?.questionReviews ?? []).filter((item) => item.questionId !== questionReview.questionId)),
+                questionReview,
+              ],
+              results: [
+                ...((current?.results ?? []).filter((item) => item.questionId !== result.questionId)),
+                result,
+              ],
+            }));
+          },
+          onResult: (reviewResponse) => {
+            setResults(reviewResponse.results ?? []);
+            setReview(reviewResponse);
+            setReviewTrace(reviewResponse.trace);
+            setLiveTrace(reviewResponse.trace);
+          },
+          onRoundReviewDelta: (text) => {
+            setReview((current) => ({
+              ...(current ?? {
+                mode: "ai",
+                nextRoundGoal: activeSession.goal || recommendation.roundGoal,
+                questionReviews: [],
+                results: [],
+                sessionId: activeSession.id,
+                trace: [],
+                updatedSessionMemory: "",
+              }),
+              summary: `${current?.summary === "Generating round review..." ? "" : current?.summary ?? ""}${text}`,
+            }));
+          },
+          onRoundReviewStart: () => {
+            setReview((current) => ({
+              ...(current ?? {
+                mode: "ai",
+                nextRoundGoal: activeSession.goal || recommendation.roundGoal,
+                questionReviews: [],
+                results: [],
+                sessionId: activeSession.id,
+                trace: [],
+                updatedSessionMemory: "",
+              }),
+              summary: "",
+            }));
+          },
+          onTrace: (event) => {
+            setReviewTrace((current) => [...current, event]);
+            setLiveTrace((current) => [...current, event]);
+          },
         });
-
-        setResults(reviewResponse.results ?? []);
-        setReview(reviewResponse);
-        setReviewTrace(reviewResponse.trace);
-        setLiveTrace(reviewResponse.trace);
         setIsTraceCollapsed(true);
         setGoal("");
         await refreshPracticeState(activeSession.id);
         finishThinking("feedback");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
-        finishThinking("practicing");
+        finishThinking("feedback");
       }
     });
   }
@@ -1230,7 +1386,7 @@ export function PracticeAgentClient() {
       requestRecommendation();
       return;
     }
-    requestRecommendation(review.nextRoundGoal);
+    requestRecommendation(review.nextRoundGoal || activeSession?.goal || recommendation?.roundGoal || "");
   }
 
   function beginRenameSession(session: PracticeSessionSummary) {
@@ -1872,7 +2028,7 @@ export function PracticeAgentClient() {
                               </p>
                             </div>
                           </div>
-                          {resultBadge(resultsById.get(question.id))}
+                          {resultBadge(resultsById.get(question.id)) ?? (phase === "feedback" ? reviewingBadge() : null)}
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
