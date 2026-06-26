@@ -81,6 +81,7 @@ async function loadImportContext({
     .from("taxonomy_nodes")
     .select("tag_id, label, status")
     .eq("is_assignable", true)
+    // perf-budget-allow-large-query: batch import validation needs the bounded active assignable taxonomy catalog.
     .limit(1000);
   const filteredTagQuery = allowDraftTags
     ? tagQuery.neq("status", "archived")

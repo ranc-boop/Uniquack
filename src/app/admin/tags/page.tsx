@@ -219,6 +219,7 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
       )
       .eq("status", "active")
       .order("sort_order", { ascending: true })
+      // perf-budget-allow-large-query: admin taxonomy management intentionally loads the bounded active taxonomy tree.
       .limit(2000),
     supabase
       .from("taxonomy_edges")

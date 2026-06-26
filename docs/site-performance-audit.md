@@ -713,6 +713,105 @@ After PERF3B, the main improvement is server query payload size rather than clie
 - Public `/questions` still sends `content_html` to build excerpts. A future DB summary/excerpt column could remove that HTML from list queries.
 - Admin question focused edit still loads full editor payload by design.
 
+## PERF4 Performance Budget And Regression Guard
+
+PERF4 adds a lightweight local guard so previous bundle, dependency, and data-loading cleanup does not silently regress.
+
+### Budget Checks Added
+
+- Added `scripts/performance-budget-smoke.mjs`.
+- Added package script:
+  - `npm.cmd run perf:budget`
+- The guard has no Supabase network dependency, no provider/API dependency, and no `.env.local` dependency.
+- `perf:budget` remains a separate explicit check for now. It is not folded into `npm.cmd run smoke` so budget tuning can happen without making the general smoke suite brittle.
+
+### Large Query Allowlist Rule
+
+The guard scans `src/app`, `src/components`, `src/lib`, and `scripts` for these risky patterns:
+
+- `limit(1000)`
+- `limit(2000)`
+- `range(0, 999)`
+- `range(0, 1999)`
+- `select("*")`
+
+Any match fails unless the nearby source includes an explicit comment:
+
+```ts
+// perf-budget-allow-large-query: explain why this large query is safe/required
+```
+
+Existing allowed large queries are bounded taxonomy/import validation scans, not initial route-render list queries.
+
+### Removed Dependency Guard
+
+The guard fails if removed heavy dependencies return in `package.json` or `package-lock.json` without an explicit documentation note:
+
+- `@tiptap/react`
+- `@tiptap/starter-kit`
+- `@tiptap/extension-mathematics`
+- `react-hook-form`
+- `@hookform/resolvers`
+- `@tanstack/react-table`
+- `cmdk`
+- `@radix-ui/react-slider`
+- `@radix-ui/react-tooltip`
+
+If one is intentionally reintroduced later, add a rationale in this document containing:
+
+```text
+perf-budget-allow-dependency: <package-name>
+```
+
+### Heavy Client File Thresholds
+
+The guard checks raw source size for known risky client/server workspace files with generous thresholds:
+
+- `src/components/practice/practice-agent-client.tsx`: 90 KB
+- `src/components/ai-pdf-import-panel.tsx`: 90 KB
+- `src/components/blueprints/blueprint-workspace.tsx`: 150 KB
+
+These thresholds are intentionally not tight. They should catch major regressions while allowing small iterative UI work.
+
+### Route Budget Behavior
+
+When `.next/site-performance-audit.json` exists, the guard parses route chunk gzip sizes from `npm.cmd run perf:audit`.
+
+Current route budgets are generous guardrails for:
+
+- `/practice`
+- `/admin/imports/pdf`
+- `/admin/imports`
+- `/admin/imports/assets`
+- `/admin/imports/package`
+- `/admin/review`
+- `/admin/questions`
+- `/admin/blueprints`
+- `/admin/blueprints/review`
+- `/admin/blueprints/library`
+- `/admin/blueprints/history`
+- `/admin/blueprints/sources`
+- `/questions`
+- `/videos`
+
+If the audit file is missing, route budget checks warn and skip. Run:
+
+```bash
+npm.cmd run build
+npm.cmd run perf:audit
+npm.cmd run perf:budget
+```
+
+### Updating Budgets Later
+
+When a budget fails:
+
+1. Confirm whether the growth is caused by a real product change or accidental eager loading.
+2. Prefer pagination, route-scoped queries, component splitting, or dynamic imports before raising a threshold.
+3. If a threshold must change, update `scripts/performance-budget-smoke.mjs` and explain the reason in this document.
+4. If a large query is truly required, add a local `perf-budget-allow-large-query` comment with a concrete reason.
+5. If a removed dependency is intentionally reintroduced, add a `perf-budget-allow-dependency` note with the package name and rationale.
+
 ## Commands Run
 
 ```bash
