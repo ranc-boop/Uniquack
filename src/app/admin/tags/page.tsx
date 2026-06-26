@@ -4,6 +4,7 @@ import {
   deleteTaxonomyNode,
   rejectTaxonomyReviewAction,
 } from "@/app/admin/tags/actions";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { TaxonomyNodeCreateFields } from "@/components/tags/taxonomy-node-create-fields";
 import { PageFeedback } from "@/components/page-feedback";
@@ -280,12 +281,11 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Taxonomy</h1>
-        <p className="text-sm text-muted-foreground">
-          Database-backed mathematics taxonomy rooted at math.
-        </p>
-      </div>
+      <AdminPageHeader
+        description="Manage the official mathematics taxonomy used by questions, videos, imports, and blueprint workflows."
+        eyebrow="Advanced tools"
+        title="Taxonomy"
+      />
       <PageFeedback error={params.error} saved={params.saved} />
       {setupError ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">

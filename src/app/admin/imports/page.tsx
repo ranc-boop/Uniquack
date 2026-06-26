@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { BatchImportJsonPanelLoader } from "@/components/batch-import-json-panel-loader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,28 +42,27 @@ export default async function AdminImportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Batch import</h1>
-          <p className="text-sm text-muted-foreground">
-            Manual JSON import pipeline for draft questions. Future AI parsing can
-            feed normalized records into the same tables.
-          </p>
-          <p className="mt-2 max-w-3xl text-xs text-muted-foreground">
-            Asset references are preserved for review only. Use Bulk asset upload
-            to attach image and PDF files to imported drafts by filename prefix.
-            Future package import will support questions.json + images + PDFs.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href="/admin/imports/pdf">AI PDF import</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/admin/imports/assets">Bulk asset upload</Link>
-          </Button>
-        </div>
-      </div>
+      <AdminPageHeader
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link href="/admin/imports/pdf">AI PDF import</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/admin/imports/assets">Bulk asset upload</Link>
+            </Button>
+          </>
+        }
+        description={
+          <>
+            Manual JSON import creates draft questions for review. Asset
+            references are preserved for review only; use Bulk asset upload to
+            attach files by filename prefix.
+          </>
+        }
+        eyebrow="Import tools"
+        title="Manual JSON Import"
+      />
 
       <div className="grid gap-3 md:grid-cols-4">
         <Card>

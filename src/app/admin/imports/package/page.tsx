@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { PackageImportPanelLoader } from "@/components/package-import-panel-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,21 +13,16 @@ export default async function AdminPackageImportPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Package import
-          </h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            Import one ZIP package containing questions.json, images, and PDFs.
-            The system previews everything first, creates draft questions, then
-            attaches referenced assets for admin review.
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href="/admin/imports">Back to imports</Link>
-        </Button>
-      </div>
+      <AdminPageHeader
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/admin/imports">Back to imports</Link>
+          </Button>
+        }
+        description="Import one ZIP package containing questions.json, images, and PDFs. The system previews everything first, creates draft questions, then attaches referenced assets for admin review."
+        eyebrow="Import tools"
+        title="Package import"
+      />
 
       <Card>
         <CardHeader>

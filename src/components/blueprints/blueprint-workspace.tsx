@@ -23,6 +23,7 @@ import {
   updateQuestionBlueprintFields,
   updateBlueprintReviewActionTaxonomyTargets,
 } from "@/app/admin/blueprints/actions";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { MathContent } from "@/components/math-content";
 import {
@@ -2132,16 +2133,12 @@ export async function BlueprintWorkspace({
     view === "overview" ? importBatches.slice(0, 1) : importBatches;
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8">
-      <section className="space-y-2">
-        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          {workspaceCopy.eyebrow}
-        </p>
-        <h1 className="text-3xl font-semibold">{workspaceCopy.title}</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          {workspaceCopy.subtitle}
-        </p>
-      </section>
+    <main className="flex w-full flex-col gap-6">
+      <AdminPageHeader
+        description={workspaceCopy.subtitle}
+        eyebrow={workspaceCopy.eyebrow}
+        title={workspaceCopy.title}
+      />
 
       <PageFeedback error={params.error} saved={params.saved} />
 

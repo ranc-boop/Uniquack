@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import {
   AIPdfControlDashboard,
   type AIPdfControlDashboardBatch,
@@ -191,16 +192,9 @@ export default async function AdminAIPdfImportPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">AI PDF Import</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            Upload one PDF, let a configured multimodal model extract draft
-            questions, create initial tags, crop figures, and send everything
-            into the existing review queue.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <AdminPageHeader
+        actions={
+          <>
           <Button asChild variant="outline">
             <Link href="/admin/imports">Back to imports</Link>
           </Button>
@@ -209,8 +203,12 @@ export default async function AdminAIPdfImportPage() {
               <Link href="/admin/ai-settings">AI settings</Link>
             </Button>
           ) : null}
-        </div>
-      </div>
+          </>
+        }
+        description="Upload one private PDF, run a configured multimodal provider, and send extracted draft questions or blueprint observations into the admin review workflow."
+        eyebrow="AI Parsing"
+        title="AI PDF Import"
+      />
 
       <Card>
         <CardHeader>

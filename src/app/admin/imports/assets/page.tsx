@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { BulkAssetUploadPanelLoader } from "@/components/bulk-asset-upload-panel-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,21 +73,16 @@ export default async function AdminImportAssetsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Bulk asset upload
-          </h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            Upload images and PDF source files after Batch Import creates draft
-            questions. Files are matched by question-code filename prefix before
-            anything is uploaded.
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href="/admin/imports">Back to imports</Link>
-        </Button>
-      </div>
+      <AdminPageHeader
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/admin/imports">Back to imports</Link>
+          </Button>
+        }
+        description="Upload images and PDF source files after draft questions exist. Files are matched by question-code filename prefix before anything is uploaded."
+        eyebrow="Import tools"
+        title="Bulk asset upload"
+      />
 
       <Card>
         <CardHeader>
