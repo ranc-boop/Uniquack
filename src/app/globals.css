@@ -53,10 +53,12 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
-    background:
+    @apply text-foreground antialiased;
+    background-color: hsl(var(--background));
+    background-image:
       radial-gradient(circle at top left, hsl(var(--primary) / 0.08), transparent 30rem),
       linear-gradient(180deg, hsl(210 40% 98%), hsl(var(--background)) 18rem);
+    background-repeat: no-repeat;
   }
 }
 

@@ -17,7 +17,7 @@ export function AdminShell({
   username,
 }: AdminShellProps) {
   return (
-    <div className="mx-auto w-full max-w-[100rem]">
+    <div className="mx-auto w-full max-w-[100rem] rounded-lg border border-slate-200/70 bg-white/95 p-4 text-slate-950 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] sm:p-5">
       <div className="grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <aside className="min-w-0 lg:sticky lg:top-24 lg:self-start">
           <div className="space-y-4">
