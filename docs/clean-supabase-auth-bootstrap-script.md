@@ -84,6 +84,8 @@ node scripts/clean-supabase-auth-bootstrap.mjs
 
 Dry run is the default and does not mutate auth users, profiles, organizations, or memberships.
 
+Dry run may connect to the disposable Supabase project to check tables, find existing auth users, and plan profile or membership changes. It must not create auth users, profiles, organizations, memberships, provider credentials, or Review Drafts.
+
 Execute only after reviewing the dry-run summary:
 
 ```powershell
@@ -91,6 +93,27 @@ node scripts/clean-supabase-auth-bootstrap.mjs --execute
 ```
 
 The script logs only action categories and counts. It must not print service-role keys, passwords, invite links, access tokens, JWTs, connection strings, provider keys, or raw Admin API responses.
+
+If validate-only or dry-run fails, stop and fix the reported blocker before considering `--execute`.
+
+## Error Reporting
+
+Script errors are normalized and sanitized before printing.
+
+The script reports a category when possible:
+
+- `missing_env`
+- `invalid_target`
+- `auth_admin_api_error`
+- `table_check_error`
+- `profile_upsert_plan_error`
+- `membership_upsert_plan_error`
+- `network_or_fetch_error`
+- `unknown_error`
+
+It may print safe fields such as non-secret `name`, `message`, `code`, `status`, `statusCode`, `details`, `hint`, or a safe cause message. Before logging, output is redacted for common token, password, service-role key, API key, credential-bearing URL, JWT, and connection-string patterns.
+
+Do not proceed to `--execute` unless dry-run finishes and prints a complete planned-action summary for the organization, auth users, profiles, and memberships.
 
 ## Production Caution
 
