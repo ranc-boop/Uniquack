@@ -5,6 +5,59 @@ import { createClient } from "@supabase/supabase-js";
 const CONFIRMATION_PHRASE = "BOOTSTRAP_CLEAN_SUPABASE";
 const REQUIRED_TABLES = ["organizations", "profiles", "organization_members"];
 const ADMIN_PROFILE_ROLES = new Set(["admin", "super_admin"]);
+const SAFE_ERROR_FIELDS = [
+  "name",
+  "message",
+  "code",
+  "status",
+  "statusCode",
+  "details",
+  "hint",
+  "error",
+  "errorCode",
+  "error_code",
+  "errorDescription",
+  "error_description",
+];
+const SENSITIVE_TEXT_PATTERNS = [
+  {
+    pattern: /\b(?:eyJ|sb_secret_|sb_publishable_)[A-Za-z0-9._-]+\b/g,
+    replacement: "[redacted-token]",
+  },
+  {
+    pattern: /\bsk-[A-Za-z0-9_-]+\b/g,
+    replacement: "[redacted-api-key]",
+  },
+  {
+    pattern: /\bAIza[A-Za-z0-9_-]+\b/g,
+    replacement: "[redacted-api-key]",
+  },
+  {
+    pattern: /\b(?:postgres|postgresql):\/\/\S+/gi,
+    replacement: "[redacted-connection-string]",
+  },
+  {
+    pattern: /\bBearer\s+[A-Za-z0-9._-]+/gi,
+    replacement: "Bearer [redacted-token]",
+  },
+  {
+    pattern: /([?&](?:access_token|refresh_token|token|code|key|password|secret)=)[^&\s]+/gi,
+    replacement: "$1[redacted]",
+  },
+  {
+    pattern: /\b((?:service[_-]?role[_-]?key|api[_-]?key|secret|password|token|jwt)\s*[:=]\s*)["']?[^"',\s}]+["']?/gi,
+    replacement: "$1[redacted]",
+  },
+];
+
+class BootstrapError extends Error {
+  constructor(category, message, options = {}) {
+    super(message, options.cause ? { cause: options.cause } : undefined);
+    this.name = "BootstrapError";
+    this.category = category;
+    this.safeDetails = options.safeDetails ?? [];
+  }
+}
 
 function printHelp() {
   console.log(`
@@ -108,6 +161,126 @@ function validateUrl(value, errors) {
   }
 }
 
+function sanitizeText(value) {
+  let text = String(value ?? "");
+  for (const { pattern, replacement } of SENSITIVE_TEXT_PATTERNS) {
+    text = text.replace(pattern, replacement);
+  }
+  return text.length > 600 ? `${text.slice(0, 600)}...` : text;
+}
+
+function safeValue(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return sanitizeText(value);
+  }
+  return null;
+}
+
+function getObjectField(source, fieldName) {
+  if (!source || typeof source !== "object") return null;
+  try {
+    return safeValue(source[fieldName]);
+  } catch {
+    return null;
+  }
+}
+
+function readSafeErrorFields(error) {
+  const details = [];
+  if (!error || typeof error !== "object") return details;
+
+  for (const field of SAFE_ERROR_FIELDS) {
+    const value = getObjectField(error, field);
+    if (value) details.push(`${field}: ${value}`);
+  }
+
+  const cause = error.cause;
+  if (cause) {
+    const causeMessage =
+      cause instanceof Error
+        ? safeValue(cause.message)
+        : getObjectField(cause, "message") ?? safeValue(cause);
+    if (causeMessage) details.push(`cause: ${causeMessage}`);
+  }
+
+  return [...new Set(details)];
+}
+
+function inferErrorCategory(error, fallbackCategory = "unknown_error") {
+  if (error?.category) return error.category;
+  if (Array.isArray(error?.validationErrors)) {
+    if (error.validationErrors.some((entry) => entry.startsWith("missing_env:"))) {
+      return "missing_env";
+    }
+    if (
+      error.validationErrors.some(
+        (entry) =>
+          entry.startsWith("invalid_") ||
+          entry.startsWith("unsafe_target:"),
+      )
+    ) {
+      return "invalid_target";
+    }
+  }
+
+  const message = sanitizeText(
+    error instanceof Error
+      ? error.message
+      : getObjectField(error, "message") ?? safeValue(error) ?? "",
+  );
+  if (/(fetch failed|network|econn|enotfound|etimedout|timeout|dns)/i.test(message)) {
+    return "network_or_fetch_error";
+  }
+
+  return fallbackCategory;
+}
+
+function normalizeError(error) {
+  const safeDetails = readSafeErrorFields(error);
+  const message =
+    error instanceof Error
+      ? safeValue(error.message)
+      : getObjectField(error, "message") ??
+        getObjectField(error, "error_description") ??
+        getObjectField(error, "errorDescription") ??
+        getObjectField(error, "error") ??
+        safeValue(error);
+
+  return {
+    category: inferErrorCategory(error),
+    message: message || "Unknown error",
+    validationErrors: Array.isArray(error?.validationErrors)
+      ? error.validationErrors.map((entry) => sanitizeText(entry))
+      : [],
+    details: [...new Set([...(error?.safeDetails ?? []), ...safeDetails])].map((entry) =>
+      sanitizeText(entry),
+    ),
+  };
+}
+
+function wrapBootstrapError(category, message, cause, safeDetails = []) {
+  return new BootstrapError(category, message, {
+    cause,
+    safeDetails: [
+      ...safeDetails,
+      ...readSafeErrorFields(cause),
+    ],
+  });
+}
+
+function validationErrorCategory(errors) {
+  if (errors.some((entry) => entry.startsWith("missing_env:"))) return "missing_env";
+  if (
+    errors.some(
+      (entry) => entry.startsWith("invalid_") || entry.startsWith("unsafe_target:"),
+    )
+  ) {
+    return "invalid_target";
+  }
+  return "unknown_error";
+}
+
 function buildConfig() {
   const errors = [];
   const url = requireEnv("CLEAN_SUPABASE_URL", errors);
@@ -153,7 +326,10 @@ function buildConfig() {
   }
 
   if (errors.length > 0) {
-    const err = new Error("Bootstrap configuration failed validation.");
+    const err = new BootstrapError(
+      validationErrorCategory(errors),
+      "Bootstrap configuration failed validation.",
+    );
     err.validationErrors = errors;
     throw err;
   }
@@ -216,10 +392,17 @@ async function assertRequiredTables(supabase) {
       count: "exact",
       head: true,
     });
-    if (error) missing.push(`${table}:${error.code ?? error.message}`);
+    if (error) {
+      const normalized = normalizeError(error);
+      missing.push(`${table}:${normalized.message}`);
+    }
   }
   if (missing.length > 0) {
-    throw new Error(`Missing or unreadable clean tables: ${missing.join(", ")}`);
+    throw new BootstrapError(
+      "table_check_error",
+      `Missing or unreadable clean tables: ${missing.join(", ")}`,
+      { safeDetails: missing },
+    );
   }
 }
 
@@ -233,7 +416,13 @@ async function listAllAuthUsers(supabase) {
       page,
       perPage,
     });
-    if (error) throw error;
+    if (error) {
+      throw wrapBootstrapError(
+        "auth_admin_api_error",
+        "Supabase Admin API failed while listing auth users.",
+        error,
+      );
+    }
     users.push(...(data?.users ?? []));
     if (!data?.users || data.users.length < perPage) break;
     page += 1;
@@ -253,7 +442,13 @@ async function getOrganizationBySlug(supabase, slug) {
     .select("id, slug, status")
     .eq("slug", slug)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    throw wrapBootstrapError(
+      "table_check_error",
+      "Could not read organization by slug.",
+      error,
+    );
+  }
   return data;
 }
 
@@ -263,7 +458,13 @@ async function countActiveSuperAdmins(supabase) {
     .select("id", { count: "exact", head: true })
     .eq("role", "super_admin")
     .eq("status", "active");
-  if (error) throw error;
+  if (error) {
+    throw wrapBootstrapError(
+      "profile_upsert_plan_error",
+      "Could not count active super admin profiles.",
+      error,
+    );
+  }
   return count ?? 0;
 }
 
@@ -273,7 +474,13 @@ async function getProfile(supabase, userId) {
     .select("id, role, status")
     .eq("id", userId)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    throw wrapBootstrapError(
+      "profile_upsert_plan_error",
+      "Could not read profile while planning bootstrap profile upsert.",
+      error,
+    );
+  }
   return data;
 }
 
@@ -284,7 +491,13 @@ async function getMembership(supabase, organizationId, userId) {
     .eq("organization_id", organizationId)
     .eq("user_id", userId)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    throw wrapBootstrapError(
+      "membership_upsert_plan_error",
+      "Could not read organization membership while planning bootstrap membership upsert.",
+      error,
+    );
+  }
   return data;
 }
 
@@ -335,7 +548,13 @@ async function ensureOrganization({ supabase, config, executionMode, summary }) 
           status: "active",
         })
         .eq("id", existing.id);
-      if (error) throw error;
+      if (error) {
+        throw wrapBootstrapError(
+          "table_check_error",
+          "Could not update organization during auth bootstrap.",
+          error,
+        );
+      }
       addCount(summary, "organizations_updated");
     } else {
       addCount(summary, "organizations_would_update");
@@ -355,7 +574,13 @@ async function ensureOrganization({ supabase, config, executionMode, summary }) 
     })
     .select("id")
     .single();
-  if (error) throw error;
+  if (error) {
+    throw wrapBootstrapError(
+      "table_check_error",
+      "Could not create organization during auth bootstrap.",
+      error,
+    );
+  }
   return data.id;
 }
 
@@ -380,7 +605,13 @@ async function ensureAuthUser({ supabase, userSpec, executionMode, summary }) {
         bootstrap_role: userSpec.profileRole,
       },
     });
-    if (error) throw error;
+    if (error) {
+      throw wrapBootstrapError(
+        "auth_admin_api_error",
+        "Supabase Admin API failed while inviting bootstrap user.",
+        error,
+      );
+    }
     return data.user;
   }
 
@@ -392,7 +623,13 @@ async function ensureAuthUser({ supabase, userSpec, executionMode, summary }) {
       bootstrap_role: userSpec.profileRole,
     },
   });
-  if (error) throw error;
+  if (error) {
+    throw wrapBootstrapError(
+      "auth_admin_api_error",
+      "Supabase Admin API failed while creating bootstrap user.",
+      error,
+    );
+  }
   return data.user;
 }
 
@@ -408,7 +645,10 @@ async function ensureProfile({ supabase, authUser, organizationId, desiredRole, 
   if (existing?.role === "super_admin" && desiredRole !== "super_admin") {
     const activeSuperAdminCount = await countActiveSuperAdmins(supabase);
     if (activeSuperAdminCount <= 1) {
-      throw new Error("Refusing to demote the only active super_admin profile.");
+      throw new BootstrapError(
+        "profile_upsert_plan_error",
+        "Refusing to demote the only active super_admin profile.",
+      );
     }
     nextRole = "super_admin";
     addCount(summary, "profiles_preserved_super_admin");
@@ -430,7 +670,13 @@ async function ensureProfile({ supabase, authUser, organizationId, desiredRole, 
   const { error } = await supabase.from("profiles").upsert(payload, {
     onConflict: "id",
   });
-  if (error) throw error;
+  if (error) {
+    throw wrapBootstrapError(
+      "profile_upsert_plan_error",
+      "Could not upsert bootstrap profile.",
+      error,
+    );
+  }
   addCount(summary, existing ? "profiles_updated" : "profiles_created");
 }
 
@@ -454,7 +700,13 @@ async function ensureMembership({ supabase, organizationId, authUser, role, exec
     membershipPayload(organizationId, authUser.id, role),
     { onConflict: "organization_id,user_id" },
   );
-  if (error) throw error;
+  if (error) {
+    throw wrapBootstrapError(
+      "membership_upsert_plan_error",
+      "Could not upsert bootstrap organization membership.",
+      error,
+    );
+  }
   addCount(summary, existing ? "organization_members_updated" : "organization_members_created");
 }
 
@@ -516,13 +768,17 @@ async function run() {
 }
 
 run().catch((error) => {
+  const normalized = normalizeError(error);
   console.error("Clean Supabase auth bootstrap failed.");
-  if (Array.isArray(error.validationErrors)) {
-    for (const validationError of error.validationErrors) {
+  console.error(`category: ${normalized.category}`);
+  console.error(`message: ${normalized.message}`);
+  if (normalized.validationErrors.length > 0) {
+    for (const validationError of normalized.validationErrors) {
       console.error(`- ${validationError}`);
     }
-  } else {
-    console.error(error instanceof Error ? error.message : "Unknown error");
+  }
+  for (const detail of normalized.details) {
+    console.error(`detail: ${detail}`);
   }
   process.exit(1);
 });
