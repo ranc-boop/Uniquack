@@ -27,7 +27,7 @@ insert into public.questions (
 values
   (
     '77777777-7777-4777-8777-777777777701',
-    '11111111-1111-4111-8111-111111111111',
+    (select id from public.organizations where slug = 'edustruct-clean-mvp'),
     'LOCAL-CALC-001',
     'Accumulated change from a rate table',
     'mcq',
@@ -52,7 +52,7 @@ values
   ),
   (
     '77777777-7777-4777-8777-777777777702',
-    '11111111-1111-4111-8111-111111111111',
+    (select id from public.organizations where slug = 'edustruct-clean-mvp'),
     'LOCAL-CALC-002',
     'Area between two curves',
     'frq',
@@ -131,7 +131,7 @@ insert into public.review_batches (
 )
 values (
   '88888888-8888-4888-8888-888888888801',
-  '11111111-1111-4111-8111-111111111111',
+  (select id from public.organizations where slug = 'edustruct-clean-mvp'),
   null,
   'manual',
   null,
@@ -230,7 +230,7 @@ insert into public.question_blueprints (
 )
 values (
   '99999999-9999-4999-8999-999999999902',
-  '11111111-1111-4111-8111-111111111111',
+  (select id from public.organizations where slug = 'edustruct-clean-mvp'),
   'school',
   null,
   '99999999-9999-4999-8999-999999999901',
@@ -315,7 +315,7 @@ insert into public.practice_course_frameworks (
 )
 values (
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
-  '11111111-1111-4111-8111-111111111111',
+  (select id from public.organizations where slug = 'edustruct-clean-mvp'),
   'Local Applications of Integration Review',
   'Synthetic local framework for course builder smoke tests.',
   'Review accumulation and area between curves using approved local questions.',
@@ -361,7 +361,7 @@ insert into public.videos (
 )
 values (
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
-  '11111111-1111-4111-8111-111111111111',
+  (select id from public.organizations where slug = 'edustruct-clean-mvp'),
   '77777777-7777-4777-8777-777777777701',
   'Local accumulation explanation',
   'https://example.test/local-video',
@@ -398,7 +398,7 @@ insert into public.practice_sessions (
 )
 select
   'cccccccc-cccc-4ccc-8ccc-ccccccccccc1',
-  '11111111-1111-4111-8111-111111111111',
+  (select id from public.organizations where slug = 'edustruct-clean-mvp'),
   '44444444-4444-4444-8444-444444444444',
   'Local practice smoke session',
   'Practice accumulation and area setup.',
@@ -440,7 +440,7 @@ insert into public.course_generation_runs (
 )
 select
   'dddddddd-dddd-4ddd-8ddd-ddddddddddd1',
-  '11111111-1111-4111-8111-111111111111',
+  (select id from public.organizations where slug = 'edustruct-clean-mvp'),
   '33333333-3333-4333-8333-333333333333',
   'preview_ready',
   'simulation',
