@@ -13,14 +13,13 @@ insert into public.organizations (
 )
 values (
   '11111111-1111-4111-8111-111111111111',
-  'EduStruct Local Demo',
-  'edustruct-local-demo',
+  'EduStruct Clean MVP Disposable',
+  'edustruct-clean-mvp',
   'active'
 )
-on conflict (id) do update
+on conflict (slug) do update
 set
   name = excluded.name,
-  slug = excluded.slug,
   status = excluded.status,
   updated_at = now();
 
@@ -49,7 +48,7 @@ select
   seed.display_name,
   seed.role,
   'active',
-  '11111111-1111-4111-8111-111111111111'::uuid
+  (select id from public.organizations where slug = 'edustruct-clean-mvp')
 from (
   values
     (
@@ -103,7 +102,7 @@ insert into public.organization_members (
 )
 select
   seed.id,
-  '11111111-1111-4111-8111-111111111111'::uuid,
+  (select id from public.organizations where slug = 'edustruct-clean-mvp'),
   seed.user_id,
   seed.role,
   'active',
@@ -155,7 +154,7 @@ insert into public.ai_provider_profiles (
 )
 values (
   '66666666-6666-4666-8666-666666666661',
-  '11111111-1111-4111-8111-111111111111',
+  (select id from public.organizations where slug = 'edustruct-clean-mvp'),
   'Local Disabled DeepSeek Placeholder',
   'deepseek',
   null,
