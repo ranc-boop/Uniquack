@@ -46,6 +46,34 @@ assert(!batchJson.includes(`tag_${"slugs"}`), "batch import still accepts legacy
 assert(!batchJson.includes(`tag_${"names"}`), "batch import still accepts legacy tag name arrays");
 console.log("PASS batch import uses exact tag_ids only");
 
+const batchImportService = await read("src/lib/batch-import/service.ts");
+assert(
+  batchImportService.includes("resolveImportOrganizationContext"),
+  "batch import must resolve organization context before persistence",
+);
+assert(
+  batchImportService.includes("profiles.default_organization_id") &&
+    batchImportService.includes("organization_members") &&
+    batchImportService.includes("active_staff_membership"),
+  "batch import organization context must fall back to profile default org and active staff membership",
+);
+assert(
+  batchImportService.includes("organization_id: organizationContext.organizationId"),
+  "batch import question inserts must include organization_id",
+);
+assert(
+  batchImportService.includes('status: "draft"') &&
+    batchImportService.includes('review_status: "pending_review"'),
+  "batch import must preserve draft and pending-review boundaries",
+);
+const aiPdfImportActionsOrg = await read("src/app/admin/imports/pdf/actions.ts");
+assert(
+  aiPdfImportActionsOrg.includes("resolveImportOrganizationContext") &&
+    aiPdfImportActionsOrg.includes("organization_id: organizationContext.organizationId"),
+  "AI PDF import batches must preserve organization_id at source upload reservation",
+);
+console.log("PASS AI/batch import persistence carries organization context without auto-publish");
+
 const practicePersistence = await read("supabase/migrations/0014_practice_persistence.sql");
 for (const table of [
   "practice_sessions",

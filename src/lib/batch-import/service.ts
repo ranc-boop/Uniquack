@@ -13,10 +13,17 @@ type SupabaseLike = {
   from: (table: string) => any;
 };
 
+const MISSING_ORGANIZATION_MESSAGE =
+  "No active organization found for AI import. Please check your profile or organization membership.";
+
 function asSummaryRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function asString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 async function loadImportBatchSummary({
@@ -37,6 +44,92 @@ async function loadImportBatchSummary({
   }
 
   return asSummaryRecord(data?.summary);
+}
+
+export async function resolveImportOrganizationContext({
+  batchId,
+  existingOrganizationId,
+  profileId,
+  supabase,
+}: {
+  batchId?: string | null;
+  existingOrganizationId?: string | null;
+  profileId: string;
+  supabase: SupabaseLike;
+}) {
+  const batchOrganizationId = asString(existingOrganizationId);
+
+  if (batchOrganizationId) {
+    return {
+      organizationId: batchOrganizationId,
+      source: "import_batches.organization_id",
+    };
+  }
+
+  if (batchId) {
+    const { data: batch, error: batchError } = await supabase
+      .from("import_batches")
+      .select("organization_id")
+      .eq("id", batchId)
+      .maybeSingle();
+
+    if (batchError) {
+      throw new Error(batchError.message);
+    }
+
+    const organizationId = asString(batch?.organization_id);
+
+    if (organizationId) {
+      return {
+        organizationId,
+        source: "import_batches.organization_id",
+      };
+    }
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("default_organization_id")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  const profileOrganizationId = asString(profile?.default_organization_id);
+
+  if (profileOrganizationId) {
+    return {
+      organizationId: profileOrganizationId,
+      source: "profiles.default_organization_id",
+    };
+  }
+
+  const { data: memberships, error: membershipError } = await supabase
+    .from("organization_members")
+    .select("organization_id, role, status, created_at")
+    .eq("user_id", profileId)
+    .eq("status", "active")
+    .in("role", ["admin", "teacher"])
+    .order("role", { ascending: true })
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (membershipError) {
+    throw new Error(membershipError.message);
+  }
+
+  const membershipOrganizationId = asString(memberships?.[0]?.organization_id);
+
+  if (membershipOrganizationId) {
+    return {
+      organizationId: membershipOrganizationId,
+      source: "organization_members.active_staff_membership",
+    };
+  }
+
+  throw new Error(MISSING_ORGANIZATION_MESSAGE);
 }
 
 export type BatchImportSummary = {
@@ -179,15 +272,37 @@ export async function importBatchImportJson({
   };
   const batchId = providedBatchId ?? null;
   let activeBatchId = batchId;
+  let organizationContext: Awaited<
+    ReturnType<typeof resolveImportOrganizationContext>
+  >;
 
   if (activeBatchId) {
-    const existingSummary = await loadImportBatchSummary({
+    const { data: existingBatch, error: existingBatchError } = await supabase
+      .from("import_batches")
+      .select("summary, organization_id")
+      .eq("id", activeBatchId)
+      .maybeSingle();
+
+    if (existingBatchError) {
+      throw new Error(existingBatchError.message);
+    }
+
+    if (!existingBatch) {
+      throw new Error("Import batch was not found.");
+    }
+
+    organizationContext = await resolveImportOrganizationContext({
       batchId: activeBatchId,
+      existingOrganizationId: existingBatch.organization_id,
+      profileId,
       supabase,
     });
+    const existingSummary = asSummaryRecord(existingBatch.summary);
     const { error: batchUpdateError } = await supabase
       .from("import_batches")
       .update({
+        organization_id:
+          existingBatch.organization_id ?? organizationContext.organizationId,
         status: "validating",
         summary: {
           ...existingSummary,
@@ -201,9 +316,14 @@ export async function importBatchImportJson({
       throw new Error(batchUpdateError.message);
     }
   } else {
+    organizationContext = await resolveImportOrganizationContext({
+      profileId,
+      supabase,
+    });
     const { data: batch, error: batchError } = await supabase
       .from("import_batches")
       .insert({
+        organization_id: organizationContext.organizationId,
         source_type: sourceType,
         status: "validating",
         summary: {
@@ -258,6 +378,7 @@ export async function importBatchImportJson({
     const { data: question, error: questionError } = await supabase
       .from("questions")
       .insert({
+        organization_id: organizationContext.organizationId,
         question_code: normalized.question_code,
         title: normalized.title,
         content_html: normalized.content_html,

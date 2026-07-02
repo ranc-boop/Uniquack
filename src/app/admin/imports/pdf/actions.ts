@@ -36,6 +36,7 @@ import {
 } from "@/lib/ai-pdf-import/pdf";
 import { processAIPdfImport } from "@/lib/ai-pdf-import/service";
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth/guards";
+import { resolveImportOrganizationContext } from "@/lib/batch-import/service";
 import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validations/common";
@@ -821,10 +822,15 @@ export async function reserveAIPdfSourceUpload(input: unknown) {
   }
 
   const supabase = await createClient();
+  const organizationContext = await resolveImportOrganizationContext({
+    profileId: profile.id,
+    supabase,
+  });
   const { data: batch, error: batchError } = await supabase
     .from("import_batches")
     .insert({
       created_by: profile.id,
+      organization_id: organizationContext.organizationId,
       source_type: "ai_pdf",
       status: "draft",
       summary: {
@@ -833,7 +839,7 @@ export async function reserveAIPdfSourceUpload(input: unknown) {
           phase: "upload_reserved",
         },
       },
-    })
+    } as never)
     .select("id")
     .single();
 
