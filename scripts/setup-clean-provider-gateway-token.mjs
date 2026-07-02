@@ -16,21 +16,6 @@ function fail(message) {
   process.exit(1);
 }
 
-function formatSupabaseError(error) {
-  if (!error?.message) {
-    return "Unknown Supabase error.";
-  }
-
-  if (/invalid schema:\s*private/i.test(error.message)) {
-    return [
-      "The private schema is not exposed through Supabase PostgREST.",
-      "This project needs a service-role-only setup RPC/migration or a one-off SQL editor setup step before this helper can write the gateway hash.",
-    ].join(" ");
-  }
-
-  return error.message;
-}
-
 function requiredEnv(name) {
   const value = process.env[name]?.trim();
 
@@ -46,11 +31,11 @@ function parseSupabaseUrl(value) {
     const url = new URL(value);
 
     if (url.protocol !== "https:") {
-      fail("NEXT_PUBLIC_SUPABASE_URL must use https.");
+      fail("Supabase URL must use https.");
     }
 
     if (!url.hostname.endsWith(".supabase.co")) {
-      fail("NEXT_PUBLIC_SUPABASE_URL must target a Supabase project host.");
+      fail("Supabase URL must target a Supabase project host.");
     }
 
     const projectId = url.hostname.split(".")[0];
@@ -61,7 +46,7 @@ function parseSupabaseUrl(value) {
 
     return { hostname: url.hostname, projectId };
   } catch (error) {
-    fail(`NEXT_PUBLIC_SUPABASE_URL is invalid: ${error.message}`);
+    fail(`Supabase URL is invalid: ${error.message}`);
   }
 }
 
@@ -72,7 +57,9 @@ async function main() {
     );
   }
 
-  const supabaseUrl = requiredEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const supabaseUrl =
+    process.env.CLEAN_SUPABASE_URL?.trim() ||
+    requiredEnv("NEXT_PUBLIC_SUPABASE_URL");
   const serviceRoleKey = requiredEnv("CLEAN_SUPABASE_SERVICE_ROLE_KEY");
   const gatewayToken = requiredEnv("AI_PROVIDER_GATEWAY_TOKEN");
   const target = parseSupabaseUrl(supabaseUrl);
@@ -85,37 +72,28 @@ async function main() {
     },
   });
 
-  const gatewayHashes = supabase
-    .schema("private")
-    .from("ai_provider_gateway_token_hashes");
-  const existing = await gatewayHashes
-    .select("token_hash,status")
-    .eq("token_hash", tokenHash)
-    .maybeSingle();
+  const setup = await supabase.rpc("setup_ai_provider_gateway_token_hash", {
+    token_hash: tokenHash,
+    token_label: "local clean Supabase provider gateway token",
+  });
 
-  if (existing.error) {
-    fail(`Could not inspect provider gateway hash row: ${formatSupabaseError(existing.error)}`);
+  if (setup.error) {
+    fail(`Could not call provider gateway setup RPC: ${setup.error.message}`);
   }
 
-  const action = existing.data ? "updated_existing_hash_row" : "inserted_hash_row";
-  const upsert = await gatewayHashes.upsert(
-    {
-      disabled_at: null,
-      label: "local clean Supabase provider gateway token",
-      status: "active",
-      token_hash: tokenHash,
-    },
-    { onConflict: "token_hash" },
-  );
-
-  if (upsert.error) {
-    fail(`Could not upsert provider gateway hash row: ${formatSupabaseError(upsert.error)}`);
-  }
+  const result = Array.isArray(setup.data) ? setup.data[0] : setup.data;
+  const action =
+    typeof result?.action === "string" ? result.action : "setup_rpc_completed";
+  const rowsAffected =
+    Number.isFinite(Number(result?.rows_affected)) &&
+    Number(result?.rows_affected) >= 0
+      ? Number(result.rows_affected)
+      : 0;
 
   console.log("Provider gateway token hash setup completed.");
   console.log(`targetProject: ${target.projectId}`);
   console.log(`action: ${action}`);
-  console.log("rowsAffected: 1");
+  console.log(`rowsAffected: ${rowsAffected}`);
   console.log("storedRawGatewayToken: false");
 }
 

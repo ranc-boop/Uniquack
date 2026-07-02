@@ -14,6 +14,8 @@ The gateway RPC checks:
 
 If the typed Gemini key test succeeds but save/create fails with `AI provider gateway access denied.`, the likely cause is that the local `AI_PROVIDER_GATEWAY_TOKEN` does not yet have a matching active hash row in the clean Supabase project.
 
+The private schema is intentionally not exposed through Supabase PostgREST. Setup should use the narrow service-role-only RPC introduced by `supabase/clean-migrations/0010_provider_gateway_setup_rpc.sql` and patched by the later clean provider-gateway migrations, not a direct client-readable upsert into the private table.
+
 ## Required Local Env
 
 `.env.local` must contain these server/runtime values:
@@ -44,7 +46,8 @@ The helper:
 - loads `NEXT_PUBLIC_SUPABASE_URL` and `AI_PROVIDER_GATEWAY_TOKEN` from local env
 - reads the service-role key only from process env
 - computes the SHA-256 hash locally
-- upserts only the hash into `private.ai_provider_gateway_token_hashes`
+- sends only the hash to `public.setup_ai_provider_gateway_token_hash`
+- lets the service-role-only RPC upsert the hash into `private.ai_provider_gateway_token_hashes`
 - never stores or prints the raw gateway token
 - never prints the service-role key
 - refuses the known legacy Supabase project target

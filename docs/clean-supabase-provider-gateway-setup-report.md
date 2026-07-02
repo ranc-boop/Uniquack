@@ -1,6 +1,6 @@
 # Clean Supabase Provider Gateway Setup Report
 
-Date: 2026-06-30
+Date: 2026-07-01
 
 Branch: `codex/clean-supabase-provider-gateway-setup`
 
@@ -15,6 +15,29 @@ The app and clean migration both expect this flow:
 - clean migration verifies `sha256(gateway_token)` against `private.ai_provider_gateway_token_hashes`
 - create/update/delete provider RPCs reject when the hash row is missing or disabled
 
+## Service-Role Setup RPC
+
+Added:
+
+- `supabase/clean-migrations/0010_provider_gateway_setup_rpc.sql`
+- `supabase/clean-migrations/0011_provider_gateway_setup_rpc_role_fix.sql`
+- `supabase/clean-migrations/0012_provider_gateway_setup_rpc_ambiguity_fix.sql`
+- `supabase/clean-migrations/0013_provider_gateway_setup_rpc_conflict_fix.sql`
+
+The new RPC:
+
+- is named `public.setup_ai_provider_gateway_token_hash`
+- requires the caller JWT role to be `service_role`
+- accepts only a lowercase 64-character SHA-256 hash
+- upserts that hash into `private.ai_provider_gateway_token_hashes`
+- does not accept the raw gateway token
+- does not return private table contents or secret material
+- keeps the `private` schema hidden from PostgREST
+
+Migration `0011` keeps the same RPC contract and fixes service-role detection for Supabase JS service-role RPC calls. This is needed because migration `0010` had already been applied to the disposable remote before the role check was verified.
+
+Migrations `0012` and `0013` keep the same RPC contract and fix PL/pgSQL ambiguity between the `token_hash` function parameter and the `token_hash` table column.
+
 ## Helper Script
 
 Created:
@@ -26,13 +49,13 @@ The helper:
 - loads local `.env.local` without printing values
 - reads `CLEAN_SUPABASE_SERVICE_ROLE_KEY` from process env only
 - computes the SHA-256 hash of `AI_PROVIDER_GATEWAY_TOKEN` locally
-- attempts to upsert only the hash into `private.ai_provider_gateway_token_hashes`
+- calls `public.setup_ai_provider_gateway_token_hash` with only the hash
 - never stores or prints the raw gateway token
 - never prints the service-role key
 - requires `CLEAN_PROVIDER_GATEWAY_CONFIRM=SETUP_CLEAN_PROVIDER_GATEWAY`
 - refuses the known legacy Supabase project target
 
-## Setup Run Result
+## Previous Setup Run Result
 
 The helper was run once with the clean disposable service-role key entered locally in PowerShell. No secret values were printed or written to committed files.
 
@@ -47,17 +70,28 @@ The clean schema stores gateway token hashes in the `private` schema, which is c
 
 This means the current schema has the secure table and verification RPCs, but it does not yet have a safe service-role-only setup RPC/helper path for inserting the first gateway token hash.
 
+## Patch Result
+
+Migration `0010_provider_gateway_setup_rpc.sql` was added to provide the missing service-role-only setup path. The helper was patched to call the RPC instead of trying to write directly to the private schema.
+
+During verification, the first RPC version rejected a service-role Supabase JS call because role detection used only `request.jwt.claim.role`. Migration `0011_provider_gateway_setup_rpc_role_fix.sql` corrects that by using `auth.role()` first and keeps `request.jwt.claim.role` as a fallback.
+
+Disposable remote apply status: migrations `0010`, `0011`, `0012`, and `0013` were applied to the disposable clean Supabase project. The Supabase CLI emitted a Docker cache warning while pushing, but the final remote migration list showed `0010` through `0013` applied.
+
+Gateway hash setup status: helper ran successfully after `0013`; result was `inserted_hash_row` with `rowsAffected: 1`.
+
 ## What Was Not Done
 
 - no old Supabase access
 - no Vercel or production env changes
 - no `.env.local` edits
-- no migrations or seeds changed
-- no SQL applied
+- no seeds changed
+- no ad hoc SQL applied outside the clean migration files
 - no auth users created
 - no provider credentials configured
 - no real provider API keys printed or committed
 - no real AI provider calls
+- no raw gateway token, service-role key, DB password, provider key, or hash was printed or committed
 
 ## Tests
 
@@ -70,13 +104,6 @@ Passed:
 
 ## Recommended Next Step
 
-Add a narrow service-role-only gateway setup path as a separate explicit PR, or run a one-off sanitized SQL setup step in the Supabase SQL editor.
+Restart the local dev server so it picks up the saved `.env.local` gateway/encryption settings, then retry `/admin/ai-settings` provider create/save.
 
-Recommended implementation path:
-
-1. Add a setup RPC that is executable only by the `service_role` JWT role.
-2. The RPC should accept a precomputed SHA-256 hash, never the raw gateway token.
-3. The local helper should call that RPC instead of trying to write directly to the `private` schema through PostgREST.
-4. After the hash row is inserted, restart the dev server and retry `/admin/ai-settings` provider create/save.
-
-Until that hash row exists, `/admin/ai-settings` provider create/save may continue to return `AI provider gateway access denied.`
+The gateway hash row now exists in the disposable clean Supabase project. If provider create/save still fails, the next check should be the running dev server env state and super-admin session.
