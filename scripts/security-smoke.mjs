@@ -62,6 +62,18 @@ assert(
   "batch import question inserts must include organization_id",
 );
 assert(
+  batchImportService.includes("requiredQuestionSourceText") &&
+    batchImportService.includes("solution_source: requiredQuestionSourceText(normalized.solution_source)") &&
+    batchImportService.includes("content_source: requiredQuestionSourceText(normalized.content_source)"),
+  "batch import question inserts must provide non-null content/solution source metadata",
+);
+assert(
+  batchImportService.includes("questionSourceKindForImport") &&
+    batchImportService.includes('source_kind: questionSourceKindForImport(sourceType)') &&
+    batchImportService.includes('return `${prefix}:${batchId}`'),
+  "batch import question inserts must preserve source/source_kind provenance",
+);
+assert(
   batchImportService.includes('status: "draft"') &&
     batchImportService.includes('review_status: "pending_review"'),
   "batch import must preserve draft and pending-review boundaries",
