@@ -80,6 +80,39 @@ Disposable remote apply status: migrations `0010`, `0011`, `0012`, and `0013` we
 
 Gateway hash setup status: helper ran successfully after `0013`; result was `inserted_hash_row` with `rowsAffected: 1`.
 
+## Provider Constraint Patch
+
+After the gateway hash setup succeeded, `/admin/ai-settings` reached the provider profile insert path and exposed a separate clean-schema mismatch:
+
+- UI error: `new row for relation "ai_provider_profiles" violates check constraint "ai_provider_profiles_provider_check"`
+- Root cause: the clean migration `0002_provider_profiles_and_operation_logs.sql` only allowed coarse provider values: `gemini`, `openai`, `deepseek`, and `compatible`.
+- Current app UI submits bounded adapter-mode values from `AI_PROVIDER_MODE_OPTIONS`.
+- The Gemini Native full-PDF option submits `gemini_native`.
+- The Gemini OpenAI-compatible page-image option submits `gemini_openai`.
+
+Added:
+
+- `supabase/clean-migrations/0014_provider_profile_provider_check_gemini.sql`
+
+Migration `0014` drops and recreates `ai_provider_profiles_provider_check` with the app-supported provider mode values:
+
+- `openai_compatible`
+- `deepseek_openai`
+- `gemini_openai`
+- `gemini_native`
+- `mock`
+
+It also keeps the previous coarse compatibility values:
+
+- `openai`
+- `deepseek`
+- `gemini`
+- `compatible`
+
+No provider credentials, raw gateway token, service-role key, DB password, provider key, or provider API calls were involved in this patch.
+
+Disposable remote apply status: migration `0014` was applied to the disposable clean Supabase project. The final migration list showed local and remote `0014` aligned. The Supabase CLI again emitted a Docker cache warning while pushing, but the migration apply completed and the remote migration list confirmed `0014`.
+
 ## What Was Not Done
 
 - no old Supabase access
@@ -104,6 +137,6 @@ Passed:
 
 ## Recommended Next Step
 
-Restart the local dev server so it picks up the saved `.env.local` gateway/encryption settings, then retry `/admin/ai-settings` provider create/save.
+Restart the local dev server if needed, then retry `/admin/ai-settings` provider create/save with the Gemini provider profile.
 
-The gateway hash row now exists in the disposable clean Supabase project. If provider create/save still fails, the next check should be the running dev server env state and super-admin session.
+The gateway hash row now exists in the disposable clean Supabase project. Migration `0014` is also applied there, so the clean provider profile constraint now accepts the app's current Gemini provider mode values.
