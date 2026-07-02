@@ -2157,6 +2157,8 @@ function buildPrompt({
     "- For multiple-choice questions, include every visible option in options as {id,label,content_html}. Also include answer_spec.kind='mcq' and answer_spec.correct_option_ids when the correct answer is visible or clearly stated in the source.",
     "- For fill-blank questions with a visible or clearly stated final answer, set question_type='fill_blank' and include answer_spec.kind='fill_blank', final_answers, accepted_answers, equivalence, numeric_tolerance, and case_sensitive.",
     "- If the answer is not visible or not certain, leave answer_spec empty or use only {kind: question_type}; do not invent correct answers.",
+    "- For every question, include solution_source and solution_html when the source shows work, an answer key, an explanation, or enough visible evidence to derive the solution safely.",
+    "- If no solution or explanation is visible or reliable, leave solution_source and solution_html empty and add a warning; do not invent a fake solution.",
     "- Prefer writing content_source and solution_source as clean Markdown + LaTeX. Use $...$ for inline math and $$ blocks for display math.",
     "- Wrap every math variable, expression, equation, and formula in $...$ inside content_html, solution_html, option content_html, content_source, and solution_source so the renderer can detect it.",
     "- Examples: write <p>Find the derivative of $y=x^2\\sin(x)$.</p>, not <p>Find the derivative of y = x^2 sin(x).</p>. Write <p>The derivative is $f'(x)$.</p>, not plain f'(x).",
@@ -2342,6 +2344,11 @@ async function buildImportJson({
     const solutionHtml = solutionFields.html || question.solution_html || "";
     const solutionSource =
       solutionFields.source || stripHtml(question.solution_html) || "";
+    if (!solutionHtml.trim() && !solutionSource.trim()) {
+      extraction.warnings.push(
+        `Question ${globalQuestionIndex + 1}: missing solution/explanation; reviewer must add solution guidance before approval.`,
+      );
+    }
     const questionPayload: Record<string, unknown> = {
       ai_metadata: {
         asset_placeholders: question.asset_placeholders,
@@ -2411,16 +2418,17 @@ async function uploadQuestionAsset({
 
   const assetId = crypto.randomUUID();
   const objectPath = `questions/${questionId}/${assetId}.png`;
+  const label = `${placeholder.replace(/[{}:]/g, "")}.png`;
   const { error: insertError } = await supabase.from("question_assets").insert({
+    alt_text: alt || "AI imported figure",
+    asset_kind: "image",
     created_by: profileId,
-    display_on_detail: true,
+    display_order: 0,
     id: assetId,
-    mime_type: "image/png",
-    object_path: objectPath,
-    original_filename: `${placeholder.replace(/[{}:]/g, "")}.png`,
+    label,
     question_id: questionId,
-    size_bytes: image.length,
-    status: "pending",
+    storage_bucket: QUESTION_ASSETS_BUCKET,
+    storage_path: objectPath,
   });
 
   if (insertError) {
@@ -2437,15 +2445,6 @@ async function uploadQuestionAsset({
   if (uploadError) {
     await supabase.from("question_assets").delete().eq("id", assetId);
     throw new Error(uploadError.message);
-  }
-
-  const { error: updateError } = await supabase
-    .from("question_assets")
-    .update({ status: "ready" })
-    .eq("id", assetId);
-
-  if (updateError) {
-    throw new Error(updateError.message);
   }
 
   const { data } = supabase.storage
@@ -2582,11 +2581,11 @@ async function attachCroppedAssets({
           content_html: nextContentHtml
             ? sanitizeContentHtml(nextContentHtml)
             : "",
-          content_source: nextContentSource,
+          content_source: nextContentSource ?? "",
           solution_html: nextSolutionHtml
             ? sanitizeContentHtml(nextSolutionHtml)
             : null,
-          solution_source: nextSolutionSource,
+          solution_source: nextSolutionSource ?? "",
           updated_by: profileId,
         })
         .eq("id", created.id);

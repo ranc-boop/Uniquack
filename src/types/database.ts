@@ -226,14 +226,14 @@ export type RubricStep = {
 
 export type QuestionAsset = {
   id: string;
-  question_id: string | null;
-  object_path: string;
-  mime_type: string;
-  size_bytes: number;
-  original_filename: string;
-  status: "pending" | "ready";
-  display_on_detail: boolean;
-  created_by: string;
+  question_id: string;
+  asset_kind: "image" | "pdf" | "video" | "other";
+  storage_bucket: string;
+  storage_path: string;
+  label: string | null;
+  alt_text: string | null;
+  display_order: number;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 };

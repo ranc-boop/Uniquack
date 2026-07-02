@@ -5,6 +5,8 @@ import {
   normalizeAnswerSpec,
   normalizeQuestionOptions,
   optionsToJson,
+  type QuestionAnswerSpec,
+  type QuestionOption,
 } from "@/lib/questions/answer-spec";
 import { parseImportQuestionsJsonWithLatexRepair } from "@/lib/import-json/latex-repair";
 import { markdownLatexToHtml } from "@/lib/markdown-latex/markdown";
@@ -139,6 +141,109 @@ function looseStringArray(value: unknown) {
           .map((item) => item.trim())
           .filter(Boolean)
       : [];
+}
+
+function plainRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function answerSpecCorrectOptionValues(value: unknown) {
+  const record = plainRecord(value);
+
+  return [
+    ...looseStringArray(record.correct_option_ids),
+    ...looseStringArray(record.correct_option_id),
+    ...looseStringArray(record.correct_answers),
+    ...looseStringArray(record.correct_answer),
+    ...looseStringArray(record.answer),
+  ];
+}
+
+function normalizeAnswerChoiceToken(value: string) {
+  return value
+    .trim()
+    .replace(/^[([{\s]+/, "")
+    .replace(/[)\]}\s.:;-]+$/, "")
+    .toLowerCase();
+}
+
+function resolveCorrectOptionIds({
+  candidates,
+  options,
+}: {
+  candidates: string[];
+  options: QuestionOption[];
+}) {
+  const idByToken = new Map<string, string>();
+
+  for (const option of options) {
+    for (const value of [option.id, option.label]) {
+      const token = normalizeAnswerChoiceToken(value);
+      if (token) {
+        idByToken.set(token, option.id);
+      }
+    }
+  }
+
+  return Array.from(
+    new Set(
+      candidates
+        .map((candidate) => idByToken.get(normalizeAnswerChoiceToken(candidate)))
+        .filter((candidate): candidate is string => Boolean(candidate)),
+    ),
+  );
+}
+
+function buildImportAnswerSpec({
+  correctAnswerValues,
+  itemAnswerSpec,
+  questionType,
+  options,
+  finalAnswerValues,
+  acceptedAnswerValues,
+}: {
+  correctAnswerValues: string[];
+  itemAnswerSpec: unknown;
+  questionType: "mcq" | "fill_blank" | "frq" | "mixed";
+  options: QuestionOption[];
+  finalAnswerValues: string[];
+  acceptedAnswerValues: string[];
+}): QuestionAnswerSpec {
+  if (questionType === "mcq" && options.length) {
+    const correctOptionIds = resolveCorrectOptionIds({
+      candidates: [
+        ...answerSpecCorrectOptionValues(itemAnswerSpec),
+        ...correctAnswerValues,
+      ],
+      options,
+    });
+
+    return normalizeAnswerSpec({
+      allow_multiple: correctOptionIds.length > 1,
+      correct_option_ids: correctOptionIds,
+      kind: "mcq",
+    });
+  }
+
+  if (itemAnswerSpec !== undefined) {
+    return normalizeAnswerSpec(itemAnswerSpec);
+  }
+
+  if (questionType === "fill_blank") {
+    return normalizeAnswerSpec({
+      accepted_answers: acceptedAnswerValues.length
+        ? acceptedAnswerValues
+        : finalAnswerValues,
+      equivalence: "math",
+      final_answers: finalAnswerValues,
+      kind: "fill_blank",
+      numeric_tolerance: 0,
+    });
+  }
+
+  return normalizeAnswerSpec({ kind: questionType });
 }
 
 function inferQuestionType({
@@ -370,26 +475,14 @@ export function evaluateBatchImportItems({
       options,
       rawType: item.question_type ?? item.type,
     });
-    const answerSpec = normalizeAnswerSpec(
-      item.answer_spec ??
-        (questionType === "mcq"
-          ? {
-              allow_multiple: correctAnswerValues.length > 1,
-              correct_option_ids: correctAnswerValues,
-              kind: "mcq",
-            }
-          : questionType === "fill_blank"
-            ? {
-                accepted_answers: acceptedAnswerValues.length
-                  ? acceptedAnswerValues
-                  : finalAnswerValues,
-                equivalence: "math",
-                final_answers: finalAnswerValues,
-                kind: "fill_blank",
-                numeric_tolerance: 0,
-              }
-            : {}),
-    );
+    const answerSpec = buildImportAnswerSpec({
+      acceptedAnswerValues,
+      correctAnswerValues,
+      finalAnswerValues,
+      itemAnswerSpec: item.answer_spec,
+      options,
+      questionType,
+    });
 
     if (questionType === "mcq" && !options.length) {
       warnings.push("MCQ import has no options; automatic grading will not work until options are added.");
@@ -399,7 +492,14 @@ export function evaluateBatchImportItems({
       answerSpec.kind === "mcq" &&
       !answerSpec.correct_option_ids?.length
     ) {
-      warnings.push("MCQ import has no correct_option_ids in answer_spec.");
+      warnings.push(
+        "MCQ import has options but no reliable correct_option_ids in answer_spec; review the correct answer before approving.",
+      );
+    }
+    if (!normalizedContent.solution_html && !normalizedContent.solution_source) {
+      warnings.push(
+        "Missing solution or explanation; add solution guidance during review before approving.",
+      );
     }
 
     if (item.video_url && !videoUrl) warnings.push("Invalid video_url was ignored.");

@@ -44,6 +44,17 @@ const batchJson = await read("src/lib/batch-import/json.ts");
 assert(batchJson.includes("tag_ids"), "batch import does not accept tag_ids");
 assert(!batchJson.includes(`tag_${"slugs"}`), "batch import still accepts legacy tag identifier arrays");
 assert(!batchJson.includes(`tag_${"names"}`), "batch import still accepts legacy tag name arrays");
+assert(
+  batchJson.includes("function buildImportAnswerSpec") &&
+    batchJson.includes('kind: "mcq"') &&
+    batchJson.includes("resolveCorrectOptionIds") &&
+    batchJson.includes("MCQ import has options but no reliable correct_option_ids"),
+  "batch import must repair MCQ answer_spec from options/correct answers without leaving MCQs as FRQ",
+);
+assert(
+  batchJson.includes("Missing solution or explanation; add solution guidance during review before approving."),
+  "batch import must surface missing AI-generated solution/explanation as a review warning",
+);
 console.log("PASS batch import uses exact tag_ids only");
 
 const batchImportService = await read("src/lib/batch-import/service.ts");
@@ -83,6 +94,29 @@ assert(
   aiPdfImportActionsOrg.includes("resolveImportOrganizationContext") &&
     aiPdfImportActionsOrg.includes("organization_id: organizationContext.organizationId"),
   "AI PDF import batches must preserve organization_id at source upload reservation",
+);
+const aiPdfImportService = await read("src/lib/ai-pdf-import/service.ts");
+const questionAssetsStorageMigration = await read(
+  "supabase/clean-migrations/0015_question_assets_storage_bucket.sql",
+);
+assert(
+  aiPdfImportService.includes("storage_bucket: QUESTION_ASSETS_BUCKET") &&
+    aiPdfImportService.includes("storage_path: objectPath") &&
+    aiPdfImportService.includes('asset_kind: "image"') &&
+    !aiPdfImportService.includes("display_on_detail: true"),
+  "AI PDF crop uploads must use clean question_assets schema fields",
+);
+assert(
+  aiPdfImportService.includes("missing solution/explanation; reviewer must add solution guidance before approval"),
+  "AI PDF import must warn when provider output lacks solution/explanation",
+);
+assert(
+  questionAssetsStorageMigration.includes("'question-assets'") &&
+    questionAssetsStorageMigration.includes("storage.buckets") &&
+    questionAssetsStorageMigration.includes("question_assets_staff_upload") &&
+    questionAssetsStorageMigration.includes("qa.storage_path = name") &&
+    questionAssetsStorageMigration.includes("private.is_org_staff"),
+  "clean Supabase must create question-assets bucket and staff-only storage policies",
 );
 console.log("PASS AI/batch import persistence carries organization context without auto-publish");
 

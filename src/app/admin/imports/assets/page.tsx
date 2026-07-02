@@ -40,7 +40,7 @@ export default async function AdminImportAssetsPage() {
       ? await Promise.all([
           supabase
             .from("question_assets")
-            .select("question_id, original_filename, object_path")
+            .select("question_id, label, alt_text, storage_path")
             .in("question_id", questionIds)
             .limit(BULK_ASSET_EXISTING_FILE_LIMIT),
           supabase
@@ -56,8 +56,12 @@ export default async function AdminImportAssetsPage() {
       .filter((asset) => asset.question_id)
       .map((asset) => ({
         fileKind: "image" as const,
-        objectPath: asset.object_path,
-        originalFilename: asset.original_filename,
+        objectPath: asset.storage_path,
+        originalFilename:
+          asset.label?.trim() ||
+          asset.alt_text?.trim() ||
+          asset.storage_path?.split("/").pop() ||
+          "Question image",
         questionId: asset.question_id as string,
       })),
     ...(existingSourceFiles ?? [])

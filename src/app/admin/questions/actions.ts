@@ -372,7 +372,7 @@ async function deleteQuestionById({
 }) {
   const { data: assets, error: assetsError } = await supabase
     .from("question_assets")
-    .select("id, object_path")
+    .select("id, storage_path")
     .eq("question_id", questionId);
 
   if (assetsError) {
@@ -382,7 +382,7 @@ async function deleteQuestionById({
   if (assets?.length) {
     const { error: storageError } = await supabase.storage
       .from(QUESTION_ASSETS_BUCKET)
-      .remove(assets.map((asset) => asset.object_path));
+      .remove(assets.map((asset) => asset.storage_path));
 
     if (storageError) {
       throw new Error(storageError.message);
