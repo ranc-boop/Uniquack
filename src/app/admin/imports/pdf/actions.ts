@@ -604,7 +604,7 @@ export async function resetAIPdfImportOutputs(input: unknown) {
   if (draftQuestionIds.length) {
     const { data: assets, error: assetsError } = await supabase
       .from("question_assets")
-      .select("id, object_path")
+      .select("id, storage_path")
       .in("question_id", draftQuestionIds);
 
     if (assetsError) {
@@ -613,7 +613,7 @@ export async function resetAIPdfImportOutputs(input: unknown) {
 
     const assetIds = uniqueStrings((assets ?? []).map((asset) => asset.id));
     const assetPaths = uniqueStrings(
-      (assets ?? []).map((asset) => asset.object_path),
+      (assets ?? []).map((asset) => asset.storage_path),
     );
     storageAssetPaths = assetPaths;
 

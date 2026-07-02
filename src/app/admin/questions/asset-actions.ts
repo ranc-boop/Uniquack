@@ -24,6 +24,19 @@ export type QuestionAssetView = {
   displayOnDetail: boolean;
 };
 
+function assetDisplayName(asset: {
+  alt_text?: string | null;
+  label?: string | null;
+  storage_path?: string | null;
+}) {
+  return (
+    asset.label?.trim() ||
+    asset.alt_text?.trim() ||
+    asset.storage_path?.split("/").pop() ||
+    "Question image"
+  );
+}
+
 export async function ensureQuestionDraftForUpload(input: unknown) {
   const profile = await requireAdmin();
   const parsed = ensureQuestionDraftForUploadSchema.parse(input);
@@ -114,14 +127,15 @@ export async function reserveQuestionAssetUpload(input: unknown) {
   const assetId = crypto.randomUUID();
   const objectPath = `questions/${parsed.questionId}/${assetId}.${extension}`;
   const { error: assetError } = await supabase.from("question_assets").insert({
-    id: assetId,
-    question_id: parsed.questionId,
-    object_path: objectPath,
-    mime_type: parsed.mimeType,
-    size_bytes: parsed.sizeBytes,
-    original_filename: parsed.originalFilename,
-    status: "pending",
+    alt_text: parsed.originalFilename,
+    asset_kind: "image",
     created_by: profile.id,
+    display_order: 0,
+    id: assetId,
+    label: parsed.originalFilename,
+    question_id: parsed.questionId,
+    storage_bucket: QUESTION_ASSETS_BUCKET,
+    storage_path: objectPath,
   });
 
   if (assetError) {
@@ -150,9 +164,7 @@ export async function finalizeQuestionAssetUpload(input: unknown) {
   const supabase = await createClient();
   const { data: asset, error: assetError } = await supabase
     .from("question_assets")
-    .select(
-      "id, question_id, object_path, original_filename, status, display_on_detail",
-    )
+    .select("id, question_id, storage_path, label, alt_text")
     .eq("id", parsed.assetId)
     .maybeSingle();
 
@@ -165,7 +177,7 @@ export async function finalizeQuestionAssetUpload(input: unknown) {
   }
 
   const directory = `questions/${asset.question_id}`;
-  const filename = asset.object_path.slice(directory.length + 1);
+  const filename = asset.storage_path.slice(directory.length + 1);
   const { data: objects, error: listError } = await supabase.storage
     .from(QUESTION_ASSETS_BUCKET)
     .list(directory, { search: filename });
@@ -178,27 +190,16 @@ export async function finalizeQuestionAssetUpload(input: unknown) {
     throw new Error("Uploaded image was not found in storage.");
   }
 
-  if (asset.status !== "ready") {
-    const { error: updateError } = await supabase
-      .from("question_assets")
-      .update({ status: "ready" })
-      .eq("id", asset.id);
-
-    if (updateError) {
-      throw new Error(updateError.message);
-    }
-  }
-
   const { data } = supabase.storage
     .from(QUESTION_ASSETS_BUCKET)
-    .getPublicUrl(asset.object_path);
+    .getPublicUrl(asset.storage_path);
 
   return {
     id: asset.id,
     questionId: asset.question_id,
-    originalFilename: asset.original_filename,
+    originalFilename: assetDisplayName(asset),
     publicUrl: data.publicUrl,
-    displayOnDetail: asset.display_on_detail,
+    displayOnDetail: true,
   } satisfies QuestionAssetView;
 }
 
@@ -208,10 +209,8 @@ export async function updateQuestionAssetDisplay(input: unknown) {
   const supabase = await createClient();
   const { data: asset, error } = await supabase
     .from("question_assets")
-    .update({ display_on_detail: parsed.displayOnDetail })
-    .eq("id", parsed.assetId)
-    .eq("status", "ready")
     .select("id, question_id")
+    .eq("id", parsed.assetId)
     .single();
 
   if (error) {
@@ -225,7 +224,7 @@ export async function updateQuestionAssetDisplay(input: unknown) {
   revalidatePath("/admin/questions");
   return {
     assetId: asset.id,
-    displayOnDetail: parsed.displayOnDetail,
+    displayOnDetail: true,
   };
 }
 
@@ -235,7 +234,7 @@ export async function deleteQuestionAsset(input: unknown) {
   const supabase = await createClient();
   const { data: asset, error: assetError } = await supabase
     .from("question_assets")
-    .select("id, object_path")
+    .select("id, storage_path")
     .eq("id", parsed.assetId)
     .maybeSingle();
 
@@ -249,7 +248,7 @@ export async function deleteQuestionAsset(input: unknown) {
 
   const { error: storageError } = await supabase.storage
     .from(QUESTION_ASSETS_BUCKET)
-    .remove([asset.object_path]);
+    .remove([asset.storage_path]);
 
   if (storageError) {
     throw new Error(storageError.message);

@@ -160,10 +160,8 @@ export default async function QuestionDetailPage({
       .maybeSingle(),
     supabase
       .from("question_assets")
-      .select("id, object_path, original_filename")
+      .select("id, storage_path, label, alt_text")
       .eq("question_id", question.id)
-      .eq("status", "ready")
-      .eq("display_on_detail", true)
       .order("created_at", { ascending: true }),
     supabase
       .from("question_taxonomy_assignments")
@@ -203,11 +201,15 @@ export default async function QuestionDetailPage({
   const questionImages: QuestionDetailImage[] = (displayedAssets ?? []).map((asset) => {
     const { data } = supabase.storage
       .from(QUESTION_ASSETS_BUCKET)
-      .getPublicUrl(asset.object_path);
+      .getPublicUrl(asset.storage_path);
 
     return {
       id: asset.id,
-      originalFilename: asset.original_filename,
+      originalFilename:
+        asset.label?.trim() ||
+        asset.alt_text?.trim() ||
+        asset.storage_path?.split("/").pop() ||
+        "Question image",
       publicUrl: data.publicUrl,
     };
   });

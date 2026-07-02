@@ -355,10 +355,7 @@ export default async function AdminQuestionsPage({
       focusedQuestionId && orderedQuestionIds.length
         ? supabase
             .from("question_assets")
-            .select(
-              "id, question_id, object_path, original_filename, display_on_detail",
-            )
-            .eq("status", "ready")
+            .select("id, question_id, storage_path, label, alt_text")
             .in("question_id", orderedQuestionIds)
         : Promise.resolve({ data: [], error: null }),
       focusedQuestionId && orderedQuestionIds.length
@@ -429,14 +426,18 @@ export default async function AdminQuestionsPage({
     const current = assetsByQuestionId.get(asset.question_id) ?? [];
     const { data } = supabase.storage
       .from(QUESTION_ASSETS_BUCKET)
-      .getPublicUrl(asset.object_path);
+      .getPublicUrl(asset.storage_path);
 
     current.push({
       id: asset.id,
       questionId: asset.question_id,
-      originalFilename: asset.original_filename,
+      originalFilename:
+        asset.label?.trim() ||
+        asset.alt_text?.trim() ||
+        asset.storage_path?.split("/").pop() ||
+        "Question image",
       publicUrl: data.publicUrl,
-      displayOnDetail: asset.display_on_detail,
+      displayOnDetail: true,
     });
     assetsByQuestionId.set(asset.question_id, current);
   }

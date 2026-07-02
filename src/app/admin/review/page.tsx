@@ -282,11 +282,8 @@ export default async function AdminReviewPage({
           .limit(relatedRowLimit),
         supabase
           .from("question_assets")
-          .select(
-            "question_id, id, object_path, original_filename, display_on_detail",
-          )
+          .select("question_id, id, storage_path, label, alt_text")
           .in("question_id", questionIds)
-          .eq("status", "ready")
           .limit(relatedRowLimit),
         supabase
           .from("question_source_files")
@@ -368,21 +365,25 @@ export default async function AdminReviewPage({
   }
 
   for (const asset of questionAssets ?? []) {
-    if (!asset.question_id || !asset.object_path) {
+    if (!asset.question_id || !asset.storage_path) {
       continue;
     }
 
     const { data } = supabase.storage
       .from(QUESTION_ASSETS_BUCKET)
-      .getPublicUrl(asset.object_path);
+      .getPublicUrl(asset.storage_path);
 
     const current = assetsByQuestionId.get(asset.question_id) ?? [];
     current.push({
       id: asset.id,
       questionId: asset.question_id,
-      originalFilename: asset.original_filename,
+      originalFilename:
+        asset.label?.trim() ||
+        asset.alt_text?.trim() ||
+        asset.storage_path.split("/").pop() ||
+        "Question image",
       publicUrl: data.publicUrl,
-      displayOnDetail: asset.display_on_detail,
+      displayOnDetail: true,
     });
     assetsByQuestionId.set(asset.question_id, current);
   }
