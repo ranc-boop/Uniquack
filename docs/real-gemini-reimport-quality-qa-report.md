@@ -4,66 +4,67 @@ Date: 2026-07-02
 
 ## Executive summary
 
-The AI PDF import draft quality fixes are present on latest `main`, including source metadata, organization context, MCQ normalization, missing-solution warnings, and clean `question_assets` storage fields.
+The previous QA blocker is resolved for the non-interactive QA path. The rerun used an authenticated clean Supabase admin session with the same provider gateway RPC used by the app, then executed a real Gemini Native PDF AI import against a tiny synthetic PDF fixture.
 
-A fresh real Gemini reimport was attempted for this QA pass, but it was blocked before any provider call or import batch creation. Safe provider metadata shows an enabled Gemini Native PDF provider exists in the clean Supabase database, but the provider gateway RPC used by the import runtime returned no enabled providers from the non-interactive QA runner. The runner could not establish an authenticated clean Supabase admin session using the local smoke credentials, and service-role table access is not equivalent to the app gateway path because the gateway RPC also checks admin context.
+Result: the real Gemini import completed and created one draft Review question. The draft stayed unpublished, MCQ normalization produced a non-FRQ answer spec, solution fields were populated, source metadata was present, taxonomy assignments stayed `pending_review`, and organization alignment matched the authenticated profile default organization.
 
-No provider API key, gateway token, encryption key, anon key, service-role key, raw provider response, or full prompt was printed or committed.
+No provider API key, gateway token, encryption key, anon key, service-role key, password, raw provider response, or full prompt was printed or committed.
 
-## Main fix presence
+## Previous blocker
 
-Confirmed in latest `main`:
+The first QA attempt was blocked because it used a service-role table inspection path that did not match the app runtime provider gateway path. The app provider gateway requires an authenticated admin context and `AI_PROVIDER_GATEWAY_TOKEN`; direct service-role table visibility is not equivalent to the real RPC path.
 
-- AI PDF organization context is wired into import batch creation.
-- AI PDF source metadata fields are populated for generated draft questions.
-- Draft quality fixes are merged.
-- `supabase/clean-migrations/0015_question_assets_storage_bucket.sql` exists.
-- Batch import smoke includes clean-schema answer spec handling.
+The corrected QA path signs in through Supabase Auth using local test admin credentials and calls:
+
+```text
+list_enabled_ai_provider_profiles_for_gateway
+```
+
+with the existing local gateway token, using the authenticated anon-session client.
+
+## Authenticated QA path used
+
+- Auth: Supabase Auth sign-in from local smoke env.
+- Role: authenticated clean admin session with provider gateway access.
+- Provider loading: app gateway RPC, not private table bypass.
+- Service role for provider path: not used.
+- Source fixture: synthetic one-page PDF with non-private algebra content.
+- Provider: Gemini Native PDF.
+- Model: `gemini-2.5-flash`.
 
 ## Import summary
 
-- Provider selected: Gemini Native PDF provider metadata was found safely in the clean database.
-- Model: `gemini-2.5-flash`.
-- Fresh reimport status: blocked before import batch creation.
-- Provider call result: not executed.
-- Source file: synthetic PDF fixture was prepared but not uploaded because provider loading was blocked.
-- Drafts created: 0 in this QA run.
-- Reached Review Drafts: no new Review Draft batch was created in this QA run.
-
-## Blocking detail
-
-The clean database contains enabled Gemini provider metadata, but:
-
-- `list_enabled_ai_provider_profiles_for_gateway` returned an empty provider list in the QA runner.
-- Re-running the safe gateway hash setup helper updated the existing gateway token hash row and confirmed raw token material was not stored.
-- The gateway RPC still returned no enabled provider rows afterward.
-- The QA runner could not sign in as the clean admin using the local smoke env credentials, so it could not reproduce the browser's authenticated admin context.
-
-This blocks automated real-provider reimport verification without weakening gateway checks or bypassing the app provider path.
+- Batch ID: `f3ebacf3-5c21-4c3e-b11e-8417201e9c8a`
+- Source file: `real-gemini-qa-1783035823724.pdf`
+- Page count: 1
+- Batch status: `imported`
+- AI PDF phase: `completed`
+- Draft questions created: 1
+- Import items imported: 1
+- Warning count: 4
+- Reached Review Draft flow: yes, created question status is `draft`.
 
 ## Solution/explanation quality check
 
-Not exercised with a new real import in this run because provider loading was blocked before import creation.
+- Drafts with empty solution/explanation fields: 0
+- Result: passed for this synthetic import.
 
-Expected post-fix behavior remains:
-
-- Missing solution/explanation fields should create review warnings instead of silently producing complete-looking drafts.
-- Prompt rules request real solution fields without inventing answers.
+The generated draft included non-empty solution content/source fields. No missing-solution blocker was observed in this run.
 
 ## MCQ answer_spec check
 
-Not exercised with a new real import in this run because provider loading was blocked before import creation.
+- MCQ drafts with options: 1
+- MCQ drafts with non-FRQ `answer_spec.kind`: 1
+- Result: passed.
 
-Expected post-fix behavior remains:
-
-- MCQ drafts with options should not retain `answer_spec.kind = "frq"`.
-- MCQ normalization should produce a non-FRQ answer spec when options are present.
+The previous MCQ normalization issue was not reproduced. The MCQ draft did not remain with `answer_spec.kind = "frq"`.
 
 ## Asset/crop attachment check
 
-Not exercised with a new real import in this run because no new draft assets were created.
+- Question asset rows created: 0
+- Clean asset field compatibility: passed.
 
-Confirmed code and migration support the clean fields:
+The synthetic PDF did not require image crops, so no `question_assets` rows were created. The clean-schema `display_on_detail` mismatch did not occur, and the QA script verifies any created asset rows using the current clean fields:
 
 - `asset_kind`
 - `storage_bucket`
@@ -73,61 +74,60 @@ Confirmed code and migration support the clean fields:
 
 ## Review Draft / no-auto-publish confirmation
 
-No new generated drafts were created in this QA run.
+- Auto-published questions: 0
+- Created question statuses: `draft`
+- Result: passed.
 
-Safety status:
-
-- No drafts were approved.
-- No drafts were rejected.
-- No questions were published.
-- No auto-publish path was exercised or enabled.
+No draft was approved, rejected, or published during this QA run.
 
 ## Source/provenance metadata confirmation
 
-Not exercised with a new real import in this run because no new import batch was created.
+- Questions missing source metadata: 0
+- Result: passed.
 
-The merged source metadata fix is present in code and should populate the clean schema source fields on the next successful import.
+The generated draft contained source/provenance metadata in the current clean-schema fields.
 
 ## Organization alignment confirmation
 
-Not exercised with a new real import in this run because no new import batch was created.
-
-The merged organization context fix is present in code and should align import rows with the active `edustruct-clean-mvp` organization context on the next successful import.
+- Batch organization matched authenticated profile default organization: yes.
+- Generated questions with wrong organization: 0.
+- Result: passed.
 
 ## Taxonomy pending_review confirmation
 
-Not exercised with a new real import in this run because no new draft rows were created.
+- Taxonomy assignments created: 2
+- Assignments with `pending_review`: 2
+- Assignment source: `batch_import`
+- Result: passed.
 
-No official taxonomy assignments were written by this QA run.
+No official taxonomy assignment was auto-approved.
 
 ## Provider log safety confirmation
 
-No real provider call was made in this QA run, so no new provider operation log was created.
-
-Safety checks observed:
-
-- No raw provider key material was printed.
-- No raw provider response was printed.
-- No full prompt was printed.
-- Only safe provider metadata was inspected.
+No provider operation log rows were returned for this provider in the latest metadata-only check. The QA path did not print raw provider responses, prompts, gateway token, encryption key, or provider key material.
 
 ## Tests run
 
-- `npm.cmd run lint` passed.
-- `npm.cmd run build` passed.
-- `node scripts/security-smoke.mjs` passed.
-- `node scripts/supabase-rls-smoke.mjs` passed after rerun with network access.
-- `node scripts/route-smoke.mjs` passed.
-- `npm.cmd run smoke` passed after rerun with network access.
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `node scripts/security-smoke.mjs`
+- `node scripts/supabase-rls-smoke.mjs`
+- `node scripts/route-smoke.mjs`
+- `npm.cmd run smoke`
 
-Initial sandboxed RLS/network attempts hit `fetch failed`; the same checks passed when allowed network access to the clean Supabase project.
+Networked Supabase checks were run with network access where needed.
 
 ## Remaining blockers before manual approval
 
-1. A real fresh Gemini reimport still needs to be run from an authenticated clean admin browser session, or the QA runner needs a valid authenticated clean admin session.
-2. The provider gateway visibility mismatch should be investigated: safe direct metadata shows the enabled Gemini provider, while the gateway list RPC returned no enabled providers in the non-interactive QA runner.
-3. Once a fresh import succeeds, inspect the newly created Review Draft batch for solution fields, MCQ answer specs, asset rows, source/provenance metadata, organization alignment, and pending taxonomy state before manual approval.
+No blocking schema/provider issue was found in this synthetic real Gemini reimport.
+
+Manual review is still required before approving any generated draft:
+
+1. Review the generated draft in `/admin/review`.
+2. Check the 4 AI PDF warnings from the import summary.
+3. Confirm the generated solution and MCQ answer key are pedagogically correct.
+4. Confirm the pending taxonomy assignments are appropriate before approval.
 
 ## Recommended next task
 
-Fix or document the clean Supabase provider gateway QA execution path so automated real-provider import QA can run with the same authenticated admin context as the browser app. Then rerun this QA against a fresh Gemini import and inspect the newly generated Review Draft batch.
+Run a manual Review Draft QA pass on the generated synthetic draft, then repeat with a representative calculus packet if the content is safe to use for provider testing.
