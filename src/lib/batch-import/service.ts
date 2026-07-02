@@ -163,6 +163,37 @@ type ImportBatchSourceType =
   | "ai_image"
   | "ai_word";
 
+function requiredQuestionSourceText(value: string | null | undefined) {
+  return typeof value === "string" ? value : "";
+}
+
+function questionSourceKindForImport(sourceType: ImportBatchSourceType) {
+  return sourceType === "ai_pdf" ||
+    sourceType === "ai_image" ||
+    sourceType === "ai_word"
+    ? "ai_import"
+    : "package_import";
+}
+
+function questionSourceLabelForImport({
+  batchId,
+  sourceType,
+}: {
+  batchId: string;
+  sourceType: ImportBatchSourceType;
+}) {
+  const prefix =
+    sourceType === "ai_pdf"
+      ? "ai_pdf_import"
+      : sourceType === "ai_image"
+        ? "ai_image_import"
+        : sourceType === "ai_word"
+          ? "ai_word_import"
+          : sourceType;
+
+  return `${prefix}:${batchId}`;
+}
+
 async function loadImportContext({
   allowDraftTags = false,
   supabase,
@@ -382,15 +413,20 @@ export async function importBatchImportJson({
         question_code: normalized.question_code,
         title: normalized.title,
         content_html: normalized.content_html,
-        content_source: normalized.content_source,
+        content_source: requiredQuestionSourceText(normalized.content_source),
         content_source_format: normalized.content_source_format,
         solution_html: normalized.solution_html,
-        solution_source: normalized.solution_source,
+        solution_source: requiredQuestionSourceText(normalized.solution_source),
         solution_source_format: normalized.solution_source_format,
         answer_spec: normalized.answer_spec,
         difficulty_rating: normalized.difficulty_rating,
         options: normalized.options,
         question_type: normalized.question_type,
+        source: questionSourceLabelForImport({
+          batchId: activeBatchId,
+          sourceType,
+        }),
+        source_kind: questionSourceKindForImport(sourceType),
         status: "draft",
         created_by: profileId,
         updated_by: profileId,
