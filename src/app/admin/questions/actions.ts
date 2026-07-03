@@ -46,6 +46,39 @@ function safeReturnTo(value: string) {
 
 const taxonomyTagIdPattern = /^math\.[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
 
+type PublishReviewDraftQuestionResult = {
+  approved_taxonomy_assignment_count: number;
+  question_id: string;
+  source_review_item_id: string | null;
+};
+
+type PublishReviewDraftQuestionRpc = {
+  rpc(
+    functionName: "publish_review_draft_questions",
+    args: { question_ids: string[] },
+  ): Promise<{
+    data: PublishReviewDraftQuestionResult[] | null;
+    error: { message: string } | null;
+  }>;
+};
+
+type QuestionPublishMetadata = {
+  source_kind: string | null;
+  source_review_item_id: string | null;
+  status: string;
+};
+
+type QuestionPublishMetadataQuery = {
+  select(columns: string): {
+    eq(column: "id", value: string): {
+      single(): Promise<{
+        data: QuestionPublishMetadata | null;
+        error: { message: string } | null;
+      }>;
+    };
+  };
+};
+
 function taxonomyTagIdsFromForm(formData: FormData, prefix = "question_tax") {
   const tagIds = new Set<string>();
 
@@ -115,12 +148,10 @@ async function replaceQuestionTaxonomyAssignments({
   }
 }
 
-async function approveQuestionTaxonomyAssignmentsForPublish({
-  profileId,
+async function publishQuestionsWithReviewLineage({
   questionIds,
   supabase,
 }: {
-  profileId: string;
   questionIds: string[];
   supabase: Awaited<ReturnType<typeof createClient>>;
 }) {
@@ -130,43 +161,23 @@ async function approveQuestionTaxonomyAssignmentsForPublish({
     return;
   }
 
-  const { data: pendingAssignments, error: pendingError } = await supabase
-    .from("question_taxonomy_assignments")
-    .select("question_id, tag_id")
-    .in("question_id", uniqueQuestionIds)
-    .in("review_status", ["pending_review", "needs_review"]);
-
-  if (pendingError) {
-    throw new Error(pendingError.message);
-  }
-
-  if (!pendingAssignments?.length) {
-    return;
-  }
-
-  const { data: approvedAssignments, error } = await supabase
-    .from("question_taxonomy_assignments")
-    .update({
-      approved_at: new Date().toISOString(),
-      approved_by: profileId,
-      review_status: "approved",
-      updated_by: profileId,
-    })
-    .in("question_id", uniqueQuestionIds)
-    .in("review_status", ["pending_review", "needs_review"])
-    .select("question_id, tag_id");
+  const { data: publishedQuestions, error } = await (
+    supabase as unknown as PublishReviewDraftQuestionRpc
+  ).rpc("publish_review_draft_questions", {
+    question_ids: uniqueQuestionIds,
+  });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  if ((approvedAssignments?.length ?? 0) !== pendingAssignments.length) {
+  if ((publishedQuestions?.length ?? 0) !== uniqueQuestionIds.length) {
     throw new Error(
-      "Only approved " +
-        (approvedAssignments?.length ?? 0) +
+      "Only published " +
+        (publishedQuestions?.length ?? 0) +
         " of " +
-        pendingAssignments.length +
-        " pending taxonomy assignment(s).",
+        uniqueQuestionIds.length +
+        " selected question(s).",
     );
   }
 }
@@ -258,17 +269,41 @@ export async function updateQuestion(formData: FormData) {
     const { id, ...values } = parsed;
     const answerData = answerSpecFromFormData(formData);
     questionId = id;
+    const { data: existingQuestion, error: existingQuestionError } = await (
+      supabase.from("questions") as unknown as QuestionPublishMetadataQuery
+    )
+      .select("source_kind, source_review_item_id, status")
+      .eq("id", id)
+      .single();
+
+    if (existingQuestionError) {
+      throw new Error(existingQuestionError.message);
+    }
+
+    if (!existingQuestion) {
+      throw new Error("Question was not found.");
+    }
+
+    const needsGeneratedReviewPublish =
+      values.status === "published" &&
+      existingQuestion.status !== "published" &&
+      ["ai_import", "blueprint_generation"].includes(
+        existingQuestion.source_kind ?? "",
+      ) &&
+      !existingQuestion.source_review_item_id;
+    const updateStatus = needsGeneratedReviewPublish ? "draft" : values.status;
 
     const { error } = await supabase
       .from("questions")
       .update({
         ...values,
+        status: updateStatus,
         ...questionSourceValues(values),
         answer_spec: answerSpecToJson(answerData.answerSpec),
         options: optionsToJson(answerData.options),
         updated_by: profile.id,
         published_at:
-          values.status === "published" ? new Date().toISOString() : null,
+          updateStatus === "published" ? new Date().toISOString() : null,
       })
       .eq("id", id);
 
@@ -283,6 +318,12 @@ export async function updateQuestion(formData: FormData) {
       tagIds: taxonomyTagIdsFromForm(formData),
     });
 
+    if (needsGeneratedReviewPublish) {
+      await publishQuestionsWithReviewLineage({
+        questionIds: [id],
+        supabase,
+      });
+    }
   } catch (error) {
     redirectWithError(returnTo, formatActionError(error));
   }
@@ -305,30 +346,30 @@ export async function updateQuestionStatus(formData: FormData) {
     questionId = parsed.id;
 
     if (parsed.status === "published") {
-      await approveQuestionTaxonomyAssignmentsForPublish({
-        profileId: profile.id,
+      await publishQuestionsWithReviewLineage({
         questionIds: [parsed.id],
         supabase,
       });
-    }
+    } else {
+      const { data: updatedQuestions, error } = await supabase
+        .from("questions")
+        .update({
+          status: parsed.status,
+          updated_by: profile.id,
+          published_at: null,
+        })
+        .eq("id", parsed.id)
+        .select("id");
 
-    const { data: updatedQuestions, error } = await supabase
-      .from("questions")
-      .update({
-        status: parsed.status,
-        updated_by: profile.id,
-        published_at:
-          parsed.status === "published" ? new Date().toISOString() : null,
-      })
-      .eq("id", parsed.id)
-      .select("id");
+      if (error) {
+        throw new Error(error.message);
+      }
 
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    if ((updatedQuestions?.length ?? 0) !== 1) {
-      throw new Error("Question status update did not affect the selected question.");
+      if ((updatedQuestions?.length ?? 0) !== 1) {
+        throw new Error(
+          "Question status update did not affect the selected question.",
+        );
+      }
     }
   } catch (error) {
     redirectWithError("/admin/questions", formatActionError(error));
@@ -464,36 +505,34 @@ export async function bulkUpdateQuestions(formData: FormData) {
       }
 
       if (parsed.status === "published") {
-        await approveQuestionTaxonomyAssignmentsForPublish({
-          profileId: profile.id,
+        await publishQuestionsWithReviewLineage({
           questionIds,
           supabase,
         });
-      }
+      } else {
+        const { data: updatedQuestions, error } = await supabase
+          .from("questions")
+          .update({
+            published_at: null,
+            status: parsed.status,
+            updated_by: profile.id,
+          })
+          .in("id", questionIds)
+          .select("id");
 
-      const { data: updatedQuestions, error } = await supabase
-        .from("questions")
-        .update({
-          published_at:
-            parsed.status === "published" ? new Date().toISOString() : null,
-          status: parsed.status,
-          updated_by: profile.id,
-        })
-        .in("id", questionIds)
-        .select("id");
+        if (error) {
+          throw new Error(error.message);
+        }
 
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if ((updatedQuestions?.length ?? 0) !== questionIds.length) {
-        throw new Error(
-          "Only updated " +
-            (updatedQuestions?.length ?? 0) +
-            " of " +
-            questionIds.length +
-            " selected question(s).",
-        );
+        if ((updatedQuestions?.length ?? 0) !== questionIds.length) {
+          throw new Error(
+            "Only updated " +
+              (updatedQuestions?.length ?? 0) +
+              " of " +
+              questionIds.length +
+              " selected question(s).",
+          );
+        }
       }
 
       if (parsed.status === "published" && returnTo.startsWith("/admin/review")) {

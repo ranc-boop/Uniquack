@@ -37,9 +37,23 @@ const blueprintVersionMigration = await readFile(
   resolve(root, "supabase/migrations/0019_question_blueprint_versions.sql"),
   "utf8",
 );
+const reviewDraftPublishMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0016_review_draft_publish_lineage.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
+);
+assert(
+  reviewDraftPublishMigration.includes("security definer") &&
+    reviewDraftPublishMigration.includes("private.is_teacher_or_admin()") &&
+    reviewDraftPublishMigration.includes("private.is_org_staff(question_row.organization_id)") &&
+    reviewDraftPublishMigration.includes("revoke all on function public.publish_review_draft_questions(uuid[])") &&
+    reviewDraftPublishMigration.includes("from public, anon") &&
+    reviewDraftPublishMigration.includes("grant execute on function public.publish_review_draft_questions(uuid[])") &&
+    reviewDraftPublishMigration.includes("to authenticated"),
+  "Review Draft publish RPC must be teacher/admin scoped and unavailable to anon/public",
 );
 for (const tableName of [
   "question_blueprints",

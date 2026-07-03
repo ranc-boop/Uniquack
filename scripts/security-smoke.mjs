@@ -58,6 +58,7 @@ assert(
 console.log("PASS batch import uses exact tag_ids only");
 
 const batchImportService = await read("src/lib/batch-import/service.ts");
+const adminQuestionActions = await read("src/app/admin/questions/actions.ts");
 assert(
   batchImportService.includes("resolveImportOrganizationContext"),
   "batch import must resolve organization context before persistence",
@@ -117,6 +118,30 @@ assert(
     questionAssetsStorageMigration.includes("qa.storage_path = name") &&
     questionAssetsStorageMigration.includes("private.is_org_staff"),
   "clean Supabase must create question-assets bucket and staff-only storage policies",
+);
+const reviewDraftPublishMigration = await read(
+  "supabase/clean-migrations/0016_review_draft_publish_lineage.sql",
+);
+assert(
+  reviewDraftPublishMigration.includes("create or replace function public.publish_review_draft_questions") &&
+    reviewDraftPublishMigration.includes("source_review_item_id") &&
+    reviewDraftPublishMigration.includes("question_row.source_kind in ('ai_import', 'blueprint_generation')") &&
+    reviewDraftPublishMigration.includes("Review lineage is required before publishing generated question") &&
+    reviewDraftPublishMigration.indexOf("update public.questions as question_update") <
+      reviewDraftPublishMigration.indexOf("update public.question_taxonomy_assignments as assignment") &&
+    reviewDraftPublishMigration.includes("insert into public.review_actions") &&
+    reviewDraftPublishMigration.includes("grant execute on function public.publish_review_draft_questions(uuid[])") &&
+    !reviewDraftPublishMigration.includes("drop constraint questions_ai_or_blueprint_requires_review_lineage"),
+  "Review Draft publish RPC must attach generated-question lineage and publish before approving taxonomy",
+);
+assert(
+  adminQuestionActions.includes("publishQuestionsWithReviewLineage") &&
+    adminQuestionActions.includes('rpc("publish_review_draft_questions"') &&
+    adminQuestionActions.includes("needsGeneratedReviewPublish") &&
+    adminQuestionActions.indexOf("await publishQuestionsWithReviewLineage({") <
+      adminQuestionActions.lastIndexOf('if (parsed.status === "published" && returnTo.startsWith("/admin/review"))') &&
+    !adminQuestionActions.includes("approveQuestionTaxonomyAssignmentsForPublish"),
+  "admin publish actions must use transactional review-lineage RPC instead of pre-approving taxonomy",
 );
 console.log("PASS AI/batch import persistence carries organization context without auto-publish");
 

@@ -4,15 +4,17 @@ Date: 2026-07-03
 
 ## Executive summary
 
-The controlled Review Draft approval smoke was run against the clean Supabase local dev environment using the normal admin Review Draft UI bulk publish workflow.
+The Review Draft approval workflow blocker on the clean Supabase database is fixed.
 
-Result: **failed / blocked**. The selected synthetic QA draft was correctly identified and the normal Review UI action was attempted, but publishing was blocked by the clean schema constraint:
+Previous blocker: publishing a synthetic AI-import draft through the normal Review Draft bulk publish path failed on the clean schema constraint:
 
 ```text
 questions_ai_or_blueprint_requires_review_lineage
 ```
 
-The question remained `draft`, but the workflow had already approved its taxonomy assignments before the question status update failed. This reveals a real workflow blocker and a non-atomic partial-update risk in the current Review Draft publish path.
+Root cause: AI-import-created questions had `source_kind = "ai_import"` but no `source_review_item_id`. The bulk publish action also approved taxonomy assignments before the question publish update failed, leaving a partial state.
+
+Fix: added a transactional clean-schema RPC, `public.publish_review_draft_questions(uuid[])`, and routed Review/Admin publish actions through it. The RPC attaches real review lineage, publishes the question, approves pending taxonomy assignments, updates review item/action state, and writes a status event in one database transaction.
 
 No secrets were printed or committed. `.env.local` was not modified.
 
@@ -24,165 +26,142 @@ No secrets were printed or committed. `.env.local` was not modified.
 - Question code: `AI-F3EBACF3-001`
 - Title: `Solve linear equation`
 - Source type: `ai_pdf`
-- Batch status: `imported`
-- AI PDF phase: `completed`
+- Question source kind: `ai_import`
 
 This is the tiny synthetic Gemini QA import batch, not a `calc_3.1_packet.pdf` batch.
 
-## Pre-approval draft integrity summary
+## Review lineage fix
 
-Before the approval attempt:
-
-- Batch contained exactly 1 imported item.
-- Batch contained exactly 1 linked draft question.
-- Draft status: `draft`
-- Question text existed.
-- Solution/explanation existed.
-- Question type: `mcq`
-- `answer_spec.kind`: `mcq`
-- Options: 4
-- Source/provenance fields existed.
-- Organization matched the authenticated clean admin profile default organization.
-- Taxonomy assignments: 2
-- Taxonomy review state: `pending_review`
-
-## Approval workflow path used
-
-The smoke used the normal admin Review Draft UI path:
+Added clean migration:
 
 ```text
-/admin/review?batch=f3ebacf3-5c21-4c3e-b11e-8417201e9c8a
+supabase/clean-migrations/0016_review_draft_publish_lineage.sql
 ```
 
-Actions performed:
-
-1. Signed into the local dev app as the clean Supabase admin test account.
-2. Opened the Review Draft batch filter page.
-3. Confirmed the page showed only `AI-F3EBACF3-001`.
-4. Selected the single checkbox for that question.
-5. Submitted the existing bulk status form with status `Published`.
-
-The normal UI form calls `bulkUpdateQuestions` from `src/app/admin/questions/actions.ts`.
-
-## Approval result
-
-The approval did not complete.
-
-The browser returned this action error:
+The migration creates:
 
 ```text
-new row for relation "questions" violates check constraint "questions_ai_or_blueprint_requires_review_lineage"
+public.publish_review_draft_questions(question_ids uuid[])
 ```
 
-Post-attempt state:
+For `ai_import` / `blueprint_generation` questions, the RPC requires review lineage before publish. If the question already has `source_review_item_id`, it validates that the review item is accessible and belongs to the same organization. If not, it resolves real lineage from `import_batch_items.created_question_id` and creates a bounded `review_batches` / `review_draft_items` lineage record for the existing imported draft.
 
-- Question status: `draft`
-- `published_at`: null
-- `source_kind`: `ai_import`
+It does not remove or weaken `questions_ai_or_blueprint_requires_review_lineage`.
+
+## Transaction/order safety fix
+
+Publishing now happens inside one database transaction through the RPC:
+
+1. Resolve or create review lineage.
+2. Update `questions.source_review_item_id`, `status`, `published_at`, and `reviewed_by`.
+3. Approve pending/needs-review taxonomy assignments.
+4. Mark the review draft item approved.
+5. Insert a `review_actions` audit row.
+6. Insert a `question_status_events` row.
+
+If lineage cannot be resolved, the RPC raises before publishing and before taxonomy approval.
+
+`bulkUpdateQuestions`, `updateQuestionStatus`, and direct question edit publish paths now call this RPC for publish actions instead of pre-approving taxonomy assignments in app code.
+
+The Review UI error redirect query composition was also fixed so return URLs that already contain query parameters use `&error=...` behavior via `URLSearchParams`.
+
+## Migration status
+
+The clean migration was applied to the disposable clean Supabase project.
+
+Verification:
+
+- `migration_applied=true`
+- `migration_record=recorded_version_name_statements`
+- `rpc_present=true`
+
+The local machine could not use the IPv6 direct DB host, so the migration was applied through the working Supabase pooler host for the disposable project. No old Supabase project was touched.
+
+## Previous partial state handling
+
+The previous failed smoke left the selected synthetic QA draft with:
+
+- question status: `draft`
 - `source_review_item_id`: null
-- Matching `review_draft_items`: 0
-- Public search result for `AI-F3EBACF3-001`: not found
+- taxonomy assignments: already `approved`
 
-## Partial taxonomy update result
+For the re-test, the same isolated synthetic QA draft was reused. This validated that the new RPC can safely handle the previous partial synthetic state by attaching real review lineage and publishing the question without touching calc packet drafts. Because taxonomy assignments were already approved from the previous failed run, the runtime re-test did not need to change their state again; static smoke now verifies that the RPC publishes the question before taxonomy approval for fresh cases.
 
-The same workflow did update taxonomy assignments before the publish failure:
+## Approval smoke result
 
-- Taxonomy assignments: 2
-- Assignment states after failed publish: `approved`
-- Assignment source: `batch_import`
+The approval smoke published exactly one synthetic question:
 
-This means the publish action is not atomic for AI-imported questions. It approves taxonomy assignments before the final question status update can fail.
+- Question ID: `13ebfc76-7f5f-48cb-8d79-cd55880bf2da`
+- Question code: `AI-F3EBACF3-001`
+- Publish RPC rows returned: 1
+- Batch linked question count: 1
+- Batch published question count: 1
 
-## Post-approval Question Bank result
+Post-publish state:
 
-The selected synthetic question did **not** become a published Question Bank question.
-
-- Published synthetic question count: 0
-- Question remains visible as a draft/admin review item, not public content.
-- No student-visible publish occurred for the selected question.
-
-## Source/provenance result
-
-Source/provenance metadata remained attached to the question:
-
-- `source`: present
+- `status`: `published`
 - `source_kind`: `ai_import`
+- `source_review_item_id`: non-null
+- Review draft item count for the question: 1
+- Review draft item status: `approved`
+- Taxonomy assignment states: `approved`, `approved`
+- Public taxonomy search for `AI-F3EBACF3-001`: found 1 row
 
-However, clean schema publication requires review lineage for `ai_import` questions:
+## No bulk approval / calc packet safety
+
+No bulk approval was performed.
+
+The smoke targeted only:
 
 ```text
-source_review_item_id is not null
+13ebfc76-7f5f-48cb-8d79-cd55880bf2da
 ```
 
-The imported draft does not currently have a matching `review_draft_items` row, so the clean schema correctly blocks publish.
+Calc packet verification after the publish:
 
-## Taxonomy review-state result
-
-Before approval attempt:
-
-- 2 assignments were `pending_review`.
-
-After failed approval attempt:
-
-- 2 assignments became `approved`.
-
-This is a blocker because tag review state can advance even when the question remains unpublished.
-
-## Search/practice read result
-
-Public taxonomy search did not return the synthetic question after the failed publish attempt.
-
-- Public search for `AI-F3EBACF3-001`: not found
-- Practice read path was not exercised with this question because it remained `draft`.
-- Taxonomy search path itself remains covered by route and smoke tests.
-
-## No bulk approval confirmation
-
-No bulk/calc approval occurred.
-
-- Only one checkbox was selected in the filtered Review UI.
-- The selected batch contained exactly one linked question.
 - `calc_3.1_packet.pdf` batches found: 2
 - Linked calc packet questions: 41
 - Published linked calc packet questions: 0
+
+## Regression coverage added
+
+`scripts/security-smoke.mjs` now verifies:
+
+- clean migration contains `publish_review_draft_questions`
+- generated questions require/attach review lineage before publish
+- question publish update appears before taxonomy approval in the RPC
+- review action audit is recorded
+- admin publish actions call the transactional RPC
+- old app-side pre-approval helper is not present
+
+`scripts/supabase-rls-smoke.mjs` now verifies:
+
+- the publish RPC is `security definer`
+- teacher/admin and org-staff guards are present
+- anon/public execution is revoked
+- authenticated execution is granted
 
 ## Tests run
 
 - `npm.cmd run lint` passed.
 - `npm.cmd run build` passed.
 - `node scripts/security-smoke.mjs` passed.
-- `node scripts/supabase-rls-smoke.mjs` passed after rerun with network access.
+- `node scripts/supabase-rls-smoke.mjs` passed with network access.
 - `node scripts/route-smoke.mjs` passed.
-- `npm.cmd run smoke` passed after rerun with network access.
-
-Initial sandboxed Supabase RLS calls hit `fetch failed`; the same checks passed with network access to the clean Supabase project.
-
-## Remaining blockers
-
-1. AI PDF import-created questions use `source_kind = "ai_import"` but currently have no `source_review_item_id`.
-2. Clean schema blocks publishing `ai_import` questions without review lineage.
-3. The Review Draft publish action approves taxonomy assignments before updating question status, so a failed publish can leave partial approved taxonomy state.
-4. The Review UI error redirect appends the error to the existing batch URL with a second `?`, producing a malformed URL:
-
-```text
-/admin/review?batch=...?...error=...
-```
-
-## Recommended next task
-
-Fix the Review Draft publish contract for AI-imported questions:
-
-1. Either create real `review_batches` / `review_draft_items` lineage during AI import handoff, or adjust the publish workflow to create/attach the required review lineage before publishing.
-2. Make bulk publish transactional or reorder it so taxonomy assignment approval only happens after the question status update succeeds.
-3. Fix error redirect query composition for return URLs that already contain query parameters.
-4. Rerun this same approval smoke after the fix.
+- `npm.cmd run smoke` passed with network access.
 
 ## Safety confirmations
 
 - `.env.local` was not modified.
 - No provider credentials were read or printed.
 - No gateway/encryption/anon/service-role key values were printed.
+- No raw provider response or full prompt was printed.
+- No old Supabase project was touched.
 - No auth users were created.
-- No migrations or seeds were modified or applied.
+- No seeds were applied.
 - No calc packet drafts were approved.
-- No output or `.codex_tmp` files were committed.
+- No `.codex_tmp/` or `output/` files were committed.
+
+## Remaining blockers
+
+No blocker remains for the synthetic Review Draft approval path. Future import creation could attach `source_review_item_id` earlier, but the current app still presents import drafts through `import_batch_items`, so the approval transaction is the governance boundary that attaches lineage safely.
