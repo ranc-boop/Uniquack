@@ -2,11 +2,15 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { ZodError } from "zod";
 
 export function redirectWithError(path: string, message: string): never {
-  redirect(`${path}?error=${encodeURIComponent(message)}`);
+  const url = new URL(path, "http://localhost");
+  url.searchParams.set("error", message);
+  redirect(`${url.pathname}${url.search}`);
 }
 
 export function redirectWithSaved(path: string, message: string): never {
-  redirect(`${path}?saved=${encodeURIComponent(message)}`);
+  const url = new URL(path, "http://localhost");
+  url.searchParams.set("saved", message);
+  redirect(`${url.pathname}${url.search}`);
 }
 
 export function formatActionError(error: unknown) {
