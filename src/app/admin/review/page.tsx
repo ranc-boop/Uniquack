@@ -14,6 +14,7 @@ import { DraftReviewCard } from "@/components/draft-review-card";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import type { EditableQuestion } from "@/components/question-editor";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
@@ -73,6 +74,28 @@ type AIReviewMetadata = {
   };
   warnings?: unknown[];
 };
+
+function getAiImportSourceTitle(summary: unknown) {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return "AI PDF import";
+  }
+
+  const aiPdfImport = (summary as { aiPdfImport?: unknown }).aiPdfImport;
+
+  if (
+    aiPdfImport &&
+    typeof aiPdfImport === "object" &&
+    !Array.isArray(aiPdfImport)
+  ) {
+    const fileName = (aiPdfImport as { fileName?: unknown }).fileName;
+
+    if (typeof fileName === "string" && fileName.trim()) {
+      return fileName.trim();
+    }
+  }
+
+  return "AI PDF import";
+}
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
@@ -161,7 +184,9 @@ export default async function AdminReviewPage({
     | {
         createdAt: string | null;
         id: string;
+        sourceTitle: string;
         sourceType: string | null;
+        status: string | null;
       }
     | null = null;
   let batchQuestionIds: string[] | null = null;
@@ -171,7 +196,7 @@ export default async function AdminReviewPage({
   if (batchId) {
     let batchQuery = supabase
       .from("import_batches")
-      .select("id, source_type, created_at, created_by")
+      .select("id, source_type, status, summary, created_at, created_by")
       .eq("id", batchId);
 
     if (profile.role !== "super_admin") {
@@ -184,7 +209,9 @@ export default async function AdminReviewPage({
       batchFilter = {
         createdAt: batch.created_at,
         id: batch.id,
+        sourceTitle: getAiImportSourceTitle(batch.summary),
         sourceType: batch.source_type,
+        status: batch.status,
       };
 
       const { count: batchItemCount, data: batchItems } = await supabase
@@ -258,7 +285,7 @@ export default async function AdminReviewPage({
   let importItemsQuery = supabase
     .from("import_batch_items")
     .select(
-      "created_question_id, normalized_question_json, validation_errors, created_at",
+      "batch_id, created_question_id, normalized_question_json, validation_errors, created_at",
     )
     .eq("status", "imported")
     .in("created_question_id", questionIds)
@@ -325,6 +352,7 @@ export default async function AdminReviewPage({
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
   const aiMetadataByQuestionId = new Map<string, AIReviewMetadata>();
+  const aiImportBatchIdByQuestionId = new Map<string, string>();
   const importWarningsByQuestionId = new Map<string, string[]>();
   const importRefsByQuestionId = new Map<string, ImportAssetReferences>();
   const importedAtByQuestionId = new Map<string, string>();
@@ -414,6 +442,9 @@ export default async function AdminReviewPage({
       item.created_question_id,
       extractImportAssetReferences(item.normalized_question_json),
     );
+    if (item.batch_id) {
+      aiImportBatchIdByQuestionId.set(item.created_question_id, item.batch_id);
+    }
     importedAtByQuestionId.set(item.created_question_id, item.created_at);
     importWarningsByQuestionId.set(
       item.created_question_id,
@@ -430,6 +461,11 @@ export default async function AdminReviewPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/admin/imports/pdf">AI PDF imports</Link>
+          </Button>
+        }
         description="Review private draft questions."
         eyebrow="Review queue"
         help="Review draft questions, fix readiness blockers, then publish only when an admin explicitly approves the draft."
@@ -488,17 +524,42 @@ export default async function AdminReviewPage({
         </form>
       </AdminCard>
       {batchFilter ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2 text-sm">
-          <span>
-            Showing drafts from AI PDF import{" "}
-            <span className="font-mono">{shortId(batchFilter.id)}</span>
-            {batchFilter.createdAt
-              ? ` created ${formatDate(batchFilter.createdAt)}`
-              : ""}
-          </span>
-          <Button asChild size="sm" variant="outline">
-            <Link href="/admin/review">Clear batch filter</Link>
-          </Button>
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <AdminStatusBadge status="pending_review">
+                Batch review handoff
+              </AdminStatusBadge>
+              <span className="font-mono text-xs">
+                {shortId(batchFilter.id)}
+              </span>
+              {batchFilter.status ? (
+                <Badge variant="outline">Import: {batchFilter.status}</Badge>
+              ) : null}
+            </div>
+            <p>
+              Showing {totalDraftQuestions} draft question
+              {totalDraftQuestions === 1 ? "" : "s"} from{" "}
+              {batchFilter.sourceTitle}.
+            </p>
+            <p className="text-xs text-sky-900/80">
+              These drafts are private until readiness blockers, taxonomy,
+              media, solution quality, and warnings are reviewed.
+            </p>
+            {batchFilter.createdAt ? (
+              <p className="text-xs text-sky-900/80">
+                Imported {formatDate(batchFilter.createdAt)}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/imports/pdf">Back to AI PDF imports</Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/review">Clear batch filter</Link>
+            </Button>
+          </div>
         </div>
       ) : null}
       {batchFilterMissing ? (
@@ -681,6 +742,7 @@ export default async function AdminReviewPage({
               isAiImport={Boolean(aiMetadata)}
               aiProviderName={aiMetadata?.provider?.name ?? null}
               aiProviderModel={aiMetadata?.provider?.model ?? null}
+              aiImportBatchId={aiImportBatchIdByQuestionId.get(question.id)}
               aiPageRefs={aiPageRefs}
               aiCreatedTags={aiCreatedTags}
               aiWarnings={aiWarnings}

@@ -226,6 +226,9 @@ assert(
     aiPdfPanel.includes("No uploaded AI PDF sources yet") &&
     aiPdfPanel.includes("Blueprint") &&
     aiPdfPanel.includes("observation creates reviewable blueprint metadata") &&
+    aiPdfPanel.includes("Review Drafts are ready") &&
+    aiPdfPanel.includes("Review generated drafts") &&
+    aiPdfPanel.includes("AI-generated questions are private drafts") &&
     bulkAssetsPage.includes("Bulk asset matching workflow") &&
     bulkAssetsPage.includes("Matching rules") &&
     bulkAssetsPage.includes("helpLabel=") &&
@@ -255,8 +258,14 @@ assert(
     draftReviewCard.includes("AdminStatusBadge") &&
     draftReviewCard.includes("Edit / Review") &&
     draftReviewCard.includes("Source and AI import details") &&
+    draftReviewCard.includes("AI import provenance") &&
+    draftReviewCard.includes("Warnings to review") &&
+    draftReviewCard.includes("Generated drafts stay private") &&
     draftReviewCard.includes("Publish readiness") &&
-    draftReviewCard.includes("Taxonomy review"),
+    draftReviewCard.includes("Taxonomy review") &&
+    adminReviewPage.includes("AI PDF imports") &&
+    adminReviewPage.includes("Batch review handoff") &&
+    adminReviewPage.includes("Back to AI PDF imports"),
   "review drafts UI must use shared primitives, clear workflow copy, and collapsed source/import details",
 );
 assert(
@@ -428,6 +437,13 @@ assert(
     aiPdfDashboard.includes("Review and approve extracted question blueprints") &&
     aiPdfDashboard.includes("No questions were created by design."),
   "AI PDF dashboard must show completed blueprint observation handoff",
+);
+assert(
+  aiPdfDashboard.includes("Review Draft handoff") &&
+    aiPdfDashboard.includes("Imports needing review:") &&
+    aiPdfDashboard.includes("Review generated drafts") &&
+    aiPdfDashboard.includes("Review warnings, taxonomy, media, and solutions before any"),
+  "AI PDF dashboard must show a top-level Review Draft handoff summary",
 );
 assert(
   aiPdfPanel.includes("isAIPdfBlueprintObservationCompletePhase") &&
