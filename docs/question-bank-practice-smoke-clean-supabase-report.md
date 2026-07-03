@@ -8,13 +8,15 @@ The approved synthetic AI-import question is correctly published into the clean 
 
 Question Bank and taxonomy/search smoke: **passed**.
 
-Practice Agent smoke: **partially blocked**. `/practice` loads for an authenticated user, and the approved question is readable in the published-question shape used by practice recommendations. However, the authenticated custom practice round API returns `500` because the clean Supabase `practice_sessions` table is missing runtime columns now required by the current Practice Agent code, starting with:
+Practice Agent smoke: **passed after clean schema patch**. The previous blocker was an authenticated custom practice round returning `500` because the disposable clean Supabase `practice_sessions` table was missing current Practice Agent runtime columns, starting with:
 
 ```text
 practice_sessions.session_state
 ```
 
-No additional Review Drafts were approved or published. No provider credentials were touched. No SQL, seeds, auth users, profiles, or organization memberships were changed.
+Clean migration `0017_practice_sessions_session_state.sql` was added and applied to the disposable clean Supabase project. After applying it, authenticated `/practice` returned `200`, `POST /api/practice/rounds/custom` returned `200`, attempt grading returned `200`, and wrong-question read returned `200`.
+
+No additional Review Drafts were approved or published. No provider credentials were touched. No seeds, auth users, profiles, or organization memberships were changed.
 
 ## Approved synthetic question identified
 
@@ -73,7 +75,7 @@ Search verification:
 
 ## Practice Agent result
 
-Partially blocked.
+Passed after clean migration `0017_practice_sessions_session_state.sql`.
 
 Passed:
 
@@ -89,7 +91,7 @@ Passed:
   - `question_type`
   - `source`
 
-Blocked:
+Previous blocker:
 
 - Authenticated `POST /api/practice/rounds/custom` with the approved synthetic question returned `500`.
 - Dev server log shows:
@@ -98,16 +100,34 @@ Blocked:
 Error: column practice_sessions.session_state does not exist
 ```
 
-This is a clean schema/app contract mismatch. Current practice runtime code references columns such as `session_state`, `session_plan`, `session_thread_messages`, and `next_user_notes`, but the clean migrations currently do not provide at least `practice_sessions.session_state`.
+This was a clean schema/app contract mismatch. Current practice runtime code references cache-first Practice Agent columns including `session_state`, `session_plan`, `session_thread_messages`, `next_user_notes`, `preference_dirty_at`, `practice_agent_episodes.cache_thread_entry`, and `practice_preference_merge_jobs.source_summary`.
+
+Fix applied:
+
+- Added `supabase/clean-migrations/0017_practice_sessions_session_state.sql`.
+- Added/backfilled current Practice Agent JSON/text columns with safe defaults and object/array/length checks.
+- Updated the `practice_sessions.cache_prefix_version` default to current runtime default `practice-session-v2` for new rows.
+- Kept RLS policies unchanged.
+- Applied migration `0017` to the disposable clean Supabase project; migration list now shows `0017` aligned locally and remotely.
+
+Post-fix smoke:
+
+- Authenticated `/practice` returned `200`.
+- Authenticated `POST /api/practice/rounds/custom` with `AI-F3EBACF3-001` returned `200`.
+- The custom round created 1 recommendation.
+- Created session had `practice-session-v2`, object `session_state`, object `session_plan`, array `session_thread_messages`, and string `next_user_notes`.
+- Provider-free attempt grading via `/api/practice/grade` returned `200`.
+- Wrong-question read via `/api/practice/wrong-questions` returned `200`.
+- Hint and review-summary routes were not called in this schema smoke because they may invoke Practice AI provider paths; this task intentionally avoided provider calls.
 
 Scoped cleanup:
 
 - The smoke used goal `Smoke check synthetic approved question`.
-- No scoped practice session rows remained after the failed custom-round attempt.
+- No scoped practice session rows remained after the post-fix custom-round smoke.
 
 ## Visibility/safety result
 
-Passed with one Practice API blocker noted above.
+Passed.
 
 Verified:
 
@@ -119,9 +139,17 @@ Verified:
   - Published calc packet questions: 0
 - No extra Review Drafts were approved or published in this task.
 - Review Draft governance was not bypassed.
+- Only clean migration `0017` was applied to the disposable clean Supabase project.
+- No seed SQL was applied.
 
 ## Tests run
 
+- Temporary provider-free Practice Agent custom-round smoke passed:
+  - `/practice`: `200`
+  - `/api/practice/rounds/custom`: `200`
+  - `/api/practice/grade`: `200`
+  - `/api/practice/wrong-questions`: `200`
+  - scoped cleanup remaining: `0`
 - `npm.cmd run lint` passed.
 - `npm.cmd run build` passed.
 - `node scripts/security-smoke.mjs` passed.
@@ -131,22 +159,13 @@ Verified:
 
 ## Remaining blockers
 
-Practice custom round execution is blocked by clean Supabase schema drift:
+No remaining blocker was found for the Practice Agent custom round clean-schema path.
 
-```text
-practice_sessions.session_state does not exist
-```
-
-This likely requires a narrow clean migration to align `practice_sessions` with the current Practice Agent runtime contract. Based on code inspection, the follow-up should audit/add the full current set of practice runtime columns rather than patching only the first missing column.
+Provider-backed hint/review-summary routes were intentionally not called in this schema compatibility smoke to avoid real Practice AI provider calls. They remain covered at the static/route level by the normal smoke suite.
 
 ## Recommended next task
 
-Create a focused clean Supabase practice schema compatibility PR:
-
-1. Compare `src/lib/practice/persistence.ts` and `src/app/api/practice/*` required columns against `supabase/clean-migrations/0008_practice_agent_evidence.sql` and `0009_course_builder_near_term.sql`.
-2. Add a narrow clean migration for missing Practice Agent runtime columns.
-3. Apply it only to the disposable clean Supabase project.
-4. Re-run this same Question Bank to Practice Agent smoke and exercise `POST /api/practice/rounds/custom` with `AI-F3EBACF3-001`.
+Continue manual UI testing from Question Bank into Practice using the published synthetic question, then separately test provider-backed Practice hint/review flows only when the desired Practice AI provider path is configured for that test.
 
 ## Safety confirmations
 
@@ -154,7 +173,9 @@ Create a focused clean Supabase practice schema compatibility PR:
 - No env values or secrets were printed.
 - No provider credentials were configured or changed.
 - No old Supabase project was touched.
-- No SQL migrations or seeds were applied.
+- Clean migration `0017_practice_sessions_session_state.sql` was applied only to the disposable clean Supabase project.
+- No old migrations were applied.
+- No seed SQL was applied.
 - No auth users were created.
 - No profiles or organization memberships were mutated.
 - No additional Review Drafts were approved, rejected, or published.
