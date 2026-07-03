@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type UserRole = "super_admin" | "admin" | "student";
+export type UserRole = "super_admin" | "admin" | "teacher" | "student";
 export type ContentStatus = "draft" | "published" | "archived";
 export type QuestionType = "mcq" | "fill_blank" | "frq" | "mixed";
 export type QuestionSourceFormat = "markdown_latex" | "html";
@@ -71,7 +71,67 @@ export type Profile = {
   email: string | null;
   full_name: string | null;
   avatar_url: string | null;
+  display_name: string | null;
   role: UserRole;
+  status: "active" | "disabled";
+  default_organization_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Organization = {
+  id: string;
+  name: string;
+  slug: string;
+  status: "active" | "disabled" | "archived";
+  created_at: string;
+  updated_at: string;
+};
+
+export type OrganizationMember = {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role: "admin" | "teacher" | "student";
+  status: "active" | "invited" | "disabled";
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Classroom = {
+  id: string;
+  organization_id: string;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  subject: string | null;
+  status: "active" | "archived";
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClassroomMember = {
+  id: string;
+  classroom_id: string;
+  user_id: string;
+  role: "teacher" | "co_teacher" | "student";
+  status: "active" | "invited" | "removed";
+  joined_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClassroomJoinCode = {
+  id: string;
+  classroom_id: string;
+  code_hash: string;
+  code_hint: string | null;
+  status: "active" | "revoked" | "expired";
+  expires_at: string | null;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -462,7 +522,12 @@ type TableDefinition<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
 export type Database = {
   public: {
     Tables: {
+      organizations: TableDefinition<Organization>;
       profiles: TableDefinition<Profile>;
+      organization_members: TableDefinition<OrganizationMember>;
+      classrooms: TableDefinition<Classroom>;
+      classroom_members: TableDefinition<ClassroomMember>;
+      classroom_join_codes: TableDefinition<ClassroomJoinCode>;
       ai_provider_profiles: TableDefinition<AIProviderProfile>;
       taxonomy_facets: TableDefinition<TaxonomyFacet>;
       taxonomy_nodes: TableDefinition<TaxonomyNode>;
@@ -602,6 +667,14 @@ export type Database = {
           status: string;
           title: string;
           total_count: number;
+        }>;
+      };
+      join_classroom_by_code: {
+        Args: { join_code: string };
+        Returns: Array<{
+          classroom_id: string;
+          classroom_name: string;
+          membership_id: string;
         }>;
       };
     };

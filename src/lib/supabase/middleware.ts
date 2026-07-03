@@ -5,6 +5,8 @@ import { getSupabaseConfig, isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Database, UserRole } from "@/types/database";
 
 const ADMIN_ROLES: UserRole[] = ["admin", "super_admin"];
+const TEACHER_ROLES: UserRole[] = ["teacher", "admin", "super_admin"];
+const STUDENT_ROLES: UserRole[] = ["student"];
 
 function redirectToLogin(request: NextRequest) {
   const loginUrl = request.nextUrl.clone();
@@ -48,8 +50,12 @@ export async function updateSessionAndProtectRoutes(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isTeacherRoute =
+    pathname === "/teacher" || pathname.startsWith("/teacher/");
+  const isStudentRoute =
+    pathname === "/student" || pathname.startsWith("/student/");
 
-  if (!isAdminRoute) {
+  if (!isAdminRoute && !isTeacherRoute && !isStudentRoute) {
     await supabase.auth.getUser();
     return response;
   }
@@ -74,7 +80,19 @@ export async function updateSessionAndProtectRoutes(request: NextRequest) {
     return role === "super_admin" ? response : redirectToUnauthorized(request);
   }
 
-  return role && ADMIN_ROLES.includes(role)
+  if (isAdminRoute) {
+    return role && ADMIN_ROLES.includes(role)
+      ? response
+      : redirectToUnauthorized(request);
+  }
+
+  if (isTeacherRoute) {
+    return role && TEACHER_ROLES.includes(role)
+      ? response
+      : redirectToUnauthorized(request);
+  }
+
+  return role && STUDENT_ROLES.includes(role)
     ? response
     : redirectToUnauthorized(request);
 }

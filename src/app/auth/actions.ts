@@ -53,7 +53,15 @@ export async function signInWithUsername(formData: FormData) {
     .eq("id", data.user.id)
     .maybeSingle();
 
-  redirect(canAccessAdmin(profile?.role) ? "/admin" : "/questions");
+  if (canAccessAdmin(profile?.role)) {
+    redirect("/admin");
+  }
+
+  if (profile?.role === "teacher") {
+    redirect("/teacher/classrooms");
+  }
+
+  redirect("/questions");
 }
 
 export async function signOut() {

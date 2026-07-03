@@ -41,6 +41,10 @@ const reviewDraftPublishMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0016_review_draft_publish_lineage.sql"),
   "utf8",
 );
+const classroomMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0018_classroom_foundation.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -55,6 +59,39 @@ assert(
     reviewDraftPublishMigration.includes("to authenticated"),
   "Review Draft publish RPC must be teacher/admin scoped and unavailable to anon/public",
 );
+for (const tableName of [
+  "classrooms",
+  "classroom_members",
+  "classroom_join_codes",
+]) {
+  assert(
+    classroomMigration.includes(`alter table public.${tableName} enable row level security`),
+    `${tableName} is missing RLS`,
+  );
+}
+assert(
+  classroomMigration.includes("classrooms_teacher_create") &&
+    classroomMigration.includes("classrooms_teacher_update") &&
+    classroomMigration.includes("classroom_members_read_scoped") &&
+    classroomMigration.includes("classroom_join_codes_teacher_read"),
+  "classroom migration must define scoped teacher/student RLS policies",
+);
+assert(
+  classroomMigration.includes("public.join_classroom_by_code") &&
+    classroomMigration.includes("security definer") &&
+    classroomMigration.includes("profile_row.role <> 'student'") &&
+    classroomMigration.includes("private.classroom_join_code_hash") &&
+    classroomMigration.includes("revoke all on function public.join_classroom_by_code(text)") &&
+    classroomMigration.includes("grant execute on function public.join_classroom_by_code(text) to authenticated"),
+  "student classroom enrollment must use authenticated join-code RPC with hash comparison",
+);
+assert(
+  classroomMigration.includes("profiles_classroom_roster_read") &&
+    classroomMigration.includes("private.can_manage_classroom(member.classroom_id)") &&
+    !classroomMigration.includes("grant execute on function public.join_classroom_by_code(text) to anon"),
+  "classroom roster profile reads must be manager-scoped and anonymous joins must stay blocked",
+);
+console.log("PASS classroom migration enables scoped RLS and authenticated hash-only joins");
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",
