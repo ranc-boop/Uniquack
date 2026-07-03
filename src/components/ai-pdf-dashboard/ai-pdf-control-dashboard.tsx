@@ -297,6 +297,29 @@ export function AIPdfControlDashboard({
 }: {
   batches: AIPdfControlDashboardBatch[];
 }) {
+  const dashboardItems = batches.map((batch) => ({
+    batch,
+    display: deriveAIPdfBatchDisplayState({
+      createdQuestionCount: batch.createdQuestionCount,
+      id: batch.id,
+      sourceAsset: batch.sourceAsset,
+      status: batch.status,
+      summary: batch.summary,
+    }),
+  }));
+  const reviewableItems = dashboardItems.filter(
+    ({ display }) => display.canReviewDrafts,
+  );
+  const totalReviewDrafts = reviewableItems.reduce(
+    (total, { display }) => total + display.createdQuestionCount,
+    0,
+  );
+  const totalReviewWarnings = reviewableItems.reduce(
+    (total, { display }) => total + display.warnings.visibleWarnings.length,
+    0,
+  );
+  const latestReviewHref = reviewableItems[0]?.display.reviewHref ?? "/admin/review";
+
   return (
     <Card>
       <CardHeader>
@@ -307,16 +330,33 @@ export function AIPdfControlDashboard({
           AI-generated questions are draft-only and are not visible to students
           until published. Human review is required before publishing.
         </p>
+        {reviewableItems.length ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium">Review Draft handoff</p>
+                <Badge variant="outline">
+                  Imports needing review: {reviewableItems.length}
+                </Badge>
+              </div>
+              <p className="text-xs text-sky-900/80">
+                {totalReviewDrafts} draft question
+                {totalReviewDrafts === 1 ? "" : "s"} are ready for human
+                review. Warnings to check: {totalReviewWarnings}.
+              </p>
+              <p className="text-xs text-sky-900/80">
+                Review warnings, taxonomy, media, and solutions before any
+                draft is published.
+              </p>
+            </div>
+            <Button asChild size="sm">
+              <Link href={latestReviewHref}>Review generated drafts</Link>
+            </Button>
+          </div>
+        ) : null}
         {batches.length ? (
           <div className="space-y-4">
-            {batches.map((batch) => {
-              const display = deriveAIPdfBatchDisplayState({
-                createdQuestionCount: batch.createdQuestionCount,
-                id: batch.id,
-                sourceAsset: batch.sourceAsset,
-                status: batch.status,
-                summary: batch.summary,
-              });
+            {dashboardItems.map(({ batch, display }) => {
               const ai = display.ai;
               const inputStrategy = display.strategy;
               const pageCount = display.pageCount;

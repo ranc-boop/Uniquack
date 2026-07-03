@@ -235,6 +235,7 @@ const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
 const aiPdfPanel = await read("src/components/ai-pdf-import-panel.tsx");
 const aiPdfDashboard = await read("src/components/ai-pdf-dashboard/ai-pdf-control-dashboard.tsx");
+const reviewDraftCard = await read("src/components/draft-review-card.tsx");
 const adminLayout = await read("src/app/admin/layout.tsx");
 const adminSidebar = await read("src/components/admin/admin-sidebar.tsx");
 for (const exportName of [
@@ -1135,6 +1136,15 @@ assert(
     aiPdfDashboard.includes("Approved-ready actions:") &&
     aiPdfDashboard.includes("Safety notes: no generated questions"),
   "AI PDF dashboard must show blueprint observation completion handoff",
+);
+assert(
+  aiPdfDashboard.includes("Review Draft handoff") &&
+    aiPdfDashboard.includes("Review generated drafts") &&
+    aiPdfDashboard.includes("Review warnings, taxonomy, media, and solutions before any") &&
+    aiPdfPanel.includes("AI-generated questions are private drafts until an admin reviews") &&
+    reviewDraftCard.includes("Generated drafts stay private") &&
+    reviewDraftCard.includes("Warnings to review"),
+  "AI PDF and Review Draft UI must expose draft-only handoff without auto-publish copy",
 );
 assert(
   aiPdfPanel.includes("isAIPdfBlueprintObservationCompletePhase") &&

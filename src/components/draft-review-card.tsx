@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
@@ -42,6 +43,7 @@ type DraftReviewCardProps = {
   isAiImport: boolean;
   aiProviderName: string | null;
   aiProviderModel: string | null;
+  aiImportBatchId?: string | null;
   aiPageRefs: string[];
   aiCreatedTags: string[];
   aiWarnings: string[];
@@ -55,6 +57,10 @@ type DraftReviewCardProps = {
   taxonomyCatalog?: TaxonomyCatalogView;
   updateAction: (formData: FormData) => void | Promise<void>;
 };
+
+function shortId(value: string) {
+  return value.slice(0, 8);
+}
 
 function ImportedAssetReferenceBadges({
   refs,
@@ -102,6 +108,7 @@ export function DraftReviewCard({
   isAiImport,
   aiProviderName,
   aiProviderModel,
+  aiImportBatchId,
   aiPageRefs,
   aiCreatedTags,
   aiWarnings,
@@ -143,8 +150,8 @@ export function DraftReviewCard({
               </div>
               <CardTitle className="text-base leading-6">{title}</CardTitle>
               <p className="text-xs text-muted-foreground">
-                Draft imported/generated to teacher review to edits if needed
-                to publish or reject.
+                Draft stays private until review; edit, publish, or reject
+                explicitly.
               </p>
             </div>
           </div>
@@ -176,6 +183,49 @@ export function DraftReviewCard({
             <p>{formattedImportedAt}</p>
           </div>
         </div>
+        {isAiImport ? (
+          <div className="space-y-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-medium">AI import provenance</p>
+              <Badge variant="outline">Draft-only</Badge>
+              {aiWarnings.length ? (
+                <Badge variant="outline">Warnings: {aiWarnings.length}</Badge>
+              ) : null}
+            </div>
+            <div className="grid gap-2 text-xs text-sky-900/80 md:grid-cols-4">
+              <p>Provider: {aiProviderName ?? "Unknown provider"}</p>
+              <p>Model: {aiProviderModel ?? "Unknown model"}</p>
+              <p>
+                Source batch:{" "}
+                {aiImportBatchId ? (
+                  <Link
+                    className="font-mono underline underline-offset-2"
+                    href={`/admin/review?batch=${aiImportBatchId}`}
+                  >
+                    {shortId(aiImportBatchId)}
+                  </Link>
+                ) : (
+                  "Unknown"
+                )}
+              </p>
+              <p>Image crop refs: {aiCropCount}</p>
+            </div>
+            <p className="text-xs text-sky-900/80">
+              Generated drafts stay private until readiness, taxonomy, media,
+              and solution quality are checked.
+            </p>
+            {aiWarnings.length ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                <p className="font-medium">Warnings to review</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {aiWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Taxonomy review

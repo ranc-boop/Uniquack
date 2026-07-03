@@ -379,6 +379,47 @@ function BlueprintObservationCompletionCallout() {
   );
 }
 
+function ReviewDraftHandoffCallout({
+  batchId,
+  createdQuestionCount,
+  model,
+  providerName,
+  sourceTitle,
+  warningCount,
+}: {
+  batchId: string;
+  createdQuestionCount: number;
+  model: string;
+  providerName: string;
+  sourceTitle: string;
+  warningCount: number;
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+      <div className="min-w-0 space-y-1">
+        <p className="font-medium">Review Drafts are ready</p>
+        <p className="text-xs text-sky-900/80">
+          {createdQuestionCount} draft question
+          {createdQuestionCount === 1 ? "" : "s"} from {sourceTitle}.
+        </p>
+        <p className="text-xs text-sky-900/80">
+          Provider: {providerName} / {model}. Warnings to check: {warningCount}.
+        </p>
+        <p className="text-xs text-sky-900/80">
+          AI-generated questions are private drafts until an admin reviews and
+          publishes them.
+        </p>
+      </div>
+      <Button asChild className="shrink-0" size="sm">
+        <Link href={`/admin/review?batch=${batchId}`}>
+          Review generated drafts
+          <ExternalLink className="size-4" />
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
 export function AIPdfImportPanel({
   providers,
   sources = [],
@@ -1263,6 +1304,18 @@ export function AIPdfImportPanel({
                         {display.failureMessages.map((message) => (
                           <p key={message}>{message}</p>
                         ))}
+                      </div>
+                    ) : null}
+                    {display.canReviewDrafts ? (
+                      <div className="md:col-span-3">
+                        <ReviewDraftHandoffCallout
+                          batchId={display.id}
+                          createdQuestionCount={display.createdQuestionCount}
+                          model={display.model}
+                          providerName={display.providerName}
+                          sourceTitle={display.sourceTitle}
+                          warningCount={warnings.visibleWarnings.length}
+                        />
                       </div>
                     ) : null}
                     {warnings.visibleWarnings.length ? (
