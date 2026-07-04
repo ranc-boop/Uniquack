@@ -129,6 +129,8 @@ export type PracticeAttemptInput = {
 
 export type PracticeGradeRequest = {
   attempts: PracticeAttemptInput[];
+  roundId?: string;
+  sessionId?: string;
 };
 
 export type PracticeGradeResult = {
@@ -143,6 +145,10 @@ export type PracticeGradeResult = {
 };
 
 export type PracticeGradeResponse = {
+  assignmentProgress?: {
+    completed: number;
+    updated: number;
+  };
   results: PracticeGradeResult[];
   trace: PracticeTraceEvent[];
 };

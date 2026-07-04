@@ -185,6 +185,45 @@ export default async function TeacherAssignmentDetailPage({
           </section>
 
           <section className="student-panel p-5">
+            <h2 className="text-lg font-bold text-slate-950">Student progress</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Practice sessions started from this assignment update these counts.
+            </p>
+            <dl className="mt-4 space-y-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-slate-500">Students</dt>
+                <dd className="font-semibold text-slate-950">
+                  {assignment.progressSummary.studentCount}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-slate-500">Not started</dt>
+                <dd className="font-semibold text-slate-950">
+                  {assignment.progressSummary.notStartedCount}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-slate-500">In progress</dt>
+                <dd className="font-semibold text-slate-950">
+                  {assignment.progressSummary.inProgressCount}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-slate-500">Completed</dt>
+                <dd className="font-semibold text-slate-950">
+                  {assignment.progressSummary.completedCount}
+                </dd>
+              </div>
+              <div className="space-y-1">
+                <dt className="text-slate-500">Latest practice evidence</dt>
+                <dd className="font-semibold text-slate-950">
+                  {formatDateTime(assignment.progressSummary.latestPracticeSessionAt)}
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="student-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Instructions</h2>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
               {assignment.instructions || "No extra instructions."}

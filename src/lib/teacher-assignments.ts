@@ -40,9 +40,18 @@ export type TeacherAssignmentItem = Pick<
   question: TeacherAssignmentQuestion | null;
 };
 
+export type TeacherAssignmentProgressSummary = {
+  completedCount: number;
+  inProgressCount: number;
+  latestPracticeSessionAt: string | null;
+  notStartedCount: number;
+  studentCount: number;
+};
+
 export type TeacherAssignmentDetail = TeacherAssignmentSummary & {
   classroom: TeacherAssignmentClassroom;
   items: TeacherAssignmentItem[];
+  progressSummary: TeacherAssignmentProgressSummary;
 };
 
 export async function getManagedClassroom({
@@ -160,6 +169,48 @@ export async function getTeacherAssignmentDetail({
       question,
     ]),
   );
+  const [{ data: members }, { data: progressRows }, { data: practiceLinks }] =
+    await Promise.all([
+      supabase
+        .from("classroom_members")
+        .select("user_id")
+        .eq("classroom_id", classroomId)
+        .eq("role", "student")
+        .eq("status", "active"),
+      supabase
+        .from("student_assignment_progress")
+        .select("student_id, status, updated_at")
+        .eq("assignment_id", assignmentId),
+      supabase
+        .from("assignment_practice_sessions")
+        .select("created_at")
+        .eq("assignment_id", assignmentId)
+        .order("created_at", { ascending: false })
+        .limit(1),
+    ]);
+  const activeStudentIds = new Set((members ?? []).map((member) => member.user_id));
+  const progressByStudentId = new Map(
+    (progressRows ?? []).map((progress) => [progress.student_id, progress.status]),
+  );
+  let inProgressCount = 0;
+  let completedCount = 0;
+
+  for (const studentId of activeStudentIds) {
+    const status = progressByStudentId.get(studentId);
+    if (status === "completed") {
+      completedCount += 1;
+    } else if (status === "in_progress") {
+      inProgressCount += 1;
+    }
+  }
+  const studentCount = activeStudentIds.size;
+  const progressSummary: TeacherAssignmentProgressSummary = {
+    completedCount,
+    inProgressCount,
+    latestPracticeSessionAt: practiceLinks?.[0]?.created_at ?? null,
+    notStartedCount: Math.max(0, studentCount - inProgressCount - completedCount),
+    studentCount,
+  };
 
   return {
     ...(assignment as Omit<TeacherAssignmentSummary, "itemCount">),
@@ -169,6 +220,7 @@ export async function getTeacherAssignmentDetail({
       ...item,
       question: item.question_id ? questionById.get(item.question_id) ?? null : null,
     })),
+    progressSummary,
   };
 }
 

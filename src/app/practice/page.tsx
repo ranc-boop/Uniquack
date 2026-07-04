@@ -7,19 +7,27 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function PracticePage() {
+type PracticePageProps = {
+  searchParams: Promise<{ assignmentId?: string }>;
+};
+
+export default async function PracticePage({ searchParams }: PracticePageProps) {
   if (!isSupabaseConfigured()) {
     return <SupabaseConfigNotice />;
   }
 
+  const query = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/auth/login?next=/practice");
+    const next = query.assignmentId
+      ? `/practice?assignmentId=${encodeURIComponent(query.assignmentId)}`
+      : "/practice";
+    redirect(`/auth/login?next=${encodeURIComponent(next)}`);
   }
 
-  return <PracticeAgentLoader />;
+  return <PracticeAgentLoader assignmentId={query.assignmentId ?? null} />;
 }

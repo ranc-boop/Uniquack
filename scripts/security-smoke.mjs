@@ -224,11 +224,12 @@ assert(
     teacherAssignmentNewPage.includes("Review Drafts and") &&
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Student handoff") &&
+    teacherAssignmentDetailPage.includes("Student progress") &&
     teacherAssignmentDetailPage.includes("My Work") &&
     studentWorkPage.includes("My Work") &&
     studentWorkPage.includes("No assigned work yet") &&
-    studentWorkDetailPage.includes("Practice integration coming next") &&
-    studentWorkDetailPage.includes("Open Practice") &&
+    studentWorkDetailPage.includes("Practice progress is saved back") &&
+    studentWorkDetailPage.includes("Start Practice") &&
     studentClassroomPage.includes("My classes") &&
     studentClassroomPage.includes("Assigned work lives in My Work") &&
     studentJoinPage.includes("Enter your class code"),
@@ -332,6 +333,10 @@ const practicePersistenceSource = await read("src/lib/practice/persistence.ts");
 const practiceRecommendRoute = await read("src/app/api/practice/recommend/route.ts");
 const practiceReviewRoute = await read("src/app/api/practice/review/route.ts");
 const practiceCustomRoundRoute = await read("src/app/api/practice/rounds/custom/route.ts");
+const assignmentPracticeLinkage = await read("src/lib/practice/assignment-linkage.ts");
+const assignmentPracticeStartRoute = await read("src/app/api/practice/assignments/start/route.ts");
+const practicePage = await read("src/app/practice/page.tsx");
+const practiceLoader = await read("src/components/practice/practice-agent-loader.tsx");
 assert(!practiceClient.includes("localStorage"), "practice client still uses localStorage");
 assert(practiceClient.includes("/api/practice/sessions"), "practice client does not load database sessions");
 assert(practiceClient.includes("/api/practice/wrong-questions"), "practice client does not load wrong-question records");
@@ -358,6 +363,34 @@ for (const source of [practiceRecommendRoute, practiceReviewRoute, practiceCusto
     "practice API routes must reject expired session schema versions",
   );
 }
+assert(
+  assignmentPracticeStartRoute.includes("startAssignmentPractice") &&
+    assignmentPracticeStartRoute.includes("requirePracticeApiUser") &&
+    assignmentPracticeLinkage.includes("Assignment practice is available only to active students") &&
+    assignmentPracticeLinkage.includes('.eq("status", "assigned")') &&
+    assignmentPracticeLinkage.includes('.eq("item_type", "question")') &&
+    assignmentPracticeLinkage.includes("createPracticeSession") &&
+    assignmentPracticeLinkage.includes("persistRecommendationRound") &&
+    assignmentPracticeLinkage.includes("assignment_practice_sessions") &&
+    assignmentPracticeLinkage.includes("student_assignment_progress") &&
+    assignmentPracticeLinkage.includes("updateLinkedAssignmentProgressAfterPractice") &&
+    practicePage.includes("assignmentId") &&
+    practiceLoader.includes("assignmentId") &&
+    practiceClient.includes("/api/practice/assignments/start") &&
+    practiceClient.includes("Assignment practice") &&
+    practiceReviewRoute.includes("updateLinkedAssignmentProgressAfterPractice"),
+  "assignment-linked practice must validate assigned student work, create a practice session, and write progress evidence",
+);
+assert(
+  !assignmentPracticeLinkage.includes("course_builder") &&
+    !assignmentPracticeLinkage.includes("google") &&
+    !assignmentPracticeLinkage.includes("wearable") &&
+    !assignmentPracticeLinkage.includes("provider") &&
+    !assignmentPracticeStartRoute.includes("course_builder") &&
+    !assignmentPracticeStartRoute.includes("google") &&
+    !assignmentPracticeStartRoute.includes("wearable"),
+  "assignment practice linkage must not add non-goal integrations or provider behavior",
+);
 console.log("PASS practice client uses current persisted schema and ignores old practice history");
 
 const blueprintObservation = await read("src/lib/ai-pdf-import/blueprint-observation.ts");

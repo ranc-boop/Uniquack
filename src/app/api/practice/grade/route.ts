@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { updateLinkedAssignmentProgressAfterPractice } from "@/lib/practice/assignment-linkage";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { gradePracticeAttempt } from "@/lib/practice/grading";
 import type {
@@ -63,7 +64,17 @@ export async function POST(request: Request) {
 
       return gradePracticeAttempt({ attempt, question });
     });
-    const response: PracticeGradeResponse = { results, trace };
+    const assignmentProgress = body.sessionId
+      ? await updateLinkedAssignmentProgressAfterPractice({
+          attemptedQuestionIds: attempts.map((attempt) => attempt.questionId),
+          results,
+          roundId: body.roundId,
+          sessionId: body.sessionId,
+          supabase,
+          userId: auth.user.id,
+        })
+      : undefined;
+    const response: PracticeGradeResponse = { assignmentProgress, results, trace };
 
     return NextResponse.json(response);
   } catch (error) {
