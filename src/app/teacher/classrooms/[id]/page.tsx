@@ -217,6 +217,11 @@ export default async function TeacherClassroomDetailPage({
                   View assignments
                 </Link>
               </Button>
+              <Button asChild className="w-full" variant="outline">
+                <Link href={`/teacher/course-builder?classroomId=${classroom.id}`}>
+                  Course Builder bridge
+                </Link>
+              </Button>
             </div>
             {assignments.length ? (
               <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">

@@ -28,6 +28,24 @@ function statusLabel(status: string) {
   return status.replace(/_/g, " ");
 }
 
+function summaryText(
+  summary: unknown,
+  key: "sourceTitle" | "sourceStatus" | "eligibleQuestionCount" | "unavailableQuestionCount",
+) {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return null;
+  }
+
+  const value = (summary as Record<string, unknown>)[key];
+  return value === null || value === undefined ? null : String(value);
+}
+
+function sourceKindLabel(kind: string) {
+  if (kind === "course_builder_run") return "Course Builder run";
+  if (kind === "practice_framework") return "Practice framework";
+  return "Manual";
+}
+
 export default async function TeacherAssignmentDetailPage({
   params,
   searchParams,
@@ -170,6 +188,55 @@ export default async function TeacherAssignmentDetailPage({
               </div>
             </dl>
           </section>
+
+          {assignment.source_kind !== "manual" ? (
+            <section className="student-panel p-5">
+              <h2 className="text-lg font-bold text-slate-950">Course Builder source</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                This assignment was created from a reviewed Course Builder source.
+              </p>
+              <dl className="mt-4 space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-slate-500">Source</dt>
+                  <dd className="font-semibold text-slate-950">
+                    {sourceKindLabel(assignment.source_kind)}
+                  </dd>
+                </div>
+                <div className="space-y-1">
+                  <dt className="text-slate-500">Title</dt>
+                  <dd className="font-semibold text-slate-950">
+                    {summaryText(assignment.source_summary, "sourceTitle") ||
+                      "Course Builder source"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-slate-500">Source status</dt>
+                  <dd className="font-semibold capitalize text-slate-950">
+                    {summaryText(assignment.source_summary, "sourceStatus") || "unknown"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-slate-500">Published items</dt>
+                  <dd className="font-semibold text-slate-950">
+                    {summaryText(assignment.source_summary, "eligibleQuestionCount") ||
+                      assignment.itemCount}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-slate-500">Needs review</dt>
+                  <dd className="font-semibold text-slate-950">
+                    {summaryText(assignment.source_summary, "unavailableQuestionCount") ||
+                      "0"}
+                  </dd>
+                </div>
+              </dl>
+              {assignment.source_record_id ? (
+                <p className="mt-4 break-all font-mono text-xs text-slate-400">
+                  {assignment.source_record_id}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
 
           <section className="student-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Student handoff</h2>

@@ -64,6 +64,7 @@ await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library")
 await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
 await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
 await checkAdminRoute("/teacher/classrooms", "Classrooms");
+await checkAdminRoute("/teacher/course-builder", "Course Builder");
 await checkAdminRoute("/student/work", "My Work");
 await checkAdminRoute("/student/classrooms", "My classes");
 await checkAdminRoute("/student/classrooms/join", "Enter your class code");
@@ -106,6 +107,10 @@ const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/p
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
 const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/assignments/new/page.tsx");
 const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
+const courseBuilderBridgePage = await read("src/app/teacher/course-builder/page.tsx");
+const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
+const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
+const courseBuilderBridgeMigration = await read("supabase/clean-migrations/0024_assignment_source_metadata.sql");
 const studentWorkPage = await read("src/app/student/work/page.tsx");
 const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
 const practicePage = await read("src/app/practice/page.tsx");
@@ -128,8 +133,17 @@ assert(
     teacherAssignmentNewPage.includes("Published questions") &&
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Assignment items") &&
+    teacherAssignmentDetailPage.includes("Course Builder source") &&
     teacherAssignmentDetailPage.includes("Student handoff") &&
     teacherAssignmentDetailPage.includes("Student progress") &&
+    courseBuilderBridgePage.includes("Course Builder to assignments") &&
+    courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
+    courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&
+    courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&
+    courseBuilderBridgeActions.includes("createAssignmentFromCourseBuilder") &&
+    courseBuilderBridgeActions.includes("No published Question Bank questions are available") &&
+    courseBuilderBridgeHelper.includes('.eq("status", "published")') &&
+    courseBuilderBridgeMigration.includes("source_summary jsonb") &&
     studentWorkPage.includes("My Work") &&
     studentWorkPage.includes("No assigned work yet") &&
     studentWorkDetailPage.includes("Practice progress is saved back") &&

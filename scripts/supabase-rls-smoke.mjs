@@ -53,6 +53,10 @@ const studentWorkManagerScopeMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0023_student_work_assignment_manager_scope_fix.sql"),
   "utf8",
 );
+const courseBuilderBridgeMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0024_assignment_source_metadata.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -129,6 +133,16 @@ assert(
     studentWorkManagerScopeMigration.includes("assignments_teacher_insert") &&
     studentWorkManagerScopeMigration.includes("assignments_teacher_update"),
   "student My Work final manager scope must use classroom owner/co-teacher/org-admin checks",
+);
+assert(
+  courseBuilderBridgeMigration.includes("alter table public.assignments") &&
+    courseBuilderBridgeMigration.includes("source_kind text not null default 'manual'") &&
+    courseBuilderBridgeMigration.includes("source_record_id uuid") &&
+    courseBuilderBridgeMigration.includes("source_summary jsonb not null default '{}'::jsonb") &&
+    courseBuilderBridgeMigration.includes("'manual', 'course_builder_run', 'practice_framework'") &&
+    !courseBuilderBridgeMigration.toLowerCase().includes("\ngrant ") &&
+    !courseBuilderBridgeMigration.includes("disable row level security"),
+  "Course Builder bridge migration must add assignment source metadata without adding grants or weakening RLS",
 );
 console.log("PASS student My Work migration enables scoped assignment RLS and student-owned progress writes");
 for (const tableName of [

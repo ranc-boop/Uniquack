@@ -8,4 +8,5 @@ await import("./classroom-foundation-smoke.mjs");
 await import("./student-my-work-smoke.mjs");
 await import("./teacher-assignment-flow-smoke.mjs");
 await import("./assignment-practice-evidence-smoke.mjs");
+await import("./course-builder-assignment-bridge-smoke.mjs");
 await import("./batch-import-smoke.mjs");
