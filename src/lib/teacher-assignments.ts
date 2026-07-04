@@ -18,6 +18,9 @@ export type TeacherAssignmentSummary = Pick<
   | "due_at"
   | "id"
   | "instructions"
+  | "source_kind"
+  | "source_record_id"
+  | "source_summary"
   | "status"
   | "title"
 > & {
@@ -83,7 +86,9 @@ export async function listTeacherClassroomAssignments({
 }): Promise<TeacherAssignmentSummary[]> {
   const { data: assignments, error } = await supabase
     .from("assignments")
-    .select("id, classroom_id, title, instructions, status, assigned_at, due_at, created_at")
+    .select(
+      "id, classroom_id, title, instructions, status, assigned_at, due_at, source_kind, source_record_id, source_summary, created_at",
+    )
     .eq("classroom_id", classroomId)
     .order("created_at", { ascending: false });
 
@@ -128,7 +133,9 @@ export async function getTeacherAssignmentDetail({
   const classroom = await getManagedClassroom({ classroomId, supabase });
   const { data: assignment, error } = await supabase
     .from("assignments")
-    .select("id, classroom_id, title, instructions, status, assigned_at, due_at, created_at")
+    .select(
+      "id, classroom_id, title, instructions, status, assigned_at, due_at, source_kind, source_record_id, source_summary, created_at",
+    )
     .eq("id", assignmentId)
     .eq("classroom_id", classroomId)
     .maybeSingle();

@@ -147,6 +147,9 @@ export type Assignment = {
   status: "draft" | "assigned" | "archived";
   assigned_at: string | null;
   due_at: string | null;
+  source_kind: "manual" | "course_builder_run" | "practice_framework";
+  source_record_id: string | null;
+  source_summary: Json;
   created_at: string;
   updated_at: string;
 };
@@ -526,16 +529,23 @@ export type PracticePreferenceMergeJob = {
 
 export type PracticeCourseFramework = {
   id: string;
+  organization_id: string | null;
   title: string;
   description: string;
   framework_prompt: string;
   learning_path: Json;
   allowed_tag_ids: string[];
   priority_rules: string;
-  status: "active" | "archived";
+  status: "active" | "draft" | "preview" | "published" | "archived";
+  framework_payload: Json;
+  assigned_question_ids: string[];
   created_by: string | null;
+  updated_by: string | null;
+  teacher_id: string | null;
+  published_at: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 };
 
 export type PracticeAgentEpisode = {

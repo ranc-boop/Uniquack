@@ -114,6 +114,12 @@ const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/p
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
 const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/assignments/new/page.tsx");
 const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
+const courseBuilderBridgeMigration = await read(
+  "supabase/clean-migrations/0024_assignment_source_metadata.sql",
+);
+const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
+const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
+const courseBuilderBridgePage = await read("src/app/teacher/course-builder/page.tsx");
 const studentWorkPage = await read("src/app/student/work/page.tsx");
 const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
 const studentClassroomPage = await read("src/app/student/classrooms/page.tsx");
@@ -211,6 +217,49 @@ assert(
     !teacherAssignmentActions.includes("google") &&
     !teacherAssignmentActions.includes("wearable"),
   "teacher assignment flow must require teacher access, assign only published questions, and avoid non-goal integrations",
+);
+assert(
+  courseBuilderBridgeMigration.includes("add column if not exists source_kind") &&
+    courseBuilderBridgeMigration.includes("source_record_id uuid") &&
+    courseBuilderBridgeMigration.includes("source_summary jsonb") &&
+    courseBuilderBridgeMigration.includes("'manual', 'course_builder_run', 'practice_framework'") &&
+    courseBuilderBridgeMigration.includes("assignments_source_idx"),
+  "Course Builder assignment bridge migration must add source metadata without changing assignment visibility",
+);
+assert(
+  courseBuilderBridgeHelper.includes("practice_course_frameworks") &&
+    courseBuilderBridgeHelper.includes("course_generation_runs") &&
+    courseBuilderBridgeHelper.includes('.eq("status", "published")') &&
+    courseBuilderBridgeHelper.includes("eligibleQuestionCount") &&
+    courseBuilderBridgeHelper.includes("unavailableQuestionCount") &&
+    courseBuilderBridgeHelper.includes("buildAssignmentSourceSummary"),
+  "Course Builder bridge helper must load framework/run sources and expose only published assignable questions",
+);
+assert(
+  courseBuilderBridgeActions.includes("requireTeacher") &&
+    courseBuilderBridgeActions.includes("getManagedClassroom") &&
+    courseBuilderBridgeActions.includes("getCourseBuilderBridgeSource") &&
+    courseBuilderBridgeActions.includes('publishMode: z.enum(["draft", "assigned"]).default("draft")') &&
+    courseBuilderBridgeActions.includes("source_kind: source.kind") &&
+    courseBuilderBridgeActions.includes("source_record_id: source.id") &&
+    courseBuilderBridgeActions.includes("source_summary: buildAssignmentSourceSummary(source)") &&
+    courseBuilderBridgeActions.includes("No published Question Bank questions are available") &&
+    courseBuilderBridgeActions.includes("revalidatePath(\"/student/work\")") &&
+    !courseBuilderBridgeActions.includes("google") &&
+    !courseBuilderBridgeActions.includes("wearable") &&
+    !courseBuilderBridgeActions.includes("AI_PROVIDER") &&
+    !courseBuilderBridgeActions.includes("provider"),
+  "Course Builder bridge action must stay teacher-only, draft-by-default, published-question-only, and provider-free",
+);
+assert(
+  courseBuilderBridgePage.includes("Course Builder to assignments") &&
+    courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
+    courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&
+    courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&
+    courseBuilderBridgePage.includes("Review Drafts") &&
+    teacherClassroomDetailPage.includes("Course Builder bridge") &&
+    teacherAssignmentDetailPage.includes("Course Builder source"),
+  "Course Builder bridge UI must expose teacher draft/assign choices, Review Draft blockers, and assignment source traceability",
 );
 assert(
   teacherClassroomPage.includes("Your classrooms") &&
