@@ -103,10 +103,17 @@ const studentWorkManagerScopeMigration = await read(
 );
 const classroomHelpers = await read("src/lib/classrooms.ts");
 const studentWorkHelpers = await read("src/lib/student-work.ts");
+const teacherAssignmentHelpers = await read("src/lib/teacher-assignments.ts");
 const teacherClassroomActions = await read("src/app/teacher/classrooms/actions.ts");
+const teacherAssignmentActions = await read(
+  "src/app/teacher/classrooms/[id]/assignments/actions.ts",
+);
 const studentJoinActions = await read("src/app/student/classrooms/join/actions.ts");
 const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
+const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/assignments/new/page.tsx");
+const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
 const studentWorkPage = await read("src/app/student/work/page.tsx");
 const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
 const studentClassroomPage = await read("src/app/student/classrooms/page.tsx");
@@ -190,10 +197,34 @@ assert(
   "student My Work helpers must read assigned work and own progress without mutating data",
 );
 assert(
+  teacherAssignmentHelpers.includes("listTeacherClassroomAssignments") &&
+    teacherAssignmentHelpers.includes("getTeacherAssignmentDetail") &&
+    teacherAssignmentHelpers.includes("listAssignablePublishedQuestions") &&
+    teacherAssignmentHelpers.includes('.eq("status", "published")') &&
+    teacherAssignmentActions.includes("requireTeacher") &&
+    teacherAssignmentActions.includes("getManagedClassroom") &&
+    teacherAssignmentActions.includes('.eq("status", "published")') &&
+    teacherAssignmentActions.includes(".from(\"assignments\")") &&
+    teacherAssignmentActions.includes(".from(\"assignment_items\")") &&
+    teacherAssignmentActions.includes("revalidatePath(\"/student/work\")") &&
+    !teacherAssignmentActions.includes("course_builder") &&
+    !teacherAssignmentActions.includes("google") &&
+    !teacherAssignmentActions.includes("wearable"),
+  "teacher assignment flow must require teacher access, assign only published questions, and avoid non-goal integrations",
+);
+assert(
   teacherClassroomPage.includes("Your classrooms") &&
     teacherClassroomPage.includes("Create classroom") &&
     teacherClassroomDetailPage.includes("Roster") &&
-    teacherClassroomDetailPage.includes("Assignments coming next") &&
+    teacherClassroomDetailPage.includes("New assignment") &&
+    teacherClassroomDetailPage.includes("View assignments") &&
+    teacherAssignmentsPage.includes("Classroom assignments") &&
+    teacherAssignmentsPage.includes("Drafts stay teacher-side") &&
+    teacherAssignmentNewPage.includes("Published questions") &&
+    teacherAssignmentNewPage.includes("Review Drafts and") &&
+    teacherAssignmentNewPage.includes("Assign to class") &&
+    teacherAssignmentDetailPage.includes("Student handoff") &&
+    teacherAssignmentDetailPage.includes("My Work") &&
     studentWorkPage.includes("My Work") &&
     studentWorkPage.includes("No assigned work yet") &&
     studentWorkDetailPage.includes("Practice integration coming next") &&
