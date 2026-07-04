@@ -103,6 +103,9 @@ const packageImportPanel = await read("src/components/package-import-panel.tsx")
 const videosPage = await read("src/app/videos/page.tsx");
 const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
+const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/assignments/new/page.tsx");
+const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
 const studentWorkPage = await read("src/app/student/work/page.tsx");
 const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
 const studentClassroomsPage = await read("src/app/student/classrooms/page.tsx");
@@ -114,7 +117,14 @@ assert(
     teacherClassroomsPage.includes("Your classrooms") &&
     teacherClassroomsPage.includes("Create classroom") &&
     teacherClassroomDetailPage.includes("Roster") &&
-    teacherClassroomDetailPage.includes("Assignments coming next") &&
+    teacherClassroomDetailPage.includes("New assignment") &&
+    teacherClassroomDetailPage.includes("View assignments") &&
+    teacherAssignmentsPage.includes("Classroom assignments") &&
+    teacherAssignmentsPage.includes("New assignment") &&
+    teacherAssignmentNewPage.includes("Published questions") &&
+    teacherAssignmentNewPage.includes("Assign to class") &&
+    teacherAssignmentDetailPage.includes("Assignment items") &&
+    teacherAssignmentDetailPage.includes("Student handoff") &&
     studentWorkPage.includes("My Work") &&
     studentWorkPage.includes("No assigned work yet") &&
     studentWorkDetailPage.includes("Practice integration coming next") &&

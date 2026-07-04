@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { profileLabel } from "@/lib/classrooms";
 import { createClient } from "@/lib/supabase/server";
+import { listTeacherClassroomAssignments } from "@/lib/teacher-assignments";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,10 @@ export default async function TeacherClassroomDetailPage({
   const teacherCount = (roster ?? []).filter(
     (member) => member.role !== "student" && member.status === "active",
   ).length;
+  const assignments = await listTeacherClassroomAssignments({
+    classroomId: id,
+    supabase,
+  });
 
   return (
     <main className="student-shell space-y-6">
@@ -195,12 +200,42 @@ export default async function TeacherClassroomDetailPage({
 
           <section className="student-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">
-              Assignments coming next
+              Assignments
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              This foundation only creates rosters. The next slice will connect
-              approved questions and practice sessions to class assignments.
+              Create assigned work from published questions and send it to
+              students&apos; My Work.
             </p>
+            <div className="mt-4 grid gap-2">
+              <Button asChild className="w-full">
+                <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
+                  New assignment
+                </Link>
+              </Button>
+              <Button asChild className="w-full" variant="outline">
+                <Link href={`/teacher/classrooms/${classroom.id}/assignments`}>
+                  View assignments
+                </Link>
+              </Button>
+            </div>
+            {assignments.length ? (
+              <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+                {assignments.slice(0, 3).map((assignment) => (
+                  <Link
+                    className="block rounded-lg border border-slate-200 p-3 text-sm transition hover:bg-slate-50"
+                    href={`/teacher/classrooms/${classroom.id}/assignments/${assignment.id}`}
+                    key={assignment.id}
+                  >
+                    <span className="block font-semibold text-slate-950">
+                      {assignment.title}
+                    </span>
+                    <span className="text-xs capitalize text-slate-500">
+                      {assignment.status} - {assignment.itemCount} item(s)
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
           </section>
         </aside>
       </div>

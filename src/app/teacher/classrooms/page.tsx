@@ -63,8 +63,8 @@ export default async function TeacherClassroomsPage({
               Classrooms
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Create a class, share a join code, and review the roster before
-              assignments arrive in the next product slice.
+              Create a class, share a join code, review the roster, and assign
+              published Question Bank work to students.
             </p>
           </div>
           <Button asChild variant="outline">
@@ -91,7 +91,7 @@ export default async function TeacherClassroomsPage({
               Your classrooms
             </h2>
             <p className="student-muted">
-              Roster-only foundation. Assignments and My Work connect here next.
+              Open a classroom to manage its roster and assignments.
             </p>
           </div>
           {error ? (
