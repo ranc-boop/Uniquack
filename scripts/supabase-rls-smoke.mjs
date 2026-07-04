@@ -45,6 +45,14 @@ const classroomMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0018_classroom_foundation.sql"),
   "utf8",
 );
+const studentWorkMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0021_student_work_assignments.sql"),
+  "utf8",
+);
+const studentWorkManagerScopeMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0023_student_work_assignment_manager_scope_fix.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -92,6 +100,37 @@ assert(
   "classroom roster profile reads must be manager-scoped and anonymous joins must stay blocked",
 );
 console.log("PASS classroom migration enables scoped RLS and authenticated hash-only joins");
+for (const tableName of [
+  "assignments",
+  "assignment_items",
+  "student_assignment_progress",
+  "assignment_practice_sessions",
+]) {
+  assert(
+    studentWorkMigration.includes(`alter table public.${tableName} enable row level security`),
+    `${tableName} is missing RLS`,
+  );
+}
+assert(
+  studentWorkMigration.includes("private.can_manage_assignment") &&
+    studentWorkMigration.includes("private.can_read_assignment") &&
+    studentWorkMigration.includes("assignments_read_scoped") &&
+    studentWorkMigration.includes("assignment.status = 'assigned'") &&
+    studentWorkMigration.includes("member.role = 'student'") &&
+    studentWorkMigration.includes("student_assignment_progress_student_insert") &&
+    studentWorkMigration.includes("student_assignment_progress_student_update") &&
+    studentWorkMigration.includes("student_id = auth.uid()"),
+  "student My Work migration must scope assignments to active classroom membership and progress to the student owner",
+);
+assert(
+  studentWorkManagerScopeMigration.includes("classroom.owner_id = auth.uid()") &&
+    studentWorkManagerScopeMigration.includes("private.is_org_admin(classroom.organization_id)") &&
+    studentWorkManagerScopeMigration.includes("member.role in ('teacher', 'co_teacher')") &&
+    studentWorkManagerScopeMigration.includes("assignments_teacher_insert") &&
+    studentWorkManagerScopeMigration.includes("assignments_teacher_update"),
+  "student My Work final manager scope must use classroom owner/co-teacher/org-admin checks",
+);
+console.log("PASS student My Work migration enables scoped assignment RLS and student-owned progress writes");
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",
@@ -194,3 +233,11 @@ const { error: insertError } = await anon.from("taxonomy_nodes").insert({
 });
 assert(insertError, "anon unexpectedly inserted taxonomy_nodes");
 console.log("PASS anon cannot write taxonomy nodes");
+
+const { error: anonAssignmentInsertError } = await anon.from("assignments").insert({
+  classroom_id: "00000000-0000-0000-0000-000000000000",
+  organization_id: "00000000-0000-0000-0000-000000000000",
+  title: "RLS denied assignment",
+});
+assert(anonAssignmentInsertError, "anon unexpectedly inserted assignments");
+console.log("PASS anon cannot write assignments");

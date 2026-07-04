@@ -51,13 +51,17 @@ export default async function StudentClassroomsPage({
               My classes
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Join teacher classrooms now. Assigned work will appear in the next
-              product slice.
+              Join teacher classrooms here. Assigned work lives in My Work.
             </p>
           </div>
-          <Button asChild>
-            <Link href="/student/classrooms/join">Join a class</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/student/work">My Work</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/student/classrooms/join">Join a class</Link>
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -112,7 +116,7 @@ export default async function StudentClassroomsPage({
                     </p>
                   ) : null}
                   <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                    Assignments coming next.
+                    Open My Work to see assigned classroom tasks.
                   </div>
                 </article>
               );
