@@ -1,6 +1,6 @@
 # Native Classroom Foundation Report
 
-Date: 2026-07-03
+Date: 2026-07-04
 
 Branch: `codex/native-classroom-foundation`
 
@@ -17,6 +17,7 @@ This PR adds:
 - teacher classroom create/list/detail/roster routes
 - student join/list routes
 - classroom smoke coverage
+- completed disposable classroom e2e validation
 
 No assignments, Student My Work, Google Classroom, wearable UI, AI Parsing, provider, Review Draft, Question Bank, or Practice Agent behavior was changed.
 
@@ -124,7 +125,18 @@ Implemented:
 4. Teacher/admin lands on classroom detail and sees the one-time code.
 5. Teacher/admin can view roster.
 
-Automated full e2e classroom smoke could not run to completion because the local `TEST_STUDENT_*` credentials currently fail login. The smoke now reports that as a SKIP/blocker instead of failing the whole suite.
+Automated full e2e classroom smoke now passes against the disposable clean Supabase project.
+
+Previous blocker:
+
+- Local `TEST_STUDENT_*` credentials returned `Invalid login credentials`.
+
+Resolution:
+
+- The existing service-role auth bootstrap script was run in validate-only, dry-run, and execute modes against the disposable clean Supabase project.
+- Dry-run showed one existing admin/org path and one missing student.
+- Execute created the disposable student auth user, profile, and organization membership.
+- No provider credentials, seeds, old migrations, Review Drafts, or question content were touched.
 
 ## Student Join Flow Result
 
@@ -137,7 +149,18 @@ Implemented:
 5. Student membership becomes active.
 6. Student sees joined classroom under `/student/classrooms`.
 
-Automated verification is blocked until valid disposable student test credentials are available in `.env.local` or process env.
+Automated verification passed after disposable student bootstrap.
+
+Verified by `scripts/classroom-foundation-smoke.mjs`:
+
+- teacher/admin creates a smoke classroom
+- hashed join code is created
+- student cannot see the classroom before joining
+- student joins by code through `join_classroom_by_code`
+- student can see the joined classroom
+- teacher/admin roster shows the joined student
+- anonymous access cannot read the classroom
+- smoke-generated records are scoped and cleaned up by revoking the join code, removing the student membership, and archiving the smoke classroom
 
 ## Smoke Coverage
 
@@ -161,7 +184,7 @@ Coverage includes:
 - teacher/student route protection
 - teacher classroom source UI
 - student join/list source UI
-- optional runtime teacher/student classroom flow when valid test credentials exist
+- runtime teacher/student classroom e2e flow with disposable test credentials
 
 ## Tests Run
 
@@ -179,11 +202,11 @@ Notes:
 
 - `node scripts/supabase-rls-smoke.mjs` required network access and passed.
 - `node scripts/route-smoke.mjs` required a local dev server. A local Next dev server was started and route smoke passed.
-- `npm.cmd run smoke` passed. Classroom e2e smoke was skipped because supplied student test credentials returned `Invalid login credentials`; later smoke modules continued and passed.
+- `npm.cmd run smoke` passed and included the full classroom e2e smoke.
+- `scripts/classroom-foundation-smoke.mjs` passed independently before the full smoke run.
 
 ## Remaining Blockers
 
-- Valid disposable student test credentials are needed for full automated classroom join e2e coverage.
 - Join-code rotation/regeneration is not implemented yet.
 - Assignments and Student My Work are intentionally not implemented in this PR.
 
