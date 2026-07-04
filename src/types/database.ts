@@ -129,11 +129,56 @@ export type ClassroomJoinCode = {
   classroom_id: string;
   code_hash: string;
   code_hint: string | null;
+  display_code: string | null;
   status: "active" | "revoked" | "expired";
   expires_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Assignment = {
+  id: string;
+  organization_id: string;
+  classroom_id: string;
+  created_by: string | null;
+  title: string;
+  instructions: string;
+  status: "draft" | "assigned" | "archived";
+  assigned_at: string | null;
+  due_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AssignmentItem = {
+  id: string;
+  assignment_id: string;
+  question_id: string | null;
+  item_type: "question" | "practice_set" | "note";
+  order_index: number;
+  points: number | null;
+  created_at: string;
+};
+
+export type StudentAssignmentProgress = {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  status: "not_started" | "in_progress" | "completed";
+  started_at: string | null;
+  completed_at: string | null;
+  last_practice_session_id: string | null;
+  evidence_summary: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AssignmentPracticeSession = {
+  assignment_id: string;
+  student_id: string;
+  practice_session_id: string;
+  created_at: string;
 };
 
 export type TaxonomyFacet = {
@@ -528,6 +573,10 @@ export type Database = {
       classrooms: TableDefinition<Classroom>;
       classroom_members: TableDefinition<ClassroomMember>;
       classroom_join_codes: TableDefinition<ClassroomJoinCode>;
+      assignments: TableDefinition<Assignment>;
+      assignment_items: TableDefinition<AssignmentItem>;
+      student_assignment_progress: TableDefinition<StudentAssignmentProgress>;
+      assignment_practice_sessions: TableDefinition<AssignmentPracticeSession>;
       ai_provider_profiles: TableDefinition<AIProviderProfile>;
       taxonomy_facets: TableDefinition<TaxonomyFacet>;
       taxonomy_nodes: TableDefinition<TaxonomyNode>;

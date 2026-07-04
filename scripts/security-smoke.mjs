@@ -97,11 +97,18 @@ assert(
   "AI PDF import batches must preserve organization_id at source upload reservation",
 );
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
+const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
+const studentWorkManagerScopeMigration = await read(
+  "supabase/clean-migrations/0023_student_work_assignment_manager_scope_fix.sql",
+);
 const classroomHelpers = await read("src/lib/classrooms.ts");
+const studentWorkHelpers = await read("src/lib/student-work.ts");
 const teacherClassroomActions = await read("src/app/teacher/classrooms/actions.ts");
 const studentJoinActions = await read("src/app/student/classrooms/join/actions.ts");
 const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+const studentWorkPage = await read("src/app/student/work/page.tsx");
+const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
 const studentClassroomPage = await read("src/app/student/classrooms/page.tsx");
 const studentJoinPage = await read("src/app/student/classrooms/join/page.tsx");
 const authGuards = await read("src/lib/auth/guards.ts");
@@ -134,6 +141,35 @@ assert(
   "classroom RLS must support teacher-owned creation, roster reads, and self-scoped student membership reads",
 );
 assert(
+  studentWorkMigration.includes("create table if not exists public.assignments") &&
+    studentWorkMigration.includes("create table if not exists public.assignment_items") &&
+    studentWorkMigration.includes("create table if not exists public.student_assignment_progress") &&
+    studentWorkMigration.includes("create table if not exists public.assignment_practice_sessions") &&
+    studentWorkMigration.includes("alter table public.assignments enable row level security") &&
+    studentWorkMigration.includes("alter table public.assignment_items enable row level security") &&
+    studentWorkMigration.includes("alter table public.student_assignment_progress enable row level security") &&
+    studentWorkMigration.includes("alter table public.assignment_practice_sessions enable row level security"),
+  "student My Work migration must create assignment tables with RLS enabled",
+);
+assert(
+  studentWorkMigration.includes("private.can_manage_assignment") &&
+    studentWorkMigration.includes("private.can_read_assignment") &&
+    studentWorkMigration.includes("assignments_read_scoped") &&
+    studentWorkMigration.includes("assignment.status = 'assigned'") &&
+    studentWorkMigration.includes("member.user_id = auth.uid()") &&
+    studentWorkMigration.includes("student_assignment_progress_student_insert") &&
+    studentWorkMigration.includes("student_id = auth.uid()"),
+  "student My Work RLS must keep assignment reads classroom-scoped and progress writes student-owned",
+);
+assert(
+  studentWorkManagerScopeMigration.includes("classroom.owner_id = auth.uid()") &&
+    studentWorkManagerScopeMigration.includes("private.is_org_admin(classroom.organization_id)") &&
+    studentWorkManagerScopeMigration.includes("member.role in ('teacher', 'co_teacher')") &&
+    studentWorkManagerScopeMigration.includes("private.can_manage_assignment") &&
+    !studentWorkManagerScopeMigration.includes("student_assignment_progress"),
+  "student My Work assignment manager scope must stay explicit to classroom owners, co-teachers, and org admins",
+);
+assert(
   classroomHelpers.includes("hashClassroomJoinCode") &&
     classroomHelpers.includes("generateClassroomJoinCode") &&
     classroomHelpers.includes("resolveClassroomOrganizationId") &&
@@ -145,14 +181,27 @@ assert(
   "classroom server actions must create teacher classrooms and join students without direct student inserts",
 );
 assert(
+  studentWorkHelpers.includes("listStudentAssignedWork") &&
+    studentWorkHelpers.includes("getStudentAssignedWorkDetail") &&
+    studentWorkHelpers.includes(".eq(\"status\", \"assigned\")") &&
+    studentWorkHelpers.includes(".eq(\"student_id\", studentId)") &&
+    !studentWorkHelpers.includes(".insert(") &&
+    !studentWorkHelpers.includes(".update("),
+  "student My Work helpers must read assigned work and own progress without mutating data",
+);
+assert(
   teacherClassroomPage.includes("Your classrooms") &&
     teacherClassroomPage.includes("Create classroom") &&
     teacherClassroomDetailPage.includes("Roster") &&
     teacherClassroomDetailPage.includes("Assignments coming next") &&
+    studentWorkPage.includes("My Work") &&
+    studentWorkPage.includes("No assigned work yet") &&
+    studentWorkDetailPage.includes("Practice integration coming next") &&
+    studentWorkDetailPage.includes("Open Practice") &&
     studentClassroomPage.includes("My classes") &&
-    studentClassroomPage.includes("Assignments coming next") &&
+    studentClassroomPage.includes("Assigned work lives in My Work") &&
     studentJoinPage.includes("Enter your class code"),
-  "classroom routes must expose teacher list/detail/roster and student join/list MVP pages",
+  "classroom routes must expose teacher list/detail/roster and student join/list/My Work MVP pages",
 );
 assert(
   authGuards.includes("requireTeacher") &&

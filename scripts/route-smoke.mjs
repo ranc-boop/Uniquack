@@ -64,6 +64,7 @@ await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library")
 await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
 await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
 await checkAdminRoute("/teacher/classrooms", "Classrooms");
+await checkAdminRoute("/student/work", "My Work");
 await checkAdminRoute("/student/classrooms", "My classes");
 await checkAdminRoute("/student/classrooms/join", "Enter your class code");
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
@@ -102,22 +103,31 @@ const packageImportPanel = await read("src/components/package-import-panel.tsx")
 const videosPage = await read("src/app/videos/page.tsx");
 const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+const studentWorkPage = await read("src/app/student/work/page.tsx");
+const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
 const studentClassroomsPage = await read("src/app/student/classrooms/page.tsx");
 const studentJoinClassroomPage = await read("src/app/student/classrooms/join/page.tsx");
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
+const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
 assert(
   teacherClassroomsPage.includes("Teacher workspace") &&
     teacherClassroomsPage.includes("Your classrooms") &&
     teacherClassroomsPage.includes("Create classroom") &&
     teacherClassroomDetailPage.includes("Roster") &&
     teacherClassroomDetailPage.includes("Assignments coming next") &&
+    studentWorkPage.includes("My Work") &&
+    studentWorkPage.includes("No assigned work yet") &&
+    studentWorkDetailPage.includes("Practice integration coming next") &&
+    studentWorkDetailPage.includes("Open Practice") &&
     studentClassroomsPage.includes("Student workspace") &&
     studentClassroomsPage.includes("My classes") &&
+    studentClassroomsPage.includes("Assigned work lives in My Work") &&
     studentJoinClassroomPage.includes("Join classroom") &&
-    classroomMigration.includes("join_classroom_by_code"),
-  "native classroom routes must expose teacher roster and student join/list surfaces without assignment UI",
+    classroomMigration.includes("join_classroom_by_code") &&
+    studentWorkMigration.includes("create table if not exists public.assignments"),
+  "native classroom routes must expose teacher roster plus student join/list and My Work surfaces",
 );
-console.log("PASS native classroom route sources expose teacher/student MVP surfaces");
+console.log("PASS native classroom and student My Work route sources expose teacher/student MVP surfaces");
 assert(
   adminReviewPage.includes("REVIEW_PAGE_SIZE") &&
     adminReviewPage.includes(".range(pageFrom, pageTo)") &&
