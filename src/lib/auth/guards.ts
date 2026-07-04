@@ -1,6 +1,11 @@
 import { redirect } from "next/navigation";
 
-import { canAccessAdmin, canManageUsers } from "@/lib/auth/roles";
+import {
+  canAccessAdmin,
+  canAccessStudent,
+  canAccessTeacher,
+  canManageUsers,
+} from "@/lib/auth/roles";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/types/database";
@@ -36,6 +41,34 @@ export async function requireAdmin() {
   }
 
   if (!canAccessAdmin(profile.role)) {
+    redirect("/unauthorized");
+  }
+
+  return profile;
+}
+
+export async function requireTeacher() {
+  const profile = await getCurrentProfile();
+
+  if (!profile) {
+    redirect("/auth/login?next=/teacher/classrooms");
+  }
+
+  if (!canAccessTeacher(profile.role)) {
+    redirect("/unauthorized");
+  }
+
+  return profile;
+}
+
+export async function requireStudent() {
+  const profile = await getCurrentProfile();
+
+  if (!profile) {
+    redirect("/auth/login?next=/student/classrooms");
+  }
+
+  if (!canAccessStudent(profile.role)) {
     redirect("/unauthorized");
   }
 

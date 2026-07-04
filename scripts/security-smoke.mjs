@@ -96,6 +96,74 @@ assert(
     aiPdfImportActionsOrg.includes("organization_id: organizationContext.organizationId"),
   "AI PDF import batches must preserve organization_id at source upload reservation",
 );
+const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
+const classroomHelpers = await read("src/lib/classrooms.ts");
+const teacherClassroomActions = await read("src/app/teacher/classrooms/actions.ts");
+const studentJoinActions = await read("src/app/student/classrooms/join/actions.ts");
+const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
+const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+const studentClassroomPage = await read("src/app/student/classrooms/page.tsx");
+const studentJoinPage = await read("src/app/student/classrooms/join/page.tsx");
+const authGuards = await read("src/lib/auth/guards.ts");
+const supabaseMiddleware = await read("src/lib/supabase/middleware.ts");
+assert(
+  classroomMigration.includes("create table if not exists public.classrooms") &&
+    classroomMigration.includes("create table if not exists public.classroom_members") &&
+    classroomMigration.includes("create table if not exists public.classroom_join_codes") &&
+    classroomMigration.includes("alter table public.classrooms enable row level security") &&
+    classroomMigration.includes("alter table public.classroom_members enable row level security") &&
+    classroomMigration.includes("alter table public.classroom_join_codes enable row level security"),
+  "classroom foundation migration must create classroom tables with RLS enabled",
+);
+assert(
+  classroomMigration.includes("private.classroom_join_code_hash") &&
+    classroomMigration.includes("extensions.digest") &&
+    classroomMigration.includes("public.join_classroom_by_code") &&
+    classroomMigration.includes("revoke all on function public.join_classroom_by_code(text)") &&
+    classroomMigration.includes("grant execute on function public.join_classroom_by_code(text) to authenticated") &&
+    !classroomMigration.includes("join_code text not null") &&
+    !classroomMigration.includes("join_code text unique"),
+  "classroom join codes must be hash-only and joined through an authenticated RPC",
+);
+assert(
+  classroomMigration.includes("classrooms_teacher_create") &&
+    classroomMigration.includes("private.is_org_staff(organization_id)") &&
+    classroomMigration.includes("classroom_members_teacher_write") &&
+    classroomMigration.includes("user_id = auth.uid()") &&
+    classroomMigration.includes("profiles_classroom_roster_read"),
+  "classroom RLS must support teacher-owned creation, roster reads, and self-scoped student membership reads",
+);
+assert(
+  classroomHelpers.includes("hashClassroomJoinCode") &&
+    classroomHelpers.includes("generateClassroomJoinCode") &&
+    classroomHelpers.includes("resolveClassroomOrganizationId") &&
+    teacherClassroomActions.includes("requireTeacher") &&
+    teacherClassroomActions.includes("classroom_join_codes") &&
+    teacherClassroomActions.includes("hashClassroomJoinCode(joinCode)") &&
+    studentJoinActions.includes("requireStudent") &&
+    studentJoinActions.includes('rpc("join_classroom_by_code"'),
+  "classroom server actions must create teacher classrooms and join students without direct student inserts",
+);
+assert(
+  teacherClassroomPage.includes("Your classrooms") &&
+    teacherClassroomPage.includes("Create classroom") &&
+    teacherClassroomDetailPage.includes("Roster") &&
+    teacherClassroomDetailPage.includes("Assignments coming next") &&
+    studentClassroomPage.includes("My classes") &&
+    studentClassroomPage.includes("Assignments coming next") &&
+    studentJoinPage.includes("Enter your class code"),
+  "classroom routes must expose teacher list/detail/roster and student join/list MVP pages",
+);
+assert(
+  authGuards.includes("requireTeacher") &&
+    authGuards.includes("requireStudent") &&
+    supabaseMiddleware.includes("isTeacherRoute") &&
+    supabaseMiddleware.includes("isStudentRoute") &&
+    supabaseMiddleware.includes("TEACHER_ROLES") &&
+    supabaseMiddleware.includes("STUDENT_ROLES"),
+  "teacher/student classroom routes must be protected by role-specific guards and middleware",
+);
+console.log("PASS native classroom foundation keeps hash-only joins and scoped teacher/student access");
 const aiPdfImportService = await read("src/lib/ai-pdf-import/service.ts");
 const questionAssetsStorageMigration = await read(
   "supabase/clean-migrations/0015_question_assets_storage_bucket.sql",

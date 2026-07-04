@@ -63,6 +63,9 @@ await checkAdminRoute("/admin/blueprints/review", "Blueprint Review Queue");
 await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library");
 await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
 await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
+await checkAdminRoute("/teacher/classrooms", "Classrooms");
+await checkAdminRoute("/student/classrooms", "My classes");
+await checkAdminRoute("/student/classrooms/join", "Enter your class code");
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 const blueprintWorkspace = await read("src/components/blueprints/blueprint-workspace.tsx");
 const blueprintActions = await read("src/app/admin/blueprints/actions.ts");
@@ -97,6 +100,24 @@ const bulkAssetsPage = await read("src/app/admin/imports/assets/page.tsx");
 const bulkAssetPanel = await read("src/components/bulk-asset-upload-panel.tsx");
 const packageImportPanel = await read("src/components/package-import-panel.tsx");
 const videosPage = await read("src/app/videos/page.tsx");
+const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
+const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+const studentClassroomsPage = await read("src/app/student/classrooms/page.tsx");
+const studentJoinClassroomPage = await read("src/app/student/classrooms/join/page.tsx");
+const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
+assert(
+  teacherClassroomsPage.includes("Teacher workspace") &&
+    teacherClassroomsPage.includes("Your classrooms") &&
+    teacherClassroomsPage.includes("Create classroom") &&
+    teacherClassroomDetailPage.includes("Roster") &&
+    teacherClassroomDetailPage.includes("Assignments coming next") &&
+    studentClassroomsPage.includes("Student workspace") &&
+    studentClassroomsPage.includes("My classes") &&
+    studentJoinClassroomPage.includes("Join classroom") &&
+    classroomMigration.includes("join_classroom_by_code"),
+  "native classroom routes must expose teacher roster and student join/list surfaces without assignment UI",
+);
+console.log("PASS native classroom route sources expose teacher/student MVP surfaces");
 assert(
   adminReviewPage.includes("REVIEW_PAGE_SIZE") &&
     adminReviewPage.includes(".range(pageFrom, pageTo)") &&
