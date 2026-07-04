@@ -46,6 +46,61 @@ function sourceKindLabel(kind: string) {
   return "Manual";
 }
 
+function statusBadgeClass(status: string) {
+  if (status === "completed") {
+    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  }
+  if (status === "in_progress") {
+    return "bg-sky-50 text-sky-700 ring-sky-200";
+  }
+  if (status === "assigned") {
+    return "bg-blue-50 text-blue-700 ring-blue-200";
+  }
+  if (status === "draft" || status === "not_started") {
+    return "bg-slate-100 text-slate-700 ring-slate-200";
+  }
+  return "bg-amber-50 text-amber-700 ring-amber-200";
+}
+
+function evidenceSummaryLine(summary: unknown) {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return "No practice evidence yet.";
+  }
+
+  const record = summary as Record<string, unknown>;
+  const attempted = Number(record.attemptedQuestionCount ?? 0);
+  const total = Number(record.totalQuestionCount ?? 0);
+  const completedIds = Array.isArray(record.completedQuestionIds)
+    ? record.completedQuestionIds.length
+    : 0;
+
+  if (attempted || total || completedIds) {
+    return `${attempted || completedIds}/${total || "?"} question(s) with practice evidence`;
+  }
+
+  return "Practice evidence saved, details pending.";
+}
+
+function ProgressStat({
+  label,
+  value,
+  helper,
+}: {
+  helper?: string;
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
+      {helper ? <p className="mt-1 text-xs text-slate-500">{helper}</p> : null}
+    </div>
+  );
+}
+
 export default async function TeacherAssignmentDetailPage({
   params,
   searchParams,
@@ -102,61 +157,204 @@ export default async function TeacherAssignmentDetailPage({
         </p>
       ) : null}
 
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <ProgressStat
+          helper={statusLabel(assignment.status)}
+          label="Assignment"
+          value={assignment.status === "assigned" ? "Live" : "Draft"}
+        />
+        <ProgressStat
+          helper="Active classroom students"
+          label="Students"
+          value={assignment.progressSummary.studentCount}
+        />
+        <ProgressStat
+          helper="No practice started"
+          label="Not started"
+          value={assignment.progressSummary.notStartedCount}
+        />
+        <ProgressStat
+          helper="Practice evidence exists"
+          label="In progress"
+          value={assignment.progressSummary.inProgressCount}
+        />
+        <ProgressStat
+          helper="Marked completed"
+          label="Completed"
+          value={assignment.progressSummary.completedCount}
+        />
+        <ProgressStat
+          helper={formatDateTime(assignment.progressSummary.latestPracticeSessionAt)}
+          label="Latest activity"
+          value={assignment.progressSummary.linkedPracticeSessionCount}
+        />
+      </section>
+
+      {assignment.status === "draft" ? (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-5">
+          <h2 className="text-base font-bold text-amber-950">
+            Draft assignment is teacher-only.
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-amber-900">
+            Students will not see this assignment in My Work until it is assigned.
+            Progress rows are shown for roster planning only.
+          </p>
+        </section>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="student-panel overflow-hidden">
-          <div className="border-b border-slate-100 p-5">
-            <h2 className="text-lg font-bold text-slate-950">
-              Assignment items
-            </h2>
-            <p className="student-muted">
-              These are the published questions students receive in My Work.
-            </p>
-          </div>
-          {assignment.items.length ? (
-            <div className="divide-y divide-slate-100">
-              {assignment.items.map((item) => (
-                <article className="p-5" key={item.id}>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 space-y-1">
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                        Item {item.order_index} - {item.item_type}
-                      </p>
-                      <h3 className="text-base font-bold text-slate-950">
-                        {item.question?.title ?? "Question item"}
-                      </h3>
-                      {item.question ? (
-                        <p className="text-sm leading-6 text-slate-600">
-                          {item.question.question_code} - {item.question.question_type} -
-                          difficulty {item.question.difficulty_rating}
-                        </p>
-                      ) : (
-                        <p className="text-sm leading-6 text-slate-600">
-                          This item references content that is no longer
-                          available.
-                        </p>
-                      )}
-                    </div>
-                    {item.points !== null ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                        {item.points} pts
-                      </span>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="p-8 text-center">
-              <h3 className="text-base font-bold text-slate-950">
-                No assignment items yet.
-              </h3>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                Create a new assignment with published questions to populate
-                this list.
+        <div className="space-y-6">
+          <section className="student-panel overflow-hidden">
+            <div className="border-b border-slate-100 p-5">
+              <h2 className="text-lg font-bold text-slate-950">
+                Student progress
+              </h2>
+              <p className="student-muted">
+                One row per active classroom student, using assignment progress
+                and linked Practice evidence.
               </p>
             </div>
-          )}
-        </section>
+
+            {assignment.progressSummary.studentCount === 0 ? (
+              <div className="p-8 text-center">
+                <h3 className="text-base font-bold text-slate-950">
+                  No active students yet.
+                </h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
+                  Add students to the classroom before expecting assignment
+                  progress.
+                </p>
+              </div>
+            ) : assignment.progressSummary.linkedPracticeSessionCount === 0 ? (
+              <div className="border-b border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                Students are on the roster, but no linked Practice evidence has
+                been created for this assignment yet.
+              </div>
+            ) : null}
+
+            {assignment.studentProgressRows.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-100 text-sm">
+                  <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                    <tr>
+                      <th className="px-5 py-3">Student</th>
+                      <th className="px-5 py-3">Status</th>
+                      <th className="px-5 py-3">Started</th>
+                      <th className="px-5 py-3">Completed</th>
+                      <th className="px-5 py-3">Practice evidence</th>
+                      <th className="px-5 py-3">Latest activity</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {assignment.studentProgressRows.map((row) => (
+                      <tr className="align-top" key={row.studentId}>
+                        <td className="px-5 py-4">
+                          <p className="font-semibold text-slate-950">
+                            {row.displayName}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {row.email || row.profile?.username || row.studentId}
+                          </p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-1 text-xs font-bold capitalize ring-1 ${statusBadgeClass(
+                              row.status,
+                            )}`}
+                          >
+                            {statusLabel(row.status)}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">
+                          {formatDateTime(row.startedAt)}
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">
+                          {formatDateTime(row.completedAt)}
+                        </td>
+                        <td className="px-5 py-4">
+                          <p className="font-medium text-slate-700">
+                            {evidenceSummaryLine(row.evidenceSummary)}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {row.linkedPracticeSessionCount} linked session(s) -
+                            {" "}
+                            {row.practiceAttemptCount} attempt(s)
+                            {row.practiceAttemptCount
+                              ? `, ${row.practiceCorrectCount} correct`
+                              : ""}
+                          </p>
+                          {row.lastPracticeSessionId ? (
+                            <p className="mt-1 break-all font-mono text-xs text-slate-400">
+                              {row.lastPracticeSessionId}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">
+                          {formatDateTime(row.latestPracticeSessionAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="student-panel overflow-hidden">
+            <div className="border-b border-slate-100 p-5">
+              <h2 className="text-lg font-bold text-slate-950">
+                Assignment items
+              </h2>
+              <p className="student-muted">
+                These are the published questions students receive in My Work.
+              </p>
+            </div>
+            {assignment.items.length ? (
+              <div className="divide-y divide-slate-100">
+                {assignment.items.map((item) => (
+                  <article className="p-5" key={item.id}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                          Item {item.order_index} - {item.item_type}
+                        </p>
+                        <h3 className="text-base font-bold text-slate-950">
+                          {item.question?.title ?? "Question item"}
+                        </h3>
+                        {item.question ? (
+                          <p className="text-sm leading-6 text-slate-600">
+                            {item.question.question_code} - {item.question.question_type} -
+                            difficulty {item.question.difficulty_rating}
+                          </p>
+                        ) : (
+                          <p className="text-sm leading-6 text-slate-600">
+                            This item references content that is no longer
+                            available.
+                          </p>
+                        )}
+                      </div>
+                      {item.points !== null ? (
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                          {item.points} pts
+                        </span>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center">
+                <h3 className="text-base font-bold text-slate-950">
+                  No assignment items yet.
+                </h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
+                  Create a new assignment with published questions to populate
+                  this list.
+                </p>
+              </div>
+            )}
+          </section>
+        </div>
 
         <aside className="space-y-6">
           <section className="student-panel p-5">
