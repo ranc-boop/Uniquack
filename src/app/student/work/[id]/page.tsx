@@ -151,12 +151,14 @@ export default async function StudentWorkDetailPage({
           <section className="student-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Practice entry</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Practice integration coming next. For now, open Practice with this
-              assignment context and continue from the learning engine.
+              Start from the assigned questions. Practice progress is saved back
+              to this work item.
             </p>
             <Button asChild className="mt-4 w-full">
               <Link href={`/practice?assignmentId=${assignment.id}`}>
-                Open Practice
+                {assignment.progressStatus === "in_progress"
+                  ? "Continue Practice"
+                  : "Start Practice"}
               </Link>
             </Button>
           </section>

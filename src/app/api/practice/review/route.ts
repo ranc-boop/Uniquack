@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { updateLinkedAssignmentProgressAfterPractice } from "@/lib/practice/assignment-linkage";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeChatModelStream, callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { buildUsageEnvelope, compactText, stableHash, stableStringify, summarizeLLMUsage, traced, writePracticeStatsLog } from "@/lib/practice/context";
@@ -346,6 +347,14 @@ export async function POST(request: Request) {
           sessionId,
           supabase,
           trace,
+          userId: auth.user.id,
+        });
+        await updateLinkedAssignmentProgressAfterPractice({
+          attemptedQuestionIds: attempts.map((attempt) => attempt.questionId),
+          results,
+          roundId,
+          sessionId,
+          supabase,
           userId: auth.user.id,
         });
         send("question_reviews_saved", { count: questionReviews.length });

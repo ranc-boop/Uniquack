@@ -17,6 +17,10 @@ const PracticeAgentClient = dynamic(
   },
 );
 
-export function PracticeAgentLoader() {
-  return <PracticeAgentClient />;
+export function PracticeAgentLoader({
+  assignmentId,
+}: {
+  assignmentId?: string | null;
+}) {
+  return <PracticeAgentClient assignmentId={assignmentId ?? null} />;
 }

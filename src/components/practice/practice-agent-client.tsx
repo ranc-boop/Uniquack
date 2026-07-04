@@ -55,6 +55,20 @@ type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback";
 type AnswersState = Record<string, string | string[]>;
 type HintsState = Record<string, string[]>;
 type ApiError = { error?: string };
+type PracticeAgentClientProps = {
+  assignmentId?: string | null;
+};
+type AssignmentPracticeStartPayload = {
+  assignment: {
+    dueAt: string | null;
+    id: string;
+    itemCount: number;
+    title: string;
+  };
+  progressStatus: "not_started" | "in_progress" | "completed";
+  recommendation: PracticeRecommendResponse;
+  session: PracticeSessionDetail;
+};
 
 const starterGoals = [
   "AP Calculus: implicit differentiation with harder MCQs",
@@ -242,10 +256,11 @@ async function postReviewStream({
   return result;
 }
 
-export function PracticeAgentClient() {
+export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) {
   const [phase, setPhase] = useState<Phase>("start");
   const [sessions, setSessions] = useState<PracticeSessionSummary[]>([]);
   const [activeSession, setActiveSession] = useState<PracticeSessionDetail | null>(null);
+  const [assignmentLaunch, setAssignmentLaunch] = useState<AssignmentPracticeStartPayload["assignment"] | null>(null);
   const [goal, setGoal] = useState("");
   const [questionCount, setQuestionCount] = useState(4);
   const [recommendation, setRecommendation] = useState<PracticeRecommendResponse | null>(null);
@@ -281,6 +296,7 @@ export function PracticeAgentClient() {
   const resultTopRef = useRef<HTMLDivElement | null>(null);
   const thinkingEndRef = useRef<HTMLDivElement | null>(null);
   const thinkingStartedAtRef = useRef<number | null>(null);
+  const assignmentLaunchStartedRef = useRef(false);
 
   async function refreshPracticeState(preferredSessionId?: string) {
     const sessionPayload = await jsonRequest<{
@@ -381,32 +397,6 @@ export function PracticeAgentClient() {
   }
 
   useEffect(() => {
-    startTransition(async () => {
-      try {
-        clearLegacyPracticeStorage();
-        const restoredSession = await refreshPracticeState();
-        const pendingRound = readPendingPracticeRound();
-        if (pendingRound) {
-          setRecommendation(pendingRound);
-          setGoal(pendingRound.roundGoal);
-          setLiveTrace(pendingRound.trace ?? []);
-          setIsTraceCollapsed(true);
-          setPhase("recommended");
-          if (pendingRound.sessionId) {
-            await refreshPracticeState(pendingRound.sessionId);
-          }
-        } else if (restoredSession?.rounds.length) {
-          restoreRoundFromHistory(restoredSession.rounds[restoredSession.rounds.length - 1], restoredSession);
-        }
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
-    });
-    // Run once on page entry to restore the latest persisted round.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
     if (phase === "thinking" && liveTrace.length) {
       thinkingEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
@@ -469,7 +459,6 @@ export function PracticeAgentClient() {
   }
 
   function beginThinking() {
-    // eslint-disable-next-line react-hooks/purity
     thinkingStartedAtRef.current = Date.now();
     setThinkingElapsedMs(0);
     setLastThinkingDurationMs(null);
@@ -478,7 +467,6 @@ export function PracticeAgentClient() {
 
   function finishThinking(nextPhase: Phase) {
     const startedAt = thinkingStartedAtRef.current;
-    // eslint-disable-next-line react-hooks/purity
     if (startedAt) setLastThinkingDurationMs(Date.now() - startedAt);
     thinkingStartedAtRef.current = null;
     setPhase(nextPhase);
@@ -543,6 +531,65 @@ export function PracticeAgentClient() {
     void runPreferenceMerge();
     return payload.session;
   }
+
+  async function startAssignmentPractice(launchAssignmentId: string) {
+    setError(null);
+    beginThinking();
+    setLiveTrace([]);
+    setReviewTrace([]);
+    setIsTraceCollapsed(true);
+    resetRoundState();
+    resetSessionScopedDrafts();
+
+    const payload = await jsonRequest<AssignmentPracticeStartPayload>(
+      "/api/practice/assignments/start",
+      {
+        body: JSON.stringify({ assignmentId: launchAssignmentId }),
+        method: "POST",
+      },
+    );
+
+    setAssignmentLaunch(payload.assignment);
+    setRecommendation(payload.recommendation);
+    setLiveTrace(payload.recommendation.trace);
+    setIsTraceCollapsed(true);
+    setGoal(payload.recommendation.roundGoal);
+    setActiveSession(payload.session);
+    await refreshPracticeState(payload.session.id);
+    finishThinking("recommended");
+  }
+
+  useEffect(() => {
+    startTransition(async () => {
+      try {
+        clearLegacyPracticeStorage();
+        if (assignmentId && !assignmentLaunchStartedRef.current) {
+          assignmentLaunchStartedRef.current = true;
+          await startAssignmentPractice(assignmentId);
+          return;
+        }
+
+        const restoredSession = await refreshPracticeState();
+        const pendingRound = readPendingPracticeRound();
+        if (pendingRound) {
+          setRecommendation(pendingRound);
+          setGoal(pendingRound.roundGoal);
+          setLiveTrace(pendingRound.trace ?? []);
+          setIsTraceCollapsed(true);
+          setPhase("recommended");
+          if (pendingRound.sessionId) {
+            await refreshPracticeState(pendingRound.sessionId);
+          }
+        } else if (restoredSession?.rounds.length) {
+          restoreRoundFromHistory(restoredSession.rounds[restoredSession.rounds.length - 1], restoredSession);
+        }
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+    // Run once on page entry to restore the latest persisted round.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function requestRecommendation(nextGoal?: string, wrongIds = selectedWrongQuestionIds) {
     const trimmedGoal = (nextGoal ?? goal).trim();
@@ -637,7 +684,6 @@ export function PracticeAgentClient() {
     }));
 
     setError(null);
-    // eslint-disable-next-line react-hooks/purity
     thinkingStartedAtRef.current = Date.now();
     setThinkingElapsedMs(0);
     setLastThinkingDurationMs(null);
@@ -1211,6 +1257,16 @@ export function PracticeAgentClient() {
       ) : null}
 
         <main className="min-w-0 space-y-4 px-0 xl:px-2">
+          {assignmentLaunch ? (
+            <section className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+              <p className="font-bold">Assignment practice</p>
+              <p className="mt-1 leading-6">
+                Using {assignmentLaunch.itemCount} assigned question
+                {assignmentLaunch.itemCount === 1 ? "" : "s"} from{" "}
+                <span className="font-semibold">{assignmentLaunch.title}</span>.
+              </p>
+            </section>
+          ) : null}
           {isStarterPractice ? (
             <section className="flex min-h-[calc(100vh-10rem)] items-center justify-center py-10">
               <div className="mx-auto w-full max-w-6xl space-y-8 text-center">

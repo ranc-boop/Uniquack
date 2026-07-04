@@ -108,6 +108,10 @@ const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/ass
 const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
 const studentWorkPage = await read("src/app/student/work/page.tsx");
 const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
+const practicePage = await read("src/app/practice/page.tsx");
+const practiceLoader = await read("src/components/practice/practice-agent-loader.tsx");
+const practiceClient = await read("src/components/practice/practice-agent-client.tsx");
+const assignmentPracticeStartRoute = await read("src/app/api/practice/assignments/start/route.ts");
 const studentClassroomsPage = await read("src/app/student/classrooms/page.tsx");
 const studentJoinClassroomPage = await read("src/app/student/classrooms/join/page.tsx");
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
@@ -125,10 +129,16 @@ assert(
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Assignment items") &&
     teacherAssignmentDetailPage.includes("Student handoff") &&
+    teacherAssignmentDetailPage.includes("Student progress") &&
     studentWorkPage.includes("My Work") &&
     studentWorkPage.includes("No assigned work yet") &&
-    studentWorkDetailPage.includes("Practice integration coming next") &&
-    studentWorkDetailPage.includes("Open Practice") &&
+    studentWorkDetailPage.includes("Practice progress is saved back") &&
+    studentWorkDetailPage.includes("Start Practice") &&
+    practicePage.includes("assignmentId") &&
+    practiceLoader.includes("assignmentId") &&
+    practiceClient.includes("/api/practice/assignments/start") &&
+    practiceClient.includes("Assignment practice") &&
+    assignmentPracticeStartRoute.includes("startAssignmentPractice") &&
     studentClassroomsPage.includes("Student workspace") &&
     studentClassroomsPage.includes("My classes") &&
     studentClassroomsPage.includes("Assigned work lives in My Work") &&
