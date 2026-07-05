@@ -200,7 +200,17 @@ export default async function TeacherAssignmentDetailPage({
             Progress rows are shown for roster planning only.
           </p>
         </section>
-      ) : null}
+      ) : (
+        <section className="rounded-lg border border-blue-200 bg-blue-50 p-5">
+          <h2 className="text-base font-bold text-blue-950">
+            Assigned work is visible in Student My Work.
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-blue-900">
+            Active class members can open this assignment, start Practice, and
+            send progress evidence back to this page.
+          </p>
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">
@@ -319,7 +329,16 @@ export default async function TeacherAssignmentDetailPage({
                           Item {item.order_index} - {item.item_type}
                         </p>
                         <h3 className="text-base font-bold text-slate-950">
-                          {item.question?.title ?? "Question item"}
+                          {item.question ? (
+                            <Link
+                              className="underline-offset-4 hover:underline"
+                              href={`/questions/${item.question.id}`}
+                            >
+                              {item.question.title}
+                            </Link>
+                          ) : (
+                            "Question item"
+                          )}
                         </h3>
                         {item.question ? (
                           <p className="text-sm leading-6 text-slate-600">
@@ -359,6 +378,11 @@ export default async function TeacherAssignmentDetailPage({
         <aside className="space-y-6">
           <section className="student-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Status</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {assignment.status === "assigned"
+                ? "Assigned = visible to students in My Work."
+                : "Draft = not visible to students."}
+            </p>
             <dl className="mt-4 space-y-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-slate-500">State</dt>

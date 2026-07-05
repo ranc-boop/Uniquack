@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   getManagedClassroom,
   listTeacherClassroomAssignments,
+  type TeacherAssignmentSummary,
 } from "@/lib/teacher-assignments";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,13 @@ type TeacherAssignmentsPageProps = {
   }>;
 };
 
+type AssignmentGroup = {
+  description: string;
+  empty: string;
+  items: TeacherAssignmentSummary[];
+  title: string;
+};
+
 function formatDate(value: string | null | undefined) {
   if (!value) return "No due date";
   return new Intl.DateTimeFormat("en", {
@@ -26,16 +34,166 @@ function formatDate(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
-function statusLabel(status: string) {
-  return status.replace(/_/g, " ");
-}
-
 function formatDateTime(value: string | null | undefined) {
-  if (!value) return "No activity";
+  if (!value) return "No activity yet";
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function statusLabel(status: string) {
+  if (status === "assigned") return "Assigned";
+  if (status === "draft") return "Draft";
+  if (status === "archived") return "Archived";
+  return status.replace(/_/g, " ");
+}
+
+function statusClasses(status: string) {
+  if (status === "assigned") {
+    return "border-blue-200 bg-blue-50 text-blue-700";
+  }
+  if (status === "draft") {
+    return "border-slate-200 bg-slate-50 text-slate-700";
+  }
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function AssignmentCard({
+  assignment,
+  classroomId,
+}: {
+  assignment: TeacherAssignmentSummary;
+  classroomId: string;
+}) {
+  const progressSummary = assignment.progressSummary;
+
+  return (
+    <Link
+      className="block rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      href={`/teacher/classrooms/${classroomId}/assignments/${assignment.id}`}
+    >
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="max-w-full break-words text-base font-bold text-slate-950">
+              {assignment.title}
+            </h3>
+            <span
+              className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusClasses(
+                assignment.status,
+              )}`}
+            >
+              {statusLabel(assignment.status)}
+            </span>
+          </div>
+          {assignment.instructions ? (
+            <p className="line-clamp-2 text-sm leading-6 text-slate-600">
+              {assignment.instructions}
+            </p>
+          ) : (
+            <p className="text-sm leading-6 text-slate-500">
+              No student instructions yet.
+            </p>
+          )}
+          <dl className="grid gap-2 text-sm sm:grid-cols-4">
+            <div className="rounded-md bg-slate-50 px-3 py-2">
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                Due
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-900">
+                {formatDate(assignment.due_at)}
+              </dd>
+            </div>
+            <div className="rounded-md bg-slate-50 px-3 py-2">
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                Items
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-900">
+                {assignment.itemCount}
+              </dd>
+            </div>
+            <div className="rounded-md bg-slate-50 px-3 py-2">
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                Completed
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-900">
+                {progressSummary.completedCount}/{progressSummary.studentCount}
+              </dd>
+            </div>
+            <div className="rounded-md bg-slate-50 px-3 py-2">
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                Latest activity
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-900">
+                {formatDateTime(progressSummary.latestPracticeSessionAt)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+        <div className="grid min-w-full grid-cols-3 gap-2 text-center xl:min-w-56">
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <span className="block text-base font-bold text-slate-950">
+              {progressSummary.notStartedCount}
+            </span>
+            <span className="text-xs text-slate-500">Not started</span>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <span className="block text-base font-bold text-slate-950">
+              {progressSummary.inProgressCount}
+            </span>
+            <span className="text-xs text-slate-500">Active</span>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <span className="block text-base font-bold text-slate-950">
+              {progressSummary.completedCount}
+            </span>
+            <span className="text-xs text-slate-500">Done</span>
+          </div>
+          <span className="col-span-3 text-sm font-semibold text-blue-700">
+            Open progress
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function AssignmentSection({
+  classroomId,
+  group,
+}: {
+  classroomId: string;
+  group: AssignmentGroup;
+}) {
+  return (
+    <section className="student-panel overflow-hidden">
+      <div className="border-b border-slate-100 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">{group.title}</h2>
+            <p className="student-muted">{group.description}</p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+            {group.items.length}
+          </span>
+        </div>
+      </div>
+      {group.items.length ? (
+        <div className="grid gap-4 p-5">
+          {group.items.map((assignment) => (
+            <AssignmentCard
+              assignment={assignment}
+              classroomId={classroomId}
+              key={assignment.id}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="p-5 text-sm leading-6 text-slate-600">{group.empty}</div>
+      )}
+    </section>
+  );
 }
 
 export default async function TeacherAssignmentsPage({
@@ -60,6 +218,36 @@ export default async function TeacherAssignmentsPage({
     notFound();
   }
 
+  const assigned = assignments.filter((assignment) => assignment.status === "assigned");
+  const draft = assignments.filter((assignment) => assignment.status === "draft");
+  const archived = assignments.filter((assignment) => assignment.status === "archived");
+  const groups: AssignmentGroup[] = [
+    {
+      title: "Assigned",
+      description: "Visible in Student My Work for active class members.",
+      empty: "No assigned work is live for students yet.",
+      items: assigned,
+    },
+    {
+      title: "Draft",
+      description: "Teacher-only assignments that are not visible to students.",
+      empty: "No teacher-side drafts.",
+      items: draft,
+    },
+    {
+      title: "Archived",
+      description: "Older assignments kept for reference.",
+      empty: "No archived assignments.",
+      items: archived,
+    },
+  ];
+  const latestActivity =
+    assignments
+      .map((assignment) => assignment.progressSummary.latestPracticeSessionAt)
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? null;
+
   return (
     <main className="student-shell space-y-6">
       <section className="student-hero">
@@ -70,8 +258,9 @@ export default async function TeacherAssignmentsPage({
               {classroom.name}
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Assign published Question Bank items to this classroom. Students
-              see assigned work in My Work.
+              Create classroom work from published Question Bank items, keep
+              drafts teacher-only, and track Practice progress after students
+              start.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -100,98 +289,71 @@ export default async function TeacherAssignmentsPage({
         </p>
       ) : null}
 
-      <section className="student-panel overflow-hidden">
-        <div className="border-b border-slate-100 p-5">
-          <h2 className="text-lg font-bold text-slate-950">
-            Classroom assignments
-          </h2>
-          <p className="student-muted">
-            Drafts stay teacher-side. Assigned work is visible to active
-            students in this class.
-          </p>
-        </div>
-
-        {assignments.length ? (
-          <div className="divide-y divide-slate-100">
-            {assignments.map((assignment) => (
-              <Link
-                className="block p-5 transition hover:bg-slate-50"
-                href={`/teacher/classrooms/${classroom.id}/assignments/${assignment.id}`}
-                key={assignment.id}
+      {assignments.length ? (
+        <>
+          <section className="grid gap-3 md:grid-cols-4">
+            {[
+              ["Assigned", assigned.length],
+              ["Draft", draft.length],
+              ["Archived", archived.length],
+              ["Latest activity", formatDateTime(latestActivity)],
+            ].map(([label, value]) => (
+              <div
+                className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                key={label}
               >
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-bold text-slate-950">
-                        {assignment.title}
-                      </h3>
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold capitalize text-slate-700">
-                        {statusLabel(assignment.status)}
-                      </span>
-                    </div>
-                    {assignment.instructions ? (
-                      <p className="line-clamp-2 text-sm leading-6 text-slate-600">
-                        {assignment.instructions}
-                      </p>
-                    ) : null}
-                    <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-500">
-                      <span>{assignment.itemCount} item(s)</span>
-                      <span>Due {formatDate(assignment.due_at)}</span>
-                      <span>
-                        {assignment.progressSummary.completedCount}/
-                        {assignment.progressSummary.studentCount} completed
-                      </span>
-                      <span>
-                        Latest {formatDateTime(assignment.progressSummary.latestPracticeSessionAt)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="grid min-w-56 grid-cols-3 gap-2 text-center">
-                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                      <span className="block text-base font-bold text-slate-950">
-                        {assignment.progressSummary.notStartedCount}
-                      </span>
-                      <span className="text-xs text-slate-500">Not started</span>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                      <span className="block text-base font-bold text-slate-950">
-                        {assignment.progressSummary.inProgressCount}
-                      </span>
-                      <span className="text-xs text-slate-500">Active</span>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                      <span className="block text-base font-bold text-slate-950">
-                        {assignment.progressSummary.completedCount}
-                      </span>
-                      <span className="text-xs text-slate-500">Done</span>
-                    </div>
-                    <span className="col-span-3 text-sm font-semibold text-blue-700">
-                      Open progress
-                    </span>
-                  </div>
-                </div>
-              </Link>
+                <p className="text-sm font-medium text-slate-500">{label}</p>
+                <p className="mt-2 break-words text-2xl font-bold text-slate-950">
+                  {value}
+                </p>
+              </div>
             ))}
-          </div>
-        ) : (
-          <div className="flex min-h-56 items-center justify-center p-8 text-center">
-            <div className="max-w-md space-y-3">
-              <h3 className="text-base font-bold text-slate-950">
-                No assignments yet
-              </h3>
-              <p className="text-sm leading-6 text-slate-600">
-                Create the first assignment from published questions, then
-                students in this class will see it in My Work.
+          </section>
+
+          <section className="student-panel overflow-hidden">
+            <div className="border-b border-slate-100 p-5">
+              <h2 className="text-lg font-bold text-slate-950">
+                Classroom assignments
+              </h2>
+              <p className="student-muted">
+                Drafts stay teacher-side. Assigned work is visible to active
+                students in this class.
               </p>
-              <Button asChild>
-                <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
-                  Create assignment
-                </Link>
-              </Button>
             </div>
+            <div className="p-5 text-sm leading-6 text-slate-600">
+              Use the status sections below to review live work, teacher drafts,
+              and archived assignments.
+            </div>
+          </section>
+
+          {groups.map((group) => (
+            <AssignmentSection
+              classroomId={classroom.id}
+              group={group}
+              key={group.title}
+            />
+          ))}
+        </>
+      ) : (
+        <section className="student-panel flex min-h-72 items-center justify-center p-8 text-center">
+          <div className="max-w-md space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-950">
+                No assignments yet
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Create the first assignment from published questions, then
+                students in this class will see assigned work in My Work.
+              </p>
+            </div>
+            <Button asChild>
+              <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
+                Create assignment
+              </Link>
+            </Button>
           </div>
-        )}
-      </section>
+        </section>
+      )}
     </main>
   );
 }

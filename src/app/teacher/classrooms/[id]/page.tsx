@@ -68,6 +68,13 @@ export default async function TeacherClassroomDetailPage({
     classroomId: id,
     supabase,
   });
+  const assignedCount = assignments.filter(
+    (assignment) => assignment.status === "assigned",
+  ).length;
+  const draftCount = assignments.filter((assignment) => assignment.status === "draft").length;
+  const archivedCount = assignments.filter(
+    (assignment) => assignment.status === "archived",
+  ).length;
 
   return (
     <main className="student-shell space-y-6">
@@ -206,6 +213,26 @@ export default async function TeacherClassroomDetailPage({
               Create assigned work from published questions and send it to
               students&apos; My Work.
             </p>
+            <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <dt className="text-xs text-slate-500">Assigned</dt>
+                <dd className="mt-1 text-lg font-bold text-slate-950">
+                  {assignedCount}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <dt className="text-xs text-slate-500">Draft</dt>
+                <dd className="mt-1 text-lg font-bold text-slate-950">
+                  {draftCount}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <dt className="text-xs text-slate-500">Archived</dt>
+                <dd className="mt-1 text-lg font-bold text-slate-950">
+                  {archivedCount}
+                </dd>
+              </div>
+            </dl>
             <div className="mt-4 grid gap-2">
               <Button asChild className="w-full">
                 <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>

@@ -107,6 +107,7 @@ const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/p
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
 const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/assignments/new/page.tsx");
 const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
+const assignmentSelectionSummary = await read("src/components/teacher/assignment-selection-summary.tsx");
 const courseBuilderBridgePage = await read("src/app/teacher/course-builder/page.tsx");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
@@ -130,7 +131,15 @@ assert(
     teacherClassroomDetailPage.includes("View assignments") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
     teacherAssignmentsPage.includes("New assignment") &&
+    teacherAssignmentsPage.includes("Assigned") &&
+    teacherAssignmentsPage.includes("Draft") &&
+    teacherAssignmentsPage.includes("Archived") &&
+    teacherAssignmentsPage.includes("Latest activity") &&
     teacherAssignmentNewPage.includes("Published questions") &&
+    teacherAssignmentNewPage.includes("AssignmentSelectionSummary") &&
+    assignmentSelectionSummary.includes("selectedCount") &&
+    assignmentSelectionSummary.includes("Choose at least one published question") &&
+    teacherAssignmentNewPage.includes("Save draft keeps the assignment teacher-only") &&
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Assignment items") &&
     teacherAssignmentDetailPage.includes("Course Builder source") &&
@@ -139,6 +148,8 @@ assert(
     teacherAssignmentDetailPage.includes("One row per active classroom student") &&
     teacherAssignmentDetailPage.includes("Practice evidence") &&
     teacherAssignmentDetailPage.includes("Draft assignment is teacher-only") &&
+    teacherAssignmentDetailPage.includes("Assigned work is visible in Student My Work") &&
+    teacherAssignmentDetailPage.includes("/questions/") &&
     teacherAssignmentsPage.includes("Open progress") &&
     courseBuilderBridgePage.includes("Course Builder to assignments") &&
     courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
