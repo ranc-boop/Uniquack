@@ -274,6 +274,12 @@ assert(
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Student handoff") &&
     teacherAssignmentDetailPage.includes("Student progress") &&
+    teacherAssignmentDetailPage.includes("One row per active classroom student") &&
+    teacherAssignmentDetailPage.includes("Practice evidence") &&
+    teacherAssignmentDetailPage.includes("Draft assignment is teacher-only") &&
+    teacherAssignmentDetailPage.includes("linked session(s)") &&
+    teacherAssignmentsPage.includes("Open progress") &&
+    teacherAssignmentsPage.includes("completed") &&
     teacherAssignmentDetailPage.includes("My Work") &&
     studentWorkPage.includes("My Work") &&
     studentWorkPage.includes("No assigned work yet") &&

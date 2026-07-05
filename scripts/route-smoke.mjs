@@ -136,6 +136,10 @@ assert(
     teacherAssignmentDetailPage.includes("Course Builder source") &&
     teacherAssignmentDetailPage.includes("Student handoff") &&
     teacherAssignmentDetailPage.includes("Student progress") &&
+    teacherAssignmentDetailPage.includes("One row per active classroom student") &&
+    teacherAssignmentDetailPage.includes("Practice evidence") &&
+    teacherAssignmentDetailPage.includes("Draft assignment is teacher-only") &&
+    teacherAssignmentsPage.includes("Open progress") &&
     courseBuilderBridgePage.includes("Course Builder to assignments") &&
     courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
     courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&

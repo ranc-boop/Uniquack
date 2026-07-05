@@ -30,6 +30,14 @@ function statusLabel(status: string) {
   return status.replace(/_/g, " ");
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "No activity";
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 export default async function TeacherAssignmentsPage({
   params,
   searchParams,
@@ -129,11 +137,38 @@ export default async function TeacherAssignmentsPage({
                     <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-500">
                       <span>{assignment.itemCount} item(s)</span>
                       <span>Due {formatDate(assignment.due_at)}</span>
+                      <span>
+                        {assignment.progressSummary.completedCount}/
+                        {assignment.progressSummary.studentCount} completed
+                      </span>
+                      <span>
+                        Latest {formatDateTime(assignment.progressSummary.latestPracticeSessionAt)}
+                      </span>
                     </div>
                   </div>
-                  <span className="text-sm font-semibold text-blue-700">
-                    Open details
-                  </span>
+                  <div className="grid min-w-56 grid-cols-3 gap-2 text-center">
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <span className="block text-base font-bold text-slate-950">
+                        {assignment.progressSummary.notStartedCount}
+                      </span>
+                      <span className="text-xs text-slate-500">Not started</span>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <span className="block text-base font-bold text-slate-950">
+                        {assignment.progressSummary.inProgressCount}
+                      </span>
+                      <span className="text-xs text-slate-500">Active</span>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <span className="block text-base font-bold text-slate-950">
+                        {assignment.progressSummary.completedCount}
+                      </span>
+                      <span className="text-xs text-slate-500">Done</span>
+                    </div>
+                    <span className="col-span-3 text-sm font-semibold text-blue-700">
+                      Open progress
+                    </span>
+                  </div>
                 </div>
               </Link>
             ))}
