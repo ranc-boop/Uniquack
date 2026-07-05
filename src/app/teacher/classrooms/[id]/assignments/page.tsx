@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -258,12 +259,14 @@ export default async function TeacherAssignmentsPage({
               {classroom.name}
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Create classroom work from published Question Bank items, keep
-              drafts teacher-only, and track Practice progress after students
-              start.
+              Assignments are delivery events. The next bank-first slice will
+              source this flow from teacher-owned and shared banks.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/teacher">Teacher Studio</Link>
+            </Button>
             <Button asChild>
               <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
                 New assignment
@@ -276,6 +279,15 @@ export default async function TeacherAssignmentsPage({
             </Button>
           </div>
         </div>
+        <div className="mt-5">
+          <TeacherWorkspaceNav />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+        <strong className="font-bold">Delivery layer:</strong> these assignments
+        expose selected question items to students. Assignment visibility is not
+        global publishing.
       </section>
 
       {query.saved ? (
@@ -316,8 +328,8 @@ export default async function TeacherAssignmentsPage({
                 Classroom assignments
               </h2>
               <p className="student-muted">
-                Drafts stay teacher-side. Assigned work is visible to active
-                students in this class.
+                Drafts stay teacher-side. Assigned work is visible only to
+                active students in this class.
               </p>
             </div>
             <div className="p-5 text-sm leading-6 text-slate-600">

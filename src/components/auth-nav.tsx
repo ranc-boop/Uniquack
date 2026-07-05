@@ -33,9 +33,20 @@ export async function AuthNav() {
     .select("username, role")
     .eq("id", user.id)
     .maybeSingle();
+  const teacherLabel =
+    profile?.role === "teacher" ? "Teacher Studio" : "Teacher Studio preview";
+  const canOpenTeacherStudio =
+    profile?.role === "teacher" ||
+    profile?.role === "admin" ||
+    profile?.role === "super_admin";
 
   return (
     <div className="flex items-center gap-2">
+      {canOpenTeacherStudio ? (
+        <Button asChild variant="outline" size="sm">
+          <Link href="/teacher">{teacherLabel}</Link>
+        </Button>
+      ) : null}
       <div className="hidden items-center gap-2 sm:flex">
         <span className="text-sm text-muted-foreground">
           {profile?.username ?? user.email}

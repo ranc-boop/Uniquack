@@ -63,6 +63,10 @@ await checkAdminRoute("/admin/blueprints/review", "Blueprint Review Queue");
 await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library");
 await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
 await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
+await checkAdminRoute("/teacher", "Start with your Question Bank / Library");
+await checkAdminRoute("/teacher/banks", "Teacher-owned content starts here");
+await checkAdminRoute("/teacher/banks/new", "Plan a bank before assigning work");
+await checkAdminRoute("/teacher/banks/join", "Bank collaboration is teacher-to-teacher");
 await checkAdminRoute("/teacher/classrooms", "Classrooms");
 await checkAdminRoute("/teacher/course-builder", "Course Builder");
 await checkAdminRoute("/student/work", "My Work");
@@ -102,6 +106,14 @@ const bulkAssetsPage = await read("src/app/admin/imports/assets/page.tsx");
 const bulkAssetPanel = await read("src/components/bulk-asset-upload-panel.tsx");
 const packageImportPanel = await read("src/components/package-import-panel.tsx");
 const videosPage = await read("src/app/videos/page.tsx");
+const authActions = await read("src/app/auth/actions.ts");
+const authGuards = await read("src/lib/auth/guards.ts");
+const authNav = await read("src/components/auth-nav.tsx");
+const teacherHomePage = await read("src/app/teacher/page.tsx");
+const teacherWorkspaceNav = await read("src/components/teacher/teacher-workspace-nav.tsx");
+const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
+const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
+const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
 const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
@@ -123,25 +135,51 @@ const studentJoinClassroomPage = await read("src/app/student/classrooms/join/pag
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
 const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
 assert(
-  teacherClassroomsPage.includes("Teacher workspace") &&
+  teacherHomePage.includes("Start by creating or joining a Question Bank") &&
+    teacherHomePage.includes("Classrooms and") &&
+    teacherHomePage.includes("assignments deliver selected bank content") &&
+    teacherHomePage.includes("Bank foundation next") &&
+    teacherHomePage.includes("No unreviewed draft can be assigned to students") &&
+    teacherWorkspaceNav.includes("Banks / Library") &&
+    teacherWorkspaceNav.includes("Review Drafts") &&
+    teacherWorkspaceNav.includes("Classrooms") &&
+    teacherBanksPage.includes("Question Bank / Library Foundation is the next implementation PR") &&
+    teacherBankNewPage.includes("intentionally does not write data") &&
+    teacherBankJoinPage.includes("No join form is active") &&
+    authActions.includes('redirect("/teacher")') &&
+    authGuards.includes('redirect("/auth/login?next=/teacher")') &&
+    authNav.includes("Teacher Studio preview"),
+  "teacher runtime must expose a bank-first Teacher Studio and non-mutating bank placeholders",
+);
+console.log("PASS teacher runtime exposes bank-first Teacher Studio placeholders");
+assert(
+  teacherClassroomsPage.includes("Delivery layer") &&
+    teacherClassroomsPage.includes("Teacher banks remain the") &&
     teacherClassroomsPage.includes("Your classrooms") &&
     teacherClassroomsPage.includes("Create classroom") &&
+    teacherClassroomDetailPage.includes("Students do not gain access") &&
     teacherClassroomDetailPage.includes("Roster") &&
     teacherClassroomDetailPage.includes("New assignment") &&
     teacherClassroomDetailPage.includes("View assignments") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
     teacherAssignmentsPage.includes("New assignment") &&
     teacherAssignmentsPage.includes("Assigned") &&
+    teacherAssignmentsPage.includes("Assignment visibility") &&
+    teacherAssignmentsPage.includes("global publishing") &&
     teacherAssignmentsPage.includes("Draft") &&
     teacherAssignmentsPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Latest activity") &&
     teacherAssignmentNewPage.includes("Published questions") &&
+    teacherAssignmentNewPage.includes("next assignment builder") &&
+    teacherAssignmentNewPage.includes("teacher bank content") &&
     teacherAssignmentNewPage.includes("AssignmentSelectionSummary") &&
     assignmentSelectionSummary.includes("selectedCount") &&
     assignmentSelectionSummary.includes("Choose at least one published question") &&
     teacherAssignmentNewPage.includes("Save draft keeps the assignment teacher-only") &&
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Assignment items") &&
+    teacherAssignmentDetailPage.includes("does not grant students") &&
+    teacherAssignmentDetailPage.includes("full bank") &&
     teacherAssignmentDetailPage.includes("Course Builder source") &&
     teacherAssignmentDetailPage.includes("Student handoff") &&
     teacherAssignmentDetailPage.includes("Student progress") &&
@@ -151,7 +189,9 @@ assert(
     teacherAssignmentDetailPage.includes("Assigned work is visible in Student My Work") &&
     teacherAssignmentDetailPage.includes("/questions/") &&
     teacherAssignmentsPage.includes("Open progress") &&
-    courseBuilderBridgePage.includes("Course Builder to assignments") &&
+    courseBuilderBridgePage.includes("Course Builder will generate bank packages before assignment") &&
+    courseBuilderBridgePage.includes("does not add") &&
+    courseBuilderBridgePage.includes("provider calls") &&
     courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
     courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&
     courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&

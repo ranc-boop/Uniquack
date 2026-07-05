@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 
@@ -58,19 +59,28 @@ export default async function TeacherClassroomsPage({
       <section className="student-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Teacher workspace</p>
+            <p className="student-eyebrow">Delivery layer</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Classrooms
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Create a class, share a join code, review the roster, and assign
-              published Question Bank work to students.
+              Classes are delivery spaces. Build or choose bank content before
+              assigning it to a roster.
             </p>
           </div>
           <Button asChild variant="outline">
             <Link href="/student/classrooms/join">Preview student join</Link>
           </Button>
         </div>
+        <div className="mt-5">
+          <TeacherWorkspaceNav />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+        <strong className="font-bold">Delivery layer:</strong> use classrooms
+        after reviewed Question Bank content exists. Teacher banks remain the
+        content source of truth.
       </section>
 
       {params.saved ? (
@@ -91,7 +101,7 @@ export default async function TeacherClassroomsPage({
               Your classrooms
             </h2>
             <p className="student-muted">
-              Open a classroom to manage its roster and assignments.
+              Open a classroom to manage roster and assignment delivery.
             </p>
           </div>
           {error ? (

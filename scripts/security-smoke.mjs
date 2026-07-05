@@ -109,6 +109,11 @@ const teacherAssignmentActions = await read(
   "src/app/teacher/classrooms/[id]/assignments/actions.ts",
 );
 const studentJoinActions = await read("src/app/student/classrooms/join/actions.ts");
+const teacherHomePage = await read("src/app/teacher/page.tsx");
+const teacherWorkspaceNav = await read("src/components/teacher/teacher-workspace-nav.tsx");
+const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
+const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
+const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
 const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
@@ -126,6 +131,8 @@ const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
 const studentClassroomPage = await read("src/app/student/classrooms/page.tsx");
 const studentJoinPage = await read("src/app/student/classrooms/join/page.tsx");
 const authGuards = await read("src/lib/auth/guards.ts");
+const authActions = await read("src/app/auth/actions.ts");
+const authNav = await read("src/components/auth-nav.tsx");
 const supabaseMiddleware = await read("src/lib/supabase/middleware.ts");
 assert(
   classroomMigration.includes("create table if not exists public.classrooms") &&
@@ -253,29 +260,56 @@ assert(
   "Course Builder bridge action must stay teacher-only, draft-by-default, published-question-only, and provider-free",
 );
 assert(
-  courseBuilderBridgePage.includes("Course Builder to assignments") &&
+  courseBuilderBridgePage.includes("Course Builder will generate bank packages before assignment") &&
     courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
     courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&
     courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&
     courseBuilderBridgePage.includes("Review Drafts") &&
+    courseBuilderBridgePage.includes("does not add") &&
+    courseBuilderBridgePage.includes("provider calls") &&
     teacherClassroomDetailPage.includes("Course Builder bridge") &&
     teacherAssignmentDetailPage.includes("Course Builder source"),
   "Course Builder bridge UI must expose teacher draft/assign choices, Review Draft blockers, and assignment source traceability",
 );
 assert(
-  teacherClassroomPage.includes("Your classrooms") &&
+  teacherHomePage.includes("Start by creating or joining a Question Bank") &&
+    teacherHomePage.includes("Classrooms and") &&
+    teacherHomePage.includes("assignments deliver selected bank content") &&
+    teacherHomePage.includes("Bank foundation next") &&
+    teacherWorkspaceNav.includes("Banks / Library") &&
+    teacherWorkspaceNav.includes("Imports") &&
+    teacherWorkspaceNav.includes("Review Drafts") &&
+    teacherWorkspaceNav.includes("Classrooms") &&
+    teacherBanksPage.includes("Question Bank / Library Foundation is the next implementation PR") &&
+    teacherBankNewPage.includes("intentionally does not write data") &&
+    teacherBankJoinPage.includes("No join form is active") &&
+    !teacherHomePage.includes(".insert(") &&
+    !teacherBanksPage.includes(".insert(") &&
+    !teacherBankNewPage.includes(".insert(") &&
+    !teacherBankJoinPage.includes(".insert(") &&
+    authGuards.includes("next=/teacher") &&
+    authActions.includes('redirect("/teacher")') &&
+    authNav.includes("Teacher Studio preview") &&
+    teacherClassroomPage.includes("Your classrooms") &&
     teacherClassroomPage.includes("Create classroom") &&
+    teacherClassroomPage.includes("Delivery layer") &&
+    teacherClassroomPage.includes("Teacher banks remain the") &&
     teacherClassroomDetailPage.includes("Roster") &&
+    teacherClassroomDetailPage.includes("Students do not gain access") &&
     teacherClassroomDetailPage.includes("New assignment") &&
     teacherClassroomDetailPage.includes("View assignments") &&
     teacherClassroomDetailPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
+    teacherAssignmentsPage.includes("Assignment visibility") &&
+    teacherAssignmentsPage.includes("global publishing") &&
     teacherAssignmentsPage.includes("Drafts stay teacher-side") &&
     teacherAssignmentsPage.includes("Assigned") &&
     teacherAssignmentsPage.includes("Draft") &&
     teacherAssignmentsPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Latest activity") &&
     teacherAssignmentNewPage.includes("Published questions") &&
+    teacherAssignmentNewPage.includes("next assignment builder") &&
+    teacherAssignmentNewPage.includes("teacher bank content") &&
     teacherAssignmentNewPage.includes("Review Drafts and") &&
     teacherAssignmentNewPage.includes("AssignmentSelectionSummary") &&
     assignmentSelectionSummary.includes("selectedCount") &&
@@ -284,6 +318,8 @@ assert(
     teacherAssignmentNewPage.includes("The server rechecks every selected question") &&
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Student handoff") &&
+    teacherAssignmentDetailPage.includes("does not grant students") &&
+    teacherAssignmentDetailPage.includes("full bank") &&
     teacherAssignmentDetailPage.includes("Student progress") &&
     teacherAssignmentDetailPage.includes("One row per active classroom student") &&
     teacherAssignmentDetailPage.includes("Practice evidence") &&
