@@ -114,6 +114,7 @@ const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/p
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
 const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/assignments/new/page.tsx");
 const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
+const assignmentSelectionSummary = await read("src/components/teacher/assignment-selection-summary.tsx");
 const courseBuilderBridgeMigration = await read(
   "supabase/clean-migrations/0024_assignment_source_metadata.sql",
 );
@@ -267,16 +268,28 @@ assert(
     teacherClassroomDetailPage.includes("Roster") &&
     teacherClassroomDetailPage.includes("New assignment") &&
     teacherClassroomDetailPage.includes("View assignments") &&
+    teacherClassroomDetailPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
     teacherAssignmentsPage.includes("Drafts stay teacher-side") &&
+    teacherAssignmentsPage.includes("Assigned") &&
+    teacherAssignmentsPage.includes("Draft") &&
+    teacherAssignmentsPage.includes("Archived") &&
+    teacherAssignmentsPage.includes("Latest activity") &&
     teacherAssignmentNewPage.includes("Published questions") &&
     teacherAssignmentNewPage.includes("Review Drafts and") &&
+    teacherAssignmentNewPage.includes("AssignmentSelectionSummary") &&
+    assignmentSelectionSummary.includes("selectedCount") &&
+    assignmentSelectionSummary.includes("Choose at least one published question") &&
+    teacherAssignmentNewPage.includes("Save draft keeps the assignment teacher-only") &&
+    teacherAssignmentNewPage.includes("The server rechecks every selected question") &&
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Student handoff") &&
     teacherAssignmentDetailPage.includes("Student progress") &&
     teacherAssignmentDetailPage.includes("One row per active classroom student") &&
     teacherAssignmentDetailPage.includes("Practice evidence") &&
     teacherAssignmentDetailPage.includes("Draft assignment is teacher-only") &&
+    teacherAssignmentDetailPage.includes("Assigned work is visible in Student My Work") &&
+    teacherAssignmentDetailPage.includes("/questions/") &&
     teacherAssignmentDetailPage.includes("linked session(s)") &&
     teacherAssignmentsPage.includes("Open progress") &&
     teacherAssignmentsPage.includes("completed") &&
