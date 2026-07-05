@@ -39,7 +39,9 @@ export default async function StudentClassroomsPage({
         .select("id, name, description, subject, status, created_at")
         .in("id", classroomIds)
     : { data: [], error: null };
-  const classroomById = new Map((classrooms ?? []).map((classroom) => [classroom.id, classroom]));
+  const classroomById = new Map(
+    (classrooms ?? []).map((classroom) => [classroom.id, classroom]),
+  );
 
   return (
     <main className="student-shell space-y-6">
@@ -78,12 +80,19 @@ export default async function StudentClassroomsPage({
 
       <section className="student-panel overflow-hidden">
         <div className="border-b border-slate-100 p-5">
-          <h2 className="text-lg font-bold text-slate-950">
-            Joined classrooms
-          </h2>
-          <p className="student-muted">
-            You can see only classes where your membership is active.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-950">
+                Joined classrooms
+              </h2>
+              <p className="student-muted">
+                Active memberships show which classrooms can assign work to you.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+              {memberships?.length ?? 0}
+            </span>
+          </div>
         </div>
         {membershipError || classroomError ? (
           <p className="p-5 text-sm text-destructive">
@@ -95,19 +104,19 @@ export default async function StudentClassroomsPage({
               const classroom = classroomById.get(membership.classroom_id);
               return (
                 <article
-                  className="rounded-lg border border-slate-200 bg-white p-4"
+                  className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
                   key={membership.classroom_id}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-bold text-slate-950">
+                    <h3 className="min-w-0 break-words text-base font-bold text-slate-950">
                       {classroom?.name ?? "Classroom"}
                     </h3>
                     <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                      {membership.status}
+                      Active membership
                     </span>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    {classroom?.subject || "No subject set"} · Joined{" "}
+                    {classroom?.subject || "No subject set"} - Joined{" "}
                     {formatDate(membership.joined_at)}
                   </p>
                   {classroom?.description ? (
@@ -116,25 +125,33 @@ export default async function StudentClassroomsPage({
                     </p>
                   ) : null}
                   <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                    Open My Work to see assigned classroom tasks.
+                    Open My Work to start, continue, or review assigned tasks.
                   </div>
                 </article>
               );
             })}
           </div>
         ) : (
-          <div className="flex min-h-48 items-center justify-center p-8 text-center">
-            <div className="max-w-md space-y-3">
-              <h3 className="text-base font-bold text-slate-950">
-                No classes joined yet.
-              </h3>
-              <p className="text-sm leading-6 text-slate-600">
-                Ask your teacher for a join code, then use it to connect your
-                account to the classroom.
-              </p>
-              <Button asChild>
-                <Link href="/student/classrooms/join">Enter join code</Link>
-              </Button>
+          <div className="flex min-h-56 items-center justify-center p-8 text-center">
+            <div className="max-w-md space-y-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-950">
+                  No classes joined yet
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Ask your teacher for a join code, then use it to connect your
+                  account to the classroom. Your assignments appear in My Work
+                  after you join.
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button asChild>
+                  <Link href="/student/classrooms/join">Enter join code</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/student/work">Open My Work</Link>
+                </Button>
+              </div>
             </div>
           </div>
         )}
