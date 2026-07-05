@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AssignmentSelectionSummary } from "@/components/teacher/assignment-selection-summary";
+import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -61,16 +62,31 @@ export default async function NewTeacherAssignmentPage({
               Assign work to {classroom.name}
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Select published Question Bank items, write student-facing
-              instructions, then save a teacher draft or assign it to class.
+              Select reviewed questions, write student-facing instructions,
+              then save a teacher draft or assign it to class. Bank-scoped
+              selection arrives in the next architecture slice.
             </p>
           </div>
-          <Button asChild variant="outline">
-            <Link href={`/teacher/classrooms/${classroom.id}/assignments`}>
-              Back to assignments
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/teacher">Teacher Studio</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/teacher/classrooms/${classroom.id}/assignments`}>
+                Back to assignments
+              </Link>
+            </Button>
+          </div>
         </div>
+        <div className="mt-5">
+          <TeacherWorkspaceNav />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+        <strong className="font-bold">Bank-first bridge:</strong> this direct
+        classroom assignment form remains for delivery-layer regression. The
+        next assignment builder should start from teacher bank content.
       </section>
 
       {query.error ? (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { profileLabel } from "@/lib/classrooms";
 import { createClient } from "@/lib/supabase/server";
@@ -87,13 +88,27 @@ export default async function TeacherClassroomDetailPage({
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
               {classroom.description ||
-                "Review joined students and keep the class ready for assignments."}
+                "Review joined students and keep this delivery space ready for selected bank content."}
             </p>
           </div>
-          <Button asChild variant="outline">
-            <Link href="/teacher/classrooms">Back to classrooms</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/teacher">Teacher Studio</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/teacher/classrooms">Back to classrooms</Link>
+            </Button>
+          </div>
         </div>
+        <div className="mt-5">
+          <TeacherWorkspaceNav />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+        <strong className="font-bold">Bank-first reminder:</strong> this class
+        delivers selected reviewed content. Students do not gain access to the
+        full teacher bank by joining the roster.
       </section>
 
       {query.saved ? (
@@ -210,8 +225,8 @@ export default async function TeacherClassroomDetailPage({
               Assignments
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Create assigned work from published questions and send it to
-              students&apos; My Work.
+              Create delivery events from reviewed questions and send selected
+              items to students&apos; My Work.
             </p>
             <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   listCourseBuilderBridgeClassrooms,
@@ -249,16 +250,23 @@ export default async function TeacherCourseBuilderPage({
       <section className="student-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Course Builder to assignments</p>
+            <p className="student-eyebrow">Course Builder bridge</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Turn reviewed Course Builder output into class work.
+              Course Builder will generate bank packages before assignment.
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Choose a Course Builder run or practice framework, keep only published
-              Question Bank items, then save a teacher draft or assign it to My Work.
+              This direct assignment bridge remains for compatibility. The
+              bank-first Course Builder rebuild will create reviewed packages in
+              a teacher bank before they become class work.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/teacher">Teacher Studio</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/teacher/banks">Banks / Library</Link>
+            </Button>
             <Button asChild variant="outline">
               <Link href="/teacher/classrooms">Classrooms</Link>
             </Button>
@@ -267,6 +275,15 @@ export default async function TeacherCourseBuilderPage({
             </Button>
           </div>
         </div>
+        <div className="mt-5">
+          <TeacherWorkspaceNav />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+        <strong className="font-bold">Rebuild planned:</strong> Course Builder
+        should generate bank packages before assignment. This page does not add
+        new generation behavior or provider calls.
       </section>
 
       {query.saved ? (
@@ -282,10 +299,10 @@ export default async function TeacherCourseBuilderPage({
 
       {!classrooms.length ? (
         <section className="student-panel p-6">
-          <h2 className="text-lg font-bold text-slate-950">Create a classroom first.</h2>
+          <h2 className="text-lg font-bold text-slate-950">Delivery classroom required.</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Assignments need a teacher-managed classroom before they can be saved or
-            assigned.
+            The current bridge still needs a teacher-managed classroom before it
+            can save a delivery event. Bank-first package generation is next.
           </p>
           <Button asChild className="mt-4">
             <Link href="/teacher/classrooms">Open classrooms</Link>

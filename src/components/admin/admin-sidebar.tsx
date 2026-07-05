@@ -28,6 +28,7 @@ const adminNavGroups: AdminNavGroup[] = [
     label: "Primary",
     items: [
       { exact: true, href: "/admin", label: "Dashboard" },
+      { exact: true, href: "/teacher", label: "Teacher Studio preview" },
       { href: "/admin/questions", label: "Questions" },
       { href: "/admin/review", label: "Review Drafts" },
       { href: "/admin/blueprints", label: "Blueprint Library" },

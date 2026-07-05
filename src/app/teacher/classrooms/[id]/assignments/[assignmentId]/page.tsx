@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { getTeacherAssignmentDetail } from "@/lib/teacher-assignments";
@@ -129,11 +130,14 @@ export default async function TeacherAssignmentDetailPage({
               {assignment.title}
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              {assignment.classroom.name}
+              Delivery detail for {assignment.classroom.name}
               {assignment.classroom.subject ? ` - ${assignment.classroom.subject}` : ""}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/teacher">Teacher Studio</Link>
+            </Button>
             <Button asChild variant="outline">
               <Link href={`/teacher/classrooms/${assignment.classroom.id}/assignments`}>
                 Back to assignments
@@ -144,6 +148,15 @@ export default async function TeacherAssignmentDetailPage({
             </Button>
           </div>
         </div>
+        <div className="mt-5">
+          <TeacherWorkspaceNav />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+        <strong className="font-bold">Assignment-only visibility:</strong> this
+        page tracks selected delivered items. It does not grant students access
+        to the teacher&apos;s full bank.
       </section>
 
       {query.saved ? (

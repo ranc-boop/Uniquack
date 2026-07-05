@@ -58,7 +58,7 @@ export async function signInWithUsername(formData: FormData) {
   }
 
   if (profile?.role === "teacher") {
-    redirect("/teacher/classrooms");
+    redirect("/teacher");
   }
 
   redirect("/questions");

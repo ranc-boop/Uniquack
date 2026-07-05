@@ -51,7 +51,7 @@ export async function requireTeacher() {
   const profile = await getCurrentProfile();
 
   if (!profile) {
-    redirect("/auth/login?next=/teacher/classrooms");
+    redirect("/auth/login?next=/teacher");
   }
 
   if (!canAccessTeacher(profile.role)) {

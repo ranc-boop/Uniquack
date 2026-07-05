@@ -15,6 +15,8 @@ const studentNavItems = [
   { href: "/videos", label: "Videos" },
 ];
 
+const platformNavItems = [{ href: "/admin", label: "Admin" }];
+
 export const metadata: Metadata = {
   title: "O2I Practice",
   description: "Student-first AP practice workspace",
@@ -53,12 +55,15 @@ export default function RootLayout({
                     {item.label}
                   </Link>
                 ))}
-                <Link
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
-                  href="/admin"
-                >
-                  Admin
-                </Link>
+                {platformNavItems.map((item) => (
+                  <Link
+                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+                    href={item.href}
+                    key={item.href}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
                 <AuthNav />
               </nav>
             </div>
