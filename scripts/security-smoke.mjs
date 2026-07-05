@@ -282,11 +282,22 @@ assert(
     teacherAssignmentsPage.includes("completed") &&
     teacherAssignmentDetailPage.includes("My Work") &&
     studentWorkPage.includes("My Work") &&
+    studentWorkPage.includes("Due soon") &&
+    studentWorkPage.includes("In progress") &&
+    studentWorkPage.includes("Not started") &&
+    studentWorkPage.includes("Completed") &&
     studentWorkPage.includes("No assigned work yet") &&
+    studentWorkPage.includes("Start Practice") &&
+    studentWorkPage.includes("Continue Practice") &&
+    studentWorkPage.includes("Review work") &&
     studentWorkDetailPage.includes("Practice progress is saved back") &&
     studentWorkDetailPage.includes("Start Practice") &&
+    studentWorkDetailPage.includes("Review Practice") &&
+    studentWorkDetailPage.includes("Practice entry unavailable") &&
+    studentWorkDetailPage.includes("Completed work history") &&
     studentClassroomPage.includes("My classes") &&
     studentClassroomPage.includes("Assigned work lives in My Work") &&
+    studentClassroomPage.includes("Active membership") &&
     studentJoinPage.includes("Enter your class code"),
   "classroom routes must expose teacher list/detail/roster and student join/list/My Work MVP pages",
 );
@@ -431,6 +442,7 @@ assert(
     assignmentPracticeLinkage.includes("updateLinkedAssignmentProgressAfterPractice") &&
     practicePage.includes("assignmentId") &&
     practiceLoader.includes("assignmentId") &&
+    practiceLoader.includes("Loading assignment practice workspace") &&
     practiceClient.includes("/api/practice/assignments/start") &&
     practiceClient.includes("Assignment practice") &&
     practiceReviewRoute.includes("updateLinkedAssignmentProgressAfterPractice"),

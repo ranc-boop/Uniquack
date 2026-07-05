@@ -149,17 +149,29 @@ assert(
     courseBuilderBridgeHelper.includes('.eq("status", "published")') &&
     courseBuilderBridgeMigration.includes("source_summary jsonb") &&
     studentWorkPage.includes("My Work") &&
+    studentWorkPage.includes("Due soon") &&
+    studentWorkPage.includes("In progress") &&
+    studentWorkPage.includes("Not started") &&
+    studentWorkPage.includes("Completed") &&
     studentWorkPage.includes("No assigned work yet") &&
+    studentWorkPage.includes("Start Practice") &&
+    studentWorkPage.includes("Continue Practice") &&
+    studentWorkPage.includes("Review work") &&
     studentWorkDetailPage.includes("Practice progress is saved back") &&
     studentWorkDetailPage.includes("Start Practice") &&
+    studentWorkDetailPage.includes("Review Practice") &&
+    studentWorkDetailPage.includes("Practice entry unavailable") &&
+    studentWorkDetailPage.includes("Completed work history") &&
     practicePage.includes("assignmentId") &&
     practiceLoader.includes("assignmentId") &&
+    practiceLoader.includes("Loading assignment practice workspace") &&
     practiceClient.includes("/api/practice/assignments/start") &&
     practiceClient.includes("Assignment practice") &&
     assignmentPracticeStartRoute.includes("startAssignmentPractice") &&
     studentClassroomsPage.includes("Student workspace") &&
     studentClassroomsPage.includes("My classes") &&
     studentClassroomsPage.includes("Assigned work lives in My Work") &&
+    studentClassroomsPage.includes("Active membership") &&
     studentJoinClassroomPage.includes("Join classroom") &&
     classroomMigration.includes("join_classroom_by_code") &&
     studentWorkMigration.includes("create table if not exists public.assignments"),
