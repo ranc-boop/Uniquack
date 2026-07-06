@@ -48,6 +48,14 @@ docs/teacher-classroom-0030-create-function-reapply.sql
 
 Apply that SQL file in the Supabase Dashboard SQL Editor, then rerun the live teacher workspace smoke.
 
+After the first function reapply, live smoke advanced to the next function-body issue:
+
+```text
+column reference "classroom_id" is ambiguous
+```
+
+That confirmed the remote function no longer referenced `classroom_members.created_by`. The branch migration and reapply file were corrected again to use an internal `created_classroom_id` variable before assigning the returned `classroom_id` field.
+
 ## Teacher Shell / Navigation
 
 Implemented teacher visual tokens and shared teacher shell primitives:
@@ -102,7 +110,7 @@ Active join codes stay visible to teachers through `classroom_join_codes.display
 
 ## Smoke / Test Results
 
-Passed before the post-apply function mismatch was found:
+Passed after the branch-side function correction:
 
 ```text
 npm.cmd run lint
@@ -111,8 +119,6 @@ node scripts/security-smoke.mjs
 node scripts/supabase-rls-smoke.mjs
 node scripts/route-smoke.mjs
 node scripts/teacher-role-bank-boundary-smoke.mjs
-node scripts/teacher-workspace-shell-smoke.mjs
-npm.cmd run smoke
 node scripts/question-bank-foundation-smoke.mjs
 node scripts/bank-share-members-smoke.mjs
 node scripts/bank-import-review-smoke.mjs
@@ -125,8 +131,10 @@ Notes:
 - `node scripts/supabase-rls-smoke.mjs` and live workflow smokes required network access to the clean Supabase project.
 - `node scripts/route-smoke.mjs` was run against `npm.cmd run start` in the same shell session after `npm.cmd run build`.
 - After migration 0030 was manually applied, `node scripts/teacher-workspace-shell-smoke.mjs` reached the live RPC and failed on the stale remote function body with `column "created_by" of relation "classroom_members" does not exist`.
-- `npm.cmd run smoke` now reaches the same live teacher workspace RPC and fails at the same stale remote function body after earlier smoke sections pass.
-- The corrected branch migration and `docs/teacher-classroom-0030-create-function-reapply.sql` remove that invalid column reference.
+- The first function reapply removed that invalid column reference.
+- The next live run reached the corrected remote function and failed with `column reference "classroom_id" is ambiguous`.
+- The latest branch migration and `docs/teacher-classroom-0030-create-function-reapply.sql` remove that PL/pgSQL ambiguity by using `created_classroom_id` internally.
+- `node scripts/teacher-workspace-shell-smoke.mjs` and `npm.cmd run smoke` remain blocked until the latest reapply SQL is run in Supabase.
 
 ## Remaining Step
 

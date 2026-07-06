@@ -61,6 +61,7 @@ declare
   target_organization_id uuid;
   normalized_code text;
   teacher_code text;
+  created_classroom_id uuid;
 begin
   if actor_id is null then
     raise exception 'Authentication required';
@@ -131,7 +132,7 @@ begin
     'active',
     actor_id
   )
-  returning id into classroom_id;
+  returning id into created_classroom_id;
 
   insert into public.classroom_members (
     classroom_id,
@@ -141,7 +142,7 @@ begin
     joined_at
   )
   values (
-    classroom_id,
+    created_classroom_id,
     actor_id,
     'teacher',
     'active',
@@ -162,7 +163,7 @@ begin
     created_by
   )
   values (
-    classroom_id,
+    created_classroom_id,
     private.classroom_join_code_hash(normalized_code),
     right(normalized_code, 4),
     teacher_code,
@@ -171,6 +172,7 @@ begin
   )
   on conflict (code_hash) do nothing;
 
+  classroom_id := created_classroom_id;
   display_code := teacher_code;
   return next;
 end;

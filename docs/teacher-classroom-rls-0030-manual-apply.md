@@ -42,3 +42,11 @@ docs/teacher-classroom-0030-create-function-reapply.sql
 ```
 
 That file only replaces the corrected function body and does not mutate data.
+
+If the live smoke instead fails with:
+
+```text
+column reference "classroom_id" is ambiguous
+```
+
+run the latest version of the same reapply file again. The function now uses an internal `created_classroom_id` variable and assigns the return field only at the end.
