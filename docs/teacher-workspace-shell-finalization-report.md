@@ -32,11 +32,21 @@ The migration:
 - adds authenticated-only `public.create_teacher_classroom(...)`;
 - creates classroom, teacher owner membership, and persistent display join code in one transaction.
 
-The local environment does not have `supabase` CLI or `psql` on PATH, so migration 0030 was not applied by Codex. Manual apply instructions are in:
+Migration 0030 was manually applied through the clean Supabase Dashboard SQL Editor. Verification confirmed:
 
 ```text
-docs/teacher-classroom-rls-0030-manual-apply.md
+public.create_teacher_classroom exists
+private.is_org_staff exists
+classroom_join_codes.display_code exists
 ```
+
+Live smoke then found a clean-schema compatibility issue in the first function body: it inserted `classroom_members.created_by`, but `classroom_members` does not have that column in migration 0018. The branch migration has been corrected, and a copy-paste-safe function-only reapply file was added:
+
+```text
+docs/teacher-classroom-0030-create-function-reapply.sql
+```
+
+Apply that SQL file in the Supabase Dashboard SQL Editor, then rerun the live teacher workspace smoke.
 
 ## Teacher Shell / Navigation
 
@@ -92,7 +102,7 @@ Active join codes stay visible to teachers through `classroom_join_codes.display
 
 ## Smoke / Test Results
 
-Passed:
+Passed before the post-apply function mismatch was found:
 
 ```text
 npm.cmd run lint
@@ -114,18 +124,20 @@ Notes:
 
 - `node scripts/supabase-rls-smoke.mjs` and live workflow smokes required network access to the clean Supabase project.
 - `node scripts/route-smoke.mjs` was run against `npm.cmd run start` in the same shell session after `npm.cmd run build`.
-- `node scripts/teacher-workspace-shell-smoke.mjs` passed source checks and skipped the live RPC create check because migration 0030 is not yet applied remotely.
+- After migration 0030 was manually applied, `node scripts/teacher-workspace-shell-smoke.mjs` reached the live RPC and failed on the stale remote function body with `column "created_by" of relation "classroom_members" does not exist`.
+- `npm.cmd run smoke` now reaches the same live teacher workspace RPC and fails at the same stale remote function body after earlier smoke sections pass.
+- The corrected branch migration and `docs/teacher-classroom-0030-create-function-reapply.sql` remove that invalid column reference.
 
 ## Remaining Step
 
-Apply `supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql` to the clean Supabase project, then rerun:
+Apply `docs/teacher-classroom-0030-create-function-reapply.sql` to the clean Supabase project, then rerun:
 
 ```powershell
 node scripts/teacher-workspace-shell-smoke.mjs
 npm.cmd run smoke
 ```
 
-The expected live result after manual apply is:
+The expected live result after function reapply is:
 
 - real teacher can create a classroom through `public.create_teacher_classroom`;
 - teacher owner membership is created;

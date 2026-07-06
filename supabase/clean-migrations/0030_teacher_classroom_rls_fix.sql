@@ -138,16 +138,14 @@ begin
     user_id,
     role,
     status,
-    joined_at,
-    created_by
+    joined_at
   )
   values (
     classroom_id,
     actor_id,
     'teacher',
     'active',
-    now(),
-    actor_id
+    now()
   )
   on conflict (classroom_id, user_id) do update
   set role = 'teacher',

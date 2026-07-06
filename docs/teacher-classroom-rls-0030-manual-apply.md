@@ -28,3 +28,17 @@ node scripts/teacher-workspace-shell-smoke.mjs
 node scripts/supabase-rls-smoke.mjs
 npm.cmd run smoke
 ```
+
+If the live smoke fails with:
+
+```text
+column "created_by" of relation "classroom_members" does not exist
+```
+
+then the remote project still has the first `public.create_teacher_classroom` body. Copy and run:
+
+```text
+docs/teacher-classroom-0030-create-function-reapply.sql
+```
+
+That file only replaces the corrected function body and does not mutate data.
