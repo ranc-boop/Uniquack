@@ -100,6 +100,11 @@ export default async function TeacherBankDetailPage({
             <Button asChild variant="outline">
               <Link href="/admin/review">Review Drafts</Link>
             </Button>
+            <Button asChild variant="outline">
+              <Link href={`/teacher/banks/${bank.id}/members`}>
+                Members / Share
+              </Link>
+            </Button>
           </div>
         </div>
       </section>
@@ -155,6 +160,10 @@ export default async function TeacherBankDetailPage({
         <aside className="space-y-4">
           <section className="student-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Members</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Explicit bank membership controls access. Classroom membership
+              does not grant access to this bank.
+            </p>
             <div className="mt-4 space-y-3">
               {members.map((member) => (
                 <div
@@ -175,6 +184,11 @@ export default async function TeacherBankDetailPage({
                 </div>
               ))}
             </div>
+            <Button asChild className="mt-4 w-full" variant="outline">
+              <Link href={`/teacher/banks/${bank.id}/members`}>
+                Manage members and share codes
+              </Link>
+            </Button>
           </section>
 
           <section className="student-panel p-5">

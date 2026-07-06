@@ -115,6 +115,7 @@ const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
 const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
 const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
 const teacherBankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
+const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const questionBankHelpers = await read("src/lib/question-banks.ts");
 const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
@@ -128,6 +129,9 @@ const courseBuilderBridgeMigration = await read(
 );
 const questionBankMigration = await read(
   "supabase/clean-migrations/0025_question_banks_foundation.sql",
+);
+const bankShareMigration = await read(
+  "supabase/clean-migrations/0026_bank_share_codes_and_members.sql",
 );
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
@@ -293,16 +297,28 @@ assert(
     teacherBankNewPage.includes("Creating a bank creates your owner membership only") &&
     teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
     teacherBankDetailPage.includes("These remain disabled until their review-gated slices land") &&
-    teacherBankJoinPage.includes("No join form is active") &&
+    teacherBankDetailPage.includes("Manage members and share codes") &&
+    teacherBankJoinPage.includes("action={joinQuestionBankByCode}") &&
+    teacherBankJoinPage.includes("Joining a bank is separate from") &&
+    teacherBankMembersPage.includes("Owner-controlled sharing") &&
+    teacherBankMembersPage.includes("Share codes are shown") &&
+    teacherBankMembersPage.includes("only once") &&
+    teacherBankMembersPage.includes("Role") &&
     teacherBankActions.includes("requireTeacher") &&
     teacherBankActions.includes('rpc("create_question_bank"') &&
+    teacherBankActions.includes('rpc("create_bank_share_code"') &&
+    teacherBankActions.includes('rpc("join_question_bank_by_code"') &&
+    teacherBankActions.includes('rpc("update_bank_member_role"') &&
+    teacherBankActions.includes('rpc("remove_bank_member"') &&
     !teacherBankActions.includes("classrooms") &&
     !teacherBankActions.includes("assignments") &&
     !teacherBankActions.includes("AI_PROVIDER") &&
     questionBankHelpers.includes("listTeacherQuestionBanks") &&
     questionBankHelpers.includes("getTeacherQuestionBankDetail") &&
+    questionBankHelpers.includes("listBankShareCodes") &&
     questionBankHelpers.includes("QuestionBankSchemaMissingError") &&
     !teacherBankJoinPage.includes(".insert(") &&
+    !teacherBankMembersPage.includes(".insert(") &&
     questionBankMigration.includes("create table if not exists public.question_banks") &&
     questionBankMigration.includes("create table if not exists public.bank_members") &&
     questionBankMigration.includes("create table if not exists public.bank_questions") &&
@@ -317,6 +333,19 @@ assert(
     questionBankMigration.includes("role in ('owner', 'editor', 'viewer')") &&
     !questionBankMigration.includes("share_code") &&
     !questionBankMigration.includes("provider") &&
+    bankShareMigration.includes("create table if not exists public.bank_share_codes") &&
+    bankShareMigration.includes("code_hash text not null unique") &&
+    bankShareMigration.includes("private.bank_share_code_hash") &&
+    bankShareMigration.includes("public.join_question_bank_by_code") &&
+    bankShareMigration.includes("current_profile.role not in ('teacher', 'admin', 'super_admin')") &&
+    bankShareMigration.includes("Only bank owners can create share codes") &&
+    bankShareMigration.includes("drop policy if exists bank_members_write_managers") &&
+    bankShareMigration.includes("create policy bank_members_owner_write") &&
+    bankShareMigration.includes("alter table public.bank_share_codes enable row level security") &&
+    bankShareMigration.includes("revoke all on function public.join_question_bank_by_code(text) from public, anon") &&
+    bankShareMigration.includes("grant execute on function public.join_question_bank_by_code(text) to authenticated") &&
+    !bankShareMigration.includes("raw_share_code text not null") &&
+    !bankShareMigration.includes("grant execute on function public.join_question_bank_by_code(text) to anon") &&
     authGuards.includes("next=/teacher") &&
     authActions.includes('redirect("/teacher")') &&
     authNav.includes("Teacher Studio preview") &&

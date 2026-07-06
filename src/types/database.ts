@@ -189,6 +189,20 @@ export type BankQuestion = {
   metadata: Json;
 };
 
+export type BankShareCode = {
+  id: string;
+  bank_id: string;
+  code_hash: string;
+  code_hint: string | null;
+  role_granted: "viewer" | "editor";
+  status: "active" | "revoked";
+  created_by: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Assignment = {
   id: string;
   organization_id: string;
@@ -638,6 +652,7 @@ export type Database = {
       question_banks: TableDefinition<QuestionBank>;
       bank_members: TableDefinition<BankMember>;
       bank_questions: TableDefinition<BankQuestion>;
+      bank_share_codes: TableDefinition<BankShareCode>;
       assignments: TableDefinition<Assignment>;
       assignment_items: TableDefinition<AssignmentItem>;
       student_assignment_progress: TableDefinition<StudentAssignmentProgress>;
@@ -764,6 +779,46 @@ export type Database = {
           bank_visibility?: QuestionBankVisibility;
         };
         Returns: string;
+      };
+      create_bank_share_code: {
+        Args: {
+          expires_at?: string | null;
+          granted_role?: "viewer" | "editor";
+          target_bank_id: string;
+        };
+        Returns: Array<{
+          raw_share_code: string;
+          role_granted: "viewer" | "editor";
+          share_code_expires_at: string | null;
+          share_code_id: string;
+        }>;
+      };
+      revoke_bank_share_code: {
+        Args: { target_share_code_id: string };
+        Returns: boolean;
+      };
+      join_question_bank_by_code: {
+        Args: { raw_share_code: string };
+        Returns: Array<{
+          bank_id: string;
+          bank_name: string;
+          granted_role: "viewer" | "editor";
+        }>;
+      };
+      update_bank_member_role: {
+        Args: {
+          new_role: "viewer" | "editor";
+          target_bank_id: string;
+          target_user_id: string;
+        };
+        Returns: boolean;
+      };
+      remove_bank_member: {
+        Args: {
+          target_bank_id: string;
+          target_user_id: string;
+        };
+        Returns: boolean;
       };
       search_questions_by_taxonomy: {
         Args: {

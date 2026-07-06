@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import type {
   BankMember,
   BankMemberRole,
+  BankShareCode,
+  Profile,
   QuestionBank,
   QuestionBankStatus,
   QuestionBankVisibility,
@@ -20,9 +22,30 @@ export type TeacherQuestionBankSummary = QuestionBank & {
 export type TeacherQuestionBankDetail = {
   activeMemberCount: number;
   bank: QuestionBank;
-  members: BankMember[];
+  currentUserRole: BankMemberRole | null;
+  members: BankMemberWithProfile[];
   questionCount: number;
 };
+
+export type BankMemberWithProfile = BankMember & {
+  profile: Pick<
+    Profile,
+    "display_name" | "email" | "full_name" | "id" | "username"
+  > | null;
+};
+
+export type BankShareCodeSummary = Pick<
+  BankShareCode,
+  | "id"
+  | "bank_id"
+  | "code_hint"
+  | "created_at"
+  | "expires_at"
+  | "last_used_at"
+  | "role_granted"
+  | "status"
+  | "updated_at"
+>;
 
 export class QuestionBankSchemaMissingError extends Error {
   constructor(message = "Question Bank tables are not available yet.") {
@@ -36,7 +59,8 @@ function isMissingQuestionBankSchemaError(error: { message?: string } | null) {
   return (
     message.includes("question_banks") ||
     message.includes("bank_members") ||
-    message.includes("bank_questions")
+    message.includes("bank_questions") ||
+    message.includes("bank_share_codes")
   ) && (message.includes("does not exist") || message.includes("schema cache"));
 }
 
@@ -139,9 +163,11 @@ export async function listTeacherQuestionBanks({
 
 export async function getTeacherQuestionBankDetail({
   bankId,
+  profileId,
   supabase,
 }: {
   bankId: string;
+  profileId?: string;
   supabase: SupabaseServerClient;
 }) {
   const { data: bank, error: bankError } = await supabase
@@ -186,13 +212,76 @@ export async function getTeacherQuestionBankDetail({
     throw new Error(questionError.message);
   }
 
+  const userIds = Array.from(new Set((members ?? []).map((member) => member.user_id)));
+  let profilesById = new Map<string, BankMemberWithProfile["profile"]>();
+
+  if (userIds.length) {
+    const { data: profiles, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, display_name, email, full_name, username")
+      .in("id", userIds);
+
+    if (profileError) {
+      throw new Error(profileError.message);
+    }
+
+    profilesById = new Map(
+      (profiles ?? []).map((profile) => [profile.id, profile]),
+    );
+  }
+
+  const membersWithProfiles = (members ?? []).map((member) => ({
+    ...member,
+    profile: profilesById.get(member.user_id) ?? null,
+  }));
+
   return {
     activeMemberCount:
       members?.filter((member) => member.status === "active").length ?? 0,
     bank,
-    members: members ?? [],
+    currentUserRole:
+      members?.find((member) => member.user_id === profileId)?.role ?? null,
+    members: membersWithProfiles,
     questionCount: bankQuestionRows?.length ?? 0,
   } satisfies TeacherQuestionBankDetail;
+}
+
+export async function listBankShareCodes({
+  bankId,
+  supabase,
+}: {
+  bankId: string;
+  supabase: SupabaseServerClient;
+}) {
+  const { data, error } = await supabase
+    .from("bank_share_codes")
+    .select(
+      "id, bank_id, code_hint, role_granted, status, expires_at, last_used_at, created_at, updated_at",
+    )
+    .eq("bank_id", bankId)
+    .order("created_at", { ascending: false });
+
+  assertQuestionBankSchema(error);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
+}
+
+export function canManageBankMembers(role: BankMemberRole | null | undefined) {
+  return role === "owner";
+}
+
+export function bankMemberProfileLabel(member: BankMemberWithProfile) {
+  return (
+    member.profile?.display_name ||
+    member.profile?.full_name ||
+    member.profile?.username ||
+    member.profile?.email ||
+    "Unknown member"
+  );
 }
 
 export function questionBankVisibilityLabel(

@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 
+import { joinQuestionBankByCode } from "../actions";
+
 export const dynamic = "force-dynamic";
 
 export default async function JoinTeacherBankPage() {
@@ -16,36 +18,53 @@ export default async function JoinTeacherBankPage() {
           <div className="space-y-2">
             <p className="student-eyebrow">Join Bank by Share Code</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Bank collaboration is teacher-to-teacher.
+              Join a shared Question Bank.
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Share-code mutation is intentionally deferred. Students join
-              classrooms; teachers join banks.
+              Enter a teacher-issued bank code. Joining a bank is separate from
+              joining a classroom.
             </p>
           </div>
           <TeacherWorkspaceNav />
         </div>
       </section>
 
-      <section className="student-panel p-6">
-        <h2 className="text-lg font-bold text-slate-950">
-          Coming next: safe bank join codes
-        </h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          The next bank foundation slices will add hashed share codes, member
-          roles, revoke/rotate behavior, and RLS checks. No join form is active
-          in this reconciliation PR.
-        </p>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Button asChild>
+      <form action={joinQuestionBankByCode} className="student-panel overflow-hidden">
+        <div className="border-b border-slate-200 bg-white/70 p-6">
+          <h2 className="text-xl font-bold text-slate-950">
+            Bank collaboration code
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Share codes grant explicit bank membership. Classroom membership
+            never grants access to a teacher bank.
+          </p>
+        </div>
+        <div className="space-y-5 p-6">
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-900">
+              Share code
+            </span>
+            <input
+              autoComplete="off"
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm uppercase tracking-wide text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              maxLength={64}
+              name="shareCode"
+              placeholder="ABCD-1234"
+              required
+            />
+          </label>
+          <div className="rounded-lg border border-sky-100 bg-sky-50/70 p-4 text-sm leading-6 text-sky-950">
+            Students should use classroom join codes, not bank share codes.
+            Bank access is for teacher collaboration and content review.
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-6">
+          <Button asChild variant="outline">
             <Link href="/teacher/banks">Back to Banks / Library</Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href="/teacher">Teacher Studio</Link>
-          </Button>
+          <Button type="submit">Join Question Bank</Button>
         </div>
-      </section>
+      </form>
     </main>
   );
 }
-

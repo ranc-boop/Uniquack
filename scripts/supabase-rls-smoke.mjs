@@ -61,6 +61,10 @@ const questionBankMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0025_question_banks_foundation.sql"),
   "utf8",
 );
+const bankShareMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0026_bank_share_codes_and_members.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -184,6 +188,37 @@ assert(
   "question bank create RPC must be authenticated teacher/admin scoped and must not add share-code/public anon behavior",
 );
 console.log("PASS question bank migration enables scoped RLS and authenticated owner creation");
+assert(
+  bankShareMigration.includes("create table if not exists public.bank_share_codes") &&
+    bankShareMigration.includes("code_hash text not null unique") &&
+    bankShareMigration.includes("private.bank_share_code_hash") &&
+    bankShareMigration.includes("extensions.digest") &&
+    bankShareMigration.includes("alter table public.bank_share_codes enable row level security"),
+  "bank share migration must store only hashed share codes and enable RLS",
+);
+assert(
+  bankShareMigration.includes("public.create_bank_share_code") &&
+    bankShareMigration.includes("public.join_question_bank_by_code") &&
+    bankShareMigration.includes("public.update_bank_member_role") &&
+    bankShareMigration.includes("public.remove_bank_member") &&
+    bankShareMigration.includes("Only bank owners can create share codes") &&
+    bankShareMigration.includes("Only bank owners can update member roles") &&
+    bankShareMigration.includes("Only teacher or admin accounts can join banks by share code"),
+  "bank share RPCs must keep joins teacher/admin-only and member management owner-controlled",
+);
+assert(
+  bankShareMigration.includes("drop policy if exists bank_members_write_managers") &&
+    bankShareMigration.includes("create policy bank_members_owner_write") &&
+    bankShareMigration.includes("private.can_own_question_bank(bank_id)") &&
+    bankShareMigration.includes("bank_share_codes_owner_read") &&
+    bankShareMigration.includes("bank_share_codes_owner_write") &&
+    bankShareMigration.includes("revoke all on function public.join_question_bank_by_code(text) from public, anon") &&
+    bankShareMigration.includes("grant execute on function public.join_question_bank_by_code(text) to authenticated") &&
+    !bankShareMigration.includes("grant execute on function public.join_question_bank_by_code(text) to anon") &&
+    !bankShareMigration.includes("raw_share_code text not null"),
+  "bank share RLS/grants must block anonymous access and avoid storing raw share codes",
+);
+console.log("PASS bank share migration enables owner-managed hashed share codes");
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",

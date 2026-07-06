@@ -66,7 +66,7 @@ await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
 await checkAdminRoute("/teacher", "Start with your Question Bank / Library");
 await checkAdminRoute("/teacher/banks", "Your teacher-owned Question Banks");
 await checkAdminRoute("/teacher/banks/new", "Start a teacher-owned content library");
-await checkAdminRoute("/teacher/banks/join", "Bank collaboration is teacher-to-teacher");
+await checkAdminRoute("/teacher/banks/join", "Join a shared Question Bank");
 await checkAdminRoute("/teacher/classrooms", "Classrooms");
 await checkAdminRoute("/teacher/course-builder", "Course Builder");
 await checkAdminRoute("/student/work", "My Work");
@@ -115,6 +115,7 @@ const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
 const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
 const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
 const teacherBankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
+const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
@@ -150,8 +151,16 @@ assert(
     teacherBankNewPage.includes("action={createQuestionBank}") &&
     teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
     teacherBankDetailPage.includes("disabled") &&
+    teacherBankDetailPage.includes("Manage members and share codes") &&
     teacherBankActions.includes('rpc("create_question_bank"') &&
-    teacherBankJoinPage.includes("No join form is active") &&
+    teacherBankActions.includes('rpc("create_bank_share_code"') &&
+    teacherBankActions.includes('rpc("join_question_bank_by_code"') &&
+    teacherBankActions.includes('rpc("update_bank_member_role"') &&
+    teacherBankActions.includes('rpc("remove_bank_member"') &&
+    teacherBankJoinPage.includes("action={joinQuestionBankByCode}") &&
+    teacherBankJoinPage.includes("Joining a bank is separate from") &&
+    teacherBankMembersPage.includes("Owner-controlled sharing") &&
+    teacherBankMembersPage.includes("Create share code") &&
     authActions.includes('redirect("/teacher")') &&
     authGuards.includes('redirect("/auth/login?next=/teacher")') &&
     authNav.includes("Teacher Studio preview"),
