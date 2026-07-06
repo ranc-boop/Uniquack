@@ -137,6 +137,58 @@ export type ClassroomJoinCode = {
   updated_at: string;
 };
 
+export type QuestionBankVisibility =
+  | "private"
+  | "shared"
+  | "organization"
+  | "public";
+export type QuestionBankStatus = "active" | "archived" | "disabled";
+export type BankMemberRole = "owner" | "editor" | "viewer";
+export type BankMemberStatus = "active" | "invited" | "removed";
+
+export type QuestionBank = {
+  id: string;
+  organization_id: string;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  visibility: QuestionBankVisibility;
+  status: QuestionBankStatus;
+  metadata: Json;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BankMember = {
+  id: string;
+  bank_id: string;
+  user_id: string;
+  role: BankMemberRole;
+  status: BankMemberStatus;
+  invited_by: string | null;
+  joined_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BankQuestion = {
+  id: string;
+  bank_id: string;
+  question_id: string;
+  status: "active" | "archived" | "removed";
+  source_kind:
+    | "manual"
+    | "review_draft"
+    | "import"
+    | "public_pull"
+    | "course_builder";
+  added_by: string | null;
+  added_at: string;
+  metadata: Json;
+};
+
 export type Assignment = {
   id: string;
   organization_id: string;
@@ -583,6 +635,9 @@ export type Database = {
       classrooms: TableDefinition<Classroom>;
       classroom_members: TableDefinition<ClassroomMember>;
       classroom_join_codes: TableDefinition<ClassroomJoinCode>;
+      question_banks: TableDefinition<QuestionBank>;
+      bank_members: TableDefinition<BankMember>;
+      bank_questions: TableDefinition<BankQuestion>;
       assignments: TableDefinition<Assignment>;
       assignment_items: TableDefinition<AssignmentItem>;
       student_assignment_progress: TableDefinition<StudentAssignmentProgress>;
@@ -701,6 +756,14 @@ export type Database = {
           profile_id: string;
         };
         Returns: undefined;
+      };
+      create_question_bank: {
+        Args: {
+          bank_description?: string | null;
+          bank_name: string;
+          bank_visibility?: QuestionBankVisibility;
+        };
+        Returns: string;
       };
       search_questions_by_taxonomy: {
         Args: {
