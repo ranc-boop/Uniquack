@@ -56,6 +56,18 @@ column reference "classroom_id" is ambiguous
 
 That confirmed the remote function no longer referenced `classroom_members.created_by`. The branch migration and reapply file were corrected again to use an internal `created_classroom_id` variable before assigning the returned `classroom_id` field.
 
+After that reapply was manually applied, live smoke still reported `column reference "classroom_id" is ambiguous`. The remaining ambiguous reference was the conflict target:
+
+```sql
+on conflict (classroom_id, user_id) do update
+```
+
+The branch migration and reapply file now use the named unique constraint instead:
+
+```sql
+on conflict on constraint classroom_members_classroom_id_user_id_key do update
+```
+
 ## Teacher Shell / Navigation
 
 Implemented teacher visual tokens and shared teacher shell primitives:
@@ -133,8 +145,9 @@ Notes:
 - After migration 0030 was manually applied, `node scripts/teacher-workspace-shell-smoke.mjs` reached the live RPC and failed on the stale remote function body with `column "created_by" of relation "classroom_members" does not exist`.
 - The first function reapply removed that invalid column reference.
 - The next live run reached the corrected remote function and failed with `column reference "classroom_id" is ambiguous`.
-- The latest branch migration and `docs/teacher-classroom-0030-create-function-reapply.sql` remove that PL/pgSQL ambiguity by using `created_classroom_id` internally.
+- The latest branch migration and `docs/teacher-classroom-0030-create-function-reapply.sql` remove both PL/pgSQL ambiguity sources by using `created_classroom_id` internally and the named `classroom_members_classroom_id_user_id_key` conflict constraint.
 - `node scripts/teacher-workspace-shell-smoke.mjs` and `npm.cmd run smoke` remain blocked until the latest reapply SQL is run in Supabase.
+- Current `npm.cmd run smoke` result: all earlier smoke sections pass, then `teacher-workspace-shell-smoke` fails at the remote `public.create_teacher_classroom` body with `column reference "classroom_id" is ambiguous`.
 
 ## Remaining Step
 

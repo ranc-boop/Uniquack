@@ -107,7 +107,7 @@ begin
     'active',
     now()
   )
-  on conflict (classroom_id, user_id) do update
+  on conflict on constraint classroom_members_classroom_id_user_id_key do update
   set role = 'teacher',
       status = 'active',
       removed_at = null,

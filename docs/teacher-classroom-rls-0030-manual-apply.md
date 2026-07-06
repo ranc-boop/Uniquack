@@ -50,3 +50,11 @@ column reference "classroom_id" is ambiguous
 ```
 
 run the latest version of the same reapply file again. The function now uses an internal `created_classroom_id` variable and assigns the return field only at the end.
+
+If the same ambiguity persists after that reapply, make sure the latest SQL uses:
+
+```sql
+on conflict on constraint classroom_members_classroom_id_user_id_key do update
+```
+
+The named constraint avoids PL/pgSQL confusing the conflict target column with the returned `classroom_id` field.
