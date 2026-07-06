@@ -137,14 +137,13 @@ async function loadAssignedQuestionPracticeItems({
   );
 
   if (!questionIds.length) {
-    throw new Error("This assignment does not have published question items yet.");
+    throw new Error("This assignment does not have usable question items yet.");
   }
 
   const { data: questions, error: questionError } = await supabase
     .from("questions")
     .select("id, question_code, title, content_html, difficulty_rating, options, question_type, source")
-    .in("id", questionIds)
-    .eq("status", "published");
+    .in("id", questionIds);
 
   if (questionError) {
     throw new Error(questionError.message);
@@ -158,7 +157,7 @@ async function loadAssignedQuestionPracticeItems({
   );
   const missingQuestionIds = questionIds.filter((questionId) => !questionById.has(questionId));
   if (missingQuestionIds.length) {
-    throw new Error("This assignment has question items that are no longer published.");
+    throw new Error("This assignment has question items that are no longer available to you.");
   }
 
   const { data: taxonomyRows, error: taxonomyError } = await supabase

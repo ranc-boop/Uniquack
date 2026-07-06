@@ -63,8 +63,8 @@ export default async function NewTeacherAssignmentPage({
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
               Select reviewed questions, write student-facing instructions,
-              then save a teacher draft or assign it to class. Bank-scoped
-              selection arrives in the next architecture slice.
+              then save a teacher draft or assign it to class. The primary
+              workflow now starts from Question Banks.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -84,9 +84,13 @@ export default async function NewTeacherAssignmentPage({
       </section>
 
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-        <strong className="font-bold">Bank-first bridge:</strong> this direct
-        classroom assignment form remains for delivery-layer regression. The
-        next assignment builder should start from teacher bank content.
+        <strong className="font-bold">Bank-first workflow:</strong> create new
+        assignments from a Question Bank when possible. This direct classroom
+        picker remains for published-question compatibility and regression
+        checks.
+        <Button asChild className="ml-3" size="sm" variant="outline">
+          <Link href="/teacher/banks">Open Question Banks</Link>
+        </Button>
       </section>
 
       {query.error ? (
@@ -98,7 +102,7 @@ export default async function NewTeacherAssignmentPage({
       <section className="grid gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-sm font-semibold text-slate-500">Step 1</p>
-          <p className="mt-1 font-bold text-slate-950">Choose published questions</p>
+          <p className="mt-1 font-bold text-slate-950">Choose compatibility questions</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-sm font-semibold text-slate-500">Step 2</p>
@@ -119,8 +123,8 @@ export default async function NewTeacherAssignmentPage({
                   Published questions
                 </h2>
                 <p className="student-muted">
-                  Only published questions can be assigned. Review Drafts and
-                  unreviewed items stay out of student work.
+                  Compatibility path for globally published questions. Bank
+                  assignments should start from selected approved bank items.
                 </p>
               </div>
               <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
@@ -265,7 +269,7 @@ export default async function NewTeacherAssignmentPage({
             </div>
             <p className="mt-4 text-xs leading-5 text-slate-500">
               The server rechecks every selected question and rejects anything
-              that is not published.
+              that is not published in this compatibility path.
             </p>
           </section>
         </aside>

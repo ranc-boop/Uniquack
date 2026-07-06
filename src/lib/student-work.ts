@@ -13,6 +13,7 @@ type AssignmentSummaryRow = Pick<
   | "due_at"
   | "id"
   | "instructions"
+  | "source_kind"
   | "status"
   | "title"
 >;
@@ -40,7 +41,13 @@ export type StudentWorkQuestion = Pick<
 
 export type StudentWorkItem = Pick<
   AssignmentItem,
-  "id" | "item_type" | "order_index" | "points" | "question_id"
+  | "bank_question_id"
+  | "id"
+  | "item_type"
+  | "order_index"
+  | "points"
+  | "question_id"
+  | "source_bank_id"
 > & {
   question: StudentWorkQuestion | null;
 };
@@ -81,7 +88,7 @@ export async function listStudentAssignedWork({
 
   const { data: assignments, error: assignmentError } = await supabase
     .from("assignments")
-    .select("id, classroom_id, title, instructions, status, assigned_at, due_at, created_at")
+    .select("id, classroom_id, title, instructions, source_kind, status, assigned_at, due_at, created_at")
     .in("classroom_id", classroomIds)
     .eq("status", "assigned")
     .order("due_at", { ascending: true })
@@ -159,7 +166,7 @@ export async function getStudentAssignedWorkDetail({
 }): Promise<StudentWorkDetail | null> {
   const { data: assignment, error: assignmentError } = await supabase
     .from("assignments")
-    .select("id, classroom_id, title, instructions, status, assigned_at, due_at, created_at")
+    .select("id, classroom_id, title, instructions, source_kind, status, assigned_at, due_at, created_at")
     .eq("id", assignmentId)
     .eq("status", "assigned")
     .maybeSingle();
@@ -189,11 +196,11 @@ export async function getStudentAssignedWorkDetail({
       .eq("assignment_id", assignmentRow.id)
       .eq("student_id", studentId)
       .maybeSingle(),
-    supabase
-      .from("assignment_items")
-      .select("id, item_type, order_index, points, question_id")
-      .eq("assignment_id", assignmentRow.id)
-      .order("order_index", { ascending: true }),
+      supabase
+        .from("assignment_items")
+        .select("id, item_type, order_index, points, question_id, bank_question_id, source_bank_id")
+        .eq("assignment_id", assignmentRow.id)
+        .order("order_index", { ascending: true }),
   ]);
 
   if (itemsError) {
@@ -201,7 +208,16 @@ export async function getStudentAssignedWorkDetail({
   }
 
   const itemRows = (items ?? []) as Array<
-    Pick<AssignmentItem, "id" | "item_type" | "order_index" | "points" | "question_id">
+    Pick<
+      AssignmentItem,
+      | "bank_question_id"
+      | "id"
+      | "item_type"
+      | "order_index"
+      | "points"
+      | "question_id"
+      | "source_bank_id"
+    >
   >;
   const questionIds = Array.from(
     new Set(itemRows.map((item) => item.question_id).filter(Boolean) as string[]),

@@ -114,6 +114,11 @@ export default async function TeacherBankDetailPage({
                 Questions
               </Link>
             </Button>
+            <Button asChild>
+              <Link href={`/teacher/banks/${bank.id}/assignments/new`}>
+                Create assignment
+              </Link>
+            </Button>
             <Button asChild variant="outline">
               <Link href={`/teacher/banks/${bank.id}/members`}>
                 Members / Share
@@ -146,16 +151,24 @@ export default async function TeacherBankDetailPage({
               Bank questions
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Reviewed questions in this bank stay bank-scoped until a future
-              delivery flow assigns selected content.
+              Reviewed questions stay bank-scoped. Assignments expose selected
+              approved items, not the full bank.
             </p>
           </div>
           <div className="p-6 text-center">
             {questionCount ? (
-                <p className="text-sm text-slate-600">
-                  Question rows are connected to this bank. The full bank question
-                  organizer comes in the next slice.
+              <div className="mx-auto max-w-xl space-y-4">
+                <p className="text-sm leading-6 text-slate-600">
+                  This bank has approved content ready for classroom delivery.
+                  Choose specific questions, then save a teacher draft or assign
+                  them to a class.
                 </p>
+                <Button asChild>
+                  <Link href={`/teacher/banks/${bank.id}/assignments/new`}>
+                    Create assignment from bank
+                  </Link>
+                </Button>
+              </div>
               ) : (
               <>
                 <p className="student-eyebrow">Empty bank</p>
@@ -196,11 +209,16 @@ export default async function TeacherBankDetailPage({
                   Open questions
                 </Link>
               </Button>
+              <Button asChild variant={questionCount ? "default" : "outline"}>
+                <Link href={`/teacher/banks/${bank.id}/assignments/new`}>
+                  Create assignment
+                </Link>
+              </Button>
             </div>
             {!canManageContent ? (
               <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                Viewers can inspect shared bank content, but owners and editors
-                handle import and approval.
+                Viewers can use shared bank content for assignments they manage,
+                but owners and editors handle import and approval.
               </p>
             ) : null}
           </section>
@@ -243,8 +261,8 @@ export default async function TeacherBankDetailPage({
               Still separate
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Public pull, assignment delivery, and student visibility remain
-              separate review-gated slices.
+              Public pull and student visibility remain separate. Classroom
+              assignments expose selected approved items only.
             </p>
           </section>
         </aside>

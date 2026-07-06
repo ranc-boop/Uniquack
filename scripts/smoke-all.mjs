@@ -13,4 +13,5 @@ await import("./course-builder-assignment-bridge-smoke.mjs");
 await import("./question-bank-foundation-smoke.mjs");
 await import("./bank-share-members-smoke.mjs");
 await import("./bank-import-review-smoke.mjs");
+await import("./assignment-from-bank-smoke.mjs");
 await import("./batch-import-smoke.mjs");

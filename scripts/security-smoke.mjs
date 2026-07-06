@@ -119,6 +119,7 @@ const teacherBankImportsPage = await read("src/app/teacher/banks/[bankId]/import
 const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
 const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
 const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
+const teacherBankAssignmentNewPage = await read("src/app/teacher/banks/[bankId]/assignments/new/page.tsx");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const questionBankHelpers = await read("src/lib/question-banks.ts");
 const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
@@ -138,6 +139,9 @@ const bankShareMigration = await read(
 );
 const bankImportReviewMigration = await read(
   "supabase/clean-migrations/0027_bank_import_review_scope.sql",
+);
+const assignmentFromBankMigration = await read(
+  "supabase/clean-migrations/0028_assignment_from_bank_questions.sql",
 );
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
@@ -284,7 +288,7 @@ assert(
     courseBuilderBridgePage.includes("does not add") &&
     courseBuilderBridgePage.includes("provider calls") &&
     teacherClassroomDetailPage.includes("Course Builder bridge") &&
-    teacherAssignmentDetailPage.includes("Course Builder source"),
+    teacherAssignmentDetailPage.includes("Assignment source"),
   "Course Builder bridge UI must expose teacher draft/assign choices, Review Draft blockers, and assignment source traceability",
 );
 assert(
@@ -303,7 +307,8 @@ assert(
     teacherBankNewPage.includes("Creating a bank creates your owner membership only") &&
     teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
     teacherBankDetailPage.includes("Import material") &&
-    teacherBankDetailPage.includes("Still separate") &&
+    teacherBankDetailPage.includes("Create assignment") &&
+    teacherBankDetailPage.includes("Assignments expose selected") &&
     teacherBankImportsPage.includes("Create bank Review Drafts") &&
     teacherBankImportsPage.includes("stay private until") &&
     teacherBankReviewPage.includes("Approve into bank") &&
@@ -323,10 +328,19 @@ assert(
     teacherBankActions.includes('rpc("update_bank_member_role"') &&
     teacherBankActions.includes('rpc("remove_bank_member"') &&
     teacherBankActions.includes('rpc("approve_bank_review_question"') &&
+    teacherBankActions.includes("create_assignment_from_bank") &&
+    teacherBankActions.includes("createAssignmentFromBankQuestions") &&
     teacherBankActions.includes("importBatchImportJson") &&
-    !teacherBankActions.includes("classrooms") &&
-    !teacherBankActions.includes("assignments") &&
+    teacherBankAssignmentNewPage.includes("Assign from") &&
+    teacherBankAssignmentNewPage.includes("selected approved bank items") &&
+    teacherBankAssignmentNewPage.includes("not access to the full bank") &&
+    teacherBankAssignmentNewPage.includes("action={createAssignmentFromBankQuestions}") &&
+    teacherBankAssignmentNewPage.includes("Choose a class you manage") &&
+    teacherBankAssignmentNewPage.includes("Assign to class") &&
+    teacherBankAssignmentNewPage.includes("Save draft") &&
+    teacherBankAssignmentNewPage.includes("server rechecks bank membership") &&
     !teacherBankActions.includes("AI_PROVIDER") &&
+    !teacherBankActions.includes("provider") &&
     questionBankHelpers.includes("listTeacherQuestionBanks") &&
     questionBankHelpers.includes("getTeacherQuestionBankDetail") &&
     questionBankHelpers.includes("listBankShareCodes") &&
@@ -370,6 +384,19 @@ assert(
     bankImportReviewMigration.includes("then 'review'") &&
     !bankImportReviewMigration.includes("status = 'published',") &&
     !bankImportReviewMigration.includes("published_at = coalesce") &&
+    assignmentFromBankMigration.includes("create or replace function public.create_assignment_from_bank") &&
+    assignmentFromBankMigration.includes("'question_bank'") &&
+    assignmentFromBankMigration.includes("add column if not exists bank_question_id") &&
+    assignmentFromBankMigration.includes("add column if not exists source_bank_id") &&
+    assignmentFromBankMigration.includes("private.can_read_assignment_question") &&
+    assignmentFromBankMigration.includes("questions_assignment_item_read") &&
+    assignmentFromBankMigration.includes("assignment.status = 'assigned'") &&
+    assignmentFromBankMigration.includes("private.can_read_question_bank(p_target_bank_id)") &&
+    assignmentFromBankMigration.includes("private.can_manage_classroom(p_target_classroom_id)") &&
+    assignmentFromBankMigration.includes("question.status <> 'draft'") &&
+    assignmentFromBankMigration.includes("grant execute on function public.create_assignment_from_bank") &&
+    !assignmentFromBankMigration.includes("published_at =") &&
+    !assignmentFromBankMigration.includes("to anon") &&
     authGuards.includes("next=/teacher") &&
     authActions.includes('redirect("/teacher")') &&
     authNav.includes("Teacher Studio preview") &&
@@ -391,11 +418,11 @@ assert(
     teacherAssignmentsPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Latest activity") &&
     teacherAssignmentNewPage.includes("Published questions") &&
-    teacherAssignmentNewPage.includes("next assignment builder") &&
-    teacherAssignmentNewPage.includes("teacher bank content") &&
-    teacherAssignmentNewPage.includes("Review Drafts and") &&
+    teacherAssignmentNewPage.includes("workflow now starts from Question Banks") &&
+    teacherAssignmentNewPage.includes("published-question compatibility") &&
     teacherAssignmentNewPage.includes("AssignmentSelectionSummary") &&
     assignmentSelectionSummary.includes("selectedCount") &&
+    assignmentSelectionSummary.includes("inputName") &&
     assignmentSelectionSummary.includes("Choose at least one published question") &&
     teacherAssignmentNewPage.includes("Save draft keeps the assignment teacher-only") &&
     teacherAssignmentNewPage.includes("The server rechecks every selected question") &&
@@ -427,6 +454,7 @@ assert(
     studentWorkDetailPage.includes("Review Practice") &&
     studentWorkDetailPage.includes("Practice entry unavailable") &&
     studentWorkDetailPage.includes("Completed work history") &&
+    studentWorkDetailPage.includes("full teacher") &&
     studentClassroomPage.includes("My classes") &&
     studentClassroomPage.includes("Assigned work lives in My Work") &&
     studentClassroomPage.includes("Active membership") &&

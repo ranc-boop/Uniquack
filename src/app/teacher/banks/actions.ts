@@ -55,6 +55,15 @@ const bankReviewQuestionApproveSchema = z.object({
   questionId: z.string().uuid(),
 });
 
+const bankAssignmentCreateSchema = z.object({
+  bankId: z.string().uuid(),
+  classroomId: z.string().uuid(),
+  dueAt: z.string().trim().optional().default(""),
+  instructions: z.string().trim().max(4000).optional().default(""),
+  publishMode: z.enum(["assigned", "draft"]).default("draft"),
+  title: z.string().trim().min(1).max(180),
+});
+
 type ApproveBankReviewQuestionResult = {
   bank_question_id: string;
   question_id: string;
@@ -70,6 +79,18 @@ type ApproveBankReviewQuestionRpc = {
     error: { message: string } | null;
   }>;
 };
+
+function normalizeDueAt(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = new Date(trimmed);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Due date is invalid.");
+  }
+
+  return parsed.toISOString();
+}
 
 export async function createQuestionBank(formData: FormData) {
   try {
@@ -307,6 +328,62 @@ export async function approveBankReviewQuestion(formData: FormData) {
     redirectWithSaved(
       `/teacher/banks/${parsed.bankId}/questions`,
       "Review Draft approved into this bank. It was not globally published.",
+    );
+  } catch (error) {
+    redirectWithError(fallbackPath, formatActionError(error));
+  }
+}
+
+export async function createAssignmentFromBankQuestions(formData: FormData) {
+  const fallbackPath = `/teacher/banks/${formData.get("bankId")}/assignments/new`;
+
+  try {
+    await requireTeacher();
+    const parsed = bankAssignmentCreateSchema.parse(Object.fromEntries(formData));
+    const selectedBankQuestionIds = Array.from(
+      new Set(
+        formData
+          .getAll("bankQuestionIds")
+          .map((value) => String(value))
+          .filter(Boolean),
+      ),
+    );
+
+    if (!selectedBankQuestionIds.length) {
+      throw new Error("Choose at least one approved bank question.");
+    }
+
+    const supabase = await createClient();
+    const { data: assignmentId, error } = await supabase.rpc(
+      "create_assignment_from_bank",
+      {
+        p_assign_now: parsed.publishMode === "assigned",
+        p_assignment_due_at: normalizeDueAt(parsed.dueAt),
+        p_assignment_instructions: parsed.instructions || null,
+        p_assignment_title: parsed.title,
+        p_selected_bank_question_ids: selectedBankQuestionIds,
+        p_target_bank_id: parsed.bankId,
+        p_target_classroom_id: parsed.classroomId,
+      },
+    );
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!assignmentId) {
+      throw new Error("Assignment was not created from this bank.");
+    }
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/assignments/new`);
+    revalidatePath(`/teacher/classrooms/${parsed.classroomId}/assignments`);
+    revalidatePath(`/teacher/classrooms/${parsed.classroomId}/assignments/${assignmentId}`);
+    redirectWithSaved(
+      `/teacher/classrooms/${parsed.classroomId}/assignments/${assignmentId}`,
+      parsed.publishMode === "assigned"
+        ? "Assignment created from selected bank questions and assigned to class."
+        : "Draft assignment created from selected bank questions.",
     );
   } catch (error) {
     redirectWithError(fallbackPath, formatActionError(error));

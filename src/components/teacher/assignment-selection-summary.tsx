@@ -4,9 +4,15 @@ import { useEffect, useState } from "react";
 
 export function AssignmentSelectionSummary({
   formId,
+  helperText = "Choose at least one published question before saving or assigning.",
+  inputName = "questionIds",
+  totalLabel = "published question(s) available in this view.",
   totalQuestions,
 }: {
   formId: string;
+  helperText?: string;
+  inputName?: string;
+  totalLabel?: string;
   totalQuestions: number;
 }) {
   const [selectedCount, setSelectedCount] = useState(0);
@@ -17,7 +23,7 @@ export function AssignmentSelectionSummary({
 
     const updateSelectedCount = () => {
       const checked = form.querySelectorAll<HTMLInputElement>(
-        'input[name="questionIds"]:checked',
+        `input[name="${inputName}"]:checked`,
       );
       setSelectedCount(checked.length);
     };
@@ -28,7 +34,7 @@ export function AssignmentSelectionSummary({
     return () => {
       form.removeEventListener("change", updateSelectedCount);
     };
-  }, [formId]);
+  }, [formId, inputName]);
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -36,10 +42,10 @@ export function AssignmentSelectionSummary({
         {selectedCount} selected
       </p>
       <p className="mt-1 text-xs leading-5 text-slate-600">
-        Choose at least one published question before saving or assigning.
+        {helperText}
       </p>
       <p className="mt-2 text-xs text-slate-500">
-        {totalQuestions} published question(s) available in this view.
+        {totalQuestions} {totalLabel}
       </p>
     </div>
   );

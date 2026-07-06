@@ -120,6 +120,14 @@ export default async function StudentWorkDetailPage({
         </div>
       </section>
 
+      {assignment.source_kind === "question_bank" ? (
+        <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+          <strong className="font-bold">Assigned from your teacher&apos;s bank:</strong>{" "}
+          you can work on the selected questions here, but the full teacher
+          bank stays private.
+        </section>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="student-panel overflow-hidden">
           <div className="border-b border-slate-100 p-5">
