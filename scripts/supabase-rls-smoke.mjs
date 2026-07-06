@@ -57,6 +57,10 @@ const courseBuilderBridgeMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0024_assignment_source_metadata.sql"),
   "utf8",
 );
+const questionBankMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0025_question_banks_foundation.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -145,6 +149,41 @@ assert(
   "Course Builder bridge migration must add assignment source metadata without adding grants or weakening RLS",
 );
 console.log("PASS student My Work migration enables scoped assignment RLS and student-owned progress writes");
+for (const tableName of [
+  "question_banks",
+  "bank_members",
+  "bank_questions",
+]) {
+  assert(
+    questionBankMigration.includes(`alter table public.${tableName} enable row level security`),
+    `${tableName} is missing RLS`,
+  );
+}
+assert(
+  questionBankMigration.includes("private.can_read_question_bank") &&
+    questionBankMigration.includes("private.can_manage_question_bank") &&
+    questionBankMigration.includes("question_banks_read_scoped") &&
+    questionBankMigration.includes("question_banks_update_managers") &&
+    questionBankMigration.includes("bank_members_read_scoped") &&
+    questionBankMigration.includes("bank_members_write_managers") &&
+    questionBankMigration.includes("bank_questions_read_scoped") &&
+    questionBankMigration.includes("bank_questions_write_managers"),
+  "question bank migration must define scoped member/manager RLS policies",
+);
+assert(
+  questionBankMigration.includes("public.create_question_bank") &&
+    questionBankMigration.includes("current_profile.role not in ('teacher', 'admin', 'super_admin')") &&
+    questionBankMigration.includes("insert into public.bank_members") &&
+    questionBankMigration.includes("'owner'") &&
+    questionBankMigration.includes("revoke all on function public.create_question_bank") &&
+    questionBankMigration.includes("from public, anon") &&
+    questionBankMigration.includes("grant execute on function public.create_question_bank") &&
+    questionBankMigration.includes("to authenticated") &&
+    !questionBankMigration.includes("share_code") &&
+    !questionBankMigration.includes("to anon"),
+  "question bank create RPC must be authenticated teacher/admin scoped and must not add share-code/public anon behavior",
+);
+console.log("PASS question bank migration enables scoped RLS and authenticated owner creation");
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",

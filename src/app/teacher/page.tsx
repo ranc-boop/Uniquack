@@ -3,25 +3,37 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
+import {
+  listTeacherQuestionBanks,
+  QuestionBankSchemaMissingError,
+} from "@/lib/question-banks";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const studioCards = [
+function buildStudioCards({
+  bankCount,
+  setupNeeded,
+}: {
+  bankCount: number;
+  setupNeeded: boolean;
+}) {
+  return [
   {
     title: "My Question Banks / Library",
     description:
       "The bank is the teacher-owned content workspace. Questions should be reviewed here before they become assignments.",
     href: "/teacher/banks",
     cta: "Open Banks / Library",
-    status: "Bank foundation next",
+    status: setupNeeded ? "Setup needed" : `${bankCount} banks`,
   },
   {
     title: "Create Question Bank",
     description:
-      "Start a private or shared bank before building class delivery. This placeholder does not create data yet.",
+      "Start a private or shared bank before building class delivery.",
     href: "/teacher/banks/new",
-    cta: "Plan a new bank",
-    status: "Coming next",
+    cta: "Create a bank",
+    status: "Teacher-owned",
   },
   {
     title: "Join Bank by Share Code",
@@ -72,9 +84,29 @@ const studioCards = [
     status: "Rebuild planned",
   },
 ];
+}
 
 export default async function TeacherHomePage() {
   const profile = await requireTeacher();
+  const supabase = await createClient();
+  let bankCount = 0;
+  let setupNeeded = false;
+
+  try {
+    const banks = await listTeacherQuestionBanks({
+      profileId: profile.id,
+      supabase,
+    });
+    bankCount = banks.length;
+  } catch (error) {
+    if (error instanceof QuestionBankSchemaMissingError) {
+      setupNeeded = true;
+    } else {
+      throw error;
+    }
+  }
+
+  const studioCards = buildStudioCards({ bankCount, setupNeeded });
 
   return (
     <main className="student-shell space-y-6">
@@ -107,13 +139,12 @@ export default async function TeacherHomePage() {
 
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-5">
         <h2 className="text-base font-bold text-sky-950">
-          Bank-first runtime reconciliation
+          Bank-first teacher workflow
         </h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-sky-900">
-          This hub makes teacher-owned banks the product starting point. The full
-          bank schema, share-code mutations, teacher-private import targeting,
-          and assignment-from-bank flow are intentionally left for the next PR
-          slices.
+          This hub starts with teacher-owned banks. Review Draft approval,
+          imports, and assignment delivery stay separated so unreviewed content
+          cannot be assigned to students.
         </p>
       </section>
 

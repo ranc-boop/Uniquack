@@ -64,8 +64,8 @@ await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library")
 await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
 await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
 await checkAdminRoute("/teacher", "Start with your Question Bank / Library");
-await checkAdminRoute("/teacher/banks", "Teacher-owned content starts here");
-await checkAdminRoute("/teacher/banks/new", "Plan a bank before assigning work");
+await checkAdminRoute("/teacher/banks", "Your teacher-owned Question Banks");
+await checkAdminRoute("/teacher/banks/new", "Start a teacher-owned content library");
 await checkAdminRoute("/teacher/banks/join", "Bank collaboration is teacher-to-teacher");
 await checkAdminRoute("/teacher/classrooms", "Classrooms");
 await checkAdminRoute("/teacher/course-builder", "Course Builder");
@@ -114,6 +114,8 @@ const teacherWorkspaceNav = await read("src/components/teacher/teacher-workspace
 const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
 const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
 const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
+const teacherBankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
+const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
@@ -135,23 +137,27 @@ const studentJoinClassroomPage = await read("src/app/student/classrooms/join/pag
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
 const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
 assert(
-  teacherHomePage.includes("Start by creating or joining a Question Bank") &&
+    teacherHomePage.includes("Start by creating or joining a Question Bank") &&
     teacherHomePage.includes("Classrooms and") &&
     teacherHomePage.includes("assignments deliver selected bank content") &&
-    teacherHomePage.includes("Bank foundation next") &&
+    teacherHomePage.includes("Bank-first teacher workflow") &&
     teacherHomePage.includes("No unreviewed draft can be assigned to students") &&
     teacherWorkspaceNav.includes("Banks / Library") &&
     teacherWorkspaceNav.includes("Review Drafts") &&
     teacherWorkspaceNav.includes("Classrooms") &&
-    teacherBanksPage.includes("Question Bank / Library Foundation is the next implementation PR") &&
-    teacherBankNewPage.includes("intentionally does not write data") &&
+    teacherBanksPage.includes("Your teacher-owned Question Banks") &&
+    teacherBanksPage.includes("Create Question Bank") &&
+    teacherBankNewPage.includes("action={createQuestionBank}") &&
+    teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
+    teacherBankDetailPage.includes("disabled") &&
+    teacherBankActions.includes('rpc("create_question_bank"') &&
     teacherBankJoinPage.includes("No join form is active") &&
     authActions.includes('redirect("/teacher")') &&
     authGuards.includes('redirect("/auth/login?next=/teacher")') &&
     authNav.includes("Teacher Studio preview"),
-  "teacher runtime must expose a bank-first Teacher Studio and non-mutating bank placeholders",
+  "teacher runtime must expose a bank-first Teacher Studio and real bank foundation surfaces",
 );
-console.log("PASS teacher runtime exposes bank-first Teacher Studio placeholders");
+console.log("PASS teacher runtime exposes bank-first Teacher Studio and bank foundation surfaces");
 assert(
   teacherClassroomsPage.includes("Delivery layer") &&
     teacherClassroomsPage.includes("Teacher banks remain the") &&

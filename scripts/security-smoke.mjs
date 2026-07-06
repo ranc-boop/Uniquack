@@ -114,6 +114,9 @@ const teacherWorkspaceNav = await read("src/components/teacher/teacher-workspace
 const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
 const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
 const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
+const teacherBankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
+const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
+const questionBankHelpers = await read("src/lib/question-banks.ts");
 const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
@@ -122,6 +125,9 @@ const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/
 const assignmentSelectionSummary = await read("src/components/teacher/assignment-selection-summary.tsx");
 const courseBuilderBridgeMigration = await read(
   "supabase/clean-migrations/0024_assignment_source_metadata.sql",
+);
+const questionBankMigration = await read(
+  "supabase/clean-migrations/0025_question_banks_foundation.sql",
 );
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
@@ -275,18 +281,42 @@ assert(
   teacherHomePage.includes("Start by creating or joining a Question Bank") &&
     teacherHomePage.includes("Classrooms and") &&
     teacherHomePage.includes("assignments deliver selected bank content") &&
-    teacherHomePage.includes("Bank foundation next") &&
+    teacherHomePage.includes("Bank-first teacher workflow") &&
     teacherWorkspaceNav.includes("Banks / Library") &&
     teacherWorkspaceNav.includes("Imports") &&
     teacherWorkspaceNav.includes("Review Drafts") &&
     teacherWorkspaceNav.includes("Classrooms") &&
-    teacherBanksPage.includes("Question Bank / Library Foundation is the next implementation PR") &&
-    teacherBankNewPage.includes("intentionally does not write data") &&
+    teacherBanksPage.includes("Your teacher-owned Question Banks") &&
+    teacherBanksPage.includes("Create Question Bank") &&
+    teacherBanksPage.includes("Question Bank tables are not available yet") &&
+    teacherBankNewPage.includes("action={createQuestionBank}") &&
+    teacherBankNewPage.includes("Creating a bank creates your owner membership only") &&
+    teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
+    teacherBankDetailPage.includes("These remain disabled until their review-gated slices land") &&
     teacherBankJoinPage.includes("No join form is active") &&
-    !teacherHomePage.includes(".insert(") &&
-    !teacherBanksPage.includes(".insert(") &&
-    !teacherBankNewPage.includes(".insert(") &&
+    teacherBankActions.includes("requireTeacher") &&
+    teacherBankActions.includes('rpc("create_question_bank"') &&
+    !teacherBankActions.includes("classrooms") &&
+    !teacherBankActions.includes("assignments") &&
+    !teacherBankActions.includes("AI_PROVIDER") &&
+    questionBankHelpers.includes("listTeacherQuestionBanks") &&
+    questionBankHelpers.includes("getTeacherQuestionBankDetail") &&
+    questionBankHelpers.includes("QuestionBankSchemaMissingError") &&
     !teacherBankJoinPage.includes(".insert(") &&
+    questionBankMigration.includes("create table if not exists public.question_banks") &&
+    questionBankMigration.includes("create table if not exists public.bank_members") &&
+    questionBankMigration.includes("create table if not exists public.bank_questions") &&
+    questionBankMigration.includes("alter table public.question_banks enable row level security") &&
+    questionBankMigration.includes("alter table public.bank_members enable row level security") &&
+    questionBankMigration.includes("alter table public.bank_questions enable row level security") &&
+    questionBankMigration.includes("private.can_read_question_bank") &&
+    questionBankMigration.includes("private.can_manage_question_bank") &&
+    questionBankMigration.includes("public.create_question_bank") &&
+    questionBankMigration.includes("revoke all on function public.create_question_bank") &&
+    questionBankMigration.includes("grant execute on function public.create_question_bank") &&
+    questionBankMigration.includes("role in ('owner', 'editor', 'viewer')") &&
+    !questionBankMigration.includes("share_code") &&
+    !questionBankMigration.includes("provider") &&
     authGuards.includes("next=/teacher") &&
     authActions.includes('redirect("/teacher")') &&
     authNav.includes("Teacher Studio preview") &&
