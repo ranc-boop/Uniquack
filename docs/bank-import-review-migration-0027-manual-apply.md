@@ -26,3 +26,20 @@ Expected result:
 - `bank_questions` receives the active row
 - the question remains non-published and bank-scoped
 - unrelated teachers/students cannot read private bank questions
+
+## Post-apply function correction
+
+If the live smoke fails during approval with:
+
+```text
+column reference "question_id" is ambiguous
+```
+
+the remote project still has the earlier `approve_bank_review_question`
+function body. Copy and run only:
+
+`docs/bank-import-review-0027-approve-function-reapply.sql`
+
+That file redefines only the corrected
+`public.approve_bank_review_question` function and does not apply the full
+migration again.
