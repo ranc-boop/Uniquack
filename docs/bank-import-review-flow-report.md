@@ -114,21 +114,13 @@ row, and confirms the question is not globally published.
 
 ## Remaining Blockers
 
-Migration 0027 was manually applied to the clean Supabase project. The first
-post-apply live smoke reached the approval RPC and found a PL/pgSQL ambiguity in
-the manually applied function body:
-
-- `column reference "question_id" is ambiguous`
-
-The branch migration has been corrected to use
-`on conflict on constraint bank_questions_bank_id_question_id_key` in
-`approve_bank_review_question`. Re-run the corrected migration SQL, or at least
-the corrected `create or replace function public.approve_bank_review_question`
-block, in the Supabase SQL Editor before re-running the live approval smoke.
+No remaining blockers for this slice after manually applying migration 0027 and
+reapplying the corrected `approve_bank_review_question` function body to the
+clean Supabase project.
 
 ## Validation Results
 
-Checks passed before remote approval validation:
+Checks passed after remote approval validation:
 
 - `npm.cmd run lint`
 - `npm.cmd run build`
@@ -137,6 +129,8 @@ Checks passed before remote approval validation:
 - `node scripts/supabase-rls-smoke.mjs`
 - `node scripts/question-bank-foundation-smoke.mjs`
 - `node scripts/bank-share-members-smoke.mjs`
+- `node scripts/bank-import-review-smoke.mjs`
+- `npm.cmd run smoke`
 - `npm.cmd run perf:budget`
 
 Live clean Supabase status:
@@ -145,30 +139,19 @@ Live clean Supabase status:
 - Existing bank share/member smoke passed.
 - Migration 0027 was manually applied and the expected columns/functions were
   verified in Supabase.
-- New bank import/review smoke no longer skipped the live path. It created the
-  private smoke bank, bank-scoped import batch, bank-owned private draft
-  question, and bank-scoped import item, then failed at approval because the
-  remote `approve_bank_review_question` function still has the ambiguous
-  `question_id` conflict target from the earlier SQL.
-- The smoke cleanup removed the smoke-created bank/import/question rows.
-- Private/global leakage checks after approval are still blocked until the
-  corrected approval RPC is applied remotely.
-
-Post-apply correction:
-
-- `supabase/clean-migrations/0027_bank_import_review_scope.sql` now uses
-  `on conflict on constraint bank_questions_bank_id_question_id_key`.
-- `node scripts/security-smoke.mjs` passed after the correction.
-- `node scripts/supabase-rls-smoke.mjs` passed after the correction.
-- `npm.cmd run lint` passed after the correction.
-- `npm.cmd run build` passed after the correction.
-- `node scripts/route-smoke.mjs` passed after the correction.
-- `node scripts/question-bank-foundation-smoke.mjs` passed after the correction.
-- `node scripts/bank-share-members-smoke.mjs` passed after the correction.
-- `npm.cmd run perf:budget` passed after the correction.
-- `node scripts/bank-import-review-smoke.mjs` and `npm.cmd run smoke` still
-  fail on the remote `question_id` ambiguity until the corrected function body
-  is applied in Supabase.
+- The corrected `approve_bank_review_question` function body was manually
+  reapplied after the first post-apply smoke found the old ambiguous
+  `question_id` conflict target.
+- New bank import/review smoke passed without skip. It created the private
+  smoke bank, bank-scoped import batch, bank-owned private draft question, and
+  bank-scoped import item, then approved the draft into the selected bank.
+- The approval created an active `bank_questions` row.
+- The approved question remained non-published with `published_at = null` and
+  retained Review Draft lineage.
+- The bank-approved draft did not appear in published global search.
+- An unrelated teacher could not read the private bank question.
+- A student could not read the teacher bank question by default.
+- The smoke cleanup removed the smoke-created import/review/question/bank rows.
 
 Migration apply tooling:
 
