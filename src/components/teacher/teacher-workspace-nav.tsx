@@ -6,12 +6,13 @@ type TeacherWorkspaceNavItem = {
 };
 
 const teacherWorkspaceNavItems: TeacherWorkspaceNavItem[] = [
-  { href: "/teacher", label: "Teacher Studio" },
-  { href: "/teacher/banks", label: "Banks / Library" },
-  { href: "/admin/imports/pdf", label: "Imports" },
-  { href: "/admin/review", label: "Review Drafts" },
-  { href: "/teacher/classrooms", label: "Classrooms" },
-  { href: "/teacher/course-builder", label: "Course Builder" },
+  { href: "/teacher", label: "Dashboard" },
+  { href: "/teacher/banks", label: "Question Bank" },
+  { href: "/teacher/ai-parsing", label: "AI Parsing" },
+  { href: "/teacher/blueprints", label: "Blueprint" },
+  { href: "/teacher/classrooms", label: "Classroom" },
+  { href: "/teacher/publish", label: "Publish" },
+  { href: "/teacher/progress", label: "Progress" },
 ];
 
 export function TeacherWorkspaceNav() {

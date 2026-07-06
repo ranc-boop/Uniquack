@@ -12,11 +12,11 @@ export default async function JoinTeacherBankPage() {
   await requireTeacher();
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="space-y-5">
           <div className="space-y-2">
-            <p className="student-eyebrow">Join Bank by Share Code</p>
+            <p className="teacher-eyebrow">Join Bank by Share Code</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Join a shared Question Bank.
             </h1>
@@ -29,7 +29,7 @@ export default async function JoinTeacherBankPage() {
         </div>
       </section>
 
-      <form action={joinQuestionBankByCode} className="student-panel overflow-hidden">
+      <form action={joinQuestionBankByCode} className="teacher-panel overflow-hidden">
         <div className="border-b border-slate-200 bg-white/70 p-6">
           <h2 className="text-xl font-bold text-slate-950">
             Bank collaboration code

@@ -48,9 +48,9 @@ function formatDate(value: string | null) {
 
 function SetupNeededState() {
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-panel p-6">
-        <p className="student-eyebrow">Setup needed</p>
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-panel p-6">
+        <p className="teacher-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
           Bank import scope is not available yet.
         </h1>
@@ -102,12 +102,12 @@ export default async function TeacherBankImportsPage({
   const canImport = canManageBankContent(currentUserRole);
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="space-y-5">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="student-eyebrow">Bank Import</span>
+              <span className="teacher-eyebrow">Bank Import</span>
               <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
                 {questionBankVisibilityLabel(bank.visibility)}
               </span>
@@ -152,7 +152,7 @@ export default async function TeacherBankImportsPage({
       ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[1.3fr_0.8fr]">
-        <article className="student-panel overflow-hidden">
+        <article className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-200 bg-white/70 p-5">
             <h2 className="text-xl font-bold text-slate-950">
               Start bank-scoped draft import
@@ -190,7 +190,7 @@ export default async function TeacherBankImportsPage({
           </form>
         </article>
 
-        <aside className="student-panel overflow-hidden">
+        <aside className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-200 bg-white/70 p-5">
             <h2 className="text-lg font-bold text-slate-950">Recent imports</h2>
           </div>

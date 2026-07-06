@@ -27,9 +27,9 @@ type NewBankAssignmentPageProps = {
 
 function SetupNeededState() {
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-panel p-6">
-        <p className="student-eyebrow">Setup needed</p>
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-panel p-6">
+        <p className="teacher-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
           Bank assignment tables are not available yet.
         </h1>
@@ -86,12 +86,12 @@ export default async function NewBankAssignmentPage({
   const usableQuestions = questions.filter((row) => row.question);
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="student-eyebrow">Question Bank assignment</p>
+              <p className="teacher-eyebrow">Question Bank assignment</p>
               <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
                 {questionBankVisibilityLabel(bank.visibility)}
               </span>
@@ -142,7 +142,7 @@ export default async function NewBankAssignmentPage({
           ["Available classes", classrooms.length],
           ["Updated", formatDate(bank.updated_at)],
         ].map(([label, value]) => (
-          <div className="student-panel p-4" key={label}>
+          <div className="teacher-panel p-4" key={label}>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {label}
             </p>
@@ -154,14 +154,14 @@ export default async function NewBankAssignmentPage({
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <section className="student-panel overflow-hidden">
+        <section className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-100 p-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-950">
                   Approved bank questions
                 </h2>
-                <p className="student-muted">
+                <p className="teacher-muted">
                   These questions are approved inside this bank. They can be
                   delivered to a class without becoming public Question Bank
                   results.
@@ -234,7 +234,7 @@ export default async function NewBankAssignmentPage({
         </section>
 
         <aside className="space-y-6">
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">
               Assignment details
             </h2>
@@ -303,7 +303,7 @@ export default async function NewBankAssignmentPage({
             </div>
           </section>
 
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Publish choice</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Save draft keeps the assignment teacher-only. Assign to class

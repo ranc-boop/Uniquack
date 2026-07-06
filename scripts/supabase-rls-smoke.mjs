@@ -45,6 +45,10 @@ const classroomMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0018_classroom_foundation.sql"),
   "utf8",
 );
+const teacherClassroomRlsMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql"),
+  "utf8",
+);
 const studentWorkMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0021_student_work_assignments.sql"),
   "utf8",
@@ -119,7 +123,18 @@ assert(
     !classroomMigration.includes("grant execute on function public.join_classroom_by_code(text) to anon"),
   "classroom roster profile reads must be manager-scoped and anonymous joins must stay blocked",
 );
-console.log("PASS classroom migration enables scoped RLS and authenticated hash-only joins");
+assert(
+  teacherClassroomRlsMigration.includes("create or replace function private.is_org_staff") &&
+    teacherClassroomRlsMigration.includes("profile.default_organization_id") &&
+    teacherClassroomRlsMigration.includes("create or replace function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("revoke all on function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("from public, anon") &&
+    teacherClassroomRlsMigration.includes("grant execute on function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("to authenticated") &&
+    !teacherClassroomRlsMigration.includes("to anon"),
+  "teacher classroom RLS fix must keep classroom creation teacher/authenticated scoped",
+);
+console.log("PASS classroom migrations enable scoped RLS, teacher creation, and authenticated hash-only joins");
 for (const tableName of [
   "assignments",
   "assignment_items",

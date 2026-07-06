@@ -36,9 +36,9 @@ function formatDate(value: string | null) {
 
 function SetupNeededState() {
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-panel p-6">
-        <p className="student-eyebrow">Setup needed</p>
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-panel p-6">
+        <p className="teacher-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
           Bank sharing tables are not available yet.
         </h1>
@@ -96,12 +96,12 @@ export default async function TeacherBankMembersPage({
   const activeShareCodes = shareCodes.filter((code) => code.status === "active");
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="space-y-5">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="student-eyebrow">Bank Members / Share</span>
+              <span className="teacher-eyebrow">Bank Members / Share</span>
               <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
                 {questionBankVisibilityLabel(bank.visibility)}
               </span>
@@ -141,8 +141,8 @@ export default async function TeacherBankMembersPage({
       ) : null}
 
       {query.newCode ? (
-        <section className="student-panel border-sky-200 bg-sky-50/70 p-5">
-          <p className="student-eyebrow">Copy now</p>
+        <section className="teacher-panel border-sky-200 bg-sky-50/70 p-5">
+          <p className="teacher-eyebrow">Copy now</p>
           <h2 className="mt-2 text-xl font-bold text-slate-950">
             New share code created
           </h2>
@@ -157,7 +157,7 @@ export default async function TeacherBankMembersPage({
       ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
-        <article className="student-panel overflow-hidden">
+        <article className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-200 bg-white/70 p-5">
             <h2 className="text-xl font-bold text-slate-950">Members</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -224,7 +224,7 @@ export default async function TeacherBankMembersPage({
         </article>
 
         <aside className="space-y-4">
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">
               Owner-controlled sharing
             </h2>
@@ -257,7 +257,7 @@ export default async function TeacherBankMembersPage({
             )}
           </section>
 
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">
               Active share codes
             </h2>

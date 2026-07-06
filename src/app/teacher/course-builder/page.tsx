@@ -49,7 +49,7 @@ function SourceCard({
   const defaultTitle = `${source.title} assignment`;
 
   return (
-    <article className="student-panel overflow-hidden">
+    <article className="teacher-panel overflow-hidden">
       <div className="border-b border-slate-100 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
@@ -246,11 +246,11 @@ export default async function TeacherCourseBuilderPage({
       : classrooms[0]?.id ?? "";
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Course Builder bridge</p>
+            <p className="teacher-eyebrow">Course Builder bridge</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Course Builder will generate bank packages before assignment.
             </h1>
@@ -298,7 +298,7 @@ export default async function TeacherCourseBuilderPage({
       ) : null}
 
       {!classrooms.length ? (
-        <section className="student-panel p-6">
+        <section className="teacher-panel p-6">
           <h2 className="text-lg font-bold text-slate-950">Delivery classroom required.</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             The current bridge still needs a teacher-managed classroom before it
@@ -322,7 +322,7 @@ export default async function TeacherCourseBuilderPage({
           ))}
         </div>
       ) : (
-        <section className="student-panel p-8 text-center">
+        <section className="teacher-panel p-8 text-center">
           <h2 className="text-lg font-bold text-slate-950">
             No Course Builder sources yet.
           </h2>

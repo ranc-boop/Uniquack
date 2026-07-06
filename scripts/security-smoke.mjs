@@ -97,6 +97,9 @@ assert(
   "AI PDF import batches must preserve organization_id at source upload reservation",
 );
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
+const teacherClassroomRlsMigration = await read(
+  "supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql",
+);
 const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
 const studentWorkManagerScopeMigration = await read(
   "supabase/clean-migrations/0023_student_work_assignment_manager_scope_fix.sql",
@@ -182,6 +185,15 @@ assert(
   "classroom RLS must support teacher-owned creation, roster reads, and self-scoped student membership reads",
 );
 assert(
+  teacherClassroomRlsMigration.includes("create or replace function private.is_org_staff") &&
+    teacherClassroomRlsMigration.includes("profile.default_organization_id") &&
+    teacherClassroomRlsMigration.includes("create or replace function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("grant execute on function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("to authenticated") &&
+    !teacherClassroomRlsMigration.includes("to anon"),
+  "teacher classroom RLS fix must support real teacher org context and authenticated classroom creation RPC",
+);
+assert(
   studentWorkMigration.includes("create table if not exists public.assignments") &&
     studentWorkMigration.includes("create table if not exists public.assignment_items") &&
     studentWorkMigration.includes("create table if not exists public.student_assignment_progress") &&
@@ -215,8 +227,8 @@ assert(
     classroomHelpers.includes("generateClassroomJoinCode") &&
     classroomHelpers.includes("resolveClassroomOrganizationId") &&
     teacherClassroomActions.includes("requireTeacher") &&
-    teacherClassroomActions.includes("classroom_join_codes") &&
-    teacherClassroomActions.includes("hashClassroomJoinCode(joinCode)") &&
+    teacherClassroomActions.includes("create_teacher_classroom") &&
+    teacherClassroomActions.includes("The join code is also available") &&
     studentJoinActions.includes("requireStudent") &&
     studentJoinActions.includes('rpc("join_classroom_by_code"'),
   "classroom server actions must create teacher classrooms and join students without direct student inserts",
@@ -292,14 +304,20 @@ assert(
   "Course Builder bridge UI must expose teacher draft/assign choices, Review Draft blockers, and assignment source traceability",
 );
 assert(
-  teacherHomePage.includes("Start by creating or joining a Question Bank") &&
-    teacherHomePage.includes("Classrooms and") &&
-    teacherHomePage.includes("assignments deliver selected bank content") &&
+  teacherHomePage.includes("Teacher Workspace") &&
+    teacherHomePage.includes("Start with a Question Bank") &&
+    teacherHomePage.includes("review imported content") &&
     teacherHomePage.includes("Bank-first teacher workflow") &&
-    teacherWorkspaceNav.includes("Banks / Library") &&
-    teacherWorkspaceNav.includes("Imports") &&
-    teacherWorkspaceNav.includes("Review Drafts") &&
-    teacherWorkspaceNav.includes("Classrooms") &&
+    teacherHomePage.includes("Student visibility stays assignment-only") &&
+    teacherWorkspaceNav.includes("Dashboard") &&
+    teacherWorkspaceNav.includes("Question Bank") &&
+    teacherWorkspaceNav.includes("AI Parsing") &&
+    teacherWorkspaceNav.includes("Blueprint") &&
+    teacherWorkspaceNav.includes("Classroom") &&
+    teacherWorkspaceNav.includes("Publish") &&
+    teacherWorkspaceNav.includes("Progress") &&
+    !teacherWorkspaceNav.includes("/admin/imports/pdf") &&
+    !teacherWorkspaceNav.includes("/admin/review") &&
     teacherBanksPage.includes("Your teacher-owned Question Banks") &&
     teacherBanksPage.includes("Create Question Bank") &&
     teacherBanksPage.includes("Question Bank tables are not available yet") &&
@@ -400,13 +418,20 @@ assert(
     !/grant execute on function public\.create_assignment_from_bank[\s\S]*?to anon/i.test(assignmentFromBankMigration) &&
     authGuards.includes("next=/teacher") &&
     authActions.includes('redirect("/teacher")') &&
-    authNav.includes("Teacher Studio preview") &&
+    authNav.includes("Teacher Workspace preview") &&
     teacherClassroomPage.includes("Your classrooms") &&
     teacherClassroomPage.includes("Create classroom") &&
+    teacherClassroomPage.includes("Join codes stay available") &&
     teacherClassroomPage.includes("Delivery layer") &&
     teacherClassroomPage.includes("Teacher banks remain the") &&
     teacherClassroomDetailPage.includes("Roster") &&
     teacherClassroomDetailPage.includes("Students do not gain access") &&
+    teacherClassroomDetailPage.includes("Active join code") &&
+    teacherClassroomDetailPage.includes("Overview") &&
+    teacherClassroomDetailPage.includes("People") &&
+    teacherClassroomDetailPage.includes("Analytics / Feedback") &&
+    teacherClassroomDetailPage.includes("Linked Blueprints") &&
+    teacherClassroomDetailPage.includes("Settings") &&
     teacherClassroomDetailPage.includes("New assignment") &&
     teacherClassroomDetailPage.includes("View assignments") &&
     teacherClassroomDetailPage.includes("Archived") &&
