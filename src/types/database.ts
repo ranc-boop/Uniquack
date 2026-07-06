@@ -7,9 +7,14 @@ export type Json =
   | Json[];
 
 export type UserRole = "super_admin" | "admin" | "teacher" | "student";
-export type ContentStatus = "draft" | "published" | "archived";
+export type ContentStatus =
+  | "draft"
+  | "review"
+  | "published"
+  | "archived"
+  | "deprecated";
 export type QuestionType = "mcq" | "fill_blank" | "frq" | "mixed";
-export type QuestionSourceFormat = "markdown_latex" | "html";
+export type QuestionSourceFormat = "markdown_latex" | "html" | "plain_text";
 export type TaxonomyStatus = "active" | "deprecated" | "archived";
 export type TaxonomyNodeKind = "subject" | "facet_root" | "tag";
 export type TaxonomyReviewStatus =
@@ -346,6 +351,7 @@ export type TaxonomyReviewAction = {
 
 export type Question = {
   id: string;
+  organization_id: string;
   question_code: string;
   title: string;
   content_html: string;
@@ -360,11 +366,17 @@ export type Question = {
   difficulty_rating: number;
   status: ContentStatus;
   source: string | null;
+  source_kind: string | null;
+  source_review_item_id: string | null;
+  owner_bank_id: string | null;
+  visibility: QuestionBankVisibility;
   created_by: string | null;
   updated_by: string | null;
+  reviewed_by: string | null;
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 };
 
 export type Video = {
@@ -427,9 +439,25 @@ export type QuestionSourceFile = {
 
 export type ImportBatch = {
   id: string;
-  source_type: "manual_json" | "manual_csv" | "ai_pdf" | "ai_image" | "ai_word";
+  organization_id: string | null;
+  source_type:
+    | "manual_json"
+    | "manual_csv"
+    | "ai_pdf"
+    | "ai_image"
+    | "ai_word"
+    | "package"
+    | "course_builder";
   source_file_id: string | null;
-  status: "draft" | "validating" | "ready" | "imported" | "failed";
+  target_bank_id: string | null;
+  status:
+    | "draft"
+    | "validating"
+    | "ready"
+    | "imported"
+    | "partial"
+    | "failed"
+    | "canceled";
   summary: Json;
   created_by: string;
   created_at: string;

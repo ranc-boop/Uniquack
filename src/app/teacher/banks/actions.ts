@@ -9,6 +9,7 @@ import {
   redirectWithSaved,
 } from "@/lib/actions/feedback";
 import { requireTeacher } from "@/lib/auth/guards";
+import { importBatchImportJson } from "@/lib/batch-import/service";
 import { createClient } from "@/lib/supabase/server";
 
 const bankCreateSchema = z.object({
@@ -43,6 +44,32 @@ const bankMemberRemoveSchema = z.object({
   bankId: z.string().uuid(),
   userId: z.string().uuid(),
 });
+
+const bankImportJsonSchema = z.object({
+  bankId: z.string().uuid(),
+  jsonText: z.string().trim().min(2),
+});
+
+const bankReviewQuestionApproveSchema = z.object({
+  bankId: z.string().uuid(),
+  questionId: z.string().uuid(),
+});
+
+type ApproveBankReviewQuestionResult = {
+  bank_question_id: string;
+  question_id: string;
+  source_review_item_id: string | null;
+};
+
+type ApproveBankReviewQuestionRpc = {
+  rpc(
+    functionName: "approve_bank_review_question",
+    args: { p_target_bank_id: string; p_target_question_id: string },
+  ): Promise<{
+    data: ApproveBankReviewQuestionResult[] | null;
+    error: { message: string } | null;
+  }>;
+};
 
 export async function createQuestionBank(formData: FormData) {
   try {
@@ -212,6 +239,75 @@ export async function removeBankMember(formData: FormData) {
     revalidatePath(`/teacher/banks/${parsed.bankId}`);
     revalidatePath(`/teacher/banks/${parsed.bankId}/members`);
     redirectWithSaved(fallbackPath, "Bank member removed.");
+  } catch (error) {
+    redirectWithError(fallbackPath, formatActionError(error));
+  }
+}
+
+export async function importBankJsonDrafts(formData: FormData) {
+  const fallbackPath = `/teacher/banks/${formData.get("bankId")}/imports`;
+
+  try {
+    const profile = await requireTeacher();
+    const parsed = bankImportJsonSchema.parse(Object.fromEntries(formData));
+    const supabase = await createClient();
+
+    const summary = await importBatchImportJson({
+      initialSummaryExtras: {
+        importedFrom: "teacher_bank_import",
+        reviewGate: "bank_review_required",
+        targetBankId: parsed.bankId,
+      },
+      jsonText: parsed.jsonText,
+      profileId: profile.id,
+      sourceType: "manual_json",
+      supabase,
+      targetBankId: parsed.bankId,
+    });
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/imports`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
+    redirectWithSaved(
+      `/teacher/banks/${parsed.bankId}/review`,
+      `Imported ${summary.createdCount} draft question(s). Review before adding them to this bank.`,
+    );
+  } catch (error) {
+    redirectWithError(fallbackPath, formatActionError(error));
+  }
+}
+
+export async function approveBankReviewQuestion(formData: FormData) {
+  const fallbackPath = `/teacher/banks/${formData.get("bankId")}/review`;
+
+  try {
+    await requireTeacher();
+    const parsed = bankReviewQuestionApproveSchema.parse(
+      Object.fromEntries(formData),
+    );
+    const supabase = await createClient();
+    const { data, error } = await (
+      supabase as unknown as ApproveBankReviewQuestionRpc
+    ).rpc("approve_bank_review_question", {
+      p_target_bank_id: parsed.bankId,
+      p_target_question_id: parsed.questionId,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data?.[0]?.bank_question_id) {
+      throw new Error("Review Draft was not approved into this bank.");
+    }
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
+    redirectWithSaved(
+      `/teacher/banks/${parsed.bankId}/questions`,
+      "Review Draft approved into this bank. It was not globally published.",
+    );
   } catch (error) {
     redirectWithError(fallbackPath, formatActionError(error));
   }

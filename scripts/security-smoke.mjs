@@ -115,6 +115,9 @@ const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
 const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
 const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
 const teacherBankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
+const teacherBankImportsPage = await read("src/app/teacher/banks/[bankId]/imports/page.tsx");
+const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
+const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
 const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const questionBankHelpers = await read("src/lib/question-banks.ts");
@@ -132,6 +135,9 @@ const questionBankMigration = await read(
 );
 const bankShareMigration = await read(
   "supabase/clean-migrations/0026_bank_share_codes_and_members.sql",
+);
+const bankImportReviewMigration = await read(
+  "supabase/clean-migrations/0027_bank_import_review_scope.sql",
 );
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
@@ -296,7 +302,13 @@ assert(
     teacherBankNewPage.includes("action={createQuestionBank}") &&
     teacherBankNewPage.includes("Creating a bank creates your owner membership only") &&
     teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
-    teacherBankDetailPage.includes("These remain disabled until their review-gated slices land") &&
+    teacherBankDetailPage.includes("Import material") &&
+    teacherBankDetailPage.includes("Still separate") &&
+    teacherBankImportsPage.includes("Create bank Review Drafts") &&
+    teacherBankImportsPage.includes("stay private until") &&
+    teacherBankReviewPage.includes("Approve into bank") &&
+    teacherBankReviewPage.includes("not globally published") &&
+    teacherBankQuestionsPage.includes("not public/global questions") &&
     teacherBankDetailPage.includes("Manage members and share codes") &&
     teacherBankJoinPage.includes("action={joinQuestionBankByCode}") &&
     teacherBankJoinPage.includes("Joining a bank is separate from") &&
@@ -310,12 +322,16 @@ assert(
     teacherBankActions.includes('rpc("join_question_bank_by_code"') &&
     teacherBankActions.includes('rpc("update_bank_member_role"') &&
     teacherBankActions.includes('rpc("remove_bank_member"') &&
+    teacherBankActions.includes('rpc("approve_bank_review_question"') &&
+    teacherBankActions.includes("importBatchImportJson") &&
     !teacherBankActions.includes("classrooms") &&
     !teacherBankActions.includes("assignments") &&
     !teacherBankActions.includes("AI_PROVIDER") &&
     questionBankHelpers.includes("listTeacherQuestionBanks") &&
     questionBankHelpers.includes("getTeacherQuestionBankDetail") &&
     questionBankHelpers.includes("listBankShareCodes") &&
+    questionBankHelpers.includes("listBankReviewDraftQuestions") &&
+    questionBankHelpers.includes("listBankApprovedQuestions") &&
     questionBankHelpers.includes("QuestionBankSchemaMissingError") &&
     !teacherBankJoinPage.includes(".insert(") &&
     !teacherBankMembersPage.includes(".insert(") &&
@@ -346,6 +362,14 @@ assert(
     bankShareMigration.includes("grant execute on function public.join_question_bank_by_code(text) to authenticated") &&
     !bankShareMigration.includes("raw_share_code text not null") &&
     !bankShareMigration.includes("grant execute on function public.join_question_bank_by_code(text) to anon") &&
+    bankImportReviewMigration.includes("add column if not exists target_bank_id") &&
+    bankImportReviewMigration.includes("add column if not exists owner_bank_id") &&
+    bankImportReviewMigration.includes("public.approve_bank_review_question") &&
+    bankImportReviewMigration.includes("questions_bank_member_read") &&
+    bankImportReviewMigration.includes("Only bank owners or editors can approve") &&
+    bankImportReviewMigration.includes("then 'review'") &&
+    !bankImportReviewMigration.includes("status = 'published',") &&
+    !bankImportReviewMigration.includes("published_at = coalesce") &&
     authGuards.includes("next=/teacher") &&
     authActions.includes('redirect("/teacher")') &&
     authNav.includes("Teacher Studio preview") &&

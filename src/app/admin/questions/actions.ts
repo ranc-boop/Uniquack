@@ -185,10 +185,10 @@ async function publishQuestionsWithReviewLineage({
 function questionSourceValues(values: {
   content_html: string;
   content_source: string;
-  content_source_format: "markdown_latex" | "html";
+  content_source_format: "markdown_latex" | "html" | "plain_text";
   solution_html: string | null;
   solution_source: string;
-  solution_source_format: "markdown_latex" | "html";
+  solution_source_format: "markdown_latex" | "html" | "plain_text";
 }) {
   return {
     content_html: sanitizeContentHtml(values.content_html),

@@ -6,6 +6,7 @@ import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav"
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   bankMemberRoleLabel,
+  canManageBankContent,
   getTeacherQuestionBankDetail,
   QuestionBankSchemaMissingError,
   questionBankStatusLabel,
@@ -68,7 +69,8 @@ export default async function TeacherBankDetailPage({
     notFound();
   }
 
-  const { bank, members, questionCount } = detail;
+  const { bank, currentUserRole, members, questionCount } = detail;
+  const canManageContent = canManageBankContent(currentUserRole);
 
   return (
     <main className="student-shell space-y-6">
@@ -98,7 +100,19 @@ export default async function TeacherBankDetailPage({
               <Link href="/teacher/banks">Back to Banks</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/admin/review">Review Drafts</Link>
+              <Link href={`/teacher/banks/${bank.id}/imports`}>
+                Import material
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/teacher/banks/${bank.id}/review`}>
+                Review Drafts
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/teacher/banks/${bank.id}/questions`}>
+                Questions
+              </Link>
             </Button>
             <Button asChild variant="outline">
               <Link href={`/teacher/banks/${bank.id}/members`}>
@@ -132,17 +146,17 @@ export default async function TeacherBankDetailPage({
               Bank questions
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Approved questions will appear here before they are assigned to a
-              class.
+              Reviewed questions in this bank stay bank-scoped until a future
+              delivery flow assigns selected content.
             </p>
           </div>
           <div className="p-6 text-center">
             {questionCount ? (
-              <p className="text-sm text-slate-600">
-                Question rows are connected to this bank. The full bank question
-                organizer comes in the next slice.
-              </p>
-            ) : (
+                <p className="text-sm text-slate-600">
+                  Question rows are connected to this bank. The full bank question
+                  organizer comes in the next slice.
+                </p>
+              ) : (
               <>
                 <p className="student-eyebrow">Empty bank</p>
                 <h3 className="mt-2 text-xl font-bold text-slate-950">
@@ -158,6 +172,39 @@ export default async function TeacherBankDetailPage({
         </article>
 
         <aside className="space-y-4">
+          <section className="student-panel p-5">
+            <h2 className="text-lg font-bold text-slate-950">
+              Bank workflow
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Import private material, review drafts, then add approved content
+              to this bank.
+            </p>
+            <div className="mt-4 grid gap-2">
+              <Button asChild>
+                <Link href={`/teacher/banks/${bank.id}/imports`}>
+                  Import material
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href={`/teacher/banks/${bank.id}/review`}>
+                  Review Drafts
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href={`/teacher/banks/${bank.id}/questions`}>
+                  Open questions
+                </Link>
+              </Button>
+            </div>
+            {!canManageContent ? (
+              <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                Viewers can inspect shared bank content, but owners and editors
+                handle import and approval.
+              </p>
+            ) : null}
+          </section>
+
           <section className="student-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Members</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -192,27 +239,13 @@ export default async function TeacherBankDetailPage({
           </section>
 
           <section className="student-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">Future actions</h2>
+            <h2 className="text-lg font-bold text-slate-950">
+              Still separate
+            </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              These remain disabled until their review-gated slices land.
+              Public pull, assignment delivery, and student visibility remain
+              separate review-gated slices.
             </p>
-            <div className="mt-4 grid gap-2">
-              {[
-                "Import material into this bank",
-                "Add approved Review Drafts",
-                "Pull from public library",
-                "Create assignment from bank",
-              ].map((label) => (
-                <button
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm font-semibold text-slate-500"
-                  disabled
-                  key={label}
-                  type="button"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
           </section>
         </aside>
       </section>

@@ -26,6 +26,11 @@ function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+type ImportTargetBankContext = {
+  bankId: string;
+  visibility: "private" | "shared" | "organization" | "public";
+};
+
 async function loadImportBatchSummary({
   batchId,
   supabase,
@@ -130,6 +135,45 @@ export async function resolveImportOrganizationContext({
   }
 
   throw new Error(MISSING_ORGANIZATION_MESSAGE);
+}
+
+async function resolveImportTargetBankContext({
+  organizationId,
+  supabase,
+  targetBankId,
+}: {
+  organizationId: string;
+  supabase: SupabaseLike;
+  targetBankId?: string | null;
+}): Promise<ImportTargetBankContext | null> {
+  const bankId = asString(targetBankId);
+
+  if (!bankId) {
+    return null;
+  }
+
+  const { data: bank, error } = await supabase
+    .from("question_banks")
+    .select("id, organization_id, visibility, status")
+    .eq("id", bankId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!bank || bank.status !== "active") {
+    throw new Error("Target Question Bank was not found or is not active.");
+  }
+
+  if (bank.organization_id !== organizationId) {
+    throw new Error("Target Question Bank belongs to a different organization.");
+  }
+
+  return {
+    bankId: bank.id,
+    visibility: bank.visibility,
+  };
 }
 
 export type BatchImportSummary = {
@@ -267,6 +311,7 @@ export async function importBatchImportJson({
   profileId,
   jsonText,
   sourceType = "manual_json",
+  targetBankId,
 }: {
   allowDraftTags?: boolean;
   batchId?: string;
@@ -276,6 +321,7 @@ export async function importBatchImportJson({
   profileId: string;
   jsonText: string;
   sourceType?: ImportBatchSourceType;
+  targetBankId?: string | null;
 }): Promise<BatchImportSummary> {
   const preview = await previewBatchImportJson({
     allowDraftTags,
@@ -306,11 +352,12 @@ export async function importBatchImportJson({
   let organizationContext: Awaited<
     ReturnType<typeof resolveImportOrganizationContext>
   >;
+  let targetBankContext: ImportTargetBankContext | null = null;
 
   if (activeBatchId) {
     const { data: existingBatch, error: existingBatchError } = await supabase
       .from("import_batches")
-      .select("summary, organization_id")
+      .select("summary, organization_id, target_bank_id")
       .eq("id", activeBatchId)
       .maybeSingle();
 
@@ -328,6 +375,20 @@ export async function importBatchImportJson({
       profileId,
       supabase,
     });
+    const resolvedTargetBankId =
+      targetBankId ?? existingBatch.target_bank_id ?? null;
+    targetBankContext = await resolveImportTargetBankContext({
+      organizationId: organizationContext.organizationId,
+      supabase,
+      targetBankId: resolvedTargetBankId,
+    });
+    if (
+      targetBankContext &&
+      existingBatch.target_bank_id &&
+      existingBatch.target_bank_id !== targetBankContext.bankId
+    ) {
+      throw new Error("Existing import batch is scoped to a different bank.");
+    }
     const existingSummary = asSummaryRecord(existingBatch.summary);
     const { error: batchUpdateError } = await supabase
       .from("import_batches")
@@ -335,10 +396,17 @@ export async function importBatchImportJson({
         organization_id:
           existingBatch.organization_id ?? organizationContext.organizationId,
         status: "validating",
+        target_bank_id: targetBankContext?.bankId ?? existingBatch.target_bank_id ?? null,
         summary: {
           ...existingSummary,
           ...initialSummary,
           ...initialSummaryExtras,
+          ...(targetBankContext
+            ? {
+                targetBankId: targetBankContext.bankId,
+                reviewScope: "question_bank",
+              }
+            : {}),
         },
       })
       .eq("id", activeBatchId);
@@ -351,15 +419,27 @@ export async function importBatchImportJson({
       profileId,
       supabase,
     });
+    targetBankContext = await resolveImportTargetBankContext({
+      organizationId: organizationContext.organizationId,
+      supabase,
+      targetBankId,
+    });
     const { data: batch, error: batchError } = await supabase
       .from("import_batches")
       .insert({
         organization_id: organizationContext.organizationId,
         source_type: sourceType,
         status: "validating",
+        target_bank_id: targetBankContext?.bankId ?? null,
         summary: {
           ...initialSummary,
           ...initialSummaryExtras,
+          ...(targetBankContext
+            ? {
+                targetBankId: targetBankContext.bankId,
+                reviewScope: "question_bank",
+              }
+            : {}),
         },
         created_by: profileId,
       })
@@ -421,6 +501,7 @@ export async function importBatchImportJson({
         answer_spec: normalized.answer_spec,
         difficulty_rating: normalized.difficulty_rating,
         options: normalized.options,
+        owner_bank_id: targetBankContext?.bankId ?? null,
         question_type: normalized.question_type,
         source: questionSourceLabelForImport({
           batchId: activeBatchId,
@@ -430,6 +511,7 @@ export async function importBatchImportJson({
         status: "draft",
         created_by: profileId,
         updated_by: profileId,
+        visibility: targetBankContext?.visibility ?? "private",
       })
       .select("id")
       .single();
