@@ -48,6 +48,22 @@ The live smoke should no longer skip the assignment-from-bank checks. It should 
 - unassigned private bank questions remain hidden
 - assigned bank questions remain non-published
 
+## Post-Apply Grant Correction
+
+If `node scripts/supabase-rls-smoke.mjs` fails with:
+
+```text
+permission denied for function can_read_assignment_question
+```
+
+copy and run:
+
+```text
+docs/assignment-from-bank-0028-policy-helper-grant-reapply.sql
+```
+
+This grants `anon` execute permission on the private RLS policy helper so public question search can evaluate the policy safely. It does not grant anonymous execution on `public.create_assignment_from_bank`, does not publish questions, and does not expose bank browsing.
+
 ## Safety Notes
 
 Migration 0028 does not publish questions, does not approve Review Drafts, does not call AI providers, and does not grant anonymous access.

@@ -395,8 +395,9 @@ assert(
     assignmentFromBankMigration.includes("private.can_manage_classroom(p_target_classroom_id)") &&
     assignmentFromBankMigration.includes("question.status <> 'draft'") &&
     assignmentFromBankMigration.includes("grant execute on function public.create_assignment_from_bank") &&
+    assignmentFromBankMigration.includes("grant execute on function private.can_read_assignment_question(uuid) to anon, authenticated") &&
     !assignmentFromBankMigration.includes("published_at =") &&
-    !assignmentFromBankMigration.includes("to anon") &&
+    !/grant execute on function public\.create_assignment_from_bank[\s\S]*?to anon/i.test(assignmentFromBankMigration) &&
     authGuards.includes("next=/teacher") &&
     authActions.includes('redirect("/teacher")') &&
     authNav.includes("Teacher Studio preview") &&

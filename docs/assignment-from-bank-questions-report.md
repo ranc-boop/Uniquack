@@ -97,22 +97,29 @@ The workflow smoke performs static checks immediately and live checks when the c
 
 ## Live Validation Status
 
-In this Codex sandbox, live Supabase access was blocked by:
+Migration 0028 was manually applied to the clean Supabase project through the Dashboard SQL Editor.
+
+Live assignment-from-bank smoke was rerun against the clean project and passed the core workflow:
 
 ```text
-EACCES fetch failed
+PASS assignment-from-bank static checks protect bank-first assignment workflow
+PASS draft bank assignment stays teacher-only
+PASS assignment item preserves bank lineage
+PASS student can read selected assigned private bank question without global publish
+PASS student receives assigned item access without full bank access
+PASS assignment-from-bank smoke cleanup removed smoke-created rows
 ```
 
-Because of that, the live create/list/RLS portion of `assignment-from-bank-smoke` was skipped locally. The migration should be applied to the clean Supabase project using:
+During broader `supabase-rls-smoke`, public taxonomy search exposed a post-apply grant issue:
 
 ```text
-docs/assignment-from-bank-migration-0028-manual-apply.md
+permission denied for function can_read_assignment_question
 ```
 
-Then rerun:
+The branch migration has been corrected to grant the private RLS policy helper to `anon, authenticated`. Because there is no local `psql` or Supabase CLI available in this environment, apply this small Dashboard correction before rerunning the broader RLS suite:
 
-```bash
-node scripts/assignment-from-bank-smoke.mjs
+```text
+docs/assignment-from-bank-0028-policy-helper-grant-reapply.sql
 ```
 
 ## Tests Run During Implementation
@@ -124,16 +131,30 @@ node --check scripts/assignment-from-bank-smoke.mjs
 node scripts/security-smoke.mjs
 node scripts/route-smoke.mjs
 node scripts/assignment-from-bank-smoke.mjs
+npm.cmd run lint
+npm.cmd run build
+node scripts/question-bank-foundation-smoke.mjs
+node scripts/bank-share-members-smoke.mjs
+node scripts/bank-import-review-smoke.mjs
+npm.cmd run perf:budget
 ```
 
 Partial:
 
 ```bash
 node scripts/supabase-rls-smoke.mjs
+npm.cmd run smoke
 ```
 
-The 0028 static RLS checks passed before the script later hit the same network restriction on a live Supabase read.
+The 0028 static RLS checks passed. The broader RLS suite stopped at the missing remote `anon` execute grant for `private.can_read_assignment_question(uuid)`. `npm.cmd run smoke` is expected to stop at the same RLS blocker until the grant correction is applied remotely.
 
 ## Remaining Blocker
 
-Apply clean migration 0028 to the clean Supabase project, then rerun the live assignment-from-bank smoke. No runtime code changes are expected for that step unless the live smoke finds a real database blocker.
+Apply `docs/assignment-from-bank-0028-policy-helper-grant-reapply.sql` to the clean Supabase project, then rerun:
+
+```bash
+node scripts/supabase-rls-smoke.mjs
+npm.cmd run smoke
+```
+
+No runtime code changes are expected for that step.

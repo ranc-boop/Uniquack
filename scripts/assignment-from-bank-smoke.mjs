@@ -100,8 +100,8 @@ async function resolveTeacherOrganizationId(teacher) {
   return memberships[0].organization_id;
 }
 
-async function createSmokeClassroom({ organizationId, studentUserId, suffix, teacher }) {
-  const { data: classroom, error: classroomError } = await teacher.client
+async function createSmokeClassroom({ admin, organizationId, studentUserId, suffix, teacher }) {
+  const { data: classroom, error: classroomError } = await admin
     .from("classrooms")
     .insert({
       created_by: teacher.user.id,
@@ -116,7 +116,7 @@ async function createSmokeClassroom({ organizationId, studentUserId, suffix, tea
 
   assert(!classroomError && classroom?.id, `classroom create failed: ${summarizeSupabaseError(classroomError)}`);
 
-  const { error: teacherMemberError } = await teacher.client
+  const { error: teacherMemberError } = await admin
     .from("classroom_members")
     .insert({
       classroom_id: classroom.id,
@@ -128,7 +128,7 @@ async function createSmokeClassroom({ organizationId, studentUserId, suffix, tea
   assert(!teacherMemberError, `teacher classroom member insert failed: ${summarizeSupabaseError(teacherMemberError)}`);
 
   if (studentUserId) {
-    const { error: studentMemberError } = await teacher.client
+    const { error: studentMemberError } = await admin
       .from("classroom_members")
       .insert({
         classroom_id: classroom.id,
@@ -163,7 +163,7 @@ async function insertBankQuestionFixture({ admin, bankId, organizationId, suffix
       solution_source: "Subtract 3 from both sides.",
       solution_source_format: "plain_text",
       source: "assignment_from_bank_smoke",
-      source_kind: "smoke",
+      source_kind: "ai_import",
       status: "review",
       title,
       visibility: "private",
@@ -286,6 +286,7 @@ async function main() {
     cleanupState.bankId = bankId;
 
     const classroomId = await createSmokeClassroom({
+      admin,
       organizationId,
       studentUserId: student.user.id,
       suffix,

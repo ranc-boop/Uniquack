@@ -54,7 +54,7 @@ as $$
 $$;
 
 revoke all on function private.can_read_assignment_question(uuid) from public;
-grant execute on function private.can_read_assignment_question(uuid) to authenticated;
+grant execute on function private.can_read_assignment_question(uuid) to anon, authenticated;
 
 drop policy if exists questions_assignment_item_read on public.questions;
 create policy questions_assignment_item_read
