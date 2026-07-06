@@ -515,7 +515,7 @@ begin
       'approvedThrough', 'approve_bank_review_question'
     )
   )
-  on conflict (bank_id, question_id)
+  on conflict on constraint bank_questions_bank_id_question_id_key
   do update set
     status = 'active',
     source_kind = 'review_draft',
