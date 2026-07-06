@@ -69,6 +69,10 @@ const bankImportReviewMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0027_bank_import_review_scope.sql"),
   "utf8",
 );
+const assignmentFromBankMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0028_assignment_from_bank_questions.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -239,6 +243,24 @@ assert(
   "bank import/review migration must scope imports and approval to bank managers without global publish or anon grants",
 );
 console.log("PASS bank import review migration keeps approval bank-scoped and non-public");
+assert(
+  assignmentFromBankMigration.includes("add column if not exists bank_question_id") &&
+    assignmentFromBankMigration.includes("add column if not exists source_bank_id") &&
+    assignmentFromBankMigration.includes("private.can_read_assignment_question") &&
+    assignmentFromBankMigration.includes("questions_assignment_item_read") &&
+    assignmentFromBankMigration.includes("public.create_assignment_from_bank") &&
+    assignmentFromBankMigration.includes("private.can_read_question_bank(p_target_bank_id)") &&
+    assignmentFromBankMigration.includes("private.can_manage_classroom(p_target_classroom_id)") &&
+    assignmentFromBankMigration.includes("assignment.status = 'assigned'") &&
+    assignmentFromBankMigration.includes("question.status <> 'draft'") &&
+    assignmentFromBankMigration.includes("revoke all on function public.create_assignment_from_bank") &&
+    assignmentFromBankMigration.includes("grant execute on function public.create_assignment_from_bank") &&
+    assignmentFromBankMigration.includes("grant execute on function private.can_read_assignment_question(uuid) to anon, authenticated") &&
+    !assignmentFromBankMigration.includes("published_at =") &&
+    !/grant execute on function public\.create_assignment_from_bank[\s\S]*?to anon/i.test(assignmentFromBankMigration),
+  "assignment-from-bank migration must expose selected bank questions through assignment scope only, with no global publish or anon grants",
+);
+console.log("PASS assignment-from-bank migration keeps bank content assignment-scoped");
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",

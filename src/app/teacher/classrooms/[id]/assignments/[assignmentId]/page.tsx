@@ -31,7 +31,15 @@ function statusLabel(status: string) {
 
 function summaryText(
   summary: unknown,
-  key: "sourceTitle" | "sourceStatus" | "eligibleQuestionCount" | "unavailableQuestionCount",
+  key:
+    | "assignmentVisibility"
+    | "bankName"
+    | "bankVisibility"
+    | "eligibleQuestionCount"
+    | "itemCount"
+    | "sourceStatus"
+    | "sourceTitle"
+    | "unavailableQuestionCount",
 ) {
   if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
     return null;
@@ -44,6 +52,7 @@ function summaryText(
 function sourceKindLabel(kind: string) {
   if (kind === "course_builder_run") return "Course Builder run";
   if (kind === "practice_framework") return "Practice framework";
+  if (kind === "question_bank") return "Question Bank";
   return "Manual";
 }
 
@@ -329,7 +338,8 @@ export default async function TeacherAssignmentDetailPage({
                 Assignment items
               </h2>
               <p className="student-muted">
-                These are the published questions students receive in My Work.
+                These are the selected questions students receive in My Work.
+                Bank-sourced assignments do not expose the full teacher bank.
               </p>
             </div>
             {assignment.items.length ? (
@@ -364,6 +374,11 @@ export default async function TeacherAssignmentDetailPage({
                             available.
                           </p>
                         )}
+                        {item.bank_question_id ? (
+                          <p className="text-xs font-semibold text-sky-700">
+                            Delivered from selected Question Bank item.
+                          </p>
+                        ) : null}
                       </div>
                       {item.points !== null ? (
                         <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
@@ -426,9 +441,11 @@ export default async function TeacherAssignmentDetailPage({
 
           {assignment.source_kind !== "manual" ? (
             <section className="student-panel p-5">
-              <h2 className="text-lg font-bold text-slate-950">Course Builder source</h2>
+              <h2 className="text-lg font-bold text-slate-950">Assignment source</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                This assignment was created from a reviewed Course Builder source.
+                {assignment.source_kind === "question_bank"
+                  ? "This assignment was created from selected approved Question Bank items."
+                  : "This assignment was created from a reviewed planning source."}
               </p>
               <dl className="mt-4 space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
@@ -440,32 +457,65 @@ export default async function TeacherAssignmentDetailPage({
                 <div className="space-y-1">
                   <dt className="text-slate-500">Title</dt>
                   <dd className="font-semibold text-slate-950">
-                    {summaryText(assignment.source_summary, "sourceTitle") ||
-                      "Course Builder source"}
+                    {summaryText(assignment.source_summary, "bankName") ||
+                      summaryText(assignment.source_summary, "sourceTitle") ||
+                      "Assignment source"}
                   </dd>
                 </div>
+                {assignment.source_kind === "question_bank" ? (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Bank visibility</dt>
+                      <dd className="font-semibold capitalize text-slate-950">
+                        {summaryText(assignment.source_summary, "bankVisibility") ||
+                          "bank-scoped"}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Student access</dt>
+                      <dd className="font-semibold capitalize text-slate-950">
+                        {summaryText(assignment.source_summary, "assignmentVisibility") ||
+                          "assignment_only"}
+                      </dd>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-slate-500">Source status</dt>
+                    <dd className="font-semibold capitalize text-slate-950">
+                      {summaryText(assignment.source_summary, "sourceStatus") || "unknown"}
+                    </dd>
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Source status</dt>
-                  <dd className="font-semibold capitalize text-slate-950">
-                    {summaryText(assignment.source_summary, "sourceStatus") || "unknown"}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Published items</dt>
+                  <dt className="text-slate-500">
+                    {assignment.source_kind === "question_bank"
+                      ? "Selected items"
+                      : "Published items"}
+                  </dt>
                   <dd className="font-semibold text-slate-950">
-                    {summaryText(assignment.source_summary, "eligibleQuestionCount") ||
+                    {summaryText(assignment.source_summary, "itemCount") ||
+                      summaryText(assignment.source_summary, "eligibleQuestionCount") ||
                       assignment.itemCount}
                   </dd>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Needs review</dt>
-                  <dd className="font-semibold text-slate-950">
-                    {summaryText(assignment.source_summary, "unavailableQuestionCount") ||
-                      "0"}
-                  </dd>
-                </div>
+                {assignment.source_kind !== "question_bank" ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-slate-500">Needs review</dt>
+                    <dd className="font-semibold text-slate-950">
+                      {summaryText(assignment.source_summary, "unavailableQuestionCount") ||
+                        "0"}
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
-              {assignment.source_record_id ? (
+              {assignment.source_kind === "question_bank" && assignment.source_record_id ? (
+                <Button asChild className="mt-4 w-full" variant="outline">
+                  <Link href={`/teacher/banks/${assignment.source_record_id}`}>
+                    Open source bank
+                  </Link>
+                </Button>
+              ) : assignment.source_record_id ? (
                 <p className="mt-4 break-all font-mono text-xs text-slate-400">
                   {assignment.source_record_id}
                 </p>

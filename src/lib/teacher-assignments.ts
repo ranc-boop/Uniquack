@@ -47,7 +47,13 @@ export type TeacherAssignableQuestion = TeacherAssignmentQuestion & {
 
 export type TeacherAssignmentItem = Pick<
   AssignmentItem,
-  "id" | "item_type" | "order_index" | "points" | "question_id"
+  | "bank_question_id"
+  | "id"
+  | "item_type"
+  | "order_index"
+  | "points"
+  | "question_id"
+  | "source_bank_id"
 > & {
   question: TeacherAssignmentQuestion | null;
 };
@@ -155,6 +161,25 @@ export async function getManagedClassroom({
   }
 
   return data as TeacherAssignmentClassroom;
+}
+
+export async function listManagedClassrooms({
+  supabase,
+}: {
+  supabase: SupabaseServerClient;
+}): Promise<TeacherAssignmentClassroom[]> {
+  const { data, error } = await supabase
+    .from("classrooms")
+    .select("id, organization_id, name, description, subject, status, created_at")
+    .eq("status", "active")
+    .order("updated_at", { ascending: false })
+    .limit(100);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as TeacherAssignmentClassroom[];
 }
 
 export async function listTeacherClassroomAssignments({
@@ -276,7 +301,7 @@ export async function getTeacherAssignmentDetail({
 
   const { data: items, error: itemError } = await supabase
     .from("assignment_items")
-    .select("id, item_type, order_index, points, question_id")
+    .select("id, item_type, order_index, points, question_id, bank_question_id, source_bank_id")
     .eq("assignment_id", assignmentId)
     .order("order_index", { ascending: true });
 
@@ -285,7 +310,16 @@ export async function getTeacherAssignmentDetail({
   }
 
   const itemRows = (items ?? []) as Array<
-    Pick<AssignmentItem, "id" | "item_type" | "order_index" | "points" | "question_id">
+    Pick<
+      AssignmentItem,
+      | "bank_question_id"
+      | "id"
+      | "item_type"
+      | "order_index"
+      | "points"
+      | "question_id"
+      | "source_bank_id"
+    >
   >;
   const questionIds = Array.from(
     new Set(itemRows.map((item) => item.question_id).filter(Boolean) as string[]),

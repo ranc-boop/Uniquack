@@ -218,7 +218,7 @@ export type Assignment = {
   status: "draft" | "assigned" | "archived";
   assigned_at: string | null;
   due_at: string | null;
-  source_kind: "manual" | "course_builder_run" | "practice_framework";
+  source_kind: "manual" | "course_builder_run" | "practice_framework" | "question_bank";
   source_record_id: string | null;
   source_summary: Json;
   created_at: string;
@@ -229,6 +229,8 @@ export type AssignmentItem = {
   id: string;
   assignment_id: string;
   question_id: string | null;
+  bank_question_id: string | null;
+  source_bank_id: string | null;
   item_type: "question" | "practice_set" | "note";
   order_index: number;
   points: number | null;
@@ -847,6 +849,18 @@ export type Database = {
           target_user_id: string;
         };
         Returns: boolean;
+      };
+      create_assignment_from_bank: {
+        Args: {
+          p_assign_now?: boolean;
+          p_assignment_due_at?: string | null;
+          p_assignment_instructions?: string | null;
+          p_assignment_title: string;
+          p_selected_bank_question_ids?: string[];
+          p_target_bank_id: string;
+          p_target_classroom_id: string;
+        };
+        Returns: string;
       };
       search_questions_by_taxonomy: {
         Args: {
