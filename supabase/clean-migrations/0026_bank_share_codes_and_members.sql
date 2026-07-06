@@ -118,7 +118,7 @@ returns table (
   share_code_id uuid,
   raw_share_code text,
   role_granted text,
-  expires_at timestamptz
+  share_code_expires_at timestamptz
 )
 language plpgsql
 security definer

@@ -787,9 +787,9 @@ export type Database = {
           target_bank_id: string;
         };
         Returns: Array<{
-          expires_at: string | null;
           raw_share_code: string;
           role_granted: "viewer" | "editor";
+          share_code_expires_at: string | null;
           share_code_id: string;
         }>;
       };
