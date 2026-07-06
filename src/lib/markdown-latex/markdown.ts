@@ -1,6 +1,6 @@
-export type QuestionSourceFormat = "markdown_latex" | "html";
+export type QuestionSourceFormat = "markdown_latex" | "html" | "plain_text";
 
-export const questionSourceFormats = ["markdown_latex", "html"] as const;
+export const questionSourceFormats = ["markdown_latex", "html", "plain_text"] as const;
 
 /**
  * Lightweight MVP Markdown + LaTeX renderer.

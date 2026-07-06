@@ -115,8 +115,12 @@ const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
 const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
 const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
 const teacherBankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
+const teacherBankImportsPage = await read("src/app/teacher/banks/[bankId]/imports/page.tsx");
+const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
+const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
 const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
+const bankImportReviewMigration = await read("supabase/clean-migrations/0027_bank_import_review_scope.sql");
 const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
@@ -150,13 +154,23 @@ assert(
     teacherBanksPage.includes("Create Question Bank") &&
     teacherBankNewPage.includes("action={createQuestionBank}") &&
     teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
-    teacherBankDetailPage.includes("disabled") &&
+    teacherBankDetailPage.includes("Import material") &&
+    teacherBankDetailPage.includes("Review Drafts") &&
+    teacherBankImportsPage.includes("Create bank Review Drafts") &&
+    teacherBankImportsPage.includes("stay private until") &&
+    teacherBankReviewPage.includes("Approve into bank") &&
+    teacherBankReviewPage.includes("not globally published") &&
+    teacherBankQuestionsPage.includes("not public/global questions") &&
     teacherBankDetailPage.includes("Manage members and share codes") &&
     teacherBankActions.includes('rpc("create_question_bank"') &&
     teacherBankActions.includes('rpc("create_bank_share_code"') &&
     teacherBankActions.includes('rpc("join_question_bank_by_code"') &&
     teacherBankActions.includes('rpc("update_bank_member_role"') &&
     teacherBankActions.includes('rpc("remove_bank_member"') &&
+    teacherBankActions.includes('rpc("approve_bank_review_question"') &&
+    teacherBankActions.includes("importBatchImportJson") &&
+    bankImportReviewMigration.includes("public.approve_bank_review_question") &&
+    bankImportReviewMigration.includes("questions_bank_member_read") &&
     teacherBankJoinPage.includes("action={joinQuestionBankByCode}") &&
     teacherBankJoinPage.includes("Joining a bank is separate from") &&
     teacherBankMembersPage.includes("Owner-controlled sharing") &&

@@ -6,6 +6,7 @@ import type {
   BankMemberRole,
   BankShareCode,
   Profile,
+  Question,
   QuestionBank,
   QuestionBankStatus,
   QuestionBankVisibility,
@@ -46,6 +47,53 @@ export type BankShareCodeSummary = Pick<
   | "status"
   | "updated_at"
 >;
+
+export type BankImportBatchSummary = {
+  created_at: string;
+  id: string;
+  source_type: string;
+  status: string;
+  summary: unknown;
+  target_bank_id: string | null;
+};
+
+export type BankReviewDraftQuestion = Pick<
+  Question,
+  | "created_at"
+  | "difficulty_rating"
+  | "id"
+  | "question_code"
+  | "question_type"
+  | "source"
+  | "source_kind"
+  | "source_review_item_id"
+  | "status"
+  | "title"
+> & {
+  tagIds: string[];
+  warningCount: number;
+};
+
+export type BankApprovedQuestion = {
+  added_at: string;
+  bank_question_id: string;
+  metadata: unknown;
+  question: Pick<
+    Question,
+    | "difficulty_rating"
+    | "id"
+    | "question_code"
+    | "question_type"
+    | "source"
+    | "source_kind"
+    | "source_review_item_id"
+    | "status"
+    | "title"
+    | "visibility"
+  > | null;
+  source_kind: string;
+  status: string;
+};
 
 export class QuestionBankSchemaMissingError extends Error {
   constructor(message = "Question Bank tables are not available yet.") {
@@ -270,8 +318,144 @@ export async function listBankShareCodes({
   return data ?? [];
 }
 
+export async function listBankImportBatches({
+  bankId,
+  supabase,
+}: {
+  bankId: string;
+  supabase: SupabaseServerClient;
+}) {
+  const { data, error } = await supabase
+    .from("import_batches")
+    .select("id, source_type, status, summary, target_bank_id, created_at")
+    .eq("target_bank_id", bankId)
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  assertQuestionBankSchema(error);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as BankImportBatchSummary[];
+}
+
+export async function listBankReviewDraftQuestions({
+  bankId,
+  supabase,
+}: {
+  bankId: string;
+  supabase: SupabaseServerClient;
+}) {
+  const { data: questions, error } = await supabase
+    .from("questions")
+    .select(
+      "id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, created_at",
+    )
+    .eq("owner_bank_id", bankId)
+    .eq("status", "draft")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  assertQuestionBankSchema(error);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const questionIds = (questions ?? []).map((question) => question.id);
+  const [tagResult, importItemResult] = questionIds.length
+    ? await Promise.all([
+        supabase
+          .from("question_taxonomy_assignments")
+          .select("question_id, tag_id")
+          .in("question_id", questionIds)
+          .limit(300),
+        supabase
+          .from("import_batch_items")
+          .select("created_question_id, validation_errors")
+          .in("created_question_id", questionIds)
+          .limit(100),
+      ])
+    : [
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
+
+  if (tagResult.error) {
+    throw new Error(tagResult.error.message);
+  }
+
+  if (importItemResult.error) {
+    throw new Error(importItemResult.error.message);
+  }
+
+  const tagsByQuestionId = new Map<string, string[]>();
+  for (const row of tagResult.data ?? []) {
+    const tags = tagsByQuestionId.get(row.question_id) ?? [];
+    tags.push(row.tag_id);
+    tagsByQuestionId.set(row.question_id, tags);
+  }
+
+  const warningCountByQuestionId = new Map<string, number>();
+  for (const row of importItemResult.data ?? []) {
+    if (!row.created_question_id) {
+      continue;
+    }
+
+    const warnings = Array.isArray(row.validation_errors)
+      ? row.validation_errors.length
+      : 0;
+    warningCountByQuestionId.set(row.created_question_id, warnings);
+  }
+
+  return (questions ?? []).map((question) => ({
+    ...question,
+    tagIds: tagsByQuestionId.get(question.id) ?? [],
+    warningCount: warningCountByQuestionId.get(question.id) ?? 0,
+  })) as BankReviewDraftQuestion[];
+}
+
+export async function listBankApprovedQuestions({
+  bankId,
+  supabase,
+}: {
+  bankId: string;
+  supabase: SupabaseServerClient;
+}) {
+  const { data, error } = await supabase
+    .from("bank_questions")
+    .select(
+      "id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, visibility)",
+    )
+    .eq("bank_id", bankId)
+    .eq("status", "active")
+    .order("added_at", { ascending: false })
+    .limit(100);
+
+  assertQuestionBankSchema(error);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => ({
+    added_at: row.added_at,
+    bank_question_id: row.id,
+    metadata: row.metadata,
+    question: Array.isArray(row.question) ? row.question[0] : row.question,
+    source_kind: row.source_kind,
+    status: row.status,
+  })) as BankApprovedQuestion[];
+}
+
 export function canManageBankMembers(role: BankMemberRole | null | undefined) {
   return role === "owner";
+}
+
+export function canManageBankContent(role: BankMemberRole | null | undefined) {
+  return role === "owner" || role === "editor";
 }
 
 export function bankMemberProfileLabel(member: BankMemberWithProfile) {

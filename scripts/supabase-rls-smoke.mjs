@@ -65,6 +65,10 @@ const bankShareMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0026_bank_share_codes_and_members.sql"),
   "utf8",
 );
+const bankImportReviewMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0027_bank_import_review_scope.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -219,6 +223,22 @@ assert(
   "bank share RLS/grants must block anonymous access and avoid storing raw share codes",
 );
 console.log("PASS bank share migration enables owner-managed hashed share codes");
+assert(
+  bankImportReviewMigration.includes("alter table public.import_batches") &&
+    bankImportReviewMigration.includes("target_bank_id") &&
+    bankImportReviewMigration.includes("alter table public.questions") &&
+    bankImportReviewMigration.includes("owner_bank_id") &&
+    bankImportReviewMigration.includes("questions_bank_member_read") &&
+    bankImportReviewMigration.includes("questions_bank_manager_write") &&
+    bankImportReviewMigration.includes("public.approve_bank_review_question") &&
+    bankImportReviewMigration.includes("private.can_manage_question_bank(target_bank_id)") &&
+    bankImportReviewMigration.includes("revoke all on function public.approve_bank_review_question(uuid, uuid) from public, anon") &&
+    bankImportReviewMigration.includes("grant execute on function public.approve_bank_review_question(uuid, uuid) to authenticated") &&
+    !bankImportReviewMigration.includes("published_at = coalesce") &&
+    !bankImportReviewMigration.includes("grant execute on function public.approve_bank_review_question(uuid, uuid) to anon"),
+  "bank import/review migration must scope imports and approval to bank managers without global publish or anon grants",
+);
+console.log("PASS bank import review migration keeps approval bank-scoped and non-public");
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",
