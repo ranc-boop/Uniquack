@@ -9,12 +9,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const root = resolve(__dirname, "..");
 dotenv.config({ path: resolve(root, ".env.local") });
+dotenv.config({ path: resolve(root, ".env.disposable-smoke.local") });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey =
   process.env.CLEAN_SUPABASE_SERVICE_ROLE_KEY ??
   process.env.SUPABASE_SERVICE_ROLE_KEY;
+const hasRealTeacherCredentials = Boolean(
+  process.env.TEST_TEACHER_USERNAME && process.env.TEST_TEACHER_PASSWORD,
+);
 const teacherUsername =
   process.env.TEST_TEACHER_USERNAME ??
   process.env.TEST_ADMIN_USERNAME ??
@@ -27,6 +31,11 @@ const studentUsername = process.env.TEST_STUDENT_USERNAME;
 const studentPassword = process.env.TEST_STUDENT_PASSWORD;
 const unrelatedTeacherUsername = process.env.TEST_UNRELATED_TEACHER_USERNAME;
 const unrelatedTeacherPassword = process.env.TEST_UNRELATED_TEACHER_PASSWORD;
+const teacherCredentialKind = hasRealTeacherCredentials
+  ? "real teacher"
+  : process.env.TEST_ADMIN_USERNAME && process.env.TEST_ADMIN_PASSWORD
+    ? "admin fallback"
+    : "super admin fallback";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -90,6 +99,33 @@ async function assertTeacherProfile(teacher) {
   assert(
     ["teacher", "admin", "super_admin"].includes(profile.role),
     "question bank smoke account must be teacher/admin/super_admin",
+  );
+  if (hasRealTeacherCredentials) {
+    assert(
+      profile.role === "teacher",
+      "question bank smoke TEST_TEACHER credentials must resolve to a teacher profile",
+    );
+  }
+  return profile;
+}
+
+async function assertTeacherOrganizationMembership(teacher) {
+  if (!hasRealTeacherCredentials) return;
+
+  const { data: memberships, error } = await teacher.client
+    .from("organization_members")
+    .select("role, status")
+    .eq("user_id", teacher.user.id)
+    .eq("status", "active")
+    .eq("role", "teacher")
+    .limit(1);
+  assert(
+    !error,
+    `question bank teacher organization membership lookup failed: ${summarizeSupabaseError(error)}`,
+  );
+  assert(
+    memberships?.length === 1,
+    "question bank smoke TEST_TEACHER credentials must have an active teacher organization membership",
   );
 }
 
@@ -167,10 +203,12 @@ async function main() {
     return;
   }
 
-  const teacher = await signIn(teacherUsername, teacherPassword, "teacher/admin");
+  const teacher = await signIn(teacherUsername, teacherPassword, teacherCredentialKind);
   if (!teacher) return;
 
   await assertTeacherProfile(teacher);
+  await assertTeacherOrganizationMembership(teacher);
+  console.log(`PASS question bank smoke using ${teacherCredentialKind} credentials`);
 
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let smokeBankId = null;
