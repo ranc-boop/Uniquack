@@ -16,7 +16,7 @@ The migration adds:
 - a forward policy correction so `bank_members` writes are owner-controlled
 - a profile read policy so active bank co-members can display member labels
 
-`supabase` CLI and `psql` are not available on this machine, so migration 0026 was not applied locally by Codex. Manual apply instructions are in `docs/bank-share-migration-0026-manual-apply.md`.
+Migration 0026 was manually applied to the clean Supabase project through the Dashboard SQL Editor after the SQL was corrected for the `create_bank_share_code` return column name.
 
 ## Share-Code Hashing Behavior
 
@@ -51,23 +51,23 @@ No student bank browsing route was added.
 
 ## Access Validation Status
 
-Static and build validation passed. Live Teacher A / Teacher B share-code validation is blocked until migration 0026 is applied to the clean Supabase project.
+Static, build, route, and live clean-Supabase validation passed.
 
-The new smoke did validate before the migration-dependent step:
+Live bank-share smoke verified:
 
-- teacher A created a private smoke bank
-- unrelated teacher B could not read it before joining
-- student could not read it by default
-- smoke cleanup removed the smoke-created bank
-
-Expected live result after manual apply:
-
-- unrelated teacher cannot read the private bank before joining
-- unrelated teacher can read after joining by share code
-- viewer cannot manage members/share codes
-- owner can update viewer to editor
-- removed member loses access
+- teacher A creates a private smoke bank
+- unrelated teacher B cannot read before joining
+- student cannot read by default
+- teacher A creates a viewer share code
+- the DB stores only `code_hash` / `code_hint`, not the raw code
+- teacher B joins with the raw share code
+- teacher B can read the joined bank as viewer
+- teacher B viewer cannot manage share codes
+- teacher A updates teacher B to editor
+- teacher A removes teacher B
+- removed teacher B loses bank access
 - revoked share code cannot be used
+- smoke-created rows are cleaned up
 
 Student default block remains preserved by the existing bank RLS. Explicit student bank browsing UI was not implemented.
 
@@ -89,21 +89,19 @@ The smoke performs static route/migration checks immediately. Once migration 002
 
 ## Tests Run
 
-- `node --check scripts/bank-share-members-smoke.mjs` passed
+- `node scripts/bank-share-members-smoke.mjs` passed live without skip
+- `npm.cmd run smoke` passed, including live bank-share join/role/remove/revoked-code checks
 - `npm.cmd run lint` passed
 - `npm.cmd run build` passed
 - `node scripts/security-smoke.mjs` passed
-- `node scripts/route-smoke.mjs` passed against the running local dev server
-- `node scripts/supabase-rls-smoke.mjs` passed with network access
+- `node scripts/route-smoke.mjs` passed
+- `node scripts/supabase-rls-smoke.mjs` passed
 - `node scripts/question-bank-foundation-smoke.mjs` passed and validates unrelated-teacher private-bank isolation
-- `node scripts/bank-share-members-smoke.mjs` passed static/pre-join checks, then skipped the migration-dependent join flow because migration 0026 is not applied
-- `npm.cmd run smoke` passed; the bank-share section skipped only the migration-dependent join flow
 - `npm.cmd run perf:budget` passed
 
 ## Remaining Blockers
 
-- Apply clean migration 0026 manually or with CLI/psql from an environment that has the tooling.
-- Rerun live `scripts/bank-share-members-smoke.mjs` after migration apply.
+No remaining blocker for the bank share-code/member-role foundation. Future slices still need PDF import into banks, Review Draft approval into banks, assignment-from-bank, and bank question editing.
 
 ## Explicit Non-Goals
 
