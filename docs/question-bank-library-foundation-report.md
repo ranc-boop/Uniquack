@@ -107,10 +107,14 @@ target Supabase project, verifies:
 - unrelated teacher check is skipped unless credentials exist
 - smoke-created rows are cleaned up with service-role deletion when available
 
-Current disposable clean Supabase state: migration 0025 was not applied from this
-Codex environment because neither `supabase` CLI nor `psql` is available on PATH.
-The live bank create smoke therefore skips with a clear message until migration
-0025 is applied.
+Current clean Supabase state: migration 0025 was manually applied through the
+Dashboard SQL Editor after the initial implementation commit. The live bank
+create/list/RLS smoke now runs without skipping.
+
+Credential note: the local smoke environment does not include
+`TEST_TEACHER_USERNAME`, so `scripts/question-bank-foundation-smoke.mjs` used the
+configured admin fallback as the teacher-workspace support preview account.
+Student credentials were present, so the student private-bank block was verified.
 
 ## Tests
 
@@ -127,9 +131,11 @@ Passed:
 
 Notes:
 
-- `node scripts/question-bank-foundation-smoke.mjs` passed route/static checks
-  and skipped live create/list/RLS checks because the remote clean Supabase target
-  does not yet have migration 0025.
+- `node scripts/question-bank-foundation-smoke.mjs` passed live create/list/RLS
+  checks after migration 0025 was manually applied.
+- The smoke confirmed teacher/admin bank creation, owner membership creation,
+  bank list/detail read, anonymous blocking, student blocking, and smoke-row
+  cleanup.
 
 ## Rollback Risk
 
@@ -140,13 +146,6 @@ not affect student assignment visibility.
 
 ## Next Recommended Task
 
-Apply `supabase/clean-migrations/0025_question_banks_foundation.sql` to the clean
-Supabase project, then rerun:
-
-```bash
-node scripts/question-bank-foundation-smoke.mjs
-npm.cmd run smoke
-```
-
-After that, implement the next review-gated slice: Review Draft approval into a
-selected teacher bank.
+Add dedicated disposable `TEST_TEACHER_USERNAME` / `TEST_TEACHER_PASSWORD`
+credentials for teacher-specific smoke validation, then implement the next
+review-gated slice: Review Draft approval into a selected teacher bank.
