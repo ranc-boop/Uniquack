@@ -46,17 +46,17 @@ function buildStudioCards({
   {
     title: "Recent Imports",
     description:
-      "Teacher-owned imports should flow through Review Drafts and then land in the selected bank.",
-    href: "/admin/imports/pdf",
-    cta: "Open imports",
+      "Choose a bank first, then import private material into bank-scoped Review Drafts.",
+    href: "/teacher/banks",
+    cta: "Choose a bank to import",
     status: "Review-gated",
   },
   {
     title: "Review Drafts",
     description:
-      "AI and batch outputs stay private until reviewed. No unreviewed draft can be assigned to students.",
-    href: "/admin/review",
-    cta: "Review drafts",
+      "Review happens inside the target bank. No unreviewed draft can be assigned to students.",
+    href: "/teacher/banks",
+    cta: "Open bank review",
     status: "Safety gate",
   },
   {
@@ -128,7 +128,7 @@ export default async function TeacherHomePage() {
               <Link href="/teacher/banks">Open Banks / Library</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/admin/review">Review Drafts</Link>
+              <Link href="/teacher/banks">Open bank review</Link>
             </Button>
             <Button asChild variant="outline">
               <Link href="/teacher/classrooms">Delivery classrooms</Link>

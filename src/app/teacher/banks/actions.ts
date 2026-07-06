@@ -327,7 +327,7 @@ export async function approveBankReviewQuestion(formData: FormData) {
     revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
     redirectWithSaved(
       `/teacher/banks/${parsed.bankId}/questions`,
-      "Review Draft approved into this bank. It was not globally published.",
+      "Review Draft approved into this bank. It was not published to the public library.",
     );
   } catch (error) {
     redirectWithError(fallbackPath, formatActionError(error));

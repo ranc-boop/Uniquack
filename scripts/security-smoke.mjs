@@ -143,6 +143,9 @@ const bankImportReviewMigration = await read(
 const assignmentFromBankMigration = await read(
   "supabase/clean-migrations/0028_assignment_from_bank_questions.sql",
 );
+const teacherRoleBoundaryMigration = await read(
+  "supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql",
+);
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
 const courseBuilderBridgePage = await read("src/app/teacher/course-builder/page.tsx");
@@ -154,6 +157,8 @@ const authGuards = await read("src/lib/auth/guards.ts");
 const authActions = await read("src/app/auth/actions.ts");
 const authNav = await read("src/components/auth-nav.tsx");
 const supabaseMiddleware = await read("src/lib/supabase/middleware.ts");
+const profileValidation = await read("src/lib/validations/profile.ts");
+const adminUsersPage = await read("src/app/admin/users/page.tsx");
 assert(
   classroomMigration.includes("create table if not exists public.classrooms") &&
     classroomMigration.includes("create table if not exists public.classroom_members") &&
@@ -280,11 +285,11 @@ assert(
   "Course Builder bridge action must stay teacher-only, draft-by-default, published-question-only, and provider-free",
 );
 assert(
-  courseBuilderBridgePage.includes("Course Builder will generate bank packages before assignment") &&
+    courseBuilderBridgePage.includes("Course Builder will generate bank packages before assignment") &&
     courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
     courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&
     courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&
-    courseBuilderBridgePage.includes("Review Drafts") &&
+    courseBuilderBridgePage.includes("bank review") &&
     courseBuilderBridgePage.includes("does not add") &&
     courseBuilderBridgePage.includes("provider calls") &&
     teacherClassroomDetailPage.includes("Course Builder bridge") &&
@@ -297,8 +302,8 @@ assert(
     teacherHomePage.includes("assignments deliver selected bank content") &&
     teacherHomePage.includes("Bank-first teacher workflow") &&
     teacherWorkspaceNav.includes("Banks / Library") &&
-    teacherWorkspaceNav.includes("Imports") &&
-    teacherWorkspaceNav.includes("Review Drafts") &&
+    teacherWorkspaceNav.includes("Bank Imports") &&
+    teacherWorkspaceNav.includes("Bank Review") &&
     teacherWorkspaceNav.includes("Classrooms") &&
     teacherBanksPage.includes("Your teacher-owned Question Banks") &&
     teacherBanksPage.includes("Create Question Bank") &&
@@ -312,8 +317,8 @@ assert(
     teacherBankImportsPage.includes("Create bank Review Drafts") &&
     teacherBankImportsPage.includes("stay private until") &&
     teacherBankReviewPage.includes("Approve into bank") &&
-    teacherBankReviewPage.includes("not globally published") &&
-    teacherBankQuestionsPage.includes("not public/global questions") &&
+    teacherBankReviewPage.includes("public library") &&
+    teacherBankQuestionsPage.includes("These questions are bank-scoped") &&
     teacherBankDetailPage.includes("Manage members and share codes") &&
     teacherBankJoinPage.includes("action={joinQuestionBankByCode}") &&
     teacherBankJoinPage.includes("Joining a bank is separate from") &&
@@ -398,6 +403,13 @@ assert(
     assignmentFromBankMigration.includes("grant execute on function private.can_read_assignment_question(uuid) to anon, authenticated") &&
     !assignmentFromBankMigration.includes("published_at =") &&
     !/grant execute on function public\.create_assignment_from_bank[\s\S]*?to anon/i.test(assignmentFromBankMigration) &&
+    profileValidation.includes('"teacher"') &&
+    adminUsersPage.includes('<option value="teacher">Teacher</option>') &&
+    teacherRoleBoundaryMigration.includes("questions_published_read") &&
+    teacherRoleBoundaryMigration.includes("visibility = 'public'") &&
+    teacherRoleBoundaryMigration.includes("owner_bank_id is null") &&
+    teacherRoleBoundaryMigration.includes("Bank-owned questions must be approved through bank review") &&
+    teacherRoleBoundaryMigration.includes("public.search_questions_by_taxonomy") &&
     authGuards.includes("next=/teacher") &&
     authActions.includes('redirect("/teacher")') &&
     authNav.includes("Teacher Studio preview") &&

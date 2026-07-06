@@ -25,9 +25,9 @@ export default async function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Manage admin roles."
+        description="Manage platform user roles."
         eyebrow="Settings"
-        help="Manage admin role assignments. Password reset and account disabling remain outside this route."
+        help="Manage admin, teacher, and student role assignments. Password reset and account disabling remain outside this route."
         helpLabel="Users admin details"
         title="Users"
       />
@@ -65,6 +65,7 @@ export default async function AdminUsersPage() {
                       className="h-9 rounded-md border bg-background px-2 text-sm"
                     >
                       <option value="student">Student</option>
+                      <option value="teacher">Teacher</option>
                       <option value="admin">Admin</option>
                       <option value="super_admin">Super admin</option>
                     </select>

@@ -150,7 +150,8 @@ assert(
     teacherHomePage.includes("Bank-first teacher workflow") &&
     teacherHomePage.includes("No unreviewed draft can be assigned to students") &&
     teacherWorkspaceNav.includes("Banks / Library") &&
-    teacherWorkspaceNav.includes("Review Drafts") &&
+    teacherWorkspaceNav.includes("Bank Imports") &&
+    teacherWorkspaceNav.includes("Bank Review") &&
     teacherWorkspaceNav.includes("Classrooms") &&
     teacherBanksPage.includes("Your teacher-owned Question Banks") &&
     teacherBanksPage.includes("Create Question Bank") &&
@@ -163,8 +164,8 @@ assert(
     teacherBankImportsPage.includes("Create bank Review Drafts") &&
     teacherBankImportsPage.includes("stay private until") &&
     teacherBankReviewPage.includes("Approve into bank") &&
-    teacherBankReviewPage.includes("not globally published") &&
-    teacherBankQuestionsPage.includes("not public/global questions") &&
+    teacherBankReviewPage.includes("public library") &&
+    teacherBankQuestionsPage.includes("These questions are bank-scoped") &&
     teacherBankDetailPage.includes("Manage members and share codes") &&
     teacherBankActions.includes('rpc("create_question_bank"') &&
     teacherBankActions.includes('rpc("create_bank_share_code"') &&
