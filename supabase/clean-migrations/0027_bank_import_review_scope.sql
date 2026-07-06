@@ -473,7 +473,7 @@ begin
       status,
       draft_payload,
       validation_warnings,
-        p_target_bank_id,
+      target_bank_id,
       created_question_id
     )
     values (
