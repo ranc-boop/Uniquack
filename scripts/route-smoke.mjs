@@ -127,6 +127,8 @@ const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/
 const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
 const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
 const teacherBankAssignmentNewPage = await read("src/app/teacher/banks/[bankId]/assignments/new/page.tsx");
+const teacherPublishPage = await read("src/app/teacher/publish/page.tsx");
+const teacherPublishActions = await read("src/app/teacher/publish/actions.ts");
 const teacherBlueprintPage = await read("src/app/teacher/blueprints/page.tsx");
 const teacherBlueprintNewPage = await read("src/app/teacher/blueprints/new/page.tsx");
 const teacherBlueprintDetailPage = await read("src/app/teacher/blueprints/[blueprintId]/page.tsx");
@@ -191,7 +193,7 @@ assert(
     teacherBankDetailPage.includes("Question Bank operating surface") &&
     teacherBankDetailPage.includes("BankRouteTabs") &&
     teacherBankDetailPage.includes("Import Material") &&
-    teacherBankDetailPage.includes("Create assignment") &&
+    teacherBankDetailPage.includes("Publish from bank") &&
     teacherBankDetailPage.includes("Assignments expose selected") &&
     teacherBankDetailPage.includes("Review Drafts") &&
     teacherBankImportsPage.includes("BankImportEntryPanel") &&
@@ -216,6 +218,17 @@ assert(
     teacherBankActions.includes('rpc("remove_bank_member"') &&
     teacherBankActions.includes('rpc("approve_bank_review_question"') &&
     teacherBankActions.includes("create_assignment_from_bank") &&
+    teacherPublishPage.includes("Publish distributes selected bank content to classes") &&
+    teacherPublishPage.includes("Choose a source bank") &&
+    teacherPublishPage.includes("Select approved bank questions") &&
+    teacherPublishPage.includes("Choose classroom targets") &&
+    teacherPublishPage.includes("Assignment-only. No full source bank access.") &&
+    teacherPublishPage.includes("Blueprints will become publishable after package generation and Review Draft approval.") &&
+    teacherPublishPage.includes("No Review Draft bypass") &&
+    teacherPublishActions.includes("publishQuestionBankAssignments") &&
+    teacherPublishActions.includes("create_assignment_from_bank") &&
+    teacherPublishActions.includes("selectedClassroomIds") &&
+    !teacherPublishActions.includes("AI_PROVIDER") &&
     teacherBankAssignmentNewPage.includes("Question Bank assignment") &&
     teacherBankAssignmentNewPage.includes("Choose a class you manage") &&
     teacherBankAssignmentNewPage.includes("selected approved bank items") &&
@@ -261,7 +274,7 @@ assert(
     teacherClassroomPeoplePage.includes("Joining a class does not grant access") &&
     teacherClassroomPeoplePage.includes("Remove from class") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
-    teacherAssignmentsPage.includes("New assignment") &&
+    teacherAssignmentsPage.includes("Publish new work") &&
     teacherAssignmentsPage.includes("Publish new bank work") &&
     teacherAssignmentsPage.includes("Assigned") &&
     teacherAssignmentsPage.includes("Assignment visibility") &&

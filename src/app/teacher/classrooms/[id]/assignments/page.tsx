@@ -275,8 +275,8 @@ export default async function TeacherAssignmentsPage({
             </Button>
             <ClassroomPublishCta classroomId={classroom.id} />
             <Button asChild>
-              <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
-                New assignment
+              <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
+                Publish new work
               </Link>
             </Button>
             <Button asChild variant="outline">
@@ -370,8 +370,8 @@ export default async function TeacherAssignmentsPage({
               </p>
             </div>
             <Button asChild>
-              <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
-                Create assignment
+              <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
+                Publish new work
               </Link>
             </Button>
           </div>

@@ -102,11 +102,11 @@ export default async function TeacherBankQuestionsPage({
               <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
             </Button>
             <BankQuickAction
-              href={`/teacher/banks/${bank.id}/assignments/new`}
+              href={`/teacher/publish?sourceBankId=${bank.id}`}
               icon={bankActionIcons.assignment}
               variant={questions.length ? "default" : "outline"}
             >
-              Create assignment
+              Publish selected work
             </BankQuickAction>
           </>
         }
@@ -221,7 +221,7 @@ export default async function TeacherBankQuestionsPage({
                     </div>
                     {question ? (
                       <Button asChild variant="outline">
-                        <Link href={`/teacher/banks/${bank.id}/assignments/new`}>
+                        <Link href={`/teacher/publish?sourceBankId=${bank.id}`}>
                           Use in assignment
                         </Link>
                       </Button>
