@@ -41,11 +41,12 @@ It adds:
 - RLS helper functions for Blueprint read/manage and folder read/manage
 - bank-linked Blueprint RLS policies
 
-Remote clean Supabase does not have 0031 applied yet. I added:
+Remote clean Supabase migration 0031 was manually applied through the Dashboard SQL Editor. I added:
 
 - `docs/blueprint-library-migration-0031-manual-apply.md`
+- `docs/blueprint-library-0031-grants-reapply.sql`
 
-Live Blueprint Library DB validation will pass only after applying 0031.
+Live Blueprint Library DB validation now reaches the clean DB. The first post-apply run exposed that authenticated grants were missing for the existing Blueprint tables, so `docs/blueprint-library-0031-grants-reapply.sql` contains the copy-paste-safe post-apply correction.
 
 ## Blueprint Library Behavior
 
@@ -130,7 +131,7 @@ Migration 0031 adds helper-based RLS for:
 - anonymous blocked
 - bank-linked Blueprints visible only through bank membership unless broader Blueprint visibility applies
 
-Live RLS source checks passed. Full live 0031 DB mutation validation is blocked until migration 0031 is manually applied.
+Live RLS source checks passed. Full live 0031 DB mutation validation now reaches remote clean Supabase and is blocked on the post-apply authenticated grants correction for teacher Blueprint folder/Blueprint inserts.
 
 ## Design Compliance
 
@@ -183,14 +184,15 @@ Notes:
 
 - Initial route smoke required using the already-running dev server on port `3001`.
 - `blueprint-library-foundation-smoke` source checks passed.
-- `blueprint-library-foundation-smoke` live mutation checks skipped because migration 0031 is not applied to remote clean Supabase yet.
+- `blueprint-library-foundation-smoke` live mutation checks did not skip after migration 0031 was manually applied.
+- Live smoke created the private source bank, then failed on teacher Blueprint folder creation with a row-level-security insert error because authenticated grants were missing on existing Blueprint Library tables.
 
 ## Remaining Blockers
 
-Apply:
+Migration 0031 has been manually applied. Apply the post-apply grant correction:
 
 ```text
-supabase/clean-migrations/0031_blueprint_library_foundation.sql
+docs/blueprint-library-0031-grants-reapply.sql
 ```
 
 Then rerun:

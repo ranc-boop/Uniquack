@@ -27,3 +27,13 @@ node scripts/blueprint-library-foundation-smoke.mjs
 ```
 
 The live section should stop skipping and validate teacher create/list/open, bank linking, student block, anonymous block, and cleanup.
+
+## Post-apply grant correction
+
+If live smoke reaches the DB but fails when a real teacher creates a Blueprint folder or Blueprint with a row-level-security insert error, run only:
+
+```text
+docs/blueprint-library-0031-grants-reapply.sql
+```
+
+Do not rerun the full migration for this correction. The reapply file only grants authenticated access to the existing Blueprint Library tables and helper functions; RLS policies still enforce teacher ownership, bank membership, student blocking, and anonymous blocking.
