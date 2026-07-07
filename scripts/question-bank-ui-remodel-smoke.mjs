@@ -117,13 +117,18 @@ assert(
 );
 
 assert(
-  bankBlueprintsPage.includes("Blueprints generated from or linked to this bank will appear here") &&
-    bankBlueprintsPage.includes("Blueprint output still flows through Review Drafts") &&
+  bankBlueprintsPage.includes("Blueprint links for") &&
+    bankBlueprintsPage.includes("Create Blueprint from this bank") &&
+    bankBlueprintsPage.includes("No Blueprints linked to this bank yet") &&
+    bankBlueprintsPage.includes("Review Draft and bank approval gates") &&
+    bankBlueprintsPage.includes("listBankLinkedBlueprints") &&
+    !bankBlueprintsPage.includes("executeDeepSeek") &&
+    !bankBlueprintsPage.includes("callAIPdfExtractionProvider") &&
     bankSourcesPage.includes("Source material and import lineage") &&
     bankSourcesPage.includes("does not expose private files to students") &&
     bankSettingsPage.includes("settings read-only") &&
     bankSettingsPage.includes("No visibility or ownership mutation is added"),
-  "bank blueprints/sources/settings placeholder routes must stay non-mutating and review-gated",
+  "bank blueprints must show bank-linked Blueprint Library assets without generation/provider shortcuts, while sources/settings remain guarded",
 );
 
 assert(

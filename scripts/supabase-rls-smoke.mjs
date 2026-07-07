@@ -81,6 +81,10 @@ const teacherRoleBoundaryMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql"),
   "utf8",
 );
+const blueprintLibraryMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0031_blueprint_library_foundation.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -293,6 +297,24 @@ assert(
   "teacher role/bank boundary migration must restrict public reads/search to global public questions and block global publish for bank-owned questions",
 );
 console.log("PASS teacher role/bank boundary migration protects public/global reads");
+assert(
+  blueprintLibraryMigration.includes("alter table public.question_blueprints") &&
+    blueprintLibraryMigration.includes("add column if not exists visibility") &&
+    blueprintLibraryMigration.includes("add column if not exists blueprint_kind") &&
+    blueprintLibraryMigration.includes("create table if not exists public.bank_blueprints") &&
+    blueprintLibraryMigration.includes("alter table public.bank_blueprints enable row level security") &&
+    blueprintLibraryMigration.includes("private.can_read_question_blueprint") &&
+    blueprintLibraryMigration.includes("private.can_manage_question_blueprint") &&
+    blueprintLibraryMigration.includes("question_blueprints_library_read") &&
+    blueprintLibraryMigration.includes("question_blueprints_library_insert") &&
+    blueprintLibraryMigration.includes("bank_blueprints_member_read") &&
+    blueprintLibraryMigration.includes("private.can_read_question_bank(bank_id)") &&
+    blueprintLibraryMigration.includes("private.can_manage_question_bank(bank_id)") &&
+    blueprintLibraryMigration.includes("added_by = auth.uid()") &&
+    !blueprintLibraryMigration.includes("to anon"),
+  "teacher Blueprint Library migration must add visibility-safe RLS and bank links without anon grants",
+);
+console.log("PASS teacher Blueprint Library migration protects private library and bank links");
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",

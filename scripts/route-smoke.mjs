@@ -68,7 +68,8 @@ await checkAdminRoute("/teacher", "Teacher Workspace");
 await checkAdminRoute("/teacher/banks/new", "Start a teacher-owned content library");
 await checkAdminRoute("/teacher/banks/join", "Join a shared Question Bank");
 await checkAdminRoute("/teacher/ai-parsing", "AI Parsing");
-await checkAdminRoute("/teacher/blueprints", "Blueprint");
+await checkAdminRoute("/teacher/blueprints", "Blueprint Library");
+await checkAdminRoute("/teacher/blueprints/new", "Create Blueprint");
 await checkAdminRoute("/teacher/classrooms", "Classrooms");
 await checkAdminRoute("/teacher/publish", "Publish");
 await checkAdminRoute("/teacher/progress", "Progress");
@@ -126,6 +127,11 @@ const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/
 const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
 const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
 const teacherBankAssignmentNewPage = await read("src/app/teacher/banks/[bankId]/assignments/new/page.tsx");
+const teacherBlueprintPage = await read("src/app/teacher/blueprints/page.tsx");
+const teacherBlueprintNewPage = await read("src/app/teacher/blueprints/new/page.tsx");
+const teacherBlueprintDetailPage = await read("src/app/teacher/blueprints/[blueprintId]/page.tsx");
+const teacherBankBlueprintsPage = await read("src/app/teacher/banks/[bankId]/blueprints/page.tsx");
+const blueprintLibraryMigration = await read("supabase/clean-migrations/0031_blueprint_library_foundation.sql");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const bankImportReviewMigration = await read("supabase/clean-migrations/0027_bank_import_review_scope.sql");
 const assignmentFromBankMigration = await read("supabase/clean-migrations/0028_assignment_from_bank_questions.sql");
@@ -211,6 +217,15 @@ assert(
     teacherBankAssignmentNewPage.includes("not access to the full bank") &&
     teacherBankAssignmentNewPage.includes("Assign to class") &&
     teacherBankAssignmentNewPage.includes("Save draft") &&
+    teacherBlueprintPage.includes("Blueprint Library") &&
+    teacherBlueprintPage.includes("Blueprints are reusable planning/package assets") &&
+    teacherBlueprintPage.includes("Create Blueprint") &&
+    teacherBlueprintPage.includes("New Folder") &&
+    teacherBlueprintNewPage.includes("This form only creates the library asset") &&
+    teacherBlueprintDetailPage.includes("BlueprintWorkflowPanel") &&
+    teacherBankBlueprintsPage.includes("Blueprint links for") &&
+    teacherBankBlueprintsPage.includes("Create Blueprint from this bank") &&
+    blueprintLibraryMigration.includes("create table if not exists public.bank_blueprints") &&
     teacherBankActions.includes("importBatchImportJson") &&
     bankImportReviewMigration.includes("public.approve_bank_review_question") &&
     bankImportReviewMigration.includes("questions_bank_member_read") &&

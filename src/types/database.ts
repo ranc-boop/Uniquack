@@ -208,6 +208,105 @@ export type BankShareCode = {
   updated_at: string;
 };
 
+export type QuestionBlueprintVisibility =
+  | "private"
+  | "shared"
+  | "organization"
+  | "public";
+export type QuestionBlueprintKind =
+  | "manual"
+  | "bank_generated"
+  | "imported"
+  | "course_builder";
+export type QuestionBlueprintStatus =
+  | "pending_review"
+  | "approved"
+  | "rejected"
+  | "needs_more_evidence"
+  | "archived"
+  | "deprecated"
+  | "trashed";
+
+export type QuestionBlueprint = {
+  id: string;
+  organization_id: string | null;
+  owner_scope: "system" | "school" | "teacher" | "private";
+  owner_id: string | null;
+  folder_id: string | null;
+  status: QuestionBlueprintStatus;
+  title: string;
+  description: string | null;
+  taxonomy_targets: Json;
+  question_pattern: Json;
+  required_elements: Json;
+  answer_spec_pattern: Json;
+  distractor_pattern: Json;
+  difficulty_profile: Json;
+  generation_constraints: Json;
+  originality_constraints: Json;
+  source_refs: Json;
+  generation_ready: boolean;
+  generation_readiness:
+    | "uncalibrated"
+    | "calibrating"
+    | "generation_ready"
+    | "needs_edit"
+    | "blocked";
+  generation_blocking_reasons: Json;
+  calibration_status:
+    | "not_calibrated"
+    | "calibrating"
+    | "calibrated"
+    | "failed"
+    | "invalidated";
+  last_calibrated_at: string | null;
+  last_calibration_run_id: string | null;
+  version: number;
+  created_by: string | null;
+  updated_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  visibility: QuestionBlueprintVisibility;
+  blueprint_kind: QuestionBlueprintKind;
+  source_bank_id: string | null;
+  source_kind: string | null;
+  source_record_id: string | null;
+  metadata: Json;
+};
+
+export type QuestionBlueprintFolder = {
+  id: string;
+  owner_scope: "system" | "school" | "teacher" | "private";
+  owner_id: string | null;
+  parent_id: string | null;
+  name: string;
+  slug: string;
+  description: string | null;
+  sort_order: number;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  organization_id: string | null;
+  visibility: QuestionBlueprintVisibility;
+  status: "active" | "archived";
+};
+
+export type BankBlueprint = {
+  id: string;
+  bank_id: string;
+  blueprint_id: string;
+  relation_kind: "linked" | "generated_from_bank" | "imported_to_bank";
+  status: "active" | "archived";
+  added_by: string;
+  added_at: string;
+  metadata: Json;
+};
+
 export type Assignment = {
   id: string;
   organization_id: string;
@@ -683,6 +782,9 @@ export type Database = {
       bank_members: TableDefinition<BankMember>;
       bank_questions: TableDefinition<BankQuestion>;
       bank_share_codes: TableDefinition<BankShareCode>;
+      question_blueprints: TableDefinition<QuestionBlueprint>;
+      question_blueprint_folders: TableDefinition<QuestionBlueprintFolder>;
+      bank_blueprints: TableDefinition<BankBlueprint>;
       assignments: TableDefinition<Assignment>;
       assignment_items: TableDefinition<AssignmentItem>;
       student_assignment_progress: TableDefinition<StudentAssignmentProgress>;
