@@ -74,7 +74,12 @@ await checkAdminRoute("/teacher/classrooms", "Classrooms");
 await checkAdminRoute("/teacher/publish", "Publish");
 await checkAdminRoute("/teacher/progress", "Progress");
 await checkAdminRoute("/teacher/course-builder", "Course Builder");
+await checkAdminRoute("/student", "Student Dashboard");
 await checkAdminRoute("/student/work", "My Work");
+await checkAdminRoute("/student/library", "Study Library");
+await checkAdminRoute("/student/groups", "Study Groups");
+await checkAdminRoute("/student/public-library", "Public Library");
+await checkAdminRoute("/student/progress", "Progress / Feedback");
 await checkAdminRoute("/student/classrooms", "My classes");
 await checkAdminRoute("/student/classrooms/join", "Enter your class code");
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
@@ -152,8 +157,16 @@ const courseBuilderBridgePage = await read("src/app/teacher/course-builder/page.
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeMigration = await read("supabase/clean-migrations/0024_assignment_source_metadata.sql");
+const studentHomePage = await read("src/app/student/page.tsx");
+const studentLayout = await read("src/app/student/layout.tsx");
+const studentWorkspaceNav = await read("src/components/student/student-workspace-nav.tsx");
+const studentWorkspaceShell = await read("src/components/student/student-workspace-shell.tsx");
 const studentWorkPage = await read("src/app/student/work/page.tsx");
 const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
+const studentStudyLibraryPage = await read("src/app/student/library/page.tsx");
+const studentStudyGroupsPage = await read("src/app/student/groups/page.tsx");
+const studentPublicLibraryPage = await read("src/app/student/public-library/page.tsx");
+const studentProgressPage = await read("src/app/student/progress/page.tsx");
 const practicePage = await read("src/app/practice/page.tsx");
 const practiceLoader = await read("src/components/practice/practice-agent-loader.tsx");
 const practiceClient = await read("src/components/practice/practice-agent-client.tsx");
@@ -318,6 +331,26 @@ assert(
     courseBuilderBridgeActions.includes("No published Question Bank questions are available") &&
     courseBuilderBridgeHelper.includes('.eq("status", "published")') &&
     courseBuilderBridgeMigration.includes("source_summary jsonb") &&
+    studentHomePage.includes("Student Dashboard") &&
+    studentHomePage.includes("My Work") &&
+    studentHomePage.includes("Practice") &&
+    studentHomePage.includes("Mistakes") &&
+    studentHomePage.includes("Study Library") &&
+    studentHomePage.includes("Study Groups") &&
+    studentHomePage.includes("Public Library") &&
+    studentHomePage.includes("Progress / Feedback") &&
+    studentHomePage.includes("It does not open the teacher") &&
+    studentLayout.includes("StudentWorkspaceNav") &&
+    studentWorkspaceNav.includes("Dashboard") &&
+    studentWorkspaceNav.includes("My Work") &&
+    studentWorkspaceNav.includes("Practice") &&
+    studentWorkspaceNav.includes("Mistakes") &&
+    studentWorkspaceNav.includes("Study Library") &&
+    studentWorkspaceNav.includes("Study Groups") &&
+    studentWorkspaceNav.includes("Public Library") &&
+    studentWorkspaceNav.includes("Progress / Feedback") &&
+    studentWorkspaceShell.includes("StudentWorkspaceShell") &&
+    studentWorkspaceShell.includes("StudentModuleCard") &&
     studentWorkPage.includes("My Work") &&
     studentWorkPage.includes("Due soon") &&
     studentWorkPage.includes("In progress") &&
@@ -339,6 +372,14 @@ assert(
     practiceClient.includes("/api/practice/assignments/start") &&
     practiceClient.includes("Assignment practice") &&
     assignmentPracticeStartRoute.includes("startAssignmentPractice") &&
+    studentStudyLibraryPage.includes("Student-owned library foundation") &&
+    studentStudyLibraryPage.includes("without creating a new backend") &&
+    studentStudyGroupsPage.includes("peer self-study space") &&
+    studentStudyGroupsPage.includes("do not grant access to teacher private banks") &&
+    studentPublicLibraryPage.includes("Public does not mean verified") &&
+    studentPublicLibraryPage.includes("Private stays private") &&
+    studentProgressPage.includes("Progress / Feedback") &&
+    studentProgressPage.includes("Feedback history") &&
     studentClassroomsPage.includes("Student workspace") &&
     studentClassroomsPage.includes("My classes") &&
     studentClassroomsPage.includes("Assigned work lives in My Work") &&

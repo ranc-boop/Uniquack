@@ -12,6 +12,7 @@ await import("./teacher-progress-ui-smoke.mjs");
 await import("./course-builder-assignment-bridge-smoke.mjs");
 await import("./teacher-role-bank-boundary-smoke.mjs");
 await import("./teacher-workspace-shell-smoke.mjs");
+await import("./student-workspace-shell-smoke.mjs");
 await import("./question-bank-foundation-smoke.mjs");
 await import("./bank-share-members-smoke.mjs");
 await import("./bank-import-review-smoke.mjs");
