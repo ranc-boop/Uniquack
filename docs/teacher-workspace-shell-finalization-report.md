@@ -84,6 +84,13 @@ docs/teacher-classroom-0030-schema-audit.md
 
 That audit confirms `classroom_members` has `id`, `classroom_id`, `user_id`, `role`, `status`, `joined_at`, `created_at`, and `updated_at`, and does not have `created_by`, `updated_by`, or `removed_at`. The final `public.create_teacher_classroom(...)` body was regenerated with `v_` internal variables and the named `classroom_members_classroom_id_user_id_key` constraint before another manual reapply.
 
+The final schema-anchored function was manually reapplied through the clean Supabase Dashboard SQL Editor. Live verification now passes:
+
+- real teacher can create a classroom through `public.create_teacher_classroom`;
+- classroom teacher/owner membership is created;
+- display join code is returned and remains teacher-visible;
+- student classroom creation remains blocked.
+
 ## Teacher Shell / Navigation
 
 Implemented teacher visual tokens and shared teacher shell primitives:
@@ -164,39 +171,24 @@ Notes:
 - The latest branch migration and `docs/teacher-classroom-0030-create-function-reapply.sql` remove both PL/pgSQL ambiguity sources by using `created_classroom_id` internally and the named `classroom_members_classroom_id_user_id_key` conflict constraint.
 - The latest branch migration and reapply file also remove the invalid `removed_at = null` update because `classroom_members.removed_at` is not part of the clean schema.
 - The final schema-anchored branch migration and reapply file now use `v_created_classroom_id`, `v_display_code`, `v_code_hash`, and `v_join_code_id` internal variables and only real table columns from migrations 0018 and 0019.
-- `node scripts/teacher-workspace-shell-smoke.mjs` and `npm.cmd run smoke` remain blocked until the latest reapply SQL is run in Supabase.
-- Current `node scripts/teacher-workspace-shell-smoke.mjs` result: source checks pass, then the remote `public.create_teacher_classroom` body fails with `column "removed_at" of relation "classroom_members" does not exist`.
-
-Current verification after removing the invalid `removed_at` update:
+Final verification after the schema-anchored function reapply:
 
 ```text
 npm.cmd run lint                                    PASS
 npm.cmd run build                                   PASS
 node scripts/security-smoke.mjs                     PASS
+node scripts/route-smoke.mjs                        PASS
 node scripts/supabase-rls-smoke.mjs                 PASS
+node scripts/teacher-workspace-shell-smoke.mjs      PASS
 node scripts/question-bank-foundation-smoke.mjs     PASS
 node scripts/bank-share-members-smoke.mjs           PASS
 node scripts/bank-import-review-smoke.mjs           PASS
 node scripts/assignment-from-bank-smoke.mjs         PASS
 node scripts/teacher-role-bank-boundary-smoke.mjs   PASS
+npm.cmd run smoke                                   PASS
 npm.cmd run perf:budget                             PASS
-node scripts/route-smoke.mjs                        BLOCKED: localhost:3000 was not reachable in this shell session
-node scripts/teacher-workspace-shell-smoke.mjs      BLOCKED: remote function still has removed_at update
-npm.cmd run smoke                                   BLOCKED: reaches teacher-workspace-shell-smoke, then same remote removed_at error
 ```
 
-## Remaining Step
+## Final Status
 
-Apply the final schema-anchored `docs/teacher-classroom-0030-create-function-reapply.sql` to the clean Supabase project, then rerun:
-
-```powershell
-node scripts/teacher-workspace-shell-smoke.mjs
-npm.cmd run smoke
-```
-
-The expected live result after function reapply is:
-
-- real teacher can create a classroom through `public.create_teacher_classroom`;
-- teacher owner membership is created;
-- active display join code is returned and remains available;
-- student classroom creation remains blocked.
+The teacher workspace shell and classroom RPC are verified on clean Supabase. No remaining blocker is known for this branch.
