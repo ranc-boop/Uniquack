@@ -123,8 +123,8 @@ function SourceCard({
           {source.unavailableQuestionCount > 0 ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
               Draft/unreviewed questions are unavailable for assignment. Open{" "}
-              <Link className="font-bold underline" href="/admin/review">
-                Review Drafts
+              <Link className="font-bold underline" href="/teacher/banks">
+                bank review
               </Link>{" "}
               to approve them before assigning.
             </div>
@@ -271,7 +271,7 @@ export default async function TeacherCourseBuilderPage({
               <Link href="/teacher/classrooms">Classrooms</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/admin/review">Review Drafts</Link>
+              <Link href="/teacher/banks">Bank review</Link>
             </Button>
           </div>
         </div>
@@ -329,10 +329,10 @@ export default async function TeacherCourseBuilderPage({
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
             Course Builder runs and practice frameworks will appear here after they
             create reviewed source questions. Draft-only questions stay blocked until
-            they are published through Review Drafts.
+            they are approved through bank review.
           </p>
           <Button asChild className="mt-4" variant="outline">
-            <Link href="/admin/review">Open Review Drafts</Link>
+            <Link href="/teacher/banks">Open bank review</Link>
           </Button>
         </section>
       )}

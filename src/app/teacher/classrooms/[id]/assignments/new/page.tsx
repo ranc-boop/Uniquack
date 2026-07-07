@@ -186,12 +186,12 @@ export default async function NewTeacherAssignmentPage({
                   No published questions available
                 </h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                  Publish questions from Review Drafts or adjust the search
+                  Approve questions through bank review or adjust the search
                   before assigning work. Draft or unreviewed questions cannot be
                   assigned.
                 </p>
                 <Button asChild className="mt-4" variant="outline">
-                  <Link href="/admin/review">Open Review Drafts</Link>
+                  <Link href="/teacher/banks">Open bank review</Link>
                 </Button>
               </div>
             )}

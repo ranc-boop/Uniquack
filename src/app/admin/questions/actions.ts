@@ -44,6 +44,10 @@ function safeReturnTo(value: string) {
     : "/admin/questions";
 }
 
+function globalVisibilityForStatus(status: string) {
+  return status === "published" ? ("public" as const) : ("private" as const);
+}
+
 const taxonomyTagIdPattern = /^math\.[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
 
 type PublishReviewDraftQuestionResult = {
@@ -223,6 +227,7 @@ export async function createQuestion(formData: FormData) {
       updated_by: profile.id,
       published_at:
         parsed.status === "published" ? new Date().toISOString() : null,
+      visibility: globalVisibilityForStatus(parsed.status),
     };
     const questionRequest = draftId
       ? supabase
@@ -304,6 +309,7 @@ export async function updateQuestion(formData: FormData) {
         updated_by: profile.id,
         published_at:
           updateStatus === "published" ? new Date().toISOString() : null,
+        visibility: globalVisibilityForStatus(updateStatus),
       })
       .eq("id", id);
 
@@ -357,6 +363,7 @@ export async function updateQuestionStatus(formData: FormData) {
           status: parsed.status,
           updated_by: profile.id,
           published_at: null,
+          visibility: "private",
         })
         .eq("id", parsed.id)
         .select("id");
@@ -516,6 +523,7 @@ export async function bulkUpdateQuestions(formData: FormData) {
             published_at: null,
             status: parsed.status,
             updated_by: profile.id,
+            visibility: "private",
           })
           .in("id", questionIds)
           .select("id");

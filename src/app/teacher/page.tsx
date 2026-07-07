@@ -39,7 +39,7 @@ function buildTeacherModules({
     {
       title: "AI Parsing",
       description:
-        "Import owned materials into Review Drafts, then approve questions into the selected bank.",
+        "Choose a bank first, then import owned materials into Review Drafts for approval.",
       href: "/teacher/ai-parsing",
       eyebrow: "Review gated",
       status: "Teacher import",
@@ -104,7 +104,7 @@ export default async function TeacherHomePage() {
   return (
     <TeacherWorkspaceShell
       title="Teacher Workspace"
-      description="Start with a Question Bank, review imported content, then deliver selected questions through classrooms and assignments."
+      description="Start with a Question Bank. Create or join a bank, review imported content, then deliver selected bank content through classrooms and assignments."
       actions={
         <>
           <Button asChild>
@@ -112,6 +112,9 @@ export default async function TeacherHomePage() {
           </Button>
           <Button asChild variant="outline">
             <Link href="/teacher/ai-parsing">Import materials</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/teacher/banks">Open bank review</Link>
           </Button>
         </>
       }
@@ -122,8 +125,7 @@ export default async function TeacherHomePage() {
         <h2 className="text-base font-bold text-sky-950">Bank-first teacher workflow</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-sky-900">
           Teachers create or join banks, import and review questions, then deliver selected bank content
-          through classrooms and assignments. Student visibility stays assignment-only unless content is
-          intentionally published elsewhere.
+          through classrooms and assignments. No unreviewed draft can be assigned to students. Student visibility stays assignment-only unless content is intentionally published elsewhere.
         </p>
       </section>
 

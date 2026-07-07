@@ -79,7 +79,7 @@ export default async function TeacherBanksPage() {
               <Link href="/teacher/banks/new">Create Question Bank</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/admin/review">Review Drafts</Link>
+              <Link href="/teacher/banks">Open bank review</Link>
             </Button>
           </div>
         </div>
