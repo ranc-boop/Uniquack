@@ -114,11 +114,13 @@ const teacherAssignmentActions = await read(
 const studentJoinActions = await read("src/app/student/classrooms/join/actions.ts");
 const teacherHomePage = await read("src/app/teacher/page.tsx");
 const teacherWorkspaceNav = await read("src/components/teacher/teacher-workspace-nav.tsx");
+const teacherAiParsingPage = await read("src/app/teacher/ai-parsing/page.tsx");
 const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
 const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
 const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
 const teacherBankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
 const teacherBankImportsPage = await read("src/app/teacher/banks/[bankId]/imports/page.tsx");
+const teacherBankImportUi = await read("src/app/teacher/banks/bank-import-ui.tsx");
 const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
 const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
 const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
@@ -324,6 +326,12 @@ assert(
     teacherWorkspaceNav.includes("Progress") &&
     !teacherWorkspaceNav.includes("/admin/imports/pdf") &&
     !teacherWorkspaceNav.includes("/admin/review") &&
+    teacherAiParsingPage.includes("Choose a Question Bank before importing. AI drafts stay private until reviewed.") &&
+    teacherAiParsingPage.includes("BankTargetSelector") &&
+    teacherAiParsingPage.includes("Import into selected bank") &&
+    teacherAiParsingPage.includes("listTeacherQuestionBanks") &&
+    !teacherAiParsingPage.includes("/admin/imports/pdf") &&
+    !teacherAiParsingPage.includes("/admin/review") &&
     teacherBanksPage.includes("Question Bank Library") &&
     teacherBanksPage.includes("Join Bank by Code") &&
     teacherBanksPage.includes("Assignment Ready") &&
@@ -337,9 +345,12 @@ assert(
     teacherBankDetailPage.includes("Import Material") &&
     teacherBankDetailPage.includes("Create assignment") &&
     teacherBankDetailPage.includes("Assignments expose selected") &&
-    teacherBankImportsPage.includes("AI Parsing-first workflow") &&
-    teacherBankImportsPage.includes("Advanced / developer import fixture") &&
+    teacherBankImportsPage.includes("BankImportEntryPanel") &&
+    teacherBankImportUi.includes("Import into selected bank") &&
+    teacherBankImportsPage.includes("Advanced / Developer fixture") &&
+    teacherBankImportsPage.includes("Developer fixture for smoke testing. Normal teachers should") &&
     teacherBankImportsPage.includes("Create bank Review Drafts") &&
+    !teacherBankImportsPage.includes("/admin/imports/pdf") &&
     teacherBankImportsPage.includes("Drafts stay") &&
     teacherBankReviewPage.includes("Approve drafts into this bank") &&
     teacherBankReviewPage.includes("Approve into bank") &&
