@@ -45,6 +45,10 @@ const classroomMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0018_classroom_foundation.sql"),
   "utf8",
 );
+const teacherClassroomRlsMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql"),
+  "utf8",
+);
 const studentWorkMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0021_student_work_assignments.sql"),
   "utf8",
@@ -71,6 +75,10 @@ const bankImportReviewMigration = await readFile(
 );
 const assignmentFromBankMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0028_assignment_from_bank_questions.sql"),
+  "utf8",
+);
+const teacherRoleBoundaryMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql"),
   "utf8",
 );
 const blueprintActions = await readFile(
@@ -119,7 +127,18 @@ assert(
     !classroomMigration.includes("grant execute on function public.join_classroom_by_code(text) to anon"),
   "classroom roster profile reads must be manager-scoped and anonymous joins must stay blocked",
 );
-console.log("PASS classroom migration enables scoped RLS and authenticated hash-only joins");
+assert(
+  teacherClassroomRlsMigration.includes("create or replace function private.is_org_staff") &&
+    teacherClassroomRlsMigration.includes("profile.default_organization_id") &&
+    teacherClassroomRlsMigration.includes("create or replace function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("revoke all on function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("from public, anon") &&
+    teacherClassroomRlsMigration.includes("grant execute on function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("to authenticated") &&
+    !teacherClassroomRlsMigration.includes("to anon"),
+  "teacher classroom RLS fix must keep classroom creation teacher/authenticated scoped",
+);
+console.log("PASS classroom migrations enable scoped RLS, teacher creation, and authenticated hash-only joins");
 for (const tableName of [
   "assignments",
   "assignment_items",
@@ -261,6 +280,19 @@ assert(
   "assignment-from-bank migration must expose selected bank questions through assignment scope only, with no global publish or anon grants",
 );
 console.log("PASS assignment-from-bank migration keeps bank content assignment-scoped");
+assert(
+  teacherRoleBoundaryMigration.includes("questions_published_read") &&
+    teacherRoleBoundaryMigration.includes("status = 'published'") &&
+    teacherRoleBoundaryMigration.includes("visibility = 'public'") &&
+    teacherRoleBoundaryMigration.includes("owner_bank_id is null") &&
+    teacherRoleBoundaryMigration.includes("question_rubric_steps_public_read") &&
+    teacherRoleBoundaryMigration.includes("question_assets_public_read") &&
+    teacherRoleBoundaryMigration.includes("question_taxonomy_assignments_public_read") &&
+    teacherRoleBoundaryMigration.includes("Bank-owned questions must be approved through bank review") &&
+    teacherRoleBoundaryMigration.includes("question.owner_bank_id is null"),
+  "teacher role/bank boundary migration must restrict public reads/search to global public questions and block global publish for bank-owned questions",
+);
+console.log("PASS teacher role/bank boundary migration protects public/global reads");
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",

@@ -34,7 +34,7 @@ export async function AuthNav() {
     .eq("id", user.id)
     .maybeSingle();
   const teacherLabel =
-    profile?.role === "teacher" ? "Teacher Studio" : "Teacher Studio preview";
+    profile?.role === "teacher" ? "Teacher Workspace" : "Teacher Workspace preview";
   const canOpenTeacherStudio =
     profile?.role === "teacher" ||
     profile?.role === "admin" ||

@@ -27,6 +27,33 @@ function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
+const classroomSections = [
+  {
+    title: "Overview",
+    description: "Class status, roster size, assignment counts, and delivery readiness.",
+  },
+  {
+    title: "People",
+    description: "Teacher and student roster visibility stays scoped to this classroom.",
+  },
+  {
+    title: "Assignments",
+    description: "Deliver reviewed bank questions as assignment-only student work.",
+  },
+  {
+    title: "Analytics / Feedback",
+    description: "Practice evidence and teacher feedback return here after student work.",
+  },
+  {
+    title: "Linked Blueprints",
+    description: "Blueprint patterns can support future bank content planning.",
+  },
+  {
+    title: "Settings",
+    description: "Classroom metadata and access controls remain teacher-managed.",
+  },
+];
+
 export default async function TeacherClassroomDetailPage({
   params,
   searchParams,
@@ -59,6 +86,16 @@ export default async function TeacherClassroomDetailPage({
         .in("id", userIds)
     : { data: [] };
   const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+  const { data: activeJoinCode } = await supabase
+    .from("classroom_join_codes")
+    .select("display_code, code_hint, status, created_at")
+    .eq("classroom_id", id)
+    .eq("status", "active")
+    .not("display_code", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const visibleJoinCode = query.newCode || activeJoinCode?.display_code || null;
   const studentCount = (roster ?? []).filter(
     (member) => member.role === "student" && member.status === "active",
   ).length;
@@ -78,11 +115,11 @@ export default async function TeacherClassroomDetailPage({
   ).length;
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Classroom roster</p>
+            <p className="teacher-eyebrow">Classroom workspace</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               {classroom.name}
             </h1>
@@ -122,28 +159,36 @@ export default async function TeacherClassroomDetailPage({
         </p>
       ) : null}
 
-      {query.newCode ? (
+      {visibleJoinCode ? (
         <section className="rounded-lg border border-sky-200 bg-sky-50 p-5">
           <p className="text-sm font-bold uppercase tracking-[0.16em] text-sky-700">
-            New join code
+            Active join code
           </p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <code className="rounded-lg border border-sky-200 bg-white px-4 py-3 text-2xl font-bold tracking-[0.16em] text-slate-950">
-              {query.newCode}
+              {visibleJoinCode}
             </code>
             <p className="max-w-xl text-sm leading-6 text-slate-600">
-              Copy this now. The database stores only a hash, so the full code is
-              not shown again after this page load.
+              Share this code with students when enrollment is open. Validation still uses the hashed code path.
             </p>
           </div>
         </section>
       ) : null}
 
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {classroomSections.map((section) => (
+          <article className="teacher-panel p-4" key={section.title}>
+            <h2 className="text-base font-bold text-slate-950">{section.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{section.description}</p>
+          </article>
+        ))}
+      </section>
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="student-panel overflow-hidden">
+        <section className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-100 p-5">
             <h2 className="text-lg font-bold text-slate-950">Roster</h2>
-            <p className="student-muted">
+            <p className="teacher-muted">
               Teachers see the class roster. Students cannot list unrelated
               classmates from other classrooms.
             </p>
@@ -196,7 +241,7 @@ export default async function TeacherClassroomDetailPage({
         </section>
 
         <aside className="space-y-6">
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Class status</h2>
             <dl className="mt-4 space-y-3 text-sm">
               <div className="flex items-center justify-between gap-3">
@@ -220,7 +265,7 @@ export default async function TeacherClassroomDetailPage({
             </dl>
           </section>
 
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">
               Assignments
             </h2>

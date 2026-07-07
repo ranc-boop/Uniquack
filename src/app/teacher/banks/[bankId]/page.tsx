@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { BookOpen, ClipboardCheck, Upload, Users } from "lucide-react";
@@ -203,7 +203,7 @@ export default async function TeacherBankDetailPage({
               </div>
               ) : (
               <>
-                <p className="student-eyebrow">Empty bank</p>
+                <p className="teacher-eyebrow">Empty bank</p>
                 <h3 className="mt-2 text-xl font-bold text-slate-950">
                   No reviewed questions in this bank yet.
                 </h3>
@@ -303,7 +303,7 @@ export default async function TeacherBankDetailPage({
               assignments expose selected approved items only.
             </p>
             <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Created {formatDate(bank.created_at)} · Updated{" "}
+              Created {formatDate(bank.created_at)} Â· Updated{" "}
               {formatDate(bank.updated_at)}
             </p>
           </section>

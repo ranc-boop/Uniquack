@@ -97,6 +97,9 @@ assert(
   "AI PDF import batches must preserve organization_id at source upload reservation",
 );
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
+const teacherClassroomRlsMigration = await read(
+  "supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql",
+);
 const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
 const studentWorkManagerScopeMigration = await read(
   "supabase/clean-migrations/0023_student_work_assignment_manager_scope_fix.sql",
@@ -143,6 +146,9 @@ const bankImportReviewMigration = await read(
 const assignmentFromBankMigration = await read(
   "supabase/clean-migrations/0028_assignment_from_bank_questions.sql",
 );
+const teacherRoleBoundaryMigration = await read(
+  "supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql",
+);
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
 const courseBuilderBridgePage = await read("src/app/teacher/course-builder/page.tsx");
@@ -154,6 +160,8 @@ const authGuards = await read("src/lib/auth/guards.ts");
 const authActions = await read("src/app/auth/actions.ts");
 const authNav = await read("src/components/auth-nav.tsx");
 const supabaseMiddleware = await read("src/lib/supabase/middleware.ts");
+const profileValidation = await read("src/lib/validations/profile.ts");
+const adminUsersPage = await read("src/app/admin/users/page.tsx");
 assert(
   classroomMigration.includes("create table if not exists public.classrooms") &&
     classroomMigration.includes("create table if not exists public.classroom_members") &&
@@ -180,6 +188,15 @@ assert(
     classroomMigration.includes("user_id = auth.uid()") &&
     classroomMigration.includes("profiles_classroom_roster_read"),
   "classroom RLS must support teacher-owned creation, roster reads, and self-scoped student membership reads",
+);
+assert(
+  teacherClassroomRlsMigration.includes("create or replace function private.is_org_staff") &&
+    teacherClassroomRlsMigration.includes("profile.default_organization_id") &&
+    teacherClassroomRlsMigration.includes("create or replace function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("grant execute on function public.create_teacher_classroom") &&
+    teacherClassroomRlsMigration.includes("to authenticated") &&
+    !teacherClassroomRlsMigration.includes("to anon"),
+  "teacher classroom RLS fix must support real teacher org context and authenticated classroom creation RPC",
 );
 assert(
   studentWorkMigration.includes("create table if not exists public.assignments") &&
@@ -215,8 +232,8 @@ assert(
     classroomHelpers.includes("generateClassroomJoinCode") &&
     classroomHelpers.includes("resolveClassroomOrganizationId") &&
     teacherClassroomActions.includes("requireTeacher") &&
-    teacherClassroomActions.includes("classroom_join_codes") &&
-    teacherClassroomActions.includes("hashClassroomJoinCode(joinCode)") &&
+    teacherClassroomActions.includes("create_teacher_classroom") &&
+    teacherClassroomActions.includes("The join code is also available") &&
     studentJoinActions.includes("requireStudent") &&
     studentJoinActions.includes('rpc("join_classroom_by_code"'),
   "classroom server actions must create teacher classrooms and join students without direct student inserts",
@@ -280,11 +297,11 @@ assert(
   "Course Builder bridge action must stay teacher-only, draft-by-default, published-question-only, and provider-free",
 );
 assert(
-  courseBuilderBridgePage.includes("Course Builder will generate bank packages before assignment") &&
+    courseBuilderBridgePage.includes("Course Builder will generate bank packages before assignment") &&
     courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
     courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&
     courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&
-    courseBuilderBridgePage.includes("Review Drafts") &&
+    courseBuilderBridgePage.includes("bank review") &&
     courseBuilderBridgePage.includes("does not add") &&
     courseBuilderBridgePage.includes("provider calls") &&
     teacherClassroomDetailPage.includes("Course Builder bridge") &&
@@ -292,14 +309,21 @@ assert(
   "Course Builder bridge UI must expose teacher draft/assign choices, Review Draft blockers, and assignment source traceability",
 );
 assert(
-  teacherHomePage.includes("Start by creating or joining a Question Bank") &&
-    teacherHomePage.includes("Classrooms and") &&
-    teacherHomePage.includes("assignments deliver selected bank content") &&
+    teacherHomePage.includes("Teacher Workspace") &&
+    teacherHomePage.includes("Start with a Question Bank") &&
+    teacherHomePage.includes("review imported content") &&
     teacherHomePage.includes("Bank-first teacher workflow") &&
-    teacherWorkspaceNav.includes("Banks / Library") &&
-    teacherWorkspaceNav.includes("Imports") &&
-    teacherWorkspaceNav.includes("Review Drafts") &&
-    teacherWorkspaceNav.includes("Classrooms") &&
+    teacherHomePage.includes("Student visibility stays assignment-only") &&
+    teacherHomePage.includes("No unreviewed draft can be assigned to students") &&
+    teacherWorkspaceNav.includes("Dashboard") &&
+    teacherWorkspaceNav.includes("Question Bank") &&
+    teacherWorkspaceNav.includes("AI Parsing") &&
+    teacherWorkspaceNav.includes("Blueprint") &&
+    teacherWorkspaceNav.includes("Classroom") &&
+    teacherWorkspaceNav.includes("Publish") &&
+    teacherWorkspaceNav.includes("Progress") &&
+    !teacherWorkspaceNav.includes("/admin/imports/pdf") &&
+    !teacherWorkspaceNav.includes("/admin/review") &&
     teacherBanksPage.includes("Question Bank Library") &&
     teacherBanksPage.includes("Join Bank by Code") &&
     teacherBanksPage.includes("Assignment Ready") &&
@@ -408,15 +432,29 @@ assert(
     assignmentFromBankMigration.includes("grant execute on function private.can_read_assignment_question(uuid) to anon, authenticated") &&
     !assignmentFromBankMigration.includes("published_at =") &&
     !/grant execute on function public\.create_assignment_from_bank[\s\S]*?to anon/i.test(assignmentFromBankMigration) &&
+    profileValidation.includes('"teacher"') &&
+    adminUsersPage.includes('<option value="teacher">Teacher</option>') &&
+    teacherRoleBoundaryMigration.includes("questions_published_read") &&
+    teacherRoleBoundaryMigration.includes("visibility = 'public'") &&
+    teacherRoleBoundaryMigration.includes("owner_bank_id is null") &&
+    teacherRoleBoundaryMigration.includes("Bank-owned questions must be approved through bank review") &&
+    teacherRoleBoundaryMigration.includes("public.search_questions_by_taxonomy") &&
     authGuards.includes("next=/teacher") &&
     authActions.includes('redirect("/teacher")') &&
-    authNav.includes("Teacher Studio preview") &&
+    authNav.includes("Teacher Workspace preview") &&
     teacherClassroomPage.includes("Your classrooms") &&
     teacherClassroomPage.includes("Create classroom") &&
+    teacherClassroomPage.includes("Join codes stay available") &&
     teacherClassroomPage.includes("Delivery layer") &&
     teacherClassroomPage.includes("Teacher banks remain the") &&
     teacherClassroomDetailPage.includes("Roster") &&
     teacherClassroomDetailPage.includes("Students do not gain access") &&
+    teacherClassroomDetailPage.includes("Active join code") &&
+    teacherClassroomDetailPage.includes("Overview") &&
+    teacherClassroomDetailPage.includes("People") &&
+    teacherClassroomDetailPage.includes("Analytics / Feedback") &&
+    teacherClassroomDetailPage.includes("Linked Blueprints") &&
+    teacherClassroomDetailPage.includes("Settings") &&
     teacherClassroomDetailPage.includes("New assignment") &&
     teacherClassroomDetailPage.includes("View assignments") &&
     teacherClassroomDetailPage.includes("Archived") &&

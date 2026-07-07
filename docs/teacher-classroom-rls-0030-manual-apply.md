@@ -1,0 +1,76 @@
+# Manual Apply: Teacher Classroom RLS Fix 0030
+
+Migration:
+
+```text
+supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql
+```
+
+Apply this migration to the clean Supabase project through the Dashboard SQL Editor if live teacher classroom creation reports:
+
+```text
+SKIP teacher workspace live smoke: migration 0030 is not applied remotely.
+```
+
+The migration:
+
+- updates `private.is_org_staff` so active teacher/admin/super-admin profiles with a matching `default_organization_id` are valid organization staff;
+- keeps `classrooms_teacher_create` and `classrooms_teacher_update` scoped through `private.is_org_staff`;
+- adds authenticated-only `public.create_teacher_classroom(...)`;
+- creates the classroom, teacher owner membership, and persistent display join code in one transaction;
+- does not grant anonymous classroom creation;
+- does not touch old Supabase migrations, provider settings, AI parsing, Review Draft publishing, or assignments.
+
+After applying, rerun:
+
+```powershell
+node scripts/teacher-workspace-shell-smoke.mjs
+node scripts/supabase-rls-smoke.mjs
+npm.cmd run smoke
+```
+
+If the live smoke fails with:
+
+```text
+column "created_by" of relation "classroom_members" does not exist
+```
+
+then the remote project still has the first `public.create_teacher_classroom` body. Copy and run:
+
+```text
+docs/teacher-classroom-0030-create-function-reapply.sql
+```
+
+That file only replaces the corrected function body and does not mutate data.
+
+If the live smoke instead fails with:
+
+```text
+column reference "classroom_id" is ambiguous
+```
+
+run the latest version of the same reapply file again. The function now uses an internal `created_classroom_id` variable and assigns the return field only at the end.
+
+If the same ambiguity persists after that reapply, make sure the latest SQL uses:
+
+```sql
+on conflict on constraint classroom_members_classroom_id_user_id_key do update
+```
+
+The named constraint avoids PL/pgSQL confusing the conflict target column with the returned `classroom_id` field.
+
+If the live smoke then fails with:
+
+```text
+column "removed_at" of relation "classroom_members" does not exist
+```
+
+run the latest version of the same reapply file again. The clean `classroom_members` table tracks removed/reactivated state with `status`, `joined_at`, and `updated_at`; it does not have a `removed_at` column.
+
+The current reapply file has been schema-anchored against migrations 0018, 0019, 0020, and 0030. It uses only real `classroom_members` columns and `v_` internal variables:
+
+```text
+docs/teacher-classroom-0030-create-function-reapply.sql
+```
+
+Run only that function-only SQL file for the final correction. Do not rerun the full migration unless a later migration task explicitly says to.

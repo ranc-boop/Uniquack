@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { BookOpen, ClipboardCheck, Tags, Upload } from "lucide-react";
@@ -244,7 +244,7 @@ export default async function TeacherBankQuestionsPage({
                                 {tag.label ?? "Taxonomy tag"}
                               </span>
                               <span className="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-sky-700">
-                                {tag.facet_key ?? "facet"} · {tag.review_status}
+                                {tag.facet_key ?? "facet"} Â· {tag.review_status}
                               </span>
                             </span>
                           ))
@@ -274,7 +274,7 @@ export default async function TeacherBankQuestionsPage({
             })
           ) : (
             <div className="p-8 text-center">
-              <p className="student-eyebrow">Empty bank</p>
+              <p className="teacher-eyebrow">Empty bank</p>
               <h3 className="mt-2 text-xl font-bold text-slate-950">
                 No reviewed questions in this bank yet.
               </h3>

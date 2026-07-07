@@ -888,6 +888,19 @@ export type Database = {
           total_count: number;
         }>;
       };
+      create_teacher_classroom: {
+        Args: {
+          p_description?: string | null;
+          p_join_code?: string | null;
+          p_name: string;
+          p_organization_id?: string | null;
+          p_subject?: string | null;
+        };
+        Returns: Array<{
+          classroom_id: string;
+          display_code: string;
+        }>;
+      };
       join_classroom_by_code: {
         Args: { join_code: string };
         Returns: Array<{

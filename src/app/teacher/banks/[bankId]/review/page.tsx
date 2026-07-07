@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AlertTriangle, ClipboardCheck, FileText, Upload } from "lucide-react";
@@ -194,7 +194,7 @@ export default async function TeacherBankReviewPage({
                       {question.title}
                     </h3>
                     <p className="text-xs text-slate-500">
-                      {question.question_code || "Code pending"} ·{" "}
+                      {question.question_code || "Code pending"} Â·{" "}
                       {formatDate(question.created_at)}
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -248,7 +248,7 @@ export default async function TeacherBankReviewPage({
             ))
           ) : (
             <div className="p-8 text-center">
-              <p className="student-eyebrow">No pending drafts</p>
+              <p className="teacher-eyebrow">No pending drafts</p>
               <h3 className="mt-2 text-xl font-bold text-slate-950">
                 This bank has no private Review Drafts waiting.
               </h3>

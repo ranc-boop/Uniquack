@@ -12,11 +12,11 @@ export default async function NewTeacherBankPage() {
   await requireTeacher();
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="space-y-5">
           <div className="space-y-2">
-            <p className="student-eyebrow">Create Question Bank</p>
+            <p className="teacher-eyebrow">Create Question Bank</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Start a teacher-owned content library.
             </h1>
@@ -29,7 +29,7 @@ export default async function NewTeacherBankPage() {
         </div>
       </section>
 
-      <form action={createQuestionBank} className="student-panel overflow-hidden">
+      <form action={createQuestionBank} className="teacher-panel overflow-hidden">
         <div className="border-b border-slate-200 bg-white/70 p-6">
           <h2 className="text-xl font-bold text-slate-950">
             Bank details
