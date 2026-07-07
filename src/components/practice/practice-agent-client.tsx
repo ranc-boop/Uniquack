@@ -28,6 +28,7 @@ import {
 import type {
   PracticeAttemptInput,
   PracticeGradeResult,
+  PracticeGradeResponse,
   PracticeHintResponse,
   PracticeCourseFrameworkSummary,
   PracticeQuestionReview,
@@ -254,6 +255,62 @@ async function postReviewStream({
     throw new Error("Practice review stream ended before a result was returned.");
   }
   return result;
+}
+
+function reviewFromGradeFallback({
+  activeSession,
+  attempts,
+  error,
+  grade,
+  recommendation,
+}: {
+  activeSession: PracticeSessionDetail;
+  attempts: PracticeAttemptInput[];
+  error: unknown;
+  grade: PracticeGradeResponse;
+  recommendation: PracticeRecommendResponse;
+}): PracticeReviewResponse {
+  const attemptedAnswerByQuestionId = new Map(attempts.map((attempt) => [attempt.questionId, attempt.answer]));
+  const scored = grade.results.filter((result) => result.isCorrect !== null);
+  const correct = grade.results.filter((result) => result.isCorrect === true).length;
+  const manual = grade.results.length - scored.length;
+  const providerNote = error instanceof Error ? error.message : String(error || "AI review unavailable");
+  const progressNote = grade.assignmentProgress?.updated
+    ? "Assignment progress was saved."
+    : "Answers were graded where possible.";
+
+  return {
+    mode: "heuristic",
+    nextRoundGoal: activeSession.goal || recommendation.roundGoal,
+    questionReviews: grade.results.map((result) => ({
+      isCorrect: result.isCorrect,
+      judgmentReason: result.explanation,
+      questionId: result.questionId,
+      score: result.score,
+      solutionKeyPoints: result.solutionHtml,
+      studentAnswer: attemptedAnswerByQuestionId.get(result.questionId) ?? "",
+      verdict: result.isCorrect === true ? "correct" : result.isCorrect === false ? "incorrect" : "needs_review",
+    })),
+    results: grade.results,
+    roundPatterns: [
+      `Auto-scored ${scored.length} of ${grade.results.length} question${grade.results.length === 1 ? "" : "s"}${scored.length ? ` (${correct} correct)` : ""}.`,
+      ...(manual ? [`${manual} response${manual === 1 ? "" : "s"} need teacher or AI review for final scoring.`] : []),
+    ],
+    sessionId: activeSession.id,
+    summary: `AI review was unavailable, so EduStruct used deterministic grading for this round. ${progressNote}`,
+    trace: [
+      ...grade.trace,
+      {
+        error: providerNote,
+        inputSummary: "AI review stream failed; deterministic grade fallback used.",
+        outputSummary: progressNote,
+        phase: "review",
+        resultCount: grade.results.length,
+        toolName: "deterministic_grade_fallback",
+      },
+    ],
+    updatedSessionMemory: activeSession.sessionMemory,
+  };
 }
 
 export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) {
@@ -808,8 +865,36 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
         await refreshPracticeState(activeSession.id);
         finishThinking("feedback");
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-        finishThinking("feedback");
+        try {
+          const grade = await jsonRequest<PracticeGradeResponse>("/api/practice/grade", {
+            body: JSON.stringify({
+              attempts,
+              roundId: recommendation.roundId,
+              sessionId: activeSession.id,
+            }),
+            method: "POST",
+          });
+          const fallbackReview = reviewFromGradeFallback({
+            activeSession,
+            attempts,
+            error: caught,
+            grade,
+            recommendation,
+          });
+          setResults(grade.results);
+          setReview(fallbackReview);
+          setReviewTrace(fallbackReview.trace);
+          setLiveTrace(fallbackReview.trace);
+          setIsTraceCollapsed(true);
+          setGoal("");
+          await refreshPracticeState(activeSession.id);
+          finishThinking("feedback");
+        } catch (fallbackError) {
+          const primaryMessage = caught instanceof Error ? caught.message : String(caught);
+          const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+          setError(`${primaryMessage} Deterministic grading fallback also failed: ${fallbackMessage}`);
+          finishThinking("feedback");
+        }
       }
     });
   }
