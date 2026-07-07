@@ -188,11 +188,11 @@ export default async function TeacherBankDetailPage({
                 <p className="text-sm leading-6 text-slate-600">
                   This bank has approved content ready for classroom delivery.
                   Choose specific questions, then save a teacher draft or assign
-                  them to a class.
+                  them to a class. Publish from bank through the Publish Center.
                 </p>
                 <Button asChild>
-                  <Link href={`/teacher/banks/${bank.id}/assignments/new`}>
-                    Create assignment from bank
+                  <Link href={`/teacher/publish?sourceBankId=${bank.id}`}>
+                    Create assignment in Publish Center
                   </Link>
                 </Button>
                 <Button asChild variant="outline">
@@ -246,11 +246,11 @@ export default async function TeacherBankDetailPage({
                 Open questions
               </BankQuickAction>
               <BankQuickAction
-                href={`/teacher/banks/${bank.id}/assignments/new`}
+                href={`/teacher/publish?sourceBankId=${bank.id}`}
                 icon={bankActionIcons.assignment}
                 variant={detail.questionCount ? "default" : "outline"}
               >
-                Create Assignment
+                Create assignment
               </BankQuickAction>
             </div>
             {!canManageContent ? (

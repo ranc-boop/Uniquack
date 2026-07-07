@@ -109,6 +109,11 @@ export default async function NewBankAssignmentPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link href={`/teacher/publish?sourceBankId=${bank.id}`}>
+                Open Publish Center
+              </Link>
+            </Button>
             <Button asChild variant="outline">
               <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
             </Button>
@@ -126,7 +131,8 @@ export default async function NewBankAssignmentPage({
         <strong className="font-bold">Assignment-only delivery:</strong> this
         creates a classroom delivery event from selected approved bank items.
         It does not publish questions globally or expose bank browsing to
-        students.
+        students. The top-level Publish Center is now the primary workflow for
+        publishing selected bank work to one or more classes.
       </section>
 
       {query.error ? (
