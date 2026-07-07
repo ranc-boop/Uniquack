@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  ClassroomPublishCta,
+  ClassroomRouteTabs,
+  ClassroomSafetyStrip,
+} from "@/app/teacher/classrooms/classroom-ui";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -259,14 +264,16 @@ export default async function TeacherAssignmentsPage({
               {classroom.name}
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Assignments are delivery events. The next bank-first slice will
-              source this flow from teacher-owned and shared banks.
+              Assignments are class delivery history. Publish new bank work from
+              the top-level Publish module, or use the compatibility shortcut
+              when needed.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
               <Link href="/teacher">Teacher Studio</Link>
             </Button>
+            <ClassroomPublishCta classroomId={classroom.id} />
             <Button asChild>
               <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
                 New assignment
@@ -284,10 +291,14 @@ export default async function TeacherAssignmentsPage({
         </div>
       </section>
 
+      <ClassroomRouteTabs classroomId={classroom.id} />
+      <ClassroomSafetyStrip />
+
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-        <strong className="font-bold">Delivery layer:</strong> these assignments
-        expose selected question items to students. Assignment visibility is not
-        global publishing.
+        <strong className="font-bold">Assignment visibility:</strong> these
+        assignments expose selected question items to students. Assignment
+        visibility is not global publishing. Use Publish for the primary
+        distribute-work path.
       </section>
 
       {query.saved ? (

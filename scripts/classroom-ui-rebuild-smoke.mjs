@@ -1,0 +1,286 @@
+import { randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { createClient } from "@supabase/supabase-js";
+import dotenv from "dotenv";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const root = resolve(__dirname, "..");
+dotenv.config({ path: resolve(root, ".env.local") });
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseServiceRoleKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.CLEAN_SUPABASE_SERVICE_ROLE_KEY;
+const teacherUsername =
+  process.env.TEST_TEACHER_USERNAME ?? process.env.TEST_ADMIN_USERNAME;
+const teacherPassword =
+  process.env.TEST_TEACHER_PASSWORD ?? process.env.TEST_ADMIN_PASSWORD;
+const studentUsername = process.env.TEST_STUDENT_USERNAME;
+const studentPassword = process.env.TEST_STUDENT_PASSWORD;
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function summarizeSupabaseError(error) {
+  if (!error) return "unknown error";
+  return [error.message, error.code, error.details, error.hint].filter(Boolean).join(" | ");
+}
+
+function usernameToLocalEmail(username) {
+  const normalized = username.trim().toLowerCase();
+  return normalized.includes("@") ? normalized : `${normalized}@local.app`;
+}
+
+async function read(relativePath) {
+  return readFile(resolve(root, relativePath), "utf8");
+}
+
+function randomJoinCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from(randomBytes(8), (byte) => alphabet[byte % alphabet.length])
+    .join("")
+    .replace(/^(.{4})(.{4})$/, "$1-$2");
+}
+
+async function signIn(username, password, label) {
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: usernameToLocalEmail(username),
+    password,
+  });
+
+  if (error) {
+    console.log(
+      `SKIP classroom UI live smoke: ${label} credentials could not sign in (${error.message}).`,
+    );
+    return null;
+  }
+
+  assert(data.user?.id, `classroom UI smoke did not receive ${label} user`);
+  return { client: supabase, user: data.user };
+}
+
+async function resolveOrganizationId(supabase, userId) {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, role, status, default_organization_id")
+    .eq("id", userId)
+    .single();
+  assert(
+    !profileError,
+    `classroom UI smoke profile lookup failed: ${summarizeSupabaseError(profileError)}`,
+  );
+  assert(profile?.status === "active", "classroom UI smoke requires active teacher profile");
+  assert(
+    ["teacher", "admin", "super_admin"].includes(profile.role),
+    "classroom UI smoke teacher account must be teacher/admin/super_admin",
+  );
+
+  if (profile.default_organization_id) return profile.default_organization_id;
+
+  const { data: memberships, error } = await supabase
+    .from("organization_members")
+    .select("organization_id, role, status")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .in("role", ["teacher", "admin"])
+    .limit(1);
+  assert(!error, `classroom UI smoke org lookup failed: ${summarizeSupabaseError(error)}`);
+  assert(memberships?.[0]?.organization_id, "classroom UI smoke found no teacher org");
+  return memberships[0].organization_id;
+}
+
+async function runSourceSmoke() {
+  const listPage = await read("src/app/teacher/classrooms/page.tsx");
+  const overviewPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+  const peoplePage = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
+  const assignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
+  const analyticsPage = await read("src/app/teacher/classrooms/[id]/analytics/page.tsx");
+  const blueprintsPage = await read("src/app/teacher/classrooms/[id]/blueprints/page.tsx");
+  const settingsPage = await read("src/app/teacher/classrooms/[id]/settings/page.tsx");
+  const classroomUi = await read("src/app/teacher/classrooms/classroom-ui.tsx");
+  const classroomActions = await read("src/app/teacher/classrooms/actions.ts");
+  const classroomHelpers = await read("src/lib/teacher-classrooms.ts");
+
+  assert(
+    listPage.includes("Classroom") &&
+      listPage.includes("Classes are roster and delivery spaces") &&
+      listPage.includes("Create Class") &&
+      classroomUi.includes("Publish to classes") &&
+      listPage.includes("Your classes") &&
+      listPage.includes("No classes yet. Create your first class after your banks are") &&
+      listPage.includes("Class completion") &&
+      listPage.includes("Latest assignment"),
+    "/teacher/classrooms must render a Google-Classroom-like card grid with publish handoff",
+  );
+  assert(
+    classroomHelpers.includes("listTeacherClassroomSummaries") &&
+      classroomHelpers.includes("completionRate") &&
+      classroomHelpers.includes("student_assignment_progress") &&
+      classroomHelpers.includes("bank_blueprints") &&
+      classroomHelpers.includes("assignment_practice_sessions"),
+    "classroom helper must compute bounded roster, assignment, completion, and blueprint context",
+  );
+  for (const label of [
+    "Overview",
+    "People",
+    "Assignments",
+    "Analytics / Feedback",
+    "Linked Blueprints",
+    "Settings",
+  ]) {
+    assert(classroomUi.includes(label), `classroom route tabs missing ${label}`);
+  }
+  assert(
+    overviewPage.includes("Class delivery snapshot") &&
+      overviewPage.includes("Students can join the roster") &&
+      overviewPage.includes("Students needing attention") &&
+      overviewPage.includes("Publish selected bank content") &&
+      overviewPage.includes("Open Blueprint Library"),
+    "classroom overview must show stats, join code, recent assignments, attention, and blueprint context",
+  );
+  assert(
+    peoplePage.includes("Joining a class does not grant access") &&
+      peoplePage.includes("Remove from class") &&
+      classroomActions.includes("removeClassroomStudent") &&
+      classroomActions.includes('update({ status: "removed" })'),
+    "People section must show roster boundary copy and safe soft-remove action",
+  );
+  assert(
+    assignmentsPage.includes("Publish new bank work") &&
+      assignmentsPage.includes("Use Publish") &&
+      assignmentsPage.includes("compatibility shortcut"),
+    "Assignments section must remain history/detail and point to top-level Publish",
+  );
+  assert(
+    analyticsPage.includes("Completion summaries use real assignment and Practice evidence") &&
+      analyticsPage.includes("Taxonomy mastery") &&
+      analyticsPage.includes("Mistake patterns") &&
+      analyticsPage.includes("Feedback drafting"),
+    "Analytics / Feedback must show real bounded summaries and honest placeholders",
+  );
+  assert(
+    blueprintsPage.includes("Blueprints linked to this class will appear here") &&
+      blueprintsPage.includes("Open Blueprint Library") &&
+      !blueprintsPage.includes("generate original"),
+    "Linked Blueprints section must not implement blueprint generation",
+  );
+  assert(
+    settingsPage.includes("Archive and delete controls are not enabled") &&
+      settingsPage.includes("Validation still") &&
+      settingsPage.includes("hashed code path"),
+    "Settings must expose identity/join-code info without destructive lifecycle behavior",
+  );
+  assert(
+    !listPage.includes("Google Classroom integration") &&
+      !overviewPage.includes("wearable") &&
+      !analyticsPage.includes("provider"),
+    "classroom UI rebuild must not add non-goal integrations",
+  );
+
+  console.log("PASS classroom UI rebuild source checks");
+}
+
+async function runLiveSmoke() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.log("SKIP classroom UI live smoke: missing Supabase URL/anon key.");
+    return;
+  }
+
+  if (!teacherUsername || !teacherPassword || !studentUsername || !studentPassword) {
+    console.log(
+      "SKIP classroom UI live smoke: missing TEST_TEACHER or TEST_ADMIN credentials and TEST_STUDENT credentials.",
+    );
+    return;
+  }
+
+  const teacher = await signIn(teacherUsername, teacherPassword, "teacher");
+  const student = await signIn(studentUsername, studentPassword, "student");
+  if (!teacher || !student) return;
+
+  const organizationId = await resolveOrganizationId(teacher.client, teacher.user.id);
+  const joinCode = randomJoinCode();
+  const { data: classroomRows, error: createError } = await teacher.client.rpc(
+    "create_teacher_classroom",
+    {
+      p_description: "Classroom UI rebuild smoke classroom",
+      p_join_code: joinCode,
+      p_name: `Classroom UI smoke ${Date.now()}`,
+      p_organization_id: organizationId,
+      p_subject: "Smoke test",
+    },
+  );
+
+  if (createError?.message?.includes("function public.create_teacher_classroom")) {
+    console.log("SKIP classroom UI live smoke: migration 0030 is not applied remotely.");
+    return;
+  }
+
+  assert(!createError, `teacher classroom RPC failed: ${summarizeSupabaseError(createError)}`);
+  const classroom = Array.isArray(classroomRows) ? classroomRows[0] : classroomRows;
+  assert(classroom?.classroom_id, "teacher classroom RPC did not return a classroom id");
+  assert(classroom?.display_code, "teacher classroom RPC did not return display join code");
+
+  try {
+    const { data: teacherRead, error: teacherReadError } = await teacher.client
+      .from("classrooms")
+      .select("id, name")
+      .eq("id", classroom.classroom_id)
+      .maybeSingle();
+    assert(
+      !teacherReadError,
+      `teacher classroom read failed: ${summarizeSupabaseError(teacherReadError)}`,
+    );
+    assert(teacherRead?.id === classroom.classroom_id, "teacher cannot read created classroom");
+
+    const { data: studentRead, error: studentReadError } = await student.client
+      .from("classrooms")
+      .select("id")
+      .eq("id", classroom.classroom_id);
+    assert(
+      !studentReadError,
+      `student unrelated classroom read errored unexpectedly: ${summarizeSupabaseError(
+        studentReadError,
+      )}`,
+    );
+    assert(
+      (studentRead ?? []).length === 0,
+      "student unexpectedly read a teacher classroom before joining",
+    );
+
+    const { error: studentCreateError } = await student.client.from("classrooms").insert({
+      created_by: student.user.id,
+      name: `Forbidden student classroom ${Date.now()}`,
+      organization_id: organizationId,
+      owner_id: student.user.id,
+      subject: "Smoke test",
+      updated_by: student.user.id,
+    });
+    assert(studentCreateError, "student unexpectedly created a classroom");
+    console.log("PASS classroom UI live teacher/student boundary checks");
+  } finally {
+    if (supabaseServiceRoleKey) {
+      const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+        auth: { persistSession: false },
+      });
+      await admin.from("classrooms").delete().eq("id", classroom.classroom_id);
+    } else {
+      await teacher.client
+        .from("classroom_join_codes")
+        .update({ status: "revoked" })
+        .eq("classroom_id", classroom.classroom_id);
+      await teacher.client
+        .from("classrooms")
+        .update({ status: "archived", updated_by: teacher.user.id })
+        .eq("id", classroom.classroom_id);
+    }
+  }
+}
+
+await runSourceSmoke();
+await runLiveSmoke();

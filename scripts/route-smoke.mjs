@@ -137,7 +137,12 @@ const bankImportReviewMigration = await read("supabase/clean-migrations/0027_ban
 const assignmentFromBankMigration = await read("supabase/clean-migrations/0028_assignment_from_bank_questions.sql");
 const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+const teacherClassroomUi = await read("src/app/teacher/classrooms/classroom-ui.tsx");
+const teacherClassroomPeoplePage = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
+const teacherClassroomAnalyticsPage = await read("src/app/teacher/classrooms/[id]/analytics/page.tsx");
+const teacherClassroomBlueprintsPage = await read("src/app/teacher/classrooms/[id]/blueprints/page.tsx");
+const teacherClassroomSettingsPage = await read("src/app/teacher/classrooms/[id]/settings/page.tsx");
 const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/assignments/new/page.tsx");
 const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
 const assignmentSelectionSummary = await read("src/components/teacher/assignment-selection-summary.tsx");
@@ -244,28 +249,30 @@ assert(
 console.log("PASS teacher runtime exposes bank-first teacher workspace and bank foundation surfaces");
 assert(
   teacherClassroomsPage.includes("Delivery layer") &&
-    teacherClassroomsPage.includes("Teacher banks remain the") &&
-    teacherClassroomsPage.includes("Your classrooms") &&
-    teacherClassroomsPage.includes("Create classroom") &&
-    teacherClassroomsPage.includes("Join codes stay available") &&
-    teacherClassroomDetailPage.includes("Students do not gain access") &&
+    teacherClassroomsPage.includes("Classes are roster and delivery spaces") &&
+    teacherClassroomsPage.includes("Your classes") &&
+    teacherClassroomsPage.includes("Create Class") &&
+    teacherClassroomUi.includes("Publish to classes") &&
+    teacherClassroomDetailPage.includes("Students can join the roster") &&
     teacherClassroomDetailPage.includes("Active join code") &&
-    teacherClassroomDetailPage.includes("Overview") &&
-    teacherClassroomDetailPage.includes("People") &&
-    teacherClassroomDetailPage.includes("Analytics / Feedback") &&
-    teacherClassroomDetailPage.includes("Linked Blueprints") &&
-    teacherClassroomDetailPage.includes("Settings") &&
-    teacherClassroomDetailPage.includes("Roster") &&
-    teacherClassroomDetailPage.includes("New assignment") &&
+    teacherClassroomDetailPage.includes("Class delivery snapshot") &&
+    teacherClassroomDetailPage.includes("Students needing attention") &&
     teacherClassroomDetailPage.includes("View assignments") &&
+    teacherClassroomPeoplePage.includes("Joining a class does not grant access") &&
+    teacherClassroomPeoplePage.includes("Remove from class") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
     teacherAssignmentsPage.includes("New assignment") &&
+    teacherAssignmentsPage.includes("Publish new bank work") &&
     teacherAssignmentsPage.includes("Assigned") &&
     teacherAssignmentsPage.includes("Assignment visibility") &&
     teacherAssignmentsPage.includes("global publishing") &&
     teacherAssignmentsPage.includes("Draft") &&
     teacherAssignmentsPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Latest activity") &&
+    teacherClassroomAnalyticsPage.includes("Analytics / Feedback") &&
+    teacherClassroomAnalyticsPage.includes("Taxonomy mastery") &&
+    teacherClassroomBlueprintsPage.includes("Blueprints linked to this class will appear here") &&
+    teacherClassroomSettingsPage.includes("Archive and delete controls are not enabled") &&
     teacherAssignmentNewPage.includes("Published questions") &&
     teacherAssignmentNewPage.includes("workflow now starts from Question Banks") &&
     teacherAssignmentNewPage.includes("published-question compatibility") &&

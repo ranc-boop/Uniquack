@@ -101,6 +101,8 @@ async function runSourceSmoke() {
   const rootLayout = await read("src/app/layout.tsx");
   const classroomActions = await read("src/app/teacher/classrooms/actions.ts");
   const classroomDetail = await read("src/app/teacher/classrooms/[id]/page.tsx");
+  const classroomUi = await read("src/app/teacher/classrooms/classroom-ui.tsx");
+  const classroomPeople = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
   const migration = await read("supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql");
 
   for (const label of [
@@ -127,12 +129,14 @@ async function runSourceSmoke() {
   );
   assert(
     classroomDetail.includes("Active join code") &&
-      classroomDetail.includes("Overview") &&
-      classroomDetail.includes("People") &&
-      classroomDetail.includes("Assignments") &&
-      classroomDetail.includes("Analytics / Feedback") &&
-      classroomDetail.includes("Linked Blueprints") &&
-      classroomDetail.includes("Settings"),
+      classroomDetail.includes("Class delivery snapshot") &&
+      classroomUi.includes("Overview") &&
+      classroomUi.includes("People") &&
+      classroomUi.includes("Assignments") &&
+      classroomUi.includes("Analytics / Feedback") &&
+      classroomUi.includes("Linked Blueprints") &&
+      classroomUi.includes("Settings") &&
+      classroomPeople.includes("Joining a class does not grant access"),
     "classroom detail must expose teacher classroom sections and persistent join code",
   );
   assert(
