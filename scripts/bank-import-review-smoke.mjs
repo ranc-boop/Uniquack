@@ -137,7 +137,8 @@ async function main() {
     "bank import review migration is missing scope columns, approval RPC, or bank read policy",
   );
   assert(
-    detailPage.includes("Import material") &&
+    detailPage.includes("Import Material") &&
+      importsPage.includes("AI Parsing-first workflow") &&
       importsPage.includes("Create bank Review Drafts") &&
       reviewPage.includes("Approve into bank") &&
       questionsPage.includes("not public/global questions") &&

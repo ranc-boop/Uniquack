@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { BookOpen, ClipboardCheck, Upload, Users } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
+  bankMemberProfileLabel,
   bankMemberRoleLabel,
   canManageBankContent,
   getTeacherQuestionBankDetail,
@@ -13,6 +16,18 @@ import {
   questionBankVisibilityLabel,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+
+import {
+  bankActionIcons,
+  BankBadge,
+  BankHeroPanel,
+  BankMetricCard,
+  BankQuickAction,
+  BankRouteTabs,
+  BankSafetyList,
+  BankSectionHeader,
+  BankWorkbenchPage,
+} from "../bank-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +43,8 @@ function formatDate(value: string | null) {
 
 function SetupNeededState() {
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-panel p-6">
+    <BankWorkbenchPage>
+      <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
         <p className="student-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
           Question Bank tables are not available yet.
@@ -41,7 +56,7 @@ function SetupNeededState() {
           <Link href="/teacher/banks">Back to Banks / Library</Link>
         </Button>
       </section>
-    </main>
+    </BankWorkbenchPage>
   );
 }
 
@@ -50,13 +65,17 @@ export default async function TeacherBankDetailPage({
 }: {
   params: Promise<{ bankId: string }>;
 }) {
-  await requireTeacher();
+  const profile = await requireTeacher();
   const { bankId } = await params;
   const supabase = await createClient();
   let detail;
 
   try {
-    detail = await getTeacherQuestionBankDetail({ bankId, supabase });
+    detail = await getTeacherQuestionBankDetail({
+      bankId,
+      profileId: profile.id,
+      supabase,
+    });
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
       return <SetupNeededState />;
@@ -69,94 +88,102 @@ export default async function TeacherBankDetailPage({
     notFound();
   }
 
-  const { bank, currentUserRole, members, questionCount } = detail;
+  const { bank, currentUserRole, members } = detail;
   const canManageContent = canManageBankContent(currentUserRole);
+  const activeMembers = members.filter((member) => member.status === "active");
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
-        <div className="space-y-5">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="student-eyebrow">Question Bank / Library</span>
-              <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                {questionBankVisibilityLabel(bank.visibility)}
-              </span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                {questionBankStatusLabel(bank.status)}
-              </span>
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              {bank.name}
-            </h1>
-            <p className="max-w-3xl text-base leading-7 text-slate-600">
-              {bank.description ||
-                "This bank is ready for reviewed content. Import, approval, and assignment handoffs are intentionally separate review-gated slices."}
-            </p>
-          </div>
-          <TeacherWorkspaceNav />
-          <div className="flex flex-wrap gap-2">
+    <BankWorkbenchPage>
+      <BankHeroPanel
+        actions={
+          <>
             <Button asChild variant="outline">
               <Link href="/teacher/banks">Back to Banks</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}/imports`}>
-                Import material
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}/review`}>
-                Review Drafts
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}/questions`}>
-                Questions
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link href={`/teacher/banks/${bank.id}/assignments/new`}>
-                Create assignment
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}/members`}>
-                Members / Share
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
+            <BankQuickAction
+              href={`/teacher/banks/${bank.id}/imports`}
+              icon={Upload}
+              variant={canManageContent ? "default" : "outline"}
+            >
+              Import Material
+            </BankQuickAction>
+            <BankQuickAction
+              href={`/teacher/banks/${bank.id}/review`}
+              icon={ClipboardCheck}
+            >
+              Review Drafts
+            </BankQuickAction>
+          </>
+        }
+        badges={
+          <>
+            <BankBadge tone="sky">
+              {questionBankVisibilityLabel(bank.visibility)}
+            </BankBadge>
+            <BankBadge>{questionBankStatusLabel(bank.status)}</BankBadge>
+            <BankBadge tone="blue">
+              {bankMemberRoleLabel(currentUserRole ?? "viewer")}
+            </BankBadge>
+          </>
+        }
+        eyebrow="Question Bank operating surface"
+        title={bank.name}
+      >
+        <p>
+          {bank.description ||
+            "This bank is ready for reviewed content. Import, approval, and assignment handoffs are intentionally separate review-gated slices."}
+        </p>
+        <p className="mt-2 text-sm font-semibold text-slate-700">
+          {activeMembers.length} active member
+          {activeMembers.length === 1 ? "" : "s"} can access this repository.
+          Classrooms deliver selected approved items; they do not expose the full
+          bank.
+        </p>
+      </BankHeroPanel>
+
+      <TeacherWorkspaceNav />
+      <BankRouteTabs bankId={bank.id} />
+      <BankSafetyList />
 
       <section className="grid gap-3 md:grid-cols-4">
         {[
-          ["Questions", questionCount],
-          ["Members", detail.activeMemberCount],
-          ["Created", formatDate(bank.created_at)],
-          ["Updated", formatDate(bank.updated_at)],
-        ].map(([label, value]) => (
-          <div className="student-panel p-4" key={label}>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {label}
-            </p>
-            <p className="mt-2 text-lg font-bold text-slate-950">{value}</p>
-          </div>
+          {
+            description: "Approved bank-scoped items.",
+            icon: BookOpen,
+            label: "Questions",
+            value: detail.questionCount,
+          },
+          {
+            description: "Private drafts waiting for this bank.",
+            icon: ClipboardCheck,
+            label: "Review Drafts",
+            value: detail.reviewDraftCount,
+          },
+          {
+            description: "Source batches targeting this repository.",
+            icon: Upload,
+            label: "Imports",
+            value: detail.importBatchCount,
+          },
+          {
+            description: "Explicit bank collaborators.",
+            icon: Users,
+            label: "Members",
+            value: detail.activeMemberCount,
+          },
+        ].map((metric) => (
+          <BankMetricCard key={metric.label} {...metric} />
         ))}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
-        <article className="student-panel overflow-hidden">
-          <div className="border-b border-slate-200 bg-white/70 p-5">
-            <h2 className="text-xl font-bold text-slate-950">
-              Bank questions
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Reviewed questions stay bank-scoped. Assignments expose selected
-              approved items, not the full bank.
-            </p>
-          </div>
+      <section className="grid gap-4 lg:grid-cols-[1.35fr_0.8fr]">
+        <article className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
+          <BankSectionHeader
+            description="Reviewed questions stay bank-scoped. Assignments expose selected approved items, not the full bank."
+            title="Bank questions"
+          />
           <div className="p-6 text-center">
-            {questionCount ? (
+            {detail.questionCount ? (
               <div className="mx-auto max-w-xl space-y-4">
                 <p className="text-sm leading-6 text-slate-600">
                   This bank has approved content ready for classroom delivery.
@@ -166,6 +193,11 @@ export default async function TeacherBankDetailPage({
                 <Button asChild>
                   <Link href={`/teacher/banks/${bank.id}/assignments/new`}>
                     Create assignment from bank
+                  </Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href={`/teacher/banks/${bank.id}/questions`}>
+                    Open question database
                   </Link>
                 </Button>
               </div>
@@ -185,35 +217,41 @@ export default async function TeacherBankDetailPage({
         </article>
 
         <aside className="space-y-4">
-          <section className="student-panel p-5">
+          <section className="rounded-lg border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
             <h2 className="text-lg font-bold text-slate-950">
-              Bank workflow
+              Repository workflow
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Import private material, review drafts, then add approved content
               to this bank.
             </p>
             <div className="mt-4 grid gap-2">
-              <Button asChild>
-                <Link href={`/teacher/banks/${bank.id}/imports`}>
-                  Import material
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href={`/teacher/banks/${bank.id}/review`}>
-                  Review Drafts
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href={`/teacher/banks/${bank.id}/questions`}>
-                  Open questions
-                </Link>
-              </Button>
-              <Button asChild variant={questionCount ? "default" : "outline"}>
-                <Link href={`/teacher/banks/${bank.id}/assignments/new`}>
-                  Create assignment
-                </Link>
-              </Button>
+              <BankQuickAction
+                href={`/teacher/banks/${bank.id}/imports`}
+                icon={bankActionIcons.import}
+                variant={canManageContent ? "default" : "outline"}
+              >
+                Import Material
+              </BankQuickAction>
+              <BankQuickAction
+                href={`/teacher/banks/${bank.id}/review`}
+                icon={bankActionIcons.review}
+              >
+                Review Drafts
+              </BankQuickAction>
+              <BankQuickAction
+                href={`/teacher/banks/${bank.id}/questions`}
+                icon={bankActionIcons.questions}
+              >
+                Open questions
+              </BankQuickAction>
+              <BankQuickAction
+                href={`/teacher/banks/${bank.id}/assignments/new`}
+                icon={bankActionIcons.assignment}
+                variant={detail.questionCount ? "default" : "outline"}
+              >
+                Create Assignment
+              </BankQuickAction>
             </div>
             {!canManageContent ? (
               <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
@@ -223,21 +261,21 @@ export default async function TeacherBankDetailPage({
             ) : null}
           </section>
 
-          <section className="student-panel p-5">
+          <section className="rounded-lg border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
             <h2 className="text-lg font-bold text-slate-950">Members</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Explicit bank membership controls access. Classroom membership
               does not grant access to this bank.
             </p>
             <div className="mt-4 space-y-3">
-              {members.map((member) => (
+              {activeMembers.map((member) => (
                 <div
                   className="rounded-lg border border-slate-200 bg-white p-3"
                   key={member.id}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="truncate text-sm font-semibold text-slate-950">
-                      {member.user_id}
+                      {bankMemberProfileLabel(member)}
                     </p>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
                       {bankMemberRoleLabel(member.role)}
@@ -256,17 +294,21 @@ export default async function TeacherBankDetailPage({
             </Button>
           </section>
 
-          <section className="student-panel p-5">
+          <section className="rounded-lg border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
             <h2 className="text-lg font-bold text-slate-950">
-              Still separate
+              Boundary notes
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Public pull and student visibility remain separate. Classroom
               assignments expose selected approved items only.
             </p>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Created {formatDate(bank.created_at)} · Updated{" "}
+              {formatDate(bank.updated_at)}
+            </p>
           </section>
         </aside>
       </section>
-    </main>
+    </BankWorkbenchPage>
   );
 }
