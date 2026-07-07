@@ -68,6 +68,14 @@ The branch migration and reapply file now use the named unique constraint instea
 on conflict on constraint classroom_members_classroom_id_user_id_key do update
 ```
 
+After that latest function was manually applied, live smoke advanced past the ambiguity and found one more clean-schema mismatch:
+
+```text
+column "removed_at" of relation "classroom_members" does not exist
+```
+
+The clean `classroom_members` table from migration 0018 does not include `removed_at`; it uses `status`, `joined_at`, `created_at`, and `updated_at`. The branch migration and reapply file now reactivate the teacher owner membership by setting `role = 'teacher'`, `status = 'active'`, and `updated_at = now()` only.
+
 ## Teacher Shell / Navigation
 
 Implemented teacher visual tokens and shared teacher shell primitives:
@@ -146,8 +154,27 @@ Notes:
 - The first function reapply removed that invalid column reference.
 - The next live run reached the corrected remote function and failed with `column reference "classroom_id" is ambiguous`.
 - The latest branch migration and `docs/teacher-classroom-0030-create-function-reapply.sql` remove both PL/pgSQL ambiguity sources by using `created_classroom_id` internally and the named `classroom_members_classroom_id_user_id_key` conflict constraint.
+- The latest branch migration and reapply file also remove the invalid `removed_at = null` update because `classroom_members.removed_at` is not part of the clean schema.
 - `node scripts/teacher-workspace-shell-smoke.mjs` and `npm.cmd run smoke` remain blocked until the latest reapply SQL is run in Supabase.
-- Current `npm.cmd run smoke` result: all earlier smoke sections pass, then `teacher-workspace-shell-smoke` fails at the remote `public.create_teacher_classroom` body with `column reference "classroom_id" is ambiguous`.
+- Current `node scripts/teacher-workspace-shell-smoke.mjs` result: source checks pass, then the remote `public.create_teacher_classroom` body fails with `column "removed_at" of relation "classroom_members" does not exist`.
+
+Current verification after removing the invalid `removed_at` update:
+
+```text
+npm.cmd run lint                                    PASS
+npm.cmd run build                                   PASS
+node scripts/security-smoke.mjs                     PASS
+node scripts/supabase-rls-smoke.mjs                 PASS
+node scripts/question-bank-foundation-smoke.mjs     PASS
+node scripts/bank-share-members-smoke.mjs           PASS
+node scripts/bank-import-review-smoke.mjs           PASS
+node scripts/assignment-from-bank-smoke.mjs         PASS
+node scripts/teacher-role-bank-boundary-smoke.mjs   PASS
+npm.cmd run perf:budget                             PASS
+node scripts/route-smoke.mjs                        BLOCKED: localhost:3000 was not reachable in this shell session
+node scripts/teacher-workspace-shell-smoke.mjs      BLOCKED: remote function still has removed_at update
+npm.cmd run smoke                                   BLOCKED: reaches teacher-workspace-shell-smoke, then same remote removed_at error
+```
 
 ## Remaining Step
 

@@ -58,3 +58,11 @@ on conflict on constraint classroom_members_classroom_id_user_id_key do update
 ```
 
 The named constraint avoids PL/pgSQL confusing the conflict target column with the returned `classroom_id` field.
+
+If the live smoke then fails with:
+
+```text
+column "removed_at" of relation "classroom_members" does not exist
+```
+
+run the latest version of the same reapply file again. The clean `classroom_members` table tracks removed/reactivated state with `status`, `joined_at`, and `updated_at`; it does not have a `removed_at` column.

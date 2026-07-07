@@ -151,7 +151,6 @@ begin
   on conflict on constraint classroom_members_classroom_id_user_id_key do update
   set role = 'teacher',
       status = 'active',
-      removed_at = null,
       updated_at = now();
 
   insert into public.classroom_join_codes (
