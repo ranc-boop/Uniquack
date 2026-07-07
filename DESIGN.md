@@ -55,7 +55,15 @@ system does not redesign student surfaces in this PR.
 Student pages may be slightly more energetic than teacher pages, but they must
 stay in the same brand family: clear slate text, sky/blue actions, calm panels,
 and evidence-oriented progress. Students see assigned work, practice, mistakes,
-and progress. They do not browse teacher banks by joining a classroom.
+and progress. Students do not browse teacher private Libraries by joining a
+classroom.
+
+Student Library and Study Group surfaces should feel like self-study
+collaboration spaces, not teacher bank workbenches. Use names such as Study
+Library, Saved Sets, Mistake Sets, Study Groups, and Public Library. Keep
+personal and group ownership clear, keep raw IDs secondary, and make sharing
+states obvious. Study Group membership must not visually imply formal classroom
+enrollment or teacher grading.
 
 ### Admin
 
@@ -329,6 +337,10 @@ Student pages preserve the calm focused study cockpit:
 - Clear next action.
 - Less AI-internal wording. Prefer learning and assignment language.
 - No teacher bank browsing through classroom membership.
+- Student Library and Study Group pages may support personal saved sets, mistake
+  sets, public pulls, and peer collaboration where policy allows.
+- Public does not mean Verified; Verified content should have a distinct
+  trust/governance signal.
 
 Student UI can use more active progress states and practice feedback than
 teacher UI, but it should not import colorful student-card language into teacher

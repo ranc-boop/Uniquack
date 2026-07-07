@@ -31,6 +31,14 @@ Future agents must protect that workflow before adding features.
 
 Teacher and user workflows start with a Question Bank / Library, not a classroom.
 
+Library is universal, not teacher-only. Teachers, students, organizations, and
+official EduStruct accounts can own/use/share Libraries when their capabilities
+and policies allow it.
+
+Teacher and Student differ by workspace and capabilities, not by whether they
+can own Libraries. Do not hard-code teacher-only Library assumptions into new
+product plans.
+
 Correct order:
 
 ```text
@@ -49,6 +57,9 @@ Classrooms are roster and delivery layers.
 Assignments are delivery events.
 
 Do not make a classroom-first shortcut the primary teacher workspace.
+
+Study Groups are student/peer self-study collaboration spaces. Do not treat a
+Study Group as a teacher Classroom or a formal assignment-delivery layer.
 
 ## Role Boundaries
 
@@ -84,16 +95,33 @@ Never treat admin-as-teacher smoke as enough product validation. Teacher pages m
 The product must distinguish:
 
 - teacher private bank
+- student personal library
+- study group shared library
 - shared/collaborative bank
 - organization bank
 - public/global bank
+- verified library
 - assignment-only student visibility
 
 Student joining a classroom does not mean the student can browse a teacher bank.
 
+Student joining a Study Group does not mean the student can browse a teacher
+classroom or private teacher Library.
+
 Assignment visibility is not global publishing.
 
 Private teacher content is private by default.
+
+Public does not mean Verified. Verified requires review/governance.
+
+Prefer the simple permission model:
+
+```text
+visibility + member role + capability
+```
+
+Do not create role explosions when capability flags and policy checks are
+enough.
 
 ## Review Safety Gates
 
