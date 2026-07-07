@@ -140,7 +140,7 @@ async function main() {
     detailPage.includes("Import material") &&
       importsPage.includes("Create bank Review Drafts") &&
       reviewPage.includes("Approve into bank") &&
-      questionsPage.includes("not public/global questions") &&
+      questionsPage.includes("These questions are bank-scoped") &&
       bankActions.includes('rpc("approve_bank_review_question"'),
     "bank import/review routes are missing expected workflow copy or action wiring",
   );

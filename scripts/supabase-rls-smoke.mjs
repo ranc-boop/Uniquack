@@ -73,6 +73,10 @@ const assignmentFromBankMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0028_assignment_from_bank_questions.sql"),
   "utf8",
 );
+const teacherRoleBoundaryMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql"),
+  "utf8",
+);
 const blueprintActions = await readFile(
   resolve(root, "src/app/admin/blueprints/actions.ts"),
   "utf8",
@@ -261,6 +265,19 @@ assert(
   "assignment-from-bank migration must expose selected bank questions through assignment scope only, with no global publish or anon grants",
 );
 console.log("PASS assignment-from-bank migration keeps bank content assignment-scoped");
+assert(
+  teacherRoleBoundaryMigration.includes("questions_published_read") &&
+    teacherRoleBoundaryMigration.includes("status = 'published'") &&
+    teacherRoleBoundaryMigration.includes("visibility = 'public'") &&
+    teacherRoleBoundaryMigration.includes("owner_bank_id is null") &&
+    teacherRoleBoundaryMigration.includes("question_rubric_steps_public_read") &&
+    teacherRoleBoundaryMigration.includes("question_assets_public_read") &&
+    teacherRoleBoundaryMigration.includes("question_taxonomy_assignments_public_read") &&
+    teacherRoleBoundaryMigration.includes("Bank-owned questions must be approved through bank review") &&
+    teacherRoleBoundaryMigration.includes("question.owner_bank_id is null"),
+  "teacher role/bank boundary migration must restrict public reads/search to global public questions and block global publish for bank-owned questions",
+);
+console.log("PASS teacher role/bank boundary migration protects public/global reads");
 for (const tableName of [
   "question_blueprints",
   "question_blueprint_examples",

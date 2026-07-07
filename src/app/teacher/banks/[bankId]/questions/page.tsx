@@ -88,8 +88,8 @@ export default async function TeacherBankQuestionsPage({
               Reviewed content in {bank.name}
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              These questions belong to this bank through explicit bank
-              membership. They are not public/global questions.
+              These questions are bank-scoped. Assignments expose selected
+              items only.
             </p>
           </div>
           <TeacherWorkspaceNav />
@@ -113,8 +113,8 @@ export default async function TeacherBankQuestionsPage({
             Active bank questions
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Assignment delivery comes later; this page only confirms reviewed
-            bank content.
+            Students see assigned items only. Bank membership remains separate
+            from assignment delivery.
           </p>
         </div>
         <div className="divide-y divide-slate-100">

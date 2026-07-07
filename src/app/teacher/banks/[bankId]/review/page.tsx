@@ -95,9 +95,8 @@ export default async function TeacherBankReviewPage({
               Review Drafts for {bank.name}
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Approving here adds reviewed content to this bank only. It does
-              not publish to the global Question Bank and does not create an
-              assignment.
+              Approve drafts into this bank. This does not publish them to the
+              public library or create an assignment.
             </p>
           </div>
           <TeacherWorkspaceNav />
@@ -191,7 +190,7 @@ export default async function TeacherBankReviewPage({
                 </div>
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
                   Approval adds this question to {bank.name}. It stays
-                  bank-scoped and is not globally published.
+                  bank-scoped and is not published to the public library.
                 </div>
               </article>
             ))

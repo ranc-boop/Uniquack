@@ -8,8 +8,8 @@ type TeacherWorkspaceNavItem = {
 const teacherWorkspaceNavItems: TeacherWorkspaceNavItem[] = [
   { href: "/teacher", label: "Teacher Studio" },
   { href: "/teacher/banks", label: "Banks / Library" },
-  { href: "/admin/imports/pdf", label: "Imports" },
-  { href: "/admin/review", label: "Review Drafts" },
+  { href: "/teacher/banks", label: "Bank Imports" },
+  { href: "/teacher/banks", label: "Bank Review" },
   { href: "/teacher/classrooms", label: "Classrooms" },
   { href: "/teacher/course-builder", label: "Course Builder" },
 ];
@@ -24,7 +24,7 @@ export function TeacherWorkspaceNav() {
         <Link
           className="rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
           href={item.href}
-          key={item.href}
+          key={`${item.href}-${item.label}`}
         >
           {item.label}
         </Link>
