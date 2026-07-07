@@ -76,6 +76,14 @@ column "removed_at" of relation "classroom_members" does not exist
 
 The clean `classroom_members` table from migration 0018 does not include `removed_at`; it uses `status`, `joined_at`, `created_at`, and `updated_at`. The branch migration and reapply file now reactivate the teacher owner membership by setting `role = 'teacher'`, `status = 'active'`, and `updated_at = now()` only.
 
+The repeated remote RPC failures were caused by the function body drifting away from the actual clean classroom schema. A schema audit was added:
+
+```text
+docs/teacher-classroom-0030-schema-audit.md
+```
+
+That audit confirms `classroom_members` has `id`, `classroom_id`, `user_id`, `role`, `status`, `joined_at`, `created_at`, and `updated_at`, and does not have `created_by`, `updated_by`, or `removed_at`. The final `public.create_teacher_classroom(...)` body was regenerated with `v_` internal variables and the named `classroom_members_classroom_id_user_id_key` constraint before another manual reapply.
+
 ## Teacher Shell / Navigation
 
 Implemented teacher visual tokens and shared teacher shell primitives:
@@ -155,6 +163,7 @@ Notes:
 - The next live run reached the corrected remote function and failed with `column reference "classroom_id" is ambiguous`.
 - The latest branch migration and `docs/teacher-classroom-0030-create-function-reapply.sql` remove both PL/pgSQL ambiguity sources by using `created_classroom_id` internally and the named `classroom_members_classroom_id_user_id_key` conflict constraint.
 - The latest branch migration and reapply file also remove the invalid `removed_at = null` update because `classroom_members.removed_at` is not part of the clean schema.
+- The final schema-anchored branch migration and reapply file now use `v_created_classroom_id`, `v_display_code`, `v_code_hash`, and `v_join_code_id` internal variables and only real table columns from migrations 0018 and 0019.
 - `node scripts/teacher-workspace-shell-smoke.mjs` and `npm.cmd run smoke` remain blocked until the latest reapply SQL is run in Supabase.
 - Current `node scripts/teacher-workspace-shell-smoke.mjs` result: source checks pass, then the remote `public.create_teacher_classroom` body fails with `column "removed_at" of relation "classroom_members" does not exist`.
 
@@ -178,7 +187,7 @@ npm.cmd run smoke                                   BLOCKED: reaches teacher-wor
 
 ## Remaining Step
 
-Apply `docs/teacher-classroom-0030-create-function-reapply.sql` to the clean Supabase project, then rerun:
+Apply the final schema-anchored `docs/teacher-classroom-0030-create-function-reapply.sql` to the clean Supabase project, then rerun:
 
 ```powershell
 node scripts/teacher-workspace-shell-smoke.mjs

@@ -66,3 +66,11 @@ column "removed_at" of relation "classroom_members" does not exist
 ```
 
 run the latest version of the same reapply file again. The clean `classroom_members` table tracks removed/reactivated state with `status`, `joined_at`, and `updated_at`; it does not have a `removed_at` column.
+
+The current reapply file has been schema-anchored against migrations 0018, 0019, 0020, and 0030. It uses only real `classroom_members` columns and `v_` internal variables:
+
+```text
+docs/teacher-classroom-0030-create-function-reapply.sql
+```
+
+Run only that function-only SQL file for the final correction. Do not rerun the full migration unless a later migration task explicitly says to.
