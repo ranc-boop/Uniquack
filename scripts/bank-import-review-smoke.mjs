@@ -125,6 +125,7 @@ async function main() {
   const migration = await read("supabase/clean-migrations/0027_bank_import_review_scope.sql");
   const detailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
   const importsPage = await read("src/app/teacher/banks/[bankId]/imports/page.tsx");
+  const importUi = await read("src/app/teacher/banks/bank-import-ui.tsx");
   const reviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
   const questionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
   const bankActions = await read("src/app/teacher/banks/actions.ts");
@@ -138,7 +139,10 @@ async function main() {
   );
   assert(
     detailPage.includes("Import Material") &&
-      importsPage.includes("AI Parsing-first workflow") &&
+      importsPage.includes("BankImportEntryPanel") &&
+      importUi.includes("Import into selected bank") &&
+      importsPage.includes("Advanced / Developer fixture") &&
+      importsPage.includes("Developer fixture for smoke testing. Normal teachers should") &&
       importsPage.includes("Create bank Review Drafts") &&
       reviewPage.includes("Approve into bank") &&
       questionsPage.includes("not public/global questions") &&

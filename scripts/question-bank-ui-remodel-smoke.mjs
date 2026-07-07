@@ -19,6 +19,7 @@ const bankUi = await read("src/app/teacher/banks/bank-ui.tsx");
 const bankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
 const bankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
 const bankImportsPage = await read("src/app/teacher/banks/[bankId]/imports/page.tsx");
+const bankImportUi = await read("src/app/teacher/banks/bank-import-ui.tsx");
 const bankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
 const bankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
 const bankBlueprintsPage = await read("src/app/teacher/banks/[bankId]/blueprints/page.tsx");
@@ -83,12 +84,14 @@ assert(
 );
 
 assert(
-  bankImportsPage.includes("AI Parsing-first workflow") &&
-    bankImportsPage.includes("Open AI Parsing") &&
-    bankImportsPage.includes("Review gate: no imported draft is assignable or globally published") &&
-    bankImportsPage.includes("Advanced / developer import fixture") &&
+  bankImportsPage.includes("BankImportEntryPanel") &&
+    bankImportUi.includes("Import into selected bank") &&
+    bankImportsPage.includes("Review gate: no imported draft is assignable or globally") &&
+    bankImportsPage.includes("published from this page") &&
+    bankImportsPage.includes("Advanced / Developer fixture") &&
+    bankImportsPage.includes("Developer fixture for smoke testing. Normal teachers should") &&
     bankImportsPage.includes("JSON is not the primary teacher flow") &&
-    bankImportsPage.indexOf("AI Parsing-first workflow") <
+    bankImportsPage.indexOf("BankImportEntryPanel") <
       bankImportsPage.indexOf("Draft question JSON"),
   "/teacher/banks/[bankId]/imports must lead with AI Parsing and hide JSON behind an advanced fixture",
 );

@@ -1,7 +1,7 @@
 ﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ClipboardCheck, FileText, Upload } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
@@ -18,12 +18,15 @@ import { createClient } from "@/lib/supabase/server";
 
 import { importBankJsonDrafts } from "../../actions";
 import {
+  BankImportEntryPanel,
+  RecentBankImportsPanel,
+  TeacherImportSafetyCallout,
+} from "../../bank-import-ui";
+import {
   BankBadge,
   BankHeroPanel,
-  BankMetricCard,
   BankQuickAction,
   BankRouteTabs,
-  BankSectionHeader,
   BankWorkbenchPage,
 } from "../../bank-ui";
 
@@ -52,10 +55,6 @@ const sampleJson = JSON.stringify(
   null,
   2,
 );
-
-function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString() : "Unknown";
-}
 
 function SetupNeededState() {
   return (
@@ -149,6 +148,7 @@ export default async function TeacherBankImportsPage({
 
       <TeacherWorkspaceNav />
       <BankRouteTabs bankId={bank.id} />
+      <TeacherImportSafetyCallout />
 
       {query.saved ? (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
@@ -161,72 +161,38 @@ export default async function TeacherBankImportsPage({
         </section>
       ) : null}
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <BankMetricCard
-          description="The bank that receives Review Drafts from this import."
-          icon={FileText}
-          label="Target bank"
-          value={bank.name}
-        />
-        <BankMetricCard
-          description="Recent source batches already scoped to this bank."
-          icon={Upload}
-          label="Recent imports"
-          value={importBatches.length}
-        />
-        <BankMetricCard
-          description="Owners and editors can create new bank Review Drafts."
-          icon={ClipboardCheck}
-          label="Import access"
-          value={canImport ? "Owner/editor" : "Viewer only"}
-        />
-      </section>
-
       <section className="grid gap-4 lg:grid-cols-[1.3fr_0.8fr]">
-        <article className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
-          <BankSectionHeader
-            description="Use the AI Parsing workflow for teacher-owned source material. Every output lands in Review Drafts before it can enter this bank."
-            title="Import source material"
+        <div className="space-y-4">
+          <BankImportEntryPanel
+            bank={{
+              ...bank,
+              assignmentReadyCount: detail.assignmentReadyCount,
+              importBatchCount: importBatches.length,
+              membershipRole: currentUserRole,
+              questionCount: detail.questionCount,
+              reviewDraftCount: detail.reviewDraftCount,
+            }}
+            canImport={canImport}
+            showImportAction={false}
+            showChangeTarget
           />
-          <div className="space-y-5 p-5">
-            <div className="rounded-xl border border-sky-100 bg-sky-50/70 p-5">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-950">
-                    AI Parsing-first workflow
-                  </h3>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
-                    Upload private materials, extract draft questions, then
-                    approve only the items that belong in this bank.
-                  </p>
-                </div>
-                <Button asChild>
-                  <Link className="inline-flex items-center gap-2" href="/admin/imports/pdf">
-                    <Upload aria-hidden="true" className="h-4 w-4" />
-                    Open AI Parsing
-                  </Link>
-                </Button>
-              </div>
-              <p className="mt-4 rounded-lg border border-white/80 bg-white/75 p-3 text-sm leading-6 text-slate-700">
-                Target bank context: {bank.name}. Bank-scoped Review Drafts
-                remain private and are never assigned or globally published from
-                import.
-              </p>
-            </div>
 
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-              Review gate: no imported draft is assignable or globally published
-              from this page.
-            </div>
-
-            <details className="rounded-xl border border-slate-200 bg-slate-50">
+          <details className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
               <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-slate-900">
-                Advanced / developer import fixture
+                Advanced / Developer fixture
                 <span className="text-xs font-semibold text-slate-500">
                   JSON is not the primary teacher flow
                 </span>
               </summary>
               <form action={importBankJsonDrafts} className="space-y-4 border-t border-slate-200 bg-white p-5">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+                  Developer fixture for smoke testing. Normal teachers should
+                  use AI Parsing import.
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                  Review gate: no imported draft is assignable or globally
+                  published from this page.
+                </div>
                 <input name="bankId" type="hidden" value={bank.id} />
                 <label className="block">
                   <span className="text-sm font-semibold text-slate-900">
@@ -249,42 +215,9 @@ export default async function TeacherBankImportsPage({
                 )}
               </form>
             </details>
-          </div>
-        </article>
+        </div>
 
-        <aside className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
-          <BankSectionHeader title="Recent imports" />
-          <div className="space-y-3 p-5">
-            {importBatches.length ? (
-              importBatches.map((batch) => (
-                <div
-                  className="rounded-xl border border-slate-200 bg-white p-4"
-                  key={batch.id}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-950">
-                        {batch.source_type}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {formatDate(batch.created_at)}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                      {batch.status}
-                    </span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                No bank-scoped imports yet. Start with AI Parsing or the
-                advanced fixture, then review drafts before adding anything to
-                the bank.
-              </p>
-            )}
-          </div>
-        </aside>
+        <RecentBankImportsPanel importBatches={importBatches} />
       </section>
     </BankWorkbenchPage>
   );
