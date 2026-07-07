@@ -1,5 +1,7 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { notFound } from "next/navigation";
+
+import { KeyRound, Share2, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
@@ -21,6 +23,15 @@ import {
   revokeBankShareCode,
   updateBankMemberRole,
 } from "../../actions";
+import {
+  BankBadge,
+  BankHeroPanel,
+  BankMetricCard,
+  BankQuickAction,
+  BankRouteTabs,
+  BankSectionHeader,
+  BankWorkbenchPage,
+} from "../../bank-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -36,9 +47,9 @@ function formatDate(value: string | null) {
 
 function SetupNeededState() {
   return (
-    <main className="teacher-shell space-y-6">
-      <section className="teacher-panel p-6">
-        <p className="teacher-eyebrow">Setup needed</p>
+    <BankWorkbenchPage>
+      <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
+        <p className="student-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
           Bank sharing tables are not available yet.
         </h1>
@@ -49,7 +60,7 @@ function SetupNeededState() {
           <Link href="/teacher/banks">Back to Banks / Library</Link>
         </Button>
       </section>
-    </main>
+    </BankWorkbenchPage>
   );
 }
 
@@ -94,40 +105,42 @@ export default async function TeacherBankMembersPage({
   const { bank, currentUserRole, members } = detail;
   const canManage = canManageBankMembers(currentUserRole);
   const activeShareCodes = shareCodes.filter((code) => code.status === "active");
+  const activeMembers = members.filter((member) => member.status === "active");
 
   return (
-    <main className="teacher-shell space-y-6">
-      <section className="teacher-hero">
-        <div className="space-y-5">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="teacher-eyebrow">Bank Members / Share</span>
-              <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                {questionBankVisibilityLabel(bank.visibility)}
-              </span>
-              <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                {bankMemberRoleLabel(currentUserRole ?? "viewer")}
-              </span>
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              {bank.name}
-            </h1>
-            <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Manage explicit bank membership. Classroom membership does not
-              grant access to this Question Bank.
-            </p>
-          </div>
-          <TeacherWorkspaceNav />
-          <div className="flex flex-wrap gap-2">
+    <BankWorkbenchPage>
+      <BankHeroPanel
+        actions={
+          <>
             <Button asChild variant="outline">
               <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link href="/teacher/banks/join">Join another bank</Link>
-            </Button>
-          </div>
-        </div>
-      </section>
+            <BankQuickAction href="/teacher/banks/join" icon={Share2}>
+              Join another bank
+            </BankQuickAction>
+          </>
+        }
+        badges={
+          <>
+            <BankBadge tone="sky">
+              {questionBankVisibilityLabel(bank.visibility)}
+            </BankBadge>
+            <BankBadge tone="blue">
+              {bankMemberRoleLabel(currentUserRole ?? "viewer")}
+            </BankBadge>
+          </>
+        }
+        eyebrow="Members and share codes"
+        title={bank.name}
+      >
+        <p>
+          Manage explicit bank membership. Classroom membership does not grant
+          access to this Question Bank.
+        </p>
+      </BankHeroPanel>
+
+      <TeacherWorkspaceNav />
+      <BankRouteTabs bankId={bank.id} />
 
       {query.saved ? (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
@@ -140,9 +153,30 @@ export default async function TeacherBankMembersPage({
         </section>
       ) : null}
 
+      <section className="grid gap-3 md:grid-cols-3">
+        <BankMetricCard
+          description="Active teacher collaborators on this bank."
+          icon={Users}
+          label="Active members"
+          value={activeMembers.length}
+        />
+        <BankMetricCard
+          description="Current join codes that can add teachers."
+          icon={KeyRound}
+          label="Active codes"
+          value={activeShareCodes.length}
+        />
+        <BankMetricCard
+          description="Only owners can create codes or manage roles."
+          icon={Share2}
+          label="Your access"
+          value={canManage ? "Owner controls" : "Read-only controls"}
+        />
+      </section>
+
       {query.newCode ? (
-        <section className="teacher-panel border-sky-200 bg-sky-50/70 p-5">
-          <p className="teacher-eyebrow">Copy now</p>
+        <section className="rounded-lg border border-sky-200 bg-sky-50/70 p-5 shadow-sm">
+          <p className="student-eyebrow">Copy now</p>
           <h2 className="mt-2 text-xl font-bold text-slate-950">
             New share code created
           </h2>
@@ -157,14 +191,11 @@ export default async function TeacherBankMembersPage({
       ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
-        <article className="teacher-panel overflow-hidden">
-          <div className="border-b border-slate-200 bg-white/70 p-5">
-            <h2 className="text-xl font-bold text-slate-950">Members</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Owners can update collaborators between viewer and editor, or
-              remove access. At least one owner must remain active.
-            </p>
-          </div>
+        <article className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
+          <BankSectionHeader
+            description="Owners can update collaborators between viewer and editor, or remove access. At least one owner must remain active."
+            title="Members"
+          />
           <div className="divide-y divide-slate-100">
             {members.map((member) => {
               const isOwner = member.role === "owner";
@@ -224,7 +255,7 @@ export default async function TeacherBankMembersPage({
         </article>
 
         <aside className="space-y-4">
-          <section className="teacher-panel p-5">
+          <section className="rounded-lg border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
             <h2 className="text-lg font-bold text-slate-950">
               Owner-controlled sharing
             </h2>
@@ -257,7 +288,7 @@ export default async function TeacherBankMembersPage({
             )}
           </section>
 
-          <section className="teacher-panel p-5">
+          <section className="rounded-lg border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
             <h2 className="text-lg font-bold text-slate-950">
               Active share codes
             </h2>
@@ -308,6 +339,6 @@ export default async function TeacherBankMembersPage({
           </section>
         </aside>
       </section>
-    </main>
+    </BankWorkbenchPage>
   );
 }

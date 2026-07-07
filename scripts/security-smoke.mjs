@@ -309,7 +309,7 @@ assert(
   "Course Builder bridge UI must expose teacher draft/assign choices, Review Draft blockers, and assignment source traceability",
 );
 assert(
-  teacherHomePage.includes("Teacher Workspace") &&
+    teacherHomePage.includes("Teacher Workspace") &&
     teacherHomePage.includes("Start with a Question Bank") &&
     teacherHomePage.includes("review imported content") &&
     teacherHomePage.includes("Bank-first teacher workflow") &&
@@ -324,20 +324,30 @@ assert(
     teacherWorkspaceNav.includes("Progress") &&
     !teacherWorkspaceNav.includes("/admin/imports/pdf") &&
     !teacherWorkspaceNav.includes("/admin/review") &&
-    teacherBanksPage.includes("Your teacher-owned Question Banks") &&
+    teacherBanksPage.includes("Question Bank Library") &&
+    teacherBanksPage.includes("Join Bank by Code") &&
+    teacherBanksPage.includes("Assignment Ready") &&
     teacherBanksPage.includes("Create Question Bank") &&
     teacherBanksPage.includes("Question Bank tables are not available yet") &&
     teacherBankNewPage.includes("action={createQuestionBank}") &&
     teacherBankNewPage.includes("Creating a bank creates your owner membership only") &&
     teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
-    teacherBankDetailPage.includes("Import material") &&
+    teacherBankDetailPage.includes("Question Bank operating surface") &&
+    teacherBankDetailPage.includes("BankRouteTabs") &&
+    teacherBankDetailPage.includes("Import Material") &&
     teacherBankDetailPage.includes("Create assignment") &&
     teacherBankDetailPage.includes("Assignments expose selected") &&
+    teacherBankImportsPage.includes("AI Parsing-first workflow") &&
+    teacherBankImportsPage.includes("Advanced / developer import fixture") &&
     teacherBankImportsPage.includes("Create bank Review Drafts") &&
-    teacherBankImportsPage.includes("stay private until") &&
+    teacherBankImportsPage.includes("Drafts stay") &&
+    teacherBankReviewPage.includes("Approve drafts into this bank") &&
     teacherBankReviewPage.includes("Approve into bank") &&
-    teacherBankReviewPage.includes("public library") &&
-    teacherBankQuestionsPage.includes("These questions are bank-scoped") &&
+    teacherBankReviewPage.includes("not globally published") &&
+    teacherBankQuestionsPage.includes("Question database") &&
+    teacherBankQuestionsPage.includes("Taxonomy / knowledge point") &&
+    teacherBankQuestionsPage.includes("not public/global questions") &&
+    teacherBankQuestionsPage.includes("Assignment ready") &&
     teacherBankDetailPage.includes("Manage members and share codes") &&
     teacherBankJoinPage.includes("action={joinQuestionBankByCode}") &&
     teacherBankJoinPage.includes("Joining a bank is separate from") &&

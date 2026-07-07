@@ -1,5 +1,7 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { notFound } from "next/navigation";
+
+import { BookOpen, ClipboardCheck, Tags, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
@@ -13,17 +15,34 @@ import {
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 
+import {
+  bankActionIcons,
+  BankBadge,
+  BankHeroPanel,
+  BankMetricCard,
+  BankQuickAction,
+  BankRouteTabs,
+  BankSectionHeader,
+  BankWorkbenchPage,
+} from "../../bank-ui";
+
 export const dynamic = "force-dynamic";
 
 function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString() : "Unknown";
+  if (!value) return "Unknown";
+
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function SetupNeededState() {
   return (
-    <main className="teacher-shell space-y-6">
-      <section className="teacher-panel p-6">
-        <p className="teacher-eyebrow">Setup needed</p>
+    <BankWorkbenchPage>
+      <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
+        <p className="student-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
           Bank questions are not available yet.
         </h1>
@@ -34,7 +53,7 @@ function SetupNeededState() {
           <Link href="/teacher/banks">Back to Banks / Library</Link>
         </Button>
       </section>
-    </main>
+    </BankWorkbenchPage>
   );
 }
 
@@ -69,95 +88,187 @@ export default async function TeacherBankQuestionsPage({
   }
 
   const { bank, currentUserRole } = detail;
+  const assignmentReadyCount = questions.filter(
+    (row) => row.status === "active" && row.question?.status === "draft",
+  ).length;
+  const taggedCount = questions.filter((row) => row.tagSummaries.length).length;
 
   return (
-    <main className="teacher-shell space-y-6">
-      <section className="teacher-hero">
-        <div className="space-y-5">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="teacher-eyebrow">Bank Questions</span>
-              <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                {questionBankVisibilityLabel(bank.visibility)}
-              </span>
-              <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                {bankMemberRoleLabel(currentUserRole ?? "viewer")}
-              </span>
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Reviewed content in {bank.name}
-            </h1>
-            <p className="max-w-3xl text-base leading-7 text-slate-600">
-              These questions are bank-scoped. Assignments expose selected
-              items only.
-            </p>
-          </div>
-          <TeacherWorkspaceNav />
-          <div className="flex flex-wrap gap-2">
+    <BankWorkbenchPage>
+      <BankHeroPanel
+        actions={
+          <>
             <Button asChild variant="outline">
               <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}/imports`}>Import material</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}/review`}>Review Drafts</Link>
-            </Button>
-          </div>
-        </div>
+            <BankQuickAction
+              href={`/teacher/banks/${bank.id}/assignments/new`}
+              icon={bankActionIcons.assignment}
+              variant={questions.length ? "default" : "outline"}
+            >
+              Create assignment
+            </BankQuickAction>
+          </>
+        }
+        badges={
+          <>
+            <BankBadge tone="sky">
+              {questionBankVisibilityLabel(bank.visibility)}
+            </BankBadge>
+            <BankBadge tone="blue">
+              {bankMemberRoleLabel(currentUserRole ?? "viewer")}
+            </BankBadge>
+          </>
+        }
+        eyebrow="Question database"
+        title={`Reviewed content in ${bank.name}`}
+      >
+        <p>
+          These questions belong to this bank through explicit bank membership.
+          They are not public/global questions, and unreviewed drafts are not
+          assignment-ready.
+        </p>
+      </BankHeroPanel>
+
+      <TeacherWorkspaceNav />
+      <BankRouteTabs bankId={bank.id} />
+
+      <section className="grid gap-3 md:grid-cols-4">
+        <BankMetricCard
+          description="Active approved rows in this repository."
+          icon={BookOpen}
+          label="Bank questions"
+          value={questions.length}
+        />
+        <BankMetricCard
+          description="Rows that can be selected for delivery."
+          icon={ClipboardCheck}
+          label="Assignment Ready"
+          value={assignmentReadyCount}
+        />
+        <BankMetricCard
+          description="Questions with taxonomy grounding attached."
+          icon={Tags}
+          label="Tagged"
+          value={taggedCount}
+        />
+        <BankMetricCard
+          description="Private bank, shared, organization, or public review."
+          icon={bankActionIcons.bank}
+          label="Visibility"
+          value={questionBankVisibilityLabel(bank.visibility)}
+        />
       </section>
 
-      <section className="teacher-panel overflow-hidden">
-        <div className="border-b border-slate-200 bg-white/70 p-5">
-          <h2 className="text-xl font-bold text-slate-950">
-            Active bank questions
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Students see assigned items only. Bank membership remains separate
-            from assignment delivery.
-          </p>
-        </div>
+      <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
+        <BankSectionHeader
+          action={
+            <BankQuickAction
+              href={`/teacher/banks/${bank.id}/imports`}
+              icon={Upload}
+            >
+              Import material
+            </BankQuickAction>
+          }
+          description="Use this as the bank question database. Source lineage, taxonomy status, and assignment readiness stay visible before classroom delivery."
+          title="Active bank questions"
+        />
         <div className="divide-y divide-slate-100">
           {questions.length ? (
             questions.map((row) => {
               const question = row.question;
+              const difficulty = question?.difficulty_rating
+                ? `Difficulty ${question.difficulty_rating}`
+                : "Not set";
 
               return (
                 <article className="space-y-3 p-5" key={row.bank_question_id}>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                          Bank-scoped
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          {row.source_kind}
-                        </span>
+                        <BankBadge tone="sky">Bank-scoped</BankBadge>
+                        <BankBadge>{row.source_kind}</BankBadge>
                         {question ? (
-                          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                            {question.status}
-                          </span>
+                          <BankBadge tone="blue">{question.status}</BankBadge>
                         ) : null}
+                        <BankBadge tone="indigo">Assignment ready</BankBadge>
                       </div>
                       <h3 className="mt-2 text-lg font-bold text-slate-950">
                         {question?.title ?? "Question unavailable"}
                       </h3>
                       {question ? (
-                        <p className="mt-1 break-all text-xs text-slate-500">
-                          {question.question_code} - {question.question_type} -
-                          difficulty {question.difficulty_rating}
-                        </p>
+                        <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          {[
+                            ["Type", question.question_type],
+                            ["Difficulty", difficulty],
+                            ["Visibility", question.visibility],
+                            ["Added", formatDate(row.added_at)],
+                          ].map(([label, value]) => (
+                            <div
+                              className="rounded-lg border border-slate-200 bg-slate-50/70 p-3"
+                              key={label}
+                            >
+                              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                {label}
+                              </dt>
+                              <dd className="mt-1 break-words text-sm font-semibold text-slate-950">
+                                {value}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
                       ) : null}
-                      <p className="mt-2 text-xs text-slate-500">
-                        Added {formatDate(row.added_at)}
+                    </div>
+                    {question ? (
+                      <Button asChild variant="outline">
+                        <Link href={`/teacher/banks/${bank.id}/assignments/new`}>
+                          Use in assignment
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-3 lg:grid-cols-[1fr_0.8fr]">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Taxonomy / knowledge point
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {row.tagSummaries.length ? (
+                          row.tagSummaries.slice(0, 8).map((tag) => (
+                            <span
+                              className="inline-flex max-w-full flex-col rounded-lg border border-sky-100 bg-sky-50 px-2.5 py-1 text-xs text-sky-950"
+                              key={`${row.bank_question_id}-${tag.tag_id}`}
+                            >
+                              <span className="font-semibold">
+                                {tag.label ?? "Taxonomy tag"}
+                              </span>
+                              <span className="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-sky-700">
+                                {tag.facet_key ?? "facet"} Â· {tag.review_status}
+                              </span>
+                            </span>
+                          ))
+                        ) : (
+                          <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                            Not tagged yet
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Source lineage
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {question?.source_kind || row.source_kind}
+                      </p>
+                      <p className="mt-1 break-all text-xs text-slate-500">
+                        {question?.source_review_item_id
+                          ? `Review Draft reference ${question.source_review_item_id}`
+                          : "Source Review Draft not attached"}
                       </p>
                     </div>
                   </div>
-                  {question?.source_review_item_id ? (
-                    <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                      Source Review Draft: {question.source_review_item_id}
-                    </p>
-                  ) : null}
                 </article>
               );
             })
@@ -180,6 +291,6 @@ export default async function TeacherBankQuestionsPage({
           )}
         </div>
       </section>
-    </main>
+    </BankWorkbenchPage>
   );
 }

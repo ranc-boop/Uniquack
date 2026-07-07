@@ -63,8 +63,8 @@ await checkAdminRoute("/admin/blueprints/review", "Blueprint Review Queue");
 await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library");
 await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
 await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
+await checkAdminRoute("/teacher/banks", "Question Bank Library");
 await checkAdminRoute("/teacher", "Teacher Workspace");
-await checkAdminRoute("/teacher/banks", "Your teacher-owned Question Banks");
 await checkAdminRoute("/teacher/banks/new", "Start a teacher-owned content library");
 await checkAdminRoute("/teacher/banks/join", "Join a shared Question Bank");
 await checkAdminRoute("/teacher/ai-parsing", "AI Parsing");
@@ -163,19 +163,29 @@ assert(
     teacherWorkspaceNav.includes("Progress") &&
     !teacherWorkspaceNav.includes("/admin/imports/pdf") &&
     !teacherWorkspaceNav.includes("/admin/review") &&
-    teacherBanksPage.includes("Your teacher-owned Question Banks") &&
+    teacherBanksPage.includes("Question Bank Library") &&
+    teacherBanksPage.includes("Join Bank by Code") &&
+    teacherBanksPage.includes("Assignment Ready") &&
     teacherBanksPage.includes("Create Question Bank") &&
     teacherBankNewPage.includes("action={createQuestionBank}") &&
     teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
-    teacherBankDetailPage.includes("Import material") &&
+    teacherBankDetailPage.includes("Question Bank operating surface") &&
+    teacherBankDetailPage.includes("BankRouteTabs") &&
+    teacherBankDetailPage.includes("Import Material") &&
     teacherBankDetailPage.includes("Create assignment") &&
     teacherBankDetailPage.includes("Assignments expose selected") &&
     teacherBankDetailPage.includes("Review Drafts") &&
+    teacherBankImportsPage.includes("AI Parsing-first workflow") &&
+    teacherBankImportsPage.includes("Advanced / developer import fixture") &&
     teacherBankImportsPage.includes("Create bank Review Drafts") &&
-    teacherBankImportsPage.includes("stay private until") &&
+    teacherBankImportsPage.includes("Drafts stay") &&
+    teacherBankReviewPage.includes("Approve drafts into this bank") &&
     teacherBankReviewPage.includes("Approve into bank") &&
-    teacherBankReviewPage.includes("public library") &&
-    teacherBankQuestionsPage.includes("These questions are bank-scoped") &&
+    teacherBankReviewPage.includes("not globally published") &&
+    teacherBankQuestionsPage.includes("Question database") &&
+    teacherBankQuestionsPage.includes("Taxonomy / knowledge point") &&
+    teacherBankQuestionsPage.includes("not public/global questions") &&
+    teacherBankQuestionsPage.includes("Assignment ready") &&
     teacherBankDetailPage.includes("Manage members and share codes") &&
     teacherBankActions.includes('rpc("create_question_bank"') &&
     teacherBankActions.includes('rpc("create_bank_share_code"') &&

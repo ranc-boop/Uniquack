@@ -5,27 +5,36 @@ import type {
   BankMember,
   BankMemberRole,
   BankShareCode,
+  QuestionTaxonomyAssignment,
   Profile,
   Question,
   QuestionBank,
   QuestionBankStatus,
   QuestionBankVisibility,
+  TaxonomyNode,
+  TaxonomyReviewStatus,
 } from "@/types/database";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export type TeacherQuestionBankSummary = QuestionBank & {
   activeMemberCount: number;
+  assignmentReadyCount: number;
+  importBatchCount: number;
   membershipRole: BankMemberRole;
   questionCount: number;
+  reviewDraftCount: number;
 };
 
 export type TeacherQuestionBankDetail = {
   activeMemberCount: number;
+  assignmentReadyCount: number;
   bank: QuestionBank;
   currentUserRole: BankMemberRole | null;
+  importBatchCount: number;
   members: BankMemberWithProfile[];
   questionCount: number;
+  reviewDraftCount: number;
 };
 
 export type BankMemberWithProfile = BankMember & {
@@ -93,6 +102,15 @@ export type BankApprovedQuestion = {
   > | null;
   source_kind: string;
   status: string;
+  tagSummaries: BankQuestionTaxonomySummary[];
+};
+
+export type BankQuestionTaxonomySummary = Pick<
+  QuestionTaxonomyAssignment,
+  "review_status" | "tag_id"
+> & {
+  facet_key: string | null;
+  label: string | null;
 };
 
 export class QuestionBankSchemaMissingError extends Error {
@@ -123,6 +141,24 @@ function countByBankId(rows: Array<{ bank_id: string }> | null | undefined) {
 
   for (const row of rows ?? []) {
     counts.set(row.bank_id, (counts.get(row.bank_id) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
+function countByNullableBankId(
+  rows: Array<{ bank_id?: string | null; owner_bank_id?: string | null; target_bank_id?: string | null }> | null | undefined,
+) {
+  const counts = new Map<string, number>();
+
+  for (const row of rows ?? []) {
+    const bankId = row.bank_id ?? row.owner_bank_id ?? row.target_bank_id;
+
+    if (!bankId) {
+      continue;
+    }
+
+    counts.set(bankId, (counts.get(bankId) ?? 0) + 1);
   }
 
   return counts;
@@ -194,8 +230,33 @@ export async function listTeacherQuestionBanks({
     throw new Error(memberCountError.message);
   }
 
+  const { data: reviewDraftRows, error: reviewDraftError } = await supabase
+    .from("questions")
+    .select("owner_bank_id")
+    .in("owner_bank_id", bankIds)
+    .eq("status", "draft");
+
+  assertQuestionBankSchema(reviewDraftError);
+
+  if (reviewDraftError) {
+    throw new Error(reviewDraftError.message);
+  }
+
+  const { data: importRows, error: importError } = await supabase
+    .from("import_batches")
+    .select("target_bank_id")
+    .in("target_bank_id", bankIds);
+
+  assertQuestionBankSchema(importError);
+
+  if (importError) {
+    throw new Error(importError.message);
+  }
+
   const questionCounts = countByBankId(bankQuestionRows);
   const memberCounts = countByBankId(memberRows);
+  const reviewDraftCounts = countByNullableBankId(reviewDraftRows);
+  const importCounts = countByNullableBankId(importRows);
 
   return (banks ?? []).map((bank) => {
     const membership = membershipByBankId.get(bank.id);
@@ -203,8 +264,11 @@ export async function listTeacherQuestionBanks({
     return {
       ...bank,
       activeMemberCount: memberCounts.get(bank.id) ?? 0,
+      assignmentReadyCount: questionCounts.get(bank.id) ?? 0,
+      importBatchCount: importCounts.get(bank.id) ?? 0,
       membershipRole: membership?.role ?? "viewer",
       questionCount: questionCounts.get(bank.id) ?? 0,
+      reviewDraftCount: reviewDraftCounts.get(bank.id) ?? 0,
     } satisfies TeacherQuestionBankSummary;
   });
 }
@@ -260,6 +324,29 @@ export async function getTeacherQuestionBankDetail({
     throw new Error(questionError.message);
   }
 
+  const { data: reviewDraftRows, error: reviewDraftError } = await supabase
+    .from("questions")
+    .select("id")
+    .eq("owner_bank_id", bankId)
+    .eq("status", "draft");
+
+  assertQuestionBankSchema(reviewDraftError);
+
+  if (reviewDraftError) {
+    throw new Error(reviewDraftError.message);
+  }
+
+  const { data: importRows, error: importError } = await supabase
+    .from("import_batches")
+    .select("id")
+    .eq("target_bank_id", bankId);
+
+  assertQuestionBankSchema(importError);
+
+  if (importError) {
+    throw new Error(importError.message);
+  }
+
   const userIds = Array.from(new Set((members ?? []).map((member) => member.user_id)));
   let profilesById = new Map<string, BankMemberWithProfile["profile"]>();
 
@@ -286,11 +373,14 @@ export async function getTeacherQuestionBankDetail({
   return {
     activeMemberCount:
       members?.filter((member) => member.status === "active").length ?? 0,
+    assignmentReadyCount: bankQuestionRows?.length ?? 0,
     bank,
     currentUserRole:
       members?.find((member) => member.user_id === profileId)?.role ?? null,
+    importBatchCount: importRows?.length ?? 0,
     members: membersWithProfiles,
     questionCount: bankQuestionRows?.length ?? 0,
+    reviewDraftCount: reviewDraftRows?.length ?? 0,
   } satisfies TeacherQuestionBankDetail;
 }
 
@@ -440,6 +530,61 @@ export async function listBankApprovedQuestions({
     throw new Error(error.message);
   }
 
+  const questionIds = (data ?? [])
+    .map((row) => (Array.isArray(row.question) ? row.question[0] : row.question)?.id)
+    .filter((questionId): questionId is string => Boolean(questionId));
+
+  const tagSummariesByQuestionId = new Map<string, BankQuestionTaxonomySummary[]>();
+
+  if (questionIds.length) {
+    const { data: assignments, error: assignmentError } = await supabase
+      .from("question_taxonomy_assignments")
+      .select("question_id, tag_id, review_status")
+      .in("question_id", questionIds)
+      .limit(400);
+
+    if (assignmentError) {
+      throw new Error(assignmentError.message);
+    }
+
+    const tagIds = Array.from(
+      new Set((assignments ?? []).map((assignment) => assignment.tag_id)),
+    );
+    let taxonomyNodesById = new Map<
+      string,
+      Pick<TaxonomyNode, "facet_key" | "label" | "tag_id">
+    >();
+
+    if (tagIds.length) {
+      const { data: taxonomyNodes, error: taxonomyError } = await supabase
+        .from("taxonomy_nodes")
+        .select("tag_id, label, facet_key")
+        .in("tag_id", tagIds)
+        .limit(400);
+
+      if (taxonomyError) {
+        throw new Error(taxonomyError.message);
+      }
+
+      taxonomyNodesById = new Map(
+        (taxonomyNodes ?? []).map((node) => [node.tag_id, node]),
+      );
+    }
+
+    for (const assignment of assignments ?? []) {
+      const node = taxonomyNodesById.get(assignment.tag_id);
+      const summaries = tagSummariesByQuestionId.get(assignment.question_id) ?? [];
+
+      summaries.push({
+        facet_key: node?.facet_key ?? null,
+        label: node?.label ?? null,
+        review_status: assignment.review_status as TaxonomyReviewStatus,
+        tag_id: assignment.tag_id,
+      });
+      tagSummariesByQuestionId.set(assignment.question_id, summaries);
+    }
+  }
+
   return (data ?? []).map((row) => ({
     added_at: row.added_at,
     bank_question_id: row.id,
@@ -447,6 +592,9 @@ export async function listBankApprovedQuestions({
     question: Array.isArray(row.question) ? row.question[0] : row.question,
     source_kind: row.source_kind,
     status: row.status,
+    tagSummaries: tagSummariesByQuestionId.get(
+      (Array.isArray(row.question) ? row.question[0] : row.question)?.id ?? "",
+    ) ?? [],
   })) as BankApprovedQuestion[];
 }
 

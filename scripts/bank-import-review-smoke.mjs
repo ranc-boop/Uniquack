@@ -137,10 +137,11 @@ async function main() {
     "bank import review migration is missing scope columns, approval RPC, or bank read policy",
   );
   assert(
-    detailPage.includes("Import material") &&
+    detailPage.includes("Import Material") &&
+      importsPage.includes("AI Parsing-first workflow") &&
       importsPage.includes("Create bank Review Drafts") &&
       reviewPage.includes("Approve into bank") &&
-      questionsPage.includes("These questions are bank-scoped") &&
+      questionsPage.includes("not public/global questions") &&
       bankActions.includes('rpc("approve_bank_review_question"'),
     "bank import/review routes are missing expected workflow copy or action wiring",
   );

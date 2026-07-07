@@ -127,8 +127,8 @@ async function runStaticChecks() {
   assert(
     teacherBankReviewPage.includes("Approve drafts into this bank") &&
       teacherBankReviewPage.includes("public library") &&
-      teacherBankQuestionsPage.includes("These questions are bank-scoped") &&
-      teacherBankQuestionsPage.includes("Assignments expose selected"),
+      teacherBankQuestionsPage.includes("not public/global questions") &&
+      teacherBankQuestionsPage.includes("Assignment ready"),
     "teacher bank pages must describe bank-scoped approval and assignment-only visibility",
   );
   assert(
