@@ -125,6 +125,11 @@ const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/
 const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
 const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
 const teacherBankAssignmentNewPage = await read("src/app/teacher/banks/[bankId]/assignments/new/page.tsx");
+const teacherBlueprintPage = await read("src/app/teacher/blueprints/page.tsx");
+const teacherBlueprintNewPage = await read("src/app/teacher/blueprints/new/page.tsx");
+const teacherBlueprintDetailPage = await read("src/app/teacher/blueprints/[blueprintId]/page.tsx");
+const teacherBankBlueprintsPage = await read("src/app/teacher/banks/[bankId]/blueprints/page.tsx");
+const teacherBlueprintActions = await read("src/app/teacher/blueprints/actions.ts");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const questionBankHelpers = await read("src/lib/question-banks.ts");
 const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
@@ -150,6 +155,9 @@ const assignmentFromBankMigration = await read(
 );
 const teacherRoleBoundaryMigration = await read(
   "supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql",
+);
+const blueprintLibraryMigration = await read(
+  "supabase/clean-migrations/0031_blueprint_library_foundation.sql",
 );
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
@@ -384,6 +392,21 @@ assert(
     teacherBankAssignmentNewPage.includes("Assign to class") &&
     teacherBankAssignmentNewPage.includes("Save draft") &&
     teacherBankAssignmentNewPage.includes("server rechecks bank membership") &&
+    teacherBlueprintPage.includes("Blueprint Library") &&
+    teacherBlueprintPage.includes("Blueprints are reusable planning/package assets") &&
+    teacherBlueprintPage.includes("Create Blueprint") &&
+    teacherBlueprintPage.includes("New Folder") &&
+    teacherBlueprintNewPage.includes("This form only creates the library asset") &&
+    teacherBlueprintDetailPage.includes("BlueprintWorkflowPanel") &&
+    teacherBankBlueprintsPage.includes("Blueprint links for") &&
+    teacherBankBlueprintsPage.includes("Create Blueprint from this bank") &&
+    teacherBlueprintActions.includes("requireTeacher") &&
+    teacherBlueprintActions.includes("generation_ready: false") &&
+    !teacherBlueprintActions.includes("executeDeepSeek") &&
+    !teacherBlueprintActions.includes("callAIPdfExtractionProvider") &&
+    blueprintLibraryMigration.includes("create table if not exists public.bank_blueprints") &&
+    blueprintLibraryMigration.includes("private.can_read_question_blueprint") &&
+    !blueprintLibraryMigration.includes("to anon") &&
     !teacherBankActions.includes("AI_PROVIDER") &&
     !teacherBankActions.includes("provider") &&
     questionBankHelpers.includes("listTeacherQuestionBanks") &&
