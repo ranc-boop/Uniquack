@@ -134,7 +134,12 @@ const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const questionBankHelpers = await read("src/lib/question-banks.ts");
 const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+const teacherClassroomUi = await read("src/app/teacher/classrooms/classroom-ui.tsx");
+const teacherClassroomPeoplePage = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
+const teacherClassroomAnalyticsPage = await read("src/app/teacher/classrooms/[id]/analytics/page.tsx");
+const teacherClassroomBlueprintsPage = await read("src/app/teacher/classrooms/[id]/blueprints/page.tsx");
+const teacherClassroomSettingsPage = await read("src/app/teacher/classrooms/[id]/settings/page.tsx");
 const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/assignments/new/page.tsx");
 const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
 const assignmentSelectionSummary = await read("src/components/teacher/assignment-selection-summary.tsx");
@@ -314,7 +319,6 @@ assert(
     courseBuilderBridgePage.includes("bank review") &&
     courseBuilderBridgePage.includes("does not add") &&
     courseBuilderBridgePage.includes("provider calls") &&
-    teacherClassroomDetailPage.includes("Course Builder bridge") &&
     teacherAssignmentDetailPage.includes("Assignment source"),
   "Course Builder bridge UI must expose teacher draft/assign choices, Review Draft blockers, and assignment source traceability",
 );
@@ -476,22 +480,23 @@ assert(
     authGuards.includes("next=/teacher") &&
     authActions.includes('redirect("/teacher")') &&
     authNav.includes("Teacher Workspace preview") &&
-    teacherClassroomPage.includes("Your classrooms") &&
-    teacherClassroomPage.includes("Create classroom") &&
-    teacherClassroomPage.includes("Join codes stay available") &&
+    teacherClassroomPage.includes("Your classes") &&
+    teacherClassroomPage.includes("Create Class") &&
+    teacherClassroomUi.includes("Publish to classes") &&
+    teacherClassroomPage.includes("Class completion") &&
     teacherClassroomPage.includes("Delivery layer") &&
-    teacherClassroomPage.includes("Teacher banks remain the") &&
-    teacherClassroomDetailPage.includes("Roster") &&
-    teacherClassroomDetailPage.includes("Students do not gain access") &&
+    teacherClassroomPage.includes("Classes are roster and delivery spaces") &&
+    teacherClassroomDetailPage.includes("Class delivery snapshot") &&
+    teacherClassroomDetailPage.includes("Students can join the roster") &&
     teacherClassroomDetailPage.includes("Active join code") &&
-    teacherClassroomDetailPage.includes("Overview") &&
-    teacherClassroomDetailPage.includes("People") &&
-    teacherClassroomDetailPage.includes("Analytics / Feedback") &&
-    teacherClassroomDetailPage.includes("Linked Blueprints") &&
-    teacherClassroomDetailPage.includes("Settings") &&
-    teacherClassroomDetailPage.includes("New assignment") &&
+    teacherClassroomDetailPage.includes("Students needing attention") &&
     teacherClassroomDetailPage.includes("View assignments") &&
-    teacherClassroomDetailPage.includes("Archived") &&
+    teacherClassroomPeoplePage.includes("Joining a class does not grant access") &&
+    teacherClassroomPeoplePage.includes("Remove from class") &&
+    teacherClassroomAnalyticsPage.includes("Analytics / Feedback") &&
+    teacherClassroomAnalyticsPage.includes("Taxonomy mastery") &&
+    teacherClassroomBlueprintsPage.includes("Blueprints linked to this class will appear here") &&
+    teacherClassroomSettingsPage.includes("Archive and delete controls are not enabled") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
     teacherAssignmentsPage.includes("Assignment visibility") &&
     teacherAssignmentsPage.includes("global publishing") &&

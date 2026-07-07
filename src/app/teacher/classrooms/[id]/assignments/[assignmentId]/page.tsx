@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  ClassroomRouteTabs,
+  ClassroomSafetyStrip,
+} from "@/app/teacher/classrooms/classroom-ui";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -161,6 +165,9 @@ export default async function TeacherAssignmentDetailPage({
           <TeacherWorkspaceNav />
         </div>
       </section>
+
+      <ClassroomRouteTabs classroomId={assignment.classroom.id} />
+      <ClassroomSafetyStrip />
 
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
         <strong className="font-bold">Assignment-only visibility:</strong> this

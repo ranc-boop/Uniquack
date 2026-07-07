@@ -2,6 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createTeacherAssignment } from "@/app/teacher/classrooms/[id]/assignments/actions";
+import {
+  ClassroomRouteTabs,
+  ClassroomSafetyStrip,
+} from "@/app/teacher/classrooms/classroom-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,6 +86,9 @@ export default async function NewTeacherAssignmentPage({
           <TeacherWorkspaceNav />
         </div>
       </section>
+
+      <ClassroomRouteTabs classroomId={classroom.id} />
+      <ClassroomSafetyStrip />
 
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
         <strong className="font-bold">Bank-first workflow:</strong> create new

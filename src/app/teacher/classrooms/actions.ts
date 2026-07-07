@@ -21,6 +21,11 @@ const classroomCreateSchema = z.object({
   subject: z.string().trim().max(120).optional().default(""),
 });
 
+const classroomStudentRemoveSchema = z.object({
+  classroomId: z.string().uuid(),
+  memberId: z.string().uuid(),
+});
+
 export async function createClassroom(formData: FormData) {
   try {
     const profile = await requireTeacher();
@@ -65,5 +70,51 @@ export async function createClassroom(formData: FormData) {
     );
   } catch (error) {
     redirectWithError("/teacher/classrooms", formatActionError(error));
+  }
+}
+
+export async function removeClassroomStudent(formData: FormData) {
+  const fallbackClassroomId = String(formData.get("classroomId") ?? "");
+
+  try {
+    await requireTeacher();
+    const parsed = classroomStudentRemoveSchema.parse(Object.fromEntries(formData));
+    const supabase = await createClient();
+    const { data: member, error: memberError } = await supabase
+      .from("classroom_members")
+      .select("id, classroom_id, role, status")
+      .eq("id", parsed.memberId)
+      .eq("classroom_id", parsed.classroomId)
+      .single();
+
+    if (memberError) {
+      throw new Error(memberError.message);
+    }
+    if (member.role !== "student") {
+      throw new Error("Only student memberships can be removed from this action.");
+    }
+
+    const { error: updateError } = await supabase
+      .from("classroom_members")
+      .update({ status: "removed" })
+      .eq("id", parsed.memberId)
+      .eq("classroom_id", parsed.classroomId)
+      .eq("role", "student");
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    revalidatePath(`/teacher/classrooms/${parsed.classroomId}`);
+    revalidatePath(`/teacher/classrooms/${parsed.classroomId}/people`);
+    redirectWithSaved(
+      `/teacher/classrooms/${parsed.classroomId}/people`,
+      "Student removed from this classroom. Their source bank access remains unchanged.",
+    );
+  } catch (error) {
+    const path = fallbackClassroomId
+      ? `/teacher/classrooms/${fallbackClassroomId}/people`
+      : "/teacher/classrooms";
+    redirectWithError(path, formatActionError(error));
   }
 }
