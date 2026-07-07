@@ -55,11 +55,11 @@ export default async function TeacherClassroomsPage({
   }
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Delivery layer</p>
+            <p className="teacher-eyebrow">Delivery layer</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Classrooms
             </h1>
@@ -95,12 +95,12 @@ export default async function TeacherClassroomsPage({
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <section className="student-panel overflow-hidden">
+        <section className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-100 p-5">
             <h2 className="text-lg font-bold text-slate-950">
               Your classrooms
             </h2>
-            <p className="student-muted">
+            <p className="teacher-muted">
               Open a classroom to manage roster and assignment delivery.
             </p>
           </div>
@@ -124,8 +124,8 @@ export default async function TeacherClassroomsPage({
                           {classroom.status}
                         </span>
                       </div>
-                      <p className="student-muted">
-                        {classroom.subject || "No subject set"} · Created{" "}
+                      <p className="teacher-muted">
+                        {classroom.subject || "No subject set"} - Created{" "}
                         {formatDate(classroom.created_at)}
                       </p>
                       {classroom.description ? (
@@ -157,12 +157,12 @@ export default async function TeacherClassroomsPage({
           )}
         </section>
 
-        <section className="student-panel p-5">
+        <section className="teacher-panel p-5">
           <h2 className="text-lg font-bold text-slate-950">
             Create classroom
           </h2>
-          <p className="student-muted">
-            Join codes are stored as hashes and shown only once after creation.
+          <p className="teacher-muted">
+            Join codes stay available to teachers on the class page and continue to validate through the hashed code path.
           </p>
           <form action={createClassroom} className="mt-5 space-y-4">
             <div className="space-y-2">

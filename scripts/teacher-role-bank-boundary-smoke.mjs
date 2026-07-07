@@ -79,6 +79,8 @@ async function runStaticChecks() {
   const adminUsersPage = await read("src/app/admin/users/page.tsx");
   const teacherNav = await read("src/components/teacher/teacher-workspace-nav.tsx");
   const teacherHome = await read("src/app/teacher/page.tsx");
+  const rootLayout = await read("src/app/layout.tsx");
+  const adminPage = await read("src/app/admin/page.tsx");
   const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
   const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
   const adminQuestionActions = await read("src/app/admin/questions/actions.ts");
@@ -94,9 +96,33 @@ async function runStaticChecks() {
   assert(
     !teacherNav.includes("/admin/imports/pdf") &&
       !teacherNav.includes("/admin/review") &&
+      !teacherNav.includes("/practice") &&
+      teacherNav.includes("Dashboard") &&
+      teacherNav.includes("Question Bank") &&
+      teacherNav.includes("AI Parsing") &&
+      teacherNav.includes("Blueprint") &&
+      teacherNav.includes("Classroom") &&
+      teacherNav.includes("Publish") &&
+      teacherNav.includes("Progress") &&
+      teacherNav.includes("/teacher/ai-parsing") &&
+      teacherNav.includes("/teacher/blueprints") &&
+      teacherNav.includes("/teacher/publish") &&
+      teacherNav.includes("/teacher/progress") &&
       teacherHome.includes("Choose a bank first") &&
-      teacherHome.includes("Open bank review"),
+      teacherHome.includes("Open bank review") &&
+      teacherHome.includes("No unreviewed draft can be assigned to students") &&
+      teacherHome.includes("Student visibility stays assignment-only"),
     "teacher workspace navigation must stay bank-first instead of pointing to admin/global review",
+  );
+  assert(
+    rootLayout.includes("teacherNavItems") &&
+      rootLayout.includes("studentNavItems") &&
+      rootLayout.includes("teacher\", \"admin\", \"super_admin"),
+    "root layout must keep separate student and teacher primary navigation",
+  );
+  assert(
+    adminPage.includes("Provider") || adminPage.includes("Admin"),
+    "admin page must remain available for platform operations",
   );
   assert(
     teacherBankReviewPage.includes("Approve drafts into this bank") &&

@@ -130,11 +130,11 @@ export default async function TeacherAssignmentDetailPage({
   }
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Assignment detail</p>
+            <p className="teacher-eyebrow">Assignment detail</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               {assignment.title}
             </h1>
@@ -236,12 +236,12 @@ export default async function TeacherAssignmentDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">
-          <section className="student-panel overflow-hidden">
+          <section className="teacher-panel overflow-hidden">
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-bold text-slate-950">
                 Student progress
               </h2>
-              <p className="student-muted">
+              <p className="teacher-muted">
                 One row per active classroom student, using assignment progress
                 and linked Practice evidence.
               </p>
@@ -332,12 +332,12 @@ export default async function TeacherAssignmentDetailPage({
             ) : null}
           </section>
 
-          <section className="student-panel overflow-hidden">
+          <section className="teacher-panel overflow-hidden">
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-bold text-slate-950">
                 Assignment items
               </h2>
-              <p className="student-muted">
+              <p className="teacher-muted">
                 These are the selected questions students receive in My Work.
                 Bank-sourced assignments do not expose the full teacher bank.
               </p>
@@ -404,7 +404,7 @@ export default async function TeacherAssignmentDetailPage({
         </div>
 
         <aside className="space-y-6">
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Status</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {assignment.status === "assigned"
@@ -440,7 +440,7 @@ export default async function TeacherAssignmentDetailPage({
           </section>
 
           {assignment.source_kind !== "manual" ? (
-            <section className="student-panel p-5">
+            <section className="teacher-panel p-5">
               <h2 className="text-lg font-bold text-slate-950">Assignment source</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 {assignment.source_kind === "question_bank"
@@ -523,7 +523,7 @@ export default async function TeacherAssignmentDetailPage({
             </section>
           ) : null}
 
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Student handoff</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Assigned status makes this work visible to active class members in
@@ -536,7 +536,7 @@ export default async function TeacherAssignmentDetailPage({
             </Button>
           </section>
 
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Student progress</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Practice sessions started from this assignment update these counts.
@@ -575,7 +575,7 @@ export default async function TeacherAssignmentDetailPage({
             </dl>
           </section>
 
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Instructions</h2>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
               {assignment.instructions || "No extra instructions."}

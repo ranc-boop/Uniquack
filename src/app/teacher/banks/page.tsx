@@ -25,8 +25,8 @@ function formatDate(value: string) {
 
 function SetupNeededState() {
   return (
-    <section className="student-panel p-6">
-      <p className="student-eyebrow">Setup needed</p>
+    <section className="teacher-panel p-6">
+      <p className="teacher-eyebrow">Setup needed</p>
       <h2 className="mt-2 text-xl font-bold text-slate-950">
         Question Bank tables are not available yet.
       </h2>
@@ -60,11 +60,11 @@ export default async function TeacherBanksPage() {
   }
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="space-y-5">
           <div className="space-y-2">
-            <p className="student-eyebrow">Banks / Library</p>
+            <p className="teacher-eyebrow">Banks / Library</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Your teacher-owned Question Banks.
             </h1>
@@ -105,7 +105,7 @@ export default async function TeacherBanksPage() {
                 banks.filter((bank) => bank.status === "active").length,
               ],
             ].map(([label, value]) => (
-              <div className="student-panel p-4" key={label}>
+              <div className="teacher-panel p-4" key={label}>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   {label}
                 </p>
@@ -119,7 +119,7 @@ export default async function TeacherBanksPage() {
           {banks.length ? (
             <section className="space-y-3">
               {banks.map((bank) => (
-                <article className="student-panel p-5" key={bank.id}>
+                <article className="teacher-panel p-5" key={bank.id}>
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
@@ -171,8 +171,8 @@ export default async function TeacherBanksPage() {
               ))}
             </section>
           ) : (
-            <section className="student-panel p-8 text-center">
-              <p className="student-eyebrow">Empty library</p>
+            <section className="teacher-panel p-8 text-center">
+              <p className="teacher-eyebrow">Empty library</p>
               <h2 className="mt-2 text-2xl font-bold text-slate-950">
                 Create your first Question Bank.
               </h2>

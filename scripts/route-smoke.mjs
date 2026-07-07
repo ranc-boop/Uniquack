@@ -63,11 +63,15 @@ await checkAdminRoute("/admin/blueprints/review", "Blueprint Review Queue");
 await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library");
 await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
 await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
-await checkAdminRoute("/teacher", "Start with your Question Bank / Library");
+await checkAdminRoute("/teacher", "Teacher Workspace");
 await checkAdminRoute("/teacher/banks", "Your teacher-owned Question Banks");
 await checkAdminRoute("/teacher/banks/new", "Start a teacher-owned content library");
 await checkAdminRoute("/teacher/banks/join", "Join a shared Question Bank");
+await checkAdminRoute("/teacher/ai-parsing", "AI Parsing");
+await checkAdminRoute("/teacher/blueprints", "Blueprint");
 await checkAdminRoute("/teacher/classrooms", "Classrooms");
+await checkAdminRoute("/teacher/publish", "Publish");
+await checkAdminRoute("/teacher/progress", "Progress");
 await checkAdminRoute("/teacher/course-builder", "Course Builder");
 await checkAdminRoute("/student/work", "My Work");
 await checkAdminRoute("/student/classrooms", "My classes");
@@ -144,15 +148,21 @@ const studentJoinClassroomPage = await read("src/app/student/classrooms/join/pag
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
 const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
 assert(
-    teacherHomePage.includes("Start by creating or joining a Question Bank") &&
-    teacherHomePage.includes("Classrooms and") &&
-    teacherHomePage.includes("assignments deliver selected bank content") &&
+    teacherHomePage.includes("Teacher Workspace") &&
+    teacherHomePage.includes("Start with a Question Bank") &&
+    teacherHomePage.includes("review imported content") &&
     teacherHomePage.includes("Bank-first teacher workflow") &&
+    teacherHomePage.includes("Student visibility stays assignment-only") &&
     teacherHomePage.includes("No unreviewed draft can be assigned to students") &&
-    teacherWorkspaceNav.includes("Banks / Library") &&
-    teacherWorkspaceNav.includes("Bank Imports") &&
-    teacherWorkspaceNav.includes("Bank Review") &&
-    teacherWorkspaceNav.includes("Classrooms") &&
+    teacherWorkspaceNav.includes("Dashboard") &&
+    teacherWorkspaceNav.includes("Question Bank") &&
+    teacherWorkspaceNav.includes("AI Parsing") &&
+    teacherWorkspaceNav.includes("Blueprint") &&
+    teacherWorkspaceNav.includes("Classroom") &&
+    teacherWorkspaceNav.includes("Publish") &&
+    teacherWorkspaceNav.includes("Progress") &&
+    !teacherWorkspaceNav.includes("/admin/imports/pdf") &&
+    !teacherWorkspaceNav.includes("/admin/review") &&
     teacherBanksPage.includes("Your teacher-owned Question Banks") &&
     teacherBanksPage.includes("Create Question Bank") &&
     teacherBankNewPage.includes("action={createQuestionBank}") &&
@@ -192,16 +202,23 @@ assert(
     teacherBankMembersPage.includes("Create share code") &&
     authActions.includes('redirect("/teacher")') &&
     authGuards.includes('redirect("/auth/login?next=/teacher")') &&
-    authNav.includes("Teacher Studio preview"),
-  "teacher runtime must expose a bank-first Teacher Studio and real bank foundation surfaces",
+    authNav.includes("Teacher Workspace preview"),
+  "teacher runtime must expose a bank-first teacher workspace and real bank foundation surfaces",
 );
-console.log("PASS teacher runtime exposes bank-first Teacher Studio and bank foundation surfaces");
+console.log("PASS teacher runtime exposes bank-first teacher workspace and bank foundation surfaces");
 assert(
   teacherClassroomsPage.includes("Delivery layer") &&
     teacherClassroomsPage.includes("Teacher banks remain the") &&
     teacherClassroomsPage.includes("Your classrooms") &&
     teacherClassroomsPage.includes("Create classroom") &&
+    teacherClassroomsPage.includes("Join codes stay available") &&
     teacherClassroomDetailPage.includes("Students do not gain access") &&
+    teacherClassroomDetailPage.includes("Active join code") &&
+    teacherClassroomDetailPage.includes("Overview") &&
+    teacherClassroomDetailPage.includes("People") &&
+    teacherClassroomDetailPage.includes("Analytics / Feedback") &&
+    teacherClassroomDetailPage.includes("Linked Blueprints") &&
+    teacherClassroomDetailPage.includes("Settings") &&
     teacherClassroomDetailPage.includes("Roster") &&
     teacherClassroomDetailPage.includes("New assignment") &&
     teacherClassroomDetailPage.includes("View assignments") &&

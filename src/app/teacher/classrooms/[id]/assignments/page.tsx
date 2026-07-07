@@ -168,12 +168,12 @@ function AssignmentSection({
   group: AssignmentGroup;
 }) {
   return (
-    <section className="student-panel overflow-hidden">
+    <section className="teacher-panel overflow-hidden">
       <div className="border-b border-slate-100 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-slate-950">{group.title}</h2>
-            <p className="student-muted">{group.description}</p>
+            <p className="teacher-muted">{group.description}</p>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
             {group.items.length}
@@ -250,11 +250,11 @@ export default async function TeacherAssignmentsPage({
       .at(-1) ?? null;
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Teacher assignments</p>
+            <p className="teacher-eyebrow">Teacher assignments</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               {classroom.name}
             </h1>
@@ -322,12 +322,12 @@ export default async function TeacherAssignmentsPage({
             ))}
           </section>
 
-          <section className="student-panel overflow-hidden">
+          <section className="teacher-panel overflow-hidden">
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-bold text-slate-950">
                 Classroom assignments
               </h2>
-              <p className="student-muted">
+              <p className="teacher-muted">
                 Drafts stay teacher-side. Assigned work is visible only to
                 active students in this class.
               </p>
@@ -347,7 +347,7 @@ export default async function TeacherAssignmentsPage({
           ))}
         </>
       ) : (
-        <section className="student-panel flex min-h-72 items-center justify-center p-8 text-center">
+        <section className="teacher-panel flex min-h-72 items-center justify-center p-8 text-center">
           <div className="max-w-md space-y-4">
             <div>
               <h2 className="text-lg font-bold text-slate-950">

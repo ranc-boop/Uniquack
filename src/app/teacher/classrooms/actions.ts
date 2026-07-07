@@ -10,9 +10,7 @@ import {
 } from "@/lib/actions/feedback";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
-  classroomJoinCodeHint,
   generateClassroomJoinCode,
-  hashClassroomJoinCode,
   resolveClassroomOrganizationId,
 } from "@/lib/classrooms";
 import { createClient } from "@/lib/supabase/server";
@@ -35,56 +33,35 @@ export async function createClassroom(formData: FormData) {
     });
     const joinCode = generateClassroomJoinCode();
 
-    const { data: classroom, error: classroomError } = await supabase
-      .from("classrooms")
-      .insert({
-        created_by: profile.id,
-        description: parsed.description || null,
-        name: parsed.name,
-        organization_id: organizationId,
-        owner_id: profile.id,
-        subject: parsed.subject || null,
-        updated_by: profile.id,
-      })
-      .select("id")
-      .single();
+    const { data: createdClassrooms, error: classroomError } = await supabase.rpc(
+      "create_teacher_classroom",
+      {
+        p_description: parsed.description || null,
+        p_join_code: joinCode,
+        p_name: parsed.name,
+        p_organization_id: organizationId,
+        p_subject: parsed.subject || null,
+      },
+    );
 
     if (classroomError) {
       throw new Error(classroomError.message);
     }
 
-    const { error: memberError } = await supabase
-      .from("classroom_members")
-      .insert({
-        classroom_id: classroom.id,
-        joined_at: new Date().toISOString(),
-        role: "teacher",
-        status: "active",
-        user_id: profile.id,
-      });
+    const createdClassroom = Array.isArray(createdClassrooms)
+      ? createdClassrooms[0]
+      : createdClassrooms;
 
-    if (memberError) {
-      throw new Error(memberError.message);
+    if (!createdClassroom?.classroom_id) {
+      throw new Error("Classroom creation did not return a classroom id.");
     }
 
-    const { error: joinCodeError } = await supabase
-      .from("classroom_join_codes")
-      .insert({
-        classroom_id: classroom.id,
-        code_hash: hashClassroomJoinCode(joinCode),
-        code_hint: classroomJoinCodeHint(joinCode),
-        created_by: profile.id,
-        status: "active",
-      });
-
-    if (joinCodeError) {
-      throw new Error(joinCodeError.message);
-    }
+    const displayCode = createdClassroom.display_code || joinCode;
 
     revalidatePath("/teacher/classrooms");
     redirectWithSaved(
-      `/teacher/classrooms/${classroom.id}?newCode=${encodeURIComponent(joinCode)}`,
-      "Classroom created. Copy the join code now.",
+      `/teacher/classrooms/${createdClassroom.classroom_id}?newCode=${encodeURIComponent(displayCode)}`,
+      "Classroom created. The join code is also available on the class page.",
     );
   } catch (error) {
     redirectWithError("/teacher/classrooms", formatActionError(error));
