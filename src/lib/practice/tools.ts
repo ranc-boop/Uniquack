@@ -743,7 +743,6 @@ export async function loadQuestionForHint({
     .from("questions")
     .select("id, question_code, title, content_html, difficulty_rating, options, question_type, source")
     .eq("id", questionId)
-    .eq("status", "published")
     .maybeSingle();
 
   if (error) {

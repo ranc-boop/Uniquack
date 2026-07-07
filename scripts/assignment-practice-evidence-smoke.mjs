@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,7 +7,8 @@ import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
+const root = resolve(__dirname, "..");
+dotenv.config({ path: resolve(root, ".env.local") });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -31,6 +33,10 @@ function summarizeSupabaseError(error) {
 function usernameToLocalEmail(username) {
   const normalized = username.trim().toLowerCase();
   return normalized.includes("@") ? normalized : `${normalized}@local.app`;
+}
+
+async function read(relativePath) {
+  return readFile(resolve(root, relativePath), "utf8");
 }
 
 async function signIn(username, password, label) {
@@ -136,6 +142,33 @@ async function main() {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }
+
+  const [
+    assignmentLinkage,
+    gradeRoute,
+    practiceClient,
+    practiceTools,
+  ] = await Promise.all([
+    read("src/lib/practice/assignment-linkage.ts"),
+    read("src/app/api/practice/grade/route.ts"),
+    read("src/components/practice/practice-agent-client.tsx"),
+    read("src/lib/practice/tools.ts"),
+  ]);
+
+  assert(
+    assignmentLinkage.includes("startAssignmentPractice") &&
+      assignmentLinkage.includes(".from(\"assignment_items\")") &&
+      assignmentLinkage.includes(".from(\"questions\")") &&
+      !assignmentLinkage.includes('.eq("status", "published")') &&
+      practiceClient.includes("/api/practice/assignments/start") &&
+      practiceClient.includes("/api/practice/grade") &&
+      practiceClient.includes("reviewFromGradeFallback") &&
+      gradeRoute.includes("persistQuestionReviewResults") &&
+      gradeRoute.includes("updateLinkedAssignmentProgressAfterPractice") &&
+      !/function loadQuestionForHint[\s\S]*?\.eq\("status",\s*"published"\)/.test(practiceTools),
+    "assignment practice runtime must load assigned bank-private questions, support hint lookup by RLS, and persist deterministic grade fallback evidence",
+  );
+  console.log("PASS assignment practice static checks cover bank-private start, hints, and grade fallback");
 
   if (!teacherUsername || !teacherPassword || !studentUsername || !studentPassword) {
     console.log(
