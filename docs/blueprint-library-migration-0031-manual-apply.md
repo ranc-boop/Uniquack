@@ -37,3 +37,11 @@ docs/blueprint-library-0031-grants-reapply.sql
 ```
 
 Do not rerun the full migration for this correction. The reapply file only grants authenticated access to the existing Blueprint Library tables and helper functions; RLS policies still enforce teacher ownership, bank membership, student blocking, and anonymous blocking.
+
+If the live smoke still fails with the same row-level-security insert error after the grant correction, run only:
+
+```text
+docs/blueprint-library-0031-policy-reapply.sql
+```
+
+That file replaces the Blueprint Library role helper and insert policies with schema-anchored checks against active `teacher`, `admin`, and `super_admin` profiles. It does not mutate application data.

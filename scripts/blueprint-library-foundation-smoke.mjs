@@ -115,19 +115,38 @@ async function runSourceSmoke() {
   const securitySmoke = await read("scripts/security-smoke.mjs");
   const rlsSmoke = await read("scripts/supabase-rls-smoke.mjs");
   const smokeAll = await read("scripts/smoke-all.mjs");
+  const grantReapply = await read("docs/blueprint-library-0031-grants-reapply.sql");
+  const policyReapply = await read("docs/blueprint-library-0031-policy-reapply.sql");
 
   assert(
     migration.includes("alter table public.question_blueprints") &&
       migration.includes("blueprint_kind") &&
       migration.includes("visibility in ('private', 'shared', 'organization', 'public')") &&
       migration.includes("create table if not exists public.bank_blueprints") &&
+      migration.includes("private.can_use_question_blueprint_library") &&
+      migration.includes("private.can_admin_question_blueprint_library") &&
       migration.includes("private.can_read_question_blueprint") &&
       migration.includes("private.can_manage_question_blueprint") &&
       migration.includes("alter table public.bank_blueprints enable row level security") &&
       migration.includes("bank_blueprints_member_read") &&
+      migration.includes("grant select, insert, update, delete on public.question_blueprint_folders to authenticated") &&
       migration.includes("added_by = auth.uid()") &&
       !migration.includes("to anon"),
     "blueprint library migration must add teacher visibility, bank links, RLS helpers, and avoid anon grants",
+  );
+
+  assert(
+    grantReapply.includes("grant select, insert, update, delete on public.question_blueprint_folders to authenticated") &&
+      grantReapply.includes("grant execute on function private.can_read_question_blueprint_folder(uuid) to authenticated") &&
+      !grantReapply.includes("insert into") &&
+      !grantReapply.includes("delete from") &&
+      policyReapply.includes("create or replace function private.can_use_question_blueprint_library()") &&
+      policyReapply.includes("profile.role in ('teacher', 'admin', 'super_admin')") &&
+      policyReapply.includes("drop policy if exists question_blueprint_folders_library_insert") &&
+      policyReapply.includes("private.can_use_question_blueprint_library()") &&
+      !policyReapply.includes("insert into") &&
+      !policyReapply.includes("delete from"),
+    "Blueprint Library reapply SQL must be copy-paste-safe and preserve teacher/admin role gates without data mutation",
   );
 
   assert(

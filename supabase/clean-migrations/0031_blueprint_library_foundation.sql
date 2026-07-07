@@ -53,6 +53,38 @@ create index if not exists bank_blueprints_bank_status_idx
 create index if not exists bank_blueprints_blueprint_idx
   on public.bank_blueprints(blueprint_id, status);
 
+create or replace function private.can_use_question_blueprint_library()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, private
+as $$
+  select exists (
+    select 1
+    from public.profiles profile
+    where profile.id = auth.uid()
+      and profile.status = 'active'
+      and profile.role in ('teacher', 'admin', 'super_admin')
+  );
+$$;
+
+create or replace function private.can_admin_question_blueprint_library()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, private
+as $$
+  select exists (
+    select 1
+    from public.profiles profile
+    where profile.id = auth.uid()
+      and profile.status = 'active'
+      and profile.role in ('admin', 'super_admin')
+  );
+$$;
+
 create or replace function private.can_read_question_blueprint(p_blueprint_id uuid)
 returns boolean
 language sql
@@ -71,7 +103,7 @@ as $$
         or blueprint.created_by = auth.uid()
         or (
           blueprint.owner_scope = 'system'
-          and private.is_teacher_or_admin()
+          and private.can_use_question_blueprint_library()
         )
         or (
           blueprint.visibility in ('shared', 'organization')
@@ -80,7 +112,7 @@ as $$
         )
         or (
           blueprint.visibility = 'public'
-          and private.is_teacher_or_admin()
+          and private.can_use_question_blueprint_library()
         )
         or (
           blueprint.source_bank_id is not null
@@ -103,8 +135,7 @@ as $$
     where blueprint.id = p_blueprint_id
       and blueprint.deleted_at is null
       and (
-        private.is_super_admin()
-        or private.is_admin()
+        private.can_admin_question_blueprint_library()
         or blueprint.owner_id = auth.uid()
         or blueprint.created_by = auth.uid()
         or (
@@ -128,8 +159,7 @@ as $$
     where folder.id = p_folder_id
       and folder.deleted_at is null
       and (
-        private.is_super_admin()
-        or private.is_admin()
+        private.can_admin_question_blueprint_library()
         or folder.owner_id = auth.uid()
         or folder.created_by = auth.uid()
         or (
@@ -139,7 +169,7 @@ as $$
         )
         or (
           folder.visibility = 'public'
-          and private.is_teacher_or_admin()
+          and private.can_use_question_blueprint_library()
         )
       )
   );
@@ -158,8 +188,7 @@ as $$
     where folder.id = p_folder_id
       and folder.deleted_at is null
       and (
-        private.is_super_admin()
-        or private.is_admin()
+        private.can_admin_question_blueprint_library()
         or folder.owner_id = auth.uid()
         or folder.created_by = auth.uid()
       )
@@ -179,9 +208,9 @@ drop policy if exists question_blueprints_library_insert on public.question_blue
 create policy question_blueprints_library_insert
 on public.question_blueprints for insert
 with check (
-  private.is_teacher_or_admin()
+  private.can_use_question_blueprint_library()
   and (
-    private.is_admin()
+    private.can_admin_question_blueprint_library()
     or owner_id = auth.uid()
     or created_by = auth.uid()
     or (
@@ -213,9 +242,9 @@ drop policy if exists question_blueprint_folders_library_insert on public.questi
 create policy question_blueprint_folders_library_insert
 on public.question_blueprint_folders for insert
 with check (
-  private.is_teacher_or_admin()
+  private.can_use_question_blueprint_library()
   and (
-    private.is_admin()
+    private.can_admin_question_blueprint_library()
     or owner_id = auth.uid()
     or created_by = auth.uid()
   )
@@ -298,6 +327,8 @@ grant select, insert, update, delete on public.question_blueprint_examples to au
 grant select, insert on public.question_blueprint_versions to authenticated;
 grant select, insert, update, delete on public.question_blueprint_calibration_runs to authenticated;
 grant select, insert, update, delete on public.bank_blueprints to authenticated;
+grant execute on function private.can_use_question_blueprint_library() to authenticated;
+grant execute on function private.can_admin_question_blueprint_library() to authenticated;
 grant execute on function private.can_read_question_blueprint(uuid) to authenticated;
 grant execute on function private.can_manage_question_blueprint(uuid) to authenticated;
 grant execute on function private.can_read_question_blueprint_folder(uuid) to authenticated;

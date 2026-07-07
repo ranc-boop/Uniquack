@@ -45,8 +45,9 @@ Remote clean Supabase migration 0031 was manually applied through the Dashboard 
 
 - `docs/blueprint-library-migration-0031-manual-apply.md`
 - `docs/blueprint-library-0031-grants-reapply.sql`
+- `docs/blueprint-library-0031-policy-reapply.sql`
 
-Live Blueprint Library DB validation now reaches the clean DB. The first post-apply run exposed that authenticated grants were missing for the existing Blueprint tables, so `docs/blueprint-library-0031-grants-reapply.sql` contains the copy-paste-safe post-apply correction.
+Live Blueprint Library DB validation now reaches the clean DB. The first post-apply run exposed an authenticated folder insert RLS failure. `docs/blueprint-library-0031-grants-reapply.sql` contains the table grant correction, and `docs/blueprint-library-0031-policy-reapply.sql` contains a schema-anchored insert-policy correction if the grant reapply alone is not enough on the remote project.
 
 ## Blueprint Library Behavior
 
@@ -131,7 +132,7 @@ Migration 0031 adds helper-based RLS for:
 - anonymous blocked
 - bank-linked Blueprints visible only through bank membership unless broader Blueprint visibility applies
 
-Live RLS source checks passed. Full live 0031 DB mutation validation now reaches remote clean Supabase and is blocked on the post-apply authenticated grants correction for teacher Blueprint folder/Blueprint inserts.
+Live RLS source checks passed. Full live 0031 DB mutation validation now reaches remote clean Supabase and is blocked on the post-apply insert-policy correction for teacher Blueprint folder/Blueprint inserts.
 
 ## Design Compliance
 
@@ -185,14 +186,15 @@ Notes:
 - Initial route smoke required using the already-running dev server on port `3001`.
 - `blueprint-library-foundation-smoke` source checks passed.
 - `blueprint-library-foundation-smoke` live mutation checks did not skip after migration 0031 was manually applied.
-- Live smoke created the private source bank, then failed on teacher Blueprint folder creation with a row-level-security insert error because authenticated grants were missing on existing Blueprint Library tables.
+- Live smoke created the private source bank, then failed on teacher Blueprint folder creation with a row-level-security insert error.
+- After the grant correction was manually applied, live smoke still failed at the same folder insert, so the branch now includes `docs/blueprint-library-0031-policy-reapply.sql` to replace the Blueprint Library role helper and insert policies.
 
 ## Remaining Blockers
 
-Migration 0031 has been manually applied. Apply the post-apply grant correction:
+Migration 0031 and the grant correction have been manually applied. Apply the post-apply policy correction:
 
 ```text
-docs/blueprint-library-0031-grants-reapply.sql
+docs/blueprint-library-0031-policy-reapply.sql
 ```
 
 Then rerun:
