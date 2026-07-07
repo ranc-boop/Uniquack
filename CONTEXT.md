@@ -38,6 +38,28 @@ Banks can have members and roles.
 
 Classrooms and assignments should use bank content; they should not define content ownership.
 
+## Universal Library Direction
+
+Library is universal, not teacher-only.
+
+Teachers, students, organizations, and official EduStruct accounts can own, use,
+share, pull, fork, and improve Libraries when their capabilities and policies
+allow it.
+
+Teacher and Student differ by workspace and capabilities, not by whether they
+can own Libraries:
+
+- Teacher workspace focuses on AI Parsing, Review Drafts, formal classroom
+  delivery, assignments, and evidence.
+- Student workspace focuses on My Work, Practice, Mistakes, Study Library,
+  Study Groups, public Library discovery, and self-study feedback.
+
+Classroom remains a teacher/school-managed roster and delivery layer. Study
+Group is the student/peer self-study collaboration layer.
+
+Public Library content is discoverable and pull/copy/forkable. Verified Library
+content is a separate high-trust layer that requires EduStruct review.
+
 ## Roles
 
 ### Admin
@@ -70,8 +92,9 @@ Student completes assigned learning:
 - My Work
 - Practice
 - mistakes and progress
+- personal Study Library and Study Groups where policy/entitlement allows
 
-Students do not manage banks unless a future product explicitly adds student bank roles.
+Students do not gain teacher private Library access by joining a classroom.
 
 ## Content Objects
 
@@ -136,6 +159,9 @@ A planned or generated learning package that should enter a bank/library before 
 Classroom membership does not grant bank access.
 
 Assignment exposes selected question items only.
+
+Study Group membership does not grant classroom or teacher private Library
+access.
 
 Public bank pull copies or references approved public material into a private/shared bank.
 
