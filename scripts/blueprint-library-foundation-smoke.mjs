@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -297,11 +298,13 @@ async function runLiveSmoke() {
     bankId = createdBankId;
     console.log("PASS blueprint library live smoke created private source bank");
 
-    const { data: folder, error: folderError } = await teacher.client
+    folderId = randomUUID();
+    const { error: folderError } = await teacher.client
       .from("question_blueprint_folders")
       .insert({
         created_by: teacher.user.id,
         description: "Smoke-created folder.",
+        id: folderId,
         name: `Blueprint folder smoke ${suffix}`,
         organization_id: profile.default_organization_id,
         owner_id: teacher.user.id,
@@ -310,18 +313,25 @@ async function runLiveSmoke() {
         status: "active",
         updated_by: teacher.user.id,
         visibility: "private",
-      })
-      .select("id, name")
-      .single();
+      });
 
     assert(
-      !folderError && folder?.id,
+      !folderError,
       `blueprint library folder create failed: ${summarizeSupabaseError(folderError)}`,
     );
-    folderId = folder.id;
+    const { data: folder, error: folderReadError } = await teacher.client
+      .from("question_blueprint_folders")
+      .select("id, name")
+      .eq("id", folderId)
+      .single();
+    assert(
+      !folderReadError && folder?.id === folderId,
+      `teacher could not read created Blueprint folder: ${summarizeSupabaseError(folderReadError)}`,
+    );
     console.log("PASS teacher can create private Blueprint folder");
 
-    const { data: blueprint, error: blueprintError } = await teacher.client
+    blueprintId = randomUUID();
+    const { error: blueprintError } = await teacher.client
       .from("question_blueprints")
       .insert({
         answer_spec_pattern: {},
@@ -334,6 +344,7 @@ async function runLiveSmoke() {
         generation_blocking_reasons: ["Smoke Blueprint is not generation-ready."],
         generation_constraints: { reviewGate: "review_drafts_required" },
         generation_ready: false,
+        id: blueprintId,
         metadata: { smokeOnly: true },
         organization_id: profile.default_organization_id,
         originality_constraints: { rule: "Smoke only" },
@@ -348,15 +359,21 @@ async function runLiveSmoke() {
         title: `Blueprint Library smoke ${suffix}`,
         updated_by: teacher.user.id,
         visibility: "private",
-      })
-      .select("id, title, visibility, blueprint_kind, source_bank_id")
-      .single();
+      });
 
     assert(
-      !blueprintError && blueprint?.id,
+      !blueprintError,
       `teacher private Blueprint create failed: ${summarizeSupabaseError(blueprintError)}`,
     );
-    blueprintId = blueprint.id;
+    const { data: blueprint, error: blueprintReadError } = await teacher.client
+      .from("question_blueprints")
+      .select("id, title, visibility, blueprint_kind, source_bank_id")
+      .eq("id", blueprintId)
+      .single();
+    assert(
+      !blueprintReadError && blueprint?.id === blueprintId,
+      `teacher could not read created private Blueprint: ${summarizeSupabaseError(blueprintReadError)}`,
+    );
     assert(
       blueprint.visibility === "private" &&
         blueprint.blueprint_kind === "manual" &&
@@ -365,24 +382,32 @@ async function runLiveSmoke() {
     );
     console.log("PASS teacher can create private manual Blueprint");
 
-    const { data: link, error: linkError } = await teacher.client
+    linkId = randomUUID();
+    const { error: linkError } = await teacher.client
       .from("bank_blueprints")
       .insert({
         added_by: teacher.user.id,
         bank_id: bankId,
         blueprint_id: blueprintId,
+        id: linkId,
         metadata: { smokeOnly: true },
         relation_kind: "linked",
         status: "active",
-      })
-      .select("id, bank_id, blueprint_id, relation_kind")
-      .single();
+      });
 
     assert(
-      !linkError && link?.id,
+      !linkError,
       `bank Blueprint link create failed: ${summarizeSupabaseError(linkError)}`,
     );
-    linkId = link.id;
+    const { data: link, error: linkReadError } = await teacher.client
+      .from("bank_blueprints")
+      .select("id, bank_id, blueprint_id, relation_kind")
+      .eq("id", linkId)
+      .single();
+    assert(
+      !linkReadError && link?.id === linkId,
+      `teacher could not read bank Blueprint link: ${summarizeSupabaseError(linkReadError)}`,
+    );
     console.log("PASS teacher can link Blueprint to private bank");
 
     const { data: listedBlueprints, error: listError } = await teacher.client

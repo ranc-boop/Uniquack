@@ -41,13 +41,15 @@ It adds:
 - RLS helper functions for Blueprint read/manage and folder read/manage
 - bank-linked Blueprint RLS policies
 
-Remote clean Supabase migration 0031 was manually applied through the Dashboard SQL Editor. I added:
+Remote clean Supabase migration 0031 was manually applied through the Dashboard SQL Editor. The follow-up grant and policy corrections were also manually applied.
+
+I added:
 
 - `docs/blueprint-library-migration-0031-manual-apply.md`
 - `docs/blueprint-library-0031-grants-reapply.sql`
 - `docs/blueprint-library-0031-policy-reapply.sql`
 
-Live Blueprint Library DB validation now reaches the clean DB. The first post-apply run exposed an authenticated folder insert RLS failure. `docs/blueprint-library-0031-grants-reapply.sql` contains the table grant correction, and `docs/blueprint-library-0031-policy-reapply.sql` contains a schema-anchored insert-policy correction if the grant reapply alone is not enough on the remote project.
+Live Blueprint Library DB validation now passes against the clean DB. The first post-apply run exposed an authenticated folder insert RLS failure; the grant and policy reapply files capture the forward corrections applied to the remote project.
 
 ## Blueprint Library Behavior
 
@@ -86,6 +88,7 @@ Implemented:
 - folder tree display
 - Unfiled state
 - folder visibility/status in migration
+- insert-then-read creation flow to avoid fragile PostgREST `insert().select()` returning behavior under RLS
 
 Folders are teacher-owned assets. No hard delete behavior was added.
 
@@ -132,7 +135,7 @@ Migration 0031 adds helper-based RLS for:
 - anonymous blocked
 - bank-linked Blueprints visible only through bank membership unless broader Blueprint visibility applies
 
-Live RLS source checks passed. Full live 0031 DB mutation validation now reaches remote clean Supabase and is blocked on the post-apply insert-policy correction for teacher Blueprint folder/Blueprint inserts.
+Live RLS source checks passed. Full live 0031 DB mutation validation passes against remote clean Supabase after the grant and policy corrections.
 
 ## Design Compliance
 
@@ -159,7 +162,7 @@ Updated:
 - `scripts/smoke-all.mjs`
 - `scripts/question-bank-ui-remodel-smoke.mjs`
 
-The new smoke validates source contracts every run and skips live mutation with a clear message until migration 0031 is applied.
+The new smoke validates source contracts every run and now validates live teacher Blueprint Library mutations when migration 0031 is present.
 
 ## Tests
 
@@ -168,7 +171,7 @@ Passed:
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `node scripts/security-smoke.mjs`
-- `node scripts/route-smoke.mjs` with `SITE_URL=http://localhost:3001`
+- `node scripts/route-smoke.mjs` with a temporary local dev server on `localhost:3000`
 - `node scripts/supabase-rls-smoke.mjs`
 - `node scripts/question-bank-foundation-smoke.mjs`
 - `node scripts/bank-share-members-smoke.mjs`
@@ -178,30 +181,19 @@ Passed:
 - `node scripts/question-bank-ui-remodel-smoke.mjs`
 - `node scripts/teacher-ai-parsing-bank-targeting-smoke.mjs`
 - `node scripts/blueprint-library-foundation-smoke.mjs`
-- `npm.cmd run smoke` with `SITE_URL=http://localhost:3001`
+- `npm.cmd run smoke`
 - `npm.cmd run perf:budget`
 
 Notes:
 
-- Initial route smoke required using the already-running dev server on port `3001`.
 - `blueprint-library-foundation-smoke` source checks passed.
-- `blueprint-library-foundation-smoke` live mutation checks did not skip after migration 0031 was manually applied.
-- Live smoke created the private source bank, then failed on teacher Blueprint folder creation with a row-level-security insert error.
-- After the grant correction was manually applied, live smoke still failed at the same folder insert, so the branch now includes `docs/blueprint-library-0031-policy-reapply.sql` to replace the Blueprint Library role helper and insert policies.
+- `blueprint-library-foundation-smoke` live mutation checks did not skip after migration 0031 and the follow-up corrections were manually applied.
+- Live smoke verified real teacher folder creation, private Blueprint creation, bank-linked Blueprint relation, teacher list/open, anonymous block, student block, unrelated-teacher block, and cleanup.
+- The teacher create action now generates the Blueprint id before insert and redirects with that id, avoiding fragile `insert().select()` returning under RLS while preserving the same private/pending-review product behavior.
 
 ## Remaining Blockers
 
-Migration 0031 and the grant correction have been manually applied. Apply the post-apply policy correction:
-
-```text
-docs/blueprint-library-0031-policy-reapply.sql
-```
-
-Then rerun:
-
-```bash
-node scripts/blueprint-library-foundation-smoke.mjs
-```
+No remaining Blueprint Library foundation blocker from the live smoke.
 
 ## Explicit Non-goals
 

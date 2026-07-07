@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -62,7 +64,8 @@ export async function createTeacherBlueprint(formData: FormData) {
     organizationId = bank.organization_id ?? organizationId;
   }
 
-  const { data: blueprint, error } = await supabase
+  const blueprintId = randomUUID();
+  const { error } = await supabase
     .from("question_blueprints")
     .insert({
       answer_spec_pattern: {},
@@ -77,6 +80,7 @@ export async function createTeacherBlueprint(formData: FormData) {
         reviewGate: "review_drafts_required",
       },
       generation_ready: false,
+      id: blueprintId,
       metadata: {
         productSurface: "teacher_blueprint_library",
         safety: {
@@ -102,11 +106,9 @@ export async function createTeacherBlueprint(formData: FormData) {
       title,
       updated_by: profile.id,
       visibility,
-    })
-    .select("id")
-    .single();
+    });
 
-  if (error || !blueprint) {
+  if (error) {
     redirect("/teacher/blueprints/new?error=create");
   }
 
@@ -115,7 +117,7 @@ export async function createTeacherBlueprint(formData: FormData) {
       {
         added_by: profile.id,
         bank_id: sourceBankId,
-        blueprint_id: blueprint.id,
+        blueprint_id: blueprintId,
         metadata: {
           source: "teacher_manual_create",
         },
@@ -131,7 +133,7 @@ export async function createTeacherBlueprint(formData: FormData) {
     revalidatePath(`/teacher/banks/${sourceBankId}/blueprints`);
   }
 
-  redirect(`/teacher/blueprints/${blueprint.id}?created=1`);
+  redirect(`/teacher/blueprints/${blueprintId}?created=1`);
 }
 
 export async function createTeacherBlueprintFolder(formData: FormData) {
