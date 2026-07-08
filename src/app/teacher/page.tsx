@@ -2,31 +2,38 @@ import Link from "next/link";
 
 import { TeacherModuleCard, TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
+import {
+  TeacherDashboardActionBoard,
+  TeacherDashboardEvidencePanel,
+  TeacherDashboardOverviewCards,
+  TeacherDashboardWorkflowPanel,
+} from "@/components/teacher/teacher-dashboard-panels";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
-import {
-  listTeacherQuestionBanks,
-  QuestionBankSchemaMissingError,
-} from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import { getTeacherDashboardSummary, type TeacherDashboardSummary } from "@/lib/teacher-dashboard";
 
 export const dynamic = "force-dynamic";
 
+const workflowTitle = "Bank-first teacher workflow";
+const workflowDescription =
+  "Teachers create or join banks, import and review questions, then deliver selected bank content through classrooms and assignments. No unreviewed draft can be assigned to students. Student visibility stays assignment-only unless content is intentionally published elsewhere.";
+
 function buildTeacherModules({
-  bankCount,
+  summary,
   setupNeeded,
 }: {
-  bankCount: number;
+  summary: TeacherDashboardSummary;
   setupNeeded: boolean;
 }) {
   return [
     {
       title: "Dashboard",
       description:
-        "See the teacher workspace entry point and the current bank-first workflow order.",
+        "See Review Drafts, assignment-ready bank content, classroom activity, and Practice evidence in one place.",
       href: "/teacher",
       eyebrow: "Workspace",
-      status: "Home",
+      status: `${summary.overview.recentEvidenceCount} evidence links`,
     },
     {
       title: "Question Bank",
@@ -34,7 +41,7 @@ function buildTeacherModules({
         "Create, join, share, and organize private or collaborative question banks before delivery.",
       href: "/teacher/banks",
       eyebrow: "Content source",
-      status: setupNeeded ? "Setup needed" : `${bankCount} banks`,
+      status: setupNeeded ? "Setup needed" : `${summary.overview.totalBankCount} banks`,
     },
     {
       title: "AI Parsing",
@@ -42,7 +49,7 @@ function buildTeacherModules({
         "Choose a bank first, then import owned materials into Review Drafts for approval.",
       href: "/teacher/ai-parsing",
       eyebrow: "Review gated",
-      status: "Teacher import",
+      status: `${summary.recentImports.length} recent imports`,
     },
     {
       title: "Blueprint",
@@ -58,7 +65,7 @@ function buildTeacherModules({
         "Manage rosters and delivery spaces after bank content is reviewed and ready to assign.",
       href: "/teacher/classrooms",
       eyebrow: "Roster layer",
-      status: "Delivery",
+      status: `${summary.overview.activeClassroomCount} active`,
     },
     {
       title: "Publish",
@@ -66,7 +73,7 @@ function buildTeacherModules({
         "Move reviewed bank content into classroom assignments without publishing private content globally.",
       href: "/teacher/publish",
       eyebrow: "Assignment flow",
-      status: "Private by default",
+      status: `${summary.overview.assignmentReadyQuestionCount} ready`,
     },
     {
       title: "Progress",
@@ -74,60 +81,98 @@ function buildTeacherModules({
         "Review assignment and practice evidence after students complete teacher-delivered work.",
       href: "/teacher/progress",
       eyebrow: "Evidence",
-      status: "Insight",
+      status: `${summary.overview.activeAssignmentCount} active assignments`,
     },
   ];
+}
+
+function buildPrimaryAction(summary: TeacherDashboardSummary) {
+  const firstReviewBank = summary.reviewQueue[0];
+  const firstReadyBank = summary.assignmentReadyBanks[0];
+
+  if (firstReviewBank) {
+    return {
+      href: `/teacher/banks/${firstReviewBank.bankId}/review`,
+      label: "Review Drafts",
+    };
+  }
+
+  if (firstReadyBank) {
+    return {
+      href: `/teacher/publish?sourceBankId=${firstReadyBank.bankId}`,
+      label: "Publish from Library",
+    };
+  }
+
+  if (!summary.overview.totalBankCount) {
+    return {
+      href: "/teacher/banks/new",
+      label: "Create Question Bank",
+    };
+  }
+
+  return {
+    href: "/teacher/ai-parsing",
+    label: "Import materials",
+  };
 }
 
 export default async function TeacherHomePage() {
   const profile = await requireTeacher();
   const supabase = await createClient();
-  let bankCount = 0;
-  let setupNeeded = false;
-
-  try {
-    const banks = await listTeacherQuestionBanks({
-      profileId: profile.id,
-      supabase,
-    });
-    bankCount = banks.length;
-  } catch (error) {
-    if (error instanceof QuestionBankSchemaMissingError) {
-      setupNeeded = true;
-    } else {
-      throw error;
-    }
-  }
-
-  const teacherModules = buildTeacherModules({ bankCount, setupNeeded });
+  const dashboardSummary = await getTeacherDashboardSummary({
+    profileId: profile.id,
+    supabase,
+  });
+  const teacherModules = buildTeacherModules({
+    setupNeeded: dashboardSummary.setupNeeded,
+    summary: dashboardSummary,
+  });
+  const primaryAction = buildPrimaryAction(dashboardSummary);
 
   return (
     <TeacherWorkspaceShell
       title="Teacher Workspace"
-      description="Start with a Question Bank. Create or join a bank, review imported content, then deliver selected bank content through classrooms and assignments."
+      description="Start with a Question Bank. Create or join a bank, review imported content, publish selected bank content to assignments, then read student Practice evidence as it returns."
       actions={
         <>
           <Button asChild>
-            <Link href="/teacher/banks">Open Question Bank</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/teacher/ai-parsing">Import materials</Link>
+            <Link href={primaryAction.href}>{primaryAction.label}</Link>
           </Button>
           <Button asChild variant="outline">
             <Link href="/teacher/banks">Open bank review</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/teacher/ai-parsing">Import materials</Link>
           </Button>
         </>
       }
     >
       <TeacherWorkspaceNav />
 
-      <section className="teacher-soft-panel p-5">
-        <h2 className="text-base font-bold text-sky-950">Bank-first teacher workflow</h2>
-        <p className="mt-2 max-w-4xl text-sm leading-6 text-sky-900">
-          Teachers create or join banks, import and review questions, then deliver selected bank content
-          through classrooms and assignments. No unreviewed draft can be assigned to students. Student visibility stays assignment-only unless content is intentionally published elsewhere.
-        </p>
-      </section>
+      {dashboardSummary.setupNeeded ? (
+        <section className="teacher-panel p-5">
+          <p className="teacher-eyebrow">Setup needed</p>
+          <h2 className="mt-2 text-lg font-bold text-slate-950">
+            Question Bank dashboard data is waiting on the clean bank schema.
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Apply the clean Question Bank migrations, then return here to see Review Drafts,
+            assignment-ready questions, classroom activity, and Practice evidence.
+          </p>
+        </section>
+      ) : null}
+
+      <TeacherDashboardOverviewCards summary={dashboardSummary} />
+
+      <TeacherDashboardActionBoard summary={dashboardSummary} />
+
+      <TeacherDashboardEvidencePanel summary={dashboardSummary} />
+
+      <TeacherDashboardWorkflowPanel
+        description={workflowDescription}
+        title={workflowTitle}
+      />
 
       <section className="grid gap-4 lg:grid-cols-3">
         {teacherModules.map((module) => (

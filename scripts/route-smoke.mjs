@@ -120,6 +120,8 @@ const authActions = await read("src/app/auth/actions.ts");
 const authGuards = await read("src/lib/auth/guards.ts");
 const authNav = await read("src/components/auth-nav.tsx");
 const teacherHomePage = await read("src/app/teacher/page.tsx");
+const teacherDashboardHelper = await read("src/lib/teacher-dashboard.ts");
+const teacherDashboardPanels = await read("src/components/teacher/teacher-dashboard-panels.tsx");
 const teacherWorkspaceNav = await read("src/components/teacher/teacher-workspace-nav.tsx");
 const teacherAiParsingPage = await read("src/app/teacher/ai-parsing/page.tsx");
 const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
@@ -182,6 +184,18 @@ assert(
     teacherHomePage.includes("Bank-first teacher workflow") &&
     teacherHomePage.includes("Student visibility stays assignment-only") &&
     teacherHomePage.includes("No unreviewed draft can be assigned to students") &&
+    teacherHomePage.includes("getTeacherDashboardSummary") &&
+    teacherHomePage.includes("TeacherDashboardOverviewCards") &&
+    teacherDashboardHelper.includes("assignment_practice_sessions") &&
+    teacherDashboardHelper.includes("student_assignment_progress") &&
+    teacherDashboardHelper.includes("practice_attempts") &&
+    teacherDashboardHelper.includes(".limit(") &&
+    !teacherDashboardHelper.includes('.select("*")') &&
+    !teacherDashboardHelper.includes(".insert(") &&
+    !teacherDashboardHelper.includes(".update(") &&
+    !teacherDashboardHelper.includes(".delete(") &&
+    teacherDashboardPanels.includes("Recent Practice evidence") &&
+    teacherDashboardPanels.includes("Student self-study is not mixed in") &&
     teacherWorkspaceNav.includes("Dashboard") &&
     teacherWorkspaceNav.includes("Question Bank") &&
     teacherWorkspaceNav.includes("AI Parsing") &&
