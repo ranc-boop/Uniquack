@@ -405,6 +405,11 @@ assert(
     !teacherPublishActions.includes("AI_PROVIDER") &&
     !teacherPublishActions.includes("published_at") &&
     teacherBankActions.includes("importBatchImportJson") &&
+    teacherBankActions.includes("importBankPdfDrafts") &&
+    teacherBankActions.includes("listEnabledAIProviderProfiles") &&
+    teacherBankActions.includes("processAIPdfImport") &&
+    teacherBankActions.includes("canManageBankContent(detail.currentUserRole)") &&
+    teacherBankActions.includes("targetBankId: parsed.bankId") &&
     teacherBankAssignmentNewPage.includes("Assign from") &&
     teacherBankAssignmentNewPage.includes("selected approved bank items") &&
     teacherBankAssignmentNewPage.includes("not access to the full bank") &&
@@ -429,7 +434,9 @@ assert(
     blueprintLibraryMigration.includes("private.can_read_question_blueprint") &&
     !blueprintLibraryMigration.includes("to anon") &&
     !teacherBankActions.includes("AI_PROVIDER") &&
-    !teacherBankActions.includes("provider") &&
+    !teacherBankActions.includes("api_key") &&
+    !teacherBankActions.includes("SUPABASE_SERVICE_ROLE") &&
+    !teacherBankActions.includes("published_at") &&
     questionBankHelpers.includes("listTeacherQuestionBanks") &&
     questionBankHelpers.includes("getTeacherQuestionBankDetail") &&
     questionBankHelpers.includes("listBankShareCodes") &&

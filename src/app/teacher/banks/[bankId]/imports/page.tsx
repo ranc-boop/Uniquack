@@ -1,7 +1,7 @@
 ﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
@@ -16,7 +16,7 @@ import {
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 
-import { importBankJsonDrafts } from "../../actions";
+import { importBankJsonDrafts, importBankPdfDrafts } from "../../actions";
 import {
   BankImportEntryPanel,
   RecentBankImportsPanel,
@@ -176,6 +176,55 @@ export default async function TeacherBankImportsPage({
             showImportAction={false}
             showChangeTarget
           />
+
+          <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <p className="teacher-eyebrow">Teacher PDF import</p>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">
+                Upload PDF to create bank Review Drafts
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                AI Parsing runs server-side and keeps generated questions as
+                private drafts in this bank until review.
+              </p>
+            </div>
+            <form
+              action={importBankPdfDrafts}
+              className="space-y-4 p-5"
+              encType="multipart/form-data"
+            >
+              <input name="bankId" type="hidden" value={bank.id} />
+              <label className="block rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5">
+                <span className="text-sm font-semibold text-slate-950">
+                  Private source PDF
+                </span>
+                <input
+                  accept="application/pdf,.pdf"
+                  className="mt-3 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm file:mr-3 file:rounded-md file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-sky-800"
+                  disabled={!canImport}
+                  name="sourcePdf"
+                  required
+                  type="file"
+                />
+              </label>
+              <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                <p>
+                  Review is required before assignment. This does not publish
+                  questions or expose the full bank to students.
+                </p>
+                {canImport ? (
+                  <Button type="submit">
+                    <Upload aria-hidden="true" className="h-4 w-4" />
+                    Start AI Parsing
+                  </Button>
+                ) : (
+                  <Button disabled type="button">
+                    Import requires owner/editor
+                  </Button>
+                )}
+              </div>
+            </form>
+          </section>
 
           <details className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
               <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-slate-900">

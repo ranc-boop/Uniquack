@@ -240,6 +240,7 @@ type ProcessInput = {
   sourceAssetId?: string;
   sourceObjectPath: string;
   supabase: SupabaseLike;
+  targetBankId?: string | null;
 };
 
 type AIPdfProgress = {
@@ -3263,6 +3264,7 @@ async function processAIPdfSinglePass({
     profileId: input.profileId,
     sourceType: "ai_pdf",
     supabase: input.supabase,
+    targetBankId: input.targetBankId,
   });
 
   await updateAIPdfBatchProgress(input, {
@@ -3647,6 +3649,7 @@ export async function processAIPdfImport(input: ProcessInput) {
         profileId: input.profileId,
         sourceType: "ai_pdf",
         supabase: input.supabase,
+        targetBankId: input.targetBankId,
       });
       const cropSummary =
         importSummary.createdCount > 0

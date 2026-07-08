@@ -1,5 +1,7 @@
 "use server";
 
+import { Buffer } from "node:buffer";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -8,8 +10,25 @@ import {
   redirectWithError,
   redirectWithSaved,
 } from "@/lib/actions/feedback";
+import { describeAiPdfProviderInput } from "@/lib/ai-providers/adapters";
+import {
+  listEnabledAIProviderProfiles,
+  type SafeAIProviderProfile,
+} from "@/lib/ai-providers/profiles";
+import {
+  AI_IMPORT_SOURCES_BUCKET,
+  AI_PDF_IMPORT_MAX_BYTES,
+} from "@/lib/ai-pdf-import/constants";
+import { processAIPdfImport } from "@/lib/ai-pdf-import/service";
 import { requireTeacher } from "@/lib/auth/guards";
-import { importBatchImportJson } from "@/lib/batch-import/service";
+import {
+  importBatchImportJson,
+  resolveImportOrganizationContext,
+} from "@/lib/batch-import/service";
+import {
+  canManageBankContent,
+  getTeacherQuestionBankDetail,
+} from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 
 const bankCreateSchema = z.object({
@@ -48,6 +67,10 @@ const bankMemberRemoveSchema = z.object({
 const bankImportJsonSchema = z.object({
   bankId: z.string().uuid(),
   jsonText: z.string().trim().min(2),
+});
+
+const bankImportPdfSchema = z.object({
+  bankId: z.string().uuid(),
 });
 
 const bankReviewQuestionApproveSchema = z.object({
@@ -90,6 +113,82 @@ function normalizeDueAt(value: string) {
   }
 
   return parsed.toISOString();
+}
+
+function safeFilename(value: string) {
+  return (
+    value
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || "teacher-ai-import.pdf"
+  );
+}
+
+function isPdfFile(file: File) {
+  return (
+    file.type === "application/pdf" ||
+    file.name.toLowerCase().endsWith(".pdf")
+  );
+}
+
+function getPdfFileFromForm(formData: FormData) {
+  const value = formData.get("sourcePdf");
+
+  if (!value || typeof value === "string") {
+    throw new Error("Choose a private PDF source before starting AI Parsing.");
+  }
+
+  const file = value as File;
+
+  if (!isPdfFile(file)) {
+    throw new Error("Only PDF files can be imported into a bank.");
+  }
+
+  if (!file.size || file.size <= 0) {
+    throw new Error("The selected PDF is empty.");
+  }
+
+  if (file.size > AI_PDF_IMPORT_MAX_BYTES) {
+    throw new Error("PDF is larger than 50MB.");
+  }
+
+  return file;
+}
+
+function selectTeacherAIPdfProvider(
+  providers: SafeAIProviderProfile[],
+): SafeAIProviderProfile | null {
+  const strategyPriority = new Map([
+    ["gemini_native_pdf", 0],
+    ["mock", 1],
+    ["openai_file", 2],
+    ["page_images", 3],
+  ]);
+
+  return (
+    providers
+      .map((profile) => ({
+        input: describeAiPdfProviderInput(profile),
+        profile,
+      }))
+      .filter(
+        ({ input }) =>
+          input.supported &&
+          input.implemented &&
+          strategyPriority.has(input.strategy),
+      )
+      .sort((left, right) => {
+        if (left.profile.is_default !== right.profile.is_default) {
+          return left.profile.is_default ? -1 : 1;
+        }
+
+        return (
+          (strategyPriority.get(left.input.strategy) ?? 99) -
+          (strategyPriority.get(right.input.strategy) ?? 99)
+        );
+      })[0]?.profile ?? null
+  );
 }
 
 export async function createQuestionBank(formData: FormData) {
@@ -292,6 +391,185 @@ export async function importBankJsonDrafts(formData: FormData) {
     redirectWithSaved(
       `/teacher/banks/${parsed.bankId}/review`,
       `Imported ${summary.createdCount} draft question(s). Review before adding them to this bank.`,
+    );
+  } catch (error) {
+    redirectWithError(fallbackPath, formatActionError(error));
+  }
+}
+
+export async function importBankPdfDrafts(formData: FormData) {
+  const fallbackPath = `/teacher/banks/${formData.get("bankId")}/imports`;
+
+  try {
+    const profile = await requireTeacher();
+    const parsed = bankImportPdfSchema.parse(Object.fromEntries(formData));
+    const pdfFile = getPdfFileFromForm(formData);
+    const supabase = await createClient();
+    const detail = await getTeacherQuestionBankDetail({
+      bankId: parsed.bankId,
+      profileId: profile.id,
+      supabase,
+    });
+
+    if (!detail) {
+      throw new Error("Target Question Bank was not found.");
+    }
+
+    if (!canManageBankContent(detail.currentUserRole)) {
+      throw new Error("Only bank owners and editors can import PDF drafts.");
+    }
+
+    if (detail.bank.status !== "active") {
+      throw new Error("Only active Question Banks can receive AI imports.");
+    }
+
+    const provider = selectTeacherAIPdfProvider(
+      await listEnabledAIProviderProfiles(supabase),
+    );
+
+    if (!provider) {
+      throw new Error(
+        "No enabled AI PDF provider is available. Ask an admin to configure AI Settings.",
+      );
+    }
+
+    const organizationContext = await resolveImportOrganizationContext({
+      existingOrganizationId: detail.bank.organization_id,
+      profileId: profile.id,
+      supabase,
+    });
+    const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer());
+    const batchId = crypto.randomUUID();
+    const sourceAssetId = crypto.randomUUID();
+    const sourceObjectPath = `ai-pdf-imports/${batchId}/${sourceAssetId}-${safeFilename(
+      pdfFile.name,
+    )}`;
+    const reviewRoute = `/teacher/banks/${parsed.bankId}/review`;
+    const now = new Date().toISOString();
+    let sourceObjectUploaded = false;
+
+    try {
+      const { error: batchError } = await supabase
+        .from("import_batches")
+        .insert({
+          created_by: profile.id,
+          id: batchId,
+          organization_id: organizationContext.organizationId,
+          source_type: "ai_pdf",
+          status: "draft",
+          summary: {
+            aiPdfImport: {
+              fileName: pdfFile.name,
+              importedFrom: "teacher_bank_ai_pdf_import",
+              phase: "source_uploaded",
+              reviewRoute,
+              reviewScope: "question_bank",
+              sourceAssetId,
+              sourceObjectPath,
+              targetBankId: parsed.bankId,
+            },
+            importedFrom: "teacher_bank_ai_pdf_import",
+            reviewGate: "bank_review_required",
+            reviewRoute,
+            reviewScope: "question_bank",
+            targetBankId: parsed.bankId,
+          },
+          target_bank_id: parsed.bankId,
+        } as never);
+
+      if (batchError) {
+        throw new Error(batchError.message);
+      }
+
+      const { error: sourceAssetError } = await supabase
+        .from("import_batch_assets")
+        .insert({
+          asset_role: "source_pdf",
+          batch_id: batchId,
+          created_by: profile.id,
+          id: sourceAssetId,
+          metadata: {
+            targetBankId: parsed.bankId,
+            uploadReservedAt: now,
+            uploadState: "server_uploading",
+          },
+          mime_type: "application/pdf",
+          object_path: sourceObjectPath,
+          original_filename: pdfFile.name,
+          size_bytes: pdfFile.size,
+          status: "pending",
+        } as never);
+
+      if (sourceAssetError) {
+        throw new Error(sourceAssetError.message);
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from(AI_IMPORT_SOURCES_BUCKET)
+        .upload(sourceObjectPath, pdfBuffer, {
+          contentType: "application/pdf",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      sourceObjectUploaded = true;
+
+      const { error: readyError } = await supabase
+        .from("import_batch_assets")
+        .update({
+          metadata: {
+            targetBankId: parsed.bankId,
+            uploadCompletedAt: new Date().toISOString(),
+            uploadReservedAt: now,
+            uploadState: "server_uploaded",
+          },
+          status: "ready",
+        } as never)
+        .eq("id", sourceAssetId);
+
+      if (readyError) {
+        throw new Error(readyError.message);
+      }
+    } catch (error) {
+      if (sourceObjectUploaded) {
+        await supabase.storage
+          .from(AI_IMPORT_SOURCES_BUCKET)
+          .remove([sourceObjectPath]);
+      }
+
+      await supabase
+        .from("import_batch_assets")
+        .delete()
+        .eq("id", sourceAssetId);
+      await supabase.from("import_batches").delete().eq("id", batchId);
+
+      throw error;
+    }
+
+    const summary = await processAIPdfImport({
+      batchId,
+      fileName: pdfFile.name,
+      pdfBuffer,
+      profileId: profile.id,
+      providerProfileId: provider.id,
+      sourceAssetId,
+      sourceObjectPath,
+      supabase,
+      targetBankId: parsed.bankId,
+    });
+    const createdCount =
+      typeof summary.createdCount === "number" ? summary.createdCount : 0;
+
+    revalidatePath("/teacher/ai-parsing");
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/imports`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
+    redirectWithSaved(
+      reviewRoute,
+      `AI Parsing created ${createdCount} bank-scoped draft question(s). Review before assignment.`,
     );
   } catch (error) {
     redirectWithError(fallbackPath, formatActionError(error));
