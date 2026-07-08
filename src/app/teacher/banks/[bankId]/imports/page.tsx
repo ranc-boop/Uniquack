@@ -6,6 +6,7 @@ import { ClipboardCheck, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
+import { listTeacherAIPdfParsingProfileState } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import {
   bankMemberRoleLabel,
   canManageBankContent,
@@ -88,6 +89,8 @@ export default async function TeacherBankImportsPage({
   const supabase = await createClient();
   let detail;
   let importBatches = [];
+  const parsingProfileState =
+    await listTeacherAIPdfParsingProfileState(supabase);
 
   try {
     detail = await getTeacherQuestionBankDetail({
@@ -110,6 +113,7 @@ export default async function TeacherBankImportsPage({
 
   const { bank, currentUserRole } = detail;
   const canImport = canManageBankContent(currentUserRole);
+  const canRunPdfImport = canImport && parsingProfileState.available;
 
   return (
     <BankWorkbenchPage>
@@ -191,9 +195,66 @@ export default async function TeacherBankImportsPage({
             <form
               action={importBankPdfDrafts}
               className="space-y-4 p-5"
-              encType="multipart/form-data"
             >
               <input name="bankId" type="hidden" value={bank.id} />
+              {parsingProfileState.available &&
+              parsingProfileState.options.length <= 1 ? (
+                <>
+                  <input
+                    name="parsingProfile"
+                    type="hidden"
+                    value={parsingProfileState.defaultProfile}
+                  />
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm font-medium text-sky-900">
+                    AI PDF parsing is enabled.
+                  </div>
+                </>
+              ) : null}
+              {parsingProfileState.available &&
+              parsingProfileState.options.length > 1 ? (
+                <fieldset className="space-y-3">
+                  <legend className="text-sm font-semibold text-slate-950">
+                    Parsing profile
+                  </legend>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {parsingProfileState.options.map((option) => (
+                      <label
+                        className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"
+                        key={option.value}
+                      >
+                        <input
+                          className="mr-2 size-4 align-middle"
+                          defaultChecked={
+                            option.value === parsingProfileState.defaultProfile
+                          }
+                          name="parsingProfile"
+                          type="radio"
+                          value={option.value}
+                        />
+                        <span className="font-semibold text-slate-950">
+                          {option.label}
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-600">
+                          {option.description}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              ) : null}
+              {!parsingProfileState.available ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                  <p className="font-semibold">
+                    AI PDF parsing is not enabled for this site or organization yet.
+                  </p>
+                  <p className="mt-1">
+                    A platform admin must enable a shared AI provider in Admin
+                    / AI Settings. Teachers can upload PDFs here once the
+                    shared provider is enabled; provider credentials are never
+                    configured in the teacher workspace.
+                  </p>
+                </div>
+              ) : null}
               <label className="block rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5">
                 <span className="text-sm font-semibold text-slate-950">
                   Private source PDF
@@ -201,8 +262,8 @@ export default async function TeacherBankImportsPage({
                 <input
                   accept="application/pdf,.pdf"
                   className="mt-3 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm file:mr-3 file:rounded-md file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-sky-800"
-                  disabled={!canImport}
-                  name="sourcePdf"
+                  disabled={!canRunPdfImport}
+                  name="pdf"
                   required
                   type="file"
                 />
@@ -212,10 +273,14 @@ export default async function TeacherBankImportsPage({
                   Review is required before assignment. This does not publish
                   questions or expose the full bank to students.
                 </p>
-                {canImport ? (
+                {canRunPdfImport ? (
                   <Button type="submit">
                     <Upload aria-hidden="true" className="h-4 w-4" />
                     Start AI Parsing
+                  </Button>
+                ) : canImport ? (
+                  <Button disabled type="button">
+                    AI PDF parsing unavailable
                   </Button>
                 ) : (
                   <Button disabled type="button">

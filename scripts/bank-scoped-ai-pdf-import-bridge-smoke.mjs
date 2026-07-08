@@ -30,6 +30,9 @@ function extractFunctionBody(source, functionName) {
 }
 
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
+const teacherParsingProfiles = await read(
+  "src/lib/ai-pdf-import/teacher-parsing-profiles.ts",
+);
 const batchImportService = await read("src/lib/batch-import/service.ts");
 const adminPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
@@ -86,11 +89,12 @@ assert(
   teacherBankActions.includes("export async function importBankPdfDrafts") &&
     teacherBankActions.includes("await requireTeacher()") &&
     teacherBankActions.includes("bankImportPdfSchema") &&
+    teacherBankActions.includes("TEACHER_AI_PDF_PARSING_PROFILES") &&
+    teacherBankActions.includes("assertNoRawProviderConfig(formData)") &&
     teacherBankActions.includes("getTeacherQuestionBankDetail") &&
     teacherBankActions.includes("canManageBankContent(detail.currentUserRole)") &&
     teacherBankActions.includes("Only bank owners and editors can import PDF drafts.") &&
-    teacherBankActions.includes("listEnabledAIProviderProfiles") &&
-    teacherBankActions.includes("selectTeacherAIPdfProvider") &&
+    teacherBankActions.includes("resolveTeacherAIPdfProviderProfile") &&
     teacherBankActions.includes("processAIPdfImport") &&
     teacherBankActions.includes("target_bank_id: parsed.bankId") &&
     teacherBankActions.includes("targetBankId: parsed.bankId") &&
@@ -100,7 +104,6 @@ assert(
     teacherBankActions.includes("Only PDF files can be imported into a bank.") &&
     teacherBankActions.includes("The selected PDF is empty.") &&
     teacherBankActions.includes("PDF is larger than 50MB.") &&
-    !teacherBankActions.includes("api_key") &&
     !teacherBankActions.includes("SUPABASE_SERVICE_ROLE") &&
     !teacherBankActions.includes("published_at"),
   "teacher PDF import action must be teacher-authenticated, owner/editor gated, bank-scoped, and secret-safe",
@@ -108,11 +111,12 @@ assert(
 
 assert(
   teacherPdfAction.includes("const parsed = bankImportPdfSchema.parse") &&
+    teacherPdfAction.includes("assertNoRawProviderConfig(formData)") &&
     teacherPdfAction.includes("const pdfFile = getPdfFileFromForm(formData)") &&
     teacherPdfAction.includes("canManageBankContent(detail.currentUserRole)") &&
     teacherPdfAction.includes("detail.bank.status !== \"active\"") &&
-    teacherPdfAction.includes("listEnabledAIProviderProfiles") &&
-    teacherPdfAction.includes("selectTeacherAIPdfProvider") &&
+    teacherPdfAction.includes("resolveTeacherAIPdfProviderProfile") &&
+    teacherPdfAction.includes("parsingProfile: parsed.parsingProfile") &&
     teacherPdfAction.includes("processAIPdfImport({") &&
     teacherPdfAction.includes("targetBankId: parsed.bankId") &&
     !teacherPdfAction.includes("visibility: \"public\"") &&
@@ -123,6 +127,7 @@ assert(
 
 assert(
   teacherBankActions.includes("function getPdfFileFromForm") &&
+    teacherBankActions.includes("formData.get(\"pdf\")") &&
     teacherBankActions.includes("formData.get(\"sourcePdf\")") &&
     teacherBankActions.includes("if (!value || typeof value === \"string\")") &&
     teacherBankActions.includes("if (!isPdfFile(file))") &&
@@ -132,16 +137,63 @@ assert(
 );
 
 assert(
+  teacherBankActions.includes("forbiddenProviderConfigFields") &&
+    teacherBankActions.includes("\"provider_profile_id\"") &&
+    teacherBankActions.includes("\"providerProfileId\"") &&
+    teacherBankActions.includes("\"model\"") &&
+    teacherBankActions.includes("\"api_key\"") &&
+    teacherBankActions.includes("\"apiKey\"") &&
+    teacherBankActions.includes(
+      "AI PDF provider configuration is admin-only and cannot be submitted from teacher imports.",
+    ),
+  "teacher PDF import action must reject raw provider/model/API-key fields from the client",
+);
+
+assert(
+  teacherParsingProfiles.includes('import "server-only"') &&
+    teacherParsingProfiles.includes("listEnabledAIProviderProfiles") &&
+    teacherParsingProfiles.includes("buildTeacherAIPdfParsingProfileState") &&
+    teacherParsingProfiles.includes("listTeacherAIPdfParsingProfileState") &&
+    teacherParsingProfiles.includes("resolveTeacherAIPdfProviderProfile") &&
+    teacherParsingProfiles.includes('"fast"') &&
+    teacherParsingProfiles.includes('"standard"') &&
+    teacherParsingProfiles.includes('"advanced"') &&
+    teacherParsingProfiles.includes("Fast") &&
+    teacherParsingProfiles.includes("Standard / Recommended") &&
+    teacherParsingProfiles.includes("Advanced / Limited") &&
+    !teacherParsingProfiles.includes("api_key_ciphertext") &&
+    !teacherParsingProfiles.includes("api_key_iv") &&
+    !teacherParsingProfiles.includes("api_key_tag"),
+  "teacher parsing profile helper must stay server-only, friendly, and secret-free",
+);
+
+assert(
   teacherBankImportsPage.includes("action={importBankPdfDrafts}") &&
-    teacherBankImportsPage.includes('name="sourcePdf"') &&
+    teacherBankImportsPage.includes('name="pdf"') &&
+    teacherBankImportsPage.includes('accept="application/pdf') &&
+    teacherBankImportsPage.includes('name="parsingProfile"') &&
+    teacherBankImportsPage.includes("listTeacherAIPdfParsingProfileState") &&
+    teacherBankImportsPage.includes("AI PDF parsing is enabled.") &&
+    teacherBankImportsPage.includes(
+      "AI PDF parsing is not enabled for this site or organization yet.",
+    ) &&
+    teacherBankImportsPage.includes("shared AI provider") &&
+    teacherBankImportsPage.includes(
+      "provider credentials are never",
+    ) &&
     teacherBankImportsPage.includes("AI Parsing runs server-side") &&
     teacherBankImportsPage.includes("Review is required before assignment") &&
     teacherBankImportsPage.includes("Advanced / Developer fixture") &&
     teacherBankImportsPage.includes("Create bank Review Drafts") &&
-    teacherBankImportsPage.includes("disabled={!canImport}") &&
+    teacherBankImportsPage.includes("disabled={!canRunPdfImport}") &&
     teacherBankImportsPage.includes("Import requires owner/editor") &&
+    teacherBankImportsPage.includes("AI PDF parsing unavailable") &&
+    !teacherBankImportsPage.includes("encType=") &&
+    !teacherBankImportsPage.includes("method=") &&
     !teacherBankImportsPage.includes("listEnabledAIProviderProfiles") &&
     !teacherBankImportsPage.includes("providerProfile") &&
+    !teacherBankImportsPage.includes("apiKey") &&
+    !teacherBankImportsPage.includes("api_key") &&
     !teacherBankImportsPage.includes("/admin/imports/pdf") &&
     !teacherBankImportsPage.includes("/admin/review"),
   "teacher bank imports page must expose PDF-to-review handoff, block viewer submit UI, and keep JSON fixture advanced",

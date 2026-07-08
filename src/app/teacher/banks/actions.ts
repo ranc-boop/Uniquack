@@ -10,16 +10,15 @@ import {
   redirectWithError,
   redirectWithSaved,
 } from "@/lib/actions/feedback";
-import { describeAiPdfProviderInput } from "@/lib/ai-providers/adapters";
-import {
-  listEnabledAIProviderProfiles,
-  type SafeAIProviderProfile,
-} from "@/lib/ai-providers/profiles";
 import {
   AI_IMPORT_SOURCES_BUCKET,
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
 import { processAIPdfImport } from "@/lib/ai-pdf-import/service";
+import {
+  resolveTeacherAIPdfProviderProfile,
+  TEACHER_AI_PDF_PARSING_PROFILES,
+} from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   importBatchImportJson,
@@ -71,6 +70,9 @@ const bankImportJsonSchema = z.object({
 
 const bankImportPdfSchema = z.object({
   bankId: z.string().uuid(),
+  parsingProfile: z
+    .enum(TEACHER_AI_PDF_PARSING_PROFILES)
+    .default("standard"),
 });
 
 const bankReviewQuestionApproveSchema = z.object({
@@ -133,7 +135,7 @@ function isPdfFile(file: File) {
 }
 
 function getPdfFileFromForm(formData: FormData) {
-  const value = formData.get("sourcePdf");
+  const value = formData.get("pdf") ?? formData.get("sourcePdf");
 
   if (!value || typeof value === "string") {
     throw new Error("Choose a private PDF source before starting AI Parsing.");
@@ -156,39 +158,34 @@ function getPdfFileFromForm(formData: FormData) {
   return file;
 }
 
-function selectTeacherAIPdfProvider(
-  providers: SafeAIProviderProfile[],
-): SafeAIProviderProfile | null {
-  const strategyPriority = new Map([
-    ["gemini_native_pdf", 0],
-    ["mock", 1],
-    ["openai_file", 2],
-    ["page_images", 3],
-  ]);
+const forbiddenProviderConfigFields = [
+  "apiKey",
+  "api_key",
+  "baseUrl",
+  "base_url",
+  "model",
+  "modelId",
+  "model_id",
+  "provider",
+  "providerId",
+  "provider_id",
+  "providerProfileId",
+  "provider_profile_id",
+  "supports_pdf_input",
+  "supports_vision_images",
+  "vendor",
+];
 
-  return (
-    providers
-      .map((profile) => ({
-        input: describeAiPdfProviderInput(profile),
-        profile,
-      }))
-      .filter(
-        ({ input }) =>
-          input.supported &&
-          input.implemented &&
-          strategyPriority.has(input.strategy),
-      )
-      .sort((left, right) => {
-        if (left.profile.is_default !== right.profile.is_default) {
-          return left.profile.is_default ? -1 : 1;
-        }
-
-        return (
-          (strategyPriority.get(left.input.strategy) ?? 99) -
-          (strategyPriority.get(right.input.strategy) ?? 99)
-        );
-      })[0]?.profile ?? null
+function assertNoRawProviderConfig(formData: FormData) {
+  const blockedField = forbiddenProviderConfigFields.find((field) =>
+    formData.has(field),
   );
+
+  if (blockedField) {
+    throw new Error(
+      "AI PDF provider configuration is admin-only and cannot be submitted from teacher imports.",
+    );
+  }
 }
 
 export async function createQuestionBank(formData: FormData) {
@@ -402,6 +399,7 @@ export async function importBankPdfDrafts(formData: FormData) {
 
   try {
     const profile = await requireTeacher();
+    assertNoRawProviderConfig(formData);
     const parsed = bankImportPdfSchema.parse(Object.fromEntries(formData));
     const pdfFile = getPdfFileFromForm(formData);
     const supabase = await createClient();
@@ -423,15 +421,10 @@ export async function importBankPdfDrafts(formData: FormData) {
       throw new Error("Only active Question Banks can receive AI imports.");
     }
 
-    const provider = selectTeacherAIPdfProvider(
-      await listEnabledAIProviderProfiles(supabase),
-    );
-
-    if (!provider) {
-      throw new Error(
-        "No enabled AI PDF provider is available. Ask an admin to configure AI Settings.",
-      );
-    }
+    const provider = await resolveTeacherAIPdfProviderProfile({
+      parsingProfile: parsed.parsingProfile,
+      supabase,
+    });
 
     const organizationContext = await resolveImportOrganizationContext({
       existingOrganizationId: detail.bank.organization_id,

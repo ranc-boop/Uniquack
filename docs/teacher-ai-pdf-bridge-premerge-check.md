@@ -85,7 +85,7 @@ Manual provider-backed E2E still needs to be run in an environment with an enabl
 
 Current handling:
 
-- No provider configured: teacher action returns a clear error asking an admin to configure AI Settings.
+- No provider configured: teacher UI explains that AI PDF parsing is not enabled for the site or organization yet, and that a platform admin must enable a shared provider in Admin / AI Settings.
 - Invalid PDF: teacher action blocks missing, non-PDF, empty, and oversized files before provider execution.
 - Permission denied: teacher action blocks non-owner/editor bank roles.
 - Inactive bank: teacher action blocks import.
@@ -98,6 +98,15 @@ Remaining polish:
 - Add a richer teacher-visible import status/history timeline for provider failures.
 - Add a friendlier zero-draft result panel with suggested next steps.
 - Add a guided manual retry path for failed teacher PDF imports.
+
+## Server Action Form / Provider Setup Addendum
+
+- Removed explicit `encType` / `method` from the teacher PDF import server-action form to avoid the React warning. React supplies those automatically for server-action forms.
+- Kept the PDF file input as a normal multipart file input with `name="pdf"` and `accept="application/pdf,.pdf"`.
+- Clarified product architecture: Admin Dashboard / AI Settings configures shared site/org provider profiles. Teacher and student workspaces call shared server-side AI services, not admin dashboard actions.
+- Provider credentials, vendor names, model IDs, and raw provider config remain absent from the teacher workspace.
+- Teacher no-provider state is expected until the shared AI provider is enabled.
+- Manual provider-backed E2E remains pending until an enabled provider plus storage/RLS are available.
 
 ## Tests Run
 

@@ -132,3 +132,12 @@ Pre-merge rerun result:
 - Passed lint, build, security smoke, route smoke, strengthened bridge smoke, teacher AI Parsing bank-targeting smoke, bank import/review smoke, question bank foundation smoke, teacher dashboard source smoke, full smoke, and performance budget.
 - Live Supabase checks required approved network access after sandboxed runs hit `EACCES` / `fetch failed`.
 - No provider-backed paid/live PDF extraction was run in this validation pass.
+
+## Teacher AI PDF Import Form Addendum
+
+- Fixed the React Server Action form encoding warning by removing explicit `encType` / `method` handling from the teacher PDF import server-action form.
+- Server Actions receive `FormData` automatically; the PDF file input remains a normal file field with `name="pdf"` and `accept="application/pdf,.pdf"`.
+- Clarified the provider setup model: Admin Dashboard / AI Settings is the site or organization control plane. A platform admin enables shared AI provider profiles for the site/org.
+- Teachers use the bank import product action. They do not configure provider credentials, models, vendors, or API keys in the teacher workspace.
+- The teacher no-provider state is expected until a shared AI PDF provider is enabled for the site or organization.
+- Manual provider-backed E2E remains pending until an enabled provider plus clean Supabase storage/RLS are available in the target environment.

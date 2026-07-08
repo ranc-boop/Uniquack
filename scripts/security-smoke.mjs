@@ -133,6 +133,9 @@ const teacherBlueprintDetailPage = await read("src/app/teacher/blueprints/[bluep
 const teacherBankBlueprintsPage = await read("src/app/teacher/banks/[bankId]/blueprints/page.tsx");
 const teacherBlueprintActions = await read("src/app/teacher/blueprints/actions.ts");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
+const teacherParsingProfiles = await read(
+  "src/lib/ai-pdf-import/teacher-parsing-profiles.ts",
+);
 const questionBankHelpers = await read("src/lib/question-banks.ts");
 const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
@@ -406,7 +409,8 @@ assert(
     !teacherPublishActions.includes("published_at") &&
     teacherBankActions.includes("importBatchImportJson") &&
     teacherBankActions.includes("importBankPdfDrafts") &&
-    teacherBankActions.includes("listEnabledAIProviderProfiles") &&
+    teacherBankActions.includes("resolveTeacherAIPdfProviderProfile") &&
+    teacherBankActions.includes("assertNoRawProviderConfig(formData)") &&
     teacherBankActions.includes("processAIPdfImport") &&
     teacherBankActions.includes("canManageBankContent(detail.currentUserRole)") &&
     teacherBankActions.includes("targetBankId: parsed.bankId") &&
@@ -434,9 +438,17 @@ assert(
     blueprintLibraryMigration.includes("private.can_read_question_blueprint") &&
     !blueprintLibraryMigration.includes("to anon") &&
     !teacherBankActions.includes("AI_PROVIDER") &&
-    !teacherBankActions.includes("api_key") &&
     !teacherBankActions.includes("SUPABASE_SERVICE_ROLE") &&
     !teacherBankActions.includes("published_at") &&
+    teacherBankActions.includes('"api_key"') &&
+    teacherBankActions.includes('"provider_profile_id"') &&
+    teacherParsingProfiles.includes('import "server-only"') &&
+    teacherParsingProfiles.includes("listEnabledAIProviderProfiles") &&
+    teacherParsingProfiles.includes("Standard / Recommended") &&
+    teacherParsingProfiles.includes("resolveTeacherAIPdfProviderProfile") &&
+    !teacherParsingProfiles.includes("api_key_ciphertext") &&
+    !teacherParsingProfiles.includes("api_key_iv") &&
+    !teacherParsingProfiles.includes("api_key_tag") &&
     questionBankHelpers.includes("listTeacherQuestionBanks") &&
     questionBankHelpers.includes("getTeacherQuestionBankDetail") &&
     questionBankHelpers.includes("listBankShareCodes") &&
