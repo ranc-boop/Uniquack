@@ -121,7 +121,8 @@ assert(
     teacherBankActions.includes("The selected PDF is empty.") &&
     teacherBankActions.includes("PDF is larger than 50MB.") &&
     !teacherBankActions.includes("SUPABASE_SERVICE_ROLE") &&
-    !teacherBankActions.includes("published_at"),
+    !teacherBankActions.includes('status: "published"') &&
+    !teacherBankActions.includes('visibility: "public"'),
   "teacher PDF import action must be teacher-authenticated, owner/editor gated, bank-scoped, and secret-safe",
 );
 

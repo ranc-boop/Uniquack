@@ -439,7 +439,8 @@ assert(
     !blueprintLibraryMigration.includes("to anon") &&
     !teacherBankActions.includes("AI_PROVIDER") &&
     !teacherBankActions.includes("SUPABASE_SERVICE_ROLE") &&
-    !teacherBankActions.includes("published_at") &&
+    !teacherBankActions.includes('status: "published"') &&
+    !teacherBankActions.includes('visibility: "public"') &&
     teacherBankActions.includes('"api_key"') &&
     teacherBankActions.includes('"provider_profile_id"') &&
     teacherParsingProfiles.includes('import "server-only"') &&
