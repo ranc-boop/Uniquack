@@ -85,45 +85,69 @@ export function TeacherDashboardOverviewCards({
       label: "Question Banks",
       value: summary.overview.totalBankCount,
       detail: "private/shared libraries",
+      href: null,
     },
     {
       label: "Review Drafts",
       value: summary.overview.reviewDraftCount,
       detail: "waiting for teacher approval",
+      href: null,
     },
     {
       label: "Assignment-ready",
       value: summary.overview.assignmentReadyQuestionCount,
       detail: "reviewed bank questions",
+      href: null,
     },
     {
       label: "Active classrooms",
       value: summary.overview.activeClassroomCount,
       detail: `${formatNumber(summary.overview.activeStudentCount)} students`,
+      href: "/teacher/progress",
     },
     {
       label: "Active assignments",
       value: summary.overview.activeAssignmentCount,
       detail: `${formatNumber(summary.overview.draftAssignmentCount)} drafts saved`,
+      href: "/teacher/progress",
     },
     {
       label: "Recent evidence",
       value: summary.overview.recentEvidenceCount,
       detail: `${formatNumber(summary.overview.studentsWithActiveProgressCount)} students in progress`,
+      href: "/teacher/progress",
     },
   ];
 
   return (
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-      {cards.map((card) => (
-        <article className="teacher-panel p-4" key={card.label}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {card.label}
-          </p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{formatNumber(card.value)}</p>
-          <p className="mt-1 text-xs font-medium text-slate-500">{card.detail}</p>
-        </article>
-      ))}
+      {cards.map((card) => {
+        const content = (
+          <>
+            <p className="text-xs font-semibold uppercase text-slate-500">
+              {card.label}
+            </p>
+            <p className="mt-3 text-3xl font-bold tabular-nums text-slate-950">
+              {formatNumber(card.value)}
+            </p>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-500">{card.detail}</p>
+          </>
+        );
+
+        return card.href ? (
+          <Link
+            className="teacher-card-hover teacher-focus-ring teacher-panel block p-4"
+            href={card.href}
+            key={card.label}
+          >
+            {content}
+          </Link>
+        ) : (
+          <article className="teacher-panel p-4" key={card.label}>
+            {content}
+          </article>
+        );
+      })}
     </section>
   );
 }
