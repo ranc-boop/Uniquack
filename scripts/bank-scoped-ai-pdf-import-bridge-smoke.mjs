@@ -39,11 +39,26 @@ const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const teacherBankImportsPage = await read(
   "src/app/teacher/banks/[bankId]/imports/page.tsx",
 );
+const teacherBankImportsLoading = await read(
+  "src/app/teacher/banks/[bankId]/imports/loading.tsx",
+);
+const teacherBankReviewPage = await read(
+  "src/app/teacher/banks/[bankId]/review/page.tsx",
+);
 const teacherAiParsingPage = await read("src/app/teacher/ai-parsing/page.tsx");
+const teacherAiParsingLoading = await read("src/app/teacher/ai-parsing/loading.tsx");
+const aiPdfLoadingSkeleton = await read(
+  "src/components/ai-pdf-import-loading-skeleton.tsx",
+);
+const formSubmitButton = await read("src/components/form-submit-button.tsx");
 const smokeAll = await read("scripts/smoke-all.mjs");
 const teacherPdfAction = extractFunctionBody(
   teacherBankActions,
   "importBankPdfDrafts",
+);
+const approveBankReviewAction = extractFunctionBody(
+  teacherBankActions,
+  "approveBankReviewQuestion",
 );
 const migrationFileNames = [
   ...(await readDir("supabase/clean-migrations")),
@@ -95,6 +110,7 @@ assert(
     teacherBankActions.includes("canManageBankContent(detail.currentUserRole)") &&
     teacherBankActions.includes("Only bank owners and editors can import PDF drafts.") &&
     teacherBankActions.includes("resolveTeacherAIPdfProviderProfile") &&
+    teacherBankActions.includes("createServiceRoleClient") &&
     teacherBankActions.includes("processAIPdfImport") &&
     teacherBankActions.includes("target_bank_id: parsed.bankId") &&
     teacherBankActions.includes("targetBankId: parsed.bankId") &&
@@ -107,6 +123,14 @@ assert(
     !teacherBankActions.includes("SUPABASE_SERVICE_ROLE") &&
     !teacherBankActions.includes("published_at"),
   "teacher PDF import action must be teacher-authenticated, owner/editor gated, bank-scoped, and secret-safe",
+);
+
+assert(
+  teacherPdfAction.indexOf("canManageBankContent(detail.currentUserRole)") <
+    teacherPdfAction.indexOf("createServiceRoleClient()") &&
+    teacherPdfAction.indexOf("detail.bank.status !== \"active\"") <
+      teacherPdfAction.indexOf("createServiceRoleClient()"),
+  "teacher PDF import action must authorize bank owner/editor access before using the server-only import client",
 );
 
 assert(
@@ -150,8 +174,8 @@ assert(
 );
 
 assert(
-  teacherParsingProfiles.includes('import "server-only"') &&
-    teacherParsingProfiles.includes("listEnabledAIProviderProfiles") &&
+    teacherParsingProfiles.includes('import "server-only"') &&
+    teacherParsingProfiles.includes("listEnabledAIProviderProfilesForServerUse") &&
     teacherParsingProfiles.includes("buildTeacherAIPdfParsingProfileState") &&
     teacherParsingProfiles.includes("listTeacherAIPdfParsingProfileState") &&
     teacherParsingProfiles.includes("resolveTeacherAIPdfProviderProfile") &&
@@ -168,7 +192,15 @@ assert(
 );
 
 assert(
-  teacherBankImportsPage.includes("action={importBankPdfDrafts}") &&
+  aiPdfService.includes("listEnabledAIProviderProfilesForServerUse") &&
+    aiPdfService.includes("loadSafeAIProviderProfileForServerUse") &&
+    aiPdfService.includes("loadAIProviderProfileForServerUse"),
+  "AI PDF execution must load shared provider profiles through the server-only provider path",
+);
+
+assert(
+    teacherBankImportsPage.includes("action={importBankPdfDrafts}") &&
+    teacherBankImportsPage.includes("FormSubmitButton") &&
     teacherBankImportsPage.includes('name="pdf"') &&
     teacherBankImportsPage.includes('accept="application/pdf') &&
     teacherBankImportsPage.includes('name="parsingProfile"') &&
@@ -188,6 +220,8 @@ assert(
     teacherBankImportsPage.includes("disabled={!canRunPdfImport}") &&
     teacherBankImportsPage.includes("Import requires owner/editor") &&
     teacherBankImportsPage.includes("AI PDF parsing unavailable") &&
+    teacherBankImportsPage.includes('pendingLabel="Starting AI Parsing..."') &&
+    teacherBankImportsPage.includes('pendingLabel="Creating drafts..."') &&
     !teacherBankImportsPage.includes("encType=") &&
     !teacherBankImportsPage.includes("method=") &&
     !teacherBankImportsPage.includes("listEnabledAIProviderProfiles") &&
@@ -200,12 +234,54 @@ assert(
 );
 
 assert(
+  formSubmitButton.includes("useFormStatus") &&
+    formSubmitButton.includes("LoaderCircle") &&
+    formSubmitButton.includes("animate-spin") &&
+    formSubmitButton.includes("disabled={pending}"),
+  "server-action submit buttons must show an animated pending state without converting forms to client handlers",
+);
+
+assert(
+  aiPdfLoadingSkeleton.includes("AIPdfImportLoadingSkeletonProps") &&
+    aiPdfLoadingSkeleton.includes("showSettingsAction") &&
+    aiPdfLoadingSkeleton.includes("detailsLabel") &&
+    teacherAiParsingLoading.includes("AIPdfImportLoadingSkeleton") &&
+    teacherAiParsingLoading.includes("showSettingsAction={false}") &&
+    teacherAiParsingLoading.includes("Loading bank targets") &&
+    teacherBankImportsLoading.includes("AIPdfImportLoadingSkeleton") &&
+    teacherBankImportsLoading.includes("showSettingsAction={false}") &&
+    teacherBankImportsLoading.includes("Bank AI Parsing"),
+  "teacher bank AI Parsing routes must reuse the AI PDF loading animation with teacher-safe copy",
+);
+
+assert(
   teacherAiParsingPage.includes("BankTargetSelector") &&
     teacherAiParsingPage.includes("BankImportEntryPanel") &&
     teacherAiParsingPage.includes("Import into selected bank") &&
     !teacherAiParsingPage.includes("/admin/imports/pdf") &&
     !teacherAiParsingPage.includes("/admin/review"),
   "/teacher/ai-parsing must remain a bank-targeted teacher entry point",
+);
+
+assert(
+  teacherBankReviewPage.includes("buildDraftReviewSignals") &&
+    teacherBankReviewPage.includes("Open question review") &&
+    teacherBankReviewPage.includes("Check these before approval") &&
+    teacherBankReviewPage.includes("Question prompt") &&
+    teacherBankReviewPage.includes("Answer and options") &&
+    teacherBankReviewPage.includes("Solution / explanation") &&
+    teacherBankReviewPage.includes("Taxonomy suggestions") &&
+    teacherBankReviewPage.includes("FormSubmitButton") &&
+    teacherBankReviewPage.includes("Approval adds this question") &&
+    !teacherBankReviewPage.includes("published_at"),
+  "teacher bank Review Draft page must expose expandable question inspection, warning details, and stay non-publishing",
+);
+
+assert(
+  approveBankReviewAction.includes('rpc("approve_bank_review_question"') &&
+    approveBankReviewAction.includes("`/teacher/banks/${parsed.bankId}/review`,") &&
+    !approveBankReviewAction.includes("`/teacher/banks/${parsed.bankId}/questions`,"),
+  "approving a bank Review Draft must stay on the bank review page instead of jumping to the questions tab",
 );
 
 assert(

@@ -146,7 +146,10 @@ async function runSourceSmoke() {
   );
   assert(
     peoplePage.includes("Joining a class does not grant access") &&
+      peoplePage.includes("Create join code") &&
       peoplePage.includes("Remove from class") &&
+      classroomActions.includes("createClassroomJoinCode") &&
+      classroomActions.includes("hashClassroomJoinCode") &&
       classroomActions.includes("removeClassroomStudent") &&
       classroomActions.includes('update({ status: "removed" })'),
     "People section must show roster boundary copy and safe soft-remove action",

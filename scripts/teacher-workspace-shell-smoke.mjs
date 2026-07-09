@@ -136,8 +136,10 @@ async function runSourceSmoke() {
       classroomUi.includes("Analytics / Feedback") &&
       classroomUi.includes("Linked Blueprints") &&
       classroomUi.includes("Settings") &&
-      classroomPeople.includes("Joining a class does not grant access"),
-    "classroom detail must expose teacher classroom sections and persistent join code",
+      classroomPeople.includes("Joining a class does not grant access") &&
+      classroomPeople.includes("Create join code") &&
+      classroomActions.includes("createClassroomJoinCode"),
+    "classroom detail must expose teacher classroom sections and persistent join code recovery",
   );
   assert(
     migration.includes("create or replace function private.is_org_staff") &&

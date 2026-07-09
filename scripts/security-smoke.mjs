@@ -443,7 +443,7 @@ assert(
     teacherBankActions.includes('"api_key"') &&
     teacherBankActions.includes('"provider_profile_id"') &&
     teacherParsingProfiles.includes('import "server-only"') &&
-    teacherParsingProfiles.includes("listEnabledAIProviderProfiles") &&
+    teacherParsingProfiles.includes("listEnabledAIProviderProfilesForServerUse") &&
     teacherParsingProfiles.includes("Standard / Recommended") &&
     teacherParsingProfiles.includes("resolveTeacherAIPdfProviderProfile") &&
     !teacherParsingProfiles.includes("api_key_ciphertext") &&

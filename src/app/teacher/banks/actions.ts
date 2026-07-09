@@ -28,7 +28,7 @@ import {
   canManageBankContent,
   getTeacherQuestionBankDetail,
 } from "@/lib/question-banks";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 
 const bankCreateSchema = z.object({
   description: z.string().trim().max(2000).optional().default(""),
@@ -431,6 +431,7 @@ export async function importBankPdfDrafts(formData: FormData) {
       profileId: profile.id,
       supabase,
     });
+    const importSupabase = createServiceRoleClient();
     const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer());
     const batchId = crypto.randomUUID();
     const sourceAssetId = crypto.randomUUID();
@@ -442,7 +443,7 @@ export async function importBankPdfDrafts(formData: FormData) {
     let sourceObjectUploaded = false;
 
     try {
-      const { error: batchError } = await supabase
+      const { error: batchError } = await importSupabase
         .from("import_batches")
         .insert({
           created_by: profile.id,
@@ -474,7 +475,7 @@ export async function importBankPdfDrafts(formData: FormData) {
         throw new Error(batchError.message);
       }
 
-      const { error: sourceAssetError } = await supabase
+      const { error: sourceAssetError } = await importSupabase
         .from("import_batch_assets")
         .insert({
           asset_role: "source_pdf",
@@ -497,7 +498,7 @@ export async function importBankPdfDrafts(formData: FormData) {
         throw new Error(sourceAssetError.message);
       }
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await importSupabase.storage
         .from(AI_IMPORT_SOURCES_BUCKET)
         .upload(sourceObjectPath, pdfBuffer, {
           contentType: "application/pdf",
@@ -510,7 +511,7 @@ export async function importBankPdfDrafts(formData: FormData) {
 
       sourceObjectUploaded = true;
 
-      const { error: readyError } = await supabase
+      const { error: readyError } = await importSupabase
         .from("import_batch_assets")
         .update({
           metadata: {
@@ -528,16 +529,16 @@ export async function importBankPdfDrafts(formData: FormData) {
       }
     } catch (error) {
       if (sourceObjectUploaded) {
-        await supabase.storage
+        await importSupabase.storage
           .from(AI_IMPORT_SOURCES_BUCKET)
           .remove([sourceObjectPath]);
       }
 
-      await supabase
+      await importSupabase
         .from("import_batch_assets")
         .delete()
         .eq("id", sourceAssetId);
-      await supabase.from("import_batches").delete().eq("id", batchId);
+      await importSupabase.from("import_batches").delete().eq("id", batchId);
 
       throw error;
     }
@@ -550,7 +551,7 @@ export async function importBankPdfDrafts(formData: FormData) {
       providerProfileId: provider.id,
       sourceAssetId,
       sourceObjectPath,
-      supabase,
+      supabase: importSupabase,
       targetBankId: parsed.bankId,
     });
     const createdCount =
@@ -597,7 +598,7 @@ export async function approveBankReviewQuestion(formData: FormData) {
     revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
     revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
     redirectWithSaved(
-      `/teacher/banks/${parsed.bankId}/questions`,
+      `/teacher/banks/${parsed.bankId}/review`,
       "Review Draft approved into this bank. It was not published to the public library.",
     );
   } catch (error) {

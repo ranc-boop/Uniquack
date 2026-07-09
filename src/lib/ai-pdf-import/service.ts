@@ -8,9 +8,9 @@ import {
 } from "@/lib/ai-providers/adapters";
 import { isMockAIProviderUrl } from "@/lib/ai-providers/mock";
 import {
-  listEnabledAIProviderProfiles,
-  loadAIProviderProfileForUse,
-  loadSafeAIProviderProfileForUse,
+  listEnabledAIProviderProfilesForServerUse,
+  loadAIProviderProfileForServerUse,
+  loadSafeAIProviderProfileForServerUse,
 } from "@/lib/ai-providers/profiles";
 import {
   cropPdfPlaceholderImage,
@@ -2679,7 +2679,7 @@ async function loadDeepSeekBlueprintAnalyzerProvider(input: ProcessInput) {
     const requestedMode = normalizeQuestionBlueprintModelQualityMode(
       current.aiPdfImport.blueprintModelQualityMode,
     );
-    const profiles = await listEnabledAIProviderProfiles(input.supabase);
+    const profiles = await listEnabledAIProviderProfilesForServerUse(input.supabase);
     const selection = selectQuestionBlueprintDeepSeekProfile({
       profiles,
       requestedMode,
@@ -2699,7 +2699,7 @@ async function loadDeepSeekBlueprintAnalyzerProvider(input: ProcessInput) {
     return {
       actualMode: selection.actualMode,
       fallbackReason: selection.fallbackReason,
-      provider: await loadAIProviderProfileForUse({
+      provider: await loadAIProviderProfileForServerUse({
         profileId: profile.id,
         supabase: input.supabase,
       }),
@@ -2976,7 +2976,7 @@ async function processAIPdfBlueprintObservation({
 }: {
   input: ProcessInput;
   pageCount: number;
-  provider: Awaited<ReturnType<typeof loadAIProviderProfileForUse>>;
+  provider: Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>;
   providerInput: ReturnType<typeof describeAiPdfProviderInput>;
   providerSummary: { id: string; model: string; name: string; provider: string };
 }) {
@@ -3183,7 +3183,7 @@ async function processAIPdfSinglePass({
   activeTags: ActiveTag[];
   input: ProcessInput;
   pageCount: number;
-  provider: Awaited<ReturnType<typeof loadAIProviderProfileForUse>>;
+  provider: Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>;
   providerInput: ReturnType<typeof describeAiPdfProviderInput>;
   providerSummary: { id: string; model: string; name: string; provider: string };
 }) {
@@ -3362,7 +3362,7 @@ export async function processAIPdfImport(input: ProcessInput) {
     pageCount,
     phase: "loading_provider",
   });
-  const safeProvider = await loadSafeAIProviderProfileForUse({
+  const safeProvider = await loadSafeAIProviderProfileForServerUse({
     profileId: input.providerProfileId,
     supabase: input.supabase,
   });
@@ -3380,7 +3380,7 @@ export async function processAIPdfImport(input: ProcessInput) {
     provider: providerSummary,
     sourceInput: providerInput.strategy,
   });
-  const provider = await loadAIProviderProfileForUse({
+  const provider = await loadAIProviderProfileForServerUse({
     profileId: input.providerProfileId,
     supabase: input.supabase,
   });

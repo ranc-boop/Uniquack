@@ -2,7 +2,7 @@ import "server-only";
 
 import { describeAiPdfProviderInput } from "@/lib/ai-providers/adapters";
 import {
-  listEnabledAIProviderProfiles,
+  listEnabledAIProviderProfilesForServerUse,
   type SafeAIProviderProfile,
 } from "@/lib/ai-providers/profiles";
 
@@ -115,7 +115,7 @@ export async function listTeacherAIPdfParsingProfileState(
 ): Promise<TeacherAIPdfParsingProfileState> {
   try {
     return buildTeacherAIPdfParsingProfileState(
-      await listEnabledAIProviderProfiles(supabase),
+      await listEnabledAIProviderProfilesForServerUse(supabase),
     );
   } catch {
     return unavailableTeacherAIPdfParsingProfileState();
@@ -132,7 +132,7 @@ export async function resolveTeacherAIPdfProviderProfile({
   let enabledProfiles: SafeAIProviderProfile[];
 
   try {
-    enabledProfiles = await listEnabledAIProviderProfiles(supabase);
+    enabledProfiles = await listEnabledAIProviderProfilesForServerUse(supabase);
   } catch {
     throw new Error(
       "AI PDF parsing is not available. Ask an admin to check AI Settings.",
@@ -144,7 +144,7 @@ export async function resolveTeacherAIPdfProviderProfile({
 
   if (!usableProfiles.length) {
     throw new Error(
-      "No enabled AI PDF provider is available. Ask an admin to configure AI Settings.",
+      "AI PDF parsing is not enabled for this site or organization yet.",
     );
   }
 
