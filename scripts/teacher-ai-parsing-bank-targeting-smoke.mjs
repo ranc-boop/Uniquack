@@ -96,11 +96,12 @@ async function runSourceSmoke() {
   );
 
   assert(
-    bankImportUi.includes("Viewer banks are visible for context") &&
+      bankImportUi.includes("Viewer banks are visible for context") &&
       bankImportUi.includes("only owners and editors can") &&
       bankImportUi.includes("aria-disabled") &&
       bankImportUi.includes("No import auto-publishes or assigns content.") &&
-      bankImportUi.includes("Recent bank-scoped imports"),
+      bankImportUi.includes("Recent AI Parsing status") &&
+      bankImportUi.includes("AI Parsing status history uses existing import batches only"),
     "bank import UI must disable viewer imports and explain review-gated bank targeting",
   );
 

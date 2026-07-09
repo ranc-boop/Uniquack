@@ -148,7 +148,10 @@ export default async function TeacherAiParsingPage({
               bank={selectedBank}
               canImport={selectedCanImport}
             />
-            <RecentBankImportsPanel importBatches={recentImports} />
+            <RecentBankImportsPanel
+              bankName={selectedBank.name}
+              importBatches={recentImports}
+            />
           </section>
         ) : null}
       </TeacherWorkspaceShell>

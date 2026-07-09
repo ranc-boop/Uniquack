@@ -20,6 +20,7 @@ await import("./bank-import-review-smoke.mjs");
 await import("./assignment-from-bank-smoke.mjs");
 await import("./question-bank-ui-remodel-smoke.mjs");
 await import("./teacher-ai-parsing-bank-targeting-smoke.mjs");
+await import("./ai-parsing-status-review-qa-smoke.mjs");
 await import("./ai-pdf-provider-failure-status-smoke.mjs");
 await import("./bank-scoped-ai-pdf-import-bridge-smoke.mjs");
 await import("./blueprint-library-foundation-smoke.mjs");

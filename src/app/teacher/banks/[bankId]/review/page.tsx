@@ -277,19 +277,27 @@ export default async function TeacherBankReviewPage({
                         {formatDate(question.created_at)}
                       </p>
                     </div>
-                    {canApprove ? (
-                      <form action={approveBankReviewQuestion}>
-                        <input name="bankId" type="hidden" value={bank.id} />
-                        <input
-                          name="questionId"
-                          type="hidden"
-                          value={question.id}
-                        />
-                        <FormSubmitButton pendingLabel="Approving...">
-                          Approve into bank
-                        </FormSubmitButton>
-                      </form>
-                    ) : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button disabled type="button" variant="outline">
+                        Edit draft - coming next
+                      </Button>
+                      <Button disabled type="button" variant="outline">
+                        Needs fix - coming next
+                      </Button>
+                      {canApprove ? (
+                        <form action={approveBankReviewQuestion}>
+                          <input name="bankId" type="hidden" value={bank.id} />
+                          <input
+                            name="questionId"
+                            type="hidden"
+                            value={question.id}
+                          />
+                          <FormSubmitButton pendingLabel="Approving...">
+                            Approve into bank
+                          </FormSubmitButton>
+                        </form>
+                      ) : null}
+                    </div>
                   </div>
 
                   <details
