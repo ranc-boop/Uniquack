@@ -57,6 +57,127 @@ function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : "Unknown";
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function asNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asStringList(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .map((item) =>
+          typeof item === "string" ? item.trim() : JSON.stringify(item),
+        )
+        .filter(Boolean)
+    : [];
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function summarizeImportBatch(batch: BankImportBatchSummary) {
+  const summary = asRecord(batch.summary);
+  const aiPdfImport = asRecord(summary.aiPdfImport);
+  const createdQuestions = Array.isArray(summary.createdQuestions)
+    ? summary.createdQuestions
+    : [];
+  const draftCount =
+    asNumber(summary.createdCount) ??
+    asNumber(aiPdfImport.createdQuestionCount) ??
+    createdQuestions.length;
+  const warnings = uniqueStrings([
+    ...asStringList(summary.validationErrorReasons),
+    ...asStringList(aiPdfImport.warnings),
+  ]).slice(0, 3);
+  const retryable = summary.retryable === true || aiPdfImport.retryable === true;
+  const phase =
+    asString(aiPdfImport.phase) ?? asString(summary.phase) ?? batch.status;
+  const fileLabel =
+    asString(aiPdfImport.fileName) ??
+    asString(summary.fileName) ??
+    (batch.source_type === "ai_pdf" ? "Private PDF source" : "Imported source");
+  const detail =
+    asString(aiPdfImport.detail) ??
+    asString(summary.detail) ??
+    (retryable
+      ? "The AI provider is temporarily busy. Your file was not published or assigned. Please retry in a few minutes."
+      : null);
+
+  return {
+    detail,
+    draftCount,
+    fileLabel,
+    phase,
+    retryable,
+    warnings,
+    warningCount: warnings.length,
+    zeroDrafts:
+      (batch.status === "failed" || batch.status === "imported") &&
+      draftCount === 0,
+  };
+}
+
+function importStatusLabel(batch: BankImportBatchSummary, retryable: boolean) {
+  if (retryable) {
+    return "Retryable import";
+  }
+
+  if (batch.status === "imported") {
+    return "Imported";
+  }
+
+  if (batch.status === "failed") {
+    return "Failed";
+  }
+
+  if (batch.status === "validating") {
+    return "Processing";
+  }
+
+  if (batch.status === "draft" || batch.status === "ready") {
+    return "Pending";
+  }
+
+  return batch.status;
+}
+
+function importStatusTone(
+  batch: BankImportBatchSummary,
+  retryable: boolean,
+): "amber" | "blue" | "cyan" | "rose" | "slate" | "sky" {
+  if (retryable) {
+    return "amber";
+  }
+
+  if (batch.status === "imported") {
+    return "cyan";
+  }
+
+  if (batch.status === "failed") {
+    return "rose";
+  }
+
+  if (batch.status === "validating") {
+    return "blue";
+  }
+
+  if (batch.status === "draft" || batch.status === "ready") {
+    return "sky";
+  }
+
+  return "slate";
+}
+
 function TargetBankCardContent({
   bank,
   selected,
@@ -313,35 +434,113 @@ export function BankImportEntryPanel({
 }
 
 export function RecentBankImportsPanel({
+  bankName,
   importBatches,
 }: {
+  bankName?: string;
   importBatches: BankImportBatchSummary[];
 }) {
   return (
     <aside className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
-      <BankSectionHeader title="Recent bank-scoped imports" />
+      <BankSectionHeader
+        description="AI Parsing status history uses existing import batches only. Provider setup stays in Admin / AI Settings."
+        title="Recent AI Parsing status"
+      />
       <div className="space-y-3 p-5">
         {importBatches.length ? (
-          importBatches.map((batch) => (
-            <div
-              className="rounded-xl border border-slate-200 bg-white p-4"
-              key={batch.id}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-slate-950">
-                    {batch.source_type}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {formatDate(batch.created_at)}
-                  </p>
+          importBatches.map((batch) => {
+            const status = summarizeImportBatch(batch);
+            const reviewHref = batch.target_bank_id
+              ? `/teacher/banks/${batch.target_bank_id}/review`
+              : null;
+
+            return (
+              <div
+                className="rounded-xl border border-slate-200 bg-white p-4"
+                key={batch.id}
+              >
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-950">
+                        {status.fileLabel}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatDate(batch.created_at)}
+                      </p>
+                    </div>
+                    <BankBadge tone={importStatusTone(batch, status.retryable)}>
+                      {importStatusLabel(batch, status.retryable)}
+                    </BankBadge>
+                  </div>
+
+                  <dl className="grid gap-2 text-xs sm:grid-cols-2">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                      <dt className="font-semibold text-slate-500">Target bank</dt>
+                      <dd className="mt-1 break-words font-bold text-slate-900">
+                        {bankName ?? "Selected bank"}
+                      </dd>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                      <dt className="font-semibold text-slate-500">Phase</dt>
+                      <dd className="mt-1 break-words font-bold text-slate-900">
+                        {status.phase}
+                      </dd>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                      <dt className="font-semibold text-slate-500">Drafts</dt>
+                      <dd className="mt-1 font-bold text-slate-900">
+                        {status.draftCount}
+                      </dd>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                      <dt className="font-semibold text-slate-500">Warnings</dt>
+                      <dd className="mt-1 font-bold text-slate-900">
+                        {status.warningCount}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {status.retryable ? (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+                      The AI provider was temporarily busy. Nothing was
+                      published or assigned; retry this import in a few minutes.
+                    </p>
+                  ) : null}
+
+                  {status.zeroDrafts ? (
+                    <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-700">
+                      Zero drafts were created. Review the status detail before
+                      retrying or using a smaller source file.
+                    </p>
+                  ) : null}
+
+                  {status.detail ? (
+                    <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+                      {status.detail}
+                    </p>
+                  ) : null}
+
+                  {status.warnings.length ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                      <p className="font-bold">Warnings to inspect</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4">
+                        {status.warnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {reviewHref ? (
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={reviewHref}>Open Review Drafts</Link>
+                    </Button>
+                  ) : null}
                 </div>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                  {batch.status}
-                </span>
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
             No bank-scoped imports yet. Start with AI Parsing, then review

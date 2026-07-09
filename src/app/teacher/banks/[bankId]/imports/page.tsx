@@ -334,7 +334,10 @@ export default async function TeacherBankImportsPage({
             </details>
         </div>
 
-        <RecentBankImportsPanel importBatches={importBatches} />
+        <RecentBankImportsPanel
+          bankName={bank.name}
+          importBatches={importBatches}
+        />
       </section>
     </BankWorkbenchPage>
   );
