@@ -14,7 +14,12 @@ import {
   AI_IMPORT_SOURCES_BUCKET,
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
-import { processAIPdfImport } from "@/lib/ai-pdf-import/service";
+import {
+  AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE,
+  isTransientAIPdfProviderFailure,
+  processAIPdfImport,
+  recordAIPdfTransientProviderFailure,
+} from "@/lib/ai-pdf-import/service";
 import {
   resolveTeacherAIPdfProviderProfile,
   TEACHER_AI_PDF_PARSING_PROFILES,
@@ -186,6 +191,14 @@ function assertNoRawProviderConfig(formData: FormData) {
       "AI PDF provider configuration is admin-only and cannot be submitted from teacher imports.",
     );
   }
+}
+
+function formatTeacherAIPdfImportError(error: unknown) {
+  if (isTransientAIPdfProviderFailure(error)) {
+    return AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE;
+  }
+
+  return formatActionError(error);
 }
 
 export async function createQuestionBank(formData: FormData) {
@@ -543,7 +556,7 @@ export async function importBankPdfDrafts(formData: FormData) {
       throw error;
     }
 
-    const summary = await processAIPdfImport({
+    const processInput = {
       batchId,
       fileName: pdfFile.name,
       pdfBuffer,
@@ -553,7 +566,22 @@ export async function importBankPdfDrafts(formData: FormData) {
       sourceObjectPath,
       supabase: importSupabase,
       targetBankId: parsed.bankId,
-    });
+    };
+    let summary: Awaited<ReturnType<typeof processAIPdfImport>>;
+
+    try {
+      summary = await processAIPdfImport(processInput);
+    } catch (error) {
+      if (isTransientAIPdfProviderFailure(error)) {
+        try {
+          await recordAIPdfTransientProviderFailure(processInput);
+        } catch {
+          // Preserve the original provider failure for the teacher redirect.
+        }
+      }
+
+      throw error;
+    }
     const createdCount =
       typeof summary.createdCount === "number" ? summary.createdCount : 0;
 
@@ -566,7 +594,7 @@ export async function importBankPdfDrafts(formData: FormData) {
       `AI Parsing created ${createdCount} bank-scoped draft question(s). Review before assignment.`,
     );
   } catch (error) {
-    redirectWithError(fallbackPath, formatActionError(error));
+    redirectWithError(fallbackPath, formatTeacherAIPdfImportError(error));
   }
 }
 

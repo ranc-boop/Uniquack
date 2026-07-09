@@ -257,6 +257,37 @@ type AIPdfProgress = {
   warnings?: string[];
 };
 
+export const AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE =
+  "The AI provider is temporarily busy. Your file was not published or assigned. Please retry in a few minutes.";
+
+function errorText(value: unknown) {
+  if (value instanceof Error) {
+    return `${value.name}: ${value.message}`;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+export function isTransientAIPdfProviderFailure(value: unknown) {
+  const text = errorText(value);
+
+  return (
+    /\b(?:429|503)\b/i.test(text) ||
+    /\bUNAVAILABLE\b/i.test(text) ||
+    /high demand/i.test(text) ||
+    /rate[-\s]?limit(?:ed)?/i.test(text) ||
+    /overloaded/i.test(text)
+  );
+}
+
 function plainObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -346,6 +377,47 @@ async function updateAIPdfBatchProgress(
       summary: {
         ...current.summary,
         aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function recordAIPdfTransientProviderFailure(input: ProcessInput) {
+  const failedAt = new Date().toISOString();
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+    createdQuestionCount: 0,
+    detail: AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE,
+    error: AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE,
+    failureKind: "transient_provider_unavailable",
+    fileName: input.fileName,
+    jobId: input.jobId,
+    phase: "provider_temporarily_unavailable",
+    phaseFailedAt: failedAt,
+    retryable: true,
+    retryRecommendation: "Retry in a few minutes.",
+    sourceAssetId: input.sourceAssetId,
+    sourceObjectPath: input.sourceObjectPath,
+    targetBankId: input.targetBankId ?? null,
+    updatedAt: failedAt,
+  });
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "failed",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+        importedFrom:
+          current.summary.importedFrom ?? "teacher_bank_ai_pdf_import",
+        reviewGate: current.summary.reviewGate ?? "bank_review_required",
+        reviewScope: current.summary.reviewScope ?? "question_bank",
+        retryable: true,
+        targetBankId: input.targetBankId ?? current.summary.targetBankId ?? null,
       },
     })
     .eq("id", input.batchId);

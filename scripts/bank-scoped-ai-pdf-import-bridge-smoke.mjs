@@ -141,7 +141,7 @@ assert(
     teacherPdfAction.includes("detail.bank.status !== \"active\"") &&
     teacherPdfAction.includes("resolveTeacherAIPdfProviderProfile") &&
     teacherPdfAction.includes("parsingProfile: parsed.parsingProfile") &&
-    teacherPdfAction.includes("processAIPdfImport({") &&
+    teacherPdfAction.includes("processAIPdfImport(processInput)") &&
     teacherPdfAction.includes("targetBankId: parsed.bankId") &&
     !teacherPdfAction.includes("visibility: \"public\"") &&
     !teacherPdfAction.includes("status: \"published\"") &&
