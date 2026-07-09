@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { ClipboardCheck, Upload } from "lucide-react";
 
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -274,10 +275,10 @@ export default async function TeacherBankImportsPage({
                   questions or expose the full bank to students.
                 </p>
                 {canRunPdfImport ? (
-                  <Button type="submit">
+                  <FormSubmitButton pendingLabel="Starting AI Parsing...">
                     <Upload aria-hidden="true" className="h-4 w-4" />
                     Start AI Parsing
-                  </Button>
+                  </FormSubmitButton>
                 ) : canImport ? (
                   <Button disabled type="button">
                     AI PDF parsing unavailable
@@ -320,7 +321,9 @@ export default async function TeacherBankImportsPage({
                   />
                 </label>
                 {canImport ? (
-                  <Button type="submit">Create bank Review Drafts</Button>
+                  <FormSubmitButton pendingLabel="Creating drafts...">
+                    Create bank Review Drafts
+                  </FormSubmitButton>
                 ) : (
                   <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                     Viewers can inspect bank content later, but only owners and

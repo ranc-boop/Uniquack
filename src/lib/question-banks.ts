@@ -69,10 +69,14 @@ export type BankImportBatchSummary = {
 export type BankReviewDraftQuestion = Pick<
   Question,
   | "created_at"
+  | "answer_spec"
+  | "content_html"
   | "difficulty_rating"
   | "id"
+  | "options"
   | "question_code"
   | "question_type"
+  | "solution_html"
   | "source"
   | "source_kind"
   | "source_review_item_id"
@@ -80,7 +84,9 @@ export type BankReviewDraftQuestion = Pick<
   | "title"
 > & {
   tagIds: string[];
+  tagSummaries: BankQuestionTaxonomySummary[];
   warningCount: number;
+  warningMessages: string[];
 };
 
 export type BankApprovedQuestion = {
@@ -441,7 +447,7 @@ export async function listBankReviewDraftQuestions({
   const { data: questions, error } = await supabase
     .from("questions")
     .select(
-      "id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, created_at",
+      "id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, created_at, answer_spec, content_html, options, solution_html",
     )
     .eq("owner_bank_id", bankId)
     .eq("status", "draft")
@@ -459,7 +465,7 @@ export async function listBankReviewDraftQuestions({
     ? await Promise.all([
         supabase
           .from("question_taxonomy_assignments")
-          .select("question_id, tag_id")
+          .select("question_id, tag_id, review_status")
           .in("question_id", questionIds)
           .limit(300),
         supabase
@@ -481,14 +487,47 @@ export async function listBankReviewDraftQuestions({
     throw new Error(importItemResult.error.message);
   }
 
+  const tagIds = Array.from(
+    new Set((tagResult.data ?? []).map((row) => row.tag_id).filter(Boolean)),
+  );
+  const { data: tagNodes, error: tagNodesError } = tagIds.length
+    ? await supabase
+        .from("taxonomy_nodes")
+        .select("tag_id, label, facet_key")
+        .in("tag_id", tagIds)
+        .limit(300)
+    : { data: [], error: null };
+
+  if (tagNodesError) {
+    throw new Error(tagNodesError.message);
+  }
+
+  const tagNodeById = new Map(
+    (tagNodes ?? []).map((tag) => [tag.tag_id, tag]),
+  );
   const tagsByQuestionId = new Map<string, string[]>();
+  const tagSummariesByQuestionId = new Map<
+    string,
+    BankQuestionTaxonomySummary[]
+  >();
   for (const row of tagResult.data ?? []) {
     const tags = tagsByQuestionId.get(row.question_id) ?? [];
     tags.push(row.tag_id);
     tagsByQuestionId.set(row.question_id, tags);
+
+    const node = tagNodeById.get(row.tag_id);
+    const summaries = tagSummariesByQuestionId.get(row.question_id) ?? [];
+    summaries.push({
+      facet_key: node?.facet_key ?? null,
+      label: node?.label ?? null,
+      review_status: row.review_status as TaxonomyReviewStatus,
+      tag_id: row.tag_id,
+    });
+    tagSummariesByQuestionId.set(row.question_id, summaries);
   }
 
   const warningCountByQuestionId = new Map<string, number>();
+  const warningMessagesByQuestionId = new Map<string, string[]>();
   for (const row of importItemResult.data ?? []) {
     if (!row.created_question_id) {
       continue;
@@ -498,12 +537,26 @@ export async function listBankReviewDraftQuestions({
       ? row.validation_errors.length
       : 0;
     warningCountByQuestionId.set(row.created_question_id, warnings);
+    warningMessagesByQuestionId.set(
+      row.created_question_id,
+      Array.isArray(row.validation_errors)
+        ? row.validation_errors
+            .map((warning) =>
+              typeof warning === "string"
+                ? warning.trim()
+                : JSON.stringify(warning),
+            )
+            .filter(Boolean)
+        : [],
+    );
   }
 
   return (questions ?? []).map((question) => ({
     ...question,
     tagIds: tagsByQuestionId.get(question.id) ?? [],
+    tagSummaries: tagSummariesByQuestionId.get(question.id) ?? [],
     warningCount: warningCountByQuestionId.get(question.id) ?? 0,
+    warningMessages: warningMessagesByQuestionId.get(question.id) ?? [],
   })) as BankReviewDraftQuestion[];
 }
 

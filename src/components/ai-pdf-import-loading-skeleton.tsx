@@ -3,6 +3,18 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+type AIPdfImportLoadingSkeletonProps = {
+  backHref?: string;
+  backLabel?: string;
+  description?: string;
+  detailsLabel?: string;
+  importTitle?: string;
+  showSettingsAction?: boolean;
+  settingsHref?: string;
+  settingsLabel?: string;
+  title?: string;
+};
+
 function SkeletonBlock({ className }: { className: string }) {
   return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
 }
@@ -52,34 +64,45 @@ function DashboardBatchSkeleton() {
   );
 }
 
-export function AIPdfImportLoadingSkeleton() {
+export function AIPdfImportLoadingSkeleton({
+  backHref = "/admin/imports",
+  backLabel = "Back to imports",
+  description = "Loading AI PDF import controls... Upload, provider selection, source PDFs, and recent extraction batches will appear below.",
+  detailsLabel = "Loading provider and private source PDF access...",
+  importTitle = "Import PDF with AI",
+  showSettingsAction = true,
+  settingsHref = "/admin/ai-settings",
+  settingsLabel = "AI settings",
+  title = "AI PDF Import",
+}: AIPdfImportLoadingSkeletonProps = {}) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">AI PDF Import</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
-            Loading AI PDF import controls... Upload, provider selection, source
-            PDFs, and recent extraction batches will appear below.
+            {description}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link href="/admin/imports">Back to imports</Link>
+            <Link href={backHref}>{backLabel}</Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href="/admin/ai-settings">AI settings</Link>
-          </Button>
+          {showSettingsAction ? (
+            <Button asChild variant="outline">
+              <Link href={settingsHref}>{settingsLabel}</Link>
+            </Button>
+          ) : null}
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Import PDF with AI</CardTitle>
+          <CardTitle className="text-base">{importTitle}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            Loading provider and private source PDF access...
+            {detailsLabel}
           </div>
 
           <div className="space-y-3 rounded-md border bg-muted/20 p-4">

@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { removeClassroomStudent } from "@/app/teacher/classrooms/actions";
+import {
+  createClassroomJoinCode,
+  removeClassroomStudent,
+} from "@/app/teacher/classrooms/actions";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import {
   ClassroomBadge,
   ClassroomRouteTabs,
@@ -144,9 +148,18 @@ export default async function ClassroomPeoplePage({
               {classroom.joinCodeVisible}
             </code>
           ) : (
-            <span className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">
-              Join code unavailable
-            </span>
+            <form
+              action={createClassroomJoinCode}
+              className="flex flex-col items-start gap-2 rounded-lg border border-slate-200 bg-white p-3 md:items-end"
+            >
+              <input name="classroomId" type="hidden" value={classroom.id} />
+              <span className="text-sm font-semibold text-slate-600">
+                Join code unavailable
+              </span>
+              <FormSubmitButton pendingLabel="Creating code..." variant="outline">
+                Create join code
+              </FormSubmitButton>
+            </form>
           )}
         </div>
       </section>
