@@ -6,18 +6,25 @@ Branch: `codex/ai-pdf-provider-readiness`
 
 ## Executive Summary
 
-The Teacher AI PDF flow is code-ready for provider-backed validation, but the
-current known environment blocker remains:
+The Teacher AI PDF flow is code-ready for provider-backed validation, and the
+current clean Supabase metadata now shows an enabled AI PDF-capable provider:
 
 ```text
-enabled AI PDF provider profiles = 0
+enabled provider profiles with stored key metadata = 2
+enabled AI PDF-capable provider profiles = 1
+default AI PDF-capable provider = Gemini Native PDF
+AI PDF strategy = gemini_native_pdf
 ```
 
-Until one shared site/org AI PDF-capable provider profile is enabled, a real
-teacher PDF upload cannot reach the provider-backed import path.
+The earlier `enabled provider profiles = 0` blocker came from the previous E2E
+validation report. A fresh metadata-only check after PR `#171` shows the
+provider is configured. The remaining work is to rerun the real Teacher AI PDF
+Provider E2E validation.
 
 This task did not create provider profiles, change credentials, edit
-`.env.local`, add migrations, or run provider calls.
+`.env.local`, add migrations, or run provider calls. The readiness check printed
+only safe provider metadata and did not print raw keys, gateway tokens,
+service-role keys, or encrypted credential fields.
 
 ## Provider Source Of Truth
 
@@ -90,23 +97,39 @@ DeepSeek text/json profiles are not the primary AI PDF parser unless a verified
 image/PDF route is explicitly enabled. They are better treated as text/json or
 blueprint-analysis providers.
 
-## Current Blocker
+## Current Readiness Result
 
-The most recent provider E2E validation report found:
+The previous provider E2E validation report found:
 
 ```text
 enabled provider profile count: 0
 usable AI PDF provider profile count: 0
 ```
 
-Because of that, `/teacher/banks/[bankId]/imports` correctly shows the disabled
-state:
+That report is now stale for the current clean Supabase state.
+
+A fresh metadata-only check found:
 
 ```text
-AI PDF parsing is not enabled for this site or organization yet.
+total profiles: 2
+enabled profiles with stored key metadata: 2
+AI PDF-capable enabled profiles: 1
 ```
 
-This is expected until a platform admin enables a shared provider profile.
+Safe profile metadata:
+
+| Name | Enabled | Default | Mode | Model | AI PDF strategy |
+| --- | --- | --- | --- | --- | --- |
+| DeepSeek Text JSON | Yes | No | `deepseek_openai` | `deepseek-v4-pro` | `unsupported` |
+| Gemini Native PDF | Yes | Yes | `gemini_native` | `gemini-2.5-flash-lite` | `gemini_native_pdf` |
+
+Current conclusion:
+
+- The shared AI PDF-capable provider setup appears ready.
+- Teacher import should resolve to the default Standard profile backed by
+  Gemini Native PDF.
+- Real provider-backed teacher PDF E2E has not yet been rerun after this
+  readiness correction.
 
 ## Teacher UI Behavior
 
@@ -145,8 +168,9 @@ Provider setup belongs in:
 Admin / AI Settings
 ```
 
-Admin setup should be done by a super-admin/platform admin using the existing
-safe UI flow:
+For the current clean Supabase environment, this setup appears to already be
+done. If another environment needs setup, a super-admin/platform admin should
+use the existing safe UI flow:
 
 1. Sign in as a super-admin.
 2. Open `/admin/ai-settings`.
@@ -161,7 +185,7 @@ safe UI flow:
 9. Save the profile.
 10. Restart the dev server only if `.env.local` server env values were changed.
 11. Return to `/teacher/banks/[bankId]/imports`.
-12. Confirm the teacher page now says AI PDF parsing is enabled.
+12. Confirm the teacher page says AI PDF parsing is enabled.
 13. Re-run Teacher AI PDF Provider E2E validation.
 
 ## Secret Handling
@@ -231,8 +255,9 @@ Existing related scripts/checks:
 - `scripts/bank-scoped-ai-pdf-import-bridge-smoke.mjs`
 - `scripts/real-gemini-import-qa.mjs`
 
-The bridge smoke is source/static and secret-safe. Real provider QA should only
-run after a shared enabled AI PDF-capable profile exists.
+The bridge smoke is source/static and secret-safe. The current clean Supabase
+metadata check confirms a shared enabled AI PDF-capable profile exists, so the
+next step should be real provider E2E validation rather than more provider setup.
 
 ## Stash Audit
 
@@ -283,9 +308,7 @@ Audit result:
 
 ## Next Step
 
-Enable one shared AI PDF-capable provider profile through Admin / AI Settings.
-
-Then rerun:
+Rerun the real Teacher AI PDF Provider E2E validation:
 
 ```text
 Teacher private PDF
@@ -304,8 +327,14 @@ Recommended next PR:
 codex/teacher-ai-pdf-provider-e2e-validation-rerun
 ```
 
-or rerun the existing Teacher AI PDF Provider E2E validation task after the
-provider is enabled.
+This rerun should validate the actual provider-backed path:
+
+- teacher uploads a tiny safe PDF into a selected bank;
+- Gemini Native PDF processes it;
+- Review Drafts are created in that bank;
+- approval adds the reviewed question to the bank only;
+- assignment exposes only selected items to students;
+- practice evidence persists back to the assignment/progress surface.
 
 ## Non-goals
 
