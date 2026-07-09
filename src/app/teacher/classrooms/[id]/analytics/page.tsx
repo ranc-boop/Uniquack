@@ -65,9 +65,14 @@ export default async function ClassroomAnalyticsPage({
               engines are implemented.
             </p>
           </div>
-          <Button asChild variant="outline">
-            <Link href={`/teacher/classrooms/${classroom.id}`}>Back to overview</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link href="/teacher/progress">All progress</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/teacher/classrooms/${classroom.id}`}>Back to overview</Link>
+            </Button>
+          </div>
         </div>
         <div className="mt-5">
           <TeacherWorkspaceNav />
