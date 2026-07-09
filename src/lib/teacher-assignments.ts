@@ -6,6 +6,7 @@ import type {
   AssignmentItem,
   Classroom,
   Json,
+  PracticeAttempt,
   Profile,
   Question,
   StudentAssignmentProgress,
@@ -38,8 +39,16 @@ export type TeacherAssignmentSummary = Pick<
 
 export type TeacherAssignmentQuestion = Pick<
   Question,
-  "difficulty_rating" | "id" | "question_code" | "question_type" | "status" | "title"
+  | "difficulty_rating"
+  | "id"
+  | "question_code"
+  | "question_type"
+  | "status"
+  | "title"
 >;
+
+export type TeacherAssignmentEvidenceQuestion = TeacherAssignmentQuestion &
+  Pick<Question, "content_html">;
 
 export type TeacherAssignableQuestion = TeacherAssignmentQuestion & {
   contentPreview: string;
@@ -55,7 +64,7 @@ export type TeacherAssignmentItem = Pick<
   | "question_id"
   | "source_bank_id"
 > & {
-  question: TeacherAssignmentQuestion | null;
+  question: TeacherAssignmentEvidenceQuestion | null;
 };
 
 export type TeacherAssignmentProgressSummary = {
@@ -77,19 +86,68 @@ export type TeacherAssignmentStudentProgress = {
   lastPracticeSessionId: string | null;
   practiceAttemptCount: number;
   practiceCorrectCount: number;
+  practiceHintCount: number;
+  practiceIncorrectCount: number;
   profile: Pick<Profile, "display_name" | "email" | "full_name" | "id" | "role" | "username"> | null;
+  recentAttempts: TeacherAssignmentAttempt[];
   startedAt: string | null;
   status: StudentAssignmentProgress["status"];
   studentId: string;
   updatedAt: string | null;
 };
 
+export type TeacherAssignmentAttempt = {
+  answerPreview: string;
+  createdAt: string;
+  feedbackSummary: string | null;
+  gradingMode: string;
+  hintCount: number;
+  id: string;
+  isCorrect: boolean | null;
+  questionId: string;
+  questionTitle: string;
+  roundId: string;
+  score: number | null;
+  sessionId: string;
+};
+
+export type TeacherAssignmentQuestionPerformance = {
+  assignedStudentCount: number;
+  assignmentItemId: string;
+  attemptCount: number;
+  attentionStatus: "mixed_results" | "needs_attention" | "no_attempts" | "on_track" | "unavailable";
+  correctAttemptCount: number;
+  incorrectAttemptCount: number;
+  latestActivityAt: string | null;
+  question: TeacherAssignmentEvidenceQuestion | null;
+  sourceLabel: string;
+  studentAttemptedCount: number;
+};
+
+export type TeacherAssignmentEvidenceSummary = {
+  attemptCount: number;
+  completionRate: number | null;
+  correctAttemptCount: number;
+  incorrectAttemptCount: number;
+  latestActivityAt: string | null;
+  studentsNeedingAttentionCount: number;
+};
+
 export type TeacherAssignmentDetail = TeacherAssignmentSummary & {
   classroom: TeacherAssignmentClassroom;
+  evidenceSummary: TeacherAssignmentEvidenceSummary;
   items: TeacherAssignmentItem[];
   progressSummary: TeacherAssignmentProgressSummary;
+  questionPerformanceRows: TeacherAssignmentQuestionPerformance[];
   studentProgressRows: TeacherAssignmentStudentProgress[];
 };
+
+const MAX_ASSIGNMENT_ITEMS = 120;
+const MAX_ASSIGNMENT_STUDENTS = 320;
+const MAX_ASSIGNMENT_PROGRESS_ROWS = 360;
+const MAX_ASSIGNMENT_PRACTICE_LINKS = 360;
+const MAX_ASSIGNMENT_ATTEMPTS = 720;
+const MAX_RECENT_ATTEMPTS_PER_STUDENT = 6;
 
 function profileDisplayName(profile: TeacherAssignmentStudentProgress["profile"]) {
   return (
@@ -98,6 +156,76 @@ function profileDisplayName(profile: TeacherAssignmentStudentProgress["profile"]
     profile?.username ||
     profile?.email ||
     "Unknown student"
+  );
+}
+
+function latestIso(values: Array<string | null | undefined>) {
+  return values
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
+}
+
+function compactEvidenceText(value: unknown, maxLength = 360) {
+  const raw = typeof value === "string" ? value : String(value ?? "");
+  const normalized = raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return "";
+  if (/^data:/i.test(normalized) || /base64/i.test(normalized)) {
+    return "Submitted binary content omitted.";
+  }
+
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
+}
+
+function answerPreview(value: unknown) {
+  if (typeof value === "string") {
+    return compactEvidenceText(value, 480) || "No answer submitted.";
+  }
+
+  if (Array.isArray(value)) {
+    const preview = value
+      .slice(0, 8)
+      .map((item) => compactEvidenceText(item, 120))
+      .filter(Boolean)
+      .join(", ");
+    return preview || "No answer submitted.";
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const preferred = record.answer ?? record.value ?? record.text ?? record.selectedOptionId;
+    if (preferred !== undefined) {
+      return answerPreview(preferred);
+    }
+
+    try {
+      return compactEvidenceText(JSON.stringify(record), 480) || "No answer submitted.";
+    } catch {
+      return "Submitted answer could not be displayed.";
+    }
+  }
+
+  return "No answer submitted.";
+}
+
+function feedbackSummary(explanation: unknown, result: unknown) {
+  const explanationText = compactEvidenceText(explanation, 360);
+  if (explanationText) return explanationText;
+
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return null;
+  }
+
+  const record = result as Record<string, unknown>;
+  return (
+    compactEvidenceText(
+      record.judgmentReason ?? record.explanation ?? record.feedback ?? record.message,
+      360,
+    ) || null
   );
 }
 
@@ -113,6 +241,7 @@ function summarizeProgress({
   const progressByStudentId = new Map(
     progressRows.map((progress) => [progress.student_id, progress.status]),
   );
+  const linkedStudentIds = new Set(practiceLinks.map((link) => link.student_id));
   let inProgressCount = 0;
   let completedCount = 0;
 
@@ -120,7 +249,7 @@ function summarizeProgress({
     const status = progressByStudentId.get(studentId);
     if (status === "completed") {
       completedCount += 1;
-    } else if (status === "in_progress") {
+    } else if (status === "in_progress" || linkedStudentIds.has(studentId)) {
       inProgressCount += 1;
     }
   }
@@ -303,7 +432,8 @@ export async function getTeacherAssignmentDetail({
     .from("assignment_items")
     .select("id, item_type, order_index, points, question_id, bank_question_id, source_bank_id")
     .eq("assignment_id", assignmentId)
-    .order("order_index", { ascending: true });
+    .order("order_index", { ascending: true })
+    .limit(MAX_ASSIGNMENT_ITEMS);
 
   if (itemError) {
     throw new Error(itemError.message);
@@ -327,11 +457,12 @@ export async function getTeacherAssignmentDetail({
   const { data: questions } = questionIds.length
     ? await supabase
         .from("questions")
-        .select("id, question_code, title, question_type, difficulty_rating, status")
+        .select("id, question_code, title, content_html, question_type, difficulty_rating, status")
         .in("id", questionIds)
+        .limit(MAX_ASSIGNMENT_ITEMS)
     : { data: [] };
   const questionById = new Map(
-    ((questions ?? []) as TeacherAssignmentQuestion[]).map((question) => [
+    ((questions ?? []) as TeacherAssignmentEvidenceQuestion[]).map((question) => [
       question.id,
       question,
     ]),
@@ -343,18 +474,21 @@ export async function getTeacherAssignmentDetail({
         .select("user_id")
         .eq("classroom_id", classroomId)
         .eq("role", "student")
-        .eq("status", "active"),
+        .eq("status", "active")
+        .limit(MAX_ASSIGNMENT_STUDENTS),
       supabase
         .from("student_assignment_progress")
         .select(
           "student_id, status, started_at, completed_at, last_practice_session_id, evidence_summary, updated_at",
         )
-        .eq("assignment_id", assignmentId),
+        .eq("assignment_id", assignmentId)
+        .limit(MAX_ASSIGNMENT_PROGRESS_ROWS),
       supabase
         .from("assignment_practice_sessions")
         .select("student_id, practice_session_id, created_at")
         .eq("assignment_id", assignmentId)
         .order("created_at", { ascending: false })
+        .limit(MAX_ASSIGNMENT_PRACTICE_LINKS),
     ]);
   const activeStudentIds = new Set((members ?? []).map((member) => member.user_id));
   const activeStudentIdList = Array.from(activeStudentIds);
@@ -370,11 +504,14 @@ export async function getTeacherAssignmentDetail({
       | "updated_at"
     >
   >;
-  const practiceLinkRows = (practiceLinks ?? []) as Array<{
+  const practiceLinkRows = ((practiceLinks ?? []) as Array<{
     created_at: string;
     practice_session_id: string;
     student_id: string;
-  }>;
+  }>).filter((link) => activeStudentIds.has(link.student_id));
+  const practiceSessionIds = Array.from(
+    new Set(practiceLinkRows.map((link) => link.practice_session_id)),
+  );
   const [{ data: profiles }, { data: practiceSessions }, { data: practiceAttempts }] =
     await Promise.all([
       activeStudentIdList.length
@@ -382,24 +519,25 @@ export async function getTeacherAssignmentDetail({
             .from("profiles")
             .select("id, username, email, full_name, display_name, role")
             .in("id", activeStudentIdList)
+            .limit(MAX_ASSIGNMENT_STUDENTS)
         : Promise.resolve({ data: [] }),
-      practiceLinkRows.length
+      practiceSessionIds.length
         ? supabase
             .from("practice_sessions")
             .select("id, user_id, last_activity_at, status, title")
-            .in(
-              "id",
-              Array.from(new Set(practiceLinkRows.map((link) => link.practice_session_id))),
-            )
+            .in("id", practiceSessionIds)
+            .limit(MAX_ASSIGNMENT_PRACTICE_LINKS)
         : Promise.resolve({ data: [] }),
-      practiceLinkRows.length
+      practiceSessionIds.length && questionIds.length
         ? supabase
             .from("practice_attempts")
-            .select("id, user_id, session_id, is_correct")
-            .in(
-              "session_id",
-              Array.from(new Set(practiceLinkRows.map((link) => link.practice_session_id))),
+            .select(
+              "id, user_id, session_id, round_id, source_question_id, question_title, answer, hint_count, grading_mode, is_correct, score, explanation, result, created_at",
             )
+            .in("session_id", practiceSessionIds)
+            .in("source_question_id", questionIds)
+            .order("created_at", { ascending: false })
+            .limit(MAX_ASSIGNMENT_ATTEMPTS)
         : Promise.resolve({ data: [] }),
     ]);
   const progressByStudentId = new Map(
@@ -417,23 +555,68 @@ export async function getTeacherAssignmentDetail({
     ),
   );
   const linksByStudentId = new Map<string, typeof practiceLinkRows>();
-  const attemptCountsByStudentId = new Map<string, { correct: number; total: number }>();
+  const linkedStudentBySessionId = new Map<string, string>();
+  const attemptsByStudentId = new Map<string, TeacherAssignmentAttempt[]>();
+  const attemptsByQuestionId = new Map<string, TeacherAssignmentAttempt[]>();
 
   for (const link of practiceLinkRows) {
     const links = linksByStudentId.get(link.student_id) ?? [];
     links.push(link);
     linksByStudentId.set(link.student_id, links);
+    linkedStudentBySessionId.set(link.practice_session_id, link.student_id);
   }
-  for (const attempt of (practiceAttempts ?? []) as Array<{
-    is_correct: boolean | null;
-    user_id: string;
-  }>) {
-    const counts = attemptCountsByStudentId.get(attempt.user_id) ?? { correct: 0, total: 0 };
-    counts.total += 1;
-    if (attempt.is_correct === true) {
-      counts.correct += 1;
+  for (const attempt of (practiceAttempts ?? []) as Array<
+    Pick<
+      PracticeAttempt,
+      | "answer"
+      | "created_at"
+      | "explanation"
+      | "grading_mode"
+      | "hint_count"
+      | "id"
+      | "is_correct"
+      | "question_title"
+      | "result"
+      | "round_id"
+      | "score"
+      | "session_id"
+      | "source_question_id"
+      | "user_id"
+    >
+  >) {
+    const linkedStudentId = linkedStudentBySessionId.get(attempt.session_id);
+    const questionId = attempt.source_question_id;
+
+    if (
+      !linkedStudentId ||
+      linkedStudentId !== attempt.user_id ||
+      !questionId ||
+      !questionById.has(questionId)
+    ) {
+      continue;
     }
-    attemptCountsByStudentId.set(attempt.user_id, counts);
+
+    const evidenceAttempt: TeacherAssignmentAttempt = {
+      answerPreview: answerPreview(attempt.answer),
+      createdAt: attempt.created_at,
+      feedbackSummary: feedbackSummary(attempt.explanation, attempt.result),
+      gradingMode: attempt.grading_mode,
+      hintCount: attempt.hint_count,
+      id: attempt.id,
+      isCorrect: attempt.is_correct,
+      questionId,
+      questionTitle: questionById.get(questionId)?.title || attempt.question_title || "Question",
+      roundId: attempt.round_id,
+      score: attempt.score,
+      sessionId: attempt.session_id,
+    };
+    const studentAttempts = attemptsByStudentId.get(linkedStudentId) ?? [];
+    studentAttempts.push(evidenceAttempt);
+    attemptsByStudentId.set(linkedStudentId, studentAttempts);
+
+    const questionAttempts = attemptsByQuestionId.get(questionId) ?? [];
+    questionAttempts.push(evidenceAttempt);
+    attemptsByQuestionId.set(questionId, questionAttempts);
   }
 
   const studentProgressRows = activeStudentIdList
@@ -449,7 +632,11 @@ export async function getTeacherAssignmentDetail({
           .filter(Boolean)
           .sort()
           .at(-1) ?? null;
-      const attemptCounts = attemptCountsByStudentId.get(studentId) ?? { correct: 0, total: 0 };
+      const attempts = (attemptsByStudentId.get(studentId) ?? []).sort((a, b) =>
+        b.createdAt.localeCompare(a.createdAt),
+      );
+      const practiceCorrectCount = attempts.filter((attempt) => attempt.isCorrect === true).length;
+      const practiceIncorrectCount = attempts.filter((attempt) => attempt.isCorrect === false).length;
       const profile = profileById.get(studentId) ?? null;
 
       return {
@@ -460,11 +647,14 @@ export async function getTeacherAssignmentDetail({
         latestPracticeSessionAt,
         linkedPracticeSessionCount: links.length,
         lastPracticeSessionId: progress?.last_practice_session_id ?? links[0]?.practice_session_id ?? null,
-        practiceAttemptCount: attemptCounts.total,
-        practiceCorrectCount: attemptCounts.correct,
+        practiceAttemptCount: attempts.length,
+        practiceCorrectCount,
+        practiceHintCount: attempts.reduce((total, attempt) => total + attempt.hintCount, 0),
+        practiceIncorrectCount,
         profile,
+        recentAttempts: attempts.slice(0, MAX_RECENT_ATTEMPTS_PER_STUDENT),
         startedAt: progress?.started_at ?? null,
-        status: progress?.status ?? "not_started",
+        status: progress?.status ?? (links.length ? "in_progress" : "not_started"),
         studentId,
         updatedAt: progress?.updated_at ?? null,
       } satisfies TeacherAssignmentStudentProgress;
@@ -483,6 +673,71 @@ export async function getTeacherAssignmentDetail({
     practiceLinks: practiceLinkRows,
     progressRows: progressRowList,
   });
+  const questionPerformanceItems = Array.from(
+    new Map(
+      itemRows.map((item) => [item.question_id ?? `unavailable:${item.id}`, item]),
+    ).values(),
+  );
+  const questionPerformanceRows = questionPerformanceItems.map((item) => {
+    const question = item.question_id ? questionById.get(item.question_id) ?? null : null;
+    const attempts = item.question_id ? attemptsByQuestionId.get(item.question_id) ?? [] : [];
+    const correctAttemptCount = attempts.filter((attempt) => attempt.isCorrect === true).length;
+    const incorrectAttemptCount = attempts.filter((attempt) => attempt.isCorrect === false).length;
+    const studentAttemptedCount = new Set(
+      activeStudentIdList.filter((studentId) =>
+        (attemptsByStudentId.get(studentId) ?? []).some(
+          (attempt) => attempt.questionId === item.question_id,
+        ),
+      ),
+    ).size;
+    const attentionStatus: TeacherAssignmentQuestionPerformance["attentionStatus"] =
+      !question
+        ? "unavailable"
+        : attempts.length === 0
+          ? "no_attempts"
+          : incorrectAttemptCount > correctAttemptCount && attempts.length >= 2
+            ? "needs_attention"
+            : incorrectAttemptCount > 0
+              ? "mixed_results"
+              : "on_track";
+
+    return {
+      assignedStudentCount: activeStudentIdList.length,
+      assignmentItemId: item.id,
+      attemptCount: attempts.length,
+      attentionStatus,
+      correctAttemptCount,
+      incorrectAttemptCount,
+      latestActivityAt: latestIso(attempts.map((attempt) => attempt.createdAt)),
+      question,
+      sourceLabel: item.bank_question_id
+        ? "Selected Question Bank item"
+        : "Assignment item",
+      studentAttemptedCount,
+    } satisfies TeacherAssignmentQuestionPerformance;
+  });
+  const evidenceSummary: TeacherAssignmentEvidenceSummary = {
+    attemptCount: studentProgressRows.reduce((total, row) => total + row.practiceAttemptCount, 0),
+    completionRate: activeStudentIdList.length
+      ? Math.round((progressSummary.completedCount / activeStudentIdList.length) * 100)
+      : null,
+    correctAttemptCount: studentProgressRows.reduce(
+      (total, row) => total + row.practiceCorrectCount,
+      0,
+    ),
+    incorrectAttemptCount: studentProgressRows.reduce(
+      (total, row) => total + row.practiceIncorrectCount,
+      0,
+    ),
+    latestActivityAt: latestIso(
+      studentProgressRows.map((row) => row.latestPracticeSessionAt),
+    ),
+    studentsNeedingAttentionCount: studentProgressRows.filter(
+      (row) =>
+        row.practiceAttemptCount >= 2 &&
+        row.practiceIncorrectCount >= row.practiceCorrectCount,
+    ).length,
+  };
 
   return {
     ...(assignment as Omit<TeacherAssignmentSummary, "itemCount" | "progressSummary">),
@@ -492,7 +747,9 @@ export async function getTeacherAssignmentDetail({
       ...item,
       question: item.question_id ? questionById.get(item.question_id) ?? null : null,
     })),
+    evidenceSummary,
     progressSummary,
+    questionPerformanceRows,
     studentProgressRows,
   };
 }

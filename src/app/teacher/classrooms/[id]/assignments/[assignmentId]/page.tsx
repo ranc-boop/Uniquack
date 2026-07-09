@@ -5,6 +5,7 @@ import {
   ClassroomRouteTabs,
   ClassroomSafetyStrip,
 } from "@/app/teacher/classrooms/classroom-ui";
+import { QuestionText } from "@/components/math-content";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -76,23 +77,40 @@ function statusBadgeClass(status: string) {
   return "bg-amber-50 text-amber-700 ring-amber-200";
 }
 
-function evidenceSummaryLine(summary: unknown) {
-  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
-    return "No practice evidence yet.";
+function formatPercent(value: number | null) {
+  return value === null ? "Not set" : `${value}%`;
+}
+
+function attentionLabel(
+  status: "mixed_results" | "needs_attention" | "no_attempts" | "on_track" | "unavailable",
+) {
+  if (status === "needs_attention") return "Needs attention";
+  if (status === "mixed_results") return "Mixed results";
+  if (status === "no_attempts") return "No attempts yet";
+  if (status === "unavailable") return "Question unavailable";
+  return "On track";
+}
+
+function attentionBadgeClass(
+  status: "mixed_results" | "needs_attention" | "no_attempts" | "on_track" | "unavailable",
+) {
+  if (status === "needs_attention") {
+    return "bg-rose-50 text-rose-700 ring-rose-200";
   }
-
-  const record = summary as Record<string, unknown>;
-  const attempted = Number(record.attemptedQuestionCount ?? 0);
-  const total = Number(record.totalQuestionCount ?? 0);
-  const completedIds = Array.isArray(record.completedQuestionIds)
-    ? record.completedQuestionIds.length
-    : 0;
-
-  if (attempted || total || completedIds) {
-    return `${attempted || completedIds}/${total || "?"} question(s) with practice evidence`;
+  if (status === "mixed_results") {
+    return "bg-amber-50 text-amber-700 ring-amber-200";
   }
+  if (status === "on_track") {
+    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  }
+  return "bg-slate-100 text-slate-700 ring-slate-200";
+}
 
-  return "Practice evidence saved, details pending.";
+function attemptResultLabel(isCorrect: boolean | null, score: number | null) {
+  if (isCorrect === true) return "Correct";
+  if (isCorrect === false) return "Needs review";
+  if (score !== null) return `Score ${score}`;
+  return "Recorded";
 }
 
 function ProgressStat({
@@ -175,6 +193,41 @@ export default async function TeacherAssignmentDetailPage({
         to the teacher&apos;s full bank.
       </section>
 
+      <section className="teacher-panel overflow-hidden" aria-labelledby="assignment-evidence-heading">
+        <div className="border-b border-slate-100 p-5">
+          <p className="teacher-eyebrow">Assignment evidence</p>
+          <h2 className="mt-1 text-lg font-bold text-slate-950" id="assignment-evidence-heading">
+            Evidence for this assignment only
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Review student attempts from linked assignment Practice sessions. Private student
+            self-study is not included.
+          </p>
+        </div>
+        <div className="grid gap-px bg-slate-100 sm:grid-cols-2 xl:grid-cols-4">
+          <ProgressStat
+            helper="Students marked completed"
+            label="Completion rate"
+            value={formatPercent(assignment.evidenceSummary.completionRate)}
+          />
+          <ProgressStat
+            helper={`${assignment.evidenceSummary.correctAttemptCount} correct, ${assignment.evidenceSummary.incorrectAttemptCount} missed`}
+            label="Attempts"
+            value={assignment.evidenceSummary.attemptCount}
+          />
+          <ProgressStat
+            helper="Two or more attempts with more misses than correct"
+            label="Students needing attention"
+            value={assignment.evidenceSummary.studentsNeedingAttentionCount}
+          />
+          <ProgressStat
+            helper={formatDateTime(assignment.evidenceSummary.latestActivityAt)}
+            label="Latest activity"
+            value={assignment.evidenceSummary.latestActivityAt ? "Recorded" : "None"}
+          />
+        </div>
+      </section>
+
       {query.saved ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
           {query.saved}
@@ -249,8 +302,8 @@ export default async function TeacherAssignmentDetailPage({
                 Student progress
               </h2>
               <p className="teacher-muted">
-                One row per active classroom student, using assignment progress
-                and linked Practice evidence.
+                One row per active classroom student. Attempts and results are limited to
+                Practice sessions linked to this assignment.
               </p>
             </div>
 
@@ -278,10 +331,10 @@ export default async function TeacherAssignmentDetailPage({
                     <tr>
                       <th className="px-5 py-3">Student</th>
                       <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3">Started</th>
-                      <th className="px-5 py-3">Completed</th>
-                      <th className="px-5 py-3">Practice evidence</th>
+                      <th className="px-5 py-3">Attempts</th>
+                      <th className="px-5 py-3">Correct / total</th>
                       <th className="px-5 py-3">Latest activity</th>
+                      <th className="px-5 py-3"><span className="sr-only">View evidence</span></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -304,32 +357,41 @@ export default async function TeacherAssignmentDetailPage({
                             {statusLabel(row.status)}
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-slate-600">
-                          {formatDateTime(row.startedAt)}
-                        </td>
-                        <td className="px-5 py-4 text-slate-600">
-                          {formatDateTime(row.completedAt)}
-                        </td>
-                        <td className="px-5 py-4">
-                          <p className="font-medium text-slate-700">
-                            {evidenceSummaryLine(row.evidenceSummary)}
-                          </p>
+                        <td className="px-5 py-4 text-slate-700">
+                          <p className="font-semibold">{row.practiceAttemptCount}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {row.linkedPracticeSessionCount} linked session(s) -
-                            {" "}
-                            {row.practiceAttemptCount} attempt(s)
-                            {row.practiceAttemptCount
-                              ? `, ${row.practiceCorrectCount} correct`
-                              : ""}
+                            {row.practiceHintCount} hint{row.practiceHintCount === 1 ? "" : "s"} used
                           </p>
-                          {row.lastPracticeSessionId ? (
-                            <p className="mt-1 break-all font-mono text-xs text-slate-400">
-                              {row.lastPracticeSessionId}
+                        </td>
+                        <td className="px-5 py-4 text-slate-700">
+                          <p className="font-semibold">
+                            {row.practiceCorrectCount} / {row.practiceAttemptCount}
+                          </p>
+                          {row.practiceIncorrectCount ? (
+                            <p className="mt-1 text-xs text-rose-700">
+                              {row.practiceIncorrectCount} missed
                             </p>
                           ) : null}
                         </td>
-                        <td className="px-5 py-4 text-slate-600">
-                          {formatDateTime(row.latestPracticeSessionAt)}
+                        <td className="px-5 py-4">
+                          <p className="font-medium text-slate-700">
+                            {formatDateTime(row.latestPracticeSessionAt)}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {row.linkedPracticeSessionCount} linked session{row.linkedPracticeSessionCount === 1 ? "" : "s"}
+                          </p>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          {row.recentAttempts.length ? (
+                            <a
+                              className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-800 transition hover:bg-slate-50"
+                              href={`#student-evidence-${row.studentId}`}
+                            >
+                              View evidence
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400">Pending</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -337,6 +399,165 @@ export default async function TeacherAssignmentDetailPage({
                 </table>
               </div>
             ) : null}
+          </section>
+
+          <section className="teacher-panel overflow-hidden">
+            <div className="border-b border-slate-100 p-5">
+              <h2 className="text-lg font-bold text-slate-950">Question performance</h2>
+              <p className="teacher-muted">
+                Performance across the selected assignment items. Source bank access remains
+                teacher-private.
+              </p>
+            </div>
+            {assignment.questionPerformanceRows.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-100 text-sm">
+                  <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                    <tr>
+                      <th className="px-5 py-3">Question</th>
+                      <th className="px-5 py-3">Type / difficulty</th>
+                      <th className="px-5 py-3">Attempted</th>
+                      <th className="px-5 py-3">Correct</th>
+                      <th className="px-5 py-3">Missed</th>
+                      <th className="px-5 py-3">Attention signal</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {assignment.questionPerformanceRows.map((row) => (
+                      <tr className="align-top" key={row.assignmentItemId}>
+                        <td className="min-w-[18rem] px-5 py-4">
+                          <p className="font-semibold text-slate-950">
+                            {row.question?.title || "Question unavailable"}
+                          </p>
+                          {row.question?.content_html ? (
+                            <QuestionText
+                              className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600"
+                              value={row.question.content_html}
+                            />
+                          ) : null}
+                          <p className="mt-2 text-xs font-semibold text-sky-700">
+                            {row.sourceLabel}
+                          </p>
+                        </td>
+                        <td className="px-5 py-4 text-slate-700">
+                          {row.question ? (
+                            <>
+                              <p className="font-medium">{row.question.question_type}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                Difficulty {row.question.difficulty_rating}
+                              </p>
+                            </>
+                          ) : (
+                            <span className="text-slate-500">Not available</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 font-semibold text-slate-700">
+                          {row.studentAttemptedCount} / {row.assignedStudentCount}
+                        </td>
+                        <td className="px-5 py-4 font-semibold text-emerald-700">
+                          {row.correctAttemptCount}
+                        </td>
+                        <td className="px-5 py-4 font-semibold text-rose-700">
+                          {row.incorrectAttemptCount}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ring-1 ${attentionBadgeClass(
+                              row.attentionStatus,
+                            )}`}
+                          >
+                            {attentionLabel(row.attentionStatus)}
+                          </span>
+                          {row.latestActivityAt ? (
+                            <p className="mt-2 text-xs text-slate-500">
+                              {formatDateTime(row.latestActivityAt)}
+                            </p>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-8 text-center">
+                <h3 className="text-base font-bold text-slate-950">No selected questions yet.</h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
+                  Add selected bank or published questions before assigning work to students.
+                </p>
+              </div>
+            )}
+          </section>
+
+          <section className="teacher-panel overflow-hidden">
+            <div className="border-b border-slate-100 p-5">
+              <h2 className="text-lg font-bold text-slate-950">Attempt drilldown</h2>
+              <p className="teacher-muted">
+                Recent assignment-linked attempts only. Teacher feedback notes are coming next.
+              </p>
+            </div>
+            {assignment.studentProgressRows.some((row) => row.recentAttempts.length) ? (
+              <div className="divide-y divide-slate-100">
+                {assignment.studentProgressRows
+                  .filter((row) => row.recentAttempts.length)
+                  .map((row) => (
+                    <details className="group p-5" id={`student-evidence-${row.studentId}`} key={row.studentId}>
+                      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
+                        <span>
+                          <span className="block font-semibold text-slate-950">{row.displayName}</span>
+                          <span className="mt-1 block text-sm text-slate-600">
+                            {row.practiceAttemptCount} attempt{row.practiceAttemptCount === 1 ? "" : "s"}, {row.practiceCorrectCount} correct, {row.practiceHintCount} hint{row.practiceHintCount === 1 ? "" : "s"}
+                          </span>
+                        </span>
+                        <span className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 group-open:bg-slate-50">
+                          View recent attempts
+                        </span>
+                      </summary>
+                      <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
+                        {row.recentAttempts.map((attempt) => (
+                          <article className="rounded-lg border border-slate-200 bg-slate-50 p-4" key={attempt.id}>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-slate-950">{attempt.questionTitle}</p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {formatDateTime(attempt.createdAt)} - {attempt.gradingMode} grading - {attempt.hintCount} hint{attempt.hintCount === 1 ? "" : "s"}
+                                </p>
+                              </div>
+                              <span
+                                className={`inline-flex w-fit rounded-full px-2 py-1 text-xs font-bold ring-1 ${statusBadgeClass(
+                                  attempt.isCorrect === true ? "completed" : attempt.isCorrect === false ? "draft" : "assigned",
+                                )}`}
+                              >
+                                {attemptResultLabel(attempt.isCorrect, attempt.score)}
+                              </span>
+                            </div>
+                            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                              <div className="rounded-md border border-slate-200 bg-white p-3">
+                                <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Student answer</p>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">{attempt.answerPreview}</p>
+                              </div>
+                              <div className="rounded-md border border-slate-200 bg-white p-3">
+                                <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">System review</p>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
+                                  {attempt.feedbackSummary || "No written review result was recorded for this attempt."}
+                                </p>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </details>
+                  ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center">
+                <h3 className="text-base font-bold text-slate-950">Evidence is still pending.</h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
+                  When a student answers an assigned question in Practice, their recent attempt
+                  will appear here for this assignment only.
+                </p>
+              </div>
+            )}
           </section>
 
           <section className="teacher-panel overflow-hidden">

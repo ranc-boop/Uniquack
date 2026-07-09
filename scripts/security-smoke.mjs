@@ -561,7 +561,7 @@ assert(
     teacherAssignmentDetailPage.includes("Draft assignment is teacher-only") &&
     teacherAssignmentDetailPage.includes("Assigned work is visible in Student My Work") &&
     teacherAssignmentDetailPage.includes("/questions/") &&
-    teacherAssignmentDetailPage.includes("linked session(s)") &&
+    teacherAssignmentDetailPage.includes("linked session") &&
     teacherAssignmentsPage.includes("Open progress") &&
     teacherAssignmentsPage.includes("completed") &&
     teacherAssignmentDetailPage.includes("My Work") &&
