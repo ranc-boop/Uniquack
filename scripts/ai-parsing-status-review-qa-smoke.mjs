@@ -90,8 +90,9 @@ assert(
     bankReviewPage.includes("QuestionAnswerSummary") &&
     bankReviewPage.includes("Solution / explanation") &&
     bankReviewPage.includes("Taxonomy suggestions") &&
-    bankReviewPage.includes("Edit draft - coming next") &&
-    bankReviewPage.includes("Needs fix - coming next") &&
+    bankReviewPage.includes("Edit Review Draft before approval") &&
+    bankReviewPage.includes("Mark needs fix") &&
+    bankReviewPage.includes("Reject and archive") &&
     bankReviewPage.includes("Approval adds this question") &&
     bankReviewPage.includes("bank-scoped and is not globally published") &&
     bankReviewPage.includes("Source lineage") &&

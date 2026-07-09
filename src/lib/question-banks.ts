@@ -71,18 +71,33 @@ export type BankReviewDraftQuestion = Pick<
   | "created_at"
   | "answer_spec"
   | "content_html"
+  | "content_source"
+  | "content_source_format"
   | "difficulty_rating"
   | "id"
+  | "owner_bank_id"
   | "options"
+  | "published_at"
   | "question_code"
   | "question_type"
   | "solution_html"
+  | "solution_source"
+  | "solution_source_format"
   | "source"
   | "source_kind"
   | "source_review_item_id"
   | "status"
   | "title"
+  | "visibility"
 > & {
+  reviewItemId: string | null;
+  reviewItemStatus:
+    | "pending_review"
+    | "approved"
+    | "rejected"
+    | "needs_more_evidence"
+    | "archived"
+    | null;
   tagIds: string[];
   tagSummaries: BankQuestionTaxonomySummary[];
   warningCount: number;
@@ -447,7 +462,7 @@ export async function listBankReviewDraftQuestions({
   const { data: questions, error } = await supabase
     .from("questions")
     .select(
-      "id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, created_at, answer_spec, content_html, options, solution_html",
+      "id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, published_at, created_at, answer_spec, content_html, content_source, content_source_format, options, solution_html, solution_source, solution_source_format",
     )
     .eq("owner_bank_id", bankId)
     .eq("status", "draft")
@@ -485,6 +500,72 @@ export async function listBankReviewDraftQuestions({
 
   if (importItemResult.error) {
     throw new Error(importItemResult.error.message);
+  }
+
+  const sourceReviewItemIds = Array.from(
+    new Set(
+      (questions ?? [])
+        .map((question) => question.source_review_item_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const reviewItems: Array<{
+    created_question_id: string | null;
+    id: string;
+    status: BankReviewDraftQuestion["reviewItemStatus"];
+    target_bank_id: string | null;
+  }> = [];
+
+  if (questionIds.length) {
+    const { data: itemsByQuestion, error: itemsByQuestionError } =
+      await supabase
+        .from("review_draft_items")
+        .select("id, created_question_id, status, target_bank_id")
+        .eq("item_kind", "question")
+        .in("created_question_id", questionIds)
+        .limit(200);
+
+    if (itemsByQuestionError) {
+      throw new Error(itemsByQuestionError.message);
+    }
+
+    reviewItems.push(
+      ...((itemsByQuestion ?? []) as typeof reviewItems).filter(
+        (item) => !item.target_bank_id || item.target_bank_id === bankId,
+      ),
+    );
+  }
+
+  if (sourceReviewItemIds.length) {
+    const { data: itemsById, error: itemsByIdError } = await supabase
+      .from("review_draft_items")
+      .select("id, created_question_id, status, target_bank_id")
+      .eq("item_kind", "question")
+      .in("id", sourceReviewItemIds)
+      .limit(200);
+
+    if (itemsByIdError) {
+      throw new Error(itemsByIdError.message);
+    }
+
+    reviewItems.push(
+      ...((itemsById ?? []) as typeof reviewItems).filter(
+        (item) => !item.target_bank_id || item.target_bank_id === bankId,
+      ),
+    );
+  }
+
+  const reviewItemByQuestionId = new Map<
+    string,
+    (typeof reviewItems)[number]
+  >();
+  const reviewItemById = new Map<string, (typeof reviewItems)[number]>();
+
+  for (const item of reviewItems) {
+    reviewItemById.set(item.id, item);
+    if (item.created_question_id) {
+      reviewItemByQuestionId.set(item.created_question_id, item);
+    }
   }
 
   const tagIds = Array.from(
@@ -551,13 +632,29 @@ export async function listBankReviewDraftQuestions({
     );
   }
 
-  return (questions ?? []).map((question) => ({
-    ...question,
-    tagIds: tagsByQuestionId.get(question.id) ?? [],
-    tagSummaries: tagSummariesByQuestionId.get(question.id) ?? [],
-    warningCount: warningCountByQuestionId.get(question.id) ?? 0,
-    warningMessages: warningMessagesByQuestionId.get(question.id) ?? [],
-  })) as BankReviewDraftQuestion[];
+  return (questions ?? [])
+    .map((question) => {
+      const reviewItem =
+        (question.source_review_item_id
+          ? reviewItemById.get(question.source_review_item_id)
+          : null) ?? reviewItemByQuestionId.get(question.id);
+
+      return {
+        ...question,
+        reviewItemId: reviewItem?.id ?? null,
+        reviewItemStatus: reviewItem?.status ?? null,
+        tagIds: tagsByQuestionId.get(question.id) ?? [],
+        tagSummaries: tagSummariesByQuestionId.get(question.id) ?? [],
+        warningCount: warningCountByQuestionId.get(question.id) ?? 0,
+        warningMessages: warningMessagesByQuestionId.get(question.id) ?? [],
+      };
+    })
+    .filter(
+      (question) =>
+        question.reviewItemStatus !== "approved" &&
+        question.reviewItemStatus !== "archived" &&
+        question.reviewItemStatus !== "rejected",
+    ) as BankReviewDraftQuestion[];
 }
 
 export async function listBankApprovedQuestions({
