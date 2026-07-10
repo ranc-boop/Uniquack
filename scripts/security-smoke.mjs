@@ -141,6 +141,8 @@ const teacherClassroomPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
 const teacherClassroomUi = await read("src/app/teacher/classrooms/classroom-ui.tsx");
 const teacherClassroomPeoplePage = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
+const teacherClassroomStudentsPage = await read("src/app/teacher/classrooms/[id]/students/page.tsx");
+const teacherClassroomTeachersPage = await read("src/app/teacher/classrooms/[id]/teachers/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
 const teacherClassroomAnalyticsPage = await read("src/app/teacher/classrooms/[id]/analytics/page.tsx");
 const teacherClassroomBlueprintsPage = await read("src/app/teacher/classrooms/[id]/blueprints/page.tsx");
@@ -531,12 +533,17 @@ assert(
     teacherClassroomDetailPage.includes("Active join code") &&
     teacherClassroomDetailPage.includes("Students needing attention") &&
     teacherClassroomDetailPage.includes("View assignments") &&
-    teacherClassroomPeoplePage.includes("Joining a class does not grant access") &&
-    teacherClassroomPeoplePage.includes("Remove from class") &&
-    teacherClassroomAnalyticsPage.includes("Analytics / Feedback") &&
+    teacherClassroomPeoplePage.includes("/students") &&
+    teacherClassroomStudentsPage.includes("Remove from active roster") &&
+    teacherClassroomStudentsPage.includes("source bank") &&
+    teacherClassroomTeachersPage.includes("source Question Banks") &&
+    teacherClassroomTeachersPage.includes("provider settings") &&
+    teacherClassroomAnalyticsPage.includes("Progress") &&
     teacherClassroomAnalyticsPage.includes("Taxonomy mastery") &&
     teacherClassroomBlueprintsPage.includes("Blueprints linked to this class will appear here") &&
-    teacherClassroomSettingsPage.includes("Archive and delete controls are not enabled") &&
+    teacherClassroomSettingsPage.includes("Join-code lifecycle") &&
+    teacherClassroomSettingsPage.includes("Archive classroom") &&
+    teacherClassroomSettingsPage.includes("Reopen classroom") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
     teacherAssignmentsPage.includes("Assignment visibility") &&
     teacherAssignmentsPage.includes("global publishing") &&

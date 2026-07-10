@@ -23,6 +23,7 @@ type ClassroomBase = Pick<
   | "id"
   | "name"
   | "organization_id"
+  | "owner_id"
   | "status"
   | "subject"
   | "updated_at"
@@ -44,9 +45,12 @@ type AssignmentBase = Pick<
 export type TeacherClassroomSummary = ClassroomBase & {
   activeAssignmentCount: number;
   assignmentCount: number;
+  coTeacherCount: number;
   completionRate: number | null;
   draftAssignmentCount: number;
   joinCodeHint: string | null;
+  joinCodeStatus: ClassroomJoinCode["status"] | null;
+  joinCodeUpdatedAt: string | null;
   joinCodeVisible: string | null;
   latestActivityAt: string | null;
   latestAssignment: AssignmentBase | null;
@@ -59,6 +63,14 @@ export type TeacherClassroomRosterMember = Pick<
   ClassroomMember,
   "created_at" | "id" | "joined_at" | "role" | "status" | "user_id"
 > & {
+  assignmentSummary: {
+    assignedCount: number;
+    completedCount: number;
+    inProgressCount: number;
+    latestActivityAt: string | null;
+    linkedPracticeSessionCount: number;
+    needsAttention: boolean;
+  };
   displayName: string;
   email: string | null;
   profile: Pick<
@@ -114,9 +126,8 @@ async function buildClassroomSummaries({
       .in("classroom_id", classroomIds),
     supabase
       .from("classroom_join_codes")
-      .select("classroom_id, display_code, code_hint, status, created_at")
+      .select("classroom_id, display_code, code_hint, status, created_at, updated_at")
       .in("classroom_id", classroomIds)
-      .eq("status", "active")
       .not("display_code", "is", null)
       .order("created_at", { ascending: false }),
   ]);
@@ -150,6 +161,7 @@ async function buildClassroomSummaries({
     ]);
 
   const studentIdsByClassroom = new Map<string, Set<string>>();
+  const coTeacherCountByClassroom = new Map<string, number>();
   const teacherCountByClassroom = new Map<string, number>();
   const assignmentCountByClassroom = new Map<string, number>();
   const activeAssignmentCountByClassroom = new Map<string, number>();
@@ -167,6 +179,12 @@ async function buildClassroomSummaries({
       students.add(member.user_id);
       studentIdsByClassroom.set(member.classroom_id, students);
       continue;
+    }
+    if (member.role === "co_teacher") {
+      coTeacherCountByClassroom.set(
+        member.classroom_id,
+        (coTeacherCountByClassroom.get(member.classroom_id) ?? 0) + 1,
+      );
     }
     teacherCountByClassroom.set(
       member.classroom_id,
@@ -275,7 +293,10 @@ async function buildClassroomSummaries({
     );
   }
 
-  const joinCodeByClassroom = new Map<string, Pick<ClassroomJoinCode, "code_hint" | "display_code">>();
+  const joinCodeByClassroom = new Map<
+    string,
+    Pick<ClassroomJoinCode, "code_hint" | "display_code" | "status" | "updated_at">
+  >();
   for (const joinCode of joinCodes ?? []) {
     if (!joinCodeByClassroom.has(joinCode.classroom_id)) {
       joinCodeByClassroom.set(joinCode.classroom_id, joinCode);
@@ -299,12 +320,18 @@ async function buildClassroomSummaries({
       ...classroom,
       activeAssignmentCount,
       assignmentCount: assignmentCountByClassroom.get(classroom.id) ?? 0,
+      coTeacherCount: coTeacherCountByClassroom.get(classroom.id) ?? 0,
       completionRate: denominator
         ? Math.round(((completedByClassroom.get(classroom.id) ?? 0) / denominator) * 100)
         : null,
       draftAssignmentCount: draftAssignmentCountByClassroom.get(classroom.id) ?? 0,
       joinCodeHint: joinCodeByClassroom.get(classroom.id)?.code_hint ?? null,
-      joinCodeVisible: joinCodeByClassroom.get(classroom.id)?.display_code ?? null,
+      joinCodeStatus: joinCodeByClassroom.get(classroom.id)?.status ?? null,
+      joinCodeUpdatedAt: joinCodeByClassroom.get(classroom.id)?.updated_at ?? null,
+      joinCodeVisible:
+        joinCodeByClassroom.get(classroom.id)?.status === "active"
+          ? (joinCodeByClassroom.get(classroom.id)?.display_code ?? null)
+          : null,
       latestActivityAt: latestActivityByClassroom.get(classroom.id) ?? null,
       latestAssignment: latestAssignmentByClassroom.get(classroom.id) ?? null,
       linkedBlueprintCount: bankIds?.size ? linkedBlueprintIds.size : null,
@@ -321,7 +348,9 @@ export async function listTeacherClassroomSummaries({
 }) {
   const { data, error } = await supabase
     .from("classrooms")
-    .select("id, organization_id, name, description, subject, status, created_at, updated_at")
+    .select(
+      "id, organization_id, owner_id, name, description, subject, status, created_at, updated_at",
+    )
     .order("updated_at", { ascending: false })
     .limit(100);
 
@@ -342,7 +371,9 @@ export async function getTeacherClassroomWorkspace({
 }): Promise<TeacherClassroomWorkspace | null> {
   const { data: classroom, error } = await supabase
     .from("classrooms")
-    .select("id, organization_id, name, description, subject, status, created_at, updated_at")
+    .select(
+      "id, organization_id, owner_id, name, description, subject, status, created_at, updated_at",
+    )
     .eq("id", classroomId)
     .maybeSingle();
 
@@ -369,6 +400,23 @@ export async function getTeacherClassroomWorkspace({
   if (rosterError) throw new Error(rosterError.message);
 
   const userIds = Array.from(new Set((roster ?? []).map((member) => member.user_id)));
+  const assignedAssignmentIds = assignments
+    .filter((assignment) => assignment.status === "assigned")
+    .map((assignment) => assignment.id);
+  const [{ data: progressRows }, { data: practiceLinks }] = await Promise.all([
+    assignedAssignmentIds.length
+      ? supabase
+          .from("student_assignment_progress")
+          .select("assignment_id, student_id, status, updated_at")
+          .in("assignment_id", assignedAssignmentIds)
+      : Promise.resolve({ data: [] }),
+    assignedAssignmentIds.length
+      ? supabase
+          .from("assignment_practice_sessions")
+          .select("assignment_id, student_id, created_at")
+          .in("assignment_id", assignedAssignmentIds)
+      : Promise.resolve({ data: [] }),
+  ]);
   const { data: profiles } = userIds.length
     ? await supabase
         .from("profiles")
@@ -381,6 +429,47 @@ export async function getTeacherClassroomWorkspace({
       profile,
     ]),
   );
+  const assignedCount = assignedAssignmentIds.length;
+  const studentProgressById = new Map<
+    string,
+    TeacherClassroomRosterMember["assignmentSummary"]
+  >();
+
+  for (const member of roster ?? []) {
+    if (member.role !== "student") continue;
+    studentProgressById.set(member.user_id, {
+      assignedCount,
+      completedCount: 0,
+      inProgressCount: 0,
+      latestActivityAt: null,
+      linkedPracticeSessionCount: 0,
+      needsAttention: assignedCount > 0,
+    });
+  }
+
+  for (const progress of progressRows ?? []) {
+    const summary = studentProgressById.get(progress.student_id);
+    if (!summary) continue;
+    if (progress.status === "completed") {
+      summary.completedCount += 1;
+    } else if (progress.status === "in_progress") {
+      summary.inProgressCount += 1;
+    }
+    summary.latestActivityAt =
+      maxIso([summary.latestActivityAt, progress.updated_at]) ?? summary.latestActivityAt;
+    summary.needsAttention = summary.completedCount < summary.assignedCount;
+  }
+
+  for (const link of practiceLinks ?? []) {
+    const summary = studentProgressById.get(link.student_id);
+    if (!summary) continue;
+    summary.linkedPracticeSessionCount += 1;
+    summary.latestActivityAt =
+      maxIso([summary.latestActivityAt, link.created_at]) ?? summary.latestActivityAt;
+    if (summary.completedCount < summary.assignedCount) {
+      summary.inProgressCount = Math.max(summary.inProgressCount, 1);
+    }
+  }
 
   return {
     assignments,
@@ -391,6 +480,14 @@ export async function getTeacherClassroomWorkspace({
       const profile = profileById.get(member.user_id) ?? null;
       return {
         ...member,
+        assignmentSummary: studentProgressById.get(member.user_id) ?? {
+          assignedCount,
+          completedCount: 0,
+          inProgressCount: 0,
+          latestActivityAt: null,
+          linkedPracticeSessionCount: 0,
+          needsAttention: assignedCount > 0,
+        },
         displayName: profileLabel(profile ?? {}),
         email: profile?.email ?? null,
         profile,

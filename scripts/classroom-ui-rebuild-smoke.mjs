@@ -99,6 +99,8 @@ async function runSourceSmoke() {
   const listPage = await read("src/app/teacher/classrooms/page.tsx");
   const overviewPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
   const peoplePage = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
+  const studentsPage = await read("src/app/teacher/classrooms/[id]/students/page.tsx");
+  const teachersPage = await read("src/app/teacher/classrooms/[id]/teachers/page.tsx");
   const assignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
   const analyticsPage = await read("src/app/teacher/classrooms/[id]/analytics/page.tsx");
   const blueprintsPage = await read("src/app/teacher/classrooms/[id]/blueprints/page.tsx");
@@ -128,10 +130,11 @@ async function runSourceSmoke() {
   );
   for (const label of [
     "Overview",
-    "People",
     "Assignments",
-    "Analytics / Feedback",
-    "Linked Blueprints",
+    "Students",
+    "Teachers",
+    "Progress",
+    "Blueprints",
     "Settings",
   ]) {
     assert(classroomUi.includes(label), `classroom route tabs missing ${label}`);
@@ -145,14 +148,25 @@ async function runSourceSmoke() {
     "classroom overview must show stats, join code, recent assignments, attention, and blueprint context",
   );
   assert(
-    peoplePage.includes("Joining a class does not grant access") &&
-      peoplePage.includes("Create join code") &&
-      peoplePage.includes("Remove from class") &&
+    peoplePage.includes("/students") &&
+      studentsPage.includes("Remove from active roster") &&
+      studentsPage.includes("preserve all history") &&
+      studentsPage.includes("restoreClassroomStudent") &&
       classroomActions.includes("createClassroomJoinCode") &&
+      classroomActions.includes("rotateClassroomJoinCode") &&
+      classroomActions.includes("disableClassroomJoining") &&
       classroomActions.includes("hashClassroomJoinCode") &&
       classroomActions.includes("removeClassroomStudent") &&
       classroomActions.includes('update({ status: "removed" })'),
-    "People section must show roster boundary copy and safe soft-remove action",
+    "Students section must show roster boundary copy, join-code recovery, and safe soft-remove action",
+  );
+  assert(
+    teachersPage.includes("Add co-teacher") &&
+      teachersPage.includes("source Question Banks") &&
+      classroomActions.includes("addClassroomCoTeacher") &&
+      classroomActions.includes("removeClassroomCoTeacher") &&
+      !classroomActions.includes("bank_members"),
+    "Teachers section must manage co-teachers without granting source bank membership",
   );
   assert(
     assignmentsPage.includes("Publish new bank work") &&
@@ -162,6 +176,7 @@ async function runSourceSmoke() {
   );
   assert(
     analyticsPage.includes("Completion summaries use real assignment and Practice evidence") &&
+      analyticsPage.includes("Progress") &&
       analyticsPage.includes("Taxonomy mastery") &&
       analyticsPage.includes("Mistake patterns") &&
       analyticsPage.includes("Feedback drafting"),
@@ -174,10 +189,14 @@ async function runSourceSmoke() {
     "Linked Blueprints section must not implement blueprint generation",
   );
   assert(
-    settingsPage.includes("Archive and delete controls are not enabled") &&
-      settingsPage.includes("Validation still") &&
-      settingsPage.includes("hashed code path"),
-    "Settings must expose identity/join-code info without destructive lifecycle behavior",
+    settingsPage.includes("Join-code lifecycle") &&
+      settingsPage.includes("Archive classroom") &&
+      settingsPage.includes("Reopen classroom") &&
+      settingsPage.includes("hashed code path") &&
+      classroomActions.includes("archiveClassroom") &&
+      classroomActions.includes("reopenClassroom") &&
+      classroomActions.includes('status: "archived"'),
+    "Settings must expose safe identity, join-code, archive, and reopen lifecycle behavior",
   );
   assert(
     !listPage.includes("Google Classroom integration") &&

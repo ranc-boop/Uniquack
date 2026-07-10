@@ -56,6 +56,10 @@ export async function createTeacherAssignment(formData: FormData) {
       supabase,
     });
 
+    if (classroom.status !== "active") {
+      throw new Error("Reopen this classroom before creating new assignments.");
+    }
+
     const { data: questions, error: questionError } = await supabase
       .from("questions")
       .select("id, status")
