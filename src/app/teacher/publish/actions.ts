@@ -9,13 +9,22 @@ import {
   redirectWithSaved,
 } from "@/lib/actions/feedback";
 import { requireTeacher } from "@/lib/auth/guards";
+import { getTeacherQuestionBankDetail } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildPublishAssignmentSourceSummary,
+  canPublishFromBank,
+  listPublishableBankQuestions,
+  normalizePublishSourceType,
+  verifyPublishableSelection,
+} from "@/lib/teacher-publish";
 
 const publishQuestionBankAssignmentsSchema = z.object({
   bankId: z.string().uuid(),
   dueAt: z.string().trim().optional().default(""),
   instructions: z.string().trim().max(4000).optional().default(""),
   publishMode: z.enum(["assigned", "draft"]).default("draft"),
+  sourceType: z.string().trim().optional().default("bank"),
   title: z.string().trim().min(1).max(180),
 });
 
@@ -49,7 +58,7 @@ export async function publishQuestionBankAssignments(formData: FormData) {
     : "/teacher/publish";
 
   try {
-    await requireTeacher();
+    const profile = await requireTeacher();
     const parsed = publishQuestionBankAssignmentsSchema.parse(
       Object.fromEntries(formData),
     );
@@ -67,7 +76,60 @@ export async function publishQuestionBankAssignments(formData: FormData) {
     }
 
     const supabase = await createClient();
+    const bankDetail = await getTeacherQuestionBankDetail({
+      bankId: parsed.bankId,
+      profileId: profile.id,
+      supabase,
+    });
+
+    if (!bankDetail || bankDetail.bank.status !== "active") {
+      throw new Error("Selected source bank is not active.");
+    }
+
+    if (!canPublishFromBank(bankDetail.currentUserRole)) {
+      throw new Error("Only bank owners and editors can publish bank content.");
+    }
+
+    const publishableQuestions = await listPublishableBankQuestions({
+      bankId: parsed.bankId,
+      supabase,
+    });
+    const selectedQuestions = verifyPublishableSelection({
+      questions: publishableQuestions,
+      selectedBankQuestionIds,
+    });
+    const { data: classrooms, error: classroomError } = await supabase
+      .from("classrooms")
+      .select("id, organization_id, status")
+      .in("id", selectedClassroomIds)
+      .eq("status", "active");
+
+    if (classroomError) {
+      throw new Error(classroomError.message);
+    }
+
+    if ((classrooms ?? []).length !== selectedClassroomIds.length) {
+      throw new Error(
+        "One or more selected classrooms are unavailable or not manageable.",
+      );
+    }
+
+    if (
+      (classrooms ?? []).some(
+        (classroom) =>
+          classroom.organization_id !== bankDetail.bank.organization_id,
+      )
+    ) {
+      throw new Error("Selected classrooms must belong to the source bank organization.");
+    }
+
     const created: Array<{ assignmentId: string; classroomId: string }> = [];
+    const sourceSummary = buildPublishAssignmentSourceSummary({
+      bank: bankDetail.bank,
+      mode: parsed.publishMode,
+      selectedQuestions,
+      source: normalizePublishSourceType(parsed.sourceType),
+    });
 
     for (const classroomId of selectedClassroomIds) {
       const { data: assignmentId, error } = await supabase.rpc(
@@ -92,6 +154,17 @@ export async function publishQuestionBankAssignments(formData: FormData) {
 
       if (!assignmentId) {
         throw new Error("Assignment was not created from this bank.");
+      }
+
+      const { error: summaryError } = await supabase
+        .from("assignments")
+        .update({ source_summary: sourceSummary })
+        .eq("id", assignmentId);
+
+      if (summaryError) {
+        throw new Error(
+          `Assignment was created, but Publish could not attach the sanitized source summary: ${summaryError.message}.`,
+        );
       }
 
       created.push({ assignmentId, classroomId });

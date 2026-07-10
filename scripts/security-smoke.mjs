@@ -392,16 +392,19 @@ assert(
     teacherBankActions.includes('rpc("approve_bank_review_question"') &&
     teacherBankActions.includes("create_assignment_from_bank") &&
     teacherBankActions.includes("createAssignmentFromBankQuestions") &&
-    teacherPublishPage.includes("Publish distributes selected bank content to classes") &&
-    teacherPublishPage.includes("Choose a source bank") &&
-    teacherPublishPage.includes("Select approved bank questions") &&
-    teacherPublishPage.includes("Choose classroom targets") &&
-    teacherPublishPage.includes("Individual-student targeting is planned") &&
+    teacherPublishPage.includes("Publish distributes selected approved bank content to classes") &&
+    teacherPublishPage.includes("Choose the content owner") &&
+    teacherPublishPage.includes("Select approved assignment-ready rows") &&
+    teacherPublishPage.includes("Choose classroom delivery") &&
+    teacherPublishPage.includes("Selected students") &&
     teacherPublishPage.includes("Assignment-only. No full source bank access.") &&
-    teacherPublishPage.includes("Blueprints will become publishable after package generation and Review Draft approval.") &&
+    teacherPublishPage.includes("Blueprint rows are not directly publishable") &&
+    teacherPublishPage.includes("Package publishing is not assignment-ready yet.") &&
     teacherPublishPage.includes("No Review Draft bypass") &&
     teacherPublishActions.includes("requireTeacher") &&
     teacherPublishActions.includes("publishQuestionBankAssignments") &&
+    teacherPublishActions.includes("verifyPublishableSelection") &&
+    teacherPublishActions.includes("buildPublishAssignmentSourceSummary") &&
     teacherPublishActions.includes("create_assignment_from_bank") &&
     teacherPublishActions.includes("selectedClassroomIds") &&
     teacherPublishActions.includes("p_selected_bank_question_ids") &&

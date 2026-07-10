@@ -231,23 +231,28 @@ async function staticChecks() {
   const smokeAll = await read("scripts/smoke-all.mjs");
 
   assert(
-    publishPage.includes("Publish distributes selected bank content to classes. Students see assigned items only, not the full source bank.") &&
+    publishPage.includes("Publish distributes selected approved bank content to classes. Students see assigned items only, not the full source bank.") &&
       publishPage.includes("Question Bank") &&
-      publishPage.includes("Working now") &&
-      publishPage.includes("Blueprints will become publishable after package generation and Review Draft approval.") &&
+      publishPage.includes("Choose the content owner") &&
+      publishPage.includes("Blueprint") &&
+      publishPage.includes("Blueprint rows are not directly publishable") &&
       publishPage.includes("Package") &&
-      publishPage.includes("Choose a source bank") &&
-      publishPage.includes("Select approved bank questions") &&
-      publishPage.includes("Choose classroom targets") &&
-      publishPage.includes("Individual-student targeting is planned") &&
+      publishPage.includes("Package publishing is not assignment-ready yet.") &&
+      publishPage.includes("Select approved assignment-ready rows") &&
+      publishPage.includes("Choose classroom delivery") &&
+      publishPage.includes("Selected students") &&
+      publishPage.includes("Student preview") &&
       publishPage.includes("Assignment-only. No full source bank access.") &&
       publishPage.includes("No Review Draft bypass") &&
       publishPage.includes("No provider or AI calls"),
-    "Publish Center page must expose bank source, class target, review boundary, and coming-next source copy",
+    "Publish Center page must expose source cards, class target, student preview, and review boundary copy",
   );
   assert(
     publishPage.includes("action={publishQuestionBankAssignments}") &&
       publishActions.includes("requireTeacher") &&
+      publishActions.includes("getTeacherQuestionBankDetail") &&
+      publishActions.includes("verifyPublishableSelection") &&
+      publishActions.includes("buildPublishAssignmentSourceSummary") &&
       publishActions.includes("create_assignment_from_bank") &&
       publishActions.includes("selectedClassroomIds") &&
       publishActions.includes("p_selected_bank_question_ids") &&
