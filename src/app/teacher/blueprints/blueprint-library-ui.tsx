@@ -21,6 +21,7 @@ import {
   type TeacherBlueprintFilter,
   type TeacherBlueprintLibraryItem,
 } from "@/lib/teacher-blueprints";
+import { readinessWarnings, sourceExampleCount } from "@/lib/teacher-blueprint-builder";
 import type { QuestionBlueprintFolderTreeNode } from "@/lib/blueprints/question-blueprint-folders";
 
 const visibilityTone: Record<string, string> = {
@@ -297,7 +298,25 @@ export function BlueprintCard({ blueprint }: { blueprint: TeacherBlueprintLibrar
               <dd className="mt-1 font-medium text-slate-800">
                 {blueprint.sourceBank?.name ||
                   blueprint.linkedBanks[0]?.name ||
-                  "No bank link"}
+                "No bank link"}
+              </dd>
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 bg-white/70 p-3">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Source examples
+              </dt>
+              <dd className="mt-1 font-medium text-slate-800">
+                {sourceExampleCount(blueprint)}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white/70 p-3">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Readiness
+              </dt>
+              <dd className="mt-1 font-medium text-slate-800">
+                {readinessWarnings(blueprint).length ? "Needs planning" : "Preview ready"}
               </dd>
             </div>
           </div>

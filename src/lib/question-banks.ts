@@ -120,6 +120,7 @@ export type BankApprovedQuestion = {
     | "status"
     | "title"
     | "visibility"
+    | "published_at"
   > | null;
   source_kind: string;
   status: string;
@@ -667,7 +668,7 @@ export async function listBankApprovedQuestions({
   const { data, error } = await supabase
     .from("bank_questions")
     .select(
-      "id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, visibility)",
+      "id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, visibility, published_at)",
     )
     .eq("bank_id", bankId)
     .eq("status", "active")

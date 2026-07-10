@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   canManageBankContent,
+  listBankApprovedQuestions,
   listTeacherQuestionBanks,
   QuestionBankSchemaMissingError,
 } from "@/lib/question-banks";
@@ -25,7 +26,7 @@ export const dynamic = "force-dynamic";
 export default async function NewTeacherBlueprintPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sourceBankId?: string; error?: string }>;
+  searchParams: Promise<{ bankId?: string; sourceBankId?: string; error?: string }>;
 }) {
   const profile = await requireTeacher();
   const query = await searchParams;
@@ -33,6 +34,7 @@ export default async function NewTeacherBlueprintPage({
 
   let banks: Awaited<ReturnType<typeof listTeacherQuestionBanks>> = [];
   let folders: Awaited<ReturnType<typeof listTeacherBlueprintLibrary>>["folders"] = [];
+  let sourceQuestions: Awaited<ReturnType<typeof listBankApprovedQuestions>> = [];
 
   try {
     const [bankRows, library] = await Promise.all([
@@ -60,7 +62,17 @@ export default async function NewTeacherBlueprintPage({
     throw error;
   }
 
-  const selectedBank = banks.find((bank) => bank.id === query.sourceBankId) ?? null;
+  const requestedBankId = query.bankId ?? query.sourceBankId;
+  const selectedBank = banks.find((bank) => bank.id === requestedBankId) ?? null;
+
+  if (selectedBank) {
+    sourceQuestions = (await listBankApprovedQuestions({ bankId: selectedBank.id, supabase })).filter(
+      (row) => row.status === "active" && row.question?.status === "draft" && !row.question.published_at,
+    );
+  }
+  const selectedQuestionTypes = Array.from(
+    new Set(sourceQuestions.map((row) => row.question?.question_type).filter(Boolean)),
+  );
 
   return (
     <TeacherWorkspaceShell
@@ -81,8 +93,11 @@ export default async function NewTeacherBlueprintPage({
 
       {query.error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-          Blueprint could not be created. Check the required fields and try
-          again.
+          {query.error === "missing-source-question"
+            ? "Select at least one approved source question from the bank."
+            : query.error === "invalid-source-question"
+              ? "One selected source question is no longer active or assignment-ready."
+              : "Blueprint could not be created. Check the required fields and try again."}
         </div>
       ) : null}
 
@@ -165,21 +180,154 @@ export default async function NewTeacherBlueprintPage({
             </label>
 
             <label className="grid gap-1 text-sm font-semibold text-slate-700">
-              Source bank
-              <select
-                className="min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-950"
-                defaultValue={selectedBank?.id ?? ""}
-                name="sourceBankId"
-              >
+            Source bank
+            <select
+              className="min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-950"
+              defaultValue={selectedBank?.id ?? ""}
+              name="sourceBankId"
+            >
                 <option value="">No bank link</option>
                 {banks.map((bank) => (
                   <option key={bank.id} value={bank.id}>
                     {bank.name}
                   </option>
                 ))}
-              </select>
-            </label>
+            </select>
+          </label>
           </div>
+
+          {selectedBank ? (
+            <section className="rounded-lg border border-slate-200 bg-white/80">
+              <div className="border-b border-slate-200 bg-slate-50/80 p-4">
+                <h3 className="text-base font-bold text-slate-950">
+                  Select source/example questions
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Only active approved questions from this bank are shown. The
+                  Blueprint stores lineage and planning structure; it does not
+                  modify the source questions.
+                </p>
+              </div>
+              <div className="grid gap-3 p-4">
+                {sourceQuestions.length ? (
+                  sourceQuestions.map((row, index) => (
+                    <label
+                      className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-white p-3 transition hover:border-sky-200 hover:bg-sky-50/60"
+                      key={row.bank_question_id}
+                    >
+                      <input
+                        className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
+                        defaultChecked={index < 6}
+                        name="sourceBankQuestionIds"
+                        type="checkbox"
+                        value={row.bank_question_id}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-slate-950">
+                          {row.question?.title ?? "Untitled source question"}
+                        </span>
+                        <span className="mt-1 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                            {row.question?.question_type ?? "type"}
+                          </span>
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                            Difficulty {row.question?.difficulty_rating ?? "not set"}
+                          </span>
+                          <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-1 text-sky-800">
+                            {row.tagSummaries.length} taxonomy target{row.tagSummaries.length === 1 ? "" : "s"}
+                          </span>
+                        </span>
+                      </span>
+                    </label>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                    No active approved source questions are ready in this bank
+                    yet. Approve Review Drafts into the bank before building a
+                    Blueprint from bank examples.
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="rounded-lg border border-slate-200 bg-white/80 p-4">
+            <h3 className="text-base font-bold text-slate-950">
+              Planning structure
+            </h3>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                Expected question count
+                <input
+                  className="min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-950"
+                  min={1}
+                  name="expectedQuestionCount"
+                  placeholder="8"
+                  type="number"
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-slate-700 md:col-span-2">
+                Question type mix
+                <input
+                  className="min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-950"
+                  name="questionTypeMix"
+                  placeholder={selectedQuestionTypes.length ? selectedQuestionTypes.join(", ") : "MCQ 60%, FRQ 40%"}
+                />
+              </label>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                Difficulty mix
+                <textarea
+                  className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                  name="difficultyMix"
+                  placeholder="Mostly medium with one transfer problem."
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                Required elements
+                <textarea
+                  className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                  name="requiredElements"
+                  placeholder="One source-grounded setup per line"
+                  required={Boolean(selectedBank)}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                Answer pattern
+                <textarea
+                  className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                  name="answerPattern"
+                  placeholder="What a correct response should contain."
+                  required={Boolean(selectedBank)}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                Distractor pattern
+                <textarea
+                  className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                  name="distractorPattern"
+                  placeholder="For MCQ, describe plausible incorrect choices."
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                Originality / variation constraints
+                <textarea
+                  className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                  name="originalityConstraints"
+                  placeholder="Keep the same assessment structure without reusing source wording."
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                Teacher notes
+                <textarea
+                  className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                  name="teacherNotes"
+                  placeholder="Planning notes for future review or generation."
+                />
+              </label>
+            </div>
+          </section>
 
           <div className="rounded-lg border border-sky-100 bg-sky-50/80 p-4 text-sm leading-6 text-sky-950">
             Blueprint output must flow through Review Drafts and bank approval

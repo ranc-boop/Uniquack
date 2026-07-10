@@ -1,13 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ArrowLeft } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, PencilLine } from "lucide-react";
 
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import {
+  displayTextFromPattern,
+  readinessChecklist,
+  readinessWarnings,
+  selectedSourceQuestionTitles,
+  sourceExampleCount,
+} from "@/lib/teacher-blueprint-builder";
 import {
   BlueprintLibrarySchemaMissingError,
   blueprintKindLabel,
@@ -16,6 +23,10 @@ import {
   getTeacherBlueprintDetail,
   summarizeBlueprintTaxonomy,
 } from "@/lib/teacher-blueprints";
+
+import {
+  updateTeacherBlueprintPlan,
+} from "../actions";
 
 import {
   BankLinkSummary,
@@ -34,6 +45,26 @@ function jsonCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function textAreaList(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => (typeof item === "string" ? item : "")).filter(Boolean).join("\n")
+    : "";
+}
+
+function nestedText(value: unknown, key: string, nestedKey = "teacherMix") {
+  return stringValue(asRecord(asRecord(value)[key])[nestedKey]);
+}
+
 function formatDate(value: string | null) {
   if (!value) return "Not yet";
 
@@ -49,7 +80,7 @@ export default async function TeacherBlueprintDetailPage({
   searchParams,
 }: {
   params: Promise<{ blueprintId: string }>;
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{ created?: string; error?: string; saved?: string }>;
 }) {
   await requireTeacher();
   const { blueprintId } = await params;
@@ -80,6 +111,11 @@ export default async function TeacherBlueprintDetailPage({
   }
 
   const { bankLinks, blueprint } = detail;
+  const checklist = readinessChecklist(blueprint);
+  const warnings = readinessWarnings(blueprint);
+  const generationConstraints = asRecord(blueprint.generation_constraints);
+  const expectedQuestionCount = generationConstraints.expectedQuestionCount;
+  const sourceTitles = selectedSourceQuestionTitles(blueprint);
 
   return (
     <TeacherWorkspaceShell
@@ -101,6 +137,18 @@ export default async function TeacherBlueprintDetailPage({
       {query.created ? (
         <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
           Blueprint created as a review-gated teacher library asset.
+        </div>
+      ) : null}
+      {query.saved ? (
+        <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
+          Blueprint planning fields saved. Generation remains disabled until a
+          later Review Draft workflow is run.
+        </div>
+      ) : null}
+      {query.error ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          Blueprint changes could not be saved. Check the required fields and
+          try again.
         </div>
       ) : null}
 
@@ -161,45 +209,212 @@ export default async function TeacherBlueprintDetailPage({
               />
             </section>
 
-            <section className="rounded-lg border border-slate-200 bg-white/80 p-5">
-              <h3 className="text-lg font-bold text-slate-950">
-                Source lineage and constraints
-              </h3>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <BlueprintDetailMetric
-                  label="Required elements"
-                  value={`${jsonCount(blueprint.required_elements)} item${jsonCount(blueprint.required_elements) === 1 ? "" : "s"}`}
-                />
-                <BlueprintDetailMetric
-                  label="Source refs"
-                  value={`${jsonCount(blueprint.source_refs)} ref${jsonCount(blueprint.source_refs) === 1 ? "" : "s"}`}
-                />
-                <BlueprintDetailMetric
-                  label="Generation readiness"
-                  value={blueprint.generation_readiness.replace(/_/g, " ")}
-                />
+            <form action={updateTeacherBlueprintPlan} className="rounded-lg border border-slate-200 bg-white/80">
+              <input name="blueprintId" type="hidden" value={blueprint.id} />
+              <div className="border-b border-slate-200 bg-white/70 p-5">
+                <div className="flex items-start gap-3">
+                  <PencilLine aria-hidden="true" className="mt-1 h-5 w-5 text-sky-700" />
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-950">
+                      Structured Blueprint editor
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      Edit the planning asset only. This does not call a
+                      provider, create Review Drafts, publish assignments, or
+                      mutate source questions.
+                    </p>
+                  </div>
+                </div>
               </div>
-              <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <summary className="cursor-pointer text-sm font-bold text-slate-700">
-                  Source metadata
-                </summary>
-                <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">
-                  {JSON.stringify(
-                    {
-                      metadata: blueprint.metadata,
-                      sourceKind: blueprint.source_kind,
-                      sourceRecordId: blueprint.source_record_id,
-                      sourceRefs: blueprint.source_refs,
-                    },
-                    null,
-                    2,
-                  )}
-                </pre>
-              </details>
-            </section>
+              <div className="grid gap-4 p-5">
+                <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                  Title
+                  <input
+                    className="min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-950"
+                    defaultValue={blueprint.title}
+                    maxLength={160}
+                    name="title"
+                    required
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                  Purpose / description
+                  <textarea
+                    className="min-h-28 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                    defaultValue={blueprint.description ?? ""}
+                    maxLength={2000}
+                    name="description"
+                  />
+                </label>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                    Expected question count
+                    <input
+                      className="min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-950"
+                      defaultValue={
+                        typeof expectedQuestionCount === "number" || typeof expectedQuestionCount === "string"
+                          ? String(expectedQuestionCount)
+                          : ""
+                      }
+                      min={1}
+                      name="expectedQuestionCount"
+                      type="number"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700 md:col-span-2">
+                    Question type mix
+                    <input
+                      className="min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-950"
+                      defaultValue={nestedText(blueprint.generation_constraints, "questionTypeMix")}
+                      name="questionTypeMix"
+                      placeholder="MCQ 60%, FRQ 40%"
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                    Difficulty mix
+                    <textarea
+                      className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                      defaultValue={displayTextFromPattern(blueprint.difficulty_profile, "teacherMix")}
+                      name="difficultyMix"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                    Required concepts / elements
+                    <textarea
+                      className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                      defaultValue={textAreaList(blueprint.required_elements)}
+                      name="requiredElements"
+                      placeholder="One required element per line"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                    Answer pattern
+                    <textarea
+                      className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                      defaultValue={displayTextFromPattern(blueprint.answer_spec_pattern, "guidance")}
+                      name="answerPattern"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                    Distractor pattern
+                    <textarea
+                      className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                      defaultValue={displayTextFromPattern(blueprint.distractor_pattern, "guidance")}
+                      name="distractorPattern"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                    Originality / variation constraints
+                    <textarea
+                      className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                      defaultValue={displayTextFromPattern(blueprint.originality_constraints, "guidance")}
+                      name="originalityConstraints"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                    Teacher notes
+                    <textarea
+                      className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                      defaultValue={stringValue(asRecord(blueprint.metadata).teacherNotes)}
+                      name="teacherNotes"
+                    />
+                  </label>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                  Saving a meaningful edit sets generation readiness back to
+                  uncalibrated. Later generation must still create Review
+                  Drafts before bank approval.
+                </div>
+                <div>
+                  <Button type="submit">Save Blueprint plan</Button>
+                </div>
+              </div>
+            </form>
           </div>
 
           <aside className="space-y-4">
+            <section className="rounded-lg border border-slate-200 bg-white/80 p-5">
+              <div className="flex items-start gap-3">
+                <Eye aria-hidden="true" className="mt-1 h-5 w-5 text-sky-700" />
+                <div>
+                  <h3 className="text-lg font-bold text-slate-950">
+                    Blueprint preview
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    Blueprints are planning assets. They do not go directly to
+                    students. Generation and assignment require Review Draft
+                    and Bank approval.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3">
+                <BlueprintDetailMetric
+                  label="Source examples"
+                  value={`${sourceExampleCount(blueprint)} selected`}
+                />
+                <BlueprintDetailMetric
+                  label="Question type mix"
+                  value={nestedText(blueprint.generation_constraints, "questionTypeMix") || "Inferred from source examples"}
+                />
+                <BlueprintDetailMetric
+                  label="Difficulty mix"
+                  value={displayTextFromPattern(blueprint.difficulty_profile, "teacherMix") || "Inferred from source examples"}
+                />
+              </div>
+              {sourceTitles.length ? (
+                <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Source/example questions
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                    {sourceTitles.map((title) => (
+                      <li className="line-clamp-2" key={title}>
+                        {title}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="rounded-lg border border-slate-200 bg-white/80 p-5">
+              <h3 className="text-lg font-bold text-slate-950">
+                Readiness checklist
+              </h3>
+              <div className="mt-3 space-y-2">
+                {checklist.map((item) => (
+                  <div
+                    className="flex gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
+                    key={item.label}
+                  >
+                    {item.passed ? (
+                      <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 text-cyan-700" />
+                    ) : (
+                      <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 text-amber-700" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-950">{item.label}</p>
+                      <p className="mt-1 break-words text-xs leading-5 text-slate-600">{item.value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {warnings.length ? (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-bold text-amber-950">
+                    Warnings for missing fields
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-900">
+                    {warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </section>
+
             <section className="rounded-lg border border-slate-200 bg-white/80 p-5">
               <h3 className="text-lg font-bold text-slate-950">
                 Coming-next actions
@@ -235,6 +450,24 @@ export default async function TeacherBlueprintDetailPage({
                 )}
               </div>
             </section>
+
+            <details className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <summary className="cursor-pointer text-sm font-bold text-slate-700">
+                Source lineage and constraints
+              </summary>
+              <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">
+                {JSON.stringify(
+                  {
+                    metadata: blueprint.metadata,
+                    sourceKind: blueprint.source_kind,
+                    sourceRecordId: blueprint.source_record_id,
+                    sourceRefs: blueprint.source_refs,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
           </aside>
         </div>
       </section>

@@ -10,7 +10,20 @@ import {
   slugifyQuestionBlueprintFolderName,
 } from "@/lib/blueprints/question-blueprint-folders";
 import { requireTeacher } from "@/lib/auth/guards";
+import {
+  canManageBankContent,
+  getTeacherQuestionBankDetail,
+  listBankApprovedQuestions,
+} from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import {
+  boundedText,
+  buildTeacherBlueprintPayload,
+  mergeTeacherBlueprintMetadata,
+  parseExpectedQuestionCount,
+  sourceExampleFromBankQuestion,
+  textListFromValue,
+} from "@/lib/teacher-blueprint-builder";
 import type { QuestionBlueprintVisibility } from "@/types/database";
 
 const visibilityValues: QuestionBlueprintVisibility[] = [
@@ -30,6 +43,13 @@ function optionalFormString(formData: FormData, key: string) {
   return value.length ? value : null;
 }
 
+function formStringList(formData: FormData, key: string) {
+  return formData
+    .getAll(key)
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+}
+
 function normalizeVisibility(value: string | null): QuestionBlueprintVisibility {
   return visibilityValues.includes(value as QuestionBlueprintVisibility)
     ? (value as QuestionBlueprintVisibility)
@@ -42,67 +62,93 @@ export async function createTeacherBlueprint(formData: FormData) {
   const title = formString(formData, "title").slice(0, 160);
   const description = optionalFormString(formData, "description")?.slice(0, 2000) ?? null;
   const folderId = optionalFormString(formData, "folderId");
-  const sourceBankId = optionalFormString(formData, "sourceBankId");
+  const sourceBankId = optionalFormString(formData, "sourceBankId") ?? optionalFormString(formData, "bankId");
+  const selectedBankQuestionIds = formStringList(formData, "sourceBankQuestionIds").slice(0, 24);
   const visibility = normalizeVisibility(optionalFormString(formData, "visibility"));
+  const builderInput = {
+    answerPattern: boundedText(optionalFormString(formData, "answerPattern"), 1200),
+    description,
+    difficultyMix: boundedText(optionalFormString(formData, "difficultyMix"), 800),
+    distractorPattern: boundedText(optionalFormString(formData, "distractorPattern"), 1200),
+    expectedQuestionCount: parseExpectedQuestionCount(optionalFormString(formData, "expectedQuestionCount")),
+    originalityConstraints: boundedText(optionalFormString(formData, "originalityConstraints"), 1200),
+    questionTypeMix: boundedText(optionalFormString(formData, "questionTypeMix"), 800),
+    requiredElements: textListFromValue(optionalFormString(formData, "requiredElements"), 16),
+    teacherNotes: boundedText(optionalFormString(formData, "teacherNotes"), 1200),
+    title,
+  };
 
   if (!title) {
     redirect("/teacher/blueprints/new?error=missing-title");
   }
 
   let organizationId = profile.default_organization_id;
+  let sourceBankName: string | null = null;
+  let sourceExamples: NonNullable<ReturnType<typeof sourceExampleFromBankQuestion>>[] = [];
   if (sourceBankId) {
-    const { data: bank, error: bankError } = await supabase
-      .from("question_banks")
-      .select("id, organization_id")
-      .eq("id", sourceBankId)
-      .maybeSingle();
+    const detail = await getTeacherQuestionBankDetail({
+      bankId: sourceBankId,
+      profileId: profile.id,
+      supabase,
+    });
 
-    if (bankError || !bank) {
+    if (!detail || !canManageBankContent(detail.currentUserRole)) {
       redirect("/teacher/blueprints/new?error=source-bank");
     }
 
-    organizationId = bank.organization_id ?? organizationId;
+    organizationId = detail.bank.organization_id ?? organizationId;
+    sourceBankName = detail.bank.name;
+
+    if (!selectedBankQuestionIds.length) {
+      redirect(`/teacher/blueprints/new?bankId=${sourceBankId}&error=missing-source-question`);
+    }
+
+    const approvedQuestions = await listBankApprovedQuestions({ bankId: sourceBankId, supabase });
+    const selectedIdSet = new Set(selectedBankQuestionIds);
+    sourceExamples = approvedQuestions
+      .filter((row) => selectedIdSet.has(row.bank_question_id))
+      .filter((row) => row.status === "active" && row.question?.status === "draft" && !row.question.published_at)
+      .map(sourceExampleFromBankQuestion)
+      .filter((example): example is NonNullable<ReturnType<typeof sourceExampleFromBankQuestion>> => Boolean(example));
+
+    if (sourceExamples.length !== selectedIdSet.size) {
+      redirect(`/teacher/blueprints/new?bankId=${sourceBankId}&error=invalid-source-question`);
+    }
   }
 
+  const builderPayload = buildTeacherBlueprintPayload({
+    bankId: sourceBankId,
+    bankName: sourceBankName,
+    examples: sourceExamples,
+    input: builderInput,
+  });
   const blueprintId = randomUUID();
   const { error } = await supabase
     .from("question_blueprints")
     .insert({
-      answer_spec_pattern: {},
-      blueprint_kind: "manual",
+      answer_spec_pattern: builderPayload.answerSpecPattern,
+      blueprint_kind: sourceBankId ? "bank_generated" : "manual",
       created_by: profile.id,
       description,
-      difficulty_profile: {},
-      distractor_pattern: {},
+      difficulty_profile: builderPayload.difficultyProfile,
+      distractor_pattern: builderPayload.distractorPattern,
       folder_id: folderId,
-      generation_blocking_reasons: ["Manual blueprint needs review before generation readiness."],
-      generation_constraints: {
-        reviewGate: "review_drafts_required",
-      },
+      generation_blocking_reasons: builderPayload.generationBlockingReasons,
+      generation_constraints: builderPayload.generationConstraints,
       generation_ready: false,
       id: blueprintId,
-      metadata: {
-        productSurface: "teacher_blueprint_library",
-        safety: {
-          noAutoPublish: true,
-          noDirectStudentDelivery: true,
-          reviewDraftGateRequired: true,
-        },
-      },
+      metadata: builderPayload.metadata,
       organization_id: organizationId,
-      originality_constraints: {
-        rule: "Use as reusable planning structure only until reviewed.",
-      },
+      originality_constraints: builderPayload.originalityConstraints,
       owner_id: profile.id,
       owner_scope: "teacher",
-      question_pattern: {
-        summary: description || "Teacher-created reusable blueprint asset.",
-      },
-      required_elements: [],
+      question_pattern: builderPayload.questionPattern,
+      required_elements: builderPayload.requiredElements,
       source_bank_id: sourceBankId,
       source_kind: sourceBankId ? "question_bank" : "manual",
       status: "pending_review",
-      taxonomy_targets: [],
+      source_refs: builderPayload.sourceRefs,
+      taxonomy_targets: builderPayload.taxonomyTargets,
       title,
       updated_by: profile.id,
       visibility,
@@ -119,9 +165,10 @@ export async function createTeacherBlueprint(formData: FormData) {
         bank_id: sourceBankId,
         blueprint_id: blueprintId,
         metadata: {
-          source: "teacher_manual_create",
+          source: "teacher_blueprint_builder_core",
+          sourceQuestionCount: sourceExamples.length,
         },
-        relation_kind: "linked",
+        relation_kind: sourceExamples.length ? "generated_from_bank" : "linked",
         status: "active",
       },
       { onConflict: "bank_id,blueprint_id" },
@@ -134,6 +181,104 @@ export async function createTeacherBlueprint(formData: FormData) {
   }
 
   redirect(`/teacher/blueprints/${blueprintId}?created=1`);
+}
+
+export async function updateTeacherBlueprintPlan(formData: FormData) {
+  const profile = await requireTeacher();
+  const supabase = await createClient();
+  const blueprintId = formString(formData, "blueprintId");
+  const title = formString(formData, "title").slice(0, 160);
+  const description = optionalFormString(formData, "description")?.slice(0, 2000) ?? null;
+
+  if (!blueprintId || !title) {
+    redirect(blueprintId ? `/teacher/blueprints/${blueprintId}?error=missing-title` : "/teacher/blueprints?error=missing-blueprint");
+  }
+
+  const { data: blueprint, error: loadError } = await supabase
+    .from("question_blueprints")
+    .select("id, metadata, source_bank_id, source_refs, taxonomy_targets, version")
+    .eq("id", blueprintId)
+    .maybeSingle();
+
+  if (loadError || !blueprint) {
+    redirect(`/teacher/blueprints/${blueprintId}?error=not-found`);
+  }
+
+  const input = {
+    answerPattern: boundedText(optionalFormString(formData, "answerPattern"), 1200),
+    description,
+    difficultyMix: boundedText(optionalFormString(formData, "difficultyMix"), 800),
+    distractorPattern: boundedText(optionalFormString(formData, "distractorPattern"), 1200),
+    expectedQuestionCount: parseExpectedQuestionCount(optionalFormString(formData, "expectedQuestionCount")),
+    originalityConstraints: boundedText(optionalFormString(formData, "originalityConstraints"), 1200),
+    questionTypeMix: boundedText(optionalFormString(formData, "questionTypeMix"), 800),
+    requiredElements: textListFromValue(optionalFormString(formData, "requiredElements"), 16),
+    teacherNotes: boundedText(optionalFormString(formData, "teacherNotes"), 1200),
+    title,
+  };
+  const sourceRefRows = Array.isArray(blueprint.source_refs) ? blueprint.source_refs : [];
+  const sourceExamples = sourceRefRows.map((ref) => {
+    const record = ref && typeof ref === "object" ? (ref as Record<string, unknown>) : {};
+    return {
+      bankQuestionId: typeof record.bank_question_id === "string" ? record.bank_question_id : "",
+      difficulty: null,
+      questionCode: typeof record.question_code === "string" ? record.question_code : null,
+      questionId: typeof record.question_id === "string" ? record.question_id : "",
+      questionType: typeof record.question_type === "string" ? record.question_type : "unknown",
+      sourceKind: typeof record.source_kind === "string" ? record.source_kind : null,
+      sourceReviewItemId:
+        typeof record.source_review_item_id === "string" ? record.source_review_item_id : null,
+      taxonomyTargets: [],
+      title: typeof record.title === "string" ? record.title : "Source question",
+    };
+  }).filter((example) => example.questionId);
+
+  const builderPayload = buildTeacherBlueprintPayload({
+    bankId: blueprint.source_bank_id,
+    bankName: null,
+    examples: sourceExamples,
+    input,
+  });
+  const existingMetadata = blueprint.metadata;
+  const nextMetadata = mergeTeacherBlueprintMetadata(existingMetadata, builderPayload.metadata);
+  const taxonomyTargets = Array.isArray(blueprint.taxonomy_targets) && blueprint.taxonomy_targets.length
+    ? blueprint.taxonomy_targets
+    : builderPayload.taxonomyTargets;
+
+  const { error } = await supabase
+    .from("question_blueprints")
+    .update({
+      answer_spec_pattern: builderPayload.answerSpecPattern,
+      calibration_status: "invalidated",
+      description,
+      difficulty_profile: builderPayload.difficultyProfile,
+      distractor_pattern: builderPayload.distractorPattern,
+      generation_blocking_reasons: builderPayload.generationBlockingReasons,
+      generation_constraints: builderPayload.generationConstraints,
+      generation_ready: false,
+      generation_readiness: "uncalibrated",
+      metadata: nextMetadata,
+      originality_constraints: builderPayload.originalityConstraints,
+      question_pattern: builderPayload.questionPattern,
+      required_elements: builderPayload.requiredElements,
+      taxonomy_targets: taxonomyTargets,
+      title,
+      updated_by: profile.id,
+      version: Math.max(1, Number(blueprint.version) || 1) + 1,
+    })
+    .eq("id", blueprintId);
+
+  if (error) {
+    redirect(`/teacher/blueprints/${blueprintId}?error=save`);
+  }
+
+  revalidatePath("/teacher/blueprints");
+  revalidatePath(`/teacher/blueprints/${blueprintId}`);
+  if (blueprint.source_bank_id) {
+    revalidatePath(`/teacher/banks/${blueprint.source_bank_id}/blueprints`);
+  }
+
+  redirect(`/teacher/blueprints/${blueprintId}?saved=1`);
 }
 
 export async function createTeacherBlueprintFolder(formData: FormData) {
