@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { requireStudent } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import { listStudentSentAssignmentFeedbackNotes } from "@/lib/teacher-feedback-notes";
 import { getStudentAssignedWorkDetail } from "@/lib/student-work";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,11 @@ export default async function StudentWorkDetailPage({
   if (!assignment) {
     notFound();
   }
+  const feedbackNotes = await listStudentSentAssignmentFeedbackNotes({
+    assignmentId: assignment.id,
+    studentId: profile.id,
+    supabase,
+  });
 
   const usableQuestionItems = assignment.items.filter(
     (item) => item.item_type === "question" && item.question_id && item.question,
@@ -127,6 +133,37 @@ export default async function StudentWorkDetailPage({
           bank stays private.
         </section>
       ) : null}
+
+      <section className="student-panel overflow-hidden">
+        <div className="border-b border-slate-100 p-5">
+          <h2 className="text-lg font-bold text-slate-950">Teacher feedback</h2>
+          <p className="student-muted">
+            Feedback your teacher explicitly sent for this assigned work.
+          </p>
+        </div>
+        {feedbackNotes.length ? (
+          <div className="divide-y divide-slate-100">
+            {feedbackNotes.map((note) => (
+              <article className="p-5" key={note.id}>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-sky-700">
+                  Sent feedback
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
+                  {note.body}
+                </p>
+                <p className="mt-3 text-xs text-slate-500">
+                  Sent {formatDateTime(note.sent_at || note.created_at)}
+                </p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="p-5 text-sm leading-6 text-slate-600">
+            No feedback has been sent for this assignment yet. Private teacher notes are not
+            shown here.
+          </div>
+        )}
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="student-panel overflow-hidden">

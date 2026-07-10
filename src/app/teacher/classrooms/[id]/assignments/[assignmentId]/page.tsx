@@ -5,12 +5,19 @@ import {
   ClassroomRouteTabs,
   ClassroomSafetyStrip,
 } from "@/app/teacher/classrooms/classroom-ui";
+import {
+  savePrivateTeacherFeedbackNote,
+  sendTeacherFeedbackNote,
+} from "@/app/teacher/classrooms/[id]/assignments/[assignmentId]/feedback-actions";
 import { QuestionText } from "@/components/math-content";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { getTeacherAssignmentDetail } from "@/lib/teacher-assignments";
+import { listTeacherAssignmentFeedbackNotes } from "@/lib/teacher-feedback-notes";
 
 export const dynamic = "force-dynamic";
 
@@ -150,6 +157,17 @@ export default async function TeacherAssignmentDetailPage({
   if (!assignment) {
     notFound();
   }
+  const feedbackNotes = await listTeacherAssignmentFeedbackNotes({
+    assignmentId: assignment.id,
+    classroomId: assignment.classroom.id,
+    supabase,
+  });
+  const studentById = new Map(
+    assignment.studentProgressRows.map((row) => [row.studentId, row]),
+  );
+  const attachableQuestions = assignment.questionPerformanceRows.filter(
+    (row) => row.question,
+  );
 
   return (
     <main className="teacher-shell space-y-6">
@@ -493,7 +511,8 @@ export default async function TeacherAssignmentDetailPage({
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-bold text-slate-950">Attempt drilldown</h2>
               <p className="teacher-muted">
-                Recent assignment-linked attempts only. Teacher feedback notes are coming next.
+                Recent assignment-linked attempts only. Use feedback notes below to respond to
+                evidence without exposing private student self-study.
               </p>
             </div>
             {assignment.studentProgressRows.some((row) => row.recentAttempts.length) ? (
@@ -558,6 +577,148 @@ export default async function TeacherAssignmentDetailPage({
                 </p>
               </div>
             )}
+          </section>
+
+          <section className="teacher-panel overflow-hidden">
+            <div className="border-b border-slate-100 p-5">
+              <p className="teacher-eyebrow">Teacher feedback notes</p>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">Respond to assignment evidence</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                Save a private teacher note or explicitly send feedback to one student. Sent
+                feedback appears only in that student&apos;s assigned work.
+              </p>
+            </div>
+
+            {feedbackNotes.length ? (
+              <div className="divide-y divide-slate-100 border-b border-slate-100">
+                {feedbackNotes.map((note) => {
+                  const student = note.student_id ? studentById.get(note.student_id) : null;
+                  const sent = note.visibility === "sent_to_student" && note.status === "sent";
+
+                  return (
+                    <article className="p-5" key={note.id}>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-950">
+                            {student?.displayName || "Assignment note"}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {sent
+                              ? `Sent ${formatDateTime(note.sent_at)}`
+                              : `Private note updated ${formatDateTime(note.updated_at)}`}
+                          </p>
+                        </div>
+                        <span
+                          className={`inline-flex w-fit rounded-full px-2 py-1 text-xs font-bold ring-1 ${
+                            sent
+                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                              : "bg-slate-100 text-slate-700 ring-slate-200"
+                          }`}
+                        >
+                          {sent ? "Sent to student" : "Private teacher note"}
+                        </span>
+                      </div>
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                        {note.body}
+                      </p>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="border-b border-slate-100 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                No feedback notes yet. Start with a private observation or send a focused next step
+                to a student.
+              </div>
+            )}
+
+            {assignment.studentProgressRows.length ? (
+              <div className="divide-y divide-slate-100">
+                {assignment.studentProgressRows.map((row) => (
+                  <details className="group p-5" key={row.studentId}>
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
+                      <span>
+                        <span className="block font-semibold text-slate-950">
+                          Write feedback for {row.displayName}
+                        </span>
+                        <span className="mt-1 block text-sm text-slate-600">
+                          {row.practiceAttemptCount
+                            ? `${row.practiceCorrectCount}/${row.practiceAttemptCount} correct in assignment-linked Practice`
+                            : "No assignment Practice attempt yet"}
+                        </span>
+                      </span>
+                      <span className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 group-open:bg-slate-50">
+                        Add note
+                      </span>
+                    </summary>
+
+                    <form className="mt-5 space-y-4 border-t border-slate-100 pt-5">
+                      <input name="assignmentId" type="hidden" value={assignment.id} />
+                      <input name="classroomId" type="hidden" value={assignment.classroom.id} />
+                      <input name="studentId" type="hidden" value={row.studentId} />
+                      <div className="space-y-2">
+                        <Label htmlFor={`feedback-body-${row.studentId}`}>Feedback note</Label>
+                        <Textarea
+                          id={`feedback-body-${row.studentId}`}
+                          maxLength={4000}
+                          name="body"
+                          placeholder="Name the evidence, then give the student one clear next step."
+                          required
+                          rows={4}
+                        />
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="space-y-2 text-sm font-medium text-slate-900">
+                          Attach question (optional)
+                          <select
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            defaultValue=""
+                            name="questionId"
+                          >
+                            <option value="">Assignment-level feedback</option>
+                            {attachableQuestions.map((questionRow) => (
+                              <option
+                                key={questionRow.assignmentItemId}
+                                value={questionRow.question?.id ?? ""}
+                              >
+                                {questionRow.question?.title || "Assignment question"}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="space-y-2 text-sm font-medium text-slate-900">
+                          Attach recent attempt (optional)
+                          <select
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            defaultValue=""
+                            name="practiceAttemptId"
+                          >
+                            <option value="">No attempt attachment</option>
+                            {row.recentAttempts.map((attempt) => (
+                              <option key={attempt.id} value={attempt.id}>
+                                {attempt.questionTitle} - {formatDateTime(attempt.createdAt)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <Button formAction={savePrivateTeacherFeedbackNote} variant="outline">
+                          Save private note
+                        </Button>
+                        <Button formAction={sendTeacherFeedbackNote}>
+                          Send to student
+                        </Button>
+                      </div>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Private notes are visible only to classroom managers. Sending does not expose
+                        source-bank content, internal evidence, or other students&apos; work.
+                      </p>
+                    </form>
+                  </details>
+                ))}
+              </div>
+            ) : null}
           </section>
 
           <section className="teacher-panel overflow-hidden">

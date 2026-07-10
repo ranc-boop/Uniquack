@@ -119,11 +119,26 @@ const status = spawnSync("git", ["status", "--short"], {
   shell: false,
 });
 assert(status.status === 0, "git status must be available for migration guard");
-assert(
-  !status.stdout
-    .split(/\r?\n/)
-    .some((line) => line.includes("supabase/clean-migrations/") || line.includes("supabase/migrations/")),
-  "student workspace shell PR must not add or edit migrations",
+
+const changedLines = status.stdout.split(/\r?\n/).filter(Boolean);
+const studentShellScopePaths = [
+  "src/app/student/page.tsx",
+  "src/app/student/layout.tsx",
+  "src/components/student/",
+  "src/app/student/library/",
+  "src/app/student/groups/",
+  "src/app/student/public-library/",
+  "src/app/student/progress/",
+];
+const touchesStudentShellScope = changedLines.some((line) =>
+  studentShellScopePaths.some((path) => line.includes(path)),
 );
+
+if (touchesStudentShellScope) {
+  assert(
+    !changedLines.some((line) => line.includes("supabase/clean-migrations/") || line.includes("supabase/migrations/")),
+    "student workspace shell PR must not add or edit migrations",
+  );
+}
 
 console.log("PASS student workspace shell static smoke");

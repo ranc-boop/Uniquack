@@ -37,7 +37,7 @@ assert(
 assert(
   normalizedPage.includes("Private student self-study is not included") &&
     normalizedPage.includes("Source bank access remains teacher-private") &&
-    normalizedPage.includes("Teacher feedback notes are coming next") &&
+    normalizedPage.includes("Use feedback notes below to respond to evidence") &&
     !page.includes("lastPracticeSessionId") &&
     !page.includes("attempt.sessionId") &&
     !page.includes("@/components/student"),

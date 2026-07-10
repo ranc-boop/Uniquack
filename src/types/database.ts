@@ -356,6 +356,23 @@ export type AssignmentPracticeSession = {
   created_at: string;
 };
 
+export type TeacherFeedbackNote = {
+  id: string;
+  organization_id: string;
+  classroom_id: string;
+  assignment_id: string;
+  student_id: string | null;
+  question_id: string | null;
+  practice_attempt_id: string | null;
+  author_id: string;
+  visibility: "private_teacher" | "sent_to_student";
+  status: "draft" | "sent" | "archived";
+  body: string;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TaxonomyFacet = {
   facet_key: string;
   subject_tag_id: string;
@@ -789,6 +806,7 @@ export type Database = {
       assignment_items: TableDefinition<AssignmentItem>;
       student_assignment_progress: TableDefinition<StudentAssignmentProgress>;
       assignment_practice_sessions: TableDefinition<AssignmentPracticeSession>;
+      teacher_feedback_notes: TableDefinition<TeacherFeedbackNote>;
       ai_provider_profiles: TableDefinition<AIProviderProfile>;
       taxonomy_facets: TableDefinition<TaxonomyFacet>;
       taxonomy_nodes: TableDefinition<TaxonomyNode>;
