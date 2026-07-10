@@ -114,6 +114,21 @@ Publish Center v2 keeps the bank-first boundary:
 
 ## Tests
 
+Dependency/provenance check:
+
+- `git diff --name-only main...HEAD` shows this PR touched only Publish Center,
+  Publish smoke, security/route smoke expectations, and this report.
+- `git diff main...HEAD -- package.json package-lock.json scripts/google-account-links-baseline-smoke.mjs`
+  is empty.
+- This PR did not touch package files, the Google baseline smoke script, or
+  Google account-linking runtime code.
+- `npm.cmd pkg get dependencies.embedded-postgres` returned `{}`.
+- `npm.cmd pkg get devDependencies.embedded-postgres` returned `{}`.
+- `npm.cmd ls embedded-postgres --depth=0` showed no installed package.
+- Switching to `main` and running
+  `node scripts/google-account-links-baseline-smoke.mjs` reproduced the same
+  `ERR_MODULE_NOT_FOUND` for `embedded-postgres`.
+
 Passed:
 
 - `npm.cmd run lint`
@@ -132,14 +147,20 @@ Aggregate smoke status:
 
 - `npm.cmd run smoke` ran through the Publish, Bank, Assignment, Classroom,
   Blueprint, AI Parsing, Review Draft, and Batch Import smokes successfully.
-- It then failed in the unrelated Google account-link smoke because the local
-  install does not include the `embedded-postgres` package imported by
-  `scripts/google-account-links-baseline-smoke.mjs`.
+- It then failed in the unrelated Google account-link smoke because
+  `scripts/google-account-links-baseline-smoke.mjs` imports undeclared local
+  dependency `embedded-postgres`.
+- `main` reproduces the same failure, so this is classified as an existing
+  Google baseline smoke dependency issue unrelated to Publish Center v2.
 
 ## Blockers / Warnings
 
 - No DB migration was needed.
 - Package publishing remains intentionally not ready.
 - Selected-student delivery remains intentionally disabled.
-- Live Supabase-backed smokes may skip/fail if the environment cannot reach the
-  clean Supabase endpoint.
+- The aggregate smoke blocker should be fixed in a separate PR, for example
+  `codex/fix-google-account-links-baseline-dependency`, by either declaring the
+  dependency or making the Google baseline smoke safely skip when the local
+  embedded Postgres dependency is unavailable.
+- Publish Center v2 is ready to merge based on the focused, security, route,
+  RLS, bank, assignment, and performance checks above.
