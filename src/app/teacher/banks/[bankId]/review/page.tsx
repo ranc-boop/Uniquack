@@ -54,6 +54,16 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function reviewPanelClass(hasIssue: boolean) {
   return [
     "rounded-xl border p-4",
@@ -300,6 +310,13 @@ export default async function TeacherBankReviewPage({
                 html: question.solution_html,
                 source: question.solution_source,
               });
+              const lineagePayload = asRecord(question.reviewItemPayload);
+              const blueprintTitle = stringValue(lineagePayload.blueprintTitle);
+              const blueprintId = stringValue(lineagePayload.blueprintId);
+              const sourceQuestionCount = stringValue(lineagePayload.sourceQuestionCount);
+              const generatedFromBlueprint =
+                question.source_kind === "blueprint_generation" ||
+                stringValue(lineagePayload.source) === "blueprint_generation";
 
               return (
                 <article className="space-y-4 p-5" key={question.id}>
@@ -707,10 +724,45 @@ export default async function TeacherBankReviewPage({
                       bank-scoped and is not globally published.
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-                      Source lineage:{" "}
-                      <span className="font-semibold">
-                        {question.source_kind || question.source || "import"}
-                      </span>
+                      {generatedFromBlueprint ? (
+                        <>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <BankBadge tone="sky">Generated from Blueprint</BankBadge>
+                            {blueprintTitle ? (
+                              <span className="font-semibold text-slate-950">
+                                {blueprintTitle}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-2">
+                            Target Bank: <span className="font-semibold">{bank.name}</span>
+                            {sourceQuestionCount ? (
+                              <>
+                                {" "}
+                                / Source examples:{" "}
+                                <span className="font-semibold">
+                                  {sourceQuestionCount}
+                                </span>
+                              </>
+                            ) : null}
+                          </p>
+                          {blueprintId ? (
+                            <Link
+                              className="mt-1 inline-flex text-xs font-semibold text-sky-700 underline-offset-4 hover:underline"
+                              href={`/teacher/blueprints/${blueprintId}`}
+                            >
+                              Open source Blueprint
+                            </Link>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          Source lineage:{" "}
+                          <span className="font-semibold">
+                            {question.source_kind || question.source || "import"}
+                          </span>
+                        </>
+                      )}
                       {question.source_review_item_id ? (
                         <span className="mt-1 block break-all text-xs text-slate-500">
                           Review item {question.source_review_item_id}

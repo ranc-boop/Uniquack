@@ -29,6 +29,7 @@ await import("./ai-pdf-provider-failure-status-smoke.mjs");
 await import("./bank-scoped-ai-pdf-import-bridge-smoke.mjs");
 await import("./blueprint-library-foundation-smoke.mjs");
 await import("./blueprint-builder-core-smoke.mjs");
+await import("./blueprint-to-review-drafts-generation-smoke.mjs");
 await import("./classroom-ui-rebuild-smoke.mjs");
 await import("./publish-center-foundation-smoke.mjs");
 await import("./batch-import-smoke.mjs");

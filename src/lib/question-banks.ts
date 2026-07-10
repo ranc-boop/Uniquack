@@ -91,6 +91,7 @@ export type BankReviewDraftQuestion = Pick<
   | "visibility"
 > & {
   reviewItemId: string | null;
+  reviewItemPayload: unknown;
   reviewItemStatus:
     | "pending_review"
     | "approved"
@@ -512,16 +513,18 @@ export async function listBankReviewDraftQuestions({
   );
   const reviewItems: Array<{
     created_question_id: string | null;
+    draft_payload: unknown;
     id: string;
     status: BankReviewDraftQuestion["reviewItemStatus"];
     target_bank_id: string | null;
+    validation_warnings?: unknown;
   }> = [];
 
   if (questionIds.length) {
     const { data: itemsByQuestion, error: itemsByQuestionError } =
       await supabase
         .from("review_draft_items")
-        .select("id, created_question_id, status, target_bank_id")
+        .select("id, created_question_id, status, target_bank_id, draft_payload, validation_warnings")
         .eq("item_kind", "question")
         .in("created_question_id", questionIds)
         .limit(200);
@@ -540,7 +543,7 @@ export async function listBankReviewDraftQuestions({
   if (sourceReviewItemIds.length) {
     const { data: itemsById, error: itemsByIdError } = await supabase
       .from("review_draft_items")
-      .select("id, created_question_id, status, target_bank_id")
+      .select("id, created_question_id, status, target_bank_id, draft_payload, validation_warnings")
       .eq("item_kind", "question")
       .in("id", sourceReviewItemIds)
       .limit(200);
@@ -633,6 +636,23 @@ export async function listBankReviewDraftQuestions({
     );
   }
 
+  for (const item of reviewItems) {
+    if (!item.created_question_id || !Array.isArray(item.validation_warnings)) {
+      continue;
+    }
+
+    const current = warningMessagesByQuestionId.get(item.created_question_id) ?? [];
+    const reviewWarnings = item.validation_warnings
+      .map((warning) =>
+        typeof warning === "string" ? warning.trim() : JSON.stringify(warning),
+      )
+      .filter(Boolean);
+    const merged = Array.from(new Set([...current, ...reviewWarnings]));
+
+    warningMessagesByQuestionId.set(item.created_question_id, merged);
+    warningCountByQuestionId.set(item.created_question_id, merged.length);
+  }
+
   return (questions ?? [])
     .map((question) => {
       const reviewItem =
@@ -643,6 +663,7 @@ export async function listBankReviewDraftQuestions({
       return {
         ...question,
         reviewItemId: reviewItem?.id ?? null,
+        reviewItemPayload: reviewItem?.draft_payload ?? null,
         reviewItemStatus: reviewItem?.status ?? null,
         tagIds: tagsByQuestionId.get(question.id) ?? [],
         tagSummaries: tagSummariesByQuestionId.get(question.id) ?? [],

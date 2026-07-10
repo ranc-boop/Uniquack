@@ -191,7 +191,8 @@ async function runSourceSmoke() {
 
   assert(
     teacherBlueprintDetailPage.includes("BlueprintWorkflowPanel") &&
-      teacherBlueprintDetailPage.includes("DisabledBlueprintActions") &&
+      teacherBlueprintDetailPage.includes("Generate Review Drafts") &&
+      teacherBlueprintDetailPage.includes("Provider choice, model, and credentials stay admin-only") &&
       teacherBlueprintDetailPage.includes("Source lineage and constraints") &&
       teacherBankBlueprintsPage.includes("Blueprint links for") &&
       teacherBankBlueprintsPage.includes("Create Blueprint from this bank") &&

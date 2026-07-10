@@ -168,10 +168,11 @@ async function runSourceSmoke() {
       detailPage.includes("Warnings for missing fields") &&
       detailPage.includes("Save Blueprint plan") &&
       detailPage.includes("Source lineage and constraints") &&
-      detailPage.includes("DisabledBlueprintActions") &&
+      detailPage.includes("Generate Review Drafts") &&
+      detailPage.includes("Provider choice, model, and credentials stay admin-only") &&
       libraryUi.includes("Source examples") &&
       libraryUi.includes("Readiness"),
-    "Blueprint detail/library UI must expose preview, edit, readiness, and collapsed internal details",
+    "Blueprint detail/library UI must expose preview, edit, readiness, and gated Review Draft generation",
   );
 
   assert(
