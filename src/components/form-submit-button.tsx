@@ -2,6 +2,8 @@
 
 import { useFormStatus } from "react-dom";
 
+import { LoaderCircle } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 
 type FormSubmitButtonProps = {
@@ -35,6 +37,9 @@ export function FormSubmitButton({
       size={size}
       variant={variant}
     >
+      {pending ? (
+        <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
+      ) : null}
       {pending ? pendingLabel : children}
     </Button>
   );

@@ -190,7 +190,8 @@ async function main() {
     "question bank foundation migration is missing create RPC or RLS",
   );
   assert(
-    banksPage.includes("Your teacher-owned Question Banks") &&
+    banksPage.includes("Question Bank Library") &&
+    banksPage.includes("Join Bank by Code") &&
       bankDetailPage.includes("No reviewed questions in this bank yet"),
     "question bank list/detail route sources are missing expected UI",
   );

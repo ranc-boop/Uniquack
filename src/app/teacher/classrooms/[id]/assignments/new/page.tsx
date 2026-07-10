@@ -2,6 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createTeacherAssignment } from "@/app/teacher/classrooms/[id]/assignments/actions";
+import {
+  ClassroomRouteTabs,
+  ClassroomSafetyStrip,
+} from "@/app/teacher/classrooms/classroom-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,11 +57,11 @@ export default async function NewTeacherAssignmentPage({
   }
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">New assignment</p>
+            <p className="teacher-eyebrow">New assignment</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Assign work to {classroom.name}
             </h1>
@@ -82,6 +86,9 @@ export default async function NewTeacherAssignmentPage({
           <TeacherWorkspaceNav />
         </div>
       </section>
+
+      <ClassroomRouteTabs classroomId={classroom.id} />
+      <ClassroomSafetyStrip />
 
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
         <strong className="font-bold">Bank-first workflow:</strong> create new
@@ -115,14 +122,14 @@ export default async function NewTeacherAssignmentPage({
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <section className="student-panel overflow-hidden">
+        <section className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-100 p-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-950">
                   Published questions
                 </h2>
-                <p className="student-muted">
+                <p className="teacher-muted">
                   Compatibility path for globally published questions. Bank
                   assignments should start from selected approved bank items.
                 </p>
@@ -186,12 +193,12 @@ export default async function NewTeacherAssignmentPage({
                   No published questions available
                 </h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                  Publish questions from Review Drafts or adjust the search
+                  Approve questions through bank review or adjust the search
                   before assigning work. Draft or unreviewed questions cannot be
                   assigned.
                 </p>
                 <Button asChild className="mt-4" variant="outline">
-                  <Link href="/admin/review">Open Review Drafts</Link>
+                  <Link href="/teacher/banks">Open bank review</Link>
                 </Button>
               </div>
             )}
@@ -199,7 +206,7 @@ export default async function NewTeacherAssignmentPage({
         </section>
 
         <aside className="space-y-6">
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">
               Assignment details
             </h2>
@@ -242,7 +249,7 @@ export default async function NewTeacherAssignmentPage({
             </div>
           </section>
 
-          <section className="student-panel p-5">
+          <section className="teacher-panel p-5">
             <h2 className="text-lg font-bold text-slate-950">Publish choice</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Save draft keeps the assignment teacher-only. Assign to class

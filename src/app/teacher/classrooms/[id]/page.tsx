@@ -1,12 +1,30 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import {
+  Activity,
+  BarChart3,
+  ClipboardCheck,
+  Sparkles,
+  Users,
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import {
+  ClassroomBadge,
+  ClassroomMetricCard,
+  ClassroomProgressRing,
+  ClassroomPublishCta,
+  ClassroomQuickAction,
+  ClassroomRouteTabs,
+  ClassroomSafetyStrip,
+  classroomStatusLabel,
+  formatClassroomDate,
+  formatClassroomDateTime,
+} from "@/app/teacher/classrooms/classroom-ui";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
+import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
-import { profileLabel } from "@/lib/classrooms";
 import { createClient } from "@/lib/supabase/server";
-import { listTeacherClassroomAssignments } from "@/lib/teacher-assignments";
+import { getTeacherClassroomWorkspace } from "@/lib/teacher-classrooms";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +37,11 @@ type TeacherClassroomDetailPageProps = {
   }>;
 };
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "Not set";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+function sourceKindLabel(kind: string) {
+  if (kind === "question_bank") return "Question Bank";
+  if (kind === "course_builder_run") return "Course Builder";
+  if (kind === "practice_framework") return "Practice framework";
+  return "Manual";
 }
 
 export default async function TeacherClassroomDetailPage({
@@ -35,84 +52,105 @@ export default async function TeacherClassroomDetailPage({
   const { id } = await params;
   const query = await searchParams;
   const supabase = await createClient();
-  const { data: classroom, error: classroomError } = await supabase
-    .from("classrooms")
-    .select("id, name, description, subject, status, created_at")
-    .eq("id", id)
-    .single();
-
-  if (classroomError || !classroom) {
-    notFound();
-  }
-
-  const { data: roster, error: rosterError } = await supabase
-    .from("classroom_members")
-    .select("id, user_id, role, status, joined_at, created_at")
-    .eq("classroom_id", id)
-    .order("role", { ascending: true })
-    .order("created_at", { ascending: true });
-  const userIds = Array.from(new Set((roster ?? []).map((member) => member.user_id)));
-  const { data: profiles } = userIds.length
-    ? await supabase
-        .from("profiles")
-        .select("id, username, email, full_name, display_name, role")
-        .in("id", userIds)
-    : { data: [] };
-  const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
-  const studentCount = (roster ?? []).filter(
-    (member) => member.role === "student" && member.status === "active",
-  ).length;
-  const teacherCount = (roster ?? []).filter(
-    (member) => member.role !== "student" && member.status === "active",
-  ).length;
-  const assignments = await listTeacherClassroomAssignments({
+  const workspace = await getTeacherClassroomWorkspace({
     classroomId: id,
     supabase,
   });
-  const assignedCount = assignments.filter(
-    (assignment) => assignment.status === "assigned",
-  ).length;
-  const draftCount = assignments.filter((assignment) => assignment.status === "draft").length;
-  const archivedCount = assignments.filter(
-    (assignment) => assignment.status === "archived",
-  ).length;
+
+  if (!workspace) {
+    notFound();
+  }
+
+  const { assignments, classroom, roster } = workspace;
+  const visibleJoinCode = query.newCode || classroom.joinCodeVisible;
+  const assigned = assignments.filter((assignment) => assignment.status === "assigned");
+  const draft = assignments.filter((assignment) => assignment.status === "draft");
+  const recentAssignments = assignments.slice(0, 4);
+  const attentionAssignments = assigned.filter(
+    (assignment) =>
+      assignment.progressSummary.studentCount > 0 &&
+      assignment.progressSummary.completedCount <
+        assignment.progressSummary.studentCount,
+  );
+  const activeStudents = roster.filter(
+    (member) => member.role === "student" && member.status === "active",
+  );
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-2">
-            <p className="student-eyebrow">Classroom roster</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              {classroom.name}
-            </h1>
-            <p className="max-w-2xl text-base leading-7 text-slate-600">
-              {classroom.description ||
-                "Review joined students and keep this delivery space ready for selected bank content."}
-            </p>
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero overflow-hidden p-0">
+        <div className="bg-gradient-to-br from-sky-100 via-white to-blue-50 p-5">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 max-w-4xl space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="teacher-eyebrow">Classroom workspace</p>
+                <ClassroomBadge tone="sky">
+                  {classroomStatusLabel(classroom.status)}
+                </ClassroomBadge>
+                {classroom.subject ? (
+                  <ClassroomBadge>{classroom.subject}</ClassroomBadge>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+                  {classroom.name}
+                </h1>
+                <p className="max-w-3xl text-base leading-7 text-slate-600">
+                  {classroom.description ||
+                    "Review joined students, delivery history, and evidence for selected bank content."}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <ClassroomPublishCta classroomId={classroom.id} />
+              <Button asChild variant="outline">
+                <Link href="/teacher/classrooms">Back to classes</Link>
+              </Button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link href="/teacher">Teacher Studio</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/teacher/classrooms">Back to classrooms</Link>
-            </Button>
+
+          <div className="mt-5">
+            <TeacherWorkspaceNav />
           </div>
         </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
+
+        <div className="grid gap-3 border-t border-slate-200 bg-white/80 p-5 md:grid-cols-4">
+          <ClassroomMetricCard
+            description="Active students in this roster."
+            icon={Users}
+            label="Students"
+            value={classroom.studentCount}
+          />
+          <ClassroomMetricCard
+            description="Assigned work currently visible to students."
+            icon={ClipboardCheck}
+            label="Active assignments"
+            value={classroom.activeAssignmentCount}
+          />
+          <ClassroomMetricCard
+            description="Question Bank blueprint context used by assigned bank work."
+            icon={Sparkles}
+            label="Linked blueprints"
+            value={
+              classroom.linkedBlueprintCount === null
+                ? "Planned"
+                : classroom.linkedBlueprintCount
+            }
+          />
+          <ClassroomMetricCard
+            description="Latest assignment, progress, or practice activity."
+            icon={Activity}
+            label="Recent activity"
+            value={formatClassroomDateTime(classroom.latestActivityAt)}
+          />
         </div>
       </section>
 
-      <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-        <strong className="font-bold">Bank-first reminder:</strong> this class
-        delivers selected reviewed content. Students do not gain access to the
-        full teacher bank by joining the roster.
-      </section>
+      <ClassroomRouteTabs classroomId={classroom.id} />
+      <ClassroomSafetyStrip />
 
       {query.saved ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+        <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
           {query.saved}
         </p>
       ) : null}
@@ -122,167 +160,256 @@ export default async function TeacherClassroomDetailPage({
         </p>
       ) : null}
 
-      {query.newCode ? (
-        <section className="rounded-lg border border-sky-200 bg-sky-50 p-5">
-          <p className="text-sm font-bold uppercase tracking-[0.16em] text-sky-700">
-            New join code
-          </p>
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {visibleJoinCode ? (
+        <section className="teacher-soft-panel p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="teacher-eyebrow">Active join code</p>
+              <h2 className="mt-2 text-xl font-bold text-slate-950">
+                Share this code when enrollment is open.
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Students can join the roster, but joining a class does not grant
+                access to the teacher&apos;s source banks.
+              </p>
+            </div>
             <code className="rounded-lg border border-sky-200 bg-white px-4 py-3 text-2xl font-bold tracking-[0.16em] text-slate-950">
-              {query.newCode}
+              {visibleJoinCode}
             </code>
-            <p className="max-w-xl text-sm leading-6 text-slate-600">
-              Copy this now. The database stores only a hash, so the full code is
-              not shown again after this page load.
-            </p>
           </div>
         </section>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="student-panel overflow-hidden">
-          <div className="border-b border-slate-100 p-5">
-            <h2 className="text-lg font-bold text-slate-950">Roster</h2>
-            <p className="student-muted">
-              Teachers see the class roster. Students cannot list unrelated
-              classmates from other classrooms.
-            </p>
-          </div>
-          {rosterError ? (
-            <p className="p-5 text-sm text-destructive">{rosterError.message}</p>
-          ) : roster?.length ? (
-            <div className="divide-y divide-slate-100">
-              {roster.map((member) => {
-                const memberProfile = profileById.get(member.user_id);
-                return (
-                  <div className="p-5" key={member.id}>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <h3 className="text-base font-bold text-slate-950">
-                          {profileLabel(memberProfile ?? {})}
-                        </h3>
-                        <p className="text-sm leading-6 text-slate-600">
-                          {memberProfile?.email ||
-                            memberProfile?.username ||
-                            member.user_id}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                          {member.role}
-                        </span>
-                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                          {member.status}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-500">
-                      Joined {formatDateTime(member.joined_at ?? member.created_at)}
-                    </p>
-                  </div>
-                );
-              })}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="space-y-6">
+          <section className="teacher-panel overflow-hidden">
+            <div className="border-b border-slate-200 bg-white/70 p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="teacher-eyebrow">Overview</p>
+                  <h2 className="text-xl font-bold text-slate-950">
+                    Class delivery snapshot
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                    This overview is bounded to real classroom roster,
+                    assignment, and practice evidence data.
+                  </p>
+                </div>
+                <ClassroomQuickAction
+                  href={`/teacher/classrooms/${classroom.id}/assignments`}
+                  icon={ClipboardCheck}
+                >
+                  View assignments
+                </ClassroomQuickAction>
+              </div>
             </div>
-          ) : (
-            <div className="p-8 text-center">
-              <h3 className="text-base font-bold text-slate-950">
-                No roster members yet.
-              </h3>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                Share the join code with students to populate this roster.
-              </p>
-            </div>
-          )}
-        </section>
 
-        <aside className="space-y-6">
-          <section className="student-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">Class status</h2>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Status</dt>
-                <dd className="font-semibold text-slate-950">{classroom.status}</dd>
+            <div className="grid gap-5 p-5 lg:grid-cols-[20rem_1fr]">
+              <ClassroomProgressRing
+                helper={
+                  classroom.completionRate === null
+                    ? "Completion appears after assigned work and student practice."
+                    : "Assigned work completed by active students."
+                }
+                label="Class completion rate"
+                value={classroom.completionRate}
+              />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ["Students", classroom.studentCount],
+                  ["Assigned", assigned.length],
+                  ["Teacher drafts", draft.length],
+                  ["All assignments", assignments.length],
+                ].map(([label, value]) => (
+                  <div
+                    className="rounded-lg border border-slate-200 bg-slate-50/70 p-4"
+                    key={label}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {label}
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
+                  </div>
+                ))}
               </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Subject</dt>
-                <dd className="font-semibold text-slate-950">
-                  {classroom.subject || "Not set"}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Teachers</dt>
-                <dd className="font-semibold text-slate-950">{teacherCount}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Students</dt>
-                <dd className="font-semibold text-slate-950">{studentCount}</dd>
-              </div>
-            </dl>
+            </div>
           </section>
 
-          <section className="student-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">
-              Assignments
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Create delivery events from reviewed questions and send selected
-              items to students&apos; My Work.
-            </p>
-            <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <dt className="text-xs text-slate-500">Assigned</dt>
-                <dd className="mt-1 text-lg font-bold text-slate-950">
-                  {assignedCount}
-                </dd>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <dt className="text-xs text-slate-500">Draft</dt>
-                <dd className="mt-1 text-lg font-bold text-slate-950">
-                  {draftCount}
-                </dd>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <dt className="text-xs text-slate-500">Archived</dt>
-                <dd className="mt-1 text-lg font-bold text-slate-950">
-                  {archivedCount}
-                </dd>
-              </div>
-            </dl>
-            <div className="mt-4 grid gap-2">
-              <Button asChild className="w-full">
-                <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
-                  New assignment
-                </Link>
-              </Button>
-              <Button asChild className="w-full" variant="outline">
-                <Link href={`/teacher/classrooms/${classroom.id}/assignments`}>
-                  View assignments
-                </Link>
-              </Button>
-              <Button asChild className="w-full" variant="outline">
-                <Link href={`/teacher/course-builder?classroomId=${classroom.id}`}>
-                  Course Builder bridge
-                </Link>
-              </Button>
+          <section className="teacher-panel overflow-hidden">
+            <div className="border-b border-slate-200 bg-white/70 p-5">
+              <h2 className="text-xl font-bold text-slate-950">
+                Recent assignments
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Classroom assignment pages are the history and evidence view for
+                this class. Publish new work from the top-level Publish module.
+              </p>
             </div>
-            {assignments.length ? (
-              <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
-                {assignments.slice(0, 3).map((assignment) => (
+            {recentAssignments.length ? (
+              <div className="divide-y divide-slate-100">
+                {recentAssignments.map((assignment) => (
                   <Link
-                    className="block rounded-lg border border-slate-200 p-3 text-sm transition hover:bg-slate-50"
+                    className="block p-5 transition hover:bg-sky-50/40"
                     href={`/teacher/classrooms/${classroom.id}/assignments/${assignment.id}`}
                     key={assignment.id}
                   >
-                    <span className="block font-semibold text-slate-950">
-                      {assignment.title}
-                    </span>
-                    <span className="text-xs capitalize text-slate-500">
-                      {assignment.status} - {assignment.itemCount} item(s)
-                    </span>
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <ClassroomBadge
+                            tone={assignment.status === "assigned" ? "blue" : "slate"}
+                          >
+                            {assignment.status}
+                          </ClassroomBadge>
+                          <ClassroomBadge>{sourceKindLabel(assignment.source_kind)}</ClassroomBadge>
+                        </div>
+                        <h3 className="break-words text-lg font-bold text-slate-950">
+                          {assignment.title}
+                        </h3>
+                        <p className="text-sm leading-6 text-slate-600">
+                          Due {formatClassroomDate(assignment.due_at)} -{" "}
+                          {assignment.itemCount} item(s)
+                        </p>
+                      </div>
+                      <div className="grid min-w-full grid-cols-3 gap-2 text-center lg:min-w-72">
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                          <span className="block text-base font-bold text-slate-950">
+                            {assignment.progressSummary.notStartedCount}
+                          </span>
+                          <span className="text-xs text-slate-500">Not started</span>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                          <span className="block text-base font-bold text-slate-950">
+                            {assignment.progressSummary.inProgressCount}
+                          </span>
+                          <span className="text-xs text-slate-500">Active</span>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                          <span className="block text-base font-bold text-slate-950">
+                            {assignment.progressSummary.completedCount}
+                          </span>
+                          <span className="text-xs text-slate-500">Done</span>
+                        </div>
+                      </div>
+                    </div>
                   </Link>
                 ))}
               </div>
+            ) : (
+              <div className="p-8 text-center">
+                <p className="teacher-eyebrow">No assignment history</p>
+                <h3 className="mt-2 text-xl font-bold text-slate-950">
+                  Publish selected bank content to start class delivery.
+                </h3>
+                <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                  New work should start from reviewed bank content. This class
+                  overview will show delivery and practice evidence afterward.
+                </p>
+                <div className="mt-5">
+                  <ClassroomPublishCta classroomId={classroom.id} />
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <aside className="space-y-6">
+          <section className="teacher-panel p-5">
+            <h2 className="text-lg font-bold text-slate-950">
+              Students needing attention
+            </h2>
+            {attentionAssignments.length ? (
+              <div className="mt-4 space-y-3">
+                {attentionAssignments.slice(0, 3).map((assignment) => (
+                  <Link
+                    className="block rounded-lg border border-amber-200 bg-amber-50 p-3 transition hover:bg-amber-100/70"
+                    href={`/teacher/classrooms/${classroom.id}/assignments/${assignment.id}`}
+                    key={assignment.id}
+                  >
+                    <p className="break-words text-sm font-bold text-amber-950">
+                      {assignment.title}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-amber-900">
+                      {assignment.progressSummary.notStartedCount} not started,{" "}
+                      {assignment.progressSummary.inProgressCount} active.
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                No attention list yet. It appears after students begin assigned
+                work and practice evidence starts flowing back.
+              </p>
+            )}
+          </section>
+
+          <section className="teacher-panel p-5">
+            <h2 className="text-lg font-bold text-slate-950">People preview</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Active roster: {activeStudents.length} student(s). Roster controls
+              live in the People section.
+            </p>
+            {activeStudents.length ? (
+              <div className="mt-4 space-y-2">
+                {activeStudents.slice(0, 4).map((student) => (
+                  <div
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                    key={student.id}
+                  >
+                    <p className="text-sm font-semibold text-slate-950">
+                      {student.displayName}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {student.email || student.profile?.username || "Student"}
+                    </p>
+                  </div>
+                ))}
+              </div>
             ) : null}
+            <Button asChild className="mt-4 w-full" variant="outline">
+              <Link href={`/teacher/classrooms/${classroom.id}/people`}>
+                Open People
+              </Link>
+            </Button>
+          </section>
+
+          <section className="teacher-panel p-5">
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+                <BarChart3 aria-hidden="true" className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">
+                  Analytics / Feedback
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Completion summaries use real assignment evidence. Taxonomy
+                  mastery, mistake patterns, and feedback drafting are planned
+                  next-layer analytics.
+                </p>
+              </div>
+            </div>
+            <Button asChild className="mt-4 w-full" variant="outline">
+              <Link href={`/teacher/classrooms/${classroom.id}/analytics`}>
+                Open analytics
+              </Link>
+            </Button>
+          </section>
+
+          <section className="teacher-panel p-5">
+            <h2 className="text-lg font-bold text-slate-950">
+              Linked Blueprint context
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {classroom.linkedBlueprintCount === null
+                ? "Blueprints linked to this class will appear here. Use Blueprint Library to organize plans before publishing."
+                : `${classroom.linkedBlueprintCount} blueprint(s) are connected through assigned bank content.`}
+            </p>
+            <Button asChild className="mt-4 w-full" variant="outline">
+              <Link href="/teacher/blueprints">Open Blueprint Library</Link>
+            </Button>
           </section>
         </aside>
       </div>

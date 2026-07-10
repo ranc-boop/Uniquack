@@ -49,7 +49,7 @@ function SourceCard({
   const defaultTitle = `${source.title} assignment`;
 
   return (
-    <article className="student-panel overflow-hidden">
+    <article className="teacher-panel overflow-hidden">
       <div className="border-b border-slate-100 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
@@ -123,8 +123,8 @@ function SourceCard({
           {source.unavailableQuestionCount > 0 ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
               Draft/unreviewed questions are unavailable for assignment. Open{" "}
-              <Link className="font-bold underline" href="/admin/review">
-                Review Drafts
+              <Link className="font-bold underline" href="/teacher/banks">
+                bank review
               </Link>{" "}
               to approve them before assigning.
             </div>
@@ -246,11 +246,11 @@ export default async function TeacherCourseBuilderPage({
       : classrooms[0]?.id ?? "";
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Course Builder bridge</p>
+            <p className="teacher-eyebrow">Course Builder bridge</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Course Builder will generate bank packages before assignment.
             </h1>
@@ -271,7 +271,7 @@ export default async function TeacherCourseBuilderPage({
               <Link href="/teacher/classrooms">Classrooms</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/admin/review">Review Drafts</Link>
+              <Link href="/teacher/banks">Bank review</Link>
             </Button>
           </div>
         </div>
@@ -298,7 +298,7 @@ export default async function TeacherCourseBuilderPage({
       ) : null}
 
       {!classrooms.length ? (
-        <section className="student-panel p-6">
+        <section className="teacher-panel p-6">
           <h2 className="text-lg font-bold text-slate-950">Delivery classroom required.</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             The current bridge still needs a teacher-managed classroom before it
@@ -322,17 +322,17 @@ export default async function TeacherCourseBuilderPage({
           ))}
         </div>
       ) : (
-        <section className="student-panel p-8 text-center">
+        <section className="teacher-panel p-8 text-center">
           <h2 className="text-lg font-bold text-slate-950">
             No Course Builder sources yet.
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
             Course Builder runs and practice frameworks will appear here after they
             create reviewed source questions. Draft-only questions stay blocked until
-            they are published through Review Drafts.
+            they are approved through bank review.
           </p>
           <Button asChild className="mt-4" variant="outline">
-            <Link href="/admin/review">Open Review Drafts</Link>
+            <Link href="/teacher/banks">Open bank review</Link>
           </Button>
         </section>
       )}

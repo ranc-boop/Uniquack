@@ -63,13 +63,23 @@ await checkAdminRoute("/admin/blueprints/review", "Blueprint Review Queue");
 await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library");
 await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
 await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
-await checkAdminRoute("/teacher", "Start with your Question Bank / Library");
-await checkAdminRoute("/teacher/banks", "Your teacher-owned Question Banks");
+await checkAdminRoute("/teacher/banks", "Question Bank Library");
+await checkAdminRoute("/teacher", "Teacher Workspace");
 await checkAdminRoute("/teacher/banks/new", "Start a teacher-owned content library");
 await checkAdminRoute("/teacher/banks/join", "Join a shared Question Bank");
+await checkAdminRoute("/teacher/ai-parsing", "AI Parsing");
+await checkAdminRoute("/teacher/blueprints", "Blueprint Library");
+await checkAdminRoute("/teacher/blueprints/new", "Create Blueprint");
 await checkAdminRoute("/teacher/classrooms", "Classrooms");
+await checkAdminRoute("/teacher/publish", "Publish");
+await checkAdminRoute("/teacher/progress", "Progress");
 await checkAdminRoute("/teacher/course-builder", "Course Builder");
+await checkAdminRoute("/student", "Student Dashboard");
 await checkAdminRoute("/student/work", "My Work");
+await checkAdminRoute("/student/library", "Study Library");
+await checkAdminRoute("/student/groups", "Study Groups");
+await checkAdminRoute("/student/public-library", "Public Library");
+await checkAdminRoute("/student/progress", "Progress / Feedback");
 await checkAdminRoute("/student/classrooms", "My classes");
 await checkAdminRoute("/student/classrooms/join", "Enter your class code");
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
@@ -110,22 +120,38 @@ const authActions = await read("src/app/auth/actions.ts");
 const authGuards = await read("src/lib/auth/guards.ts");
 const authNav = await read("src/components/auth-nav.tsx");
 const teacherHomePage = await read("src/app/teacher/page.tsx");
+const teacherDashboardHelper = await read("src/lib/teacher-dashboard.ts");
+const teacherDashboardPanels = await read("src/components/teacher/teacher-dashboard-panels.tsx");
 const teacherWorkspaceNav = await read("src/components/teacher/teacher-workspace-nav.tsx");
+const teacherAiParsingPage = await read("src/app/teacher/ai-parsing/page.tsx");
 const teacherBanksPage = await read("src/app/teacher/banks/page.tsx");
 const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
 const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
 const teacherBankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
 const teacherBankImportsPage = await read("src/app/teacher/banks/[bankId]/imports/page.tsx");
+const teacherBankImportUi = await read("src/app/teacher/banks/bank-import-ui.tsx");
 const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
 const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
 const teacherBankMembersPage = await read("src/app/teacher/banks/[bankId]/members/page.tsx");
 const teacherBankAssignmentNewPage = await read("src/app/teacher/banks/[bankId]/assignments/new/page.tsx");
+const teacherPublishPage = await read("src/app/teacher/publish/page.tsx");
+const teacherPublishActions = await read("src/app/teacher/publish/actions.ts");
+const teacherBlueprintPage = await read("src/app/teacher/blueprints/page.tsx");
+const teacherBlueprintNewPage = await read("src/app/teacher/blueprints/new/page.tsx");
+const teacherBlueprintDetailPage = await read("src/app/teacher/blueprints/[blueprintId]/page.tsx");
+const teacherBankBlueprintsPage = await read("src/app/teacher/banks/[bankId]/blueprints/page.tsx");
+const blueprintLibraryMigration = await read("supabase/clean-migrations/0031_blueprint_library_foundation.sql");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
 const bankImportReviewMigration = await read("supabase/clean-migrations/0027_bank_import_review_scope.sql");
 const assignmentFromBankMigration = await read("supabase/clean-migrations/0028_assignment_from_bank_questions.sql");
 const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
+const teacherClassroomUi = await read("src/app/teacher/classrooms/classroom-ui.tsx");
+const teacherClassroomPeoplePage = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
+const teacherClassroomAnalyticsPage = await read("src/app/teacher/classrooms/[id]/analytics/page.tsx");
+const teacherClassroomBlueprintsPage = await read("src/app/teacher/classrooms/[id]/blueprints/page.tsx");
+const teacherClassroomSettingsPage = await read("src/app/teacher/classrooms/[id]/settings/page.tsx");
 const teacherAssignmentNewPage = await read("src/app/teacher/classrooms/[id]/assignments/new/page.tsx");
 const teacherAssignmentDetailPage = await read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx");
 const assignmentSelectionSummary = await read("src/components/teacher/assignment-selection-summary.tsx");
@@ -133,8 +159,16 @@ const courseBuilderBridgePage = await read("src/app/teacher/course-builder/page.
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeMigration = await read("supabase/clean-migrations/0024_assignment_source_metadata.sql");
+const studentHomePage = await read("src/app/student/page.tsx");
+const studentLayout = await read("src/app/student/layout.tsx");
+const studentWorkspaceNav = await read("src/components/student/student-workspace-nav.tsx");
+const studentWorkspaceShell = await read("src/components/student/student-workspace-shell.tsx");
 const studentWorkPage = await read("src/app/student/work/page.tsx");
 const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
+const studentStudyLibraryPage = await read("src/app/student/library/page.tsx");
+const studentStudyGroupsPage = await read("src/app/student/groups/page.tsx");
+const studentPublicLibraryPage = await read("src/app/student/public-library/page.tsx");
+const studentProgressPage = await read("src/app/student/progress/page.tsx");
 const practicePage = await read("src/app/practice/page.tsx");
 const practiceLoader = await read("src/components/practice/practice-agent-loader.tsx");
 const practiceClient = await read("src/components/practice/practice-agent-client.tsx");
@@ -144,27 +178,65 @@ const studentJoinClassroomPage = await read("src/app/student/classrooms/join/pag
 const classroomMigration = await read("supabase/clean-migrations/0018_classroom_foundation.sql");
 const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
 assert(
-    teacherHomePage.includes("Start by creating or joining a Question Bank") &&
-    teacherHomePage.includes("Classrooms and") &&
-    teacherHomePage.includes("assignments deliver selected bank content") &&
+    teacherHomePage.includes("Teacher Workspace") &&
+    teacherHomePage.includes("Start with a Question Bank") &&
+    teacherHomePage.includes("review imported content") &&
     teacherHomePage.includes("Bank-first teacher workflow") &&
+    teacherHomePage.includes("Student visibility stays assignment-only") &&
     teacherHomePage.includes("No unreviewed draft can be assigned to students") &&
-    teacherWorkspaceNav.includes("Banks / Library") &&
-    teacherWorkspaceNav.includes("Review Drafts") &&
-    teacherWorkspaceNav.includes("Classrooms") &&
-    teacherBanksPage.includes("Your teacher-owned Question Banks") &&
+    teacherHomePage.includes("getTeacherDashboardSummary") &&
+    teacherHomePage.includes("TeacherDashboardOverviewCards") &&
+    teacherDashboardHelper.includes("assignment_practice_sessions") &&
+    teacherDashboardHelper.includes("student_assignment_progress") &&
+    teacherDashboardHelper.includes("practice_attempts") &&
+    teacherDashboardHelper.includes(".limit(") &&
+    !teacherDashboardHelper.includes('.select("*")') &&
+    !teacherDashboardHelper.includes(".insert(") &&
+    !teacherDashboardHelper.includes(".update(") &&
+    !teacherDashboardHelper.includes(".delete(") &&
+    teacherDashboardPanels.includes("Recent Practice evidence") &&
+    teacherDashboardPanels.includes("Student self-study is not mixed in") &&
+    teacherWorkspaceNav.includes("Dashboard") &&
+    teacherWorkspaceNav.includes("Question Bank") &&
+    teacherWorkspaceNav.includes("AI Parsing") &&
+    teacherWorkspaceNav.includes("Blueprint") &&
+    teacherWorkspaceNav.includes("Classroom") &&
+    teacherWorkspaceNav.includes("Publish") &&
+    teacherWorkspaceNav.includes("Progress") &&
+    !teacherWorkspaceNav.includes("/admin/imports/pdf") &&
+    !teacherWorkspaceNav.includes("/admin/review") &&
+    teacherAiParsingPage.includes("Choose a Question Bank before importing. AI drafts stay private until reviewed.") &&
+    teacherAiParsingPage.includes("BankTargetSelector") &&
+    teacherAiParsingPage.includes("Import into selected bank") &&
+    teacherAiParsingPage.includes("listTeacherQuestionBanks") &&
+    !teacherAiParsingPage.includes("/admin/imports/pdf") &&
+    !teacherAiParsingPage.includes("/admin/review") &&
+    teacherBanksPage.includes("Question Bank Library") &&
+    teacherBanksPage.includes("Join Bank by Code") &&
+    teacherBanksPage.includes("Assignment Ready") &&
     teacherBanksPage.includes("Create Question Bank") &&
     teacherBankNewPage.includes("action={createQuestionBank}") &&
     teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
-    teacherBankDetailPage.includes("Import material") &&
-    teacherBankDetailPage.includes("Create assignment") &&
+    teacherBankDetailPage.includes("Question Bank operating surface") &&
+    teacherBankDetailPage.includes("BankRouteTabs") &&
+    teacherBankDetailPage.includes("Import Material") &&
+    teacherBankDetailPage.includes("Publish from bank") &&
     teacherBankDetailPage.includes("Assignments expose selected") &&
     teacherBankDetailPage.includes("Review Drafts") &&
+    teacherBankImportsPage.includes("BankImportEntryPanel") &&
+    teacherBankImportUi.includes("Import into selected bank") &&
+    teacherBankImportsPage.includes("Advanced / Developer fixture") &&
+    teacherBankImportsPage.includes("Developer fixture for smoke testing. Normal teachers should") &&
     teacherBankImportsPage.includes("Create bank Review Drafts") &&
-    teacherBankImportsPage.includes("stay private until") &&
+    !teacherBankImportsPage.includes("/admin/imports/pdf") &&
+    teacherBankImportsPage.includes("Drafts stay") &&
+    teacherBankReviewPage.includes("Approve drafts into this bank") &&
     teacherBankReviewPage.includes("Approve into bank") &&
     teacherBankReviewPage.includes("not globally published") &&
+    teacherBankQuestionsPage.includes("Question database") &&
+    teacherBankQuestionsPage.includes("Taxonomy / knowledge point") &&
     teacherBankQuestionsPage.includes("not public/global questions") &&
+    teacherBankQuestionsPage.includes("Assignment ready") &&
     teacherBankDetailPage.includes("Manage members and share codes") &&
     teacherBankActions.includes('rpc("create_question_bank"') &&
     teacherBankActions.includes('rpc("create_bank_share_code"') &&
@@ -173,12 +245,32 @@ assert(
     teacherBankActions.includes('rpc("remove_bank_member"') &&
     teacherBankActions.includes('rpc("approve_bank_review_question"') &&
     teacherBankActions.includes("create_assignment_from_bank") &&
+    teacherPublishPage.includes("Publish distributes selected bank content to classes") &&
+    teacherPublishPage.includes("Choose a source bank") &&
+    teacherPublishPage.includes("Select approved bank questions") &&
+    teacherPublishPage.includes("Choose classroom targets") &&
+    teacherPublishPage.includes("Assignment-only. No full source bank access.") &&
+    teacherPublishPage.includes("Blueprints will become publishable after package generation and Review Draft approval.") &&
+    teacherPublishPage.includes("No Review Draft bypass") &&
+    teacherPublishActions.includes("publishQuestionBankAssignments") &&
+    teacherPublishActions.includes("create_assignment_from_bank") &&
+    teacherPublishActions.includes("selectedClassroomIds") &&
+    !teacherPublishActions.includes("AI_PROVIDER") &&
     teacherBankAssignmentNewPage.includes("Question Bank assignment") &&
     teacherBankAssignmentNewPage.includes("Choose a class you manage") &&
     teacherBankAssignmentNewPage.includes("selected approved bank items") &&
     teacherBankAssignmentNewPage.includes("not access to the full bank") &&
     teacherBankAssignmentNewPage.includes("Assign to class") &&
     teacherBankAssignmentNewPage.includes("Save draft") &&
+    teacherBlueprintPage.includes("Blueprint Library") &&
+    teacherBlueprintPage.includes("Blueprints are reusable planning/package assets") &&
+    teacherBlueprintPage.includes("Create Blueprint") &&
+    teacherBlueprintPage.includes("New Folder") &&
+    teacherBlueprintNewPage.includes("This form only creates the library asset") &&
+    teacherBlueprintDetailPage.includes("BlueprintWorkflowPanel") &&
+    teacherBankBlueprintsPage.includes("Blueprint links for") &&
+    teacherBankBlueprintsPage.includes("Create Blueprint from this bank") &&
+    blueprintLibraryMigration.includes("create table if not exists public.bank_blueprints") &&
     teacherBankActions.includes("importBatchImportJson") &&
     bankImportReviewMigration.includes("public.approve_bank_review_question") &&
     bankImportReviewMigration.includes("questions_bank_member_read") &&
@@ -191,27 +283,36 @@ assert(
     teacherBankMembersPage.includes("Create share code") &&
     authActions.includes('redirect("/teacher")') &&
     authGuards.includes('redirect("/auth/login?next=/teacher")') &&
-    authNav.includes("Teacher Studio preview"),
-  "teacher runtime must expose a bank-first Teacher Studio and real bank foundation surfaces",
+    authNav.includes("Teacher Workspace preview"),
+  "teacher runtime must expose a bank-first teacher workspace and real bank foundation surfaces",
 );
-console.log("PASS teacher runtime exposes bank-first Teacher Studio and bank foundation surfaces");
+console.log("PASS teacher runtime exposes bank-first teacher workspace and bank foundation surfaces");
 assert(
   teacherClassroomsPage.includes("Delivery layer") &&
-    teacherClassroomsPage.includes("Teacher banks remain the") &&
-    teacherClassroomsPage.includes("Your classrooms") &&
-    teacherClassroomsPage.includes("Create classroom") &&
-    teacherClassroomDetailPage.includes("Students do not gain access") &&
-    teacherClassroomDetailPage.includes("Roster") &&
-    teacherClassroomDetailPage.includes("New assignment") &&
+    teacherClassroomsPage.includes("Classes are roster and delivery spaces") &&
+    teacherClassroomsPage.includes("Your classes") &&
+    teacherClassroomsPage.includes("Create Class") &&
+    teacherClassroomUi.includes("Publish to classes") &&
+    teacherClassroomDetailPage.includes("Students can join the roster") &&
+    teacherClassroomDetailPage.includes("Active join code") &&
+    teacherClassroomDetailPage.includes("Class delivery snapshot") &&
+    teacherClassroomDetailPage.includes("Students needing attention") &&
     teacherClassroomDetailPage.includes("View assignments") &&
+    teacherClassroomPeoplePage.includes("Joining a class does not grant access") &&
+    teacherClassroomPeoplePage.includes("Remove from class") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
-    teacherAssignmentsPage.includes("New assignment") &&
+    teacherAssignmentsPage.includes("Publish new work") &&
+    teacherAssignmentsPage.includes("Publish new bank work") &&
     teacherAssignmentsPage.includes("Assigned") &&
     teacherAssignmentsPage.includes("Assignment visibility") &&
     teacherAssignmentsPage.includes("global publishing") &&
     teacherAssignmentsPage.includes("Draft") &&
     teacherAssignmentsPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Latest activity") &&
+    teacherClassroomAnalyticsPage.includes("Analytics / Feedback") &&
+    teacherClassroomAnalyticsPage.includes("Taxonomy mastery") &&
+    teacherClassroomBlueprintsPage.includes("Blueprints linked to this class will appear here") &&
+    teacherClassroomSettingsPage.includes("Archive and delete controls are not enabled") &&
     teacherAssignmentNewPage.includes("Published questions") &&
     teacherAssignmentNewPage.includes("workflow now starts from Question Banks") &&
     teacherAssignmentNewPage.includes("published-question compatibility") &&
@@ -244,6 +345,26 @@ assert(
     courseBuilderBridgeActions.includes("No published Question Bank questions are available") &&
     courseBuilderBridgeHelper.includes('.eq("status", "published")') &&
     courseBuilderBridgeMigration.includes("source_summary jsonb") &&
+    studentHomePage.includes("Student Dashboard") &&
+    studentHomePage.includes("My Work") &&
+    studentHomePage.includes("Practice") &&
+    studentHomePage.includes("Mistakes") &&
+    studentHomePage.includes("Study Library") &&
+    studentHomePage.includes("Study Groups") &&
+    studentHomePage.includes("Public Library") &&
+    studentHomePage.includes("Progress / Feedback") &&
+    studentHomePage.includes("It does not open the teacher") &&
+    studentLayout.includes("StudentWorkspaceNav") &&
+    studentWorkspaceNav.includes("Dashboard") &&
+    studentWorkspaceNav.includes("My Work") &&
+    studentWorkspaceNav.includes("Practice") &&
+    studentWorkspaceNav.includes("Mistakes") &&
+    studentWorkspaceNav.includes("Study Library") &&
+    studentWorkspaceNav.includes("Study Groups") &&
+    studentWorkspaceNav.includes("Public Library") &&
+    studentWorkspaceNav.includes("Progress / Feedback") &&
+    studentWorkspaceShell.includes("StudentWorkspaceShell") &&
+    studentWorkspaceShell.includes("StudentModuleCard") &&
     studentWorkPage.includes("My Work") &&
     studentWorkPage.includes("Due soon") &&
     studentWorkPage.includes("In progress") &&
@@ -265,6 +386,14 @@ assert(
     practiceClient.includes("/api/practice/assignments/start") &&
     practiceClient.includes("Assignment practice") &&
     assignmentPracticeStartRoute.includes("startAssignmentPractice") &&
+    studentStudyLibraryPage.includes("Student-owned library foundation") &&
+    studentStudyLibraryPage.includes("without creating a new backend") &&
+    studentStudyGroupsPage.includes("peer self-study space") &&
+    studentStudyGroupsPage.includes("do not grant access to teacher private banks") &&
+    studentPublicLibraryPage.includes("Public does not mean verified") &&
+    studentPublicLibraryPage.includes("Private stays private") &&
+    studentProgressPage.includes("Progress / Feedback") &&
+    studentProgressPage.includes("Feedback history") &&
     studentClassroomsPage.includes("Student workspace") &&
     studentClassroomsPage.includes("My classes") &&
     studentClassroomsPage.includes("Assigned work lives in My Work") &&

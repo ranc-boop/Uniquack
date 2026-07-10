@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  ClassroomPublishCta,
+  ClassroomRouteTabs,
+  ClassroomSafetyStrip,
+} from "@/app/teacher/classrooms/classroom-ui";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -168,12 +173,12 @@ function AssignmentSection({
   group: AssignmentGroup;
 }) {
   return (
-    <section className="student-panel overflow-hidden">
+    <section className="teacher-panel overflow-hidden">
       <div className="border-b border-slate-100 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-slate-950">{group.title}</h2>
-            <p className="student-muted">{group.description}</p>
+            <p className="teacher-muted">{group.description}</p>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
             {group.items.length}
@@ -250,26 +255,28 @@ export default async function TeacherAssignmentsPage({
       .at(-1) ?? null;
 
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
+    <main className="teacher-shell space-y-6">
+      <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Teacher assignments</p>
+            <p className="teacher-eyebrow">Teacher assignments</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               {classroom.name}
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Assignments are delivery events. The next bank-first slice will
-              source this flow from teacher-owned and shared banks.
+              Assignments are class delivery history. Publish new bank work from
+              the top-level Publish module, or use the compatibility shortcut
+              when needed.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
               <Link href="/teacher">Teacher Studio</Link>
             </Button>
+            <ClassroomPublishCta classroomId={classroom.id} />
             <Button asChild>
-              <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
-                New assignment
+              <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
+                Publish new work
               </Link>
             </Button>
             <Button asChild variant="outline">
@@ -284,10 +291,14 @@ export default async function TeacherAssignmentsPage({
         </div>
       </section>
 
+      <ClassroomRouteTabs classroomId={classroom.id} />
+      <ClassroomSafetyStrip />
+
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-        <strong className="font-bold">Delivery layer:</strong> these assignments
-        expose selected question items to students. Assignment visibility is not
-        global publishing.
+        <strong className="font-bold">Assignment visibility:</strong> these
+        assignments expose selected question items to students. Assignment
+        visibility is not global publishing. Use Publish for the primary
+        distribute-work path.
       </section>
 
       {query.saved ? (
@@ -322,12 +333,12 @@ export default async function TeacherAssignmentsPage({
             ))}
           </section>
 
-          <section className="student-panel overflow-hidden">
+          <section className="teacher-panel overflow-hidden">
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-bold text-slate-950">
                 Classroom assignments
               </h2>
-              <p className="student-muted">
+              <p className="teacher-muted">
                 Drafts stay teacher-side. Assigned work is visible only to
                 active students in this class.
               </p>
@@ -347,7 +358,7 @@ export default async function TeacherAssignmentsPage({
           ))}
         </>
       ) : (
-        <section className="student-panel flex min-h-72 items-center justify-center p-8 text-center">
+        <section className="teacher-panel flex min-h-72 items-center justify-center p-8 text-center">
           <div className="max-w-md space-y-4">
             <div>
               <h2 className="text-lg font-bold text-slate-950">
@@ -359,8 +370,8 @@ export default async function TeacherAssignmentsPage({
               </p>
             </div>
             <Button asChild>
-              <Link href={`/teacher/classrooms/${classroom.id}/assignments/new`}>
-                Create assignment
+              <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
+                Publish new work
               </Link>
             </Button>
           </div>

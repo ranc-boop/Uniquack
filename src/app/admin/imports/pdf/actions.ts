@@ -1215,7 +1215,7 @@ export async function confirmAIPdfSegmentation(input: unknown) {
   const supabase = await createClient();
   const { data: batch, error: batchError } = await supabase
     .from("import_batches")
-    .select("id, status, summary")
+    .select("id, status, summary, target_bank_id")
     .eq("id", parsed.batchId)
     .eq("source_type", "ai_pdf")
     .maybeSingle();
@@ -1525,7 +1525,7 @@ async function runAIPdfExtractionJob({
   try {
     const { data: batch, error: readError } = await supabase
       .from("import_batches")
-      .select("summary")
+      .select("summary, target_bank_id")
       .eq("id", batchId)
       .maybeSingle();
 
@@ -1579,6 +1579,10 @@ async function runAIPdfExtractionJob({
       sourceAssetId: sourceAsset.id,
       sourceObjectPath: sourceAsset.object_path,
       supabase,
+      targetBankId:
+        typeof batch?.target_bank_id === "string"
+          ? batch.target_bank_id
+          : null,
     });
   } catch (error) {
     const message =
@@ -1662,7 +1666,7 @@ export async function runQueuedAIPdfExtraction(input: unknown) {
   const supabase = await createClient();
   const { data: batch, error: batchError } = await supabase
     .from("import_batches")
-    .select("id, status, summary")
+    .select("id, status, summary, target_bank_id")
     .eq("id", parsed.batchId)
     .eq("source_type", "ai_pdf")
     .maybeSingle();
@@ -1722,7 +1726,7 @@ export async function retryAIPdfImportChunk(input: unknown) {
   const supabase = await createClient();
   const { data: batch, error: batchError } = await supabase
     .from("import_batches")
-    .select("id, status, summary")
+    .select("id, status, summary, target_bank_id")
     .eq("id", parsed.batchId)
     .eq("source_type", "ai_pdf")
     .maybeSingle();
@@ -1832,6 +1836,8 @@ export async function retryAIPdfImportChunk(input: unknown) {
     sourceAssetId: sourceAsset.id,
     sourceObjectPath: sourceAsset.object_path,
     supabase,
+    targetBankId:
+      typeof batch?.target_bank_id === "string" ? batch.target_bank_id : null,
   });
 
   revalidatePath("/admin/imports");

@@ -1,4 +1,12 @@
-import Link from "next/link";
+﻿import Link from "next/link";
+import {
+  BookOpen,
+  ClipboardCheck,
+  Layers,
+  Plus,
+  Share2,
+  Upload,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
@@ -13,7 +21,28 @@ import {
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 
+import {
+  bankActionIcons,
+  BankBadge,
+  BankHeroPanel,
+  BankMetricCard,
+  BankQuickAction,
+  BankSectionHeader,
+  BankWorkbenchPage,
+} from "./bank-ui";
+
 export const dynamic = "force-dynamic";
+
+const filterOptions = [
+  { label: "All", value: "all" },
+  { label: "Private", value: "private" },
+  { label: "Shared", value: "shared" },
+  { label: "Organization", value: "organization" },
+  { label: "Public", value: "public" },
+  { label: "Needs Review", value: "needs-review" },
+  { label: "Recently Updated", value: "recent" },
+  { label: "Assignment Ready", value: "assignment-ready" },
+] as const;
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
@@ -23,9 +52,34 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function applyFilter(
+  banks: TeacherQuestionBankSummary[],
+  filter: string | undefined,
+) {
+  switch (filter) {
+    case "private":
+    case "shared":
+    case "organization":
+    case "public":
+      return banks.filter((bank) => bank.visibility === filter);
+    case "needs-review":
+      return banks.filter((bank) => bank.reviewDraftCount > 0);
+    case "assignment-ready":
+      return banks.filter((bank) => bank.assignmentReadyCount > 0);
+    case "recent":
+      return [...banks].sort(
+        (first, second) =>
+          new Date(second.updated_at).getTime() -
+          new Date(first.updated_at).getTime(),
+      );
+    default:
+      return banks;
+  }
+}
+
 function SetupNeededState() {
   return (
-    <section className="student-panel p-6">
+    <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
       <p className="student-eyebrow">Setup needed</p>
       <h2 className="mt-2 text-xl font-bold text-slate-950">
         Question Bank tables are not available yet.
@@ -39,8 +93,13 @@ function SetupNeededState() {
   );
 }
 
-export default async function TeacherBanksPage() {
+export default async function TeacherBanksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
   const profile = await requireTeacher();
+  const { filter } = await searchParams;
   const supabase = await createClient();
   let banks: TeacherQuestionBankSummary[];
   let setupNeeded = false;
@@ -59,31 +118,48 @@ export default async function TeacherBanksPage() {
     }
   }
 
+  const activeFilter = filter ?? "all";
+  const filteredBanks = applyFilter(banks, activeFilter);
+  const totals = {
+    assignmentReady: banks.reduce(
+      (sum, bank) => sum + bank.assignmentReadyCount,
+      0,
+    ),
+    imports: banks.reduce((sum, bank) => sum + bank.importBatchCount, 0),
+    questions: banks.reduce((sum, bank) => sum + bank.questionCount, 0),
+    reviewDrafts: banks.reduce((sum, bank) => sum + bank.reviewDraftCount, 0),
+  };
+
   return (
-    <main className="student-shell space-y-6">
-      <section className="student-hero">
-        <div className="space-y-5">
-          <div className="space-y-2">
-            <p className="student-eyebrow">Banks / Library</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Your teacher-owned Question Banks.
-            </h1>
-            <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Build private or shared libraries first, then deliver reviewed
-              bank content through classrooms and assignments.
-            </p>
-          </div>
-          <TeacherWorkspaceNav />
-          <div className="flex flex-wrap gap-2">
+    <BankWorkbenchPage>
+      <BankHeroPanel
+        actions={
+          <>
             <Button asChild>
-              <Link href="/teacher/banks/new">Create Question Bank</Link>
+              <Link className="inline-flex items-center gap-2" href="/teacher/banks/new">
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                Create Question Bank
+              </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/admin/review">Review Drafts</Link>
+              <Link className="inline-flex items-center gap-2" href="/teacher/banks/join">
+                <Share2 aria-hidden="true" className="h-4 w-4" />
+                Join Bank by Code
+              </Link>
             </Button>
-          </div>
-        </div>
-      </section>
+          </>
+        }
+        badges={<BankBadge tone="sky">Teacher repository</BankBadge>}
+        eyebrow="Question Bank Library"
+        title="Question Bank Library"
+      >
+        <p>
+          Banks are your teacher content repositories. Classrooms and assignments
+          deliver selected approved items.
+        </p>
+      </BankHeroPanel>
+
+      <TeacherWorkspaceNav />
 
       {setupNeeded ? (
         <SetupNeededState />
@@ -91,102 +167,205 @@ export default async function TeacherBanksPage() {
         <>
           <section className="grid gap-3 md:grid-cols-4">
             {[
-              ["Total banks", banks.length],
-              [
-                "Questions",
-                banks.reduce((sum, bank) => sum + bank.questionCount, 0),
-              ],
-              [
-                "Shared access",
-                banks.filter((bank) => bank.visibility !== "private").length,
-              ],
-              [
-                "Active banks",
-                banks.filter((bank) => bank.status === "active").length,
-              ],
-            ].map(([label, value]) => (
-              <div className="student-panel p-4" key={label}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  {label}
-                </p>
-                <p className="mt-2 text-2xl font-bold text-slate-950">
-                  {value}
-                </p>
-              </div>
+              {
+                description: "Private, shared, organization, and public-review repositories.",
+                icon: Layers,
+                label: "Total banks",
+                value: banks.length,
+              },
+              {
+                description: "Approved items already inside teacher banks.",
+                icon: BookOpen,
+                label: "Questions",
+                value: totals.questions,
+              },
+              {
+                description: "Drafts waiting for bank-level approval.",
+                icon: ClipboardCheck,
+                label: "Review Drafts",
+                value: totals.reviewDrafts,
+              },
+              {
+                description: "Approved items ready for classroom delivery.",
+                icon: bankActionIcons.assignment,
+                label: "Assignment Ready",
+                value: totals.assignmentReady,
+              },
+            ].map((metric) => (
+              <BankMetricCard key={metric.label} {...metric} />
             ))}
           </section>
 
-          {banks.length ? (
-            <section className="space-y-3">
-              {banks.map((bank) => (
-                <article className="student-panel p-5" key={bank.id}>
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0 space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                          {questionBankVisibilityLabel(bank.visibility)}
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          {questionBankStatusLabel(bank.status)}
-                        </span>
-                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                          {bankMemberRoleLabel(bank.membershipRole)}
-                        </span>
+          <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
+            <BankSectionHeader
+              action={
+                <p className="text-sm font-semibold text-slate-500">
+                  {filteredBanks.length} shown
+                </p>
+              }
+              description="Filter by ownership, review work, source activity, or classroom readiness."
+              title="Library workbench"
+            />
+            <div className="border-b border-slate-100 p-4">
+              <div className="flex gap-2 overflow-x-auto">
+                {filterOptions.map((option) => {
+                  const selected = activeFilter === option.value;
+
+                  return (
+                    <Link
+                      className={`inline-flex min-h-10 shrink-0 items-center rounded-full border px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${
+                        selected
+                          ? "border-sky-300 bg-sky-100 text-sky-900"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
+                      }`}
+                      href={
+                        option.value === "all"
+                          ? "/teacher/banks"
+                          : `/teacher/banks?filter=${option.value}`
+                      }
+                      key={option.value}
+                    >
+                      {option.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            {banks.length ? (
+              <div className="divide-y divide-slate-100">
+                {filteredBanks.map((bank) => (
+                  <article className="p-5" key={bank.id}>
+                    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_25rem] xl:items-start">
+                      <div className="min-w-0 space-y-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <BankBadge tone="sky">
+                            {questionBankVisibilityLabel(bank.visibility)}
+                          </BankBadge>
+                          <BankBadge>
+                            {questionBankStatusLabel(bank.status)}
+                          </BankBadge>
+                          <BankBadge tone="blue">
+                            {bankMemberRoleLabel(bank.membershipRole)}
+                          </BankBadge>
+                          <BankBadge tone={bank.activeMemberCount > 1 ? "indigo" : "slate"}>
+                            {bank.activeMemberCount > 1
+                              ? `${bank.activeMemberCount} members`
+                              : "Owner workspace"}
+                          </BankBadge>
+                        </div>
+                        <div>
+                          <h2 className="break-words text-2xl font-bold text-slate-950">
+                            {bank.name}
+                          </h2>
+                          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
+                            {bank.description ||
+                              "No description yet. Add reviewed questions here before classroom delivery."}
+                          </p>
+                        </div>
+                        <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                          {[
+                            ["Questions", bank.questionCount],
+                            ["Review Drafts", bank.reviewDraftCount],
+                            ["Imports", bank.importBatchCount],
+                            ["Assignment Ready", bank.assignmentReadyCount],
+                            ["Updated", formatDate(bank.updated_at)],
+                          ].map(([label, value]) => (
+                            <div
+                              className="rounded-lg border border-slate-200 bg-slate-50/70 p-3"
+                              key={label}
+                            >
+                              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                {label}
+                              </dt>
+                              <dd className="mt-1 break-words text-sm font-bold text-slate-950">
+                                {value}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
                       </div>
-                      <div>
-                        <h2 className="text-xl font-bold text-slate-950">
-                          {bank.name}
-                        </h2>
-                        <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-                          {bank.description ||
-                            "No description yet. Add reviewed questions here before classroom delivery."}
-                        </p>
+
+                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                        <BankQuickAction
+                          href={`/teacher/banks/${bank.id}`}
+                          icon={bankActionIcons.bank}
+                          variant="default"
+                        >
+                          Open bank
+                        </BankQuickAction>
+                        <BankQuickAction
+                          href={`/teacher/banks/${bank.id}/review`}
+                          icon={bankActionIcons.review}
+                        >
+                          Review drafts
+                        </BankQuickAction>
+                        <BankQuickAction
+                          href={`/teacher/banks/${bank.id}/imports`}
+                          icon={Upload}
+                        >
+                          Import material
+                        </BankQuickAction>
+                        {bank.assignmentReadyCount ? (
+                          <BankQuickAction
+                            href={`/teacher/banks/${bank.id}/assignments/new`}
+                            icon={bankActionIcons.assignment}
+                          >
+                            Create assignment
+                          </BankQuickAction>
+                        ) : (
+                          <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
+                            Create assignment appears after reviewed questions are
+                            approved into this bank.
+                          </p>
+                        )}
                       </div>
-                      <dl className="flex flex-wrap gap-4 text-sm text-slate-600">
-                        <div>
-                          <dt className="font-semibold text-slate-900">
-                            Questions
-                          </dt>
-                          <dd>{bank.questionCount}</dd>
-                        </div>
-                        <div>
-                          <dt className="font-semibold text-slate-900">
-                            Members
-                          </dt>
-                          <dd>{bank.activeMemberCount}</dd>
-                        </div>
-                        <div>
-                          <dt className="font-semibold text-slate-900">
-                            Updated
-                          </dt>
-                          <dd>{formatDate(bank.updated_at)}</dd>
-                        </div>
-                      </dl>
                     </div>
-                    <Button asChild variant="outline">
-                      <Link href={`/teacher/banks/${bank.id}`}>Open bank</Link>
-                    </Button>
+                  </article>
+                ))}
+
+                {!filteredBanks.length ? (
+                  <div className="p-8 text-center">
+                    <p className="student-eyebrow">No matching banks</p>
+                    <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                      No banks match this filter yet.
+                    </h2>
+                    <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                      Switch filters or create a new bank for this workflow.
+                    </p>
                   </div>
-                </article>
-              ))}
-            </section>
-          ) : (
-            <section className="student-panel p-8 text-center">
-              <p className="student-eyebrow">Empty library</p>
-              <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                Create your first Question Bank.
-              </h2>
-              <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Banks hold reviewed teacher content. Import, Review Drafts, and
-                assignment flows will connect to this library in later slices.
-              </p>
-              <Button asChild className="mt-5">
-                <Link href="/teacher/banks/new">Create Question Bank</Link>
-              </Button>
-            </section>
-          )}
+                ) : null}
+              </div>
+            ) : (
+              <section className="p-8 text-center">
+                <p className="student-eyebrow">Empty library</p>
+                <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                  No banks yet. Create your first Question Bank or join a shared
+                  bank by code.
+                </h2>
+                <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                  Banks hold reviewed teacher content before it moves into
+                  classroom delivery.
+                </p>
+                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  <Button asChild>
+                    <Link className="inline-flex items-center gap-2" href="/teacher/banks/new">
+                      <Plus aria-hidden="true" className="h-4 w-4" />
+                      Create Question Bank
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link className="inline-flex items-center gap-2" href="/teacher/banks/join">
+                      <Share2 aria-hidden="true" className="h-4 w-4" />
+                      Join Bank by Code
+                    </Link>
+                  </Button>
+                </div>
+              </section>
+            )}
+          </section>
         </>
       )}
-    </main>
+    </BankWorkbenchPage>
   );
 }
