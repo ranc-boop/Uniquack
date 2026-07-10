@@ -22,6 +22,7 @@ import {
   listBankLinkedBlueprints,
   summarizeBlueprintTaxonomy,
 } from "@/lib/teacher-blueprints";
+import { readinessWarnings, sourceExampleCount } from "@/lib/teacher-blueprint-builder";
 
 import {
   BankBadge,
@@ -107,9 +108,9 @@ export default async function TeacherBankBlueprintsPage({
               <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
             </Button>
             <Button asChild>
-              <Link href={`/teacher/blueprints/new?sourceBankId=${bank.id}`}>
+              <Link href={`/teacher/blueprints/new?bankId=${bank.id}`}>
                 <Plus aria-hidden="true" className="h-4 w-4" />
-                Create Blueprint from this bank
+                Build from bank questions
               </Link>
             </Button>
           </>
@@ -191,6 +192,24 @@ export default async function TeacherBankBlueprintsPage({
                           {summarizeBlueprintTaxonomy(link.blueprint.taxonomy_targets)}
                         </dd>
                       </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Source examples
+                        </dt>
+                        <dd className="mt-1 font-semibold text-slate-900">
+                          {sourceExampleCount(link.blueprint)}
+                        </dd>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Readiness
+                        </dt>
+                        <dd className="mt-1 font-semibold text-slate-900">
+                          {readinessWarnings(link.blueprint).length
+                            ? "Needs planning"
+                            : "Preview ready"}
+                        </dd>
+                      </div>
                     </dl>
                     <Button asChild className="mt-4" variant="outline">
                       <Link href={`/teacher/blueprints/${link.blueprint.id}`}>
@@ -213,7 +232,7 @@ export default async function TeacherBankBlueprintsPage({
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 <Button asChild>
-                  <Link href={`/teacher/blueprints/new?sourceBankId=${bank.id}`}>
+                  <Link href={`/teacher/blueprints/new?bankId=${bank.id}`}>
                     Create Blueprint from this bank
                   </Link>
                 </Button>

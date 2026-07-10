@@ -2184,10 +2184,10 @@ export async function BlueprintWorkspace({
               actions.
             </p>
             <div className="space-y-1 font-mono text-xs">
-              <p>supabase/migrations/0015_question_blueprint_library.sql</p>
+              <p>supabase/migrations/0018_question_blueprint_library.sql</p>
               <p>supabase/migrations/0016_question_blueprint_folders.sql</p>
-              <p>supabase/migrations/0018_question_blueprint_calibration.sql</p>
-              <p>supabase/migrations/0019_question_blueprint_versions.sql</p>
+              <p>supabase/migrations/0020_question_blueprint_calibration.sql</p>
+              <p>supabase/migrations/0021_question_blueprint_versions.sql</p>
             </div>
           </div>
         </AdminCard>

@@ -22,7 +22,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const blueprintMigration = await readFile(
-  resolve(root, "supabase/migrations/0015_question_blueprint_library.sql"),
+  resolve(root, "supabase/migrations/0018_question_blueprint_library.sql"),
   "utf8",
 );
 const blueprintFolderMigration = await readFile(
@@ -30,11 +30,11 @@ const blueprintFolderMigration = await readFile(
   "utf8",
 );
 const blueprintCalibrationMigration = await readFile(
-  resolve(root, "supabase/migrations/0018_question_blueprint_calibration.sql"),
+  resolve(root, "supabase/migrations/0020_question_blueprint_calibration.sql"),
   "utf8",
 );
 const blueprintVersionMigration = await readFile(
-  resolve(root, "supabase/migrations/0019_question_blueprint_versions.sql"),
+  resolve(root, "supabase/migrations/0021_question_blueprint_versions.sql"),
   "utf8",
 );
 const reviewDraftPublishMigration = await readFile(

@@ -759,10 +759,10 @@ const questionBlueprintModelRouting = await read("src/lib/blueprints/question-bl
 const questionBlueprintQuality = await read("src/lib/blueprints/question-blueprint-quality.ts");
 const questionBlueprintEditing = await read("src/lib/blueprints/question-blueprint-editing.ts");
 const questionBlueprintVersioning = await read("src/lib/blueprints/question-blueprint-versioning.ts");
-const questionBlueprintMigration = await read("supabase/migrations/0015_question_blueprint_library.sql");
+const questionBlueprintMigration = await read("supabase/migrations/0018_question_blueprint_library.sql");
 const questionBlueprintFolderMigration = await read("supabase/migrations/0016_question_blueprint_folders.sql");
-const questionBlueprintCalibrationMigration = await read("supabase/migrations/0018_question_blueprint_calibration.sql");
-const questionBlueprintVersionMigration = await read("supabase/migrations/0019_question_blueprint_versions.sql");
+const questionBlueprintCalibrationMigration = await read("supabase/migrations/0020_question_blueprint_calibration.sql");
+const questionBlueprintVersionMigration = await read("supabase/migrations/0021_question_blueprint_versions.sql");
 const questionBlueprintFolders = await read("src/lib/blueprints/question-blueprint-folders.ts");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
@@ -1740,10 +1740,10 @@ assert(
 assert(blueprintWorkspace.includes("requireAdmin"), "blueprint workspace must remain admin-only");
 assert(
     blueprintWorkspace.includes("Setup needed") &&
-    blueprintWorkspace.includes("0015_question_blueprint_library.sql") &&
+    blueprintWorkspace.includes("0018_question_blueprint_library.sql") &&
     blueprintWorkspace.includes("0016_question_blueprint_folders.sql") &&
-    blueprintWorkspace.includes("0018_question_blueprint_calibration.sql") &&
-    blueprintWorkspace.includes("0019_question_blueprint_versions.sql"),
+    blueprintWorkspace.includes("0020_question_blueprint_calibration.sql") &&
+    blueprintWorkspace.includes("0021_question_blueprint_versions.sql"),
   "blueprint library page must show setup-needed message when tables are missing",
 );
 assert(
