@@ -1,33 +1,27 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
+import { createGoogleAccountLinksPostgresHarness } from './google-account-links-embedded-postgres.mjs';
 import { splitSql } from './sql-split.mjs';
 
 const here = fileURLToPath(import.meta.url);
 const root = resolve(here, '..', '..');
 const cleanDir = resolve(root, 'supabase/clean-migrations');
+const googleMigrationFile = '0032_google_account_links.sql';
 
-const pgInstance = new EmbeddedPostgres({
-  databaseDir: 'C:\\AI\\o2iinstitute\\.pg-data',
-  user: 'postgres',
-  password: 'postgres',
-  port: 54329,
-  persistent: true,
-});
+const harness = await createGoogleAccountLinksPostgresHarness('google-apply');
+const { instance: pgInstance, connection } = harness;
 
 let client;
+let migrationFailed = false;
 try {
   await pgInstance.initialise();
   await pgInstance.start();
   await pgInstance.createDatabase('glogin1_test').catch(() => {});
 
   client = new pg.Client({
-    host: '127.0.0.1',
-    port: 54329,
-    user: 'postgres',
-    password: 'postgres',
+    ...connection,
     database: 'glogin1_test',
   });
   await client.connect();
@@ -68,9 +62,9 @@ try {
   `);
 
   const files = readdirSync(cleanDir)
-    .filter((f) => f.endsWith('.sql'))
+    .filter((f) => f.endsWith('.sql') && f < googleMigrationFile)
     .sort();
-  console.log('applying', files.length, 'clean migrations');
+  console.log('applying', files.length, 'pre-Google clean migrations');
   for (const f of files) {
     const sql = readFileSync(join(cleanDir, f), 'utf8');
     const stmts = splitSql(sql);
@@ -82,43 +76,52 @@ try {
     } catch (e) {
       await client.query('rollback').catch(() => {});
       console.error('  FAIL', f, '-', e?.message);
-      process.exit(2);
+      process.exitCode = 2;
+      migrationFailed = true;
+      break;
     }
   }
-  console.log('all 31 baseline migrations applied');
+  if (!migrationFailed) {
 
-  // now apply 0032
-  const m32 = readFileSync(join(cleanDir, '0032_google_account_links.sql'), 'utf8');
-  const stmts32 = splitSql(m32);
-  console.log('applying 0032_google_account_links.sql (' + stmts32.length + ' stmts)');
-  try {
-    await client.query('begin');
-    for (const s of stmts32) await client.query(s);
-    await client.query('commit');
-    console.log('  ok 0032');
-  } catch (e) {
-    await client.query('rollback').catch(() => {});
-    console.error('  FAIL 0032 -', e?.message);
-    console.error('--- first failing stmt (first 600 chars) ---');
-    console.error((stmts32[0] || '').slice(0, 600));
-    process.exit(3);
+    console.log('pre-Google baseline migrations applied');
+
+    // now apply 0032
+    const m32 = readFileSync(join(cleanDir, googleMigrationFile), 'utf8');
+    const stmts32 = splitSql(m32);
+    let googleMigrationApplied = true;
+    console.log('applying ' + googleMigrationFile + ' (' + stmts32.length + ' stmts)');
+    try {
+      await client.query('begin');
+      for (const s of stmts32) await client.query(s);
+      await client.query('commit');
+      console.log('  ok 0032');
+    } catch (e) {
+      await client.query('rollback').catch(() => {});
+      console.error('  FAIL 0032 -', e?.message);
+      console.error('--- first failing stmt (first 600 chars) ---');
+      console.error((stmts32[0] || '').slice(0, 600));
+      process.exitCode = 3;
+      googleMigrationApplied = false;
+    }
+
+    if (googleMigrationApplied) {
+      // basic shape checks
+      const t1 = await client.query("select to_regclass('public.google_account_links') as t");
+      const t2 = await client.query("select to_regclass('public.identity_link_audit_log') as t");
+      const pcols = await client.query(
+        "select column_name from information_schema.columns where table_schema='public' and table_name='profiles' and column_name in ('google_sub','google_email_at_link','google_linked_at') order by column_name"
+      );
+      const rpcs = await client.query(
+        "select routine_name from information_schema.routines where routine_schema='public' and routine_name in ('record_google_signin','link_google_to_current_profile','unlink_google_account','reject_google_link') order by routine_name"
+      );
+      console.log('shape:');
+      console.log('  google_account_links:', t1.rows[0].t);
+      console.log('  identity_link_audit_log:', t2.rows[0].t);
+      console.log('  profiles new cols:', pcols.rows.map(r => r.column_name));
+      console.log('  RPCs:', rpcs.rows.map(r => r.routine_name));
+    }
   }
-
-  // basic shape checks
-  const t1 = await client.query("select to_regclass('public.google_account_links') as t");
-  const t2 = await client.query("select to_regclass('public.identity_link_audit_log') as t");
-  const pcols = await client.query(
-    "select column_name from information_schema.columns where table_schema='public' and table_name='profiles' and column_name in ('google_sub','google_email_at_link','google_linked_at') order by column_name"
-  );
-  const rpcs = await client.query(
-    "select routine_name from information_schema.routines where routine_schema='public' and routine_name in ('record_google_signin','link_google_to_current_profile','unlink_google_account','reject_google_link') order by routine_name"
-  );
-  console.log('shape:');
-  console.log('  google_account_links:', t1.rows[0].t);
-  console.log('  identity_link_audit_log:', t2.rows[0].t);
-  console.log('  profiles new cols:', pcols.rows.map(r => r.column_name));
-  console.log('  RPCs:', rpcs.rows.map(r => r.routine_name));
 } finally {
   if (client) await client.end().catch(() => {});
-  try { await pgInstance.stop(); } catch {}
+  await harness.cleanup();
 }

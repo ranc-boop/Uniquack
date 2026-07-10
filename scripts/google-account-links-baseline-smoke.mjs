@@ -1,35 +1,28 @@
-// Smoke: can we apply all 0001..0031 clean migrations onto embedded-postgres,
+// Smoke: can we apply the current clean migration chain onto embedded-postgres,
 // with a minimal auth schema mock so private.handle_new_user() works?
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
+import { createGoogleAccountLinksPostgresHarness } from './google-account-links-embedded-postgres.mjs';
 import { splitSql } from './sql-split.mjs';
 
 const here = fileURLToPath(import.meta.url);
 const root = resolve(here, '..', '..');
 const cleanDir = resolve(root, 'supabase/clean-migrations');
 
-const pgInstance = new EmbeddedPostgres({
-  databaseDir: 'C:\\AI\\o2iinstitute\\.pg-data',
-  user: 'postgres',
-  password: 'postgres',
-  port: 54329,
-  persistent: true,
-});
+const harness = await createGoogleAccountLinksPostgresHarness('google-baseline');
+const { instance: pgInstance, connection } = harness;
 
 let client;
+let migrationFailed = false;
 try {
   await pgInstance.initialise();
   await pgInstance.start();
   await pgInstance.createDatabase('glogin1_test').catch(() => {});
 
   client = new pg.Client({
-    host: '127.0.0.1',
-    port: 54329,
-    user: 'postgres',
-    password: 'postgres',
+    ...connection,
     database: 'glogin1_test',
   });
   await client.connect();
@@ -98,15 +91,19 @@ try {
       // dump first failing statement for diagnosis
       console.error('--- first stmt (first 400 chars) ---');
       console.error((stmts[0] || '').slice(0, 400));
-      process.exit(2);
+      process.exitCode = 2;
+      migrationFailed = true;
+      break;
     }
   }
 
-  const r = await client.query(
-    "select count(*)::int as n from pg_tables where schemaname='public'"
-  );
-  console.log('public tables after 0001-0031:', r.rows[0].n);
+  if (!migrationFailed) {
+    const r = await client.query(
+      "select count(*)::int as n from pg_tables where schemaname='public'"
+    );
+    console.log('public tables after current clean migrations:', r.rows[0].n);
+  }
 } finally {
   if (client) await client.end().catch(() => {});
-  try { await pgInstance.stop(); } catch {}
+  await harness.cleanup();
 }

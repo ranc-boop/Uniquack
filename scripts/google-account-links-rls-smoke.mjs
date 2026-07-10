@@ -8,24 +8,19 @@
 //
 // temporary: true. Safe to delete.
 
-import { readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
+import { createGoogleAccountLinksPostgresHarness } from './google-account-links-embedded-postgres.mjs';
 import { splitSql } from './sql-split.mjs';
 
 const here = fileURLToPath(import.meta.url);
 const root = resolve(here, '..', '..');
 const cleanDir = resolve(root, 'supabase/clean-migrations');
 
-const pgInstance = new EmbeddedPostgres({
-  databaseDir: 'C:\\AI\\o2iinstitute\\.pg-data',
-  user: 'postgres',
-  password: 'postgres',
-  port: 54329,
-  persistent: true,
-});
+const harness = await createGoogleAccountLinksPostgresHarness('google-rls');
+const { instance: pgInstance, connection } = harness;
 
 // --- tiny test harness --------------------------------------------------
 
@@ -65,19 +60,12 @@ async function clearAuth(c) {
 let client; // bootstrap (postgres superuser) - setup + seed + rpc calls
 let rlsClient; // rls_tester (non-superuser) - RLS tests
 try {
-  if (existsSync('C:\\AI\\o2iinstitute\\.pg-data')) {
-    rmSync('C:\\AI\\o2iinstitute\\.pg-data', { recursive: true, force: true, maxRetries: 5 });
-  }
-
   await pgInstance.initialise();
   await pgInstance.start();
   await pgInstance.createDatabase('glogin1_test').catch(() => {});
 
   client = new pg.Client({
-    host: '127.0.0.1',
-    port: 54329,
-    user: 'postgres',
-    password: 'postgres',
+    ...connection,
     database: 'glogin1_test',
   });
   await client.connect();
@@ -158,8 +146,8 @@ try {
 
   // open a SECOND connection as the non-superuser rls_tester
   rlsClient = new pg.Client({
-    host: '127.0.0.1',
-    port: 54329,
+    host: connection.host,
+    port: connection.port,
     user: 'rls_tester',
     password: 'rls_tester_pw',
     database: 'glogin1_test',
@@ -380,22 +368,15 @@ try {
   if (fail > 0) {
     console.log('--- failures ---');
     for (const f of fails) console.log('  -', f.name, ':', f.detail);
-    process.exit(4);
+    process.exitCode = 4;
   }
 } catch (e) {
   console.error('HARNESS ERROR:', e?.message ?? e);
   console.error(e?.stack);
-  process.exit(5);
+  process.exitCode = 5;
 } finally {
   if (client) await client.end().catch(() => {});
   if (rlsClient) await rlsClient.end().catch(() => {});
-  try { await pgInstance.stop(); } catch {}
-  try {
-    if (existsSync('C:\\AI\\o2iinstitute\\.pg-data')) {
-      rmSync('C:\\AI\\o2iinstitute\\.pg-data', { recursive: true, force: true, maxRetries: 5 });
-      console.log('  teardown: .pg-data removed');
-    }
-  } catch (e) {
-    console.error('  teardown warning:', e?.message);
-  }
+  await harness.cleanup();
+  console.log('  teardown: embedded Postgres temp data removed');
 }
