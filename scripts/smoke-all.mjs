@@ -32,6 +32,7 @@ await import("./blueprint-builder-core-smoke.mjs");
 await import("./blueprint-to-review-drafts-generation-smoke.mjs");
 await import("./classroom-ui-rebuild-smoke.mjs");
 await import("./publish-center-foundation-smoke.mjs");
+await import("./publish-center-v2-smoke.mjs");
 await import("./batch-import-smoke.mjs");
 await import("./google-account-links-baseline-smoke.mjs");
 await import("./google-account-links-apply-smoke.mjs");
