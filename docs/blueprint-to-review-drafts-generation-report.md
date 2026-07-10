@@ -80,13 +80,41 @@ The teacher UI does not expose provider names, model names, API keys, or profile
 `scripts/blueprint-to-review-drafts-generation-smoke.mjs` verifies:
 
 - Blueprint generation helper is server-only.
-- Teacher action loads Blueprint server-side and does not accept provider/model/key input.
+- Teacher action loads Blueprint server-side, accepts only `blueprintId`, and does not accept provider/model/key/prompt/JSON input.
 - UI exposes gated Review Draft generation, not direct publish/assignment.
 - Review Draft page shows Blueprint lineage.
 - Generated draft stays private, bank-scoped, and pending taxonomy review.
 - Student cannot read unapproved generated draft.
 - Bank approval creates an active `bank_questions` row without global publishing.
 - Source question remains unchanged.
+
+## Pre-merge Provider E2E Validation
+
+Result: blocked by provider availability before a full final pass.
+
+A bounded real-provider validation was attempted against the configured clean Supabase environment using the existing shared provider path. The temporary runner did not commit helper files and did not print provider keys, gateway tokens, Supabase keys, DB passwords, raw prompts, or raw provider responses.
+
+Confirmed during the pre-merge validation:
+
+- Enabled AI-capable provider profiles were available.
+- The selected server strategy was `gemini_native`.
+- The real provider path was reached.
+- In partial runs, Gemini returned one generated draft and the generated import batch preserved the selected `target_bank_id`.
+- No Assignment creation path was invoked.
+- No public/global publish path was invoked.
+- Synthetic smoke artifacts created during the temporary validation were cleaned up.
+
+The full end-to-end pass did not complete because subsequent bounded provider attempts returned transient provider failures before draft creation. Earlier partial-success attempts stopped at a runner assertion that expected `import_batches.status = ready`; the actual safe status for this path can be `imported`. That runner issue was corrected, but the provider then returned transient failures before a complete Review Draft and approval verification could rerun.
+
+What still needs a later real-provider rerun:
+
+- Generated question `owner_bank_id`, draft/private status, and `published_at = null` verification after provider success.
+- Review Draft row lineage verification from the real generated question.
+- Approval into the target bank through `approve_bank_review_question`.
+- `bank_questions` active row confirmation after approval.
+- Source question unchanged confirmation after the full pass.
+
+Existing source and live non-provider smokes continue to cover the bank-scoped Review Draft, approval, no-publish, no-assignment, and source-mutation safety boundaries without invoking a paid provider.
 
 ## Test Results
 
@@ -115,9 +143,9 @@ Notes:
 
 ## Remaining Warnings
 
-- The new provider call path was not exercised against a real paid provider in this PR. The smoke validates the bank/review handoff without invoking an AI provider.
-- Full real-provider Blueprint generation can be validated later with a tiny safe Blueprint once product wants a paid-provider E2E check.
+- Real provider validation was attempted and reached Gemini Native, but the final complete pass was blocked by transient provider availability.
+- Do not treat this as a fully completed paid-provider E2E until the later rerun completes the generated question, Review Draft, approval, and cleanup checks in one pass.
 
 ## Recommendation
 
-Proceed to teacher-facing polish or real-provider E2E for Blueprint generation only after this Review Draft handoff is merged.
+Rerun the real-provider Blueprint generation E2E when Gemini availability is stable. If that pass completes, proceed to teacher-facing polish. If transient provider failures continue, keep the PR behavior but document the provider availability blocker before merge.
