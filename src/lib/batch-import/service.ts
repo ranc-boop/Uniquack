@@ -205,7 +205,9 @@ type ImportBatchSourceType =
   | "manual_csv"
   | "ai_pdf"
   | "ai_image"
-  | "ai_word";
+  | "ai_word"
+  | "package"
+  | "course_builder";
 
 function requiredQuestionSourceText(value: string | null | undefined) {
   return typeof value === "string" ? value : "";

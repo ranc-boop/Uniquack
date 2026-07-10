@@ -1,13 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, PencilLine } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, PencilLine, Sparkles } from "lucide-react";
 
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
+import { listBankImportBatches } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildTeacherBlueprintGenerationGate,
+  listTeacherBlueprintGenerationProviderStatus,
+} from "@/lib/teacher-blueprint-generation";
 import {
   displayTextFromPattern,
   readinessChecklist,
@@ -26,6 +32,7 @@ import {
 
 import {
   updateTeacherBlueprintPlan,
+  generateTeacherBlueprintReviewDraftsAction,
 } from "../actions";
 
 import {
@@ -35,7 +42,6 @@ import {
   BlueprintKindIcon,
   BlueprintSafetyStrip,
   BlueprintWorkflowPanel,
-  DisabledBlueprintActions,
   SetupNeededState,
 } from "../blueprint-library-ui";
 
@@ -75,12 +81,28 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function blueprintGenerationSummary(value: unknown) {
+  const summary = asRecord(value);
+  const generation = asRecord(summary.blueprintGeneration);
+
+  return generation;
+}
+
+function isBlueprintGenerationBatch(value: unknown, blueprintId: string) {
+  return stringValue(blueprintGenerationSummary(value).blueprintId) === blueprintId;
+}
+
 export default async function TeacherBlueprintDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ blueprintId: string }>;
-  searchParams: Promise<{ created?: string; error?: string; saved?: string }>;
+  searchParams: Promise<{
+    created?: string;
+    error?: string;
+    generationBatch?: string;
+    saved?: string;
+  }>;
 }) {
   await requireTeacher();
   const { blueprintId } = await params;
@@ -116,6 +138,18 @@ export default async function TeacherBlueprintDetailPage({
   const generationConstraints = asRecord(blueprint.generation_constraints);
   const expectedQuestionCount = generationConstraints.expectedQuestionCount;
   const sourceTitles = selectedSourceQuestionTitles(blueprint);
+  const providerStatus = await listTeacherBlueprintGenerationProviderStatus(supabase);
+  const targetBankId = blueprint.source_bank_id ?? bankLinks[0]?.bank_id ?? null;
+  const generationGate = buildTeacherBlueprintGenerationGate({
+    blueprint,
+    providerAvailable: providerStatus.available,
+    targetBankId,
+  });
+  const generationHistory = targetBankId
+    ? (await listBankImportBatches({ bankId: targetBankId, supabase }))
+        .filter((batch) => isBlueprintGenerationBatch(batch.summary, blueprint.id))
+        .slice(0, 4)
+    : [];
 
   return (
     <TeacherWorkspaceShell
@@ -141,14 +175,14 @@ export default async function TeacherBlueprintDetailPage({
       ) : null}
       {query.saved ? (
         <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
-          Blueprint planning fields saved. Generation remains disabled until a
-          later Review Draft workflow is run.
+          {query.saved === "1"
+            ? "Blueprint planning fields saved. Generation still creates Review Drafts only."
+            : query.saved}
         </div>
       ) : null}
       {query.error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-          Blueprint changes could not be saved. Check the required fields and
-          try again.
+          {query.error}
         </div>
       ) : null}
 
@@ -416,17 +450,107 @@ export default async function TeacherBlueprintDetailPage({
             </section>
 
             <section className="rounded-lg border border-slate-200 bg-white/80 p-5">
-              <h3 className="text-lg font-bold text-slate-950">
-                Coming-next actions
-              </h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                These are visible product destinations, not enabled shortcuts.
-                Review and bank gates stay in place.
-              </p>
-              <div className="mt-4">
-                <DisabledBlueprintActions />
+              <div className="flex items-start gap-3">
+                <Sparkles aria-hidden="true" className="mt-1 h-5 w-5 text-sky-700" />
+                <div>
+                  <h3 className="text-lg font-bold text-slate-950">
+                    Generate Review Drafts
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    Generation creates private Review Drafts in the linked Bank.
+                    Nothing is published or assigned until reviewed.
+                  </p>
+                </div>
               </div>
+
+              <div className="mt-4 rounded-lg border border-sky-100 bg-sky-50 p-3 text-sm leading-6 text-sky-950">
+                Shared provider status:{" "}
+                <span className="font-bold">
+                  {providerStatus.available ? "enabled" : "not enabled"}
+                </span>
+                . Target drafts:{" "}
+                <span className="font-bold">
+                  {generationGate.expectedDraftCount}
+                </span>
+                .
+              </div>
+
+              {generationGate.blockingReasons.length ? (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-bold text-amber-950">
+                    Generation is blocked
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-900">
+                    {generationGate.blockingReasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <form action={generateTeacherBlueprintReviewDraftsAction} className="mt-4">
+                <input name="blueprintId" type="hidden" value={blueprint.id} />
+                {generationGate.ready ? (
+                  <FormSubmitButton pendingLabel="Generating Review Drafts...">
+                    <Sparkles aria-hidden="true" className="h-4 w-4" />
+                    Generate private Review Drafts
+                  </FormSubmitButton>
+                ) : (
+                  <Button disabled type="button" variant="outline">
+                    Generate Review Drafts unavailable
+                  </Button>
+                )}
+              </form>
+
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                Provider choice, model, and credentials stay admin-only and are
+                resolved on the server.
+              </p>
             </section>
+
+            {generationHistory.length ? (
+              <section className="rounded-lg border border-slate-200 bg-white/80 p-5">
+                <h3 className="text-lg font-bold text-slate-950">
+                  Recent generation history
+                </h3>
+                <div className="mt-3 space-y-2">
+                  {generationHistory.map((batch) => {
+                    const generation = blueprintGenerationSummary(batch.summary);
+                    const createdDraftCount =
+                      Number(generation.createdDraftCount ?? generation.createdCount ?? 0) || 0;
+                    const warningCount =
+                      Number(generation.warningCount ?? 0) || 0;
+
+                    return (
+                      <div
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                        key={batch.id}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <BlueprintBadge>
+                            {batch.status}
+                          </BlueprintBadge>
+                          <span className="text-xs font-semibold text-slate-500">
+                            {formatDate(batch.created_at)}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm font-semibold text-slate-900">
+                          {createdDraftCount} draft
+                          {createdDraftCount === 1 ? "" : "s"} / {warningCount} warning
+                          {warningCount === 1 ? "" : "s"}
+                        </p>
+                        <Link
+                          className="mt-2 inline-flex text-sm font-semibold text-sky-700 underline-offset-4 hover:underline"
+                          href={`/teacher/banks/${targetBankId}/review?generationBatch=${batch.id}`}
+                        >
+                          Open Review Drafts
+                        </Link>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
 
             <section className="rounded-lg border border-slate-200 bg-white/80 p-5">
               <h3 className="text-lg font-bold text-slate-950">

@@ -550,3 +550,28 @@ export async function testGeminiNativeTextConnection({
     ok: true as const,
   };
 }
+
+export async function generateWithGeminiNativeText({
+  apiKey,
+  baseUrl = DEFAULT_GEMINI_API_BASE_URL,
+  debugContext,
+  fetchImpl = fetch,
+  model,
+  prompt,
+}: GeminiNativeTextTestInput & {
+  debugContext?: Record<string, unknown>;
+  prompt: string;
+}): Promise<{ text: string }> {
+  assertGeminiTextConfig({ apiKey, model });
+
+  return {
+    text: await generateContent({
+      apiKey,
+      baseUrl,
+      debugContext,
+      fetchImpl,
+      model,
+      parts: [{ text: prompt }],
+    }),
+  };
+}

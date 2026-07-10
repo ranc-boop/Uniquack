@@ -6,6 +6,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
+  formatActionError,
+  redirectWithError,
+  redirectWithSaved,
+} from "@/lib/actions/feedback";
+import {
   normalizeQuestionBlueprintFolderName,
   slugifyQuestionBlueprintFolderName,
 } from "@/lib/blueprints/question-blueprint-folders";
@@ -16,6 +21,7 @@ import {
   listBankApprovedQuestions,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import { getTeacherBlueprintDetail } from "@/lib/teacher-blueprints";
 import {
   boundedText,
   buildTeacherBlueprintPayload,
@@ -24,6 +30,11 @@ import {
   sourceExampleFromBankQuestion,
   textListFromValue,
 } from "@/lib/teacher-blueprint-builder";
+import {
+  generateTeacherBlueprintReviewDrafts,
+  isTransientTeacherBlueprintProviderFailure,
+  TEACHER_BLUEPRINT_TRANSIENT_PROVIDER_FAILURE_MESSAGE,
+} from "@/lib/teacher-blueprint-generation";
 import type { QuestionBlueprintVisibility } from "@/types/database";
 
 const visibilityValues: QuestionBlueprintVisibility[] = [
@@ -279,6 +290,58 @@ export async function updateTeacherBlueprintPlan(formData: FormData) {
   }
 
   redirect(`/teacher/blueprints/${blueprintId}?saved=1`);
+}
+
+export async function generateTeacherBlueprintReviewDraftsAction(formData: FormData) {
+  const blueprintId = formString(formData, "blueprintId");
+  const fallbackPath = blueprintId
+    ? `/teacher/blueprints/${blueprintId}`
+    : "/teacher/blueprints";
+
+  try {
+    const profile = await requireTeacher();
+    const supabase = await createClient();
+
+    if (!blueprintId) {
+      throw new Error("Choose a Blueprint before generating Review Drafts.");
+    }
+
+    const detail = await getTeacherBlueprintDetail({
+      blueprintId,
+      supabase,
+    });
+
+    if (!detail) {
+      throw new Error("Blueprint was not found.");
+    }
+
+    const summary = await generateTeacherBlueprintReviewDrafts({
+      blueprint: detail.blueprint,
+      profileId: profile.id,
+      supabase,
+    });
+
+    revalidatePath("/teacher/blueprints");
+    revalidatePath(`/teacher/blueprints/${blueprintId}`);
+    revalidatePath(`/teacher/banks/${summary.targetBankId}`);
+    revalidatePath(`/teacher/banks/${summary.targetBankId}/review`);
+
+    redirectWithSaved(
+      `${summary.reviewRoute}?generationBatch=${encodeURIComponent(
+        summary.batchId ?? "",
+      )}&drafts=${summary.createdDraftCount}&warnings=${summary.warningCount}`,
+      `Generated ${summary.createdDraftCount} private Review Draft${
+        summary.createdDraftCount === 1 ? "" : "s"
+      } from this Blueprint. Review before bank approval.`,
+    );
+  } catch (error) {
+    redirectWithError(
+      fallbackPath,
+      isTransientTeacherBlueprintProviderFailure(error)
+        ? TEACHER_BLUEPRINT_TRANSIENT_PROVIDER_FAILURE_MESSAGE
+        : formatActionError(error),
+    );
+  }
 }
 
 export async function createTeacherBlueprintFolder(formData: FormData) {
