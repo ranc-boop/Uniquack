@@ -5,6 +5,7 @@ import { AlertTriangle, Boxes, ClipboardCheck, FileText, Upload } from "lucide-r
 import { InlineMathText } from "@/components/math-content";
 import { Button } from "@/components/ui/button";
 import { QuestionBoundaryGuardCard } from "@/components/ai-pdf-dashboard/question-boundary-guard-card";
+import { friendlyAIPdfPhaseLabel } from "@/lib/ai-pdf-import/display";
 import type {
   BankImportBatchSummary,
   TeacherQuestionBankSummary,
@@ -87,6 +88,24 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
+function safeTeacherImportText(value: string | null) {
+  if (!value) return null;
+
+  if (
+    /\b(?:503|429|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|rate[-\s]?limit|gemini|deepseek|provider response|authorization|api[_ -]?key|bearer)\b/i.test(
+      value,
+    )
+  ) {
+    return "The AI service is temporarily busy. Your work is safe, and you can retry later.";
+  }
+
+  if (/\b(?:timeout|timed out|deadline exceeded)\b/i.test(value)) {
+    return "This is taking longer than usual. Your work is safe, and you can retry later.";
+  }
+
+  return value.slice(0, 500);
+}
+
 function summarizeImportBatch(batch: BankImportBatchSummary) {
   const summary = asRecord(batch.summary);
   const aiPdfImport = asRecord(summary.aiPdfImport);
@@ -97,10 +116,11 @@ function summarizeImportBatch(batch: BankImportBatchSummary) {
     asNumber(summary.createdCount) ??
     asNumber(aiPdfImport.createdQuestionCount) ??
     createdQuestions.length;
-  const warnings = uniqueStrings([
-    ...asStringList(summary.validationErrorReasons),
-    ...asStringList(aiPdfImport.warnings),
-  ]).slice(0, 3);
+  const warnings = uniqueStrings(
+    [...asStringList(summary.validationErrorReasons), ...asStringList(aiPdfImport.warnings)]
+      .map((warning) => safeTeacherImportText(warning))
+      .filter((warning): warning is string => Boolean(warning)),
+  ).slice(0, 3);
   const retryable = summary.retryable === true || aiPdfImport.retryable === true;
   const phase =
     asString(aiPdfImport.phase) ?? asString(summary.phase) ?? batch.status;
@@ -108,12 +128,13 @@ function summarizeImportBatch(batch: BankImportBatchSummary) {
     asString(aiPdfImport.fileName) ??
     asString(summary.fileName) ??
     (batch.source_type === "ai_pdf" ? "Private PDF source" : "Imported source");
-  const detail =
+  const detail = safeTeacherImportText(
     asString(aiPdfImport.detail) ??
     asString(summary.detail) ??
     (retryable
-      ? "The AI provider is temporarily busy. Your file was not published or assigned. Please retry in a few minutes."
-      : null);
+      ? "The AI service is temporarily busy. Your work is safe, and you can retry later."
+      : null),
+  );
 
   return {
     detail,
@@ -486,7 +507,7 @@ export function RecentBankImportsPanel({
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
                       <dt className="font-semibold text-slate-500">Phase</dt>
                       <dd className="mt-1 break-words font-bold text-slate-900">
-                        {status.phase}
+                        {friendlyAIPdfPhaseLabel(status.phase)}
                       </dd>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
@@ -505,8 +526,8 @@ export function RecentBankImportsPanel({
 
                   {status.retryable ? (
                     <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
-                      The AI provider was temporarily busy. Nothing was
-                      published or assigned; retry this import in a few minutes.
+                      This run could not be completed. Nothing was published or
+                      assigned; retry later without uploading the file again.
                     </p>
                   ) : null}
 

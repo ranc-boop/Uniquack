@@ -29,6 +29,10 @@ import {
   supportsAIPdfSequentialChunkExtraction,
   type AiPdfInputStrategy,
 } from "@/lib/ai-providers/adapters";
+import {
+  classifyAIProviderError,
+  safeAIProviderErrorState,
+} from "@/lib/ai-providers/errors";
 import { loadSafeAIProviderProfileForUse } from "@/lib/ai-providers/profiles";
 import {
   getPdfPageCount,
@@ -1454,19 +1458,28 @@ async function clearRetryableBatchItems({
 
 async function recordExtractionFailure({
   batchId,
+  error,
   jobId,
-  message,
   providerProfileId,
   sourceAsset,
   supabase,
 }: {
   batchId: string;
+  error: unknown;
   jobId: string;
-  message: string;
   providerProfileId: string;
   sourceAsset: Awaited<ReturnType<typeof loadSourceAsset>>;
   supabase: Awaited<ReturnType<typeof createClient>>;
 }) {
+  const classified = classifyAIProviderError({
+    error,
+    operation: "ai_pdf_extraction",
+  });
+  const safeError = safeAIProviderErrorState({
+    attemptCount: classified.attemptCount,
+    error: classified,
+    maxAttempts: classified.maxAttempts,
+  });
   const { data: batch, error: readError } = await supabase
     .from("import_batches")
     .select("summary")
@@ -1486,13 +1499,19 @@ async function recordExtractionFailure({
       summary: {
         ...existingSummary,
         aiPdfImport: mergeAIPdfImportSummary(existingAiPdfImport, {
-          detail: "AI PDF extraction failed. See error output.",
-          error: message,
+          detail: safeError.safeMessage,
+          error: safeError.safeMessage,
           fileName: sourceAsset.original_filename,
+          internalErrorReference: safeError.internalErrorReference,
           jobId,
+          maxAttempts: safeError.maxAttempts,
+          nextAction: safeError.nextAction,
           phase: "failed",
           phaseFailedAt: new Date().toISOString(),
           providerProfileId,
+          retryAttemptHistory: classified.retryHistory ?? [],
+          retryable: safeError.retryable,
+          safeErrorCode: safeError.safeErrorCode,
           sourceAssetId: sourceAsset.id,
           sourceObjectPath: sourceAsset.object_path,
         }),
@@ -1585,14 +1604,11 @@ async function runAIPdfExtractionJob({
           : null,
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "AI PDF import failed.";
-
     try {
       await recordExtractionFailure({
         batchId,
+        error,
         jobId,
-        message,
         providerProfileId,
         sourceAsset,
         supabase,
@@ -1689,8 +1705,8 @@ export async function runQueuedAIPdfExtraction(input: unknown) {
   if (Number.isFinite(leaseExpiresAt) && Date.now() > leaseExpiresAt) {
     await recordExtractionFailure({
       batchId: parsed.batchId,
+      error: new Error("AI extraction lease expired before the job started."),
       jobId: parsed.jobId,
-      message: "AI extraction lease expired before the job started.",
       providerProfileId: getString(aiPdfImport.providerProfileId) ?? "",
       sourceAsset: await loadSourceAsset({ batchId: parsed.batchId, supabase }),
       supabase,
