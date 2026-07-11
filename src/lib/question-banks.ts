@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  questionBoundaryFindingsForQuestion,
+  type QuestionBoundaryGuardFinding,
+} from "@/lib/ai-pdf-import/question-boundary-guard";
 import { createClient } from "@/lib/supabase/server";
 import type {
   BankMember,
@@ -101,6 +105,7 @@ export type BankReviewDraftQuestion = Pick<
     | null;
   tagIds: string[];
   tagSummaries: BankQuestionTaxonomySummary[];
+  boundaryFindings: QuestionBoundaryGuardFinding[];
   warningCount: number;
   warningMessages: string[];
 };
@@ -487,7 +492,7 @@ export async function listBankReviewDraftQuestions({
           .limit(300),
         supabase
           .from("import_batch_items")
-          .select("created_question_id, validation_errors")
+          .select("batch_id, created_question_id, validation_errors")
           .in("created_question_id", questionIds)
           .limit(100),
       ])
@@ -503,6 +508,40 @@ export async function listBankReviewDraftQuestions({
   if (importItemResult.error) {
     throw new Error(importItemResult.error.message);
   }
+
+  const importBatchIdByQuestionId = new Map<string, string>();
+  for (const row of importItemResult.data ?? []) {
+    if (row.created_question_id && row.batch_id) {
+      importBatchIdByQuestionId.set(row.created_question_id, row.batch_id);
+    }
+  }
+  const importBatchIds = Array.from(new Set(importBatchIdByQuestionId.values()));
+  const { data: importBatches, error: importBatchesError } = importBatchIds.length
+    ? await supabase
+        .from("import_batches")
+        .select("id, summary")
+        .in("id", importBatchIds)
+        .limit(100)
+    : { data: [], error: null };
+
+  if (importBatchesError) {
+    throw new Error(importBatchesError.message);
+  }
+
+  const questionBoundaryPlanByBatchId = new Map<string, unknown>(
+    (importBatches ?? []).map((batch) => {
+      const summary =
+        batch.summary && typeof batch.summary === "object"
+          ? (batch.summary as Record<string, unknown>)
+          : {};
+      const aiPdfImport =
+        summary.aiPdfImport && typeof summary.aiPdfImport === "object"
+          ? (summary.aiPdfImport as Record<string, unknown>)
+          : {};
+
+      return [batch.id, aiPdfImport.questionBoundaryGuardPlan];
+    }),
+  );
 
   const sourceReviewItemIds = Array.from(
     new Set(
@@ -662,6 +701,13 @@ export async function listBankReviewDraftQuestions({
 
       return {
         ...question,
+        boundaryFindings: questionBoundaryFindingsForQuestion({
+          plan: questionBoundaryPlanByBatchId.get(
+            importBatchIdByQuestionId.get(question.id) ?? "",
+          ),
+          questionCode: question.question_code,
+          questionId: question.id,
+        }),
         reviewItemId: reviewItem?.id ?? null,
         reviewItemPayload: reviewItem?.draft_payload ?? null,
         reviewItemStatus: reviewItem?.status ?? null,

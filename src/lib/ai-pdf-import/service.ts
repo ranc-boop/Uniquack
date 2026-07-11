@@ -169,6 +169,13 @@ import {
   type AICoverageRecoveryMergePlan,
 } from "@/lib/ai-pdf-import/coverage-recovery-merge";
 import {
+  buildQuestionBoundaryGuardPlan,
+  failedQuestionBoundaryGuardPlan,
+  mergeQuestionBoundaryGuardPlanIntoSummary,
+  type QuestionBoundaryGuardCandidate,
+  type QuestionBoundaryGuardPlan,
+} from "@/lib/ai-pdf-import/question-boundary-guard";
+import {
   buildAIBlueprintObservationPlanFromProviderResponse,
   buildAIBlueprintObservationPlanFromSummary,
   buildAIBlueprintObservationProviderPrompt,
@@ -336,6 +343,135 @@ function createdQuestionsFromSummary(value: unknown) {
       questionCode: String(item.questionCode),
       title: String(item.title),
     }));
+}
+
+function questionBoundaryStringList(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(String).map((item) => item.trim()).filter(Boolean)
+    : [];
+}
+
+function questionBoundaryNumberList(value: unknown) {
+  return Array.from(
+    new Set(
+      (Array.isArray(value) ? value : [])
+        .map(Number)
+        .filter((item) => Number.isFinite(item) && item > 0)
+        .map((item) => Math.trunc(item)),
+    ),
+  ).sort((left, right) => left - right);
+}
+
+function questionBoundaryRiskPages(aiPdfImport: Record<string, unknown>) {
+  const preanalysis = plainObject(aiPdfImport.preanalysis);
+  const pages = Array.isArray(preanalysis.pages) ? preanalysis.pages : [];
+  const adaptiveRereadPlan = plainObject(aiPdfImport.adaptiveRereadPlan);
+  const adaptiveRequests = Array.isArray(adaptiveRereadPlan.requests)
+    ? adaptiveRereadPlan.requests
+    : [];
+  const coverageRecoveryMergePlan = plainObject(
+    aiPdfImport.coverageRecoveryMergePlan,
+  );
+  const recoveryMergeItems = Array.isArray(coverageRecoveryMergePlan.mergeItems)
+    ? coverageRecoveryMergePlan.mergeItems
+    : [];
+
+  return questionBoundaryNumberList(
+    [
+      ...pages.flatMap((value) => {
+        const page = plainObject(value);
+        const risks = Array.isArray(page.boundaryRisks)
+          ? page.boundaryRisks
+          : [];
+        return risks.length ? [page.pageNumber] : [];
+      }),
+      ...adaptiveRequests.flatMap((value) => {
+        const request = plainObject(value);
+        return questionBoundaryNumberList(
+          plainObject(request.pageWindow).pageNumbers,
+        );
+      }),
+      ...recoveryMergeItems.flatMap((value) =>
+        questionBoundaryNumberList(plainObject(value).pageNumbers),
+      ),
+    ],
+  );
+}
+
+function questionBoundaryProvenance(value: Record<string, unknown>) {
+  const raw = String(
+    value.recoveryProvenance ??
+      value.recovery_provenance ??
+      value.provenance ??
+      value.source ??
+      "",
+  ).toLowerCase();
+
+  if (raw.includes("recovery")) return "recovery" as const;
+  if (raw.includes("original") || raw.includes("ai_pdf")) return "original" as const;
+  return "unknown" as const;
+}
+
+function questionBoundaryCandidatesFromRows({
+  assetRefsByQuestionId,
+  rows,
+  sourceAssetId,
+}: {
+  assetRefsByQuestionId: Map<string, string[]>;
+  rows: Array<Record<string, unknown>>;
+  sourceAssetId: string;
+}): QuestionBoundaryGuardCandidate[] {
+  return rows
+    .map((row) => {
+      const metadata = plainObject(row.ai_metadata);
+      const chunk = plainObject(metadata.chunk);
+      const placeholders = Array.isArray(metadata.asset_placeholders)
+        ? metadata.asset_placeholders.map((value) => plainObject(value))
+        : [];
+      const pageRefs = questionBoundaryNumberList(metadata.page_refs);
+      const questionId = String(row.id ?? "");
+      const options = Array.isArray(row.options) ? row.options : [];
+
+      return {
+        assetPageNumbers: questionBoundaryNumberList(
+          placeholders.map((placeholder) => placeholder.pageNumber),
+        ),
+        assetPlaceholders: placeholders.map((placeholder) => ({
+          pageNumber: Number.isFinite(Number(placeholder.pageNumber))
+            ? Number(placeholder.pageNumber)
+            : null,
+          placeholder:
+            typeof placeholder.placeholder === "string"
+              ? placeholder.placeholder
+              : null,
+        })),
+        assetRefs: assetRefsByQuestionId.get(questionId) ?? [],
+        chunkIndex: Number.isFinite(Number(chunk.chunk_index))
+          ? Number(chunk.chunk_index)
+          : null,
+        contentHtml: typeof row.content_html === "string" ? row.content_html : null,
+        contentSource:
+          typeof row.content_source === "string" ? row.content_source : null,
+        extractionBatchIds: questionBoundaryStringList(metadata.extraction_batch_ids),
+        id: questionId,
+        optionsCount: options.length,
+        packetIds: questionBoundaryStringList(metadata.packet_ids),
+        pageRefs,
+        questionCode: String(row.question_code ?? ""),
+        recoveryProvenance: questionBoundaryProvenance(metadata),
+        solutionHtml:
+          typeof row.solution_html === "string" ? row.solution_html : null,
+        solutionSource:
+          typeof row.solution_source === "string" ? row.solution_source : null,
+        sourceAssetId,
+        title: typeof row.title === "string" ? row.title : null,
+        visibleQuestionNumber:
+          typeof metadata.visible_question_number === "string"
+            ? metadata.visible_question_number
+            : null,
+      } satisfies QuestionBoundaryGuardCandidate;
+    })
+    .filter((candidate) => candidate.id && candidate.questionCode);
 }
 
 async function loadCurrentAIPdfSummary(input: ProcessInput) {
@@ -1409,6 +1545,113 @@ async function updateAICoverageRecoveryMergePlan({
 
   if (error) {
     throw new Error(error.message);
+  }
+}
+
+async function updateAIQuestionBoundaryGuardPlan({
+  input,
+  guardPlan,
+}: {
+  input: ProcessInput;
+  guardPlan: QuestionBoundaryGuardPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeQuestionBoundaryGuardPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    guardPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function generateAndStoreQuestionBoundaryGuardPlan({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  try {
+    const current = await loadCurrentAIPdfSummary(input);
+    const createdQuestions = createdQuestionsFromSummary(
+      current.summary.createdQuestions,
+    );
+    const questionIds = createdQuestions.map((question) => question.id);
+    let questionRows: Array<Record<string, unknown>> = [];
+    let assetRefsByQuestionId = new Map<string, string[]>();
+
+    if (questionIds.length) {
+      const { data: questionData, error: questionError } = await input.supabase
+        .from("questions")
+        .select(
+          "id, question_code, title, content_html, content_source, solution_html, solution_source, options, ai_metadata",
+        )
+        .in("id", questionIds);
+
+      if (questionError) {
+        throw new Error("Question candidates could not be loaded for structural review.");
+      }
+
+      questionRows = (questionData ?? []) as Array<Record<string, unknown>>;
+
+      const { data: assetData, error: assetError } = await input.supabase
+        .from("question_assets")
+        .select("id, question_id, label")
+        .in("question_id", questionIds);
+
+      if (assetError) {
+        throw new Error("Question asset references could not be loaded for structural review.");
+      }
+
+      assetRefsByQuestionId = new Map<string, string[]>();
+      for (const asset of (assetData ?? []) as Array<Record<string, unknown>>) {
+        const questionId = String(asset.question_id ?? "");
+        const assetRef = String(asset.id ?? asset.label ?? "").trim();
+        if (!questionId || !assetRef) continue;
+        assetRefsByQuestionId.set(questionId, [
+          ...(assetRefsByQuestionId.get(questionId) ?? []),
+          assetRef,
+        ]);
+      }
+    }
+
+    const guardPlan = buildQuestionBoundaryGuardPlan({
+      boundaryRiskPageNumbers: questionBoundaryRiskPages(current.aiPdfImport),
+      questions: questionBoundaryCandidatesFromRows({
+        assetRefsByQuestionId,
+        rows: questionRows,
+        sourceAssetId: input.sourceAssetId ?? "",
+      }),
+      sourceAssetId: input.sourceAssetId,
+    });
+    await updateAIQuestionBoundaryGuardPlan({ guardPlan, input });
+  } catch {
+    try {
+      await updateAIQuestionBoundaryGuardPlan({
+        guardPlan: failedQuestionBoundaryGuardPlan({
+          warning:
+            "Question boundary analysis was unavailable. Extraction continued and all drafts remain review-only.",
+        }),
+        input,
+      });
+    } catch {
+      // Guard persistence is advisory; it must not change the extraction outcome.
+    }
   }
 }
 
@@ -3406,6 +3649,7 @@ async function processAIPdfSinglePass({
   }
 
   await generateAndStoreExtractionCoverageAuditPlan({ input });
+  await generateAndStoreQuestionBoundaryGuardPlan({ input });
 
   return finalSummary;
 }
@@ -3871,6 +4115,7 @@ export async function processAIPdfImport(input: ProcessInput) {
   }
 
   await generateAndStoreExtractionCoverageAuditPlan({ input });
+  await generateAndStoreQuestionBoundaryGuardPlan({ input });
 
   return finalSummary;
 }

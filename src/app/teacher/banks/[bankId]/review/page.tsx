@@ -5,6 +5,7 @@ import { AlertTriangle, ClipboardCheck, FileText, Pencil, Upload } from "lucide-
 
 import { FormSubmitButton } from "@/components/form-submit-button";
 import {
+  InlineMathText,
   OptionText,
   QuestionText,
   SolutionText,
@@ -107,6 +108,22 @@ function reviewItemStatusBadge(status: BankReviewDraftQuestion["reviewItemStatus
   return null;
 }
 
+function boundaryFindingLabel(kind: string) {
+  const labels: Record<string, string> = {
+    answer_alignment: "Check answer alignment",
+    choices_only_fragment: "Check page boundary",
+    cross_page_fragment: "Check page boundary",
+    likely_duplicate: "Possible duplicate",
+    packet_chunk_boundary_split: "Check page boundary",
+    question_number_conflict: "Check question number",
+    recovery_duplicate: "Possible duplicate",
+    solution_only_fragment: "Check answer alignment",
+    visual_association: "Check visual association",
+  };
+
+  return labels[kind] ?? "Structural review";
+}
+
 function buildDraftReviewSignals(question: BankReviewDraftQuestion) {
   const options = normalizeQuestionOptions(question.options);
   const answerSpec = normalizeAnswerSpec(question.answer_spec);
@@ -128,6 +145,7 @@ function buildDraftReviewSignals(question: BankReviewDraftQuestion) {
     mcqAnswerIssue ||
     fillBlankAnswerIssue ||
     (question.question_type === "fill_blank" && answerSpec.kind !== "fill_blank");
+  const boundaryIssue = question.boundaryFindings.length > 0;
   const derivedWarnings = [
     contentMissing ? "Question prompt is missing." : "",
     solutionMissing ? "Solution or explanation is missing." : "",
@@ -141,6 +159,7 @@ function buildDraftReviewSignals(question: BankReviewDraftQuestion) {
     fillBlankAnswerIssue
       ? "Fill-blank question needs final or accepted answers before approval."
       : "",
+    ...question.boundaryFindings.map((finding) => finding.explanation),
   ];
 
   return {
@@ -149,6 +168,7 @@ function buildDraftReviewSignals(question: BankReviewDraftQuestion) {
     contentMissing,
     correctOptionIds,
     options,
+    boundaryIssue,
     solutionMissing,
     taxonomyMissing,
     warnings: uniqueStrings([
@@ -337,6 +357,16 @@ export default async function TeacherBankReviewPage({
                         ) : (
                           <BankBadge tone="cyan">No warnings</BankBadge>
                         )}
+                        {question.boundaryFindings.map((finding) => (
+                          <BankBadge
+                            key={finding.findingId}
+                            tone={
+                              finding.severity === "high" ? "rose" : "amber"
+                            }
+                          >
+                            {boundaryFindingLabel(finding.issueKind)}
+                          </BankBadge>
+                        ))}
                       </div>
                       <h3 className="text-lg font-bold text-slate-950">
                         {question.title}
@@ -578,6 +608,41 @@ export default async function TeacherBankReviewPage({
                           No validation warnings are attached to this draft.
                         </div>
                       )}
+
+                      {question.boundaryFindings.length ? (
+                        <div className={reviewPanelClass(signals.boundaryIssue)}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h4 className="text-sm font-bold text-slate-950">
+                              Structural source checks
+                            </h4>
+                            <BankBadge tone="amber">
+                              Source review recommended
+                            </BankBadge>
+                          </div>
+                          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+                            {question.boundaryFindings.map((finding) => (
+                              <li key={finding.findingId}>
+                                <p className="font-semibold text-slate-950">
+                                  {boundaryFindingLabel(finding.issueKind)}
+                                </p>
+                                <InlineMathText
+                                  className="mt-1 leading-6"
+                                  compact
+                                  value={finding.explanation}
+                                />
+                                <p className="text-xs text-slate-500">
+                                  {finding.visibleQuestionNumbers.length
+                                    ? `Question ${finding.visibleQuestionNumbers.join(", ")}`
+                                    : "Question number unavailable"}
+                                  {finding.pageRefs.length
+                                    ? ` | Pages ${finding.pageRefs.join(", ")}`
+                                    : ""}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
 
                       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
                         <div className={reviewPanelClass(signals.contentMissing)}>
