@@ -76,9 +76,9 @@ function buildTeacherModules({
       status: `${summary.overview.assignmentReadyQuestionCount} ready`,
     },
     {
-      title: "Progress",
+      title: "Progress & Feedback",
       description:
-        "Review assignment and practice evidence after students complete teacher-delivered work.",
+        "Review assignment evidence, then add private notes or send feedback from assignment detail.",
       href: "/teacher/progress",
       eyebrow: "Evidence",
       status: `${summary.overview.activeAssignmentCount} active assignments`,

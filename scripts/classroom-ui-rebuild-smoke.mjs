@@ -176,11 +176,13 @@ async function runSourceSmoke() {
   );
   assert(
     analyticsPage.includes("Completion summaries use real assignment and Practice evidence") &&
-      analyticsPage.includes("Progress") &&
-      analyticsPage.includes("Taxonomy mastery") &&
-      analyticsPage.includes("Mistake patterns") &&
-      analyticsPage.includes("Feedback drafting"),
-    "Analytics / Feedback must show real bounded summaries and honest placeholders",
+    analyticsPage.includes("Progress") &&
+    analyticsPage.includes("Taxonomy mastery") &&
+    analyticsPage.includes("Mistake patterns") &&
+    analyticsPage.includes("Assignment feedback") &&
+    analyticsPage.includes("Open an assignment detail to save a private note") &&
+    !analyticsPage.includes("Feedback drafting"),
+    "Analytics / Feedback must show real bounded summaries, live assignment feedback, and honest placeholders",
   );
   assert(
     blueprintsPage.includes("Blueprints linked to this class will appear here") &&

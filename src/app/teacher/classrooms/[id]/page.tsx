@@ -438,9 +438,9 @@ export default async function TeacherClassroomDetailPage({
                   Progress
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Completion summaries use real assignment evidence. Taxonomy
-                  mastery, mistake patterns, and feedback drafting are planned
-                  next-layer analytics.
+                  Completion summaries use real assignment evidence. Feedback is
+                  available from assignment detail; taxonomy mastery and mistake
+                  pattern aggregates are planned next-layer analytics.
                 </p>
               </div>
             </div>
