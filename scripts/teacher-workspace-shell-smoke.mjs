@@ -103,6 +103,7 @@ async function runSourceSmoke() {
   const classroomDetail = await read("src/app/teacher/classrooms/[id]/page.tsx");
   const classroomUi = await read("src/app/teacher/classrooms/classroom-ui.tsx");
   const classroomPeople = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
+  const classroomStudents = await read("src/app/teacher/classrooms/[id]/students/page.tsx");
   const migration = await read("supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql");
 
   for (const label of [
@@ -128,16 +129,17 @@ async function runSourceSmoke() {
     "classroom creation must use the teacher classroom RPC",
   );
   assert(
-    classroomDetail.includes("Active join code") &&
+      classroomDetail.includes("Active join code") &&
       classroomDetail.includes("Class delivery snapshot") &&
       classroomUi.includes("Overview") &&
-      classroomUi.includes("People") &&
       classroomUi.includes("Assignments") &&
-      classroomUi.includes("Analytics / Feedback") &&
-      classroomUi.includes("Linked Blueprints") &&
+      classroomUi.includes("Students") &&
+      classroomUi.includes("Teachers") &&
+      classroomUi.includes("Progress") &&
+      classroomUi.includes("Blueprints") &&
       classroomUi.includes("Settings") &&
-      classroomPeople.includes("Joining a class does not grant access") &&
-      classroomPeople.includes("Create join code") &&
+      classroomPeople.includes("/students") &&
+      classroomStudents.includes("Removing a student stops future classroom access") &&
       classroomActions.includes("createClassroomJoinCode"),
     "classroom detail must expose teacher classroom sections and persistent join code recovery",
   );

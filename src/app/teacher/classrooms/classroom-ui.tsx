@@ -26,10 +26,11 @@ const badgeClassByTone: Record<ClassroomBadgeTone, string> = {
 
 const classroomTabs = [
   { href: "", icon: BookOpenCheck, label: "Overview" },
-  { href: "/people", icon: Users, label: "People" },
   { href: "/assignments", icon: ClipboardCheck, label: "Assignments" },
-  { href: "/analytics", icon: BarChart3, label: "Analytics / Feedback" },
-  { href: "/blueprints", icon: Sparkles, label: "Linked Blueprints" },
+  { href: "/students", icon: Users, label: "Students" },
+  { href: "/teachers", icon: Users, label: "Teachers" },
+  { href: "/analytics", icon: BarChart3, label: "Progress" },
+  { href: "/blueprints", icon: Sparkles, label: "Blueprints" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
 

@@ -55,7 +55,7 @@ export default async function ClassroomAnalyticsPage({
       <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="teacher-eyebrow">Analytics / Feedback</p>
+            <p className="teacher-eyebrow">Progress</p>
             <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">
               {classroom.name}
             </h1>

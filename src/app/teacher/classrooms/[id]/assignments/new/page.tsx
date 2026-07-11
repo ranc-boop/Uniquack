@@ -90,6 +90,13 @@ export default async function NewTeacherAssignmentPage({
       <ClassroomRouteTabs classroomId={classroom.id} />
       <ClassroomSafetyStrip />
 
+      {classroom.status === "archived" ? (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+          This classroom is archived. Historical work remains readable, but new
+          assignments are blocked until the classroom is reopened in Settings.
+        </section>
+      ) : null}
+
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
         <strong className="font-bold">Bank-first workflow:</strong> create new
         assignments from a Question Bank when possible. This direct classroom
@@ -256,23 +263,33 @@ export default async function NewTeacherAssignmentPage({
               makes it visible in Student My Work immediately.
             </p>
             <div className="mt-4 grid gap-2">
-              <Button
-                form="assignment-create-form"
-                name="publishMode"
-                type="submit"
-                value="assigned"
-              >
-                Assign to class
-              </Button>
-              <Button
-                form="assignment-create-form"
-                name="publishMode"
-                type="submit"
-                value="draft"
-                variant="outline"
-              >
-                Save draft
-              </Button>
+              {classroom.status === "active" ? (
+                <>
+                  <Button
+                    form="assignment-create-form"
+                    name="publishMode"
+                    type="submit"
+                    value="assigned"
+                  >
+                    Assign to class
+                  </Button>
+                  <Button
+                    form="assignment-create-form"
+                    name="publishMode"
+                    type="submit"
+                    value="draft"
+                    variant="outline"
+                  >
+                    Save draft
+                  </Button>
+                </>
+              ) : (
+                <Button asChild variant="outline">
+                  <Link href={`/teacher/classrooms/${classroom.id}/settings`}>
+                    Reopen before assigning
+                  </Link>
+                </Button>
+              )}
             </div>
             <p className="mt-4 text-xs leading-5 text-slate-500">
               The server rechecks every selected question and rejects anything

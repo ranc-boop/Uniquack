@@ -4,7 +4,6 @@ import {
   Activity,
   BarChart3,
   ClipboardCheck,
-  Sparkles,
   Users,
 } from "lucide-react";
 
@@ -75,6 +74,13 @@ export default async function TeacherClassroomDetailPage({
   const activeStudents = roster.filter(
     (member) => member.role === "student" && member.status === "active",
   );
+  const owner = roster.find((member) => member.user_id === classroom.owner_id);
+  const activeCoTeachers = roster.filter(
+    (member) => member.role === "co_teacher" && member.status === "active",
+  );
+  const studentsNeedingAttention = activeStudents.filter(
+    (student) => student.assignmentSummary.needsAttention,
+  );
 
   return (
     <main className="teacher-shell space-y-6">
@@ -102,7 +108,15 @@ export default async function TeacherClassroomDetailPage({
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <ClassroomPublishCta classroomId={classroom.id} />
+              {classroom.status === "active" ? (
+                <ClassroomPublishCta classroomId={classroom.id} />
+              ) : (
+                <Button asChild variant="outline">
+                  <Link href={`/teacher/classrooms/${classroom.id}/settings`}>
+                    Reopen in settings
+                  </Link>
+                </Button>
+              )}
               <Button asChild variant="outline">
                 <Link href="/teacher/classrooms">Back to classes</Link>
               </Button>
@@ -128,14 +142,10 @@ export default async function TeacherClassroomDetailPage({
             value={classroom.activeAssignmentCount}
           />
           <ClassroomMetricCard
-            description="Question Bank blueprint context used by assigned bank work."
-            icon={Sparkles}
-            label="Linked blueprints"
-            value={
-              classroom.linkedBlueprintCount === null
-                ? "Planned"
-                : classroom.linkedBlueprintCount
-            }
+            description="Active co-teachers in this delivery space."
+            icon={Users}
+            label="Co-teachers"
+            value={classroom.coTeacherCount}
           />
           <ClassroomMetricCard
             description="Latest assignment, progress, or practice activity."
@@ -160,7 +170,7 @@ export default async function TeacherClassroomDetailPage({
         </p>
       ) : null}
 
-      {visibleJoinCode ? (
+      {visibleJoinCode && classroom.status === "active" ? (
         <section className="teacher-soft-panel p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -178,7 +188,29 @@ export default async function TeacherClassroomDetailPage({
             </code>
           </div>
         </section>
-      ) : null}
+      ) : (
+        <section className="teacher-soft-panel p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="teacher-eyebrow">Join code status</p>
+              <h2 className="mt-2 text-xl font-bold text-slate-950">
+                {classroom.status === "archived"
+                  ? "Joining is blocked while this classroom is archived."
+                  : "No active join code is visible."}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Manage join-code rotation, disablement, and reopening from
+                Settings. Codes never grant source bank access.
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <Link href={`/teacher/classrooms/${classroom.id}/settings`}>
+                Manage joining
+              </Link>
+            </Button>
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="space-y-6">
@@ -218,9 +250,10 @@ export default async function TeacherClassroomDetailPage({
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
                   ["Students", classroom.studentCount],
+                  ["Co-teachers", activeCoTeachers.length],
                   ["Assigned", assigned.length],
                   ["Teacher drafts", draft.length],
-                  ["All assignments", assignments.length],
+                  ["Attention", studentsNeedingAttention.length],
                 ].map(([label, value]) => (
                   <div
                     className="rounded-lg border border-slate-200 bg-slate-50/70 p-4"
@@ -307,7 +340,15 @@ export default async function TeacherClassroomDetailPage({
                   overview will show delivery and practice evidence afterward.
                 </p>
                 <div className="mt-5">
-                  <ClassroomPublishCta classroomId={classroom.id} />
+                  {classroom.status === "active" ? (
+                    <ClassroomPublishCta classroomId={classroom.id} />
+                  ) : (
+                    <Button asChild variant="outline">
+                      <Link href={`/teacher/classrooms/${classroom.id}/settings`}>
+                        Reopen before publishing
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -346,10 +387,15 @@ export default async function TeacherClassroomDetailPage({
           </section>
 
           <section className="teacher-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">People preview</h2>
+            <h2 className="text-lg font-bold text-slate-950">Class team</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Active roster: {activeStudents.length} student(s). Roster controls
-              live in the People section.
+              Owner:{" "}
+              <span className="font-semibold text-slate-900">
+                {owner?.displayName ?? "Classroom owner"}
+              </span>
+              . Active roster: {activeStudents.length} student(s). Co-teachers:
+              {" "}
+              {activeCoTeachers.length}.
             </p>
             {activeStudents.length ? (
               <div className="mt-4 space-y-2">
@@ -368,11 +414,18 @@ export default async function TeacherClassroomDetailPage({
                 ))}
               </div>
             ) : null}
-            <Button asChild className="mt-4 w-full" variant="outline">
-              <Link href={`/teacher/classrooms/${classroom.id}/people`}>
-                Open People
-              </Link>
-            </Button>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <Button asChild variant="outline">
+                <Link href={`/teacher/classrooms/${classroom.id}/students`}>
+                  Students
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href={`/teacher/classrooms/${classroom.id}/teachers`}>
+                  Teachers
+                </Link>
+              </Button>
+            </div>
           </section>
 
           <section className="teacher-panel p-5">
@@ -382,7 +435,7 @@ export default async function TeacherClassroomDetailPage({
               </span>
               <div>
                 <h2 className="text-lg font-bold text-slate-950">
-                  Analytics / Feedback
+                  Progress
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   Completion summaries use real assignment evidence. Taxonomy
@@ -393,7 +446,7 @@ export default async function TeacherClassroomDetailPage({
             </div>
             <Button asChild className="mt-4 w-full" variant="outline">
               <Link href={`/teacher/classrooms/${classroom.id}/analytics`}>
-                Open analytics
+                Open progress
               </Link>
             </Button>
           </section>

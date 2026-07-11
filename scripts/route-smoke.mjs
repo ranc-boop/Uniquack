@@ -148,6 +148,8 @@ const teacherClassroomsPage = await read("src/app/teacher/classrooms/page.tsx");
 const teacherClassroomDetailPage = await read("src/app/teacher/classrooms/[id]/page.tsx");
 const teacherClassroomUi = await read("src/app/teacher/classrooms/classroom-ui.tsx");
 const teacherClassroomPeoplePage = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
+const teacherClassroomStudentsPage = await read("src/app/teacher/classrooms/[id]/students/page.tsx");
+const teacherClassroomTeachersPage = await read("src/app/teacher/classrooms/[id]/teachers/page.tsx");
 const teacherAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
 const teacherClassroomAnalyticsPage = await read("src/app/teacher/classrooms/[id]/analytics/page.tsx");
 const teacherClassroomBlueprintsPage = await read("src/app/teacher/classrooms/[id]/blueprints/page.tsx");
@@ -301,8 +303,11 @@ assert(
     teacherClassroomDetailPage.includes("Class delivery snapshot") &&
     teacherClassroomDetailPage.includes("Students needing attention") &&
     teacherClassroomDetailPage.includes("View assignments") &&
-    teacherClassroomPeoplePage.includes("Joining a class does not grant access") &&
-    teacherClassroomPeoplePage.includes("Remove from class") &&
+    teacherClassroomPeoplePage.includes("/students") &&
+    teacherClassroomStudentsPage.includes("Remove from active roster") &&
+    teacherClassroomStudentsPage.includes("preserve all history") &&
+    teacherClassroomTeachersPage.includes("Add co-teacher") &&
+    teacherClassroomTeachersPage.includes("source Question Banks") &&
     teacherAssignmentsPage.includes("Classroom assignments") &&
     teacherAssignmentsPage.includes("Publish new work") &&
     teacherAssignmentsPage.includes("Publish new bank work") &&
@@ -312,10 +317,12 @@ assert(
     teacherAssignmentsPage.includes("Draft") &&
     teacherAssignmentsPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Latest activity") &&
-    teacherClassroomAnalyticsPage.includes("Analytics / Feedback") &&
+    teacherClassroomAnalyticsPage.includes("Progress") &&
     teacherClassroomAnalyticsPage.includes("Taxonomy mastery") &&
     teacherClassroomBlueprintsPage.includes("Blueprints linked to this class will appear here") &&
-    teacherClassroomSettingsPage.includes("Archive and delete controls are not enabled") &&
+    teacherClassroomSettingsPage.includes("Join-code lifecycle") &&
+    teacherClassroomSettingsPage.includes("Archive classroom") &&
+    teacherClassroomSettingsPage.includes("Reopen classroom") &&
     teacherAssignmentNewPage.includes("Published questions") &&
     teacherAssignmentNewPage.includes("workflow now starts from Question Banks") &&
     teacherAssignmentNewPage.includes("published-question compatibility") &&

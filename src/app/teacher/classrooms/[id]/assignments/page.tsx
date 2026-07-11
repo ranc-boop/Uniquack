@@ -273,12 +273,22 @@ export default async function TeacherAssignmentsPage({
             <Button asChild variant="outline">
               <Link href="/teacher">Teacher Studio</Link>
             </Button>
-            <ClassroomPublishCta classroomId={classroom.id} />
-            <Button asChild>
-              <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
-                Publish new work
-              </Link>
-            </Button>
+            {classroom.status === "active" ? (
+              <>
+                <ClassroomPublishCta classroomId={classroom.id} />
+                <Button asChild>
+                  <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
+                    Publish new work
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <Button asChild variant="outline">
+                <Link href={`/teacher/classrooms/${classroom.id}/settings`}>
+                  Reopen before publishing
+                </Link>
+              </Button>
+            )}
             <Button asChild variant="outline">
               <Link href={`/teacher/classrooms/${classroom.id}`}>
                 Back to roster
@@ -300,6 +310,12 @@ export default async function TeacherAssignmentsPage({
         visibility is not global publishing. Use Publish for the primary
         distribute-work path.
       </section>
+      {classroom.status === "archived" ? (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+          This classroom is archived. Historical assignments remain readable,
+          but new publishing targets are blocked until the classroom is reopened.
+        </section>
+      ) : null}
 
       {query.saved ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
@@ -369,11 +385,19 @@ export default async function TeacherAssignmentsPage({
                 students in this class will see assigned work in My Work.
               </p>
             </div>
-            <Button asChild>
-              <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
-                Publish new work
-              </Link>
-            </Button>
+            {classroom.status === "active" ? (
+              <Button asChild>
+                <Link href={`/teacher/publish?classroomId=${classroom.id}`}>
+                  Publish new work
+                </Link>
+              </Button>
+            ) : (
+              <Button asChild variant="outline">
+                <Link href={`/teacher/classrooms/${classroom.id}/settings`}>
+                  Reopen before publishing
+                </Link>
+              </Button>
+            )}
           </div>
         </section>
       )}
