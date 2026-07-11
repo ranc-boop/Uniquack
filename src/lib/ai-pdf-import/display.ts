@@ -121,6 +121,8 @@ export function friendlyAIPdfPhaseLabel(phase: string) {
     preparing_pdf_input: "Preparing full PDF input",
     preparing_provider_input: "Preparing provider input",
     provider_response_validated: "AI response received",
+    provider_retry_exhausted: "Retry later",
+    provider_retry_wait: "Retrying automatically",
     question_blueprint_analyzed: "Question blueprint analyzer finished",
     question_blueprint_analyzing: "Question blueprint analyzer running",
     question_blueprint_clustering: "Blueprint observation clustering",
@@ -158,6 +160,10 @@ export function isFailedAIPdfStatus(status: unknown) {
 }
 
 export function deriveAIPdfPhase(status: unknown, reportedPhase: string) {
+  if (reportedPhase === "provider_retry_exhausted") {
+    return reportedPhase;
+  }
+
   if (isFailedAIPdfStatus(status)) {
     return "failed";
   }
@@ -186,6 +192,10 @@ function statusLabel({
 
   if (isFailedAIPdfStatus(status) || phase === "failed") {
     return "Failed";
+  }
+
+  if (phase === "provider_retry_wait") {
+    return "Retrying";
   }
 
   if (status === "imported" || phase === "completed") {
@@ -223,6 +233,7 @@ function statusLabel({
       "rendering_page_images",
       "segmentation_confirmed",
       "calling_provider",
+      "provider_retry_wait",
       "provider_response_validated",
       "building_import_json",
       "importing_questions",
@@ -247,7 +258,7 @@ export function sanitizeAIPdfErrorForDisplay(value: unknown) {
     return "";
   }
 
-  return raw
+  const sanitized = raw
     .replace(
       /https?:\/\/\S*(?:ai-import-sources|X-Amz-Signature|token=)\S*/gi,
       "[private source URL redacted]",
@@ -261,6 +272,28 @@ export function sanitizeAIPdfErrorForDisplay(value: unknown) {
     .replace(/\bAI_PROVIDER_[A-Z0-9_]+\b/g, "[server provider setting redacted]")
     .replace(/\bSUPABASE_SERVICE_ROLE[A-Z0-9_]*\b/g, "[server setting redacted]")
     .slice(0, TECHNICAL_DETAIL_LIMIT);
+
+  if (
+    /\b(?:gemini|deepseek|provider response|503|429|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|rate[-\s]?limit|authorization|api[_ -]?key|bearer)\b/i.test(
+      sanitized,
+    )
+  ) {
+    return "The AI service could not complete this run. Safe error details were recorded without exposing provider diagnostics.";
+  }
+
+  return sanitized;
+}
+
+function safeAIPdfVisibleWarning(value: string) {
+  if (
+    /\b(?:gemini|deepseek|provider response|503|429|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|rate[-\s]?limit|authorization|api[_ -]?key|bearer)\b/i.test(
+      value,
+    )
+  ) {
+    return "The AI service could not complete this run. You can retry later without uploading the source again.";
+  }
+
+  return value;
 }
 
 export function summarizeAIPdfError(value: unknown) {
@@ -322,7 +355,7 @@ export function summarizeAIPdfWarnings({
     ...stringAIPdfList(ai.crossPageContinuations).map(
       (value) => `Cross-page continuation: ${value}`,
     ),
-  ];
+  ].map(safeAIPdfVisibleWarning);
   const rawError = firstAIPdfString(ai, ["error"]);
   const unsupported = firstAIPdfString(ai, [
     "unsupportedProviderCapability",

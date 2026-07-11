@@ -15,11 +15,13 @@ import {
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
 import {
-  AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE,
-  isTransientAIPdfProviderFailure,
   processAIPdfImport,
-  recordAIPdfTransientProviderFailure,
+  recordAIPdfProviderFailure,
 } from "@/lib/ai-pdf-import/service";
+import {
+  isAIProviderError,
+  safeAIProviderMessage,
+} from "@/lib/ai-providers/errors";
 import {
   resolveTeacherAIPdfProviderProfile,
   TEACHER_AI_PDF_PARSING_PROFILES,
@@ -545,8 +547,8 @@ function assertNoRawProviderConfig(formData: FormData) {
 }
 
 function formatTeacherAIPdfImportError(error: unknown) {
-  if (isTransientAIPdfProviderFailure(error)) {
-    return AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE;
+  if (isAIProviderError(error)) {
+    return safeAIProviderMessage(error);
   }
 
   return formatActionError(error);
@@ -923,9 +925,12 @@ export async function importBankPdfDrafts(formData: FormData) {
     try {
       summary = await processAIPdfImport(processInput);
     } catch (error) {
-      if (isTransientAIPdfProviderFailure(error)) {
+      if (isAIProviderError(error)) {
         try {
-          await recordAIPdfTransientProviderFailure(processInput);
+          await recordAIPdfProviderFailure({
+            error,
+            input: processInput,
+          });
         } catch {
           // Preserve the original provider failure for the teacher redirect.
         }

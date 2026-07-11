@@ -160,6 +160,7 @@ function phaseRank(phase: string) {
     rendering_page_images: 7,
     blueprint_observation_calling_provider: 8,
     calling_provider: 8,
+    provider_retry_wait: 8,
     question_blueprint_clustering: 8,
     question_blueprint_analyzing: 8,
     question_blueprint_review_planning: 8,

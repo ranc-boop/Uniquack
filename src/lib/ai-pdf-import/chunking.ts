@@ -2,12 +2,14 @@ export type AIPdfChunkStatus =
   | "planned"
   | "queued"
   | "running"
+  | "retrying"
   | "completed"
   | "partial"
   | "failed"
   | "skipped";
 
 export type AIPdfImportChunkSummary = {
+  attemptCount?: number;
   completedAt?: string;
   chunkIndex: number;
   createdQuestionIds?: string[];
@@ -15,15 +17,20 @@ export type AIPdfImportChunkSummary = {
   id: string;
   inputStrategy?: string;
   model?: string;
+  maxAttempts?: number;
+  nextAction?: string;
   overlapPages?: number[];
   pageEnd: number;
   pageStart: number;
   provider?: string;
   questionCount?: number;
   retryCount?: number;
+  retryable?: boolean;
+  safeErrorCode?: string;
   sourcePages?: number[];
   startedAt?: string;
   status: AIPdfChunkStatus;
+  lastAttemptAt?: string;
   warningCount?: number;
   warnings?: string[];
 };
@@ -62,6 +69,7 @@ const VALID_CHUNK_STATUSES = new Set<AIPdfChunkStatus>([
   "planned",
   "queued",
   "running",
+  "retrying",
   "completed",
   "partial",
   "failed",

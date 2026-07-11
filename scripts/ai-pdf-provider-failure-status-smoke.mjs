@@ -44,27 +44,24 @@ const teacherPdfAction = extractFunctionBody(
 assert(
   aiPdfService.includes("AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE") &&
     aiPdfService.includes(
-      "The AI provider is temporarily busy. Your file was not published or assigned. Please retry in a few minutes.",
+      "The AI service is temporarily busy. Your file and target Library are safe, and the system is retrying automatically.",
     ),
   "AI PDF service must define the safe transient provider failure copy",
 );
 
 assert(
-  aiPdfService.includes("isTransientAIPdfProviderFailure") &&
-    aiPdfService.includes("\\b(?:429|503)\\b") &&
-    aiPdfService.includes("\\bUNAVAILABLE\\b") &&
-    aiPdfService.includes("high demand") &&
-    aiPdfService.includes("rate[-\\s]?limit") &&
-    aiPdfService.includes("overloaded"),
-  "AI PDF service must classify 503, unavailable, high-demand, rate-limit, and overloaded provider failures",
+  aiPdfService.includes("runWithAIProviderRetry") &&
+    aiPdfService.includes("safeAIProviderErrorState") &&
+    aiPdfService.includes('phase: "provider_retry_wait"') &&
+    aiPdfService.includes('phase: "provider_retry_exhausted"'),
+  "AI PDF service must use the shared retry wrapper and safe provider status states",
 );
 
 assert(
-  aiPdfService.includes("recordAIPdfTransientProviderFailure") &&
+  aiPdfService.includes("recordAIPdfProviderFailure") &&
     aiPdfService.includes('status: "failed"') &&
-    aiPdfService.includes('phase: "provider_temporarily_unavailable"') &&
-    aiPdfService.includes('failureKind: "transient_provider_unavailable"') &&
-    aiPdfService.includes("retryable: true") &&
+    aiPdfService.includes("failureKind: safeError.safeErrorCode") &&
+    aiPdfService.includes("retryable: safeError.retryable") &&
     aiPdfService.includes("targetBankId: input.targetBankId") &&
     aiPdfService.includes("reviewGate: current.summary.reviewGate ?? \"bank_review_required\"") &&
     aiPdfService.includes("reviewScope: current.summary.reviewScope ?? \"question_bank\""),
@@ -73,9 +70,9 @@ assert(
 
 assert(
   teacherBankActions.includes("formatTeacherAIPdfImportError") &&
-    teacherBankActions.includes("isTransientAIPdfProviderFailure(error)") &&
-    teacherBankActions.includes("AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE") &&
-    teacherPdfAction.includes("recordAIPdfTransientProviderFailure(processInput)") &&
+    teacherBankActions.includes("isAIProviderError(error)") &&
+    teacherBankActions.includes("safeAIProviderMessage(error)") &&
+    teacherPdfAction.includes("recordAIPdfProviderFailure({") &&
     teacherPdfAction.includes("processAIPdfImport(processInput)") &&
     teacherPdfAction.includes("targetBankId: parsed.bankId") &&
     teacherPdfAction.includes("redirectWithError(fallbackPath, formatTeacherAIPdfImportError(error))"),

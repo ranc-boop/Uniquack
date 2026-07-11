@@ -176,6 +176,15 @@ import {
   type QuestionBoundaryGuardPlan,
 } from "@/lib/ai-pdf-import/question-boundary-guard";
 import {
+  classifyAIProviderError,
+  safeAIProviderErrorState,
+  type AIProviderRetryHistoryItem,
+} from "@/lib/ai-providers/errors";
+import {
+  runWithAIProviderRetry,
+  type AIProviderRetryEvent,
+} from "@/lib/ai-providers/resilience";
+import {
   buildAIBlueprintObservationPlanFromProviderResponse,
   buildAIBlueprintObservationPlanFromSummary,
   buildAIBlueprintObservationProviderPrompt,
@@ -251,48 +260,33 @@ type ProcessInput = {
 };
 
 type AIPdfProgress = {
+  attemptCount?: number;
   blueprintModelQualityFallbackReason?: string;
   blueprintModelQualityMode?: string;
   blueprintModelQualityRequestedMode?: string;
   detail?: string;
   error?: string;
+  internalErrorReference?: string;
+  maxAttempts?: number;
+  nextAction?: string;
   pageCount?: number;
   phase: string;
   provider?: { id: string; model: string; name: string; provider: string };
   questionCount?: number;
+  retryable?: boolean;
+  safeErrorCode?: string;
   sourceInput?: AiPdfInputStrategy;
   warnings?: string[];
 };
 
 export const AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE =
-  "The AI provider is temporarily busy. Your file was not published or assigned. Please retry in a few minutes.";
-
-function errorText(value: unknown) {
-  if (value instanceof Error) {
-    return `${value.name}: ${value.message}`;
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
+  "The AI service is temporarily busy. Your file and target Library are safe, and the system is retrying automatically.";
 
 export function isTransientAIPdfProviderFailure(value: unknown) {
-  const text = errorText(value);
-
-  return (
-    /\b(?:429|503)\b/i.test(text) ||
-    /\bUNAVAILABLE\b/i.test(text) ||
-    /high demand/i.test(text) ||
-    /rate[-\s]?limit(?:ed)?/i.test(text) ||
-    /overloaded/i.test(text)
-  );
+  return classifyAIProviderError({
+    error: value,
+    operation: "ai_pdf_extraction",
+  }).retryable;
 }
 
 function plainObject(value: unknown): Record<string, unknown> {
@@ -506,7 +500,7 @@ async function updateAIPdfBatchProgress(
     updatedAt: new Date().toISOString(),
     ...progress,
   });
-  const { error } = await input.supabase
+  const { error: updateError } = await input.supabase
     .from("import_batches")
     .update({
       status: "validating",
@@ -517,31 +511,56 @@ async function updateAIPdfBatchProgress(
     })
     .eq("id", input.batchId);
 
-  if (error) {
-    throw new Error(error.message);
+  if (updateError) {
+    throw new Error(updateError.message);
   }
 }
 
-export async function recordAIPdfTransientProviderFailure(input: ProcessInput) {
+export async function recordAIPdfProviderFailure({
+  error,
+  input,
+  retryHistory,
+}: {
+  error: unknown;
+  input: ProcessInput;
+  retryHistory?: AIProviderRetryHistoryItem[];
+}) {
   const failedAt = new Date().toISOString();
+  const classified = classifyAIProviderError({
+    error,
+    operation: "ai_pdf_extraction",
+  });
+  const resolvedRetryHistory = retryHistory ?? classified.retryHistory ?? [];
+  const safeError = safeAIProviderErrorState({
+    attemptCount: classified.attemptCount ?? resolvedRetryHistory.length + 1,
+    error: classified,
+    maxAttempts: classified.maxAttempts ?? 4,
+  });
   const current = await loadCurrentAIPdfSummary(input);
   const aiPdfImport = mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
-    createdQuestionCount: 0,
-    detail: AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE,
-    error: AI_PDF_TRANSIENT_PROVIDER_FAILURE_MESSAGE,
-    failureKind: "transient_provider_unavailable",
+    detail: safeError.safeMessage,
+    error: safeError.safeMessage,
+    failureKind: safeError.safeErrorCode,
     fileName: input.fileName,
+    internalErrorReference: safeError.internalErrorReference,
     jobId: input.jobId,
-    phase: "provider_temporarily_unavailable",
+    maxAttempts: safeError.maxAttempts,
+    nextAction: safeError.nextAction,
+    phase: "provider_retry_exhausted",
     phaseFailedAt: failedAt,
-    retryable: true,
-    retryRecommendation: "Retry in a few minutes.",
+    retryAttemptHistory: resolvedRetryHistory,
+    retryable: safeError.retryable,
+    retryRecommendation:
+      safeError.nextAction === "contact_administrator"
+        ? "Contact an administrator."
+        : "Retry later without uploading the file again.",
+    safeErrorCode: safeError.safeErrorCode,
     sourceAssetId: input.sourceAssetId,
     sourceObjectPath: input.sourceObjectPath,
     targetBankId: input.targetBankId ?? null,
     updatedAt: failedAt,
   });
-  const { error } = await input.supabase
+  const { error: updateError } = await input.supabase
     .from("import_batches")
     .update({
       status: "failed",
@@ -552,15 +571,22 @@ export async function recordAIPdfTransientProviderFailure(input: ProcessInput) {
           current.summary.importedFrom ?? "teacher_bank_ai_pdf_import",
         reviewGate: current.summary.reviewGate ?? "bank_review_required",
         reviewScope: current.summary.reviewScope ?? "question_bank",
-        retryable: true,
+        retryable: safeError.retryable,
         targetBankId: input.targetBankId ?? current.summary.targetBankId ?? null,
       },
     })
     .eq("id", input.batchId);
 
-  if (error) {
-    throw new Error(error.message);
+  if (updateError) {
+    throw new Error(updateError.message);
   }
+}
+
+export async function recordAIPdfTransientProviderFailure(input: ProcessInput) {
+  return recordAIPdfProviderFailure({
+    error: new Error("provider high demand"),
+    input,
+  });
 }
 
 async function updateAIPdfChunkProgress({
@@ -610,6 +636,65 @@ async function updateAIPdfChunkProgress({
   if (error) {
     throw new Error(error.message);
   }
+}
+
+async function updateAIPdfProviderRetryProgress({
+  chunk,
+  input,
+  pageCount,
+  provider,
+  sourceInput,
+  retry,
+}: {
+  chunk?: AIPdfImportChunkSummary;
+  input: ProcessInput;
+  pageCount: number;
+  provider: { id: string; model: string; name: string; provider: string };
+  retry: AIProviderRetryEvent;
+  sourceInput: AiPdfInputStrategy;
+}) {
+  const attemptedAt = new Date().toISOString();
+  const detail = "The AI service is temporarily busy. Your work is safe, and the system is retrying.";
+  const retryPatch = {
+    attemptCount: retry.attemptCount,
+    lastAttemptAt: attemptedAt,
+    maxAttempts: retry.maxAttempts,
+    nextAction: retry.error.nextAction,
+    retryable: retry.error.retryable,
+    safeErrorCode: retry.error.safeErrorCode,
+  };
+
+  if (chunk) {
+    await updateAIPdfChunkProgress({
+      chunk,
+      input,
+      pageCount,
+      patch: {
+        ...retryPatch,
+        status: "retrying",
+        warningCount: 0,
+        warnings: [],
+      },
+      progress: {
+        ...retryPatch,
+        detail,
+        pageCount,
+        phase: "provider_retry_wait",
+        provider,
+        sourceInput,
+      },
+    });
+    return;
+  }
+
+  await updateAIPdfBatchProgress(input, {
+    ...retryPatch,
+    detail,
+    pageCount,
+    phase: "provider_retry_wait",
+    provider,
+    sourceInput,
+  });
 }
 
 async function updateAIPdfPreanalysis({
@@ -3086,20 +3171,14 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
 
   try {
     activeTags = await loadActiveTags(input.supabase);
-  } catch (error) {
-    warnings.push(
-      `Question blueprint analyzer could not validate taxonomy IDs: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+  } catch {
+    warnings.push("Question blueprint analyzer could not validate taxonomy IDs.");
   }
   try {
     taxonomyCandidates = await loadActiveLeafTaxonomyCandidates(input.supabase);
-  } catch (error) {
+  } catch {
     warnings.push(
-      `Question blueprint analyzer could not load active assignable leaf taxonomy candidates: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      "Question blueprint analyzer could not load active assignable leaf taxonomy candidates.",
     );
   }
 
@@ -3155,32 +3234,51 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
 
     for (const clusterAnalyzerPlan of clusterAnalyzerPlans) {
       try {
-        const draftPlan = await executeDeepSeekQuestionBlueprintAnalyzer({
-          debugContext: {
-            batchId: input.batchId,
-            fileName: input.fileName,
-            jobId: input.jobId,
-            providerProfileId: analyzerProvider.provider.id,
-            sourceAssetId: input.sourceAssetId,
-            sourceObjectPath: input.sourceObjectPath,
-          },
-          knownTaxonomyTagIds,
-          observationPlan: clusterAnalyzerPlan.observationPlan,
-          provider: analyzerProvider.provider,
-          taxonomyCandidatesByFacet: buildQuestionBlueprintTaxonomyCandidateList({
-            candidates: taxonomyCandidates,
-            observationPlan: clusterAnalyzerPlan.observationPlan,
-          }),
-        });
+        const draftPlan = (
+          await runWithAIProviderRetry({
+            onRetry: (retry) =>
+              updateAIPdfProviderRetryProgress({
+                input,
+                pageCount,
+                provider: providerSummary,
+                retry,
+                sourceInput: providerInput.strategy,
+              }),
+            operation: "blueprint_generation",
+            run: () =>
+              executeDeepSeekQuestionBlueprintAnalyzer({
+                debugContext: {
+                  batchId: input.batchId,
+                  fileName: input.fileName,
+                  jobId: input.jobId,
+                  providerProfileId: analyzerProvider.provider.id,
+                  sourceAssetId: input.sourceAssetId,
+                  sourceObjectPath: input.sourceObjectPath,
+                },
+                knownTaxonomyTagIds,
+                observationPlan: clusterAnalyzerPlan.observationPlan,
+                provider: analyzerProvider.provider,
+                taxonomyCandidatesByFacet: buildQuestionBlueprintTaxonomyCandidateList({
+                  candidates: taxonomyCandidates,
+                  observationPlan: clusterAnalyzerPlan.observationPlan,
+                }),
+              }),
+          })
+        ).value;
 
         clusterDraftPlans.push({
           cluster: clusterAnalyzerPlan.cluster,
           draftPlan,
         });
       } catch (error) {
-        const warning = `DeepSeek blueprint analyzer failed for cluster ${clusterAnalyzerPlan.cluster.clusterId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
+        const safeError = safeAIProviderErrorState({
+          error: classifyAIProviderError({
+            error,
+            operation: "blueprint_generation",
+          }),
+          maxAttempts: 4,
+        });
+        const warning = `Blueprint analyzer could not complete cluster ${clusterAnalyzerPlan.cluster.clusterId}. ${safeError.safeMessage}`;
         clusterWarnings.push(warning);
         clusterDraftPlans.push({
           cluster: clusterAnalyzerPlan.cluster,
@@ -3325,29 +3423,43 @@ async function processAIPdfBlueprintObservation({
           providerResponse: mockBlueprintObservationProviderResponse(pageCount),
           summary: currentBeforeProvider.summary,
         })
-      : parseAIBlueprintObservationProviderText({
-          providerText: (
-            await generateWithGeminiNativePdf({
-              apiKey: provider.apiKey,
-              baseUrl: provider.base_url,
-              debugContext: {
-                batchId: input.batchId,
-                fileName: input.fileName,
-                jobId: input.jobId,
-                mode: "blueprint_observation",
+      : (
+          await runWithAIProviderRetry({
+            onRetry: (retry) =>
+              updateAIPdfProviderRetryProgress({
+                input,
                 pageCount,
-                providerProfileId: input.providerProfileId,
-                sourceAssetId: input.sourceAssetId,
-                sourceObjectPath: input.sourceObjectPath,
-              },
-              fileName: input.fileName,
-              model: provider.model,
-              pdfBytes: input.pdfBuffer,
-              prompt,
-            })
-          ).text,
-          summary: currentBeforeProvider.summary,
-        });
+                provider: providerSummary,
+                retry,
+                sourceInput: providerInput.strategy,
+              }),
+            operation: "ai_pdf_extraction",
+            run: async () =>
+              parseAIBlueprintObservationProviderText({
+                providerText: (
+                  await generateWithGeminiNativePdf({
+                    apiKey: provider.apiKey,
+                    baseUrl: provider.base_url,
+                    debugContext: {
+                      batchId: input.batchId,
+                      fileName: input.fileName,
+                      jobId: input.jobId,
+                      mode: "blueprint_observation",
+                      pageCount,
+                      providerProfileId: input.providerProfileId,
+                      sourceAssetId: input.sourceAssetId,
+                      sourceObjectPath: input.sourceObjectPath,
+                    },
+                    fileName: input.fileName,
+                    model: provider.model,
+                    pdfBytes: input.pdfBuffer,
+                    prompt,
+                  })
+                ).text,
+                summary: currentBeforeProvider.summary,
+              }),
+          })
+        ).value;
 
     await updateAIBlueprintObservationPlan({
       blueprintObservationPlan,
@@ -3522,27 +3634,40 @@ async function processAIPdfSinglePass({
     provider: providerSummary,
     sourceInput: providerInput.strategy,
   });
-  const extraction = normalizeAIPdfExtractionResponse(
-    await callAIPdfExtractionProvider({
-      debugContext: {
-        batchId: input.batchId,
-        chunkIndex: null,
-        fileName: input.fileName,
-        jobId: input.jobId,
+  const providerResult = await runWithAIProviderRetry({
+    onRetry: (retry) =>
+      updateAIPdfProviderRetryProgress({
+        input,
         pageCount,
-        providerProfileId: input.providerProfileId,
-        sourceAssetId: input.sourceAssetId,
-        sourceObjectPath: input.sourceObjectPath,
-      },
-      fileName: input.fileName,
-      inputStrategy: providerInput.strategy,
-      pageImageDataUrls: [],
-      pdfBase64: input.pdfBuffer.toString("base64"),
-      pdfBytes: input.pdfBuffer,
-      profile: provider,
-      prompt,
-    }),
-  );
+        provider: providerSummary,
+        retry,
+        sourceInput: providerInput.strategy,
+      }),
+    operation: "ai_pdf_extraction",
+    run: async () =>
+      normalizeAIPdfExtractionResponse(
+        await callAIPdfExtractionProvider({
+          debugContext: {
+            batchId: input.batchId,
+            chunkIndex: null,
+            fileName: input.fileName,
+            jobId: input.jobId,
+            pageCount,
+            providerProfileId: input.providerProfileId,
+            sourceAssetId: input.sourceAssetId,
+            sourceObjectPath: input.sourceObjectPath,
+          },
+          fileName: input.fileName,
+          inputStrategy: providerInput.strategy,
+          pageImageDataUrls: [],
+          pdfBase64: input.pdfBuffer.toString("base64"),
+          pdfBytes: input.pdfBuffer,
+          profile: provider,
+          prompt,
+        }),
+      ),
+  });
+  const extraction = providerResult.value;
 
   await updateAIPdfBatchProgress(input, {
     detail: "AI response parsed and validated.",
@@ -3875,36 +4000,50 @@ export async function processAIPdfImport(input: ProcessInput) {
             pdfBuffer: input.pdfBuffer,
           })
         : null;
-      const rawExtraction = normalizeAIPdfExtractionResponse(
-        await callAIPdfExtractionProvider({
-          debugContext: {
-            batchId: input.batchId,
-            chunkIndex: chunk.chunkIndex,
-            fileName: input.fileName,
-            jobId: input.jobId,
-            pageEnd: chunk.pageEnd,
-            pageStart: chunk.pageStart,
+      const providerResult = await runWithAIProviderRetry({
+        onRetry: (retry) =>
+          updateAIPdfProviderRetryProgress({
+            chunk,
+            input,
             pageCount,
-            providerProfileId: input.providerProfileId,
-            retryCount,
-            sourceAssetId: input.sourceAssetId,
-            sourceObjectPath: input.sourceObjectPath,
-          },
-          fileName: segmentChunk
-            ? `${input.fileName.replace(/\.pdf$/i, "")}-chunk-${
-                chunk.chunkIndex + 1
-              }.pdf`
-            : input.fileName,
-          inputStrategy: providerInput.strategy,
-          pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
-          pdfBase64: (segmentedPdf?.pdfBytes ?? input.pdfBuffer).toString(
-            "base64",
+            provider: providerSummary,
+            retry,
+            sourceInput: providerInput.strategy,
+          }),
+        operation: "ai_pdf_extraction",
+        run: async () =>
+          normalizeAIPdfExtractionResponse(
+            await callAIPdfExtractionProvider({
+              debugContext: {
+                batchId: input.batchId,
+                chunkIndex: chunk.chunkIndex,
+                fileName: input.fileName,
+                jobId: input.jobId,
+                pageEnd: chunk.pageEnd,
+                pageStart: chunk.pageStart,
+                pageCount,
+                providerProfileId: input.providerProfileId,
+                retryCount,
+                sourceAssetId: input.sourceAssetId,
+                sourceObjectPath: input.sourceObjectPath,
+              },
+              fileName: segmentChunk
+                ? `${input.fileName.replace(/\.pdf$/i, "")}-chunk-${
+                    chunk.chunkIndex + 1
+                  }.pdf`
+                : input.fileName,
+              inputStrategy: providerInput.strategy,
+              pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
+              pdfBase64: (segmentedPdf?.pdfBytes ?? input.pdfBuffer).toString(
+                "base64",
+              ),
+              pdfBytes: segmentedPdf?.pdfBytes ?? input.pdfBuffer,
+              profile: provider,
+              prompt: chunkPrompt,
+            }),
           ),
-          pdfBytes: segmentedPdf?.pdfBytes ?? input.pdfBuffer,
-          profile: provider,
-          prompt: chunkPrompt,
-        }),
-      );
+      });
+      const rawExtraction = providerResult.value;
       const extraction = segmentChunk
         ? remapSegmentExtractionPages({
             chunk: segmentChunk,
@@ -4031,8 +4170,14 @@ export async function processAIPdfImport(input: ProcessInput) {
         },
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "AI PDF chunk extraction failed.";
+      const providerError = safeAIProviderErrorState({
+        error: classifyAIProviderError({
+          error,
+          operation: "ai_pdf_extraction",
+        }),
+        maxAttempts: 4,
+      });
+      const message = providerError.safeMessage;
 
       allWarnings.push(
         `${formatAIPdfChunkPageRange(chunk)} failed: ${message}`,
@@ -4042,12 +4187,17 @@ export async function processAIPdfImport(input: ProcessInput) {
         input,
         pageCount,
         patch: {
+          attemptCount: providerError.attemptCount,
           completedAt: new Date().toISOString(),
           errorMessage: message,
           inputStrategy: providerInput.strategy,
           model: provider.model,
+          maxAttempts: providerError.maxAttempts,
+          nextAction: providerError.nextAction,
           provider: provider.provider,
           retryCount,
+          retryable: providerError.retryable,
+          safeErrorCode: providerError.safeErrorCode,
           status: "failed",
           warningCount: 1,
           warnings: [message],
@@ -4060,6 +4210,7 @@ export async function processAIPdfImport(input: ProcessInput) {
           questionCount: aggregate.createdCount,
           sourceInput: providerInput.strategy,
           warnings: uniqueStrings(allWarnings),
+          safeErrorCode: providerError.safeErrorCode,
         },
       });
     }

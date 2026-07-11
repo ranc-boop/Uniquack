@@ -9,6 +9,12 @@ import {
 } from "@/lib/ai-providers/adapters";
 import { generateWithGeminiNativeText } from "@/lib/ai-providers/gemini-native";
 import {
+  classifyAIProviderError,
+  isAIProviderError,
+  safeAIProviderErrorState,
+} from "@/lib/ai-providers/errors";
+import { runWithAIProviderRetry } from "@/lib/ai-providers/resilience";
+import {
   isMockAIProviderUrl,
   assertMockAIProviderAllowed,
 } from "@/lib/ai-providers/mock";
@@ -17,9 +23,6 @@ import {
   loadAIProviderProfileForServerUse,
   type SafeAIProviderProfile,
 } from "@/lib/ai-providers/profiles";
-import {
-  isTransientAIPdfProviderFailure,
-} from "@/lib/ai-pdf-import/service";
 import {
   importBatchImportJson,
   resolveImportOrganizationContext,
@@ -1140,9 +1143,15 @@ async function recordTeacherBlueprintGenerationFailure({
     profileId,
     supabase,
   });
-  const safeError = isTransientAIPdfProviderFailure(error)
-    ? TEACHER_BLUEPRINT_TRANSIENT_PROVIDER_FAILURE_MESSAGE
-    : "Blueprint generation failed before Review Drafts were created.";
+  const classified = classifyAIProviderError({
+    error,
+    operation: "blueprint_generation",
+  });
+  const safeError = safeAIProviderErrorState({
+    attemptCount: classified.attemptCount,
+    error: classified,
+    maxAttempts: classified.maxAttempts,
+  });
 
   await supabase.from("import_batches").insert({
     created_by: profileId,
@@ -1153,18 +1162,21 @@ async function recordTeacherBlueprintGenerationFailure({
       blueprintGeneration: {
         blueprintId: blueprint.id,
         blueprintTitle: blueprint.title,
-        error: safeError,
-        failureKind: isTransientAIPdfProviderFailure(error)
-          ? "transient_provider_unavailable"
-          : "generation_failed",
-        retryable: isTransientAIPdfProviderFailure(error),
+        error: safeError.safeMessage,
+        failureKind: safeError.safeErrorCode,
+        internalErrorReference: safeError.internalErrorReference,
+        maxAttempts: safeError.maxAttempts,
+        nextAction: safeError.nextAction,
+        retryAttemptHistory: classified.retryHistory ?? [],
+        retryable: safeError.retryable,
+        safeErrorCode: safeError.safeErrorCode,
         sourceQuestionCount: sourceExampleCount(blueprint),
         targetBankId: bankId,
       },
       importedFrom: "teacher_blueprint_generation",
       reviewGate: "bank_review_required",
       reviewScope: "question_bank",
-      retryable: isTransientAIPdfProviderFailure(error),
+      retryable: safeError.retryable,
       targetBankId: bankId,
     },
     target_bank_id: bankId,
@@ -1172,7 +1184,10 @@ async function recordTeacherBlueprintGenerationFailure({
 }
 
 export function isTransientTeacherBlueprintProviderFailure(error: unknown) {
-  return isTransientAIPdfProviderFailure(error);
+  return classifyAIProviderError({
+    error,
+    operation: "blueprint_generation",
+  }).retryable;
 }
 
 export async function generateTeacherBlueprintReviewDrafts({
@@ -1226,11 +1241,17 @@ export async function generateTeacherBlueprintReviewDrafts({
       tagIds,
     });
     const prompt = buildTeacherBlueprintGenerationPrompt(request);
-    const providerText = await callTeacherBlueprintGenerationProvider({
-      profile: provider,
-      prompt,
-      request,
-    });
+    const providerText = (
+      await runWithAIProviderRetry({
+        operation: "blueprint_generation",
+        run: () =>
+          callTeacherBlueprintGenerationProvider({
+            profile: provider,
+            prompt,
+            request,
+          }),
+      })
+    ).value;
     const parsed = parseGeneratedQuestions({
       providerText,
       request,
@@ -1321,7 +1342,7 @@ export async function generateTeacherBlueprintReviewDrafts({
       warningCount,
     };
   } catch (error) {
-    if (isTransientAIPdfProviderFailure(error)) {
+    if (isAIProviderError(error)) {
       await recordTeacherBlueprintGenerationFailure({
         bankId,
         blueprint,
@@ -1329,7 +1350,13 @@ export async function generateTeacherBlueprintReviewDrafts({
         profileId,
         supabase,
       }).catch(() => undefined);
-      throw new Error(TEACHER_BLUEPRINT_TRANSIENT_PROVIDER_FAILURE_MESSAGE);
+      throw new Error(
+        safeAIProviderErrorState({
+          attemptCount: error.attemptCount,
+          error,
+          maxAttempts: error.maxAttempts,
+        }).safeMessage,
+      );
     }
 
     throw error;

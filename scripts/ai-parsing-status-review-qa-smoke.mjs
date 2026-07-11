@@ -60,7 +60,7 @@ assert(
     bankImportUi.includes("Drafts") &&
     bankImportUi.includes("Warnings") &&
     bankImportUi.includes("Retryable import") &&
-    bankImportUi.includes("The AI provider was temporarily busy") &&
+    bankImportUi.includes("The AI service is temporarily busy") &&
     bankImportUi.includes("Zero drafts were created") &&
     bankImportUi.includes("Open Review Drafts") &&
     bankImportUi.includes("Provider setup stays in Admin / AI Settings"),
@@ -116,7 +116,7 @@ assert(
   importBankPdfDrafts.includes("assertNoRawProviderConfig(formData)") &&
     importBankPdfDrafts.includes("resolveTeacherAIPdfProviderProfile") &&
     importBankPdfDrafts.includes("targetBankId: parsed.bankId") &&
-    importBankPdfDrafts.includes("recordAIPdfTransientProviderFailure(processInput)") &&
+    importBankPdfDrafts.includes("recordAIPdfProviderFailure({") &&
     !importBankPdfDrafts.includes('visibility: "public"') &&
     !importBankPdfDrafts.includes('status: "published"') &&
     !importBankPdfDrafts.includes("published_at"),

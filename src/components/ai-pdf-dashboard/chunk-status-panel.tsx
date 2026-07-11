@@ -50,7 +50,7 @@ function chunkStatusClass(status: string) {
     return "border-destructive/30 bg-destructive/10 text-destructive";
   }
 
-  if (status === "running" || status === "queued") {
+  if (status === "running" || status === "queued" || status === "retrying") {
     return "border-amber-200 bg-amber-50 text-amber-900";
   }
 
@@ -81,23 +81,19 @@ function conciseChunkError(value: unknown) {
     return "";
   }
 
-  if (/503|high demand|UNAVAILABLE/i.test(detail)) {
-    return "Provider temporarily unavailable (503): model is experiencing high demand. Retry this chunk later.";
+  if (/503|high demand|UNAVAILABLE|rate[-\s]?limit|overloaded/i.test(detail)) {
+    return "The AI service is temporarily busy. Completed chunks are safe; retry this chunk later.";
   }
 
   if (/timeout|timed out|524/i.test(detail)) {
-    return "Provider timed out. Retry this chunk later or use a smaller page range.";
+    return "This chunk took longer than usual. Completed chunks are safe; retry this chunk later.";
   }
 
   if (/invalid json|non-json|json/i.test(detail)) {
-    return "Provider returned invalid JSON for this chunk. Retry may succeed.";
+    return "This chunk returned an unusable AI response. Retry may succeed.";
   }
 
-  return detail
-    .replace(/Provider response:[\s\S]*$/i, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 240);
+  return "This chunk could not be completed. Completed chunks are safe; retry later.";
 }
 
 export function ChunkStatusPanel({

@@ -253,7 +253,9 @@ assert(
     service.includes("coverageRecoveryMergePlan") &&
     service.includes('from("questions")') &&
     service.includes('from("question_assets")') &&
-    service.includes("await generateAndStoreExtractionCoverageAuditPlan({ input });\n  await generateAndStoreQuestionBoundaryGuardPlan({ input });"),
+    /await generateAndStoreExtractionCoverageAuditPlan\(\{ input \}\);\r?\n\s+await generateAndStoreQuestionBoundaryGuardPlan\(\{ input \}\);/.test(
+      service,
+    ),
   "AI PDF service must load the latest summary, reuse safe reread/recovery evidence, analyze created drafts, and persist the advisory guard after coverage planning",
 );
 assert(
