@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import { AlertTriangle, Boxes, ClipboardCheck, FileText, Upload } from "lucide-react";
 
+import { InlineMathText } from "@/components/math-content";
 import { Button } from "@/components/ui/button";
+import { QuestionBoundaryGuardCard } from "@/components/ai-pdf-dashboard/question-boundary-guard-card";
 import type {
   BankImportBatchSummary,
   TeacherQuestionBankSummary,
@@ -521,14 +523,21 @@ export function RecentBankImportsPanel({
                     </p>
                   ) : null}
 
+                  <QuestionBoundaryGuardCard
+                    reviewHref={reviewHref}
+                    value={batch.summary}
+                  />
+
                   {status.warnings.length ? (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                      <p className="font-bold">Warnings to inspect</p>
-                      <ul className="mt-1 list-disc space-y-1 pl-4">
-                        {status.warnings.map((warning) => (
-                          <li key={warning}>{warning}</li>
-                        ))}
-                      </ul>
+                        <p className="font-bold">Warnings to inspect</p>
+                        <ul className="mt-1 list-disc space-y-1 pl-4">
+                          {status.warnings.map((warning) => (
+                            <li key={warning}>
+                              <InlineMathText compact value={warning} />
+                            </li>
+                          ))}
+                        </ul>
                     </div>
                   ) : null}
 
