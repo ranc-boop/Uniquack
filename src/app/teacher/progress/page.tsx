@@ -507,7 +507,7 @@ export default async function TeacherProgressPage() {
             <p className="mt-1 max-w-4xl text-sm leading-6 text-sky-900">
               Progress here is limited to classroom assignments and their linked Practice sessions.
               Private student self-study stays private, and students never receive source Question Bank access through this page.
-              Teacher feedback notes are coming later.
+              Open an assignment detail to save a private note or send feedback to an active student.
             </p>
           </div>
         </div>

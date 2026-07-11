@@ -71,7 +71,8 @@ assert(
   page.includes("Assignment and classroom evidence only") &&
     page.includes("Private student self-study is not included") &&
     page.includes("Source Question Banks remain private") &&
-    page.includes("Teacher feedback notes are coming later") &&
+    page.includes("Open an assignment detail to save a private note") &&
+    !page.includes("Teacher feedback notes are coming later") &&
     !page.includes("/teacher/banks/"),
   "teacher progress page must state assignment evidence privacy boundaries without source-bank links",
 );

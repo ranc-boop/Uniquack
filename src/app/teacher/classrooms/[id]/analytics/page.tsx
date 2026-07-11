@@ -61,8 +61,8 @@ export default async function ClassroomAnalyticsPage({
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
               Completion summaries use real assignment and Practice evidence.
-              Deeper mastery and feedback drafting are placeholders until those
-              engines are implemented.
+              Deeper mastery is still planned; assignment detail already supports
+              private notes and explicitly sent student feedback.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -202,8 +202,8 @@ export default async function ClassroomAnalyticsPage({
             "Mistake pattern grouping will use linked Practice evidence, not fake classroom data.",
           ],
           [
-            "Feedback drafting",
-            "Teacher feedback drafting is a later workflow and will stay teacher-reviewed.",
+            "Assignment feedback",
+            "Open an assignment detail to save a private note or send student-visible feedback. Notes remain scoped to the selected student and assignment.",
           ],
         ].map(([title, description]) => (
           <article className="teacher-panel p-5" key={title}>
