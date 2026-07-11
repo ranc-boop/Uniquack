@@ -125,3 +125,123 @@ Not run against the remote queue tables:
 The migration and trusted scheduler trigger must be configured on the clean project before real jobs execute. This PR does not configure secrets or modify `.env.local`.
 
 PR4-J intentionally does **not** add provider/model fallback, provider health scoring, circuit breakers, automatic model routing, student UI redesign, automatic publishing, automatic assignments, or production-scale concurrency claims. Those belong to PR4-K or later scoped work.
+
+## Post-migration live validation
+
+### Applied clean migrations
+
+- `0033_ai_provider_jobs.sql` was manually applied once to the clean Supabase project.
+- `0034_ai_provider_jobs_worker_role_fix.sql` was then manually applied once as a forward-only correction.
+
+The first live service-role claim exposed a real compatibility issue in `0033`:
+the clean project's PostgREST service-role request did not populate the legacy
+`request.jwt.claim.role` setting. `0034` redefines only claim, heartbeat, and
+finish with `auth.role()` as the primary role source and retains the legacy
+setting as a fallback. It does not change queue schema, RLS, limits, grants,
+provider configuration, publishing, or Assignment behavior.
+
+Manual Dashboard SQL applies are not independently queryable through the app
+API as a migration-history audit. The user-confirmed one-time applies were
+validated through the resulting table/RPC behavior and the local clean
+migration dry run.
+
+### Live queue/RLS validation
+
+`scripts/durable-ai-job-queue-live-smoke.mjs` ran successfully against the
+clean project and removed all marked smoke rows. It verified:
+
+- `public.ai_provider_jobs` is reachable and the `0033`/`0034` contract is present.
+- Duplicate authenticated enqueue returns the same durable job.
+- Browser-role teacher clients cannot update worker fields or call claim.
+- Student and unrelated-teacher reads of a private bank queue job are blocked.
+- Two concurrent service-role workers claim exactly one eligible job using the
+  atomic `SKIP LOCKED` function.
+- Heartbeat succeeds, expired leases are reclaimed, and an old lease owner
+  cannot finish a reclaimed job.
+- `retry_wait` preserves a future `available_at`, safe error metadata only,
+  and teacher cancellation works.
+- A permanent failure stays failed and does not retry.
+- The real scheduler enforces global three-job capacity, one active PDF,
+  two active Blueprint jobs, one active job per organization, and fair initial
+  progress across three temporary organizations.
+- The five-job per-user and twelve-job per-organization queue bounds block
+  further authenticated enqueue attempts.
+
+No raw provider errors, credentials, tokens, signed URLs, prompts, or provider
+responses were stored in the inspected queue state.
+
+### Trusted worker route
+
+`scripts/durable-ai-job-queue-internal-route-smoke.mjs` invoked the actual
+route handler in a local server runtime without changing `.env.local`.
+
+- Missing internal token: rejected with `404`.
+- Normal bearer request without the internal token: rejected with `404`.
+- Wrong internal token: rejected with `404`.
+- A process-only local validation token: accepted with a bounded aggregate
+  response and no arbitrary request payload processing.
+
+The smoke first confirms that no external queue job is pending, so the trusted
+route test cannot claim a real user's work. The required production environment
+variable name remains `AI_JOBS_INTERNAL_TOKEN`; no production token, scheduler,
+or trigger was configured.
+
+### Bounded provider-backed queue E2E
+
+One-page synthetic PDF and one-question ready Blueprint fixtures were queued
+against the configured shared provider. Both completed through the durable
+worker:
+
+- **AI PDF:** the action returned queued work first, the worker preserved
+  `target_bank_id`, created private bank-owned draft questions/import items,
+  and created no Assignment or public content.
+- **Blueprint:** the worker preserved the source question unchanged, generated
+  one private bank-scoped Review Draft with lineage, and created no Assignment
+  or public content.
+
+All fixture Banks, queue jobs, source assets, import data, questions, taxonomy
+assignments, Blueprint links, and generated review material were deleted after
+validation. A child-process argument forwarding issue caused one additional
+minimal PDF validation run while invoking the Blueprint-only mode; it was fixed
+before commit. The non-blocking PDF.js standard-font warning did not affect
+either successful provider result.
+
+### Test status
+
+Passed after the final smoke assertion update:
+
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `node scripts/security-smoke.mjs`
+- `node scripts/route-smoke.mjs`
+- `node scripts/supabase-rls-smoke.mjs`
+- `node scripts/durable-ai-job-queue-smoke.mjs`
+- `node scripts/durable-ai-job-queue-load-smoke.mjs`
+- `node scripts/durable-ai-job-queue-live-smoke.mjs`
+- `node scripts/durable-ai-job-queue-internal-route-smoke.mjs`
+- `node scripts/durable-ai-job-queue-e2e-smoke.mjs` (PDF and Blueprint live provider validations)
+- `node scripts/ai-provider-resilience-smoke.mjs`
+- `node scripts/ai-pdf-provider-failure-status-smoke.mjs`
+- `node scripts/ai-parsing-status-review-qa-smoke.mjs`
+- `node scripts/ai-parsing-boundary-duplicate-guard-smoke.mjs`
+- `node scripts/blueprint-to-review-drafts-generation-smoke.mjs`
+- `node scripts/bank-import-review-smoke.mjs`
+- `node scripts/teacher-beta-readiness-smoke.mjs`
+- `npm.cmd run smoke`
+- `npm.cmd run perf:budget`
+
+The initial branch-only `security-smoke` failure was not a classroom regression.
+Its old assertion required teacher PDF import to call `processAIPdfImport`
+directly. It now verifies the correct durable `enqueueAIProviderJob` boundary
+and confirms the browser action does not await provider execution.
+
+### Production enablement remains blocked
+
+Production execution is intentionally still disabled until all of the following
+are separately approved and deployed:
+
+1. A server-only `AI_JOBS_INTERNAL_TOKEN` is configured through hosting secret
+   management.
+2. A trusted scheduled worker trigger calls `POST /api/internal/ai-jobs/run`.
+3. Queue monitoring, alerting, retry observation, and operational ownership are
+   ready.

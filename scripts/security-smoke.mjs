@@ -416,7 +416,14 @@ assert(
     teacherBankActions.includes("importBankPdfDrafts") &&
     teacherBankActions.includes("resolveTeacherAIPdfProviderProfile") &&
     teacherBankActions.includes("assertNoRawProviderConfig(formData)") &&
-    teacherBankActions.includes("processAIPdfImport") &&
+    teacherBankActions.includes("buildAIPdfJobIdempotencyKey") &&
+    teacherBankActions.includes("enqueueAIProviderJob") &&
+    !teacherBankActions
+      .slice(
+        teacherBankActions.indexOf("export async function importBankPdfDrafts"),
+        teacherBankActions.indexOf("export async function approveBankReviewQuestion"),
+      )
+      .includes("processAIPdfImport") &&
     teacherBankActions.includes("canManageBankContent(detail.currentUserRole)") &&
     teacherBankActions.includes("targetBankId: parsed.bankId") &&
     teacherBankAssignmentNewPage.includes("Assign from") &&
@@ -1965,6 +1972,9 @@ assert(
 const durableAiJobsMigration = await read(
   "supabase/clean-migrations/0033_ai_provider_jobs.sql",
 );
+const durableAiJobsWorkerRoleFix = await read(
+  "supabase/clean-migrations/0034_ai_provider_jobs_worker_role_fix.sql",
+);
 const durableAiJobsWorker = await read("src/lib/ai-jobs/worker.ts");
 const durableAiJobsRoute = await read("src/app/api/internal/ai-jobs/run/route.ts");
 assert(
@@ -1973,6 +1983,8 @@ assert(
     durableAiJobsMigration.includes("for update of job skip locked") &&
     durableAiJobsMigration.includes("revoke all on function public.claim_ai_provider_jobs") &&
     durableAiJobsMigration.includes("grant execute on function public.claim_ai_provider_jobs") &&
+    durableAiJobsWorkerRoleFix.includes("nullif(auth.role()::text, '')") &&
+    durableAiJobsWorkerRoleFix.includes("create or replace function public.finish_ai_provider_job") &&
     !durableAiJobsMigration.includes("api_key_ciphertext") &&
     !durableAiJobsMigration.includes("signed_url"),
   "durable AI jobs must be RLS-protected, atomically claimed by trusted workers, and secret-free",

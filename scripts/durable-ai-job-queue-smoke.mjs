@@ -211,8 +211,9 @@ function queueStateCases() {
 }
 
 async function sourceAndSecurityCases() {
-  const [migration, queue, worker, pdfActions, bankActions, blueprintActions, route, policy] = await Promise.all([
+  const [migration, roleFixMigration, queue, worker, pdfActions, bankActions, blueprintActions, route, policy] = await Promise.all([
     read("supabase/clean-migrations/0033_ai_provider_jobs.sql"),
+    read("supabase/clean-migrations/0034_ai_provider_jobs_worker_role_fix.sql"),
     read("src/lib/ai-jobs/queue.ts"),
     read("src/lib/ai-jobs/worker.ts"),
     read("src/app/admin/imports/pdf/actions.ts"),
@@ -236,6 +237,13 @@ async function sourceAndSecurityCases() {
       migration.includes("finish_ai_provider_job") &&
       migration.includes("ai_provider_job_fairness_state"),
     "migration must provide atomic claims, heartbeats, and lease-owner finalization",
+  );
+  assert(
+    roleFixMigration.includes("nullif(auth.role()::text, '')") &&
+      roleFixMigration.includes("create or replace function public.claim_ai_provider_jobs") &&
+      roleFixMigration.includes("create or replace function public.heartbeat_ai_provider_job") &&
+      roleFixMigration.includes("create or replace function public.finish_ai_provider_job"),
+    "service-role worker RPC repair must prefer auth.role() without weakening normal client access",
   );
   assert(
     migration.includes("enable row level security") &&
