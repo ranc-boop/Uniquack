@@ -31,10 +31,9 @@ import {
   textListFromValue,
 } from "@/lib/teacher-blueprint-builder";
 import {
-  generateTeacherBlueprintReviewDrafts,
-  isTransientTeacherBlueprintProviderFailure,
-  TEACHER_BLUEPRINT_TRANSIENT_PROVIDER_FAILURE_MESSAGE,
-} from "@/lib/teacher-blueprint-generation";
+  buildBlueprintGenerationJobIdempotencyKey,
+  enqueueAIProviderJob,
+} from "@/lib/ai-jobs/queue";
 import type { QuestionBlueprintVisibility } from "@/types/database";
 
 const visibilityValues: QuestionBlueprintVisibility[] = [
@@ -315,31 +314,42 @@ export async function generateTeacherBlueprintReviewDraftsAction(formData: FormD
       throw new Error("Blueprint was not found.");
     }
 
-    const summary = await generateTeacherBlueprintReviewDrafts({
-      blueprint: detail.blueprint,
-      profileId: profile.id,
+    const targetBankId = detail.blueprint.source_bank_id;
+
+    if (!targetBankId) {
+      throw new Error("Blueprint must be linked to a target Question Bank before generation.");
+    }
+
+    const queuedJob = await enqueueAIProviderJob({
+      idempotencyKey: buildBlueprintGenerationJobIdempotencyKey({
+        blueprintId: detail.blueprint.id,
+        blueprintVersion: detail.blueprint.version,
+        targetBankId,
+      }),
+      jobKind: "blueprint_generate_questions",
+      payload: {
+        blueprintVersion: detail.blueprint.version,
+        operationVersion: 1,
+      },
+      resourceId: detail.blueprint.id,
+      resourceType: "question_blueprint",
       supabase,
+      targetBankId,
     });
 
     revalidatePath("/teacher/blueprints");
     revalidatePath(`/teacher/blueprints/${blueprintId}`);
-    revalidatePath(`/teacher/banks/${summary.targetBankId}`);
-    revalidatePath(`/teacher/banks/${summary.targetBankId}/review`);
+    revalidatePath(`/teacher/banks/${targetBankId}`);
+    revalidatePath(`/teacher/banks/${targetBankId}/review`);
 
     redirectWithSaved(
-      `${summary.reviewRoute}?generationBatch=${encodeURIComponent(
-        summary.batchId ?? "",
-      )}&drafts=${summary.createdDraftCount}&warnings=${summary.warningCount}`,
-      `Generated ${summary.createdDraftCount} private Review Draft${
-        summary.createdDraftCount === 1 ? "" : "s"
-      } from this Blueprint. Review before bank approval.`,
+      `/teacher/blueprints/${blueprintId}?job=${encodeURIComponent(queuedJob.id)}`,
+      "Blueprint generation is queued. It will create private Review Drafts in the linked Library; nothing will be published or assigned.",
     );
   } catch (error) {
     redirectWithError(
       fallbackPath,
-      isTransientTeacherBlueprintProviderFailure(error)
-        ? TEACHER_BLUEPRINT_TRANSIENT_PROVIDER_FAILURE_MESSAGE
-        : formatActionError(error),
+      formatActionError(error),
     );
   }
 }

@@ -3,11 +3,17 @@ import { notFound } from "next/navigation";
 
 import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, PencilLine, Sparkles } from "lucide-react";
 
+import { AIJobStatusPanel } from "@/components/ai-jobs/ai-job-status-panel";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
+import {
+  AIProviderJobQueueSchemaMissingError,
+  listAIProviderJobsForResource,
+} from "@/lib/ai-jobs/queue";
+import type { AIProviderJobSafeStatus } from "@/lib/ai-jobs/types";
 import { listBankImportBatches } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -34,6 +40,10 @@ import {
   updateTeacherBlueprintPlan,
   generateTeacherBlueprintReviewDraftsAction,
 } from "../actions";
+import {
+  cancelTeacherAIProviderJob,
+  retryTeacherAIProviderJob,
+} from "../../ai-jobs/actions";
 
 import {
   BankLinkSummary,
@@ -101,6 +111,7 @@ export default async function TeacherBlueprintDetailPage({
     created?: string;
     error?: string;
     generationBatch?: string;
+    job?: string;
     saved?: string;
   }>;
 }) {
@@ -150,6 +161,21 @@ export default async function TeacherBlueprintDetailPage({
         .filter((batch) => isBlueprintGenerationBatch(batch.summary, blueprint.id))
         .slice(0, 4)
     : [];
+  let queueJobs: AIProviderJobSafeStatus[] = [];
+  let queueSetupNeeded = false;
+
+  try {
+    queueJobs = await listAIProviderJobsForResource({
+      resourceId: blueprint.id,
+      supabase,
+    });
+  } catch (error) {
+    if (error instanceof AIProviderJobQueueSchemaMissingError) {
+      queueSetupNeeded = true;
+    } else {
+      throw error;
+    }
+  }
 
   return (
     <TeacherWorkspaceShell
@@ -491,9 +517,9 @@ export default async function TeacherBlueprintDetailPage({
               <form action={generateTeacherBlueprintReviewDraftsAction} className="mt-4">
                 <input name="blueprintId" type="hidden" value={blueprint.id} />
                 {generationGate.ready ? (
-                  <FormSubmitButton pendingLabel="Generating Review Drafts...">
+                  <FormSubmitButton pendingLabel="Queueing Review Draft generation...">
                     <Sparkles aria-hidden="true" className="h-4 w-4" />
-                    Generate private Review Drafts
+                    Queue private Review Drafts
                   </FormSubmitButton>
                 ) : (
                   <Button disabled type="button" variant="outline">
@@ -506,6 +532,21 @@ export default async function TeacherBlueprintDetailPage({
                 Provider choice, model, and credentials stay admin-only and are
                 resolved on the server.
               </p>
+              {queueSetupNeeded ? (
+                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+                  Durable AI queue setup is needed before new Blueprint generation runs can start.
+                </p>
+              ) : null}
+              <div className="mt-4">
+                <AIJobStatusPanel
+                  cancelAction={cancelTeacherAIProviderJob}
+                  jobs={queueJobs}
+                  retryAction={retryTeacherAIProviderJob}
+                  returnTo={`/teacher/blueprints/${blueprint.id}`}
+                  reviewHref={targetBankId ? `/teacher/banks/${targetBankId}/review` : undefined}
+                  title="Blueprint generation status"
+                />
+              </div>
             </section>
 
             {generationHistory.length ? (

@@ -111,7 +111,8 @@ assert(
     teacherBankActions.includes("Only bank owners and editors can import PDF drafts.") &&
     teacherBankActions.includes("resolveTeacherAIPdfProviderProfile") &&
     teacherBankActions.includes("createServiceRoleClient") &&
-    teacherBankActions.includes("processAIPdfImport") &&
+    teacherBankActions.includes("enqueueAIProviderJob") &&
+    teacherBankActions.includes("buildAIPdfJobIdempotencyKey") &&
     teacherBankActions.includes("target_bank_id: parsed.bankId") &&
     teacherBankActions.includes("targetBankId: parsed.bankId") &&
     teacherBankActions.includes("reviewGate: \"bank_review_required\"") &&
@@ -142,12 +143,14 @@ assert(
     teacherPdfAction.includes("detail.bank.status !== \"active\"") &&
     teacherPdfAction.includes("resolveTeacherAIPdfProviderProfile") &&
     teacherPdfAction.includes("parsingProfile: parsed.parsingProfile") &&
-    teacherPdfAction.includes("processAIPdfImport(processInput)") &&
+    teacherPdfAction.includes("enqueueAIProviderJob") &&
+    teacherPdfAction.includes("sourceAssetId") &&
+    !teacherPdfAction.includes("await processAIPdfImport") &&
     teacherPdfAction.includes("targetBankId: parsed.bankId") &&
     !teacherPdfAction.includes("visibility: \"public\"") &&
     !teacherPdfAction.includes("status: \"published\"") &&
     !teacherPdfAction.includes("published_at"),
-  "teacher PDF import function must reject missing/invalid target state, keep provider selection server-side, and avoid public/published writes",
+  "teacher PDF import function must reject missing/invalid target state, queue safe bank-scoped work, and avoid public/published writes",
 );
 
 assert(
@@ -221,7 +224,7 @@ assert(
     teacherBankImportsPage.includes("disabled={!canRunPdfImport}") &&
     teacherBankImportsPage.includes("Import requires owner/editor") &&
     teacherBankImportsPage.includes("AI PDF parsing unavailable") &&
-    teacherBankImportsPage.includes('pendingLabel="Starting AI Parsing..."') &&
+    teacherBankImportsPage.includes('pendingLabel="Queueing AI Parsing..."') &&
     teacherBankImportsPage.includes('pendingLabel="Creating drafts..."') &&
     !teacherBankImportsPage.includes("encType=") &&
     !teacherBankImportsPage.includes("method=") &&

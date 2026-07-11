@@ -150,7 +150,11 @@ function summarizeImportBatch(batch: BankImportBatchSummary) {
   };
 }
 
-function importStatusLabel(batch: BankImportBatchSummary, retryable: boolean) {
+function importStatusLabel(
+  batch: BankImportBatchSummary,
+  retryable: boolean,
+  phase: string,
+) {
   if (retryable) {
     return "Retryable import";
   }
@@ -167,6 +171,14 @@ function importStatusLabel(batch: BankImportBatchSummary, retryable: boolean) {
     return "Processing";
   }
 
+  if (phase === "queued") {
+    return "Queued";
+  }
+
+  if (phase === "queue_processing") {
+    return "Processing";
+  }
+
   if (batch.status === "draft" || batch.status === "ready") {
     return "Pending";
   }
@@ -177,6 +189,7 @@ function importStatusLabel(batch: BankImportBatchSummary, retryable: boolean) {
 function importStatusTone(
   batch: BankImportBatchSummary,
   retryable: boolean,
+  phase: string,
 ): "amber" | "blue" | "cyan" | "rose" | "slate" | "sky" {
   if (retryable) {
     return "amber";
@@ -192,6 +205,14 @@ function importStatusTone(
 
   if (batch.status === "validating") {
     return "blue";
+  }
+
+  if (phase === "queue_processing") {
+    return "blue";
+  }
+
+  if (phase === "queued") {
+    return "sky";
   }
 
   if (batch.status === "draft" || batch.status === "ready") {
@@ -492,8 +513,8 @@ export function RecentBankImportsPanel({
                         {formatDate(batch.created_at)}
                       </p>
                     </div>
-                    <BankBadge tone={importStatusTone(batch, status.retryable)}>
-                      {importStatusLabel(batch, status.retryable)}
+                    <BankBadge tone={importStatusTone(batch, status.retryable, status.phase)}>
+                      {importStatusLabel(batch, status.retryable, status.phase)}
                     </BankBadge>
                   </div>
 

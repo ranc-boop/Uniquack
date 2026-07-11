@@ -582,6 +582,55 @@ export type ImportBatch = {
   updated_at: string;
 };
 
+export type AIProviderJobKind =
+  | "ai_pdf_extract"
+  | "blueprint_generate_questions";
+
+export type AIProviderJobStatus =
+  | "queued"
+  | "leased"
+  | "processing"
+  | "retry_wait"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type AIProviderJob = {
+  id: string;
+  organization_id: string;
+  created_by: string;
+  job_kind: AIProviderJobKind;
+  resource_type: "import_batch" | "question_blueprint";
+  resource_id: string;
+  target_bank_id: string | null;
+  provider_profile_id: string | null;
+  status: AIProviderJobStatus;
+  priority: number;
+  fairness_key: string;
+  idempotency_key: string;
+  retry_generation: number;
+  payload: Json;
+  safe_result: Json;
+  safe_error_code: string | null;
+  safe_message: string | null;
+  retryable: boolean;
+  provider_attempt_count: number;
+  execution_attempt_count: number;
+  max_execution_attempts: number;
+  available_at: string;
+  lease_owner: string | null;
+  lease_acquired_at: string | null;
+  lease_expires_at: string | null;
+  last_heartbeat_at: string | null;
+  cancellation_requested_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ImportBatchItem = {
   id: string;
   batch_id: string;
@@ -808,6 +857,7 @@ export type Database = {
       assignment_practice_sessions: TableDefinition<AssignmentPracticeSession>;
       teacher_feedback_notes: TableDefinition<TeacherFeedbackNote>;
       ai_provider_profiles: TableDefinition<AIProviderProfile>;
+      ai_provider_jobs: TableDefinition<AIProviderJob>;
       taxonomy_facets: TableDefinition<TaxonomyFacet>;
       taxonomy_nodes: TableDefinition<TaxonomyNode>;
       taxonomy_edges: TableDefinition<TaxonomyEdge>;
@@ -921,6 +971,52 @@ export type Database = {
           profile_id: string;
         };
         Returns: undefined;
+      };
+      enqueue_ai_provider_job: {
+        Args: {
+          p_idempotency_key?: string | null;
+          p_job_kind: AIProviderJobKind;
+          p_payload?: Json;
+          p_provider_profile_id?: string | null;
+          p_resource_id: string;
+          p_resource_type: "import_batch" | "question_blueprint";
+          p_target_bank_id: string | null;
+        };
+        Returns: AIProviderJob;
+      };
+      claim_ai_provider_jobs: {
+        Args: {
+          p_lease_owner: string;
+          p_lease_seconds?: number;
+          p_limit?: number;
+        };
+        Returns: AIProviderJob[];
+      };
+      heartbeat_ai_provider_job: {
+        Args: {
+          p_job_id: string;
+          p_lease_owner: string;
+          p_lease_seconds?: number;
+        };
+        Returns: boolean;
+      };
+      finish_ai_provider_job: {
+        Args: {
+          p_available_at?: string | null;
+          p_job_id: string;
+          p_lease_owner: string;
+          p_provider_attempt_count?: number;
+          p_retryable?: boolean;
+          p_safe_error_code?: string | null;
+          p_safe_message?: string | null;
+          p_safe_result?: Json;
+          p_status: "completed" | "retry_wait" | "failed";
+        };
+        Returns: boolean;
+      };
+      cancel_ai_provider_job: {
+        Args: { p_job_id: string };
+        Returns: boolean;
       };
       create_question_bank: {
         Args: {

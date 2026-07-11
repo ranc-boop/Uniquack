@@ -237,10 +237,15 @@ function sourceIntegrationChecks({
     "Blueprint retries must finish before one Review Draft handoff and must not create assignments",
   );
   assert(
-    teacherActions.includes("isAIProviderError(error)") &&
-      teacherActions.includes("recordAIPdfProviderFailure") &&
+    teacherActions.includes("enqueueAIProviderJob") &&
+      teacherActions.includes("buildAIPdfJobIdempotencyKey") &&
+      teacherActions.includes("resolveTeacherAIPdfProviderProfile") &&
+      !teacherActions.slice(
+        teacherActions.indexOf("export async function importBankPdfDrafts"),
+        teacherActions.indexOf("export async function approveBankReviewQuestion"),
+      ).includes("await processAIPdfImport") &&
       !teacherActions.includes("providerProfileId: formData"),
-    "teacher imports must keep provider routing server-side and persist only safe failures",
+    "teacher imports must keep provider routing server-side and enqueue durable work without client provider configuration",
   );
 }
 

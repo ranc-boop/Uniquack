@@ -26,7 +26,6 @@ import {
   getAIPdfImportStatus,
   reserveAIPdfSourceUpload,
   resetAIPdfImportOutputs,
-  runQueuedAIPdfExtraction,
   startAIPdfExtraction,
 } from "@/app/admin/imports/pdf/actions";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
@@ -1060,8 +1059,6 @@ export function AIPdfImportPanel({
       title: "AI PDF extraction",
     });
 
-    let polling = true;
-
     try {
       appendOperationStep(operationId, "Queueing AI extraction on the server.");
       const queuedResult = await startAIPdfExtraction({
@@ -1076,80 +1073,15 @@ export function AIPdfImportPanel({
       setResult(queuedResult);
       appendOperationStep(
         operationId,
-        "AI extraction queued. Running leased job and watching batch status.",
+        "AI extraction queued. A trusted worker will continue it even if this browser closes.",
       );
-      const runPromise = runQueuedAIPdfExtraction({
-        batchId,
-        jobId: queuedResult.jobId,
-      }).catch((error) => {
-        appendOperationStep(
-          operationId,
-          `AI extraction job request ended: ${formatError(
-            error,
-            "AI extraction job request failed.",
-          )}`,
-        );
-      });
-
-      const finalSnapshot = await waitForBatchCompletion(
-        batchId,
+      finishOperation(
         operationId,
-        () => polling,
+        "success",
+        "AI extraction queued.",
+        "AI processing continues on the server. You can leave this page and refresh later.",
       );
-
-      await runPromise;
-
-      if (!finalSnapshot) {
-        return;
-      }
-
-      const nextResult = resultFromStatusSnapshot(finalSnapshot);
-      const nextSourceResult = sourceResultFromStatusSnapshot(finalSnapshot);
-      const aiImportSummary = getAIPdfSummary(nextResult.summary) as
-        | {
-            createdQuestionCount?: number;
-            error?: string;
-          }
-        | undefined;
-
-      setResult(nextResult);
-      if (nextSourceResult?.batchId) {
-        setUploadedResults((current) => [
-          nextSourceResult,
-          ...current.filter((result) => result?.batchId !== nextSourceResult.batchId),
-        ]);
-      }
-
-      const finalPhase = getAIPdfPhase(nextResult.summary);
-      const isBlueprintObservationComplete =
-        isAIPdfBlueprintObservationCompletePhase(finalPhase);
-
-      if (nextResult.status === "failed") {
-        finishOperation(
-          operationId,
-          "failed",
-          "AI extraction failed.",
-          getAIPdfPhase(nextResult.summary),
-          nextResult.error ?? aiImportSummary?.error,
-        );
-        toast.error(summarizeAIPdfError(nextResult.error));
-      } else {
-        finishOperation(
-          operationId,
-          "success",
-          isBlueprintObservationComplete
-            ? "Blueprint observation completed."
-            : "AI extraction completed.",
-          isBlueprintObservationComplete
-            ? "Open Blueprint Library to review extracted question blueprints."
-            : `Created ${aiImportSummary?.createdQuestionCount ?? 0} draft questions.`,
-        );
-        toast.success(
-          isBlueprintObservationComplete
-            ? "Blueprint observation completed."
-            : "AI PDF import completed.",
-        );
-      }
+      toast.success("AI PDF import queued.");
     } catch (error) {
       const message = formatError(error, "AI PDF import failed.");
       setResult({
@@ -1160,7 +1092,6 @@ export function AIPdfImportPanel({
       finishOperation(operationId, "failed", "AI extraction failed.", undefined, message);
       toast.error(summarizeAIPdfError(message));
     } finally {
-      polling = false;
       setExtracting(false);
     }
   }

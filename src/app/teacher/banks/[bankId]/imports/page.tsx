@@ -3,10 +3,16 @@ import { notFound } from "next/navigation";
 
 import { ClipboardCheck, Upload } from "lucide-react";
 
+import { AIJobStatusPanel } from "@/components/ai-jobs/ai-job-status-panel";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
+import {
+  AIProviderJobQueueSchemaMissingError,
+  listAIProviderJobsForBank,
+} from "@/lib/ai-jobs/queue";
+import type { AIProviderJobSafeStatus } from "@/lib/ai-jobs/types";
 import { listTeacherAIPdfParsingProfileState } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import {
   bankMemberRoleLabel,
@@ -19,6 +25,10 @@ import {
 import { createClient } from "@/lib/supabase/server";
 
 import { importBankJsonDrafts, importBankPdfDrafts } from "../../actions";
+import {
+  cancelTeacherAIProviderJob,
+  retryTeacherAIProviderJob,
+} from "../../../ai-jobs/actions";
 import {
   BankImportEntryPanel,
   RecentBankImportsPanel,
@@ -82,7 +92,7 @@ export default async function TeacherBankImportsPage({
   searchParams,
 }: {
   params: Promise<{ bankId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{ error?: string; job?: string; saved?: string }>;
 }) {
   const profile = await requireTeacher();
   const { bankId } = await params;
@@ -90,6 +100,8 @@ export default async function TeacherBankImportsPage({
   const supabase = await createClient();
   let detail;
   let importBatches = [];
+  let queueJobs: AIProviderJobSafeStatus[] = [];
+  let queueSetupNeeded = false;
   const parsingProfileState =
     await listTeacherAIPdfParsingProfileState(supabase);
 
@@ -100,6 +112,15 @@ export default async function TeacherBankImportsPage({
       supabase,
     });
     importBatches = await listBankImportBatches({ bankId, supabase });
+    try {
+      queueJobs = await listAIProviderJobsForBank({ bankId, supabase });
+    } catch (error) {
+      if (error instanceof AIProviderJobQueueSchemaMissingError) {
+        queueSetupNeeded = true;
+      } else {
+        throw error;
+      }
+    }
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
       return <SetupNeededState />;
@@ -165,6 +186,21 @@ export default async function TeacherBankImportsPage({
           {query.error}
         </section>
       ) : null}
+
+      {queueSetupNeeded ? (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+          Durable AI queue setup is needed before new bank AI Parsing runs can start. Existing sources and Review Drafts are unchanged.
+        </section>
+      ) : null}
+
+      <AIJobStatusPanel
+        cancelAction={cancelTeacherAIProviderJob}
+        jobs={queueJobs}
+        retryAction={retryTeacherAIProviderJob}
+        returnTo={`/teacher/banks/${bankId}/imports`}
+        reviewHref={`/teacher/banks/${bankId}/review`}
+        title="Bank AI Parsing status"
+      />
 
       <section className="grid gap-4 lg:grid-cols-[1.3fr_0.8fr]">
         <div className="space-y-4">
@@ -275,9 +311,9 @@ export default async function TeacherBankImportsPage({
                   questions or expose the full bank to students.
                 </p>
                 {canRunPdfImport ? (
-                  <FormSubmitButton pendingLabel="Starting AI Parsing...">
+                  <FormSubmitButton pendingLabel="Queueing AI Parsing...">
                     <Upload aria-hidden="true" className="h-4 w-4" />
-                    Start AI Parsing
+                    Queue AI Parsing
                   </FormSubmitButton>
                 ) : canImport ? (
                   <Button disabled type="button">

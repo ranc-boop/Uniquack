@@ -245,7 +245,7 @@ type ActiveTag = {
   aliases?: string[];
 };
 
-type ProcessInput = {
+export type AIPdfProcessInput = {
   batchId: string;
   chunkIndex?: number;
   fileName: string;
@@ -258,6 +258,8 @@ type ProcessInput = {
   supabase: SupabaseLike;
   targetBankId?: string | null;
 };
+
+type ProcessInput = AIPdfProcessInput;
 
 type AIPdfProgress = {
   attemptCount?: number;
@@ -522,7 +524,7 @@ export async function recordAIPdfProviderFailure({
   retryHistory,
 }: {
   error: unknown;
-  input: ProcessInput;
+  input: AIPdfProcessInput;
   retryHistory?: AIProviderRetryHistoryItem[];
 }) {
   const failedAt = new Date().toISOString();
@@ -582,7 +584,7 @@ export async function recordAIPdfProviderFailure({
   }
 }
 
-export async function recordAIPdfTransientProviderFailure(input: ProcessInput) {
+export async function recordAIPdfTransientProviderFailure(input: AIPdfProcessInput) {
   return recordAIPdfProviderFailure({
     error: new Error("provider high demand"),
     input,
@@ -3779,7 +3781,7 @@ async function processAIPdfSinglePass({
   return finalSummary;
 }
 
-export async function processAIPdfImport(input: ProcessInput) {
+export async function processAIPdfImport(input: AIPdfProcessInput) {
   if (input.pdfBuffer.length > AI_PDF_IMPORT_MAX_BYTES) {
     throw new Error("PDF is larger than 50MB.");
   }

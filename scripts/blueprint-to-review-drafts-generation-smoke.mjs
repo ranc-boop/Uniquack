@@ -145,8 +145,10 @@ async function runSourceSmoke() {
     actionBody.includes("await requireTeacher()") &&
       actionBody.includes('formString(formData, "blueprintId")') &&
       actionBody.includes("getTeacherBlueprintDetail") &&
-      actionBody.includes("generateTeacherBlueprintReviewDrafts") &&
-      actionBody.includes("revalidatePath(`/teacher/banks/${summary.targetBankId}/review`)") &&
+      actionBody.includes("enqueueAIProviderJob") &&
+      actionBody.includes("buildBlueprintGenerationJobIdempotencyKey") &&
+      !actionBody.includes("await generateTeacherBlueprintReviewDrafts(") &&
+      actionBody.includes("revalidatePath(`/teacher/banks/${targetBankId}/review`)") &&
       actionBody.includes("redirectWithSaved") &&
       !actionBody.includes("providerId") &&
       !actionBody.includes("model") &&
@@ -154,7 +156,7 @@ async function runSourceSmoke() {
       !actionBody.includes("prompt") &&
       !actionBody.includes("jsonText") &&
       !actionBody.includes("createAssignment"),
-    "teacher Blueprint generation action must authenticate, accept only blueprintId, load Blueprint server-side, and avoid provider/client config or arbitrary prompt input",
+    "teacher Blueprint generation action must authenticate, enqueue only a validated Blueprint, and avoid provider/client config or arbitrary prompt input",
   );
 
   assert(

@@ -138,14 +138,16 @@ assert(
   bankActions.includes('targetBankId: parsed.bankId') &&
     bankActions.includes('published_at: null') &&
     bankActions.includes("formatTeacherAIPdfImportError") &&
-    bankActions.includes("AI Parsing created"),
+    bankActions.includes("enqueueAIProviderJob") &&
+    bankActions.includes("AI PDF Parsing is queued"),
   "bank import must preserve target scope and no-publish guarantees",
 );
 assert(
-  blueprintDetail.includes("Generate private Review Drafts") &&
+  blueprintDetail.includes("Queue private Review Drafts") &&
     blueprintDetail.includes("Nothing is published or assigned until reviewed") &&
     blueprintActions.includes("generateTeacherBlueprintReviewDraftsAction") &&
-    blueprintActions.includes("TEACHER_BLUEPRINT_TRANSIENT_PROVIDER_FAILURE_MESSAGE"),
+    blueprintActions.includes("enqueueAIProviderJob") &&
+    blueprintActions.includes("buildBlueprintGenerationJobIdempotencyKey"),
   "Blueprint output must remain Review Draft gated with safe failure recovery",
 );
 assert(

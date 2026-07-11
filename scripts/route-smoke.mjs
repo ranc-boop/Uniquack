@@ -165,6 +165,7 @@ const studentHomePage = await read("src/app/student/page.tsx");
 const studentLayout = await read("src/app/student/layout.tsx");
 const studentWorkspaceNav = await read("src/components/student/student-workspace-nav.tsx");
 const studentWorkspaceShell = await read("src/components/student/student-workspace-shell.tsx");
+const durableAiJobsRoute = await read("src/app/api/internal/ai-jobs/run/route.ts");
 const studentWorkPage = await read("src/app/student/work/page.tsx");
 const studentWorkDetailPage = await read("src/app/student/work/[id]/page.tsx");
 const studentStudyLibraryPage = await read("src/app/student/library/page.tsx");
@@ -772,4 +773,12 @@ assert(
   "AI PDF live panel must stop spinner and show blueprint completion handoff",
 );
 console.log("PASS AI PDF blueprint observation completion handoff is visible");
+assert(
+  durableAiJobsRoute.includes("AI_JOBS_INTERNAL_TOKEN") &&
+    durableAiJobsRoute.includes("x-ai-jobs-internal-token") &&
+    durableAiJobsRoute.includes("runDurableAIProviderJobs") &&
+    !durableAiJobsRoute.includes("request.json"),
+  "durable AI worker route must remain an internal trigger without client job payload input",
+);
+console.log("PASS durable AI worker trigger source is internal-only");
 console.log("PASS route smoke uses taxonomy routes without legacy tag setup");
