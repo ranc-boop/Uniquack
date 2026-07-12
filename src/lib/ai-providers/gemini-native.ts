@@ -160,10 +160,6 @@ function fileFromPayload(payload: GeminiFileResponse | GeminiFile): GeminiFile {
   return payload as GeminiFile;
 }
 
-function responsePreview(value: string) {
-  return value.replace(/\s+/g, " ").trim().slice(0, 500);
-}
-
 async function safeResponseText(response: Response) {
   try {
     return await response.text();
@@ -176,21 +172,13 @@ async function readJson<T>(response: Response, operation: string): Promise<T> {
   const text = await safeResponseText(response);
 
   if (!response.ok) {
-    throw new Error(
-      `Gemini Native ${operation} failed (${response.status}).${
-        text ? ` Response preview: ${responsePreview(text)}` : ""
-      }`,
-    );
+    throw new Error(`Gemini Native ${operation} failed (${response.status}).`);
   }
 
   try {
     return JSON.parse(text) as T;
-  } catch (error) {
-    throw new Error(
-      `Gemini Native ${operation} returned invalid JSON: ${
-        error instanceof Error ? error.message : "Unknown parse error"
-      }.${text ? ` Response preview: ${responsePreview(text)}` : ""}`,
-    );
+  } catch {
+    throw new Error(`Gemini Native ${operation} returned invalid JSON.`);
   }
 }
 
@@ -229,12 +217,8 @@ async function uploadGeminiFile({
   );
 
   if (!startResponse.ok) {
-    const text = await safeResponseText(startResponse);
-    throw new Error(
-      `Gemini Native file upload session failed (${startResponse.status}).${
-        text ? ` Response preview: ${responsePreview(text)}` : ""
-      }`,
-    );
+    await safeResponseText(startResponse);
+    throw new Error(`Gemini Native file upload session failed (${startResponse.status}).`);
   }
 
   const uploadUrl = startResponse.headers.get("x-goog-upload-url");
@@ -435,7 +419,7 @@ async function generateContent({
       },
       event: "error",
       payload: {
-        body: text,
+        responseBodyBytes: Buffer.byteLength(text, "utf8"),
         status: response.status,
         statusText: response.statusText,
       },

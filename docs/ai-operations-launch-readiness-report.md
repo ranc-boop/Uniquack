@@ -99,3 +99,88 @@ Remote-dependent checks were blocked by the local sandbox connection restriction
 ## Remaining blockers and recommendation
 
 The launch recommendation is **Not enabled** until 0036 is applied, the internal token and trusted scheduler are configured, alert ownership is assigned, and the two tiny real queue validations pass. The next scoped product task remains **PR4-M selective packet execution**.
+
+## Post-migration validation (2026-07-11)
+
+The clean Supabase project has now had
+`0036_ai_operations_launch_readiness.sql` manually applied once. The user
+confirmed the one-time Dashboard SQL apply. A service-role read could verify
+the resulting tables, RPCs, and exactly one global control seed row; the
+Supabase REST surface does not expose a usable migration-history query for
+this project, so the manual-apply history itself was not independently
+re-read through PostgREST.
+
+### Remote schema and RLS
+
+- `ai_operations_controls`, `ai_operation_telemetry`, the control trigger,
+  worker-control RPC, telemetry RPC, and admin circuit RPCs all responded on
+  the clean project.
+- Anonymous, teacher, and student clients could not read controls or
+  telemetry, write telemetry, call worker-only controls, reset circuits, or
+  update cost/pause controls.
+- A real super-admin could read controls and reset a disposable open circuit.
+- Service role successfully claimed, finished, and recorded only bounded
+  telemetry for disposable fixtures.
+
+### Budget, pause, and emergency control results
+
+- Daily reservation, retry retention, successful-completion settlement, and
+  cancelled-job release passed on an isolated organization.
+- Two simultaneous real teacher sessions attempted separate jobs in one
+  temporary bank with a one-job organization budget. Exactly one enqueue
+  succeeded; the other was rejected, and only one reserved job remained.
+- Global enqueue pause, operation-specific enqueue pause, worker-claim
+  pause/resume, safe super-admin queued-job cancellation, and queued-work
+  preservation passed. Operation-specific pause intentionally blocks new
+  enqueues; the global worker-claim pause stops all claims.
+- Existing durable queue tests also passed service-role atomic claim,
+  heartbeat, stale-lease recovery, lease-owner protection, user/organization
+  limits, and fixture cleanup.
+
+### Telemetry and monitoring results
+
+- Telemetry stores separate input, cached-input, output, and total token
+  fields; provider-call and queue-execution attempts; queue/provider/total
+  latency; route position; fallback flag; safe status; and draft count.
+- The real one-question Blueprint run recorded Gemini Native
+  `gemini-2.5-flash-lite` usage and a catalog-based estimated cost. The real
+  PDF run completed without provider usage metadata, so its token and cost
+  fields remained `null`; no exact cost was fabricated.
+- Disposable live alert fixtures produced safe dashboard conditions for queue
+  depth and age, fallback rate, daily budget, repeated zero-draft work,
+  stale leases, and repeated configuration errors. Alert text contained no
+  source content, URLs, prompts, responses, assets, credentials, student
+  answers, or teacher notes.
+- Provider response previews were removed from Gemini Native thrown errors.
+  Debug-only error records retain response byte length rather than error-body
+  content.
+
+### Real queue validation
+
+One small synthetic PDF and one one-question Blueprint were queued through
+the real durable worker. Both completed and remained private,
+bank-scoped Review Draft work: no global publishing, Assignment creation, or
+source-question mutation occurred. Their smoke fixtures were removed after
+validation while safe aggregate telemetry remained available to super-admins.
+
+### Internal route and test suite
+
+`POST /api/internal/ai-jobs/run` passed missing-token, wrong-token,
+ordinary-user, trusted-token, payload-free, bounded-worker, and fixed
+`maxDuration = 240` checks. The full aggregate smoke suite, lint, build,
+security smoke, route smoke, RLS smoke, focused queue/routing/import/Blueprint
+smokes, performance budget, performance audit, and bundle analysis all passed.
+
+### Remaining production enablement blockers
+
+**Not enabled.** No production scheduler was enabled during this validation.
+`AI_JOBS_INTERNAL_TOKEN` still needs a server-only deployment configuration,
+the trusted scheduler needs an owner and cadence, and a named closed-beta
+operator must own alert response.
+
+The current dashboard computes safe alert conditions in memory. It does not
+yet persist a separate alert-history table or send external notifications.
+There is also no dedicated token-growth anomaly condition, and the dashboard
+surfaces daily budget exhaustion rather than a distinct monthly-budget alert.
+Those are monitoring follow-ups, not reasons to weaken queue, RLS, Review
+Draft, or publishing boundaries.

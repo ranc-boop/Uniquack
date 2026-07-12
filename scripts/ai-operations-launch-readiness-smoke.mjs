@@ -19,6 +19,7 @@ const migration = await readFile(
 const telemetry = await readFile(resolve(root, "src/lib/ai-operations/telemetry.ts"), "utf8");
 const routing = await readFile(resolve(root, "src/lib/ai-providers/routing.ts"), "utf8");
 const worker = await readFile(resolve(root, "src/lib/ai-jobs/worker.ts"), "utf8");
+const geminiNative = await readFile(resolve(root, "src/lib/ai-providers/gemini-native.ts"), "utf8");
 
 assert(migration.includes("ai_operation_telemetry"), "launch readiness requires durable safe telemetry");
 assert(migration.includes("ai_operations_controls"), "launch readiness requires durable operations controls");
@@ -30,6 +31,8 @@ assert(!migration.includes("response_body"), "telemetry schema must not invite r
 assert(routing.includes("AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET = 4"), "route attempts must stay bounded");
 assert(worker.includes("recordAIOperationTelemetry"), "worker must record safe telemetry");
 assert(telemetry.includes("estimateAIProviderCost"), "telemetry must calculate a bounded catalog estimate");
+assert(!geminiNative.includes("Response preview:"), "provider failures must not expose raw Gemini response previews");
+assert(geminiNative.includes("responseBodyBytes"), "debug-only provider failures must retain only response size metadata");
 
 const organizations = Array.from({ length: 8 }, (_, index) => `org-${index + 1}`);
 const jobs = [];
