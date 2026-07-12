@@ -139,6 +139,7 @@ const ASSET_MARKER_REGEX =
   /\b(?:figure|fig\.?|image|diagram|table|graph|chart)\b/giu;
 
 function uniqueMatches(text: string, pattern: RegExp, limit = 12) {
+  pattern.lastIndex = 0;
   const matches = Array.from(text.matchAll(pattern))
     .map((match) => match[0].trim())
     .filter(Boolean);

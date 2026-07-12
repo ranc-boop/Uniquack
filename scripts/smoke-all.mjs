@@ -33,6 +33,7 @@ await import("./ai-operations-launch-readiness-smoke.mjs");
 await import("./durable-ai-job-queue-smoke.mjs");
 await import("./durable-ai-job-queue-load-smoke.mjs");
 await import("./ai-parsing-boundary-duplicate-guard-smoke.mjs");
+await import("./ai-parsing-selective-packet-execution-smoke.mjs");
 await import("./bank-scoped-ai-pdf-import-bridge-smoke.mjs");
 await import("./blueprint-library-foundation-smoke.mjs");
 await import("./blueprint-builder-core-smoke.mjs");
