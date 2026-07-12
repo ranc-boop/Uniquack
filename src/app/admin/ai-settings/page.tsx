@@ -1,6 +1,7 @@
 import {
   createAIProviderProfile,
   deleteAIProviderProfile,
+  saveAIProviderRoutingPolicy,
   updateAIProviderProfile,
 } from "@/app/admin/ai-settings/actions";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
@@ -23,6 +24,14 @@ import {
   inferAiProviderMode,
 } from "@/lib/ai-providers/adapters";
 import { listSafeAIProviderProfiles } from "@/lib/ai-providers/profiles";
+import {
+  AI_PROVIDER_ROUTING_OPERATION_KINDS,
+  AIProviderRoutingSchemaMissingError,
+  aiProviderRoutingOperationLabel,
+  listAIProviderRoutingPoliciesForGateway,
+  providerSupportsAIProviderRoutingOperation,
+  type AIProviderRoutingPolicy,
+} from "@/lib/ai-providers/routing";
 import { createClient } from "@/lib/supabase/server";
 
 type PageProps = {
@@ -59,6 +68,17 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
   await requireSuperAdmin();
   const supabase = await createClient();
   const profiles = await listSafeAIProviderProfiles(supabase);
+  let routingPolicies: AIProviderRoutingPolicy[] = [];
+  let routingSchemaMissing = false;
+  try {
+    routingPolicies = await listAIProviderRoutingPoliciesForGateway(supabase);
+  } catch (error) {
+    if (error instanceof AIProviderRoutingSchemaMissingError) {
+      routingSchemaMissing = true;
+    } else {
+      throw error;
+    }
+  }
   const hasEncryptionKey = Boolean(process.env.AI_PROVIDER_ENCRYPTION_KEY);
 
   return (
@@ -91,6 +111,140 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
           can use full PDF input through the Files API.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Server-side provider routing</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {routingSchemaMissing ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Provider routing setup is needed before durable fallback can run.
+              Apply clean migration 0035, then return here to configure each
+              operation&apos;s primary and optional fallback profiles.
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                These routes are resolved only on the server. Teachers and
+                students never select a provider or model.
+              </p>
+              <div className="grid gap-4">
+                {AI_PROVIDER_ROUTING_OPERATION_KINDS.map((operationKind) => {
+                  const policy = routingPolicies.find(
+                    (item) =>
+                      item.organizationId === null &&
+                      item.operationKind === operationKind,
+                  );
+                  const routeProfileIds = policy?.providerProfileIds ?? [];
+                  const compatibleProfiles = profiles.filter(
+                    (profile) =>
+                      profile.enabled &&
+                      Boolean(profile.api_key_last4) &&
+                      providerSupportsAIProviderRoutingOperation(
+                        profile,
+                        operationKind,
+                      ),
+                  );
+
+                  return (
+                    <form
+                      key={operationKind}
+                      action={saveAIProviderRoutingPolicy}
+                      className="grid gap-3 rounded-md border p-4 md:grid-cols-4"
+                    >
+                      <input
+                        type="hidden"
+                        name="operation_kind"
+                        value={operationKind}
+                      />
+                      <div className="md:col-span-4">
+                        <p className="font-medium text-sm">
+                          {aiProviderRoutingOperationLabel(operationKind)}
+                        </p>
+                      </div>
+                      <label className="space-y-1 text-sm">
+                        <span className="font-medium">Primary</span>
+                        <select
+                          name="provider_profile_id"
+                          defaultValue={routeProfileIds[0] ?? ""}
+                          className="h-10 w-full rounded-md border bg-background px-3"
+                        >
+                          <option value="">No configured route</option>
+                          {compatibleProfiles.map((profile) => (
+                              <option key={profile.id} value={profile.id}>
+                                {profile.name} ({profile.model})
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span className="font-medium">Fallback 1</span>
+                        <select
+                          name="provider_profile_id"
+                          defaultValue={routeProfileIds[1] ?? ""}
+                          className="h-10 w-full rounded-md border bg-background px-3"
+                        >
+                          <option value="">No fallback</option>
+                          {compatibleProfiles.map((profile) => (
+                              <option key={profile.id} value={profile.id}>
+                                {profile.name} ({profile.model})
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span className="font-medium">Fallback 2</span>
+                        <select
+                          name="provider_profile_id"
+                          defaultValue={routeProfileIds[2] ?? ""}
+                          className="h-10 w-full rounded-md border bg-background px-3"
+                        >
+                          <option value="">No fallback</option>
+                          {compatibleProfiles.map((profile) => (
+                              <option key={profile.id} value={profile.id}>
+                                {profile.name} ({profile.model})
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span className="font-medium">Route state</span>
+                        <span className="flex h-10 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            name="enabled"
+                            defaultChecked={policy?.enabled ?? false}
+                            className="size-4 rounded border"
+                          />
+                          Enabled
+                        </span>
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span className="font-medium">Max attempts</span>
+                        <select
+                          name="max_profiles_per_execution"
+                          defaultValue={String(policy?.maxProfilesPerExecution ?? 2)}
+                          className="h-10 w-full rounded-md border bg-background px-3"
+                        >
+                          <option value="1">Primary only</option>
+                          <option value="2">Primary + one fallback</option>
+                          <option value="3">Primary + two fallbacks</option>
+                        </select>
+                      </label>
+                      <div className="flex items-end md:col-span-3">
+                        <FormSubmitButton pendingLabel="Saving route...">
+                          Save route
+                        </FormSubmitButton>
+                      </div>
+                    </form>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

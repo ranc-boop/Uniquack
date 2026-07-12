@@ -10,7 +10,12 @@ import {
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import {
   encryptedKeyPatch,
+  listSafeAIProviderProfiles,
 } from "@/lib/ai-providers/profiles";
+import {
+  providerSupportsAIProviderRoutingOperation,
+  upsertAIProviderRoutingPolicyForGateway,
+} from "@/lib/ai-providers/routing";
 import { decryptSecret } from "@/lib/ai-providers/encryption";
 import { requireAIProviderGatewayToken } from "@/lib/ai-providers/gateway-token";
 import { testAIProviderConnection } from "@/lib/ai-providers/chat";
@@ -19,6 +24,7 @@ import type { AIProviderProfile } from "@/types/database";
 import {
   aiProviderProfileDeleteSchema,
   aiProviderProfileFormSchema,
+  aiProviderRoutingPolicyFormSchema,
   aiProviderProfileUpdateSchema,
 } from "@/lib/validations/ai-provider";
 
@@ -217,4 +223,50 @@ export async function deleteAIProviderProfile(formData: FormData) {
 
   revalidatePath(path);
   redirectWithSaved(path, "AI provider profile deleted.");
+}
+
+export async function saveAIProviderRoutingPolicy(formData: FormData) {
+  try {
+    await requireSuperAdmin();
+    const parsed = aiProviderRoutingPolicyFormSchema.parse({
+      enabled: formData.get("enabled") === "on",
+      max_profiles_per_execution: formData.get("max_profiles_per_execution"),
+      operation_kind: formData.get("operation_kind"),
+      provider_profile_ids: formData
+        .getAll("provider_profile_id")
+        .filter((value): value is string => typeof value === "string" && Boolean(value)),
+    });
+    const supabase = await createClient();
+    const profiles = await listSafeAIProviderProfiles(supabase);
+    const invalidProfile = parsed.provider_profile_ids
+      .map((id) => profiles.find((profile) => profile.id === id))
+      .find(
+        (profile) =>
+          !profile ||
+          !profile.enabled ||
+          !profile.api_key_last4 ||
+          !providerSupportsAIProviderRoutingOperation(
+            profile,
+            parsed.operation_kind,
+          ),
+      );
+    if (invalidProfile) {
+      throw new Error(
+        "Each selected provider must be enabled, have saved key metadata, and support this AI operation.",
+      );
+    }
+
+    await upsertAIProviderRoutingPolicyForGateway({
+      enabled: parsed.enabled,
+      maxProfilesPerExecution: parsed.max_profiles_per_execution,
+      operationKind: parsed.operation_kind,
+      providerProfileIds: parsed.provider_profile_ids,
+      supabase,
+    });
+  } catch (error) {
+    redirectWithError(path, formatActionError(error));
+  }
+
+  revalidatePath(path);
+  redirectWithSaved(path, "AI provider routing policy saved.");
 }

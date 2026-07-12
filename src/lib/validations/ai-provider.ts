@@ -46,3 +46,15 @@ export const aiProviderProfileUpdateSchema =
 export const aiProviderProfileDeleteSchema = z.object({
   id: uuidSchema,
 });
+
+export const aiProviderRoutingPolicyFormSchema = z.object({
+  enabled: z.boolean(),
+  max_profiles_per_execution: z.coerce.number().int().min(1).max(3),
+  operation_kind: z.enum([
+    "ai_pdf_extract",
+    "blueprint_generate_questions",
+    "blueprint_observe_pdf",
+    "blueprint_analyze_text",
+  ]),
+  provider_profile_ids: z.array(uuidSchema).max(3),
+});

@@ -15,6 +15,10 @@ import {
 } from "@/lib/ai-providers/errors";
 import { runWithAIProviderRetry } from "@/lib/ai-providers/resilience";
 import {
+  resolveAIProviderRoute,
+  runWithAIProviderRoute,
+} from "@/lib/ai-providers/routing";
+import {
   isMockAIProviderUrl,
   assertMockAIProviderAllowed,
 } from "@/lib/ai-providers/mock";
@@ -117,6 +121,7 @@ export type TeacherBlueprintGenerationSummary = {
   batchId: string | null;
   blockedDraftCount: number;
   createdDraftCount: number;
+  fallbackUsed: boolean;
   providerStrategy: string;
   reviewRoute: string;
   targetBankId: string;
@@ -1194,11 +1199,15 @@ export async function generateTeacherBlueprintReviewDrafts({
   blueprint,
   profileId,
   queueJobId,
+  routingLeaseOwner,
+  routingOrganizationId,
   supabase,
 }: {
   blueprint: QuestionBlueprint;
   profileId: string;
   queueJobId?: string;
+  routingLeaseOwner?: string;
+  routingOrganizationId?: string;
   supabase: SupabaseLike;
 }): Promise<TeacherBlueprintGenerationSummary> {
   const bankId = blueprint.source_bank_id;
@@ -1223,8 +1232,9 @@ export async function generateTeacherBlueprintReviewDrafts({
     throw new Error("Only active Question Banks can receive Blueprint-generated Review Drafts.");
   }
 
-  const provider = await resolveTeacherBlueprintGenerationProvider(supabase);
-  const providerStrategy = inferAiProviderMode(provider);
+  const directProvider = routingOrganizationId
+    ? null
+    : await resolveTeacherBlueprintGenerationProvider(supabase);
 
   try {
     const { tagIds } = await validateTeacherBlueprintGenerationReadiness({
@@ -1243,17 +1253,47 @@ export async function generateTeacherBlueprintReviewDrafts({
       tagIds,
     });
     const prompt = buildTeacherBlueprintGenerationPrompt(request);
-    const providerText = (
-      await runWithAIProviderRetry({
-        operation: "blueprint_generation",
-        run: () =>
-          callTeacherBlueprintGenerationProvider({
-            profile: provider,
-            prompt,
-            request,
+    const routedGeneration = routingOrganizationId
+      ? await runWithAIProviderRoute({
+          execute: async (provider, attemptBudget) =>
+            (
+              await runWithAIProviderRetry({
+                operation: "blueprint_generation",
+                policy: { maxAttempts: attemptBudget.maxAttempts },
+                run: () =>
+                  callTeacherBlueprintGenerationProvider({
+                    profile: provider,
+                    prompt,
+                    request,
+                  }),
+              })
+            ).value,
+          leaseOwner:
+            routingLeaseOwner ?? `teacher-blueprint-generation:${blueprint.id}`,
+          route: await resolveAIProviderRoute({
+            operationKind: "blueprint_generate_questions",
+            organizationId: routingOrganizationId,
+            supabase,
           }),
-      })
-    ).value;
+          supabase,
+        })
+      : {
+          fallbackUsed: false,
+          profile: directProvider!,
+          value: (
+            await runWithAIProviderRetry({
+              operation: "blueprint_generation",
+              run: () =>
+                callTeacherBlueprintGenerationProvider({
+                  profile: directProvider!,
+                  prompt,
+                  request,
+                }),
+            })
+          ).value,
+        };
+    const providerStrategy = inferAiProviderMode(routedGeneration.profile);
+    const providerText = routedGeneration.value;
     const parsed = parseGeneratedQuestions({
       providerText,
       request,
@@ -1282,6 +1322,7 @@ export async function generateTeacherBlueprintReviewDrafts({
           blueprintTitle: blueprint.title,
           expectedDraftCount: request.count,
           durableJobId: queueJobId ?? null,
+          fallbackUsed: routedGeneration.fallbackUsed,
           providerStrategy,
           request,
           rootWarnings: parsed.rootWarnings,
@@ -1339,6 +1380,7 @@ export async function generateTeacherBlueprintReviewDrafts({
       batchId: importSummary.batchId,
       blockedDraftCount: parsed.blockedWarnings.length,
       createdDraftCount: lineage.createdQuestionCount,
+      fallbackUsed: routedGeneration.fallbackUsed,
       providerStrategy,
       reviewRoute: `/teacher/banks/${bankId}/review`,
       targetBankId: bankId,
@@ -1353,6 +1395,12 @@ export async function generateTeacherBlueprintReviewDrafts({
         profileId,
         supabase,
       }).catch(() => undefined);
+      if (routingOrganizationId) {
+        // The durable route records the bounded failure code and decides whether
+        // an explicitly configured fallback may run. Preserve the typed error
+        // here so it never has to infer health from teacher-facing copy.
+        throw error;
+      }
       throw new Error(
         safeAIProviderErrorState({
           attemptCount: error.attemptCount,
