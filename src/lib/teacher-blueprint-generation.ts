@@ -1255,10 +1255,11 @@ export async function generateTeacherBlueprintReviewDrafts({
     const prompt = buildTeacherBlueprintGenerationPrompt(request);
     const routedGeneration = routingOrganizationId
       ? await runWithAIProviderRoute({
-          execute: async (provider) =>
+          execute: async (provider, attemptBudget) =>
             (
               await runWithAIProviderRetry({
                 operation: "blueprint_generation",
+                policy: { maxAttempts: attemptBudget.maxAttempts },
                 run: () =>
                   callTeacherBlueprintGenerationProvider({
                     profile: provider,

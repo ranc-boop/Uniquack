@@ -106,8 +106,10 @@ async function circuitAndFallbackCases() {
   assert(route.candidates.length === 1 && route.candidates[0].profile.id === "fallback", "an open circuit must be skipped by later workers");
 
   const calls = [];
+  const attemptBudgets = [];
   const fallbackResult = await routing.runWithAIProviderRoute({
-    execute: async (selected) => {
+    execute: async (selected, attemptBudget) => {
+      attemptBudgets.push({ id: selected.id, maxAttempts: attemptBudget.maxAttempts });
       if (selected.id === "primary") throw Object.assign(new Error("UNAVAILABLE raw provider detail"), { status: 503 });
       return "review-drafts";
     },
@@ -115,6 +117,10 @@ async function circuitAndFallbackCases() {
     supabase: fakeSupabase({ rpc: async (name, args) => { calls.push({ name, args }); return { data: true, error: null }; } }),
   });
   assert(fallbackResult.value === "review-drafts" && fallbackResult.fallbackUsed, "a classified transient primary failure must use only the configured fallback");
+  assert(JSON.stringify(attemptBudgets) === JSON.stringify([
+    { id: "primary", maxAttempts: 3 },
+    { id: "fallback", maxAttempts: 1 },
+  ]), "fallback routing must share one bounded PR4-I attempt budget across configured profiles");
   const failure = calls.find((call) => call.name === "record_ai_provider_route_outcome" && call.args.p_success === false);
   assert(failure?.args.p_safe_error_code === "provider_busy" && !JSON.stringify(failure).includes("UNAVAILABLE"), "runtime state must store a safe code, not raw provider diagnostics");
 }
@@ -144,7 +150,7 @@ async function assertRejects(run, message) {
 function sourceChecks({ migration, routingSource, workerSource, blueprintSource }) {
   assert(migration.includes("ai_provider_routing_policies") && migration.includes("ai_provider_runtime_states") && migration.includes("acquire_ai_provider_half_open_probe") && migration.includes("record_ai_provider_route_outcome"), "0035 must add durable policy and circuit state primitives");
   assert(migration.includes("enable row level security") && migration.includes("to service_role") && !migration.includes("api_key_ciphertext"), "routing schema must preserve RLS and never store provider keys");
-  assert(routingSource.includes("blueprint_observe_pdf") && routingSource.includes("blueprint_analyze_text") && routingSource.includes("providerSupportsAIProviderRoutingOperation") && !routingSource.includes("process.env.GEMINI"), "routing must be capability-aware without hard-coded provider credentials");
+  assert(routingSource.includes("blueprint_observe_pdf") && routingSource.includes("blueprint_analyze_text") && routingSource.includes("providerSupportsAIProviderRoutingOperation") && routingSource.includes("AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET") && !routingSource.includes("process.env.GEMINI"), "routing must be capability-aware, attempt-bounded, and free of hard-coded provider credentials");
   assert(workerSource.includes("resolveAIProviderRoute") && workerSource.includes("runWithAIProviderRoute") && workerSource.includes("routingOrganizationId") && !workerSource.includes("createAssignment"), "worker routes must preserve queue and assignment safety boundaries");
   assert(blueprintSource.includes("runWithAIProviderRoute") && blueprintSource.includes("importBatchImportJson") && !blueprintSource.includes("published_at: new Date"), "Blueprint fallback must remain review-draft-only and non-publishing");
 }

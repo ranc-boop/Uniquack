@@ -68,6 +68,18 @@ export type AIProviderRouteExecution<T> = {
   value: T;
 };
 
+export type AIProviderRouteAttemptBudget = {
+  candidateIndex: number;
+  maxAttempts: number;
+  maxTotalAttempts: number;
+  remainingAttemptBudget: number;
+};
+
+// Keep fallback routing inside the existing PR4-I default retry ceiling. Each
+// selected profile receives only a share of this budget, so fallbacks cannot
+// multiply a single routed provider request into unbounded retries.
+export const AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET = 4;
+
 export class AIProviderRoutingConfigurationError extends Error {
   constructor(message: string) {
     super(message);
@@ -559,15 +571,16 @@ export async function runWithAIProviderRoute<T>({
 }: {
   execute: (
     profile: Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>,
+    attemptBudget: AIProviderRouteAttemptBudget,
   ) => Promise<T>;
   leaseOwner: string;
   route: AIProviderRoute;
   supabase: SupabaseRoutingClient;
 }): Promise<AIProviderRouteExecution<T>> {
   let lastError: unknown = null;
-  let executedCount = 0;
+  let remainingAttemptBudget = AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET;
 
-  for (const candidate of route.candidates) {
+  for (const [candidateIndex, candidate] of route.candidates.entries()) {
     const candidateLeaseOwner = `${leaseOwner}:${candidate.profile.id}`.slice(0, 160);
     const acquired = await acquireHalfOpenProbe({
       candidate,
@@ -577,13 +590,24 @@ export async function runWithAIProviderRoute<T>({
     });
     if (!acquired) continue;
 
-    executedCount += 1;
+    // Reserve at least one attempt for every remaining configured candidate.
+    // A skipped half-open candidate does not consume budget, but an executed
+    // primary cannot leave every fallback with the full PR4-I retry ceiling.
+    const remainingCandidates = route.candidates.length - candidateIndex - 1;
+    const maxAttempts = Math.max(1, remainingAttemptBudget - remainingCandidates);
+    remainingAttemptBudget = Math.max(0, remainingAttemptBudget - maxAttempts);
+
     try {
       const profile = await loadAIProviderProfileForServerUse({
         profileId: candidate.profile.id,
         supabase,
       });
-      const value = await execute(profile);
+      const value = await execute(profile, {
+        candidateIndex,
+        maxAttempts,
+        maxTotalAttempts: AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET,
+        remainingAttemptBudget,
+      });
       await recordRouteOutcome({
         candidate,
         circuitEligible: false,

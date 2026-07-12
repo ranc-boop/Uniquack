@@ -342,10 +342,11 @@ async function runAIPdfExtractJob({
 
   try {
     const routed = await runWithAIProviderRoute({
-      execute: (provider) =>
+      execute: (provider, attemptBudget) =>
         processAIPdfImport({
           ...input,
           providerProfileId: provider.id,
+          providerRetryMaxAttempts: attemptBudget.maxAttempts,
         }),
       leaseOwner: `${leaseOwner}:${job.id}`,
       route,

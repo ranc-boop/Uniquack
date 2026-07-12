@@ -257,6 +257,7 @@ export type AIPdfProcessInput = {
   pdfBuffer: Buffer;
   profileId: string;
   providerProfileId: string;
+  providerRetryMaxAttempts?: number;
   routingLeaseOwner?: string;
   routingOrganizationId?: string;
   sourceAssetId?: string;
@@ -3252,7 +3253,10 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
 
     for (const clusterAnalyzerPlan of clusterAnalyzerPlans) {
       try {
-        const executeAnalyzer = (provider: Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>) =>
+        const executeAnalyzer = (
+          provider: Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>,
+          providerRetryMaxAttempts?: number,
+        ) =>
           runWithAIProviderRetry({
             onRetry: (retry) =>
               updateAIPdfProviderRetryProgress({
@@ -3263,6 +3267,9 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
                 sourceInput: providerInput.strategy,
               }),
             operation: "blueprint_generation",
+            policy: providerRetryMaxAttempts
+              ? { maxAttempts: providerRetryMaxAttempts }
+              : undefined,
             run: () =>
               executeDeepSeekQuestionBlueprintAnalyzer({
                 debugContext: {
@@ -3285,7 +3292,8 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
         const draftPlan = analyzerRoute
           ? (
               await runWithAIProviderRoute({
-                execute: async (provider) => (await executeAnalyzer(provider)).value,
+                execute: async (provider, attemptBudget) =>
+                  (await executeAnalyzer(provider, attemptBudget.maxAttempts)).value,
                 leaseOwner:
                   input.routingLeaseOwner ??
                   `blueprint-analyzer:${input.batchId}`,
@@ -3463,6 +3471,9 @@ async function processAIPdfBlueprintObservation({
                 sourceInput: providerInput.strategy,
               }),
             operation: "ai_pdf_extraction",
+            policy: input.providerRetryMaxAttempts
+              ? { maxAttempts: input.providerRetryMaxAttempts }
+              : undefined,
             run: async () =>
               parseAIBlueprintObservationProviderText({
                 providerText: (
@@ -4040,6 +4051,9 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
             sourceInput: providerInput.strategy,
           }),
         operation: "ai_pdf_extraction",
+        policy: input.providerRetryMaxAttempts
+          ? { maxAttempts: input.providerRetryMaxAttempts }
+          : undefined,
         run: async () =>
           normalizeAIPdfExtractionResponse(
             await callAIPdfExtractionProvider({
