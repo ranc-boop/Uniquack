@@ -248,11 +248,20 @@ async function runPdfE2E({ admin, runWorker, teacher, suffix }) {
     }
 
     assert(
-      finished.status === "retry_wait" && finished.retryable === true && new Date(finished.available_at) > new Date(),
-      "PDF provider failure was not retained as safe retry_wait state",
+      ["retry_wait", "failed"].includes(finished.status),
+      "PDF provider failure was not retained as a safe terminal queue state",
     );
-    console.log(`BLOCKED bounded AI PDF queue E2E at provider availability (${summary.retryWaiting} retrying job)`);
-    return "retry_wait";
+    if (finished.status === "retry_wait") {
+      assert(
+        finished.retryable === true && new Date(finished.available_at) > new Date(),
+        "Retryable PDF provider failure did not preserve a future retry window.",
+      );
+      console.log(`BLOCKED bounded AI PDF queue E2E at transient provider availability (${summary.retryWaiting} retrying job)`);
+      return "retry_wait";
+    }
+    assert(finished.retryable === false, "Permanent PDF provider failure was incorrectly marked retryable.");
+    console.log("BLOCKED bounded AI PDF queue E2E at a safe permanent provider failure");
+    return "failed";
   } finally {
     await cleanupImport({ admin, bankId, batchId, jobId, sourcePath });
   }
@@ -442,11 +451,20 @@ async function runBlueprintE2E({ admin, runWorker, teacher, suffix }) {
     }
 
     assert(
-      finished.status === "retry_wait" && finished.retryable === true && new Date(finished.available_at) > new Date(),
-      "Blueprint provider failure was not retained as safe retry_wait state",
+      ["retry_wait", "failed"].includes(finished.status),
+      "Blueprint provider failure was not retained as a safe terminal queue state",
     );
-    console.log(`BLOCKED bounded Blueprint queue E2E at provider availability (${summary.retryWaiting} retrying job)`);
-    return "retry_wait";
+    if (finished.status === "retry_wait") {
+      assert(
+        finished.retryable === true && new Date(finished.available_at) > new Date(),
+        "Retryable Blueprint provider failure did not preserve a future retry window.",
+      );
+      console.log(`BLOCKED bounded Blueprint queue E2E at transient provider availability (${summary.retryWaiting} retrying job)`);
+      return "retry_wait";
+    }
+    assert(finished.retryable === false, "Permanent Blueprint provider failure was incorrectly marked retryable.");
+    console.log("BLOCKED bounded Blueprint queue E2E at a safe permanent provider failure");
+    return "failed";
   } finally {
     if (generatedBatchId) {
       const { data: items } = await admin

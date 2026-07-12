@@ -14,6 +14,11 @@ import {
 import { queueRetryDelayMs } from "@/lib/ai-jobs/policy";
 import type { AIProviderJob } from "@/lib/ai-jobs/types";
 import {
+  getAIWorkerOperationsControl,
+  recordAIOperationTelemetry,
+  type AIOperationExecutionMetadata,
+} from "@/lib/ai-operations/telemetry";
+import {
   processAIPdfImport,
   recordAIPdfProviderFailure,
   type AIPdfProcessInput,
@@ -31,6 +36,15 @@ type WorkerSummary = {
   completed: number;
   failed: number;
   retryWaiting: number;
+};
+
+type WorkerExecutionResult = {
+  alreadyCompleted?: boolean;
+  createdCount: number;
+  fallbackUsed?: boolean;
+  reviewRoute: string;
+  telemetry?: AIOperationExecutionMetadata;
+  warningCount?: number;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -236,12 +250,14 @@ async function finishJob({
 async function runAIPdfExtractJob({
   job,
   leaseOwner,
+  maxProviderCalls = 4,
   supabase,
 }: {
   job: AIProviderJob;
   leaseOwner: string;
+  maxProviderCalls?: number;
   supabase: SupabaseWorkerClient;
-}) {
+}): Promise<WorkerExecutionResult> {
   const { data: batch, error: batchError } = await supabase
     .from("import_batches")
     .select("id, created_by, source_type, status, summary, target_bank_id")
@@ -339,8 +355,11 @@ async function runAIPdfExtractJob({
     supabase,
     targetBankId: job.target_bank_id,
   };
+  const usageSamples: NonNullable<AIOperationExecutionMetadata["usageSamples"]> = [];
+  input.onProviderUsage = (usage) => usageSamples.push(usage);
 
   try {
+    const providerStartedAt = Date.now();
     const routed = await runWithAIProviderRoute({
       execute: (provider, attemptBudget) =>
         processAIPdfImport({
@@ -349,12 +368,16 @@ async function runAIPdfExtractJob({
           providerRetryMaxAttempts: attemptBudget.maxAttempts,
         }),
       leaseOwner: `${leaseOwner}:${job.id}`,
+      maxTotalAttempts: maxProviderCalls,
       route,
       supabase,
     });
     const importSummary = routed.value;
     const importResult = asRecord(importSummary);
     const createdCount = numberValue(importResult.createdCount);
+    const routeCandidate = route.candidates.find(
+      (candidate) => candidate.profile.id === routed.profile.id,
+    );
     return {
       createdCount,
       fallbackUsed: routed.fallbackUsed,
@@ -362,6 +385,24 @@ async function runAIPdfExtractJob({
         ? `/teacher/banks/${job.target_bank_id}/review`
         : "/admin/review",
       warningCount: numberValue(importResult.warningCount),
+      telemetry: {
+        circuitOutcome:
+          routeCandidate?.mode === "half_open_probe"
+            ? "half_open_probe"
+            : routed.fallbackUsed
+              ? "fallback"
+              : "closed",
+        fallbackUsed: routed.fallbackUsed,
+        model: routed.profile.model,
+        provider: routed.profile.provider,
+        providerCallCount: Math.max(1, usageSamples.length),
+        providerLatencyMs: Date.now() - providerStartedAt,
+        providerProfileId: routed.profile.id,
+        providerRetryAttempts: Math.max(0, usageSamples.length - 1),
+        routePolicyVersion: route.policy?.policyVersion ?? null,
+        routePosition: routeCandidate?.routeOrder ?? null,
+        usageSamples,
+      },
     };
   } catch (error) {
     await recordAIPdfProviderFailure({ error, input });
@@ -372,12 +413,14 @@ async function runAIPdfExtractJob({
 async function runBlueprintGenerateQuestionsJob({
   job,
   leaseOwner,
+  maxProviderCalls = 4,
   supabase,
 }: {
   job: AIProviderJob;
   leaseOwner: string;
+  maxProviderCalls?: number;
   supabase: SupabaseWorkerClient;
-}) {
+}): Promise<WorkerExecutionResult> {
   await ensureBankIsActive({
     bankId: job.target_bank_id,
     profileId: job.created_by,
@@ -423,12 +466,16 @@ async function runBlueprintGenerateQuestionsJob({
     };
   }
 
+  const usageSamples: NonNullable<AIOperationExecutionMetadata["usageSamples"]> = [];
+  const providerStartedAt = Date.now();
   const result = await generateTeacherBlueprintReviewDrafts({
     blueprint,
     profileId: job.created_by,
     queueJobId: job.id,
     routingLeaseOwner: `${leaseOwner}:${job.id}`,
     routingOrganizationId: job.organization_id,
+    onProviderUsage: (usage) => usageSamples.push(usage),
+    providerMaxAttempts: maxProviderCalls,
     supabase,
   });
 
@@ -437,18 +484,34 @@ async function runBlueprintGenerateQuestionsJob({
     fallbackUsed: result.fallbackUsed,
     reviewRoute: result.reviewRoute,
     warningCount: result.warningCount,
+    telemetry: {
+      circuitOutcome: result.fallbackUsed ? "fallback" : "closed",
+      fallbackUsed: result.fallbackUsed,
+      model: result.safeProviderModel ?? null,
+      provider: result.providerSafeName ?? null,
+      providerCallCount: Math.max(1, usageSamples.length),
+      providerLatencyMs: Date.now() - providerStartedAt,
+      providerProfileId: result.safeProviderId ?? null,
+      providerRetryAttempts: Math.max(0, usageSamples.length - 1),
+      routePolicyVersion: result.providerRoutePolicyVersion ?? null,
+      routePosition: result.providerRoutePosition ?? null,
+      usageSamples,
+    },
   };
 }
 
 async function executeClaimedJob({
   job,
   leaseOwner,
+  maxProviderCalls = 4,
   supabase,
 }: {
   job: AIProviderJob;
   leaseOwner: string;
+  maxProviderCalls?: number;
   supabase: SupabaseWorkerClient;
 }): Promise<"completed" | "failed" | "retry_wait"> {
+  const executionStartedAt = Date.now();
   await markProcessing({ job, leaseOwner, supabase });
   const heartbeat = setInterval(() => {
     void markProcessing({ job, leaseOwner, supabase }).catch(() => undefined);
@@ -458,8 +521,8 @@ async function executeClaimedJob({
   try {
     const result =
       job.job_kind === "ai_pdf_extract"
-        ? await runAIPdfExtractJob({ job, leaseOwner, supabase })
-        : await runBlueprintGenerateQuestionsJob({ job, leaseOwner, supabase });
+        ? await runAIPdfExtractJob({ job, leaseOwner, maxProviderCalls, supabase })
+        : await runBlueprintGenerateQuestionsJob({ job, leaseOwner, maxProviderCalls, supabase });
 
     const finished = await finishJob({
       job,
@@ -475,6 +538,14 @@ async function executeClaimedJob({
     });
 
     if (!finished) return "failed";
+    await recordAIOperationTelemetry({
+      draftsCreated: result.createdCount,
+      executionStartedAt,
+      finalStatus: "completed",
+      job,
+      metadata: result.telemetry,
+      supabase,
+    }).catch(() => undefined);
     return "completed";
   } catch (error) {
     const classified = classifyAIProviderError({
@@ -502,6 +573,27 @@ async function executeClaimedJob({
       supabase,
     });
 
+    await recordAIOperationTelemetry({
+      draftsCreated: 0,
+      executionStartedAt,
+      finalStatus: canRetry ? "retry_wait" : "failed",
+      job,
+      metadata: {
+        circuitOutcome: [
+          "provider_busy",
+          "provider_rate_limited",
+          "provider_timeout",
+          "provider_network_error",
+        ].includes(classified.code)
+          ? "unavailable"
+          : "closed",
+        providerCallCount: classified.attemptCount ?? 0,
+        providerRetryAttempts: Math.max(0, (classified.attemptCount ?? 0) - 1),
+      },
+      safeErrorCode: safe.safeErrorCode,
+      supabase,
+    }).catch(() => undefined);
+
     return finished ? (canRetry ? "retry_wait" : "failed") : "failed";
   } finally {
     clearInterval(heartbeat);
@@ -517,7 +609,19 @@ export async function runDurableAIProviderJobs({
   supabase?: SupabaseWorkerClient;
   workerId?: string;
 } = {}): Promise<WorkerSummary> {
-  const boundedLimit = Math.max(1, Math.min(limit, 3));
+  const control = await getAIWorkerOperationsControl(supabase);
+  const summary: WorkerSummary = {
+    claimed: 0,
+    completed: 0,
+    failed: 0,
+    retryWaiting: 0,
+  };
+  if (control.pauseWorkerClaims) return summary;
+
+  const boundedLimit = Math.max(
+    1,
+    Math.min(limit, 2, control.maxJobsPerInvocation),
+  );
   const { data, error } = await supabase.rpc("claim_ai_provider_jobs", {
     p_lease_owner: workerId,
     p_lease_seconds: 900,
@@ -526,15 +630,19 @@ export async function runDurableAIProviderJobs({
   if (error) throw new Error(error.message);
 
   const jobs = (Array.isArray(data) ? data : []).map(normalizeJob);
-  const summary: WorkerSummary = {
-    claimed: jobs.length,
-    completed: 0,
-    failed: 0,
-    retryWaiting: 0,
-  };
+  summary.claimed = jobs.length;
+  const states = await Promise.all(
+    jobs.map((job) =>
+      executeClaimedJob({
+        job,
+        leaseOwner: workerId,
+        maxProviderCalls: control.maxProviderCallsPerExecution,
+        supabase,
+      }),
+    ),
+  );
 
-  for (const job of jobs) {
-    const state = await executeClaimedJob({ job, leaseOwner: workerId, supabase });
+  for (const state of states) {
     if (state === "completed") summary.completed += 1;
     if (state === "retry_wait") summary.retryWaiting += 1;
     if (state === "failed") summary.failed += 1;

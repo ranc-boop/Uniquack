@@ -1,5 +1,8 @@
 import { callAIPdfExtractionProvider } from "@/lib/ai-providers/chat";
-import { generateWithGeminiNativePdf } from "@/lib/ai-providers/gemini-native";
+import {
+  generateWithGeminiNativePdf,
+  type GeminiNativeUsage,
+} from "@/lib/ai-providers/gemini-native";
 import {
   AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE,
   describeAiPdfProviderInput,
@@ -264,6 +267,7 @@ export type AIPdfProcessInput = {
   sourceObjectPath: string;
   supabase: SupabaseLike;
   targetBankId?: string | null;
+  onProviderUsage?: (usage: GeminiNativeUsage | null) => void;
 };
 
 type ProcessInput = AIPdfProcessInput;
@@ -3474,10 +3478,8 @@ async function processAIPdfBlueprintObservation({
             policy: input.providerRetryMaxAttempts
               ? { maxAttempts: input.providerRetryMaxAttempts }
               : undefined,
-            run: async () =>
-              parseAIBlueprintObservationProviderText({
-                providerText: (
-                  await generateWithGeminiNativePdf({
+            run: async () => {
+              const nativeResponse = await generateWithGeminiNativePdf({
                     apiKey: provider.apiKey,
                     baseUrl: provider.base_url,
                     debugContext: {
@@ -3494,10 +3496,13 @@ async function processAIPdfBlueprintObservation({
                     model: provider.model,
                     pdfBytes: input.pdfBuffer,
                     prompt,
-                  })
-                ).text,
+                  });
+              input.onProviderUsage?.(nativeResponse.usage);
+              return parseAIBlueprintObservationProviderText({
+                providerText: nativeResponse.text,
                 summary: currentBeforeProvider.summary,
-              }),
+              });
+            },
           })
         ).value;
 
@@ -4081,6 +4086,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
                 "base64",
               ),
               pdfBytes: segmentedPdf?.pdfBytes ?? input.pdfBuffer,
+              onProviderUsage: input.onProviderUsage,
               profile: provider,
               prompt: chunkPrompt,
             }),

@@ -70,6 +70,63 @@ export type AIProviderProfileSafe = Pick<
   | "updated_at"
 >;
 
+export type AIOperationsControl = {
+  id: string;
+  organization_id: string | null;
+  operation_kind: string | null;
+  pause_new_enqueues: boolean;
+  pause_worker_claims: boolean;
+  daily_estimated_cost_micros: number;
+  monthly_estimated_cost_micros: number;
+  queue_cost_reservation_micros: number;
+  max_jobs_per_invocation: number;
+  max_provider_calls_per_execution: number;
+  alert_queue_depth: number;
+  alert_oldest_queue_seconds: number;
+  alert_worker_stale_seconds: number;
+  alert_circuit_open_seconds: number;
+  alert_fallback_rate_basis_points: number;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AIOperationTelemetry = {
+  id: string;
+  organization_id: string;
+  queue_job_id: string | null;
+  operation_kind: string;
+  provider_profile_id: string | null;
+  provider: string | null;
+  model: string | null;
+  route_policy_version: number | null;
+  route_position: number | null;
+  fallback_used: boolean;
+  provider_call_count: number;
+  provider_retry_attempts: number;
+  queue_execution_attempt: number;
+  actual_input_tokens: number | null;
+  actual_cached_input_tokens: number | null;
+  actual_output_tokens: number | null;
+  actual_total_tokens: number | null;
+  estimated_input_tokens: number | null;
+  estimated_output_tokens: number | null;
+  estimated_total_tokens: number | null;
+  estimated_input_cost_micros: number | null;
+  estimated_cached_input_cost_micros: number | null;
+  estimated_output_cost_micros: number | null;
+  estimated_total_cost_micros: number | null;
+  queue_wait_ms: number | null;
+  provider_latency_ms: number | null;
+  execution_latency_ms: number | null;
+  drafts_created: number;
+  final_status: "completed" | "retry_wait" | "failed" | "cancelled" | "skipped";
+  safe_error_code: string | null;
+  circuit_outcome: "closed" | "fallback" | "half_open_probe" | "open" | "unavailable";
+  created_at: string;
+};
+
 export type Profile = {
   id: string;
   username: string;
@@ -858,6 +915,8 @@ export type Database = {
       teacher_feedback_notes: TableDefinition<TeacherFeedbackNote>;
       ai_provider_profiles: TableDefinition<AIProviderProfile>;
       ai_provider_jobs: TableDefinition<AIProviderJob>;
+      ai_operations_controls: TableDefinition<AIOperationsControl>;
+      ai_operation_telemetry: TableDefinition<AIOperationTelemetry>;
       taxonomy_facets: TableDefinition<TaxonomyFacet>;
       taxonomy_nodes: TableDefinition<TaxonomyNode>;
       taxonomy_edges: TableDefinition<TaxonomyEdge>;
@@ -971,6 +1030,36 @@ export type Database = {
           profile_id: string;
         };
         Returns: undefined;
+      };
+      get_ai_operations_worker_control: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          pause_worker_claims: boolean;
+          max_jobs_per_invocation: number;
+          max_provider_calls_per_execution: number;
+        }>;
+      };
+      record_ai_operation_telemetry: {
+        Args: Record<string, unknown>;
+        Returns: string;
+      };
+      list_ai_provider_runtime_states_for_admin: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          provider_profile_id: string;
+          operation_kind: string;
+          circuit_state: "closed" | "open" | "half_open";
+          consecutive_failure_count: number;
+          open_until: string | null;
+          last_safe_error_code: string | null;
+          last_failure_at: string | null;
+          last_success_at: string | null;
+          updated_at: string;
+        }>;
+      };
+      reset_ai_provider_runtime_state_for_admin: {
+        Args: { p_provider_profile_id: string; p_operation_kind: string };
+        Returns: boolean;
       };
       enqueue_ai_provider_job: {
         Args: {

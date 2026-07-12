@@ -18,6 +18,7 @@ import {
 import {
   generateWithGeminiNativePdf,
   testGeminiNativeTextConnection,
+  type GeminiNativeUsage,
 } from "@/lib/ai-providers/gemini-native";
 
 type ProviderProfileForUse = {
@@ -39,6 +40,7 @@ type ProviderInput = {
   pdfBytes: Buffer;
   prompt: string;
   profile: ProviderProfileForUse;
+  onProviderUsage?: (usage: GeminiNativeUsage | null) => void;
 };
 
 type ChatMessage = {
@@ -454,6 +456,7 @@ export async function callAIPdfExtractionProvider({
   pdfBytes,
   profile,
   prompt,
+  onProviderUsage,
 }: ProviderInput) {
   if (isMockAIProviderUrl(profile.base_url)) {
     assertMockAIProviderAllowed();
@@ -488,8 +491,7 @@ export async function callAIPdfExtractionProvider({
     let usedRepair = false;
 
     for (let attempt = 1; attempt <= MAX_EXTRACTION_ATTEMPTS; attempt += 1) {
-      const contentText = (
-        await generateWithGeminiNativePdf({
+      const nativeResponse = await generateWithGeminiNativePdf({
           apiKey: profile.apiKey,
           baseUrl: profile.base_url,
           fileName,
@@ -509,8 +511,9 @@ export async function callAIPdfExtractionProvider({
             inputStrategy,
             repairAttempt: attempt > 1,
           },
-        })
-      ).text;
+        });
+      onProviderUsage?.(nativeResponse.usage);
+      const contentText = nativeResponse.text;
       await writeAIImportLLMDebugLog({
         context: {
           ...debugContext,
