@@ -24,6 +24,19 @@ type GeminiGenerateResponse = {
       }[];
     };
   }[];
+  usageMetadata?: {
+    cachedContentTokenCount?: number;
+    candidatesTokenCount?: number;
+    promptTokenCount?: number;
+    totalTokenCount?: number;
+  };
+};
+
+export type GeminiNativeUsage = {
+  cachedInputTokens: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
 };
 
 type GeminiNativePdfInput = {
@@ -456,7 +469,29 @@ async function generateContent({
     throw new Error("Gemini Native response did not include text content.");
   }
 
-  return text;
+  const usageMetadata = payload.usageMetadata;
+  const usage: GeminiNativeUsage | null = usageMetadata
+    ? {
+        cachedInputTokens:
+          typeof usageMetadata.cachedContentTokenCount === "number"
+            ? usageMetadata.cachedContentTokenCount
+            : null,
+        inputTokens:
+          typeof usageMetadata.promptTokenCount === "number"
+            ? usageMetadata.promptTokenCount
+            : null,
+        outputTokens:
+          typeof usageMetadata.candidatesTokenCount === "number"
+            ? usageMetadata.candidatesTokenCount
+            : null,
+        totalTokens:
+          typeof usageMetadata.totalTokenCount === "number"
+            ? usageMetadata.totalTokenCount
+            : null,
+      }
+    : null;
+
+  return { text, usage };
 }
 
 export async function generateWithGeminiNativePdf({
@@ -470,7 +505,7 @@ export async function generateWithGeminiNativePdf({
   pdfBytes,
   pollDelayMs = DEFAULT_POLL_DELAY_MS,
   prompt,
-}: GeminiNativePdfInput): Promise<{ text: string }> {
+}: GeminiNativePdfInput): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
   assertGeminiConfig({ apiKey, model, pdfBytes });
 
   let uploadedFile: GeminiFile | null = null;
@@ -496,8 +531,7 @@ export async function generateWithGeminiNativePdf({
       throw new Error("Gemini Native file reference is missing a URI.");
     }
 
-    return {
-      text: await generateContent({
+    return generateContent({
         apiKey,
         baseUrl,
         debugContext,
@@ -512,8 +546,7 @@ export async function generateWithGeminiNativePdf({
             },
           },
         ],
-      }),
-    };
+      });
   } finally {
     await deleteGeminiFile({
       apiKey,
@@ -532,7 +565,7 @@ export async function testGeminiNativeTextConnection({
   prompt = "Return exactly: ok",
 }: GeminiNativeTextTestInput): Promise<{ message: string; ok: true }> {
   assertGeminiTextConfig({ apiKey, model });
-  const text = await generateContent({
+  const result = await generateContent({
     apiKey,
     baseUrl,
     fetchImpl,
@@ -541,9 +574,9 @@ export async function testGeminiNativeTextConnection({
   });
 
   return {
-    message: text.toLowerCase().includes("ok")
+    message: result.text.toLowerCase().includes("ok")
       ? "Gemini Native connection test passed."
-      : `Gemini Native connection test passed. Provider replied: ${text.slice(
+      : `Gemini Native connection test passed. Provider replied: ${result.text.slice(
           0,
           80,
         )}`,
@@ -561,17 +594,15 @@ export async function generateWithGeminiNativeText({
 }: GeminiNativeTextTestInput & {
   debugContext?: Record<string, unknown>;
   prompt: string;
-}): Promise<{ text: string }> {
+}): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
   assertGeminiTextConfig({ apiKey, model });
 
-  return {
-    text: await generateContent({
+  return generateContent({
       apiKey,
       baseUrl,
       debugContext,
       fetchImpl,
       model,
       parts: [{ text: prompt }],
-    }),
-  };
+    });
 }

@@ -6,6 +6,7 @@ import { runDurableAIProviderJobs } from "@/lib/ai-jobs/worker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 240;
 
 function hasValidInternalToken(request: Request) {
   const expected = process.env.AI_JOBS_INTERNAL_TOKEN;

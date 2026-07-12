@@ -1978,6 +1978,11 @@ const durableAiJobsWorkerRoleFix = await read(
 const providerRoutingCircuitMigration = await read(
   "supabase/clean-migrations/0035_ai_provider_routing_circuit_breaker.sql",
 );
+const aiOperationsMigration = await read(
+  "supabase/clean-migrations/0036_ai_operations_launch_readiness.sql",
+);
+const aiOperationsTelemetry = await read("src/lib/ai-operations/telemetry.ts");
+const aiOperationsDashboard = await read("src/lib/ai-operations/dashboard.ts");
 const providerRouting = await read("src/lib/ai-providers/routing.ts");
 const durableAiJobsWorker = await read("src/lib/ai-jobs/worker.ts");
 const durableAiJobsRoute = await read("src/app/api/internal/ai-jobs/run/route.ts");
@@ -2020,5 +2025,28 @@ assert(
     durableAiJobsRoute.includes("x-ai-jobs-internal-token") &&
     !durableAiJobsRoute.includes("request.json"),
   "durable AI worker must preserve Review Draft safety and reject arbitrary public job payloads",
+);
+assert(
+  aiOperationsMigration.includes("create table if not exists public.ai_operations_controls") &&
+    aiOperationsMigration.includes("create table if not exists public.ai_operation_telemetry") &&
+    aiOperationsMigration.includes("enable row level security") &&
+    aiOperationsMigration.includes("pause_new_enqueues") &&
+    aiOperationsMigration.includes("pause_worker_claims") &&
+    aiOperationsMigration.includes("queued_reservation") &&
+    aiOperationsMigration.includes("record_ai_operation_telemetry") &&
+    aiOperationsMigration.includes("reset_ai_provider_runtime_state_for_admin") &&
+    !aiOperationsMigration.includes("raw_prompt") &&
+    !aiOperationsMigration.includes("raw_response") &&
+    !aiOperationsMigration.includes("signed_url") &&
+    !aiOperationsMigration.includes("api_key"),
+  "AI operations controls and telemetry must stay RLS-protected and free of private provider content",
+);
+assert(
+  aiOperationsTelemetry.includes("record_ai_operation_telemetry") &&
+    aiOperationsTelemetry.includes("estimateAIProviderCost") &&
+    durableAiJobsWorker.includes("getAIWorkerOperationsControl") &&
+    durableAiJobsWorker.includes("recordAIOperationTelemetry") &&
+    aiOperationsDashboard.includes("require") === false,
+  "AI operations telemetry must remain worker-only while the admin dashboard exposes safe aggregates",
 );
 console.log("PASS question blueprint library admin surface has lifecycle gates and manual Review-Draft handoff");

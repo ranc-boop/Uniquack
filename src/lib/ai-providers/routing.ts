@@ -566,6 +566,7 @@ async function recordRouteOutcome({
 export async function runWithAIProviderRoute<T>({
   execute,
   leaseOwner,
+  maxTotalAttempts = AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET,
   route,
   supabase,
 }: {
@@ -574,13 +575,19 @@ export async function runWithAIProviderRoute<T>({
     attemptBudget: AIProviderRouteAttemptBudget,
   ) => Promise<T>;
   leaseOwner: string;
+  maxTotalAttempts?: number;
   route: AIProviderRoute;
   supabase: SupabaseRoutingClient;
 }): Promise<AIProviderRouteExecution<T>> {
   let lastError: unknown = null;
-  let remainingAttemptBudget = AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET;
+  const totalAttemptBudget = Math.max(
+    1,
+    Math.min(AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET, Math.trunc(maxTotalAttempts)),
+  );
+  let remainingAttemptBudget = totalAttemptBudget;
+  const executableCandidates = route.candidates.slice(0, totalAttemptBudget);
 
-  for (const [candidateIndex, candidate] of route.candidates.entries()) {
+  for (const [candidateIndex, candidate] of executableCandidates.entries()) {
     const candidateLeaseOwner = `${leaseOwner}:${candidate.profile.id}`.slice(0, 160);
     const acquired = await acquireHalfOpenProbe({
       candidate,
@@ -593,7 +600,7 @@ export async function runWithAIProviderRoute<T>({
     // Reserve at least one attempt for every remaining configured candidate.
     // A skipped half-open candidate does not consume budget, but an executed
     // primary cannot leave every fallback with the full PR4-I retry ceiling.
-    const remainingCandidates = route.candidates.length - candidateIndex - 1;
+    const remainingCandidates = executableCandidates.length - candidateIndex - 1;
     const maxAttempts = Math.max(1, remainingAttemptBudget - remainingCandidates);
     remainingAttemptBudget = Math.max(0, remainingAttemptBudget - maxAttempts);
 
@@ -605,7 +612,7 @@ export async function runWithAIProviderRoute<T>({
       const value = await execute(profile, {
         candidateIndex,
         maxAttempts,
-        maxTotalAttempts: AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET,
+        maxTotalAttempts: totalAttemptBudget,
         remainingAttemptBudget,
       });
       await recordRouteOutcome({

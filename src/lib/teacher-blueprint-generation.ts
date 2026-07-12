@@ -7,7 +7,10 @@ import {
   getAiProviderCapabilities,
   inferAiProviderMode,
 } from "@/lib/ai-providers/adapters";
-import { generateWithGeminiNativeText } from "@/lib/ai-providers/gemini-native";
+import {
+  generateWithGeminiNativeText,
+  type GeminiNativeUsage,
+} from "@/lib/ai-providers/gemini-native";
 import {
   classifyAIProviderError,
   isAIProviderError,
@@ -123,6 +126,11 @@ export type TeacherBlueprintGenerationSummary = {
   createdDraftCount: number;
   fallbackUsed: boolean;
   providerStrategy: string;
+  safeProviderId?: string;
+  safeProviderModel?: string;
+  providerRoutePolicyVersion?: number | null;
+  providerRoutePosition?: number | null;
+  providerSafeName?: string;
   reviewRoute: string;
   targetBankId: string;
   warningCount: number;
@@ -632,18 +640,17 @@ async function callTeacherBlueprintGenerationProvider({
   profile: ProviderForUse;
   prompt: string;
   request: BlueprintGenerationRequest;
-}) {
+}): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
   if (isMockAIProviderUrl(profile.base_url)) {
     assertMockAIProviderAllowed();
 
-    return mockBlueprintProviderText(request);
+    return { text: mockBlueprintProviderText(request), usage: null };
   }
 
   const mode = inferAiProviderMode(profile);
 
   if (mode === "gemini_native") {
-    return (
-      await generateWithGeminiNativeText({
+    return generateWithGeminiNativeText({
         apiKey: profile.apiKey,
         baseUrl: profile.base_url,
         debugContext: {
@@ -653,8 +660,7 @@ async function callTeacherBlueprintGenerationProvider({
         },
         model: profile.model,
         prompt,
-      })
-    ).text;
+      });
   }
 
   let response: Response;
@@ -688,6 +694,11 @@ async function callTeacherBlueprintGenerationProvider({
 
   const payload = (await response.json()) as {
     choices?: { message?: { content?: string } }[];
+    usage?: {
+      completion_tokens?: number;
+      prompt_tokens?: number;
+      total_tokens?: number;
+    };
   };
   const content = payload.choices?.[0]?.message?.content;
 
@@ -695,7 +706,17 @@ async function callTeacherBlueprintGenerationProvider({
     throw new Error("AI provider response did not include generated content.");
   }
 
-  return content;
+  return {
+    text: content,
+    usage: payload.usage
+      ? {
+          cachedInputTokens: null,
+          inputTokens: payload.usage.prompt_tokens ?? null,
+          outputTokens: payload.usage.completion_tokens ?? null,
+          totalTokens: payload.usage.total_tokens ?? null,
+        }
+      : null,
+  };
 }
 
 function normalizeOption(
@@ -1199,6 +1220,8 @@ export async function generateTeacherBlueprintReviewDrafts({
   blueprint,
   profileId,
   queueJobId,
+  onProviderUsage,
+  providerMaxAttempts,
   routingLeaseOwner,
   routingOrganizationId,
   supabase,
@@ -1206,6 +1229,8 @@ export async function generateTeacherBlueprintReviewDrafts({
   blueprint: QuestionBlueprint;
   profileId: string;
   queueJobId?: string;
+  onProviderUsage?: (usage: GeminiNativeUsage | null) => void;
+  providerMaxAttempts?: number;
   routingLeaseOwner?: string;
   routingOrganizationId?: string;
   supabase: SupabaseLike;
@@ -1253,28 +1278,35 @@ export async function generateTeacherBlueprintReviewDrafts({
       tagIds,
     });
     const prompt = buildTeacherBlueprintGenerationPrompt(request);
-    const routedGeneration = routingOrganizationId
+    const routingRoute = routingOrganizationId
+      ? await resolveAIProviderRoute({
+          operationKind: "blueprint_generate_questions",
+          organizationId: routingOrganizationId,
+          supabase,
+        })
+      : null;
+    const routedGeneration = routingRoute
       ? await runWithAIProviderRoute({
           execute: async (provider, attemptBudget) =>
             (
               await runWithAIProviderRetry({
                 operation: "blueprint_generation",
                 policy: { maxAttempts: attemptBudget.maxAttempts },
-                run: () =>
-                  callTeacherBlueprintGenerationProvider({
+                run: async () => {
+                  const response = await callTeacherBlueprintGenerationProvider({
                     profile: provider,
                     prompt,
                     request,
-                  }),
+                  });
+                  onProviderUsage?.(response.usage);
+                  return response.text;
+                },
               })
             ).value,
           leaseOwner:
             routingLeaseOwner ?? `teacher-blueprint-generation:${blueprint.id}`,
-          route: await resolveAIProviderRoute({
-            operationKind: "blueprint_generate_questions",
-            organizationId: routingOrganizationId,
-            supabase,
-          }),
+          maxTotalAttempts: providerMaxAttempts,
+          route: routingRoute,
           supabase,
         })
       : {
@@ -1283,12 +1315,15 @@ export async function generateTeacherBlueprintReviewDrafts({
           value: (
             await runWithAIProviderRetry({
               operation: "blueprint_generation",
-              run: () =>
-                callTeacherBlueprintGenerationProvider({
+              run: async () => {
+                const response = await callTeacherBlueprintGenerationProvider({
                   profile: directProvider!,
                   prompt,
                   request,
-                }),
+                });
+                onProviderUsage?.(response.usage);
+                return response.text;
+              },
             })
           ).value,
         };
@@ -1381,6 +1416,14 @@ export async function generateTeacherBlueprintReviewDrafts({
       blockedDraftCount: parsed.blockedWarnings.length,
       createdDraftCount: lineage.createdQuestionCount,
       fallbackUsed: routedGeneration.fallbackUsed,
+      safeProviderId: routedGeneration.profile.id,
+      safeProviderModel: routedGeneration.profile.model,
+      providerRoutePolicyVersion: routingRoute?.policy?.policyVersion ?? null,
+      providerRoutePosition:
+        routingRoute?.candidates.find(
+          (candidate) => candidate.profile.id === routedGeneration.profile.id,
+        )?.routeOrder ?? null,
+      providerSafeName: routedGeneration.profile.provider,
       providerStrategy,
       reviewRoute: `/teacher/banks/${bankId}/review`,
       targetBankId: bankId,

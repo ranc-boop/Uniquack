@@ -30,6 +30,13 @@ import {
 
 const path = "/admin/ai-settings";
 
+function boundedInteger(value: FormDataEntryValue | null, fallback: number, min: number, max: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? Math.max(min, Math.min(max, Math.trunc(parsed)))
+    : fallback;
+}
+
 function checkboxValue(formData: FormData, name: string) {
   return formData.get(name) === "on";
 }
@@ -269,4 +276,182 @@ export async function saveAIProviderRoutingPolicy(formData: FormData) {
 
   revalidatePath(path);
   redirectWithSaved(path, "AI provider routing policy saved.");
+}
+
+export async function saveAIOperationsControl(formData: FormData) {
+  try {
+    const profile = await requireSuperAdmin();
+    const supabase = await createClient();
+    const controlPatch = {
+          alert_circuit_open_seconds: boundedInteger(
+            formData.get("alert_circuit_open_seconds"),
+            900,
+            60,
+            86_400,
+          ),
+          alert_fallback_rate_basis_points: boundedInteger(
+            formData.get("alert_fallback_rate_basis_points"),
+            2500,
+            0,
+            10_000,
+          ),
+          alert_oldest_queue_seconds: boundedInteger(
+            formData.get("alert_oldest_queue_seconds"),
+            900,
+            60,
+            86_400,
+          ),
+          alert_queue_depth: boundedInteger(formData.get("alert_queue_depth"), 10, 1, 1000),
+          alert_worker_stale_seconds: boundedInteger(
+            formData.get("alert_worker_stale_seconds"),
+            600,
+            60,
+            86_400,
+          ),
+          daily_estimated_cost_micros: boundedInteger(
+            formData.get("daily_estimated_cost_micros"),
+            10_000_000,
+            0,
+            10_000_000_000,
+          ),
+          max_jobs_per_invocation: boundedInteger(
+            formData.get("max_jobs_per_invocation"),
+            2,
+            1,
+            2,
+          ),
+          max_provider_calls_per_execution: boundedInteger(
+            formData.get("max_provider_calls_per_execution"),
+            4,
+            1,
+            4,
+          ),
+          monthly_estimated_cost_micros: boundedInteger(
+            formData.get("monthly_estimated_cost_micros"),
+            50_000_000,
+            0,
+            100_000_000_000,
+          ),
+          operation_kind: null,
+          organization_id: null,
+          pause_new_enqueues: formData.get("pause_new_enqueues") === "on",
+          pause_worker_claims: formData.get("pause_worker_claims") === "on",
+          queue_cost_reservation_micros: boundedInteger(
+            formData.get("queue_cost_reservation_micros"),
+            100_000,
+            0,
+            1_000_000_000,
+          ),
+      updated_by: profile.id,
+    };
+    const { data: existing, error: existingError } = await supabase
+      .from("ai_operations_controls")
+      .select("id")
+      .is("organization_id", null)
+      .is("operation_kind", null)
+      .maybeSingle();
+    if (existingError) throw new Error(existingError.message);
+    const { error } = existing
+      ? await supabase
+          .from("ai_operations_controls")
+          .update(controlPatch)
+          .eq("id", existing.id)
+      : await supabase.from("ai_operations_controls").insert({
+          ...controlPatch,
+          created_by: profile.id,
+        });
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    redirectWithError(path, formatActionError(error));
+  }
+
+  revalidatePath(path);
+  redirectWithSaved(path, "AI operations controls saved.");
+}
+
+export async function resetAIProviderCircuit(formData: FormData) {
+  try {
+    await requireSuperAdmin();
+    const providerProfileId = String(formData.get("provider_profile_id") ?? "").trim();
+    const operationKind = String(formData.get("operation_kind") ?? "").trim();
+    if (!providerProfileId || !operationKind) {
+      throw new Error("Provider circuit reference is required.");
+    }
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc(
+      "reset_ai_provider_runtime_state_for_admin",
+      {
+        p_operation_kind: operationKind,
+        p_provider_profile_id: providerProfileId,
+      },
+    );
+    if (error) throw new Error(error.message);
+    if (data !== true) throw new Error("The provider circuit was not found.");
+  } catch (error) {
+    redirectWithError(path, formatActionError(error));
+  }
+
+  revalidatePath(path);
+  redirectWithSaved(path, "Provider circuit reset.");
+}
+
+export async function setAIOperationPause(formData: FormData) {
+  try {
+    const profile = await requireSuperAdmin();
+    const operationKind = String(formData.get("operation_kind") ?? "").trim();
+    if (![
+      "ai_pdf_extract",
+      "blueprint_generate_questions",
+      "blueprint_observe_pdf",
+      "blueprint_analyze_text",
+    ].includes(operationKind)) {
+      throw new Error("Supported AI operation is required.");
+    }
+    const supabase = await createClient();
+    const { data: existing, error: existingError } = await supabase
+      .from("ai_operations_controls")
+      .select("id")
+      .is("organization_id", null)
+      .eq("operation_kind", operationKind)
+      .maybeSingle();
+    if (existingError) throw new Error(existingError.message);
+    const pause_new_enqueues = formData.get("pause_new_enqueues") === "on";
+    const { error } = existing
+      ? await supabase
+          .from("ai_operations_controls")
+          .update({ pause_new_enqueues, updated_by: profile.id })
+          .eq("id", existing.id)
+      : await supabase.from("ai_operations_controls").insert({
+          created_by: profile.id,
+          operation_kind: operationKind,
+          organization_id: null,
+          pause_new_enqueues,
+          updated_by: profile.id,
+        });
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    redirectWithError(path, formatActionError(error));
+  }
+
+  revalidatePath(path);
+  redirectWithSaved(path, "AI operation pause state saved.");
+}
+
+export async function cancelQueuedAIJobAsAdmin(formData: FormData) {
+  try {
+    await requireSuperAdmin();
+    const jobId = String(formData.get("job_id") ?? "").trim();
+    if (!jobId) throw new Error("Queued job reference is required.");
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("cancel_ai_provider_job", {
+      p_job_id: jobId,
+    });
+    if (error) throw new Error(error.message);
+    if (data !== true) throw new Error("Only queued or retry-wait jobs can be cancelled.");
+  } catch (error) {
+    redirectWithError(path, formatActionError(error));
+  }
+
+  revalidatePath(path);
+  redirectWithSaved(path, "Queued AI job cancelled safely.");
 }
