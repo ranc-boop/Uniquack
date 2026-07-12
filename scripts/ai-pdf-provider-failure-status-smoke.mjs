@@ -72,11 +72,12 @@ assert(
   teacherBankActions.includes("formatTeacherAIPdfImportError") &&
     teacherBankActions.includes("isAIProviderError(error)") &&
     teacherBankActions.includes("safeAIProviderMessage(error)") &&
-    teacherPdfAction.includes("recordAIPdfProviderFailure({") &&
-    teacherPdfAction.includes("processAIPdfImport(processInput)") &&
+    teacherPdfAction.includes("enqueueAIProviderJob") &&
+    teacherPdfAction.includes("buildAIPdfJobIdempotencyKey") &&
+    !teacherPdfAction.includes("await processAIPdfImport") &&
     teacherPdfAction.includes("targetBankId: parsed.bankId") &&
     teacherPdfAction.includes("redirectWithError(fallbackPath, formatTeacherAIPdfImportError(error))"),
-  "teacher PDF import action must use safe transient copy, record retryable failures, and preserve targetBankId",
+  "teacher PDF import action must enqueue safe retryable work and preserve targetBankId",
 );
 
 assert(

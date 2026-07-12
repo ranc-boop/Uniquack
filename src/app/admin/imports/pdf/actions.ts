@@ -33,6 +33,10 @@ import {
   classifyAIProviderError,
   safeAIProviderErrorState,
 } from "@/lib/ai-providers/errors";
+import {
+  buildAIPdfJobIdempotencyKey,
+  enqueueAIProviderJob,
+} from "@/lib/ai-jobs/queue";
 import { loadSafeAIProviderProfileForUse } from "@/lib/ai-providers/profiles";
 import {
   getPdfPageCount,
@@ -1298,7 +1302,7 @@ async function ensureBatchCanExtract({
     await Promise.all([
       supabase
         .from("import_batches")
-        .select("id, source_type, status, summary, updated_at")
+        .select("id, source_type, status, summary, target_bank_id, updated_at")
         .eq("id", batchId)
         .eq("source_type", "ai_pdf")
         .single(),
@@ -1657,27 +1661,83 @@ export async function startAIPdfExtraction(input: {
     batchId: parsed.batchId,
     supabase,
   });
-  const lease = await acquireExtractionLease({
+  const batch = await ensureBatchCanExtract({
     batchId: parsed.batchId,
-    blueprintModelQualityMode: parsed.blueprintModelQualityMode,
-    executionMode: parsed.executionMode,
-    providerProfileId: parsed.providerProfileId,
     supabase,
-    sourceAsset,
+  });
+  const existingSummary = plainObject(batch.summary);
+  const existingAiPdfImport = getAIPdfImportSummary(existingSummary);
+
+  if (
+    parsed.executionMode === "segmented_full_pdf" &&
+    normalizeManualSegmentationPlan(existingAiPdfImport.manualSegmentation)
+      ?.status !== "confirmed"
+  ) {
+    throw new Error(
+      "Confirm every masked PDF boundary before starting segmented extraction.",
+    );
+  }
+
+  const targetBankId =
+    typeof batch.target_bank_id === "string" ? batch.target_bank_id : null;
+  const queuedJob = await enqueueAIProviderJob({
+    idempotencyKey: buildAIPdfJobIdempotencyKey({
+      batchId: parsed.batchId,
+      sourceAssetId: sourceAsset.id,
+    }),
+    jobKind: "ai_pdf_extract",
+    payload: {
+      blueprintModelQualityMode:
+        parsed.executionMode === "blueprint_observation"
+          ? parsed.blueprintModelQualityMode ?? "fast"
+          : undefined,
+      executionMode: parsed.executionMode ?? existingAiPdfImport.executionMode,
+      operationVersion: 1,
+      sourceAssetId: sourceAsset.id,
+    },
+    providerProfileId: parsed.providerProfileId,
+    resourceId: parsed.batchId,
+    resourceType: "import_batch",
+    supabase,
+    targetBankId,
   });
   await clearRetryableBatchItems({ batchId: parsed.batchId, supabase });
 
+  const summary = {
+    ...existingSummary,
+    aiPdfImport: mergeAIPdfImportSummary(existingAiPdfImport, {
+      detail: "Waiting for available AI capacity.",
+      durableJobId: queuedJob.id,
+      executionMode: parsed.executionMode ?? existingAiPdfImport.executionMode,
+      fileName: sourceAsset.original_filename,
+      jobId: queuedJob.id,
+      phase: "queued",
+      providerProfileId: parsed.providerProfileId,
+      queueStatus: "queued",
+      sourceAssetId: sourceAsset.id,
+      sourceObjectPath: sourceAsset.object_path,
+    }),
+  };
+  const { error: queueUpdateError } = await supabase
+    .from("import_batches")
+    .update({ status: "draft", summary: summary as Json })
+    .eq("id", parsed.batchId)
+    .in("status", ["draft", "failed", "ready"]);
+
+  if (queueUpdateError) {
+    throw new Error(queueUpdateError.message);
+  }
+
   return {
     batchId: parsed.batchId,
-    jobId: lease.jobId,
-    leaseExpiresAt: lease.leaseExpiresAt,
-    status: "validating",
-    summary: lease.summary,
+    jobId: queuedJob.id,
+    status: "draft",
+    summary,
   };
 }
 
 export async function runQueuedAIPdfExtraction(input: unknown) {
-  const profile = await requireSuperAdmin();
+  await requireSuperAdmin();
   const parsed = queuedExtractionInputSchema.parse(input);
   const supabase = await createClient();
   const { data: batch, error: batchError } = await supabase
@@ -1692,52 +1752,19 @@ export async function runQueuedAIPdfExtraction(input: unknown) {
   }
 
   const aiPdfImport = getAIPdfImportSummary(batch?.summary);
-  const leaseExpiresAt = Date.parse(getString(aiPdfImport.leaseExpiresAt) ?? "");
 
-  if (
-    !batch ||
-    batch.status !== "validating" ||
-    getString(aiPdfImport.jobId) !== parsed.jobId
-  ) {
-    throw new Error("This AI PDF extraction job is no longer active.");
+  if (!batch || getString(aiPdfImport.jobId) !== parsed.jobId) {
+    throw new Error("This durable AI PDF job is no longer active.");
   }
 
-  if (Number.isFinite(leaseExpiresAt) && Date.now() > leaseExpiresAt) {
-    await recordExtractionFailure({
-      batchId: parsed.batchId,
-      error: new Error("AI extraction lease expired before the job started."),
-      jobId: parsed.jobId,
-      providerProfileId: getString(aiPdfImport.providerProfileId) ?? "",
-      sourceAsset: await loadSourceAsset({ batchId: parsed.batchId, supabase }),
-      supabase,
-    });
-    throw new Error("AI extraction lease expired before the job started.");
-  }
-
-  const sourceAsset = await loadSourceAsset({
-    batchId: parsed.batchId,
-    supabase,
-  });
-  const providerProfileId = getString(aiPdfImport.providerProfileId);
-
-  if (!providerProfileId) {
-    throw new Error("AI provider profile is missing from this extraction job.");
-  }
-
-  await runAIPdfExtractionJob({
-    batchId: parsed.batchId,
-    jobId: parsed.jobId,
-    profileId: profile.id,
-    providerProfileId,
-    sourceAsset,
-    supabase,
-  });
-
+  // Provider execution is intentionally owned by the trusted durable worker.
+  // Keeping this compatibility action read-only prevents an admin browser
+  // request from becoming a second competing worker.
   return getAIPdfImportStatus({ batchId: parsed.batchId });
 }
 
 export async function retryAIPdfImportChunk(input: unknown) {
-  const profile = await requireSuperAdmin();
+  await requireSuperAdmin();
   const parsed = retryChunkInputSchema.parse(input);
   const supabase = await createClient();
   const { data: batch, error: batchError } = await supabase
@@ -1808,18 +1835,38 @@ export async function retryAIPdfImportChunk(input: unknown) {
     batchId: parsed.batchId,
     supabase,
   });
-  const jobId = crypto.randomUUID();
-  const { error: leaseError } = await supabase
+  const targetBankId =
+    typeof batch.target_bank_id === "string" ? batch.target_bank_id : null;
+  const queuedJob = await enqueueAIProviderJob({
+    idempotencyKey: `${buildAIPdfJobIdempotencyKey({
+      batchId: parsed.batchId,
+      sourceAssetId: sourceAsset.id,
+    })}:chunk:${parsed.chunkIndex}`,
+    jobKind: "ai_pdf_extract",
+    payload: {
+      chunkIndex: parsed.chunkIndex,
+      operationVersion: 1,
+      sourceAssetId: sourceAsset.id,
+    },
+    providerProfileId,
+    resourceId: parsed.batchId,
+    resourceType: "import_batch",
+    supabase,
+    targetBankId,
+  });
+  const { error: queueError } = await supabase
     .from("import_batches")
     .update({
-      status: "validating",
+      status: "failed",
       summary: {
         ...summary,
         aiPdfImport: mergeAIPdfImportSummary(aiPdfImport, {
-          detail: `Retrying failed chunk ${parsed.chunkIndex + 1}.`,
-          jobId,
+          detail: `Retrying failed chunk ${parsed.chunkIndex + 1} when AI capacity is available.`,
+          durableJobId: queuedJob.id,
+          jobId: queuedJob.id,
           phase: "queued",
           providerProfileId,
+          queueStatus: "queued",
           retryChunkIndex: parsed.chunkIndex,
           sourceAssetId: sourceAsset.id,
           sourceObjectPath: sourceAsset.object_path,
@@ -1829,32 +1876,9 @@ export async function retryAIPdfImportChunk(input: unknown) {
     .eq("id", parsed.batchId)
     .neq("status", "validating");
 
-  if (leaseError) {
-    throw new Error(leaseError.message);
+  if (queueError) {
+    throw new Error(queueError.message);
   }
-
-  const { data: sourceBlob, error: downloadError } = await supabase.storage
-    .from(AI_IMPORT_SOURCES_BUCKET)
-    .download(sourceAsset.object_path);
-
-  if (downloadError) {
-    throw new Error(downloadError.message);
-  }
-
-  await processAIPdfImport({
-    batchId: parsed.batchId,
-    chunkIndex: parsed.chunkIndex,
-    fileName: sourceAsset.original_filename,
-    jobId,
-    pdfBuffer: Buffer.from(await sourceBlob.arrayBuffer()),
-    profileId: profile.id,
-    providerProfileId,
-    sourceAssetId: sourceAsset.id,
-    sourceObjectPath: sourceAsset.object_path,
-    supabase,
-    targetBankId:
-      typeof batch?.target_bank_id === "string" ? batch.target_bank_id : null,
-  });
 
   revalidatePath("/admin/imports");
   revalidatePath("/admin/imports/pdf");

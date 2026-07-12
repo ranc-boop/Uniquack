@@ -416,7 +416,14 @@ assert(
     teacherBankActions.includes("importBankPdfDrafts") &&
     teacherBankActions.includes("resolveTeacherAIPdfProviderProfile") &&
     teacherBankActions.includes("assertNoRawProviderConfig(formData)") &&
-    teacherBankActions.includes("processAIPdfImport") &&
+    teacherBankActions.includes("buildAIPdfJobIdempotencyKey") &&
+    teacherBankActions.includes("enqueueAIProviderJob") &&
+    !teacherBankActions
+      .slice(
+        teacherBankActions.indexOf("export async function importBankPdfDrafts"),
+        teacherBankActions.indexOf("export async function approveBankReviewQuestion"),
+      )
+      .includes("processAIPdfImport") &&
     teacherBankActions.includes("canManageBankContent(detail.currentUserRole)") &&
     teacherBankActions.includes("targetBankId: parsed.bankId") &&
     teacherBankAssignmentNewPage.includes("Assign from") &&
@@ -1961,5 +1968,35 @@ assert(
     blueprintActions.includes("Blueprint deprecated and linked to its replacement.") &&
     !blueprintActions.includes(".delete("),
   "blueprint actions must snapshot before edits and use draft/soft-delete edit workflows",
+);
+const durableAiJobsMigration = await read(
+  "supabase/clean-migrations/0033_ai_provider_jobs.sql",
+);
+const durableAiJobsWorkerRoleFix = await read(
+  "supabase/clean-migrations/0034_ai_provider_jobs_worker_role_fix.sql",
+);
+const durableAiJobsWorker = await read("src/lib/ai-jobs/worker.ts");
+const durableAiJobsRoute = await read("src/app/api/internal/ai-jobs/run/route.ts");
+assert(
+  durableAiJobsMigration.includes("alter table public.ai_provider_jobs enable row level security") &&
+    durableAiJobsMigration.includes("No insert/update/delete policies") &&
+    durableAiJobsMigration.includes("for update of job skip locked") &&
+    durableAiJobsMigration.includes("revoke all on function public.claim_ai_provider_jobs") &&
+    durableAiJobsMigration.includes("grant execute on function public.claim_ai_provider_jobs") &&
+    durableAiJobsWorkerRoleFix.includes("nullif(auth.role()::text, '')") &&
+    durableAiJobsWorkerRoleFix.includes("create or replace function public.finish_ai_provider_job") &&
+    !durableAiJobsMigration.includes("api_key_ciphertext") &&
+    !durableAiJobsMigration.includes("signed_url"),
+  "durable AI jobs must be RLS-protected, atomically claimed by trusted workers, and secret-free",
+);
+assert(
+  durableAiJobsWorker.includes("recordAIPdfProviderFailure") &&
+    durableAiJobsWorker.includes("safeAIProviderErrorState") &&
+    durableAiJobsWorker.includes("retry_wait") &&
+    !durableAiJobsWorker.includes("createAssignment") &&
+    durableAiJobsRoute.includes("AI_JOBS_INTERNAL_TOKEN") &&
+    durableAiJobsRoute.includes("x-ai-jobs-internal-token") &&
+    !durableAiJobsRoute.includes("request.json"),
+  "durable AI worker must preserve Review Draft safety and reject arbitrary public job payloads",
 );
 console.log("PASS question blueprint library admin surface has lifecycle gates and manual Review-Draft handoff");

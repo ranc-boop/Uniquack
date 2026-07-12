@@ -28,6 +28,8 @@ await import("./ai-parsing-status-review-qa-smoke.mjs");
 await import("./review-draft-actions-mvp-smoke.mjs");
 await import("./ai-pdf-provider-failure-status-smoke.mjs");
 await import("./ai-provider-resilience-smoke.mjs");
+await import("./durable-ai-job-queue-smoke.mjs");
+await import("./durable-ai-job-queue-load-smoke.mjs");
 await import("./ai-parsing-boundary-duplicate-guard-smoke.mjs");
 await import("./bank-scoped-ai-pdf-import-bridge-smoke.mjs");
 await import("./blueprint-library-foundation-smoke.mjs");

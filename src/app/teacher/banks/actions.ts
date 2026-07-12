@@ -15,9 +15,9 @@ import {
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
 import {
-  processAIPdfImport,
-  recordAIPdfProviderFailure,
-} from "@/lib/ai-pdf-import/service";
+  buildAIPdfJobIdempotencyKey,
+  enqueueAIProviderJob,
+} from "@/lib/ai-jobs/queue";
 import {
   isAIProviderError,
   safeAIProviderMessage,
@@ -83,6 +83,12 @@ const bankImportPdfSchema = z.object({
     .enum(TEACHER_AI_PDF_PARSING_PROFILES)
     .default("standard"),
 });
+
+function plainObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
 
 const bankReviewQuestionApproveSchema = z.object({
   bankId: z.string().uuid(),
@@ -909,45 +915,64 @@ export async function importBankPdfDrafts(formData: FormData) {
       throw error;
     }
 
-    const processInput = {
-      batchId,
-      fileName: pdfFile.name,
-      pdfBuffer,
-      profileId: profile.id,
+    const queuedJob = await enqueueAIProviderJob({
+      idempotencyKey: buildAIPdfJobIdempotencyKey({
+        batchId,
+        sourceAssetId,
+      }),
+      jobKind: "ai_pdf_extract",
+      payload: {
+        operationVersion: 1,
+        sourceAssetId,
+      },
       providerProfileId: provider.id,
-      sourceAssetId,
-      sourceObjectPath,
-      supabase: importSupabase,
+      resourceId: batchId,
+      resourceType: "import_batch",
+      supabase,
       targetBankId: parsed.bankId,
-    };
-    let summary: Awaited<ReturnType<typeof processAIPdfImport>>;
+    });
 
-    try {
-      summary = await processAIPdfImport(processInput);
-    } catch (error) {
-      if (isAIProviderError(error)) {
-        try {
-          await recordAIPdfProviderFailure({
-            error,
-            input: processInput,
-          });
-        } catch {
-          // Preserve the original provider failure for the teacher redirect.
-        }
-      }
+    const { data: queuedBatch, error: queuedBatchReadError } = await importSupabase
+      .from("import_batches")
+      .select("summary")
+      .eq("id", batchId)
+      .maybeSingle();
 
-      throw error;
+    if (queuedBatchReadError) {
+      throw new Error(queuedBatchReadError.message);
     }
-    const createdCount =
-      typeof summary.createdCount === "number" ? summary.createdCount : 0;
+
+    const queuedSummary = plainObject(queuedBatch?.summary);
+    const queuedAiPdfImport = plainObject(queuedSummary.aiPdfImport);
+    const { error: queuedBatchUpdateError } = await importSupabase
+      .from("import_batches")
+      .update({
+        summary: {
+          ...queuedSummary,
+          aiPdfImport: {
+            ...queuedAiPdfImport,
+            detail: "Waiting for available AI capacity.",
+            durableJobId: queuedJob.id,
+            jobId: queuedJob.id,
+            phase: "queued",
+            queueStatus: "queued",
+            targetBankId: parsed.bankId,
+          },
+        },
+      } as never)
+      .eq("id", batchId);
+
+    if (queuedBatchUpdateError) {
+      throw new Error(queuedBatchUpdateError.message);
+    }
 
     revalidatePath("/teacher/ai-parsing");
     revalidatePath(`/teacher/banks/${parsed.bankId}`);
     revalidatePath(`/teacher/banks/${parsed.bankId}/imports`);
     revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
     redirectWithSaved(
-      reviewRoute,
-      `AI Parsing created ${createdCount} bank-scoped draft question(s). Review before assignment.`,
+      `/teacher/banks/${parsed.bankId}/imports?job=${encodeURIComponent(queuedJob.id)}`,
+      "AI PDF Parsing is queued. Your private source and target Library are safe; you can leave this page while it runs.",
     );
   } catch (error) {
     redirectWithError(fallbackPath, formatTeacherAIPdfImportError(error));

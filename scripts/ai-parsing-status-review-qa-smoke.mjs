@@ -116,11 +116,13 @@ assert(
   importBankPdfDrafts.includes("assertNoRawProviderConfig(formData)") &&
     importBankPdfDrafts.includes("resolveTeacherAIPdfProviderProfile") &&
     importBankPdfDrafts.includes("targetBankId: parsed.bankId") &&
-    importBankPdfDrafts.includes("recordAIPdfProviderFailure({") &&
+    importBankPdfDrafts.includes("enqueueAIProviderJob") &&
+    importBankPdfDrafts.includes("buildAIPdfJobIdempotencyKey") &&
+    !importBankPdfDrafts.includes("await processAIPdfImport") &&
     !importBankPdfDrafts.includes('visibility: "public"') &&
     !importBankPdfDrafts.includes('status: "published"') &&
     !importBankPdfDrafts.includes("published_at"),
-  "teacher PDF import must preserve server-side provider routing, retry status recording, bank scope, and no auto-publish",
+  "teacher PDF import must preserve server-side provider routing, durable retry handoff, bank scope, and no auto-publish",
 );
 
 assert(

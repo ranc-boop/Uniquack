@@ -1193,10 +1193,12 @@ export function isTransientTeacherBlueprintProviderFailure(error: unknown) {
 export async function generateTeacherBlueprintReviewDrafts({
   blueprint,
   profileId,
+  queueJobId,
   supabase,
 }: {
   blueprint: QuestionBlueprint;
   profileId: string;
+  queueJobId?: string;
   supabase: SupabaseLike;
 }): Promise<TeacherBlueprintGenerationSummary> {
   const bankId = blueprint.source_bank_id;
@@ -1279,6 +1281,7 @@ export async function generateTeacherBlueprintReviewDrafts({
           blueprintId: blueprint.id,
           blueprintTitle: blueprint.title,
           expectedDraftCount: request.count,
+          durableJobId: queueJobId ?? null,
           providerStrategy,
           request,
           rootWarnings: parsed.rootWarnings,
