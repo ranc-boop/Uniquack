@@ -6,7 +6,7 @@ This is a local planning benchmark, not a provider-cost claim.
 
 | Run | Source pages | Planned sent pages | Estimated page reduction | Provider tokens/cost | Result |
 | --- | ---: | ---: | ---: | --- | --- |
-| Full-document baseline | 24 | 24 | 0% | Not collected | Pending safe queue window |
+| Full-document baseline | 24 | 24 | 0% | Not collected | Not re-run; historical 403 remains unresolved |
 | Selective planner fixture | 24 | 9 | 62.5% | Not collected | Passed locally |
 
 ## Fixture
@@ -34,11 +34,11 @@ telemetry after a paired provider run.
 
 Run only after:
 
-1. the queue has no unrelated active job;
-2. migration `0037_ai_selective_execution_control.sql` is applied;
-3. full-document baseline succeeds with the same provider, model, source PDF,
+1. migration `0037_ai_selective_execution_control.sql` is applied and the
+   global control remains disabled;
+2. one bounded full-document baseline succeeds with the same provider, model, source PDF,
    target Bank, and worker environment; and
-4. a super-admin explicitly enables the controlled selective-execution flag.
+3. a super-admin explicitly enables the controlled selective-execution flag.
 
 Compare the two runs for question count, source references, visual/crop
 preservation, boundary and duplicate warnings, coverage, sent pages, provider

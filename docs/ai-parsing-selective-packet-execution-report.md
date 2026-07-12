@@ -2,7 +2,7 @@
 
 ## Final State
 
-**Available for controlled testing, not ready for closed beta.**
+**Available for controlled internal testing, not ready for closed beta.**
 
 Full-document AI PDF parsing remains the production-compatible default. The
 subset path now requires an explicit super-admin operations control and is only
@@ -39,19 +39,43 @@ Migration `0037_ai_selective_execution_control.sql` adds
   cannot widen an existing `RETURNS TABLE` definition in place. Its
   service-role-only grant is restored immediately.
 
-Migration `0037` has not been applied to the remote environment in this
-validation. Until it is applied and the super-admin checkbox is deliberately
-enabled, full-document execution remains enforced.
+`0037_ai_selective_execution_control.sql` was applied exactly once to the
+clean Supabase project. Remote validation confirmed that the global setting is
+`false` by default and was restored to `false` after the controlled opt-in
+check.
+
+Remote role checks passed:
+
+- normal teacher, student, and unrelated teacher cannot read or update the
+  control table;
+- the existing server action remains guarded by `requireSuperAdmin()`;
+- a real super-admin can set the control to `true` for an isolated test;
+- the trusted service-role worker resolves that value; and
+- the worker path still requires an explicit `true` input before selective
+  page preparation is possible.
+
+The temporary control change did not enqueue work, call a provider, or create
+a Review Draft, Assignment, or public question. Scheduler activity alone does
+not enable selective execution.
 
 ## Provider Baseline and 403 Classification
 
 A previous bounded selective queue validation reached the configured native PDF
 provider and safely recorded a `403`, without retaining a provider body or
-credentials. The current full-document baseline attempt used the same bounded
-synthetic source and default-disabled selective path, but stopped before a
-provider call because the clean queue already had one unrelated
-`ai_pdf_extract` job in `processing` status. The validation did not mutate,
-claim, cancel, or retry that job.
+credentials. The planned full-document baseline did not run at that time
+because a queue row appeared to be processing.
+
+Post-migration inspection showed that row was a stale `queue-e2e` smoke
+fixture: its lease and heartbeat had both expired. It was the only active job,
+was verified through smoke-only batch, asset, and Library metadata, and was
+closed through the existing trusted claim/finish path without provider
+execution. Its bounded smoke fixture rows and source asset were then removed.
+No real user job was inspected, cancelled, or changed.
+
+The full-document provider baseline was intentionally **not** re-run during
+this validation. Repeating a historical permission failure without a provider
+configuration change would not isolate the cause and would violate the bounded
+retry rule.
 
 Therefore the prior `403` is **not yet conclusively attributable** to either
 provider/project/model authorization or subset execution. The implementation
@@ -119,24 +143,27 @@ Passed:
 - local embedded-Postgres migration harness: all 38 clean migrations applied;
   36 assertions passed and temporary data was removed.
 
-`npm.cmd run smoke` exercised the new source smoke and passed its early focused
-checks. It later stopped at an existing live-auth request rate limit during
-`batch-import-smoke`; it did not report a selective-execution failure. Several
-other live fixtures reported the same rate-limit skip before that terminal
-failure. Re-run the aggregate suite after the authentication throttle clears.
+Additional post-migration validation passed:
+
+- `node scripts/ai-parsing-selective-execution-live-smoke.mjs` confirmed remote
+  RLS, temporary super-admin enablement, trusted-worker resolution, restoration
+  to `false`, and safe stale-smoke cleanup;
+- `node scripts/batch-import-smoke.mjs` passed once on latest `main` and once on
+  this branch. The earlier auth request limit therefore did not reproduce as a
+  branch-specific defect; and
+- one post-migration `npm.cmd run smoke` completed successfully, including all
+  38 clean migrations and the local embedded-Postgres Google/RLS harness.
 
 ## Next Controlled Validation
 
-1. Let the unrelated processing queue job finish or have its owner resolve it.
-2. Apply clean migration `0037` using the normal clean-Supabase procedure.
-3. Leave `selective_execution_enabled` false and run the bounded PDF-only queue
+1. Leave `selective_execution_enabled` false and run the bounded PDF-only queue
    validation for the full-document baseline.
-4. If the baseline also returns a safe 403, classify it as an existing provider
+2. If the baseline also returns a safe 403, classify it as an existing provider
    authorization/configuration blocker and keep the control disabled.
-5. Only if the full-document baseline succeeds, enable the super-admin control
+3. Only if the full-document baseline succeeds, enable the super-admin control
    for one matching source/provider/model run and compare private Review Draft
    quality plus telemetry.
-6. Do not recommend closed beta until both runs complete and quality gates match.
+4. Do not recommend closed beta until both runs complete and quality gates match.
 
 ## Migration and Rollback Risk
 
