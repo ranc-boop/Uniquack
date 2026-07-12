@@ -273,6 +273,9 @@ export type AIPdfProcessInput = {
   providerRetryMaxAttempts?: number;
   routingLeaseOwner?: string;
   routingOrganizationId?: string;
+  // Only the trusted durable worker may opt into the closed-beta subset path.
+  // All direct/admin/teacher server calls retain full-document handling by default.
+  selectiveExecutionEnabled?: boolean;
   sourceAssetId?: string;
   sourceObjectPath: string;
   supabase: SupabaseLike;
@@ -4039,6 +4042,16 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
     preanalysis: executionPlanning.preanalysis as AIPdfPreanalysisResult,
     providerStrategy: providerInput.strategy,
   });
+
+  if (input.selectiveExecutionEnabled !== true) {
+    selectiveExecutionPlan = forceAISelectiveExecutionFallback({
+      eligibility: "not_beneficial",
+      plan: selectiveExecutionPlan,
+      reasonCode: "selective_execution_disabled_by_operations_control",
+      warning:
+        "Selective source-page execution is disabled for this run, so the full document will be used safely.",
+    });
+  }
 
   if (usesSegmentedFullPdf) {
     selectiveExecutionPlan = forceAISelectiveExecutionFallback({

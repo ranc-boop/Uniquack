@@ -104,6 +104,7 @@ export async function getAIWorkerOperationsControl(supabase: SupabaseWorkerClien
         maxJobsPerInvocation: 2,
         maxProviderCallsPerExecution: 4,
         pauseWorkerClaims: false,
+        selectiveExecutionEnabled: false,
         schemaReady: false,
       };
     }
@@ -114,6 +115,7 @@ export async function getAIWorkerOperationsControl(supabase: SupabaseWorkerClien
     maxJobsPerInvocation: Math.max(1, Math.min(2, Number(row?.max_jobs_per_invocation) || 2)),
     maxProviderCallsPerExecution: Math.max(1, Math.min(4, Number(row?.max_provider_calls_per_execution) || 4)),
     pauseWorkerClaims: row?.pause_worker_claims === true,
+    selectiveExecutionEnabled: row?.selective_execution_enabled === true,
     schemaReady: true,
   };
 }

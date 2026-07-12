@@ -1,13 +1,15 @@
-# PR4-M Selective Packet Execution and Token-Savings Validation
+# PR4-M Selective AI PDF Packet Execution Validation
 
-## Goal
+## Final State
 
-Convert the existing AI PDF Packet Plan into a conservative server-side
-selective-execution decision. Eligible native-PDF imports send an in-memory
-subset of original pages to the configured provider; all uncertain cases keep
-the existing full-document path.
+**Available for controlled testing, not ready for closed beta.**
 
-## Product And Safety Boundary
+Full-document AI PDF parsing remains the production-compatible default. The
+subset path now requires an explicit super-admin operations control and is only
+passed into `processAIPdfImport` by the trusted durable worker. Teachers cannot
+enable it, select it, or submit a provider/model override.
+
+## Product Workflow and Boundaries
 
 Workflow touched:
 
@@ -15,123 +17,130 @@ Workflow touched:
 Private source PDF -> AI Parsing -> private Review Drafts -> Question Bank
 ```
 
-This change does not publish questions, create Assignments, expose a Bank to a
-student, change teacher provider selection, or enable production scheduling.
-The teacher UI only receives the neutral progress state "Preparing selected
-source pages". Provider/model selection and all cost controls remain server or
-admin-only.
+The change does not publish questions, create Assignments, expose a Bank to a
+student, bypass Review Drafts, or modify source questions. `targetBankId`,
+source references, taxonomy-review status, and private draft defaults remain on
+the existing import path.
 
-## Baseline Execution Audit
+## Explicit Rollout Control
 
-Before this change, `processAIPdfImport` generated `preanalysis`, `packetPlan`,
-and `extractionBatchPlan`, but native PDF strategies still sent the original
-full PDF to the provider in `processAIPdfSinglePass`.
+Migration `0037_ai_selective_execution_control.sql` adds
+`ai_operations_controls.selective_execution_enabled boolean not null default false`.
 
-- `gemini_native_pdf`: uploads the full source PDF through the Gemini Files API.
-- `openai_file`: sends the full source PDF through the OpenAI-compatible file
-  input path.
-- `page_images`: already renders sequential whole-document chunks; this PR
-  preserves that behavior and does not claim selective savings for it.
-- confirmed manual `segmented_full_pdf`: retains its existing masked-boundary
-  execution priority.
-- packet and batch plans carry original source page numbers; sequential chunks
-  already remap local provider page refs back to original source pages.
-- durable question creation remains after provider-response normalization in
-  `importBatchImportJson`; source PDFs and questions are never mutated merely
-  by planning.
-- PR4-L telemetry records provider usage, estimated cost, queue wait, provider
-  latency, execution latency, attempts, fallback state, and drafts created in
-  admin-only telemetry.
+- The existing Admin / AI Settings closed-beta form is the only UI that can
+  enable it, and its server action requires `requireSuperAdmin()`.
+- The trusted service-role worker reads the value through
+  `get_ai_operations_worker_control()` and is the only caller that passes the
+  value to an AI PDF execution.
+- Direct admin and teacher server calls leave the input undefined and therefore
+  use the full-document fallback.
+- Worker scheduling, queue limits, and provider routing do not imply enablement.
+- The migration recreates only the trusted-worker control RPC because PostgreSQL
+  cannot widen an existing `RETURNS TABLE` definition in place. Its
+  service-role-only grant is restored immediately.
 
-## Selective Execution Contract
+Migration `0037` has not been applied to the remote environment in this
+validation. Until it is applied and the super-admin checkbox is deliberately
+enabled, full-document execution remains enforced.
 
-The new field is:
+## Provider Baseline and 403 Classification
 
-```text
-summary.aiPdfImport.selectiveExecutionPlan
-```
+A previous bounded selective queue validation reached the configured native PDF
+provider and safely recorded a `403`, without retaining a provider body or
+credentials. The current full-document baseline attempt used the same bounded
+synthetic source and default-disabled selective path, but stopped before a
+provider call because the clean queue already had one unrelated
+`ai_pdf_extract` job in `processing` status. The validation did not mutate,
+claim, cancel, or retry that job.
 
-Version: `ai_pdf_selective_execution_v1`.
+Therefore the prior `403` is **not yet conclusively attributable** to either
+provider/project/model authorization or subset execution. The implementation
+does establish the required failure classification:
 
-It contains only bounded planning metadata: mode, eligibility, selected/context
-page counts, merged windows, packet references, original-to-local page mapping,
-safe reason codes, warnings, and optional aggregate token usage. It never
-contains PDF bytes, base64, signed URLs, prompts, provider responses, or
-credentials.
+- HTTP `401` and `403` map to `provider_permission_error`.
+- That code is non-retryable and requests administrator attention.
+- It is not a transient `503` / busy circuit signal.
+- Fallback routing only proceeds for busy, rate-limited, timeout, or network
+  failures; it does not switch providers after a permission failure.
+- Teacher-visible failure copy remains vendor-neutral and does not expose raw
+  provider diagnostics, keys, URLs, or responses.
 
-For an eligible plan, the selected source pages are rendered in original order
-into an in-memory subset PDF using the repository's existing secure masked-PDF
-materializer with no masks. The prompt explicitly labels local subset pages and
-the normalization layer maps returned `page_refs` and asset-page values back to
-original PDF page numbers before any durable import work begins.
+## Sparse Fixture Benchmark
 
-## Conservative Eligibility Policy
+The local, non-sensitive 24-page sparse fixture contains two question pages,
+answer-key context, and blank intervening pages. The planner selected 9 of 24
+original pages, with a **62.5% estimated page reduction** and a complete
+original-page mapping.
 
-Selective execution requires all of the following:
+This is planning evidence only. No provider was called by the benchmark, so
+actual tokens, cost, provider latency, extraction quality, crop preservation,
+and draft count are all **not collected** rather than estimated or claimed.
+See [ai-parsing-selective-execution-benchmark.md](ai-parsing-selective-execution-benchmark.md).
 
-- completed preanalysis, Packet Plan, and Extraction Batch Plan;
-- a native PDF subset-capable strategy (`gemini_native_pdf` or `openai_file`);
-- at least 6 source pages;
-- no scanned-PDF warning;
-- no non-empty unknown content pages;
-- no high-confidence cross-page boundary risk;
-- located answer/solution context whenever answer markers exist;
-- at most 3 merged windows;
-- at least 25% expected page reduction; and
-- no more than 75% of the source pages sent after one-page context halos.
+## Quality and Safety Gates
 
-Question, answer, visual, boundary-risk, and adjacent context pages are
-included before merging windows. Any unmet condition records a safe fallback
-reason and uses the intact full-document path. `page_images`, mock, unsupported
-providers, short/dense sources, manual boundary segmentation, and failed subset
-materialization all fall back without inventing token savings.
+Focused coverage verifies:
 
-## Telemetry And Cost Measurement
+- full-document fallback when the control is disabled;
+- conservative selection only for an eligible native-PDF plan;
+- full-document fallback for boundary risk, unknown content, dense/short files,
+  unsupported inputs, manual segmentation, and materialization failure;
+- preserved original-page mappings and source references;
+- no raw PDF bytes, base64, prompts, signed URLs, provider bodies, or secrets in
+  the plan summary;
+- private, Review-Draft-only Bank handoff with no auto-publish or Assignment;
+- no arbitrary fallback after a 403.
 
-Provider token usage received from native PDF calls is preserved as an aggregate
-per selective execution window when supplied. PR4-L's service-role-only
-telemetry remains the cost and latency source of truth: it records actual usage
-when the provider supplies it and catalog-derived estimates separately. Missing
-provider usage remains null; this PR does not fabricate an exact cost or token
-count.
+## Validation Results
 
-The plan's `estimatedPageReductionRatio` is an input-page estimate, not a claim
-of realized provider billing savings. Real savings should be compared in the
-admin-only operations dashboard using telemetry from like-for-like imports.
+Passed:
 
-## Validation
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `node scripts/security-smoke.mjs`
+- `node scripts/route-smoke.mjs`
+- `node scripts/ai-parsing-selective-packet-execution-smoke.mjs`
+- `node scripts/ai-parsing-selective-execution-smoke.mjs`
+- `node scripts/ai-parsing-selective-execution-benchmark.mjs`
+- `node scripts/ai-operations-launch-readiness-smoke.mjs`
+- `node scripts/ai-provider-fallback-circuit-breaker-smoke.mjs`
+- `node scripts/ai-provider-resilience-smoke.mjs`
+- `node scripts/durable-ai-job-queue-smoke.mjs`
+- `node scripts/durable-ai-job-queue-load-smoke.mjs`
+- `node scripts/ai-parsing-status-review-qa-smoke.mjs`
+- `node scripts/ai-parsing-boundary-duplicate-guard-smoke.mjs`
+- `node scripts/bank-import-review-smoke.mjs`
+- `node scripts/question-bank-foundation-smoke.mjs`
+- `node scripts/teacher-beta-readiness-smoke.mjs`
+- `node scripts/supabase-rls-smoke.mjs`
+- `npm.cmd run perf:budget`
+- `npm.cmd run perf:audit`
+- `npm.cmd run analyze`
+- local embedded-Postgres migration harness: all 38 clean migrations applied;
+  36 assertions passed and temporary data was removed.
 
-`scripts/ai-parsing-selective-packet-execution-smoke.mjs` verifies:
+`npm.cmd run smoke` exercised the new source smoke and passed its early focused
+checks. It later stopped at an existing live-auth request rate limit during
+`batch-import-smoke`; it did not report a selective-execution failure. Several
+other live fixtures reported the same rate-limit skip before that terminal
+failure. Re-run the aggregate suite after the authentication throttle clears.
 
-- sparse, well-classified native PDFs build merged windows with context halos;
-- complete local-to-original page mapping is preserved;
-- high boundary risk, unknown content, short/dense documents, and unsupported
-  page-image inputs safely fall back to full-document execution;
-- safe usage aggregates can be recorded without provider payloads;
-- existing preanalysis, packet, batch, and target-Bank lineage fields survive
-  the summary merge; and
-- the service continues to use the Bank-scoped Review Draft import boundary.
+## Next Controlled Validation
 
-The queue E2E fixture now also builds a valid 12-page synthetic source with two
-question pages, answer context, and blank pages. Its local-only
-`--validate-selective-fixture` mode runs actual PDF page counting, preanalysis,
-packet/batch planning, and selective execution planning. It selected 9 of 12
-pages while preserving original-page mapping. During this validation, a global
-regex-state carryover bug was found in preanalysis and corrected by resetting
-`lastIndex` before each per-page `matchAll` call.
+1. Let the unrelated processing queue job finish or have its owner resolve it.
+2. Apply clean migration `0037` using the normal clean-Supabase procedure.
+3. Leave `selective_execution_enabled` false and run the bounded PDF-only queue
+   validation for the full-document baseline.
+4. If the baseline also returns a safe 403, classify it as an existing provider
+   authorization/configuration blocker and keep the control disabled.
+5. Only if the full-document baseline succeeds, enable the super-admin control
+   for one matching source/provider/model run and compare private Review Draft
+   quality plus telemetry.
+6. Do not recommend closed beta until both runs complete and quality gates match.
 
-One bounded real Gemini Native queue call was attempted after the implementation
-work. The worker reached the provider but received a safe `403` from
-`generateContent`; no provider response body was logged or retained. The smoke
-cleanup removed its synthetic source, Bank, batch, draft, and job fixtures. The
-real completion comparison remains blocked by provider authorization, so no
-actual token/cost/latency savings are claimed. Once provider access is restored,
-run the same bounded queue E2E and compare its PR4-L admin-only telemetry with
-an equivalent full-document fixture.
+## Migration and Rollback Risk
 
-## Migration And Rollback Risk
-
-No migration was added or changed. Clean migrations `0033` through `0036` were
-not rerun or modified. Rollback is code-only: removing the selective decision
-would restore full-document provider input while leaving existing summaries and
-private review data intact.
+No existing clean migration was changed; `0033` through `0036` remain intact.
+The new migration is narrow and forward-only. Disabling the control immediately
+restores full-document execution without changing imported questions, source
+PDFs, Review Drafts, Banks, or Assignments.

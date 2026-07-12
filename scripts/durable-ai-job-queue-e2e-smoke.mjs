@@ -251,10 +251,17 @@ async function runPdfE2E({ admin, runWorker, teacher, suffix }) {
       assert(
         !completedBatchError &&
           selectiveExecutionPlan?.version === "ai_pdf_selective_execution_v1" &&
-          selectiveExecutionPlan?.eligibility === "eligible" &&
-          selectiveExecutionPlan?.sentPageCount < selectiveExecutionPlan?.totalPageCount &&
+          Array.isArray(selectiveExecutionPlan?.originalPageMap) &&
+          (
+            (selectiveExecutionPlan?.eligibility === "eligible" &&
+              selectiveExecutionPlan?.sentPageCount < selectiveExecutionPlan?.totalPageCount) ||
+            (selectiveExecutionPlan?.reasonCodes?.includes(
+              "selective_execution_disabled_by_operations_control",
+            ) &&
+              selectiveExecutionPlan?.sentPageCount === selectiveExecutionPlan?.totalPageCount)
+          ) &&
           Array.isArray(selectiveExecutionPlan?.originalPageMap),
-        "completed PDF job did not retain an eligible selective execution plan with original page mapping",
+        "completed PDF job did not retain either the controlled selective plan or the safe full-document fallback with original page mapping",
       );
       assert(
         !/base64|signed.?url|raw.?prompt|provider.?response|secret/i.test(
@@ -605,6 +612,11 @@ async function main() {
   const pdfResult = process.argv.includes("--blueprint-only")
     ? "previous_completed_run"
     : await runPdfE2E({ admin, runWorker, teacher, suffix });
+  if (process.argv.includes("--pdf-only")) {
+    await ensureNoOutstandingJobs(admin);
+    console.log(`PASS durable AI queue PDF-only E2E completed with PDF=${pdfResult}`);
+    return;
+  }
   await ensureNoOutstandingJobs(admin);
   const blueprintResult = await runBlueprintE2E({ admin, runWorker, teacher, suffix });
   await ensureNoOutstandingJobs(admin);

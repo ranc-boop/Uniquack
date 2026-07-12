@@ -74,6 +74,7 @@ export type AIOperationsControl = {
   id: string;
   organization_id: string | null;
   operation_kind: string | null;
+  selective_execution_enabled: boolean;
   pause_new_enqueues: boolean;
   pause_worker_claims: boolean;
   daily_estimated_cost_micros: number;
@@ -1037,6 +1038,7 @@ export type Database = {
           pause_worker_claims: boolean;
           max_jobs_per_invocation: number;
           max_provider_calls_per_execution: number;
+          selective_execution_enabled: boolean;
         }>;
       };
       record_ai_operation_telemetry: {

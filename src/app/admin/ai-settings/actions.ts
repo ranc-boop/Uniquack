@@ -336,6 +336,8 @@ export async function saveAIOperationsControl(formData: FormData) {
           organization_id: null,
           pause_new_enqueues: formData.get("pause_new_enqueues") === "on",
           pause_worker_claims: formData.get("pause_worker_claims") === "on",
+          selective_execution_enabled:
+            formData.get("selective_execution_enabled") === "on",
           queue_cost_reservation_micros: boundedInteger(
             formData.get("queue_cost_reservation_micros"),
             100_000,
