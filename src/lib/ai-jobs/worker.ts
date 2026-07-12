@@ -6,6 +6,11 @@ import {
   classifyAIProviderError,
   safeAIProviderErrorState,
 } from "@/lib/ai-providers/errors";
+import {
+  resolveAIProviderRoute,
+  runWithAIProviderRoute,
+  type AIProviderRoutingOperationKind,
+} from "@/lib/ai-providers/routing";
 import { queueRetryDelayMs } from "@/lib/ai-jobs/policy";
 import type { AIProviderJob } from "@/lib/ai-jobs/types";
 import {
@@ -270,6 +275,17 @@ async function runAIPdfExtractJob({
     throw new Error("The queued PDF import is missing its safe source or provider reference.");
   }
 
+  const operationKind: AIProviderRoutingOperationKind =
+    aiPdfImport.executionMode === "blueprint_observation"
+      ? "blueprint_observe_pdf"
+      : "ai_pdf_extract";
+  const route = await resolveAIProviderRoute({
+    operationKind,
+    organizationId: job.organization_id,
+    requestedProfileId: providerProfileId,
+    supabase,
+  });
+
   const { data: sourceAsset, error: sourceAssetError } = await supabase
     .from("import_batch_assets")
     .select("id, batch_id, object_path, original_filename, status")
@@ -285,7 +301,7 @@ async function runAIPdfExtractJob({
   const claimedResource = await claimAIPdfBatchResource({
     batch,
     job,
-    providerProfileId,
+    providerProfileId: route.candidates[0]!.profile.id,
     sourceAssetId,
     supabase,
   });
@@ -315,7 +331,9 @@ async function runAIPdfExtractJob({
     jobId: job.id,
     pdfBuffer: Buffer.from(await sourceBlob.arrayBuffer()),
     profileId: job.created_by,
-    providerProfileId,
+    providerProfileId: route.candidates[0]!.profile.id,
+    routingLeaseOwner: `${leaseOwner}:${job.id}`,
+    routingOrganizationId: job.organization_id,
     sourceAssetId,
     sourceObjectPath: sourceAsset.object_path,
     supabase,
@@ -323,11 +341,22 @@ async function runAIPdfExtractJob({
   };
 
   try {
-    const importSummary = await processAIPdfImport(input);
+    const routed = await runWithAIProviderRoute({
+      execute: (provider) =>
+        processAIPdfImport({
+          ...input,
+          providerProfileId: provider.id,
+        }),
+      leaseOwner: `${leaseOwner}:${job.id}`,
+      route,
+      supabase,
+    });
+    const importSummary = routed.value;
     const importResult = asRecord(importSummary);
     const createdCount = numberValue(importResult.createdCount);
     return {
       createdCount,
+      fallbackUsed: routed.fallbackUsed,
       reviewRoute: job.target_bank_id
         ? `/teacher/banks/${job.target_bank_id}/review`
         : "/admin/review",
@@ -341,9 +370,11 @@ async function runAIPdfExtractJob({
 
 async function runBlueprintGenerateQuestionsJob({
   job,
+  leaseOwner,
   supabase,
 }: {
   job: AIProviderJob;
+  leaseOwner: string;
   supabase: SupabaseWorkerClient;
 }) {
   await ensureBankIsActive({
@@ -395,11 +426,14 @@ async function runBlueprintGenerateQuestionsJob({
     blueprint,
     profileId: job.created_by,
     queueJobId: job.id,
+    routingLeaseOwner: `${leaseOwner}:${job.id}`,
+    routingOrganizationId: job.organization_id,
     supabase,
   });
 
   return {
     createdCount: result.createdDraftCount,
+    fallbackUsed: result.fallbackUsed,
     reviewRoute: result.reviewRoute,
     warningCount: result.warningCount,
   };
@@ -424,13 +458,14 @@ async function executeClaimedJob({
     const result =
       job.job_kind === "ai_pdf_extract"
         ? await runAIPdfExtractJob({ job, leaseOwner, supabase })
-        : await runBlueprintGenerateQuestionsJob({ job, supabase });
+        : await runBlueprintGenerateQuestionsJob({ job, leaseOwner, supabase });
 
     const finished = await finishJob({
       job,
       leaseOwner,
       safeResult: {
         createdDraftCount: result.createdCount,
+        fallbackUsed: result.fallbackUsed ?? false,
         reviewRoute: result.reviewRoute,
         warningCount: result.warningCount,
       },

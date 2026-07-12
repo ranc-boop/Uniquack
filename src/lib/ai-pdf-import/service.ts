@@ -185,6 +185,10 @@ import {
   type AIProviderRetryEvent,
 } from "@/lib/ai-providers/resilience";
 import {
+  resolveAIProviderRoute,
+  runWithAIProviderRoute,
+} from "@/lib/ai-providers/routing";
+import {
   buildAIBlueprintObservationPlanFromProviderResponse,
   buildAIBlueprintObservationPlanFromSummary,
   buildAIBlueprintObservationProviderPrompt,
@@ -253,6 +257,8 @@ export type AIPdfProcessInput = {
   pdfBuffer: Buffer;
   profileId: string;
   providerProfileId: string;
+  routingLeaseOwner?: string;
+  routingOrganizationId?: string;
   sourceAssetId?: string;
   sourceObjectPath: string;
   supabase: SupabaseLike;
@@ -3188,15 +3194,25 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
     ? new Set(taxonomyCandidates.map((tag) => tag.tagId))
     : activeTags.length
       ? new Set(activeTags.map((tag) => tag.id))
-    : undefined;
-  const analyzerProvider = await loadDeepSeekBlueprintAnalyzerProvider(input);
-  warnings.push(...analyzerProvider.warnings);
+      : undefined;
+  const analyzerRoute = input.routingOrganizationId
+    ? await resolveAIProviderRoute({
+        operationKind: "blueprint_analyze_text",
+        organizationId: input.routingOrganizationId,
+        supabase: input.supabase,
+      })
+    : null;
+  const analyzerProvider = analyzerRoute
+    ? null
+    : await loadDeepSeekBlueprintAnalyzerProvider(input);
+  warnings.push(...(analyzerProvider?.warnings ?? []));
   await updateAIPdfBatchProgress(input, {
-    ...(analyzerProvider.fallbackReason
+    ...(analyzerProvider?.fallbackReason
       ? { blueprintModelQualityFallbackReason: analyzerProvider.fallbackReason }
       : {}),
-    blueprintModelQualityMode: analyzerProvider.actualMode,
-    blueprintModelQualityRequestedMode: analyzerProvider.requestedMode,
+    blueprintModelQualityMode: analyzerProvider?.actualMode ?? "admin_routed",
+    blueprintModelQualityRequestedMode:
+      analyzerProvider?.requestedMode ?? "admin_routed",
     detail: `Running DeepSeek text-only blueprint analyzer on ${clusterAnalyzerPlans.length} observation cluster(s).`,
     pageCount,
     phase: "question_blueprint_analyzing",
@@ -3219,7 +3235,7 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
         "question_blueprint_analyzer_missing_clustered_inputs",
       ]),
     });
-  } else if (!analyzerProvider.provider) {
+  } else if (!analyzerRoute && !analyzerProvider?.provider) {
     questionBlueprintDraftPlan = skippedQuestionBlueprintDraftPlan({
       observationPlan: blueprintObservationPlan,
       warnings: uniqueStrings([
@@ -3236,8 +3252,8 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
 
     for (const clusterAnalyzerPlan of clusterAnalyzerPlans) {
       try {
-        const draftPlan = (
-          await runWithAIProviderRetry({
+        const executeAnalyzer = (provider: Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>) =>
+          runWithAIProviderRetry({
             onRetry: (retry) =>
               updateAIPdfProviderRetryProgress({
                 input,
@@ -3253,20 +3269,31 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
                   batchId: input.batchId,
                   fileName: input.fileName,
                   jobId: input.jobId,
-                  providerProfileId: analyzerProvider.provider.id,
+                  providerProfileId: provider.id,
                   sourceAssetId: input.sourceAssetId,
                   sourceObjectPath: input.sourceObjectPath,
                 },
                 knownTaxonomyTagIds,
                 observationPlan: clusterAnalyzerPlan.observationPlan,
-                provider: analyzerProvider.provider,
+                provider,
                 taxonomyCandidatesByFacet: buildQuestionBlueprintTaxonomyCandidateList({
                   candidates: taxonomyCandidates,
                   observationPlan: clusterAnalyzerPlan.observationPlan,
                 }),
               }),
-          })
-        ).value;
+          });
+        const draftPlan = analyzerRoute
+          ? (
+              await runWithAIProviderRoute({
+                execute: async (provider) => (await executeAnalyzer(provider)).value,
+                leaseOwner:
+                  input.routingLeaseOwner ??
+                  `blueprint-analyzer:${input.batchId}`,
+                route: analyzerRoute,
+                supabase: input.supabase,
+              })
+            ).value
+          : (await executeAnalyzer(analyzerProvider!.provider!)).value;
 
         clusterDraftPlans.push({
           cluster: clusterAnalyzerPlan.cluster,

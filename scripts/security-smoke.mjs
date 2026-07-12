@@ -1975,6 +1975,10 @@ const durableAiJobsMigration = await read(
 const durableAiJobsWorkerRoleFix = await read(
   "supabase/clean-migrations/0034_ai_provider_jobs_worker_role_fix.sql",
 );
+const providerRoutingCircuitMigration = await read(
+  "supabase/clean-migrations/0035_ai_provider_routing_circuit_breaker.sql",
+);
+const providerRouting = await read("src/lib/ai-providers/routing.ts");
 const durableAiJobsWorker = await read("src/lib/ai-jobs/worker.ts");
 const durableAiJobsRoute = await read("src/app/api/internal/ai-jobs/run/route.ts");
 assert(
@@ -1988,6 +1992,24 @@ assert(
     !durableAiJobsMigration.includes("api_key_ciphertext") &&
     !durableAiJobsMigration.includes("signed_url"),
   "durable AI jobs must be RLS-protected, atomically claimed by trusted workers, and secret-free",
+);
+assert(
+  providerRoutingCircuitMigration.includes(
+    "create table if not exists public.ai_provider_routing_policies",
+  ) &&
+    providerRoutingCircuitMigration.includes(
+      "create table if not exists private.ai_provider_runtime_states",
+    ) &&
+    providerRoutingCircuitMigration.includes("acquire_ai_provider_half_open_probe") &&
+    providerRoutingCircuitMigration.includes("record_ai_provider_route_outcome") &&
+    providerRoutingCircuitMigration.includes("enable row level security") &&
+    providerRoutingCircuitMigration.includes("to service_role") &&
+    !providerRoutingCircuitMigration.includes("api_key_ciphertext") &&
+    providerRouting.includes("providerSupportsAIProviderRoutingOperation") &&
+    providerRouting.includes("blueprint_observe_pdf") &&
+    providerRouting.includes("blueprint_analyze_text") &&
+    !providerRouting.includes("process.env.GEMINI"),
+  "provider routing must be capability-aware, service-role guarded, and free of provider credentials",
 );
 assert(
   durableAiJobsWorker.includes("recordAIPdfProviderFailure") &&
