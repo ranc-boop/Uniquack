@@ -25,7 +25,6 @@ import { buildMaskedPdfChunk } from "@/lib/ai-pdf-import/masked-pdf";
 import {
   normalizeManualSegmentationPlan,
   segmentChunkForIndex,
-  type AIPdfSegmentChunk,
 } from "@/lib/ai-pdf-import/segmentation";
 import {
   AI_PDF_IMPORT_MAX_BYTES,
@@ -55,6 +54,7 @@ import {
   mergeAIPreanalysisIntoSummary,
   type AIPreanalysisResult,
 } from "@/lib/ai-pdf-import/preanalysis";
+import type { AIPdfPreanalysisResult } from "@/lib/ai-pdf-import/preanalysis-core";
 import {
   buildAIPacketPlanFromPreanalysis,
   failedPacketPlan,
@@ -67,6 +67,16 @@ import {
   mergeAIExtractionBatchPlanIntoSummary,
   type AIExtractionBatchPlan,
 } from "@/lib/ai-pdf-import/extraction-batches";
+import {
+  buildAISelectiveExecutionPlan,
+  forceAISelectiveExecutionFallback,
+  markAISelectiveExecutionMaterialized,
+  mergeAISelectiveExecutionPlanIntoSummary,
+  recordAISelectiveExecutionUsage,
+  selectiveExecutionPlanToSegmentChunk,
+  type AISelectiveExecutionPlan,
+  type AISelectiveExecutionUsageSummary,
+} from "@/lib/ai-pdf-import/selective-execution";
 import {
   buildAIProviderRequestPlanFromExtractionBatchPlan,
   failedAIProviderRequestPlan,
@@ -263,6 +273,9 @@ export type AIPdfProcessInput = {
   providerRetryMaxAttempts?: number;
   routingLeaseOwner?: string;
   routingOrganizationId?: string;
+  // Only the trusted durable worker may opt into the closed-beta subset path.
+  // All direct/admin/teacher server calls retain full-document handling by default.
+  selectiveExecutionEnabled?: boolean;
   sourceAssetId?: string;
   sourceObjectPath: string;
   supabase: SupabaseLike;
@@ -936,6 +949,40 @@ async function updateAIExtractionBatchPlan({
       updatedAt: new Date().toISOString(),
     }),
     batchPlan,
+  );
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      status: "validating",
+      summary: {
+        ...current.summary,
+        aiPdfImport,
+      },
+    })
+    .eq("id", input.batchId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function updateAISelectiveExecutionPlan({
+  input,
+  selectiveExecutionPlan,
+}: {
+  input: ProcessInput;
+  selectiveExecutionPlan: AISelectiveExecutionPlan;
+}) {
+  const current = await loadCurrentAIPdfSummary(input);
+  const aiPdfImport = mergeAISelectiveExecutionPlanIntoSummary(
+    mergeAIPdfImportChunkingSummary(current.aiPdfImport, {
+      fileName: input.fileName,
+      jobId: input.jobId,
+      sourceAssetId: input.sourceAssetId,
+      sourceObjectPath: input.sourceObjectPath,
+      updatedAt: new Date().toISOString(),
+    }),
+    selectiveExecutionPlan,
   );
   const { error } = await input.supabase
     .from("import_batches")
@@ -2183,6 +2230,7 @@ async function generateAndStoreExtractionBatchPlan({
     const batchPlan = buildAIExtractionBatchPlanFromPacketPlan(packetPlan);
     await updateAIExtractionBatchPlan({ batchPlan, input });
     await generateAndStoreProviderRequestPlan({ batchPlan, input });
+    return batchPlan;
   } catch (error) {
     const message =
       error instanceof Error
@@ -2195,6 +2243,7 @@ async function generateAndStoreExtractionBatchPlan({
     });
     await updateAIExtractionBatchPlan({ batchPlan, input });
     await generateAndStoreProviderRequestPlan({ batchPlan, input });
+    return batchPlan;
   }
 }
 
@@ -2208,7 +2257,11 @@ async function generateAndStorePacketPlan({
   try {
     const packetPlan = buildAIPacketPlanFromPreanalysis(preanalysis);
     await updateAIPdfPacketPlan({ input, packetPlan });
-    await generateAndStoreExtractionBatchPlan({ input, packetPlan });
+    const extractionBatchPlan = await generateAndStoreExtractionBatchPlan({
+      input,
+      packetPlan,
+    });
+    return { extractionBatchPlan, packetPlan };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "AI packet plan failed.";
@@ -2218,7 +2271,11 @@ async function generateAndStorePacketPlan({
       warnings: [`packet plan failed: ${message}`],
     });
     await updateAIPdfPacketPlan({ input, packetPlan });
-    await generateAndStoreExtractionBatchPlan({ input, packetPlan });
+    const extractionBatchPlan = await generateAndStoreExtractionBatchPlan({
+      input,
+      packetPlan,
+    });
+    return { extractionBatchPlan, packetPlan };
   }
 }
 
@@ -2241,7 +2298,8 @@ async function generateAndStorePdfPreanalysis({
       pdfBuffer: input.pdfBuffer,
     });
     await updateAIPdfPreanalysis({ input, preanalysis });
-    await generateAndStorePacketPlan({ input, preanalysis });
+    const plans = await generateAndStorePacketPlan({ input, preanalysis });
+    return { ...plans, preanalysis };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "PDF preanalysis failed.";
@@ -2250,7 +2308,8 @@ async function generateAndStorePdfPreanalysis({
       pageCount,
     });
     await updateAIPdfPreanalysis({ input, preanalysis });
-    await generateAndStorePacketPlan({ input, preanalysis });
+    const plans = await generateAndStorePacketPlan({ input, preanalysis });
+    return { ...plans, preanalysis };
   }
 }
 
@@ -2399,12 +2458,14 @@ function buildPrompt({
   fileName,
   pageMapping,
   pageCount,
+  selectiveExecution = false,
 }: {
   activeTags: ActiveTag[];
   chunk?: Pick<AIPdfImportChunkSummary, "pageEnd" | "pageStart">;
   fileName: string;
   pageMapping?: { chunkPage: number; sourcePage: number }[];
   pageCount: number;
+  selectiveExecution?: boolean;
 }) {
   const tagIdsByFacet = activeTags.reduce<Record<string, string[]>>((groups, tag) => {
     const facet = tag.facet_key ?? "none";
@@ -2447,8 +2508,12 @@ function buildPrompt({
     pageMapping?.length
       ? [
           "",
-          "This is a non-overlapping full-PDF segment. White regions on the first or last page intentionally hide content assigned to an adjacent segment.",
-          "Extract only visible content. Never infer or reconstruct content hidden by white regions.",
+          selectiveExecution
+            ? "This is a conservative selected-page PDF subset. Every included page is in original reading order; pages not included were intentionally excluded by a safe planning step."
+            : "This is a non-overlapping full-PDF segment. White regions on the first or last page intentionally hide content assigned to an adjacent segment.",
+          selectiveExecution
+            ? "Use only visible included pages. Never infer content from source pages that are not present in this subset."
+            : "Extract only visible content. Never infer or reconstruct content hidden by white regions.",
           `Chunk-page to original-source-page mapping: ${pageMapping
             .map((item) => `${item.chunkPage}->${item.sourcePage}`)
             .join(", ")}.`,
@@ -2594,14 +2659,14 @@ function buildPrompt({
 }
 
 function remapSegmentExtractionPages({
-  chunk,
   extraction,
+  pageMapping,
 }: {
-  chunk: AIPdfSegmentChunk;
   extraction: AIPdfExtraction;
+  pageMapping: { chunkPage: number; sourcePage: number }[];
 }) {
   const sourcePageByChunkPage = new Map(
-    chunk.pageMapping.map((item) => [item.chunkPage, item.sourcePage]),
+    pageMapping.map((item) => [item.chunkPage, item.sourcePage]),
   );
   const mapPage = (page: number) => sourcePageByChunkPage.get(page) ?? page;
 
@@ -3651,6 +3716,7 @@ async function processAIPdfSinglePass({
   provider,
   providerInput,
   providerSummary,
+  selectiveInput,
 }: {
   activeTags: ActiveTag[];
   input: ProcessInput;
@@ -3658,6 +3724,12 @@ async function processAIPdfSinglePass({
   provider: Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>;
   providerInput: ReturnType<typeof describeAiPdfProviderInput>;
   providerSummary: { id: string; model: string; name: string; provider: string };
+  selectiveInput?: {
+    fileName: string;
+    pageMapping: { chunkPage: number; sourcePage: number }[];
+    plan: AISelectiveExecutionPlan;
+    pdfBytes: Buffer;
+  };
 }) {
   if (input.chunkIndex !== undefined) {
     throw new Error(
@@ -3668,17 +3740,21 @@ async function processAIPdfSinglePass({
   const prompt = buildPrompt({
     activeTags,
     fileName: input.fileName,
+    pageMapping: selectiveInput?.pageMapping,
     pageCount,
+    selectiveExecution: Boolean(selectiveInput),
   });
 
   await updateAIPdfBatchProgress(input, {
-    detail:
-      "Calling AI provider once with the full PDF. If the first JSON is invalid, the system will ask the model once more with the validation error to repair it.",
+    detail: selectiveInput
+      ? "Calling AI provider with selected source pages. If the first JSON is invalid, the system will ask the model once more with the validation error to repair it."
+      : "Calling AI provider once with the full PDF. If the first JSON is invalid, the system will ask the model once more with the validation error to repair it.",
     pageCount,
     phase: "calling_provider",
     provider: providerSummary,
     sourceInput: providerInput.strategy,
   });
+  const usageSamples: GeminiNativeUsage[] = [];
   const providerResult = await runWithAIProviderRetry({
     onRetry: (retry) =>
       updateAIPdfProviderRetryProgress({
@@ -3699,20 +3775,55 @@ async function processAIPdfSinglePass({
             jobId: input.jobId,
             pageCount,
             providerProfileId: input.providerProfileId,
+            selectedPageCount: selectiveInput?.plan.sentPageCount ?? null,
+            selectiveExecution: Boolean(selectiveInput),
             sourceAssetId: input.sourceAssetId,
             sourceObjectPath: input.sourceObjectPath,
           },
-          fileName: input.fileName,
+          fileName: selectiveInput?.fileName ?? input.fileName,
           inputStrategy: providerInput.strategy,
           pageImageDataUrls: [],
-          pdfBase64: input.pdfBuffer.toString("base64"),
-          pdfBytes: input.pdfBuffer,
+          pdfBase64: (selectiveInput?.pdfBytes ?? input.pdfBuffer).toString("base64"),
+          pdfBytes: selectiveInput?.pdfBytes ?? input.pdfBuffer,
+          onProviderUsage: (usage) => {
+            if (usage) usageSamples.push(usage);
+            input.onProviderUsage?.(usage);
+          },
           profile: provider,
           prompt,
         }),
       ),
   });
-  const extraction = providerResult.value;
+  const extraction = selectiveInput
+    ? remapSegmentExtractionPages({
+        extraction: providerResult.value,
+        pageMapping: selectiveInput.pageMapping,
+      })
+    : providerResult.value;
+
+  if (selectiveInput) {
+    const sumUsage = (key: keyof GeminiNativeUsage) => {
+      const values = usageSamples
+        .map((usage) => usage[key])
+        .filter((value): value is number => typeof value === "number");
+      return values.length ? values.reduce((total, value) => total + value, 0) : null;
+    };
+    const usage: AISelectiveExecutionUsageSummary | null = usageSamples.length
+      ? {
+          cachedInputTokens: sumUsage("cachedInputTokens"),
+          inputTokens: sumUsage("inputTokens"),
+          outputTokens: sumUsage("outputTokens"),
+          totalTokens: sumUsage("totalTokens"),
+        }
+      : null;
+    await updateAISelectiveExecutionPlan({
+      input,
+      selectiveExecutionPlan: recordAISelectiveExecutionUsage({
+        plan: selectiveInput.plan,
+        usage,
+      }),
+    });
+  }
 
   await updateAIPdfBatchProgress(input, {
     detail: "AI response parsed and validated.",
@@ -3841,7 +3952,10 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
     );
   }
 
-  await generateAndStorePdfPreanalysis({ input, pageCount });
+  const executionPlanning = await generateAndStorePdfPreanalysis({
+    input,
+    pageCount,
+  });
 
   await updateAIPdfBatchProgress(input, {
     detail: "Loading AI provider profile.",
@@ -3922,6 +4036,37 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
     segmentationPlan?.status === "confirmed" &&
     segmentationPlan.chunks.length > 1 &&
     ["gemini_native_pdf", "openai_file"].includes(providerInput.strategy);
+  let selectiveExecutionPlan = buildAISelectiveExecutionPlan({
+    extractionBatchPlan: executionPlanning.extractionBatchPlan,
+    packetPlan: executionPlanning.packetPlan,
+    preanalysis: executionPlanning.preanalysis as AIPdfPreanalysisResult,
+    providerStrategy: providerInput.strategy,
+  });
+
+  if (input.selectiveExecutionEnabled !== true) {
+    selectiveExecutionPlan = forceAISelectiveExecutionFallback({
+      eligibility: "not_beneficial",
+      plan: selectiveExecutionPlan,
+      reasonCode: "selective_execution_disabled_by_operations_control",
+      warning:
+        "Selective source-page execution is disabled for this run, so the full document will be used safely.",
+    });
+  }
+
+  if (usesSegmentedFullPdf) {
+    selectiveExecutionPlan = forceAISelectiveExecutionFallback({
+      eligibility: "not_beneficial",
+      plan: selectiveExecutionPlan,
+      reasonCode: "manual_segmented_full_pdf_execution_selected",
+      warning:
+        "Selective packet execution was skipped because confirmed boundary segmentation has priority for this source.",
+    });
+  }
+
+  await updateAISelectiveExecutionPlan({
+    input,
+    selectiveExecutionPlan,
+  });
   const plannedChunking =
     normalizeAIPdfChunkingSummary(currentAfterTags.aiPdfImport.chunking) ??
     patchAIPdfChunkingSummary({
@@ -3953,6 +4098,63 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
     !supportsAIPdfSequentialChunkExtraction(providerInput.strategy) &&
     !usesSegmentedFullPdf
   ) {
+    let selectiveInput:
+      | {
+          fileName: string;
+          pageMapping: { chunkPage: number; sourcePage: number }[];
+          plan: AISelectiveExecutionPlan;
+          pdfBytes: Buffer;
+        }
+      | undefined;
+
+    if (selectiveExecutionPlan.eligibility === "eligible") {
+      try {
+        await updateAIPdfBatchProgress(input, {
+          detail: "Preparing selected source pages with their original page references.",
+          pageCount,
+          phase: "preparing_selective_pdf_input",
+          provider: providerSummary,
+          sourceInput: providerInput.strategy,
+        });
+        const selectiveChunk = selectiveExecutionPlanToSegmentChunk(
+          selectiveExecutionPlan,
+        );
+
+        if (!selectiveChunk) {
+          throw new Error("Selective execution plan did not produce a safe source-page map.");
+        }
+
+        const subsetPdf = await buildMaskedPdfChunk({
+          chunk: selectiveChunk,
+          pdfBuffer: input.pdfBuffer,
+        });
+        selectiveExecutionPlan = markAISelectiveExecutionMaterialized(
+          selectiveExecutionPlan,
+        );
+        await updateAISelectiveExecutionPlan({
+          input,
+          selectiveExecutionPlan,
+        });
+        selectiveInput = {
+          fileName: `${input.fileName.replace(/\.pdf$/i, "")}-selected-pages.pdf`,
+          pageMapping: subsetPdf.pageMapping,
+          plan: selectiveExecutionPlan,
+          pdfBytes: subsetPdf.pdfBytes,
+        };
+      } catch {
+        selectiveExecutionPlan = forceAISelectiveExecutionFallback({
+          plan: selectiveExecutionPlan,
+          reasonCode: "selective_subset_materialization_failed",
+          warning:
+            "Selective source preparation could not be completed, so the full document will be used safely.",
+        });
+        await updateAISelectiveExecutionPlan({
+          input,
+          selectiveExecutionPlan,
+        });
+      }
+    }
+
     return processAIPdfSinglePass({
       activeTags,
       input,
@@ -3960,6 +4162,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
       provider,
       providerInput,
       providerSummary,
+      selectiveInput,
     });
   }
 
@@ -4095,8 +4298,8 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
       const rawExtraction = providerResult.value;
       const extraction = segmentChunk
         ? remapSegmentExtractionPages({
-            chunk: segmentChunk,
             extraction: rawExtraction,
+            pageMapping: segmentChunk.pageMapping,
           })
         : rawExtraction;
 

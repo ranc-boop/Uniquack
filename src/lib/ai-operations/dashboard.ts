@@ -45,6 +45,7 @@ const DEFAULT_CONTROL: Pick<
   | "pause_new_enqueues"
   | "pause_worker_claims"
   | "queue_cost_reservation_micros"
+  | "selective_execution_enabled"
 > = {
   alert_circuit_open_seconds: 900,
   alert_fallback_rate_basis_points: 2500,
@@ -58,6 +59,7 @@ const DEFAULT_CONTROL: Pick<
   pause_new_enqueues: false,
   pause_worker_claims: false,
   queue_cost_reservation_micros: 100_000,
+  selective_execution_enabled: false,
 };
 
 function isMissingSchemaError(error: { code?: string; message?: string } | null) {

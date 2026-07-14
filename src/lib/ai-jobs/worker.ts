@@ -251,11 +251,13 @@ async function runAIPdfExtractJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
+  selectiveExecutionEnabled = false,
   supabase,
 }: {
   job: AIProviderJob;
   leaseOwner: string;
   maxProviderCalls?: number;
+  selectiveExecutionEnabled?: boolean;
   supabase: SupabaseWorkerClient;
 }): Promise<WorkerExecutionResult> {
   const { data: batch, error: batchError } = await supabase
@@ -350,6 +352,7 @@ async function runAIPdfExtractJob({
     providerProfileId: route.candidates[0]!.profile.id,
     routingLeaseOwner: `${leaseOwner}:${job.id}`,
     routingOrganizationId: job.organization_id,
+    selectiveExecutionEnabled,
     sourceAssetId,
     sourceObjectPath: sourceAsset.object_path,
     supabase,
@@ -504,11 +507,13 @@ async function executeClaimedJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
+  selectiveExecutionEnabled = false,
   supabase,
 }: {
   job: AIProviderJob;
   leaseOwner: string;
   maxProviderCalls?: number;
+  selectiveExecutionEnabled?: boolean;
   supabase: SupabaseWorkerClient;
 }): Promise<"completed" | "failed" | "retry_wait"> {
   const executionStartedAt = Date.now();
@@ -521,7 +526,13 @@ async function executeClaimedJob({
   try {
     const result =
       job.job_kind === "ai_pdf_extract"
-        ? await runAIPdfExtractJob({ job, leaseOwner, maxProviderCalls, supabase })
+        ? await runAIPdfExtractJob({
+            job,
+            leaseOwner,
+            maxProviderCalls,
+            selectiveExecutionEnabled,
+            supabase,
+          })
         : await runBlueprintGenerateQuestionsJob({ job, leaseOwner, maxProviderCalls, supabase });
 
     const finished = await finishJob({
@@ -637,6 +648,7 @@ export async function runDurableAIProviderJobs({
         job,
         leaseOwner: workerId,
         maxProviderCalls: control.maxProviderCallsPerExecution,
+        selectiveExecutionEnabled: control.selectiveExecutionEnabled,
         supabase,
       }),
     ),

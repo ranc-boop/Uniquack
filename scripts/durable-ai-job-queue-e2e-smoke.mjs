@@ -49,21 +49,38 @@ function jobFromRpc(data) {
 }
 
 function buildSyntheticPdf() {
-  const lines = [
-    "EduStruct queue validation fixture",
-    "Question 1. What is 2 + 3?",
-    "Answer: 5.",
-  ];
-  const stream = `BT\n/F1 14 Tf\n${lines
-    .map((line, index) => `${index ? "0 -24" : "72 720"} Td (${line}) Tj`)
-    .join("\n")}\nET`;
+  const pageCount = 12;
+  const pageText = new Map([
+    [1, "Cover"],
+    [2, "Question 1. What is 2 + 3? A) 4 B) 5 C) 6 D) 7"],
+    [3, "Question 2. What is 4 + 4? A) 6 B) 7 C) 8 D) 9"],
+    [8, "Answer key. Question 1: 5. Question 2: 8."],
+  ]);
+  const fontObjectId = 3 + pageCount * 2;
+  const pageObjectIds = Array.from(
+    { length: pageCount },
+    (_, index) => 3 + index * 2,
+  );
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`,
+    `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageCount} >>`,
   ];
+
+  const escapePdfLiteral = (value) =>
+    value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+
+  for (const [index, pageObjectId] of pageObjectIds.entries()) {
+    const contentObjectId = pageObjectId + 1;
+    const text = pageText.get(index + 1) ?? "";
+    const stream = text
+      ? `BT\n/F1 14 Tf\n72 720 Td (${escapePdfLiteral(text)}) Tj\nET`
+      : "";
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`,
+      `<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`,
+    );
+  }
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   for (const [index, object] of objects.entries()) {
@@ -205,7 +222,13 @@ async function runPdfE2E({ admin, runWorker, teacher, suffix }) {
     jobId = job.id;
     assert(job.status === "queued", "PDF action did not return before provider completion.");
 
-    const summary = await runWorker({ limit: 1 });
+    let summary = { completed: 0, retryWaiting: 0 };
+    let workerThrew = false;
+    try {
+      summary = await runWorker({ limit: 1 });
+    } catch {
+      workerThrew = true;
+    }
     const { data: finished, error: finishedError } = await admin
       .from("ai_provider_jobs")
       .select("status, retryable, available_at, safe_message, safe_error_code, target_bank_id")
@@ -214,7 +237,38 @@ async function runPdfE2E({ admin, runWorker, teacher, suffix }) {
     assert(!finishedError && finished?.target_bank_id === bankId, "PDF job lost target bank scope.");
     assertSafeJob(finished, "PDF job");
 
+    if (workerThrew && !["retry_wait", "failed"].includes(finished.status)) {
+      throw new Error("PDF worker exited before recording a safe terminal provider state.");
+    }
+
     if (finished.status === "completed") {
+      const { data: completedBatch, error: completedBatchError } = await admin
+        .from("import_batches")
+        .select("summary")
+        .eq("id", batchId)
+        .single();
+      const selectiveExecutionPlan = completedBatch?.summary?.aiPdfImport?.selectiveExecutionPlan;
+      assert(
+        !completedBatchError &&
+          selectiveExecutionPlan?.version === "ai_pdf_selective_execution_v1" &&
+          Array.isArray(selectiveExecutionPlan?.originalPageMap) &&
+          (
+            (selectiveExecutionPlan?.eligibility === "eligible" &&
+              selectiveExecutionPlan?.sentPageCount < selectiveExecutionPlan?.totalPageCount) ||
+            (selectiveExecutionPlan?.reasonCodes?.includes(
+              "selective_execution_disabled_by_operations_control",
+            ) &&
+              selectiveExecutionPlan?.sentPageCount === selectiveExecutionPlan?.totalPageCount)
+          ) &&
+          Array.isArray(selectiveExecutionPlan?.originalPageMap),
+        "completed PDF job did not retain either the controlled selective plan or the safe full-document fallback with original page mapping",
+      );
+      assert(
+        !/base64|signed.?url|raw.?prompt|provider.?response|secret/i.test(
+          JSON.stringify(selectiveExecutionPlan),
+        ),
+        "selective execution summary retained private provider or source content",
+      );
       const { data: items, error: itemsError } = await admin
         .from("import_batch_items")
         .select("created_question_id")
@@ -243,6 +297,24 @@ async function runPdfE2E({ admin, runWorker, teacher, suffix }) {
         .select("id")
         .eq("source_record_id", batchId);
       assert(!assignmentError && !(assignments ?? []).length, "PDF queue created an Assignment");
+      const { data: telemetry, error: telemetryError } = await admin
+        .from("ai_operation_telemetry")
+        .select("actual_input_tokens, actual_output_tokens, actual_total_tokens, estimated_total_cost_micros, provider_latency_ms, execution_latency_ms, final_status")
+        .eq("queue_job_id", jobId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      assert(
+        !telemetryError &&
+          telemetry?.final_status === "completed" &&
+          (telemetry.actual_input_tokens === null || telemetry.actual_input_tokens >= 0) &&
+          (telemetry.actual_output_tokens === null || telemetry.actual_output_tokens >= 0) &&
+          (telemetry.actual_total_tokens === null || telemetry.actual_total_tokens >= 0) &&
+          (telemetry.estimated_total_cost_micros === null || telemetry.estimated_total_cost_micros >= 0) &&
+          (telemetry.provider_latency_ms === null || telemetry.provider_latency_ms >= 0) &&
+          telemetry.execution_latency_ms >= 0,
+        "completed PDF job did not retain safe operations telemetry",
+      );
       console.log(`PASS bounded AI PDF queue E2E completed (${summary.completed} job)`);
       return "completed";
     }
@@ -492,6 +564,42 @@ async function runBlueprintE2E({ admin, runWorker, teacher, suffix }) {
   }
 }
 
+async function validateSelectivePdfFixture() {
+  const require = createRequire(import.meta.url);
+  const jiti = require("jiti")(import.meta.url, { alias: { "@": resolve(root, "src") } });
+  const { getPdfPageCount } = jiti("../src/lib/ai-pdf-import/pdf.ts");
+  const { generatePdfPreanalysis } = jiti("../src/lib/ai-pdf-import/preanalysis.ts");
+  const { buildAIPacketPlanFromPreanalysis } = jiti("../src/lib/ai-pdf-import/packets.ts");
+  const { buildAIExtractionBatchPlanFromPacketPlan } = jiti(
+    "../src/lib/ai-pdf-import/extraction-batches.ts",
+  );
+  const { buildAISelectiveExecutionPlan } = jiti(
+    "../src/lib/ai-pdf-import/selective-execution.ts",
+  );
+  const pdf = buildSyntheticPdf();
+  const pageCount = await getPdfPageCount(pdf);
+  const preanalysis = await generatePdfPreanalysis({ pageCount, pdfBuffer: pdf });
+  const packetPlan = buildAIPacketPlanFromPreanalysis(preanalysis);
+  const extractionBatchPlan = buildAIExtractionBatchPlanFromPacketPlan(packetPlan);
+  const plan = buildAISelectiveExecutionPlan({
+    extractionBatchPlan,
+    packetPlan,
+    preanalysis,
+    providerStrategy: "gemini_native_pdf",
+  });
+
+  assert(pageCount === 12, "selective fixture must retain all 12 original source pages");
+  assert(
+    plan.eligibility === "eligible" &&
+      plan.sentPageCount < plan.totalPageCount &&
+      plan.originalPageMap.some((item) => item.localPage !== item.originalPage),
+    "selective fixture must yield a real reduced-page plan with original-page mapping",
+  );
+  console.log(
+    `PASS selective PDF fixture preanalysis (${plan.sentPageCount}/${plan.totalPageCount} source pages selected)`,
+  );
+}
+
 async function main() {
   assert(url && anonKey && serviceRoleKey && teacherUsername && teacherPassword, "Missing clean queue E2E environment.");
   const admin = createClient(url, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
@@ -504,10 +612,19 @@ async function main() {
   const pdfResult = process.argv.includes("--blueprint-only")
     ? "previous_completed_run"
     : await runPdfE2E({ admin, runWorker, teacher, suffix });
+  if (process.argv.includes("--pdf-only")) {
+    await ensureNoOutstandingJobs(admin);
+    console.log(`PASS durable AI queue PDF-only E2E completed with PDF=${pdfResult}`);
+    return;
+  }
   await ensureNoOutstandingJobs(admin);
   const blueprintResult = await runBlueprintE2E({ admin, runWorker, teacher, suffix });
   await ensureNoOutstandingJobs(admin);
   console.log(`PASS durable AI queue E2E completed with PDF=${pdfResult}, Blueprint=${blueprintResult}`);
 }
 
-await main();
+if (process.argv.includes("--validate-selective-fixture")) {
+  await validateSelectivePdfFixture();
+} else {
+  await main();
+}
