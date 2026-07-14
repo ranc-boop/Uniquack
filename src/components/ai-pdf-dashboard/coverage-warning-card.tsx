@@ -159,6 +159,7 @@ export function CoverageWarningCard({
   const recoveryPlan = asRecord(ai.coverageRecoveryPlan);
   const recoveryRunPlan = asRecord(ai.coverageRecoveryRunPlan);
   const recoveryMergePlan = asRecord(ai.coverageRecoveryMergePlan);
+  const recoveryExecution = asRecord(ai.coverageRecoveryExecution);
   const mergeStats = asRecord(recoveryMergePlan.stats);
   const terminalPages = numberList(pageCoverage.terminalUncoveredPages);
   const uncoveredQuestionLikePages = numberList(
@@ -207,6 +208,17 @@ export function CoverageWarningCard({
   const recoveryPlanLabel = `Recovery plan: ${recoveryTaskCount} tasks / ${recoveryRequestCount} request drafts`;
   const dryRunLabel = `Dry run: ${dryRunReadyCount} ready / ${dryRunBlockedCount} blocked or skipped`;
   const mergePlanLabel = `Future suggestions: ${futureSuggestionCount} | Duplicate guards: ${duplicateGuardCount}`;
+  const recoveryStatus = stringValue(recoveryExecution.status);
+  const recoveryCopy =
+    recoveryStatus === "queued"
+      ? "Targeted recovery is waiting for available AI capacity."
+      : recoveryStatus === "processing"
+        ? "The system is rechecking the missing sections."
+        : recoveryStatus === "completed"
+          ? "Additional Review Drafts were recovered for teacher review."
+          : recoveryStatus === "completed_no_new_drafts"
+            ? "The missing sections were rechecked, but no additional usable drafts were found."
+            : "Some likely question pages were not represented in the first extraction.";
 
   return (
     <div className="rounded-md border border-amber-200 bg-amber-50/50 p-3 text-sm">
@@ -314,8 +326,7 @@ export function CoverageWarningCard({
       </div>
 
       <p className="mt-3 text-xs text-amber-900">
-        Recovery is planned only and has not been executed. Recovery execution
-        is not available yet.
+        {recoveryCopy}
         {humanReviewRequired ? " Human review required." : ""}
       </p>
     </div>

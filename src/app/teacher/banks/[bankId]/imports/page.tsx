@@ -24,7 +24,11 @@ import {
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 
-import { importBankJsonDrafts, importBankPdfDrafts } from "../../actions";
+import {
+  importBankJsonDrafts,
+  importBankPdfDrafts,
+  queueBankPdfCoverageRecovery,
+} from "../../actions";
 import {
   cancelTeacherAIProviderJob,
   retryTeacherAIProviderJob,
@@ -370,9 +374,11 @@ export default async function TeacherBankImportsPage({
             </details>
         </div>
 
-        <RecentBankImportsPanel
-          bankName={bank.name}
-          importBatches={importBatches}
+          <RecentBankImportsPanel
+            bankName={bank.name}
+            canQueueCoverageRecovery={canImport}
+            coverageRecoveryAction={queueBankPdfCoverageRecovery}
+            importBatches={importBatches}
         />
       </section>
     </BankWorkbenchPage>

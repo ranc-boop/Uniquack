@@ -15,9 +15,12 @@ import {
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
 import {
+  buildAIPdfCoverageRecoveryJobIdempotencyKey,
   buildAIPdfJobIdempotencyKey,
   enqueueAIProviderJob,
 } from "@/lib/ai-jobs/queue";
+import { buildAICoverageRecoveryExecutionPlan } from "@/lib/ai-pdf-import/coverage-recovery-executor";
+import { getPdfPageCount } from "@/lib/ai-pdf-import/pdf";
 import {
   isAIProviderError,
   safeAIProviderMessage,
@@ -82,6 +85,11 @@ const bankImportPdfSchema = z.object({
   parsingProfile: z
     .enum(TEACHER_AI_PDF_PARSING_PROFILES)
     .default("standard"),
+});
+
+const bankCoverageRecoverySchema = z.object({
+  bankId: z.string().uuid(),
+  batchId: z.string().uuid(),
 });
 
 function plainObject(value: unknown): Record<string, unknown> {
@@ -973,6 +981,149 @@ export async function importBankPdfDrafts(formData: FormData) {
     redirectWithSaved(
       `/teacher/banks/${parsed.bankId}/imports?job=${encodeURIComponent(queuedJob.id)}`,
       "AI PDF Parsing is queued. Your private source and target Library are safe; you can leave this page while it runs.",
+    );
+  } catch (error) {
+    redirectWithError(fallbackPath, formatTeacherAIPdfImportError(error));
+  }
+}
+
+/** Queues a plan that was already derived from a completed private import. */
+export async function queueBankPdfCoverageRecovery(formData: FormData) {
+  const fallbackPath = `/teacher/banks/${formData.get("bankId")}/imports`;
+
+  try {
+    const profile = await requireTeacher();
+    assertNoRawProviderConfig(formData);
+    const parsed = bankCoverageRecoverySchema.parse(Object.fromEntries(formData));
+    const supabase = await createClient();
+    const detail = await getTeacherQuestionBankDetail({
+      bankId: parsed.bankId,
+      profileId: profile.id,
+      supabase,
+    });
+
+    if (!detail || !canManageBankContent(detail.currentUserRole)) {
+      throw new Error("Only bank owners and editors can queue coverage recovery.");
+    }
+    if (detail.bank.status !== "active") {
+      throw new Error("Only active Question Banks can recover missing source coverage.");
+    }
+
+    const importSupabase = createServiceRoleClient();
+    const { data: batch, error: batchError } = await importSupabase
+      .from("import_batches")
+      .select("id, status, summary, target_bank_id")
+      .eq("id", parsed.batchId)
+      .eq("target_bank_id", parsed.bankId)
+      .eq("source_type", "ai_pdf")
+      .maybeSingle();
+    if (batchError) throw new Error(batchError.message);
+    if (!batch) throw new Error("The original AI PDF import was not found for this bank.");
+
+    const summary = plainObject(batch.summary);
+    const aiPdfImport = plainObject(summary.aiPdfImport);
+    const summarySourceAssetId =
+      typeof aiPdfImport.sourceAssetId === "string"
+        ? aiPdfImport.sourceAssetId
+        : null;
+    let assetQuery = importSupabase
+      .from("import_batch_assets")
+      .select("id, object_path, status")
+      .eq("batch_id", batch.id)
+      .eq("asset_role", "source_pdf")
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (summarySourceAssetId) assetQuery = assetQuery.eq("id", summarySourceAssetId);
+    const { data: sourceAsset, error: sourceAssetError } = await assetQuery.maybeSingle();
+    if (sourceAssetError) throw new Error(sourceAssetError.message);
+
+    let sourcePageCount = Number(aiPdfImport.pageCount ?? 0);
+    if (sourceAsset?.status === "ready" && (!Number.isFinite(sourcePageCount) || sourcePageCount < 1)) {
+      const { data: sourceBlob, error: sourceDownloadError } = await importSupabase.storage
+        .from(AI_IMPORT_SOURCES_BUCKET)
+        .download(sourceAsset.object_path);
+      if (sourceDownloadError) throw new Error(sourceDownloadError.message);
+      sourcePageCount = await getPdfPageCount(Buffer.from(await sourceBlob.arrayBuffer()));
+    }
+
+    const executionPlan = buildAICoverageRecoveryExecutionPlan({
+      actorCanManageBank: true,
+      bankActive: detail.bank.status === "active",
+      originalBatchStatus: batch.status,
+      sourcePageCount,
+      sourceReady: sourceAsset?.status === "ready",
+      summary,
+    });
+    if (executionPlan.status !== "eligible" || !executionPlan.planHash || !sourceAsset) {
+      throw new Error("Coverage recovery is not ready for this import. The original source and bounded recovery plan were preserved.");
+    }
+
+    const storedProviderProfileId =
+      typeof aiPdfImport.providerProfileId === "string"
+        ? aiPdfImport.providerProfileId
+        : null;
+    const provider = storedProviderProfileId
+      ? { id: storedProviderProfileId }
+      : await resolveTeacherAIPdfProviderProfile({ parsingProfile: "standard", supabase });
+    const windowIds = executionPlan.windows.map((window) => window.windowId);
+    const queuedJob = await enqueueAIProviderJob({
+      idempotencyKey: buildAIPdfCoverageRecoveryJobIdempotencyKey({
+        batchId: batch.id,
+        planHash: executionPlan.planHash,
+        sourceAssetId: sourceAsset.id,
+      }),
+      jobKind: "ai_pdf_coverage_recovery",
+      payload: {
+        operationVersion: 1,
+        originalImportBatchId: batch.id,
+        recoveryPlanHash: executionPlan.planHash,
+        recoveryPlanVersion: executionPlan.sourcePlanVersion,
+        sourceAssetId: sourceAsset.id,
+        targetBankId: parsed.bankId,
+        windowIds,
+      },
+      providerProfileId: provider.id,
+      resourceId: batch.id,
+      resourceType: "import_batch",
+      supabase,
+      targetBankId: parsed.bankId,
+    });
+
+    const recoveryExecution = {
+      detail:
+        queuedJob.status === "completed"
+          ? "The missing sections were already rechecked for this recovery plan."
+          : "Targeted recovery is waiting for available AI capacity.",
+      durableJobId: queuedJob.id,
+      pageCount: executionPlan.pageCount,
+      planHash: executionPlan.planHash,
+      planVersion: executionPlan.version,
+      status: queuedJob.status === "completed" ? "completed" : "queued",
+      windowCount: executionPlan.windows.length,
+      windowIds,
+    };
+    const { error: updateError } = await importSupabase
+      .from("import_batches")
+      .update({
+        summary: {
+          ...summary,
+          aiPdfImport: {
+            ...aiPdfImport,
+            coverageRecoveryExecution: recoveryExecution,
+          },
+        },
+      } as never)
+      .eq("id", batch.id);
+    if (updateError) throw new Error(updateError.message);
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/imports`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
+    redirectWithSaved(
+      `/teacher/banks/${parsed.bankId}/imports?job=${encodeURIComponent(queuedJob.id)}`,
+      queuedJob.status === "completed"
+        ? "This targeted recovery plan has already completed. Review any recovered drafts."
+        : "Targeted recovery is queued. Only the planned missing sections will be rechecked.",
     );
   } catch (error) {
     redirectWithError(fallbackPath, formatTeacherAIPdfImportError(error));

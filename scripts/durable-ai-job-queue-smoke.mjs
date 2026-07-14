@@ -147,6 +147,7 @@ function queueStateCases() {
   assert(duplicateA.id === duplicateB.id && queue.jobs.length === 1, "duplicate enqueue must reuse one durable job");
 
   queue.enqueue({ kind: "ai_pdf_extract", key: "a-2", organizationId: "org-a", userId: "u-a" });
+  queue.enqueue({ kind: "ai_pdf_coverage_recovery", key: "recovery-1", organizationId: "org-recovery", userId: "u-recovery" });
   queue.enqueue({ kind: "blueprint_generate_questions", key: "b-1", organizationId: "org-b", userId: "u-b" });
   queue.enqueue({ kind: "blueprint_generate_questions", key: "c-1", organizationId: "org-c", userId: "u-c" });
   const first = queue.claim({ workerId: "worker-a", now: 1, limit: 2 });
@@ -155,6 +156,7 @@ function queueStateCases() {
   assert(new Set(claimedIds).size === claimedIds.length, "two workers must never claim one job twice");
   assert(queue.active().length <= AI_PROVIDER_JOB_POLICY.globalActiveLimit, "global active limit must hold");
   assert(queue.active((job) => job.kind === "ai_pdf_extract").length <= 1, "PDF concurrency must be bounded");
+  assert(queue.active((job) => job.kind === "ai_pdf_coverage_recovery").length <= 1, "targeted recovery concurrency must be bounded");
   assert(new Set(queue.active().map((job) => job.organizationId)).size === queue.active().length, "one noisy organization must not occupy concurrent slots");
 
   const lease = first[0];

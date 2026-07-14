@@ -8,6 +8,7 @@ export const AI_PROVIDER_JOB_POLICY = {
   maxUserActiveOrQueuedJobs: 5,
   perKindActiveLimit: {
     ai_pdf_extract: 1,
+    ai_pdf_coverage_recovery: 1,
     blueprint_generate_questions: 2,
   },
   workerBatchLimit: 3,
