@@ -89,11 +89,18 @@ async function createSmokeBatch({ bankId, organizationId, profileId, suffix, tea
   return { batchId, suffix };
 }
 
-async function enqueueSmokeJob({ bankId, batchId, key, teacher }) {
+async function enqueueSmokeJob({
+  bankId,
+  batchId,
+  jobKind = "ai_pdf_extract",
+  key,
+  payload = { smokeOnly: true },
+  teacher,
+}) {
   const { data, error } = await teacher.client.rpc("enqueue_ai_provider_job", {
     p_idempotency_key: key,
-    p_job_kind: "ai_pdf_extract",
-    p_payload: { smokeOnly: true },
+    p_job_kind: jobKind,
+    p_payload: payload,
     p_provider_profile_id: null,
     p_resource_id: batchId,
     p_resource_type: "import_batch",
@@ -125,9 +132,10 @@ async function main() {
   assert(serviceRoleKey, "Missing clean service-role key for live queue cleanup.");
   assert(teacherUsername && teacherPassword, "Missing TEST_TEACHER credentials for live queue smoke.");
 
-  const [migration, roleFixMigration, teacher] = await Promise.all([
+  const [migration, roleFixMigration, recoveryMigration, teacher] = await Promise.all([
     readFile(resolve(root, "supabase/clean-migrations/0033_ai_provider_jobs.sql"), "utf8"),
     readFile(resolve(root, "supabase/clean-migrations/0034_ai_provider_jobs_worker_role_fix.sql"), "utf8"),
+    readFile(resolve(root, "supabase/clean-migrations/0038_ai_pdf_coverage_recovery_jobs.sql"), "utf8"),
     signIn(teacherUsername, teacherPassword, "teacher"),
   ]);
   const admin = createClient(supabaseUrl, serviceRoleKey, {
@@ -164,6 +172,12 @@ async function main() {
       roleFixMigration.includes("create or replace function public.heartbeat_ai_provider_job") &&
       roleFixMigration.includes("create or replace function public.finish_ai_provider_job"),
     "queue worker role fix must use auth.role() for service-role requests",
+  );
+  assert(
+    recoveryMigration.includes("ai_pdf_coverage_recovery") &&
+      recoveryMigration.includes("active_recovery") &&
+      recoveryMigration.includes("Trusted worker role required."),
+    "0038 recovery migration source is missing the supported job kind or worker guard",
   );
   console.log("PASS live queue schema probe found table and required migration contract");
 
@@ -415,6 +429,83 @@ async function main() {
       "permanent queue failure unexpectedly scheduled a retry",
     );
     console.log("PASS permanent failure remains failed without retry");
+
+    const recoveryPlanHash = "a".repeat(64);
+    const recoveryPayload = {
+      operationVersion: 1,
+      originalImportBatchId: primaryBatch.batchId,
+      recoveryPlanHash,
+      recoveryPlanVersion: "coverage_recovery_plan_v1",
+      smokeOnly: true,
+      sourceAssetId: randomUUID(),
+      targetBankId: bankId,
+      windowIds: ["coverage-window-smoke-1"],
+    };
+    const recoveryKey = `queue-live-recovery:${primaryBatch.batchId}:plan:${recoveryPlanHash}`;
+    const recoveryJob = await enqueueSmokeJob({
+      bankId,
+      batchId: primaryBatch.batchId,
+      jobKind: "ai_pdf_coverage_recovery",
+      key: recoveryKey,
+      payload: recoveryPayload,
+      teacher,
+    });
+    jobIds.push(recoveryJob.id);
+    const duplicateRecoveryJob = await enqueueSmokeJob({
+      bankId,
+      batchId: primaryBatch.batchId,
+      jobKind: "ai_pdf_coverage_recovery",
+      key: recoveryKey,
+      payload: recoveryPayload,
+      teacher,
+    });
+    assert(
+      duplicateRecoveryJob.id === recoveryJob.id,
+      "duplicate recovery enqueue did not reuse the active durable job",
+    );
+    const { data: recoveryClaim, error: recoveryClaimError } = await admin.rpc(
+      "claim_ai_provider_jobs",
+      {
+        p_lease_owner: "queue-live-worker-recovery",
+        p_lease_seconds: 900,
+        p_limit: 1,
+      },
+    );
+    assert(
+      !recoveryClaimError && recoveryClaim?.[0]?.id === recoveryJob.id,
+      `recovery job claim failed: ${summarizeSupabaseError(recoveryClaimError)}`,
+    );
+    const { data: recoveryFinished, error: recoveryFinishError } = await admin.rpc(
+      "finish_ai_provider_job",
+      {
+        p_available_at: null,
+        p_job_id: recoveryJob.id,
+        p_lease_owner: "queue-live-worker-recovery",
+        p_provider_attempt_count: 0,
+        p_retryable: false,
+        p_safe_error_code: null,
+        p_safe_message: null,
+        p_safe_result: { smokeOnly: true, zeroNewDrafts: true },
+        p_status: "completed",
+      },
+    );
+    assert(
+      !recoveryFinishError && recoveryFinished === true,
+      `recovery job finish failed: ${summarizeSupabaseError(recoveryFinishError)}`,
+    );
+    const completedRecoveryJob = await enqueueSmokeJob({
+      bankId,
+      batchId: primaryBatch.batchId,
+      jobKind: "ai_pdf_coverage_recovery",
+      key: recoveryKey,
+      payload: recoveryPayload,
+      teacher,
+    });
+    assert(
+      completedRecoveryJob.id === recoveryJob.id && completedRecoveryJob.status === "completed",
+      "completed recovery plan unexpectedly queued another durable job",
+    );
+    console.log("PASS recovery job kind is bank-scoped, idempotent, service-role claimed, and completed without provider execution");
 
     const schedulerOrganizations = [];
     for (let index = 0; index < 3; index += 1) {

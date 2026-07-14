@@ -102,6 +102,41 @@ errors fail safely without repeated retries or raw provider diagnostics.
 - Old demo overlap: not applicable. This reuses the production AI Parsing,
   durable queue, Review Draft, and bank-scoping contracts only.
 
+## Post-0038 Live Validation
+
+Migration `0038_ai_pdf_coverage_recovery_jobs.sql` was manually applied once to
+the clean Supabase project. The live queue smoke confirmed the resulting remote
+contract without invoking a provider:
+
+- A real teacher can enqueue one bank-scoped `ai_pdf_coverage_recovery` job.
+  The original batch and target bank remain bound to the queue row.
+- Repeating the same recovery plan/idempotency key returns the same durable
+  job. Repeating it after completion still returns that completed job instead
+  of scheduling a second recovery run.
+- A teacher cannot update worker state or call the worker claim RPC. Student
+  and unrelated-teacher reads remain blocked by RLS.
+- The service-role smoke worker claims the recovery job atomically, can finish
+  it with a bounded zero-new result, and leaves no smoke-only rows behind.
+- Existing heartbeat, stale-lease reclaim, stale-owner completion guard,
+  retry-wait, permanent-failure, per-kind, per-user, per-organization, and
+  fairness checks all passed against the same clean queue.
+- The internal worker route rejects missing/wrong/ordinary-user requests and
+  accepts only the trusted token path with bounded aggregate output.
+
+The deterministic executor smoke covers new candidates, likely duplicates,
+fragment-completion suggestions, visible-number conflicts, answer/visual
+association risks, insufficient evidence, stale/broad/deleted/archived
+eligibility blocks, and zero-new-draft behavior. It verifies that only a clean
+`new_candidate` can reach the private Review Draft handoff. These fixtures do
+not mutate source questions, taxonomy assignments, assignments, or published
+content.
+
+Original page numbers remain the source of truth: the recovery plan carries
+only server-derived source pages/windows, while context-halo pages are used for
+bounded reread context and do not replace source references. Recovery
+provenance, source pages, plan hash, and window IDs remain safe internal
+metadata; students cannot read the private bank or draft/recovery evidence.
+
 ## Validation
 
 Passed:
@@ -120,21 +155,33 @@ Passed:
 - `node scripts/bank-import-review-smoke.mjs`
 - `node scripts/question-bank-foundation-smoke.mjs`
 - `node scripts/supabase-rls-smoke.mjs`
+- `node scripts/durable-ai-job-queue-live-smoke.mjs` with the clean,
+  process-only smoke environment
+- `node scripts/durable-ai-job-queue-internal-route-smoke.mjs`
 - `npm.cmd run smoke`
 - `npm.cmd run perf:budget`
 - `npm.cmd run perf:audit`
 - `npm.cmd run analyze`
 
-The first sandboxed attempts at the live RLS and bank checks were blocked by
-network isolation (`fetch failed` / `EACCES`). Re-running those existing smoke
-commands with the approved clean-Supabase network permission passed. No real
-provider call was made for this PR.
+The first sandboxed attempts at live checks were blocked by network/filesystem
+isolation. Re-running them with the approved clean-Supabase and isolated
+worktree permissions passed. No real provider call was made for this PR.
+
+`npm.cmd run smoke` remains blocked later by an unrelated existing clean-DB
+Classroom RLS failure: the classroom foundation smoke reports that a teacher
+cannot create a classroom because of an RLS policy. The recovery executor,
+queue, internal-route, bank-review, and Supabase RLS checks completed before
+that failure. No Classroom, migration, or RLS code was changed in this work.
 
 ## Remaining Work
 
-1. Review and apply clean migration `0038_ai_pdf_coverage_recovery_jobs.sql`
-   to the clean Supabase project using the established manual migration flow.
-2. Rerun the live queue/RLS smokes with a reachable clean Supabase endpoint.
-3. Run one explicitly authorized, tiny, bounded provider validation only after
-   the queue migration and live endpoint are available. Verify the resulting
-   Review Draft is private and bank-scoped before any manual approval.
+1. Fix the independent Classroom RLS regression so the aggregate smoke can
+   complete again.
+2. Keep production recovery scheduling disabled until scheduler ownership,
+   internal-token deployment, monitoring/alert ownership, provider
+   authorization, and a tiny bounded real-provider recovery E2E are ready.
+3. Run that explicitly authorized provider validation with a non-sensitive
+   fixture, then verify any recovered Review Draft remains private and
+   bank-scoped before manual teacher approval.
+4. PR4-N2 should add an evaluation harness for recovery precision/recall and
+   teacher-review outcomes rather than changing the recovery safety gates.
