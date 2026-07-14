@@ -150,6 +150,37 @@ function summarizeImportBatch(batch: BankImportBatchSummary) {
   };
 }
 
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function coverageRecoveryState(batch: BankImportBatchSummary) {
+  const summary = asRecord(batch.summary);
+  const ai = asRecord(summary.aiPdfImport);
+  const plan = asRecord(ai.coverageRecoveryPlan);
+  const execution = asRecord(ai.coverageRecoveryExecution);
+  const requestDrafts = asArray(plan.requestDrafts);
+  const eligible =
+    batch.source_type === "ai_pdf" &&
+    ["imported", "failed"].includes(batch.status) &&
+    plan.sourceAuditPlanPresent === true &&
+    requestDrafts.length > 0;
+  const status = asString(execution.status);
+  const copy =
+    status === "queued"
+      ? "Targeted recovery is waiting for available AI capacity."
+      : status === "processing"
+        ? "The system is rechecking the missing sections."
+        : status === "completed"
+          ? "Additional Review Drafts were recovered for teacher review."
+          : status === "completed_no_new_drafts"
+            ? "The missing sections were rechecked, but no additional usable drafts were found."
+            : eligible
+              ? "Some likely question pages were not represented in the first extraction."
+              : null;
+  return { copy, eligible, status };
+}
+
 function importStatusLabel(
   batch: BankImportBatchSummary,
   retryable: boolean,
@@ -479,9 +510,13 @@ export function BankImportEntryPanel({
 
 export function RecentBankImportsPanel({
   bankName,
+  canQueueCoverageRecovery = false,
+  coverageRecoveryAction,
   importBatches,
 }: {
   bankName?: string;
+  canQueueCoverageRecovery?: boolean;
+  coverageRecoveryAction?: (formData: FormData) => void | Promise<void>;
   importBatches: BankImportBatchSummary[];
 }) {
   return (
@@ -494,6 +529,7 @@ export function RecentBankImportsPanel({
         {importBatches.length ? (
           importBatches.map((batch) => {
             const status = summarizeImportBatch(batch);
+            const recovery = coverageRecoveryState(batch);
             const reviewHref = batch.target_bank_id
               ? `/teacher/banks/${batch.target_bank_id}/review`
               : null;
@@ -563,6 +599,24 @@ export function RecentBankImportsPanel({
                     <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
                       {status.detail}
                     </p>
+                  ) : null}
+
+                  {recovery.copy ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+                      <p>{recovery.copy}</p>
+                      {recovery.eligible &&
+                      canQueueCoverageRecovery &&
+                      coverageRecoveryAction &&
+                      !["queued", "processing", "completed"].includes(recovery.status ?? "") ? (
+                        <form action={coverageRecoveryAction} className="mt-3">
+                          <input name="bankId" type="hidden" value={batch.target_bank_id ?? ""} />
+                          <input name="batchId" type="hidden" value={batch.id} />
+                          <Button size="sm" type="submit" variant="outline">
+                            Recheck missing sections
+                          </Button>
+                        </form>
+                      ) : null}
+                    </div>
                   ) : null}
 
                   <QuestionBoundaryGuardCard

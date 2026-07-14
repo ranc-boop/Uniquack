@@ -7,7 +7,9 @@ import { isActiveAIProviderJob, jobStatusCopy } from "@/lib/ai-jobs/policy";
 import type { AIProviderJobSafeStatus } from "@/lib/ai-jobs/types";
 
 function jobKindLabel(jobKind: AIProviderJobSafeStatus["job_kind"]) {
-  return jobKind === "ai_pdf_extract" ? "AI PDF Parsing" : "Blueprint generation";
+  if (jobKind === "ai_pdf_extract") return "AI PDF Parsing";
+  if (jobKind === "ai_pdf_coverage_recovery") return "Targeted PDF recovery";
+  return "Blueprint generation";
 }
 
 function statusTone(status: AIProviderJobSafeStatus["status"]) {

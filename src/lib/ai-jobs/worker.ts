@@ -19,7 +19,9 @@ import {
   type AIOperationExecutionMetadata,
 } from "@/lib/ai-operations/telemetry";
 import {
+  processAIPdfCoverageRecovery,
   processAIPdfImport,
+  recordAIPdfCoverageRecoveryFailure,
   recordAIPdfProviderFailure,
   type AIPdfProcessInput,
 } from "@/lib/ai-pdf-import/service";
@@ -42,6 +44,10 @@ type WorkerExecutionResult = {
   alreadyCompleted?: boolean;
   createdCount: number;
   fallbackUsed?: boolean;
+  recoveryCandidateCount?: number;
+  recoveryPageCount?: number;
+  recoveryReconciliation?: Record<string, number>;
+  recoveryWindowCount?: number;
   reviewRoute: string;
   telemetry?: AIOperationExecutionMetadata;
   warningCount?: number;
@@ -413,6 +419,139 @@ async function runAIPdfExtractJob({
   }
 }
 
+async function runAIPdfCoverageRecoveryJob({
+  job,
+  leaseOwner,
+  maxProviderCalls = 4,
+  supabase,
+}: {
+  job: AIProviderJob;
+  leaseOwner: string;
+  maxProviderCalls?: number;
+  supabase: SupabaseWorkerClient;
+}): Promise<WorkerExecutionResult> {
+  const { data: batch, error: batchError } = await supabase
+    .from("import_batches")
+    .select("id, created_by, source_type, status, summary, target_bank_id")
+    .eq("id", job.resource_id)
+    .eq("source_type", "ai_pdf")
+    .maybeSingle();
+  if (batchError) throw new Error(batchError.message);
+  if (!batch || batch.target_bank_id !== job.target_bank_id) {
+    throw new Error("The original PDF import is no longer available for this Library.");
+  }
+  await ensureBankIsActive({
+    bankId: job.target_bank_id,
+    profileId: job.created_by,
+    supabase,
+  });
+
+  const summary = asRecord(batch.summary);
+  const aiPdfImport = asRecord(summary.aiPdfImport);
+  const sourceAssetId = stringValue(job.payload.sourceAssetId);
+  const recoveryPlanHash = stringValue(job.payload.recoveryPlanHash);
+  const recoveryWindowIds = Array.isArray(job.payload.windowIds)
+    ? job.payload.windowIds.filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+    : [];
+  const providerProfileId = job.provider_profile_id;
+  if (!sourceAssetId || !recoveryPlanHash || !recoveryWindowIds.length || !providerProfileId) {
+    throw new Error("The queued coverage recovery is missing its safe execution references.");
+  }
+
+  const { data: sourceAsset, error: sourceAssetError } = await supabase
+    .from("import_batch_assets")
+    .select("id, batch_id, object_path, original_filename, status")
+    .eq("id", sourceAssetId)
+    .eq("batch_id", job.resource_id)
+    .eq("asset_role", "source_pdf")
+    .maybeSingle();
+  if (sourceAssetError) throw new Error(sourceAssetError.message);
+  if (!sourceAsset || sourceAsset.status !== "ready") {
+    throw new Error("The private PDF source is no longer ready for targeted recovery.");
+  }
+
+  const route = await resolveAIProviderRoute({
+    operationKind: "ai_pdf_extract",
+    organizationId: job.organization_id,
+    requestedProfileId: providerProfileId,
+    supabase,
+  });
+  const { data: sourceBlob, error: downloadError } = await supabase.storage
+    .from(AI_IMPORT_SOURCES_BUCKET)
+    .download(sourceAsset.object_path);
+  if (downloadError) throw new Error(downloadError.message);
+
+  const usageSamples: NonNullable<AIOperationExecutionMetadata["usageSamples"]> = [];
+  const providerStartedAt = Date.now();
+  const input = {
+    batchId: job.resource_id,
+    fileName: sourceAsset.original_filename,
+    jobId: job.id,
+    originalBatchId: job.resource_id,
+    pdfBuffer: Buffer.from(await sourceBlob.arrayBuffer()),
+    profileId: job.created_by,
+    providerProfileId,
+    recoveryPlanHash,
+    recoveryWindowIds,
+    routingLeaseOwner: `${leaseOwner}:${job.id}`,
+    routingOrganizationId: job.organization_id,
+    sourceAssetId,
+    sourceObjectPath: sourceAsset.object_path,
+    supabase,
+    targetBankId: job.target_bank_id,
+    onProviderUsage: (usage: any) => usageSamples.push(usage),
+  };
+
+  try {
+    const routed = await runWithAIProviderRoute({
+      execute: (provider, attemptBudget) =>
+        processAIPdfCoverageRecovery({
+          ...input,
+          providerProfileId: provider.id,
+          providerRetryMaxAttempts: attemptBudget.maxAttempts,
+        }),
+      leaseOwner: `${leaseOwner}:${job.id}`,
+      maxTotalAttempts: maxProviderCalls,
+      route,
+      supabase,
+    });
+    const routeCandidate = route.candidates.find(
+      (candidate) => candidate.profile.id === routed.profile.id,
+    );
+    return {
+      createdCount: routed.value.recoveredDraftCount,
+      fallbackUsed: routed.fallbackUsed,
+      recoveryCandidateCount: routed.value.recoveryCandidateCount,
+      recoveryPageCount: routed.value.recoveryPageCount,
+      recoveryReconciliation: routed.value.reconciliation,
+      recoveryWindowCount: routed.value.recoveryWindowCount,
+      reviewRoute: routed.value.reviewRoute,
+      warningCount: routed.value.warningCount,
+      telemetry: {
+        circuitOutcome:
+          routeCandidate?.mode === "half_open_probe"
+            ? "half_open_probe"
+            : routed.fallbackUsed
+              ? "fallback"
+              : "closed",
+        fallbackUsed: routed.fallbackUsed,
+        model: routed.profile.model,
+        provider: routed.profile.provider,
+        providerCallCount: Math.max(1, usageSamples.length),
+        providerLatencyMs: Date.now() - providerStartedAt,
+        providerProfileId: routed.profile.id,
+        providerRetryAttempts: Math.max(0, usageSamples.length - 1),
+        routePolicyVersion: route.policy?.policyVersion ?? null,
+        routePosition: routeCandidate?.routeOrder ?? null,
+        usageSamples,
+      },
+    };
+  } catch (error) {
+    await recordAIPdfCoverageRecoveryFailure({ error, input });
+    throw error;
+  }
+}
+
 async function runBlueprintGenerateQuestionsJob({
   job,
   leaseOwner,
@@ -533,7 +672,9 @@ async function executeClaimedJob({
             selectiveExecutionEnabled,
             supabase,
           })
-        : await runBlueprintGenerateQuestionsJob({ job, leaseOwner, maxProviderCalls, supabase });
+        : job.job_kind === "ai_pdf_coverage_recovery"
+          ? await runAIPdfCoverageRecoveryJob({ job, leaseOwner, maxProviderCalls, supabase })
+          : await runBlueprintGenerateQuestionsJob({ job, leaseOwner, maxProviderCalls, supabase });
 
     const finished = await finishJob({
       job,
@@ -541,6 +682,13 @@ async function executeClaimedJob({
       safeResult: {
         createdDraftCount: result.createdCount,
         fallbackUsed: result.fallbackUsed ?? false,
+        recoveryCandidateCount: result.recoveryCandidateCount ?? null,
+        recoveryPagesPlanned: result.recoveryPageCount ?? null,
+        recoveryPagesSent: result.recoveryPageCount ?? null,
+        recoveryReconciliation: result.recoveryReconciliation ?? {},
+        recoveryWindowCount: result.recoveryWindowCount ?? null,
+        zeroNewDrafts:
+          job.job_kind === "ai_pdf_coverage_recovery" && result.createdCount === 0,
         reviewRoute: result.reviewRoute,
         warningCount: result.warningCount,
       },
@@ -562,7 +710,7 @@ async function executeClaimedJob({
     const classified = classifyAIProviderError({
       error,
       operation:
-        job.job_kind === "ai_pdf_extract"
+        job.job_kind === "ai_pdf_extract" || job.job_kind === "ai_pdf_coverage_recovery"
           ? "ai_pdf_extraction"
           : "blueprint_generation",
     });

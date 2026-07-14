@@ -68,6 +68,24 @@ export function buildAIPdfJobIdempotencyKey({
   return `ai_pdf_extract:${batchId}:${sourceAssetId}:v1:retry:${retryGeneration}`;
 }
 
+export function buildAIPdfCoverageRecoveryJobIdempotencyKey({
+  batchId,
+  planHash,
+  sourceAssetId,
+}: {
+  batchId: string;
+  planHash: string;
+  sourceAssetId: string;
+}) {
+  assertUUID(batchId, "Original import batch");
+  assertUUID(sourceAssetId, "Source PDF");
+  const normalizedPlanHash = planHash.trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(normalizedPlanHash)) {
+    throw new Error("Coverage recovery plan is invalid.");
+  }
+  return `ai_pdf_coverage_recovery:${batchId}:${sourceAssetId}:plan:${normalizedPlanHash}`;
+}
+
 export function buildBlueprintGenerationJobIdempotencyKey({
   blueprintId,
   blueprintVersion,

@@ -1,5 +1,6 @@
 export const aiProviderJobKinds = [
   "ai_pdf_extract",
+  "ai_pdf_coverage_recovery",
   "blueprint_generate_questions",
 ] as const;
 

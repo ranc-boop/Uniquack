@@ -170,6 +170,11 @@ import {
   type AICoverageRecoveryPlan,
 } from "@/lib/ai-pdf-import/coverage-recovery";
 import {
+  buildAICoverageRecoveryExecutionPlan,
+  classifyAICoverageRecoveryCandidate,
+  type AICoverageRecoveryCandidateClassification,
+} from "@/lib/ai-pdf-import/coverage-recovery-executor";
+import {
   buildAICoverageRecoveryRunPlanFromSummary,
   failedAICoverageRecoveryRunPlan,
   mergeAICoverageRecoveryRunPlanIntoSummary,
@@ -281,6 +286,12 @@ export type AIPdfProcessInput = {
   supabase: SupabaseLike;
   targetBankId?: string | null;
   onProviderUsage?: (usage: GeminiNativeUsage | null) => void;
+};
+
+export type AIPdfCoverageRecoveryProcessInput = AIPdfProcessInput & {
+  originalBatchId: string;
+  recoveryPlanHash: string;
+  recoveryWindowIds: string[];
 };
 
 type ProcessInput = AIPdfProcessInput;
@@ -2458,6 +2469,7 @@ function buildPrompt({
   fileName,
   pageMapping,
   pageCount,
+  recoveryOnly = false,
   selectiveExecution = false,
 }: {
   activeTags: ActiveTag[];
@@ -2465,6 +2477,7 @@ function buildPrompt({
   fileName: string;
   pageMapping?: { chunkPage: number; sourcePage: number }[];
   pageCount: number;
+  recoveryOnly?: boolean;
   selectiveExecution?: boolean;
 }) {
   const tagIdsByFacet = activeTags.reduce<Record<string, string[]>>((groups, tag) => {
@@ -2486,6 +2499,9 @@ function buildPrompt({
     "",
     `File: ${fileName}`,
     `Original source page count: ${pageCount}`,
+    recoveryOnly
+      ? "This is a targeted recovery pass over only the missing source pages. Extract only genuinely new questions from the visible pages. Do not restate questions already represented elsewhere in the source, and preserve the visible source question number when present."
+      : "",
     chunk
       ? pageMapping?.length
         ? [
@@ -2747,6 +2763,7 @@ async function buildImportJson({
   profileId,
   provider,
   questionIndexOffset = 0,
+  recovery,
   supabase,
 }: {
   activeTags: ActiveTag[];
@@ -2756,6 +2773,12 @@ async function buildImportJson({
   profileId: string;
   provider: { id: string; model: string; name: string; provider: string };
   questionIndexOffset?: number;
+  recovery?: {
+    originalBatchId: string;
+    recoveryPlanHash: string;
+    sourceAssetId: string;
+    windowIds: string[];
+  };
   supabase: SupabaseLike;
 }) {
   const activeTagIds = new Set(activeTags.map((tag) => tag.id));
@@ -2843,6 +2866,15 @@ async function buildImportJson({
         page_refs: question.page_refs,
         provider,
         raw_ai_question_code: rawAiQuestionCode || null,
+        recovery: recovery
+          ? {
+              original_batch_id: recovery.originalBatchId,
+              plan_hash: recovery.recoveryPlanHash,
+              source_asset_id: recovery.sourceAssetId,
+              window_ids: recovery.windowIds,
+            }
+          : null,
+        recoveryProvenance: recovery ? "recovery" : "original",
         source: "ai_pdf_import",
         tag_decisions: {
           tag_ids: question.tag_ids,
@@ -4521,4 +4553,430 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
   await generateAndStoreQuestionBoundaryGuardPlan({ input });
 
   return finalSummary;
+}
+
+function recoveryCandidateFromExtraction({
+  index,
+  question,
+  sourceAssetId,
+}: {
+  index: number;
+  question: AIPdfQuestion;
+  sourceAssetId: string;
+}): QuestionBoundaryGuardCandidate {
+  return {
+    assetPageNumbers: question.asset_placeholders.map((asset) => asset.page),
+    assetPlaceholders: question.asset_placeholders.map((asset) => ({
+      pageNumber: asset.page,
+      placeholder: asset.placeholder,
+    })),
+    contentHtml: question.content_html,
+    contentSource: question.content_source,
+    id: `recovery-candidate-${index + 1}`,
+    optionsCount: question.options.length,
+    pageRefs: question.page_refs,
+    questionCode: `recovery-candidate-${index + 1}`,
+    recoveryProvenance: "recovery",
+    solutionHtml: question.solution_html,
+    solutionSource: question.solution_source,
+    sourceAssetId,
+    title: question.title,
+    visibleQuestionNumber: question.question_number ?? null,
+  };
+}
+
+function recoveryClassificationCounts(
+  values: AICoverageRecoveryCandidateClassification[],
+) {
+  return values.reduce<Record<AICoverageRecoveryCandidateClassification, number>>(
+    (counts, value) => {
+      counts[value] += 1;
+      return counts;
+    },
+    {
+      answer_alignment_risk: 0,
+      insufficient_evidence: 0,
+      likely_duplicate: 0,
+      new_candidate: 0,
+      possible_fragment_completion: 0,
+      visible_number_conflict: 0,
+      visual_association_risk: 0,
+    },
+  );
+}
+
+async function updateCoverageRecoveryExecution({
+  input,
+  patch,
+}: {
+  input: AIPdfCoverageRecoveryProcessInput;
+  patch: Record<string, unknown>;
+}) {
+  const current = await loadCurrentAIPdfSummary({
+    ...input,
+    batchId: input.originalBatchId,
+  });
+  const existing = plainObject(current.aiPdfImport.coverageRecoveryExecution);
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({
+      summary: {
+        ...current.summary,
+        aiPdfImport: {
+          ...current.aiPdfImport,
+          coverageRecoveryExecution: {
+            ...existing,
+            ...patch,
+          },
+        },
+      },
+    })
+    .eq("id", input.originalBatchId);
+  if (error) throw new Error(error.message);
+}
+
+export async function recordAIPdfCoverageRecoveryFailure({
+  error,
+  input,
+}: {
+  error: unknown;
+  input: AIPdfCoverageRecoveryProcessInput;
+}) {
+  const classified = classifyAIProviderError({
+    error,
+    operation: "ai_pdf_extraction",
+  });
+  const safe = safeAIProviderErrorState({ error: classified });
+  await updateCoverageRecoveryExecution({
+    input,
+    patch: {
+      detail: classified.retryable
+        ? "The AI provider is temporarily busy. Your file was not published or assigned. Please retry in a few minutes."
+        : "Targeted recovery could not be completed. Your file was not published or assigned.",
+      retryable: classified.retryable,
+      safeErrorCode: safe.safeErrorCode,
+      status: classified.retryable ? "retry_wait" : "failed",
+    },
+  }).catch(() => undefined);
+}
+
+/**
+ * Executes only server-derived recovery windows. It never falls back to the
+ * whole source PDF and does not retain the provider response after normalized
+ * candidates have passed the existing review-draft import boundary.
+ */
+export async function processAIPdfCoverageRecovery(
+  input: AIPdfCoverageRecoveryProcessInput,
+) {
+  const { data: originalBatch, error: originalBatchError } = await input.supabase
+    .from("import_batches")
+    .select("id, organization_id, status, summary, target_bank_id")
+    .eq("id", input.originalBatchId)
+    .eq("source_type", "ai_pdf")
+    .maybeSingle();
+  if (originalBatchError) throw new Error(originalBatchError.message);
+  if (!originalBatch || originalBatch.target_bank_id !== input.targetBankId) {
+    throw new Error("The original bank-scoped import is no longer available.");
+  }
+
+  const pageCount = await getPdfPageCount(input.pdfBuffer);
+  const executionPlan = buildAICoverageRecoveryExecutionPlan({
+    actorCanManageBank: true,
+    bankActive: true,
+    originalBatchStatus: originalBatch.status,
+    sourcePageCount: pageCount,
+    sourceReady: true,
+    summary: originalBatch.summary,
+  });
+  if (
+    executionPlan.status !== "eligible" ||
+    executionPlan.planHash !== input.recoveryPlanHash
+  ) {
+    throw new Error("This recovery plan is no longer eligible for execution.");
+  }
+
+  const requestedWindows = executionPlan.windows.filter((window) =>
+    input.recoveryWindowIds.includes(window.windowId),
+  );
+  if (!requestedWindows.length || requestedWindows.length !== executionPlan.windows.length) {
+    throw new Error("The queued recovery windows no longer match the safe plan.");
+  }
+
+  const sourcePages = Array.from(
+    new Set(requestedWindows.flatMap((window) => window.pageNumbers)),
+  ).sort((left, right) => left - right);
+  const existingRecoveryQuery = input.supabase
+    .from("import_batches")
+    .select("id, status, summary")
+    .eq("source_type", "ai_pdf")
+    .eq("target_bank_id", input.targetBankId)
+    .contains("summary", {
+      aiPdfImport: { coverageRecoveryExecution: { durableJobId: input.jobId } },
+    })
+    .limit(1);
+  const { data: existingRecovery, error: existingRecoveryError } = await existingRecoveryQuery;
+  if (existingRecoveryError) throw new Error(existingRecoveryError.message);
+  const existingChild = existingRecovery?.[0] as
+    | { id: string; status: string; summary: unknown }
+    | undefined;
+  if (existingChild?.status === "imported") {
+    const summary = plainObject(existingChild.summary);
+    return {
+      createdCount: numberFromRecord(summary, ["createdCount"]),
+      recoveredDraftCount: numberFromRecord(summary, ["createdCount"]),
+      recoveryCandidateCount: numberFromRecord(
+        plainObject(plainObject(summary.aiPdfImport).coverageRecoveryExecution),
+        ["candidateCount"],
+      ),
+      recoveryPageCount: 0,
+      recoveryWindowCount: 0,
+      reviewRoute: `/teacher/banks/${input.targetBankId}/review`,
+      warningCount: numberFromRecord(summary, ["errorCount", "invalidCount"]),
+    };
+  }
+  if (existingChild) {
+    throw new Error("A recovery handoff is already being reconciled for this plan.");
+  }
+
+  const safeProvider = await loadSafeAIProviderProfileForServerUse({
+    profileId: input.providerProfileId,
+    supabase: input.supabase,
+  });
+  const providerInput = describeAiPdfProviderInput(safeProvider);
+  if (!providerInput.supported || !providerInput.implemented) {
+    throw new Error(providerInput.reason ?? AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE);
+  }
+  const provider = await loadAIProviderProfileForServerUse({
+    profileId: input.providerProfileId,
+    supabase: input.supabase,
+  });
+  const providerSummary = {
+    id: safeProvider.id,
+    model: safeProvider.model,
+    name: safeProvider.name,
+    provider: safeProvider.provider,
+  };
+  const recoveryChunk = {
+    chunkIndex: 0,
+    id: `coverage-recovery-${input.recoveryPlanHash.slice(0, 12)}`,
+    masks: [],
+    pageEnd: sourcePages[sourcePages.length - 1]!,
+    pageMapping: sourcePages.map((sourcePage, index) => ({
+      chunkPage: index + 1,
+      sourcePage,
+    })),
+    pageStart: sourcePages[0]!,
+    sourcePages,
+  };
+  const subset = await buildMaskedPdfChunk({
+    chunk: recoveryChunk,
+    pdfBuffer: input.pdfBuffer,
+  });
+  const activeTags = await loadActiveTags(input.supabase);
+  const prompt = buildPrompt({
+    activeTags,
+    chunk: recoveryChunk,
+    fileName: input.fileName,
+    pageCount,
+    pageMapping: subset.pageMapping,
+    recoveryOnly: true,
+    selectiveExecution: true,
+  });
+  const pagesForVision =
+    providerInput.strategy === "page_images"
+      ? await renderPdfPages(subset.pdfBytes)
+      : [];
+  await updateCoverageRecoveryExecution({
+    input,
+    patch: {
+      detail: "The system is rechecking the missing sections.",
+      pageCount,
+      planHash: input.recoveryPlanHash,
+      recoveredSourcePages: [],
+      status: "processing",
+      windowCount: requestedWindows.length,
+      windowIds: input.recoveryWindowIds,
+    },
+  });
+
+  const providerResult = await runWithAIProviderRetry({
+    operation: "ai_pdf_extraction",
+    policy: input.providerRetryMaxAttempts
+      ? { maxAttempts: input.providerRetryMaxAttempts }
+      : undefined,
+    run: async () =>
+      normalizeAIPdfExtractionResponse(
+        await callAIPdfExtractionProvider({
+          debugContext: {
+            batchId: input.originalBatchId,
+            fileName: input.fileName,
+            jobId: input.jobId,
+            pageCount,
+            providerProfileId: input.providerProfileId,
+            recoveryPlanHash: input.recoveryPlanHash,
+            selectedPageCount: sourcePages.length,
+            sourceAssetId: input.sourceAssetId,
+          },
+          fileName: `${input.fileName.replace(/\.pdf$/i, "")}-recovery.pdf`,
+          inputStrategy: providerInput.strategy,
+          pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
+          pdfBase64: subset.pdfBytes.toString("base64"),
+          pdfBytes: subset.pdfBytes,
+          onProviderUsage: input.onProviderUsage,
+          profile: provider,
+          prompt,
+        }),
+      ),
+  });
+  const extraction = remapSegmentExtractionPages({
+    extraction: providerResult.value,
+    pageMapping: subset.pageMapping,
+  });
+
+  const { data: originalQuestions, error: originalQuestionsError } = await input.supabase
+    .from("questions")
+    .select(
+      "id, question_code, title, content_html, content_source, solution_html, solution_source, options, ai_metadata",
+    )
+    .eq("source", `ai_pdf_import:${input.originalBatchId}`);
+  if (originalQuestionsError) throw new Error(originalQuestionsError.message);
+  const originalCandidates = questionBoundaryCandidatesFromRows({
+    assetRefsByQuestionId: new Map(),
+    rows: (originalQuestions ?? []) as Array<Record<string, unknown>>,
+    sourceAssetId: input.sourceAssetId ?? "",
+  });
+  const recoveryCandidates = extraction.questions.map((question, index) =>
+    recoveryCandidateFromExtraction({
+      index,
+      question,
+      sourceAssetId: input.sourceAssetId ?? "",
+    }),
+  );
+  const guardPlan = buildQuestionBoundaryGuardPlan({
+    questions: [...originalCandidates, ...recoveryCandidates],
+    sourceAssetId: input.sourceAssetId,
+  });
+  const classifications = recoveryCandidates.map((candidate) =>
+    classifyAICoverageRecoveryCandidate({
+      candidateId: candidate.id,
+      guardPlan,
+      hasSufficientEvidence: Boolean(
+        (candidate.pageRefs?.length ?? 0) &&
+          (candidate.contentSource?.trim() || candidate.contentHtml?.trim()),
+      ),
+    }),
+  );
+  const counts = recoveryClassificationCounts(classifications);
+  const newQuestions = extraction.questions.filter(
+    (_, index) => classifications[index] === "new_candidate",
+  );
+
+  if (!newQuestions.length) {
+    await updateCoverageRecoveryExecution({
+      input,
+      patch: {
+        candidateCount: extraction.questions.length,
+        detail: "The missing sections were rechecked, but no additional usable drafts were found.",
+        reconciliation: counts,
+        recoveredDraftCount: 0,
+        recheckedSourcePages: sourcePages,
+        status: "completed_no_new_drafts",
+      },
+    });
+    return {
+      createdCount: 0,
+      recoveredDraftCount: 0,
+      recoveryCandidateCount: extraction.questions.length,
+      recoveryPageCount: sourcePages.length,
+      recoveryWindowCount: requestedWindows.length,
+      reconciliation: counts,
+      reviewRoute: `/teacher/banks/${input.targetBankId}/review`,
+      warningCount: extraction.warnings.length + extraction.questions.length,
+    };
+  }
+
+  const childBatchId = crypto.randomUUID();
+  const childSummary = {
+    aiPdfImport: {
+      coverageRecoveryExecution: {
+        candidateCount: extraction.questions.length,
+        durableJobId: input.jobId,
+        originalImportBatchId: input.originalBatchId,
+        planHash: input.recoveryPlanHash,
+        reconciliation: counts,
+        sourceAssetId: input.sourceAssetId,
+        status: "reconciling",
+        windowIds: input.recoveryWindowIds,
+      },
+      fileName: input.fileName,
+      phase: "coverage_recovery_reconciling",
+      sourceAssetId: input.sourceAssetId,
+      targetBankId: input.targetBankId,
+    },
+    reviewGate: "bank_review_required",
+    reviewScope: "question_bank",
+    targetBankId: input.targetBankId,
+  };
+  const { error: childInsertError } = await input.supabase
+    .from("import_batches")
+    .insert({
+      created_by: input.profileId,
+      id: childBatchId,
+      organization_id: originalBatch.organization_id,
+      source_type: "ai_pdf",
+      status: "draft",
+      summary: childSummary,
+      target_bank_id: input.targetBankId,
+    } as never);
+  if (childInsertError) throw new Error(childInsertError.message);
+
+  const importJson = await buildImportJson({
+    activeTags,
+    batchId: childBatchId,
+    extraction: { ...extraction, questions: newQuestions },
+    profileId: input.profileId,
+    provider: providerSummary,
+    recovery: {
+      originalBatchId: input.originalBatchId,
+      recoveryPlanHash: input.recoveryPlanHash,
+      sourceAssetId: input.sourceAssetId ?? "",
+      windowIds: input.recoveryWindowIds,
+    },
+    supabase: input.supabase,
+  });
+  const imported = await importBatchImportJson({
+    batchId: childBatchId,
+    initialSummaryExtras: childSummary,
+    jsonText: importJson,
+    profileId: input.profileId,
+    sourceType: "ai_pdf",
+    supabase: input.supabase,
+    targetBankId: input.targetBankId,
+  });
+  await updateCoverageRecoveryExecution({
+    input,
+    patch: {
+      candidateCount: extraction.questions.length,
+      childImportBatchId: childBatchId,
+      detail: "Additional Review Drafts were recovered for teacher review.",
+      reconciliation: counts,
+      recoveredDraftCount: imported.createdCount,
+      recoveredSourcePages: sourcePages,
+      status: "completed",
+    },
+  });
+  await generateAndStoreExtractionCoverageAuditPlan({
+    input: { ...input, batchId: input.originalBatchId },
+  });
+
+  return {
+    createdCount: imported.createdCount,
+    recoveredDraftCount: imported.createdCount,
+    recoveryCandidateCount: extraction.questions.length,
+    recoveryPageCount: sourcePages.length,
+    recoveryWindowCount: requestedWindows.length,
+    reconciliation: counts,
+    reviewRoute: `/teacher/banks/${input.targetBankId}/review`,
+    warningCount: extraction.warnings.length + extraction.questions.length - imported.createdCount,
+  };
 }

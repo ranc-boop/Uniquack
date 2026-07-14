@@ -319,9 +319,14 @@ function extractedSourcePagesFrom(summary: Record<string, unknown>) {
   const taggingPlan = asRecord(aiPdfImport.taggingV2Plan);
   const taggingTargets = asArray(taggingPlan.targets).map(asRecord);
   const explicitExtracted = asArray(aiPdfImport.extractedSourcePages).map(Number);
+  const recoveryExecution = asRecord(aiPdfImport.coverageRecoveryExecution);
+  const recoveredSourcePages = asArray(
+    recoveryExecution.recoveredSourcePages,
+  ).map(Number);
 
   return uniqueNumbers([
     ...explicitExtracted,
+    ...recoveredSourcePages,
     ...createdQuestions.flatMap(pageNumbersFromRecord),
     ...taggingTargets.flatMap((target) =>
       asArray(target.imported === true || target.created === true ? [target] : []).flatMap(
