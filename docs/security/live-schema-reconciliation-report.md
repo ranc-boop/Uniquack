@@ -27,11 +27,115 @@ rows, timestamps, live policies, or function definitions.
 | Legacy migration source | `supabase/migrations`; non-canonical and never apply to clean Supabase |
 | Historical ledger | Incomplete for many SQL Editor applications; do not mutate Supabase internal history |
 | Selected strategy | Repository-owned reconciliation manifest plus application register (Outcome A) |
-| Forward migration | None added; the known authorization drift cannot be safely preserved or removed yet |
+| Forward migration | None added here. The internal provider gateway is now proven active; a separate forward-only hardening migration is required after live grant metadata is captured. |
 
 No manual application is required from this PR. A future forward migration is
-required only after the AI-router owner decision and catalog metadata prove an
-exact safe contract.
+required only after the AI-router owner approves the replacement and catalog
+metadata proves an exact safe contract.
+
+## AI Provider Gateway Call-Graph Reconciliation
+
+### Final Classification: ACTIVE INTERNAL GATEWAY
+
+This is not an external AI-routing service. Its historical purpose is a
+server-side lock for **Admin / AI Settings** and provider management:
+
+```text
+super-admin server page/action
+-> server-only AI_PROVIDER_GATEWAY_TOKEN
+-> Supabase gateway RPC argument
+-> active SHA-256 digest plus super-admin verification
+-> provider-profile operation
+```
+
+The current source still uses this internal gateway:
+
+- `src/app/admin/ai-settings/page.tsx` calls `requireSuperAdmin()` before
+  listing provider metadata.
+- `src/app/admin/ai-settings/actions.ts` calls `requireSuperAdmin()` before
+  provider create, update, delete, saved-key test, and routing-policy actions;
+  the provider CRUD actions call gateway RPCs with the server-only token.
+- `src/lib/ai-providers/profiles.ts` and `src/lib/ai-providers/routing.ts` use
+  `requireAIProviderGatewayToken()` for provider and routing RPCs.
+- `src/lib/ai-pdf-import/service.ts` uses the server-use resolver for provider
+  selection and credential loading.
+- `src/lib/ai-jobs/worker.ts` begins with `createServiceRoleClient()`, but its
+  shared provider resolver currently attempts the gateway RPC path before its
+  service-role fallback.
+
+The token module is marked `server-only`, and a source scan found no public
+environment-variable name for it. Current code sends the token as a
+server-to-Supabase RPC argument, not as a browser header. This is evidence of
+the intended boundary, not proof that a compiled client bundle or live grant
+cannot leak it; the replacement PR needs a dedicated negative test.
+
+### Ownership and Rotation
+
+The founder previously configured the internal gateway token. That establishes
+historical ownership only. The current operational owner and rotation owner are
+**unassigned**, so the gate remains blocked. Before the hardening PR is
+applied, name a platform security owner, record the approved server-only secret
+store, rotate the token after the new control plane is verified, and remove the
+old digest only after every gateway RPC caller is retired.
+
+### Named Live Helper/Policy
+
+The exact live objects `private.has_ai_router_provider_access()` and
+`ai_provider_profiles_ai_router_read` have **no static source references**.
+Current code instead calls gateway RPCs backed by canonical
+`private.verify_ai_provider_gateway(text)`. The named objects are therefore
+untracked live authorization aliases within an active internal gateway, not an
+external integration and not safe to preserve by assumption.
+
+Their live definitions, execution roles, and result-column access still need
+read-only capture before they can be removed. Their presence keeps the
+reconciliation gate blocked.
+
+### Full-Row and Grant Risk
+
+Canonical `0002_provider_profiles_and_operation_logs.sql` exposes two
+different risks that must be reconciled together:
+
+1. `public.get_ai_provider_profile_for_gateway` returns encrypted credential
+   fields for server-side decryption. It is a public-schema,
+   `authenticated`-executable RPC guarded by the token plus super-admin check.
+2. `ai_provider_profiles_staff_read` is a full-row SELECT policy. RLS filters
+   rows, not columns. If live `anon` or `authenticated` SELECT grants exist on
+   `public.ai_provider_profiles`, a matching staff member could receive
+   `api_key_ciphertext`, `api_key_iv`, `api_key_tag`, or `credential_ref`.
+
+The canonical migration does not explicitly revoke direct table privileges on
+`public.ai_provider_profiles`; the archived legacy chain contains a revoke but
+is non-canonical and cannot be treated as proof of the live state. Broad
+grants are **not safe merely because RLS exists**. This is a P1 launch blocker
+pending the targeted read-only privilege capture below; escalate it to P0 if
+the live result confirms a browser-reachable full-row credential path.
+
+### Safe Replace Plan
+
+Do not preserve full-row provider access as-is. The next dedicated hardening
+PR must, in this order:
+
+1. Move Admin / AI Settings provider list and CRUD access to a server-only
+   repository using `createServiceRoleClient()` only after
+   `requireSuperAdmin()` succeeds.
+2. Keep a separate worker-only credential resolver. It may read encrypted
+   fields and decrypt them only in server memory; it must never serialize a
+   profile to a page, action result, operation log, or browser response.
+3. Make every metadata list use an explicit allowlist. It may return IDs,
+   name, provider, base URL, model, enabled/default/capability flags,
+   `api_key_last4`, and timestamps, but never `api_key_ciphertext`,
+   `api_key_iv`, `api_key_tag`, or `credential_ref`.
+4. In one forward migration after the runtime change, revoke direct
+   `anon`/`authenticated` table privileges and gateway-RPC execution that are
+   no longer needed; replace permissive provider-profile RLS with no
+   browser-direct full-row access.
+5. Only then remove or replace the named live helper/policy after its catalog
+   definition proves it is redundant. Record a platform security owner and
+   token-rotation procedure before retiring the token.
+
+The existing service-role fallback proves replacement is feasible, but it is
+not yet the primary path. No migration is created or applied in this task.
 
 ## Migration Inventory
 
@@ -130,14 +234,16 @@ approved clean-Supabase smoke environment and the read-only catalog capture.
 
 | Class | Object | Runtime reference | Security impact | Safe action |
 | --- | --- | --- | --- | --- |
-| UNKNOWN_OBJECT_REQUIRES_OWNER_DECISION | `private.has_ai_router_provider_access()` | No repository reference found | May authorize provider-profile access under an unreviewed server contract | Identify caller, header/credential contract, return columns, rotation owner, and browser reachability before a forward migration |
-| RLS_POLICY_DRIFT | `ai_provider_profiles_ai_router_read` | No repository reference found | Could widen access to provider-profile metadata with the helper | Capture normalized policy/grant metadata; resolve with the helper, not by deletion |
+| UNTRACKED_LIVE_AUTHORIZATION_ALIAS | `private.has_ai_router_provider_access()` | No direct source call. The active internal gateway uses `private.verify_ai_provider_gateway(text)` through public gateway RPCs. | May duplicate or widen provider-profile authorization beyond the active app path. | Capture definition and execution grants; replace the active control plane before removing this alias forward-only. |
+| UNTRACKED_LIVE_AUTHORIZATION_ALIAS | `ai_provider_profiles_ai_router_read` | No direct source policy reference. | Could return full provider rows when combined with broad grants or a security-definer helper. | Capture normalized policy and table grants; do not preserve it as-is. |
+| P1_UNVERIFIED_DIRECT_TABLE_PRIVILEGES | `public.ai_provider_profiles` `anon`/`authenticated` grants | Canonical `0002` has full-row staff read and no explicit direct-table revoke. | If such grants exist live, RLS can authorize encrypted credential columns. | Capture granular table privileges; harden to no browser-direct full-row access in the dedicated forward PR. |
 | LEDGER_ONLY_DRIFT | Later SQL Editor migrations | Reported in prior validation, not reliably ledgered | Reproducibility and rollback risk | Fingerprint each object from a read-only catalog capture and record an owner-signed application entry |
 | DEFINITION_DRIFT / UNKNOWN | `0036_ai_operations_launch_readiness.sql` | Current repository contains the file | Revert/reapply history makes live state uncertain | Capture object fingerprints before declaring it applied |
 
-No current-main runtime reference was found for the named AI-router helper or
-policy. That is not proof of obsolescence. It blocks deletion and preservation
-until an owner confirms intent.
+The named live helper/policy lacks a direct source reference, but the internal
+gateway itself is active. This is not proof that the aliases are obsolete. They
+block deletion and preservation until their live definitions and grants are
+captured.
 
 ## Read-Only SQL Editor Capture
 
@@ -243,6 +349,26 @@ join pg_namespace n on n.oid = c.relnamespace and n.nspname = p.schemaname
 where p.schemaname = 'public'
   and p.tablename = 'ai_provider_profiles'
   and p.policyname = 'ai_provider_profiles_ai_router_read';
+
+select grantee, privilege_type
+from information_schema.table_privileges
+where table_schema = 'public'
+  and table_name = 'ai_provider_profiles'
+  and grantee in ('anon', 'authenticated', 'service_role')
+order by grantee, privilege_type;
+
+select routine_schema, routine_name, grantee, privilege_type
+from information_schema.routine_privileges
+where routine_schema = 'public'
+  and routine_name in (
+    'list_ai_provider_profiles_for_gateway',
+    'list_enabled_ai_provider_profiles_for_gateway',
+    'get_ai_provider_profile_for_gateway',
+    'create_ai_provider_profile_for_gateway',
+    'update_ai_provider_profile_for_gateway',
+    'delete_ai_provider_profile_for_gateway'
+  )
+order by routine_name, grantee, privilege_type;
 ```
 
 The existing Supabase migration ledger must be queried only through its
@@ -260,12 +386,21 @@ new reconciliation smoke fails if they are reintroduced. Google remains blocked
 until its approved OAuth/OIDC redesign exists; this is not evidence that Google
 should be applied.
 
-### P1 - Untracked AI Router Authorization Surface
+### P1 - Active Internal Provider Gateway Needs Narrow Replacement
 
-The helper and RLS policy are not in the reviewed canonical migration chain and
-are not referenced by current repository code. Their owner must decide whether
-they are a required server-only contract or obsolete before a forward migration
-can represent or remove them.
+Current Admin / AI Settings, routing-policy, provider-resolution, and worker
+paths still use the internal gateway token/RPC design. Its exact named live
+alias is not in source, but the active gateway is not dormant. The next PR must
+make service-role access primary after an application-level super-admin check,
+use allowlisted metadata reads, and keep credential decryption worker-only.
+
+### P1 - Provider-Profile Full-Row Access Is Not Reconciled
+
+The repository's full-row staff-read policy and the absent canonical direct
+table revoke make live grants material. RLS is not a column filter. Until the
+targeted privilege query proves otherwise, this remains a P1 launch blocker;
+escalate it to P0 if a browser-reachable `anon` or `authenticated` path can
+return encrypted provider credential columns.
 
 ### P1 - Historical Application Ledger Is Incomplete
 
@@ -291,16 +426,21 @@ already recorded.
 ## Next Safe Actions
 
 1. Obtain the sanitized read-only catalog outputs above.
-2. Assign an owner for the AI-router helper/policy and decide represent versus
-   remove through one forward-only migration.
-3. Keep Google foundation harnesses isolated until a redesigned, uniquely
+2. Name the platform security owner and token-rotation owner, then capture the
+   provider-profile table and gateway-function grants.
+3. Create a dedicated runtime-plus-forward-migration hardening PR: make the
+   service-role resolver primary, make safe metadata explicit, revoke
+   browser-direct full-row access, and remove the live alias only after it is
+   proven redundant.
+4. Keep Google foundation harnesses isolated until a redesigned, uniquely
    numbered Google migration is approved; never add them to aggregate smoke.
-4. Record fingerprints and a named owner in the application register.
-5. Run `node scripts/migration-reconciliation-smoke.mjs --require-live-reconciliation`.
+5. Record fingerprints and named owners in the application register.
+6. Run `node scripts/migration-reconciliation-smoke.mjs --require-live-reconciliation`.
 
 ## Remaining Launch Blockers
 
 This audit does not clear Teacher Classroom creation RLS, private question-asset
 delivery, signed-in Student E2E, Student self-study evidence isolation, Google
 Login redesign, Vertex/Cloud Run/Cloud Tasks production readiness, 50-job
-qualification, monitoring, legal, or privacy gates.
+qualification, monitoring, legal, privacy, or the provider-gateway
+service-role-only hardening gate.

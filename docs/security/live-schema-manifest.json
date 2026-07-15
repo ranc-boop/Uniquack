@@ -95,21 +95,37 @@
       "extension inventory"
     ]
   },
+  "aiProviderGatewayAssessment": {
+    "finalClassification": "ACTIVE INTERNAL GATEWAY",
+    "historicalPurpose": "Internal server-side lock for Admin / AI Settings and provider management. The application supplies AI_PROVIDER_GATEWAY_TOKEN to Supabase, where an active SHA-256 digest and super-admin identity are verified.",
+    "currentRuntimeEvidence": [
+      "src/app/admin/ai-settings/page.tsx requires a super-admin before listing provider metadata",
+      "src/app/admin/ai-settings/actions.ts requires a super-admin before provider create, update, delete, or saved-key test operations",
+      "src/lib/ai-providers/profiles.ts and routing.ts obtain the server-only token and call gateway RPCs",
+      "src/lib/ai-pdf-import/service.ts uses the server-use provider resolver",
+      "src/lib/ai-jobs/worker.ts starts with a service-role client, while the shared resolver currently tries the gateway path before its service-role fallback"
+    ],
+    "namedLiveAliasStatus": "No static source reference calls private.has_ai_router_provider_access() or names ai_provider_profiles_ai_router_read. It may be a historical duplicate of the active internal gateway, but its live definition and grants remain unverified.",
+    "browserExposureAssessment": "No NEXT_PUBLIC gateway variable or client-module import was found. The token module is marked server-only; current calls pass the token as a server-to-Supabase RPC argument rather than an HTTP header.",
+    "providerProfileGrantAssessment": "UNVERIFIED. Canonical 0002 has a staff-wide full-row SELECT RLS policy and does not explicitly revoke direct table privileges on public.ai_provider_profiles. If live anon/authenticated SELECT grants exist, encrypted credential columns could be readable to rows allowed by that policy.",
+    "requiredForwardHardening": "Replace authenticated gateway RPC use with an explicitly super-admin server/service-role control plane, return only a safe metadata projection, revoke direct anon/authenticated table and gateway-function access, then remove the named live alias only after catalog capture proves it is redundant.",
+    "ownerDecisionRequired": "Platform security owner must approve the service-role-only replacement and record a gateway-token rotation owner before any removal migration."
+  },
   "knownLiveDrift": [
     {
       "objectIdentity": "private.has_ai_router_provider_access()",
-      "classification": "UNKNOWN_OBJECT_REQUIRES_OWNER_DECISION",
-      "securityImpact": "May authorize reads of provider-profile rows through an unreviewed server-side contract.",
-      "runtimeReference": "No repository runtime reference found by static search.",
-      "recommendedAction": "Do not preserve or remove until the service caller, authorization header contract, credential rotation owner, result columns, and browser reachability are proven.",
+      "classification": "UNTRACKED_LIVE_AUTHORIZATION_ALIAS",
+      "securityImpact": "The internal provider gateway is active, but this exact helper is not in the source call graph. It may duplicate or widen the active gateway's provider-profile authorization.",
+      "runtimeReference": "No source reference to this exact helper; current code calls public gateway RPCs backed by private.verify_ai_provider_gateway(text).",
+      "recommendedAction": "Capture the exact live definition, execution grants, and callers. Replace the active gateway with a narrow service-role-only control plane before removing this alias in one forward migration.",
       "ownerDecision": false
     },
     {
       "objectIdentity": "public.ai_provider_profiles policy ai_provider_profiles_ai_router_read",
-      "classification": "RLS_POLICY_DRIFT",
-      "securityImpact": "Could widen access to encrypted-provider-profile metadata if paired with an unreviewed helper.",
-      "runtimeReference": "No repository runtime reference found by static search.",
-      "recommendedAction": "Capture normalized policy/grant metadata and resolve together with the helper; do not silently delete it.",
+      "classification": "UNTRACKED_LIVE_AUTHORIZATION_ALIAS",
+      "securityImpact": "Could return full provider-profile rows, including encrypted credential material, if paired with broad table grants or a security-definer helper.",
+      "runtimeReference": "No source reference to this exact policy; current canonical 0002 already has a separate full-row staff-read policy.",
+      "recommendedAction": "Capture normalized policy and table-grant metadata. Do not preserve it as-is; remove it only with the service-role-only replacement and direct-table privilege revocation.",
       "ownerDecision": false
     }
   ],

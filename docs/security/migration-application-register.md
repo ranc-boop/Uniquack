@@ -9,7 +9,7 @@ operator records a future release.
 | ID | File | Status | Method | Evidence | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0001 | foundations_identity_organizations | APPLIED_AND_REVIEWED | CLI/disposable baseline | remote apply report | unassigned | baseline |
-| 0002 | provider_profiles_and_operation_logs | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | gateway setup reports | unassigned | catalog capture pending |
+| 0002 | provider_profiles_and_operation_logs | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | gateway setup reports | platform security owner unassigned | active internal gateway; provider-profile grants and full-row policies require a forward hardening decision after catalog capture |
 | 0003 | taxonomy_runtime_source | APPLIED_AND_REVIEWED | CLI/disposable baseline | remote apply report | unassigned | baseline |
 | 0004 | source_assets_and_import_jobs | APPLIED_AND_REVIEWED | CLI/disposable baseline | remote apply report | unassigned | baseline |
 | 0005 | ai_parsing_pipeline | APPLIED_AND_REVIEWED | CLI/disposable baseline | remote apply report | unassigned | baseline |
@@ -53,3 +53,13 @@ operator records a future release.
 
 The complete machine-readable inventory, including exact filenames and status
 labels, is `docs/security/live-schema-manifest.json`.
+
+## Provider Gateway Ownership Record
+
+The gateway is an **internal** server-side control for Admin / AI Settings and
+provider resolution, not a third-party routing service. Current source still
+uses `AI_PROVIDER_GATEWAY_TOKEN` through server-only modules. The platform
+security owner must be named before replacement work and must own rotation of
+that token until the gateway is retired. The current reconciliation state does
+not authorize relying on broad `anon`/`authenticated` table grants or on a
+full-row provider-profile policy.
