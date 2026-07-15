@@ -1,6 +1,7 @@
 
 await import("./security-smoke.mjs");
 await import("./migration-reconciliation-smoke.mjs");
+await import("./provider-gateway-hardening-smoke.mjs");
 await import("./profile-role-immutability-smoke.mjs");
 await import("./markdown-latex-editor-smoke.mjs");
 await import("./bulk-asset-import-smoke.mjs");

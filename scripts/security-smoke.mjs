@@ -2036,12 +2036,18 @@ const durableAiJobsWorkerRoleFix = await read(
 const providerRoutingCircuitMigration = await read(
   "supabase/clean-migrations/0035_ai_provider_routing_circuit_breaker.sql",
 );
+const providerGatewayHardeningMigration = await read(
+  "supabase/clean-migrations/0042_internal_provider_gateway_hardening.sql",
+);
 const aiOperationsMigration = await read(
   "supabase/clean-migrations/0036_ai_operations_launch_readiness.sql",
 );
 const aiOperationsTelemetry = await read("src/lib/ai-operations/telemetry.ts");
 const aiOperationsDashboard = await read("src/lib/ai-operations/dashboard.ts");
 const providerRouting = await read("src/lib/ai-providers/routing.ts");
+const providerProfiles = await read("src/lib/ai-providers/profiles.ts");
+const providerGatewayToken = await read("src/lib/ai-providers/gateway-token.ts");
+const providerSettingsActions = await read("src/app/admin/ai-settings/actions.ts");
 const durableAiJobsWorker = await read("src/lib/ai-jobs/worker.ts");
 const durableAiJobsRoute = await read("src/app/api/internal/ai-jobs/run/route.ts");
 assert(
@@ -2073,6 +2079,35 @@ assert(
     providerRouting.includes("blueprint_analyze_text") &&
     !providerRouting.includes("process.env.GEMINI"),
   "provider routing must be capability-aware, service-role guarded, and free of provider credentials",
+);
+assert(
+  providerGatewayHardeningMigration.includes(
+    "drop policy if exists ai_provider_profiles_ai_router_read",
+  ) &&
+    providerGatewayHardeningMigration.includes(
+      "drop function if exists private.has_ai_router_provider_access()",
+    ) &&
+    providerGatewayHardeningMigration.includes(
+      "revoke all privileges on table public.ai_provider_profiles from public, anon, authenticated",
+    ) &&
+    providerGatewayHardeningMigration.includes(
+      "grant all privileges on table public.ai_provider_profiles to service_role",
+    ) &&
+    providerGatewayHardeningMigration.includes(
+      "drop function if exists public.get_ai_provider_profile_for_gateway(text, uuid)",
+    ) &&
+    !providerGatewayHardeningMigration.includes("api_key_ciphertext") &&
+    !providerGatewayHardeningMigration.includes("api_key_iv") &&
+    !providerGatewayHardeningMigration.includes("api_key_tag") &&
+    !providerGatewayHardeningMigration.includes("credential_ref") &&
+    providerProfiles.includes("listSafeAIProviderProfilesWithServiceRole") &&
+    !providerProfiles.includes("get_ai_provider_profile_for_gateway") &&
+    providerRouting.includes("listEnabledAIProviderProfilesForServerUse()") &&
+    providerGatewayToken.startsWith('import "server-only";') &&
+    !providerGatewayToken.includes("NEXT_PUBLIC") &&
+    providerSettingsActions.includes("requireSuperAdmin()") &&
+    !providerSettingsActions.includes("get_ai_provider_profile_for_gateway"),
+  "provider gateway hardening must remove direct browser credential reads, preserve service-role execution, and keep Admin metadata safe",
 );
 assert(
   durableAiJobsWorker.includes("recordAIPdfProviderFailure") &&

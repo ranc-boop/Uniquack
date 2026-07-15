@@ -10,17 +10,16 @@ import {
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import {
   encryptedKeyPatch,
+  loadAIProviderProfileForServerUse,
   listSafeAIProviderProfiles,
 } from "@/lib/ai-providers/profiles";
 import {
   providerSupportsAIProviderRoutingOperation,
   upsertAIProviderRoutingPolicyForGateway,
 } from "@/lib/ai-providers/routing";
-import { decryptSecret } from "@/lib/ai-providers/encryption";
 import { requireAIProviderGatewayToken } from "@/lib/ai-providers/gateway-token";
 import { testAIProviderConnection } from "@/lib/ai-providers/chat";
 import { createClient } from "@/lib/supabase/server";
-import type { AIProviderProfile } from "@/types/database";
 import {
   aiProviderProfileDeleteSchema,
   aiProviderProfileFormSchema,
@@ -61,32 +60,8 @@ function requireApiKey(value: string | undefined) {
   return apiKey;
 }
 
-async function loadSavedProvider({
-  id,
-  supabase,
-}: {
-  id: string;
-  supabase: Awaited<ReturnType<typeof createClient>>;
-}) {
-  const { data, error } = await supabase.rpc(
-    "get_ai_provider_profile_for_gateway",
-    {
-      gateway_token: requireAIProviderGatewayToken(),
-      profile_id: id,
-    },
-  );
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const profile = (Array.isArray(data) ? data[0] : data) as AIProviderProfile | null;
-
-  if (!profile) {
-    throw new Error("AI provider profile is not available.");
-  }
-
-  return profile;
+async function loadSavedProvider(id: string) {
+  return loadAIProviderProfileForServerUse({ profileId: id });
 }
 
 export async function createAIProviderProfile(formData: FormData) {
@@ -185,15 +160,8 @@ export async function testSavedAIProviderConnection(formData: FormData) {
   try {
     await requireSuperAdmin();
     const parsed = aiProviderProfileUpdateSchema.parse(formValues(formData));
-    const supabase = await createClient();
-    const saved = await loadSavedProvider({ id: parsed.id, supabase });
-    const apiKey =
-      parsed.api_key?.trim() ||
-      decryptSecret({
-        ciphertext: saved.api_key_ciphertext,
-        iv: saved.api_key_iv,
-        tag: saved.api_key_tag,
-      });
+    const saved = await loadSavedProvider(parsed.id);
+    const apiKey = parsed.api_key?.trim() || saved.apiKey;
     const result = await testAIProviderConnection({
       apiKey,
       base_url: parsed.base_url,

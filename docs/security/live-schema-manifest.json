@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "BLOCKED_PENDING_READ_ONLY_METADATA_CAPTURE",
-  "latestActivePrefix": 41,
+  "latestActivePrefix": 42,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -52,7 +52,8 @@
     "0038_ai_pdf_coverage_recovery_jobs.sql",
     "0039_profile_privileged_fields_immutability.sql",
     "0040_profile_insert_and_role_transition_hardening.sql",
-    "0041_profile_delete_privilege_hardening.sql"
+    "0041_profile_delete_privilege_hardening.sql",
+    "0042_internal_provider_gateway_hardening.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -101,15 +102,15 @@
     "currentRuntimeEvidence": [
       "src/app/admin/ai-settings/page.tsx requires a super-admin before listing provider metadata",
       "src/app/admin/ai-settings/actions.ts requires a super-admin before provider create, update, delete, or saved-key test operations",
-      "src/lib/ai-providers/profiles.ts and routing.ts obtain the server-only token and call gateway RPCs",
-      "src/lib/ai-pdf-import/service.ts uses the server-use provider resolver",
-      "src/lib/ai-jobs/worker.ts starts with a service-role client, while the shared resolver currently tries the gateway path before its service-role fallback"
+      "src/lib/ai-providers/profiles.ts uses the server-only token only for Admin gateway-safe metadata and mutations",
+      "src/lib/ai-pdf-import/service.ts and routing.ts resolve provider credentials through the direct service-role resolver",
+      "src/lib/ai-jobs/worker.ts starts with a service-role client and keeps provider routing on the direct service-role resolver"
     ],
-    "namedLiveAliasStatus": "No static source reference calls private.has_ai_router_provider_access() or names ai_provider_profiles_ai_router_read. It may be a historical duplicate of the active internal gateway, but its live definition and grants remain unverified.",
+    "namedLiveAliasStatus": "No static source reference calls private.has_ai_router_provider_access() or names ai_provider_profiles_ai_router_read. Forward-only migration 0042 removes both after the supported internal gateway remains in place; live post-apply catalog evidence is still required.",
     "browserExposureAssessment": "No NEXT_PUBLIC gateway variable or client-module import was found. The token module is marked server-only; current calls pass the token as a server-to-Supabase RPC argument rather than an HTTP header.",
-    "providerProfileGrantAssessment": "UNVERIFIED. Canonical 0002 has a staff-wide full-row SELECT RLS policy and does not explicitly revoke direct table privileges on public.ai_provider_profiles. If live anon/authenticated SELECT grants exist, encrypted credential columns could be readable to rows allowed by that policy.",
-    "requiredForwardHardening": "Replace authenticated gateway RPC use with an explicitly super-admin server/service-role control plane, return only a safe metadata projection, revoke direct anon/authenticated table and gateway-function access, then remove the named live alias only after catalog capture proves it is redundant.",
-    "ownerDecisionRequired": "Platform security owner must approve the service-role-only replacement and record a gateway-token rotation owner before any removal migration."
+    "providerProfileGrantAssessment": "PENDING_MANUAL_APPLY. Migration 0042 removes the canonical full-row staff/admin policies, revokes direct public/anon/authenticated table privileges, preserves service_role, and replaces safe gateway lists with explicit credential-free projections. Live catalog proof remains required.",
+    "requiredForwardHardening": "Apply 0042 exactly once through the approved manual release path, capture sanitized function/policy/grant metadata, and validate that the service-role resolver remains the only credential resolution path.",
+    "ownerDecisionRequired": "Jerry / Platform Security is the primary gateway and rotation owner. Frances / Technical Operations is the designated backup pending release-owner confirmation before live token rotation or 0042 application."
   },
   "knownLiveDrift": [
     {
@@ -117,16 +118,16 @@
       "classification": "UNTRACKED_LIVE_AUTHORIZATION_ALIAS",
       "securityImpact": "The internal provider gateway is active, but this exact helper is not in the source call graph. It may duplicate or widen the active gateway's provider-profile authorization.",
       "runtimeReference": "No source reference to this exact helper; current code calls public gateway RPCs backed by private.verify_ai_provider_gateway(text).",
-      "recommendedAction": "Capture the exact live definition, execution grants, and callers. Replace the active gateway with a narrow service-role-only control plane before removing this alias in one forward migration.",
-      "ownerDecision": false
+      "recommendedAction": "Apply 0042 exactly once, then capture the absent function and related execution grants as sanitized post-apply evidence. The supported Admin gateway remains separate.",
+      "ownerDecision": true
     },
     {
       "objectIdentity": "public.ai_provider_profiles policy ai_provider_profiles_ai_router_read",
       "classification": "UNTRACKED_LIVE_AUTHORIZATION_ALIAS",
       "securityImpact": "Could return full provider-profile rows, including encrypted credential material, if paired with broad table grants or a security-definer helper.",
       "runtimeReference": "No source reference to this exact policy; current canonical 0002 already has a separate full-row staff-read policy.",
-      "recommendedAction": "Capture normalized policy and table-grant metadata. Do not preserve it as-is; remove it only with the service-role-only replacement and direct-table privilege revocation.",
-      "ownerDecision": false
+      "recommendedAction": "Apply 0042 exactly once, then capture normalized policy and table-grant metadata proving the stale full-row policy and browser-role grants are absent.",
+      "ownerDecision": true
     }
   ],
   "repositoryStaticInventory": {
@@ -176,6 +177,7 @@
     { "filename": "0038_ai_pdf_coverage_recovery_jobs.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "coverage recovery executor report" },
     { "filename": "0039_profile_privileged_fields_immutability.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "profile-role immutability live validation" },
     { "filename": "0040_profile_insert_and_role_transition_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "profile-role immutability live validation" },
-    { "filename": "0041_profile_delete_privilege_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "profile deletion hardening live validation" }
+    { "filename": "0041_profile_delete_privilege_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "profile deletion hardening live validation" },
+    { "filename": "0042_internal_provider_gateway_hardening.sql", "status": "PENDING_MANUAL_APPLY", "applicationMethod": "approved manual release path", "evidenceSource": "provider gateway hardening source and security smoke" }
   ]
 }

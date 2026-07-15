@@ -115,7 +115,7 @@ export async function listTeacherAIPdfParsingProfileState(
 ): Promise<TeacherAIPdfParsingProfileState> {
   try {
     return buildTeacherAIPdfParsingProfileState(
-      await listEnabledAIProviderProfilesForServerUse(supabase),
+      await listEnabledAIProviderProfilesForServerUse(),
     );
   } catch {
     return unavailableTeacherAIPdfParsingProfileState();
@@ -132,7 +132,7 @@ export async function resolveTeacherAIPdfProviderProfile({
   let enabledProfiles: SafeAIProviderProfile[];
 
   try {
-    enabledProfiles = await listEnabledAIProviderProfilesForServerUse(supabase);
+    enabledProfiles = await listEnabledAIProviderProfilesForServerUse();
   } catch {
     throw new Error(
       "AI PDF parsing is not available. Ask an admin to check AI Settings.",

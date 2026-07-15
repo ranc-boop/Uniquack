@@ -50,16 +50,24 @@ operator records a future release.
 | 0039 | profile_privileged_fields_immutability | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | profile live validation | unassigned | applied exactly once |
 | 0040 | profile_insert_and_role_transition_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | profile live validation | unassigned | applied exactly once |
 | 0041 | profile_delete_privilege_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | profile live validation | unassigned | applied exactly once |
+| 0042 | internal_provider_gateway_hardening | PENDING_MANUAL_APPLY | approved manual release path | provider gateway hardening source/security smoke | Jerry / Platform Security; Frances / Technical Operations backup pending confirmation | removes the stale alias and browser-role provider-table access; requires post-apply catalog and RLS validation |
 
 The complete machine-readable inventory, including exact filenames and status
 labels, is `docs/security/live-schema-manifest.json`.
 
 ## Provider Gateway Ownership Record
 
-The gateway is an **internal** server-side control for Admin / AI Settings and
-provider resolution, not a third-party routing service. Current source still
-uses `AI_PROVIDER_GATEWAY_TOKEN` through server-only modules. The platform
-security owner must be named before replacement work and must own rotation of
-that token until the gateway is retired. The current reconciliation state does
-not authorize relying on broad `anon`/`authenticated` table grants or on a
+The gateway is an **internal** server-side control for super-admin Admin / AI
+Settings, not a third-party routing service. It carries only a server-only
+gateway token to narrow safe-metadata and mutation RPCs. Provider execution and
+workers resolve credentials directly through service role; they do not receive
+the gateway token. Jerry / Platform Security is the primary gateway and token
+rotation owner. Frances / Technical Operations is the designated backup, pending
+release-owner confirmation before live rotation or manual application of 0042.
+
+Migration `0042_internal_provider_gateway_hardening.sql` is pending manual
+application. It removes the untracked request-header helper/policy, revokes
+browser-role table access, and removes the credential-returning gateway RPC.
+Until its sanitized post-apply catalog evidence is recorded, the release does
+not authorize relying on broad `anon`/`authenticated` table grants or any
 full-row provider-profile policy.

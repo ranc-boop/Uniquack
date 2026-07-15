@@ -3189,7 +3189,7 @@ async function loadDeepSeekBlueprintAnalyzerProvider(input: ProcessInput) {
     const requestedMode = normalizeQuestionBlueprintModelQualityMode(
       current.aiPdfImport.blueprintModelQualityMode,
     );
-    const profiles = await listEnabledAIProviderProfilesForServerUse(input.supabase);
+    const profiles = await listEnabledAIProviderProfilesForServerUse();
     const selection = selectQuestionBlueprintDeepSeekProfile({
       profiles,
       requestedMode,
@@ -3211,7 +3211,6 @@ async function loadDeepSeekBlueprintAnalyzerProvider(input: ProcessInput) {
       fallbackReason: selection.fallbackReason,
       provider: await loadAIProviderProfileForServerUse({
         profileId: profile.id,
-        supabase: input.supabase,
       }),
       requestedMode: selection.requestedMode,
       warnings: selection.fallbackReason ? [selection.fallbackReason] : ([] as string[]),
@@ -3996,7 +3995,6 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
   });
   const safeProvider = await loadSafeAIProviderProfileForServerUse({
     profileId: input.providerProfileId,
-    supabase: input.supabase,
   });
   const providerSummary = {
     id: safeProvider.id,
@@ -4014,7 +4012,6 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
   });
   const provider = await loadAIProviderProfileForServerUse({
     profileId: input.providerProfileId,
-    supabase: input.supabase,
   });
 
   if (!providerInput.supported) {
@@ -4740,7 +4737,6 @@ export async function processAIPdfCoverageRecovery(
 
   const safeProvider = await loadSafeAIProviderProfileForServerUse({
     profileId: input.providerProfileId,
-    supabase: input.supabase,
   });
   const providerInput = describeAiPdfProviderInput(safeProvider);
   if (!providerInput.supported || !providerInput.implemented) {
@@ -4748,7 +4744,6 @@ export async function processAIPdfCoverageRecovery(
   }
   const provider = await loadAIProviderProfileForServerUse({
     profileId: input.providerProfileId,
-    supabase: input.supabase,
   });
   const providerSummary = {
     id: safeProvider.id,
