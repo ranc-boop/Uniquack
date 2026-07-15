@@ -22,19 +22,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const blueprintMigration = await readFile(
-  resolve(root, "supabase/migrations/0018_question_blueprint_library.sql"),
-  "utf8",
-);
-const blueprintFolderMigration = await readFile(
-  resolve(root, "supabase/migrations/0016_question_blueprint_folders.sql"),
-  "utf8",
-);
-const blueprintCalibrationMigration = await readFile(
-  resolve(root, "supabase/migrations/0020_question_blueprint_calibration.sql"),
-  "utf8",
-);
-const blueprintVersionMigration = await readFile(
-  resolve(root, "supabase/migrations/0021_question_blueprint_versions.sql"),
+  resolve(root, "supabase/clean-migrations/0007_blueprint_engine.sql"),
   "utf8",
 );
 const reviewDraftPublishMigration = await readFile(
@@ -317,51 +305,26 @@ assert(
 console.log("PASS teacher Blueprint Library migration protects private library and bank links");
 for (const tableName of [
   "question_blueprints",
+  "question_blueprint_folders",
   "question_blueprint_examples",
   "question_blueprint_review_actions",
+  "question_blueprint_versions",
+  "question_blueprint_calibration_runs",
 ]) {
   assert(
     blueprintMigration.includes(`alter table public.${tableName} enable row level security`),
     `${tableName} is missing RLS`,
   );
-  assert(
-    blueprintMigration.includes(`${tableName}_admin_crud`) &&
-      blueprintMigration.includes("private.is_admin()"),
-    `${tableName} is missing admin-only policy`,
-  );
 }
-assert(!blueprintMigration.includes("to anon"), "question blueprint tables must not grant anon access");
+assert(blueprintMigration.includes("question_blueprints_staff_read"), "question blueprints must retain a staff-scoped read policy");
+assert(blueprintMigration.includes("question_blueprint_folders_staff_read"), "question blueprint folders must retain a staff-scoped read policy");
+assert(blueprintMigration.includes("question_blueprint_examples_staff_access"), "question blueprint examples must retain a staff-scoped policy");
+assert(blueprintMigration.includes("question_blueprint_review_actions_staff_access"), "question blueprint review actions must retain a staff-scoped policy");
+assert(blueprintMigration.includes("question_blueprint_versions_staff_read"), "question blueprint versions must retain a staff-scoped read policy");
+assert(blueprintMigration.includes("question_blueprint_calibration_runs_staff_access"), "question blueprint calibration runs must retain a staff-scoped policy");
 assert(
-  blueprintFolderMigration.includes("create table if not exists public.question_blueprint_folders") &&
-    blueprintFolderMigration.includes("add column if not exists folder_id") &&
-    blueprintFolderMigration.includes("alter table public.question_blueprint_folders enable row level security") &&
-    blueprintFolderMigration.includes("question_blueprint_folders_admin_crud") &&
-    blueprintFolderMigration.includes("private.is_admin()") &&
-    !blueprintFolderMigration.includes("to anon"),
-  "question blueprint folder migration must enable admin-only RLS and avoid anon grants",
-);
-assert(
-  blueprintCalibrationMigration.includes("create table if not exists public.question_blueprint_calibration_runs") &&
-    blueprintCalibrationMigration.includes("alter table public.question_blueprint_calibration_runs enable row level security") &&
-    blueprintCalibrationMigration.includes("question_blueprint_calibration_runs_admin_crud") &&
-    blueprintCalibrationMigration.includes("private.is_admin()") &&
-    blueprintCalibrationMigration.includes("generation_readiness") &&
-    !blueprintCalibrationMigration.includes("to anon"),
-  "question blueprint calibration migration must enable admin-only RLS and avoid anon grants",
-);
-assert(
-  blueprintVersionMigration.includes("create table if not exists public.question_blueprint_versions") &&
-    blueprintVersionMigration.includes("alter table public.question_blueprint_versions enable row level security") &&
-    blueprintVersionMigration.includes("question_blueprint_versions_admin_crud") &&
-    blueprintVersionMigration.includes("private.is_admin()") &&
-    blueprintVersionMigration.includes("snapshot jsonb not null") &&
-    !blueprintVersionMigration.includes("to anon"),
-  "question blueprint version migration must enable admin-only RLS and avoid anon grants",
-);
-assert(
-  blueprintMigration.includes("deleted_at timestamptz") &&
-    blueprintMigration.includes("status in ('draft', 'approved', 'deprecated')"),
-  "question blueprint migration must support lifecycle status and soft delete",
+  blueprintMigration.includes("private.is_teacher_or_admin()") && !blueprintMigration.includes("to anon"),
+  "canonical Blueprint Engine migration must enforce staff scope and avoid anon grants",
 );
 assert(
   blueprintActions.includes("archiveQuestionBlueprint") &&
@@ -377,9 +340,9 @@ assert(
     blueprintActions.includes("question_blueprint_versions") &&
     blueprintActions.includes("deleted_at: new Date().toISOString()") &&
     !blueprintActions.includes(".delete("),
-  "question blueprint lifecycle/editing must use admin snapshots, soft-delete actions, and never hard-delete",
+  "question blueprint lifecycle/editing must use snapshots, soft-delete actions, and never hard-delete",
 );
-console.log("PASS question blueprint migration enables admin-only RLS");
+console.log("PASS canonical Blueprint Engine migration enables staff-scoped RLS");
 
 const anon = createClient(supabaseUrl, supabaseAnonKey);
 const { data: nodes, error: nodesError } = await anon

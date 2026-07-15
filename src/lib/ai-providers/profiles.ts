@@ -112,59 +112,11 @@ async function listSafeAIProviderProfilesWithServiceRole({
   return profiles;
 }
 
-export async function listEnabledAIProviderProfilesForServerUse(
-  supabase: SupabaseLike,
-) {
-  try {
-    const profiles = await listEnabledAIProviderProfiles(supabase);
-
-    if (profiles.length) {
-      return profiles;
-    }
-  } catch {
-    // Fall back to the server-only provider control plane below.
-  }
-
+export async function listEnabledAIProviderProfilesForServerUse() {
+  // Provider execution must not depend on a user-session gateway RPC. This
+  // module is server-only and resolves shared provider metadata with the
+  // service-role client used by trusted execution paths.
   return listSafeAIProviderProfilesWithServiceRole({ enabledOnly: true });
-}
-
-export async function loadAIProviderProfileForUse({
-  profileId,
-  supabase,
-}: {
-  profileId: string;
-  supabase: SupabaseLike;
-}) {
-  const { data, error } = await (supabase as SupabaseRpcLike).rpc(
-    "get_ai_provider_profile_for_gateway",
-    {
-      gateway_token: requireAIProviderGatewayToken(),
-      profile_id: profileId,
-    },
-  );
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const profile = (Array.isArray(data) ? data[0] : data) as AIProviderProfile | null;
-
-  if (!profile) {
-    throw new Error("AI provider profile is not available for import.");
-  }
-
-  if (!profile.enabled) {
-    throw new Error("AI provider profile is disabled.");
-  }
-
-  return {
-    ...profile,
-    apiKey: decryptSecret({
-      ciphertext: profile.api_key_ciphertext,
-      iv: profile.api_key_iv,
-      tag: profile.api_key_tag,
-    }),
-  };
 }
 
 async function loadAIProviderProfileForUseWithServiceRole(profileId: string) {
@@ -198,66 +150,50 @@ async function loadAIProviderProfileForUseWithServiceRole(profileId: string) {
 
 export async function loadAIProviderProfileForServerUse({
   profileId,
-  supabase,
 }: {
   profileId: string;
-  supabase: SupabaseLike;
 }) {
-  try {
-    return await loadAIProviderProfileForUse({ profileId, supabase });
-  } catch {
-    return loadAIProviderProfileForUseWithServiceRole(profileId);
-  }
+  return loadAIProviderProfileForUseWithServiceRole(profileId);
 }
 
-export async function loadSafeAIProviderProfileForUse({
+// Existing server-only callers retain this name while credential resolution
+// moves off the authenticated gateway RPC. Callers remain responsible for
+// their own authorization before invoking a provider.
+export async function loadAIProviderProfileForUse({
   profileId,
-  supabase,
 }: {
   profileId: string;
-  supabase: SupabaseLike;
+  supabase?: SupabaseLike;
 }) {
-  const { data, error } = await (supabase as SupabaseRpcLike).rpc(
-    "list_enabled_ai_provider_profiles_for_gateway",
-    { gateway_token: requireAIProviderGatewayToken() },
-  );
+  return loadAIProviderProfileForUseWithServiceRole(profileId);
+}
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const profile = (data ?? []).find(
-    (item: SafeAIProviderProfile) => item.id === profileId,
-  );
+export async function loadSafeAIProviderProfileForServerUse({
+  profileId,
+}: {
+  profileId: string;
+}) {
+  const profiles = await listSafeAIProviderProfilesWithServiceRole({
+    enabledOnly: true,
+  });
+  const profile = profiles.find((item) => item.id === profileId);
 
   if (!profile) {
     throw new Error("AI provider profile is not available for import.");
   }
 
-  return profile as SafeAIProviderProfile;
+  return profile;
 }
 
-export async function loadSafeAIProviderProfileForServerUse({
+// Existing server-only callers retain the safe-profile API while all provider
+// metadata resolution avoids the authenticated gateway RPC.
+export async function loadSafeAIProviderProfileForUse({
   profileId,
-  supabase,
 }: {
   profileId: string;
-  supabase: SupabaseLike;
+  supabase?: SupabaseLike;
 }) {
-  try {
-    return await loadSafeAIProviderProfileForUse({ profileId, supabase });
-  } catch {
-    const profiles = await listSafeAIProviderProfilesWithServiceRole({
-      enabledOnly: true,
-    });
-    const profile = profiles.find((item) => item.id === profileId);
-
-    if (!profile) {
-      throw new Error("AI provider profile is not available for import.");
-    }
-
-    return profile;
-  }
+  return loadSafeAIProviderProfileForServerUse({ profileId });
 }
 
 export async function clearDefaultProfile({

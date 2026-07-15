@@ -34,7 +34,6 @@ const adminPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
 const smokeAll = await read("scripts/smoke-all.mjs");
 const migrationFileNames = [
   ...(await readDir("supabase/clean-migrations")),
-  ...(await readDir("supabase/migrations")),
 ];
 const teacherPdfAction = extractFunctionBody(
   teacherBankActions,

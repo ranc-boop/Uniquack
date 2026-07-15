@@ -981,13 +981,6 @@ export type Database = {
         Args: { gateway_token: string };
         Returns: AIProviderProfileSafe[];
       };
-      get_ai_provider_profile_for_gateway: {
-        Args: {
-          gateway_token: string;
-          profile_id: string;
-        };
-        Returns: AIProviderProfile[];
-      };
       create_ai_provider_profile_for_gateway: {
         Args: {
           gateway_token: string;

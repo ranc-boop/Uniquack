@@ -320,7 +320,7 @@ export async function listTeacherBlueprintGenerationProviderStatus(
   supabase: SupabaseLike,
 ) {
   try {
-    const profiles = await listEnabledAIProviderProfilesForServerUse(supabase);
+    const profiles = await listEnabledAIProviderProfilesForServerUse();
 
     return {
       available: profiles.some((profile) => providerSupportsBlueprintGeneration(profile)),
@@ -344,7 +344,7 @@ async function resolveTeacherBlueprintGenerationProvider(supabase: SupabaseLike)
   let profiles: SafeAIProviderProfile[];
 
   try {
-    profiles = await listEnabledAIProviderProfilesForServerUse(supabase);
+    profiles = await listEnabledAIProviderProfilesForServerUse();
   } catch {
     throw new Error("AI generation is not enabled. Ask an admin to check AI Settings.");
   }
@@ -357,7 +357,6 @@ async function resolveTeacherBlueprintGenerationProvider(supabase: SupabaseLike)
 
   return loadAIProviderProfileForServerUse({
     profileId: candidate.id,
-    supabase,
   });
 }
 

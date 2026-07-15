@@ -9,7 +9,7 @@ import {
 } from "@/lib/actions/feedback";
 import {
   listEnabledAIProviderProfiles,
-  loadAIProviderProfileForUse,
+  loadAIProviderProfileForServerUse,
 } from "@/lib/ai-providers/profiles";
 import { requireAdmin } from "@/lib/auth/guards";
 import { importBatchImportJson } from "@/lib/batch-import/service";
@@ -266,9 +266,8 @@ async function loadDeepSeekBlueprintGenerationProvider(
   return {
     actualMode: selection.actualMode,
     fallbackReason: selection.fallbackReason,
-    profile: await loadAIProviderProfileForUse({
+    profile: await loadAIProviderProfileForServerUse({
       profileId: selected.id,
-      supabase,
     }),
     requestedMode: selection.requestedMode,
   };

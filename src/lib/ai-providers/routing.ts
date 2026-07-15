@@ -424,7 +424,7 @@ export async function resolveAIProviderRoute({
 
   const [rawPolicy, profiles] = await Promise.all([
     readRoutingPolicy({ operationKind, organizationId, supabase }),
-    listEnabledAIProviderProfilesForServerUse(supabase),
+    listEnabledAIProviderProfilesForServerUse(),
   ]);
   const policy = safePolicy(rawPolicy);
   const byId = new Map(profiles.map((profile) => [profile.id, profile]));
@@ -607,7 +607,6 @@ export async function runWithAIProviderRoute<T>({
     try {
       const profile = await loadAIProviderProfileForServerUse({
         profileId: candidate.profile.id,
-        supabase,
       });
       const value = await execute(profile, {
         candidateIndex,
