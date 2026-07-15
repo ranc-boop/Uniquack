@@ -247,9 +247,11 @@ order. It passed these additional checks:
 - trusted service-role deletion of the disposable `auth.users` fixture still
   cascades to remove its profile.
 
-0041 is **not yet applied** to the clean Supabase project. No live DELETE test
-has been run against the clean project, and the formal profile-security gate
-remains open until the one-time apply and SQL Editor/PostgREST checks complete.
+0041 was manually applied **exactly once** to the clean Supabase project on
+2026-07-14. The branch did not reapply or modify it after that application.
+Post-apply PostgREST/RPC validation is recorded below. The formal gate remains
+open only for final SQL Editor catalog evidence because the strict metadata
+transport is unavailable from this isolated worktree.
 
 Pre-apply checks passed:
 
@@ -396,6 +398,9 @@ This branch did not reapply it and did not modify it after the live apply.
 `0040_profile_insert_and_role_transition_hardening.sql` was manually applied
 **once** to the clean Supabase project on 2026-07-14. This branch did not
 reapply it and did not modify 0039 or 0040 after that application.
+`0041_profile_delete_privilege_hardening.sql` was manually applied **once** on
+2026-07-14. This branch did not reapply it and did not modify 0039, 0040, or
+0041 after their respective applications.
 
 ## Post-apply live validation (2026-07-14)
 
@@ -579,11 +584,77 @@ audit verification outstanding for the profile-security gate.
 
 ## Deployment status
 
-**P0 behavior is strongly validated but the deployment gate remains blocked.**
-The 0039/0040 SQL Editor metadata checks are confirmed; 0041 must now be
-applied exactly once and its DELETE-grant metadata plus live PostgREST denial
-must pass. Do not call the overall website deployment-ready merely because the
+**P0 behavior is strongly validated but the formal profile-security gate
+remains open.** The 0039/0040 SQL Editor metadata checks are confirmed, 0041
+is confirmed applied exactly once, and live PostgREST denial checks passed. The
+last missing evidence is the post-0041 SQL Editor confirmation that all four
+client DELETE-grant booleans are `false` and no DELETE/ALL profile policy
+exists. Do not call the overall website deployment-ready merely because the
 profile role path is hardened.
+
+## 0041 post-apply validation refresh (2026-07-14)
+
+### Applied-once and behavioral result
+
+The clean-project administrator confirmed the one-time application of
+`0041_profile_delete_privilege_hardening.sql`. The controlled live
+`--live-http-only` validation then passed using the clean project and only
+disposable fixtures:
+
+- anonymous profile DELETE was denied;
+- Student self and cross-user profile DELETE attempts were denied and the rows
+  remained present;
+- temporary Teacher self and temporary Admin normal-client DELETE attempts
+  were denied and the rows remained present;
+- DELETE through `public.user_profiles` was denied and did not remove the
+  backing profile;
+- safe Student updates to `full_name`, `display_name`, and `avatar_url`
+  succeeded;
+- privileged, cross-user, mixed, and direct profile INSERT attempts remained
+  denied atomically;
+- guarded Super-admin transition protections remained intact; and
+- service-role deletion of disposable `auth.users` fixtures cascaded to their
+  profiles, followed by fixture cleanup.
+
+No real user account, source content, Classroom, Practice record, AI setting,
+or migration was modified by the validation.
+
+### Metadata evidence status
+
+The strict live metadata mode attempted the direct database and pooler paths
+and stopped at a safe `XX000` transport category before catalog inspection. It
+therefore cannot establish the final remote DELETE-grant and policy booleans.
+The documented SQL Editor query is still required to confirm:
+
+- anon/authenticated DELETE is `false` on both `public.profiles` and
+  `public.user_profiles`;
+- no `profiles` DELETE or ALL policy exists;
+- authenticated UPDATE remains limited to `full_name`, `avatar_url`, and
+  `display_name`; and
+- direct profiles INSERT and all `user_profiles` writes remain denied.
+
+### Regression result
+
+Passed: install, lint, build, local profile smoke, live PostgREST/RPC profile
+smoke, security, route, Supabase RLS, Student workspace, Assignment-to-Practice
+evidence, Classroom operations, teacher-beta, performance budget, performance
+audit, and bundle analysis.
+
+`bank-import-review-smoke` passed its source checks and skipped its live portion
+because `TEST_TEACHER` is unset. The aggregate smoke was run with the ignored
+clean-project environment and passed through all preceding modules before
+`bank-share-members-smoke` accurately stopped on the same missing
+`TEST_TEACHER` credentials. No authorization was weakened to make either check
+pass.
+
+The known Classroom creation RLS issue remains separately documented and
+untouched by this work.
+
+### Gate conclusion
+
+The profile hardening behavior is verified, but the formal profile-security
+gate remains **open** until the SQL Editor catalog results above are recorded.
+This does not make the overall website deployment-ready.
 
 Remaining known launch blockers include:
 

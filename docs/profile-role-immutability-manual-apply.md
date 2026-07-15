@@ -52,15 +52,13 @@ Record only aggregate counts. If the counts show an unexpected number of
 active administrators or super-admins, stop. Do not downgrade, delete, or edit
 accounts in this apply step; open a separate incident-review task.
 
-## Apply
+## Apply record
 
-1. Sign in to the **clean** Supabase project as a project administrator.
-2. Open SQL Editor and create a new query.
-3. Copy the complete contents of
-   `supabase/clean-migrations/0041_profile_delete_privilege_hardening.sql`.
-4. Run it **once**.
-5. Keep the SQL Editor result as the migration-application record. Do not paste
-   credentials, connection strings, or results containing user data into chat.
+The clean-project administrator confirmed that
+`0041_profile_delete_privilege_hardening.sql` was applied **exactly once** on
+2026-07-14. Do not rerun it. Keep the SQL Editor result as the migration-
+application record. Do not paste credentials, connection strings, or results
+containing user data into chat.
 
 ## Post-apply SQL verification
 
@@ -275,11 +273,24 @@ RPC behavior above but must not be used by itself to close the P0 gate.
 
 ## 0041 live-validation status
 
-0041 has not yet been applied. Apply it once, run the local and controlled live
-PostgREST smoke, then rerun the DELETE grant/policy queries above. The strict
-direct database metadata connection remains unavailable from the isolated
-worktree, so the SQL Editor result is the required source of truth for final
-grant verification.
+0041 was applied exactly once. The local embedded-Postgres smoke and the
+controlled live `--live-http-only` PostgREST/RPC smoke passed after the apply.
+The live smoke used only disposable `@example.invalid` fixtures for
+Teacher/Admin/Super-admin checks, restored the configured Student's safe
+presentation fields, and deleted every temporary Auth user through the
+service-role cleanup path.
+
+The strict `--live` metadata mode remains blocked at the direct/pooler database
+metadata connection with safe error category `XX000`. This is not a behavioral
+failure, but it means this worktree cannot independently verify the final
+catalog booleans. The SQL Editor query above remains the source of truth for:
+
+- all four `profiles`/`user_profiles` anon/authenticated DELETE grants are
+  `false`;
+- no `profiles` DELETE or ALL policy exists;
+- safe authenticated UPDATE remains exactly `full_name`, `avatar_url`, and
+  `display_name`; and
+- direct profiles INSERT and all user_profiles writes remain denied.
 
 For a future repeat validation, run the local smoke followed by strict live
 mode:
@@ -292,8 +303,8 @@ node scripts/profile-role-immutability-smoke.mjs --live
 Remove-Item Env:PROFILE_ROLE_IMMUTABILITY_CONFIRM
 ```
 
-After 0041, the live smoke must prove anonymous/authenticated self and
-cross-user profile deletes plus `user_profiles` deletes are denied; service-role
+The live smoke proved anonymous, Student self/cross-user, Teacher self, Admin
+normal-client, and `user_profiles` DELETE attempts are denied; service-role
 Auth-user fixture cleanup still cascades safely; existing INSERT/UPDATE and
 guarded-transition protections remain intact. The embedded local smoke also
 proves the concurrent last-Super-admin and generic nested-trigger cases.
@@ -302,6 +313,6 @@ The pre-apply embedded smoke has already passed these 0041 contracts. It does
 not replace the required live PostgREST and SQL Editor checks after the manual
 one-time apply.
 
-Do not close the formal profile-security gate until 0041 is applied exactly
-once and both the SQL Editor DELETE metadata checks and live PostgREST DELETE
-denial checks pass against the clean project.
+The formal profile-security gate remains open until the SQL Editor DELETE
+metadata checks are recorded as passing. The live PostgREST DELETE-denial
+checks have passed.
