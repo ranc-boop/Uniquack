@@ -85,28 +85,79 @@ select
   has_table_privilege('anon', 'public.profiles', 'INSERT') as anon_profiles_insert,
   has_table_privilege('authenticated', 'public.profiles', 'INSERT') as authenticated_profiles_insert,
   has_table_privilege('anon', 'public.user_profiles', 'INSERT') as anon_user_profiles_insert,
-  has_table_privilege('authenticated', 'public.user_profiles', 'INSERT') as authenticated_user_profiles_insert;
+  has_table_privilege('authenticated', 'public.user_profiles', 'INSERT') as authenticated_user_profiles_insert,
+  has_table_privilege('anon', 'public.user_profiles', 'UPDATE') as anon_user_profiles_update,
+  has_table_privilege('authenticated', 'public.user_profiles', 'UPDATE') as authenticated_user_profiles_update,
+  has_table_privilege('authenticated', 'public.profiles', 'UPDATE') as authenticated_profiles_table_update;
 
-select policyname, cmd, roles
+select policyname, cmd, roles, qual, with_check
 from pg_policies
 where schemaname = 'public'
   and tablename = 'profiles'
 order by policyname;
 
-select tgname
+select tgname, tgenabled
 from pg_trigger
 where tgrelid = 'public.profiles'::regclass
   and not tgisinternal
+  and tgname in (
+    'profiles_enforce_insert_immutability',
+    'profiles_enforce_privileged_field_immutability'
+  )
 order by tgname;
+
+select
+  n.nspname as function_schema,
+  p.proname as function_name,
+  p.prosecdef as security_definer,
+  coalesce(array_to_string(p.proconfig, ', '), '') as function_config
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where (n.nspname, p.proname) in (
+  ('private', 'enforce_profile_insert_immutability'),
+  ('private', 'enforce_profile_privileged_field_immutability'),
+  ('public', 'transition_profile_role_as_super_admin')
+)
+order by function_schema, function_name;
 
 select pg_get_functiondef(
   'private.enforce_profile_privileged_field_immutability()'::regprocedure
 ) as profile_update_trigger_definition;
 
-select routine_schema, routine_name
-from information_schema.routines
-where routine_schema = 'public'
-  and routine_name = 'transition_profile_role_as_super_admin';
+select
+  has_function_privilege(
+    'anon',
+    'public.transition_profile_role_as_super_admin(uuid,text)',
+    'EXECUTE'
+  ) as anon_transition_execute,
+  has_function_privilege(
+    'authenticated',
+    'public.transition_profile_role_as_super_admin(uuid,text)',
+    'EXECUTE'
+  ) as authenticated_transition_execute,
+  exists (
+    select 1
+    from pg_proc p
+    cross join lateral aclexplode(
+      coalesce(p.proacl, acldefault('f'::"char", p.proowner))
+    ) privilege
+    where p.oid =
+      'public.transition_profile_role_as_super_admin(uuid,text)'::regprocedure
+      and privilege.grantee = 0
+      and privilege.privilege_type = 'EXECUTE'
+  ) as public_transition_execute;
+
+select
+  has_table_privilege(
+    'anon',
+    'private.profile_privileged_change_audit_log',
+    'SELECT'
+  ) as anon_audit_select,
+  has_table_privilege(
+    'authenticated',
+    'private.profile_privileged_change_audit_log',
+    'SELECT'
+  ) as authenticated_audit_select;
 
 select count(*) as role_transition_audit_events
 from private.profile_privileged_change_audit_log;
@@ -118,11 +169,16 @@ Expected result:
   `display_name`;
 - there is no table-wide authenticated UPDATE privilege for `profiles`;
 - all four INSERT privilege booleans are `false`;
+- both `user_profiles` write booleans and table-wide `profiles` UPDATE are
+  `false`;
 - `profiles_super_admin_insert` is absent;
-- `profiles_self_safe_update`, `profiles_enforce_insert_immutability`, and
-  `profiles_enforce_privileged_field_immutability` exist;
+- `profiles_self_safe_update` is the only relevant UPDATE policy;
+- both profile immutability triggers exist and show `tgenabled = 'O'`;
+- all three functions show `security_definer = true` and a fixed
+  `search_path` containing only `public, private`;
 - the returned update-trigger definition has no `pg_trigger_depth` exception;
-- the guarded role-transition RPC exists;
+- only `authenticated` has execute on the guarded role-transition RPC;
+- anon and authenticated cannot select the private audit table; and
 - the audit query is safe to run, although it may return zero before the first
   role transition.
 
@@ -144,11 +200,12 @@ node scripts/profile-role-immutability-smoke.mjs --live
 Remove-Item Env:PROFILE_ROLE_IMMUTABILITY_CONFIRM
 ```
 
-The live mode requires existing disposable credentials for Student, Teacher,
-Admin, Super-admin, and the clean service role. It creates one temporary
-synthetic account to validate service-role creation and the guarded transition,
-then deletes it. It prints only pass/fail labels and aggregate role/status
-counts, never credentials or profile identities.
+The live mode requires existing disposable Student credentials and the clean
+service role. When dedicated Teacher, Admin, or Super-admin test credentials
+are absent or no longer match their intended role, it creates temporary
+synthetic fixtures for those negative and guarded-RPC checks, then deletes
+them. It prints only pass/fail labels and aggregate role/status counts, never
+credentials or profile identities.
 
 After live validation, rerun:
 
@@ -176,8 +233,10 @@ test.
 ## Post-apply validation record (2026-07-14)
 
 The clean-project administrator confirmed that
-`0039_profile_privileged_fields_immutability.sql` was applied **once** through
-the Supabase SQL Editor. This branch did not reapply or modify that migration.
+`0039_profile_privileged_fields_immutability.sql` and
+`0040_profile_insert_and_role_transition_hardening.sql` were each applied
+**once** through the Supabase SQL Editor. This branch did not reapply or modify
+either migration.
 
 The controlled PostgREST validation proved the following against the clean
 project using only dedicated disposable test users:
@@ -214,12 +273,17 @@ fails when that metadata connection is unavailable. The explicit
 `--live-http-only` mode is diagnostic-only: it records the safe PostgREST and
 RPC behavior above but must not be used by itself to close the P0 gate.
 
-## 0040 pending apply and live validation
+## 0040 live-validation status
 
-The SQL Editor metadata review after 0039 found that direct profile INSERT was
-still broadly granted. `0040_profile_insert_and_role_transition_hardening.sql`
-has **not** been applied by this branch. Apply it once using the steps above,
-then run the local smoke followed by strict live mode:
+0040 has been applied once. The local and controlled live PostgREST smoke
+passed. Direct PostgreSQL metadata transport from the isolated worktree remains
+blocked, so run the read-only SQL Editor checks above and retain their safe
+boolean/aggregate results with the release record before closing the formal P0
+gate. The strict live mode remains intentionally strict and reports that
+metadata transport block rather than treating the HTTP-only run as sufficient.
+
+For a future repeat validation, run the local smoke followed by strict live
+mode:
 
 ```powershell
 node scripts/profile-role-immutability-smoke.mjs
@@ -229,11 +293,11 @@ node scripts/profile-role-immutability-smoke.mjs --live
 Remove-Item Env:PROFILE_ROLE_IMMUTABILITY_CONFIRM
 ```
 
-After 0040, the live smoke must prove direct anonymous/authenticated profile
-and view inserts are denied, service-role bootstrap remains available, safe
-presentation updates remain available, privileged updates stay denied, and
-the guarded transition still records an audit event. The embedded local smoke
-also proves the concurrent last-Super-admin and generic nested-trigger cases.
+The live smoke proves direct anonymous/authenticated profile and view inserts
+are denied, service-role bootstrap remains available, safe presentation updates
+remain available, privileged updates stay denied, and the guarded transition
+persists. The embedded local smoke also proves the concurrent
+last-Super-admin and generic nested-trigger cases.
 
 Do not close the formal profile-security gate until the SQL Editor checks and
 strict live validation both pass against the clean project.

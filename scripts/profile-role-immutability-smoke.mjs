@@ -807,13 +807,6 @@ async function runLiveSmoke({ allowMetadataTransportBlock = false } = {}) {
   const temporaryUsers = [];
 
   try {
-    student = await signInLive({ createClient, label: "STUDENT" });
-    teacher = await signInLive({ createClient, label: "TEACHER" });
-    admin = await signInLive({ createClient, label: "ADMIN" });
-
-    assert(student.profile.role === "student", "TEST_STUDENT must be a student");
-    assert(teacher.profile.role === "teacher", "TEST_TEACHER must be a teacher");
-
     const serviceRoleKey =
       process.env.CLEAN_SUPABASE_SERVICE_ROLE_KEY?.trim() ||
       process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -871,30 +864,38 @@ async function runLiveSmoke({ allowMetadataTransportBlock = false } = {}) {
       return { client, id: created.user.id, email: temporaryEmail };
     }
 
-    if (admin.profile.role !== "admin") {
-      console.log("BLOCKED configured TEST_ADMIN role is not admin; using a temporary active admin fixture for the negative authorization validation.");
-      const temporaryAdmin = await createTemporaryFixture({ role: "admin", status: "active" });
-      admin = {
-        client: temporaryAdmin.client,
-        profile: await readLiveProfile(temporaryAdmin.client, temporaryAdmin.id),
-      };
-    }
-    assert(admin.profile.role === "admin", "Temporary admin fixture bootstrap failed");
+    async function signInOrCreateTemporaryFixture({ label, role }) {
+      const username = process.env["TEST_" + label + "_USERNAME"]?.trim();
+      const password = process.env["TEST_" + label + "_PASSWORD"]?.trim();
+      if (username && password) {
+        try {
+          const account = await signInLive({ createClient, label });
+          assert(account.profile.role === role, "TEST_" + label + " must be a " + role);
+          pass("live configured " + role + " account signs in");
+          return account;
+        } catch {
+          console.log(
+            "BLOCKED configured TEST_" + label + " account is unavailable or has the wrong role; using a temporary active " + role + " fixture.",
+          );
+        }
+      } else {
+        console.log("BLOCKED TEST_" + label + " credentials are unset; using a temporary active " + role + " fixture.");
+      }
 
-    try {
-      superAdmin = await signInLive({ createClient, label: "SUPER_ADMIN" });
-      assert(superAdmin.profile.role === "super_admin", "TEST_SUPER_ADMIN must be a super-admin");
-      pass("live configured super-admin account signs in");
-    } catch {
-      console.log("BLOCKED configured TEST_SUPER_ADMIN login; using a temporary active super-admin fixture for the guarded-RPC validation.");
-      const temporarySuperAdmin = await createTemporaryFixture({ role: "super_admin", status: "active" });
-      superAdmin = {
-        client: temporarySuperAdmin.client,
-        profile: await readLiveProfile(temporarySuperAdmin.client, temporarySuperAdmin.id),
-      };
-      assert(superAdmin.profile.role === "super_admin", "Temporary super-admin fixture bootstrap failed");
-      pass("live temporary active super-admin fixture signs in");
+      const fixture = await createTemporaryFixture({ role, status: "active" });
+      const profile = await readLiveProfile(fixture.client, fixture.id);
+      assert(profile.role === role, "Temporary " + role + " fixture bootstrap failed");
+      pass("live temporary active " + role + " fixture signs in");
+      return { client: fixture.client, profile };
     }
+
+    student = await signInLive({ createClient, label: "STUDENT" });
+    teacher = await signInOrCreateTemporaryFixture({ label: "TEACHER", role: "teacher" });
+    admin = await signInOrCreateTemporaryFixture({ label: "ADMIN", role: "admin" });
+
+    assert(student.profile.role === "student", "TEST_STUDENT must be a student");
+
+    superAdmin = await signInOrCreateTemporaryFixture({ label: "SUPER_ADMIN", role: "super_admin" });
 
     if (liveSchema.roleCounts) {
       console.log("PASS live aggregate profile role/status counts " + JSON.stringify(liveSchema.roleCounts));

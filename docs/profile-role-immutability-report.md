@@ -298,9 +298,9 @@ separate incident-review task before deployment.
 The clean-project administrator confirmed that
 `0039_profile_privileged_fields_immutability.sql` was manually applied once.
 This branch did not reapply it and did not modify it after the live apply.
-`0040_profile_insert_and_role_transition_hardening.sql` is pending manual
-application and strict live validation; it must not be treated as applied from
-the local embedded smoke alone.
+`0040_profile_insert_and_role_transition_hardening.sql` was manually applied
+**once** to the clean Supabase project on 2026-07-14. This branch did not
+reapply it and did not modify 0039 or 0040 after that application.
 
 ## Post-apply live validation (2026-07-14)
 
@@ -324,7 +324,7 @@ gate**. This is an evidence gap, not a reason to weaken the migration.
 | Service role | Temporary Auth user/profile bootstrap succeeded. |
 | Guarded RPC | Student, Teacher, Admin, and inactive Super-admin calls were denied; an active Super-admin fixture could transition a different fixture only. |
 | Self transition | Super-admin self role change through the RPC was denied. |
-| Fixture cleanup | Four exact `p0-smoke-...@example.invalid` fixtures were deleted. The dedicated Student's presentation-only fields were reset after a harness cleanup bug; role, status, and organization were verified unchanged. |
+| Fixture cleanup | All temporary `p0-smoke-...@example.invalid` and unprofiled fixtures created by the smoke were deleted. The dedicated Student's presentation-only fields were restored; role, status, and organization were verified unchanged. |
 
 No real user role, status, default organization, identity field, Bank,
 Review Draft, Blueprint, Classroom, Assignment, Practice record, provider
@@ -357,7 +357,9 @@ changing the P0 deployment status to closed.
 
 ### Existing-account aggregate review
 
-After temporary fixture cleanup, a service-role aggregate-only read returned:
+During the controlled validation, a service-role aggregate-only read returned
+role/status counts while fixtures were active. The smoke then deleted its
+temporary fixtures. This is test telemetry only, not an account inventory:
 
 | Role | Active | Suspended/disabled |
 | --- | ---: | ---: |
@@ -367,9 +369,10 @@ After temporary fixture cleanup, a service-role aggregate-only read returned:
 | Student | 1 | 0 |
 
 No names, email addresses, IDs, or profile values were read into the report.
-The configured `TEST_ADMIN` credential currently resolves to a non-Admin
-profile and `TEST_SUPER_ADMIN` could not establish a session; disposable
-Admin/Super-admin fixtures were used for the authorization tests instead.
+`TEST_TEACHER` credentials are currently unset. The configured `TEST_ADMIN`
+credential currently resolves to a non-Admin profile and `TEST_SUPER_ADMIN`
+could not establish a session; disposable Teacher/Admin/Super-admin fixtures
+were used for the authorization tests instead.
 This is a test-environment/account-inventory issue, not a self-promotion
 result. A founder-reviewed account inventory should confirm the intended two
 Teacher / zero Admin distribution before launch. The new audit table cannot
@@ -421,17 +424,63 @@ Controlled live `--live-http-only` behavior checks passed through the role
 transition and cleanup verification. Strict `--live` metadata mode remains
 blocked as described above.
 
-Blocked, unrelated to this migration:
+Earlier baseline observation, unrelated to this migration:
 
 ```text
 node scripts/assignment-practice-evidence-smoke.mjs
 npm.cmd run smoke
 ```
 
-Both stopped at the known teacher Classroom create RLS violation. The first
-no-environment aggregate invocation also stopped at missing isolated-worktree
-Supabase environment categories, as expected; the process-only rerun reached
-the actual Classroom blocker.
+Those historical invocations stopped at a teacher Classroom create RLS
+violation. The current validation refresh below reran the Assignment-to-Practice
+and Classroom operations paths successfully; it does not modify or close that
+separately reported RLS risk.
+
+### Current validation refresh (2026-07-14)
+
+0040 was confirmed as manually applied once before this refresh. The following
+current checks passed in this isolated worktree:
+
+```text
+npm.cmd install
+npm.cmd run lint
+npm.cmd run build
+node scripts/profile-role-immutability-smoke.mjs
+node scripts/security-smoke.mjs
+node scripts/route-smoke.mjs
+node --env-file=<ignored clean env> scripts/supabase-rls-smoke.mjs
+node scripts/student-workspace-shell-smoke.mjs
+node --env-file=<ignored clean env> scripts/assignment-practice-evidence-smoke.mjs
+node --env-file=<ignored clean env> scripts/classroom-operations-smoke.mjs
+npm.cmd run perf:budget
+npm.cmd run perf:audit
+npm.cmd run analyze
+```
+
+The controlled `--live-http-only` profile smoke also passed its PostgREST/RPC
+checks against the clean project. It used temporary Teacher, Admin, and
+Super-admin fixtures because `TEST_TEACHER` is unset, the configured
+`TEST_ADMIN` account is not an Admin, and the configured `TEST_SUPER_ADMIN`
+account could not sign in. All such fixtures were deleted. The configured
+Student account was used only for safe presentation edits, which were restored.
+
+The same refresh found these non-profile validation limitations:
+
+- `bank-import-review-smoke` skipped its live portion because
+  `TEST_TEACHER` is unset;
+- the aggregate smoke run without an environment stopped where expected in the
+  isolated worktree, and the process-only environment rerun progressed through
+  the passed RLS, Classroom, Assignment-to-Practice, and bank-foundation
+  checks before `bank-share-members-smoke` stopped on the same missing
+  `TEST_TEACHER` credentials;
+- the earlier Classroom-creation RLS error was **not reproduced** in this
+  refresh. It remains an independently reported launch risk until its
+  reconciliation owner closes it; this branch did not change Classroom policy.
+
+The strict `--live` profile smoke remains intentionally failed at the direct
+metadata connection stage with safe code `XX000`. No remote mutation occurred
+in that strict attempt. This leaves only the required SQL Editor metadata and
+audit verification outstanding for the profile-security gate.
 
 ## Deployment status
 
