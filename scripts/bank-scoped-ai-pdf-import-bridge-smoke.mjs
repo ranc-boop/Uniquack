@@ -62,7 +62,6 @@ const approveBankReviewAction = extractFunctionBody(
 );
 const migrationFileNames = [
   ...(await readDir("supabase/clean-migrations")),
-  ...(await readDir("supabase/migrations")),
 ];
 
 assert(

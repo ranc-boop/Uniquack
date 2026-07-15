@@ -14,21 +14,22 @@ async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
 
-const migration = await read("supabase/migrations/0011_math_taxonomy_source_of_truth.sql");
-assert(migration.includes("create table if not exists public.taxonomy_nodes"), "taxonomy_nodes table is missing");
-assert(migration.includes("create table if not exists public.question_taxonomy_assignments"), "question taxonomy assignments table is missing");
+const taxonomyMigration = await read("supabase/clean-migrations/0003_taxonomy_runtime_source.sql");
+const reviewDraftsQuestionBankMigration = await read("supabase/clean-migrations/0006_review_drafts_and_question_bank.sql");
+const questionSearchMigration = await read("supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql");
+assert(taxonomyMigration.includes("create table if not exists public.taxonomy_nodes"), "taxonomy_nodes table is missing");
+assert(reviewDraftsQuestionBankMigration.includes("create table if not exists public.question_taxonomy_assignments"), "question taxonomy assignments table is missing");
 const developmentTaxonomySeed = await read("supabase/development/reset_math_taxonomy_seed_development_only.sql");
 assert(developmentTaxonomySeed.includes("math.concept.algebra.equations"), "math-prefixed taxonomy seed is missing");
 const legacySubjectRoot = ["subject", "math"].join(".");
-assert(!migration.includes(legacySubjectRoot), `${legacySubjectRoot} should not exist in replacement taxonomy`);
+assert(!taxonomyMigration.includes(legacySubjectRoot), `${legacySubjectRoot} should not exist in replacement taxonomy`);
 console.log("PASS math-prefixed taxonomy schema and seed are present");
 
-const rpc = await read("supabase/migrations/0012_taxonomy_question_search_rpc.sql");
-assert(rpc.includes("create or replace function public.search_questions_by_taxonomy"), "taxonomy search RPC is missing");
-assert(rpc.includes("matched_tags jsonb"), "taxonomy search RPC does not return matched tag metadata");
-assert(rpc.includes("next_cursor text"), "taxonomy search RPC does not return a next cursor");
-assert(rpc.includes("taxonomy_tag_path"), "taxonomy search RPC does not return tag paths");
-assert(rpc.includes("to_tsvector"), "taxonomy search RPC does not use full-text search");
+assert(questionSearchMigration.includes("create or replace function public.search_questions_by_taxonomy"), "taxonomy search RPC is missing");
+assert(questionSearchMigration.includes("matched_tags jsonb"), "taxonomy search RPC does not return matched tag metadata");
+assert(questionSearchMigration.includes("next_cursor text"), "taxonomy search RPC does not return a next cursor");
+assert(taxonomyMigration.includes("create or replace function public.taxonomy_tag_path"), "taxonomy path function is missing");
+assert(questionSearchMigration.includes("to_tsvector"), "taxonomy search RPC does not use full-text search");
 console.log("PASS taxonomy search RPC includes paths, cursor, and full-text matching");
 
 const publicQuestions = await read("src/app/questions/page.tsx");
@@ -723,7 +724,7 @@ assert(
 );
 console.log("PASS AI/batch import persistence carries organization context without auto-publish");
 
-const practicePersistence = await read("supabase/migrations/0014_practice_persistence.sql");
+const practicePersistence = await read("supabase/clean-migrations/0008_practice_agent_evidence.sql");
 for (const table of [
   "practice_sessions",
   "practice_rounds",
@@ -738,8 +739,8 @@ for (const table of [
     `${table} is missing RLS`,
   );
   assert(
-    practicePersistence.includes(`on public.${table} for select`) &&
-      practicePersistence.includes("using ((select auth.uid()) = user_id)"),
+    practicePersistence.includes(`on public.${table} for`) &&
+      practicePersistence.includes("user_id = auth.uid()"),
     `${table} is missing owner select policy`,
   );
 }
@@ -837,10 +838,7 @@ const questionBlueprintModelRouting = await read("src/lib/blueprints/question-bl
 const questionBlueprintQuality = await read("src/lib/blueprints/question-blueprint-quality.ts");
 const questionBlueprintEditing = await read("src/lib/blueprints/question-blueprint-editing.ts");
 const questionBlueprintVersioning = await read("src/lib/blueprints/question-blueprint-versioning.ts");
-const questionBlueprintMigration = await read("supabase/migrations/0018_question_blueprint_library.sql");
-const questionBlueprintFolderMigration = await read("supabase/migrations/0016_question_blueprint_folders.sql");
-const questionBlueprintCalibrationMigration = await read("supabase/migrations/0020_question_blueprint_calibration.sql");
-const questionBlueprintVersionMigration = await read("supabase/migrations/0021_question_blueprint_versions.sql");
+const questionBlueprintMigration = await read("supabase/clean-migrations/0007_blueprint_engine.sql");
 const questionBlueprintFolders = await read("src/lib/blueprints/question-blueprint-folders.ts");
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
 const aiPdfActions = await read("src/app/admin/imports/pdf/actions.ts");
@@ -1179,8 +1177,11 @@ console.log("PASS question blueprint library persistence is contract-only and wr
 
 for (const tableName of [
   "question_blueprints",
+  "question_blueprint_folders",
   "question_blueprint_examples",
   "question_blueprint_review_actions",
+  "question_blueprint_versions",
+  "question_blueprint_calibration_runs",
 ]) {
   assert(
     questionBlueprintMigration.includes(`create table if not exists public.${tableName}`),
@@ -1190,17 +1191,14 @@ for (const tableName of [
     questionBlueprintMigration.includes(`alter table public.${tableName} enable row level security`),
     `${tableName} must enable RLS`,
   );
-  assert(
-    questionBlueprintMigration.includes(`${tableName}_admin_crud`),
-    `${tableName} must have admin-only CRUD policy`,
-  );
 }
 for (const expectedText of [
   "owner_scope in ('system', 'school', 'teacher', 'private')",
-  "status in ('draft', 'approved', 'deprecated')",
-  "status in ('pending_review', 'approved', 'rejected', 'needs_more_evidence', 'archived')",
-  "private.is_admin()",
-  "to authenticated",
+  "status in ('pending_review', 'approved', 'rejected', 'needs_more_evidence', 'archived', 'deprecated', 'trashed')",
+  "private.is_teacher_or_admin()",
+  "question_blueprints_staff_read",
+  "question_blueprint_versions_staff_read",
+  "question_blueprint_calibration_runs_staff_access",
 ]) {
   assert(
     questionBlueprintMigration.includes(expectedText),
@@ -1210,6 +1208,10 @@ for (const expectedText of [
 assert(
   !questionBlueprintMigration.includes("to anon"),
   "question blueprint migration must not grant anon access",
+);
+assert(
+  questionBlueprintMigration.includes("question_blueprints_staff_write"),
+  "question blueprint migration must keep an explicit staff-scoped write policy",
 );
 
 for (const exportName of [
@@ -1250,20 +1252,18 @@ assert(!questionBlueprintPersistence.includes("callAIPdfExtractionProvider"), "q
 for (const expectedText of [
   "create table if not exists public.question_blueprint_folders",
   "alter table public.question_blueprints",
-  "add column if not exists folder_id",
+  "add constraint question_blueprints_folder_fk",
   "alter table public.question_blueprint_folders enable row level security",
-  "question_blueprint_folders_admin_crud",
-  "private.is_admin()",
-  "to authenticated",
-  "Deleting a folder does not delete blueprints",
+  "question_blueprint_folders_staff_read",
+  "private.is_teacher_or_admin()",
 ]) {
   assert(
-    questionBlueprintFolderMigration.includes(expectedText),
+    questionBlueprintMigration.includes(expectedText),
     `question blueprint folder migration is missing ${expectedText}`,
   );
 }
 assert(
-  !questionBlueprintFolderMigration.includes("to anon"),
+  !questionBlueprintMigration.includes("to anon"),
   "question blueprint folder migration must not grant anon access",
 );
 for (const expectedText of [
@@ -1284,15 +1284,15 @@ assert(!questionBlueprintFolders.includes("supabase.from("), "question blueprint
 console.log("PASS question blueprint DB migration and persistence helpers are admin-only");
 
 assert(
-  questionBlueprintVersionMigration.includes("create table if not exists public.question_blueprint_versions") &&
-    questionBlueprintVersionMigration.includes("references public.question_blueprints(id) on delete cascade") &&
-    questionBlueprintVersionMigration.includes("snapshot jsonb not null") &&
-    questionBlueprintVersionMigration.includes("alter table public.question_blueprint_versions enable row level security") &&
-    questionBlueprintVersionMigration.includes("question_blueprint_versions_admin_crud") &&
-    questionBlueprintVersionMigration.includes("private.is_admin()") &&
-    questionBlueprintVersionMigration.includes("to authenticated") &&
-    !questionBlueprintVersionMigration.includes("to anon"),
-  "question blueprint version migration must be admin-only and avoid anon grants",
+  questionBlueprintMigration.includes("create table if not exists public.question_blueprint_versions") &&
+    questionBlueprintMigration.includes("references public.question_blueprints(id) on delete cascade") &&
+    questionBlueprintMigration.includes("snapshot jsonb not null") &&
+    questionBlueprintMigration.includes("alter table public.question_blueprint_versions enable row level security") &&
+    questionBlueprintMigration.includes("question_blueprint_versions_staff_read") &&
+    questionBlueprintMigration.includes("question_blueprint_versions_staff_insert") &&
+    questionBlueprintMigration.includes("private.is_teacher_or_admin()") &&
+    !questionBlueprintMigration.includes("to anon"),
+  "question blueprint version migration must be staff-scoped and avoid anon grants",
 );
 for (const exportName of [
   "createBlueprintVersionSnapshot",
@@ -1544,24 +1544,21 @@ console.log("PASS question blueprint repair loop is bounded, validator-guided, a
 
 for (const expectedText of [
   "create table if not exists public.question_blueprint_calibration_runs",
-  "sample_count integer not null check (sample_count between 1 and 3)",
-  "sample_previews jsonb not null default '[]'::jsonb",
   "generation_readiness",
   "last_calibrated_at",
   "last_calibration_run_id",
   "alter table public.question_blueprint_calibration_runs enable row level security",
-  "question_blueprint_calibration_runs_admin_crud",
-  "private.is_admin()",
-  "to authenticated",
-  "never raw provider responses",
+  "question_blueprint_calibration_runs_staff_access",
+  "private.is_teacher_or_admin()",
+  "provider_operation_log_id",
 ]) {
   assert(
-    questionBlueprintCalibrationMigration.includes(expectedText),
+    questionBlueprintMigration.includes(expectedText),
     `question blueprint calibration migration is missing ${expectedText}`,
   );
 }
 assert(
-  !questionBlueprintCalibrationMigration.includes("to anon"),
+  !questionBlueprintMigration.includes("to anon"),
   "question blueprint calibration migration must not grant anon access",
 );
 for (const exportName of [

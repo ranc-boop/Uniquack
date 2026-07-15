@@ -31,7 +31,6 @@ const questionBanks = await read("src/lib/question-banks.ts");
 const smokeAll = await read("scripts/smoke-all.mjs");
 const migrationFileNames = [
   ...(await readDir("supabase/clean-migrations")),
-  ...(await readDir("supabase/migrations")),
 ];
 
 const editAction = extractFunctionBody(bankActions, "editBankReviewDraftQuestion");
