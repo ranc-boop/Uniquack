@@ -2,24 +2,33 @@
 
 ## Scope
 
-Apply only:
+`0039_profile_privileged_fields_immutability.sql` was applied once already.
+Do **not** edit or rerun it. Apply only the forward correction:
 
 ```text
-supabase/clean-migrations/0039_profile_privileged_fields_immutability.sql
+supabase/clean-migrations/0040_profile_insert_and_role_transition_hardening.sql
 ```
 
 This is a forward-only fix for the clean Supabase project. Do not edit or
-reapply migration 0001. Do not run anything under `supabase/migrations`.
+reapply 0001 or 0039. Do not run anything under `supabase/migrations`.
 
-The migration:
+0040:
 
-- removes broad authenticated updates on `public.profiles`;
-- permits self-edits only for `full_name`, `avatar_url`, and
-  `display_name`;
-- rejects privileged profile-field writes in a database trigger;
-- blocks the updatable `public.user_profiles` view as a write bypass;
-- adds the guarded `public.transition_profile_role_as_super_admin` RPC;
-- records role transitions in a private audit table.
+- revokes direct `profiles` and `user_profiles` INSERT for `anon` and
+  `authenticated`;
+- removes the residual `profiles_super_admin_insert` policy;
+- adds a defense-in-depth profile INSERT trigger that permits only a
+  service-role JWT;
+- retains 0039's authenticated SELECT and three safe presentation UPDATE
+  columns;
+- removes the generic nested-trigger Google identity exception; and
+- serializes guarded role transitions so concurrent demotions cannot remove
+  the final active Super-admin.
+
+Canonical profile creation is service-role-only. The existing clean bootstrap
+script creates Auth users through the Auth Admin API and upserts profiles with
+the service role. There is no supported browser signup/profile INSERT path to
+preserve. Google Login is not live and is not part of this apply.
 
 ## Pre-apply aggregate audit
 
@@ -54,7 +63,7 @@ accounts in this apply step; open a separate incident-review task.
 1. Sign in to the **clean** Supabase project as a project administrator.
 2. Open SQL Editor and create a new query.
 3. Copy the complete contents of
-   `supabase/clean-migrations/0039_profile_privileged_fields_immutability.sql`.
+   `supabase/clean-migrations/0040_profile_insert_and_role_transition_hardening.sql`.
 4. Run it **once**.
 5. Keep the SQL Editor result as the migration-application record. Do not paste
    credentials, connection strings, or results containing user data into chat.
@@ -72,6 +81,12 @@ where table_schema = 'public'
   and privilege_type = 'UPDATE'
 order by grantee, column_name;
 
+select
+  has_table_privilege('anon', 'public.profiles', 'INSERT') as anon_profiles_insert,
+  has_table_privilege('authenticated', 'public.profiles', 'INSERT') as authenticated_profiles_insert,
+  has_table_privilege('anon', 'public.user_profiles', 'INSERT') as anon_user_profiles_insert,
+  has_table_privilege('authenticated', 'public.user_profiles', 'INSERT') as authenticated_user_profiles_insert;
+
 select policyname, cmd, roles
 from pg_policies
 where schemaname = 'public'
@@ -83,6 +98,10 @@ from pg_trigger
 where tgrelid = 'public.profiles'::regclass
   and not tgisinternal
 order by tgname;
+
+select pg_get_functiondef(
+  'private.enforce_profile_privileged_field_immutability()'::regprocedure
+) as profile_update_trigger_definition;
 
 select routine_schema, routine_name
 from information_schema.routines
@@ -98,8 +117,11 @@ Expected result:
 - `authenticated` has UPDATE only for `full_name`, `avatar_url`, and
   `display_name`;
 - there is no table-wide authenticated UPDATE privilege for `profiles`;
-- `profiles_self_safe_update` and
+- all four INSERT privilege booleans are `false`;
+- `profiles_super_admin_insert` is absent;
+- `profiles_self_safe_update`, `profiles_enforce_insert_immutability`, and
   `profiles_enforce_privileged_field_immutability` exist;
+- the returned update-trigger definition has no `pg_trigger_depth` exception;
 - the guarded role-transition RPC exists;
 - the audit query is safe to run, although it may return zero before the first
   role transition.
@@ -191,3 +213,27 @@ before marking the P0 deployment gate closed:
 fails when that metadata connection is unavailable. The explicit
 `--live-http-only` mode is diagnostic-only: it records the safe PostgREST and
 RPC behavior above but must not be used by itself to close the P0 gate.
+
+## 0040 pending apply and live validation
+
+The SQL Editor metadata review after 0039 found that direct profile INSERT was
+still broadly granted. `0040_profile_insert_and_role_transition_hardening.sql`
+has **not** been applied by this branch. Apply it once using the steps above,
+then run the local smoke followed by strict live mode:
+
+```powershell
+node scripts/profile-role-immutability-smoke.mjs
+
+$env:PROFILE_ROLE_IMMUTABILITY_CONFIRM = "RUN_DISPOSABLE_P0_LIVE_SMOKE"
+node scripts/profile-role-immutability-smoke.mjs --live
+Remove-Item Env:PROFILE_ROLE_IMMUTABILITY_CONFIRM
+```
+
+After 0040, the live smoke must prove direct anonymous/authenticated profile
+and view inserts are denied, service-role bootstrap remains available, safe
+presentation updates remain available, privileged updates stay denied, and
+the guarded transition still records an audit event. The embedded local smoke
+also proves the concurrent last-Super-admin and generic nested-trigger cases.
+
+Do not close the formal profile-security gate until the SQL Editor checks and
+strict live validation both pass against the clean project.

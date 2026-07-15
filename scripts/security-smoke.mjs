@@ -174,6 +174,9 @@ const blueprintLibraryMigration = await read(
 const profileImmutabilityMigration = await read(
   "supabase/clean-migrations/0039_profile_privileged_fields_immutability.sql",
 );
+const profileCreationHardeningMigration = await read(
+  "supabase/clean-migrations/0040_profile_insert_and_role_transition_hardening.sql",
+);
 const adminUserActions = await read("src/app/admin/users/actions.ts");
 const databaseTypes = await read("src/types/database.ts");
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
@@ -214,6 +217,21 @@ assert(
   "super-admin role management must use the guarded profile role RPC",
 );
 console.log("PASS profile privileged fields are immutable outside guarded paths");
+assert(
+  profileCreationHardeningMigration.includes(
+    "revoke insert on table public.profiles from anon, authenticated",
+  ) &&
+    profileCreationHardeningMigration.includes(
+      "revoke insert on table public.user_profiles from anon, authenticated",
+    ) &&
+    profileCreationHardeningMigration.includes(
+      "profiles_enforce_insert_immutability",
+    ) &&
+    profileCreationHardeningMigration.includes("pg_advisory_xact_lock") &&
+    !profileCreationHardeningMigration.includes("pg_trigger_depth() > 1"),
+  "profile creation hardening must block direct INSERT, retain defense in depth, serialize role transitions, and reject generic nested-trigger trust",
+);
+console.log("PASS profile creation and role-transition hardening are present");
 assert(
   classroomMigration.includes("create table if not exists public.classrooms") &&
     classroomMigration.includes("create table if not exists public.classroom_members") &&

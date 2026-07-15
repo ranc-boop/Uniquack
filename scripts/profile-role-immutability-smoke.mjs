@@ -17,6 +17,10 @@ const migrationPath = resolve(
   root,
   "supabase/clean-migrations/0039_profile_privileged_fields_immutability.sql",
 );
+const hardeningMigrationPath = resolve(
+  root,
+  "supabase/clean-migrations/0040_profile_insert_and_role_transition_hardening.sql",
+);
 const foundationsPath = resolve(
   root,
   "supabase/clean-migrations/0001_foundations_identity_organizations.sql",
@@ -24,6 +28,7 @@ const foundationsPath = resolve(
 
 const foundationsSql = readFileSync(foundationsPath, "utf8");
 const migrationSql = readFileSync(migrationPath, "utf8");
+const hardeningMigrationSql = readFileSync(hardeningMigrationPath, "utf8");
 const adminUsersAction = readFileSync(
   resolve(root, "src/app/admin/users/actions.ts"),
   "utf8",
@@ -51,6 +56,14 @@ assert(
   "Admin role updates must use the guarded RPC.",
 );
 console.log("PASS static profile privileged-field guard contract");
+assert(
+    hardeningMigrationSql.includes("revoke insert on table public.profiles from anon, authenticated") &&
+    hardeningMigrationSql.includes("profiles_enforce_insert_immutability") &&
+    hardeningMigrationSql.includes("pg_advisory_xact_lock") &&
+    !hardeningMigrationSql.includes("pg_trigger_depth() > 1"),
+  "Migration must revoke direct profile INSERT, enforce it in a trigger, serialize role transitions, and remove generic nested-trigger trust.",
+);
+console.log("PASS static profile insert and role-transition hardening contract");
 
 const harness = await createGoogleAccountLinksPostgresHarness("profile-role-immutability");
 const { instance, connection } = harness;
@@ -58,6 +71,8 @@ const { instance, connection } = harness;
 let bootstrap;
 let rlsClient;
 let serviceClient;
+let firstSuperAdminClient;
+let secondSuperAdminClient;
 let failures = 0;
 
 function pass(label) {
@@ -138,26 +153,49 @@ try {
 
   const ids = {
     superAdmin: "11111111-1111-1111-1111-111111111111",
+    concurrentSuperAdmin: "12121212-1212-1212-1212-121212121212",
     admin: "22222222-2222-2222-2222-222222222222",
     teacher: "33333333-3333-3333-3333-333333333333",
     student: "44444444-4444-4444-4444-444444444444",
     otherStudent: "55555555-5555-5555-5555-555555555555",
     serviceCreated: "66666666-6666-6666-6666-666666666666",
+    directAuthenticated: "77777777-7777-7777-7777-777777777777",
+    directAnonymous: "88888888-8888-8888-8888-888888888888",
+    directView: "99999999-9999-9999-9999-999999999999",
   };
   const organizationId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
   await bootstrap.query(
-    "insert into auth.users (id, email) values ($1, 'super-admin@example.test'), ($2, 'admin@example.test'), ($3, 'teacher@example.test'), ($4, 'student@example.test'), ($5, 'other@example.test')",
-    [ids.superAdmin, ids.admin, ids.teacher, ids.student, ids.otherStudent],
+    "insert into auth.users (id, email) values ($1, 'super-admin@example.test'), ($2, 'concurrent-super-admin@example.test'), ($3, 'admin@example.test'), ($4, 'teacher@example.test'), ($5, 'student@example.test'), ($6, 'other@example.test'), ($7, 'direct-authenticated@example.test'), ($8, 'direct-anonymous@example.test'), ($9, 'direct-view@example.test')",
+    [
+      ids.superAdmin,
+      ids.concurrentSuperAdmin,
+      ids.admin,
+      ids.teacher,
+      ids.student,
+      ids.otherStudent,
+      ids.directAuthenticated,
+      ids.directAnonymous,
+      ids.directView,
+    ],
   );
   await bootstrap.query(
     "insert into public.organizations (id, name, slug) values ($1, 'Security Test Org', 'security-test-org')",
     [organizationId],
   );
   await bootstrap.query(
-    "insert into public.profiles (id, email, role, status, default_organization_id, display_name) values ($1, 'super-admin@example.test', 'super_admin', 'active', $6, 'Super Admin'), ($2, 'admin@example.test', 'admin', 'active', $6, 'Admin'), ($3, 'teacher@example.test', 'teacher', 'active', $6, 'Teacher'), ($4, 'student@example.test', 'student', 'active', $6, 'Student'), ($5, 'other@example.test', 'student', 'active', $6, 'Other Student')",
-    [ids.superAdmin, ids.admin, ids.teacher, ids.student, ids.otherStudent, organizationId],
+    "insert into public.profiles (id, email, role, status, default_organization_id, display_name) values ($1, 'super-admin@example.test', 'super_admin', 'active', $7, 'Super Admin'), ($2, 'concurrent-super-admin@example.test', 'super_admin', 'active', $7, 'Concurrent Super Admin'), ($3, 'admin@example.test', 'admin', 'active', $7, 'Admin'), ($4, 'teacher@example.test', 'teacher', 'active', $7, 'Teacher'), ($5, 'student@example.test', 'student', 'active', $7, 'Student'), ($6, 'other@example.test', 'student', 'active', $7, 'Other Student')",
+    [
+      ids.superAdmin,
+      ids.concurrentSuperAdmin,
+      ids.admin,
+      ids.teacher,
+      ids.student,
+      ids.otherStudent,
+      organizationId,
+    ],
   );
+  await applySql(bootstrap, hardeningMigrationSql);
 
   rlsClient = new pg.Client({
     host: connection.host,
@@ -168,6 +206,30 @@ try {
   });
   await rlsClient.connect();
 
+  await asUser(rlsClient, ids.directAuthenticated);
+  await expectDenied("authenticated direct profile insert is denied", () =>
+    rlsClient.query(
+      "insert into public.profiles (id, username, email, role, status, default_organization_id, created_at, updated_at) values ($1, 'spoofed_student', 'spoofed@example.test', 'student', 'active', $2, now() - interval '1 day', now() - interval '1 day')",
+      [ids.directAuthenticated, organizationId],
+    ),
+  );
+  await expectDenied("authenticated insert through user_profiles is denied", () =>
+    rlsClient.query(
+      "insert into public.user_profiles (user_id, display_name, role, status, default_organization_id) values ($1, 'Spoofed view profile', 'student', 'active', null)",
+      [ids.directView],
+    ),
+  );
+
+  await rlsClient.query("set role anon");
+  await asUser(rlsClient, "", "anon");
+  await expectDenied("anonymous direct profile insert is denied", () =>
+    rlsClient.query(
+      "insert into public.profiles (id, username, email, role, status, created_at, updated_at) values ($1, 'anonymous_spoof', 'anonymous@example.test', 'student', 'active', now() - interval '1 day', now() - interval '1 day')",
+      [ids.directAnonymous],
+    ),
+  );
+  await rlsClient.query("reset role");
+
   await asUser(rlsClient, ids.student);
   const safeUpdate = await rlsClient.query(
     "update public.profiles set display_name = 'Student Updated' where id = $1",
@@ -175,6 +237,15 @@ try {
   );
   assert(safeUpdate.rowCount === 1, "student display-name update was not allowed");
   pass("student updates safe display field");
+
+  await bootstrap.query("alter table public.profiles add column future_server_managed text");
+  await bootstrap.query("grant update (future_server_managed) on public.profiles to authenticated");
+  await expectDenied("future profile columns are not automatically self-editable", () =>
+    rlsClient.query(
+      "update public.profiles set future_server_managed = 'client-controlled' where id = $1",
+      [ids.student],
+    ),
+  );
 
   for (const nextRole of ["teacher", "admin", "super_admin"]) {
     await expectDenied("student cannot set own role to " + nextRole, () =>
@@ -293,7 +364,12 @@ try {
     [ids.otherStudent],
   );
   assert(transitioned.rows[0].role === "teacher", "guarded transition failed");
-  pass("authorized super-admin role transition succeeds through RPC");
+  const firstAudit = await bootstrap.query(
+    "select count(*)::integer as count from private.profile_privileged_change_audit_log where target_profile_id = $1",
+    [ids.otherStudent],
+  );
+  assert(firstAudit.rows[0].count === 1, "authorized transition did not write exactly one audit event");
+  pass("authorized super-admin role transition succeeds through RPC and writes one audit event");
 
   await expectDenied("super-admin cannot self-demote through role RPC", () =>
     rlsClient.query(
@@ -313,6 +389,48 @@ try {
   );
   assert(audit.rows[0].count === 2, "role transitions were not safely audited");
   pass("role transitions write private audit events");
+
+  firstSuperAdminClient = new pg.Client({
+    host: connection.host,
+    port: connection.port,
+    user: "rls_tester",
+    password: "rls_tester_password",
+    database: "profile_role_test",
+  });
+  secondSuperAdminClient = new pg.Client({
+    host: connection.host,
+    port: connection.port,
+    user: "rls_tester",
+    password: "rls_tester_password",
+    database: "profile_role_test",
+  });
+  await Promise.all([firstSuperAdminClient.connect(), secondSuperAdminClient.connect()]);
+  await Promise.all([
+    asUser(firstSuperAdminClient, ids.superAdmin),
+    asUser(secondSuperAdminClient, ids.concurrentSuperAdmin),
+  ]);
+  const concurrentDemotions = await Promise.allSettled([
+    firstSuperAdminClient.query(
+      "select public.transition_profile_role_as_super_admin($1, 'teacher')",
+      [ids.concurrentSuperAdmin],
+    ),
+    secondSuperAdminClient.query(
+      "select public.transition_profile_role_as_super_admin($1, 'teacher')",
+      [ids.superAdmin],
+    ),
+  ]);
+  assert(
+    concurrentDemotions.filter((result) => result.status === "fulfilled").length === 1,
+    "concurrent last-super-admin demotions did not reject exactly one transition",
+  );
+  const remainingSuperAdmins = await bootstrap.query(
+    "select count(*)::integer as count from public.profiles where role = 'super_admin' and status = 'active'",
+  );
+  assert(
+    remainingSuperAdmins.rows[0].count === 1,
+    "concurrent role transitions left no active super-admin",
+  );
+  pass("concurrent last-super-admin demotions retain one active super-admin");
 
   serviceClient = new pg.Client({
     host: connection.host,
@@ -370,30 +488,37 @@ try {
     ].join("\n"),
   );
   await asUser(rlsClient, ids.student);
-  await rlsClient.query(
-    "insert into public.profile_identity_sync_source (profile_id, google_sub) values ($1, 'test-google-sub')",
-    [ids.student],
+  await expectDenied("generic nested trigger cannot update protected Google identity fields", () =>
+    rlsClient.query(
+      "insert into public.profile_identity_sync_source (profile_id, google_sub) values ($1, 'test-google-sub')",
+      [ids.student],
+    ),
   );
   const googleSync = await bootstrap.query(
     "select google_sub from public.profiles where id = $1",
     [ids.student],
   );
-  assert(googleSync.rows[0].google_sub === "test-google-sub", "nested identity sync failed");
-  pass("trusted nested identity synchronization remains compatible");
+  assert(googleSync.rows[0].google_sub === null, "generic nested trigger changed a protected identity field");
+  pass("protected Google identity fields remain unchanged after nested-trigger denial");
 
   const grants = await bootstrap.query(
-    "select has_table_privilege('authenticated', 'public.profiles', 'UPDATE') as broad_update, has_column_privilege('authenticated', 'public.profiles', 'display_name', 'UPDATE') as display_update, has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE') as role_update",
+    "select has_table_privilege('authenticated', 'public.profiles', 'UPDATE') as broad_update, has_column_privilege('authenticated', 'public.profiles', 'display_name', 'UPDATE') as display_update, has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE') as role_update, has_table_privilege('authenticated', 'public.profiles', 'INSERT') as authenticated_insert, has_table_privilege('anon', 'public.profiles', 'INSERT') as anon_insert, has_table_privilege('authenticated', 'public.user_profiles', 'INSERT') as authenticated_view_insert",
   );
   assert(
     grants.rows[0].broad_update === false &&
       grants.rows[0].display_update === true &&
-      grants.rows[0].role_update === false,
-    "authenticated profile grants are not narrowly configured",
+      grants.rows[0].role_update === false &&
+      grants.rows[0].authenticated_insert === false &&
+      grants.rows[0].anon_insert === false &&
+      grants.rows[0].authenticated_view_insert === false,
+    "authenticated profile grants are not narrowly configured or direct profile INSERT remains available",
   );
-  pass("authenticated receives only safe profile UPDATE column grants");
+  pass("authenticated receives only safe profile UPDATE grants and no direct profile INSERT");
 } catch (error) {
   fail("embedded profile role immutability smoke", error);
 } finally {
+  if (secondSuperAdminClient) await secondSuperAdminClient.end().catch(() => {});
+  if (firstSuperAdminClient) await firstSuperAdminClient.end().catch(() => {});
   if (serviceClient) await serviceClient.end().catch(() => {});
   if (rlsClient) await rlsClient.end().catch(() => {});
   if (bootstrap) await bootstrap.end().catch(() => {});
@@ -530,7 +655,7 @@ async function inspectLiveSchema() {
     }
     if (!metadataClient) throw lastConnectionError ?? new Error("No metadata connection candidate succeeded.");
     verificationStage = "schema metadata query";
-    const [updateColumns, tableWideGrant, policies, trigger, rpc, viewGrant, auditColumns, identityColumns, functionDefinition, aggregates] =
+    const [updateColumns, tableWideGrant, insertGrants, policies, insertPolicy, triggers, rpc, viewGrant, auditColumns, identityColumns, functionDefinition, aggregates] =
       await Promise.all([
         metadataClient.query(
           "select column_name from information_schema.column_privileges where table_schema = 'public' and table_name = 'profiles' and grantee = 'authenticated' and privilege_type = 'UPDATE' order by column_name",
@@ -539,10 +664,16 @@ async function inspectLiveSchema() {
           "select exists (select 1 from information_schema.role_table_grants where table_schema = 'public' and table_name = 'profiles' and grantee = 'authenticated' and privilege_type = 'UPDATE') as has_table_wide_update",
         ),
         metadataClient.query(
+          "select has_table_privilege('authenticated', 'public.profiles', 'INSERT') as authenticated_profiles_insert, has_table_privilege('anon', 'public.profiles', 'INSERT') as anon_profiles_insert, has_table_privilege('authenticated', 'public.user_profiles', 'INSERT') as authenticated_view_insert, has_table_privilege('anon', 'public.user_profiles', 'INSERT') as anon_view_insert",
+        ),
+        metadataClient.query(
           "select policyname, cmd, roles from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_self_safe_update'",
         ),
         metadataClient.query(
-          "select tgname from pg_trigger where tgrelid = 'public.profiles'::regclass and not tgisinternal and tgname = 'profiles_enforce_privileged_field_immutability'",
+          "select policyname from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_super_admin_insert'",
+        ),
+        metadataClient.query(
+          "select tgname from pg_trigger where tgrelid = 'public.profiles'::regclass and not tgisinternal and tgname in ('profiles_enforce_privileged_field_immutability', 'profiles_enforce_insert_immutability') order by tgname",
         ),
         metadataClient.query(
           "select has_function_privilege('anon', 'public.transition_profile_role_as_super_admin(uuid,text)', 'EXECUTE') as anon_execute, has_function_privilege('authenticated', 'public.transition_profile_role_as_super_admin(uuid,text)', 'EXECUTE') as authenticated_execute, exists (select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl, acldefault('f'::\"char\", p.proowner))) privilege where p.oid = 'public.transition_profile_role_as_super_admin(uuid,text)'::regprocedure and privilege.grantee = 0 and privilege.privilege_type = 'EXECUTE') as public_execute",
@@ -570,8 +701,20 @@ async function inspectLiveSchema() {
       "Authenticated UPDATE grants are not limited to the three safe profile fields.",
     );
     assert(tableWideGrant.rows[0]?.has_table_wide_update === false, "Authenticated retains table-wide profiles UPDATE.");
+    assert(
+      insertGrants.rows[0]?.authenticated_profiles_insert === false &&
+        insertGrants.rows[0]?.anon_profiles_insert === false &&
+        insertGrants.rows[0]?.authenticated_view_insert === false &&
+        insertGrants.rows[0]?.anon_view_insert === false,
+      "Direct profile or user_profiles INSERT remains available to a client role.",
+    );
     assert(policies.rows.length === 1 && policies.rows[0]?.cmd === "UPDATE", "Safe self-update policy is missing.");
-    assert(trigger.rows.length === 1, "Privileged-field immutability trigger is missing.");
+    assert(insertPolicy.rows.length === 0, "Legacy profile insert policy remains present.");
+    assert(
+      JSON.stringify(triggers.rows.map((row) => row.tgname)) ===
+        JSON.stringify(["profiles_enforce_insert_immutability", "profiles_enforce_privileged_field_immutability"]),
+      "Profile insert and privileged-field immutability triggers are incomplete.",
+    );
     assert(
       rpc.rows[0]?.anon_execute === false &&
         rpc.rows[0]?.authenticated_execute === true &&
@@ -596,11 +739,12 @@ async function inspectLiveSchema() {
     assert(
       triggerDefinition.includes("to_jsonb(old) - safe_self_edit_keys") &&
         triggerDefinition.includes("to_jsonb(new) - safe_self_edit_keys") &&
-        triggerDefinition.includes("app.profile_privileged_mutation"),
-      "Profile trigger does not retain the future-field-safe invariant.",
+        triggerDefinition.includes("app.profile_privileged_mutation") &&
+        !triggerDefinition.includes("pg_trigger_depth"),
+      "Profile trigger does not retain the future-field-safe invariant or still trusts a generic nested trigger.",
     );
 
-    pass("live 0039 objects, grants, view revocation, trigger, and RPC execution grants");
+    pass("live 0039/0040 profile grants, insert revocations, triggers, and RPC execution grants");
     return {
       client: metadataClient,
       roleCounts: roleCountsFromRows(aggregates.rows),
@@ -704,6 +848,27 @@ async function runLiveSmoke({ allowMetadataTransportBlock = false } = {}) {
       });
       if (signInError || !session.user) throw new Error("Temporary fixture login failed");
       return { client, id: created.user.id };
+    }
+
+    async function createUnprofiledAuthClient() {
+      const temporaryEmail = "p0-unprofiled-" + randomUUID() + "@example.invalid";
+      const temporaryPassword = "P0-unprofiled-" + randomUUID();
+      const { data: created, error: createError } = await service.auth.admin.createUser({
+        email: temporaryEmail,
+        password: temporaryPassword,
+        email_confirm: true,
+      });
+      if (createError || !created.user) throw new Error("Service-role unprofiled auth fixture creation failed");
+      temporaryUsers.push(created.user.id);
+      const client = createClient(requiredLiveEnv("NEXT_PUBLIC_SUPABASE_URL"), requiredLiveEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { data: session, error: signInError } = await client.auth.signInWithPassword({
+        email: temporaryEmail,
+        password: temporaryPassword,
+      });
+      if (signInError || !session.user) throw new Error("Unprofiled auth fixture login failed");
+      return { client, id: created.user.id, email: temporaryEmail };
     }
 
     if (admin.profile.role !== "admin") {
@@ -842,6 +1007,47 @@ async function runLiveSmoke({ allowMetadataTransportBlock = false } = {}) {
       "user_profiles view update",
     );
     pass("live user_profiles view cannot bypass profile protections");
+
+    const directInsertFixture = await createUnprofiledAuthClient();
+    const directInsert = await directInsertFixture.client
+      .from("profiles")
+      .insert({
+        id: directInsertFixture.id,
+        email: directInsertFixture.email,
+        username: "spoofed_profile",
+        role: "student",
+        status: "active",
+        created_at: new Date(0).toISOString(),
+      })
+      .select("id");
+    if (!directInsert.error && Array.isArray(directInsert.data) && directInsert.data.length > 0) {
+      throw new Error("Authenticated direct profile insert unexpectedly succeeded");
+    }
+    const directViewInsert = await directInsertFixture.client
+      .from("user_profiles")
+      .insert({
+        user_id: directInsertFixture.id,
+        display_name: "Spoofed profile",
+        role: "student",
+        status: "active",
+      })
+      .select("user_id");
+    if (!directViewInsert.error && Array.isArray(directViewInsert.data) && directViewInsert.data.length > 0) {
+      throw new Error("Authenticated user_profiles insert unexpectedly succeeded");
+    }
+    const anonymousInsert = await anonymous
+      .from("profiles")
+      .insert({
+        id: randomUUID(),
+        email: "anonymous-spoof@example.invalid",
+        role: "student",
+        status: "active",
+      })
+      .select("id");
+    if (!anonymousInsert.error && Array.isArray(anonymousInsert.data) && anonymousInsert.data.length > 0) {
+      throw new Error("Anonymous direct profile insert unexpectedly succeeded");
+    }
+    pass("live anonymous/authenticated profile and view inserts are denied");
 
     if (liveSchema.identityColumns.length > 0) {
       const identityField = liveSchema.identityColumns.includes("google_linked_at")
