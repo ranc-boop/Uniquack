@@ -21,6 +21,10 @@ const hardeningMigrationPath = resolve(
   root,
   "supabase/clean-migrations/0040_profile_insert_and_role_transition_hardening.sql",
 );
+const deleteHardeningMigrationPath = resolve(
+  root,
+  "supabase/clean-migrations/0041_profile_delete_privilege_hardening.sql",
+);
 const foundationsPath = resolve(
   root,
   "supabase/clean-migrations/0001_foundations_identity_organizations.sql",
@@ -29,6 +33,7 @@ const foundationsPath = resolve(
 const foundationsSql = readFileSync(foundationsPath, "utf8");
 const migrationSql = readFileSync(migrationPath, "utf8");
 const hardeningMigrationSql = readFileSync(hardeningMigrationPath, "utf8");
+const deleteHardeningMigrationSql = readFileSync(deleteHardeningMigrationPath, "utf8");
 const adminUsersAction = readFileSync(
   resolve(root, "src/app/admin/users/actions.ts"),
   "utf8",
@@ -64,6 +69,12 @@ assert(
   "Migration must revoke direct profile INSERT, enforce it in a trigger, serialize role transitions, and remove generic nested-trigger trust.",
 );
 console.log("PASS static profile insert and role-transition hardening contract");
+assert(
+  deleteHardeningMigrationSql.includes("revoke delete on table public.profiles from anon, authenticated") &&
+    deleteHardeningMigrationSql.includes("revoke delete on table public.user_profiles from anon, authenticated"),
+  "Migration must revoke direct profile and user_profiles DELETE from client roles.",
+);
+console.log("PASS static profile deletion hardening contract");
 
 const harness = await createGoogleAccountLinksPostgresHarness("profile-role-immutability");
 const { instance, connection } = harness;
@@ -138,7 +149,8 @@ try {
       "create or replace function auth.role() returns text language sql stable as $$ select current_setting('request.jwt.claim.role', true) $$;",
       "create or replace function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;",
       "grant usage on schema public, auth to authenticated, anon, service_role;",
-      "grant select, insert, update on auth.users to service_role;",
+      // Model the Auth Admin API capability used by disposable fixture cleanup.
+      "grant select, insert, update, delete on auth.users to service_role;",
     ].join("\n"),
   );
 
@@ -146,7 +158,7 @@ try {
 
   // Model the broad API grant 0039 must remove.
   await bootstrap.query(
-    "grant select, insert, update on public.profiles to authenticated, anon",
+    "grant select, insert, update, delete on public.profiles to authenticated, anon",
   );
   await bootstrap.query("grant all on public.profiles to service_role");
   await applySql(bootstrap, migrationSql);
@@ -196,6 +208,7 @@ try {
     ],
   );
   await applySql(bootstrap, hardeningMigrationSql);
+  await applySql(bootstrap, deleteHardeningMigrationSql);
 
   rlsClient = new pg.Client({
     host: connection.host,
@@ -219,6 +232,9 @@ try {
       [ids.directView],
     ),
   );
+  await expectDenied("authenticated caller cannot delete another profile", () =>
+    rlsClient.query("delete from public.profiles where id = $1", [ids.student]),
+  );
 
   await rlsClient.query("set role anon");
   await asUser(rlsClient, "", "anon");
@@ -228,9 +244,18 @@ try {
       [ids.directAnonymous],
     ),
   );
+  await expectDenied("anonymous profile delete is denied", () =>
+    rlsClient.query("delete from public.profiles where id = $1", [ids.student]),
+  );
   await rlsClient.query("reset role");
 
   await asUser(rlsClient, ids.student);
+  await expectDenied("student cannot delete own profile", () =>
+    rlsClient.query("delete from public.profiles where id = $1", [ids.student]),
+  );
+  await expectDenied("student cannot delete another profile", () =>
+    rlsClient.query("delete from public.profiles where id = $1", [ids.otherStudent]),
+  );
   const safeUpdate = await rlsClient.query(
     "update public.profiles set display_name = 'Student Updated' where id = $1",
     [ids.student],
@@ -259,6 +284,9 @@ try {
     rlsClient.query("update public.user_profiles set role = 'teacher' where user_id = $1", [
       ids.student,
     ]),
+  );
+  await expectDenied("student cannot delete through user_profiles", () =>
+    rlsClient.query("delete from public.user_profiles where user_id = $1", [ids.student]),
   );
   await expectDenied("student cannot change own status", () =>
     rlsClient.query("update public.profiles set status = 'disabled' where id = $1", [
@@ -305,6 +333,9 @@ try {
   pass("failed student escalation leaves SQL helpers false");
 
   await asUser(rlsClient, ids.teacher);
+  await expectDenied("teacher cannot delete own profile", () =>
+    rlsClient.query("delete from public.profiles where id = $1", [ids.teacher]),
+  );
   await expectDenied("teacher cannot change own role", () =>
     rlsClient.query("update public.profiles set role = 'admin' where id = $1", [
       ids.teacher,
@@ -318,6 +349,9 @@ try {
   );
 
   await asUser(rlsClient, ids.admin);
+  await expectDenied("admin cannot delete a profile through the normal path", () =>
+    rlsClient.query("delete from public.profiles where id = $1", [ids.admin]),
+  );
   await expectDenied("admin cannot change own role through self path", () =>
     rlsClient.query("update public.profiles set role = 'super_admin' where id = $1", [
       ids.admin,
@@ -461,6 +495,13 @@ try {
     "service-role profile creation lost privileged fields",
   );
   pass("service-role profile creation remains available");
+  await serviceClient.query("delete from auth.users where id = $1", [ids.serviceCreated]);
+  const serviceCleanup = await bootstrap.query(
+    "select exists (select 1 from public.profiles where id = $1) as profile_exists",
+    [ids.serviceCreated],
+  );
+  assert(serviceCleanup.rows[0].profile_exists === false, "service-role Auth cleanup did not cascade to profile");
+  pass("service-role Auth-user fixture cleanup remains compatible");
 
   await bootstrap.query(
     "alter table public.profiles add column google_sub text, add column google_email_at_link text, add column google_linked_at timestamptz",
@@ -502,7 +543,7 @@ try {
   pass("protected Google identity fields remain unchanged after nested-trigger denial");
 
   const grants = await bootstrap.query(
-    "select has_table_privilege('authenticated', 'public.profiles', 'UPDATE') as broad_update, has_column_privilege('authenticated', 'public.profiles', 'display_name', 'UPDATE') as display_update, has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE') as role_update, has_table_privilege('authenticated', 'public.profiles', 'INSERT') as authenticated_insert, has_table_privilege('anon', 'public.profiles', 'INSERT') as anon_insert, has_table_privilege('authenticated', 'public.user_profiles', 'INSERT') as authenticated_view_insert",
+    "select has_table_privilege('authenticated', 'public.profiles', 'UPDATE') as broad_update, has_column_privilege('authenticated', 'public.profiles', 'display_name', 'UPDATE') as display_update, has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE') as role_update, has_table_privilege('authenticated', 'public.profiles', 'INSERT') as authenticated_insert, has_table_privilege('anon', 'public.profiles', 'INSERT') as anon_insert, has_table_privilege('authenticated', 'public.user_profiles', 'INSERT') as authenticated_view_insert, has_table_privilege('authenticated', 'public.profiles', 'DELETE') as authenticated_profile_delete, has_table_privilege('anon', 'public.profiles', 'DELETE') as anon_profile_delete, has_table_privilege('authenticated', 'public.user_profiles', 'DELETE') as authenticated_view_delete, has_table_privilege('anon', 'public.user_profiles', 'DELETE') as anon_view_delete",
   );
   assert(
     grants.rows[0].broad_update === false &&
@@ -510,10 +551,14 @@ try {
       grants.rows[0].role_update === false &&
       grants.rows[0].authenticated_insert === false &&
       grants.rows[0].anon_insert === false &&
-      grants.rows[0].authenticated_view_insert === false,
-    "authenticated profile grants are not narrowly configured or direct profile INSERT remains available",
+      grants.rows[0].authenticated_view_insert === false &&
+      grants.rows[0].authenticated_profile_delete === false &&
+      grants.rows[0].anon_profile_delete === false &&
+      grants.rows[0].authenticated_view_delete === false &&
+      grants.rows[0].anon_view_delete === false,
+    "authenticated profile grants are not narrowly configured or direct profile INSERT/DELETE remains available",
   );
-  pass("authenticated receives only safe profile UPDATE grants and no direct profile INSERT");
+  pass("authenticated receives only safe profile UPDATE grants and no direct profile INSERT or DELETE");
 } catch (error) {
   fail("embedded profile role immutability smoke", error);
 } finally {
@@ -606,6 +651,22 @@ async function expectLiveProfilePatchDenied({
   pass(label);
 }
 
+async function expectLiveProfileDeleteDenied({
+  actor,
+  targetProfileId,
+  label,
+  verificationClient = actor.client,
+}) {
+  const result = await actor.client.from("profiles").delete().eq("id", targetProfileId).select("id");
+  const didDelete = Array.isArray(result.data) && result.data.length > 0;
+  if (!result.error && didDelete) {
+    throw new Error(label + " unexpectedly succeeded");
+  }
+  const profile = await readLiveProfile(verificationClient, targetProfileId);
+  assert(profile.id === targetProfileId, label + " removed a profile");
+  pass(label);
+}
+
 function assertRpcDenied(result, label) {
   if (!result.error) throw new Error(label + " unexpectedly succeeded");
   pass(label);
@@ -655,7 +716,7 @@ async function inspectLiveSchema() {
     }
     if (!metadataClient) throw lastConnectionError ?? new Error("No metadata connection candidate succeeded.");
     verificationStage = "schema metadata query";
-    const [updateColumns, tableWideGrant, insertGrants, policies, insertPolicy, triggers, rpc, viewGrant, auditColumns, identityColumns, functionDefinition, aggregates] =
+    const [updateColumns, tableWideGrant, insertGrants, policies, insertPolicy, triggers, rpc, viewGrant, auditColumns, identityColumns, functionDefinition, aggregates, deleteGrants, deletePolicies] =
       await Promise.all([
         metadataClient.query(
           "select column_name from information_schema.column_privileges where table_schema = 'public' and table_name = 'profiles' and grantee = 'authenticated' and privilege_type = 'UPDATE' order by column_name",
@@ -693,6 +754,12 @@ async function inspectLiveSchema() {
         metadataClient.query(
           "select role, status, count(*)::integer as profile_count from public.profiles group by role, status order by role, status",
         ),
+        metadataClient.query(
+          "select has_table_privilege('authenticated', 'public.profiles', 'DELETE') as authenticated_profiles_delete, has_table_privilege('anon', 'public.profiles', 'DELETE') as anon_profiles_delete, has_table_privilege('authenticated', 'public.user_profiles', 'DELETE') as authenticated_view_delete, has_table_privilege('anon', 'public.user_profiles', 'DELETE') as anon_view_delete",
+        ),
+        metadataClient.query(
+          "select policyname from pg_policies where schemaname = 'public' and tablename = 'profiles' and cmd in ('DELETE', 'ALL')",
+        ),
       ]);
 
     const safeUpdateColumns = updateColumns.rows.map((row) => row.column_name);
@@ -725,6 +792,14 @@ async function inspectLiveSchema() {
       viewGrant.rows[0]?.authenticated_update === false && viewGrant.rows[0]?.anon_update === false,
       "The user_profiles view retains a write bypass.",
     );
+    assert(
+      deleteGrants.rows[0]?.authenticated_profiles_delete === false &&
+        deleteGrants.rows[0]?.anon_profiles_delete === false &&
+        deleteGrants.rows[0]?.authenticated_view_delete === false &&
+        deleteGrants.rows[0]?.anon_view_delete === false,
+      "Direct profile or user_profiles DELETE remains available to a client role.",
+    );
+    assert(deletePolicies.rows.length === 0, "A profiles DELETE-capable policy remains present.");
     const auditColumnNames = auditColumns.rows.map((row) => row.column_name);
     assert(
       ["action_kind", "actor_profile_id", "created_at", "id", "next_role", "previous_role", "target_profile_id"].every(
@@ -744,7 +819,7 @@ async function inspectLiveSchema() {
       "Profile trigger does not retain the future-field-safe invariant or still trusts a generic nested trigger.",
     );
 
-    pass("live 0039/0040 profile grants, insert revocations, triggers, and RPC execution grants");
+    pass("live 0039/0040/0041 profile grants, revocations, triggers, and RPC execution grants");
     return {
       client: metadataClient,
       roleCounts: roleCountsFromRows(aggregates.rows),
@@ -912,6 +987,28 @@ async function runLiveSmoke({ allowMetadataTransportBlock = false } = {}) {
       console.log("PASS live aggregate profile role/status counts " + JSON.stringify(roleCounts));
     }
 
+    await expectLiveProfileDeleteDenied({
+      actor: student,
+      targetProfileId: student.profile.id,
+      label: "live student cannot delete own profile",
+    });
+    await expectLiveProfileDeleteDenied({
+      actor: teacher,
+      targetProfileId: teacher.profile.id,
+      label: "live teacher cannot delete own profile",
+    });
+    await expectLiveProfileDeleteDenied({
+      actor: admin,
+      targetProfileId: admin.profile.id,
+      label: "live admin cannot delete a profile through the normal path",
+    });
+    await expectLiveProfileDeleteDenied({
+      actor: student,
+      targetProfileId: teacher.profile.id,
+      verificationClient: service,
+      label: "live authenticated caller cannot delete another profile",
+    });
+
     originalStudent = { ...student.profile };
     const marker = "P0 smoke " + Date.now();
     const safeFieldTests = [
@@ -985,6 +1082,12 @@ async function runLiveSmoke({ allowMetadataTransportBlock = false } = {}) {
       requiredLiveEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
+    await expectLiveProfileDeleteDenied({
+      actor: { client: anonymous },
+      targetProfileId: student.profile.id,
+      verificationClient: student.client,
+      label: "live anonymous profile delete is denied",
+    });
     await expectLiveProfilePatchDenied({
       actor: { client: anonymous },
       targetProfileId: student.profile.id,
@@ -993,6 +1096,20 @@ async function runLiveSmoke({ allowMetadataTransportBlock = false } = {}) {
       label: "live anonymous profile update is denied",
       verificationClient: student.client,
     });
+
+    const viewDelete = await student.client
+      .from("user_profiles")
+      .delete()
+      .eq("user_id", student.profile.id)
+      .select("user_id");
+    if (!viewDelete.error && Array.isArray(viewDelete.data) && viewDelete.data.length > 0) {
+      throw new Error("The user_profiles view unexpectedly allowed a profile delete");
+    }
+    assert(
+      (await readLiveProfile(student.client, student.profile.id)).id === student.profile.id,
+      "user_profiles delete removed the backing profile",
+    );
+    pass("live user_profiles delete cannot bypass profile protections");
 
     const viewAttempt = await student.client
       .from("user_profiles")

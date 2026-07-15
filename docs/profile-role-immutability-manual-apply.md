@@ -2,33 +2,27 @@
 
 ## Scope
 
-`0039_profile_privileged_fields_immutability.sql` was applied once already.
-Do **not** edit or rerun it. Apply only the forward correction:
+`0039_profile_privileged_fields_immutability.sql` and
+`0040_profile_insert_and_role_transition_hardening.sql` were each applied
+once already. Do **not** edit or rerun either migration. Apply only the
+following forward correction:
 
 ```text
-supabase/clean-migrations/0040_profile_insert_and_role_transition_hardening.sql
+supabase/clean-migrations/0041_profile_delete_privilege_hardening.sql
 ```
 
-This is a forward-only fix for the clean Supabase project. Do not edit or
-reapply 0001 or 0039. Do not run anything under `supabase/migrations`.
+This is a forward-only least-privilege fix for the clean Supabase project. Do
+not edit or reapply 0001, 0039, or 0040. Do not run anything under
+`supabase/migrations`.
 
-0040:
+0041:
 
-- revokes direct `profiles` and `user_profiles` INSERT for `anon` and
-  `authenticated`;
-- removes the residual `profiles_super_admin_insert` policy;
-- adds a defense-in-depth profile INSERT trigger that permits only a
-  service-role JWT;
-- retains 0039's authenticated SELECT and three safe presentation UPDATE
-  columns;
-- removes the generic nested-trigger Google identity exception; and
-- serializes guarded role transitions so concurrent demotions cannot remove
-  the final active Super-admin.
+- revokes direct `profiles` DELETE for `anon` and `authenticated`; and
+- idempotently revokes direct `user_profiles` DELETE for the same client roles.
 
-Canonical profile creation is service-role-only. The existing clean bootstrap
-script creates Auth users through the Auth Admin API and upserts profiles with
-the service role. There is no supported browser signup/profile INSERT path to
-preserve. Google Login is not live and is not part of this apply.
+There is no user-facing direct profile deletion feature. Canonical cleanup
+deletes `auth.users` through the service role; `public.profiles.id` references
+that user with `ON DELETE CASCADE`. No client replacement DELETE path is added.
 
 ## Pre-apply aggregate audit
 
@@ -63,7 +57,7 @@ accounts in this apply step; open a separate incident-review task.
 1. Sign in to the **clean** Supabase project as a project administrator.
 2. Open SQL Editor and create a new query.
 3. Copy the complete contents of
-   `supabase/clean-migrations/0040_profile_insert_and_role_transition_hardening.sql`.
+   `supabase/clean-migrations/0041_profile_delete_privilege_hardening.sql`.
 4. Run it **once**.
 5. Keep the SQL Editor result as the migration-application record. Do not paste
    credentials, connection strings, or results containing user data into chat.
@@ -88,7 +82,11 @@ select
   has_table_privilege('authenticated', 'public.user_profiles', 'INSERT') as authenticated_user_profiles_insert,
   has_table_privilege('anon', 'public.user_profiles', 'UPDATE') as anon_user_profiles_update,
   has_table_privilege('authenticated', 'public.user_profiles', 'UPDATE') as authenticated_user_profiles_update,
-  has_table_privilege('authenticated', 'public.profiles', 'UPDATE') as authenticated_profiles_table_update;
+  has_table_privilege('authenticated', 'public.profiles', 'UPDATE') as authenticated_profiles_table_update,
+  has_table_privilege('anon', 'public.profiles', 'DELETE') as anon_profiles_delete,
+  has_table_privilege('authenticated', 'public.profiles', 'DELETE') as authenticated_profiles_delete,
+  has_table_privilege('anon', 'public.user_profiles', 'DELETE') as anon_user_profiles_delete,
+  has_table_privilege('authenticated', 'public.user_profiles', 'DELETE') as authenticated_user_profiles_delete;
 
 select policyname, cmd, roles, qual, with_check
 from pg_policies
@@ -171,8 +169,10 @@ Expected result:
 - all four INSERT privilege booleans are `false`;
 - both `user_profiles` write booleans and table-wide `profiles` UPDATE are
   `false`;
+- all four profile/view DELETE privilege booleans are `false`;
 - `profiles_super_admin_insert` is absent;
 - `profiles_self_safe_update` is the only relevant UPDATE policy;
+- no `profiles` policy has `cmd = 'DELETE'` or `cmd = 'ALL'`;
 - both profile immutability triggers exist and show `tgenabled = 'O'`;
 - all three functions show `security_definer = true` and a fixed
   `search_path` containing only `public, private`;
@@ -253,34 +253,33 @@ project using only dedicated disposable test users:
 - every generated fixture was removed. The disposable Student presentation
   fields were reset to a neutral test state after a test-harness cleanup fix.
 
-Automated direct database metadata verification is still unavailable from the
-isolated worktree: the direct host did not resolve and the configured pooler
-fallback could not establish a metadata session. Consequently, the following
-must still be verified in the SQL Editor with the read-only queries above
-before marking the P0 deployment gate closed:
+The SQL Editor metadata review completed the 0039/0040 verification. It
+confirmed that anon/authenticated have no `profiles` INSERT privilege, that
+authenticated UPDATE is limited to `full_name`, `avatar_url`, and
+`display_name`, and that `user_profiles` has no client INSERT, UPDATE, or
+DELETE privilege. Both profile immutability triggers are enabled, their
+security-definer functions use fixed search paths, the generic
+`pg_trigger_depth` Google exception is absent, the guarded role RPC is
+security-definer with a fixed search path, and the private audit table has RLS
+with no anon/authenticated privileges.
 
-- exact `profiles` column grants and absence of table-wide UPDATE;
-- `profiles_self_safe_update` and
-  `profiles_enforce_privileged_field_immutability` existence;
-- narrow execute grants for
-  `transition_profile_role_as_super_admin`;
-- private audit-event count for the controlled transition; and
-- the SQL helper result that a failed Student escalation leaves
-  `private.is_admin()` and `private.is_teacher_or_admin()` false.
+The same review found residual table-level DELETE grants on
+`public.profiles` for both anon and authenticated. There is no DELETE policy,
+so RLS likely blocks current exploitation, but the grants violate least
+privilege and must be revoked by 0041 before the formal P0 gate closes.
 
 `node scripts/profile-role-immutability-smoke.mjs --live` remains strict and
 fails when that metadata connection is unavailable. The explicit
 `--live-http-only` mode is diagnostic-only: it records the safe PostgREST and
 RPC behavior above but must not be used by itself to close the P0 gate.
 
-## 0040 live-validation status
+## 0041 live-validation status
 
-0040 has been applied once. The local and controlled live PostgREST smoke
-passed. Direct PostgreSQL metadata transport from the isolated worktree remains
-blocked, so run the read-only SQL Editor checks above and retain their safe
-boolean/aggregate results with the release record before closing the formal P0
-gate. The strict live mode remains intentionally strict and reports that
-metadata transport block rather than treating the HTTP-only run as sufficient.
+0041 has not yet been applied. Apply it once, run the local and controlled live
+PostgREST smoke, then rerun the DELETE grant/policy queries above. The strict
+direct database metadata connection remains unavailable from the isolated
+worktree, so the SQL Editor result is the required source of truth for final
+grant verification.
 
 For a future repeat validation, run the local smoke followed by strict live
 mode:
@@ -293,11 +292,16 @@ node scripts/profile-role-immutability-smoke.mjs --live
 Remove-Item Env:PROFILE_ROLE_IMMUTABILITY_CONFIRM
 ```
 
-The live smoke proves direct anonymous/authenticated profile and view inserts
-are denied, service-role bootstrap remains available, safe presentation updates
-remain available, privileged updates stay denied, and the guarded transition
-persists. The embedded local smoke also proves the concurrent
-last-Super-admin and generic nested-trigger cases.
+After 0041, the live smoke must prove anonymous/authenticated self and
+cross-user profile deletes plus `user_profiles` deletes are denied; service-role
+Auth-user fixture cleanup still cascades safely; existing INSERT/UPDATE and
+guarded-transition protections remain intact. The embedded local smoke also
+proves the concurrent last-Super-admin and generic nested-trigger cases.
 
-Do not close the formal profile-security gate until the SQL Editor checks and
-strict live validation both pass against the clean project.
+The pre-apply embedded smoke has already passed these 0041 contracts. It does
+not replace the required live PostgREST and SQL Editor checks after the manual
+one-time apply.
+
+Do not close the formal profile-security gate until 0041 is applied exactly
+once and both the SQL Editor DELETE metadata checks and live PostgREST DELETE
+denial checks pass against the clean project.

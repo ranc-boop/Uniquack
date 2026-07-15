@@ -175,6 +175,101 @@ The isolated embedded-Postgres smoke passed after applying clean migrations
   one rejection and retain one active Super-admin; and
 - a generic nested trigger cannot alter protected Google identity fields.
 
+## 0041 follow-up: client profile deletion hardening
+
+### SQL Editor metadata reconciliation
+
+The clean-project administrator supplied safe SQL Editor metadata after 0040.
+The following controls passed:
+
+- anon/authenticated have no INSERT privilege on any `profiles` column;
+- authenticated UPDATE is limited to `full_name`, `avatar_url`, and
+  `display_name`;
+- `user_profiles` has no anon/authenticated INSERT, UPDATE, or DELETE
+  privilege;
+- `profiles_enforce_insert_immutability` and
+  `profiles_enforce_privileged_field_immutability` are enabled;
+- both trigger functions use fixed search paths and the generic
+  `pg_trigger_depth` Google identity exception is absent;
+- the role-transition RPC is security-definer with a fixed search path; and
+- the audit table has RLS enabled with no anon/authenticated privileges.
+
+The review also found that anon and authenticated retain table-level DELETE on
+`public.profiles`. There is no active DELETE policy, so RLS blocks ordinary
+PostgREST deletion today. The grants are still a least-privilege defect: a
+future broad DELETE policy could reactivate them. The formal gate therefore
+remains open.
+
+### Deletion-path audit
+
+| Path | Result | Treatment |
+| --- | --- | --- |
+| Browser/client `public.profiles` DELETE | No runtime call or supported product feature found. | Remove grants; no replacement client path. |
+| Browser/client `public.user_profiles` DELETE | No runtime call found; view is not a deletion contract. | Keep revoke idempotent. |
+| Service-role smoke cleanup | `scripts/profile-role-immutability-smoke.mjs` deletes temporary `auth.users` through the Auth Admin API. | Preserve. |
+| Auth-user deletion | `public.profiles.id` references `auth.users(id) ON DELETE CASCADE`. | Preserve cascade behavior. |
+| Admin account deletion | No supported admin action or direct profile DELETE path found. | No new product feature. |
+| Profile deletion triggers | No profile DELETE trigger found in the canonical clean migration chain. | Do not add one without a proven deletion workflow. |
+
+Many dependent tables reference `public.profiles` with existing `CASCADE`,
+`SET NULL`, or `RESTRICT` behavior. 0041 does not change any foreign key or
+retention policy; it only removes ordinary client DELETE authority.
+
+### Forward migration
+
+Added:
+
+```text
+supabase/clean-migrations/0041_profile_delete_privilege_hardening.sql
+```
+
+0041 is forward-only and consists solely of idempotent revocations:
+
+1. `revoke delete on table public.profiles from anon, authenticated;`
+2. `revoke delete on table public.user_profiles from anon, authenticated;`
+
+No DELETE trigger or client-facing RPC was added. RLS already has no DELETE
+policy; the grant revocation closes the least-privilege gap without changing
+service-role Auth-user cleanup or bootstrap.
+
+### Local 0041 verification
+
+The isolated embedded-Postgres smoke applies 0001, 0039, 0040, and 0041 in
+order. It passed these additional checks:
+
+- anonymous profile DELETE is denied;
+- authenticated cross-user profile DELETE is denied;
+- Student self and cross-user profile DELETE are denied;
+- Teacher self DELETE and normal Admin DELETE are denied;
+- DELETE through `public.user_profiles` is denied;
+- safe presentation updates, privileged UPDATE/INSERT denials, and guarded
+  super-admin role transitions still pass; and
+- trusted service-role deletion of the disposable `auth.users` fixture still
+  cascades to remove its profile.
+
+0041 is **not yet applied** to the clean Supabase project. No live DELETE test
+has been run against the clean project, and the formal profile-security gate
+remains open until the one-time apply and SQL Editor/PostgREST checks complete.
+
+Pre-apply checks passed:
+
+```text
+npm.cmd install
+npm.cmd run lint
+npm.cmd run build
+node scripts/profile-role-immutability-smoke.mjs
+node scripts/security-smoke.mjs
+node scripts/route-smoke.mjs
+node --env-file=<ignored clean env> scripts/supabase-rls-smoke.mjs
+node scripts/student-workspace-shell-smoke.mjs
+node --env-file=<ignored clean env> scripts/assignment-practice-evidence-smoke.mjs
+node --env-file=<ignored clean env> scripts/bank-import-review-smoke.mjs (source pass; live skip: TEST_TEACHER unset)
+node scripts/teacher-beta-readiness-smoke.mjs
+npm.cmd run perf:budget
+npm.cmd run perf:audit
+npm.cmd run analyze
+```
+
 ### Current isolated-worktree checks
 
 Passed for this forward migration:
@@ -330,7 +425,7 @@ No real user role, status, default organization, identity field, Bank,
 Review Draft, Blueprint, Classroom, Assignment, Practice record, provider
 setting, or AI job was modified.
 
-### Metadata and audit evidence still blocked
+### Original automated metadata transport limitation
 
 The strict live mode attempted two safe direct metadata connection paths:
 
@@ -350,10 +445,10 @@ query:
 - `private.is_admin()` / `private.is_teacher_or_admin()` after the denied
   Student escalation.
 
-The migration source and local embedded-Postgres smoke cover each of those
-contracts. Run the read-only SQL Editor checks in
-`profile-role-immutability-manual-apply.md` and record their results before
-changing the P0 deployment status to closed.
+The migration source and local embedded-Postgres smoke covered each of those
+contracts. The later SQL Editor reconciliation recorded in the 0041 section
+above supplied the safe 0039/0040 metadata evidence. The remaining P0 gap is
+now specifically the residual client DELETE grants, which 0041 revokes.
 
 ### Existing-account aggregate review
 
@@ -485,9 +580,10 @@ audit verification outstanding for the profile-security gate.
 ## Deployment status
 
 **P0 behavior is strongly validated but the deployment gate remains blocked.**
-Do not call the overall website deployment-ready merely because the profile
-role path is hardened. Close this P0 only after the SQL Editor metadata/audit
-queries confirm the live schema state.
+The 0039/0040 SQL Editor metadata checks are confirmed; 0041 must now be
+applied exactly once and its DELETE-grant metadata plus live PostgREST denial
+must pass. Do not call the overall website deployment-ready merely because the
+profile role path is hardened.
 
 Remaining known launch blockers include:
 

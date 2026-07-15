@@ -177,6 +177,9 @@ const profileImmutabilityMigration = await read(
 const profileCreationHardeningMigration = await read(
   "supabase/clean-migrations/0040_profile_insert_and_role_transition_hardening.sql",
 );
+const profileDeleteHardeningMigration = await read(
+  "supabase/clean-migrations/0041_profile_delete_privilege_hardening.sql",
+);
 const adminUserActions = await read("src/app/admin/users/actions.ts");
 const databaseTypes = await read("src/types/database.ts");
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
@@ -232,6 +235,16 @@ assert(
   "profile creation hardening must block direct INSERT, retain defense in depth, serialize role transitions, and reject generic nested-trigger trust",
 );
 console.log("PASS profile creation and role-transition hardening are present");
+assert(
+  profileDeleteHardeningMigration.includes(
+    "revoke delete on table public.profiles from anon, authenticated",
+  ) &&
+    profileDeleteHardeningMigration.includes(
+      "revoke delete on table public.user_profiles from anon, authenticated",
+    ),
+  "profile deletion hardening must remove direct client DELETE authority",
+);
+console.log("PASS profile deletion hardening is present");
 assert(
   classroomMigration.includes("create table if not exists public.classrooms") &&
     classroomMigration.includes("create table if not exists public.classroom_members") &&
