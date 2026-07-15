@@ -171,6 +171,11 @@ const teacherRoleBoundaryMigration = await read(
 const blueprintLibraryMigration = await read(
   "supabase/clean-migrations/0031_blueprint_library_foundation.sql",
 );
+const profileImmutabilityMigration = await read(
+  "supabase/clean-migrations/0039_profile_privileged_fields_immutability.sql",
+);
+const adminUserActions = await read("src/app/admin/users/actions.ts");
+const databaseTypes = await read("src/types/database.ts");
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
 const courseBuilderBridgePage = await read("src/app/teacher/course-builder/page.tsx");
@@ -184,6 +189,31 @@ const authNav = await read("src/components/auth-nav.tsx");
 const supabaseMiddleware = await read("src/lib/supabase/middleware.ts");
 const profileValidation = await read("src/lib/validations/profile.ts");
 const adminUsersPage = await read("src/app/admin/users/page.tsx");
+assert(
+  profileImmutabilityMigration.includes(
+    "revoke update on table public.profiles from anon, authenticated",
+  ) &&
+    profileImmutabilityMigration.includes(
+      "grant update (full_name, avatar_url, display_name) on table public.profiles",
+    ) &&
+    profileImmutabilityMigration.includes(
+      "profiles_enforce_privileged_field_immutability",
+    ) &&
+    profileImmutabilityMigration.includes(
+      "transition_profile_role_as_super_admin",
+    ) &&
+    profileImmutabilityMigration.includes(
+      "profile_privileged_change_audit_log",
+    ),
+  "profile security migration must narrow authenticated updates, reject privileged changes, and audit guarded transitions",
+);
+assert(
+  adminUserActions.includes('rpc("transition_profile_role_as_super_admin"') &&
+    !adminUserActions.includes(".update({ role: parsed.role })") &&
+    databaseTypes.includes("transition_profile_role_as_super_admin"),
+  "super-admin role management must use the guarded profile role RPC",
+);
+console.log("PASS profile privileged fields are immutable outside guarded paths");
 assert(
   classroomMigration.includes("create table if not exists public.classrooms") &&
     classroomMigration.includes("create table if not exists public.classroom_members") &&

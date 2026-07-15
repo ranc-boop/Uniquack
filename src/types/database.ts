@@ -1117,6 +1117,13 @@ export type Database = {
         };
         Returns: string;
       };
+      transition_profile_role_as_super_admin: {
+        Args: {
+          p_next_role: "super_admin" | "admin" | "teacher" | "student";
+          p_target_profile_id: string;
+        };
+        Returns: undefined;
+      };
       create_bank_share_code: {
         Args: {
           expires_at?: string | null;
