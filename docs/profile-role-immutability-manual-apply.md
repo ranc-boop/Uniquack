@@ -283,11 +283,15 @@ service-role cleanup path.
 The strict `--live` metadata mode remains blocked at the direct/pooler database
 metadata connection with safe error category `XX000`. This is not a behavioral
 failure, but it means this worktree cannot independently verify the final
-catalog booleans. The SQL Editor query above remains the source of truth for:
+catalog booleans. The SQL Editor query above is the source of truth and has now
+confirmed:
 
-- all four `profiles`/`user_profiles` anon/authenticated DELETE grants are
-  `false`;
-- no `profiles` DELETE or ALL policy exists;
+- anon `profiles` DELETE is `false`;
+- authenticated `profiles` DELETE is `false`;
+- anon `user_profiles` DELETE is `false`;
+- authenticated `user_profiles` DELETE is `false`;
+- no DELETE or ALL policy exists for normal clients on `profiles` or
+  `user_profiles`;
 - safe authenticated UPDATE remains exactly `full_name`, `avatar_url`, and
   `display_name`; and
 - direct profiles INSERT and all user_profiles writes remain denied.
@@ -313,6 +317,7 @@ The pre-apply embedded smoke has already passed these 0041 contracts. It does
 not replace the required live PostgREST and SQL Editor checks after the manual
 one-time apply.
 
-The formal profile-security gate remains open until the SQL Editor DELETE
-metadata checks are recorded as passing. The live PostgREST DELETE-denial
-checks have passed.
+The confirmed profile role self-promotion, direct profile identity insertion,
+and client profile deletion security gate is closed.
+
+This does not make the overall website deployment-ready.

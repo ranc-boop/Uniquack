@@ -408,8 +408,8 @@ reapply it and did not modify 0039 or 0040 after that application.
 
 The live **PostgREST and guarded-RPC behavior** is correct for the dedicated
 disposable fixtures. The strict metadata/audit verification could not complete
-from this isolated worktree, so the P0 is **not yet closed as a deployment
-gate**. This is an evidence gap, not a reason to weaken the migration.
+from this isolated worktree at that time. The final SQL Editor catalog results
+recorded in the 0041 refresh below resolve that evidence gap.
 
 ### Live behavior confirmed
 
@@ -577,20 +577,19 @@ The same refresh found these non-profile validation limitations:
   refresh. It remains an independently reported launch risk until its
   reconciliation owner closes it; this branch did not change Classroom policy.
 
-The strict `--live` profile smoke remains intentionally failed at the direct
+The strict `--live` profile smoke remains intentionally blocked at the direct
 metadata connection stage with safe code `XX000`. No remote mutation occurred
-in that strict attempt. This leaves only the required SQL Editor metadata and
-audit verification outstanding for the profile-security gate.
+in that strict attempt. The final SQL Editor catalog evidence recorded below
+supplies the required metadata verification without relying on this transport.
 
 ## Deployment status
 
-**P0 behavior is strongly validated but the formal profile-security gate
-remains open.** The 0039/0040 SQL Editor metadata checks are confirmed, 0041
-is confirmed applied exactly once, and live PostgREST denial checks passed. The
-last missing evidence is the post-0041 SQL Editor confirmation that all four
-client DELETE-grant booleans are `false` and no DELETE/ALL profile policy
-exists. Do not call the overall website deployment-ready merely because the
-profile role path is hardened.
+**The confirmed profile role self-promotion, direct profile identity insertion,
+and client profile deletion security gate is closed.** The 0039, 0040, and
+0041 migrations were each applied exactly once. SQL Editor metadata and live
+PostgREST denial checks confirm the profile boundary is intact.
+
+This does not make the overall website deployment-ready.
 
 ## 0041 post-apply validation refresh (2026-07-14)
 
@@ -621,14 +620,16 @@ or migration was modified by the validation.
 
 ### Metadata evidence status
 
-The strict live metadata mode attempted the direct database and pooler paths
-and stopped at a safe `XX000` transport category before catalog inspection. It
-therefore cannot establish the final remote DELETE-grant and policy booleans.
-The documented SQL Editor query is still required to confirm:
+The automated strict metadata mode still stops at a safe `XX000` transport
+category before catalog inspection. The clean-project SQL Editor supplied the
+authoritative final catalog results:
 
-- anon/authenticated DELETE is `false` on both `public.profiles` and
+- anon `public.profiles` DELETE is `false`;
+- authenticated `public.profiles` DELETE is `false`;
+- anon `public.user_profiles` DELETE is `false`;
+- authenticated `public.user_profiles` DELETE is `false`;
+- no DELETE policy exists for normal clients on `public.profiles` or
   `public.user_profiles`;
-- no `profiles` DELETE or ALL policy exists;
 - authenticated UPDATE remains limited to `full_name`, `avatar_url`, and
   `display_name`; and
 - direct profiles INSERT and all `user_profiles` writes remain denied.
@@ -652,8 +653,9 @@ untouched by this work.
 
 ### Gate conclusion
 
-The profile hardening behavior is verified, but the formal profile-security
-gate remains **open** until the SQL Editor catalog results above are recorded.
+The confirmed profile role self-promotion, direct profile identity insertion,
+and client profile deletion security gate is closed.
+
 This does not make the overall website deployment-ready.
 
 Remaining known launch blockers include:
