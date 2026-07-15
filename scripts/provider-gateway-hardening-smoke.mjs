@@ -140,6 +140,8 @@ for (const actionName of [
   "saveAIProviderRoutingPolicy",
   "saveAIOperationsControl",
   "resetAIProviderCircuit",
+  "setAIOperationPause",
+  "cancelQueuedAIJobAsAdmin",
 ]) {
   assert(
     exportedFunction(adminActions, actionName).includes("requireSuperAdmin()"),
@@ -152,7 +154,12 @@ assert(
     adminActions.includes("saved.apiKey") &&
     !adminActions.includes("decryptSecret") &&
     adminPage.includes("await requireSuperAdmin()") &&
-    adminPage.includes("listSafeAIProviderProfiles(supabase)"),
+    adminPage.includes("listSafeAIProviderProfiles(supabase)") &&
+    !adminPage.includes("api_key_ciphertext") &&
+    !adminPage.includes("api_key_iv") &&
+    !adminPage.includes("api_key_tag") &&
+    !adminPage.includes("credential_ref") &&
+    !adminPage.includes("AI_PROVIDER_GATEWAY_TOKEN"),
   "Admin Settings must gate actions first and receive only safe metadata while saved-key tests decrypt in server memory",
 );
 assert(

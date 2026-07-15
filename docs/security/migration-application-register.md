@@ -9,7 +9,7 @@ operator records a future release.
 | ID | File | Status | Method | Evidence | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0001 | foundations_identity_organizations | APPLIED_AND_REVIEWED | CLI/disposable baseline | remote apply report | unassigned | baseline |
-| 0002 | provider_profiles_and_operation_logs | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | gateway setup reports | platform security owner unassigned | active internal gateway; provider-profile grants and full-row policies require a forward hardening decision after catalog capture |
+| 0002 | provider_profiles_and_operation_logs | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | gateway setup reports | platform security owner unassigned | active internal gateway; its direct provider-profile grant and full-row policy concern was hardened forward-only by 0042, while broader catalog capture remains pending |
 | 0003 | taxonomy_runtime_source | APPLIED_AND_REVIEWED | CLI/disposable baseline | remote apply report | unassigned | baseline |
 | 0004 | source_assets_and_import_jobs | APPLIED_AND_REVIEWED | CLI/disposable baseline | remote apply report | unassigned | baseline |
 | 0005 | ai_parsing_pipeline | APPLIED_AND_REVIEWED | CLI/disposable baseline | remote apply report | unassigned | baseline |
@@ -50,7 +50,7 @@ operator records a future release.
 | 0039 | profile_privileged_fields_immutability | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | profile live validation | unassigned | applied exactly once |
 | 0040 | profile_insert_and_role_transition_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | profile live validation | unassigned | applied exactly once |
 | 0041 | profile_delete_privilege_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | profile live validation | unassigned | applied exactly once |
-| 0042 | internal_provider_gateway_hardening | PENDING_MANUAL_APPLY | approved manual release path | provider gateway hardening source/security smoke | Jerry / Platform Security; Frances / Technical Operations backup pending confirmation | removes the stale alias and browser-role provider-table access; requires post-apply catalog and RLS validation |
+| 0042 | internal_provider_gateway_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | post-0042 SQL Editor grant and alias validation | Jerry / Platform Security; Frances / Technical Operations backup pending founder confirmation | applied exactly once; anon/authenticated table access removed, service_role retained, stale helper/policy absent; runtime role/token validation remains |
 
 The complete machine-readable inventory, including exact filenames and status
 labels, is `docs/security/live-schema-manifest.json`.
@@ -63,11 +63,11 @@ gateway token to narrow safe-metadata and mutation RPCs. Provider execution and
 workers resolve credentials directly through service role; they do not receive
 the gateway token. Jerry / Platform Security is the primary gateway and token
 rotation owner. Frances / Technical Operations is the designated backup, pending
-release-owner confirmation before live rotation or manual application of 0042.
+founder confirmation before live rotation.
 
-Migration `0042_internal_provider_gateway_hardening.sql` is pending manual
-application. It removes the untracked request-header helper/policy, revokes
-browser-role table access, and removes the credential-returning gateway RPC.
-Until its sanitized post-apply catalog evidence is recorded, the release does
-not authorize relying on broad `anon`/`authenticated` table grants or any
-full-row provider-profile policy.
+Migration `0042_internal_provider_gateway_hardening.sql` was applied exactly
+once through SQL Editor. Sanitized validation confirmed no direct `anon` or
+`authenticated` table privileges, retained `service_role` access, and absence
+of the stale helper/policy. The register deliberately does not fabricate a
+Supabase internal migration-ledger record. Runtime super-admin/token boundary
+validation remains before the broader reconciliation gate can close.

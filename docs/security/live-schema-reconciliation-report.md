@@ -2,8 +2,8 @@
 
 ## Status
 
-**BLOCKED - forward hardening is prepared but requires manual live application
-and sanitized catalog validation.**
+**PARTIALLY RECONCILED - 0042 grant and stale-alias closure is confirmed; the
+credential-dependent supported-gateway role/token checks remain pending.**
 
 This is a release-control conclusion only. It does not state that the website
 is deployment-ready.
@@ -12,13 +12,14 @@ is deployment-ready.
 
 This audit used a clean worktree from `origin/main` after the merged profile
 security work. It did not touch the original workspace, user-owned `public/`,
-protected stashes, `.env.local`, data, provider settings, or Supabase.
+protected stashes, `.env.local`, data, or provider settings. Post-0042 SQL
+Editor evidence was supplied by the release operator; this audit did not read
+credentials, provider rows, or raw SQL Editor output.
 
 The repository inventory is deterministic and recorded in
-`live-schema-manifest.json`. Direct database catalog transport was not treated
-as evidence in this isolated audit, so the manifest deliberately remains
-`BLOCKED_PENDING_READ_ONLY_METADATA_CAPTURE`. It does not invent migration-ledger
-rows, timestamps, live policies, or function definitions.
+`live-schema-manifest.json`. The manifest now records the supplied post-0042
+grant and alias results as partial live metadata. It does not invent
+migration-ledger rows, timestamps, live policies, or function definitions.
 
 ## Canonical Source And Ledger Strategy
 
@@ -28,11 +29,11 @@ rows, timestamps, live policies, or function definitions.
 | Legacy migration source | `supabase/migrations`; non-canonical and never apply to clean Supabase |
 | Historical ledger | Incomplete for many SQL Editor applications; do not mutate Supabase internal history |
 | Selected strategy | Repository-owned reconciliation manifest plus application register (Outcome A) |
-| Forward migration | `0042_internal_provider_gateway_hardening.sql` is prepared, reviewed by focused source tests, and not yet applied. |
+| Forward migration | `0042_internal_provider_gateway_hardening.sql` was applied exactly once through SQL Editor; no internal migration-ledger history was fabricated. |
 
-No remote mutation occurred in this PR. The release owner must apply `0042`
-exactly once through the approved manual release path, then capture sanitized
-catalog evidence before the reconciliation gate can close.
+No provider row, credential, or runtime environment value was changed by this
+validation. The remaining gate is safe runtime validation of the supported
+super-admin/token path with approved disposable credentials.
 
 ## AI Provider Gateway Call-Graph Reconciliation
 
@@ -92,10 +93,10 @@ Current code instead calls gateway RPCs backed by canonical
 untracked live authorization aliases within an active internal gateway, not an
 external integration and not safe to preserve by assumption.
 
-`0042_internal_provider_gateway_hardening.sql` removes both aliases
-forward-only. Their live definitions, execution roles, and result-column access
-still need read-only capture before and after application; until then, the
-reconciliation gate remains blocked.
+`0042_internal_provider_gateway_hardening.sql` was applied exactly once. The
+release operator's final SQL Editor checks confirmed that both aliases are
+absent. No unknown active authorization alias remains for this provider-gateway
+surface.
 
 ### Full-Row and Grant Risk
 
@@ -114,10 +115,11 @@ The canonical migration did not explicitly revoke direct table privileges on
 `public.ai_provider_profiles`; the archived legacy chain contains a revoke but
 is non-canonical and cannot be treated as proof of the live state. `0042`
 removes the full-row RLS policies and revokes direct `public`, `anon`, and
-`authenticated` table privileges while preserving service-role access. This
-remains a P1 launch blocker until the migration is applied and the targeted
-read-only privilege capture below confirms the result; escalate it to P0 if a
-browser-reachable full-row credential path is confirmed before application.
+`authenticated` table privileges while preserving service-role access. The
+direct-table P1 is closed for the current provider-gateway release surface:
+the final SQL Editor checks confirmed `anon` and `authenticated` have no direct
+privileges and `service_role` retains them. Escalate a future finding to P0 if a
+browser-reachable credential path is ever confirmed.
 
 ### Safe Replace Plan
 
@@ -136,11 +138,12 @@ change implement this replacement:
 4. In `0042`, revoke direct `anon`/`authenticated` table privileges, remove the
    credential-returning read RPC, and replace safe metadata list functions with
    explicit allowlists.
-5. In `0042`, remove the named live helper/policy forward-only. Record the
-   platform security owner and token-rotation procedure before applying it.
+5. `0042` removed the named live helper/policy forward-only. Keep the platform
+   security owner and token-rotation procedure current.
 
-The trusted service-role resolver is now the primary execution path. No
-migration was applied in this task.
+The trusted service-role resolver is now the primary execution path. Migration
+0042 was applied once; its application is recorded only as SQL Editor evidence,
+not fabricated Supabase ledger history.
 
 ## Migration Inventory
 
@@ -383,6 +386,31 @@ fact and rely on the repository register plus catalog fingerprints.
 
 ## Findings
 
+## Post-0042 Validation Record (2026-07-15)
+
+The following repository and release-control checks passed in this isolated
+worktree:
+
+- `npm.cmd run lint` and `npm.cmd run build`;
+- `node scripts/provider-gateway-hardening-smoke.mjs`;
+- `node scripts/migration-reconciliation-smoke.mjs`;
+- `node scripts/security-smoke.mjs` and `node scripts/route-smoke.mjs`;
+- provider resilience, fallback/circuit-breaker, AI operations, AI Parsing QA,
+  and durable job-queue source smokes;
+- `npm.cmd run perf:budget`, `npm.cmd run perf:audit`, and `npm.cmd run analyze`.
+
+The supplied SQL Editor evidence confirms the direct provider-profile grant
+closure and stale-alias removal. The hard command
+`node scripts/migration-reconciliation-smoke.mjs --require-live-reconciliation`
+correctly remains blocked because the manifest is only partially captured and
+the approved credential-dependent role/token tests have not run.
+
+`node scripts/supabase-rls-smoke.mjs` was attempted and stopped before live
+access because this isolated worktree has no Supabase URL or anon key. Aggregate
+`npm.cmd run smoke` and live worker checks were not run without approved test
+credentials. No environment file was read, copied, or changed to bypass those
+blocks.
+
 ### P1 - Duplicate Prefix And Blocked Google Apply Path
 
 Two `0032` files exist. The active plan excludes Google, but the current
@@ -391,20 +419,22 @@ new reconciliation smoke fails if they are reintroduced. Google remains blocked
 until its approved OAuth/OIDC redesign exists; this is not evidence that Google
 should be applied.
 
-### P1 - Active Internal Provider Gateway Hardening Awaits Live Apply
+### P1 - Supported Provider Gateway Runtime Validation Pending
 
 The supported gateway remains active only for super-admin Admin Settings
-metadata and guarded mutations. Trusted execution now uses service role
-directly, safe lists are allowlisted, and `0042` removes the stale alias and
-credential-returning RPC. Manual apply plus post-apply catalog/RLS validation
-is still required.
+metadata and guarded mutations. The 0042 SQL Editor validation confirmed the
+direct-table grant closure and removal of the stale alias/credential RPC.
+Focused source tests confirm the safe allowlist, server-only token boundary,
+and service-role worker resolver. A credential-dependent live run still needs
+to prove the correct-token/super-admin success and deny anonymous, student,
+teacher, ordinary-admin, and incorrect-token calls.
 
-### P1 - Provider-Profile Full-Row Access Awaits Live Confirmation
+### Resolved For Current Release - Provider-Profile Direct Table Access
 
-`0042` removes the full-row policies and revokes direct table grants. Until the
-targeted privilege query proves the live result, this remains a P1 launch
-blocker; escalate it to P0 if a browser-reachable `anon` or `authenticated`
-path can return encrypted provider credential columns.
+The post-0042 SQL Editor checks confirmed no direct `anon` or `authenticated`
+privileges and retained `service_role` table privileges. The stale request-header
+policy and helper are absent. This specific direct-table exposure is reconciled
+for the current release.
 
 ### P1 - Historical Application Ledger Is Incomplete
 
@@ -429,11 +459,12 @@ already recorded.
 
 ## Next Safe Actions
 
-1. Confirm Jerry and Frances as the accountable rotation owners.
-2. Apply `0042_internal_provider_gateway_hardening.sql` exactly once through
-   the approved manual release path.
-3. Capture provider-profile table grants, RLS policies, and gateway-function
-   grants with sanitized read-only catalog queries.
+1. Run the approved credential-dependent supported-gateway role/token checks
+   without logging credentials or mutating provider rows.
+2. Confirm Frances as the operational backup owner before any live token
+   rotation; Jerry remains the recorded primary owner.
+3. Capture remaining sanitized gateway-function security/grant metadata and
+   broader reconciliation categories.
 4. Keep Google foundation harnesses isolated until a redesigned, uniquely
    numbered Google migration is approved; never add them to aggregate smoke.
 5. Record fingerprints and named owners in the application register.
@@ -444,5 +475,5 @@ already recorded.
 This audit does not clear Teacher Classroom creation RLS, private question-asset
 delivery, signed-in Student E2E, Student self-study evidence isolation, Google
 Login redesign, Vertex/Cloud Run/Cloud Tasks production readiness, 50-job
-qualification, monitoring, legal, privacy, or the provider-gateway live-apply
-and verification gate.
+qualification, monitoring, legal, privacy, or the provider-gateway supported
+runtime role/token verification gate.

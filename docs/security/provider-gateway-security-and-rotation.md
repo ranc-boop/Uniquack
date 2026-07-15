@@ -56,20 +56,29 @@ forward-only change. It does not modify provider rows or encrypted values. It:
 - removes full-row provider profile RLS policies;
 - preserves service-role table access and reviewed gateway RPC execution.
 
-It has **not** been applied remotely by this task.
+It was applied exactly once through the clean project's SQL Editor. This record
+does not fabricate Supabase internal migration-ledger history.
 
 ## Implementation Validation
 
 The repository-only validation completed with `lint`, production `build`,
 `security-smoke`, `route-smoke`, the canonical migration reconciliation smoke,
 the focused provider-gateway hardening smoke, provider resilience/fallback
-smokes, AI operations smoke, and the performance budget smoke passing.
+smokes, AI operations and AI Parsing QA smokes, durable job-queue smoke, and
+the performance budget, audit, and analyzer checks passing.
 
-Live Supabase RLS and queue-worker smoke checks remain intentionally blocked in
-this isolated worktree because it has no environment credentials. `npm run
-smoke` reached the new static gateway and profile-security checks, then stopped
-at that same missing live configuration. No environment file was read, copied,
-or changed to bypass the block.
+The release operator's final SQL Editor checks confirmed no direct `anon` or
+`authenticated` table privileges on `public.ai_provider_profiles`, retained
+`service_role` table privileges, and absence of the stale request-header policy
+and helper. No raw SQL Editor output, provider row, credential, digest, or
+environment value was recorded.
+
+Credential-dependent live role/token and worker checks remain blocked in this
+isolated worktree because it has no environment credentials.
+`supabase-rls-smoke` was attempted and stopped before live access because the
+Supabase URL and anon key are unavailable here. Aggregate `npm run smoke` was
+not run without approved credentials. No environment file was read, copied, or
+changed to bypass either block.
 
 ## Ownership And Rotation
 
@@ -102,18 +111,17 @@ or changed to bypass the block.
    flows.
 4. Record only timestamps, owner, status, and safe validation outcomes.
 
-## Manual Apply And Validation
+## Post-Apply Validation
 
-Apply only `0042_internal_provider_gateway_hardening.sql` using the approved
-manual release path. Do not replay the clean migration history and do not apply
-the legacy migration directory.
+Do not rerun `0042_internal_provider_gateway_hardening.sql`, replay the clean
+migration history, or apply the legacy migration directory.
 
-After application, capture sanitized read-only evidence for:
+After application, record only sanitized evidence for:
 
-- absence of `private.has_ai_router_provider_access()` and
+- the confirmed absence of `private.has_ai_router_provider_access()` and
   `ai_provider_profiles_ai_router_read`;
-- direct table grants showing no `anon` or `authenticated` privileges and
-  preserved service-role privileges;
+- the confirmed direct table grants: no `anon` or `authenticated` privileges,
+  with preserved service-role privileges;
 - safe list RPC signatures, security-definer mode, fixed search path, and
   `authenticated` execute grants only where reviewed;
 - absence of the credential-returning gateway read RPC;
@@ -122,7 +130,8 @@ After application, capture sanitized read-only evidence for:
 
 Run the focused gateway smoke, canonical migration reconciliation smoke, RLS
 smoke, and the existing AI resilience/circuit/operations suites. The live
-reconciliation gate stays blocked until the sanitized evidence is recorded.
+reconciliation gate stays blocked until the supported correct-token/
+super-admin success path and negative role/token cases are safely validated.
 
 ## Scope
 
