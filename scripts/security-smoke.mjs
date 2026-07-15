@@ -171,6 +171,17 @@ const teacherRoleBoundaryMigration = await read(
 const blueprintLibraryMigration = await read(
   "supabase/clean-migrations/0031_blueprint_library_foundation.sql",
 );
+const profileImmutabilityMigration = await read(
+  "supabase/clean-migrations/0039_profile_privileged_fields_immutability.sql",
+);
+const profileCreationHardeningMigration = await read(
+  "supabase/clean-migrations/0040_profile_insert_and_role_transition_hardening.sql",
+);
+const profileDeleteHardeningMigration = await read(
+  "supabase/clean-migrations/0041_profile_delete_privilege_hardening.sql",
+);
+const adminUserActions = await read("src/app/admin/users/actions.ts");
+const databaseTypes = await read("src/types/database.ts");
 const courseBuilderBridgeHelper = await read("src/lib/course-builder/assignment-bridge.ts");
 const courseBuilderBridgeActions = await read("src/app/teacher/course-builder/actions.ts");
 const courseBuilderBridgePage = await read("src/app/teacher/course-builder/page.tsx");
@@ -184,6 +195,56 @@ const authNav = await read("src/components/auth-nav.tsx");
 const supabaseMiddleware = await read("src/lib/supabase/middleware.ts");
 const profileValidation = await read("src/lib/validations/profile.ts");
 const adminUsersPage = await read("src/app/admin/users/page.tsx");
+assert(
+  profileImmutabilityMigration.includes(
+    "revoke update on table public.profiles from anon, authenticated",
+  ) &&
+    profileImmutabilityMigration.includes(
+      "grant update (full_name, avatar_url, display_name) on table public.profiles",
+    ) &&
+    profileImmutabilityMigration.includes(
+      "profiles_enforce_privileged_field_immutability",
+    ) &&
+    profileImmutabilityMigration.includes(
+      "transition_profile_role_as_super_admin",
+    ) &&
+    profileImmutabilityMigration.includes(
+      "profile_privileged_change_audit_log",
+    ),
+  "profile security migration must narrow authenticated updates, reject privileged changes, and audit guarded transitions",
+);
+assert(
+  adminUserActions.includes('rpc("transition_profile_role_as_super_admin"') &&
+    !adminUserActions.includes(".update({ role: parsed.role })") &&
+    databaseTypes.includes("transition_profile_role_as_super_admin"),
+  "super-admin role management must use the guarded profile role RPC",
+);
+console.log("PASS profile privileged fields are immutable outside guarded paths");
+assert(
+  profileCreationHardeningMigration.includes(
+    "revoke insert on table public.profiles from anon, authenticated",
+  ) &&
+    profileCreationHardeningMigration.includes(
+      "revoke insert on table public.user_profiles from anon, authenticated",
+    ) &&
+    profileCreationHardeningMigration.includes(
+      "profiles_enforce_insert_immutability",
+    ) &&
+    profileCreationHardeningMigration.includes("pg_advisory_xact_lock") &&
+    !profileCreationHardeningMigration.includes("pg_trigger_depth() > 1"),
+  "profile creation hardening must block direct INSERT, retain defense in depth, serialize role transitions, and reject generic nested-trigger trust",
+);
+console.log("PASS profile creation and role-transition hardening are present");
+assert(
+  profileDeleteHardeningMigration.includes(
+    "revoke delete on table public.profiles from anon, authenticated",
+  ) &&
+    profileDeleteHardeningMigration.includes(
+      "revoke delete on table public.user_profiles from anon, authenticated",
+    ),
+  "profile deletion hardening must remove direct client DELETE authority",
+);
+console.log("PASS profile deletion hardening is present");
 assert(
   classroomMigration.includes("create table if not exists public.classrooms") &&
     classroomMigration.includes("create table if not exists public.classroom_members") &&

@@ -11,10 +11,14 @@ export async function updateUserRole(formData: FormData) {
   const parsed = profileRoleUpdateSchema.parse(Object.fromEntries(formData));
   const supabase = await createClient();
 
-  await supabase
-    .from("profiles")
-    .update({ role: parsed.role })
-    .eq("id", parsed.id);
+  const { error } = await supabase.rpc("transition_profile_role_as_super_admin", {
+    p_next_role: parsed.role,
+    p_target_profile_id: parsed.id,
+  });
+
+  if (error) {
+    throw new Error("Unable to update the user role.");
+  }
 
   revalidatePath("/admin/users");
 }
