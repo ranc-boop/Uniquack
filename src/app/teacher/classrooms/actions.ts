@@ -13,13 +13,13 @@ import {
   classroomJoinCodeHint,
   generateClassroomJoinCode,
   hashClassroomJoinCode,
-  resolveClassroomOrganizationId,
 } from "@/lib/classrooms";
 import { createClient } from "@/lib/supabase/server";
 
 const classroomCreateSchema = z.object({
   description: z.string().trim().max(2000).optional().default(""),
   name: z.string().trim().min(1).max(120),
+  requestId: z.string().uuid(),
   subject: z.string().trim().max(120).optional().default(""),
 });
 
@@ -161,23 +161,16 @@ function revalidateClassroom(classroomId: string) {
 
 export async function createClassroom(formData: FormData) {
   try {
-    const profile = await requireTeacher();
+    await requireTeacher();
     const parsed = classroomCreateSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
-    const organizationId = await resolveClassroomOrganizationId({
-      allowedRoles: ["admin", "teacher"],
-      profile,
-      supabase,
-    });
-    const joinCode = generateClassroomJoinCode();
-
     const { data: createdClassrooms, error: classroomError } = await supabase.rpc(
       "create_teacher_classroom",
       {
         p_description: parsed.description || null,
-        p_join_code: joinCode,
         p_name: parsed.name,
-        p_organization_id: organizationId,
+        p_organization_id: null,
+        p_request_id: parsed.requestId,
         p_subject: parsed.subject || null,
       },
     );
@@ -194,7 +187,11 @@ export async function createClassroom(formData: FormData) {
       throw new Error("Classroom creation did not return a classroom id.");
     }
 
-    const displayCode = createdClassroom.display_code || joinCode;
+    const displayCode = createdClassroom.display_code;
+
+    if (!displayCode) {
+      throw new Error("Classroom creation did not return a join code.");
+    }
 
     revalidatePath("/teacher/classrooms");
     redirectWithSaved(
@@ -455,12 +452,14 @@ export async function removeClassroomStudent(formData: FormData) {
       throw new Error("Only student memberships can be removed from this action.");
     }
 
-    const { error: updateError } = await supabase
-      .from("classroom_members")
-      .update({ status: "removed" })
-      .eq("id", parsed.memberId)
-      .eq("classroom_id", parsed.classroomId)
-      .eq("role", "student");
+    const { error: updateError } = await supabase.rpc(
+      "set_classroom_student_membership_status",
+      {
+        p_classroom_id: parsed.classroomId,
+        p_member_id: parsed.memberId,
+        p_status: "removed",
+      },
+    );
 
     if (updateError) {
       throw new Error(updateError.message);
@@ -507,12 +506,14 @@ export async function restoreClassroomStudent(formData: FormData) {
       throw new Error("Only student memberships can be restored from this action.");
     }
 
-    const { error: updateError } = await supabase
-      .from("classroom_members")
-      .update({ status: "active" })
-      .eq("id", parsed.memberId)
-      .eq("classroom_id", parsed.classroomId)
-      .eq("role", "student");
+    const { error: updateError } = await supabase.rpc(
+      "set_classroom_student_membership_status",
+      {
+        p_classroom_id: parsed.classroomId,
+        p_member_id: parsed.memberId,
+        p_status: "active",
+      },
+    );
 
     if (updateError) throw new Error(updateError.message);
 
@@ -567,36 +568,12 @@ export async function addClassroomCoTeacher(formData: FormData) {
       throw new Error("You are already the classroom owner.");
     }
 
-    const { data: existing, error: existingError } = await supabase
-      .from("classroom_members")
-      .select("id, role, status")
-      .eq("classroom_id", parsed.classroomId)
-      .eq("user_id", teacherProfile.id)
-      .maybeSingle();
+    const { error: coTeacherError } = await supabase.rpc("add_classroom_co_teacher", {
+      p_classroom_id: parsed.classroomId,
+      p_teacher_user_id: teacherProfile.id,
+    });
 
-    if (existingError) throw new Error(existingError.message);
-    if (existing?.role === "teacher") {
-      throw new Error("The classroom owner cannot be added as a co-teacher.");
-    }
-
-    if (existing) {
-      const { error: updateError } = await supabase
-        .from("classroom_members")
-        .update({ role: "co_teacher", status: "active" })
-        .eq("id", existing.id)
-        .eq("classroom_id", parsed.classroomId);
-
-      if (updateError) throw new Error(updateError.message);
-    } else {
-      const { error: insertError } = await supabase.from("classroom_members").insert({
-        classroom_id: parsed.classroomId,
-        role: "co_teacher",
-        status: "active",
-        user_id: teacherProfile.id,
-      });
-
-      if (insertError) throw new Error(insertError.message);
-    }
+    if (coTeacherError) throw new Error(coTeacherError.message);
 
     revalidateClassroom(parsed.classroomId);
     redirectWithSaved(
@@ -639,12 +616,10 @@ export async function removeClassroomCoTeacher(formData: FormData) {
       throw new Error("The classroom owner cannot remove themselves.");
     }
 
-    const { error } = await supabase
-      .from("classroom_members")
-      .update({ status: "removed" })
-      .eq("id", parsed.memberId)
-      .eq("classroom_id", parsed.classroomId)
-      .eq("role", "co_teacher");
+    const { error } = await supabase.rpc("remove_classroom_co_teacher", {
+      p_classroom_id: parsed.classroomId,
+      p_member_id: parsed.memberId,
+    });
 
     if (error) throw new Error(error.message);
 

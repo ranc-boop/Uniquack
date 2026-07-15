@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -157,7 +157,7 @@ async function runSourceSmoke() {
       classroomActions.includes("disableClassroomJoining") &&
       classroomActions.includes("hashClassroomJoinCode") &&
       classroomActions.includes("removeClassroomStudent") &&
-      classroomActions.includes('update({ status: "removed" })'),
+      classroomActions.includes("set_classroom_student_membership_status"),
     "Students section must show roster boundary copy, join-code recovery, and safe soft-remove action",
   );
   assert(
@@ -228,20 +228,19 @@ async function runLiveSmoke() {
   if (!teacher || !student) return;
 
   const organizationId = await resolveOrganizationId(teacher.client, teacher.user.id);
-  const joinCode = randomJoinCode();
   const { data: classroomRows, error: createError } = await teacher.client.rpc(
     "create_teacher_classroom",
     {
       p_description: "Classroom UI rebuild smoke classroom",
-      p_join_code: joinCode,
       p_name: `Classroom UI smoke ${Date.now()}`,
       p_organization_id: organizationId,
+      p_request_id: randomUUID(),
       p_subject: "Smoke test",
     },
   );
 
   if (createError?.message?.includes("function public.create_teacher_classroom")) {
-    console.log("SKIP classroom UI live smoke: migration 0030 is not applied remotely.");
+    console.log("SKIP classroom UI live smoke: migration 0043 is not applied remotely.");
     return;
   }
 

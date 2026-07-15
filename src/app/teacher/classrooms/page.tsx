@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import Link from "next/link";
 import {
   Activity,
@@ -44,6 +46,7 @@ export default async function TeacherClassroomsPage({
   const profile = await requireTeacher();
   const params = await searchParams;
   const supabase = await createClient();
+  const classroomCreationRequestId = randomUUID();
   const classrooms = await listTeacherClassroomSummaries({ supabase });
   const totals = {
     activeAssignments: classrooms.reduce(
@@ -333,6 +336,11 @@ export default async function TeacherClassroomsPage({
               continue to validate through the hashed code path.
             </p>
             <form action={createClassroom} className="mt-5 space-y-4">
+              <input
+                name="requestId"
+                type="hidden"
+                value={classroomCreationRequestId}
+              />
               <div className="space-y-2">
                 <Label htmlFor="name">Class name</Label>
                 <Input

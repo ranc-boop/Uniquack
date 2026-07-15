@@ -51,6 +51,7 @@ operator records a future release.
 | 0040 | profile_insert_and_role_transition_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | profile live validation | unassigned | applied exactly once |
 | 0041 | profile_delete_privilege_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | profile live validation | unassigned | applied exactly once |
 | 0042 | internal_provider_gateway_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | post-0042 SQL Editor grant and alias validation | Jerry / Platform Security; Frances / Technical Operations backup pending founder confirmation | applied exactly once; anon/authenticated table access removed, service_role retained, stale helper/policy absent; runtime role/token validation remains |
+| 0043 | classroom_creation_rls_hardening | PENDING_MANUAL_APPLY | SQL Editor approved release | P0-CLS-01 manual apply and live validation | classroom security owner unassigned | do not replay earlier Classroom migrations; apply this forward-only file once, then capture RLS/RPC/grant evidence and run the focused Teacher/Student live smoke |
 
 The complete machine-readable inventory, including exact filenames and status
 labels, is `docs/security/live-schema-manifest.json`.

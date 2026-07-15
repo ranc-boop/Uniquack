@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -182,6 +182,7 @@ async function runSourceSmoke() {
       students.includes("preserve all history") &&
       actions.includes("removeClassroomStudent") &&
       actions.includes("restoreClassroomStudent") &&
+      actions.includes("set_classroom_student_membership_status") &&
       !actions.includes(".delete("),
     "student roster operations must use soft status changes and preserve history",
   );
@@ -192,6 +193,8 @@ async function runSourceSmoke() {
       actions.includes("getOwnerClassroomForAction") &&
       actions.includes("addClassroomCoTeacher") &&
       actions.includes("removeClassroomCoTeacher") &&
+      actions.includes("add_classroom_co_teacher") &&
+      actions.includes("remove_classroom_co_teacher") &&
       !actions.includes("bank_members"),
     "co-teacher operations must be owner controlled and must not grant bank membership",
   );
@@ -246,7 +249,7 @@ async function runLiveSmoke() {
     auth: { persistSession: false },
   });
   const organizationId = await resolveOrganizationId(teacher.client, teacher.user.id);
-  const firstCode = randomJoinCode();
+  let firstCode = null;
   const touched = {
     assignmentIds: [],
     classroomId: null,
@@ -262,9 +265,9 @@ async function runLiveSmoke() {
     "create_teacher_classroom",
     {
       p_description: "Classroom operations smoke classroom",
-      p_join_code: firstCode,
       p_name: `Classroom operations smoke ${Date.now()}`,
       p_organization_id: organizationId,
+      p_request_id: randomUUID(),
       p_subject: "Smoke operations",
     },
   );
@@ -277,6 +280,8 @@ async function runLiveSmoke() {
   assert(!createError, `teacher classroom RPC failed: ${summarizeSupabaseError(createError)}`);
   const classroom = Array.isArray(classroomRows) ? classroomRows[0] : classroomRows;
   assert(classroom?.classroom_id, "classroom RPC did not return classroom_id");
+  assert(classroom?.display_code, "classroom RPC did not return a display join code");
+  firstCode = classroom.display_code;
   touched.classroomId = classroom.classroom_id;
 
   try {
@@ -394,12 +399,26 @@ async function runLiveSmoke() {
     assert(!feedbackError, `feedback note create failed: ${summarizeSupabaseError(feedbackError)}`);
     touched.feedbackIds.push(feedback.id);
 
-    const { error: removeError } = await teacher.client
+    const { data: studentMembership, error: studentMembershipError } = await teacher.client
       .from("classroom_members")
-      .update({ status: "removed" })
+      .select("id")
       .eq("classroom_id", classroom.classroom_id)
       .eq("user_id", student.user.id)
-      .eq("role", "student");
+      .eq("role", "student")
+      .single();
+    assert(
+      !studentMembershipError && studentMembership?.id,
+      `student membership lookup failed: ${summarizeSupabaseError(studentMembershipError)}`,
+    );
+
+    const { error: removeError } = await teacher.client.rpc(
+      "set_classroom_student_membership_status",
+      {
+        p_classroom_id: classroom.classroom_id,
+        p_member_id: studentMembership.id,
+        p_status: "removed",
+      },
+    );
     assert(!removeError, `student soft remove failed: ${summarizeSupabaseError(removeError)}`);
 
     const { data: remainingProgress, error: remainingProgressError } = await service
@@ -446,14 +465,13 @@ async function runLiveSmoke() {
     if (coTeacherUsername && coTeacherPassword) {
       const coTeacher = await signIn(coTeacherUsername, coTeacherPassword, "co-teacher");
       if (coTeacher) {
-        const { error: coTeacherInsertError } = await teacher.client
-          .from("classroom_members")
-          .insert({
-            classroom_id: classroom.classroom_id,
-            role: "co_teacher",
-            status: "active",
-            user_id: coTeacher.user.id,
-          });
+        const { error: coTeacherInsertError } = await teacher.client.rpc(
+          "add_classroom_co_teacher",
+          {
+            p_classroom_id: classroom.classroom_id,
+            p_teacher_user_id: coTeacher.user.id,
+          },
+        );
         assert(
           !coTeacherInsertError,
           `co-teacher add failed: ${summarizeSupabaseError(coTeacherInsertError)}`,

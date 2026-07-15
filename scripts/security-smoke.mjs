@@ -101,6 +101,9 @@ const classroomMigration = await read("supabase/clean-migrations/0018_classroom_
 const teacherClassroomRlsMigration = await read(
   "supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql",
 );
+const classroomCreationHardeningMigration = await read(
+  "supabase/clean-migrations/0043_classroom_creation_rls_hardening.sql",
+);
 const studentWorkMigration = await read("supabase/clean-migrations/0021_student_work_assignments.sql");
 const studentWorkManagerScopeMigration = await read(
   "supabase/clean-migrations/0023_student_work_assignment_manager_scope_fix.sql",
@@ -266,12 +269,10 @@ assert(
   "classroom join codes must be hash-only and joined through an authenticated RPC",
 );
 assert(
-  classroomMigration.includes("classrooms_teacher_create") &&
-    classroomMigration.includes("private.is_org_staff(organization_id)") &&
-    classroomMigration.includes("classroom_members_teacher_write") &&
+  classroomMigration.includes("classrooms_teacher_update") &&
     classroomMigration.includes("user_id = auth.uid()") &&
     classroomMigration.includes("profiles_classroom_roster_read"),
-  "classroom RLS must support teacher-owned creation, roster reads, and self-scoped student membership reads",
+  "classroom foundation must preserve scoped teacher management, roster reads, and self-scoped student membership reads",
 );
 assert(
   teacherClassroomRlsMigration.includes("create or replace function private.is_org_staff") &&
@@ -281,6 +282,22 @@ assert(
     teacherClassroomRlsMigration.includes("to authenticated") &&
     !teacherClassroomRlsMigration.includes("to anon"),
   "teacher classroom RLS fix must support real teacher org context and authenticated classroom creation RPC",
+);
+assert(
+  classroomCreationHardeningMigration.includes("drop policy if exists classrooms_teacher_create") &&
+    classroomCreationHardeningMigration.includes(
+      "revoke insert on table public.classrooms from anon, authenticated",
+    ) &&
+    classroomCreationHardeningMigration.includes(
+      "revoke insert, update on table public.classroom_members from anon, authenticated",
+    ) &&
+    classroomCreationHardeningMigration.includes("create function public.create_teacher_classroom") &&
+    classroomCreationHardeningMigration.includes("v_actor_id uuid := auth.uid()") &&
+    classroomCreationHardeningMigration.includes("p_request_id uuid") &&
+    classroomCreationHardeningMigration.includes("extensions.gen_random_bytes") &&
+    classroomCreationHardeningMigration.includes("private.can_create_classroom_in_organization") &&
+    !classroomCreationHardeningMigration.includes("p_join_code text"),
+  "current classroom creation must derive identity, organization authority, memberships, and join codes inside a narrow RPC",
 );
 assert(
   studentWorkMigration.includes("create table if not exists public.assignments") &&
@@ -314,13 +331,20 @@ assert(
 assert(
   classroomHelpers.includes("hashClassroomJoinCode") &&
     classroomHelpers.includes("generateClassroomJoinCode") &&
-    classroomHelpers.includes("resolveClassroomOrganizationId") &&
     teacherClassroomActions.includes("requireTeacher") &&
     teacherClassroomActions.includes("create_teacher_classroom") &&
+    teacherClassroomActions.includes("p_organization_id: null") &&
+    teacherClassroomActions.includes("p_request_id: parsed.requestId") &&
+    teacherClassroomActions.includes("add_classroom_co_teacher") &&
+    teacherClassroomActions.includes("set_classroom_student_membership_status") &&
+    teacherClassroomActions.includes("remove_classroom_co_teacher") &&
+    !teacherClassroomActions.includes("p_join_code") &&
+    !teacherClassroomActions.includes('.from("classroom_members")\n      .insert') &&
+    !teacherClassroomActions.includes('.from("classroom_members")\n      .update') &&
     teacherClassroomActions.includes("The join code is also available") &&
     studentJoinActions.includes("requireStudent") &&
     studentJoinActions.includes('rpc("join_classroom_by_code"'),
-  "classroom server actions must create teacher classrooms and join students without direct student inserts",
+  "classroom server actions must use server-verified creation and roster RPCs without direct student inserts",
 );
 assert(
   studentWorkHelpers.includes("listStudentAssignedWork") &&

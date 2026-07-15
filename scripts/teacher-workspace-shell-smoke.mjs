@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -104,7 +104,7 @@ async function runSourceSmoke() {
   const classroomUi = await read("src/app/teacher/classrooms/classroom-ui.tsx");
   const classroomPeople = await read("src/app/teacher/classrooms/[id]/people/page.tsx");
   const classroomStudents = await read("src/app/teacher/classrooms/[id]/students/page.tsx");
-  const migration = await read("supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql");
+  const migration = await read("supabase/clean-migrations/0043_classroom_creation_rls_hardening.sql");
 
   for (const label of [
     "Dashboard",
@@ -144,10 +144,10 @@ async function runSourceSmoke() {
     "classroom detail must expose teacher classroom sections and persistent join code recovery",
   );
   assert(
-    migration.includes("create or replace function private.is_org_staff") &&
-      migration.includes("create or replace function public.create_teacher_classroom") &&
+    migration.includes("create function public.create_teacher_classroom") &&
+      migration.includes("p_request_id uuid") &&
       migration.includes("grant execute on function public.create_teacher_classroom"),
-    "migration 0030 must define teacher classroom RLS/RPC fix",
+    "migration 0043 must define the narrow teacher classroom creation RPC",
   );
 
   console.log("PASS teacher workspace shell source checks");
@@ -171,20 +171,19 @@ async function runLiveSmoke() {
   if (!teacher || !student) return;
 
   const organizationId = await resolveOrganizationId(teacher.client, teacher.user.id);
-  const joinCode = randomJoinCode();
   const { data: classroomRows, error: createError } = await teacher.client.rpc(
     "create_teacher_classroom",
     {
       p_description: "Teacher workspace smoke classroom",
-      p_join_code: joinCode,
       p_name: `Teacher workspace smoke ${Date.now()}`,
       p_organization_id: organizationId,
+      p_request_id: randomUUID(),
       p_subject: "Smoke test",
     },
   );
 
   if (createError?.message?.includes("function public.create_teacher_classroom")) {
-    console.log("SKIP teacher workspace live smoke: migration 0030 is not applied remotely.");
+    console.log("SKIP teacher workspace live smoke: migration 0043 is not applied remotely.");
     return;
   }
 
