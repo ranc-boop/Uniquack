@@ -150,3 +150,44 @@ test.
   failed test.
 - Do not alter Google Login, Classroom, Practice, provider, or queue behavior
   while applying this narrow migration.
+
+## Post-apply validation record (2026-07-14)
+
+The clean-project administrator confirmed that
+`0039_profile_privileged_fields_immutability.sql` was applied **once** through
+the Supabase SQL Editor. This branch did not reapply or modify that migration.
+
+The controlled PostgREST validation proved the following against the clean
+project using only dedicated disposable test users:
+
+- `full_name`, `avatar_url`, and `display_name` self-edits succeeded;
+- Student role, status, default-organization, identity, and mixed
+  presentation-plus-role writes were denied atomically;
+- Teacher, Admin, anonymous, cross-user, direct-client, and
+  `user_profiles` write-bypass attempts were denied;
+- service-role bootstrap of temporary fixtures succeeded;
+- Student, Teacher, Admin, and inactive-super-admin RPC calls were denied;
+- a temporary active super-admin could transition another temporary profile;
+- a super-admin could not transition itself; and
+- every generated fixture was removed. The disposable Student presentation
+  fields were reset to a neutral test state after a test-harness cleanup fix.
+
+Automated direct database metadata verification is still unavailable from the
+isolated worktree: the direct host did not resolve and the configured pooler
+fallback could not establish a metadata session. Consequently, the following
+must still be verified in the SQL Editor with the read-only queries above
+before marking the P0 deployment gate closed:
+
+- exact `profiles` column grants and absence of table-wide UPDATE;
+- `profiles_self_safe_update` and
+  `profiles_enforce_privileged_field_immutability` existence;
+- narrow execute grants for
+  `transition_profile_role_as_super_admin`;
+- private audit-event count for the controlled transition; and
+- the SQL helper result that a failed Student escalation leaves
+  `private.is_admin()` and `private.is_teacher_or_admin()` false.
+
+`node scripts/profile-role-immutability-smoke.mjs --live` remains strict and
+fails when that metadata connection is unavailable. The explicit
+`--live-http-only` mode is diagnostic-only: it records the safe PostgREST and
+RPC behavior above but must not be used by itself to close the P0 gate.

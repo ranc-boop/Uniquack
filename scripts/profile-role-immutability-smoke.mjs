@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 
 import pg from "pg";
 
@@ -429,11 +430,21 @@ async function signInLive({ createClient, label }) {
 
   const { data: profile, error: profileError } = await client
     .from("profiles")
-    .select("id, role, status, default_organization_id, display_name")
+    .select("id, role, status, default_organization_id, full_name, avatar_url, display_name")
     .eq("id", data.user.id)
     .single();
   if (profileError || !profile) throw new Error(label + " profile lookup failed");
   return { client, profile };
+}
+
+async function readLiveProfile(client, profileId) {
+  const { data, error } = await client
+    .from("profiles")
+    .select("id, role, status, default_organization_id, full_name, avatar_url, display_name")
+    .eq("id", profileId)
+    .single();
+  if (error || !data) throw new Error("Profile verification read failed");
+  return data;
 }
 
 function assertProfileUnchanged(profile, before, label) {
@@ -441,12 +452,187 @@ function assertProfileUnchanged(profile, before, label) {
     profile.role === before.role &&
       profile.status === before.status &&
       profile.default_organization_id === before.default_organization_id &&
+      profile.full_name === before.full_name &&
+      profile.avatar_url === before.avatar_url &&
       profile.display_name === before.display_name,
     label + " changed profile state",
   );
 }
 
-async function runLiveSmoke() {
+async function expectLiveProfilePatchDenied({
+  actor,
+  targetProfileId,
+  patch,
+  before,
+  label,
+  verificationClient = actor.client,
+}) {
+  const result = await actor.client
+    .from("profiles")
+    .update(patch)
+    .eq("id", targetProfileId)
+    .select("id");
+  const didUpdate = Array.isArray(result.data) && result.data.length > 0;
+  if (!result.error && didUpdate) {
+    throw new Error(label + " unexpectedly succeeded");
+  }
+  const after = await readLiveProfile(verificationClient, targetProfileId);
+  assertProfileUnchanged(after, before, label);
+  pass(label);
+}
+
+function assertRpcDenied(result, label) {
+  if (!result.error) throw new Error(label + " unexpectedly succeeded");
+  pass(label);
+}
+
+function roleCountsFromRows(rows) {
+  return Object.fromEntries(
+    rows.map((row) => [row.role + ":" + row.status, Number(row.profile_count)]),
+  );
+}
+
+async function inspectLiveSchema() {
+  const databasePassword = requiredLiveEnv("SUPABASE_DB_PASSWORD");
+  const projectRef = requiredLiveEnv("DISPOSABLE_SUPABASE_PROJECT_REF");
+  if (!/^[a-z0-9]+$/.test(projectRef)) {
+    throw new Error("Disposable project reference format is invalid.");
+  }
+
+  let verificationStage = "connection";
+  const connectionCandidates = [
+    { host: "db." + projectRef + ".supabase.co", port: 5432, user: "postgres" },
+    {
+      host: process.env.CLEAN_SUPABASE_POOLER_HOST?.trim() || "aws-0-us-west-2.pooler.supabase.com",
+      port: 6543,
+      user: "postgres." + projectRef,
+    },
+  ];
+  let metadataClient;
+  let lastConnectionError;
+  try {
+    for (const candidate of connectionCandidates) {
+      const candidateClient = new pg.Client({
+        ...candidate,
+        password: databasePassword,
+        database: "postgres",
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 15_000,
+      });
+      try {
+        await candidateClient.connect();
+        metadataClient = candidateClient;
+        break;
+      } catch (error) {
+        lastConnectionError = error;
+        await candidateClient.end().catch(() => {});
+      }
+    }
+    if (!metadataClient) throw lastConnectionError ?? new Error("No metadata connection candidate succeeded.");
+    verificationStage = "schema metadata query";
+    const [updateColumns, tableWideGrant, policies, trigger, rpc, viewGrant, auditColumns, identityColumns, functionDefinition, aggregates] =
+      await Promise.all([
+        metadataClient.query(
+          "select column_name from information_schema.column_privileges where table_schema = 'public' and table_name = 'profiles' and grantee = 'authenticated' and privilege_type = 'UPDATE' order by column_name",
+        ),
+        metadataClient.query(
+          "select exists (select 1 from information_schema.role_table_grants where table_schema = 'public' and table_name = 'profiles' and grantee = 'authenticated' and privilege_type = 'UPDATE') as has_table_wide_update",
+        ),
+        metadataClient.query(
+          "select policyname, cmd, roles from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_self_safe_update'",
+        ),
+        metadataClient.query(
+          "select tgname from pg_trigger where tgrelid = 'public.profiles'::regclass and not tgisinternal and tgname = 'profiles_enforce_privileged_field_immutability'",
+        ),
+        metadataClient.query(
+          "select has_function_privilege('anon', 'public.transition_profile_role_as_super_admin(uuid,text)', 'EXECUTE') as anon_execute, has_function_privilege('authenticated', 'public.transition_profile_role_as_super_admin(uuid,text)', 'EXECUTE') as authenticated_execute, exists (select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl, acldefault('f'::\"char\", p.proowner))) privilege where p.oid = 'public.transition_profile_role_as_super_admin(uuid,text)'::regprocedure and privilege.grantee = 0 and privilege.privilege_type = 'EXECUTE') as public_execute",
+        ),
+        metadataClient.query(
+          "select has_table_privilege('authenticated', 'public.user_profiles', 'UPDATE') as authenticated_update, has_table_privilege('anon', 'public.user_profiles', 'UPDATE') as anon_update",
+        ),
+        metadataClient.query(
+          "select column_name from information_schema.columns where table_schema = 'private' and table_name = 'profile_privileged_change_audit_log' order by column_name",
+        ),
+        metadataClient.query(
+          "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name in ('google_sub', 'google_email_at_link', 'google_linked_at') order by column_name",
+        ),
+        metadataClient.query(
+          "select pg_get_functiondef('private.enforce_profile_privileged_field_immutability()'::regprocedure) as definition",
+        ),
+        metadataClient.query(
+          "select role, status, count(*)::integer as profile_count from public.profiles group by role, status order by role, status",
+        ),
+      ]);
+
+    const safeUpdateColumns = updateColumns.rows.map((row) => row.column_name);
+    assert(
+      JSON.stringify(safeUpdateColumns) === JSON.stringify(["avatar_url", "display_name", "full_name"]),
+      "Authenticated UPDATE grants are not limited to the three safe profile fields.",
+    );
+    assert(tableWideGrant.rows[0]?.has_table_wide_update === false, "Authenticated retains table-wide profiles UPDATE.");
+    assert(policies.rows.length === 1 && policies.rows[0]?.cmd === "UPDATE", "Safe self-update policy is missing.");
+    assert(trigger.rows.length === 1, "Privileged-field immutability trigger is missing.");
+    assert(
+      rpc.rows[0]?.anon_execute === false &&
+        rpc.rows[0]?.authenticated_execute === true &&
+        rpc.rows[0]?.public_execute === false,
+      "Role-transition RPC execution grants are not narrow.",
+    );
+    assert(
+      viewGrant.rows[0]?.authenticated_update === false && viewGrant.rows[0]?.anon_update === false,
+      "The user_profiles view retains a write bypass.",
+    );
+    const auditColumnNames = auditColumns.rows.map((row) => row.column_name);
+    assert(
+      ["action_kind", "actor_profile_id", "created_at", "id", "next_role", "previous_role", "target_profile_id"].every(
+        (column) => auditColumnNames.includes(column),
+      ) &&
+        auditColumnNames.every(
+          (column) => !/(email|name|token|secret|password|credential)/i.test(column),
+        ),
+      "Role-transition audit schema is incomplete or stores unnecessary sensitive fields.",
+    );
+    const triggerDefinition = functionDefinition.rows[0]?.definition ?? "";
+    assert(
+      triggerDefinition.includes("to_jsonb(old) - safe_self_edit_keys") &&
+        triggerDefinition.includes("to_jsonb(new) - safe_self_edit_keys") &&
+        triggerDefinition.includes("app.profile_privileged_mutation"),
+      "Profile trigger does not retain the future-field-safe invariant.",
+    );
+
+    pass("live 0039 objects, grants, view revocation, trigger, and RPC execution grants");
+    return {
+      client: metadataClient,
+      roleCounts: roleCountsFromRows(aggregates.rows),
+      identityColumns: identityColumns.rows.map((row) => row.column_name),
+    };
+  } catch (error) {
+    await metadataClient?.end().catch(() => {});
+    if (error instanceof Error && error.message.startsWith("Authenticated ")) throw error;
+    if (error instanceof Error && error.message.includes("Safe self-update")) throw error;
+    if (error instanceof Error && error.message.includes("Privileged-field")) throw error;
+    if (error instanceof Error && error.message.includes("Role-transition")) throw error;
+    if (error instanceof Error && error.message.includes("user_profiles")) throw error;
+    if (error instanceof Error && error.message.includes("Profile trigger")) throw error;
+    const safeCode =
+      error && typeof error === "object" && typeof error.code === "string"
+        ? error.code
+        : "unknown";
+    throw new Error("Live schema metadata " + verificationStage + " failed (" + safeCode + ").");
+  }
+}
+
+async function readLiveRoleHelpers(metadataClient, profileId) {
+  await metadataClient.query("select set_config('request.jwt.claim.role', 'authenticated', false)");
+  await metadataClient.query("select set_config('request.jwt.claim.sub', $1, false)", [profileId]);
+  const result = await metadataClient.query(
+    "select private.is_admin() as is_admin, private.is_teacher_or_admin() as is_teacher_or_admin",
+  );
+  await metadataClient.query("select set_config('request.jwt.claim.sub', '', false)");
+  return result.rows[0];
+}
+
+async function runLiveSmoke({ allowMetadataTransportBlock = false } = {}) {
   if (process.env.PROFILE_ROLE_IMMUTABILITY_CONFIRM !== "RUN_DISPOSABLE_P0_LIVE_SMOKE") {
     throw new Error(
       "Refusing live mutation smoke without PROFILE_ROLE_IMMUTABILITY_CONFIRM=RUN_DISPOSABLE_P0_LIVE_SMOKE.",
@@ -457,171 +643,350 @@ async function runLiveSmoke() {
   const { createClient } = await import("@supabase/supabase-js");
   dotenv.config({ path: resolve(root, ".env.local"), override: false });
 
-  const student = await signInLive({ createClient, label: "STUDENT" });
-  const teacher = await signInLive({ createClient, label: "TEACHER" });
-  const admin = await signInLive({ createClient, label: "ADMIN" });
-  const superAdmin = await signInLive({ createClient, label: "SUPER_ADMIN" });
-
-  assert(student.profile.role === "student", "TEST_STUDENT must be a student");
-  assert(teacher.profile.role === "teacher", "TEST_TEACHER must be a teacher");
-  assert(admin.profile.role === "admin", "TEST_ADMIN must be an admin");
-  assert(superAdmin.profile.role === "super_admin", "TEST_SUPER_ADMIN must be a super-admin");
-
-  const roleCounts = {};
-  const { data: aggregateProfiles, error: aggregateError } = await superAdmin.client
-    .from("profiles")
-    .select("role, status");
-  if (aggregateError) throw new Error("Safe profile aggregate audit failed");
-  for (const profile of aggregateProfiles ?? []) {
-    const key = profile.role + ":" + profile.status;
-    roleCounts[key] = (roleCounts[key] ?? 0) + 1;
-  }
-  console.log("PASS live aggregate profile role/status counts " + JSON.stringify(roleCounts));
-
-  const originalStudent = { ...student.profile };
-  const marker = "P0 smoke " + Date.now();
-  const { error: safeUpdateError } = await student.client
-    .from("profiles")
-    .update({ display_name: marker })
-    .eq("id", student.profile.id);
-  if (safeUpdateError) throw new Error("Student safe display update failed");
-  const { data: safeUpdated, error: safeReadError } = await student.client
-    .from("profiles")
-    .select("id, role, status, default_organization_id, display_name")
-    .eq("id", student.profile.id)
-    .single();
-  if (safeReadError || safeUpdated?.display_name !== marker) {
-    throw new Error("Student safe display update did not persist");
-  }
-  const { error: restoreError } = await student.client
-    .from("profiles")
-    .update({ display_name: originalStudent.display_name })
-    .eq("id", student.profile.id);
-  if (restoreError) throw new Error("Student display-name restore failed");
-  pass("live student safe display update and restore");
-
-  const deniedPatches = [
-    { role: "teacher" },
-    { role: "admin" },
-    { role: "super_admin" },
-    { status: "disabled" },
-    {
-      default_organization_id:
-        originalStudent.default_organization_id === null
-          ? "00000000-0000-0000-0000-000000000001"
-          : null,
-    },
-    { display_name: "P0 mixed update", role: "teacher" },
-  ];
-  for (const patch of deniedPatches) {
-    await student.client.from("profiles").update(patch).eq("id", student.profile.id);
-    const { data: after, error } = await student.client
-      .from("profiles")
-      .select("id, role, status, default_organization_id, display_name")
-      .eq("id", student.profile.id)
-      .single();
-    if (error || !after) throw new Error("Student post-denial profile check failed");
-    assertProfileUnchanged(after, originalStudent, "Student denied privileged update");
-  }
-  pass("live student role, status, organization, and mixed updates remain denied");
-
-  const directAttempts = [
-    [teacher, { role: "admin" }, teacher.profile],
-    [admin, { role: "super_admin" }, admin.profile],
-    [superAdmin, { role: "teacher" }, superAdmin.profile],
-  ];
-  for (const [actor, patch, before] of directAttempts) {
-    await actor.client.from("profiles").update(patch).eq("id", before.id);
-    const { data: after, error } = await actor.client
-      .from("profiles")
-      .select("id, role, status, default_organization_id, display_name")
-      .eq("id", before.id)
-      .single();
-    if (error || !after) throw new Error("Direct privileged update verification failed");
-    assertProfileUnchanged(after, before, "Direct privileged update");
-  }
-  pass("live teacher, admin, and super-admin direct role writes remain denied");
-
-  await teacher.client
-    .from("profiles")
-    .update({ display_name: "P0 cross-user update" })
-    .eq("id", student.profile.id);
-  const { data: afterOtherUserAttempt, error: afterOtherUserError } = await student.client
-    .from("profiles")
-    .select("id, role, status, default_organization_id, display_name")
-    .eq("id", student.profile.id)
-    .single();
-  if (afterOtherUserError || !afterOtherUserAttempt) {
-    throw new Error("Cross-user update verification failed");
-  }
-  assertProfileUnchanged(afterOtherUserAttempt, originalStudent, "Cross-user update");
-  pass("live unrelated user cannot update student profile");
-
-  const anonymous = createClient(
-    requiredLiveEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    requiredLiveEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
-  await anonymous.from("profiles").update({ display_name: "P0 anonymous update" }).eq("id", student.profile.id);
-  const { data: afterAnonAttempt, error: afterAnonError } = await student.client
-    .from("profiles")
-    .select("id, role, status, default_organization_id, display_name")
-    .eq("id", student.profile.id)
-    .single();
-  if (afterAnonError || !afterAnonAttempt) throw new Error("Anonymous update verification failed");
-  assertProfileUnchanged(afterAnonAttempt, originalStudent, "Anonymous update");
-  pass("live anonymous profile update is denied");
-
-  const serviceRoleKey =
-    process.env.CLEAN_SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!serviceRoleKey) {
-    throw new Error("Missing service-role key required for full live signup/RPC validation.");
-  }
-  const service = createClient(requiredLiveEnv("NEXT_PUBLIC_SUPABASE_URL"), serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  const temporaryEmail = "p0-smoke-" + Date.now() + "@example.invalid";
-  const temporaryPassword = "P0-smoke-" + crypto.randomUUID();
-  let temporaryUserId;
+  let liveSchema;
+  let metadataBlocker = null;
   try {
-    const { data: created, error: createError } = await service.auth.admin.createUser({
-      email: temporaryEmail,
-      password: temporaryPassword,
-      email_confirm: true,
-    });
-    if (createError || !created.user) throw new Error("Service-role temporary signup failed");
-    temporaryUserId = created.user.id;
+    liveSchema = await inspectLiveSchema();
+  } catch (error) {
+    if (!allowMetadataTransportBlock) throw error;
+    metadataBlocker = error instanceof Error ? error.message : "Live schema metadata verification could not complete.";
+    console.log("BLOCKED live schema metadata verification: " + metadataBlocker);
+    liveSchema = { client: null, roleCounts: null, identityColumns: [] };
+  }
+  const metadataClient = liveSchema.client;
+  let student;
+  let teacher;
+  let admin;
+  let superAdmin;
+  let service;
+  let originalStudent;
+  const temporaryUsers = [];
 
-    const { error: profileInsertError } = await service.from("profiles").insert({
-      id: temporaryUserId,
-      email: temporaryEmail,
-      role: "student",
-      status: "active",
+  try {
+    student = await signInLive({ createClient, label: "STUDENT" });
+    teacher = await signInLive({ createClient, label: "TEACHER" });
+    admin = await signInLive({ createClient, label: "ADMIN" });
+
+    assert(student.profile.role === "student", "TEST_STUDENT must be a student");
+    assert(teacher.profile.role === "teacher", "TEST_TEACHER must be a teacher");
+
+    const serviceRoleKey =
+      process.env.CLEAN_SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    if (!serviceRoleKey) {
+      throw new Error("Missing service-role key required for full live signup/RPC validation.");
+    }
+    service = createClient(requiredLiveEnv("NEXT_PUBLIC_SUPABASE_URL"), serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
     });
-    if (profileInsertError) throw new Error("Service-role temporary profile creation failed");
+
+    async function createTemporaryFixture({ role, status }) {
+      const temporaryEmail = "p0-smoke-" + randomUUID() + "@example.invalid";
+      const temporaryPassword = "P0-smoke-" + randomUUID();
+      const { data: created, error: createError } = await service.auth.admin.createUser({
+        email: temporaryEmail,
+        password: temporaryPassword,
+        email_confirm: true,
+      });
+      if (createError || !created.user) throw new Error("Service-role temporary signup failed");
+      temporaryUsers.push(created.user.id);
+      const { error: profileUpsertError } = await service.from("profiles").upsert(
+        { id: created.user.id, email: temporaryEmail, role, status },
+        { onConflict: "id" },
+      );
+      if (profileUpsertError) throw new Error("Service-role temporary profile bootstrap failed");
+      const client = createClient(requiredLiveEnv("NEXT_PUBLIC_SUPABASE_URL"), requiredLiveEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { data: session, error: signInError } = await client.auth.signInWithPassword({
+        email: temporaryEmail,
+        password: temporaryPassword,
+      });
+      if (signInError || !session.user) throw new Error("Temporary fixture login failed");
+      return { client, id: created.user.id };
+    }
+
+    if (admin.profile.role !== "admin") {
+      console.log("BLOCKED configured TEST_ADMIN role is not admin; using a temporary active admin fixture for the negative authorization validation.");
+      const temporaryAdmin = await createTemporaryFixture({ role: "admin", status: "active" });
+      admin = {
+        client: temporaryAdmin.client,
+        profile: await readLiveProfile(temporaryAdmin.client, temporaryAdmin.id),
+      };
+    }
+    assert(admin.profile.role === "admin", "Temporary admin fixture bootstrap failed");
+
+    try {
+      superAdmin = await signInLive({ createClient, label: "SUPER_ADMIN" });
+      assert(superAdmin.profile.role === "super_admin", "TEST_SUPER_ADMIN must be a super-admin");
+      pass("live configured super-admin account signs in");
+    } catch {
+      console.log("BLOCKED configured TEST_SUPER_ADMIN login; using a temporary active super-admin fixture for the guarded-RPC validation.");
+      const temporarySuperAdmin = await createTemporaryFixture({ role: "super_admin", status: "active" });
+      superAdmin = {
+        client: temporarySuperAdmin.client,
+        profile: await readLiveProfile(temporarySuperAdmin.client, temporarySuperAdmin.id),
+      };
+      assert(superAdmin.profile.role === "super_admin", "Temporary super-admin fixture bootstrap failed");
+      pass("live temporary active super-admin fixture signs in");
+    }
+
+    if (liveSchema.roleCounts) {
+      console.log("PASS live aggregate profile role/status counts " + JSON.stringify(liveSchema.roleCounts));
+    } else {
+      const { data: aggregateProfiles, error: aggregateError } = await superAdmin.client
+        .from("profiles")
+        .select("role, status");
+      if (aggregateError) throw new Error("Safe profile aggregate audit failed");
+      const roleCounts = {};
+      for (const profile of aggregateProfiles ?? []) {
+        const key = profile.role + ":" + profile.status;
+        roleCounts[key] = (roleCounts[key] ?? 0) + 1;
+      }
+      console.log("PASS live aggregate profile role/status counts " + JSON.stringify(roleCounts));
+    }
+
+    originalStudent = { ...student.profile };
+    const marker = "P0 smoke " + Date.now();
+    const safeFieldTests = [
+      ["full_name", marker + " full name"],
+      ["display_name", marker + " display name"],
+      ["avatar_url", "https://example.invalid/p0-smoke-" + Date.now() + ".png"],
+    ];
+    for (const [field, value] of safeFieldTests) {
+      const { data, error } = await student.client
+        .from("profiles")
+        .update({ [field]: value })
+        .eq("id", student.profile.id)
+        .select(field)
+        .single();
+      if (error || data?.[field] !== value) throw new Error("Student safe " + field + " update failed");
+    }
+    pass("live student full_name, display_name, and avatar_url updates");
+
+    const safeUpdatedStudent = await readLiveProfile(student.client, student.profile.id);
+    const deniedPatches = [
+      ["live student role to teacher is denied", { role: "teacher" }],
+      ["live student role to admin is denied", { role: "admin" }],
+      ["live student role to super_admin is denied", { role: "super_admin" }],
+      ["live student status update is denied", { status: "disabled" }],
+      [
+        "live student default organization update is denied",
+        {
+          default_organization_id:
+            safeUpdatedStudent.default_organization_id === null
+              ? "00000000-0000-0000-0000-000000000001"
+              : null,
+        },
+      ],
+      ["live student mixed safe plus role update is atomic and denied", { full_name: marker + " mixed", role: "teacher" }],
+    ];
+    for (const [label, patch] of deniedPatches) {
+      await expectLiveProfilePatchDenied({
+        actor: student,
+        targetProfileId: student.profile.id,
+        patch,
+        before: safeUpdatedStudent,
+        label,
+      });
+    }
+
+    for (const [label, actor, patch] of [
+      ["live teacher self-role update is denied", teacher, { role: "admin" }],
+      ["live admin self-role update is denied", admin, { role: "super_admin" }],
+      ["live super-admin direct table role update is denied", superAdmin, { role: "teacher" }],
+    ]) {
+      await expectLiveProfilePatchDenied({
+        actor,
+        targetProfileId: actor.profile.id,
+        patch,
+        before: actor.profile,
+        label,
+      });
+    }
+
+    await expectLiveProfilePatchDenied({
+      actor: teacher,
+      targetProfileId: student.profile.id,
+      patch: { display_name: marker + " cross user" },
+      before: safeUpdatedStudent,
+      label: "live unrelated authenticated user cannot update another profile",
+      verificationClient: student.client,
+    });
+
+    const anonymous = createClient(
+      requiredLiveEnv("NEXT_PUBLIC_SUPABASE_URL"),
+      requiredLiveEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+    await expectLiveProfilePatchDenied({
+      actor: { client: anonymous },
+      targetProfileId: student.profile.id,
+      patch: { display_name: marker + " anonymous" },
+      before: safeUpdatedStudent,
+      label: "live anonymous profile update is denied",
+      verificationClient: student.client,
+    });
+
+    const viewAttempt = await student.client
+      .from("user_profiles")
+      .update({ role: "teacher" })
+      .eq("user_id", student.profile.id)
+      .select("user_id");
+    if (!viewAttempt.error && Array.isArray(viewAttempt.data) && viewAttempt.data.length > 0) {
+      throw new Error("The user_profiles view unexpectedly allowed a privileged update");
+    }
+    assertProfileUnchanged(
+      await readLiveProfile(student.client, student.profile.id),
+      safeUpdatedStudent,
+      "user_profiles view update",
+    );
+    pass("live user_profiles view cannot bypass profile protections");
+
+    if (liveSchema.identityColumns.length > 0) {
+      const identityField = liveSchema.identityColumns.includes("google_linked_at")
+        ? "google_linked_at"
+        : liveSchema.identityColumns[0];
+      const { data: beforeIdentity, error: beforeIdentityError } = await superAdmin.client
+        .from("profiles")
+        .select(identityField)
+        .eq("id", student.profile.id)
+        .single();
+      if (beforeIdentityError || !beforeIdentity) throw new Error("Identity-field baseline read failed");
+      const result = await student.client
+        .from("profiles")
+        .update({ [identityField]: identityField === "google_linked_at" ? new Date().toISOString() : marker + " identity" })
+        .eq("id", student.profile.id)
+        .select("id");
+      if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
+        throw new Error("Student identity/server-managed field update unexpectedly succeeded");
+      }
+      const { data: afterIdentity, error: afterIdentityError } = await superAdmin.client
+        .from("profiles")
+        .select(identityField)
+        .eq("id", student.profile.id)
+        .single();
+      if (afterIdentityError || afterIdentity?.[identityField] !== beforeIdentity[identityField]) {
+        throw new Error("Student identity/server-managed field changed after a denied update");
+      }
+      pass("live identity/server-managed profile field update is denied");
+    } else {
+      const identityProbe = await superAdmin.client
+        .from("profiles")
+        .select("google_linked_at")
+        .eq("id", student.profile.id)
+        .single();
+      if (!identityProbe.error && identityProbe.data) {
+        const result = await student.client
+          .from("profiles")
+          .update({ google_linked_at: new Date().toISOString() })
+          .eq("id", student.profile.id)
+          .select("id");
+        if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
+          throw new Error("Student identity/server-managed field update unexpectedly succeeded");
+        }
+        const afterIdentity = await superAdmin.client
+          .from("profiles")
+          .select("google_linked_at")
+          .eq("id", student.profile.id)
+          .single();
+        if (afterIdentity.error || afterIdentity.data?.google_linked_at !== identityProbe.data.google_linked_at) {
+          throw new Error("Student identity/server-managed field changed after a denied update");
+        }
+        pass("live identity/server-managed profile field update is denied");
+      } else {
+        pass("live profile has no optional Google identity columns; narrow grants protect future fields by default");
+      }
+    }
+
+    if (metadataClient) {
+      const roleHelpers = await readLiveRoleHelpers(metadataClient, student.profile.id);
+      assert(
+        roleHelpers.is_admin === false && roleHelpers.is_teacher_or_admin === false,
+        "Student role helpers changed after denied escalation attempts.",
+      );
+      pass("live denied student escalation leaves role helpers false");
+    } else {
+      console.log("BLOCKED live SQL role-helper verification: " + metadataBlocker);
+    }
+
+    const target = await createTemporaryFixture({ role: "student", status: "active" });
+    const inactiveSuperAdmin = await createTemporaryFixture({ role: "super_admin", status: "disabled" });
+    pass("live service-role profile bootstrap and temporary fixture login");
+
+    for (const [label, actor] of [
+      ["live student cannot call super-admin role transition RPC", student],
+      ["live teacher cannot call super-admin role transition RPC", teacher],
+      ["live admin cannot call super-admin role transition RPC", admin],
+      ["live inactive super-admin cannot call role transition RPC", inactiveSuperAdmin],
+    ]) {
+      const result = await actor.client.rpc("transition_profile_role_as_super_admin", {
+        p_next_role: "teacher",
+        p_target_profile_id: target.id,
+      });
+      assertRpcDenied(result, label);
+    }
+
+    const selfTransition = await superAdmin.client.rpc("transition_profile_role_as_super_admin", {
+      p_next_role: "teacher",
+      p_target_profile_id: superAdmin.profile.id,
+    });
+    assertRpcDenied(selfTransition, "live super-admin cannot change their own role through the RPC");
 
     const { error: transitionError } = await superAdmin.client.rpc(
       "transition_profile_role_as_super_admin",
       {
         p_next_role: "teacher",
-        p_target_profile_id: temporaryUserId,
+        p_target_profile_id: target.id,
       },
     );
     if (transitionError) throw new Error("Guarded super-admin transition failed");
     const { data: transitioned, error: transitionedError } = await service
       .from("profiles")
       .select("role")
-      .eq("id", temporaryUserId)
+      .eq("id", target.id)
       .single();
     if (transitionedError || transitioned?.role !== "teacher") {
       throw new Error("Guarded super-admin transition did not persist");
     }
-    pass("live service-role signup and guarded super-admin transition");
-  } finally {
-    if (temporaryUserId) {
-      await service.auth.admin.deleteUser(temporaryUserId).catch(() => {});
+    if (metadataClient) {
+      const auditResult = await metadataClient.query(
+        "select count(*)::integer as audit_count from private.profile_privileged_change_audit_log where actor_profile_id = $1 and target_profile_id = $2 and previous_role = 'student' and next_role = 'teacher' and action_kind = 'role_transition'",
+        [superAdmin.profile.id, target.id],
+      );
+      assert(auditResult.rows[0]?.audit_count === 1, "Expected safe role-transition audit event was not recorded.");
+      pass("live guarded super-admin transition and safe audit event");
+    } else {
+      pass("live guarded super-admin transition persists without direct audit-table exposure");
+      console.log("BLOCKED live audit-event count verification: " + metadataBlocker);
     }
+
+    const targetRoleAfterDeniedCalls = await service.from("profiles").select("role").eq("id", target.id).single();
+    if (targetRoleAfterDeniedCalls.error || targetRoleAfterDeniedCalls.data?.role !== "teacher") {
+      throw new Error("Denied RPC callers changed the temporary target role.");
+    }
+  } finally {
+    if (student && originalStudent) {
+      try {
+        await student.client
+          .from("profiles")
+          .update({
+            full_name: originalStudent.full_name,
+            avatar_url: originalStudent.avatar_url,
+            display_name: originalStudent.display_name,
+          })
+          .eq("id", student.profile.id)
+          .select("id");
+      } catch {
+        // Cleanup must never mask the original validation result.
+      }
+    }
+    if (service) {
+      for (const userId of temporaryUsers) {
+        await service.auth.admin.deleteUser(userId).catch(() => {});
+      }
+    }
+    await metadataClient?.end().catch(() => {});
   }
 
   console.log("PASS live PostgREST profile role immutability smoke");
@@ -629,4 +994,8 @@ async function runLiveSmoke() {
 
 if (process.argv.includes("--live")) {
   await runLiveSmoke();
+}
+
+if (process.argv.includes("--live-http-only")) {
+  await runLiveSmoke({ allowMetadataTransportBlock: true });
 }

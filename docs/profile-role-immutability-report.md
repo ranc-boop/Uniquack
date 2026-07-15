@@ -172,13 +172,156 @@ separate incident-review task before deployment.
 
 ## Remote apply status
 
-**Not applied by this task.** The live P0 remains open until migration 0039 is
-applied once to the clean project and the PostgREST `--live` smoke passes.
+The clean-project administrator confirmed that
+`0039_profile_privileged_fields_immutability.sql` was manually applied once.
+This branch did not reapply it and did not modify it after the live apply.
+
+## Post-apply live validation (2026-07-14)
+
+### Result
+
+The live **PostgREST and guarded-RPC behavior** is correct for the dedicated
+disposable fixtures. The strict metadata/audit verification could not complete
+from this isolated worktree, so the P0 is **not yet closed as a deployment
+gate**. This is an evidence gap, not a reason to weaken the migration.
+
+### Live behavior confirmed
+
+| Check | Result |
+| --- | --- |
+| Safe Student self-edit | `full_name`, `display_name`, and `avatar_url` each updated successfully. |
+| Student privileged writes | Role to Teacher/Admin/Super-admin, status, default organization, and optional identity-field writes were denied. |
+| Atomicity | A combined `full_name` plus role change was denied as one operation; neither field partially changed. |
+| Direct/browser-equivalent client path | Direct Supabase/PostgREST mutations were denied. |
+| View bypass | `public.user_profiles` could not update role and did not alter the backing profile. |
+| Other identities | Teacher, Admin, anonymous, and unrelated-user self/cross-profile privileged writes were denied. |
+| Service role | Temporary Auth user/profile bootstrap succeeded. |
+| Guarded RPC | Student, Teacher, Admin, and inactive Super-admin calls were denied; an active Super-admin fixture could transition a different fixture only. |
+| Self transition | Super-admin self role change through the RPC was denied. |
+| Fixture cleanup | Four exact `p0-smoke-...@example.invalid` fixtures were deleted. The dedicated Student's presentation-only fields were reset after a harness cleanup bug; role, status, and organization were verified unchanged. |
+
+No real user role, status, default organization, identity field, Bank,
+Review Draft, Blueprint, Classroom, Assignment, Practice record, provider
+setting, or AI job was modified.
+
+### Metadata and audit evidence still blocked
+
+The strict live mode attempted two safe direct metadata connection paths:
+
+1. the direct database hostname did not resolve (`ENOTFOUND`); and
+2. the configured Supabase pooler fallback returned a connection-level
+   `XX000` category.
+
+No credentials, hostnames, connection strings, or database error text were
+logged. Because of that transport block, the worktree could not independently
+query:
+
+- exact remote `profiles` column grants and absence of table-wide UPDATE;
+- `profiles_self_safe_update` and the immutability trigger;
+- future-field trigger source invariant;
+- `user_profiles` database grant revocation;
+- private audit-event count for the temporary transition; or
+- `private.is_admin()` / `private.is_teacher_or_admin()` after the denied
+  Student escalation.
+
+The migration source and local embedded-Postgres smoke cover each of those
+contracts. Run the read-only SQL Editor checks in
+`profile-role-immutability-manual-apply.md` and record their results before
+changing the P0 deployment status to closed.
+
+### Existing-account aggregate review
+
+After temporary fixture cleanup, a service-role aggregate-only read returned:
+
+| Role | Active | Suspended/disabled |
+| --- | ---: | ---: |
+| Super-admin | 1 | 0 |
+| Admin | 0 | 0 |
+| Teacher | 2 | 0 |
+| Student | 1 | 0 |
+
+No names, email addresses, IDs, or profile values were read into the report.
+The configured `TEST_ADMIN` credential currently resolves to a non-Admin
+profile and `TEST_SUPER_ADMIN` could not establish a session; disposable
+Admin/Super-admin fixtures were used for the authorization tests instead.
+This is a test-environment/account-inventory issue, not a self-promotion
+result. A founder-reviewed account inventory should confirm the intended two
+Teacher / zero Admin distribution before launch. The new audit table cannot
+establish whether role changes occurred before migration 0039, so this task
+does **not** claim that historical exploitation did not occur.
+
+### Compatibility regression results
+
+- Service-role profile bootstrap and signed-in temporary fixture creation
+  passed.
+- Student, Teacher, and configured Admin password/session login completed;
+  the Admin role label and Super-admin login need test-fixture repair as noted
+  above.
+- Static Student/Teacher/Admin route-guard coverage passed in route and
+  workspace smokes.
+- Bank import -> Review Draft -> private bank approval passed live, including
+  cleanup and no public leakage.
+- Classroom Operations source/live coverage passed; co-teacher coverage was
+  skipped because no second-Teacher fixture is configured.
+- Assignment -> Practice live smoke remains blocked by the pre-existing
+  teacher Classroom RLS failure (`42501` while creating `classrooms`). This
+  branch did not alter Classroom policies and did not introduce the failure.
+- Teacher feedback, AI queue, and the later aggregate-smoke modules were not
+  reached because aggregate smoke stops at the same pre-existing Classroom
+  foundation failure.
+
+### Tests after live apply
+
+Passed:
+
+```text
+npm.cmd install
+npm.cmd run lint
+npm.cmd run build
+node scripts/profile-role-immutability-smoke.mjs
+node scripts/security-smoke.mjs
+node scripts/route-smoke.mjs
+node scripts/supabase-rls-smoke.mjs
+node scripts/student-workspace-shell-smoke.mjs
+node scripts/bank-import-review-smoke.mjs
+node scripts/teacher-beta-readiness-smoke.mjs
+node scripts/classroom-operations-smoke.mjs
+npm.cmd run perf:budget
+npm.cmd run perf:audit
+npm.cmd run analyze
+```
+
+Controlled live `--live-http-only` behavior checks passed through the role
+transition and cleanup verification. Strict `--live` metadata mode remains
+blocked as described above.
+
+Blocked, unrelated to this migration:
+
+```text
+node scripts/assignment-practice-evidence-smoke.mjs
+npm.cmd run smoke
+```
+
+Both stopped at the known teacher Classroom create RLS violation. The first
+no-environment aggregate invocation also stopped at missing isolated-worktree
+Supabase environment categories, as expected; the process-only rerun reached
+the actual Classroom blocker.
 
 ## Deployment status
 
-**Blocked.** Deployment, Google Login, new-user onboarding, and production AI
-worker enablement remain blocked pending manual apply and live validation.
+**P0 behavior is strongly validated but the deployment gate remains blocked.**
+Do not call the overall website deployment-ready merely because the profile
+role path is hardened. Close this P0 only after the SQL Editor metadata/audit
+queries confirm the live schema state.
+
+Remaining known launch blockers include:
+
+- live migration/schema reconciliation;
+- public question-assets bucket exposure;
+- teacher Classroom creation RLS failure;
+- Student self-study evidence organization scope;
+- incomplete/unsafe Google Login migration;
+- production AI scheduler/provider/monitoring readiness.
 
 ## Remaining security work not included
 
