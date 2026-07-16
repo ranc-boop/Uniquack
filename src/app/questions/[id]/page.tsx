@@ -28,10 +28,10 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { normalizeQuestionOptions } from "@/lib/questions/answer-spec";
 import { createClient } from "@/lib/supabase/server";
+import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import type { Video } from "@/types/database";
 
@@ -199,10 +199,6 @@ export default async function QuestionDetailPage({
       : ((taxonomyAssignments ?? []) as TaxonomyTagChipAssignment[]);
 
   const questionImages: QuestionDetailImage[] = (displayedAssets ?? []).map((asset) => {
-    const { data } = supabase.storage
-      .from(QUESTION_ASSETS_BUCKET)
-      .getPublicUrl(asset.storage_path);
-
     return {
       id: asset.id,
       originalFilename:
@@ -210,7 +206,7 @@ export default async function QuestionDetailPage({
         asset.alt_text?.trim() ||
         asset.storage_path?.split("/").pop() ||
         "Question image",
-      publicUrl: data.publicUrl,
+      publicUrl: getQuestionAssetUrl(asset.id),
     };
   });
   const questionOptions = normalizeQuestionOptions(question.options);

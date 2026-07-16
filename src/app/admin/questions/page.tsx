@@ -42,9 +42,9 @@ import {
   extractImportAssetReferences,
   type ImportAssetReferences,
 } from "@/lib/batch-import/asset-references";
-import { QUESTION_ASSETS_BUCKET } from "@/lib/question-assets";
 import { getQuestionReadiness } from "@/lib/questions/readiness";
 import { createClient } from "@/lib/supabase/server";
+import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import type { Database } from "@/types/database";
 
@@ -424,9 +424,6 @@ export default async function AdminQuestionsPage({
     }
 
     const current = assetsByQuestionId.get(asset.question_id) ?? [];
-    const { data } = supabase.storage
-      .from(QUESTION_ASSETS_BUCKET)
-      .getPublicUrl(asset.storage_path);
 
     current.push({
       id: asset.id,
@@ -436,7 +433,7 @@ export default async function AdminQuestionsPage({
         asset.alt_text?.trim() ||
         asset.storage_path?.split("/").pop() ||
         "Question image",
-      publicUrl: data.publicUrl,
+      publicUrl: getQuestionAssetUrl(asset.id),
       displayOnDetail: true,
     });
     assetsByQuestionId.set(asset.question_id, current);

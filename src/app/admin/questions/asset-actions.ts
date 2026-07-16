@@ -8,6 +8,7 @@ import {
   questionAssetExtensionForMimeType,
 } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
+import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 import {
   deleteQuestionAssetSchema,
   ensureQuestionDraftForUploadSchema,
@@ -190,15 +191,11 @@ export async function finalizeQuestionAssetUpload(input: unknown) {
     throw new Error("Uploaded image was not found in storage.");
   }
 
-  const { data } = supabase.storage
-    .from(QUESTION_ASSETS_BUCKET)
-    .getPublicUrl(asset.storage_path);
-
   return {
     id: asset.id,
     questionId: asset.question_id,
     originalFilename: assetDisplayName(asset),
-    publicUrl: data.publicUrl,
+    publicUrl: getQuestionAssetUrl(asset.id),
     displayOnDetail: true,
   } satisfies QuestionAssetView;
 }
