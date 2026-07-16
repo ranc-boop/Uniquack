@@ -7,6 +7,90 @@ forward-only fix, but the P0 is not closed until migration `0043` is applied
 once to the clean Supabase project and the dedicated Teacher/Student checks
 pass against that project.
 
+## Post-Failure Remote Apply Audit (2026-07-16)
+
+**Current classification: C. UNKNOWN. Do not run `0043` again.**
+
+The first manual attempt to apply
+`0043_classroom_creation_rls_hardening.sql` ended with PostgreSQL error
+`42723`, reporting that `create_teacher_classroom` already existed with the
+same argument types. The supplied read-only catalog metadata proves that the
+live project currently has this RPC contract:
+
+```text
+public.create_teacher_classroom(
+  p_name text,
+  p_subject text,
+  p_description text,
+  p_organization_id uuid,
+  p_request_id uuid
+) returns table(classroom_id uuid, display_code text)
+security definer: true
+search_path: public, private, extensions
+execute: anon=false, authenticated=true, service_role=true
+definition hash: e7a8c8b698fb0224505841c8a78597d8
+```
+
+This is compatible with the intended 0043 application contract. It does not
+prove which SQL run created the UUID-request RPC, whether every earlier 0043
+statement was committed, or whether an earlier undocumented reapply created
+the same function. No statement-transaction assumption is safe for the SQL
+Editor. Therefore the result cannot be classified as fully rolled back or
+partially applied from this metadata alone.
+
+`0030_teacher_classroom_rls_fix.sql` first defined the documented canonical
+RPC. Its fifth argument was `p_join_code text` and it returned the same
+`table(classroom_id uuid, display_code text)` contract. The UUID-request shape
+was introduced by 0043, which intended to retire the 0030 text-join-code
+overload rather than add a parallel public contract. The current Teacher
+server action already calls the UUID-request shape and requires the same safe
+return fields.
+
+The local clean-schema smoke did not detect this collision because its
+pre-0043 fixture starts from the canonical 0030 text-join-code overload. It
+does not seed a pre-existing UUID-request overload, which is a live-state
+drift condition outside the canonical migration sequence.
+
+### Exact Read-Only Classification Checks
+
+Run the catalog-only block in
+`docs/security/classroom-create-rls-manual-apply.md` before any new SQL is
+applied. It checks every 0043 object or privilege transition that precedes the
+failing `CREATE FUNCTION` statement: the idempotency column and constraint,
+direct-write policies and grants, the private organization helper, and both
+the retired 0030 and current UUID RPC overloads.
+
+Classify the result as follows:
+
+- **A. FULLY ROLLED BACK:** no 0043-specific column, constraint, helper,
+  policy/grant transition, or old-overload retirement is present, and a
+  separately documented earlier source accounts for the current UUID RPC.
+- **B. PARTIALLY APPLIED:** any 0043-specific column, constraint, helper,
+  policy/grant transition, or old-overload retirement is present.
+- **C. UNKNOWN:** the current state cannot establish the source or atomicity
+  of the matching UUID RPC. This is the present classification.
+
+### Migration Decision
+
+No remote migration was changed or rerun for this audit.
+
+- If the read-only evidence establishes **A** and proves 0043 was never
+  successfully applied, correct the un-applied 0043 before its first successful
+  run: use `CREATE OR REPLACE FUNCTION` for the same input and return contract,
+  retain `security definer` and the fixed search path, and explicitly reapply
+  the intended EXECUTE revokes/grants inside an explicit transaction.
+- If the evidence establishes **B**, leave 0043 as the failed-attempt artifact
+  and create forward-only `0044` to idempotently establish the final state.
+- While classification remains **C**, do not edit or rerun 0043 remotely. The
+  safe next action is to collect the catalog-only evidence and then choose the
+  A/B path. `DROP FUNCTION`, especially `DROP ... CASCADE`, is not approved.
+
+The required collision and repeat-apply regression cases remain blocked until
+this decision is evidence-backed. They must be added to the disposable
+PostgreSQL harness alongside the existing role, direct-write, membership,
+server-generated join-code, and Bank-isolation tests when the corrective
+migration is selected.
+
 ## Root Cause
 
 The Classroom foundation (`0018`) allowed authenticated Classroom managers to
