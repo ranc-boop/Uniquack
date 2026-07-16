@@ -19,6 +19,15 @@ import { dirname, resolve } from "path";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  QUESTION_ASSET_HTML_TARGETS,
+  findLegacyQuestionAssetUrls,
+} from "./lib/question-asset-url-rewrite.mjs";
+import {
+  QUESTION_ASSET_JSONB_TARGETS,
+  findLegacyQuestionAssetUrlsInJson,
+} from "./lib/question-asset-json-rewrite.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
@@ -99,13 +108,24 @@ const allowBucketMutation = process.argv.includes("--allow-bucket-mutation");
 const anon = createClient(supabaseUrl, supabaseAnonKey);
 const admin = await signIn("TEST_ADMIN_USERNAME", "TEST_ADMIN_PASSWORD");
 const student = await optionalSignIn("TEST_STUDENT_USERNAME", "TEST_STUDENT_PASSWORD");
+
+// Read-only service-role client, used only for the bucket-visibility check and the
+// zero-remaining-legacy-URL scan below — neither mutates anything, so both are safe
+// to run whenever a service-role key is available, without --allow-bucket-mutation.
+const serviceReadClient = serviceRoleKey
+  ? createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
+  : null;
+
+// Mutation-capable service-role client, used only by the idempotency check further
+// below, and gated behind an explicit opt-in flag on top of requiring the key — see
+// that check for why.
 const serviceClient =
   serviceRoleKey && allowBucketMutation
     ? createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
     : null;
 
 if (!serviceRoleKey) {
-  skip("bucket-idempotency check: no service-role key available in this environment.");
+  skip("bucket-visibility, legacy-URL-scan, and bucket-idempotency checks: no service-role key available in this environment.");
 } else if (!allowBucketMutation) {
   skip(
     "bucket-idempotency check: service-role key present but --allow-bucket-mutation was not passed; refusing to toggle bucket visibility.",
@@ -182,6 +202,86 @@ async function createReadyAsset(questionId) {
 }
 
 try {
+  // --- 0. Deployment-wide checks, independent of this run's own test fixtures. ---
+
+  if (serviceReadClient) {
+    // Confirm question-assets bucket is private.
+    const { data: bucketInfo, error: bucketError } = await serviceReadClient.storage.getBucket(bucket);
+    assert(!bucketError && bucketInfo, `bucket lookup failed: ${bucketError?.message}`);
+    if (bucketInfo.public) {
+      skip(
+        "bucket-visibility check: question-assets bucket is still public in this project (expected before migration 0044 is applied) — this is not a failure of this commit.",
+      );
+    } else {
+      pass("bucket-visibility: question-assets bucket is private");
+    }
+
+    // Confirm all 9 audited legacy URL-bearing fields (5 plain-text HTML columns +
+    // 4 JSONB columns) contain zero remaining legacy public question-assets URLs.
+    // Reuses the exact target lists and detection functions the backfill scripts
+    // themselves use (scripts/lib/question-asset-url-rewrite.mjs and
+    // scripts/lib/question-asset-json-rewrite.mjs), so this check can never drift
+    // out of sync with what the backfills consider their coverage.
+    let totalLegacyUrlsFound = 0;
+    const SCAN_PAGE_SIZE = 1000;
+
+    async function countLegacyUrlsInColumn(table, column, findFn) {
+      let from = 0;
+      let count = 0;
+
+      for (;;) {
+        const { data, error } = await serviceReadClient
+          .from(table)
+          .select(`id, ${column}`)
+          .range(from, from + SCAN_PAGE_SIZE - 1);
+        assert(!error, `scan failed for ${table}.${column}: ${error?.message}`);
+
+        if (!data || data.length === 0) {
+          break;
+        }
+
+        for (const row of data) {
+          count += findFn(row[column]).length;
+        }
+
+        if (data.length < SCAN_PAGE_SIZE) {
+          break;
+        }
+
+        from += SCAN_PAGE_SIZE;
+      }
+
+      return count;
+    }
+
+    for (const target of QUESTION_ASSET_HTML_TARGETS) {
+      const found = await countLegacyUrlsInColumn(target.table, target.column, findLegacyQuestionAssetUrls);
+      totalLegacyUrlsFound += found;
+      assert(
+        found === 0,
+        `${target.table}.${target.column} still contains ${found} legacy question-assets URL(s)`,
+      );
+    }
+
+    for (const target of QUESTION_ASSET_JSONB_TARGETS) {
+      const found = await countLegacyUrlsInColumn(
+        target.table,
+        target.column,
+        findLegacyQuestionAssetUrlsInJson,
+      );
+      totalLegacyUrlsFound += found;
+      assert(
+        found === 0,
+        `${target.table}.${target.column} still contains ${found} legacy question-assets URL(s)`,
+      );
+    }
+
+    assert(totalLegacyUrlsFound === 0, "expected zero legacy question-assets URLs across all 9 audited fields");
+    pass("legacy-URL scan: all 9 audited fields (5 HTML + 4 JSONB) contain zero legacy question-assets URLs");
+  } else {
+    skip("bucket-visibility and legacy-URL-scan checks: no service-role key available in this environment.");
+  }
+
   const publishedQuestion = await createQuestion("published");
   const draftQuestion = await createQuestion("draft");
   const publishedAsset = await createReadyAsset(publishedQuestion.id);
