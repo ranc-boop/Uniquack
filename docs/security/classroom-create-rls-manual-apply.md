@@ -7,11 +7,12 @@ Supabase project. A prior SQL Editor attempt stopped with PostgreSQL error
 `42723` because a `public.create_teacher_classroom` function with the same
 UUID-request signature already existed.
 
-Current classification is **C. UNKNOWN**, not a successful 0043 apply. The
-matching public RPC has the expected safe return contract, security-definer
-status, fixed `public, private, extensions` search path, and no anonymous
-EXECUTE grant. That metadata does not prove whether earlier 0043 statements
-committed before the failure.
+Current classification is **B. PARTIALLY APPLIED**, not a successful 0043
+apply. The matching public RPC has the expected safe return contract,
+security-definer status, fixed `public, private, extensions` search path, and
+no anonymous EXECUTE grant. The 0043-only private helper
+`can_create_classroom_in_organization(uuid)` also exists, proving that
+statements before the failed public function creation reached the live schema.
 
 Run the following catalog-only checks first. They return only schema metadata,
 policy names, privilege booleans, and definition hashes; they do not read
@@ -82,26 +83,27 @@ where (n.nspname = 'private' and p.proname = 'can_create_classroom_in_organizati
 order by n.nspname, identity_arguments;
 ```
 
-Interpretation:
+Historical interpretation:
 
 - Any existing `creation_request_id`, matching constraint, private helper,
   missing legacy direct-write policy, or revoked normal-client insert/update
   privilege is evidence of **B. PARTIALLY APPLIED**.
 - If none of those transitions are present, the UUID RPC still needs a
   documented predecessor before **A. FULLY ROLLED BACK** can be claimed.
-- Until that provenance is established, remain at **C. UNKNOWN** and do not
-  run, drop, or manually replace the function.
+- The supplied helper metadata establishes **B. PARTIALLY APPLIED**. Do not
+  run, drop, or manually replace the existing UUID RPC.
 
 ## Scope
 
-Apply exactly one forward-only file to the **clean Supabase project**:
+Apply exactly one forward-only reconciliation file to the **clean Supabase
+project**:
 
 ```text
-supabase/clean-migrations/0043_classroom_creation_rls_hardening.sql
+supabase/clean-migrations/0044_classroom_creation_rpc_reconciliation.sql
 ```
 
 Do not apply the legacy migration directory. Do not replay `0018`, `0030`, or
-any previous Classroom migration. Do not apply this file more than once.
+the partially applied `0043`. Do not apply this file more than once.
 
 This guide contains no credentials and does not require altering `.env.local`.
 
@@ -140,17 +142,15 @@ order by table_name, grantee, privilege_type;
 
 ## Conditional Apply Procedure
 
-Only follow this section after the repository owner records an evidence-backed
-classification and provides the matching reviewed migration. The original 0043
-file is currently on hold; it must not be pasted again merely to retry the
-42723 failure.
+Apply only the new forward-only reconciliation file after reviewing its full
+contents. The original 0043 file remains on hold and must not be pasted again
+merely to retry the 42723 failure.
 
-1. If the classification is **A**, the reviewed correction may replace the
-   never-successfully-applied 0043. It must use an explicit transaction,
-   preflight the exact RPC identity/return contract, use `CREATE OR REPLACE`
-   only for the compatible contract, and explicitly restore intended grants.
-2. If the classification is **B**, apply the separately reviewed forward-only
-   0044 reconciliation migration once. Do not edit historical applied files.
+1. Open `supabase/clean-migrations/0044_classroom_creation_rpc_reconciliation.sql`
+   from the reviewed branch. It has an explicit transaction and validates the
+   exact pre-existing UUID RPC return contract before replacing its body.
+2. Paste and execute **0044 once** in the clean Supabase SQL Editor. Do not
+   rerun 0043 and do not manually drop either overload.
 3. Save only the SQL Editor result category, reviewed filename, and date. Do
    not save or publish connection strings, service keys, user rows, or join
    codes.
@@ -243,7 +243,7 @@ Do not use broad deletes and do not delete any production Classroom.
 ## Failure and Forward Fix Rule
 
 If application or live validation fails, do not weaken RLS, restore broad
-client writes, edit historical migrations, or replay `0043`. Record the
+client writes, edit historical migrations, or replay `0043`/`0044`. Record the
 sanitized error category and create a separately reviewed forward-only
 migration. P0-CLS-01 remains open until the closure conditions in
 `docs/security/classroom-create-rls-report.md` are met.

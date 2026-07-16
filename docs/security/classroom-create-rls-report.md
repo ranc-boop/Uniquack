@@ -2,14 +2,14 @@
 
 ## Status
 
-**PENDING MANUAL APPLY AND LIVE VALIDATION.** This branch prepares the
-forward-only fix, but the P0 is not closed until migration `0043` is applied
-once to the clean Supabase project and the dedicated Teacher/Student checks
-pass against that project.
+**PENDING MANUAL APPLY AND LIVE VALIDATION.** Migration `0043` is partially
+applied and must not be replayed. The P0 is not closed until forward-only
+reconciliation migration `0044` is applied once to the clean Supabase project
+and the dedicated Teacher/Student checks pass against that project.
 
 ## Post-Failure Remote Apply Audit (2026-07-16)
 
-**Current classification: C. UNKNOWN. Do not run `0043` again.**
+**Confirmed classification: B. PARTIALLY APPLIED. Do not run `0043` again.**
 
 The first manual attempt to apply
 `0043_classroom_creation_rls_hardening.sql` ended with PostgreSQL error
@@ -31,12 +31,14 @@ execute: anon=false, authenticated=true, service_role=true
 definition hash: e7a8c8b698fb0224505841c8a78597d8
 ```
 
-This is compatible with the intended 0043 application contract. It does not
-prove which SQL run created the UUID-request RPC, whether every earlier 0043
-statement was committed, or whether an earlier undocumented reapply created
-the same function. No statement-transaction assumption is safe for the SQL
-Editor. Therefore the result cannot be classified as fully rolled back or
-partially applied from this metadata alone.
+This is compatible with the intended 0043 application contract. The supplied
+catalog metadata also confirms that
+`private.can_create_classroom_in_organization(uuid)` exists with its fixed
+`public, private` search path and no normal-client EXECUTE grant. That helper
+is introduced before the failed public `CREATE FUNCTION` statement in 0043 and
+does not exist in earlier canonical Classroom migrations. At least part of
+0043 therefore reached the live schema; no SQL Editor transaction assumption
+is needed for this classification.
 
 `0030_teacher_classroom_rls_fix.sql` first defined the documented canonical
 RPC. Its fifth argument was `p_join_code text` and it returned the same
@@ -68,7 +70,8 @@ Classify the result as follows:
 - **B. PARTIALLY APPLIED:** any 0043-specific column, constraint, helper,
   policy/grant transition, or old-overload retirement is present.
 - **C. UNKNOWN:** the current state cannot establish the source or atomicity
-  of the matching UUID RPC. This is the present classification.
+  of the matching UUID RPC. This was the temporary classification before the
+  0043-specific helper metadata was supplied.
 
 ### Migration Decision
 
@@ -79,17 +82,19 @@ No remote migration was changed or rerun for this audit.
   run: use `CREATE OR REPLACE FUNCTION` for the same input and return contract,
   retain `security definer` and the fixed search path, and explicitly reapply
   the intended EXECUTE revokes/grants inside an explicit transaction.
-- If the evidence establishes **B**, leave 0043 as the failed-attempt artifact
-  and create forward-only `0044` to idempotently establish the final state.
-- While classification remains **C**, do not edit or rerun 0043 remotely. The
-  safe next action is to collect the catalog-only evidence and then choose the
-  A/B path. `DROP FUNCTION`, especially `DROP ... CASCADE`, is not approved.
+- **B is confirmed.** `0043` remains the failed-attempt artifact and
+  `0044_classroom_creation_rpc_reconciliation.sql` is the only reviewed remote
+  apply candidate. It uses an explicit transaction and a catalog preflight for
+  the existing UUID RPC/return contract, then uses `CREATE OR REPLACE` to
+  replace the compatible function body. It never drops the UUID RPC and never
+  uses `CASCADE`.
 
-The required collision and repeat-apply regression cases remain blocked until
-this decision is evidence-backed. They must be added to the disposable
-PostgreSQL harness alongside the existing role, direct-write, membership,
-server-generated join-code, and Bank-isolation tests when the corrective
-migration is selected.
+The disposable PostgreSQL harness now covers a clean canonical application
+through 0043, reproduces the 42723 collision by applying 0043 over an existing
+UUID RPC, applies 0044, applies 0044 a second time, and asserts the Server
+Action return contract remains `TABLE(classroom_id uuid, display_code text)`.
+The existing role, direct-write, membership, server-generated join-code, and
+Bank-isolation checks remain part of that matrix.
 
 ## Root Cause
 
@@ -121,7 +126,7 @@ user, role, status, organization authority, or a join code. The server action
 passes no organization id because the RPC derives and validates the allowed
 scope itself.
 
-## Forward Migration
+## Forward Migrations
 
 `0043_classroom_creation_rls_hardening.sql`:
 
@@ -142,6 +147,12 @@ authenticated actor. Co-teacher and Classroom membership are operational
 permissions only: they never insert `bank_members`, expose a source Bank, make
 an Assignment, publish a question, expose Review Drafts, expose Blueprints, or
 write Practice evidence.
+
+`0044_classroom_creation_rpc_reconciliation.sql` is the forward-only repair
+for the confirmed partial state. It transactionally preflights the existing
+UUID RPC's return contract, uses `CREATE OR REPLACE` only for that compatible
+contract, explicitly reapplies safe grants, and does not drop the live UUID
+RPC or use `CASCADE`.
 
 ## Organization Contract
 
@@ -189,8 +200,12 @@ Completed in the isolated worktree:
 - `node scripts/security-smoke.mjs`
 - `node scripts/migration-reconciliation-smoke.mjs`
 - `node scripts/classroom-create-rls-smoke.mjs` (passed source assertions plus
-  the embedded canonical PostgreSQL RLS matrix; live phase skipped because the
-  isolated worktree has no disposable environment)
+  clean-through-0043 apply, a reproduced 42723 collision, twice-applied 0044
+  reconciliation, and the embedded canonical PostgreSQL RLS matrix; live phase
+  skipped because the isolated worktree has no disposable environment)
+- `node scripts/migration-reconciliation-smoke.mjs` after registering 0044
+- `npm.cmd run lint`
+- `npm.cmd run build`
 - `node scripts/classroom-operations-smoke.mjs` (source assertions)
 - `node scripts/classroom-ui-rebuild-smoke.mjs` (source assertions)
 - `node scripts/teacher-workspace-shell-smoke.mjs` (source assertions)
@@ -222,7 +237,8 @@ not create Bank membership automatically.
 
 P0-CLS-01 may close only after all of the following are recorded:
 
-1. `0043_classroom_creation_rls_hardening.sql` was applied exactly once.
+1. `0044_classroom_creation_rpc_reconciliation.sql` was applied exactly once
+   after the recorded partial 0043 state.
 2. A real disposable Teacher creates a Classroom through the RPC.
 3. Student, anonymous, inactive, and unrelated-organization negative cases
    are denied as applicable to available fixtures.

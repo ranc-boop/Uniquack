@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 43,
+  "latestActivePrefix": 44,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -54,7 +54,8 @@
     "0040_profile_insert_and_role_transition_hardening.sql",
     "0041_profile_delete_privilege_hardening.sql",
     "0042_internal_provider_gateway_hardening.sql",
-    "0043_classroom_creation_rls_hardening.sql"
+    "0043_classroom_creation_rls_hardening.sql",
+    "0044_classroom_creation_rpc_reconciliation.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -119,7 +120,9 @@
     "requiredForwardHardening": "No additional provider-gateway migration is authorized. Complete the approved credential-dependent super-admin/token and role-boundary validation, then capture remaining sanitized catalog metadata before declaring full release reconciliation.",
     "ownerDecisionRequired": "Jerry / Platform Security is the primary gateway and rotation owner. Frances / Technical Operations is a designated backup pending founder confirmation; that pending operational ownership does not invalidate the confirmed technical grant closure."
   },
-  "knownLiveDrift": [],
+  "knownLiveDrift": [
+    "0043 partially applied: the UUID create_teacher_classroom RPC and private.can_create_classroom_in_organization helper exist after a 42723 duplicate-function failure; 0044 is required before the Classroom creation security gate can close."
+  ],
   "repositoryStaticInventory": {
     "source": "Deterministic parse of active canonical SQL in scripts/migration-reconciliation-smoke.mjs",
     "policyRequirement": "Every canonical RLS-enabled public table must have an explicit canonical policy declaration.",
@@ -169,6 +172,7 @@
     { "filename": "0040_profile_insert_and_role_transition_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "profile-role immutability live validation" },
     { "filename": "0041_profile_delete_privilege_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "profile deletion hardening live validation" },
     { "filename": "0042_internal_provider_gateway_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "post-0042 SQL Editor grant and alias validation" },
-    { "filename": "0043_classroom_creation_rls_hardening.sql", "status": "PENDING_MANUAL_APPLY", "applicationMethod": "SQL Editor approved release", "evidenceSource": "P0-CLS-01 manual apply and live validation are required before the Classroom security gate can close" }
+    { "filename": "0043_classroom_creation_rls_hardening.sql", "status": "PARTIALLY_APPLIED_FAILED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized 42723 collision and 0043-only helper catalog metadata" },
+    { "filename": "0044_classroom_creation_rpc_reconciliation.sql", "status": "PENDING_MANUAL_APPLY", "applicationMethod": "SQL Editor approved release", "evidenceSource": "P0-CLS-01 0044 manual apply and live validation are required before the Classroom security gate can close" }
   ]
 }

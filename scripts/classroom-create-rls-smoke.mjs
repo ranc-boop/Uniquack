@@ -104,7 +104,15 @@ async function expectDenied(label, operation) {
 }
 
 async function runEmbeddedPostgresSmoke() {
-  const [foundations, classroomFoundation, classroomDisplayCode, classroomRemoval, priorRlsFix, hardening] =
+  const [
+    foundations,
+    classroomFoundation,
+    classroomDisplayCode,
+    classroomRemoval,
+    priorRlsFix,
+    hardening,
+    reconciliation,
+  ] =
     await Promise.all([
       read("supabase/clean-migrations/0001_foundations_identity_organizations.sql"),
       read("supabase/clean-migrations/0018_classroom_foundation.sql"),
@@ -112,6 +120,7 @@ async function runEmbeddedPostgresSmoke() {
       read("supabase/clean-migrations/0020_classroom_removed_member_rejoin_block.sql"),
       read("supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql"),
       read("supabase/clean-migrations/0043_classroom_creation_rls_hardening.sql"),
+      read("supabase/clean-migrations/0044_classroom_creation_rpc_reconciliation.sql"),
     ]);
   const harness = await createGoogleAccountLinksPostgresHarness("classroom-create-rls");
   const { connection, instance } = harness;
@@ -160,6 +169,30 @@ async function runEmbeddedPostgresSmoke() {
     await applySql(bootstrap, classroomRemoval);
     await applySql(bootstrap, priorRlsFix);
     await applySql(bootstrap, hardening);
+    console.log("PASS clean canonical migrations through 0043 apply from zero");
+
+    let collisionError = null;
+    try {
+      await applySql(bootstrap, hardening);
+    } catch (error) {
+      collisionError = error;
+    }
+    assert(
+      collisionError?.message?.includes("already exists with same argument types"),
+      "reapplying the original 0043 should reproduce the reviewed duplicate-function collision",
+    );
+    console.log("PASS pre-existing UUID RPC reproduces the 0043 collision");
+
+    await applySql(bootstrap, reconciliation);
+    await applySql(bootstrap, reconciliation);
+    const reconciledContract = await bootstrap.query(
+      "select pg_get_function_result('public.create_teacher_classroom(text,text,text,uuid,uuid)'::regprocedure) as return_type",
+    );
+    assert(
+      reconciledContract.rows[0]?.return_type === "TABLE(classroom_id uuid, display_code text)",
+      "0044 must preserve the server action's Classroom RPC return contract",
+    );
+    console.log("PASS 0044 reconciles the collision and is safely repeatable");
     await applySql(
       bootstrap,
       "grant select, update on table public.classrooms to anon, authenticated;\n" +
@@ -329,8 +362,9 @@ async function runEmbeddedPostgresSmoke() {
 }
 
 async function main() {
-  const [migration, actions, foundationSmoke, operationsSmoke] = await Promise.all([
+  const [migration, reconciliation, actions, foundationSmoke, operationsSmoke] = await Promise.all([
     read("supabase/clean-migrations/0043_classroom_creation_rls_hardening.sql"),
+    read("supabase/clean-migrations/0044_classroom_creation_rpc_reconciliation.sql"),
     read("src/app/teacher/classrooms/actions.ts"),
     read("scripts/classroom-foundation-smoke.mjs"),
     read("scripts/classroom-operations-smoke.mjs"),
@@ -341,6 +375,18 @@ async function main() {
       migration.includes("revoke insert on table public.classrooms from anon, authenticated") &&
       migration.includes("grant insert on table public.classrooms to service_role"),
     "0043 must retire direct authenticated Classroom creation while preserving service-role access",
+  );
+  assert(
+    reconciliation.startsWith("-- P0-CLS-01") &&
+      reconciliation.includes("begin;") &&
+      reconciliation.includes("to_regprocedure('public.create_teacher_classroom(text,text,text,uuid,uuid)')") &&
+      reconciliation.includes("create or replace function public.create_teacher_classroom") &&
+      reconciliation.includes("revoke insert on table public.classrooms from public, anon, authenticated") &&
+      reconciliation.includes("grant execute on function public.create_teacher_classroom(text, text, text, uuid, uuid)") &&
+      reconciliation.includes("to authenticated, service_role") &&
+      reconciliation.includes("commit;") &&
+      !reconciliation.includes("drop function public.create_teacher_classroom(text, text, text, uuid, uuid)"),
+    "0044 must transactionally reconcile the existing UUID RPC without dropping it",
   );
   assert(
     migration.includes("drop policy if exists classroom_members_teacher_write") &&
