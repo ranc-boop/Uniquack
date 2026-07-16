@@ -10,13 +10,19 @@
     "perf:audit": "node scripts/site-performance-audit.mjs",
     "perf:budget": "node scripts/performance-budget-smoke.mjs",
     "deadcode:audit": "knip --reporter compact",
-    "lint": "node scripts/check-math-content-usage.mjs && node ./node_modules/eslint/bin/eslint.js .",
+    "lint": "node scripts/check-math-content-usage.mjs && node scripts/check-question-assets-public-url.mjs && node ./node_modules/eslint/bin/eslint.js .",
     "lint:math-content": "node scripts/check-math-content-usage.mjs",
+    "lint:question-assets-public-url": "node scripts/check-question-assets-public-url.mjs",
     "smoke": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-all.mjs",
     "smoke:practice-thread-cache": "node scripts/practice-thread-cache-refactor-smoke.mjs",
     "smoke:import-json-latex": "node scripts/import-json-latex-repair-smoke.mjs",
     "smoke:rls": "node scripts/supabase-rls-smoke.mjs",
-    "smoke:assets-security": "node scripts/question-assets-security-smoke.mjs"
+    "smoke:assets-security": "node scripts/question-assets-security-smoke.mjs",
+    "test:question-asset-url-backfill": "node scripts/question-asset-url-backfill-test.mjs",
+    "backfill:question-asset-urls": "node scripts/backfill-question-asset-urls.mjs",
+    "test:question-asset-url-backfill-jsonb": "node scripts/question-asset-url-backfill-jsonb-test.mjs",
+    "backfill:question-asset-urls-jsonb": "node scripts/backfill-question-asset-urls-jsonb.mjs",
+    "smoke:assets-private-cutover": "node scripts/question-assets-private-cutover-smoke.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.0",
