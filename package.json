@@ -20,7 +20,8 @@
     "test:question-asset-url-backfill": "node scripts/question-asset-url-backfill-test.mjs",
     "backfill:question-asset-urls": "node scripts/backfill-question-asset-urls.mjs",
     "test:question-asset-url-backfill-jsonb": "node scripts/question-asset-url-backfill-jsonb-test.mjs",
-    "backfill:question-asset-urls-jsonb": "node scripts/backfill-question-asset-urls-jsonb.mjs"
+    "backfill:question-asset-urls-jsonb": "node scripts/backfill-question-asset-urls-jsonb.mjs",
+    "smoke:assets-private-cutover": "node scripts/question-assets-private-cutover-smoke.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.0",
