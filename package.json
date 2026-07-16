@@ -16,7 +16,9 @@
     "smoke:practice-thread-cache": "node scripts/practice-thread-cache-refactor-smoke.mjs",
     "smoke:import-json-latex": "node scripts/import-json-latex-repair-smoke.mjs",
     "smoke:rls": "node scripts/supabase-rls-smoke.mjs",
-    "smoke:assets-security": "node scripts/question-assets-security-smoke.mjs"
+    "smoke:assets-security": "node scripts/question-assets-security-smoke.mjs",
+    "test:question-asset-url-backfill": "node scripts/question-asset-url-backfill-test.mjs",
+    "backfill:question-asset-urls": "node scripts/backfill-question-asset-urls.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.0",
