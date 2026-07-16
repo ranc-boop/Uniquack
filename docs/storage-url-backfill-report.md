@@ -1,6 +1,9 @@
 # Storage URL Backfill — Legacy `question-assets` Public URLs
 
-Status: Commit 1 of the `security/p0-storage-private-access` plan. Prepares an idempotent backfill only. Does **not** change bucket visibility, Storage policies, or Question RLS, and has **not** been run against production or any live environment as part of this change.
+Status: Commits 1 and 2 of the `security/p0-storage-private-access` plan. Both prepare idempotent backfills only. Neither changes bucket visibility, Storage policies, Question RLS, or application rendering code, and neither has been run against production or any live environment as part of these changes.
+
+- **Commit 1** ([scripts/backfill-question-asset-urls.mjs](../scripts/backfill-question-asset-urls.mjs)): plain-text HTML columns.
+- **Commit 2** ([scripts/backfill-question-asset-urls-jsonb.mjs](../scripts/backfill-question-asset-urls-jsonb.mjs)): JSONB columns, covering the four columns Commit 1 identified but deliberately left out (see "JSONB columns" below, now covered rather than excluded).
 
 ## Fields and URL formats found
 
@@ -18,7 +21,7 @@ Every column in the schema whose name or evident purpose suggested it could hold
 
 `explanation_html` does not exist anywhere in the schema — it was not found and is not included. No other `*_html` column exists in `supabase/clean-migrations/`.
 
-### JSONB columns identified but intentionally excluded from this pass
+### JSONB columns (Commit 1: excluded; Commit 2: covered)
 
 The following columns are JSONB blobs that may contain a serialized copy of a question's HTML (including embedded asset URLs) as a nested string value, not as a plain-text column:
 
@@ -27,7 +30,7 @@ The following columns are JSONB blobs that may contain a serialized copy of a qu
 - `practice_wrong_questions.question_snapshot`
 - `review_draft_items.draft_payload`
 
-These are excluded from Commit 1 deliberately: a blind regex substitution against a `jsonb::text` cast risks corrupting JSON structure (quoting/escaping is not guaranteed to round-trip identically) or missing occurrences nested under keys that don't match a naive scan. Rewriting these safely requires JSON-aware traversal (parse → walk known HTML-bearing keys → rewrite → re-serialize), which is a larger, separate piece of work with its own review. They are called out here so they aren't silently forgotten, not because they're out of scope forever — see "Future migration recommendation" in the prior report and treat this as a backlog item for a follow-up commit, not part of `security/p0-storage-private-access` Commit 1.
+Commit 1 deliberately excluded these: a blind regex substitution against a `jsonb::text` cast risks corrupting JSON structure (quoting/escaping is not guaranteed to round-trip identically) or missing occurrences nested under keys that don't match a naive scan. Commit 2 covers all four with a JSON-aware recursive traversal instead of a text-cast regex — see "Commit 2: JSONB-Aware Backfill" below.
 
 ### Legacy public URL format
 
@@ -111,7 +114,7 @@ This backfill only rewrites URL substrings inside existing HTML fields; it does 
 2. **Report-driven manual reversal**: because `--report <path>` records, for every changed row, the table/column/row ID and replacement count (though not a full before/after diff), a reversal would need the same pre-apply snapshot to reconstruct exact prior values — the report alone is not sufficient to reverse a change byte-for-byte, only to identify which rows were touched. This is a known limitation (see below); treat the pre-apply snapshot as the actual rollback mechanism.
 3. **Forward fix**: since the new route path continues to serve the same underlying asset (once the follow-up PRs land), in most cases rollback is unnecessary even if a mapping turns out to be wrong — the practical fix is correcting the `question_assets` row or re-running the backfill after fixing the underlying data, not reverting to the old public-URL format.
 
-## Production deployment steps
+## Production deployment steps (Commit 1: plain-text HTML columns)
 
 This section documents the intended procedure for a future, separate deployment action. **No part of this has been executed in this commit.**
 
@@ -121,3 +124,80 @@ This section documents the intended procedure for a future, separate deployment 
 4. Run `node scripts/backfill-question-asset-urls.mjs --apply --report ./tmp/backfill-prod-apply.json`.
 5. Run the verification queries in [scripts/question-asset-url-backfill-verify.sql](../scripts/question-asset-url-backfill-verify.sql) against production and compare against the apply report's totals.
 6. Keep the bucket public and do not touch Storage policies or Question RLS as part of this deployment — those are separate, later commits in this plan, gated on confirming (via query 1 above, repeated periodically) that no new legacy URLs are being written by any remaining code path.
+
+---
+
+## Commit 2: JSONB-Aware Backfill
+
+Covers the four JSONB columns identified but excluded above: `practice_round_questions.question_snapshot`, `practice_attempts.question_snapshot`, `practice_wrong_questions.question_snapshot`, `review_draft_items.draft_payload`.
+
+### Recursive traversal strategy
+
+[scripts/lib/question-asset-json-rewrite.mjs](../scripts/lib/question-asset-json-rewrite.mjs) reuses the exact same URL-matching/replacement logic as Commit 1 (`LEGACY_QUESTION_ASSET_URL_PATTERN`, `rewriteQuestionAssetUrls`, imported unchanged from [scripts/lib/question-asset-url-rewrite.mjs](../scripts/lib/question-asset-url-rewrite.mjs)) — the two backfills cannot disagree about what counts as a legacy URL or how it's rewritten, because they share the same string-level primitive.
+
+The JSONB value is never cast to text and regex-replaced as a whole. supabase-js already returns a JSONB column as a parsed JS value (object, array, string, number, boolean, or `null`); `rewriteQuestionAssetUrlsInJson(value, assetIdByStoragePath)` walks that value recursively:
+
+- **string**: passed through the Commit 1 string-level rewriter unchanged; only matched URL substrings inside the string are replaced, everything else in the string is preserved exactly.
+- **array**: every element is processed recursively in order; a new array is built preserving element order and length.
+- **plain object**: every `[key, value]` pair is processed recursively via `Object.entries` (which iterates in insertion order); a new object is built inserting keys in the same order, so key order is preserved.
+- **number / boolean / null / undefined**: returned as-is, untouched — these can never contain a URL, so no traversal is needed into them.
+
+Every rewrite call returns a brand-new value (the input is never mutated), plus `changed`, `replaced`, and `unmapped` (with a JSON-pointer-style `path`, e.g. `["items", 0, "html"]`, locating exactly where each occurrence was found — this generalizes Commit 1's flat per-row reporting to arbitrary nesting depth). A companion `findLegacyQuestionAssetUrlsInJson(value)` performs the same traversal read-only, used by the backfill script to collect every referenced `storage_path` across all rows before doing any bulk lookups, mirroring Commit 1's two-pass (collect-then-resolve-then-rewrite) structure.
+
+### Affected columns
+
+| Table | Column | Notes |
+|---|---|---|
+| `practice_round_questions` | `question_snapshot` | Snapshot of a question object (may embed `content_html`-shaped strings) taken when a practice round is generated. |
+| `practice_attempts` | `question_snapshot` | Snapshot of a question object taken at attempt time. |
+| `practice_wrong_questions` | `question_snapshot` | Snapshot of a question object retained for spaced-repetition/wrong-question review. |
+| `review_draft_items` | `draft_payload` | Draft question payload prior to becoming a real `questions` row (AI-import/review-draft pipeline). |
+
+No other JSONB columns matching this shape were found beyond the four identified in Commit 1's audit; no new columns were discovered while implementing Commit 2.
+
+### Unresolved URL handling
+
+Identical policy to Commit 1, generalized to JSON: an occurrence is unresolved when its extracted `storage_path` has no matching `question_assets.storage_path` row. Unresolved occurrences are left in the JSON exactly as found (the containing string is returned unchanged for that occurrence; the rest of the JSON tree is still rebuilt identically in shape) and are never guessed, dropped, or overwritten. Every unresolved occurrence is collected into the run summary with its table, column, row ID, JSON path (e.g. `$.items[0].html`), the original URL, and the extracted `storage_path`, both printed to stdout and — when `--report <path>` is passed — written to a JSON report file. Nothing is written back to the database for unresolved occurrences.
+
+[scripts/question-asset-url-backfill-jsonb-verify.sql](../scripts/question-asset-url-backfill-jsonb-verify.sql) query 4 provides an independent, SQL-side cross-check using `jsonb_path_query` to walk every string leaf inside a JSONB column and anti-join against `question_assets`, for verifying the script's own unresolved report without trusting the script's arithmetic.
+
+### Dry-run / apply procedure
+
+```bash
+# 1. Ensure .env.local has NEXT_PUBLIC_SUPABASE_URL and a service-role key
+#    (CLEAN_SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY) pointing at the
+#    target environment (start with a non-production environment).
+
+# 2. Dry run (default mode — no writes are issued):
+npm run backfill:question-asset-urls-jsonb
+# or directly:
+node scripts/backfill-question-asset-urls-jsonb.mjs
+
+# 3. Dry run with a full JSON report of planned changes and unresolved cases:
+node scripts/backfill-question-asset-urls-jsonb.mjs --report ./tmp/backfill-jsonb-dry-run.json
+
+# 4. Apply (writes changes) — only after reviewing the dry-run report:
+node scripts/backfill-question-asset-urls-jsonb.mjs --apply --report ./tmp/backfill-jsonb-apply.json
+```
+
+Same idempotency guarantee as Commit 1, verified by [scripts/question-asset-url-backfill-jsonb-test.mjs](../scripts/question-asset-url-backfill-jsonb-test.mjs)'s repeated-execution tests: re-running against already-migrated JSON (or JSON with no legacy URLs at all) reports `changed: false` for every row and issues zero writes.
+
+### Rollback procedure
+
+Same approach as Commit 1: this backfill only rewrites string values inside existing JSONB fields, in place — it does not add/remove/rename any column and does not touch `question_assets`, Storage objects, RLS, or bucket configuration.
+
+1. **Point-in-time restore** of the affected tables (`practice_round_questions`, `practice_attempts`, `practice_wrong_questions`, `review_draft_items`) from a pre-`--apply` backup/snapshot — required, not optional, before running `--apply` in production.
+2. **Report-driven identification, snapshot-driven reversal**: the `--report` output identifies exactly which rows/columns changed (table, column, row ID, replacement count) but — same limitation as Commit 1 — does not itself contain a full before/after diff sufficient to reconstruct prior values; the pre-apply snapshot is the actual rollback mechanism.
+3. **Forward fix**: as with Commit 1, the new route continues to serve the same underlying asset, so in most cases the practical remedy for a bad mapping is fixing the underlying `question_assets` row and re-running the backfill, not reverting to the legacy URL format.
+
+### Deployment order
+
+Commit 2 depends on Commit 1 only in the sense that both write the same target route format (`/api/question-assets/{assetId}`) and share the same resolution table (`question_assets`); they operate on disjoint sets of columns and can be applied independently, but the recommended order keeps verification simple:
+
+1. Complete Commit 1's production deployment steps (above) first, including its verification queries, so the plain-HTML columns are already clean.
+2. Take a fresh database snapshot/backup (or confirm the existing one covers the JSONB target tables) before running Commit 2 with `--apply`.
+3. Run `node scripts/backfill-question-asset-urls-jsonb.mjs --report ./tmp/backfill-jsonb-prod-dry-run.json` (dry run) against production; review the summary and unresolved list with a human.
+4. Triage every unresolved entry the same way as Commit 1: confirm genuinely orphaned references are acceptable to leave, or fix `question_assets` data and re-run the dry run until the unresolved list is understood and accepted.
+5. Run `node scripts/backfill-question-asset-urls-jsonb.mjs --apply --report ./tmp/backfill-jsonb-prod-apply.json`.
+6. Run [scripts/question-asset-url-backfill-jsonb-verify.sql](../scripts/question-asset-url-backfill-jsonb-verify.sql) against production and compare against the apply report's totals.
+7. Only after both Commit 1 and Commit 2 are verified clean (or all remaining legacy references are confirmed intentionally unresolved) does it become safe to consider the bucket-visibility change — which remains a separate, later commit, not part of either backfill.

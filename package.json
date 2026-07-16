@@ -18,7 +18,9 @@
     "smoke:rls": "node scripts/supabase-rls-smoke.mjs",
     "smoke:assets-security": "node scripts/question-assets-security-smoke.mjs",
     "test:question-asset-url-backfill": "node scripts/question-asset-url-backfill-test.mjs",
-    "backfill:question-asset-urls": "node scripts/backfill-question-asset-urls.mjs"
+    "backfill:question-asset-urls": "node scripts/backfill-question-asset-urls.mjs",
+    "test:question-asset-url-backfill-jsonb": "node scripts/question-asset-url-backfill-jsonb-test.mjs",
+    "backfill:question-asset-urls-jsonb": "node scripts/backfill-question-asset-urls-jsonb.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.0",
