@@ -1216,6 +1216,10 @@ export type Database = {
           membership_id: string;
         }>;
       };
+      can_read_question: {
+        Args: { p_question_id: string };
+        Returns: boolean;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

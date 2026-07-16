@@ -253,6 +253,7 @@ import {
   QUESTION_ASSET_MAX_BYTES,
 } from "@/lib/question-assets";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
+import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 
 type SupabaseLike = {
   from: (table: string) => any;
@@ -2958,16 +2959,14 @@ async function uploadQuestionAsset({
     throw new Error(uploadError.message);
   }
 
-  const { data } = supabase.storage
-    .from(QUESTION_ASSETS_BUCKET)
-    .getPublicUrl(objectPath);
+  const publicUrl = getQuestionAssetUrl(assetId);
 
   return {
     assetId,
-    html: `<img src="${escapeAttribute(data.publicUrl)}" alt="${escapeAttribute(
+    html: `<img src="${escapeAttribute(publicUrl)}" alt="${escapeAttribute(
       alt || "AI imported figure",
     )}" data-ai-placeholder="${escapeAttribute(placeholder)}" />`,
-    publicUrl: data.publicUrl,
+    publicUrl,
   };
 }
 
