@@ -219,9 +219,51 @@ The final creation-RPC definition hash is
 
 ## Live Verification
 
-Run from the reviewed branch only when approved disposable Teacher/Student test
-credentials and a service-role cleanup client are supplied as process-only
-environment variables:
+Run from the reviewed branch only when an approved disposable process
+environment is injected. Do not copy an environment file from another
+worktree, do not load `.env.local`, and do not configure real accounts. The
+dedicated role-E2E harness generates and removes its own disposable users.
+
+Its required process-only variable names are:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+CLEAN_SUPABASE_SERVICE_ROLE_KEY
+CLASSROOM_LIVE_E2E_ENVIRONMENT
+CLASSROOM_LIVE_E2E_EXPECTED_PROJECT_REF
+CLASSROOM_LIVE_E2E_CONFIRM_CLEANUP
+```
+
+The operator must provide an explicit disposable/staging acknowledgement, an
+expected project reference, and an explicit create/delete fixture
+acknowledgement through the approved process or CI secret injection path. No
+values belong in this guide, a committed file, terminal capture, or report.
+The harness refuses production `NODE_ENV`, a missing acknowledgement, a
+missing service-role cleanup client, or a project identity mismatch.
+
+Run the source guard first, then the live command:
+
+```powershell
+node scripts/classroom-live-role-e2e-smoke.mjs
+node scripts/classroom-live-role-e2e.mjs
+```
+
+The live command creates an opaque, tagged run consisting of a primary and
+foreign organization, active Teacher, Student, unrelated Teacher, disabled
+Teacher, and at most one Classroom. It uses only public Classroom RPC paths for
+the authorization under test. It never creates a Bank, Review Draft, Blueprint,
+Assignment, publication, source asset, or Practice evidence item. It verifies
+those side-effect counts remain unchanged.
+
+Cleanup runs in `finally`, on both success and failure, with captured exact
+identifiers only. The ordered cleanup is join-code rows, Classroom memberships,
+Classroom, organization memberships, profiles, organizations, then auth users.
+Any cleanup failure fails the validation and reports only the fixture category
+and opaque run identifier.
+
+The established focused and regression suite can then run with the same
+approved disposable process environment:
 
 ```powershell
 node scripts/classroom-create-rls-smoke.mjs

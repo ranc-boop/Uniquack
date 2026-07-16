@@ -261,6 +261,63 @@ disposable Supabase process environment. The focused live suite must be rerun
 with dedicated Teacher/Student credentials and a service-role cleanup client;
 it must create and remove only its exact disposable Classroom fixture.
 
+### Disposable Role-Fixture Harness
+
+`scripts/classroom-live-role-e2e.mjs` now provides the reviewed live path for
+this remaining proof. It is deliberately separate from the older Classroom
+smokes: those scripts may read their legacy ignored test configuration, while
+this command never imports `dotenv`, never reads an environment file, never
+uses pre-existing test users, and never writes generated credentials anywhere.
+
+Required **process-only** variable names are:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+CLEAN_SUPABASE_SERVICE_ROLE_KEY
+CLASSROOM_LIVE_E2E_ENVIRONMENT
+CLASSROOM_LIVE_E2E_EXPECTED_PROJECT_REF
+CLASSROOM_LIVE_E2E_CONFIRM_CLEANUP
+```
+
+The command refuses to start if any required variable is absent, if `NODE_ENV`
+is production, if the disposable acknowledgement is absent, if the explicit
+destructive-cleanup acknowledgement is absent, or if the configured Supabase
+project reference does not match the independently supplied expected project
+reference. It never logs variable values, URLs, credentials, generated emails,
+passwords, join codes, user IDs, or raw request errors.
+
+For a single opaque run identifier, the harness creates only:
+
+- a primary disposable organization and a separate foreign organization;
+- an active Teacher, Student, unrelated active Teacher, and disabled Teacher;
+- the minimum active/disabled organization memberships required by the current
+  Classroom authorization contract; and
+- one Classroom through `public.create_teacher_classroom` if the active Teacher
+  authorization succeeds.
+
+The generated credentials and join code exist only in process memory. The
+command verifies creator derivation from `auth.uid()`, atomic creator
+membership, request-UUID idempotency, Student/anonymous/inactive/unrelated
+denials, direct table-write denials, valid Student enrollment, removed-Student
+rejoin denial, owner/co-teacher roster behavior, Bank-membership isolation, and
+unchanged Review Draft, Blueprint, Assignment, publication, source-file, and
+Practice-evidence counts for the disposable fixture scope.
+
+Cleanup is in `finally` and uses only captured exact IDs. It removes join-code
+rows, Classroom memberships, the disposable Classroom, captured organization
+memberships, captured profiles, captured organizations, and captured auth users
+in dependency order. Cleanup verification is part of the command. A cleanup
+failure fails the run and reports only fixture categories plus the opaque run
+identifier.
+
+`scripts/classroom-live-role-e2e-smoke.mjs` is a non-live source check for the
+production guard, explicit acknowledgements, project identity match, no-env
+loading rule, no broad delete predicates, `finally` cleanup, and the required
+role/isolation coverage. It passed locally. The live harness itself has not
+been executed from this worktree because approved process-only environment
+injection is still unavailable.
+
 ### Current Validation Execution
 
 Passed in this final documentation pass:
@@ -268,6 +325,7 @@ Passed in this final documentation pass:
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `node scripts/classroom-create-rls-smoke.mjs` local/embedded phase
+- `node scripts/classroom-live-role-e2e-smoke.mjs`
 - `node scripts/security-smoke.mjs`
 - `node scripts/migration-reconciliation-smoke.mjs`
 - `node scripts/teacher-beta-readiness-smoke.mjs` source phase
