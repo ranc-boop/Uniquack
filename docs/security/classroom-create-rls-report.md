@@ -2,10 +2,11 @@
 
 ## Status
 
-**PENDING MANUAL APPLY AND LIVE VALIDATION.** Migration `0043` is partially
-applied and must not be replayed. The P0 is not closed until forward-only
-reconciliation migration `0044` is applied once to the clean Supabase project
-and the dedicated Teacher/Student checks pass against that project.
+**IN PROGRESS / SCHEMA LIVE VALIDATED / ROLE E2E BLOCKED.** Migration `0043`
+is partially applied and must not be replayed. Forward-only reconciliation
+`0044` was applied exactly once through SQL Editor. Sanitized catalog evidence
+confirms the intended RPC and direct-write boundary. P0 remains open until the
+dedicated disposable Teacher/Student role E2E can run with approved fixtures.
 
 ## Post-Failure Remote Apply Audit (2026-07-16)
 
@@ -95,6 +96,39 @@ UUID RPC, applies 0044, applies 0044 a second time, and asserts the Server
 Action return contract remains `TABLE(classroom_id uuid, display_code text)`.
 The existing role, direct-write, membership, server-generated join-code, and
 Bank-isolation checks remain part of that matrix.
+
+## Post-0044 Live Schema Evidence
+
+`0044_classroom_creation_rpc_reconciliation.sql` is
+**APPLIED_MANUALLY_NOT_LEDGERED**. It was applied exactly once; no Supabase
+internal migration-ledger row is claimed or fabricated.
+
+The supplied sanitized post-apply catalog results confirm:
+
+- only the UUID-request `public.create_teacher_classroom(text, text, text,
+  uuid, uuid)` contract exists;
+- it returns `TABLE(classroom_id uuid, display_code text)`, is security
+  definer, has fixed `public, private, extensions` search path, denies anon
+  EXECUTE, and permits authenticated/service-role EXECUTE;
+- its recorded definition hash is `4ca996b5d78c040c67fd96d23bafea40`;
+- `private.can_create_classroom_in_organization(uuid)` is security definer,
+  has fixed `public, private` search path, and permits only service-role
+  EXECUTE;
+- the constrained co-teacher and student-status RPCs are security definer,
+  have fixed search paths, deny anon, and permit authenticated/service-role;
+- anon and authenticated lack direct Classroom INSERT and direct
+  Classroom-member INSERT/UPDATE, while service role retains those grants;
+- `classrooms_teacher_create`, `classroom_members_teacher_write`, and
+  `classroom_members_teacher_update` are absent.
+
+This is live schema evidence, not role-backed workflow proof. The isolated
+worktree has no approved disposable `NEXT_PUBLIC_SUPABASE_URL`, anon key,
+service-role cleanup key, or Teacher/Student test credentials available to the
+smoke process. No live fixture was created, no real Classroom or user row was
+read, and no cleanup query was run. Therefore positive Teacher creation,
+idempotency, role/organization denials, Student join/removal, co-teacher,
+archive/reopen, assignment compatibility, Bank/content isolation, and cleanup
+remain unvalidated against the remote project.
 
 ## Root Cause
 
@@ -222,9 +256,30 @@ Work, assignment-Practice, assignment-from-Bank, and Bank-review smokes are
 blocked by the same missing disposable environment. This is not a passing live
 result.
 
-Live RLS checks cannot be claimed yet: the isolated worktree has no disposable
-Supabase credentials, and `0043` has not been manually applied. The full
-requested suite must be rerun after the one-time manual apply.
+Live role E2E cannot be claimed yet: the isolated worktree has no approved
+disposable Supabase process environment. The focused live suite must be rerun
+with dedicated Teacher/Student credentials and a service-role cleanup client;
+it must create and remove only its exact disposable Classroom fixture.
+
+### Current Validation Execution
+
+Passed in this final documentation pass:
+
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `node scripts/classroom-create-rls-smoke.mjs` local/embedded phase
+- `node scripts/security-smoke.mjs`
+- `node scripts/migration-reconciliation-smoke.mjs`
+- `node scripts/teacher-beta-readiness-smoke.mjs` source phase
+- `npm.cmd run perf:budget`
+- `npm.cmd run perf:audit`
+- `npm.cmd run analyze`
+
+Blocked, rather than passed: `classroom-foundation`, `supabase-rls`, Student
+My Work, assignment-Practice evidence, assignment-from-Bank, and bank-import
+review smokes require the unavailable approved disposable Supabase process
+environment. `route-smoke` also had no local server on port 3000. Aggregate
+`npm.cmd run smoke` stopped at the same missing Supabase environment gate.
 
 ## Scope and Non-Goals
 
@@ -246,4 +301,5 @@ P0-CLS-01 may close only after all of the following are recorded:
 5. Creator membership, join-code enrollment, removal/rejoin behavior, Bank
    isolation, and the Classroom/assignment smoke suite pass.
 
-Until then, deployment remains blocked for this P0 workflow.
+Until then, deployment remains blocked for this P0 workflow. This does not make
+the overall website deployment-ready.

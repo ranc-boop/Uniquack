@@ -1,6 +1,6 @@
 # P0-CLS-01 Manual Apply: Classroom Creation RLS Hardening
 
-## Hold: Failed 0043 Apply Requires Classification
+## Recorded Live Apply Status
 
 Do **not** rerun `0043_classroom_creation_rls_hardening.sql` in the clean
 Supabase project. A prior SQL Editor attempt stopped with PostgreSQL error
@@ -13,6 +13,13 @@ security-definer status, fixed `public, private, extensions` search path, and
 no anonymous EXECUTE grant. The 0043-only private helper
 `can_create_classroom_in_organization(uuid)` also exists, proving that
 statements before the failed public function creation reached the live schema.
+
+Forward-only `0044_classroom_creation_rpc_reconciliation.sql` has now been
+**applied exactly once** through the clean Supabase SQL Editor. Do not replay
+0043 or 0044. The recorded post-0044 metadata confirms the UUID RPC contract,
+security-definer/fixed-search-path settings, anon denial, authenticated and
+service-role EXECUTE, service-role-only private helper, revoked normal-client
+direct-write grants, and absence of the three legacy broad policies.
 
 Run the following catalog-only checks first. They return only schema metadata,
 policy names, privilege booleans, and definition hashes; they do not read
@@ -95,19 +102,18 @@ Historical interpretation:
 
 ## Scope
 
-Apply exactly one forward-only reconciliation file to the **clean Supabase
-project**:
+Historical reconciliation file applied once to the **clean Supabase project**:
 
 ```text
 supabase/clean-migrations/0044_classroom_creation_rpc_reconciliation.sql
 ```
 
-Do not apply the legacy migration directory. Do not replay `0018`, `0030`, or
-the partially applied `0043`. Do not apply this file more than once.
+Do not apply the legacy migration directory. Do not replay `0018`, `0030`,
+the partially applied `0043`, or the already applied `0044`.
 
 This guide contains no credentials and does not require altering `.env.local`.
 
-## Pre-Apply Read-Only Checks
+## Historical Pre-Apply Read-Only Checks
 
 In the Supabase SQL Editor, run these read-only queries and record object
 names/results only. Do not copy user rows, source content, or credentials into
@@ -140,22 +146,18 @@ where table_schema = 'public'
 order by table_name, grantee, privilege_type;
 ```
 
-## Conditional Apply Procedure
+## Historical Conditional Apply Procedure
 
-Apply only the new forward-only reconciliation file after reviewing its full
-contents. The original 0043 file remains on hold and must not be pasted again
-merely to retry the 42723 failure.
+This procedure is retained for release evidence only. It is complete: 0044
+was applied exactly once. The original 0043 file remains on hold and must not
+be pasted again merely to retry the 42723 failure.
 
-1. Open `supabase/clean-migrations/0044_classroom_creation_rpc_reconciliation.sql`
-   from the reviewed branch. It has an explicit transaction and validates the
-   exact pre-existing UUID RPC return contract before replacing its body.
-2. Paste and execute **0044 once** in the clean Supabase SQL Editor. Do not
-   rerun 0043 and do not manually drop either overload.
-3. Save only the SQL Editor result category, reviewed filename, and date. Do
-   not save or publish connection strings, service keys, user rows, or join
-   codes.
+1. Do not replay either migration.
+2. Retain only the reviewed filename, SQL Editor success category, and
+   sanitized catalog metadata as release evidence. Do not save or publish
+   connection strings, service keys, user rows, or join codes.
 
-## Post-Apply Checks
+## Recorded Post-Apply Checks
 
 Run the following sanitized catalog checks:
 
@@ -208,11 +210,18 @@ Expected results:
 - `service_role` retains the listed write privileges;
 - the four listed public functions are security-definer functions with fixed
   search paths;
-- only `authenticated` has execute on the creation RPC, never `anon`.
+- `authenticated` and `service_role` have execute on the creation RPC; `anon`
+  never does.
+
+Recorded result: the sanitized catalog checks passed after the one 0044 apply.
+The final creation-RPC definition hash is
+`4ca996b5d78c040c67fd96d23bafea40`.
 
 ## Live Verification
 
-Run from the reviewed branch with disposable Teacher/Student test credentials:
+Run from the reviewed branch only when approved disposable Teacher/Student test
+credentials and a service-role cleanup client are supplied as process-only
+environment variables:
 
 ```powershell
 node scripts/classroom-create-rls-smoke.mjs
@@ -224,9 +233,11 @@ node scripts/teacher-beta-readiness-smoke.mjs
 npm.cmd run smoke
 ```
 
-The focused smoke creates a uniquely named disposable Classroom and removes its
-rows with the service-role test client. It does not call providers, publish
-questions, create assignments, or change Bank membership.
+The focused smoke has not run its live phase from this isolated worktree because
+those approved disposable environment variables are unavailable. When enabled,
+it creates a uniquely named disposable Classroom and removes its rows with the
+service-role test client. It does not call providers, publish questions, create
+assignments, or change Bank membership.
 
 When manually testing a fixture, retain its Classroom UUID and clean only that
 fixture in dependency order:
