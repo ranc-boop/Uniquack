@@ -281,3 +281,208 @@ No secrets, environment values, fixture identities, provider output, or signed
 URLs are recorded in this document or the committed harnesses. The regression
 review does not convert any blocked command into a pass, and the missing live
 terminal line remains intentionally unquoted.
+
+---
+
+## Whole Student Workspace Completion Review - 2026-07-17
+
+### Scope and Evidence Rules
+
+This completion review inventories the current signed-in Student routes in
+`docs/security/student-route-manifest.json`. It separates source/static evidence
+from disposable live proof. It does not read an environment file, make a paid
+provider request, alter Provider routing, change migrations, or reuse production
+users or records.
+
+The prior disposable Assignment/Practice run remains the only recorded provider
+execution evidence. Its literal final terminal PASS line was not retained, so no
+new result is quoted or fabricated here. The current review did not rerun it.
+
+### Route and Workspace Result
+
+| Journey | Result | Evidence and remaining limit |
+| --- | --- | --- |
+| Student dashboard -> My Work | FUNCTIONAL | Every concrete `src/app/student/**/page.tsx` route has an active-Student server guard. My Work uses only active Student classroom memberships and assigned assignments. |
+| My Work -> assignment detail -> Practice | FUNCTIONAL | Assignment detail loads selected item metadata, sent feedback, and a scoped `/practice?assignmentId=...` entry. Assignment start requires an active Student profile, assigned work, active membership, and an RLS-readable selected question. |
+| Not started / in progress / completed | FUNCTIONAL | `student_assignment_progress` determines the three UI states; grade/review updates linked assignment evidence after writes succeed. |
+| Resume | FUNCTIONAL_BUT_REQUEST_BOUND | Persisted sessions, rounds, attempts, and assignment links resume after successful writes. A model request still has no durable worker guarantee if the browser closes before persistence. |
+| Classroom join | FUNCTIONAL | Page and server action both require an active Student and call the join-code RPC. Existing live Classroom evidence confirms removal prevents silent rejoin and classroom membership grants no Bank membership. |
+| Feedback | FUNCTIONAL in assignment detail / PARTIAL in Progress | Only explicitly sent notes for the active assigned Student are selectable. `/student/progress` is a summary with a feedback-history placeholder rather than a consolidated feedback feed. |
+| Study Library / Study Groups | MISSING by design | Guarded shells only; their backends are intentionally not implemented. |
+| Public Library | FUNCTIONAL_BUT_UNPOLISHED | The Student entry point correctly leads to published `/questions`; it is not yet a full universal-library UI. |
+
+No availability-window field is present in the canonical assignment model. My
+Work correctly orders and displays `due_at`, but availability-window behavior is
+therefore a **P2 product decision**, not an implemented entitlement. The current
+queries also do not filter archived classroom state once an active membership and
+assigned assignment remain; define whether archive hides outstanding work without
+deleting history before changing this behavior. After membership removal, the
+active-membership RLS contract removes Assignment access while retained personal
+progress rows are not deleted. Whether completed history should remain visible
+after removal is likewise a product decision.
+
+### Assignment Entitlement and Revocation
+
+Canonical `0028_assignment_from_bank_questions.sql` makes a private question
+readable to a Student only when it is an `assignment_items` question in an
+`assigned` assignment with an active Student classroom membership. Assignment
+Practice queries this RLS-scoped question set only after validating the profile
+as an active Student. It neither writes `bank_members` nor treats a classroom
+membership as Bank membership.
+
+The recorded disposable flow also checked the concrete contract: the selected
+bank-private question loaded for the assignment, while source-Bank enumeration,
+an unselected private question, Review Drafts, and Blueprints were denied. The
+unrelated Student was denied the assignment and its progress rows. Assignment
+revocation/removal is expected to fail closed because the helper requires
+`assignment.status = 'assigned'` and `classroom_members.status = 'active'`; the
+remaining completed-history rule is the explicit product decision above.
+
+`startAssignmentPractice()` does not have a caller-provided idempotency key and
+creates a new Practice session on each successful start request. This is not a
+cross-user authorization breach, but duplicate clicks can split a Student's
+assignment evidence across sessions. It is a **P2 reliability follow-up**:
+choose either an active-session reuse contract or an explicit restart flow, then
+add a duplicate-start live assertion. No automatic behavior change was made in
+this audit.
+
+### Cross-Student Isolation
+
+The existing disposable harness covered Student access to the entitled
+assignment, an unrelated Student's denial of the assignment/progress, anonymous
+denial before provider resolution, and denial of source Bank, Review Draft,
+Blueprint, unselected private question, and provider-management access. The new
+source smoke inventories every Practice API and asserts all call
+`requirePracticeApiUser()`; session, round, attempt, preference, and wrong-question
+operations remain user-scoped in their data paths.
+
+The missing matrix is explicitly recorded rather than inferred: a fresh
+disposable run still needs **Student B in the same Classroom as Student A** and
+Student C in a separate Classroom/organization to probe each other’s attempts,
+rounds, preference state, wrong-question data, completion state, and self-study
+sessions. This run was not performed because no disposable role environment was
+injected and the known self-study policy issue below must be remediated first.
+Missing live role credentials are not reported as a pass.
+
+### P1 - Private Self-Study Evidence Is Too Broad for Organization Staff
+
+**Confirmed canonical-source defect.** `0008_practice_agent_evidence.sql` gives
+the owner **or** `private.is_org_staff(organization_id)` access to the private
+self-study Practice tables. `private.is_org_staff()` accepts active Teacher/Admin
+organization membership or default-organization staff role; it does not require
+a shared Classroom, an Assignment relation, or explicit Student sharing.
+
+Affected policy families include `practice_sessions`, `practice_rounds`,
+`practice_round_questions`, `practice_attempts`, `practice_hint_events`,
+`practice_reflection_records`, `practice_wrong_questions`,
+`practice_weakness_links`, `user_practice_preferences`,
+`practice_preference_merge_jobs`, and `practice_agent_episodes`. Several policies
+also give that broad staff predicate insert, update, or delete capability.
+
+This violates the intended default: private self-study belongs to the Student;
+Teacher visibility must be tied to a relevant Classroom/Assignment or an
+explicitly approved sharing relation. It is classified **P1**, not P0: the
+current finding is broad same-organization staff access, not anonymous or
+cross-tenant public exposure. The live catalog/policy fingerprint and a same-class
+Student B role probe must be repeated when the forward fix is ready.
+
+#### Required Forward-Only Remediation: SEC-P1-STU-SELF-STUDY-01
+
+1. Add a clean forward migration only after agreeing the product contract.
+2. Replace the broad owner-or-org-staff policy predicates with separate helpers:
+   Student self-access; Assignment/Classroom-linked Teacher read access limited to
+   their managed assigned work; and an explicit sharing path if product approves
+   one.
+3. Deny unrelated same-organization staff from every table listed above, and do
+   not grant Teacher write/delete access to Student private self-study by default.
+4. Preserve Student self read/write and service-role worker access needed by
+   trusted server paths.
+5. Apply only through the clean migration process, then run a disposable matrix:
+   Student A, Student B in the same classroom, Student C in another organization,
+   related Teacher, unrelated Teacher, admin, and anonymous. Test select, insert,
+   update, delete, API read, and direct table reads for sessions, rounds, attempts,
+   preferences, wrong questions, and episodes.
+6. Record live policy fingerprints and exact fixture-ID cleanup. Do not use this
+   audit as proof that the live policy has already been corrected.
+
+### Teacher Feedback and Evidence
+
+Canonical `0032_teacher_feedback_notes.sql` limits Student reads to their own
+`sent_to_student`/`sent` notes for active membership in an assigned classroom.
+Private teacher notes stay manager-only. Student code has no feedback mutation
+control. Assignment detail presents sent notes and the absence state without
+exposing private-note state. After removal, the feedback policy also fails closed
+because it requires active classroom membership.
+
+### Question Asset Dependency
+
+**Source implementation: COMPLETE.** Student-visible source uses the protected
+`/api/question-assets/[assetId]` path. That route reads minimal asset metadata
+server-side, asks the requesting user’s session to satisfy `can_read_question`,
+and creates a short-lived signed redirect only after that authorization decision.
+It uses `private, no-store` responses; signed URLs are not saved in Practice
+snapshots/evidence. The lint guard rejects executable `.getPublicUrl()` calls
+under `src/`.
+
+**Live private-bucket Student validation: PENDING STORAGE CUTOVER.** Migrations
+0045/0046 and the bucket/backfill work remain outside this branch. Legacy public
+URLs may still exist in stored HTML/JSONB until the approved Storage work runs.
+
+### Build, Prerender, and UI Review
+
+The current branch production build completed successfully on 2026-07-17. The
+previous `useContext`-null prerender report did not reproduce. The Student audit
+branch differs from `origin/main` only in Practice remediation, audit, and smoke
+inputs; it does not change global layout, auth page, error page, or build config.
+No narrow build fix is justified without a reproducible root cause. Bundle
+analysis is tracked separately in the validation record below.
+
+Student navigation is consistent and has no Teacher management links. Assignment
+detail includes back navigation, status, due date, start/continue/review copy,
+missing-item handling, feedback, and a scoped Practice affordance. Remaining UI
+items are P2: consolidated feedback history, real Study Library/Group surfaces,
+an availability-window contract, archive/history decision, duplicate-start
+handling, and a formal Practice React error boundary.
+
+### Whole-Student Decision
+
+**PARTIALLY COMPLETE / CORE GAPS REMAIN**
+
+The critical Student Assignment -> Practice -> evidence workflow is implemented
+and previously live validated with a disposable local fake provider. It does not
+grant source-Bank or review/Blueprint visibility. However, the confirmed P1
+self-study organization-staff exposure requires an explicit forward RLS fix and
+live role matrix before the Student workspace can be called complete. The pending
+Storage P0 cutover is an independent asset-delivery launch dependency. This does
+not declare the overall site deployment-ready.
+
+### Validation Record - 2026-07-17
+
+Passed without an environment-file read:
+
+- `npm.cmd run lint`
+- `node scripts/student-workspace-completion-smoke.mjs`
+- `node scripts/practice-provider-execution-smoke.mjs`
+- `node scripts/security-smoke.mjs`
+- `node scripts/migration-reconciliation-smoke.mjs`
+- `node scripts/check-question-assets-public-url.mjs`
+- `npm.cmd run build`
+- `npm.cmd run analyze`
+- `node scripts/route-smoke.mjs` against a temporary local server, then the
+  server was stopped
+- `npm.cmd run perf:budget`
+
+The production build and analyzer both completed; the previously reported
+`useContext`-null prerender failure did not reproduce. The three database-backed
+Student smokes ran their static contracts then correctly reported **BLOCKED**
+because disposable Supabase URL/key and role-fixture categories were not injected
+as process-only variables:
+
+- `node scripts/student-my-work-smoke.mjs`
+- `node scripts/assignment-practice-evidence-smoke.mjs`
+- `node scripts/assignment-from-bank-smoke.mjs`
+
+They were not counted as live passes. The affected smoke scripts and
+`route-smoke` were changed to use process-only environment input so future
+operators cannot accidentally source ignored local environment files during this
+validation.

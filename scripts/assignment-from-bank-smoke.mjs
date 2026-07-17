@@ -3,13 +3,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const root = resolve(__dirname, "..");
-dotenv.config({ path: resolve(root, ".env.local") });
-dotenv.config({ path: resolve(root, ".env.disposable-smoke.local") });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -214,10 +211,6 @@ async function cleanup({ assignmentIds, bankId, classroomIds, questionIds }) {
 }
 
 async function main() {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
-  }
-
   const migration = await read("supabase/clean-migrations/0028_assignment_from_bank_questions.sql");
   const bankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
   const bankAssignmentPage = await read("src/app/teacher/banks/[bankId]/assignments/new/page.tsx");
@@ -248,12 +241,19 @@ async function main() {
   );
   console.log("PASS assignment-from-bank static checks protect bank-first assignment workflow");
 
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.log(
+      "BLOCKED assignment-from-bank live smoke: required disposable Supabase process-environment categories are missing.",
+    );
+    return;
+  }
+
   if (!teacherUsername || !teacherPassword || !studentUsername || !studentPassword) {
-    console.log("SKIP assignment-from-bank live smoke: missing TEST_TEACHER/TEST_ADMIN or TEST_STUDENT credentials.");
+    console.log("BLOCKED assignment-from-bank live smoke: required disposable Teacher and Student process-environment credentials are missing.");
     return;
   }
   if (!serviceRoleKey) {
-    console.log("SKIP assignment-from-bank live smoke: service role key unavailable for disposable fixture setup/cleanup.");
+    console.log("BLOCKED assignment-from-bank live smoke: disposable service-role cleanup capability is missing from the process environment.");
     return;
   }
 
