@@ -194,3 +194,90 @@ but live disposable role/provider validation has not been run. Practice remains
 **request-bound**, not `DURABLE_JOB_BACKED`: only AI PDF, Blueprint, and Coverage
 Recovery use the durable queue today. Durable Practice execution is separate future
 work and must not be inferred from this remediation.
+
+## Disposable Assignment/Practice Live E2E - 2026-07-16
+
+The operator reported that the approved disposable live harness completed after
+the provider-execution remediation. The literal terminal PASS line was not
+retained in the task material, so this section records the operator-confirmed
+outcome and the harness's fail-closed checks rather than fabricating a copied
+terminal result. It used process-only values and a controlled local
+OpenAI-compatible fake provider (`LOCAL_FAKE_HTTP_PROVIDER`); it made no paid
+provider call and did not use a production user, Bank, Classroom, Assignment, or
+Provider profile. The operator retained no credentials, project identity,
+fixture IDs, prompts, provider output, or signed URLs in this report.
+
+The harness will only emit its success result after its `try/finally` exact-ID
+cleanup and absence checks complete. The operator-confirmed completed result
+therefore validates the following disposable graph and results without retaining
+its identifiers:
+
+- Active Teacher, Student, and unrelated Student fixtures; a Teacher-owned
+  Classroom, private Bank, selected and unselected private questions, an
+  assigned-only Assignment, private Review Draft and Blueprint controls, and a
+  temporary enabled/disabled provider-profile pair.
+- Student My Work and assignment detail displayed only the entitled Assignment;
+  assignment start loaded the selected private question and created the linked
+  Practice session/round.
+- The trusted server-only resolver selected and decrypted only the enabled local
+  fake profile. Recommendation, review, hint, session title, preference merge,
+  and deterministic grade completed through their intended paths.
+- Completed Practice state reloaded, and the Teacher could read the linked
+  assignment progress/evidence. This confirms persistence and resume only after
+  the relevant writes complete.
+- Anonymous access, unrelated-Student assignment/evidence access, source-Bank
+  enumeration, unrelated private-question access, Review Draft access,
+  Blueprint access, direct provider-profile access, and provider-management RPC
+  access were denied. The Student received no Bank membership.
+- Timeout, rate-limit, invalid-response, generic-upstream-failure, and malformed
+  stream cases remained in the browser-safe failure boundary. The harness checks
+  that raw upstream marker content, profile metadata, credential fields, and
+  profile identifiers do not appear in responses. Full-call logging was forced
+  off for the local server process.
+- Cleanup used only captured IDs. It removed Practice state/evidence, assignment
+  links/items, Classroom rows and memberships, Bank/question rows, Review
+  Draft/Blueprint controls, Provider fixtures, organization/profile records, and
+  disposable Auth users; post-cleanup absence checks passed. No fixture or
+  credential was persisted by the harness.
+
+### Request-Bound Limitation
+
+This live result does **not** make Practice durable-job-backed. Completed calls
+and evidence now persist and resume correctly, but an interrupted recommendation
+or review request is still not guaranteed to finish after the browser/page
+closes. AI PDF, Blueprint, and Coverage Recovery remain the only durable worker
+job kinds.
+
+### Current Classification
+
+**Practice classification: FUNCTIONAL_BUT_REQUEST_BOUND / LIVE VALIDATED.**
+
+The isolated `scripts/practice-thread-cache-refactor-smoke.mjs` remains a P2
+release-control defect because it targets a stale legacy migration filename. It
+was not restored, applied, or used by this validation.
+
+### Post-Live Regression Review
+
+The visible regression run completed on 2026-07-16 without rerunning the live
+fixture harness. It produced the following review result:
+
+- Passed: provider-execution source smoke, student My Work static boundary
+  checks, assignment-to-Practice static/evidence checks, assignment-from-Bank
+  static checks, security smoke, migration reconciliation, AI provider
+  resilience/fallback/operations checks, lint, and performance budget/audit.
+- Blocked, not failed as a product assertion: database-backed Student My Work,
+  assignment Practice, assignment-from-Bank, and aggregate Bank-share portions
+  did not receive the ignored `TEST_TEACHER`/`TEST_ADMIN` and `TEST_STUDENT`
+  role credentials in that regression process. The aggregate smoke stopped at
+  the Bank-share credential gate.
+- Blocked, not failed as a route assertion: route smoke had no local server
+  listening on port 3000 and therefore received a connection refusal.
+- Blocked: build and bundle analysis both stopped during existing Next
+  prerendering with a `useContext` null error on authentication/global-error
+  routes. This validation changed only the disposable harness, its safety
+  smoke, and this evidence document; it did not modify those runtime routes.
+
+No secrets, environment values, fixture identities, provider output, or signed
+URLs are recorded in this document or the committed harnesses. The regression
+review does not convert any blocked command into a pass, and the missing live
+terminal line remains intentionally unquoted.
