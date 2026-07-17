@@ -33,7 +33,7 @@ The route also does a metadata lookup (`question_assets` table, to find `questio
 | [src/app/admin/review/page.tsx](../src/app/admin/review/page.tsx) | Same as above. |
 | [src/app/questions/[id]/page.tsx](../src/app/questions/[id]/page.tsx) | Public question detail page's image gallery now uses the helper; unused `QUESTION_ASSETS_BUCKET` import removed. |
 | [src/lib/ai-pdf-import/service.ts](../src/lib/ai-pdf-import/service.ts) | AI-imported figure crop attachment now embeds `getQuestionAssetUrl(assetId)` into the generated `<img>` HTML instead of a public URL. |
-| [supabase/clean-migrations/0043_question_read_authorization_helper.sql](../supabase/clean-migrations/0043_question_read_authorization_helper.sql) | (Prior PR) introduces `private.can_read_question`; unchanged by this PR. |
+| [supabase/clean-migrations/0045_question_read_authorization_helper.sql](../supabase/clean-migrations/0045_question_read_authorization_helper.sql) | (Prior PR) introduces `private.can_read_question`; unchanged by this PR. |
 
 No frontend rendering components (`question-detail-image-gallery.tsx`, `question-assets-panel.tsx`) needed changes — they already just render whatever URL string they're given.
 

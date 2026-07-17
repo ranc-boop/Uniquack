@@ -14,10 +14,9 @@
 // NEXT_PUBLIC_SITE_URL/SITE_URL (defaults to http://localhost:3000) for a running
 // instance of this app to exercise /api/question-assets/[assetId] over HTTP.
 
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
-import dotenv from "dotenv";
-import { createClient } from "@supabase/supabase-js";
 
 import {
   QUESTION_ASSET_HTML_TARGETS,
@@ -30,6 +29,34 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const sourceOnly = process.argv.includes("--source-only");
+
+if (sourceOnly) {
+  const root = resolve(__dirname, "..");
+  const [readHelperMigration, privateBucketMigration] = await Promise.all([
+    readFile(resolve(root, "supabase/clean-migrations/0045_question_read_authorization_helper.sql"), "utf8"),
+    readFile(resolve(root, "supabase/clean-migrations/0046_question_assets_bucket_private.sql"), "utf8"),
+  ]);
+
+  if (!readHelperMigration.includes("private.can_read_question") || !readHelperMigration.includes("security definer")) {
+    throw new Error("0045 must preserve the read-only question authorization helper contract.");
+  }
+  if (
+    !privateBucketMigration.includes("update storage.buckets") ||
+    !privateBucketMigration.includes("set public = false") ||
+    !privateBucketMigration.includes("question-assets") ||
+    !privateBucketMigration.includes("scripts/backfill-question-asset-urls.mjs") ||
+    !privateBucketMigration.includes("scripts/backfill-question-asset-urls-jsonb.mjs")
+  ) {
+    throw new Error("0046 must preserve the gated private question-assets bucket cutover contract.");
+  }
+
+  console.log("PASS question-assets private cutover source/static contract");
+  process.exit(0);
+}
+
+const { default: dotenv } = await import("dotenv");
+const { createClient } = await import("@supabase/supabase-js");
 dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -210,7 +237,7 @@ try {
     assert(!bucketError && bucketInfo, `bucket lookup failed: ${bucketError?.message}`);
     if (bucketInfo.public) {
       skip(
-        "bucket-visibility check: question-assets bucket is still public in this project (expected before migration 0044 is applied) — this is not a failure of this commit.",
+        "bucket-visibility check: question-assets bucket is still public in this project (expected before migration 0046 is applied) — this is not a failure of this commit.",
       );
     } else {
       pass("bucket-visibility: question-assets bucket is private");

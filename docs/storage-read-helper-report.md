@@ -2,7 +2,7 @@
 
 Status: infrastructure only. No Storage migration, no bucket visibility change, no signed URLs, no frontend change, no RLS policy change. Introduces one new read-only Postgres function.
 
-Migration: [supabase/clean-migrations/0043_question_read_authorization_helper.sql](../supabase/clean-migrations/0043_question_read_authorization_helper.sql)
+Migration: [supabase/clean-migrations/0045_question_read_authorization_helper.sql](../supabase/clean-migrations/0045_question_read_authorization_helper.sql)
 
 ## Helper design
 

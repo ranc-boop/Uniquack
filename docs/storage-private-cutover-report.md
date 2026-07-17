@@ -12,7 +12,7 @@ All seven architectural preconditions were verified against the current reposito
 | 2 | All 9 audited legacy URL-bearing fields covered by the two backfill commits | Confirmed — 5 plain-text HTML columns (Commit 1) + 4 JSONB columns (Commit 2 of the backfill plan) = 9, matching the original audit in `docs/storage-url-backfill-report.md`. |
 | 3 | Both backfills have documented dry-run, apply, and verification procedures | Confirmed — `docs/storage-url-backfill-report.md` documents both, including `--report`, verification SQL, and rollback for each. |
 | 4 | All current asset rendering paths use `/api/question-assets/[assetId]` | Confirmed — `grep -rln "getQuestionAssetUrl" src` returns exactly the 5 call sites listed in the task, plus the helper's own definition. |
-| 5 | `private.can_read_question(question_id)` exists | Confirmed — `supabase/clean-migrations/0043_question_read_authorization_helper.sql`. |
+| 5 | `private.can_read_question(question_id)` exists | Confirmed — `supabase/clean-migrations/0045_question_read_authorization_helper.sql`. |
 | 6 | The asset API route performs authorization in the requesting user's auth context | Confirmed — `src/app/api/question-assets/[assetId]/route.ts` calls `can_read_question` via `createClient()` (the user-session-bound Supabase client), not a service-role client. |
 | 7 | No signed URL is stored in the database | Confirmed — the only value ever written to a database column by any of the 5 call sites is `/api/question-assets/{assetId}` (see `getQuestionAssetUrl`); signed URLs are generated per-request inside the route handler and only ever appear in a `Location` redirect header, never persisted. |
 
@@ -41,7 +41,7 @@ No `can_read_question` logic is duplicated in TypeScript anywhere; the route's o
 
 ## Migration and Storage policy changes
 
-**Migration**: [supabase/clean-migrations/0044_question_assets_bucket_private.sql](../supabase/clean-migrations/0044_question_assets_bucket_private.sql) — a single idempotent statement:
+**Migration**: [supabase/clean-migrations/0046_question_assets_bucket_private.sql](../supabase/clean-migrations/0046_question_assets_bucket_private.sql) — a single idempotent statement:
 
 ```sql
 update storage.buckets
@@ -83,7 +83,7 @@ This repeats and consolidates the gate stated in the task and mirrored in the mi
 4. Resolve or explicitly approve every unmapped/unresolved URL surfaced by both dry runs.
 5. Apply both backfills (`--apply`).
 6. Run every verification query in `scripts/question-asset-url-backfill-verify.sql` and `scripts/question-asset-url-backfill-jsonb-verify.sql`; confirm zero remaining legacy public `question-assets` URLs (excluding explicitly approved orphans).
-7. Only now: apply migration `0044_question_assets_bucket_private.sql` to the target environment.
+7. Only now: apply migration `0046_question_assets_bucket_private.sql` to the target environment.
 8. Run `scripts/question-assets-private-cutover-smoke.mjs` against the target environment (with real, non-shared test accounts) and confirm every check passes or is an expected, understood `SKIP`.
 9. Perform the manual post-deployment verification below.
 
