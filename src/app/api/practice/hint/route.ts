@@ -4,6 +4,7 @@ import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { compactText, summarizeLLMUsage, traced } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
+import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
 import type {
   PracticeHintRequest,
   PracticeHintResponse,
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
     });
 
     try {
-      const profile = await loadPracticeAIProfile(supabase);
+      const profile = await loadPracticeAIProfile();
       const systemPrompt = await loadPracticePrompt("hint-system");
       const aiResult = await traced({
         inputSummary: `DS hint call for ${question.questionCode}, level ${hintLevel}.`,
@@ -128,8 +129,12 @@ export async function POST(request: Request) {
 
       return NextResponse.json(response);
     } catch (error) {
+      const failure = logPracticeProviderFailure({
+        error,
+        operation: "practice_hint",
+      });
       trace.push({
-        error: error instanceof Error ? error.message : String(error),
+        error: failure.message,
         inputSummary: "AI hint failed; fallback hint used.",
         phase: "hint",
         toolName: "ds_generate_hint",
@@ -143,8 +148,12 @@ export async function POST(request: Request) {
       return NextResponse.json(response);
     }
   } catch (error) {
+    const failure = logPracticeProviderFailure({
+      error,
+      operation: "practice_hint_context",
+    });
     trace.push({
-      error: error instanceof Error ? error.message : String(error),
+      error: failure.message,
       inputSummary: "Question lookup failed; generic fallback hint used.",
       phase: "hint",
       toolName: "get_hint_safe_question_context",

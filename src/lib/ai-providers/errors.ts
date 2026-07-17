@@ -15,6 +15,7 @@ export type AIProviderErrorCode =
 export type AIProviderErrorOperation =
   | "ai_pdf_extraction"
   | "blueprint_generation"
+  | "practice_generation"
   | "provider_connection_test"
   | "unknown";
 
