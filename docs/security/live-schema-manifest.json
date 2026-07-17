@@ -194,7 +194,7 @@
     { "filename": "0042_internal_provider_gateway_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "post-0042 SQL Editor grant and alias validation" },
     { "filename": "0043_classroom_creation_rls_hardening.sql", "status": "PARTIALLY_APPLIED_FAILED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized 42723 collision and 0043-only helper catalog metadata" },
     { "filename": "0044_classroom_creation_rpc_reconciliation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-0044 RPC, policy, and grant metadata plus completed disposable role-E2E evidence" },
-    { "filename": "0045_question_read_authorization_helper.sql", "status": "PENDING_MANUAL_APPLY", "applicationMethod": "manual apply pending", "evidenceSource": "storage read-helper release report records no target-environment application" },
+    { "filename": "0045_question_read_authorization_helper.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "live catalog validation plus exact-ID pre-cutover authorization matrix" },
     { "filename": "0046_question_assets_bucket_private.sql", "status": "PENDING_MANUAL_APPLY", "applicationMethod": "manual apply pending", "evidenceSource": "storage private-cutover report requires both backfills and nine-field zero-residual verification before application" }
   ]
 }

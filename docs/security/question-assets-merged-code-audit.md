@@ -4,7 +4,7 @@ Audit date: 2026-07-17
 
 ## Scope and conclusion
 
-This audit used the isolated `codex/validate-private-question-assets` worktree at main commit `a7cfb50561a83bf4c3a39ff25b28b3d8e68c0cb0`. It did not connect to Supabase, apply a migration, mutate a Storage bucket, run a backfill apply, read an environment file, or touch the original workspace's user-owned files or stashes.
+The initial code audit used the isolated `codex/validate-private-question-assets` worktree at main commit `a7cfb50561a83bf4c3a39ff25b28b3d8e68c0cb0`. The subsequent controlled pre-cutover rehearsal used process-only values only; it did not read an environment file, modify the original workspace's user-owned files or stashes, apply 0046, mutate the bucket, or run a backfill apply.
 
 Final classification: **READY_FOR_CLEAN_DATABASE_REHEARSAL**. This authorizes only the next controlled rehearsal described in the companion runbook. It does not authorize applying 0045 or 0046 to the clean database.
 
@@ -35,7 +35,7 @@ This fixes the prior ordering defect, where a service-role metadata lookup happe
 
 ## 0045 authorization helper
 
-Current pending migration hash: `01d0be828386f8262b5ebd6a6c19e9c17b55039132c67daf9d4fe747e447d115`.
+Applied migration source hash: `01d0be828386f8262b5ebd6a6c19e9c17b55039132c67daf9d4fe747e447d115`.
 
 `private.can_read_question(p_question_id uuid)` is a `STABLE SECURITY DEFINER` boolean function with fixed `search_path = public, private`. It has an explicit `postgres` owner, no browser-role execute grant, and reproduces the five current question-read paths:
 
@@ -48,6 +48,12 @@ Current pending migration hash: `01d0be828386f8262b5ebd6a6c19e9c17b55039132c67da
 It reuses the current private Bank and Assignment helpers rather than reproducing their identity logic. The new `public.can_read_question_asset(p_asset_id uuid)` wrapper is also `STABLE SECURITY DEFINER` with the same fixed search path and owner. It returns only a boolean after resolving the canonical asset row and delegating to the internal helper. It is the sole anonymous/authenticated RPC grant.
 
 This preserves the intended boundaries: unrelated Students and Teachers are denied, Classroom membership does not grant Bank access, assignment access does not enumerate source Banks, and no Review Draft or Blueprint policy is widened. The helpers are read-only; no write authorization is added.
+
+### Live catalog status
+
+`0045_question_read_authorization_helper.sql` was manually applied exactly once to the clean Supabase project and is not represented in a migration ledger. Its live catalog contract was confirmed: both functions return boolean, are `SECURITY DEFINER`, are owned by `postgres`, and use the fixed `public, private` search path. Browser roles cannot execute `private.can_read_question(uuid)`; this is intentional because the postgres-owned public asset wrapper invokes it internally. `public.can_read_question_asset(uuid)` is executable by anonymous, authenticated, and service-role callers.
+
+Recorded status: `APPLIED_MANUALLY_NOT_LEDGERED / EXACTLY ONCE / LIVE CATALOG VALIDATED`.
 
 ## 0046 private-bucket migration
 
@@ -98,8 +104,14 @@ Passed locally:
 
 The embedded rehearsal models the final post-0044 contract; it does not replay the frozen 0043 partial failure or reapply 0044.
 
-The aggregate smoke also completed every check before its existing process-environment RLS gate. It then stopped at `supabase-rls-smoke` because the isolated worktree intentionally had no process-only Supabase URL or anon key. The Bank, Assignment, Review Draft, Practice, and live question-assets suites that require those values are therefore **blocked**, not passed. No live fixture harness, backfill apply, bucket mutation, or remote database operation was run.
+The initial aggregate smoke completed every check before its existing process-environment RLS gate, then stopped because the isolated worktree intentionally had no process-only values. That historical aggregate result does not substitute for the later focused live pre-cutover rehearsal below.
+
+### Controlled pre-cutover rehearsal
+
+The approved exact-ID matrix ran against the authorized disposable environment after 0045 was applied. It passed the public wrapper and actual route boundary for anonymous public access, anonymous private-draft denial, assignment-selected Student access, selected Student denial for an unselected Bank asset, classroom-only Student denial, Bank-manager access, unrelated-Teacher denial for both Bank and draft assets, and unknown-asset denial. Anonymous and authenticated browser roles could not directly execute the private helper. The harness removed all exact-ID fixtures in `finally`; no fixture identity, credential, or signed URL was retained in this report.
+
+Both approved backfill tools ran in their default dry-run mode. The HTML scope and JSONB scope each reported: scanned `0`, mapped/replaced `0`, unmapped `0`, and malformed `0`. No `--apply` command was used.
 
 ## Remaining gates
 
-No remote validation has run. Before any manual SQL application, follow [question-assets-clean-db-rehearsal.md](question-assets-clean-db-rehearsal.md), including the zero-residual backfill gate, exact-ID fixtures, and the live authorization matrix. Current status remains `PENDING_MANUAL_APPLY` for both 0045 and 0046.
+The focused pre-cutover authorization matrix and both zero-residual dry runs are recorded above. `0046` remains `PENDING_MANUAL_APPLY`; no bucket change is authorized until an operator separately approves the 0046 cutover and records a backup/reset point. No backfill apply has been performed.
