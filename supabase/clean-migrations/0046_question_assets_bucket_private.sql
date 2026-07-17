@@ -33,6 +33,23 @@
 -- dependency on (see docs/storage-signed-url-report.md and
 -- docs/storage-private-cutover-report.md).
 
-update storage.buckets
-set public = false
-where id = 'question-assets';
+do $$
+declare
+  expected_bucket_count integer;
+begin
+  select count(*)
+    into expected_bucket_count
+  from storage.buckets
+  where id = 'question-assets';
+
+  if expected_bucket_count <> 1 then
+    raise exception
+      'Expected exactly one question-assets bucket before private cutover; found %',
+      expected_bucket_count;
+  end if;
+
+  update storage.buckets
+  set public = false
+  where id = 'question-assets';
+end;
+$$;

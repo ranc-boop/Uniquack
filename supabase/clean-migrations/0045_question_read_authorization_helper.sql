@@ -71,5 +71,31 @@ $$;
 comment on function private.can_read_question(uuid) is
   'Read-only authorization primitive: true iff the current auth.uid() could SELECT this question row under the existing RLS policies (questions_published_read, questions_staff_access, questions_bank_member_read, questions_bank_manager_write, questions_assignment_item_read). Consolidates existing read rules only; introduces no new access path and no write authorization. Intended for reuse by future Storage signed-URL gating (SEC-P1B) and other read-only call sites — does not replace or alter the underlying RLS policies.';
 
-revoke all on function private.can_read_question(uuid) from public;
-grant execute on function private.can_read_question(uuid) to anon, authenticated;
+alter function private.can_read_question(uuid) owner to postgres;
+revoke all on function private.can_read_question(uuid) from public, anon, authenticated;
+
+-- Browser callers receive only an asset UUID. This wrapper resolves its canonical
+-- question relation inside a SECURITY DEFINER function and returns a boolean only.
+-- It never exposes a question ID, Storage path, or asset metadata.
+create or replace function public.can_read_question_asset(p_asset_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, private
+as $$
+  select exists (
+    select 1
+    from public.question_assets asset
+    where asset.id = p_asset_id
+      and asset.question_id is not null
+      and private.can_read_question(asset.question_id)
+  );
+$$;
+
+comment on function public.can_read_question_asset(uuid) is
+  'Read-only asset authorization wrapper. Returns true only when the current requester can read the canonical question attached to this asset. Returns no asset metadata, Storage path, or question ID; intended only for the private question-assets signed-URL route.';
+
+alter function public.can_read_question_asset(uuid) owner to postgres;
+revoke all on function public.can_read_question_asset(uuid) from public;
+grant execute on function public.can_read_question_asset(uuid) to anon, authenticated;

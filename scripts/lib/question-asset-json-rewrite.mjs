@@ -14,6 +14,7 @@
 // substring span of a matched URL.
 
 import {
+  findMalformedLegacyQuestionAssetUrls,
   findLegacyQuestionAssetUrls,
   rewriteQuestionAssetUrls,
 } from "./question-asset-url-rewrite.mjs";
@@ -48,6 +49,26 @@ export function findLegacyQuestionAssetUrlsInJson(value, path = []) {
   }
 
   // number, boolean, null, undefined: no strings to inspect.
+  return [];
+}
+
+export function findMalformedLegacyQuestionAssetUrlsInJson(value, path = []) {
+  if (typeof value === "string") {
+    return findMalformedLegacyQuestionAssetUrls(value).map((url) => ({ path, url }));
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) =>
+      findMalformedLegacyQuestionAssetUrlsInJson(item, [...path, index]),
+    );
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value).flatMap(([key, entryValue]) =>
+      findMalformedLegacyQuestionAssetUrlsInJson(entryValue, [...path, key]),
+    );
+  }
+
   return [];
 }
 

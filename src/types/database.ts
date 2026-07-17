@@ -1238,8 +1238,8 @@ export type Database = {
           membership_id: string;
         }>;
       };
-      can_read_question: {
-        Args: { p_question_id: string };
+      can_read_question_asset: {
+        Args: { p_asset_id: string };
         Returns: boolean;
       };
     };

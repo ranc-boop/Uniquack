@@ -1,11 +1,26 @@
-import { fileURLToPath } from "url";
-import { dirname, resolve } from "path";
-import dotenv from "dotenv";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
 import { createClient } from "@supabase/supabase-js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
+const sourceOnly = process.argv.includes("--source-only");
+
+if (sourceOnly) {
+  const migration = await readFile(
+    resolve(process.cwd(), "supabase/clean-migrations/0015_question_assets_storage_bucket.sql"),
+    "utf8",
+  );
+  if (
+    !migration.includes("question_assets_staff_upload") ||
+    !migration.includes("question_assets_staff_list") ||
+    !migration.includes("question_assets_staff_delete") ||
+    migration.includes("on storage.objects for update")
+  ) {
+    throw new Error("Question-assets Storage policy source contract is not preserved.");
+  }
+  console.log("PASS question-assets security source contract");
+  process.exit(0);
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

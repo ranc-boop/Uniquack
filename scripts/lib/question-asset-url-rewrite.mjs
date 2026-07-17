@@ -12,6 +12,9 @@
 export const LEGACY_QUESTION_ASSET_URL_PATTERN =
   /https?:\/\/[^\s"'<>]+\/storage\/v1\/object\/public\/question-assets\/([^\s"'<>]+)/g;
 
+const LEGACY_QUESTION_ASSET_URL_CANDIDATE_PATTERN =
+  /[^\s"'<>]*\/storage\/v1\/object\/public\/question-assets\/[^\s"'<>]*/g;
+
 // Already-migrated content contains this prefix instead; used only for reporting/
 // sanity checks, not for matching (the legacy pattern above naturally never matches
 // already-migrated content, which is what makes re-running this script a no-op).
@@ -31,6 +34,31 @@ export function findLegacyQuestionAssetUrls(html) {
     matches.push({ url: match[0], storagePath: match[1] });
   }
   return matches;
+}
+
+/**
+ * Detect path fragments that look like a legacy public URL but are not a complete
+ * http(s) URL. These are never rewritten by guesswork; --apply blocks until an
+ * operator resolves them.
+ *
+ * @param {string | null | undefined} html
+ * @returns {string[]}
+ */
+export function findMalformedLegacyQuestionAssetUrls(html) {
+  if (!html) {
+    return [];
+  }
+
+  const recognized = new Set(findLegacyQuestionAssetUrls(html).map((match) => match.url));
+  const malformed = [];
+
+  for (const match of html.matchAll(LEGACY_QUESTION_ASSET_URL_CANDIDATE_PATTERN)) {
+    if (!recognized.has(match[0])) {
+      malformed.push(match[0]);
+    }
+  }
+
+  return malformed;
 }
 
 /**
