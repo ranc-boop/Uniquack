@@ -12,7 +12,17 @@ Use process-only values. Do not put credentials, URLs, project identities, or fi
 
 The approved 0045-only exact-ID authorization matrix passed. It confirmed the asset route and public wrapper permit only public, assignment-selected, and Bank-manager readers, while anonymous private-draft, classroom-only Student, unrelated-Teacher, unselected-Bank, and unknown-asset requests receive generic denials. Anonymous and authenticated browser roles could not directly execute the private helper. Exact-ID fixture cleanup completed.
 
-Both backfill tools then ran in default dry-run mode. HTML and JSONB scopes each reported `0` scanned, `0` mapped/replaced, `0` unmapped, and `0` malformed occurrences. No `--apply` was used. `0046` remains unapplied and the bucket remains unchanged.
+Both backfill tools then ran in default dry-run mode. HTML and JSONB scopes each reported `0` scanned, `0` mapped/replaced, `0` unmapped, and `0` malformed occurrences. No `--apply` was used because no legacy occurrence existed.
+
+## Completed clean-database cutover
+
+After the zero-residual gate, the operator applied final reviewed `0046_question_assets_bucket_private.sql` exactly once through SQL Editor. The migration was not rerun or represented as a Supabase migration-ledger entry.
+
+The post-cutover read-only aggregate check confirmed exactly one `question-assets` bucket and `public = false`. All five HTML fields and all four JSONB fields remained at zero legacy public URL residuals. The complete requester-first matrix then passed for anonymous public access, private-draft denial, assignment-selected Student access, unselected Bank denial, Classroom-only Student denial, Bank-manager access, unrelated-Teacher denial, and unknown-asset denial. Browser roles still could not directly execute the private helper, while the authorized route continued to return a no-store signed redirect.
+
+The live private-bucket check confirmed that a legacy direct public Storage URL is rejected after cutover. Authorized staff upload and delete behavior remained functional. Replacement remains unsupported by the reviewed no-UPDATE-policy design; no replacement mutation was introduced or exercised. Every harness-owned row and object was cleaned by exact identifier. The migration and harnesses touched no unrelated bucket or object.
+
+No production historical data migration is claimed: the backfill apply was a no-op because the verified clean database contained no legacy occurrence.
 
 ## Local rehearsal completed
 
@@ -75,4 +85,6 @@ Run the HTML and JSONB backfills separately in their default dry-run mode. Recor
 
 ## Decision
 
-The 0045 pre-cutover matrix and zero-residual dry-run gate are complete. This does **not** authorize backfill apply or 0046. A backup/reset point and separate explicit operator approval remain required for every future mutation.
+`0045` is `APPLIED_MANUALLY_NOT_LEDGERED / EXACTLY ONCE / LIVE CATALOG VALIDATED`. `0046` is `APPLIED_MANUALLY_NOT_LEDGERED / EXACTLY ONCE / CLEAN-DB LIVE VALIDATED`.
+
+**P0-STORAGE-01: COMPLETED / CLEAN-DB LIVE VALIDATED.** This closes the private question-assets clean-database gate only. It does not claim that production historical data was migrated and does not declare the overall website deployment-ready.

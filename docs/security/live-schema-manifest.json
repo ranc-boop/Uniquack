@@ -143,6 +143,24 @@
     ],
     "ledgerNote": "No Supabase migration-ledger history is fabricated."
   },
+  "questionAssetsP0Storage01": {
+    "status": "COMPLETED / CLEAN-DB LIVE VALIDATED",
+    "scope": "P0-STORAGE-01 only; this status does not claim production historical-data migration or overall deployment readiness.",
+    "migrationHistory": {
+      "0045_question_read_authorization_helper.sql": "APPLIED_MANUALLY_NOT_LEDGERED; applied exactly once",
+      "0046_question_assets_bucket_private.sql": "APPLIED_MANUALLY_NOT_LEDGERED; applied exactly once"
+    },
+    "sanitizedLiveEvidence": [
+      "exactly one question-assets bucket exists and public=false",
+      "all five HTML and four JSONB legacy public URL residual counts are zero",
+      "private helper direct browser execution is denied while the public asset wrapper and requester-first route enforce public, Assignment, and Bank boundaries",
+      "legacy direct public URL is denied after cutover; authorized route remains a no-store signed redirect",
+      "authorized staff upload/delete behavior passed; replacement remains unsupported by the reviewed no-UPDATE-policy design",
+      "harness-owned exact-ID rows and objects were cleaned; no unrelated bucket or object was modified"
+    ],
+    "backfillStatus": "No apply ran because the clean database had zero legacy public URL occurrences; no production historical-data migration is claimed.",
+    "ledgerNote": "No Supabase migration-ledger history is fabricated."
+  },
   "repositoryStaticInventory": {
     "source": "Deterministic parse of active canonical SQL in scripts/migration-reconciliation-smoke.mjs",
     "policyRequirement": "Every canonical RLS-enabled public table must have an explicit canonical policy declaration.",
@@ -195,6 +213,6 @@
     { "filename": "0043_classroom_creation_rls_hardening.sql", "status": "PARTIALLY_APPLIED_FAILED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized 42723 collision and 0043-only helper catalog metadata" },
     { "filename": "0044_classroom_creation_rpc_reconciliation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-0044 RPC, policy, and grant metadata plus completed disposable role-E2E evidence" },
     { "filename": "0045_question_read_authorization_helper.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "live catalog validation plus exact-ID pre-cutover authorization matrix" },
-    { "filename": "0046_question_assets_bucket_private.sql", "status": "PENDING_MANUAL_APPLY", "applicationMethod": "manual apply pending", "evidenceSource": "storage private-cutover report requires both backfills and nine-field zero-residual verification before application" }
+    { "filename": "0046_question_assets_bucket_private.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "clean-database private-bucket post-cutover validation; exactly one private bucket, nine-field zero-residual checks, direct URL denial, and exact-ID cleanup" }
   ]
 }

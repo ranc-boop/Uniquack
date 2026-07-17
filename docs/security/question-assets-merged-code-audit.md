@@ -4,9 +4,9 @@ Audit date: 2026-07-17
 
 ## Scope and conclusion
 
-The initial code audit used the isolated `codex/validate-private-question-assets` worktree at main commit `a7cfb50561a83bf4c3a39ff25b28b3d8e68c0cb0`. The subsequent controlled pre-cutover rehearsal used process-only values only; it did not read an environment file, modify the original workspace's user-owned files or stashes, apply 0046, mutate the bucket, or run a backfill apply.
+The initial code audit used the isolated `codex/validate-private-question-assets` worktree at main commit `a7cfb50561a83bf4c3a39ff25b28b3d8e68c0cb0`. The controlled rehearsal and final cutover validation used process-only values only; they did not read an environment file, modify the original workspace's user-owned files or stashes, or apply a historical-data backfill.
 
-Final classification: **READY_FOR_CLEAN_DATABASE_REHEARSAL**. This authorizes only the next controlled rehearsal described in the companion runbook. It does not authorize applying 0045 or 0046 to the clean database.
+Final classification: **P0-STORAGE-01 COMPLETED / CLEAN-DB LIVE VALIDATED**. This closes only the clean-database private-assets gate; it does not claim production historical-data migration or overall deployment readiness.
 
 ## Historical provenance
 
@@ -57,7 +57,7 @@ Recorded status: `APPLIED_MANUALLY_NOT_LEDGERED / EXACTLY ONCE / LIVE CATALOG VA
 
 ## 0046 private-bucket migration
 
-Current pending migration hash: `bb64423637453b70121220fbacd1d940c66c005cc9b0f73d3f98d7915d5843e5`.
+Applied migration hash: `bb64423637453b70121220fbacd1d940c66c005cc9b0f73d3f98d7915d5843e5`.
 
 `0046_question_assets_bucket_private.sql` now verifies that exactly one `storage.buckets` row has ID `question-assets` before setting only that row's `public` field to false. It is idempotent after a successful cutover and fails closed for a missing or anomalous bucket. It creates no bucket and does not alter `storage.objects` or unrelated buckets.
 
@@ -112,6 +112,10 @@ The approved exact-ID matrix ran against the authorized disposable environment a
 
 Both approved backfill tools ran in their default dry-run mode. The HTML scope and JSONB scope each reported: scanned `0`, mapped/replaced `0`, unmapped `0`, and malformed `0`. No `--apply` command was used.
 
-## Remaining gates
+## Completed clean-database validation
 
-The focused pre-cutover authorization matrix and both zero-residual dry runs are recorded above. `0046` remains `PENDING_MANUAL_APPLY`; no bucket change is authorized until an operator separately approves the 0046 cutover and records a backup/reset point. No backfill apply has been performed.
+The operator applied `0046_question_assets_bucket_private.sql` exactly once. The post-cutover aggregate check confirmed exactly one `question-assets` bucket with `public = false`, and zero residual legacy public URLs across all nine audited fields. The complete requester-first matrix passed again, including anonymous/private, assignment-selected, Classroom-only, Bank-manager, unrelated-Teacher, and unknown-asset cases; exact-ID cleanup passed.
+
+The live private-bucket smoke confirmed non-200 denial for a legacy direct public URL, no-store signed redirects for authorized route access, and continued authorized staff upload/delete behavior. Replacement remains intentionally unsupported because the reviewed Storage policy has no UPDATE path or caller. The harness operated only on exact disposable fixtures and the `question-assets` bucket; it did not modify unrelated buckets or objects.
+
+Both backfill applies remained no-ops: the verified clean database had no legacy public URL occurrence to rewrite. No production historical-data migration is claimed, and no Supabase migration-ledger history is fabricated.
