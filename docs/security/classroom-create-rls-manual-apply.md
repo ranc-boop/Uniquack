@@ -14,6 +14,11 @@ no anonymous EXECUTE grant. The 0043-only private helper
 `can_create_classroom_in_organization(uuid)` also exists, proving that
 statements before the failed public function creation reached the live schema.
 
+P0-CLS-01 is now **COMPLETED / LIVE VALIDATED**. This status reflects the
+separate approved disposable role-E2E result as well as the recorded schema
+evidence. It does not change either migration's historical status and does not
+declare the overall website deployment-ready.
+
 Forward-only `0044_classroom_creation_rpc_reconciliation.sql` has now been
 **applied exactly once** through the clean Supabase SQL Editor. Do not replay
 0043 or 0044. The recorded post-0044 metadata confirms the UUID RPC contract,
@@ -217,12 +222,12 @@ Recorded result: the sanitized catalog checks passed after the one 0044 apply.
 The final creation-RPC definition hash is
 `4ca996b5d78c040c67fd96d23bafea40`.
 
-## Live Verification
+## Completed Live Verification
 
-Run from the reviewed branch only when an approved disposable process
-environment is injected. Do not copy an environment file from another
-worktree, do not load `.env.local`, and do not configure real accounts. The
-dedicated role-E2E harness generates and removes its own disposable users.
+The approved disposable process-only role-E2E was executed exactly once from
+the reviewed branch. Do not rerun it unless a regression failure requires new
+proof. The harness did not read an environment file, use real accounts, or
+retain generated credentials.
 
 Its required process-only variable names are:
 
@@ -235,14 +240,12 @@ CLASSROOM_LIVE_E2E_EXPECTED_PROJECT_REF
 CLASSROOM_LIVE_E2E_CONFIRM_CLEANUP
 ```
 
-The operator must provide an explicit disposable/staging acknowledgement, an
-expected project reference, and an explicit create/delete fixture
-acknowledgement through the approved process or CI secret injection path. No
+The completed run used the approved process or CI secret-injection path. No
 values belong in this guide, a committed file, terminal capture, or report.
 The harness refuses production `NODE_ENV`, a missing acknowledgement, a
 missing service-role cleanup client, or a project identity mismatch.
 
-Run the source guard first, then the live command:
+The reviewed commands were:
 
 ```powershell
 node scripts/classroom-live-role-e2e-smoke.mjs
@@ -260,10 +263,10 @@ Cleanup runs in `finally`, on both success and failure, with captured exact
 identifiers only. The ordered cleanup is join-code rows, Classroom memberships,
 Classroom, organization memberships, profiles, organizations, then auth users.
 Any cleanup failure fails the validation and reports only the fixture category
-and opaque run identifier.
+and opaque run identifier. The completed run passed exact-ID cleanup; no
+fixture or credential remained.
 
-The established focused and regression suite can then run with the same
-approved disposable process environment:
+The associated focused and regression suite was also run as appropriate:
 
 ```powershell
 node scripts/classroom-create-rls-smoke.mjs
@@ -275,28 +278,22 @@ node scripts/teacher-beta-readiness-smoke.mjs
 npm.cmd run smoke
 ```
 
-The focused smoke has not run its live phase from this isolated worktree because
-those approved disposable environment variables are unavailable. When enabled,
-it creates a uniquely named disposable Classroom and removes its rows with the
-service-role test client. It does not call providers, publish questions, create
-assignments, or change Bank membership.
+The completed role-E2E passed active Teacher creation, atomic creator
+membership, idempotency, anonymous/Student/inactive/unrelated Teacher denials,
+direct Classroom/member-write denials, Student join/removal/rejoin behavior,
+owner/co-teacher roster authorization, and Bank/content isolation. It caused
+no Review Draft, Blueprint, Assignment, publication, source-asset, or
+Practice-evidence side effect.
 
-When manually testing a fixture, retain its Classroom UUID and clean only that
-fixture in dependency order:
-
-```sql
--- Replace only the placeholder with the UUID of the disposable fixture.
-delete from public.classroom_join_codes where classroom_id = '<fixture-classroom-uuid>'::uuid;
-delete from public.classroom_members where classroom_id = '<fixture-classroom-uuid>'::uuid;
-delete from public.classrooms where id = '<fixture-classroom-uuid>'::uuid;
-```
-
-Do not use broad deletes and do not delete any production Classroom.
+Future manual troubleshooting must use a new reviewed disposable fixture and
+its own exact identifiers. Do not use broad deletes and do not delete any
+production Classroom.
 
 ## Failure and Forward Fix Rule
 
 If application or live validation fails, do not weaken RLS, restore broad
 client writes, edit historical migrations, or replay `0043`/`0044`. Record the
 sanitized error category and create a separately reviewed forward-only
-migration. P0-CLS-01 remains open until the closure conditions in
-`docs/security/classroom-create-rls-report.md` are met.
+migration. P0-CLS-01 is completed only for the recorded live validation; a
+future regression requires a separately reviewed forward-only response rather
+than replaying historical migrations.

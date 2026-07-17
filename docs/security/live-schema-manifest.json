@@ -121,8 +121,26 @@
     "ownerDecisionRequired": "Jerry / Platform Security is the primary gateway and rotation owner. Frances / Technical Operations is a designated backup pending founder confirmation; that pending operational ownership does not invalidate the confirmed technical grant closure."
   },
   "knownLiveDrift": [
-    "0043 partially applied after a 42723 duplicate-function failure; forward-only 0044 was applied exactly once and sanitized catalog metadata validates the resulting Classroom RPC, policy, and direct-write grant state. Dedicated role E2E remains pending approved disposable credentials."
+    "0043 partially applied after a 42723 duplicate-function failure; forward-only 0044 was applied exactly once and sanitized catalog metadata validates the resulting Classroom RPC, policy, and direct-write grant state. The approved disposable role E2E completed with exact-ID cleanup."
   ],
+  "classroomCreationP0Cls01": {
+    "status": "COMPLETED / LIVE VALIDATED",
+    "scope": "P0-CLS-01 only; this status does not declare the overall website deployment-ready.",
+    "migrationHistory": {
+      "0043_classroom_creation_rls_hardening.sql": "PARTIALLY_APPLIED_FAILED; never replay or edit",
+      "0044_classroom_creation_rpc_reconciliation.sql": "APPLIED_MANUALLY_NOT_LEDGERED; applied exactly once"
+    },
+    "sanitizedLiveEvidence": [
+      "active Teacher RPC creation, auth-derived creator, and atomic single creator membership passed",
+      "repeated request UUID idempotency passed without duplicate Classroom or creator membership",
+      "anonymous, Student, inactive Teacher, and unrelated Teacher foreign-organization denials passed",
+      "direct Classroom and Classroom-member writes by Teacher were denied",
+      "Student join, removal, and rejoin denial plus owner/co-teacher roster authorization passed",
+      "Bank/source-content isolation and no Review Draft, Blueprint, Assignment, publication, source-asset, or Practice-evidence side effect passed",
+      "harness-owned exact-ID fixture cleanup passed; no fixture or credential remained"
+    ],
+    "ledgerNote": "No Supabase migration-ledger history is fabricated."
+  },
   "repositoryStaticInventory": {
     "source": "Deterministic parse of active canonical SQL in scripts/migration-reconciliation-smoke.mjs",
     "policyRequirement": "Every canonical RLS-enabled public table must have an explicit canonical policy declaration.",
@@ -173,6 +191,6 @@
     { "filename": "0041_profile_delete_privilege_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "profile deletion hardening live validation" },
     { "filename": "0042_internal_provider_gateway_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "post-0042 SQL Editor grant and alias validation" },
     { "filename": "0043_classroom_creation_rls_hardening.sql", "status": "PARTIALLY_APPLIED_FAILED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized 42723 collision and 0043-only helper catalog metadata" },
-    { "filename": "0044_classroom_creation_rpc_reconciliation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-0044 RPC, policy, and grant metadata; dedicated role E2E remains pending approved disposable credentials" }
+    { "filename": "0044_classroom_creation_rpc_reconciliation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-0044 RPC, policy, and grant metadata plus completed disposable role-E2E evidence" }
   ]
 }

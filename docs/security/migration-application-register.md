@@ -52,7 +52,7 @@ operator records a future release.
 | 0041 | profile_delete_privilege_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | profile live validation | unassigned | applied exactly once |
 | 0042 | internal_provider_gateway_hardening | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | post-0042 SQL Editor grant and alias validation | Jerry / Platform Security; Frances / Technical Operations backup pending founder confirmation | applied exactly once; anon/authenticated table access removed, service_role retained, stale helper/policy absent; runtime role/token validation remains |
 | 0043 | classroom_creation_rls_hardening | PARTIALLY_APPLIED_FAILED | SQL Editor | sanitized 42723 function collision plus 0043-only helper catalog metadata | classroom security owner unassigned | do not replay; `private.can_create_classroom_in_organization(uuid)` proves pre-function statements reached live state |
-| 0044 | classroom_creation_rpc_reconciliation | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | sanitized post-0044 RPC/policy/grant metadata | classroom security owner unassigned | applied exactly once; final RPC hash 4ca996b5d78c040c67fd96d23bafea40; live role E2E remains blocked by unavailable approved disposable credentials |
+| 0044 | classroom_creation_rpc_reconciliation | APPLIED_MANUALLY_NOT_LEDGERED | SQL Editor | sanitized post-0044 RPC/policy/grant metadata and completed disposable role-E2E evidence | classroom security owner unassigned | applied exactly once; final RPC hash 4ca996b5d78c040c67fd96d23bafea40; P0-CLS-01 is completed/live validated; no Supabase migration-ledger history is claimed |
 
 The complete machine-readable inventory, including exact filenames and status
 labels, is `docs/security/live-schema-manifest.json`.

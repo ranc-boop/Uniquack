@@ -2,11 +2,12 @@
 
 ## Status
 
-**IN PROGRESS / SCHEMA LIVE VALIDATED / ROLE E2E BLOCKED.** Migration `0043`
-is partially applied and must not be replayed. Forward-only reconciliation
-`0044` was applied exactly once through SQL Editor. Sanitized catalog evidence
-confirms the intended RPC and direct-write boundary. P0 remains open until the
-dedicated disposable Teacher/Student role E2E can run with approved fixtures.
+**COMPLETED / LIVE VALIDATED.** Migration `0043` is partially applied and must
+not be replayed. Forward-only reconciliation `0044` was applied exactly once
+through SQL Editor. Sanitized catalog evidence and the approved disposable
+Teacher/Student role E2E confirm the intended RPC, direct-write, roster, and
+content-isolation boundaries. This closes P0-CLS-01 only; it does not declare
+the overall website deployment-ready.
 
 ## Post-Failure Remote Apply Audit (2026-07-16)
 
@@ -121,14 +122,41 @@ The supplied sanitized post-apply catalog results confirm:
 - `classrooms_teacher_create`, `classroom_members_teacher_write`, and
   `classroom_members_teacher_update` are absent.
 
-This is live schema evidence, not role-backed workflow proof. The isolated
-worktree has no approved disposable `NEXT_PUBLIC_SUPABASE_URL`, anon key,
-service-role cleanup key, or Teacher/Student test credentials available to the
-smoke process. No live fixture was created, no real Classroom or user row was
-read, and no cleanup query was run. Therefore positive Teacher creation,
-idempotency, role/organization denials, Student join/removal, co-teacher,
-archive/reopen, assignment compatibility, Bank/content isolation, and cleanup
-remain unvalidated against the remote project.
+This catalog evidence was initially schema-only. It is now supplemented by one
+approved, sanitized disposable role-E2E execution. The validation created only
+the harness-owned role categories and one disposable Classroom as needed,
+checked the positive and negative authorization matrix through the real RPC
+and supported roster paths, then completed exact-ID cleanup. No fixture
+identity, credential, URL, project reference, or row content is retained in
+this report.
+
+## Final Disposable Role E2E Validation
+
+The approved disposable process-only role-E2E was executed exactly once using
+the dedicated harness. It passed all required P0-CLS-01 workflow checks:
+
+- an active Teacher created one atomic Classroom and creator membership through
+  the RPC, with the actor derived from `auth.uid()`;
+- repeated use of the same request UUID was idempotent, with no duplicate
+  Classroom or creator membership;
+- anonymous, Student, inactive Teacher, and unrelated Teacher foreign-
+  organization creation attempts were denied;
+- direct Teacher inserts to `classrooms` and direct Teacher insert/update
+  attempts to `classroom_members` were denied;
+- valid Student join-code enrollment worked, while a removed Student could not
+  silently rejoin;
+- unrelated Teacher management and removed co-teacher management were denied,
+  while supported owner/co-teacher roster operations preserved authorization;
+- Classroom operations created no Bank membership and granted no source-Bank
+  access; they also caused no Review Draft, Blueprint, Assignment, publication,
+  source-asset, or Practice-evidence side effect; and
+- `finally` cleanup removed only the harness-captured fixture rows. No fixture
+  or credential remained.
+
+Fixture categories were a primary disposable organization, a foreign
+organization, active Teacher, Student, unrelated active Teacher, inactive
+Teacher, the minimum organization memberships, join-code rows, and at most one
+disposable Classroom. No fixture identities are recorded.
 
 ## Root Cause
 
@@ -250,16 +278,12 @@ Completed in the isolated worktree:
 
 The aggregate `npm.cmd run smoke` passed its earlier static and embedded
 Postgres harnesses, then stopped at `scripts/supabase-rls-smoke.mjs` because
-this isolated worktree has no ignored Supabase URL/anon-key environment.
-The individually invoked `classroom-foundation`, `supabase-rls`, Student My
-Work, assignment-Practice, assignment-from-Bank, and Bank-review smokes are
-blocked by the same missing disposable environment. This is not a passing live
-result.
-
-Live role E2E cannot be claimed yet: the isolated worktree has no approved
-disposable Supabase process environment. The focused live suite must be rerun
-with dedicated Teacher/Student credentials and a service-role cleanup client;
-it must create and remove only its exact disposable Classroom fixture.
+this isolated worktree has no ignored Supabase URL/anon-key environment. The
+individually invoked `classroom-foundation`, `supabase-rls`, Student My Work,
+assignment-Practice, assignment-from-Bank, and Bank-review smokes were blocked
+by the same local environment condition. Those historical local results are
+not a substitute for live proof. The subsequently approved disposable role-E2E
+provides the required live P0-CLS-01 proof.
 
 ### Disposable Role-Fixture Harness
 
@@ -314,18 +338,22 @@ identifier.
 `scripts/classroom-live-role-e2e-smoke.mjs` is a non-live source check for the
 production guard, explicit acknowledgements, project identity match, no-env
 loading rule, no broad delete predicates, `finally` cleanup, and the required
-role/isolation coverage. It passed locally. The live harness itself has not
-been executed from this worktree because approved process-only environment
-injection is still unavailable.
+role/isolation coverage. It passed locally. The live harness was subsequently
+executed exactly once through approved process-only environment injection and
+passed with exact-ID cleanup.
 
-### Current Validation Execution
+### Regression Validation Execution
 
-Passed in this final documentation pass:
+Passed in the final evidence pass:
 
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `node scripts/classroom-create-rls-smoke.mjs` local/embedded phase
-- `node scripts/classroom-live-role-e2e-smoke.mjs`
+- `node scripts/classroom-live-role-e2e-smoke.mjs` (non-live safety source
+  check)
+- `node scripts/classroom-operations-smoke.mjs` (source checks; its separate
+  live phase skipped because this isolated worktree has no injected Supabase
+  process environment)
 - `node scripts/security-smoke.mjs`
 - `node scripts/migration-reconciliation-smoke.mjs`
 - `node scripts/teacher-beta-readiness-smoke.mjs` source phase
@@ -333,11 +361,22 @@ Passed in this final documentation pass:
 - `npm.cmd run perf:audit`
 - `npm.cmd run analyze`
 
-Blocked, rather than passed: `classroom-foundation`, `supabase-rls`, Student
-My Work, assignment-Practice evidence, assignment-from-Bank, and bank-import
-review smokes require the unavailable approved disposable Supabase process
-environment. `route-smoke` also had no local server on port 3000. Aggregate
-`npm.cmd run smoke` stopped at the same missing Supabase environment gate.
+Some broader local-only commands remain environment-dependent when run from an
+isolated worktree without injected process variables: `classroom-foundation`,
+`supabase-rls`, Student My Work, assignment-Practice evidence,
+assignment-from-Bank, and bank-import-review smokes. Their absence from that
+local pass is not a missing P0-CLS-01 role-E2E proof; the approved disposable
+role harness recorded that proof separately. `route-smoke` also requires a
+local server. Aggregate `npm.cmd run smoke` may stop at the same local missing-
+environment gate.
+
+The final aggregate `npm.cmd run smoke` did pass its preceding static and
+embedded checks, including the profile, migration-reconciliation, provider-
+gateway, Markdown, asset-import, and package-import checks. It then stopped at
+`scripts/supabase-rls-smoke.mjs` because the isolated worktree has no
+`NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` process values.
+That aggregate stop is recorded as environment-blocked, not as a passing live
+RLS result and not as a regression in the separately completed role E2E.
 
 ## Scope and Non-Goals
 
@@ -346,18 +385,14 @@ This change does not modify historical migrations, migrations `0039` through
 self-study behavior, Storage, source Bank visibility, or assignments. It does
 not create Bank membership automatically.
 
-## P0 Closure Gate
+## P0 Closure Decision
 
-P0-CLS-01 may close only after all of the following are recorded:
+P0-CLS-01 is **COMPLETED / LIVE VALIDATED**. `0044` was applied exactly once
+after the partial `0043` state; the live RPC, role-denial, direct-write,
+membership, join/removal/rejoin, roster-authorization, Bank/content-isolation,
+and exact-cleanup conditions all passed in the approved disposable validation.
 
-1. `0044_classroom_creation_rpc_reconciliation.sql` was applied exactly once
-   after the recorded partial 0043 state.
-2. A real disposable Teacher creates a Classroom through the RPC.
-3. Student, anonymous, inactive, and unrelated-organization negative cases
-   are denied as applicable to available fixtures.
-4. Direct authenticated inserts remain denied for both Classroom tables.
-5. Creator membership, join-code enrollment, removal/rejoin behavior, Bank
-   isolation, and the Classroom/assignment smoke suite pass.
-
-Until then, deployment remains blocked for this P0 workflow. This does not make
+No Supabase migration ledger history is fabricated: `0043` remains
+`PARTIALLY_APPLIED_FAILED`, and `0044` remains
+`APPLIED_MANUALLY_NOT_LEDGERED`. This closes P0-CLS-01 only. It does not make
 the overall website deployment-ready.
