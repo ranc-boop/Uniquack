@@ -37,6 +37,10 @@ const teacherClassroomRlsMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0030_teacher_classroom_rls_fix.sql"),
   "utf8",
 );
+const classroomCreationHardeningMigration = await readFile(
+  resolve(root, "supabase/clean-migrations/0043_classroom_creation_rls_hardening.sql"),
+  "utf8",
+);
 const studentWorkMigration = await readFile(
   resolve(root, "supabase/clean-migrations/0021_student_work_assignments.sql"),
   "utf8",
@@ -130,7 +134,25 @@ assert(
     !teacherClassroomRlsMigration.includes("to anon"),
   "teacher classroom RLS fix must keep classroom creation teacher/authenticated scoped",
 );
-console.log("PASS classroom migrations enable scoped RLS, teacher creation, and authenticated hash-only joins");
+assert(
+  classroomCreationHardeningMigration.includes("drop policy if exists classrooms_teacher_create") &&
+    classroomCreationHardeningMigration.includes(
+      "revoke insert on table public.classrooms from anon, authenticated",
+    ) &&
+    classroomCreationHardeningMigration.includes("drop policy if exists classroom_members_teacher_write") &&
+    classroomCreationHardeningMigration.includes(
+      "revoke insert, update on table public.classroom_members from anon, authenticated",
+    ) &&
+    classroomCreationHardeningMigration.includes("create function public.create_teacher_classroom") &&
+    classroomCreationHardeningMigration.includes("p_request_id uuid") &&
+    classroomCreationHardeningMigration.includes("set search_path = public, private, extensions") &&
+    classroomCreationHardeningMigration.includes("grant execute on function public.create_teacher_classroom") &&
+    classroomCreationHardeningMigration.includes("to authenticated") &&
+    !classroomCreationHardeningMigration.includes("to anon") &&
+    !classroomCreationHardeningMigration.includes("p_join_code text"),
+  "0043 must replace direct Classroom/member writes with authenticated, server-derived RPC paths",
+);
+console.log("PASS classroom migrations enable scoped RLS, narrow teacher creation, and authenticated hash-only joins");
 for (const tableName of [
   "assignments",
   "assignment_items",

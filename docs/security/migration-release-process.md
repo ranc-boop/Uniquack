@@ -16,8 +16,9 @@ inventing timestamps for past SQL Editor work.
 ## Future Release Procedure
 
 1. The release owner creates one new SQL file with the next unused monotonic
-   four-digit prefix. The current active maximum is `0042`; it was applied
-   exactly once through SQL Editor and must not be renumbered or replayed.
+   four-digit prefix. The current active maximum is `0043`; it is pending its
+   reviewed one-time SQL Editor application and must not be renumbered or used
+   to replay earlier Classroom migrations.
 2. The PR records purpose, ownership boundary, RLS/function-grant review,
    forward-only rollback plan, and the exact expected catalog objects.
 3. Run `node scripts/migration-reconciliation-smoke.mjs`. It verifies the

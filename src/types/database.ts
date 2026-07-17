@@ -1198,15 +1198,37 @@ export type Database = {
       create_teacher_classroom: {
         Args: {
           p_description?: string | null;
-          p_join_code?: string | null;
           p_name: string;
           p_organization_id?: string | null;
+          p_request_id?: string | null;
           p_subject?: string | null;
         };
         Returns: Array<{
           classroom_id: string;
           display_code: string;
         }>;
+      };
+      add_classroom_co_teacher: {
+        Args: {
+          p_classroom_id: string;
+          p_teacher_user_id: string;
+        };
+        Returns: undefined;
+      };
+      remove_classroom_co_teacher: {
+        Args: {
+          p_classroom_id: string;
+          p_member_id: string;
+        };
+        Returns: undefined;
+      };
+      set_classroom_student_membership_status: {
+        Args: {
+          p_classroom_id: string;
+          p_member_id: string;
+          p_status: string;
+        };
+        Returns: undefined;
       };
       join_classroom_by_code: {
         Args: { join_code: string };

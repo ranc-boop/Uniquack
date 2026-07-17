@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,21 +25,6 @@ function assert(condition, message) {
 function usernameToLocalEmail(username) {
   const normalized = username.trim().toLowerCase();
   return normalized.includes("@") ? normalized : `${normalized}@local.app`;
-}
-
-function normalizeJoinCode(code) {
-  return code.replace(/[^a-z0-9]/gi, "").toUpperCase();
-}
-
-function hashJoinCode(code) {
-  return createHash("sha256").update(normalizeJoinCode(code), "utf8").digest("hex");
-}
-
-function randomJoinCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return Array.from(randomBytes(8), (byte) => alphabet[byte % alphabet.length])
-    .join("")
-    .replace(/^(.{4})(.{4})$/, "$1-$2");
 }
 
 async function signIn(username, password) {
@@ -110,41 +95,27 @@ async function main() {
     data: { user: teacherUser },
   } = await teacher.auth.getUser();
   const organizationId = await resolveOrganizationId(teacher, teacherUser.id);
-  const joinCode = randomJoinCode();
   const classroomName = `Smoke classroom ${Date.now()}`;
-  const { data: classroom, error: classroomError } = await teacher
-    .from("classrooms")
-    .insert({
-      created_by: teacherUser.id,
-      name: classroomName,
-      organization_id: organizationId,
-      owner_id: teacherUser.id,
-      subject: "Smoke test",
-      updated_by: teacherUser.id,
-    })
-    .select("id, name")
-    .single();
-  assert(!classroomError, `teacher could not create classroom: ${classroomError?.message}`);
+  const { data: classroomRows, error: classroomError } = await teacher.rpc(
+    "create_teacher_classroom",
+    {
+      p_description: "Classroom foundation smoke classroom",
+      p_name: classroomName,
+      p_organization_id: organizationId,
+      p_request_id: randomUUID(),
+      p_subject: "Smoke test",
+    },
+  );
+  assert(!classroomError, `teacher classroom RPC failed: ${classroomError?.message}`);
+  const createdClassroom = Array.isArray(classroomRows) ? classroomRows[0] : classroomRows;
+  assert(createdClassroom?.classroom_id, "classroom RPC did not return a classroom id");
+  assert(createdClassroom?.display_code, "classroom RPC did not return a display join code");
+  const classroom = { id: createdClassroom.classroom_id, name: classroomName };
+  const joinCode = createdClassroom.display_code;
+  let studentMembershipId = null;
 
   try {
-    const { error: teacherMemberError } = await teacher.from("classroom_members").insert({
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "teacher",
-      status: "active",
-      user_id: teacherUser.id,
-    });
-    assert(!teacherMemberError, `teacher membership insert failed: ${teacherMemberError?.message}`);
-
-    const { error: codeError } = await teacher.from("classroom_join_codes").insert({
-      classroom_id: classroom.id,
-      code_hash: hashJoinCode(joinCode),
-      code_hint: `...${normalizeJoinCode(joinCode).slice(-4)}`,
-      created_by: teacherUser.id,
-      status: "active",
-    });
-    assert(!codeError, `join code insert failed: ${codeError?.message}`);
-    console.log("PASS teacher can create classroom and hashed join code");
+    console.log("PASS teacher can create classroom through the server-verified RPC");
 
     const { data: hiddenClassroom, error: hiddenError } = await student
       .from("classrooms")
@@ -160,6 +131,7 @@ async function main() {
     });
     assert(!joinError, `student join RPC failed: ${joinError?.message}`);
     assert(joinRows?.[0]?.classroom_id === classroom.id, "student join RPC returned wrong classroom");
+    studentMembershipId = joinRows?.[0]?.membership_id ?? null;
     console.log("PASS student can join classroom by code");
 
     const { data: joinedClassroom, error: joinedError } = await student
@@ -196,11 +168,13 @@ async function main() {
       .from("classroom_join_codes")
       .update({ status: "revoked" })
       .eq("classroom_id", classroom.id);
-    await teacher
-      .from("classroom_members")
-      .update({ status: "removed" })
-      .eq("classroom_id", classroom.id)
-      .neq("user_id", teacherUser.id);
+    if (studentMembershipId) {
+      await teacher.rpc("set_classroom_student_membership_status", {
+        p_classroom_id: classroom.id,
+        p_member_id: studentMembershipId,
+        p_status: "removed",
+      });
+    }
     await teacher
       .from("classrooms")
       .update({ status: "archived", updated_by: teacherUser.id })
