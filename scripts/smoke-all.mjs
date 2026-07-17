@@ -1,5 +1,27 @@
 
+import { spawn } from "node:child_process";
+
+function runInChildProcess(script) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [script], { stdio: "inherit" });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${script} failed with ${signal ? `signal ${signal}` : `exit code ${code}`}.`));
+    });
+  });
+}
+
 await import("./security-smoke.mjs");
+await import("./question-assets-merged-code-audit-smoke.mjs");
+await import("./question-asset-url-backfill-test.mjs");
+await import("./question-asset-url-backfill-jsonb-test.mjs");
+await import("./question-assets-backfill-plan-test.mjs");
+await import("./question-assets-private-cutover-smoke.mjs");
+await runInChildProcess("scripts/question-assets-embedded-rehearsal.mjs");
 await import("./migration-reconciliation-smoke.mjs");
 await import("./provider-gateway-hardening-smoke.mjs");
 await import("./profile-role-immutability-smoke.mjs");
