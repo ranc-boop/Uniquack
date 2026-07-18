@@ -617,12 +617,24 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     );
 
     setAssignmentLaunch(payload.assignment);
+    setActiveSession(payload.session);
+    const restoredSession = await refreshPracticeState(payload.session.id);
+    const currentRound = restoredSession?.rounds[restoredSession.rounds.length - 1];
+
+    if (restoredSession && currentRound?.questions.length) {
+      restoreRoundFromHistory(currentRound, restoredSession);
+      finishThinking(
+        currentRound.reviewSummary || resultsFromHistoryRound(currentRound).length
+          ? "feedback"
+          : "recommended",
+      );
+      return;
+    }
+
     setRecommendation(payload.recommendation);
     setLiveTrace(payload.recommendation.trace);
     setIsTraceCollapsed(true);
     setGoal(payload.recommendation.roundGoal);
-    setActiveSession(payload.session);
-    await refreshPracticeState(payload.session.id);
     finishThinking("recommended");
   }
 
@@ -631,6 +643,8 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
       try {
         clearLegacyPracticeStorage();
         if (assignmentId && !assignmentLaunchStartedRef.current) {
+          // This ref prevents a duplicate request within one mounted client.
+          // Reload correctness comes from the server-side linked-session resume.
           assignmentLaunchStartedRef.current = true;
           await startAssignmentPractice(assignmentId);
           return;

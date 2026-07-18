@@ -33,6 +33,8 @@ const REQUIRED_ENVIRONMENT = [
 ];
 const MAX_DIAGNOSTIC_CATEGORIES = 8;
 const PRACTICE_START_PATH = "/api/practice/assignments/start";
+const PRACTICE_REVIEW_PATH = "/api/practice/review";
+const PRACTICE_GRADE_PATH = "/api/practice/grade";
 const AUTH_FIXTURE_KIND = "student_v1_browser_e2e";
 const STALE_FIXTURE_SOURCE = "student_browser_e2e";
 const STALE_FIXTURE_PREFIX = "student-browser-";
@@ -86,6 +88,7 @@ const ASSIGNMENT_START_API_STATUSES = new Set([
   "REQUEST_NOT_OBSERVED",
 ]);
 const ASSIGNMENT_START_API_CODES = new Set([
+  "NONE",
   "INVALID_REQUEST",
   "AUTHENTICATION_REQUIRED",
   "STUDENT_NOT_ELIGIBLE",
@@ -103,6 +106,20 @@ const ASSIGNMENT_START_API_CODES = new Set([
   "PRACTICE_START_FAILED",
   "UNRECOGNIZED_API_CODE",
 ]);
+const REVIEW_CATEGORIES = new Set([
+  "REVIEW_SUCCESS_EVENT",
+  "REVIEW_ERROR_EVENT",
+  "REVIEW_STREAM_INCOMPLETE",
+  "REVIEW_NOT_OBSERVED",
+]);
+const GRADE_CATEGORIES = new Set([
+  "GRADE_NOT_REQUIRED",
+  "GRADE_RESPONSE_2XX",
+  "GRADE_RESPONSE_4XX",
+  "GRADE_RESPONSE_5XX",
+  "GRADE_NOT_OBSERVED",
+]);
+const RELOAD_SESSION_CONSISTENCY = new Set(["MATCH", "MISMATCH", "NOT_OBSERVED"]);
 const FINAL_ROUTE_CATEGORIES = new Set([
   "PRACTICE_ROUTE",
   "LOGIN_ROUTE",
@@ -204,8 +221,13 @@ function createSanitizedDiagnostics() {
     failedRequestCategories: [],
     finalRoute: "UNEXPECTED_ROUTE",
     navigationStatus: "NO_DOCUMENT_RESPONSE",
+    gradeCategory: "GRADE_NOT_OBSERVED",
+    gradeHttpStatus: 0,
     pageErrorCategories: [],
     processEnvironmentCleared: false,
+    reloadSessionConsistency: "NOT_OBSERVED",
+    reviewCategory: "REVIEW_NOT_OBSERVED",
+    reviewHttpStatus: 0,
     server: {
       closing: false,
       exitCodeCategory: "UNKNOWN",
@@ -1433,13 +1455,17 @@ function assignmentStartStatusFor(status) {
 
 async function assignmentStartResponseOutcome(response) {
   const httpStatus = response.status();
-  let code = "UNRECOGNIZED_API_CODE";
+  const succeeded = httpStatus >= 200 && httpStatus < 300;
+  let code = succeeded ? "NONE" : "UNRECOGNIZED_API_CODE";
+  let sessionId = null;
   try {
     const parsed = await response.json();
     const candidate = parsed && typeof parsed === "object" ? parsed.code : null;
-    if (typeof candidate === "string" && ASSIGNMENT_START_API_CODES.has(candidate)) {
+    if (!succeeded && typeof candidate === "string" && candidate !== "NONE" && ASSIGNMENT_START_API_CODES.has(candidate)) {
       code = candidate;
     }
+    const candidateSessionId = parsed && typeof parsed === "object" ? parsed.session?.id : null;
+    if (succeeded && typeof candidateSessionId === "string") sessionId = candidateSessionId;
   } catch {
     // The body is discarded; malformed or absent codes fail closed.
   }
@@ -1447,6 +1473,7 @@ async function assignmentStartResponseOutcome(response) {
     apiStatus: assignmentStartStatusFor(httpStatus),
     code,
     httpStatus,
+    sessionId,
   };
 }
 
@@ -1455,6 +1482,7 @@ function assignmentStartUnavailableOutcome(apiStatus) {
     apiStatus,
     code: "UNRECOGNIZED_API_CODE",
     httpStatus: 0,
+    sessionId: null,
   };
 }
 
@@ -1472,17 +1500,116 @@ function finalRouteCategory(value) {
 }
 
 function isAssignmentStartRequest(request, expectedOrigin) {
+  return isPracticePostRequest(request, expectedOrigin, PRACTICE_START_PATH);
+}
+
+function isPracticePostRequest(request, expectedOrigin, pathname) {
   try {
     const url = new URL(request.url());
     return (
       request.method() === "POST" &&
       request.resourceType() === "fetch" &&
       url.origin === expectedOrigin &&
-      url.pathname === PRACTICE_START_PATH
+      url.pathname === pathname
     );
   } catch {
     return false;
   }
+}
+
+function reviewCategoryFromStream(httpStatus, streamText) {
+  if (httpStatus < 200 || httpStatus >= 300) return "REVIEW_ERROR_EVENT";
+  const eventNames = [...String(streamText).matchAll(/(?:^|\n)event:\s*([a-z_]+)\s*(?=\r?\n|$)/gi)]
+    .map((match) => match[1]?.toLowerCase());
+  if (eventNames.includes("result")) return "REVIEW_SUCCESS_EVENT";
+  if (eventNames.includes("error")) return "REVIEW_ERROR_EVENT";
+  return "REVIEW_STREAM_INCOMPLETE";
+}
+
+function waitForReviewOutcome(page, expectedOrigin, timeoutMs = 60_000) {
+  return new Promise((resolveOutcome) => {
+    let settled = false;
+    const finish = (outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      page.off("response", onResponse);
+      page.off("requestfailed", onRequestFailed);
+      resolveOutcome(outcome);
+    };
+    const onResponse = async (response) => {
+      if (!isPracticePostRequest(response.request(), expectedOrigin, PRACTICE_REVIEW_PATH)) return;
+      const httpStatus = response.status();
+      let category = httpStatus >= 200 && httpStatus < 300
+        ? "REVIEW_STREAM_INCOMPLETE"
+        : "REVIEW_ERROR_EVENT";
+      if (httpStatus >= 200 && httpStatus < 300) {
+        const streamText = await response.text().catch(() => "");
+        category = reviewCategoryFromStream(httpStatus, streamText);
+      }
+      finish({ category, httpStatus });
+    };
+    const onRequestFailed = (request) => {
+      if (isPracticePostRequest(request, expectedOrigin, PRACTICE_REVIEW_PATH)) {
+        finish({ category: "REVIEW_NOT_OBSERVED", httpStatus: 0 });
+      }
+    };
+    const timer = setTimeout(
+      () => finish({ category: "REVIEW_NOT_OBSERVED", httpStatus: 0 }),
+      timeoutMs,
+    );
+    page.on("response", onResponse);
+    page.on("requestfailed", onRequestFailed);
+  });
+}
+
+function gradeCategoryFromStatus(httpStatus) {
+  if (httpStatus >= 200 && httpStatus < 300) return "GRADE_RESPONSE_2XX";
+  if (httpStatus >= 400 && httpStatus < 500) return "GRADE_RESPONSE_4XX";
+  if (httpStatus >= 500 && httpStatus < 600) return "GRADE_RESPONSE_5XX";
+  return "GRADE_NOT_OBSERVED";
+}
+
+function observeGradeOutcome(page, expectedOrigin, timeoutMs = 60_000) {
+  let current = { category: "GRADE_NOT_OBSERVED", httpStatus: 0 };
+  let resolveWait;
+  const wait = new Promise((resolveOutcome) => {
+    resolveWait = resolveOutcome;
+  });
+  let settled = false;
+  const finish = (outcome) => {
+    if (settled) return;
+    settled = true;
+    current = outcome;
+    clearTimeout(timer);
+    page.off("response", onResponse);
+    page.off("requestfailed", onRequestFailed);
+    resolveWait(outcome);
+  };
+  const onResponse = (response) => {
+    if (!isPracticePostRequest(response.request(), expectedOrigin, PRACTICE_GRADE_PATH)) return;
+    const httpStatus = response.status();
+    finish({ category: gradeCategoryFromStatus(httpStatus), httpStatus });
+  };
+  const onRequestFailed = (request) => {
+    if (isPracticePostRequest(request, expectedOrigin, PRACTICE_GRADE_PATH)) {
+      finish({ category: "GRADE_NOT_OBSERVED", httpStatus: 0 });
+    }
+  };
+  const timer = setTimeout(
+    () => finish({ category: "GRADE_NOT_OBSERVED", httpStatus: 0 }),
+    timeoutMs,
+  );
+  page.on("response", onResponse);
+  page.on("requestfailed", onRequestFailed);
+
+  return {
+    disposeAsNotRequired() {
+      finish({ category: "GRADE_NOT_REQUIRED", httpStatus: 0 });
+    },
+    read: () => current,
+    wait: () => wait,
+  };
 }
 
 function classifyPageError(error) {
@@ -1794,6 +1921,7 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
   if (fixtures.diagnostics.assignmentStartApi !== "RESPONSE_2XX") {
     throw new HarnessError("practice_start_api_non_2xx");
   }
+  assert(fixtures.diagnostics.assignmentStartCode === "NONE", "practice_start_api_non_2xx");
 
   setHarnessPhase(fixtures, "browser_assignment_practice_banner");
   await waitForPracticeStep(
@@ -1810,22 +1938,109 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
   setHarnessPhase(fixtures, "browser_assignment_practice_safe_text");
   await waitForPracticeStep(assertSafePage(page, fixtures, fakeProvider), "practice_page_context_error");
 
-  fixtures.phase = "browser_assignment_practice_reload";
-  console.log("PHASE=browser_assignment_practice_reload");
+  setHarnessPhase(fixtures, "browser_assignment_practice_reload_start");
+  const reloadStartOutcome = waitForAssignmentStartOutcome(page, fixtures.server.origin);
   await page.reload({ waitUntil: "networkidle" });
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_reload_start_api_wait");
+  const reloadStartResult = await reloadStartOutcome;
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_reload_start_api_status");
+  assert(
+    reloadStartResult.apiStatus === "RESPONSE_2XX" &&
+      reloadStartResult.httpStatus >= 200 &&
+      reloadStartResult.httpStatus < 300 &&
+      reloadStartResult.code === "NONE",
+    "practice_reload_start_api_non_2xx",
+  );
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_reload_session_consistency");
+  fixtures.diagnostics.reloadSessionConsistency =
+    assignmentStartResult.sessionId && reloadStartResult.sessionId
+      ? assignmentStartResult.sessionId === reloadStartResult.sessionId
+        ? "MATCH"
+        : "MISMATCH"
+      : "NOT_OBSERVED";
+  console.log(`reload_session_consistency=${fixtures.diagnostics.reloadSessionConsistency}`);
+  assert(fixtures.diagnostics.reloadSessionConsistency === "MATCH", "practice_reload_session_mismatch");
+  const linkedSessionCountResult = await fixtures.service
+    .from("assignment_practice_sessions")
+    .select("practice_session_id", { count: "exact", head: true })
+    .eq("assignment_id", fixtures.assignmentId)
+    .eq("student_id", fixtures.studentA.id);
+  assertNoError(linkedSessionCountResult, "assignment_practice_link_count_failed");
+  assert(linkedSessionCountResult.count === 1, "assignment_practice_link_count_changed_after_reload");
   await page.getByText("Assignment practice").waitFor({ timeout: 30_000 });
   await page.getByText(fixtures.selectedQuestionTitle).waitFor({ timeout: 30_000 });
   await assertSafePage(page, fixtures, fakeProvider);
 
-  fixtures.phase = "browser_assignment_practice_submit";
-  console.log("PHASE=browser_assignment_practice_submit");
-  await page.getByPlaceholder("Enter your final answer").fill("2");
-  await page.getByRole("button", { name: "Submit round" }).click();
-  await page.getByText("correct", { exact: true }).waitFor({ timeout: 45_000 });
+  setHarnessPhase(fixtures, "browser_assignment_practice_answer_control");
+  const answerControl = page.getByPlaceholder("Enter your final answer");
+  await answerControl.waitFor({ timeout: 30_000 });
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_answer_input");
+  await answerControl.fill("2");
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_submit_button");
+  const submitButton = page.getByRole("button", { name: "Submit round" });
+  await submitButton.waitFor({ timeout: 30_000 });
+  const reviewOutcome = waitForReviewOutcome(page, fixtures.server.origin);
+  const gradeObserver = observeGradeOutcome(page, fixtures.server.origin);
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_submit_click");
+  await submitButton.click();
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_review_api_wait");
+  const reviewResult = await reviewOutcome;
+  fixtures.diagnostics.reviewCategory = reviewResult.category;
+  fixtures.diagnostics.reviewHttpStatus = reviewResult.httpStatus;
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_review_api_status");
+  assert(REVIEW_CATEGORIES.has(reviewResult.category), "practice_review_category_invalid");
+  assert(reviewResult.category !== "REVIEW_NOT_OBSERVED", "practice_review_not_observed");
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_grade_api_wait");
+  if (reviewResult.category === "REVIEW_SUCCESS_EVENT") {
+    gradeObserver.disposeAsNotRequired();
+  }
+  const gradeResult = await gradeObserver.wait();
+  fixtures.diagnostics.gradeCategory = gradeResult.category;
+  fixtures.diagnostics.gradeHttpStatus = gradeResult.httpStatus;
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_grade_api_status");
+  assert(GRADE_CATEGORIES.has(gradeResult.category), "practice_grade_category_invalid");
+  assert(
+    reviewResult.category === "REVIEW_SUCCESS_EVENT" || gradeResult.category === "GRADE_RESPONSE_2XX",
+    "practice_review_and_grade_failed",
+  );
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_result_badge");
+  await page
+    .locator('[data-testid="practice-result-badge"][data-result="correct"]')
+    .waitFor({ timeout: 45_000 });
   await assertSafePage(page, fixtures, fakeProvider);
 
-  fixtures.phase = "browser_assignment_practice_progress";
-  console.log("PHASE=browser_assignment_practice_progress");
+  setHarnessPhase(fixtures, "browser_assignment_practice_attempt_persistence");
+  const persistedRounds = assertNoError(
+    await fixtures.service
+      .from("practice_rounds")
+      .select("id")
+      .eq("session_id", assignmentStartResult.sessionId)
+      .eq("user_id", fixtures.studentA.id),
+    "assignment_practice_round_read_failed",
+  ) ?? [];
+  assert(persistedRounds.length >= 1, "assignment_practice_round_not_persisted");
+  const persistedAttempts = assertNoError(
+    await fixtures.service
+      .from("practice_attempts")
+      .select("id")
+      .eq("user_id", fixtures.studentA.id)
+      .in("round_id", persistedRounds.map((round) => round.id)),
+    "assignment_practice_attempt_read_failed",
+  ) ?? [];
+  assert(persistedAttempts.length >= 1, "assignment_practice_attempt_not_persisted");
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_assignment_progress");
   const progress = assertNoError(
     await fixtures.service
       .from("student_assignment_progress")
@@ -1838,8 +2053,7 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
   assert(progress?.status === "completed" && progress.last_practice_session_id, "assignment_completion_not_persisted");
   fixtures.assignmentSessionId = progress.last_practice_session_id;
 
-  fixtures.phase = "browser_assignment_practice_completed_card";
-  console.log("PHASE=browser_assignment_practice_completed_card");
+  setHarnessPhase(fixtures, "browser_assignment_practice_completion_card");
   await page.goto(`${fixtures.server.origin}/student/work`, { waitUntil: "networkidle" });
   await page.getByText("Completed", { exact: true }).waitFor();
   await assertSafePage(page, fixtures, fakeProvider);
@@ -2099,6 +2313,41 @@ function printSanitizedFailureSummary(diagnostics, failureCategory) {
       ASSIGNMENT_START_API_CODES,
       "UNRECOGNIZED_API_CODE",
     )}`,
+  );
+  console.error(
+    `reload_session_consistency=${allowedOr(
+      diagnostics.reloadSessionConsistency,
+      RELOAD_SESSION_CONSISTENCY,
+      "NOT_OBSERVED",
+    )}`,
+  );
+  console.error(
+    `review_category=${allowedOr(
+      diagnostics.reviewCategory,
+      REVIEW_CATEGORIES,
+      "REVIEW_NOT_OBSERVED",
+    )}`,
+  );
+  console.error(
+    `review_http_status=${
+      Number.isInteger(diagnostics.reviewHttpStatus) && diagnostics.reviewHttpStatus >= 0 && diagnostics.reviewHttpStatus <= 599
+        ? diagnostics.reviewHttpStatus
+        : 0
+    }`,
+  );
+  console.error(
+    `grade_category=${allowedOr(
+      diagnostics.gradeCategory,
+      GRADE_CATEGORIES,
+      "GRADE_NOT_OBSERVED",
+    )}`,
+  );
+  console.error(
+    `grade_http_status=${
+      Number.isInteger(diagnostics.gradeHttpStatus) && diagnostics.gradeHttpStatus >= 0 && diagnostics.gradeHttpStatus <= 599
+        ? diagnostics.gradeHttpStatus
+        : 0
+    }`,
   );
   console.error(`pageerror_category=${firstCategory(diagnostics.pageErrorCategories)}`);
   console.error(`failed_request_category=${firstCategory(diagnostics.failedRequestCategories)}`);

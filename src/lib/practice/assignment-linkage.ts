@@ -7,6 +7,7 @@ import {
   normalizePracticeTagContext,
   persistRecommendationRound,
 } from "@/lib/practice/persistence";
+import { resolveAssignmentPracticeResumeSession } from "@/lib/practice/assignment-resume";
 import type {
   PracticeGradeResult,
   PracticeRecommendation,
@@ -173,6 +174,109 @@ function recommendationFromAssignmentQuestion(
     source: row.source,
     tagIds,
     title: row.title,
+  };
+}
+
+type AssignmentPracticeProgressRow = {
+  completed_at: string | null;
+  last_practice_session_id: string | null;
+  started_at: string | null;
+  status: "not_started" | "in_progress" | "completed";
+};
+
+function recommendationFromPersistedAssignmentSession(
+  session: PracticeSessionDetail,
+): PracticeRecommendResponse {
+  const round = session.rounds[session.rounds.length - 1];
+
+  return {
+    maxToolCalls: 0,
+    mode: "heuristic",
+    recommendations: round.questions.map((question) => ({
+      contentExcerpt: question.contentExcerpt,
+      contentHtml: question.contentHtml,
+      difficulty: question.difficulty,
+      expectedSkill: question.expectedSkill,
+      id: question.sourceQuestionId ?? question.id,
+      options: question.options,
+      questionCode: question.questionCode,
+      questionType: question.questionType as QuestionType,
+      reason: question.reason,
+      source: question.source,
+      tagIds: question.tagIds,
+      title: question.title,
+    })),
+    roundGoal: round.roundGoal || session.goal,
+    roundId: round.id,
+    sessionId: session.id,
+    sessionMemory: session.sessionMemory,
+    sessionPlan: session.sessionPlan,
+    sessionState: session.sessionState,
+    tagContext: session.tagContext,
+    trace: round.trace ?? [],
+  };
+}
+
+async function loadAssignmentPracticeResumeContext({
+  assignmentId,
+  supabase,
+  userId,
+}: {
+  assignmentId: string;
+  supabase: SupabaseLike;
+  userId: string;
+}) {
+  const { data: progress, error: progressError } =
+    await runAssignmentPracticeStartStage({
+      code: "ASSIGNMENT_LINKAGE_FAILED",
+      operation: () =>
+        supabase
+          .from("student_assignment_progress")
+          .select("status, started_at, completed_at, last_practice_session_id")
+          .eq("assignment_id", assignmentId)
+          .eq("student_id", userId)
+          .maybeSingle(),
+      stage: "assignment_linkage",
+    });
+
+  if (progressError) {
+    throw assignmentPracticeStartError({
+      cause: progressError,
+      code: "ASSIGNMENT_LINKAGE_FAILED",
+      stage: "assignment_linkage",
+    });
+  }
+
+  const { data: links, error: linksError } = await runAssignmentPracticeStartStage({
+    code: "ASSIGNMENT_LINKAGE_FAILED",
+    operation: () =>
+      supabase
+        .from("assignment_practice_sessions")
+        .select("practice_session_id, created_at")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", userId)
+        .order("created_at", { ascending: false })
+        .order("practice_session_id", { ascending: false }),
+    stage: "assignment_linkage",
+  });
+
+  if (linksError) {
+    throw assignmentPracticeStartError({
+      cause: linksError,
+      code: "ASSIGNMENT_LINKAGE_FAILED",
+      stage: "assignment_linkage",
+    });
+  }
+
+  return {
+    links: ((links ?? []) as Array<{
+      created_at: string;
+      practice_session_id: string;
+    }>).map((link) => ({
+      createdAt: link.created_at,
+      practiceSessionId: link.practice_session_id,
+    })),
+    progress: (progress ?? null) as AssignmentPracticeProgressRow | null,
   };
 }
 
@@ -369,6 +473,50 @@ export async function startAssignmentPractice({
     supabase,
   });
   const goal = `Assignment: ${assignment.title}`;
+  const resumeContext = await loadAssignmentPracticeResumeContext({
+    assignmentId,
+    supabase,
+    userId,
+  });
+
+  // Assignment Practice V1 resumes a requester-owned linked session before it
+  // creates anything. The progress pointer wins when it is still linked;
+  // otherwise the newest valid link is checked deterministically. A stale link
+  // is ignored only when the requester-scoped session loader returns no session.
+  const resumed = await runAssignmentPracticeStartStage({
+    code: "SESSION_RELOAD_FAILED",
+    operation: () =>
+      resolveAssignmentPracticeResumeSession({
+        lastPracticeSessionId: resumeContext.progress?.last_practice_session_id,
+        linkedSessions: resumeContext.links,
+        loadSession: async (practiceSessionId) => {
+          const detail = await getPracticeSession({
+            sessionId: practiceSessionId,
+            supabase,
+            userId,
+          });
+          const currentRound = detail?.rounds[detail.rounds.length - 1];
+          return currentRound?.questions.length ? detail : null;
+        },
+      }),
+    stage: "session_reload",
+  });
+
+  if (resumed) {
+    return {
+      assignment: {
+        dueAt: assignment.due_at,
+        id: assignment.id,
+        itemCount: recommendations.length,
+        title: assignment.title,
+      },
+      progressStatus:
+        resumeContext.progress?.status === "completed" ? "completed" : "in_progress",
+      recommendation: recommendationFromPersistedAssignmentSession(resumed.session),
+      session: resumed.session,
+    };
+  }
+
   const session = await runAssignmentPracticeStartStage({
     code: "SESSION_CREATE_FAILED",
     operation: () =>
@@ -442,26 +590,7 @@ export async function startAssignmentPractice({
   response.roundId = roundId;
 
   const now = new Date().toISOString();
-  const { data: existingProgress, error: existingProgressError } =
-    await runAssignmentPracticeStartStage({
-      code: "ASSIGNMENT_LINKAGE_FAILED",
-      operation: () =>
-        supabase
-          .from("student_assignment_progress")
-          .select("status, started_at, completed_at")
-          .eq("assignment_id", assignmentId)
-          .eq("student_id", userId)
-          .maybeSingle(),
-      stage: "assignment_linkage",
-    });
-
-  if (existingProgressError) {
-    throw assignmentPracticeStartError({
-      cause: existingProgressError,
-      code: "ASSIGNMENT_LINKAGE_FAILED",
-      stage: "assignment_linkage",
-    });
-  }
+  const existingProgress = resumeContext.progress;
 
   const progressStatus =
     existingProgress?.status === "completed" ? "completed" : "in_progress";

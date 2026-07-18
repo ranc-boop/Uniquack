@@ -145,12 +145,14 @@ assert(
   responseClassifier.includes('request.method() === "POST"') &&
     responseClassifier.includes('request.resourceType() === "fetch"') &&
     responseClassifier.includes("url.origin === expectedOrigin") &&
-    responseClassifier.includes("url.pathname === PRACTICE_START_PATH") &&
+    responseClassifier.includes("url.pathname === pathname") &&
+    responseClassifier.includes("PRACTICE_START_PATH") &&
     responseClassifier.includes("const httpStatus = response.status()") &&
+    responseClassifier.includes('let code = succeeded ? "NONE" : "UNRECOGNIZED_API_CODE"') &&
     responseClassifier.includes("ASSIGNMENT_START_API_CODES.has(candidate)") &&
     responseClassifier.includes('code: "UNRECOGNIZED_API_CODE"') &&
     !/console\.(?:log|warn|error)/.test(responseClassifier),
-  "browser diagnostics must retain only the intended POST status and allowlisted code",
+  "browser diagnostics must match the intended POST and expose only bounded status/code diagnostics",
 );
 assert(
   harness.includes("assignment_start_http_status=") &&

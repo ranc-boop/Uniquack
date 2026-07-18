@@ -18,6 +18,10 @@ const practicePersistence = await readFile(
   resolve(process.cwd(), "src/lib/practice/persistence.ts"),
   "utf8",
 );
+const practiceQuestionCard = await readFile(
+  resolve(process.cwd(), "src/components/practice/practice-question-card.tsx"),
+  "utf8",
+);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -111,8 +115,8 @@ assert(
 assert(
   source.includes('is_correct: true') &&
     source.includes('judgment_reason: "Disposable exact answer matched."') &&
-    source.includes('PHASE=browser_assignment_practice_submit') &&
-    source.includes('PHASE=browser_assignment_practice_progress'),
+    source.includes('"browser_assignment_practice_submit_click"') &&
+    source.includes('"browser_assignment_practice_assignment_progress"'),
   "browser harness fake provider must satisfy the review contract and report safe assignment-practice subphases",
 );
 
@@ -125,6 +129,22 @@ for (const phase of [
   "browser_assignment_practice_banner",
   "browser_assignment_practice_question_title",
   "browser_assignment_practice_safe_text",
+  "browser_assignment_practice_reload_start",
+  "browser_assignment_practice_reload_start_api_wait",
+  "browser_assignment_practice_reload_start_api_status",
+  "browser_assignment_practice_reload_session_consistency",
+  "browser_assignment_practice_answer_control",
+  "browser_assignment_practice_answer_input",
+  "browser_assignment_practice_submit_button",
+  "browser_assignment_practice_submit_click",
+  "browser_assignment_practice_review_api_wait",
+  "browser_assignment_practice_review_api_status",
+  "browser_assignment_practice_grade_api_wait",
+  "browser_assignment_practice_grade_api_status",
+  "browser_assignment_practice_result_badge",
+  "browser_assignment_practice_attempt_persistence",
+  "browser_assignment_practice_assignment_progress",
+  "browser_assignment_practice_completion_card",
 ]) {
   assert(source.includes(`"${phase}"`), `browser harness is missing sanitized Practice phase ${phase}`);
 }
@@ -163,6 +183,15 @@ for (const category of [
   "COMPILE_ERROR",
   "RUNTIME_ERROR",
   "PROCESS_EXIT_NONZERO",
+  "REVIEW_SUCCESS_EVENT",
+  "REVIEW_ERROR_EVENT",
+  "REVIEW_STREAM_INCOMPLETE",
+  "REVIEW_NOT_OBSERVED",
+  "GRADE_NOT_REQUIRED",
+  "GRADE_RESPONSE_2XX",
+  "GRADE_RESPONSE_4XX",
+  "GRADE_RESPONSE_5XX",
+  "GRADE_NOT_OBSERVED",
 ]) {
   assert(source.includes(`"${category}"`), `browser harness is missing bounded diagnostic category ${category}`);
 }
@@ -185,8 +214,16 @@ for (const code of assignmentStartCodes) {
 }
 assert(
   source.includes('"UNRECOGNIZED_API_CODE"') &&
+    source.includes('let code = succeeded ? "NONE" : "UNRECOGNIZED_API_CODE"') &&
     source.includes("ASSIGNMENT_START_API_CODES.has(candidate)"),
   "unknown assignment-start API codes must fail closed",
+);
+assert(
+  practiceQuestionCard.includes('data-testid="practice-result-badge"') &&
+    practiceQuestionCard.includes('data-result="correct"') &&
+    source.includes("[data-testid=\"practice-result-badge\"][data-result=\"correct\"]") &&
+    !source.includes('getByText("correct", { exact: true })'),
+  "Practice success must use the unique semantic result badge",
 );
 assert(
   assignmentStartRoute.includes('"Unable to start assignment practice."') &&
@@ -238,27 +275,53 @@ assert(
     practiceLaunchBlock.includes("fixtures.diagnostics.assignmentStartCode"),
   "Practice launch must persist only sanitized navigation, route, and API outcomes",
 );
-const assignmentStartMatcherBlock = sourceBlock(
-  "async function assignmentStartResponseOutcome",
+assert(
+  practiceLaunchBlock.includes("assignmentStartResult.sessionId === reloadStartResult.sessionId") &&
+    practiceLaunchBlock.includes('reloadSessionConsistency =') &&
+    practiceLaunchBlock.includes('reload_session_consistency=${fixtures.diagnostics.reloadSessionConsistency}') &&
+    !/console\.(?:log|warn|error)\([^\n]*(?:sessionId|practiceSessionId|roundId|questionId)/.test(practiceLaunchBlock),
+  "reload must compare session IDs only in memory and print only MATCH/MISMATCH/NOT_OBSERVED",
+);
+const reviewDiagnosticBlock = sourceBlock(
+  "function reviewCategoryFromStream",
   "function classifyPageError",
+);
+assert(
+  reviewDiagnosticBlock.includes("REVIEW_SUCCESS_EVENT") &&
+    reviewDiagnosticBlock.includes("REVIEW_ERROR_EVENT") &&
+    reviewDiagnosticBlock.includes("REVIEW_STREAM_INCOMPLETE") &&
+    reviewDiagnosticBlock.includes("GRADE_RESPONSE_2XX") &&
+    !/console\.(?:log|warn|error)/.test(reviewDiagnosticBlock) &&
+    !/(?:writeFile|appendFile|createWriteStream)/.test(reviewDiagnosticBlock),
+  "review and grade observers must reduce transient responses to bounded in-memory categories",
+);
+const assignmentStartResponseBlock = sourceBlock(
+  "async function assignmentStartResponseOutcome",
+  "function assignmentStartUnavailableOutcome",
+);
+const assignmentStartMatcherBlock = sourceBlock(
+  "function isAssignmentStartRequest",
+  "function reviewCategoryFromStream",
 );
 assert(
   assignmentStartMatcherBlock.includes('request.method() === "POST"') &&
     assignmentStartMatcherBlock.includes('request.resourceType() === "fetch"') &&
     assignmentStartMatcherBlock.includes("url.origin === expectedOrigin") &&
-    assignmentStartMatcherBlock.includes("url.pathname === PRACTICE_START_PATH"),
+    assignmentStartMatcherBlock.includes("url.pathname === pathname") &&
+    assignmentStartMatcherBlock.includes("PRACTICE_START_PATH"),
   "assignment-start waiter must match the intended same-origin POST fetch",
 );
 assert(
-  assignmentStartMatcherBlock.includes("const httpStatus = response.status()") &&
-    assignmentStartMatcherBlock.includes("const parsed = await response.json()") &&
-    assignmentStartMatcherBlock.includes("parsed.code") &&
-    assignmentStartMatcherBlock.includes("UNRECOGNIZED_API_CODE") &&
-    !/console\.(?:log|warn|error)/.test(assignmentStartMatcherBlock) &&
+  assignmentStartResponseBlock.includes("const httpStatus = response.status()") &&
+    assignmentStartResponseBlock.includes("const parsed = await response.json()") &&
+    assignmentStartResponseBlock.includes("parsed.code") &&
+    assignmentStartResponseBlock.includes("UNRECOGNIZED_API_CODE") &&
+    assignmentStartResponseBlock.includes("sessionId") &&
+    !/console\.(?:log|warn|error)/.test(assignmentStartResponseBlock) &&
     !/(?:return|push|set)\s*\([^\n]*(?:parsed|response\.json|response\.text)/.test(
-      assignmentStartMatcherBlock,
+      assignmentStartResponseBlock,
     ),
-  "assignment-start response parsing must retain only numeric status and an allowlisted code",
+  "assignment-start response parsing may retain one in-memory session ID but must expose only bounded diagnostics",
 );
 
 assert(
@@ -285,6 +348,11 @@ for (const key of [
   "final_route",
   "assignment_start_http_status",
   "assignment_start_code",
+  "reload_session_consistency",
+  "review_category",
+  "review_http_status",
+  "grade_category",
+  "grade_http_status",
   "pageerror_category",
   "failed_request_category",
   "server_runtime_category",

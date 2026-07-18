@@ -25,12 +25,28 @@ function answerValue(answer: string | string[] | undefined) {
 function resultBadge(result: PracticeGradeResult | undefined) {
   if (!result) return null;
   if (result.isCorrect === true) {
-    return <Badge className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600">correct</Badge>;
+    return (
+      <Badge
+        className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600"
+        data-result="correct"
+        data-testid="practice-result-badge"
+      >
+        correct
+      </Badge>
+    );
   }
   if (result.isCorrect === false) {
-    return <Badge variant="destructive">incorrect</Badge>;
+    return (
+      <Badge data-result="incorrect" data-testid="practice-result-badge" variant="destructive">
+        incorrect
+      </Badge>
+    );
   }
-  return <Badge variant="outline">manual review</Badge>;
+  return (
+    <Badge data-result="manual-review" data-testid="practice-result-badge" variant="outline">
+      manual review
+    </Badge>
+  );
 }
 
 function reviewingBadge() {
