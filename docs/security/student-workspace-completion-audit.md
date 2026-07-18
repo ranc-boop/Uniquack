@@ -424,9 +424,12 @@ It uses `private, no-store` responses; signed URLs are not saved in Practice
 snapshots/evidence. The lint guard rejects executable `.getPublicUrl()` calls
 under `src/`.
 
-**Live private-bucket Student validation: PENDING STORAGE CUTOVER.** Migrations
-0045/0046 and the bucket/backfill work remain outside this branch. Legacy public
-URLs may still exist in stored HTML/JSONB until the approved Storage work runs.
+**Live private-bucket Student validation: COMPLETED / CLEAN-DB LIVE VALIDATED.**
+`0045` and `0046` were each applied manually exactly once and remain unledgered.
+The clean database has exactly one private `question-assets` bucket, all nine
+audited HTML/JSONB legacy public URL residual counts are zero, and the
+requester-first asset matrix passed. No historical-data backfill was needed or
+run; this does not claim production historical-data migration.
 
 ### Build, Prerender, and UI Review
 
@@ -452,9 +455,10 @@ The critical Student Assignment -> Practice -> evidence workflow is implemented
 and previously live validated with a disposable local fake provider. It does not
 grant source-Bank or review/Blueprint visibility. However, the confirmed P1
 self-study organization-staff exposure requires an explicit forward RLS fix and
-live role matrix before the Student workspace can be called complete. The pending
-Storage P0 cutover is an independent asset-delivery launch dependency. This does
-not declare the overall site deployment-ready.
+live role matrix before the Student workspace can be called complete.
+P0-STORAGE-01 is independently completed and clean-database live validated; it
+does not resolve the Student P1 finding or declare the overall site
+deployment-ready.
 
 ### Validation Record - 2026-07-17
 

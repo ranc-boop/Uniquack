@@ -1,37 +1,23 @@
-// Idempotent backfill: rewrites legacy public Supabase Storage URLs for
-// question-assets, embedded in HTML text columns, into the authorized internal
-// route path (/api/question-assets/{assetId}).
-//
-// Safe to re-run: rows with no remaining legacy URLs are skipped (no write issued).
-// Never writes a signed URL. Never touches bucket visibility, Storage policies, or
-// Question RLS — this only updates row content in the tables listed in
-// QUESTION_ASSET_HTML_TARGETS.
-//
-// Usage:
-//   node scripts/backfill-question-asset-urls.mjs                 # dry run (default)
-//   node scripts/backfill-question-asset-urls.mjs --apply         # writes changes
-//   node scripts/backfill-question-asset-urls.mjs --report out.json
-//
-// Requires .env.local with NEXT_PUBLIC_SUPABASE_URL and a service-role key
-// (CLEAN_SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY), matching the
-// convention used by the other scripts/*.mjs ops scripts in this repo.
+// Rewrites legacy public question-assets URLs in the five approved HTML fields.
+// Process-only environment is required. Dry run is the default; --apply refuses
+// before any write when a URL is unmapped or malformed.
 
 import { writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
 
+import {
+  assertQuestionAssetBackfillApplyAllowed,
+  buildQuestionAssetBackfillPlan,
+  createQuestionAssetBackfillReport,
+} from "./lib/question-asset-backfill-plan.mjs";
 import {
   QUESTION_ASSET_HTML_TARGETS,
   findLegacyQuestionAssetUrls,
+  findMalformedLegacyQuestionAssetUrls,
   rewriteQuestionAssetUrls,
 } from "./lib/question-asset-url-rewrite.mjs";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
 
 const args = process.argv.slice(2);
 const apply = args.includes("--apply");
@@ -40,17 +26,15 @@ const reportPath =
   reportArgIndex >= 0 && args[reportArgIndex + 1]
     ? resolve(process.cwd(), args[reportArgIndex + 1])
     : null;
-
 const SCAN_PAGE_SIZE = 500;
 const LOOKUP_CHUNK_SIZE = 200;
-
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey =
   process.env.CLEAN_SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error(
-    "Missing NEXT_PUBLIC_SUPABASE_URL or a service-role key (CLEAN_SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SERVICE_ROLE_KEY).",
+    "Missing process-only NEXT_PUBLIC_SUPABASE_URL or a service-role key (CLEAN_SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SERVICE_ROLE_KEY).",
   );
 }
 
@@ -58,7 +42,6 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-/** Scan every row of `table.column` that still contains the legacy URL substring. */
 async function scanTargetRows(table, column) {
   const rows = [];
   let from = 0;
@@ -70,155 +53,109 @@ async function scanTargetRows(table, column) {
       .ilike(column, "%/storage/v1/object/public/question-assets/%")
       .range(from, from + SCAN_PAGE_SIZE - 1);
 
-    if (error) {
-      throw new Error(`scan failed for ${table}.${column}: ${error.message}`);
-    }
-
-    if (!data || data.length === 0) {
-      break;
-    }
-
+    if (error) throw new Error(`scan failed for ${table}.${column}: ${error.message}`);
+    if (!data?.length) break;
     rows.push(...data);
-
-    if (data.length < SCAN_PAGE_SIZE) {
-      break;
-    }
-
+    if (data.length < SCAN_PAGE_SIZE) break;
     from += SCAN_PAGE_SIZE;
   }
 
   return rows;
 }
 
-/** Resolve question_assets.id for a batch of storage_path values. */
 async function resolveAssetIds(storagePaths) {
   const assetIdByStoragePath = new Map();
   const uniquePaths = [...new Set(storagePaths)];
 
-  for (let i = 0; i < uniquePaths.length; i += LOOKUP_CHUNK_SIZE) {
-    const chunk = uniquePaths.slice(i, i + LOOKUP_CHUNK_SIZE);
+  for (let index = 0; index < uniquePaths.length; index += LOOKUP_CHUNK_SIZE) {
     const { data, error } = await supabase
       .from("question_assets")
       .select("id, storage_path")
-      .in("storage_path", chunk);
-
-    if (error) {
-      throw new Error(`question_assets lookup failed: ${error.message}`);
-    }
-
-    for (const row of data ?? []) {
-      assetIdByStoragePath.set(row.storage_path, row.id);
-    }
+      .in("storage_path", uniquePaths.slice(index, index + LOOKUP_CHUNK_SIZE));
+    if (error) throw new Error(`question_assets lookup failed: ${error.message}`);
+    for (const row of data ?? []) assetIdByStoragePath.set(row.storage_path, row.id);
   }
 
   return assetIdByStoragePath;
 }
 
-async function main() {
-  console.log(`Mode: ${apply ? "APPLY (will write changes)" : "DRY RUN (no writes)"}`);
-  console.log("");
+async function writeReport(report) {
+  if (!reportPath) return;
+  await writeFile(reportPath, JSON.stringify(report, null, 2), "utf8");
+  console.log(`Sanitized report written to ${reportPath}`);
+}
 
-  // Pass 1: scan every target table/column for rows containing a legacy URL, and
-  // collect every distinct storage_path referenced, across all targets, before doing
-  // any lookups or writes.
+function printSummary(summary, suffix) {
+  console.log(`rows scanned: ${summary.totals.rowsScanned}`);
+  console.log(`rows changed: ${summary.totals.rowsChanged}${suffix}`);
+  console.log(`URLs replaced: ${summary.totals.urlsReplaced}${suffix}`);
+  console.log(`URLs unmapped: ${summary.totals.urlsUnmapped}`);
+  console.log(`URLs malformed: ${summary.totals.urlsMalformed}`);
+}
+
+async function main() {
+  console.log(`Mode: ${apply ? "APPLY" : "DRY RUN"}`);
   const rowsByTarget = [];
   const allStoragePaths = [];
 
   for (const target of QUESTION_ASSET_HTML_TARGETS) {
     const rows = await scanTargetRows(target.table, target.column);
     rowsByTarget.push({ target, rows });
-
     for (const row of rows) {
-      const html = row[target.column];
-      for (const match of findLegacyQuestionAssetUrls(html)) {
+      for (const match of findLegacyQuestionAssetUrls(row[target.column])) {
         allStoragePaths.push(match.storagePath);
       }
     }
-
-    console.log(
-      `Scanned ${target.table}.${target.column}: ${rows.length} row(s) with a legacy URL.`,
-    );
   }
 
-  // Pass 2: resolve all referenced storage_paths to question_assets.id in bulk.
   const assetIdByStoragePath = await resolveAssetIds(allStoragePaths);
-  console.log(
-    `\nResolved ${assetIdByStoragePath.size} of ${new Set(allStoragePaths).size} distinct storage_path value(s) to a question_assets row.\n`,
-  );
-
-  // Pass 3: rewrite each row in memory; write only rows that actually changed.
-  const summary = {
-    mode: apply ? "apply" : "dry-run",
-    generatedAt: new Date().toISOString(),
-    totals: { rowsScanned: 0, rowsChanged: 0, urlsReplaced: 0, urlsUnmapped: 0 },
-    changes: [],
-    unmapped: [],
-  };
-
-  for (const { target, rows } of rowsByTarget) {
-    for (const row of rows) {
-      summary.totals.rowsScanned += 1;
-      const html = row[target.column];
-      const result = rewriteQuestionAssetUrls(html, assetIdByStoragePath);
-
-      if (result.unmapped.length > 0) {
-        summary.totals.urlsUnmapped += result.unmapped.length;
-        summary.unmapped.push({
-          table: target.table,
-          column: target.column,
-          rowId: row.id,
-          entries: result.unmapped,
-        });
-      }
-
-      if (!result.changed) {
-        continue;
-      }
-
-      summary.totals.rowsChanged += 1;
-      summary.totals.urlsReplaced += result.replaced;
-      summary.changes.push({
-        table: target.table,
-        column: target.column,
-        rowId: row.id,
-        replaced: result.replaced,
-      });
-
-      if (apply) {
-        const { error } = await supabase
-          .from(target.table)
-          .update({ [target.column]: result.html })
-          .eq("id", row.id);
-
-        if (error) {
-          throw new Error(
-            `update failed for ${target.table}.${target.column} id=${row.id}: ${error.message}`,
-          );
-        }
-      }
-    }
-  }
-
-  console.log("Summary:");
-  console.log(`  rows scanned:   ${summary.totals.rowsScanned}`);
-  console.log(`  rows changed:   ${summary.totals.rowsChanged}${apply ? "" : " (would change)"}`);
-  console.log(`  URLs replaced:  ${summary.totals.urlsReplaced}${apply ? "" : " (would replace)"}`);
-  console.log(`  URLs unmapped:  ${summary.totals.urlsUnmapped}`);
-
-  if (summary.unmapped.length > 0) {
-    console.warn(
-      `\nWARNING: ${summary.totals.urlsUnmapped} URL occurrence(s) could not be mapped to a question_assets row and were left unchanged. See ${reportPath ? "the report file" : "the --report output"} for details.`,
-    );
-  }
-
-  if (reportPath) {
-    await writeFile(reportPath, JSON.stringify(summary, null, 2), "utf8");
-    console.log(`\nFull report written to ${reportPath}`);
-  }
+  const plan = buildQuestionAssetBackfillPlan({
+    rowsByTarget,
+    rewriteRow(row, target) {
+      const result = rewriteQuestionAssetUrls(row[target.column], assetIdByStoragePath);
+      return {
+        ...result,
+        value: result.html,
+        malformed: findMalformedLegacyQuestionAssetUrls(row[target.column]),
+      };
+    },
+  });
 
   if (!apply) {
-    console.log("\nDry run only — no rows were written. Re-run with --apply to write changes.");
+    printSummary(plan.summary, " (would change)");
+    await writeReport(createQuestionAssetBackfillReport({ mode: "dry-run", plan }));
+    return;
   }
+
+  try {
+    assertQuestionAssetBackfillApplyAllowed(plan);
+  } catch (error) {
+    printSummary(plan.summary, " (blocked)");
+    await writeReport(createQuestionAssetBackfillReport({ mode: "apply-blocked", plan }));
+    throw error;
+  }
+
+  let appliedUpdates = 0;
+  try {
+    for (const update of plan.updates) {
+      const { error } = await supabase
+        .from(update.table)
+        .update({ [update.column]: update.value })
+        .eq("id", update.rowId);
+      if (error) throw new Error(`update failed for ${update.table}.${update.column}: ${error.message}`);
+      appliedUpdates += 1;
+    }
+  } catch (error) {
+    await writeReport(
+      createQuestionAssetBackfillReport({ mode: "apply-interrupted", plan, appliedUpdates }),
+    );
+    throw new Error(
+      `Backfill stopped after ${appliedUpdates} applied row update(s); rerun is idempotent after operator review. ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  printSummary(plan.summary, "");
+  await writeReport(createQuestionAssetBackfillReport({ mode: "applied", plan, appliedUpdates }));
 }
 
 await main();

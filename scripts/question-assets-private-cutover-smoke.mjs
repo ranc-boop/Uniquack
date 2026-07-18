@@ -1,14 +1,14 @@
 // Live smoke test for the question-assets private-bucket cutover (SEC-P1B Commit 2).
 //
 // NOT executed as part of any automated commit in this repo's history — this script
-// requires a real Supabase project (Auth + Storage + the can_read_question RPC) and
+// requires a real Supabase project (Auth + Storage + the can_read_question_asset RPC) and
 // is meant to be run manually by a human against a disposable/staging project, or
 // against a target environment only AFTER the deployment gate in
 // docs/storage-private-cutover-report.md has been satisfied. Running it against a
 // project where the bucket is still public is expected to skip/partially-fail the
 // "direct public URL is blocked" assertion — see the inline notes below.
 //
-// Requires .env.local: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+// Requires process-only NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
 // TEST_ADMIN_USERNAME/PASSWORD, and (optionally) TEST_STUDENT_USERNAME/PASSWORD,
 // CLEAN_SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY, and
 // NEXT_PUBLIC_SITE_URL/SITE_URL (defaults to http://localhost:3000) for a running
@@ -29,7 +29,7 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const sourceOnly = process.argv.includes("--source-only");
+const sourceOnly = !process.argv.includes("--live") || process.argv.includes("--source-only");
 
 if (sourceOnly) {
   const root = resolve(__dirname, "..");
@@ -38,10 +38,15 @@ if (sourceOnly) {
     readFile(resolve(root, "supabase/clean-migrations/0046_question_assets_bucket_private.sql"), "utf8"),
   ]);
 
-  if (!readHelperMigration.includes("private.can_read_question") || !readHelperMigration.includes("security definer")) {
+  if (
+    !readHelperMigration.includes("private.can_read_question") ||
+    !readHelperMigration.includes("public.can_read_question_asset") ||
+    !readHelperMigration.includes("security definer")
+  ) {
     throw new Error("0045 must preserve the read-only question authorization helper contract.");
   }
   if (
+    !privateBucketMigration.includes("expected_bucket_count") ||
     !privateBucketMigration.includes("update storage.buckets") ||
     !privateBucketMigration.includes("set public = false") ||
     !privateBucketMigration.includes("question-assets") ||
@@ -52,12 +57,25 @@ if (sourceOnly) {
   }
 
   console.log("PASS question-assets private cutover source/static contract");
-  process.exit(0);
+} else {
+
+if (process.env.NODE_ENV === "production") {
+  throw new Error("Refusing question-assets live rehearsal when NODE_ENV=production.");
 }
 
-const { default: dotenv } = await import("dotenv");
+if (process.env.QUESTION_ASSETS_REHEARSAL_ENVIRONMENT !== "disposable") {
+  throw new Error("Set QUESTION_ASSETS_REHEARSAL_ENVIRONMENT=disposable for a live rehearsal.");
+}
+
+if (process.env.QUESTION_ASSETS_REHEARSAL_CONFIRM_CLEANUP !== "CLEANUP_QUESTION_ASSETS_FIXTURES") {
+  throw new Error("Set QUESTION_ASSETS_REHEARSAL_CONFIRM_CLEANUP=CLEANUP_QUESTION_ASSETS_FIXTURES for a live rehearsal.");
+}
+
+if (process.env.QUESTION_ASSETS_REHEARSAL_CONFIRM_FIXTURES !== "CREATE_QUESTION_ASSETS_FIXTURES") {
+  throw new Error("Set QUESTION_ASSETS_REHEARSAL_CONFIRM_FIXTURES=CREATE_QUESTION_ASSETS_FIXTURES for a live rehearsal.");
+}
+
 const { createClient } = await import("@supabase/supabase-js");
-dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -68,6 +86,12 @@ const bucket = "question-assets";
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing Supabase URL or anon key.");
+}
+
+const expectedProjectRef = process.env.QUESTION_ASSETS_REHEARSAL_EXPECTED_PROJECT_REF;
+const projectRef = new URL(supabaseUrl).hostname.split(".")[0];
+if (!expectedProjectRef || expectedProjectRef !== projectRef) {
+  throw new Error("Disposable project reference confirmation is missing or does not match the configured Supabase URL.");
 }
 
 function assert(condition, message) {
@@ -136,24 +160,23 @@ const anon = createClient(supabaseUrl, supabaseAnonKey);
 const admin = await signIn("TEST_ADMIN_USERNAME", "TEST_ADMIN_PASSWORD");
 const student = await optionalSignIn("TEST_STUDENT_USERNAME", "TEST_STUDENT_PASSWORD");
 
-// Read-only service-role client, used only for the bucket-visibility check and the
-// zero-remaining-legacy-URL scan below — neither mutates anything, so both are safe
-// to run whenever a service-role key is available, without --allow-bucket-mutation.
-const serviceReadClient = serviceRoleKey
-  ? createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
-  : null;
+if (!serviceRoleKey) {
+  throw new Error("Missing service-role key required for exact live fixture setup and cleanup.");
+}
+
+// The service-role client is limited to deployment-wide verification plus exact
+// fixture setup/cleanup. Requester sessions below prove access boundaries only.
+const fixtureClient = createClient(supabaseUrl, serviceRoleKey, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
+const serviceReadClient = fixtureClient;
 
 // Mutation-capable service-role client, used only by the idempotency check further
 // below, and gated behind an explicit opt-in flag on top of requiring the key — see
 // that check for why.
-const serviceClient =
-  serviceRoleKey && allowBucketMutation
-    ? createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
-    : null;
+const serviceClient = allowBucketMutation ? fixtureClient : null;
 
-if (!serviceRoleKey) {
-  skip("bucket-visibility, legacy-URL-scan, and bucket-idempotency checks: no service-role key available in this environment.");
-} else if (!allowBucketMutation) {
+if (!allowBucketMutation) {
   skip(
     "bucket-idempotency check: service-role key present but --allow-bucket-mutation was not passed; refusing to toggle bucket visibility.",
   );
@@ -175,7 +198,7 @@ const cleanup = { objects: [], assets: [], questions: [] };
 
 async function createQuestion(status) {
   const question = await insertOne(
-    admin.client,
+    fixtureClient,
     "questions",
     {
       question_code: `CUTOVER-${status.toUpperCase()}-${suffix}`,
@@ -200,7 +223,7 @@ async function createReadyAsset(questionId) {
   const assetId = crypto.randomUUID();
   const objectPath = `questions/${questionId}/${assetId}.png`;
   const asset = await insertOne(
-    admin.client,
+    fixtureClient,
     "question_assets",
     {
       alt_text: `${assetId}.png`,
@@ -314,53 +337,52 @@ try {
   const publishedAsset = await createReadyAsset(publishedQuestion.id);
   const draftAsset = await createReadyAsset(draftQuestion.id);
 
-  // --- 1. can_read_question is the sole authorization primitive: verify it agrees
-  // with the personas the route relies on. This is what /api/question-assets/[id]
-  // calls internally, under each caller's own session client — testing it directly
-  // proves the route's authorization decision without needing a session cookie. ---
+  // --- 1. The asset-ID-only public wrapper delegates to the private question
+  // authorization helper under each requester's own session. Testing it directly
+  // proves the route decision without allowing caller-supplied question IDs. ---
 
   {
-    const { data, error } = await anon.rpc("can_read_question", {
-      p_question_id: publishedAsset.question_id,
+    const { data, error } = await anon.rpc("can_read_question_asset", {
+      p_asset_id: publishedAsset.id,
     });
     assert(!error && data === true, `anon should read published asset's question: ${error?.message}`);
-    pass("can_read_question: anon can read a publicly readable published question");
+    pass("can_read_question_asset: anon can read a publicly readable published question");
   }
 
   {
-    const { data, error } = await anon.rpc("can_read_question", {
-      p_question_id: draftAsset.question_id,
+    const { data, error } = await anon.rpc("can_read_question_asset", {
+      p_asset_id: draftAsset.id,
     });
     assert(!error && data === false, `anon should NOT read draft asset's question: ${error?.message}`);
-    pass("can_read_question: anon is denied a draft question");
+    pass("can_read_question_asset: anon is denied a draft question");
   }
 
   if (student) {
-    const { data, error } = await student.client.rpc("can_read_question", {
-      p_question_id: draftAsset.question_id,
+    const { data, error } = await student.client.rpc("can_read_question_asset", {
+      p_asset_id: draftAsset.id,
     });
     assert(!error && data === false, `student should NOT read draft asset's question: ${error?.message}`);
-    pass("can_read_question: unauthorized student is denied a draft question");
+    pass("can_read_question_asset: unauthorized student is denied a draft question");
 
     const { data: publishedData, error: publishedError } = await student.client.rpc(
-      "can_read_question",
-      { p_question_id: publishedAsset.question_id },
+      "can_read_question_asset",
+      { p_asset_id: publishedAsset.id },
     );
     assert(
       !publishedError && publishedData === true,
       `student should read published question: ${publishedError?.message}`,
     );
-    pass("can_read_question: student can read a question they are allowed to read");
+    pass("can_read_question_asset: student can read a question they are allowed to read");
   } else {
     skip("student authorization checks: TEST_STUDENT_USERNAME/PASSWORD unavailable.");
   }
 
   {
-    const { data, error } = await admin.client.rpc("can_read_question", {
-      p_question_id: draftAsset.question_id,
+    const { data, error } = await admin.client.rpc("can_read_question_asset", {
+      p_asset_id: draftAsset.id,
     });
     assert(!error && data === true, `staff should read draft asset's question: ${error?.message}`);
-    pass("can_read_question: authorized staff can read a draft question");
+    pass("can_read_question_asset: authorized staff can read a draft question");
   }
 
   // --- 2. Unknown asset ID / asset attached to an inaccessible question, through
@@ -442,6 +464,23 @@ try {
   {
     const replacementAssetId = crypto.randomUUID();
     const replacementPath = `questions/${publishedQuestion.id}/${replacementAssetId}.png`;
+    const replacementAsset = await insertOne(
+      fixtureClient,
+      "question_assets",
+      {
+        alt_text: `${replacementAssetId}.png`,
+        asset_kind: "image",
+        created_by: admin.user.id,
+        display_order: 1,
+        id: replacementAssetId,
+        label: `${replacementAssetId}.png`,
+        question_id: publishedQuestion.id,
+        storage_bucket: bucket,
+        storage_path: replacementPath,
+      },
+      "id",
+    );
+    cleanup.assets.push(replacementAsset.id);
     const { error: replaceUploadError } = await admin.client.storage
       .from(bucket)
       .upload(replacementPath, new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), {
@@ -486,14 +525,18 @@ try {
   }
 } finally {
   if (cleanup.objects.length) {
-    await admin.client.storage.from(bucket).remove(cleanup.objects);
+    const { error } = await fixtureClient.storage.from(bucket).remove(cleanup.objects);
+    assert(!error, `fixture object cleanup failed: ${error?.message}`);
   }
   for (const assetId of cleanup.assets) {
-    await admin.client.from("question_assets").delete().eq("id", assetId);
+    const { error } = await fixtureClient.from("question_assets").delete().eq("id", assetId);
+    assert(!error, `fixture asset cleanup failed: ${error?.message}`);
   }
   for (const questionId of cleanup.questions) {
-    await admin.client.from("questions").delete().eq("id", questionId);
+    const { error } = await fixtureClient.from("questions").delete().eq("id", questionId);
+    assert(!error, `fixture question cleanup failed: ${error?.message}`);
   }
 }
 
 console.log("Question assets private-bucket cutover smoke completed.");
+}

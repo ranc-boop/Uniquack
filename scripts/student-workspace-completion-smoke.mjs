@@ -125,11 +125,13 @@ assert(
 console.log("PASS feedback policy keeps private teacher notes outside Student reads");
 
 assert(
-  /supabase\.rpc\(\s*"can_read_question"/.test(assetRoute) &&
+  /supabase\.rpc\(\s*"can_read_question_asset"/.test(assetRoute) &&
+    !assetRoute.includes("p_question_id") &&
     assetRoute.includes("createSignedUrl") &&
-    assetRoute.indexOf("can_read_question") < assetRoute.indexOf("createSignedUrl") &&
+    assetRoute.indexOf("can_read_question_asset") < assetRoute.indexOf('.from("question_assets")') &&
+    assetRoute.indexOf('.from("question_assets")') < assetRoute.indexOf("createSignedUrl") &&
     assetRoute.includes("Cache-Control\": \"private, no-store"),
-  "question assets must authorize through question entitlement before creating a no-store signed redirect",
+  "question assets must authorize through the requester-first asset wrapper before reading metadata or creating a no-store signed redirect",
 );
 const clientPaths = ["src/app/student", "src/components/student", "src/components/practice", "src/lib/practice"];
 for (const path of clientPaths) {
