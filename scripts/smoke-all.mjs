@@ -45,6 +45,7 @@ await import("./teacher-assignment-attempt-drilldown-smoke.mjs");
 await import("./teacher-feedback-notes-mvp-smoke.mjs");
 await import("./teacher-beta-readiness-smoke.mjs");
 await import("./student-workspace-shell-smoke.mjs");
+await import("./student-self-study-isolation-smoke.mjs");
 await import("./question-bank-foundation-smoke.mjs");
 await import("./bank-share-members-smoke.mjs");
 await import("./bank-import-review-smoke.mjs");

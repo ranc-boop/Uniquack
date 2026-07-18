@@ -364,46 +364,55 @@ sessions. This run was not performed because no disposable role environment was
 injected and the known self-study policy issue below must be remediated first.
 Missing live role credentials are not reported as a pass.
 
-### P1 - Private Self-Study Evidence Is Too Broad for Organization Staff
+### P1 - Private Self-Study Evidence Isolation
 
-**Confirmed canonical-source defect.** `0008_practice_agent_evidence.sql` gives
-the owner **or** `private.is_org_staff(organization_id)` access to the private
-self-study Practice tables. `private.is_org_staff()` accepts active Teacher/Admin
-organization membership or default-organization staff role; it does not require
-a shared Classroom, an Assignment relation, or explicit Student sharing.
+**P1-STUDENT-01: IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION.**
 
-Affected policy families include `practice_sessions`, `practice_rounds`,
-`practice_round_questions`, `practice_attempts`, `practice_hint_events`,
-`practice_reflection_records`, `practice_wrong_questions`,
-`practice_weakness_links`, `user_practice_preferences`,
-`practice_preference_merge_jobs`, and `practice_agent_episodes`. Several policies
-also give that broad staff predicate insert, update, or delete capability.
+The confirmed source defect was in `0008_practice_agent_evidence.sql`: the owner
+**or** `private.is_org_staff(organization_id)` could access private Practice
+evidence. Active Teacher/Admin organization membership does not require a shared
+Classroom, a managed Assignment, or explicit Student sharing, and several of the
+old policies also allowed staff mutation.
 
-This violates the intended default: private self-study belongs to the Student;
-Teacher visibility must be tied to a relevant Classroom/Assignment or an
-explicitly approved sharing relation. It is classified **P1**, not P0: the
-current finding is broad same-organization staff access, not anonymous or
-cross-tenant public exposure. The live catalog/policy fingerprint and a same-class
-Student B role probe must be repeated when the forward fix is ready.
+Forward-only canonical migration
+`0047_practice_self_study_evidence_isolation.sql` now supersedes those policy
+families for `practice_sessions`, rounds, round questions, attempts, hints,
+reflections, episodes, wrong questions, weakness links, preferences, and
+preference merge jobs. It does not change existing rows or runtime code.
 
-#### Required Forward-Only Remediation: SEC-P1-STU-SELF-STUDY-01
+The final contract is deliberately narrower:
 
-1. Add a clean forward migration only after agreeing the product contract.
-2. Replace the broad owner-or-org-staff policy predicates with separate helpers:
-   Student self-access; Assignment/Classroom-linked Teacher read access limited to
-   their managed assigned work; and an explicit sharing path if product approves
-   one.
-3. Deny unrelated same-organization staff from every table listed above, and do
-   not grant Teacher write/delete access to Student private self-study by default.
-4. Preserve Student self read/write and service-role worker access needed by
-   trusted server paths.
-5. Apply only through the clean migration process, then run a disposable matrix:
-   Student A, Student B in the same classroom, Student C in another organization,
-   related Teacher, unrelated Teacher, admin, and anonymous. Test select, insert,
-   update, delete, API read, and direct table reads for sessions, rounds, attempts,
-   preferences, wrong questions, and episodes.
-6. Record live policy fingerprints and exact fixture-ID cleanup. Do not use this
-   audit as proof that the live policy has already been corrected.
+- A Student reads and writes their own evidence.
+- A Teacher reads only session-scoped evidence explicitly linked through
+  `assignment_practice_sessions` to an Assignment they currently manage.
+- Teachers cannot mutate Student answers, hints, reflections, or session state.
+- Wrong-question history and long-term preference/merge records remain
+  Student-owned because they can aggregate private self-study history.
+- Same-Classroom Students, same-organization unrelated staff, removed
+  co-teachers, organization admins, and anonymous callers receive no new raw
+  self-study access. Service role remains a trusted operational path only.
+- Existing assignment progress and sent Teacher feedback remain on their current
+  explicit Assignment-scoped contracts; source Bank, Review Draft, Blueprint,
+  and asset access remain separate.
+
+`scripts/student-self-study-isolation-smoke.mjs` provides local embedded policy
+coverage, but that is non-live evidence. The manual-apply runbook is
+`docs/security/student-self-study-evidence-manual-apply.md`; the clean project
+must apply `0047` exactly once and then pass the process-only disposable
+cross-student/staff role matrix with exact-ID cleanup. Until then, do not claim
+the live policy is corrected.
+
+#### Implementation Evidence (Non-Live)
+
+The focused embedded matrix passed after applying `0047` to an isolated local
+Postgres fixture. It proved Student A create/read/update; reciprocal same-Class
+Student isolation; same-organization unrelated Student/Teacher, removed
+co-teacher, organization-admin, and anonymous denial; authorized
+Assignment-manager read-only access; no Teacher answer mutation; owner-only
+aggregate mistakes/preferences/merge records; existing Assignment progress and
+sent-feedback behavior; no Bank membership side effect; and trusted service-role
+access. This result contains no clean-project query, credentials, fixture IDs,
+or production evidence.
 
 ### Teacher Feedback and Evidence
 
@@ -453,9 +462,9 @@ handling, and a formal Practice React error boundary.
 
 The critical Student Assignment -> Practice -> evidence workflow is implemented
 and previously live validated with a disposable local fake provider. It does not
-grant source-Bank or review/Blueprint visibility. However, the confirmed P1
-self-study organization-staff exposure requires an explicit forward RLS fix and
-live role matrix before the Student workspace can be called complete.
+grant source-Bank or review/Blueprint visibility. P1-STUDENT-01 now has a narrow
+forward RLS remediation, but it requires one manual clean-project application
+and a live role matrix before the Student workspace can be called complete.
 P0-STORAGE-01 is independently completed and clean-database live validated; it
 does not resolve the Student P1 finding or declare the overall site
 deployment-ready.
@@ -469,12 +478,15 @@ Passed without an environment-file read:
 - `node scripts/practice-provider-execution-smoke.mjs`
 - `node scripts/security-smoke.mjs`
 - `node scripts/migration-reconciliation-smoke.mjs`
+- `node scripts/student-self-study-isolation-smoke.mjs` (local embedded Postgres;
+  non-live)
 - `node scripts/check-question-assets-public-url.mjs`
 - `npm.cmd run build`
 - `npm.cmd run analyze`
 - `node scripts/route-smoke.mjs` against a temporary local server, then the
   server was stopped
 - `npm.cmd run perf:budget`
+- `npm.cmd run perf:audit`
 
 The production build and analyzer both completed; the previously reported
 `useContext`-null prerender failure did not reproduce. The three database-backed
@@ -489,4 +501,11 @@ as process-only variables:
 They were not counted as live passes. The affected smoke scripts and
 `route-smoke` were changed to use process-only environment input so future
 operators cannot accidentally source ignored local environment files during this
-validation.
+validation. `npm.cmd run smoke` was also run; it passed its preceding static and
+embedded checks, then stopped at the pre-existing process-environment gate in
+`supabase-rls-smoke` because no disposable URL/key categories were injected.
+
+No live migration application, live role matrix, provider call, production data
+read, or environment-file read occurred for P1-STUDENT-01. The next required
+step is the manual `0047` application followed by the documented disposable
+exact-ID role matrix.

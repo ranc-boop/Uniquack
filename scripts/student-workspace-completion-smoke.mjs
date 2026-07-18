@@ -88,11 +88,12 @@ for (const file of expectedPracticeApiFiles) {
 }
 console.log("PASS every shared Practice API repeats authenticated-user authorization");
 
-const [assignmentLinkage, assignmentMigration, practiceEvidenceMigration, feedbackMigration, assetRoute] =
+const [assignmentLinkage, assignmentMigration, practiceEvidenceMigration, practiceIsolationMigration, feedbackMigration, assetRoute] =
   await Promise.all([
     read("src/lib/practice/assignment-linkage.ts"),
     read("supabase/clean-migrations/0028_assignment_from_bank_questions.sql"),
     read("supabase/clean-migrations/0008_practice_agent_evidence.sql"),
+    read("supabase/clean-migrations/0047_practice_self_study_evidence_isolation.sql"),
     read("supabase/clean-migrations/0032_teacher_feedback_notes.sql"),
     read("src/app/api/question-assets/[assetId]/route.ts"),
   ]);
@@ -159,10 +160,16 @@ assert(
 );
 assert(
   practiceEvidenceMigration.includes("private.is_org_staff(organization_id)") &&
-    manifest.findings.some((finding) => finding.id === "P1_SELF_STUDY_ORG_STAFF" && finding.severity === "P1"),
-  "canonical self-study organization-staff exposure must remain explicitly represented until forward RLS remediation lands",
+    practiceIsolationMigration.includes("private.can_read_practice_session_evidence") &&
+    !practiceIsolationMigration.includes("private.is_org_staff(organization_id)") &&
+    manifest.findings.some(
+      (finding) =>
+        finding.id === "P1_SELF_STUDY_ORG_STAFF" &&
+        finding.status === "IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION",
+    ),
+  "canonical self-study exposure must have a forward-only, assignment-scoped remediation awaiting manual apply and live validation",
 );
-console.log("PASS Student source has no Bank/Review/Blueprint management surface and records the self-study P1 policy gap");
+console.log("PASS Student source has no Bank/Review/Blueprint management surface and records the P1 self-study remediation state");
 
 for (const file of [
   "scripts/student-my-work-smoke.mjs",

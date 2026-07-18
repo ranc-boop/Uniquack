@@ -159,7 +159,7 @@
       "classroom_scope": "assignment entitlement requires active student classroom membership",
       "assignment_scope": "selected assignment questions only",
       "bank_access": "no bank membership; question access is assignment-scoped",
-      "evidence_scope": "own Practice state and linked assignment evidence; see P1 self-study finding",
+      "evidence_scope": "Student-owned self-study plus assignment-linked evidence only through explicit Assignment management; 0047 is awaiting manual apply and live validation",
       "tests": ["assignment-practice-evidence-smoke", "practice-provider-execution-smoke", "student-assignment-practice-live-e2e"],
       "completion_status": "FUNCTIONAL_BUT_REQUEST_BOUND",
       "severity": "P2",
@@ -175,11 +175,11 @@
       "classroom_scope": "none for self-study",
       "assignment_scope": "may display linked practice evidence",
       "bank_access": "none",
-      "evidence_scope": "own mistakes only; see P1 self-study finding",
+      "evidence_scope": "Student-owned aggregate mistake history; Assignment managers do not receive access because it can combine self-study and assignment history",
       "tests": ["student-workspace-completion-smoke", "student-assignment-practice-live-e2e"],
-      "completion_status": "FUNCTIONAL",
+      "completion_status": "P1_REMEDIATION_AWAITING_LIVE_VALIDATION",
       "severity": "P1",
-      "remaining_action": "Forward RLS remediation must remove unrelated organization-staff access to private self-study evidence."
+      "remaining_action": "Migration 0047 is implemented but requires one manual clean-project apply and a disposable role matrix before this boundary is live validated."
     },
     {
       "route": "/questions and /questions/[id]",
@@ -195,7 +195,7 @@
       "tests": ["check-question-assets-public-url", "route-smoke"],
       "completion_status": "FUNCTIONAL",
       "severity": "P0 dependency",
-      "remaining_action": "Private Storage cutover migrations 0045/0046 remain pending; source route implementation is complete."
+      "remaining_action": "P0-STORAGE-01 is independently completed and clean-database live validated; this route still needs ordinary regression coverage after future changes."
     }
   ],
   "student_mutation_and_support_routes": [
@@ -218,24 +218,24 @@
       "required_role": "requesting user must satisfy can_read_question",
       "guard": "question entitlement RPC before service-role signed URL creation",
       "rpc_or_action": "can_read_question",
-      "completion_status": "SOURCE_COMPLETE_LIVE_STORAGE_PENDING"
+      "completion_status": "COMPLETED / CLEAN-DB LIVE VALIDATED"
     }
   ],
   "findings": [
     {
       "id": "P1_SELF_STUDY_ORG_STAFF",
       "severity": "P1",
-      "status": "CONFIRMED_IN_CANONICAL_SOURCE",
-      "affected_contract": "0008_practice_agent_evidence.sql owner-or-private.is_org_staff policies for Practice self-study tables",
-      "behavior": "Active organization staff may read and, for several tables, mutate a student's self-study evidence without an explicit classroom, assignment, or sharing relationship.",
-      "required_action": "Create a forward-only RLS remediation that separates assignment-linked teacher access from private self-study and proves cross-student/staff denial live."
+      "status": "IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION",
+      "affected_contract": "0008 owner-or-private.is_org_staff policies are superseded forward-only by 0047_practice_self_study_evidence_isolation.sql.",
+      "behavior": "0047 makes self-study Student-owned, grants read-only Teacher access only through an explicitly linked Assignment they manage, and keeps aggregate mistakes and long-term preferences Student-owned.",
+      "required_action": "Manually apply 0047 once to the approved clean project and complete the disposable cross-student/staff role matrix before declaring this P1 live validated."
     },
     {
       "id": "P0_STORAGE_CUTOVER_DEPENDENCY",
       "severity": "P0 dependency",
-      "status": "SOURCE_COMPLETE_LIVE_VALIDATION_PENDING",
-      "affected_contract": "Question asset protected route source is complete; migrations 0045/0046 and private-bucket cutover are pending.",
-      "required_action": "Finish the already-scoped Storage P0 work without changing Student behavior in this audit."
+      "status": "COMPLETED / CLEAN-DB LIVE VALIDATED",
+      "affected_contract": "Question asset protected route and clean-database private-bucket cutover were validated under 0045/0046.",
+      "required_action": "Do not infer production historical-data migration; keep this boundary covered by regression checks."
     }
   ]
 }
