@@ -356,17 +356,16 @@ source smoke inventories every Practice API and asserts all call
 `requirePracticeApiUser()`; session, round, attempt, preference, and wrong-question
 operations remain user-scoped in their data paths.
 
-The missing matrix is explicitly recorded rather than inferred: a fresh
-disposable run still needs **Student B in the same Classroom as Student A** and
-Student C in a separate Classroom/organization to probe each other’s attempts,
-rounds, preference state, wrong-question data, completion state, and self-study
-sessions. This run was not performed because no disposable role environment was
-injected and the known self-study policy issue below must be remediated first.
-Missing live role credentials are not reported as a pass.
+The approved disposable matrix ran after the 0048 correction. It covered a
+same-Classroom Student, a same-organization unrelated Student, a
+cross-organization Student, Teachers, a removed co-teacher, organization admin,
+anonymous access, framework ownership, Assignment-linked evidence, and
+Student-owned preference and wrong-question state. The matrix passed and every
+fixture was removed by its exact captured identifier.
 
 ### P1 - Private Self-Study Evidence Isolation
 
-**P1-STUDENT-01: IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION.**
+**P1-STUDENT-01: COMPLETED / CLEAN-DB LIVE VALIDATED.**
 
 The confirmed source defect was in `0008_practice_agent_evidence.sql`: the owner
 **or** `private.is_org_staff(organization_id)` could access private Practice
@@ -410,13 +409,16 @@ The final contract is deliberately narrower:
 `scripts/student-self-study-isolation-smoke.mjs` provides local embedded policy
 coverage, including a Teacher-owned framework attached to Student A private
 self-study. The framework Teacher and organization admin are denied both the
-session and agent episode after `0048`. This remains non-live evidence. The
-manual-apply runbook is `docs/security/student-self-study-evidence-manual-apply.md`;
-the clean project must apply `0048` exactly once and then pass the process-only
-disposable cross-student/staff/framework role matrix with exact-ID cleanup.
-Until then, do not claim the live policy is fully corrected.
+session and agent episode after `0048`.
 
-#### Implementation Evidence (Non-Live)
+The approved clean-project post-apply catalog result recorded legacy policy
+count `0`, Assignment-manager policy count `2`, validated helper count `3`, and
+RLS-enabled affected-table count `11`. The process-only disposable matrix then
+passed the cross-student, cross-organization, Teacher, removed-co-teacher,
+admin/staff, anonymous, framework-owner, Assignment-manager, browser-helper,
+Bank/content-isolation, feedback/progress, and exact-ID cleanup assertions.
+
+#### Implementation and Live Evidence
 
 The focused embedded matrix passed after applying `0047` to an isolated local
 Postgres fixture. It proved Student A create/read/update; reciprocal same-Class
@@ -426,7 +428,8 @@ Assignment-manager read-only access; no Teacher answer mutation; owner-only
 aggregate mistakes/preferences/merge records; existing Assignment progress and
 sent-feedback behavior; no Bank membership side effect; and trusted service-role
 access. This result contains no clean-project query, credentials, fixture IDs,
-or production evidence.
+or production evidence. The later clean-project catalog and disposable role
+matrix provided the sanitized live proof summarized above.
 
 ### Teacher Feedback and Evidence
 
@@ -476,12 +479,14 @@ handling, and a formal Practice React error boundary.
 
 The critical Student Assignment -> Practice -> evidence workflow is implemented
 and previously live validated with a disposable local fake provider. It does not
-grant source-Bank or review/Blueprint visibility. P1-STUDENT-01 has a narrow
-forward RLS remediation: `0047` is catalog validated, but the discovered
-`0009` framework bypass requires one manual `0048` clean-project application
-and a live role matrix before the Student workspace can be called complete.
-P0-STORAGE-01 is independently completed and clean-database live validated; it
-does not resolve the Student P1 finding or declare the overall site
+grant source-Bank or review/Blueprint visibility. P1-STUDENT-01 is now
+independently **COMPLETED / CLEAN-DB LIVE VALIDATED** after `0047`/`0048` catalog
+validation and the disposable role matrix. The Student workspace remains
+**PARTIALLY COMPLETE / CORE GAPS REMAIN** because Study Library and Study Group
+backends, consolidated feedback history, an availability-window contract,
+archive/history behavior, duplicate-start handling, and a durable Practice
+recommendation decision remain separate product work. P0-STORAGE-01 is also
+independently completed; neither result declares the overall site
 deployment-ready.
 
 ### Validation Record - 2026-07-17
@@ -520,8 +525,7 @@ validation. `npm.cmd run smoke` was also run; it passed its preceding static and
 embedded checks, then stopped at the pre-existing process-environment gate in
 `supabase-rls-smoke` because no disposable URL/key categories were injected.
 
-`0047` was later applied manually exactly once and has sanitized live catalog
-evidence. No final live role matrix, provider call, production-data read, or
-environment-file read occurred for P1-STUDENT-01 as part of the framework
-bypass review. The next required step is the manual `0048` application followed
-by the documented disposable exact-ID role matrix.
+`0047` and `0048` were each manually applied exactly once and remain unledgered.
+The P1 live role matrix ran once after 0048 and passed with exact-ID cleanup.
+No provider call, production-data read, or environment-file read occurred for
+this validation. The overall website remains separately not deployment-ready.

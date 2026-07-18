@@ -164,11 +164,11 @@
     "ledgerNote": "No Supabase migration-ledger history is fabricated."
   },
   "studentSelfStudyP1Student01": {
-    "status": "0047 LIVE CATALOG VALIDATED / 0048 AWAITING MANUAL APPLY AND LIVE VALIDATION",
+    "status": "COMPLETED / CLEAN-DB LIVE VALIDATED",
     "scope": "P1-STUDENT-01 only; this status does not declare the Student workspace or overall website deployment-ready.",
     "migrationHistory": {
-      "0047_practice_self_study_evidence_isolation.sql": "APPLIED_MANUALLY_NOT_LEDGERED; applied exactly once; helpers have sanitized live catalog validation; final role matrix remains pending",
-      "0048_practice_course_framework_evidence_isolation.sql": "PENDING_MANUAL_APPLY; forward-only removal of legacy framework-owner evidence policies; no Supabase migration-ledger history is claimed"
+      "0047_practice_self_study_evidence_isolation.sql": "APPLIED_MANUALLY_NOT_LEDGERED; applied exactly once; helper contract and final role matrix live validated with 0048",
+      "0048_practice_course_framework_evidence_isolation.sql": "APPLIED_MANUALLY_NOT_LEDGERED; applied exactly once; legacy framework-owner policies absent and final role matrix live validated; no Supabase migration-ledger history is claimed"
     },
     "authorizationContract": [
       "private self-study Practice evidence is Student-owned",
@@ -178,10 +178,11 @@
       "course framework ownership, teacher_id, or admin status alone is insufficient for raw private self-study or agent-episode access",
       "service_role remains a trusted operational path; no browser service-role bypass is introduced"
     ],
-    "requiredLiveEvidence": [
-      "disposable exact-ID role matrix covers a Teacher-owned framework attached to Student private self-study plus same-Classroom Student, same-organization unrelated Student, unrelated Teacher, removed co-teacher, organization admin, anonymous, and service role",
-      "authorized Assignment manager read-only access and Student answer-mutation denial pass",
-      "Bank/source-question isolation and fixture cleanup pass"
+    "sanitizedLiveEvidence": [
+      "post-0048 catalog counts: legacy policies 0, Assignment-manager policies 2, validated helpers 3, and RLS-enabled affected tables 11",
+      "disposable exact-ID role matrix passed for a Teacher-owned framework attached to Student private self-study plus same-Classroom Student, same-organization unrelated Student, unrelated Teacher, removed co-teacher, organization admin, anonymous, and service role",
+      "authorized Assignment manager read-only access and Student answer-mutation denial passed",
+      "Bank/source-question isolation and fixture cleanup passed"
     ],
     "ledgerNote": "No Supabase migration-ledger history is fabricated."
   },
@@ -238,7 +239,7 @@
     { "filename": "0044_classroom_creation_rpc_reconciliation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-0044 RPC, policy, and grant metadata plus completed disposable role-E2E evidence" },
     { "filename": "0045_question_read_authorization_helper.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "live catalog validation plus exact-ID pre-cutover authorization matrix" },
     { "filename": "0046_question_assets_bucket_private.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "clean-database private-bucket post-cutover validation; exactly one private bucket, nine-field zero-residual checks, direct URL denial, and exact-ID cleanup" },
-    { "filename": "0047_practice_self_study_evidence_isolation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized helper catalog validation; final disposable role matrix deferred until the 0048 framework-policy correction" },
-    { "filename": "0048_practice_course_framework_evidence_isolation.sql", "status": "PENDING_MANUAL_APPLY", "applicationMethod": "manual SQL Editor apply pending", "evidenceSource": "0009 legacy framework-owner policy trace plus local embedded and unrun disposable harness coverage" }
+    { "filename": "0047_practice_self_study_evidence_isolation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized helper catalog validation plus completed post-0048 disposable role matrix" },
+    { "filename": "0048_practice_course_framework_evidence_isolation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-apply catalog counts and completed exact-ID disposable framework-boundary role matrix" }
   ]
 }

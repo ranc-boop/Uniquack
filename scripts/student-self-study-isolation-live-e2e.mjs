@@ -215,7 +215,7 @@ async function createFixtureUser({ anonKey, fixtures, organizationId, role, serv
 
   const session = await signInFixture({ anonKey, email, password, url });
   assert(session.id === userId, "fixture_session_identity_mismatch");
-  return session;
+  return { ...session, label };
 }
 
 async function createFixtureClassroom(fixtures, suffix) {
@@ -915,8 +915,8 @@ async function assertCrossStudentAndBankBoundary(fixtures) {
     "student_a_cannot_read_student_b_private_attempt",
     fixtures.studentA.client
       .from("practice_attempts")
-      .eq("session_id", fixtures.studentBSessionId)
-      .select("id"),
+      .select("id")
+      .eq("session_id", fixtures.studentBSessionId),
   );
   await expectHidden(
     "student_a_has_no_source_bank_membership",

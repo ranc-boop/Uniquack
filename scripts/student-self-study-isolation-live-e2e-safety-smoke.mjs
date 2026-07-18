@@ -81,6 +81,12 @@ assert(
   "0047 live harness is missing required isolation, Bank, or cleanup assertions",
 );
 assert(
+  harness.includes(
+    '.from("practice_attempts")\n      .select("id")\n      .eq("session_id", fixtures.studentBSessionId)',
+  ),
+  "live harness must build the cross-student attempt read query with select before filters",
+);
+assert(
   runbook.includes("to_regprocedure('private.can_read_practice_session_evidence(uuid)')") &&
     runbook.includes("0048_practice_course_framework_evidence_isolation.sql") &&
     runbook.includes("student-self-study-isolation-live-e2e.mjs"),

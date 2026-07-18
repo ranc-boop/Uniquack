@@ -168,9 +168,9 @@ assert(
     manifest.findings.some(
       (finding) =>
         finding.id === "P1_SELF_STUDY_ORG_STAFF" &&
-        finding.status === "0047 LIVE CATALOG VALIDATED / 0048 AWAITING MANUAL APPLY AND LIVE VALIDATION",
+        finding.status === "COMPLETED / CLEAN-DB LIVE VALIDATED",
     ),
-  "canonical self-study exposure must have forward-only assignment and course-framework boundary remediation awaiting final live validation",
+  "canonical self-study exposure must retain completed assignment and course-framework boundary validation evidence",
 );
 console.log("PASS Student source has no Bank/Review/Blueprint management surface and records the P1 self-study remediation state");
 

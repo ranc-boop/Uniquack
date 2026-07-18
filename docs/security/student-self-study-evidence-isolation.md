@@ -2,15 +2,17 @@
 
 ## Status
 
-**0047 APPLIED_MANUALLY_NOT_LEDGERED / LIVE CATALOG VALIDATED; 0048 AWAITING
-MANUAL APPLY AND LIVE VALIDATION**
+**0047 APPLIED_MANUALLY_NOT_LEDGERED / LIVE CATALOG VALIDATED; 0048
+APPLIED_MANUALLY_NOT_LEDGERED / LIVE VALIDATED; P1-STUDENT-01 COMPLETED /
+CLEAN-DB LIVE VALIDATED**
 
 This is a forward-only remediation for the canonical clean schema. The clean
-Supabase catalog confirms the three `0047` helpers exist with the reviewed
-security-definer, owner, search-path, and grant contract. It also confirmed two
-older `0009` framework-owner read policies remained live, so `0047` alone does
-not close the boundary. This does not change the overall Student classification:
-**PARTIALLY COMPLETE / CORE GAPS REMAIN**.
+Supabase catalog confirms the three `0047` helpers retain the reviewed
+security-definer, owner, search-path, and grant contract. The forward-only
+`0048` removal is also live: the two legacy `0009` framework-owner policies are
+absent, while the two Assignment-manager policies remain. A disposable,
+exact-ID role matrix passed after that catalog check. This does not change the
+overall Student classification: **PARTIALLY COMPLETE / CORE GAPS REMAIN**.
 
 ## Original Exposure
 
@@ -82,9 +84,9 @@ to PostgREST's exposed schema list, and no public RPC wrapper calls any of the
 three `0047` helpers. Current browser-facing Practice routes use the default
 public-schema client; helper references outside migrations and tests are absent.
 The authenticated `EXECUTE` grants remain necessary for PostgreSQL RLS policy
-evaluation and are not a browser capability grant. The unrun disposable harness
-now additionally attempts a requester-side `private` schema RPC and requires it
-to fail, providing the final live proof that the helpers are not browser-callable.
+evaluation and are not a browser capability grant. The disposable live harness
+attempted a requester-side `private` schema RPC and confirmed it is unavailable,
+providing live proof that the helpers are not browser-callable.
 
 ## Runtime Callers Checked
 
@@ -96,7 +98,7 @@ to fail, providing the final live proof that the helpers are not browser-callabl
 - Server-side trusted workers continue to use their existing service-role path;
   no application query is moved to service role to work around RLS.
 
-## Evidence Before Final Live Validation
+## Live Validation Evidence
 
 `scripts/student-self-study-isolation-smoke.mjs` is a local embedded Postgres
 matrix. It proves the final policy contract for Student A; a same-Classroom
@@ -105,12 +107,16 @@ Student; an authorized Assignment Teacher; an unrelated Teacher; a removed
 co-teacher; an organization admin; anonymous; and service role. It also checks
 the unchanged assignment progress and sent-feedback contract statically.
 
-The embedded matrix now creates a Teacher-owned course framework, attaches it
-to Student A private self-study, and confirms the framework teacher and admin
-cannot read the session or episode after `0048`. This is **non-live evidence**.
-After manual `0048` application to the approved clean disposable project, run a
-process-only exact-ID live fixture matrix before marking P1-STUDENT-01 live
-validated. The live run must cover framework-linked self-study,
-assignment-linked evidence, Teacher read-only behavior, removed-co-teacher
-denial, Bank/source-question isolation, and exact-ID cleanup without retaining
-fixture or credential identities.
+The embedded matrix creates a Teacher-owned course framework, attaches it to
+Student A private self-study, and confirms the framework teacher and admin
+cannot read the session or episode after `0048`.
+
+The approved clean-project catalog check returned: legacy policy count `0`,
+Assignment-manager policy count `2`, validated helper count `3`, and RLS-enabled
+affected-table count `11`. The disposable exact-ID live matrix then passed
+Student owner create/read/update/resume; same-Classroom, same-organization,
+cross-organization, Teacher, removed-co-teacher, admin/staff, and anonymous
+denials; framework-owner denial; Assignment-manager read-only access; Teacher
+mutation denial; episode, preference, and wrong-question privacy; feedback and
+progress preservation; Bank/source-content isolation; browser-private-helper
+denial; and cleanup. No fixture or credential identity is recorded here.
