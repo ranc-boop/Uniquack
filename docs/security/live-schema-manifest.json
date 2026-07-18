@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 47,
+  "latestActivePrefix": 48,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -58,7 +58,8 @@
     "0044_classroom_creation_rpc_reconciliation.sql",
     "0045_question_read_authorization_helper.sql",
     "0046_question_assets_bucket_private.sql",
-    "0047_practice_self_study_evidence_isolation.sql"
+    "0047_practice_self_study_evidence_isolation.sql",
+    "0048_practice_course_framework_evidence_isolation.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -163,24 +164,26 @@
     "ledgerNote": "No Supabase migration-ledger history is fabricated."
   },
   "studentSelfStudyP1Student01": {
-    "status": "IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION",
+    "status": "0047 LIVE CATALOG VALIDATED / 0048 AWAITING MANUAL APPLY AND LIVE VALIDATION",
     "scope": "P1-STUDENT-01 only; this status does not declare the Student workspace or overall website deployment-ready.",
     "migrationHistory": {
-      "0047_practice_self_study_evidence_isolation.sql": "PENDING_MANUAL_APPLY; no Supabase migration-ledger history is claimed"
+      "0047_practice_self_study_evidence_isolation.sql": "APPLIED_MANUALLY_NOT_LEDGERED; applied exactly once; helpers have sanitized live catalog validation; final role matrix remains pending",
+      "0048_practice_course_framework_evidence_isolation.sql": "PENDING_MANUAL_APPLY; forward-only removal of legacy framework-owner evidence policies; no Supabase migration-ledger history is claimed"
     },
     "authorizationContract": [
       "private self-study Practice evidence is Student-owned",
       "Assignment managers receive read-only access only through explicit assignment_practice_sessions linkage and current assignment-management authorization",
       "aggregate wrong-question history and long-term preference/merge state remain Student-owned",
       "organization, Classroom, or staff membership alone is insufficient",
+      "course framework ownership, teacher_id, or admin status alone is insufficient for raw private self-study or agent-episode access",
       "service_role remains a trusted operational path; no browser service-role bypass is introduced"
     ],
     "requiredLiveEvidence": [
-      "disposable exact-ID role matrix covers same-Classroom Student, same-organization unrelated Student, unrelated Teacher, removed co-teacher, organization admin, anonymous, and service role",
+      "disposable exact-ID role matrix covers a Teacher-owned framework attached to Student private self-study plus same-Classroom Student, same-organization unrelated Student, unrelated Teacher, removed co-teacher, organization admin, anonymous, and service role",
       "authorized Assignment manager read-only access and Student answer-mutation denial pass",
       "Bank/source-question isolation and fixture cleanup pass"
     ],
-    "ledgerNote": "No Supabase migration-ledger history is fabricated before manual application."
+    "ledgerNote": "No Supabase migration-ledger history is fabricated."
   },
   "repositoryStaticInventory": {
     "source": "Deterministic parse of active canonical SQL in scripts/migration-reconciliation-smoke.mjs",
@@ -235,6 +238,7 @@
     { "filename": "0044_classroom_creation_rpc_reconciliation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-0044 RPC, policy, and grant metadata plus completed disposable role-E2E evidence" },
     { "filename": "0045_question_read_authorization_helper.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "live catalog validation plus exact-ID pre-cutover authorization matrix" },
     { "filename": "0046_question_assets_bucket_private.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "clean-database private-bucket post-cutover validation; exactly one private bucket, nine-field zero-residual checks, direct URL denial, and exact-ID cleanup" },
-    { "filename": "0047_practice_self_study_evidence_isolation.sql", "status": "PENDING_MANUAL_APPLY", "applicationMethod": "manual SQL Editor apply pending", "evidenceSource": "P1-STUDENT-01 source trace and local embedded isolation matrix; disposable role live validation pending" }
+    { "filename": "0047_practice_self_study_evidence_isolation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized helper catalog validation; final disposable role matrix deferred until the 0048 framework-policy correction" },
+    { "filename": "0048_practice_course_framework_evidence_isolation.sql", "status": "PENDING_MANUAL_APPLY", "applicationMethod": "manual SQL Editor apply pending", "evidenceSource": "0009 legacy framework-owner policy trace plus local embedded and unrun disposable harness coverage" }
   ]
 }

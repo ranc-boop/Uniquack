@@ -2,12 +2,15 @@
 
 ## Status
 
-**IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION**
+**0047 APPLIED_MANUALLY_NOT_LEDGERED / LIVE CATALOG VALIDATED; 0048 AWAITING
+MANUAL APPLY AND LIVE VALIDATION**
 
-This is a forward-only remediation for the canonical clean schema. It does not
-claim that the clean Supabase project has applied migration `0047`, and it does
-not change the overall Student classification: **PARTIALLY COMPLETE / CORE GAPS
-REMAIN**.
+This is a forward-only remediation for the canonical clean schema. The clean
+Supabase catalog confirms the three `0047` helpers exist with the reviewed
+security-definer, owner, search-path, and grant contract. It also confirmed two
+older `0009` framework-owner read policies remained live, so `0047` alone does
+not close the boundary. This does not change the overall Student classification:
+**PARTIALLY COMPLETE / CORE GAPS REMAIN**.
 
 ## Original Exposure
 
@@ -20,6 +23,14 @@ of those policies also let that staff member write or delete evidence.
 That broad shortcut covered private self-study sessions and their dependent
 rounds, questions, answers, hints, reflections, aggregate mistakes, weakness
 links, preference state, merge records, and agent episodes.
+
+Canonical `0009_course_builder_near_term.sql` added a separate bypass after
+those policies: `practice_sessions_teacher_select_course` and
+`practice_agent_episodes_teacher_select_course`. A signed-in Student can select
+an active `practice_course_framework` when creating a private Practice session.
+Those two policies then allow the framework's `created_by`, `teacher_id`, or an
+admin to read the private session and raw agent episode without an explicit
+Assignment relationship.
 
 ## Final Contract
 
@@ -57,6 +68,24 @@ Assignment-manager reads. It does not change data, existing rows, Bank
 membership, source Bank visibility, Classroom authorization, provider routing,
 Storage, or assignment authoring.
 
+`0048_practice_course_framework_evidence_isolation.sql` is the required
+forward-only follow-up. It drops only the two `0009` framework-owner select
+policies. It preserves `0047` Student-owner access, explicit
+Assignment-manager read-only access, sent feedback, Assignment progress, and
+trusted service-role operations. Active framework selection remains available;
+framework ownership no longer acts as a raw Student-evidence entitlement.
+
+## API Exposure Boundary
+
+The repository contains no Supabase project configuration that adds `private`
+to PostgREST's exposed schema list, and no public RPC wrapper calls any of the
+three `0047` helpers. Current browser-facing Practice routes use the default
+public-schema client; helper references outside migrations and tests are absent.
+The authenticated `EXECUTE` grants remain necessary for PostgreSQL RLS policy
+evaluation and are not a browser capability grant. The unrun disposable harness
+now additionally attempts a requester-side `private` schema RPC and requires it
+to fail, providing the final live proof that the helpers are not browser-callable.
+
 ## Runtime Callers Checked
 
 - Student Practice persistence and assignment linkage use the signed-in
@@ -67,7 +96,7 @@ Storage, or assignment authoring.
 - Server-side trusted workers continue to use their existing service-role path;
   no application query is moved to service role to work around RLS.
 
-## Evidence Before Live Apply
+## Evidence Before Final Live Validation
 
 `scripts/student-self-study-isolation-smoke.mjs` is a local embedded Postgres
 matrix. It proves the final policy contract for Student A; a same-Classroom
@@ -76,9 +105,12 @@ Student; an authorized Assignment Teacher; an unrelated Teacher; a removed
 co-teacher; an organization admin; anonymous; and service role. It also checks
 the unchanged assignment progress and sent-feedback contract statically.
 
-This is **non-live evidence**. After manual application to the approved clean
-disposable project, run a process-only exact-ID live fixture matrix before
-marking P1-STUDENT-01 live validated. The live run must cover self-study,
+The embedded matrix now creates a Teacher-owned course framework, attaches it
+to Student A private self-study, and confirms the framework teacher and admin
+cannot read the session or episode after `0048`. This is **non-live evidence**.
+After manual `0048` application to the approved clean disposable project, run a
+process-only exact-ID live fixture matrix before marking P1-STUDENT-01 live
+validated. The live run must cover framework-linked self-study,
 assignment-linked evidence, Teacher read-only behavior, removed-co-teacher
 denial, Bank/source-question isolation, and exact-ID cleanup without retaining
 fixture or credential identities.

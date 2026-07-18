@@ -16,6 +16,10 @@ const migrationPath = resolve(
   root,
   "supabase/clean-migrations/0047_practice_self_study_evidence_isolation.sql",
 );
+const frameworkIsolationMigrationPath = resolve(
+  root,
+  "supabase/clean-migrations/0048_practice_course_framework_evidence_isolation.sql",
+);
 
 const practiceTables = [
   "practice_sessions",
@@ -82,10 +86,12 @@ async function expectOneRow(label, operation) {
   console.log(`PASS ${label}`);
 }
 
-const [migrationSql, assignmentSql, feedbackSql] = await Promise.all([
+const [migrationSql, frameworkIsolationSql, assignmentSql, feedbackSql, courseBuilderSql] = await Promise.all([
   readFile(migrationPath, "utf8"),
+  readFile(frameworkIsolationMigrationPath, "utf8"),
   read("supabase/clean-migrations/0021_student_work_assignments.sql"),
   read("supabase/clean-migrations/0032_teacher_feedback_notes.sql"),
+  read("supabase/clean-migrations/0009_course_builder_near_term.sql"),
 ]);
 
 for (const table of practiceTables) {
@@ -133,6 +139,17 @@ assert(
   !/bank_members|question_banks|owner_bank_id|ai_provider|storage\.objects/i.test(migrationSql),
   "0047 must not alter Bank, provider, or Storage boundaries.",
 );
+assert(
+  frameworkIsolationSql.includes("drop policy if exists practice_sessions_teacher_select_course") &&
+    frameworkIsolationSql.includes("drop policy if exists practice_agent_episodes_teacher_select_course") &&
+    !/create policy\s+practice_(sessions|agent_episodes)_teacher_select_course/i.test(frameworkIsolationSql),
+  "0048 must remove the framework-owner evidence bypass without replacing it.",
+);
+assert(
+  /practice_sessions_teacher_select_course[\s\S]*?framework\.created_by = auth\.uid\(\)[\s\S]*?framework\.teacher_id = auth\.uid\(\)[\s\S]*?private\.is_admin\(\)/.test(courseBuilderSql) &&
+    /practice_agent_episodes_teacher_select_course[\s\S]*?framework\.created_by = auth\.uid\(\)[\s\S]*?framework\.teacher_id = auth\.uid\(\)[\s\S]*?private\.is_admin\(\)/.test(courseBuilderSql),
+  "Canonical 0009 must be recognized as the legacy framework ownership bypass source.",
+);
 console.log("PASS static P1-STUDENT-01 authorization contract");
 
 const harness = await createGoogleAccountLinksPostgresHarness("student-self-study-isolation");
@@ -155,6 +172,7 @@ const ids = {
   assignmentSession: "20000000-0000-0000-0000-000000000002",
   studentBSession: "20000000-0000-0000-0000-000000000004",
   assignment: "30000000-0000-0000-0000-000000000001",
+  framework: "30000000-0000-0000-0000-000000000002",
 };
 
 try {
@@ -181,6 +199,7 @@ try {
       "grant anon to practice_anon_tester;",
       "grant service_role to practice_service_tester;",
       "create or replace function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;",
+      "create or replace function private.is_admin() returns boolean language sql stable security definer set search_path = public, private as $$ select false $$;",
       "create table public.assignments (id uuid primary key);",
       "create table public.classroom_members (classroom_id uuid not null, user_id uuid not null, role text not null, status text not null);",
       "create table public.assignment_practice_sessions (assignment_id uuid not null, student_id uuid not null, practice_session_id uuid not null);",
@@ -189,7 +208,8 @@ try {
       "alter function private.can_manage_assignment(uuid) owner to postgres;",
       "revoke all on function private.can_manage_assignment(uuid) from public, anon;",
       "grant execute on function private.can_manage_assignment(uuid) to authenticated;",
-      "create table public.practice_sessions (id uuid primary key, organization_id uuid, user_id uuid not null);",
+      "create table public.practice_course_frameworks (id uuid primary key, created_by uuid, teacher_id uuid);",
+      "create table public.practice_sessions (id uuid primary key, organization_id uuid, user_id uuid not null, course_framework_id uuid references public.practice_course_frameworks(id));",
       "create table public.practice_rounds (id uuid primary key, organization_id uuid, user_id uuid not null, session_id uuid not null);",
       "create table public.practice_round_questions (id uuid primary key, organization_id uuid, user_id uuid not null, session_id uuid not null);",
       "create table public.practice_attempts (id uuid primary key, organization_id uuid, user_id uuid not null, session_id uuid not null);",
@@ -208,6 +228,14 @@ try {
     ].join("\n"),
   );
   await applySql(bootstrap, migrationSql);
+  await applySql(
+    bootstrap,
+    [
+      "create policy practice_sessions_teacher_select_course on public.practice_sessions for select to authenticated using (exists (select 1 from public.practice_course_frameworks framework where framework.id = practice_sessions.course_framework_id and (framework.created_by = auth.uid() or framework.teacher_id = auth.uid() or private.is_admin())));",
+      "create policy practice_agent_episodes_teacher_select_course on public.practice_agent_episodes for select to authenticated using (exists (select 1 from public.practice_sessions session join public.practice_course_frameworks framework on framework.id = session.course_framework_id where session.id = practice_agent_episodes.session_id and (framework.created_by = auth.uid() or framework.teacher_id = auth.uid() or private.is_admin())));",
+    ].join("\n"),
+  );
+  await applySql(bootstrap, frameworkIsolationSql);
 
   await applySql(
     bootstrap,
@@ -239,8 +267,12 @@ try {
     [ids.assignment, ids.teacherA],
   );
   await bootstrap.query(
-    "insert into public.practice_sessions (id, organization_id, user_id) values ($1, $3, $2), ($4, $3, $2), ($5, $3, $6)",
-    [ids.selfSession, ids.studentA, orgOne, ids.assignmentSession, ids.studentBSession, ids.studentB],
+    "insert into public.practice_course_frameworks (id, created_by, teacher_id) values ($1, $2, $2)",
+    [ids.framework, ids.teacherA],
+  );
+  await bootstrap.query(
+    "insert into public.practice_sessions (id, organization_id, user_id, course_framework_id) values ($1, $3, $2, $4), ($5, $3, $2, null), ($6, $3, $7, null)",
+    [ids.selfSession, ids.studentA, orgOne, ids.framework, ids.assignmentSession, ids.studentBSession, ids.studentB],
   );
   await bootstrap.query(
     "insert into public.assignment_practice_sessions (assignment_id, student_id, practice_session_id) values ($1, $2, $3)",
@@ -385,6 +417,12 @@ try {
   }
 
   await asUser(authenticatedClient, ids.teacherA);
+  await expectNoRows("Framework Teacher A cannot read Student A framework-linked private self-study", () =>
+    authenticatedClient.query("select id from public.practice_sessions where id = $1", [ids.selfSession]),
+  );
+  await expectNoRows("Framework Teacher A cannot read Student A framework-linked private episode", () =>
+    authenticatedClient.query("select id from public.practice_agent_episodes where session_id = $1", [ids.selfSession]),
+  );
   await expectOneRow("Assignment Teacher A can read linked Practice session", () =>
     authenticatedClient.query("select id from public.practice_sessions where id = $1", [ids.assignmentSession]),
   );

@@ -323,6 +323,23 @@ async function createPracticeFixtures(fixtures) {
   const taxonomyNode = assertNoError(taxonomyResult, "fixture_taxonomy_preflight_failed");
   assert(taxonomyNode?.tag_id, "fixture_assignable_taxonomy_missing");
 
+  const courseFrameworkId = randomUUID();
+  fixtures.courseFrameworkIds.push(courseFrameworkId);
+  await insertExact(
+    fixtures.service,
+    "practice_course_frameworks",
+    {
+      created_by: fixtures.teacherA.id,
+      description: "Disposable framework ownership boundary fixture.",
+      id: courseFrameworkId,
+      organization_id: fixtures.primaryOrganizationId,
+      status: "active",
+      teacher_id: fixtures.teacherA.id,
+      title: `Self-study framework ${fixtures.runId}`,
+    },
+    "fixture_course_framework_create_failed",
+  );
+
   const selfSessionId = randomUUID();
   const assignmentSessionId = randomUUID();
   const studentBSessionId = randomUUID();
@@ -339,6 +356,7 @@ async function createPracticeFixtures(fixtures) {
         goal: "Private self-study fixture",
         id: selfSessionId,
         organization_id: fixtures.primaryOrganizationId,
+        course_framework_id: courseFrameworkId,
         title: "Private self-study fixture",
         user_id: fixtures.studentA.id,
       },
@@ -760,6 +778,37 @@ async function assertStudentSelfStudyControl(fixtures) {
   );
 }
 
+async function assertCourseFrameworkEvidenceBoundary(fixtures) {
+  await expectVisible(
+    "student_a_reads_own_framework_linked_private_self_study",
+    fixtures.studentA.client.from("practice_sessions").select("id").eq("id", fixtures.selfSessionId),
+  );
+  await expectHidden(
+    "framework_teacher_cannot_read_student_a_private_self_study",
+    fixtures.teacherA.client.from("practice_sessions").select("id").eq("id", fixtures.selfSessionId),
+  );
+  await expectHidden(
+    "framework_teacher_cannot_read_student_a_private_episode",
+    fixtures.teacherA.client.from("practice_agent_episodes").select("id").eq("session_id", fixtures.selfSessionId),
+  );
+  await expectHidden(
+    "organization_admin_cannot_read_framework_linked_private_self_study",
+    fixtures.organizationAdmin.client.from("practice_sessions").select("id").eq("id", fixtures.selfSessionId),
+  );
+  await expectHidden(
+    "organization_admin_cannot_read_framework_linked_private_episode",
+    fixtures.organizationAdmin.client.from("practice_agent_episodes").select("id").eq("session_id", fixtures.selfSessionId),
+  );
+}
+
+async function assertPrivateHelperBrowserBoundary(fixtures) {
+  const result = await fixtures.studentA.client
+    .schema("private")
+    .rpc("can_read_practice_session_evidence", { target_session_id: fixtures.selfSessionId });
+  assert(result.error, "private_helper_browser_rpc_unexpectedly_available");
+  console.log("PASS browser requester cannot invoke the private evidence helper directly");
+}
+
 async function assertAssignmentEvidenceBoundary(fixtures) {
   await expectVisible(
     "student_a_reads_assignment_linked_session",
@@ -931,6 +980,7 @@ async function cleanupFixtures(fixtures) {
   await clean("practice_rounds", () => deleteExact(service, "practice_rounds", "id", fixtures.practiceRoundIds, "cleanup_rounds_failed"));
   await clean("practice_preference_merge_jobs", () => deleteExact(service, "practice_preference_merge_jobs", "id", fixtures.preferenceMergeJobIds, "cleanup_preference_merge_failed"));
   await clean("practice_sessions", () => deleteExact(service, "practice_sessions", "id", fixtures.practiceSessionIds, "cleanup_sessions_failed"));
+  await clean("practice_course_frameworks", () => deleteExact(service, "practice_course_frameworks", "id", fixtures.courseFrameworkIds, "cleanup_course_frameworks_failed"));
   await clean("user_practice_preferences", () => deleteExact(service, "user_practice_preferences", "user_id", [fixtures.studentA?.id].filter(Boolean), "cleanup_preferences_failed"));
   await clean("assignment_items", () => deleteExact(service, "assignment_items", "assignment_id", [fixtures.assignmentId].filter(Boolean), "cleanup_assignment_items_failed"));
   await clean("assignments", () => deleteExact(service, "assignments", "id", [fixtures.assignmentId].filter(Boolean), "cleanup_assignment_failed"));
@@ -952,6 +1002,7 @@ async function cleanupFixtures(fixtures) {
   await clean("organizations", () => deleteExact(service, "organizations", "id", fixtures.organizationIds, "cleanup_organizations_failed"));
   await clean("cleanup_verification", async () => {
     await verifyAbsent(service, "practice_sessions", "id", fixtures.practiceSessionIds, "cleanup_sessions_verification_failed");
+    await verifyAbsent(service, "practice_course_frameworks", "id", fixtures.courseFrameworkIds, "cleanup_course_frameworks_verification_failed");
     await verifyAbsent(service, "assignments", "id", [fixtures.assignmentId].filter(Boolean), "cleanup_assignment_verification_failed");
     await verifyAbsent(service, "question_banks", "id", [fixtures.bankId].filter(Boolean), "cleanup_bank_verification_failed");
     await verifyAbsent(service, "classrooms", "id", fixtures.classroomIds, "cleanup_classroom_verification_failed");
@@ -974,6 +1025,7 @@ async function main() {
     bankId: null,
     bankQuestionIds: [],
     classroomIds: [],
+    courseFrameworkIds: [],
     feedbackIds: [],
     organizationIds: [],
     organizationMemberIds: [],
@@ -1042,6 +1094,8 @@ async function main() {
     ]) {
       await assertPrivateSelfStudyDenied(actor, fixtures);
     }
+    await assertCourseFrameworkEvidenceBoundary(fixtures);
+    await assertPrivateHelperBrowserBoundary(fixtures);
     await assertAssignmentEvidenceBoundary(fixtures);
     await assertCrossStudentAndBankBoundary(fixtures);
   } catch (error) {

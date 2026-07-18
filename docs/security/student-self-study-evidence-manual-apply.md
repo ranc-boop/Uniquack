@@ -2,27 +2,35 @@
 
 ## Scope and Status
 
-Apply only `supabase/clean-migrations/0047_practice_self_study_evidence_isolation.sql`
-to the approved **clean disposable** Supabase project after review. This is a
-forward-only policy change. Do not apply it to the old Supabase project and do
-not infer a migration-ledger entry from a Dashboard SQL Editor run.
+`0047_practice_self_study_evidence_isolation.sql` has been manually applied
+exactly once to the approved **clean disposable** Supabase project. Sanitized
+catalog metadata confirms its three helpers. Do not rerun, edit, rename, or
+replace `0047`.
+
+Apply only the forward correction
+`0048_practice_course_framework_evidence_isolation.sql` after review. It
+removes two legacy course-framework read policies that can bypass the intended
+private self-study boundary. Do not apply either migration to the old Supabase
+project and do not infer a migration-ledger entry from a Dashboard SQL Editor
+run.
 
 Current status before this run:
 
 ```text
 P1-STUDENT-01
-IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION
+0047 APPLIED_MANUALLY_NOT_LEDGERED / LIVE CATALOG VALIDATED
+0048 IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION
 ```
 
-Frozen migrations `0043` through `0046` must not be edited, renamed, or
-replayed. In particular, `0043` remains partially applied/failed and `0044`,
-`0045`, and `0046` were manually applied exactly once.
+Frozen migrations `0043` through `0047` must not be edited, renamed, or
+replayed. In particular, `0043` remains partially applied/failed and `0044`
+through `0047` were manually applied exactly once.
 
 ## Read-only Preflight
 
-Run this catalog-only query before applying `0047`. It uses
-`to_regprocedure(...)`, which is signature-safe and does not confuse named
-arguments with a bare `uuid` comparison.
+The following catalog-only query records the already-applied `0047` helper
+contract. It uses `to_regprocedure(...)`, which is signature-safe and does not
+confuse named arguments with a bare `uuid` comparison.
 
 ```sql
 select
@@ -34,19 +42,40 @@ select
     as practice_session_matches_owner;
 ```
 
-All three values must be `NULL` before the first manual apply. If any value is
-non-null, stop: do not reapply `0047` until the current live catalog state has
-been reconciled.
+All three values must be non-null before applying `0048`. Do not reapply
+`0047` under any circumstance.
+
+Then run this `0048` preflight. It must return exactly the two named legacy
+policies. If it returns fewer, more, or different rows, stop and reconcile the
+live policy inventory before applying anything.
+
+```sql
+select
+  tablename,
+  policyname,
+  cmd,
+  qual
+from pg_policies
+where schemaname = 'public'
+  and (
+    (tablename = 'practice_sessions' and policyname = 'practice_sessions_teacher_select_course')
+    or (
+      tablename = 'practice_agent_episodes'
+      and policyname = 'practice_agent_episodes_teacher_select_course'
+    )
+  )
+order by tablename, policyname;
+```
 
 ## Operator Steps
 
 1. Open the SQL Editor for the approved clean disposable project.
-2. Run the read-only preflight above, then review the entire local
-   `0047_practice_self_study_evidence_isolation.sql` file. It changes RLS
-   policies and private authorization helpers only; it does not insert, update,
-   or delete application data.
-3. Execute that file **once**. Do not run historical `supabase/migrations`, do
-   not rerun `0043`-`0046`, and do not combine unrelated SQL in the editor tab.
+2. Run both read-only preflights above, then review the entire local
+   `0048_practice_course_framework_evidence_isolation.sql` file. It drops only
+   the two legacy RLS read policies; it does not insert, update, or delete
+   application data.
+3. Execute `0048` **once**. Do not run historical `supabase/migrations`, do
+   not rerun `0043`-`0047`, and do not combine unrelated SQL in the editor tab.
 4. Record the SQL Editor result as manual/unledgered application evidence. Do
    not invent Supabase migration history.
 5. Run the local source and embedded checks:
@@ -95,6 +124,9 @@ been reconciled.
 ## Required Post-Apply Contract
 
 - Student A can create, load, resume, and update their private self-study.
+- A Teacher-owned active course framework can be selected for Student private
+  self-study, but framework `created_by`, `teacher_id`, or admin status alone
+  grants no read access to that session or its raw agent episode.
 - Student B in the same Classroom, a same-organization unrelated Student,
   another-organization Student, unrelated Teacher, removed co-teacher,
   organization admin/staff, and anonymous are denied private self-study.
@@ -116,6 +148,8 @@ been reconciled.
 Stop and do not report success if any of these occur:
 
 - a same-organization staff member can read private self-study;
+- a framework owner or admin can read a private self-study session or episode
+  that lacks explicit Assignment linkage;
 - a Teacher can mutate Student attempts or answers;
 - an unrelated Student can read another Student's evidence;
 - Bank/source content becomes visible through the evidence path;
@@ -123,6 +157,6 @@ Stop and do not report success if any of these occur:
 - the target fails the disposable-project or explicit-cleanup safety checks.
 
 After the live matrix passes, update the migration register and schema manifest
-with sanitized catalog evidence and the exact-ID cleanup result. Only then may
-P1-STUDENT-01 be classified as live validated. This does not declare the
-overall website deployment-ready.
+with sanitized `0048` catalog evidence and the exact-ID cleanup result. Only
+then may P1-STUDENT-01 be classified as live validated. This does not declare
+the overall website deployment-ready.

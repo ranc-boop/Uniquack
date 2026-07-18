@@ -8,9 +8,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-const [harness, runbook] = await Promise.all([
+const [harness, runbook, frameworkIsolationMigration] = await Promise.all([
   readFile(resolve(root, "scripts/student-self-study-isolation-live-e2e.mjs"), "utf8"),
   readFile(resolve(root, "docs/security/student-self-study-evidence-manual-apply.md"), "utf8"),
+  readFile(resolve(root, "supabase/clean-migrations/0048_practice_course_framework_evidence_isolation.sql"), "utf8"),
 ]);
 
 for (const required of [
@@ -68,6 +69,11 @@ for (const table of [
 assert(
   harness.includes("teacher_a_cannot_mutate_student_attempt") &&
     harness.includes("student_b_cannot_read_student_a_private_attempt") &&
+    harness.includes("framework_teacher_cannot_read_student_a_private_self_study") &&
+    harness.includes("framework_teacher_cannot_read_student_a_private_episode") &&
+    harness.includes("organization_admin_cannot_read_framework_linked_private_self_study") &&
+    harness.includes("private_helper_browser_rpc_unexpectedly_available") &&
+    harness.includes("browser requester cannot invoke the private evidence helper directly") &&
     harness.includes("[fixtures.studentB, fixtures.teacherB, fixtures.removedCoTeacher]") &&
     harness.includes("cannot_read_student_a_assignment_session") &&
     harness.includes("student_a_has_no_source_bank_membership") &&
@@ -76,8 +82,15 @@ assert(
 );
 assert(
   runbook.includes("to_regprocedure('private.can_read_practice_session_evidence(uuid)')") &&
+    runbook.includes("0048_practice_course_framework_evidence_isolation.sql") &&
     runbook.includes("student-self-study-isolation-live-e2e.mjs"),
-  "0047 runbook must use signature-safe helper preflight and name the live harness",
+  "0047/0048 runbook must use signature-safe helper preflight and name the live harness",
+);
+assert(
+  frameworkIsolationMigration.includes("drop policy if exists practice_sessions_teacher_select_course") &&
+    frameworkIsolationMigration.includes("drop policy if exists practice_agent_episodes_teacher_select_course") &&
+    !/create policy\s+practice_(sessions|agent_episodes)_teacher_select_course/i.test(frameworkIsolationMigration),
+  "0048 must remove, rather than preserve, the course-framework evidence bypass policies",
 );
 
-console.log("PASS 0047 self-study live harness safety contract");
+console.log("PASS 0047/0048 self-study live harness safety contract");

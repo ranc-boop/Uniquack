@@ -159,7 +159,7 @@
       "classroom_scope": "assignment entitlement requires active student classroom membership",
       "assignment_scope": "selected assignment questions only",
       "bank_access": "no bank membership; question access is assignment-scoped",
-      "evidence_scope": "Student-owned self-study plus assignment-linked evidence only through explicit Assignment management; 0047 is awaiting manual apply and live validation",
+      "evidence_scope": "Student-owned self-study plus assignment-linked evidence only through explicit Assignment management; 0047 is live catalog validated and 0048 awaits manual apply plus final role validation",
       "tests": ["assignment-practice-evidence-smoke", "practice-provider-execution-smoke", "student-assignment-practice-live-e2e"],
       "completion_status": "FUNCTIONAL_BUT_REQUEST_BOUND",
       "severity": "P2",
@@ -179,7 +179,7 @@
       "tests": ["student-workspace-completion-smoke", "student-assignment-practice-live-e2e"],
       "completion_status": "P1_REMEDIATION_AWAITING_LIVE_VALIDATION",
       "severity": "P1",
-      "remaining_action": "Migration 0047 is implemented but requires one manual clean-project apply and a disposable role matrix before this boundary is live validated."
+      "remaining_action": "Migration 0047 is live catalog validated; manually apply 0048 once to the clean project and run the disposable role matrix before this boundary is live validated."
     },
     {
       "route": "/questions and /questions/[id]",
@@ -225,10 +225,10 @@
     {
       "id": "P1_SELF_STUDY_ORG_STAFF",
       "severity": "P1",
-      "status": "IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION",
-      "affected_contract": "0008 owner-or-private.is_org_staff policies are superseded forward-only by 0047_practice_self_study_evidence_isolation.sql.",
-      "behavior": "0047 makes self-study Student-owned, grants read-only Teacher access only through an explicitly linked Assignment they manage, and keeps aggregate mistakes and long-term preferences Student-owned.",
-      "required_action": "Manually apply 0047 once to the approved clean project and complete the disposable cross-student/staff role matrix before declaring this P1 live validated."
+      "status": "0047 LIVE CATALOG VALIDATED / 0048 AWAITING MANUAL APPLY AND LIVE VALIDATION",
+      "affected_contract": "0008 owner-or-private.is_org_staff policies are superseded by 0047, while 0009 course-framework-owner session and episode policies require the forward-only 0048_practice_course_framework_evidence_isolation.sql correction.",
+      "behavior": "0047 makes self-study Student-owned and grants read-only Teacher access only through an explicitly linked Assignment they manage. 0048 removes framework ownership and admin status as a separate raw-evidence read path; aggregate mistakes and long-term preferences remain Student-owned.",
+      "required_action": "Manually apply 0048 once to the approved clean project and complete the disposable cross-student/staff/framework role matrix before declaring this P1 live validated."
     },
     {
       "id": "P0_STORAGE_CUTOVER_DEPENDENCY",

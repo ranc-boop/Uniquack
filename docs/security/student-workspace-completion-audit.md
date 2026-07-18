@@ -375,10 +375,22 @@ Classroom, a managed Assignment, or explicit Student sharing, and several of the
 old policies also allowed staff mutation.
 
 Forward-only canonical migration
-`0047_practice_self_study_evidence_isolation.sql` now supersedes those policy
+`0047_practice_self_study_evidence_isolation.sql` supersedes those policy
 families for `practice_sessions`, rounds, round questions, attempts, hints,
 reflections, episodes, wrong questions, weakness links, preferences, and
-preference merge jobs. It does not change existing rows or runtime code.
+preference merge jobs. The clean project catalog confirms its three helpers are
+live with the expected security-definer, owner, search-path, and execute-grant
+contract. It does not change existing rows or runtime code.
+
+That catalog review also found two additional canonical `0009` policies:
+`practice_sessions_teacher_select_course` and
+`practice_agent_episodes_teacher_select_course`. Since Students can select an
+active teacher-owned course framework for private self-study, these policies
+allow framework ownership or admin status to bypass `0047` without an explicit
+Assignment. `0048_practice_course_framework_evidence_isolation.sql` is the
+required forward-only correction: it removes those two legacy read policies and
+does not alter framework availability, data, Bank, Storage, Classroom,
+Assignment creation, or Provider behavior.
 
 The final contract is deliberately narrower:
 
@@ -396,11 +408,13 @@ The final contract is deliberately narrower:
   and asset access remain separate.
 
 `scripts/student-self-study-isolation-smoke.mjs` provides local embedded policy
-coverage, but that is non-live evidence. The manual-apply runbook is
-`docs/security/student-self-study-evidence-manual-apply.md`; the clean project
-must apply `0047` exactly once and then pass the process-only disposable
-cross-student/staff role matrix with exact-ID cleanup. Until then, do not claim
-the live policy is corrected.
+coverage, including a Teacher-owned framework attached to Student A private
+self-study. The framework Teacher and organization admin are denied both the
+session and agent episode after `0048`. This remains non-live evidence. The
+manual-apply runbook is `docs/security/student-self-study-evidence-manual-apply.md`;
+the clean project must apply `0048` exactly once and then pass the process-only
+disposable cross-student/staff/framework role matrix with exact-ID cleanup.
+Until then, do not claim the live policy is fully corrected.
 
 #### Implementation Evidence (Non-Live)
 
@@ -462,8 +476,9 @@ handling, and a formal Practice React error boundary.
 
 The critical Student Assignment -> Practice -> evidence workflow is implemented
 and previously live validated with a disposable local fake provider. It does not
-grant source-Bank or review/Blueprint visibility. P1-STUDENT-01 now has a narrow
-forward RLS remediation, but it requires one manual clean-project application
+grant source-Bank or review/Blueprint visibility. P1-STUDENT-01 has a narrow
+forward RLS remediation: `0047` is catalog validated, but the discovered
+`0009` framework bypass requires one manual `0048` clean-project application
 and a live role matrix before the Student workspace can be called complete.
 P0-STORAGE-01 is independently completed and clean-database live validated; it
 does not resolve the Student P1 finding or declare the overall site
@@ -505,7 +520,8 @@ validation. `npm.cmd run smoke` was also run; it passed its preceding static and
 embedded checks, then stopped at the pre-existing process-environment gate in
 `supabase-rls-smoke` because no disposable URL/key categories were injected.
 
-No live migration application, live role matrix, provider call, production data
-read, or environment-file read occurred for P1-STUDENT-01. The next required
-step is the manual `0047` application followed by the documented disposable
-exact-ID role matrix.
+`0047` was later applied manually exactly once and has sanitized live catalog
+evidence. No final live role matrix, provider call, production-data read, or
+environment-file read occurred for P1-STUDENT-01 as part of the framework
+bypass review. The next required step is the manual `0048` application followed
+by the documented disposable exact-ID role matrix.

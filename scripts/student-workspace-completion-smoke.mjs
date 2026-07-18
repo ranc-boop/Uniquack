@@ -88,12 +88,13 @@ for (const file of expectedPracticeApiFiles) {
 }
 console.log("PASS every shared Practice API repeats authenticated-user authorization");
 
-const [assignmentLinkage, assignmentMigration, practiceEvidenceMigration, practiceIsolationMigration, feedbackMigration, assetRoute] =
+const [assignmentLinkage, assignmentMigration, practiceEvidenceMigration, practiceIsolationMigration, practiceFrameworkIsolationMigration, feedbackMigration, assetRoute] =
   await Promise.all([
     read("src/lib/practice/assignment-linkage.ts"),
     read("supabase/clean-migrations/0028_assignment_from_bank_questions.sql"),
     read("supabase/clean-migrations/0008_practice_agent_evidence.sql"),
     read("supabase/clean-migrations/0047_practice_self_study_evidence_isolation.sql"),
+    read("supabase/clean-migrations/0048_practice_course_framework_evidence_isolation.sql"),
     read("supabase/clean-migrations/0032_teacher_feedback_notes.sql"),
     read("src/app/api/question-assets/[assetId]/route.ts"),
   ]);
@@ -159,15 +160,17 @@ assert(
   "Student workspace must not render Bank management, Review Draft, or Blueprint management controls",
 );
 assert(
-  practiceEvidenceMigration.includes("private.is_org_staff(organization_id)") &&
+    practiceEvidenceMigration.includes("private.is_org_staff(organization_id)") &&
     practiceIsolationMigration.includes("private.can_read_practice_session_evidence") &&
     !practiceIsolationMigration.includes("private.is_org_staff(organization_id)") &&
+    practiceFrameworkIsolationMigration.includes("drop policy if exists practice_sessions_teacher_select_course") &&
+    practiceFrameworkIsolationMigration.includes("drop policy if exists practice_agent_episodes_teacher_select_course") &&
     manifest.findings.some(
       (finding) =>
         finding.id === "P1_SELF_STUDY_ORG_STAFF" &&
-        finding.status === "IMPLEMENTED / AWAITING MANUAL APPLY AND LIVE VALIDATION",
+        finding.status === "0047 LIVE CATALOG VALIDATED / 0048 AWAITING MANUAL APPLY AND LIVE VALIDATION",
     ),
-  "canonical self-study exposure must have a forward-only, assignment-scoped remediation awaiting manual apply and live validation",
+  "canonical self-study exposure must have forward-only assignment and course-framework boundary remediation awaiting final live validation",
 );
 console.log("PASS Student source has no Bank/Review/Blueprint management surface and records the P1 self-study remediation state");
 
