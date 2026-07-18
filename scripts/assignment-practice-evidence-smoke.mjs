@@ -3,12 +3,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const root = resolve(__dirname, "..");
-dotenv.config({ path: resolve(root, ".env.local") });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -139,10 +137,6 @@ async function createSmokeClassroom({ name, organizationId, studentUserId, teach
 }
 
 async function main() {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
-  }
-
   const [
     assignmentLinkage,
     gradeRoute,
@@ -170,9 +164,16 @@ async function main() {
   );
   console.log("PASS assignment practice static checks cover bank-private start, hints, and grade fallback");
 
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.log(
+      "BLOCKED assignment Practice evidence live smoke: required disposable Supabase process-environment categories are missing.",
+    );
+    return;
+  }
+
   if (!teacherUsername || !teacherPassword || !studentUsername || !studentPassword) {
     console.log(
-      "SKIP assignment practice evidence smoke: missing TEST_TEACHER or TEST_ADMIN credentials and TEST_STUDENT credentials.",
+      "BLOCKED assignment Practice evidence live smoke: required disposable Teacher and Student process-environment credentials are missing.",
     );
     return;
   }

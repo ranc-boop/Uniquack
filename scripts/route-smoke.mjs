@@ -2,11 +2,8 @@ import { dirname, resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL ?? "http://localhost:3000";
-const root = resolve(__dirname, "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);

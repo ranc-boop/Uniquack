@@ -9,6 +9,7 @@ import {
   normalizePracticeTagContext,
   persistRecommendationRound,
 } from "@/lib/practice/persistence";
+import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
 import { PRACTICE_SESSION_EXPIRED_MESSAGE } from "@/lib/practice/schema";
 import type {
   PracticeRecommendRequest,
@@ -99,7 +100,15 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (sessionResult.error) {
-    return NextResponse.json({ error: sessionResult.error.message }, { status: 500 });
+    const failure = logPracticeProviderFailure({
+      error: sessionResult.error,
+      operation: "practice_recommendation_session",
+    });
+    return NextResponse.json({
+      code: failure.code,
+      correlationId: failure.correlationId,
+      error: failure.message,
+    }, { status: 500 });
   }
 
   if (!sessionResult.data) {
@@ -145,7 +154,7 @@ export async function POST(request: Request) {
 
         try {
           send("start", { goal, questionCount });
-          const profile = await loadPracticeAIProfile(supabase);
+          const profile = await loadPracticeAIProfile();
           const agentResult = await runPracticeRecommendationAgent({
             cachePrefixVersion,
             completedQuestionIds: effectiveCompletedQuestionIds,
@@ -201,8 +210,14 @@ export async function POST(request: Request) {
 
           send("result", response);
         } catch (error) {
+          const failure = logPracticeProviderFailure({
+            error,
+            operation: "practice_recommendation",
+          });
           send("error", {
-            error: error instanceof Error ? error.message : String(error),
+            code: failure.code,
+            correlationId: failure.correlationId,
+            error: failure.message,
             trace,
           });
         } finally {
@@ -221,7 +236,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const profile = await loadPracticeAIProfile(supabase);
+    const profile = await loadPracticeAIProfile();
     const agentResult = await runPracticeRecommendationAgent({
       cachePrefixVersion,
       completedQuestionIds: effectiveCompletedQuestionIds,
@@ -278,9 +293,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json(response);
   } catch (error) {
+    const failure = logPracticeProviderFailure({
+      error,
+      operation: "practice_recommendation",
+    });
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : String(error),
+        code: failure.code,
+        correlationId: failure.correlationId,
+        error: failure.message,
         trace,
       },
       { status: 500 },

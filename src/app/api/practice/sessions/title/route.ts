@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
+import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const profile = await loadPracticeAIProfile(supabase);
+    const profile = await loadPracticeAIProfile();
     const result = await callPracticeJsonModel<SessionTitleResponse>({
       debugContext: {
         operation: "practice_session_title",
@@ -62,8 +63,16 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ providerLabel: result.providerLabel, title });
   } catch (error) {
+    const failure = logPracticeProviderFailure({
+      error,
+      operation: "practice_session_title",
+    });
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
+      {
+        code: failure.code,
+        correlationId: failure.correlationId,
+        error: failure.message,
+      },
       { status: 500 },
     );
   }

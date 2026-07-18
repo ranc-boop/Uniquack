@@ -128,6 +128,16 @@ function parseSseEvents(buffer: string) {
   return { events, rest };
 }
 
+function parsePracticeSsePayload(data: string) {
+  try {
+    return JSON.parse(data) as unknown;
+  } catch {
+    throw new Error(
+      "A live practice update could not be read. Your saved work is still available; please retry.",
+    );
+  }
+}
+
 async function postRecommendationStream({
   body,
   onTrace,
@@ -164,7 +174,7 @@ async function postRecommendationStream({
     buffer = parsed.rest;
 
     for (const item of parsed.events) {
-      const payload = JSON.parse(item.data);
+      const payload = parsePracticeSsePayload(item.data);
       if (item.event === "trace") {
         onTrace(payload as PracticeTraceEvent);
       } else if (item.event === "result") {
@@ -229,7 +239,7 @@ async function postReviewStream({
     buffer = parsed.rest;
 
     for (const item of parsed.events) {
-      const payload = JSON.parse(item.data);
+      const payload = parsePracticeSsePayload(item.data);
       if (item.event === "trace") {
         onTrace(payload as PracticeTraceEvent);
       } else if (item.event === "question_review") {

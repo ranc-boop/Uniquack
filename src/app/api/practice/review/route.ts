@@ -10,6 +10,7 @@ import {
   persistQuestionReviewResults,
   persistRoundReviewSummary,
 } from "@/lib/practice/persistence";
+import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import {
   isCurrentPracticeQuestionSnapshot,
@@ -257,7 +258,7 @@ export async function POST(request: Request) {
           ? sessionRecord.session_thread_messages.slice(-24)
           : [];
         const cachePrefixVersion = CURRENT_PRACTICE_SESSION_SCHEMA_VERSION;
-        const profile = await loadPracticeAIProfile(supabase);
+        const profile = await loadPracticeAIProfile();
         const systemPrompt = await loadPracticePrompt("review-system");
         const usageEnvelopes: Record<string, unknown>[] = [];
 
@@ -442,14 +443,22 @@ export async function POST(request: Request) {
         };
         send("result", response);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const failure = logPracticeProviderFailure({
+          error,
+          operation: "practice_review",
+        });
         trace.push({
-          error: message,
+          error: failure.message,
           inputSummary: "Two-stage review failed; no fallback review was written.",
           phase: "review",
           toolName: "review_error",
         });
-        send("error", { error: message, trace });
+        send("error", {
+          code: failure.code,
+          correlationId: failure.correlationId,
+          error: failure.message,
+          trace,
+        });
       } finally {
         controller.close();
       }

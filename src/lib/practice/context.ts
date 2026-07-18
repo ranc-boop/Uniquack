@@ -9,13 +9,42 @@ import type { PracticeTraceEvent } from "@/lib/practice/types";
 
 const LOG_ROOT = path.join(process.cwd(), "log", "llm", "practice_agent");
 const MAX_DIGEST_CHARS = 4500;
+const PRACTICE_FULL_CALL_LOG_RETENTION_DAYS = 2;
+const PRACTICE_FULL_CALL_LOG_RETENTION_MS =
+  PRACTICE_FULL_CALL_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const SENSITIVE_LOG_KEY = /(?:answer|args|authorization|body|content|cookie|credential|error_message|input|jwt|message|observation|output|password|payload|prompt|question|raw|reasoning|request|response|secret|session|token|trace|url|user)/i;
+const SAFE_LOG_STRING_KEYS = new Set([
+  "errorCode",
+  "event",
+  "method",
+  "model",
+  "name",
+  "operation",
+  "phase",
+  "provider",
+  "providerName",
+  "toolName",
+]);
 
 function enabled(value: string | undefined) {
   return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
 }
 
+function isSharedPracticeRuntime() {
+  const vercelEnvironment = process.env.VERCEL_ENV?.trim().toLowerCase();
+
+  return (
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL === "1" ||
+    process.env.CI === "true" ||
+    ["preview", "production"].includes(vercelEnvironment ?? "")
+  );
+}
+
 export function isPracticeFullCallLogEnabled() {
-  return enabled(process.env.PRACTICE_AGENT_FULL_CALL_LOGS);
+  // This non-public process variable is intentionally insufficient in shared
+  // environments. Full request/response logging is local-development only.
+  return !isSharedPracticeRuntime() && enabled(process.env.PRACTICE_AGENT_FULL_CALL_LOGS);
 }
 
 export function isPracticeStatsLogEnabled() {
@@ -38,6 +67,62 @@ function sortKeysDeep(value: unknown): unknown {
 
 export function stableStringify(value: unknown, space?: number) {
   return JSON.stringify(sortKeysDeep(value), null, space);
+}
+
+export function sanitizePracticeLogValue(value: unknown, key = ""): unknown {
+  if (SENSITIVE_LOG_KEY.test(key)) {
+    return "[omitted]";
+  }
+
+  if (value === null || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    if (!SAFE_LOG_STRING_KEYS.has(key) || /https?:\/\//i.test(value)) {
+      return "[omitted]";
+    }
+
+    return value.slice(0, 160);
+  }
+
+  if (Array.isArray(value)) {
+    return { itemCount: value.length, value: "[omitted array]" };
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, 24)
+        .map(([entryKey, entryValue]) => [
+          entryKey,
+          sanitizePracticeLogValue(entryValue, entryKey),
+        ]),
+    );
+  }
+
+  return "[omitted]";
+}
+
+async function prunePracticeFullCallLogs(now: Date) {
+  const cutoff = now.getTime() - PRACTICE_FULL_CALL_LOG_RETENTION_MS;
+
+  try {
+    const entries = await fs.readdir(LOG_ROOT, { withFileTypes: true });
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .filter((entry) => {
+          const createdAt = Date.parse(`${entry.name}T00:00:00.000Z`);
+          return Number.isFinite(createdAt) && createdAt < cutoff;
+        })
+        .map((entry) => fs.rm(path.join(LOG_ROOT, entry.name), { force: true, recursive: true })),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code !== "ENOENT") {
+      console.warn("Practice full-call log retention cleanup failed.");
+    }
+  }
 }
 
 export function compactText(value: string | null | undefined, maxLength = 800) {
@@ -214,10 +299,17 @@ export async function writePracticeFullCallLog({
   const fullPath = path.join(LOG_ROOT, now.toISOString().slice(0, 10), fileName);
 
   try {
+    await prunePracticeFullCallLogs(now);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.writeFile(
       fullPath,
-      `${stableStringify({ context, event, payload, writtenAt: now.toISOString() }, 2)}\n`,
+      `${stableStringify({
+        context: sanitizePracticeLogValue(context ?? {}, "context"),
+        event: sanitizePracticeLogValue(event, "event"),
+        payload: sanitizePracticeLogValue(payload),
+        retentionDays: PRACTICE_FULL_CALL_LOG_RETENTION_DAYS,
+        writtenAt: now.toISOString(),
+      }, 2)}\n`,
       "utf8",
     );
     return true;

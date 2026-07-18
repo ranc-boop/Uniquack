@@ -4,6 +4,7 @@ import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { buildUsageEnvelope, compactText, stableStringify, writePracticeStatsLog } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
+import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
 import {
   countPendingPreferenceJobs,
   getOrCreatePracticePreference,
@@ -38,7 +39,15 @@ export async function POST() {
     .maybeSingle();
 
   if (jobResult.error) {
-    return NextResponse.json({ error: jobResult.error.message }, { status: 500 });
+    const failure = logPracticeProviderFailure({
+      error: jobResult.error,
+      operation: "practice_preference_merge_lookup",
+    });
+    return NextResponse.json({
+      code: failure.code,
+      correlationId: failure.correlationId,
+      error: failure.message,
+    }, { status: 500 });
   }
 
   if (!jobResult.data) {
@@ -71,7 +80,15 @@ export async function POST() {
     .eq("status", "pending");
 
   if (claimed.error) {
-    return NextResponse.json({ error: claimed.error.message }, { status: 500 });
+    const failure = logPracticeProviderFailure({
+      error: claimed.error,
+      operation: "practice_preference_merge_claim",
+    });
+    return NextResponse.json({
+      code: failure.code,
+      correlationId: failure.correlationId,
+      error: failure.message,
+    }, { status: 500 });
   }
 
   try {
@@ -87,7 +104,7 @@ export async function POST() {
       throw new Error(recentEpisodesError.message);
     }
 
-    const profile = await loadPracticeAIProfile(supabase);
+    const profile = await loadPracticeAIProfile();
     const systemPrompt = await loadPracticePrompt("preference-merge-system");
     const aiResult = await callPracticeJsonModel<MergeResponse>({
       debugContext: { phase: "preference_merge", sourceSessionId: job.source_session_id },
@@ -178,17 +195,25 @@ export async function POST() {
       status: "succeeded",
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const failure = logPracticeProviderFailure({
+      error,
+      operation: "practice_preference_merge",
+    });
     await supabase
       .from("practice_preference_merge_jobs")
       .update({
         completed_at: new Date().toISOString(),
-        error_message: message.slice(0, 1000),
+        error_message: failure.code,
         status: "failed",
       })
       .eq("user_id", auth.user.id)
       .eq("id", job.id);
 
-    return NextResponse.json({ error: message, status: "failed" }, { status: 500 });
+    return NextResponse.json({
+      code: failure.code,
+      correlationId: failure.correlationId,
+      error: failure.message,
+      status: "failed",
+    }, { status: 500 });
   }
 }

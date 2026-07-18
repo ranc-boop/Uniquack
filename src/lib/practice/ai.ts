@@ -1,18 +1,23 @@
 import "server-only";
 
+import {
+  getAiProviderCapabilities,
+  inferAiProviderMode,
+} from "@/lib/ai-providers/adapters";
+import {
+  AIProviderError,
+  classifyAIProviderError,
+  isAIProviderError,
+} from "@/lib/ai-providers/errors";
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
 import {
-  listEnabledAIProviderProfiles,
-  loadAIProviderProfileForUse,
+  listEnabledAIProviderProfilesForServerUse,
+  loadAIProviderProfileForServerUse,
+  type SafeAIProviderProfile,
 } from "@/lib/ai-providers/profiles";
 import { writePracticeFullCallLog } from "@/lib/practice/context";
 
 const PRACTICE_AGENT_TIMEOUT_MS = 45_000;
-
-type SupabaseLike = {
-  from: (...args: any[]) => any;
-  rpc: (...args: any[]) => any;
-};
 
 export type PracticeChatMessage = {
   content?: string | null;
@@ -52,7 +57,7 @@ export type PracticeChatModelResult = {
   usage?: Record<string, unknown> | null;
 };
 
-type LoadedProfile = Awaited<ReturnType<typeof loadAIProviderProfileForUse>>;
+type LoadedProfile = Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>;
 
 function endpoint(baseUrl: string) {
   return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -62,29 +67,57 @@ function providerLabel(profile: Pick<LoadedProfile, "name" | "model">) {
   return `${profile.name} / ${profile.model}`;
 }
 
-function pickPracticeProfile(profiles: Awaited<ReturnType<typeof listEnabledAIProviderProfiles>>) {
-  const profileText = (profile: (typeof profiles)[number]) =>
-    `${profile.provider} ${profile.name} ${profile.model}`;
+function providerSupportsPractice(profile: SafeAIProviderProfile) {
+  const capabilities = getAiProviderCapabilities(profile);
+  const mode = inferAiProviderMode(profile);
 
   return (
-    profiles.find((profile) => /deepseek|\bds\b/i.test(profileText(profile)) && /reasoner|thinking|r1/i.test(profileText(profile))) ??
-    profiles.find((profile) => profile.is_default && /deepseek|\bds\b/i.test(profileText(profile))) ??
-    profiles.find((profile) => /deepseek|\bds\b/i.test(profileText(profile))) ??
-    profiles.find((profile) => profile.is_default) ??
-    profiles[0] ??
-    null
+    capabilities.supportsText &&
+    capabilities.supportsJsonMode &&
+    ["openai_compatible", "deepseek_openai", "gemini_openai", "mock"].includes(mode)
   );
 }
 
-export async function loadPracticeAIProfile(supabase: SupabaseLike) {
-  const safeProfiles = await listEnabledAIProviderProfiles(supabase);
+function pickPracticeProfile(profiles: SafeAIProviderProfile[]) {
+  const compatible = profiles.filter(providerSupportsPractice);
+
+  return compatible.find((profile) => profile.is_default) ?? compatible[0] ?? null;
+}
+
+function asPracticeProviderError(error: unknown) {
+  if (isAIProviderError(error) && error.operation === "practice_generation") {
+    return error;
+  }
+
+  const classified = classifyAIProviderError({
+    error,
+    operation: "practice_generation",
+  });
+
+  return new AIProviderError({
+    code: classified.code,
+    operation: "practice_generation",
+    retryable: classified.retryable,
+    statusCode: classified.statusCode,
+  });
+}
+
+export async function loadPracticeAIProfile() {
+  // Practice callers authenticate before reaching this resolver. Provider
+  // selection stays in server-only service-role code, never in a caller's
+  // session or the super-admin management gateway.
+  const safeProfiles = await listEnabledAIProviderProfilesForServerUse();
   const selected = pickPracticeProfile(safeProfiles);
 
   if (!selected) {
-    throw new Error("No enabled AI provider profile is available for Practice Agent.");
+    throw new AIProviderError({
+      code: "provider_configuration_error",
+      operation: "practice_generation",
+      retryable: false,
+    });
   }
 
-  return loadAIProviderProfileForUse({ profileId: selected.id, supabase });
+  return loadAIProviderProfileForServerUse({ profileId: selected.id });
 }
 
 export function parsePracticeToolArguments(value: string) {
@@ -144,13 +177,10 @@ export async function callPracticeChatModel({
     },
     event: "request",
     payload: {
-      body,
-      endpoint: endpoint(profile.base_url),
-      headers: {
-        Authorization: "Bearer [redacted]",
-        "Content-Type": "application/json",
-      },
       method: "POST",
+      messageCount: messages.length,
+      responseFormatJson: Boolean(responseFormatJson),
+      toolCount: tools?.length ?? 0,
     },
   });
 
@@ -167,41 +197,42 @@ export async function callPracticeChatModel({
       signal: AbortSignal.timeout(PRACTICE_AGENT_TIMEOUT_MS),
     });
   } catch (error) {
+    const failure = asPracticeProviderError(error);
     await writePracticeFullCallLog({
       context: debugContext,
       event: "error",
       payload: {
-        message: error instanceof Error ? error.message : String(error),
-        name: error instanceof Error ? error.name : "UnknownError",
+        errorCode: failure.code,
         requestLogSaved,
+        statusCode: failure.statusCode ?? null,
       },
     });
-    throw error;
+    throw failure;
+  }
+
+  if (!response.ok) {
+    const failure = asPracticeProviderError({ status: response.status });
+    await response.body?.cancel().catch(() => undefined);
+    await writePracticeFullCallLog({
+      context: debugContext,
+      event: "error",
+      payload: {
+        errorCode: failure.code,
+        statusCode: response.status,
+      },
+    });
+    throw failure;
   }
 
   const text = await response.text();
-
-  if (!response.ok) {
-    await writePracticeFullCallLog({
-      context: debugContext,
-      event: "error",
-      payload: {
-        body: text,
-        status: response.status,
-        statusText: response.statusText,
-      },
-    });
-    throw new Error(`Practice AI provider failed (${response.status}): ${text.slice(0, 800)}`);
-  }
 
   await writePracticeFullCallLog({
     context: debugContext,
     event: "response",
     payload: {
-      body: text,
       requestLogSaved,
-      status: response.status,
-      statusText: response.statusText,
+      responseBytes: new TextEncoder().encode(text).byteLength,
+      statusCode: response.status,
     },
   });
 
@@ -304,13 +335,9 @@ export async function callPracticeChatModelStream({
     },
     event: "request",
     payload: {
-      body,
-      endpoint: endpoint(profile.base_url),
-      headers: {
-        Authorization: "Bearer [redacted]",
-        "Content-Type": "application/json",
-      },
       method: "POST",
+      messageCount: messages.length,
+      stream: true,
     },
   });
 
@@ -326,30 +353,31 @@ export async function callPracticeChatModelStream({
       signal: AbortSignal.timeout(PRACTICE_AGENT_TIMEOUT_MS),
     });
   } catch (error) {
+    const failure = asPracticeProviderError(error);
     await writePracticeFullCallLog({
       context: debugContext,
       event: "error",
       payload: {
-        message: error instanceof Error ? error.message : String(error),
-        name: error instanceof Error ? error.name : "UnknownError",
+        errorCode: failure.code,
         requestLogSaved,
+        statusCode: failure.statusCode ?? null,
       },
     });
-    throw error;
+    throw failure;
   }
 
   if (!response.ok) {
-    const text = await response.text();
+    const failure = asPracticeProviderError({ status: response.status });
+    await response.body?.cancel().catch(() => undefined);
     await writePracticeFullCallLog({
       context: debugContext,
       event: "error",
       payload: {
-        body: text,
-        status: response.status,
-        statusText: response.statusText,
+        errorCode: failure.code,
+        statusCode: response.status,
       },
     });
-    throw new Error(`Practice AI provider failed (${response.status}): ${text.slice(0, 800)}`);
+    throw failure;
   }
 
   if (!response.body) {
@@ -398,11 +426,10 @@ export async function callPracticeChatModelStream({
     context: debugContext,
     event: "response",
     payload: {
-      body: contentText,
       eventCount: rawEvents.length,
+      outputChars: contentText.length,
       requestLogSaved,
-      status: response.status,
-      statusText: response.statusText,
+      statusCode: response.status,
     },
   });
 
@@ -441,14 +468,24 @@ export async function callPracticeJsonModel<T>({
   debugContext?: Record<string, unknown>;
   messages: PracticeChatMessage[];
   profile: LoadedProfile;
-}): Promise<{ parsed: T; providerLabel: string; rawText: string; usage?: Record<string, unknown> | null }> {
+}): Promise<{ parsed: T; providerLabel: string; usage?: Record<string, unknown> | null }> {
   const result = await callPracticeChatModel({ debugContext, messages, profile, responseFormatJson: true });
   const contentText = result.contentText || JSON.stringify(result.rawPayload);
 
+  let parsed: T;
+  try {
+    parsed = parsePossiblyMalformedJson(contentText) as T;
+  } catch {
+    throw new AIProviderError({
+      code: "provider_invalid_response",
+      operation: "practice_generation",
+      retryable: false,
+    });
+  }
+
   return {
-    parsed: parsePossiblyMalformedJson(contentText) as T,
+    parsed,
     providerLabel: result.providerLabel,
-    rawText: contentText,
     usage: result.usage,
   };
 }

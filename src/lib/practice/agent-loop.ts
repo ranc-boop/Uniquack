@@ -10,6 +10,7 @@ import {
 } from "@/lib/practice/ai";
 import { buildToolDigest, buildUsageEnvelope, stableHash, stableStringify, summarizeLLMUsage, writePracticeFullCallLog, writePracticeStatsLog } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
+import { safePracticeProviderFailure } from "@/lib/practice/provider-safety";
 import { CURRENT_PRACTICE_SESSION_SCHEMA_VERSION } from "@/lib/practice/schema";
 import type {
   PracticeQuestionCandidate,
@@ -736,7 +737,7 @@ async function executePracticeTool({
 
     return makeToolResultMessage(toolCall, modelObservation ?? logObservation);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = safePracticeProviderFailure(error).message;
     const savedFullPayload = await writePracticeFullCallLog({
       context: { iteration, phase: "recommendation", toolCallId: toolCall.id, toolName },
       event: "tool_error",
