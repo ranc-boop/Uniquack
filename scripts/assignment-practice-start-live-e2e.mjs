@@ -92,6 +92,17 @@ const ALLOWED_FAILURE_CATEGORIES = new Set([
   "TEMPORARY_SERVER_STOP_FAILED",
   "UNEXPECTED_FAILURE",
 ]);
+const SERVER_STOP_CATEGORIES = new Set([
+  "SERVER_STOP_GRACEFUL",
+  "SERVER_STOP_TREE_TERMINATED",
+  "SERVER_STOP_TIMEOUT",
+  "SERVER_STOP_EXIT_NOT_OBSERVED",
+  "SERVER_PORT_STILL_OPEN",
+  "SERVER_STOP_FAILED",
+]);
+const SERVER_GRACEFUL_STOP_TIMEOUT_MS = 5_000;
+const SERVER_FORCED_STOP_TIMEOUT_MS = 10_000;
+const SERVER_PORT_CLOSE_TIMEOUT_MS = 5_000;
 
 class HarnessError extends Error {
   constructor(category) {
@@ -583,6 +594,124 @@ function findFreePort() {
   });
 }
 
+function childExitObserved(child) {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+function waitForChildExit(child, timeoutMs) {
+  if (childExitObserved(child)) return Promise.resolve(true);
+
+  return new Promise((resolveExit) => {
+    let settled = false;
+    let timer = null;
+    const finish = (exited) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      child.off("exit", onExit);
+      resolveExit(exited);
+    };
+    const onExit = () => finish(true);
+    child.once("exit", onExit);
+    timer = setTimeout(() => finish(childExitObserved(child)), timeoutMs);
+    if (childExitObserved(child)) finish(true);
+  });
+}
+
+function portIsListening(port) {
+  return new Promise((resolveListening) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    let settled = false;
+    const finish = (listening) => {
+      if (settled) return;
+      settled = true;
+      socket.removeAllListeners();
+      socket.destroy();
+      resolveListening(listening);
+    };
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+    socket.setTimeout(500, () => finish(false));
+  });
+}
+
+async function waitForPortClosed(port, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (!(await portIsListening(port))) return true;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  } while (Date.now() < deadline);
+  return !(await portIsListening(port));
+}
+
+function terminateWindowsProcessTree(childPid) {
+  if (!Number.isInteger(childPid) || childPid <= 0) return Promise.resolve(false);
+
+  return new Promise((resolveTermination) => {
+    let settled = false;
+    const killer = spawn("taskkill", ["/PID", String(childPid), "/T", "/F"], {
+      shell: false,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    const finish = (terminated) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolveTermination(terminated);
+    };
+    const timer = setTimeout(() => {
+      killer.kill();
+      finish(false);
+    }, SERVER_GRACEFUL_STOP_TIMEOUT_MS);
+    killer.once("error", () => finish(false));
+    killer.once("exit", (code) => finish(code === 0));
+  });
+}
+
+async function stopOwnedTemporaryServer(child, port) {
+  const childPid = child.pid;
+  if (!Number.isInteger(childPid) || childPid <= 0) {
+    return { category: "SERVER_STOP_FAILED", stopped: false };
+  }
+
+  if (!childExitObserved(child)) {
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // The bounded exit wait below determines whether the process already exited.
+    }
+  }
+
+  const gracefulExitObserved = await waitForChildExit(child, SERVER_GRACEFUL_STOP_TIMEOUT_MS);
+  if (gracefulExitObserved) {
+    const portClosed = await waitForPortClosed(port, SERVER_PORT_CLOSE_TIMEOUT_MS);
+    return portClosed
+      ? { category: "SERVER_STOP_GRACEFUL", stopped: true }
+      : { category: "SERVER_PORT_STILL_OPEN", stopped: false };
+  }
+
+  let forcedCategory = "SERVER_STOP_TIMEOUT";
+  if (process.platform === "win32") {
+    await terminateWindowsProcessTree(childPid);
+    forcedCategory = "SERVER_STOP_TREE_TERMINATED";
+  } else {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      return { category: "SERVER_STOP_FAILED", stopped: false };
+    }
+  }
+
+  const forcedExitObserved = await waitForChildExit(child, SERVER_FORCED_STOP_TIMEOUT_MS);
+  if (!forcedExitObserved) {
+    return { category: "SERVER_STOP_EXIT_NOT_OBSERVED", stopped: false };
+  }
+  const portClosed = await waitForPortClosed(port, SERVER_PORT_CLOSE_TIMEOUT_MS);
+  if (!portClosed) return { category: "SERVER_PORT_STILL_OPEN", stopped: false };
+  return { category: forcedCategory, stopped: true };
+}
+
 async function startLocalNextServer(config) {
   const port = await findFreePort();
   assert(Number.isInteger(port) && port > 0, "LOCAL_SERVER_START_FAILED");
@@ -615,6 +744,7 @@ async function startLocalNextServer(config) {
   const child = spawn(process.execPath, [nextBin, "dev", "--webpack", "--port", String(port)], {
     cwd: root,
     env: environment,
+    shell: false,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
@@ -626,15 +756,7 @@ async function startLocalNextServer(config) {
       const response = await fetch(`${origin}/auth/login`);
       if (response.status < 500) {
         return {
-          close: async () => {
-            if (child.exitCode !== null) return true;
-            child.kill();
-            await Promise.race([
-              new Promise((resolveExit) => child.once("exit", () => resolveExit(true))),
-              new Promise((resolveTimeout) => setTimeout(() => resolveTimeout(false), 10_000)),
-            ]);
-            return child.exitCode !== null;
-          },
+          close: () => stopOwnedTemporaryServer(child, port),
           origin,
         };
       }
@@ -643,13 +765,10 @@ async function startLocalNextServer(config) {
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 250));
   }
-  child.kill();
-  if (child.exitCode === null) {
-    await Promise.race([
-      new Promise((resolveExit) => child.once("exit", resolveExit)),
-      new Promise((resolveTimeout) => setTimeout(resolveTimeout, 10_000)),
-    ]);
-  }
+  await stopOwnedTemporaryServer(child, port).catch(() => ({
+    category: "SERVER_STOP_FAILED",
+    stopped: false,
+  }));
   fail("LOCAL_SERVER_START_FAILED");
 }
 
@@ -913,7 +1032,12 @@ async function runFullValidation() {
     if (context) await context.close().catch(() => {});
     if (browser) await browser.close().catch(() => {});
     if (server) {
-      temporaryServerStopped = await server.close().catch(() => false);
+      const stopResult = await server.close().catch(() => ({
+        category: "SERVER_STOP_FAILED",
+        stopped: false,
+      }));
+      temporaryServerStopped =
+        stopResult.stopped === true && SERVER_STOP_CATEGORIES.has(stopResult.category);
     }
     if (fixtures) {
       cleanupPassed = await cleanupFixtures(fixtures).catch(() => false);

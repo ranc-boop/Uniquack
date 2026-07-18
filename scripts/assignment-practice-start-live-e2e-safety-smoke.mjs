@@ -157,11 +157,52 @@ assert(
   "the harness must prove first initialization and the complete start persistence transaction",
 );
 assert(
-  source.includes("temporaryServerStopped = await server.close()") &&
+  source.includes("const stopResult = await server.close()") &&
     source.includes("processEnvironmentCleared = clearProcessEnvironment()") &&
     source.includes("temporary_server_stopped=") &&
     source.includes("process_environment_cleared="),
   "server shutdown and process-variable clearing must be explicit and reportable",
+);
+
+const teardown = block("function childExitObserved", "async function startLocalNextServer");
+assert(
+    teardown.includes("child.exitCode !== null || child.signalCode !== null") &&
+    teardown.includes('child.kill("SIGTERM")') &&
+    teardown.indexOf('child.kill("SIGTERM")') <
+      teardown.indexOf("await terminateWindowsProcessTree(childPid)") &&
+    teardown.includes("waitForChildExit(child, SERVER_GRACEFUL_STOP_TIMEOUT_MS)") &&
+    teardown.includes("waitForChildExit(child, SERVER_FORCED_STOP_TIMEOUT_MS)"),
+  "shutdown must observe both normal and signal exits, attempt graceful stop first, and use bounded waits",
+);
+assert(
+  teardown.includes('spawn("taskkill", ["/PID", String(childPid), "/T", "/F"]') &&
+    teardown.includes('process.platform === "win32"') &&
+    teardown.includes('shell: false') &&
+    teardown.includes('stdio: "ignore"') &&
+    !teardown.includes('"/IM"') &&
+    !teardown.toLowerCase().includes("node.exe") &&
+    !teardown.includes("Get-Process") &&
+    !teardown.includes("Stop-Process"),
+  "Windows fallback must target only the retained child PID tree without kill-by-name or raw output",
+);
+assert(
+  teardown.includes("waitForPortClosed(port, SERVER_PORT_CLOSE_TIMEOUT_MS)") &&
+    teardown.includes('category: "SERVER_PORT_STILL_OPEN"') &&
+    teardown.includes('"SERVER_STOP_TREE_TERMINATED"') &&
+    teardown.includes("{ category: forcedCategory, stopped: true }") &&
+    teardown.includes('category: "SERVER_STOP_EXIT_NOT_OBSERVED"') &&
+    !teardown.includes("console.log") &&
+    !teardown.includes("console.error"),
+  "teardown must verify port closure and retain only bounded internal categories",
+);
+assert(
+  source.includes("const stopResult = await server.close()") &&
+    source.includes("SERVER_STOP_CATEGORIES.has(stopResult.category)") &&
+    source.indexOf("if (server)") < source.indexOf("cleanupPassed = await cleanupFixtures") &&
+    source.indexOf("cleanupPassed = await cleanupFixtures") <
+      source.indexOf("processEnvironmentCleared = clearProcessEnvironment()") &&
+    source.includes('failureCategory = "TEMPORARY_SERVER_STOP_FAILED"'),
+  "teardown failure must remain independently visible without masking database or environment cleanup",
 );
 
 console.log("PASS narrow Assignment Practice live harness safety contract");
