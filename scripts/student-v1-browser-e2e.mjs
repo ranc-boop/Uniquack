@@ -85,6 +85,21 @@ const ASSIGNMENT_START_API_STATUSES = new Set([
   "REQUEST_FAILED",
   "REQUEST_NOT_OBSERVED",
 ]);
+const ASSIGNMENT_START_API_CODES = new Set([
+  "INVALID_REQUEST",
+  "AUTHENTICATION_REQUIRED",
+  "STUDENT_NOT_ELIGIBLE",
+  "ASSIGNMENT_NOT_AVAILABLE",
+  "ASSIGNMENT_CONTENT_UNAVAILABLE",
+  "TAXONOMY_READ_FAILED",
+  "PREFERENCE_INITIALIZATION_FAILED",
+  "SESSION_CREATE_FAILED",
+  "ROUND_PERSISTENCE_FAILED",
+  "ASSIGNMENT_LINKAGE_FAILED",
+  "SESSION_RELOAD_FAILED",
+  "PRACTICE_START_FAILED",
+  "UNRECOGNIZED_API_CODE",
+]);
 const FINAL_ROUTE_CATEGORIES = new Set([
   "PRACTICE_ROUTE",
   "LOGIN_ROUTE",
@@ -179,6 +194,8 @@ function addBoundedCategory(target, category, allowed) {
 function createSanitizedDiagnostics() {
   return {
     assignmentStartApi: "REQUEST_NOT_OBSERVED",
+    assignmentStartCode: "UNRECOGNIZED_API_CODE",
+    assignmentStartHttpStatus: 0,
     cleanup: "FAIL",
     consoleErrorCount: 0,
     failedRequestCategories: [],
@@ -1411,6 +1428,33 @@ function assignmentStartStatusFor(status) {
   return "REQUEST_FAILED";
 }
 
+async function assignmentStartResponseOutcome(response) {
+  const httpStatus = response.status();
+  let code = "UNRECOGNIZED_API_CODE";
+  try {
+    const parsed = await response.json();
+    const candidate = parsed && typeof parsed === "object" ? parsed.code : null;
+    if (typeof candidate === "string" && ASSIGNMENT_START_API_CODES.has(candidate)) {
+      code = candidate;
+    }
+  } catch {
+    // The body is discarded; malformed or absent codes fail closed.
+  }
+  return {
+    apiStatus: assignmentStartStatusFor(httpStatus),
+    code,
+    httpStatus,
+  };
+}
+
+function assignmentStartUnavailableOutcome(apiStatus) {
+  return {
+    apiStatus,
+    code: "UNRECOGNIZED_API_CODE",
+    httpStatus: 0,
+  };
+}
+
 function finalRouteCategory(value) {
   try {
     const pathname = new URL(value).pathname;
@@ -1427,7 +1471,12 @@ function finalRouteCategory(value) {
 function isAssignmentStartRequest(request, expectedOrigin) {
   try {
     const url = new URL(request.url());
-    return url.origin === expectedOrigin && url.pathname === PRACTICE_START_PATH;
+    return (
+      request.method() === "POST" &&
+      request.resourceType() === "fetch" &&
+      url.origin === expectedOrigin &&
+      url.pathname === PRACTICE_START_PATH
+    );
   } catch {
     return false;
   }
@@ -1472,6 +1521,7 @@ function installSanitizedBrowserDiagnostics(page, diagnostics, expectedOrigin) {
 
 function waitForAssignmentStartOutcome(page, expectedOrigin, timeoutMs = 30_000) {
   return new Promise((resolveOutcome) => {
+    let responseClaimed = false;
     let settled = false;
     const finish = (outcome) => {
       if (settled) return;
@@ -1481,15 +1531,20 @@ function waitForAssignmentStartOutcome(page, expectedOrigin, timeoutMs = 30_000)
       page.off("requestfailed", onRequestFailed);
       resolveOutcome(outcome);
     };
-    const onResponse = (response) => {
-      if (isAssignmentStartRequest(response.request(), expectedOrigin)) {
-        finish(assignmentStartStatusFor(response.status()));
-      }
+    const onResponse = async (response) => {
+      if (!isAssignmentStartRequest(response.request(), expectedOrigin) || responseClaimed) return;
+      responseClaimed = true;
+      finish(await assignmentStartResponseOutcome(response));
     };
     const onRequestFailed = (request) => {
-      if (isAssignmentStartRequest(request, expectedOrigin)) finish("REQUEST_FAILED");
+      if (isAssignmentStartRequest(request, expectedOrigin)) {
+        finish(assignmentStartUnavailableOutcome("REQUEST_FAILED"));
+      }
     };
-    const timer = setTimeout(() => finish("REQUEST_NOT_OBSERVED"), timeoutMs);
+    const timer = setTimeout(
+      () => finish(assignmentStartUnavailableOutcome("REQUEST_NOT_OBSERVED")),
+      timeoutMs,
+    );
     page.on("response", onResponse);
     page.on("requestfailed", onRequestFailed);
   });
@@ -1713,8 +1768,18 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
   assertPracticeRoute(fixtures.diagnostics.finalRoute);
 
   setHarnessPhase(fixtures, "browser_assignment_practice_start_api_wait");
-  fixtures.diagnostics.assignmentStartApi = await assignmentStartOutcome;
+  const assignmentStartResult = await assignmentStartOutcome;
+  fixtures.diagnostics.assignmentStartApi = assignmentStartResult.apiStatus;
+  fixtures.diagnostics.assignmentStartCode = assignmentStartResult.code;
+  fixtures.diagnostics.assignmentStartHttpStatus = assignmentStartResult.httpStatus;
   assert(ASSIGNMENT_START_API_STATUSES.has(fixtures.diagnostics.assignmentStartApi), "practice_start_api_timeout");
+  assert(ASSIGNMENT_START_API_CODES.has(fixtures.diagnostics.assignmentStartCode), "practice_start_api_non_2xx");
+  assert(
+    Number.isInteger(fixtures.diagnostics.assignmentStartHttpStatus) &&
+      fixtures.diagnostics.assignmentStartHttpStatus >= 0 &&
+      fixtures.diagnostics.assignmentStartHttpStatus <= 599,
+    "practice_start_api_non_2xx",
+  );
   if (fixtures.diagnostics.assignmentStartApi === "REQUEST_NOT_OBSERVED") {
     throw new HarnessError("practice_start_api_timeout");
   }
@@ -2017,7 +2082,20 @@ function printSanitizedFailureSummary(diagnostics, failureCategory) {
   console.error(`navigation_status=${allowedOr(diagnostics.navigationStatus, NAVIGATION_STATUSES, "NO_DOCUMENT_RESPONSE")}`);
   console.error(`final_route=${allowedOr(diagnostics.finalRoute, FINAL_ROUTE_CATEGORIES, "UNEXPECTED_ROUTE")}`);
   console.error(
-    `assignment_start_api=${allowedOr(diagnostics.assignmentStartApi, ASSIGNMENT_START_API_STATUSES, "REQUEST_NOT_OBSERVED")}`,
+    `assignment_start_http_status=${
+      Number.isInteger(diagnostics.assignmentStartHttpStatus) &&
+      diagnostics.assignmentStartHttpStatus >= 0 &&
+      diagnostics.assignmentStartHttpStatus <= 599
+        ? diagnostics.assignmentStartHttpStatus
+        : 0
+    }`,
+  );
+  console.error(
+    `assignment_start_code=${allowedOr(
+      diagnostics.assignmentStartCode,
+      ASSIGNMENT_START_API_CODES,
+      "UNRECOGNIZED_API_CODE",
+    )}`,
   );
   console.error(`pageerror_category=${firstCategory(diagnostics.pageErrorCategories)}`);
   console.error(`failed_request_category=${firstCategory(diagnostics.failedRequestCategories)}`);

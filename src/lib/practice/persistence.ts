@@ -24,6 +24,26 @@ type SupabaseLike = {
   from: (...args: any[]) => any;
 };
 
+export type PracticeSessionInitializationFailureStage = "preference" | "session";
+
+type PracticeSessionInitializationFailureMapper = (
+  stage: PracticeSessionInitializationFailureStage,
+  cause: unknown,
+) => Error;
+
+function throwPracticeSessionInitializationFailure({
+  cause,
+  mapper,
+  stage,
+}: {
+  cause: unknown;
+  mapper?: PracticeSessionInitializationFailureMapper;
+  stage: PracticeSessionInitializationFailureStage;
+}): never {
+  if (mapper) throw mapper(stage, cause);
+  throw cause;
+}
+
 const DEFAULT_TAG_CONTEXT: PracticeTagContext = {
   confirmedTagIds: [],
   usefulTags: [],
@@ -622,12 +642,14 @@ export async function getPracticeSession({
 export async function createPracticeSession({
   courseFrameworkId,
   goal,
+  onInitializationFailure,
   supabase,
   title,
   userId,
 }: {
   courseFrameworkId?: string | null;
   goal: string;
+  onInitializationFailure?: PracticeSessionInitializationFailureMapper;
   supabase: SupabaseLike;
   title?: string;
   userId: string;
@@ -635,8 +657,17 @@ export async function createPracticeSession({
   const trimmedGoal = goal.trim().slice(0, 500);
   const sessionTitle =
     (title?.trim() || trimmedGoal || "New practice session").slice(0, 160);
-  await maybeQueuePreferenceMergeJob({ supabase, userId });
-  const preference = await getOrCreatePracticePreference({ supabase, userId });
+  let preference: Awaited<ReturnType<typeof getOrCreatePracticePreference>>;
+  try {
+    await maybeQueuePreferenceMergeJob({ supabase, userId });
+    preference = await getOrCreatePracticePreference({ supabase, userId });
+  } catch (cause) {
+    throwPracticeSessionInitializationFailure({
+      cause,
+      mapper: onInitializationFailure,
+      stage: "preference",
+    });
+  }
   const courseFramework = courseFrameworkId
     ? await loadPracticeCourseFramework({ frameworkId: courseFrameworkId, supabase })
     : null;
@@ -644,27 +675,42 @@ export async function createPracticeSession({
     ? buildDefaultSessionPlan({ courseFramework, goal: trimmedGoal })
     : {};
 
-  const { data, error } = await supabase
-    .from("practice_sessions")
-    .insert({
-      cache_prefix_version: CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
-      course_framework_id: courseFramework?.id ?? null,
-      course_framework_snapshot: courseFramework ? courseFramework as unknown as Json : null,
-      goal: trimmedGoal,
-      long_term_memory_snapshot: preference.long_term_preference.trim().slice(0, 1000),
-      session_memory: "",
-      session_plan: sessionPlan as unknown as Json,
-      session_state: {} as unknown as Json,
-      session_thread_messages: [] as unknown as Json,
-      tag_context: { ...DEFAULT_TAG_CONTEXT, lastGoal: trimmedGoal },
-      title: sessionTitle,
-      user_id: userId,
-    })
-    .select("*")
-    .single();
+  let sessionResult: { data: unknown; error: { message?: string } | null };
+  try {
+    sessionResult = await supabase
+      .from("practice_sessions")
+      .insert({
+        cache_prefix_version: CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
+        course_framework_id: courseFramework?.id ?? null,
+        course_framework_snapshot: courseFramework ? courseFramework as unknown as Json : null,
+        goal: trimmedGoal,
+        long_term_memory_snapshot: preference.long_term_preference.trim().slice(0, 1000),
+        session_memory: "",
+        session_plan: sessionPlan as unknown as Json,
+        session_state: {} as unknown as Json,
+        session_thread_messages: [] as unknown as Json,
+        tag_context: { ...DEFAULT_TAG_CONTEXT, lastGoal: trimmedGoal },
+        title: sessionTitle,
+        user_id: userId,
+      })
+      .select("*")
+      .single();
+  } catch (cause) {
+    throwPracticeSessionInitializationFailure({
+      cause,
+      mapper: onInitializationFailure,
+      stage: "session",
+    });
+  }
+
+  const { data, error } = sessionResult;
 
   if (error) {
-    throw new Error(error.message);
+    throwPracticeSessionInitializationFailure({
+      cause: error,
+      mapper: onInitializationFailure,
+      stage: "session",
+    });
   }
 
   return sessionSummaryFromRow({ ...(data as PracticeSession), round_count: 0 });

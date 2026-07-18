@@ -6,6 +6,18 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const source = await readFile(resolve(process.cwd(), "scripts/student-v1-browser-e2e.mjs"), "utf8");
+const assignmentStartRoute = await readFile(
+  resolve(process.cwd(), "src/app/api/practice/assignments/start/route.ts"),
+  "utf8",
+);
+const assignmentLinkage = await readFile(
+  resolve(process.cwd(), "src/lib/practice/assignment-linkage.ts"),
+  "utf8",
+);
+const practicePersistence = await readFile(
+  resolve(process.cwd(), "src/lib/practice/persistence.ts"),
+  "utf8",
+);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -17,6 +29,21 @@ function sourceBlock(startMarker, endMarker) {
   assert(start >= 0 && end > start, `browser harness source block not found: ${startMarker}`);
   return source.slice(start, end);
 }
+
+const assignmentStartCodes = [
+  "INVALID_REQUEST",
+  "AUTHENTICATION_REQUIRED",
+  "STUDENT_NOT_ELIGIBLE",
+  "ASSIGNMENT_NOT_AVAILABLE",
+  "ASSIGNMENT_CONTENT_UNAVAILABLE",
+  "TAXONOMY_READ_FAILED",
+  "PREFERENCE_INITIALIZATION_FAILED",
+  "SESSION_CREATE_FAILED",
+  "ROUND_PERSISTENCE_FAILED",
+  "ASSIGNMENT_LINKAGE_FAILED",
+  "SESSION_RELOAD_FAILED",
+  "PRACTICE_START_FAILED",
+];
 
 for (const name of [
   "NEXT_PUBLIC_SUPABASE_URL",
@@ -147,6 +174,47 @@ for (const category of [
   assert(source.includes(`"${category}"`), `browser harness is missing bounded failure category ${category}`);
 }
 
+for (const code of assignmentStartCodes) {
+  assert(
+    assignmentLinkage.includes(`"${code}"`) && source.includes(`"${code}"`),
+    `assignment-start diagnostics are missing allowlisted code ${code}`,
+  );
+}
+assert(
+  source.includes('"UNRECOGNIZED_API_CODE"') &&
+    source.includes("ASSIGNMENT_START_API_CODES.has(candidate)"),
+  "unknown assignment-start API codes must fail closed",
+);
+assert(
+  assignmentStartRoute.includes('"Unable to start assignment practice."') &&
+    assignmentStartRoute.includes("assignmentPracticeStartErrorResponse") &&
+    assignmentStartRoute.includes("normalizeAssignmentPracticeStartError") &&
+    !assignmentStartRoute.includes("error.message") &&
+    !assignmentStartRoute.includes("String(error)") &&
+    !assignmentStartRoute.includes("String(cause)") &&
+    !assignmentStartRoute.includes("stack"),
+  "assignment-start route must return a fixed safe error and never serialize raw exceptions",
+);
+assert(
+  assignmentStartRoute.includes('code: "INVALID_REQUEST"') &&
+    assignmentStartRoute.includes('code: "AUTHENTICATION_REQUIRED"') &&
+    assignmentStartRoute.includes("code: startError.code") &&
+    assignmentStartRoute.includes("stage: startError.stage") &&
+    !/console\.(?:log|warn|error)\([^)]*(?:cause|message|stack|assignmentId|request|url)/i.test(
+      assignmentStartRoute,
+    ),
+  "assignment-start server logging must contain only the safe code and bounded stage",
+);
+assert(
+  assignmentLinkage.includes("cause instanceof AssignmentPracticeStartError") &&
+    assignmentLinkage.includes('code: "PRACTICE_START_FAILED"') &&
+    assignmentLinkage.includes('stage: "start"') &&
+    practicePersistence.includes("onInitializationFailure") &&
+    practicePersistence.includes('stage: "preference"') &&
+    practicePersistence.includes('stage: "session"'),
+  "typed assignment-start causes must be preserved internally and normalized to bounded categories",
+);
+
 const practiceLaunchBlock = sourceBlock(
   "async function startResumeAndCompleteAssignment",
   "async function createAndResumePrivateSelfStudy",
@@ -159,8 +227,32 @@ assert(
 assert(
   practiceLaunchBlock.includes("fixtures.diagnostics.navigationStatus") &&
     practiceLaunchBlock.includes("fixtures.diagnostics.finalRoute") &&
-    practiceLaunchBlock.includes("fixtures.diagnostics.assignmentStartApi"),
+    practiceLaunchBlock.includes("fixtures.diagnostics.assignmentStartApi") &&
+    practiceLaunchBlock.includes("fixtures.diagnostics.assignmentStartHttpStatus") &&
+    practiceLaunchBlock.includes("fixtures.diagnostics.assignmentStartCode"),
   "Practice launch must persist only sanitized navigation, route, and API outcomes",
+);
+const assignmentStartMatcherBlock = sourceBlock(
+  "async function assignmentStartResponseOutcome",
+  "function classifyPageError",
+);
+assert(
+  assignmentStartMatcherBlock.includes('request.method() === "POST"') &&
+    assignmentStartMatcherBlock.includes('request.resourceType() === "fetch"') &&
+    assignmentStartMatcherBlock.includes("url.origin === expectedOrigin") &&
+    assignmentStartMatcherBlock.includes("url.pathname === PRACTICE_START_PATH"),
+  "assignment-start waiter must match the intended same-origin POST fetch",
+);
+assert(
+  assignmentStartMatcherBlock.includes("const httpStatus = response.status()") &&
+    assignmentStartMatcherBlock.includes("const parsed = await response.json()") &&
+    assignmentStartMatcherBlock.includes("parsed.code") &&
+    assignmentStartMatcherBlock.includes("UNRECOGNIZED_API_CODE") &&
+    !/console\.(?:log|warn|error)/.test(assignmentStartMatcherBlock) &&
+    !/(?:return|push|set)\s*\([^\n]*(?:parsed|response\.json|response\.text)/.test(
+      assignmentStartMatcherBlock,
+    ),
+  "assignment-start response parsing must retain only numeric status and an allowlisted code",
 );
 
 assert(
@@ -185,7 +277,8 @@ for (const key of [
   "failure_category",
   "navigation_status",
   "final_route",
-  "assignment_start_api",
+  "assignment_start_http_status",
+  "assignment_start_code",
   "pageerror_category",
   "failed_request_category",
   "server_runtime_category",
@@ -195,7 +288,8 @@ for (const key of [
 }
 assert(
   source.includes('console.error("FAIL Student V1 browser E2E")') &&
-    !/console\.(?:log|error)\s*\([^\n]*(?:error\.message|response\.url|request\.url|response\.text|request\.postData|child\.stdout|child\.stderr)/i.test(source),
+    !/console\.(?:log|error)\s*\([^\n]*(?:error\.message|response\.url|request\.url|response\.text|responseBody|responseJson|request\.postData|requestBody|headers|cookies?|child\.stdout|child\.stderr|sql|stack)/i.test(source) &&
+    !/diagnostics\.[A-Za-z0-9_]*(?:body|message|url|headers?|cookies?|id)\b/i.test(source),
   "failure reporting must not print raw browser, request, response, or server details",
 );
 
