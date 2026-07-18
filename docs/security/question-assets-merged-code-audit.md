@@ -4,9 +4,9 @@ Audit date: 2026-07-17
 
 ## Scope and conclusion
 
-This audit used the isolated `codex/validate-private-question-assets` worktree at main commit `a7cfb50561a83bf4c3a39ff25b28b3d8e68c0cb0`. It did not connect to Supabase, apply a migration, mutate a Storage bucket, run a backfill apply, read an environment file, or touch the original workspace's user-owned files or stashes.
+The initial code audit used the isolated `codex/validate-private-question-assets` worktree at main commit `a7cfb50561a83bf4c3a39ff25b28b3d8e68c0cb0`. The controlled rehearsal and final cutover validation used process-only values only; they did not read an environment file, modify the original workspace's user-owned files or stashes, or apply a historical-data backfill.
 
-Final classification: **READY_FOR_CLEAN_DATABASE_REHEARSAL**. This authorizes only the next controlled rehearsal described in the companion runbook. It does not authorize applying 0045 or 0046 to the clean database.
+Final classification: **P0-STORAGE-01 COMPLETED / CLEAN-DB LIVE VALIDATED**. This closes only the clean-database private-assets gate; it does not claim production historical-data migration or overall deployment readiness.
 
 ## Historical provenance
 
@@ -35,7 +35,7 @@ This fixes the prior ordering defect, where a service-role metadata lookup happe
 
 ## 0045 authorization helper
 
-Current pending migration hash: `01d0be828386f8262b5ebd6a6c19e9c17b55039132c67daf9d4fe747e447d115`.
+Applied migration source hash: `01d0be828386f8262b5ebd6a6c19e9c17b55039132c67daf9d4fe747e447d115`.
 
 `private.can_read_question(p_question_id uuid)` is a `STABLE SECURITY DEFINER` boolean function with fixed `search_path = public, private`. It has an explicit `postgres` owner, no browser-role execute grant, and reproduces the five current question-read paths:
 
@@ -49,9 +49,15 @@ It reuses the current private Bank and Assignment helpers rather than reproducin
 
 This preserves the intended boundaries: unrelated Students and Teachers are denied, Classroom membership does not grant Bank access, assignment access does not enumerate source Banks, and no Review Draft or Blueprint policy is widened. The helpers are read-only; no write authorization is added.
 
+### Live catalog status
+
+`0045_question_read_authorization_helper.sql` was manually applied exactly once to the clean Supabase project and is not represented in a migration ledger. Its live catalog contract was confirmed: both functions return boolean, are `SECURITY DEFINER`, are owned by `postgres`, and use the fixed `public, private` search path. Browser roles cannot execute `private.can_read_question(uuid)`; this is intentional because the postgres-owned public asset wrapper invokes it internally. `public.can_read_question_asset(uuid)` is executable by anonymous, authenticated, and service-role callers.
+
+Recorded status: `APPLIED_MANUALLY_NOT_LEDGERED / EXACTLY ONCE / LIVE CATALOG VALIDATED`.
+
 ## 0046 private-bucket migration
 
-Current pending migration hash: `bb64423637453b70121220fbacd1d940c66c005cc9b0f73d3f98d7915d5843e5`.
+Applied migration hash: `bb64423637453b70121220fbacd1d940c66c005cc9b0f73d3f98d7915d5843e5`.
 
 `0046_question_assets_bucket_private.sql` now verifies that exactly one `storage.buckets` row has ID `question-assets` before setting only that row's `public` field to false. It is idempotent after a successful cutover and fails closed for a missing or anomalous bucket. It creates no bucket and does not alter `storage.objects` or unrelated buckets.
 
@@ -98,8 +104,18 @@ Passed locally:
 
 The embedded rehearsal models the final post-0044 contract; it does not replay the frozen 0043 partial failure or reapply 0044.
 
-The aggregate smoke also completed every check before its existing process-environment RLS gate. It then stopped at `supabase-rls-smoke` because the isolated worktree intentionally had no process-only Supabase URL or anon key. The Bank, Assignment, Review Draft, Practice, and live question-assets suites that require those values are therefore **blocked**, not passed. No live fixture harness, backfill apply, bucket mutation, or remote database operation was run.
+The initial aggregate smoke completed every check before its existing process-environment RLS gate, then stopped because the isolated worktree intentionally had no process-only values. That historical aggregate result does not substitute for the later focused live pre-cutover rehearsal below.
 
-## Remaining gates
+### Controlled pre-cutover rehearsal
 
-No remote validation has run. Before any manual SQL application, follow [question-assets-clean-db-rehearsal.md](question-assets-clean-db-rehearsal.md), including the zero-residual backfill gate, exact-ID fixtures, and the live authorization matrix. Current status remains `PENDING_MANUAL_APPLY` for both 0045 and 0046.
+The approved exact-ID matrix ran against the authorized disposable environment after 0045 was applied. It passed the public wrapper and actual route boundary for anonymous public access, anonymous private-draft denial, assignment-selected Student access, selected Student denial for an unselected Bank asset, classroom-only Student denial, Bank-manager access, unrelated-Teacher denial for both Bank and draft assets, and unknown-asset denial. Anonymous and authenticated browser roles could not directly execute the private helper. The harness removed all exact-ID fixtures in `finally`; no fixture identity, credential, or signed URL was retained in this report.
+
+Both approved backfill tools ran in their default dry-run mode. The HTML scope and JSONB scope each reported: scanned `0`, mapped/replaced `0`, unmapped `0`, and malformed `0`. No `--apply` command was used.
+
+## Completed clean-database validation
+
+The operator applied `0046_question_assets_bucket_private.sql` exactly once. The post-cutover aggregate check confirmed exactly one `question-assets` bucket with `public = false`, and zero residual legacy public URLs across all nine audited fields. The complete requester-first matrix passed again, including anonymous/private, assignment-selected, Classroom-only, Bank-manager, unrelated-Teacher, and unknown-asset cases; exact-ID cleanup passed.
+
+The live private-bucket smoke confirmed non-200 denial for a legacy direct public URL, no-store signed redirects for authorized route access, and continued authorized staff upload/delete behavior. Replacement remains intentionally unsupported because the reviewed Storage policy has no UPDATE path or caller. The harness operated only on exact disposable fixtures and the `question-assets` bucket; it did not modify unrelated buckets or objects.
+
+Both backfill applies remained no-ops: the verified clean database had no legacy public URL occurrence to rewrite. No production historical-data migration is claimed, and no Supabase migration-ledger history is fabricated.
