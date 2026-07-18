@@ -529,3 +529,49 @@ embedded checks, then stopped at the pre-existing process-environment gate in
 The P1 live role matrix ran once after 0048 and passed with exact-ID cleanup.
 No provider call, production-data read, or environment-file read occurred for
 this validation. The overall website remains separately not deployment-ready.
+
+---
+
+## Final Student V1 Completion Gate - 2026-07-17
+
+This section supersedes the earlier whole-workspace label for the narrower
+Student V1 launch contract defined in
+[`student-final-completion-gate.md`](student-final-completion-gate.md). It does
+not reclassify intentionally deferred Study Library, Study Group, and broader
+universal-library work as required V1 delivery.
+
+**Final Student V1 classification: IMPLEMENTATION COMPLETE / BROWSER E2E
+BLOCKED.**
+
+The required Student V1 workflow is implemented and its core security/data
+ownership proof is complete:
+
+- My Work and assignment detail are active-membership and assigned-work scoped.
+- Assignment Practice uses selected questions only, persists linked progress after
+  successful work, and does not grant Bank membership.
+- Practice executes through an authenticated, server-only compatible/default
+  provider resolver; normal Practice does not use the super-admin gateway or a
+  durable AI worker job.
+- `0047` and `0048` are frozen, applied manually exactly once, and clean-database
+  live validated. Private self-study is Student-owned; assignment managers are
+  read-only; staff, framework owner, co-teacher, unrelated Student/Teacher, and
+  anonymous bypasses are denied.
+- P0-STORAGE-01 is independently completed: protected selected assets work,
+  unselected private assets and public URLs are denied, and signed URLs are not
+  persisted.
+
+The remaining gate is evidence, not a discovered P0/P1 defect: authenticated
+browser E2E has not yet executed the required join, My Work, start/resume,
+completion/reload, feedback, self-study, asset, logout/session-expiry, and
+unauthorized-direct-URL journeys. Source/static, embedded, API, and prior
+disposable role evidence are deliberately not presented as browser proof.
+
+Accepted limitation: Practice model calls remain request-bound. Completed work
+persists and resumes; an interrupted in-flight model call is not guaranteed to
+complete after page close. This is not a V1 blocker unless the product promises
+background completion.
+
+P2 follow-ups remain: browser E2E, feedback aggregation, availability/archive/
+history semantics, duplicate-start behavior, Study Library/Groups, a formal
+Practice error boundary, and generic classroom read-error copy. The broader site
+is still not declared deployment-ready.

@@ -31,6 +31,10 @@ async function listFiles(relativePath) {
 }
 
 const manifest = JSON.parse(await read("docs/security/student-route-manifest.json"));
+assert(
+  manifest.schema_version === 2,
+  "Student route manifest must use the final V1 route-inventory schema",
+);
 const studentPageFiles = (await listFiles("src/app/student"))
   .filter((file) => file.endsWith("/page.tsx"))
   .sort();
@@ -57,6 +61,10 @@ assert(
 for (const file of expectedStudentPageFiles) {
   const source = await read(file);
   assert(source.includes("requireStudent("), `${file} must enforce the active Student server guard`);
+  assert(
+    manifest.student_page_routes.some((route) => route.source_file === file),
+    `${file} must have a concrete Student route-manifest record`,
+  );
 }
 console.log("PASS Student page manifest covers all current signed-in Student pages with server guards");
 
@@ -82,11 +90,48 @@ assert(
   JSON.stringify(practiceApiFiles) === JSON.stringify(expectedPracticeApiFiles),
   "Student shared Practice API inventory must be updated when a route is added or removed",
 );
+assert(
+  JSON.stringify(manifest.practice_api_routes.map((route) => route.source_file).sort()) ===
+    JSON.stringify(expectedPracticeApiFiles),
+  "Student route manifest must cover every concrete shared Practice API route",
+);
 for (const file of expectedPracticeApiFiles) {
   const source = await read(file);
   assert(source.includes("requirePracticeApiUser("), `${file} must authenticate before Practice work`);
 }
 console.log("PASS every shared Practice API repeats authenticated-user authorization");
+
+const expectedSharedPageSources = [
+  "src/app/practice/page.tsx",
+  "src/app/mistakes/page.tsx",
+  "src/app/questions/page.tsx",
+  "src/app/questions/[id]/page.tsx",
+  "src/app/auth/login/page.tsx",
+  "src/app/auth/actions.ts",
+];
+const manifestedSharedSources = manifest.shared_page_routes.flatMap((route) =>
+  route.source_file ? [route.source_file] : route.source_files ?? [],
+);
+for (const file of expectedSharedPageSources) {
+  assert(
+    manifestedSharedSources.includes(file),
+    `${file} must have a shared-route manifest record`,
+  );
+}
+assert(
+  manifest.support_routes.some(
+    (route) => route.source_file === "src/app/api/question-assets/[assetId]/route.ts",
+  ) &&
+    manifest.support_routes.some(
+      (route) => route.source_file === "src/app/student/classrooms/join/actions.ts",
+    ),
+  "Student support actions and protected question assets must be manifested",
+);
+assert(
+  manifest.final_gate?.classification === "IMPLEMENTATION COMPLETE / BROWSER E2E BLOCKED",
+  "final Student gate must not overclaim browser validation",
+);
+console.log("PASS complete Student/shared/API/support route inventory and browser-evidence gate are recorded");
 
 const [assignmentLinkage, assignmentMigration, practiceEvidenceMigration, practiceIsolationMigration, practiceFrameworkIsolationMigration, feedbackMigration, assetRoute] =
   await Promise.all([
@@ -167,12 +212,28 @@ assert(
     practiceFrameworkIsolationMigration.includes("drop policy if exists practice_agent_episodes_teacher_select_course") &&
     manifest.findings.some(
       (finding) =>
-        finding.id === "P1_SELF_STUDY_ORG_STAFF" &&
+        finding.id === "P1_STUDENT_SELF_STUDY_EVIDENCE" &&
         finding.status === "COMPLETED / CLEAN-DB LIVE VALIDATED",
     ),
   "canonical self-study exposure must retain completed assignment and course-framework boundary validation evidence",
 );
 console.log("PASS Student source has no Bank/Review/Blueprint management surface and records the P1 self-study remediation state");
+
+const aiJobSources = await Promise.all(
+  (await listFiles("src/lib/ai-jobs"))
+    .filter((file) => file.endsWith(".ts"))
+    .map(read),
+);
+const aiJobSource = aiJobSources.join("\n");
+assert(
+  aiJobSource.includes('"ai_pdf_extract"') &&
+    aiJobSource.includes('"ai_pdf_coverage_recovery"') &&
+    aiJobSource.includes('"blueprint_generate_questions"') &&
+    !aiJobSource.includes('"practice_generation"') &&
+    !aiJobSource.includes('"practice_recommendation"'),
+  "Practice must not claim a durable ai_provider_jobs worker path",
+);
+console.log("PASS Practice remains explicitly request-bound; durable jobs cover only current AI PDF/Blueprint kinds");
 
 for (const file of [
   "scripts/student-my-work-smoke.mjs",
