@@ -67,6 +67,7 @@
     "eslint-config-next": "latest",
     "knip": "^6.21.0",
     "pg": "^8.22.0",
+    "playwright": "^1.61.1",
     "postcss": "latest",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "latest",
