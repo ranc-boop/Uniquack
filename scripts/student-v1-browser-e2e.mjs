@@ -172,6 +172,10 @@ const ALLOWED_FAILURE_CATEGORIES = new Set([
   "practice_banner_timeout",
   "practice_question_title_timeout",
   "practice_page_context_error",
+  "practice_persisted_completion_state_failed",
+  "practice_my_work_navigation_failed",
+  "practice_my_work_completed_section_not_found",
+  "practice_my_work_completed_assignment_not_found",
   "temporary_server_stop_failed",
   "process_environment_clear_failed",
   "cleanup_failed",
@@ -2041,22 +2045,61 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
   assert(persistedAttempts.length >= 1, "assignment_practice_attempt_not_persisted");
 
   setHarnessPhase(fixtures, "browser_assignment_practice_assignment_progress");
-  const progress = assertNoError(
-    await fixtures.service
-      .from("student_assignment_progress")
-      .select("status, last_practice_session_id")
-      .eq("assignment_id", fixtures.assignmentId)
-      .eq("student_id", fixtures.studentA.id)
-      .maybeSingle(),
-    "assignment_progress_read_failed",
+  const progressResult = await fixtures.service
+    .from("student_assignment_progress")
+    .select("status, last_practice_session_id")
+    .eq("assignment_id", fixtures.assignmentId)
+    .eq("student_id", fixtures.studentA.id)
+    .maybeSingle();
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_persisted_completion_state");
+  assert(!progressResult.error, "practice_persisted_completion_state_failed");
+  const progress = progressResult.data;
+  assert(
+    progress?.status === "completed" && progress.last_practice_session_id,
+    "practice_persisted_completion_state_failed",
   );
-  assert(progress?.status === "completed" && progress.last_practice_session_id, "assignment_completion_not_persisted");
   fixtures.assignmentSessionId = progress.last_practice_session_id;
 
-  setHarnessPhase(fixtures, "browser_assignment_practice_completion_card");
-  await page.goto(`${fixtures.server.origin}/student/work`, { waitUntil: "networkidle" });
-  await page.getByText("Completed", { exact: true }).waitFor();
-  await assertSafePage(page, fixtures, fakeProvider);
+  setHarnessPhase(fixtures, "browser_assignment_practice_my_work_navigation");
+  await waitForPracticeStep(
+    page.goto(`${fixtures.server.origin}/student/work`, { waitUntil: "networkidle" }),
+    "practice_my_work_navigation_failed",
+  );
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_my_work_completed_section");
+  const completedHeading = page.getByRole("heading", {
+    exact: true,
+    level: 2,
+    name: "Completed",
+  });
+  const completedSection = page.locator("section").filter({ has: completedHeading });
+  await waitForPracticeStep(
+    completedHeading.waitFor({ timeout: 30_000 }),
+    "practice_my_work_completed_section_not_found",
+  );
+  assert(
+    await completedSection.count() === 1,
+    "practice_my_work_completed_section_not_found",
+  );
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_my_work_completed_assignment");
+  await waitForPracticeStep(
+    completedSection
+      .getByRole("heading", { exact: true, level: 3, name: fixtures.assignmentTitle })
+      .waitFor({ timeout: 30_000 }),
+    "practice_my_work_completed_assignment_not_found",
+  );
+  await waitForPracticeStep(
+    completedSection
+      .getByRole("link", { exact: true, name: "Review work" })
+      .waitFor({ timeout: 30_000 }),
+    "practice_my_work_completed_assignment_not_found",
+  );
+  await waitForPracticeStep(
+    assertSafePage(page, fixtures, fakeProvider),
+    "practice_page_context_error",
+  );
 }
 
 async function createAndResumePrivateSelfStudy(page, fixtures, fakeProvider) {

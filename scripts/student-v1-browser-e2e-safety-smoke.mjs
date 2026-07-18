@@ -144,7 +144,10 @@ for (const phase of [
   "browser_assignment_practice_result_badge",
   "browser_assignment_practice_attempt_persistence",
   "browser_assignment_practice_assignment_progress",
-  "browser_assignment_practice_completion_card",
+  "browser_assignment_practice_persisted_completion_state",
+  "browser_assignment_practice_my_work_navigation",
+  "browser_assignment_practice_my_work_completed_section",
+  "browser_assignment_practice_my_work_completed_assignment",
 ]) {
   assert(source.includes(`"${phase}"`), `browser harness is missing sanitized Practice phase ${phase}`);
 }
@@ -194,6 +197,18 @@ for (const category of [
   "GRADE_NOT_OBSERVED",
 ]) {
   assert(source.includes(`"${category}"`), `browser harness is missing bounded diagnostic category ${category}`);
+}
+
+for (const category of [
+  "practice_persisted_completion_state_failed",
+  "practice_my_work_navigation_failed",
+  "practice_my_work_completed_section_not_found",
+  "practice_my_work_completed_assignment_not_found",
+]) {
+  assert(
+    source.includes(`"${category}"`),
+    `browser harness is missing bounded completion failure ${category}`,
+  );
 }
 
 for (const category of [
@@ -282,6 +297,30 @@ assert(
     !/console\.(?:log|warn|error)\([^\n]*(?:sessionId|practiceSessionId|roundId|questionId)/.test(practiceLaunchBlock),
   "reload must compare session IDs only in memory and print only MATCH/MISMATCH/NOT_OBSERVED",
 );
+const completionBlock = practiceLaunchBlock.slice(
+  practiceLaunchBlock.indexOf('"browser_assignment_practice_persisted_completion_state"'),
+);
+assert(
+  completionBlock.includes('getByRole("heading", {') &&
+    completionBlock.includes('name: "Completed"') &&
+    completionBlock.includes('page.locator("section").filter({ has: completedHeading })') &&
+    completionBlock.includes('name: fixtures.assignmentTitle') &&
+    completionBlock.includes('getByRole("link", { exact: true, name: "Review work" })') &&
+    !completionBlock.includes('getByText("Completed", { exact: true })') &&
+    !completionBlock.includes(".first()"),
+  "My Work completion must use the semantic Completed section and its fixture Assignment",
+);
+assert(
+  practiceLaunchBlock.indexOf("fixtures.diagnostics.assignmentStartHttpStatus =") <
+      practiceLaunchBlock.indexOf('"browser_assignment_practice_banner"') &&
+    practiceLaunchBlock.indexOf("fixtures.diagnostics.reviewCategory =") <
+      practiceLaunchBlock.indexOf('"browser_assignment_practice_review_api_status"') &&
+    practiceLaunchBlock.indexOf("fixtures.diagnostics.gradeCategory =") <
+      practiceLaunchBlock.indexOf('"browser_assignment_practice_grade_api_status"') &&
+    practiceLaunchBlock.indexOf("fixtures.diagnostics.gradeCategory =") <
+      practiceLaunchBlock.indexOf('"browser_assignment_practice_my_work_navigation"'),
+  "observed Start, review, and grade diagnostics must survive later completion UI failures",
+);
 const reviewDiagnosticBlock = sourceBlock(
   "function reviewCategoryFromStream",
   "function classifyPageError",
@@ -291,6 +330,7 @@ assert(
     reviewDiagnosticBlock.includes("REVIEW_ERROR_EVENT") &&
     reviewDiagnosticBlock.includes("REVIEW_STREAM_INCOMPLETE") &&
     reviewDiagnosticBlock.includes("GRADE_RESPONSE_2XX") &&
+    reviewDiagnosticBlock.includes("GRADE_NOT_REQUIRED") &&
     !/console\.(?:log|warn|error)/.test(reviewDiagnosticBlock) &&
     !/(?:writeFile|appendFile|createWriteStream)/.test(reviewDiagnosticBlock),
   "review and grade observers must reduce transient responses to bounded in-memory categories",

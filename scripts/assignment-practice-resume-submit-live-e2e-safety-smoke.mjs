@@ -92,12 +92,74 @@ assert(
   "submit must use semantic controls and the unique result badge",
 );
 
+const completion = block(
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_ROUTE")',
+  "fakeProvider.assertUsedSafely()",
+);
+for (const phase of [
+  "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_ROUTE",
+  "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_START",
+  "ASSIGNMENT_PRACTICE_COMPLETED_SESSION_CONSISTENCY",
+  "ASSIGNMENT_PRACTICE_COMPLETED_RESULT_BADGE",
+  "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_STATE",
+  "ASSIGNMENT_PRACTICE_COMPLETED_POSTCONDITIONS",
+  "ASSIGNMENT_PRACTICE_MY_WORK_NAVIGATION",
+  "ASSIGNMENT_PRACTICE_MY_WORK_COMPLETED_SECTION",
+  "ASSIGNMENT_PRACTICE_MY_WORK_COMPLETED_ASSIGNMENT",
+]) {
+  assert(completion.includes(`"${phase}"`), `missing bounded completion phase ${phase}`);
+}
+for (const category of [
+  "COMPLETED_RELOAD_ROUTE_FAILED",
+  "COMPLETED_RELOAD_START_FAILED",
+  "COMPLETED_SESSION_MISMATCH",
+  "COMPLETED_RESULT_BADGE_TIMEOUT",
+  "COMPLETED_ANSWER_STATE_FAILED",
+  "COMPLETED_POSTCONDITION_FAILED",
+  "MY_WORK_NAVIGATION_FAILED",
+  "MY_WORK_COMPLETED_SECTION_NOT_FOUND",
+  "MY_WORK_COMPLETED_ASSIGNMENT_NOT_FOUND",
+]) {
+  assert(
+    source.includes(`"${category}"`) && completion.includes(`"${category}"`),
+    `missing bounded completion category ${category}`,
+  );
+}
+assert(
+  completion.includes('getByRole("heading", {') &&
+    completion.includes('name: "Completed"') &&
+    completion.includes('page.locator("section").filter({ has: completedHeading })') &&
+    completion.includes('name: contract.assignmentTitle') &&
+    completion.includes('getByRole("link", { exact: true, name: "Review work" })') &&
+    !completion.includes('getByText("Completed", { exact: true })') &&
+    !completion.includes(".first()"),
+  "completion must scope the fixture Assignment to the semantic Completed section",
+);
+
+const execution = block("async function runFullValidation", "const args = process.argv.slice(2)");
+assert(
+  journey.indexOf("diagnostics.assignmentStartHttpStatus = firstStart.status") >
+      journey.indexOf("const firstStart = await firstStartPromise") &&
+    journey.indexOf("diagnostics.reviewCategory = review.category") >
+      journey.indexOf("const review = await reviewPromise") &&
+    journey.indexOf("diagnostics.gradeCategory = grade") >
+      journey.indexOf("gradeObserver.read") &&
+    execution.includes("const diagnostics = createJourneyDiagnostics()") &&
+    execution.includes("diagnostics.assignmentStartHttpStatus") &&
+    execution.includes("diagnostics.reviewCategory") &&
+    execution.includes("diagnostics.gradeCategory") &&
+    !execution.includes("reviewResultCategory") &&
+    !execution.includes("gradeResultCategory"),
+  "observed Start, review, and grade diagnostics must publish before later UI assertions",
+);
+
 const reviewDiagnostics = block("function reviewCategory", "async function verifyPostconditions");
 assert(
   reviewDiagnostics.includes("REVIEW_SUCCESS_EVENT") &&
     reviewDiagnostics.includes("REVIEW_ERROR_EVENT") &&
     reviewDiagnostics.includes("REVIEW_STREAM_INCOMPLETE") &&
     reviewDiagnostics.includes("GRADE_RESPONSE_2XX") &&
+    reviewDiagnostics.includes("GRADE_NOT_REQUIRED") &&
     !/console\.(?:log|error|warn)/.test(reviewDiagnostics) &&
     !/(?:writeFile|appendFile|createWriteStream)/.test(reviewDiagnostics),
   "review SSE and grade responses must collapse to bounded in-memory categories",

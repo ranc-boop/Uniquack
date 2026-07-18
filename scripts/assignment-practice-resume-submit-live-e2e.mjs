@@ -101,6 +101,15 @@ const ALLOWED_FAILURE_CATEGORIES = new Set([
   "REVIEW_OR_GRADE_FAILED",
   "ASSIGNMENT_START_REQUEST_FAILED",
   "ASSIGNMENT_START_NON_2XX",
+  "COMPLETED_RELOAD_ROUTE_FAILED",
+  "COMPLETED_RELOAD_START_FAILED",
+  "COMPLETED_SESSION_MISMATCH",
+  "COMPLETED_RESULT_BADGE_TIMEOUT",
+  "COMPLETED_ANSWER_STATE_FAILED",
+  "COMPLETED_POSTCONDITION_FAILED",
+  "MY_WORK_NAVIGATION_FAILED",
+  "MY_WORK_COMPLETED_SECTION_NOT_FOUND",
+  "MY_WORK_COMPLETED_ASSIGNMENT_NOT_FOUND",
   "POSTCONDITION_FAILED",
   "CLEANUP_FAILED",
   "TEMPORARY_SERVER_STOP_FAILED",
@@ -131,6 +140,14 @@ function fail(category) {
 
 function assert(condition, category) {
   if (!condition) fail(category);
+}
+
+async function runBounded(category, operation) {
+  try {
+    return await operation();
+  } catch {
+    fail(category);
+  }
 }
 
 function boundedFailureCategory(error) {
@@ -353,6 +370,20 @@ function createFixtureState(service) {
   };
 }
 
+function createJourneyDiagnostics() {
+  return {
+    assignmentStartCode: "UNRECOGNIZED_API_CODE",
+    assignmentStartHttpStatus: 0,
+    completedReloadStartCode: "UNRECOGNIZED_API_CODE",
+    completedReloadStartHttpStatus: 0,
+    gradeCategory: "GRADE_NOT_OBSERVED",
+    reloadStartCode: "UNRECOGNIZED_API_CODE",
+    reloadStartHttpStatus: 0,
+    reviewCategory: "REVIEW_NOT_OBSERVED",
+    reviewHttpStatus: 0,
+  };
+}
+
 function phase(fixtures, name) {
   fixtures.phase = name;
   console.log(`PHASE=${name}`);
@@ -423,6 +454,7 @@ async function createLearningFixtures(fixtures, runId) {
   const organizationId = await createOrganization(fixtures, runId);
   const teacher = await createActor({ fixtures, label: "teacher", organizationId, role: "teacher", runId });
   const student = await createActor({ fixtures, label: "student", organizationId, role: "student", runId });
+  const assignmentTitle = `Assignment Start ${runId}`;
   fixtures.student = student;
   fixtures.teacher = teacher;
 
@@ -561,7 +593,7 @@ async function createLearningFixtures(fixtures, runId) {
         source_record_id: bank.id,
         source_summary: { fixture_kind: FIXTURE_KIND, itemCount: 1 },
         status: "assigned",
-        title: `Assignment Start ${runId}`,
+        title: assignmentTitle,
       })
       .select("id")
       .single(),
@@ -583,6 +615,7 @@ async function createLearningFixtures(fixtures, runId) {
 
   return {
     assignmentId: assignment.id,
+    assignmentTitle,
     questionTitle: `Assignment Start Question ${runId}`,
     studentId: student.id,
   };
@@ -1110,13 +1143,15 @@ async function verifyPostconditions(fixtures, { assignmentId, studentId }) {
   );
 }
 
-async function runResumeSubmitJourney({ contract, fakeProvider, fixtures, page, server }) {
+async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fixtures, page, server }) {
   phase(fixtures, "ASSIGNMENT_PRACTICE_FIRST_START");
   const firstStartPromise = waitForAssignmentStart(page);
   await page.goto(`${server.origin}/practice?assignmentId=${encodeURIComponent(contract.assignmentId)}`, {
     waitUntil: "domcontentloaded",
   });
   const firstStart = await firstStartPromise;
+  diagnostics.assignmentStartHttpStatus = firstStart.status;
+  diagnostics.assignmentStartCode = firstStart.code;
   assert(
     firstStart.status === 200 && firstStart.code === "NONE" && firstStart.sessionId,
     "ASSIGNMENT_START_NON_2XX",
@@ -1132,6 +1167,8 @@ async function runResumeSubmitJourney({ contract, fakeProvider, fixtures, page, 
   const reloadStartPromise = waitForAssignmentStart(page);
   await page.reload({ waitUntil: "domcontentloaded" });
   const reloadStart = await reloadStartPromise;
+  diagnostics.reloadStartHttpStatus = reloadStart.status;
+  diagnostics.reloadStartCode = reloadStart.code;
   const reloadSessionConsistency =
     firstStart.sessionId && reloadStart.sessionId
       ? firstStart.sessionId === reloadStart.sessionId
@@ -1160,7 +1197,10 @@ async function runResumeSubmitJourney({ contract, fakeProvider, fixtures, page, 
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_REVIEW_OR_GRADE");
   const review = await reviewPromise;
+  diagnostics.reviewCategory = review.category;
+  diagnostics.reviewHttpStatus = review.status;
   const grade = await gradeObserver.read({ required: review.category !== "REVIEW_SUCCESS_EVENT" });
+  diagnostics.gradeCategory = grade;
   assert(
     (review.status === 200 && review.category === "REVIEW_SUCCESS_EVENT") ||
       grade === "GRADE_RESPONSE_2XX",
@@ -1196,27 +1236,75 @@ async function runResumeSubmitJourney({ contract, fakeProvider, fixtures, page, 
     "POSTCONDITION_FAILED",
   );
 
-  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD");
-  const completedReloadPromise = waitForAssignmentStart(page);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  const completedReload = await completedReloadPromise;
-  assert(
-    completedReload.status === 200 && completedReload.sessionId === firstStart.sessionId,
-    "ASSIGNMENT_RESUME_FAILED",
-  );
-  await page
-    .locator('[data-testid="practice-result-badge"][data-result="correct"]')
-    .waitFor({ timeout: 30_000 });
-  await verifyPostconditions(fixtures, contract);
+  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_ROUTE");
+  const completedReloadPromise = waitForAssignmentStart(page).catch(() => null);
+  await runBounded("COMPLETED_RELOAD_ROUTE_FAILED", async () => {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    assert(new URL(page.url()).pathname === "/practice", "COMPLETED_RELOAD_ROUTE_FAILED");
+  });
 
-  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETION_UI");
-  await page.goto(`${server.origin}/student/work`, { waitUntil: "domcontentloaded" });
-  await page.getByText("Completed", { exact: true }).waitFor({ timeout: 30_000 });
+  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_START");
+  const completedReload = await runBounded(
+    "COMPLETED_RELOAD_START_FAILED",
+    () => completedReloadPromise,
+  );
+  if (completedReload) {
+    diagnostics.completedReloadStartHttpStatus = completedReload.status;
+    diagnostics.completedReloadStartCode = completedReload.code;
+  }
+  assert(completedReload?.status === 200, "COMPLETED_RELOAD_START_FAILED");
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_SESSION_CONSISTENCY");
+  assert(completedReload.sessionId === firstStart.sessionId, "COMPLETED_SESSION_MISMATCH");
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RESULT_BADGE");
+  await runBounded("COMPLETED_RESULT_BADGE_TIMEOUT", () =>
+    page
+      .locator('[data-testid="practice-result-badge"][data-result="correct"]')
+      .waitFor({ timeout: 30_000 }),
+  );
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_STATE");
+  await runBounded("COMPLETED_ANSWER_STATE_FAILED", async () => {
+    const completedAnswerControl = page.getByPlaceholder("Enter your final answer");
+    await completedAnswerControl.waitFor({ timeout: 30_000 });
+    assert(await completedAnswerControl.isDisabled(), "COMPLETED_ANSWER_STATE_FAILED");
+    assert((await completedAnswerControl.inputValue()).length > 0, "COMPLETED_ANSWER_STATE_FAILED");
+  });
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_POSTCONDITIONS");
+  await runBounded("COMPLETED_POSTCONDITION_FAILED", () =>
+    verifyPostconditions(fixtures, contract),
+  );
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_MY_WORK_NAVIGATION");
+  await runBounded("MY_WORK_NAVIGATION_FAILED", async () => {
+    await page.goto(`${server.origin}/student/work`, { waitUntil: "domcontentloaded" });
+    assert(new URL(page.url()).pathname === "/student/work", "MY_WORK_NAVIGATION_FAILED");
+  });
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_MY_WORK_COMPLETED_SECTION");
+  const completedHeading = page.getByRole("heading", {
+    exact: true,
+    level: 2,
+    name: "Completed",
+  });
+  const completedSection = page.locator("section").filter({ has: completedHeading });
+  await runBounded("MY_WORK_COMPLETED_SECTION_NOT_FOUND", async () => {
+    await completedHeading.waitFor({ timeout: 30_000 });
+    assert(await completedSection.count() === 1, "MY_WORK_COMPLETED_SECTION_NOT_FOUND");
+  });
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_MY_WORK_COMPLETED_ASSIGNMENT");
+  await runBounded("MY_WORK_COMPLETED_ASSIGNMENT_NOT_FOUND", async () => {
+    await completedSection
+      .getByRole("heading", { exact: true, level: 3, name: contract.assignmentTitle })
+      .waitFor({ timeout: 30_000 });
+    await completedSection
+      .getByRole("link", { exact: true, name: "Review work" })
+      .waitFor({ timeout: 30_000 });
+  });
   fakeProvider.assertUsedSafely();
-  return {
-    gradeCategory: grade,
-    reviewCategory: review.category,
-  };
 }
 
 async function collectGeneratedIds(fixtures) {
@@ -1330,10 +1418,7 @@ async function runFullValidation() {
   let fixtures = null;
   let server = null;
   let failureCategory = "NONE";
-  let httpStatus = 0;
-  let responseCode = "NONE";
-  let reviewResultCategory = "REVIEW_NOT_OBSERVED";
-  let gradeResultCategory = "GRADE_NOT_OBSERVED";
+  const diagnostics = createJourneyDiagnostics();
   let succeeded = false;
   let cleanupPassed = true;
   let temporaryServerStopped = true;
@@ -1372,17 +1457,14 @@ async function runFullValidation() {
     const page = await context.newPage();
     await signInThroughBrowser(page, server.origin, fixtures.student);
 
-    const journey = await runResumeSubmitJourney({
+    await runResumeSubmitJourney({
       contract,
+      diagnostics,
       fakeProvider,
       fixtures,
       page,
       server,
     });
-    httpStatus = 200;
-    responseCode = "NONE";
-    reviewResultCategory = journey.reviewCategory;
-    gradeResultCategory = journey.gradeCategory;
     succeeded = true;
   } catch (error) {
     failureCategory = boundedFailureCategory(error);
@@ -1418,7 +1500,12 @@ async function runFullValidation() {
 
   if (succeeded && cleanupPassed && temporaryServerStopped && processEnvironmentCleared) {
     console.log("PASS assignment_practice_resume_submit_live_validation");
-    console.log("assignment_start_http_status=200");
+    console.log(`assignment_start_http_status=${diagnostics.assignmentStartHttpStatus}`);
+    console.log(`assignment_start_code=${diagnostics.assignmentStartCode}`);
+    console.log(`reload_start_http_status=${diagnostics.reloadStartHttpStatus}`);
+    console.log(`reload_start_code=${diagnostics.reloadStartCode}`);
+    console.log(`completed_reload_start_http_status=${diagnostics.completedReloadStartHttpStatus}`);
+    console.log(`completed_reload_start_code=${diagnostics.completedReloadStartCode}`);
     console.log("preference=PASS");
     console.log("session=PASS");
     console.log("round=PASS");
@@ -1427,8 +1514,9 @@ async function runFullValidation() {
     console.log("assignment_link=PASS");
     console.log("assignment_progress=PASS");
     console.log("session_reload=PASS");
-    console.log(`review_category=${reviewResultCategory}`);
-    console.log(`grade_category=${gradeResultCategory}`);
+    console.log(`review_category=${diagnostics.reviewCategory}`);
+    console.log(`review_http_status=${diagnostics.reviewHttpStatus}`);
+    console.log(`grade_category=${diagnostics.gradeCategory}`);
     console.log("cleanup=PASS");
     console.log("temporary_server_stopped=YES");
     console.log("process_environment_cleared=YES");
@@ -1437,11 +1525,16 @@ async function runFullValidation() {
 
   console.log("FAIL assignment_practice_resume_submit_live_validation");
   console.log(`failure_category=${failureCategory}`);
-  console.log(`assignment_start_http_status=${httpStatus || "NOT_OBSERVED"}`);
-  console.log(`assignment_start_code=${responseCode}`);
+  console.log(`assignment_start_http_status=${diagnostics.assignmentStartHttpStatus || "NOT_OBSERVED"}`);
+  console.log(`assignment_start_code=${diagnostics.assignmentStartCode}`);
+  console.log(`reload_start_http_status=${diagnostics.reloadStartHttpStatus || "NOT_OBSERVED"}`);
+  console.log(`reload_start_code=${diagnostics.reloadStartCode}`);
+  console.log(`completed_reload_start_http_status=${diagnostics.completedReloadStartHttpStatus || "NOT_OBSERVED"}`);
+  console.log(`completed_reload_start_code=${diagnostics.completedReloadStartCode}`);
   console.log(`preference_state=${fixtures?.preferenceState ?? "NOT_REACHED"}`);
-  console.log(`review_category=${reviewResultCategory}`);
-  console.log(`grade_category=${gradeResultCategory}`);
+  console.log(`review_category=${diagnostics.reviewCategory}`);
+  console.log(`review_http_status=${diagnostics.reviewHttpStatus || "NOT_OBSERVED"}`);
+  console.log(`grade_category=${diagnostics.gradeCategory}`);
   console.log(`cleanup=${cleanupPassed ? "PASS" : "FAIL"}`);
   console.log(`temporary_server_stopped=${temporaryServerStopped ? "YES" : "NO"}`);
   console.log(`process_environment_cleared=${processEnvironmentCleared ? "YES" : "NO"}`);
