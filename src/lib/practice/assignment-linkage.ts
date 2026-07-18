@@ -28,7 +28,10 @@ export const ASSIGNMENT_PRACTICE_START_ERROR_CODES = [
   "ASSIGNMENT_NOT_AVAILABLE",
   "ASSIGNMENT_CONTENT_UNAVAILABLE",
   "TAXONOMY_READ_FAILED",
-  "PREFERENCE_INITIALIZATION_FAILED",
+  "PREFERENCE_READ_FAILED",
+  "PREFERENCE_CREATE_FAILED",
+  "PREFERENCE_MERGE_READ_FAILED",
+  "PREFERENCE_MERGE_WRITE_FAILED",
   "SESSION_CREATE_FAILED",
   "ROUND_PERSISTENCE_FAILED",
   "ASSIGNMENT_LINKAGE_FAILED",
@@ -46,7 +49,10 @@ export const ASSIGNMENT_PRACTICE_START_STAGES = [
   "assignment_visibility",
   "assignment_content",
   "taxonomy",
-  "preference",
+  "preference_read",
+  "preference_create",
+  "preference_merge_read",
+  "preference_merge_write",
   "session",
   "round",
   "assignment_linkage",
@@ -368,15 +374,20 @@ export async function startAssignmentPractice({
     operation: () =>
       createPracticeSession({
         goal,
-        onInitializationFailure: (stage, cause) =>
-          assignmentPracticeStartError({
+        onInitializationFailure: (stage, cause) => {
+          const codeByStage = {
+            preference_create: "PREFERENCE_CREATE_FAILED",
+            preference_merge_read: "PREFERENCE_MERGE_READ_FAILED",
+            preference_merge_write: "PREFERENCE_MERGE_WRITE_FAILED",
+            preference_read: "PREFERENCE_READ_FAILED",
+            session: "SESSION_CREATE_FAILED",
+          } as const;
+          return assignmentPracticeStartError({
             cause,
-            code:
-              stage === "preference"
-                ? "PREFERENCE_INITIALIZATION_FAILED"
-                : "SESSION_CREATE_FAILED",
+            code: codeByStage[stage],
             stage,
-          }),
+          });
+        },
         supabase,
         title: assignment.title,
         userId,

@@ -31,7 +31,10 @@ const EXPECTED_CODES = Object.freeze([
   "ASSIGNMENT_NOT_AVAILABLE",
   "ASSIGNMENT_CONTENT_UNAVAILABLE",
   "TAXONOMY_READ_FAILED",
-  "PREFERENCE_INITIALIZATION_FAILED",
+  "PREFERENCE_READ_FAILED",
+  "PREFERENCE_CREATE_FAILED",
+  "PREFERENCE_MERGE_READ_FAILED",
+  "PREFERENCE_MERGE_WRITE_FAILED",
   "SESSION_CREATE_FAILED",
   "ROUND_PERSISTENCE_FAILED",
   "ASSIGNMENT_LINKAGE_FAILED",
@@ -79,12 +82,17 @@ for (const [code, stage] of [
   );
 }
 assert(
-  linkage.includes('stage === "preference"') &&
-    linkage.includes('"PREFERENCE_INITIALIZATION_FAILED"') &&
-    persistence.includes("onInitializationFailure") &&
-    persistence.includes('stage: "preference"') &&
-    persistence.includes('stage: "session"'),
-  "preference and session initialization failures must remain distinguishable",
+  linkage.includes('preference_read: "PREFERENCE_READ_FAILED"') &&
+    linkage.includes('preference_create: "PREFERENCE_CREATE_FAILED"') &&
+    linkage.includes('preference_merge_read: "PREFERENCE_MERGE_READ_FAILED"') &&
+    linkage.includes('preference_merge_write: "PREFERENCE_MERGE_WRITE_FAILED"') &&
+    persistence.includes('stage: "preference_read"') &&
+    persistence.includes('stage: "preference_create"') &&
+    persistence.includes('stage: "preference_merge_read"') &&
+    persistence.includes('stage: "preference_merge_write"') &&
+    persistence.includes('stage: "session"') &&
+    !linkage.includes('"PREFERENCE_INITIALIZATION_FAILED"'),
+  "preference operations and session creation must remain distinguishable",
 );
 
 assert(

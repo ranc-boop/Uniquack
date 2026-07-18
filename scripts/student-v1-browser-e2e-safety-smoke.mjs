@@ -37,7 +37,10 @@ const assignmentStartCodes = [
   "ASSIGNMENT_NOT_AVAILABLE",
   "ASSIGNMENT_CONTENT_UNAVAILABLE",
   "TAXONOMY_READ_FAILED",
-  "PREFERENCE_INITIALIZATION_FAILED",
+  "PREFERENCE_READ_FAILED",
+  "PREFERENCE_CREATE_FAILED",
+  "PREFERENCE_MERGE_READ_FAILED",
+  "PREFERENCE_MERGE_WRITE_FAILED",
   "SESSION_CREATE_FAILED",
   "ROUND_PERSISTENCE_FAILED",
   "ASSIGNMENT_LINKAGE_FAILED",
@@ -210,7 +213,10 @@ assert(
     assignmentLinkage.includes('code: "PRACTICE_START_FAILED"') &&
     assignmentLinkage.includes('stage: "start"') &&
     practicePersistence.includes("onInitializationFailure") &&
-    practicePersistence.includes('stage: "preference"') &&
+    practicePersistence.includes('stage: "preference_read"') &&
+    practicePersistence.includes('stage: "preference_create"') &&
+    practicePersistence.includes('stage: "preference_merge_read"') &&
+    practicePersistence.includes('stage: "preference_merge_write"') &&
     practicePersistence.includes('stage: "session"'),
   "typed assignment-start causes must be preserved internally and normalized to bounded categories",
 );

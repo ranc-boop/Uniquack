@@ -18,13 +18,19 @@ import {
   CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
   isCurrentPracticeQuestionSnapshot,
 } from "@/lib/practice/schema";
+import { initializePracticePreference } from "@/lib/practice/preference-initialization";
 import type { Json, PracticeSession } from "@/types/database";
 
 type SupabaseLike = {
   from: (...args: any[]) => any;
 };
 
-export type PracticeSessionInitializationFailureStage = "preference" | "session";
+export type PracticeSessionInitializationFailureStage =
+  | "preference_read"
+  | "preference_create"
+  | "preference_merge_read"
+  | "preference_merge_write"
+  | "session";
 
 type PracticeSessionInitializationFailureMapper = (
   stage: PracticeSessionInitializationFailureStage,
@@ -42,6 +48,22 @@ function throwPracticeSessionInitializationFailure({
 }): never {
   if (mapper) throw mapper(stage, cause);
   throw cause;
+}
+
+async function runPracticeSessionInitializationOperation<T>({
+  mapper,
+  operation,
+  stage,
+}: {
+  mapper?: PracticeSessionInitializationFailureMapper;
+  operation: () => PromiseLike<T> | T;
+  stage: PracticeSessionInitializationFailureStage;
+}): Promise<T> {
+  try {
+    return await operation();
+  } catch (cause) {
+    throwPracticeSessionInitializationFailure({ cause, mapper, stage });
+  }
 }
 
 const DEFAULT_TAG_CONTEXT: PracticeTagContext = {
@@ -429,41 +451,71 @@ async function loadPracticeCourseFramework({
 }
 
 export async function getOrCreatePracticePreference({
+  onInitializationFailure,
   supabase,
   userId,
 }: {
+  onInitializationFailure?: PracticeSessionInitializationFailureMapper;
   supabase: SupabaseLike;
   userId: string;
 }) {
-  const { data, error } = await supabase
-    .from("user_practice_preferences")
-    .select("user_id,long_term_preference,last_agent_updated_at,created_at,updated_at")
-    .eq("user_id", userId)
-    .maybeSingle();
+  type PracticePreference = {
+    last_agent_updated_at: string | null;
+    long_term_preference: string;
+    user_id: string;
+  };
 
-  if (error) {
-    throw new Error(error.message);
+  const read = async () => {
+    const { data, error } = await runPracticeSessionInitializationOperation({
+      mapper: onInitializationFailure,
+      operation: () => supabase
+        .from("user_practice_preferences")
+        .select("user_id,long_term_preference,last_agent_updated_at,created_at,updated_at")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      stage: "preference_read",
+    });
+
+    if (error) {
+      throwPracticeSessionInitializationFailure({
+        cause: error,
+        mapper: onInitializationFailure,
+        stage: "preference_read",
+      });
+    }
+
+    return data as PracticePreference | null;
+  };
+
+  const outcome = await initializePracticePreference<PracticePreference>({
+    create: async () => {
+      const inserted = await runPracticeSessionInitializationOperation({
+        mapper: onInitializationFailure,
+        operation: () => supabase
+          .from("user_practice_preferences")
+          .insert({ user_id: userId })
+          .select("user_id,long_term_preference,last_agent_updated_at")
+          .single(),
+        stage: "preference_create",
+      });
+
+      return {
+        data: inserted.data as PracticePreference | null,
+        error: inserted.error,
+      };
+    },
+    read,
+  });
+
+  if (outcome.error || !outcome.data) {
+    throwPracticeSessionInitializationFailure({
+      cause: outcome.error,
+      mapper: onInitializationFailure,
+      stage: "preference_create",
+    });
   }
 
-  if (data) {
-    return data as {
-      last_agent_updated_at: string | null;
-      long_term_preference: string;
-      user_id: string;
-    };
-  }
-
-  const inserted = await supabase
-    .from("user_practice_preferences")
-    .insert({ user_id: userId })
-    .select("user_id,long_term_preference,last_agent_updated_at")
-    .single();
-
-  if (inserted.error) {
-    throw new Error(inserted.error.message);
-  }
-
-  return inserted.data as {
+  return outcome.data as {
     last_agent_updated_at: string | null;
     long_term_preference: string;
     user_id: string;
@@ -657,17 +709,17 @@ export async function createPracticeSession({
   const trimmedGoal = goal.trim().slice(0, 500);
   const sessionTitle =
     (title?.trim() || trimmedGoal || "New practice session").slice(0, 160);
-  let preference: Awaited<ReturnType<typeof getOrCreatePracticePreference>>;
-  try {
-    await maybeQueuePreferenceMergeJob({ supabase, userId });
-    preference = await getOrCreatePracticePreference({ supabase, userId });
-  } catch (cause) {
-    throwPracticeSessionInitializationFailure({
-      cause,
-      mapper: onInitializationFailure,
-      stage: "preference",
-    });
-  }
+  const preference = await getOrCreatePracticePreference({
+    onInitializationFailure,
+    supabase,
+    userId,
+  });
+  await maybeQueuePreferenceMergeJob({
+    onInitializationFailure,
+    preference,
+    supabase,
+    userId,
+  });
   const courseFramework = courseFrameworkId
     ? await loadPracticeCourseFramework({ frameworkId: courseFrameworkId, supabase })
     : null;
@@ -717,72 +769,100 @@ export async function createPracticeSession({
 }
 
 async function maybeQueuePreferenceMergeJob({
+  onInitializationFailure,
+  preference,
   supabase,
   userId,
 }: {
+  onInitializationFailure?: PracticeSessionInitializationFailureMapper;
+  preference: Awaited<ReturnType<typeof getOrCreatePracticePreference>>;
   supabase: SupabaseLike;
   userId: string;
 }) {
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data: source, error: sourceError } = await supabase
-    .from("practice_sessions")
-    .select("id,goal,session_memory,session_state,session_thread_messages,outline_user_notes,next_user_notes,preference_merged_at,preference_dirty_at,last_activity_at")
-    .eq("user_id", userId)
-    .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
-    .lt("last_activity_at", cutoff)
-    .or("preference_merged_at.is.null,preference_dirty_at.not.is.null")
-    .order("last_activity_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: source, error: sourceError } =
+    await runPracticeSessionInitializationOperation({
+      mapper: onInitializationFailure,
+      operation: () => supabase
+        .from("practice_sessions")
+        .select("id,goal,session_memory,session_state,session_thread_messages,outline_user_notes,next_user_notes,preference_merged_at,preference_dirty_at,last_activity_at")
+        .eq("user_id", userId)
+        .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
+        .lt("last_activity_at", cutoff)
+        .or("preference_merged_at.is.null,preference_dirty_at.not.is.null")
+        .order("last_activity_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      stage: "preference_merge_read",
+    });
 
   if (sourceError) {
-    throw new Error(sourceError.message);
+    throwPracticeSessionInitializationFailure({
+      cause: sourceError,
+      mapper: onInitializationFailure,
+      stage: "preference_merge_read",
+    });
   }
 
   if (!source) {
     return null;
   }
 
-  const preference = await getOrCreatePracticePreference({ supabase, userId });
-  const existing = await supabase
-    .from("practice_preference_merge_jobs")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("source_session_id", source.id)
-    .in("status", ["pending", "running"])
-    .limit(1)
-    .maybeSingle();
+  const existing = await runPracticeSessionInitializationOperation({
+    mapper: onInitializationFailure,
+    operation: () => supabase
+      .from("practice_preference_merge_jobs")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("source_session_id", source.id)
+      .in("status", ["pending", "running"])
+      .limit(1)
+      .maybeSingle(),
+    stage: "preference_merge_read",
+  });
 
   if (existing.error) {
-    throw new Error(existing.error.message);
+    throwPracticeSessionInitializationFailure({
+      cause: existing.error,
+      mapper: onInitializationFailure,
+      stage: "preference_merge_read",
+    });
   }
 
   if (existing.data) {
     return existing.data;
   }
 
-  const inserted = await supabase
-    .from("practice_preference_merge_jobs")
-    .insert({
-      previous_preference: preference.long_term_preference,
-      source_session_id: source.id,
-      source_session_memory: source.session_memory,
-      source_summary: {
-        goal: source.goal,
-        outline_user_notes: source.outline_user_notes,
-        next_user_notes: source.next_user_notes,
-        session_state: source.session_state,
-        session_thread_messages: Array.isArray(source.session_thread_messages)
-          ? source.session_thread_messages.slice(-12)
-          : [],
-      } as unknown as Json,
-      user_id: userId,
-    })
-    .select("id")
-    .single();
+  const inserted = await runPracticeSessionInitializationOperation({
+    mapper: onInitializationFailure,
+    operation: () => supabase
+      .from("practice_preference_merge_jobs")
+      .insert({
+        previous_preference: preference.long_term_preference,
+        source_session_id: source.id,
+        source_session_memory: source.session_memory,
+        source_summary: {
+          goal: source.goal,
+          outline_user_notes: source.outline_user_notes,
+          next_user_notes: source.next_user_notes,
+          session_state: source.session_state,
+          session_thread_messages: Array.isArray(source.session_thread_messages)
+            ? source.session_thread_messages.slice(-12)
+            : [],
+        } as unknown as Json,
+        user_id: userId,
+      })
+      .select("id")
+      .single(),
+    stage: "preference_merge_write",
+  });
 
   if (inserted.error) {
-    throw new Error(inserted.error.message);
+    throwPracticeSessionInitializationFailure({
+      cause: inserted.error,
+      mapper: onInitializationFailure,
+      stage: "preference_merge_write",
+    });
   }
 
   return inserted.data;

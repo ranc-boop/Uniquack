@@ -824,7 +824,10 @@ export type PracticeWrongQuestion = {
 
 export type UserPracticePreference = {
   user_id: string;
+  organization_id: string | null;
   long_term_preference: string;
+  preferences: Json;
+  summary: string | null;
   last_agent_updated_at: string | null;
   created_at: string;
   updated_at: string;
@@ -832,6 +835,7 @@ export type UserPracticePreference = {
 
 export type PracticePreferenceMergeJob = {
   id: string;
+  organization_id: string | null;
   user_id: string;
   source_session_id: string | null;
   status: "pending" | "running" | "succeeded" | "failed";
