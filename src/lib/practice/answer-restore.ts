@@ -1,3 +1,5 @@
+import type { Json } from "@/types/database";
+
 export type RestoredPracticeAnswer = string | string[];
 
 type RestoredAttemptLike = {
@@ -11,6 +13,10 @@ type RestoredQuestionLike = {
   questionId?: string | null;
   sourceQuestionId?: string | null;
 };
+
+export function submittedPracticeAnswerForPersistence(value: Json): Json {
+  return value;
+}
 
 function jsonValueText(value: unknown) {
   if (typeof value === "string") return value;

@@ -87,7 +87,8 @@ assert(
 assert(
   reviewRouteSource.includes("persistQuestionReviewResults({") &&
     reviewRouteSource.includes("          attempts,") &&
-    persistenceSource.includes("answer: attempt.answer as unknown as Json") &&
+    persistenceSource.includes("answer: submittedPracticeAnswerForPersistence(attempt.answer)") &&
+    answerRestoreSource.includes("submittedPracticeAnswerForPersistence") &&
     !persistenceSource.includes("answer: review.studentAnswer"),
   "the original submitted answer must remain authoritative for persistence",
 );

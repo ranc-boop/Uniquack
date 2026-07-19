@@ -385,6 +385,7 @@ function createJourneyDiagnostics() {
     gradeCategory: "GRADE_NOT_OBSERVED",
     gradeHttpStatus: 0,
     persistedAttemptAnswer: "NOT_CHECKED",
+    persistedAttemptRow: "NOT_CHECKED",
     persistenceResult: "NOT_OBSERVED",
     reloadStartCode: "UNRECOGNIZED_API_CODE",
     reloadStartHttpStatus: 0,
@@ -393,6 +394,7 @@ function createJourneyDiagnostics() {
     reviewCategory: "REVIEW_NOT_OBSERVED",
     reviewHttpStatus: 0,
     sessionDetailAnswer: "NOT_CHECKED",
+    sessionDetailAttempt: "NOT_CHECKED",
   };
 }
 
@@ -402,10 +404,12 @@ function gradeHttpStatusLabel(diagnostics) {
 }
 
 function printCompletedAnswerDiagnostics(diagnostics) {
-  if (diagnostics.persistedAttemptAnswer !== "NOT_CHECKED") {
+  if (diagnostics.persistedAttemptRow !== "NOT_CHECKED") {
+    console.log(`persisted_attempt_row=${diagnostics.persistedAttemptRow}`);
     console.log(`persisted_attempt_answer=${diagnostics.persistedAttemptAnswer}`);
   }
-  if (diagnostics.sessionDetailAnswer !== "NOT_CHECKED") {
+  if (diagnostics.sessionDetailAttempt !== "NOT_CHECKED") {
+    console.log(`session_detail_attempt=${diagnostics.sessionDetailAttempt}`);
     console.log(`session_detail_answer=${diagnostics.sessionDetailAnswer}`);
   }
   if (diagnostics.completedAnswerControl !== "NOT_CHECKED") {
@@ -415,30 +419,65 @@ function printCompletedAnswerDiagnostics(diagnostics) {
   }
 }
 
-function hasPracticeAnswer(value) {
-  if (Array.isArray(value)) return value.some(hasPracticeAnswer);
-  if (typeof value === "string") return Boolean(value.trim());
-  return typeof value === "number" || typeof value === "boolean";
+function classifyPracticeAnswer(value) {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "string") return value.trim() ? "PRESENT" : "EMPTY";
+  if (typeof value === "number" || typeof value === "boolean") return "PRESENT";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (classifyPracticeAnswer(item) === "PRESENT") return "PRESENT";
+    }
+    return "EMPTY";
+  }
+  if (typeof value === "object") {
+    for (const key in value) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) return "PRESENT";
+    }
+  }
+  return "EMPTY";
 }
 
-async function sessionDetailHasAnswer(page, sessionId) {
-  return page.evaluate(async (path) => {
+function classifyPersistedAttemptRows(rows) {
+  if (!rows.length) return { answer: "NOT_CHECKED", row: "MISSING" };
+  if (rows.length > 1) return { answer: "NOT_CHECKED", row: "AMBIGUOUS" };
+  return { answer: classifyPracticeAnswer(rows[0].answer), row: "FOUND" };
+}
+
+async function sessionDetailAttemptDiagnostics(page, { roundId, sessionId, sourceQuestionId }) {
+  return page.evaluate(async ({ path, roundId: expectedRoundId, sourceQuestionId: expectedSourceId }) => {
     const response = await fetch(path, { credentials: "same-origin" });
-    if (!response.ok) return false;
+    if (!response.ok) return { answer: "NOT_CHECKED", attempt: "MISSING" };
     const payload = await response.json();
     const rounds = Array.isArray(payload?.session?.rounds) ? payload.session.rounds : [];
-    return rounds.some((round) => {
-      const attempts = Array.isArray(round?.attempts) ? round.attempts : [];
-      return attempts.some((attempt) => {
-        const value = attempt?.answer;
-        if (Array.isArray(value)) {
-          return value.some((item) => typeof item === "string" && Boolean(item.trim()));
+    const round = rounds.find((item) => item?.id === expectedRoundId);
+    const attempts = Array.isArray(round?.attempts) ? round.attempts : [];
+    const attempt = attempts.find((item) => item?.sourceQuestionId === expectedSourceId);
+    if (!attempt) return { answer: "NOT_CHECKED", attempt: "MISSING" };
+
+    const classify = (value) => {
+      if (value === null || value === undefined) return "NULL";
+      if (typeof value === "string") return value.trim() ? "PRESENT" : "EMPTY";
+      if (typeof value === "number" || typeof value === "boolean") return "PRESENT";
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (classify(item) === "PRESENT") return "PRESENT";
         }
-        if (typeof value === "string") return Boolean(value.trim());
-        return typeof value === "number" || typeof value === "boolean";
-      });
-    });
-  }, `/api/practice/sessions/${sessionId}`);
+        return "EMPTY";
+      }
+      if (typeof value === "object") {
+        for (const key in value) {
+          if (Object.prototype.hasOwnProperty.call(value, key)) return "PRESENT";
+        }
+      }
+      return "EMPTY";
+    };
+
+    return { answer: classify(attempt.answer), attempt: "FOUND" };
+  }, {
+    path: `/api/practice/sessions/${sessionId}`,
+    roundId,
+    sourceQuestionId,
+  });
 }
 
 function phase(fixtures, name) {
@@ -673,6 +712,7 @@ async function createLearningFixtures(fixtures, runId) {
   return {
     assignmentId: assignment.id,
     assignmentTitle,
+    questionId: question.id,
     questionTitle: `Assignment Start Question ${runId}`,
     studentId: student.id,
   };
@@ -1290,12 +1330,16 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
       .from("practice_attempts")
       .select("answer")
       .eq("session_id", firstStart.sessionId)
-      .eq("user_id", contract.studentId),
+      .eq("round_id", fixtures.roundIds[0])
+      .eq("user_id", contract.studentId)
+      .eq("source_question_id", contract.questionId)
+      .order("created_at", { ascending: false })
+      .limit(2),
     "POSTCONDITION_FAILED",
   ) ?? [];
-  diagnostics.persistedAttemptAnswer = persistedAttempts.some((attempt) =>
-    hasPracticeAnswer(attempt.answer)
-  ) ? "PRESENT" : "MISSING";
+  const persistedAttemptDiagnostics = classifyPersistedAttemptRows(persistedAttempts);
+  diagnostics.persistedAttemptRow = persistedAttemptDiagnostics.row;
+  diagnostics.persistedAttemptAnswer = persistedAttemptDiagnostics.answer;
   const progress = assertNoError(
     await fixtures.service
       .from("student_assignment_progress")
@@ -1332,9 +1376,13 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_SESSION_CONSISTENCY");
   assert(completedReload.sessionId === firstStart.sessionId, "COMPLETED_SESSION_MISMATCH");
 
-  diagnostics.sessionDetailAnswer = await sessionDetailHasAnswer(page, firstStart.sessionId)
-    ? "PRESENT"
-    : "MISSING";
+  const sessionDetailDiagnostics = await sessionDetailAttemptDiagnostics(page, {
+    roundId: fixtures.roundIds[0],
+    sessionId: firstStart.sessionId,
+    sourceQuestionId: contract.questionId,
+  });
+  diagnostics.sessionDetailAttempt = sessionDetailDiagnostics.attempt;
+  diagnostics.sessionDetailAnswer = sessionDetailDiagnostics.answer;
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RESULT_BADGE");
   await runBounded("COMPLETED_RESULT_BADGE_TIMEOUT", () =>

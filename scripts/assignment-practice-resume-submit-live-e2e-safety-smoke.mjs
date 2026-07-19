@@ -245,20 +245,38 @@ assert(
 
 const answerDiagnosticOutput = block(
   "function printCompletedAnswerDiagnostics",
-  "function hasPracticeAnswer",
+  "function classifyPracticeAnswer",
 );
 assert(
-  answerDiagnosticOutput.includes('persisted_attempt_answer=${diagnostics.persistedAttemptAnswer}') &&
+  answerDiagnosticOutput.includes('persisted_attempt_row=${diagnostics.persistedAttemptRow}') &&
+    answerDiagnosticOutput.includes('persisted_attempt_answer=${diagnostics.persistedAttemptAnswer}') &&
+    answerDiagnosticOutput.includes('session_detail_attempt=${diagnostics.sessionDetailAttempt}') &&
     answerDiagnosticOutput.includes('session_detail_answer=${diagnostics.sessionDetailAnswer}') &&
     answerDiagnosticOutput.includes('completed_answer_control=${diagnostics.completedAnswerControl}') &&
     answerDiagnosticOutput.includes('completed_answer_immutable=${diagnostics.completedAnswerImmutable}') &&
     answerDiagnosticOutput.includes('completed_answer_value=${diagnostics.completedAnswerValue}') &&
-    answerDiagnosticOutput.includes('persistedAttemptAnswer !== "NOT_CHECKED"') &&
-    answerDiagnosticOutput.includes('sessionDetailAnswer !== "NOT_CHECKED"') &&
+    answerDiagnosticOutput.includes('persistedAttemptRow !== "NOT_CHECKED"') &&
+    answerDiagnosticOutput.includes('sessionDetailAttempt !== "NOT_CHECKED"') &&
     answerDiagnosticOutput.includes('completedAnswerControl !== "NOT_CHECKED"') &&
     !answerDiagnosticOutput.includes("inputValue") &&
     !/(?:writeFile|appendFile|createWriteStream|createHash|JSON\.stringify)/.test(answerDiagnosticOutput),
   "completed answer output must expose only bounded state labels after validation starts",
+);
+
+const answerClassifier = block(
+  "function classifyPracticeAnswer",
+  "async function sessionDetailAttemptDiagnostics",
+);
+assert(
+  answerClassifier.includes('value === null || value === undefined') &&
+    answerClassifier.includes('return value.trim() ? "PRESENT" : "EMPTY"') &&
+    answerClassifier.includes('typeof value === "number" || typeof value === "boolean"') &&
+    answerClassifier.includes('return { answer: "NOT_CHECKED", row: "MISSING" }') &&
+    answerClassifier.includes('return { answer: "NOT_CHECKED", row: "AMBIGUOUS" }') &&
+    !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
+      answerClassifier,
+    ),
+  "answer and attempt-row classifiers must retain only bounded states",
 );
 
 const persistedAnswerDiagnostic = block(
@@ -267,8 +285,13 @@ const persistedAnswerDiagnostic = block(
 );
 assert(
   persistedAnswerDiagnostic.includes('.select("answer")') &&
-    persistedAnswerDiagnostic.includes("persistedAttempts.some") &&
-    persistedAnswerDiagnostic.includes("hasPracticeAnswer(attempt.answer)") &&
+    persistedAnswerDiagnostic.includes('.eq("session_id", firstStart.sessionId)') &&
+    persistedAnswerDiagnostic.includes('.eq("round_id", fixtures.roundIds[0])') &&
+    persistedAnswerDiagnostic.includes('.eq("user_id", contract.studentId)') &&
+    persistedAnswerDiagnostic.includes('.eq("source_question_id", contract.questionId)') &&
+    persistedAnswerDiagnostic.includes('.order("created_at", { ascending: false })') &&
+    persistedAnswerDiagnostic.includes("classifyPersistedAttemptRows(persistedAttempts)") &&
+    persistedAnswerDiagnostic.includes('diagnostics.persistedAttemptRow =') &&
     persistedAnswerDiagnostic.includes('diagnostics.persistedAttemptAnswer =') &&
     !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
       persistedAnswerDiagnostic,
@@ -276,22 +299,24 @@ assert(
   "persisted answer diagnostics must retain only a bounded presence state",
 );
 const sessionDetailDiagnostic = block(
-  "async function sessionDetailHasAnswer",
+  "async function sessionDetailAttemptDiagnostics",
   "function phase",
 );
 assert(
   sessionDetailDiagnostic.includes("response.ok") &&
     sessionDetailDiagnostic.includes("payload?.session?.rounds") &&
-    sessionDetailDiagnostic.includes("attempt?.answer") &&
+    sessionDetailDiagnostic.includes("item?.id === expectedRoundId") &&
+    sessionDetailDiagnostic.includes("item?.sourceQuestionId === expectedSourceId") &&
+    sessionDetailDiagnostic.includes("classify(attempt.answer)") &&
     !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
       sessionDetailDiagnostic,
     ),
-  "session-detail answer diagnostics must retain only a boolean",
+  "session-detail answer diagnostics must retain only bounded states",
 );
 assert(
-  completion.indexOf("diagnostics.sessionDetailAnswer =") <
+  completion.indexOf("diagnostics.sessionDetailAttempt =") <
       completion.indexOf("ASSIGNMENT_PRACTICE_COMPLETED_RESULT_BADGE") &&
-    journey.indexOf("diagnostics.persistedAttemptAnswer =") <
+    journey.indexOf("diagnostics.persistedAttemptRow =") <
       journey.indexOf("ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_ROUTE"),
   "persistence and session-detail answer presence must be captured before completed UI assertions",
 );
@@ -351,6 +376,9 @@ assert(
 );
 assert(
   clientSource.includes("currentAnswer={answers[question.id]}") &&
+    clientSource.includes("const answersRef = useRef<AnswersState>({})") &&
+    clientSource.includes("answersRef.current = nextAnswers") &&
+    clientSource.includes("answer: answersRef.current[question.id] ?? \"\"") &&
     questionCardSource.includes("answer={currentAnswer}") &&
     questionCardSource.includes('disabled={phase === "feedback"}') &&
     questionCardSource.includes("value={answerValue(answer)}"),

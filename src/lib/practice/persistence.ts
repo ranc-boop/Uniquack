@@ -18,7 +18,10 @@ import {
   CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
   isCurrentPracticeQuestionSnapshot,
 } from "@/lib/practice/schema";
-import { normalizePersistedPracticeAnswer } from "@/lib/practice/answer-restore";
+import {
+  normalizePersistedPracticeAnswer,
+  submittedPracticeAnswerForPersistence,
+} from "@/lib/practice/answer-restore";
 import { initializePracticePreference } from "@/lib/practice/preference-initialization";
 import type { Json, PracticeSession } from "@/types/database";
 
@@ -1133,7 +1136,7 @@ export async function persistQuestionReviewResults({
     const question = recommendationById.get(attempt.questionId);
 
     return {
-      answer: attempt.answer as unknown as Json,
+      answer: submittedPracticeAnswerForPersistence(attempt.answer),
       explanation: result?.explanation ?? review?.judgmentReason ?? null,
       grading_mode: result?.gradingMode ?? "manual",
       hint_count: attempt.hintCount ?? 0,

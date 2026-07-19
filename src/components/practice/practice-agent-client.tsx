@@ -336,6 +336,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   const [questionCount, setQuestionCount] = useState(4);
   const [recommendation, setRecommendation] = useState<PracticeRecommendResponse | null>(null);
   const [answers, setAnswers] = useState<AnswersState>({});
+  const answersRef = useRef<AnswersState>({});
   const [hints, setHints] = useState<HintsState>({});
   const [results, setResults] = useState<PracticeGradeResult[]>([]);
   const [review, setReview] = useState<PracticeReviewResponse | null>(null);
@@ -443,6 +444,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     }
 
     setRecommendation(restoredRecommendation);
+    answersRef.current = restoredAnswers;
     setAnswers(restoredAnswers);
     setHints(restoredHints);
     setResults(restoredResults);
@@ -515,6 +517,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   );
 
   function resetRoundState() {
+    answersRef.current = {};
     setAnswers({});
     setHints({});
     setResults([]);
@@ -736,7 +739,9 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   }
 
   function updateAnswer(questionId: string, value: string | string[]) {
-    setAnswers((current) => ({ ...current, [questionId]: value }));
+    const nextAnswers = { ...answersRef.current, [questionId]: value };
+    answersRef.current = nextAnswers;
+    setAnswers(nextAnswers);
   }
 
   function requestHint(question: PracticeRecommendation) {
@@ -746,7 +751,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
         const previousHints = hints[question.id] ?? [];
         const response = await jsonRequest<PracticeHintResponse>("/api/practice/hint", {
           body: JSON.stringify({
-            currentAnswer: answers[question.id] ?? "",
+            currentAnswer: answersRef.current[question.id] ?? "",
             hintLevel: previousHints.length + 1,
             previousHints,
             questionId: question.id,
@@ -765,7 +770,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     if (!recommendation || !activeSession || !recommendation.roundId) return;
 
     const attempts: PracticeAttemptInput[] = recommendation.recommendations.map((question) => ({
-      answer: answers[question.id] ?? "",
+      answer: answersRef.current[question.id] ?? "",
       hintCount: hints[question.id]?.length ?? 0,
       questionId: question.id,
     }));
