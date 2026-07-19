@@ -155,6 +155,37 @@ for (const phase of [
   assert(source.includes(`"${phase}"`), `browser harness is missing sanitized Practice phase ${phase}`);
 }
 
+for (const phase of [
+  "browser_self_study_navigation",
+  "browser_self_study_initial_state",
+  "browser_self_study_create_button",
+  "browser_self_study_create_api_wait",
+  "browser_self_study_create_api_status",
+  "browser_self_study_active_session_ui",
+  "browser_self_study_session_list",
+  "browser_self_study_reload",
+  "browser_self_study_reload_session_detail",
+  "browser_self_study_same_session",
+  "browser_self_study_zero_initial_rounds",
+  "browser_self_study_persistence",
+]) {
+  assert(source.includes(`"${phase}"`), `browser harness is missing self-study phase ${phase}`);
+}
+
+for (const category of [
+  "SELF_STUDY_SESSION_CREATE",
+  "SELF_STUDY_SESSION_LIST",
+  "SELF_STUDY_SESSION_DETAIL",
+  "PREFERENCE_MERGE",
+  "PRACTICE_PREFERENCES",
+  "PRACTICE_FRAMEWORKS",
+  "NEXT_INTERNAL",
+  "OTHER_APP_API",
+  "UNKNOWN",
+]) {
+  assert(source.includes(`"${category}"`), `browser harness is missing self-study request category ${category}`);
+}
+
 for (const category of [
   "NO_DOCUMENT_RESPONSE",
   "NAVIGATION_2XX",
@@ -410,6 +441,75 @@ assert(
   "assignment-start response parsing may retain one in-memory session ID but must expose only bounded diagnostics",
 );
 
+const selfStudyMatcherBlock = sourceBlock(
+  "function isSelfStudySessionRequest",
+  "function reviewCategoryFromStream",
+);
+const selfStudyJourneyBlock = sourceBlock(
+  "async function createAndResumePrivateSelfStudy",
+  "async function assertAssetAccessThroughBrowser",
+);
+const selfStudyDiagnosticsBlock = sourceBlock(
+  "function classifySelfStudyFailedRequest",
+  "function installSanitizedBrowserDiagnostics",
+);
+assert(
+  selfStudyMatcherBlock.includes('request.method() === method') &&
+    selfStudyMatcherBlock.includes('request.resourceType() === "fetch"') &&
+    selfStudyMatcherBlock.includes("url.origin === expectedOrigin") &&
+    selfStudyMatcherBlock.includes("url.pathname === SELF_STUDY_SESSION_PATH") &&
+    selfStudyMatcherBlock.includes('isSelfStudySessionRequest(response.request(), expectedOrigin, "POST")') &&
+    selfStudyMatcherBlock.includes('isSelfStudySessionRequest(request, expectedOrigin, "POST")'),
+  "self-study create waiter must match only the exact same-origin POST fetch",
+);
+assert(
+  selfStudyJourneyBlock.indexOf("waitForSelfStudySessionCreateOutcome") <
+      selfStudyJourneyBlock.indexOf("await createButton.click()") &&
+    selfStudyJourneyBlock.includes("createOutcome.httpStatus >= 200") &&
+    selfStudyJourneyBlock.includes("createOutcome.httpStatus < 300"),
+  "self-study create waiter must be installed before the single click and require a 2xx response",
+);
+assert(
+  selfStudyJourneyBlock.includes('name: "Ready when you are."') &&
+    selfStudyJourneyBlock.includes('button[aria-current="true"]') &&
+    !selfStudyJourneyBlock.includes('getByText("Practice session")') &&
+    !selfStudyJourneyBlock.includes(".first()") &&
+    !selfStudyJourneyBlock.includes('waitUntil: "networkidle"'),
+  "self-study empty UI must use the unique current contract without broad text, ordering, or networkidle proof",
+);
+assert(
+  selfStudyJourneyBlock.includes("reloadSession.activeSessionId === createOutcome.sessionId") &&
+    selfStudyJourneyBlock.includes('selfStudyReloadSession === "MATCH"') &&
+    !/console\.(?:log|warn|error)/.test(selfStudyJourneyBlock),
+  "created and reloaded session identities must be compared only in memory",
+);
+assert(
+  selfStudyJourneyBlock.includes('from("practice_sessions")') &&
+    selfStudyJourneyBlock.includes('from("practice_rounds")') &&
+    selfStudyJourneyBlock.includes('from("practice_round_questions")') &&
+    selfStudyJourneyBlock.includes('from("practice_attempts")') &&
+    selfStudyJourneyBlock.includes("sessionCount.count === 1") &&
+    selfStudyJourneyBlock.includes("roundCount.count === 0") &&
+    selfStudyJourneyBlock.includes("questionCount.count === 0") &&
+    selfStudyJourneyBlock.includes("attemptCount.count === 0"),
+  "self-study persistence must prove one empty session and no generated practice evidence",
+);
+assert(
+  selfStudyDiagnosticsBlock.includes('activeBrowserJourney = "SELF_STUDY"') &&
+    selfStudyDiagnosticsBlock.includes("failedRequestCategories = []") &&
+    selfStudyDiagnosticsBlock.includes("selfStudyFailedRequestCategories = []") &&
+    selfStudyDiagnosticsBlock.includes("classifySelfStudyFailedRequest") &&
+    source.includes('diagnostics.activeBrowserJourney === "SELF_STUDY"'),
+  "self-study request diagnostics must reset and classify only the active journey",
+);
+assert(
+  !selfStudyJourneyBlock.includes("fakeProvider.assertCredentialSelection") &&
+    !selfStudyJourneyBlock.includes("postRecommendationStream") &&
+    !selfStudyJourneyBlock.includes("PRACTICE_REVIEW_PATH") &&
+    !selfStudyJourneyBlock.includes("PRACTICE_GRADE_PATH"),
+  "empty self-study session validation must not require recommendation, review, grade, or Provider execution",
+);
+
 assert(
   source.includes("MAX_DIAGNOSTIC_CATEGORIES = 8") &&
     source.includes("target.length >= MAX_DIAGNOSTIC_CATEGORIES") &&
@@ -441,6 +541,14 @@ for (const key of [
   "grade_http_status",
   "pageerror_category",
   "failed_request_category",
+  "self_study_create_http_status",
+  "self_study_create_request",
+  "self_study_active_ui",
+  "self_study_session_list",
+  "self_study_reload_session",
+  "self_study_initial_round_count",
+  "self_study_failed_request_category",
+  "self_study_failed_request_count",
   "server_runtime_category",
   "cleanup",
 ]) {

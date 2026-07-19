@@ -35,6 +35,7 @@ const MAX_DIAGNOSTIC_CATEGORIES = 8;
 const PRACTICE_START_PATH = "/api/practice/assignments/start";
 const PRACTICE_REVIEW_PATH = "/api/practice/review";
 const PRACTICE_GRADE_PATH = "/api/practice/grade";
+const SELF_STUDY_SESSION_PATH = "/api/practice/sessions";
 const AUTH_FIXTURE_KIND = "student_v1_browser_e2e";
 const STALE_FIXTURE_SOURCE = "student_browser_e2e";
 const STALE_FIXTURE_PREFIX = "student-browser-";
@@ -141,6 +142,20 @@ const FAILED_REQUEST_CATEGORIES = new Set([
   "EXTERNAL",
   "UNKNOWN",
 ]);
+const SELF_STUDY_FAILED_REQUEST_CATEGORIES = new Set([
+  "SELF_STUDY_SESSION_CREATE",
+  "SELF_STUDY_SESSION_LIST",
+  "SELF_STUDY_SESSION_DETAIL",
+  "PREFERENCE_MERGE",
+  "PRACTICE_PREFERENCES",
+  "PRACTICE_FRAMEWORKS",
+  "NEXT_INTERNAL",
+  "OTHER_APP_API",
+  "UNKNOWN",
+]);
+const SELF_STUDY_CREATE_REQUEST_STATES = new Set(["OBSERVED", "NOT_OBSERVED", "FAILED"]);
+const SELF_STUDY_UI_STATES = new Set(["PRESENT", "MISSING"]);
+const SELF_STUDY_LIST_STATES = new Set(["FOUND", "MISSING"]);
 const SERVER_RUNTIME_CATEGORIES = new Set([
   "HTTP_4XX",
   "HTTP_5XX",
@@ -217,6 +232,7 @@ function addBoundedCategory(target, category, allowed) {
 
 function createSanitizedDiagnostics() {
   return {
+    activeBrowserJourney: "NONE",
     assignmentStartApi: "REQUEST_NOT_OBSERVED",
     assignmentStartCode: "UNRECOGNIZED_API_CODE",
     assignmentStartHttpStatus: 0,
@@ -238,6 +254,13 @@ function createSanitizedDiagnostics() {
       healthy: false,
       runtimeCategories: [],
     },
+    selfStudyActiveUi: "MISSING",
+    selfStudyCreateHttpStatus: 0,
+    selfStudyCreateRequest: "NOT_OBSERVED",
+    selfStudyFailedRequestCategories: [],
+    selfStudyInitialRoundCount: 0,
+    selfStudyReloadSession: "NOT_OBSERVED",
+    selfStudySessionList: "MISSING",
     temporaryServersStopped: false,
   };
 }
@@ -1521,6 +1544,103 @@ function isPracticePostRequest(request, expectedOrigin, pathname) {
   }
 }
 
+function isSelfStudySessionRequest(request, expectedOrigin, method) {
+  try {
+    const url = new URL(request.url());
+    return (
+      request.method() === method &&
+      request.resourceType() === "fetch" &&
+      url.origin === expectedOrigin &&
+      url.pathname === SELF_STUDY_SESSION_PATH
+    );
+  } catch {
+    return false;
+  }
+}
+
+function selfStudySessionPayload(payload) {
+  const session = payload && typeof payload === "object" ? payload.session : null;
+  const activeSession = payload && typeof payload === "object" ? payload.activeSession : null;
+  return {
+    activeSessionId: typeof activeSession?.id === "string" ? activeSession.id : null,
+    activeSessionRoundCount: Array.isArray(activeSession?.rounds) ? activeSession.rounds.length : 0,
+    sessionId: typeof session?.id === "string" ? session.id : null,
+    sessionRoundCount: Array.isArray(session?.rounds) ? session.rounds.length : 0,
+  };
+}
+
+function waitForSelfStudySessionCreateOutcome(page, expectedOrigin, timeoutMs = 30_000) {
+  return new Promise((resolveOutcome) => {
+    let settled = false;
+    const finish = (outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      page.off("response", onResponse);
+      page.off("requestfailed", onRequestFailed);
+      resolveOutcome(outcome);
+    };
+    const onResponse = async (response) => {
+      if (!isSelfStudySessionRequest(response.request(), expectedOrigin, "POST")) return;
+      const payload = await response.json().catch(() => null);
+      const normalized = selfStudySessionPayload(payload);
+      finish({
+        httpStatus: response.status(),
+        request: "OBSERVED",
+        sessionId: normalized.sessionId,
+        sessionRoundCount: normalized.sessionRoundCount,
+      });
+    };
+    const onRequestFailed = (request) => {
+      if (isSelfStudySessionRequest(request, expectedOrigin, "POST")) {
+        finish({ httpStatus: 0, request: "FAILED", sessionId: null, sessionRoundCount: 0 });
+      }
+    };
+    const timer = setTimeout(
+      () => finish({ httpStatus: 0, request: "NOT_OBSERVED", sessionId: null, sessionRoundCount: 0 }),
+      timeoutMs,
+    );
+    page.on("response", onResponse);
+    page.on("requestfailed", onRequestFailed);
+  });
+}
+
+function waitForSelfStudySessionListOutcome(page, expectedOrigin, timeoutMs = 30_000) {
+  return new Promise((resolveOutcome) => {
+    let settled = false;
+    const finish = (outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      page.off("response", onResponse);
+      page.off("requestfailed", onRequestFailed);
+      resolveOutcome(outcome);
+    };
+    const onResponse = async (response) => {
+      if (!isSelfStudySessionRequest(response.request(), expectedOrigin, "GET")) return;
+      const payload = await response.json().catch(() => null);
+      const normalized = selfStudySessionPayload(payload);
+      finish({
+        activeSessionId: normalized.activeSessionId,
+        activeSessionRoundCount: normalized.activeSessionRoundCount,
+        httpStatus: response.status(),
+        request: "OBSERVED",
+      });
+    };
+    const onRequestFailed = (request) => {
+      if (isSelfStudySessionRequest(request, expectedOrigin, "GET")) {
+        finish({ activeSessionId: null, activeSessionRoundCount: 0, httpStatus: 0, request: "FAILED" });
+      }
+    };
+    const timer = setTimeout(
+      () => finish({ activeSessionId: null, activeSessionRoundCount: 0, httpStatus: 0, request: "NOT_OBSERVED" }),
+      timeoutMs,
+    );
+    page.on("response", onResponse);
+    page.on("requestfailed", onRequestFailed);
+  });
+}
+
 function reviewCategoryFromStream(httpStatus, streamText) {
   if (httpStatus < 200 || httpStatus >= 300) return "REVIEW_ERROR_EVENT";
   const eventNames = [...String(streamText).matchAll(/(?:^|\n)event:\s*([a-z_]+)\s*(?=\r?\n|$)/gi)]
@@ -1637,11 +1757,50 @@ function classifyFailedRequest(request, expectedOrigin) {
   }
 }
 
+function classifySelfStudyFailedRequest(request, expectedOrigin) {
+  try {
+    const url = new URL(request.url());
+    if (url.origin !== expectedOrigin) return "UNKNOWN";
+    if (url.pathname === SELF_STUDY_SESSION_PATH) {
+      if (request.method() === "POST") return "SELF_STUDY_SESSION_CREATE";
+      if (request.method() === "GET") return "SELF_STUDY_SESSION_LIST";
+    }
+    if (url.pathname.startsWith(`${SELF_STUDY_SESSION_PATH}/`)) return "SELF_STUDY_SESSION_DETAIL";
+    if (url.pathname === "/api/practice/preferences/merge/run") return "PREFERENCE_MERGE";
+    if (url.pathname === "/api/practice/preferences") return "PRACTICE_PREFERENCES";
+    if (url.pathname === "/api/practice/course-frameworks") return "PRACTICE_FRAMEWORKS";
+    if (url.pathname.startsWith("/_next/")) return "NEXT_INTERNAL";
+    if (url.pathname.startsWith("/api/")) return "OTHER_APP_API";
+    return "UNKNOWN";
+  } catch {
+    return "UNKNOWN";
+  }
+}
+
+function resetSelfStudyDiagnostics(diagnostics) {
+  diagnostics.activeBrowserJourney = "SELF_STUDY";
+  diagnostics.failedRequestCategories = [];
+  diagnostics.selfStudyActiveUi = "MISSING";
+  diagnostics.selfStudyCreateHttpStatus = 0;
+  diagnostics.selfStudyCreateRequest = "NOT_OBSERVED";
+  diagnostics.selfStudyFailedRequestCategories = [];
+  diagnostics.selfStudyInitialRoundCount = 0;
+  diagnostics.selfStudyReloadSession = "NOT_OBSERVED";
+  diagnostics.selfStudySessionList = "MISSING";
+}
+
 function installSanitizedBrowserDiagnostics(page, diagnostics, expectedOrigin) {
   page.on("pageerror", (error) => {
     addBoundedCategory(diagnostics.pageErrorCategories, classifyPageError(error), PAGE_ERROR_CATEGORIES);
   });
   page.on("requestfailed", (request) => {
+    if (diagnostics.activeBrowserJourney === "SELF_STUDY") {
+      addBoundedCategory(
+        diagnostics.selfStudyFailedRequestCategories,
+        classifySelfStudyFailedRequest(request, expectedOrigin),
+        SELF_STUDY_FAILED_REQUEST_CATEGORIES,
+      );
+    }
     addBoundedCategory(
       diagnostics.failedRequestCategories,
       classifyFailedRequest(request, expectedOrigin),
@@ -2142,24 +2301,109 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
 }
 
 async function createAndResumePrivateSelfStudy(page, fixtures, fakeProvider) {
-  await page.goto(`${fixtures.server.origin}/practice`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "New practice session" }).click();
-  await page.getByText("Practice session").waitFor({ timeout: 30_000 });
+  resetSelfStudyDiagnostics(fixtures.diagnostics);
+
+  setHarnessPhase(fixtures, "browser_self_study_navigation");
+  const navigation = await page.goto(`${fixtures.server.origin}/practice`, { waitUntil: "domcontentloaded" });
+  assert(navigation?.status() === 200, "private_self_study_navigation_failed");
+
+  setHarnessPhase(fixtures, "browser_self_study_initial_state");
+  await page.locator("main").waitFor({ timeout: 30_000 });
   await assertSafePage(page, fixtures, fakeProvider);
 
-  const sessionsResult = await browserFetch(page, "/api/practice/sessions");
+  setHarnessPhase(fixtures, "browser_self_study_create_button");
+  const createButton = page.getByRole("button", { name: /New practice session/ });
+  await createButton.waitFor({ state: "visible", timeout: 30_000 });
+
+  setHarnessPhase(fixtures, "browser_self_study_create_api_wait");
+  const createOutcomePromise = waitForSelfStudySessionCreateOutcome(page, fixtures.server.origin);
+  await createButton.click();
+  const createOutcome = await createOutcomePromise;
+  fixtures.diagnostics.selfStudyCreateRequest = createOutcome.request;
+  fixtures.diagnostics.selfStudyCreateHttpStatus = createOutcome.httpStatus;
+
+  setHarnessPhase(fixtures, "browser_self_study_create_api_status");
+  assert(createOutcome.request === "OBSERVED", "private_self_study_create_request_not_observed");
+  assert(
+    createOutcome.httpStatus >= 200 && createOutcome.httpStatus < 300,
+    "private_self_study_create_non_2xx",
+  );
+  assert(createOutcome.sessionId, "private_self_study_session_not_created");
+  fixtures.selfStudySessionId = createOutcome.sessionId;
+  fixtures.diagnostics.selfStudyInitialRoundCount = createOutcome.sessionRoundCount;
+
+  setHarnessPhase(fixtures, "browser_self_study_active_session_ui");
+  await page
+    .getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
+    .waitFor({ timeout: 30_000 });
+  await page
+    .locator('button[aria-current="true"]')
+    .filter({ hasText: "New practice session" })
+    .waitFor({ timeout: 30_000 });
+  fixtures.diagnostics.selfStudyActiveUi = "PRESENT";
+
+  setHarnessPhase(fixtures, "browser_self_study_session_list");
+  const sessionsResult = await browserFetch(page, SELF_STUDY_SESSION_PATH);
   assert(sessionsResult.status === 200, "private_self_study_session_list_failed");
   assertSafeBrowserText(sessionsResult.text, fixtures, fakeProvider);
   const sessionsPayload = JSON.parse(sessionsResult.text);
   const selfStudy = (sessionsPayload.sessions ?? []).find(
-    (session) => session.id !== fixtures.assignmentSessionId && session.title === "New practice session",
+    (session) => session.id === createOutcome.sessionId,
   );
   assert(selfStudy?.id, "private_self_study_session_not_created");
-  fixtures.selfStudySessionId = selfStudy.id;
+  fixtures.diagnostics.selfStudySessionList = "FOUND";
 
-  await page.reload({ waitUntil: "networkidle" });
-  await page.getByText("Practice session").waitFor({ timeout: 30_000 });
+  setHarnessPhase(fixtures, "browser_self_study_reload");
+  const reloadSessionPromise = waitForSelfStudySessionListOutcome(page, fixtures.server.origin);
+  await page.reload({ waitUntil: "domcontentloaded" });
+
+  setHarnessPhase(fixtures, "browser_self_study_reload_session_detail");
+  const reloadSession = await reloadSessionPromise;
+  assert(
+    reloadSession.request === "OBSERVED" && reloadSession.httpStatus >= 200 && reloadSession.httpStatus < 300,
+    "private_self_study_reload_session_not_observed",
+  );
+
+  setHarnessPhase(fixtures, "browser_self_study_same_session");
+  fixtures.diagnostics.selfStudyReloadSession =
+    reloadSession.activeSessionId === createOutcome.sessionId ? "MATCH" : "MISMATCH";
+  assert(fixtures.diagnostics.selfStudyReloadSession === "MATCH", "private_self_study_reload_session_mismatch");
+  await page
+    .getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
+    .waitFor({ timeout: 30_000 });
+
+  setHarnessPhase(fixtures, "browser_self_study_zero_initial_rounds");
+  assert(
+    createOutcome.sessionRoundCount === 0 && reloadSession.activeSessionRoundCount === 0,
+    "private_self_study_initial_round_created",
+  );
+
+  setHarnessPhase(fixtures, "browser_self_study_persistence");
+  const [sessionCount, roundCount, questionCount, attemptCount] = await Promise.all([
+    fixtures.service
+      .from("practice_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("id", createOutcome.sessionId)
+      .eq("user_id", fixtures.studentA.id),
+    fixtures.service
+      .from("practice_rounds")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", createOutcome.sessionId),
+    fixtures.service
+      .from("practice_round_questions")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", createOutcome.sessionId),
+    fixtures.service
+      .from("practice_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", createOutcome.sessionId),
+  ]);
+  assert(!sessionCount.error && sessionCount.count === 1, "private_self_study_persistence_failed");
+  assert(!roundCount.error && roundCount.count === 0, "private_self_study_initial_round_created");
+  assert(!questionCount.error && questionCount.count === 0, "private_self_study_initial_question_created");
+  assert(!attemptCount.error && attemptCount.count === 0, "private_self_study_initial_attempt_created");
   await assertSafePage(page, fixtures, fakeProvider);
+  fixtures.diagnostics.activeBrowserJourney = "NONE";
 }
 
 async function assertAssetAccessThroughBrowser(page, fixtures, fakeProvider) {
@@ -2303,6 +2547,17 @@ async function cleanupFixtures(fixtures) {
   return { failureCount: failures.length, ok: failures.length === 0 };
 }
 
+function printSelfStudySuccessSummary(diagnostics) {
+  console.log(`self_study_create_http_status=${diagnostics.selfStudyCreateHttpStatus}`);
+  console.log(`self_study_create_request=${diagnostics.selfStudyCreateRequest}`);
+  console.log(`self_study_active_ui=${diagnostics.selfStudyActiveUi}`);
+  console.log(`self_study_session_list=${diagnostics.selfStudySessionList}`);
+  console.log(`self_study_reload_session=${diagnostics.selfStudyReloadSession}`);
+  console.log(`self_study_initial_round_count=${diagnostics.selfStudyInitialRoundCount}`);
+  console.log(`self_study_failed_request_category=${firstCategory(diagnostics.selfStudyFailedRequestCategories)}`);
+  console.log(`self_study_failed_request_count=${diagnostics.selfStudyFailedRequestCategories.length}`);
+}
+
 async function validateBrowserJourneys(fixtures, fakeProvider) {
   fixtures.phase = "browser_launch";
   console.log("PHASE=browser_launch");
@@ -2334,9 +2589,8 @@ async function validateBrowserJourneys(fixtures, fakeProvider) {
     await startResumeAndCompleteAssignment(studentAPage, fixtures, fakeProvider);
     console.log("PASS browser_assignment_practice_start_resume_completion_and_progress_persist");
 
-    fixtures.phase = "browser_private_self_study";
-    console.log("PHASE=browser_private_self_study");
     await createAndResumePrivateSelfStudy(studentAPage, fixtures, fakeProvider);
+    printSelfStudySuccessSummary(fixtures.diagnostics);
     console.log("PASS browser_private_self_study_create_and_resume");
 
     fixtures.phase = "browser_question_assets";
@@ -2433,6 +2687,49 @@ function printSanitizedFailureSummary(diagnostics, failureCategory) {
   );
   console.error(`pageerror_category=${firstCategory(diagnostics.pageErrorCategories)}`);
   console.error(`failed_request_category=${firstCategory(diagnostics.failedRequestCategories)}`);
+  console.error(
+    `self_study_create_http_status=${
+      Number.isInteger(diagnostics.selfStudyCreateHttpStatus) && diagnostics.selfStudyCreateHttpStatus > 0
+        ? diagnostics.selfStudyCreateHttpStatus
+        : "NOT_OBSERVED"
+    }`,
+  );
+  console.error(
+    `self_study_create_request=${allowedOr(
+      diagnostics.selfStudyCreateRequest,
+      SELF_STUDY_CREATE_REQUEST_STATES,
+      "NOT_OBSERVED",
+    )}`,
+  );
+  console.error(
+    `self_study_active_ui=${allowedOr(diagnostics.selfStudyActiveUi, SELF_STUDY_UI_STATES, "MISSING")}`,
+  );
+  console.error(
+    `self_study_session_list=${allowedOr(diagnostics.selfStudySessionList, SELF_STUDY_LIST_STATES, "MISSING")}`,
+  );
+  console.error(
+    `self_study_reload_session=${allowedOr(
+      diagnostics.selfStudyReloadSession,
+      RELOAD_SESSION_CONSISTENCY,
+      "NOT_OBSERVED",
+    )}`,
+  );
+  console.error(
+    `self_study_initial_round_count=${
+      Number.isInteger(diagnostics.selfStudyInitialRoundCount) &&
+      diagnostics.selfStudyInitialRoundCount >= 0 &&
+      diagnostics.selfStudyInitialRoundCount <= 99
+        ? diagnostics.selfStudyInitialRoundCount
+        : 0
+    }`,
+  );
+  console.error(`self_study_failed_request_category=${firstCategory(diagnostics.selfStudyFailedRequestCategories)}`);
+  console.error(
+    `self_study_failed_request_count=${Math.min(
+      diagnostics.selfStudyFailedRequestCategories.length,
+      MAX_DIAGNOSTIC_CATEGORIES,
+    )}`,
+  );
   console.error(`server_runtime_category=${primaryServerRuntimeCategory(diagnostics.server)}`);
   console.error(`pageerror_count=${Math.min(diagnostics.pageErrorCategories.length, MAX_DIAGNOSTIC_CATEGORIES)}`);
   console.error(`failed_request_count=${Math.min(diagnostics.failedRequestCategories.length, MAX_DIAGNOSTIC_CATEGORIES)}`);
