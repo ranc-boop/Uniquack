@@ -87,7 +87,15 @@ type AnswerTransitionDiagnostics = {
 type ApiError = { error?: string };
 type PracticeAgentClientProps = {
   assignmentId?: string | null;
+  testOnlyDelayedHydration?: boolean;
 };
+type TestOnlyDelayedHydrationStatus =
+  | "NOT_ENABLED"
+  | "NOT_REQUESTED"
+  | "REQUESTED"
+  | "REJECTED_AS_STALE"
+  | "APPLIED"
+  | "FAILED";
 type AssignmentPracticeStartPayload = {
   assignment: {
     dueAt: string | null;
@@ -364,7 +372,10 @@ function getServerClientReadySnapshot() {
   return false;
 }
 
-export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) {
+export function PracticeAgentClient({
+  assignmentId,
+  testOnlyDelayedHydration = false,
+}: PracticeAgentClientProps) {
   const clientReady = useSyncExternalStore(
     subscribeToClientReady,
     getClientReadySnapshot,
@@ -428,6 +439,11 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   const thinkingEndRef = useRef<HTMLDivElement | null>(null);
   const thinkingStartedAtRef = useRef<number | null>(null);
   const assignmentLaunchStartedRef = useRef(false);
+  const testOnlyDelayedHydrationStartedRef = useRef(false);
+  const [testOnlyDelayedHydrationStatus, setTestOnlyDelayedHydrationStatus] =
+    useState<TestOnlyDelayedHydrationStatus>(
+      testOnlyDelayedHydration ? "NOT_REQUESTED" : "NOT_ENABLED",
+    );
 
   function commitAnswers(
     nextAnswers: AnswersState,
@@ -582,6 +598,30 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     } else {
       setReview(null);
       setPhase("recommended");
+    }
+  }
+
+  async function runTestOnlyDelayedHydration() {
+    if (!testOnlyDelayedHydration || testOnlyDelayedHydrationStartedRef.current) return;
+    testOnlyDelayedHydrationStartedRef.current = true;
+    setTestOnlyDelayedHydrationStatus("REQUESTED");
+    try {
+      const payload = await jsonRequest<{ session: PracticeSessionDetail }>(
+        "/__test__/practice-answer-state/delayed-hydration",
+      );
+      const delayedRound = payload.session.rounds[payload.session.rounds.length - 1];
+      if (!delayedRound?.questions.length) {
+        setTestOnlyDelayedHydrationStatus("FAILED");
+        return;
+      }
+      restoreRoundFromHistory(delayedRound, payload.session, "SESSION_HYDRATION");
+      setTestOnlyDelayedHydrationStatus(
+        answerWriteMetaRef.current.lastWriteReason === "INPUT"
+          ? "REJECTED_AS_STALE"
+          : "APPLIED",
+      );
+    } catch {
+      setTestOnlyDelayedHydrationStatus("FAILED");
     }
   }
 
@@ -745,11 +785,11 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
 
     if (restoredSession && currentRound?.questions.length) {
       restoreRoundFromHistory(currentRound, restoredSession);
-      finishThinking(
-        currentRound.reviewSummary || resultsFromHistoryRound(currentRound).length
-          ? "feedback"
-          : "recommended",
+      const restoredCompleted = Boolean(
+        currentRound.reviewSummary || resultsFromHistoryRound(currentRound).length,
       );
+      finishThinking(restoredCompleted ? "feedback" : "recommended");
+      if (!restoredCompleted) void runTestOnlyDelayedHydration();
       return;
     }
 
@@ -758,6 +798,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     setIsTraceCollapsed(true);
     setGoal(payload.recommendation.roundGoal);
     finishThinking("recommended");
+    void runTestOnlyDelayedHydration();
   }
 
   useEffect(() => {
@@ -1304,6 +1345,9 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
       data-submitted-attempt={submissionGuardDiagnostics?.submittedAttempt}
       data-submitted-attempt-answer={submissionGuardDiagnostics?.submittedAttemptAnswer}
       data-submitted-attempt-count={submissionGuardDiagnostics?.submittedAttemptCount}
+      data-test-only-delayed-hydration={
+        testOnlyDelayedHydration ? testOnlyDelayedHydrationStatus : undefined
+      }
       data-testid="practice-submission-state"
       style={practiceGridStyle}
     >
