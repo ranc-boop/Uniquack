@@ -31,7 +31,7 @@ const compiledHelpers = ts.transpileModule(helperBlock.replace(/^export /gm, "")
   compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const helpers = Function(
-  `${compiledHelpers}; return { buildPracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
+  `${compiledHelpers}; return { buildPracticeSubmittedAttempts, evaluatePracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
 )();
 
 const currentQuestionId = "CURRENT_QUESTION_SYMBOLIC_ID";
@@ -54,10 +54,14 @@ const currentAttempts = helpers.buildPracticeSubmittedAttempts(
   Object.freeze({ ...authoritativeAnswers, [unrelatedQuestionId]: "" }),
   {},
 );
+const currentEvaluation = helpers.evaluatePracticeSubmittedAttempts(currentRound, currentAttempts);
 assert(
   currentAttempts.length === 1 &&
     currentAttempts[0].questionId === currentQuestionId &&
-    currentAttempts.every((attempt) => helpers.hasSubmittedPracticeAnswer(attempt.answer)),
+    currentAttempts.every((attempt) => helpers.hasSubmittedPracticeAnswer(attempt.answer)) &&
+    currentEvaluation.submittedAttempt === "FOUND" &&
+    currentEvaluation.submittedAttemptAnswer === "PRESENT" &&
+    currentEvaluation.missingRequiredAttemptCount === 0,
   "current-round answer must pass without inspecting an unrelated answer-map entry",
 );
 assert(
@@ -80,11 +84,14 @@ assert(
 );
 assert(
   submitBlock.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&
-    submitBlock.includes("buildPracticeSubmittedAttempts(") &&
-    submitBlock.indexOf("hasSubmittedPracticeAnswer(attempt.answer)") < submitBlock.indexOf("await postReviewStream({") &&
+    submitBlock.includes('const submittedAttempts: PracticeReviewRequest["attempts"] = buildPracticeSubmittedAttempts(') &&
+    submitBlock.includes("Object.freeze(submittedAttempts)") &&
+    submitBlock.includes("evaluatePracticeSubmittedAttempts(") &&
+    submitBlock.indexOf("evaluatePracticeSubmittedAttempts(") < submitBlock.indexOf("await postReviewStream({") &&
     submitBlock.includes("Your answer was not captured. Please review it and try again.") &&
     (submitBlock.match(/attempts: submittedAttempts/g) ?? []).length === 3 &&
-    !submitBlock.includes("reviewPayloadAttempts"),
+    !submitBlock.includes("reviewPayloadAttempts") &&
+    !submitBlock.includes("submittedAttemptInputs"),
   "valid Submit must reach review fetch while all downstream paths reuse one snapshot",
 );
 
@@ -109,10 +116,11 @@ const journeyBlock = sourceBlock(
   'phase(fixtures, "ASSIGNMENT_PRACTICE_RESULT_BADGE")',
 );
 assert(
-  journeyBlock.indexOf("observeReviewRequest(page, server.origin, contract.questionId)") <
+    journeyBlock.indexOf("observeReviewRequest(page, server.origin, contract.questionId)") <
       journeyBlock.indexOf("submitButton.click") &&
     journeyBlock.includes('diagnostics.submitClick = "HANDLED"') &&
-    journeyBlock.includes('diagnostics.clientMissingAnswerGuard = "BLOCKED"') &&
+    journeyBlock.includes('diagnostics.clientMissingAnswerGuard = submissionDiagnostics.guard') &&
+    journeyBlock.includes('diagnostics.clientMissingAnswerGuard === "BLOCKED"') &&
     journeyBlock.includes('diagnostics.reviewFetch = "NOT_INVOKED"') &&
     journeyBlock.includes('fail("REVIEW_REQUEST_NOT_EMITTED")') &&
     journeyBlock.includes('fail("REVIEW_REQUEST_OBSERVER_FAILED")'),
@@ -121,7 +129,7 @@ assert(
 
 for (const source of [cardSource, clientSource, helperSource, harnessSource]) {
   assert(
-    !/(?:console\.log|console\.error|console\.warn)\([^)]*(?:submitted|CURRENT_QUESTION|UNRELATED_QUESTION|ROUND_ROW)/.test(source),
+    !/(?:console\.log|console\.error|console\.warn)\([^)]*(?:CURRENT_QUESTION|UNRELATED_QUESTION|ROUND_ROW|answer\.length|JSON\.stringify\([^)]*answer)/.test(source),
     "diagnostics must never print answer or identity content",
   );
 }

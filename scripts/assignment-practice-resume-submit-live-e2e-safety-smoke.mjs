@@ -254,6 +254,11 @@ assert(
     answerDiagnosticOutput.includes('input_event=${diagnostics.inputEvent}') &&
     answerDiagnosticOutput.includes('client_answer_snapshot=${diagnostics.clientAnswerSnapshot}') &&
     answerDiagnosticOutput.includes('client_missing_answer_guard=${diagnostics.clientMissingAnswerGuard}') &&
+    answerDiagnosticOutput.includes('current_round_question_count=${diagnostics.currentRoundQuestionCount}') &&
+    answerDiagnosticOutput.includes('submitted_attempt_count=${diagnostics.submittedAttemptCount}') &&
+    answerDiagnosticOutput.includes('submitted_attempt=${diagnostics.submittedAttempt}') &&
+    answerDiagnosticOutput.includes('submitted_attempt_answer=${diagnostics.submittedAttemptAnswer}') &&
+    answerDiagnosticOutput.includes('missing_required_attempt_count=${diagnostics.missingRequiredAttemptCount}') &&
     answerDiagnosticOutput.includes('review_fetch=${diagnostics.reviewFetch}') &&
     answerDiagnosticOutput.includes('client_retry_message=${diagnostics.clientRetryMessage}') &&
     answerDiagnosticOutput.includes('client_error_category=${diagnostics.clientErrorCategory}') &&
@@ -291,7 +296,7 @@ assert(
     browserAnswerDiagnostic.indexOf('[data-answer-committed="yes"]') < browserAnswerDiagnostic.indexOf("answerControl.evaluate") &&
     browserAnswerDiagnostic.includes('diagnostics.clientHydration = "READY"') &&
     browserAnswerDiagnostic.includes('diagnostics.inputEvent = "COMMITTED"') &&
-    browserAnswerDiagnostic.includes('diagnostics.clientAnswerSnapshot = "PRESENT"') &&
+    !browserAnswerDiagnostic.includes("diagnostics.clientAnswerSnapshot") &&
     browserAnswerDiagnostic.includes('"CLIENT_HYDRATION_NOT_READY"') &&
     browserAnswerDiagnostic.includes('"ANSWER_INPUT_EVENT_NOT_COMMITTED"') &&
     browserAnswerDiagnostic.includes('"ANSWER_DOM_STATE_MISSING"') &&
@@ -317,11 +322,17 @@ assert(
       submitDiagnostic.indexOf("submitButton.click") &&
     submitDiagnostic.includes('diagnostics.submitClick = "HANDLED"') &&
     submitDiagnostic.includes('diagnostics.submitClick = "FAILED"') &&
+    submitDiagnostic.includes('readSubmissionGuardDiagnostics(page)') &&
+    submitDiagnostic.includes('"SUBMISSION_GUARD_DIAGNOSTICS_NOT_READY"') &&
+    submitDiagnostic.includes('diagnostics.currentRoundQuestionCount = submissionDiagnostics.currentRoundQuestionCount') &&
+    submitDiagnostic.includes('diagnostics.submittedAttemptCount = submissionDiagnostics.submittedAttemptCount') &&
+    submitDiagnostic.includes('diagnostics.missingRequiredAttemptCount = submissionDiagnostics.missingRequiredAttemptCount') &&
+    submitDiagnostic.includes('diagnostics.clientMissingAnswerGuard = submissionDiagnostics.guard') &&
     submitDiagnostic.includes('diagnostics.reviewFetch = "INVOKED"') &&
     submitDiagnostic.includes('diagnostics.reviewFetch = "NOT_INVOKED"') &&
-    submitDiagnostic.includes('diagnostics.clientMissingAnswerGuard = "PASSED"') &&
-    submitDiagnostic.includes('diagnostics.clientMissingAnswerGuard = "BLOCKED"') &&
+    submitDiagnostic.includes('diagnostics.clientMissingAnswerGuard = submissionDiagnostics.guard') &&
     submitDiagnostic.includes('diagnostics.clientRetryMessage = retryMessageVisible ? "VISIBLE" : "NOT_VISIBLE"') &&
+    submitDiagnostic.includes('retryMessageVisible && diagnostics.clientMissingAnswerGuard === "BLOCKED"') &&
     submitDiagnostic.includes('diagnostics.clientAnswerSnapshot !== "PRESENT"') &&
     submitDiagnostic.includes('fail("CLIENT_MISSING_ANSWER_GUARD_BLOCKED")') &&
     submitDiagnostic.includes('fail("CLIENT_ANSWER_SNAPSHOT_EMPTY")') &&
@@ -330,6 +341,23 @@ assert(
       submitDiagnostic,
     ),
   "Submit diagnostics must distinguish click, guard, request, and parser outcomes",
+);
+
+const submissionGuardReader = block(
+  "async function readSubmissionGuardDiagnostics",
+  "function phase",
+);
+assert(
+  submissionGuardReader.includes('[data-testid="practice-submission-state"][data-client-missing-answer-guard]') &&
+    submissionGuardReader.includes('data-current-round-question-count') &&
+    submissionGuardReader.includes('data-submitted-attempt-count') &&
+    submissionGuardReader.includes('data-submitted-attempt-answer') &&
+    submissionGuardReader.includes('data-missing-required-attempt-count') &&
+    submissionGuardReader.includes('value <= 100') &&
+    !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|inputValue)/.test(
+      submissionGuardReader,
+    ),
+  "submission guard reader must retain only bounded counts and allowlisted states",
 );
 
 const answerClassifier = block(

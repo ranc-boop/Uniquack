@@ -41,6 +41,67 @@ export function buildPracticeSubmittedAttempts(
   });
 }
 
+export function evaluatePracticeSubmittedAttempts(
+  questions: readonly Pick<PracticeRecommendation, "id">[],
+  attempts: readonly PracticeAttemptInput[],
+) {
+  const requiredQuestionKeys = questions.map(practiceAnswerKey);
+  const requiredQuestionKeySet = new Set(requiredQuestionKeys);
+  const attemptCountsByQuestionKey = new Map<string, number>();
+
+  for (const attempt of attempts) {
+    attemptCountsByQuestionKey.set(
+      attempt.questionId,
+      (attemptCountsByQuestionKey.get(attempt.questionId) ?? 0) + 1,
+    );
+  }
+
+  const hasAmbiguousAttempt =
+    requiredQuestionKeySet.size !== requiredQuestionKeys.length ||
+    attempts.some((attempt) => !requiredQuestionKeySet.has(attempt.questionId)) ||
+    requiredQuestionKeys.some(
+      (questionKey) => (attemptCountsByQuestionKey.get(questionKey) ?? 0) > 1,
+    );
+  const hasMissingAttempt =
+    !requiredQuestionKeys.length ||
+    requiredQuestionKeys.some(
+      (questionKey) => (attemptCountsByQuestionKey.get(questionKey) ?? 0) === 0,
+    );
+  const submittedAttempt = hasAmbiguousAttempt
+    ? "AMBIGUOUS" as const
+    : hasMissingAttempt
+      ? "MISSING" as const
+      : "FOUND" as const;
+  const attemptByQuestionKey = new Map(
+    attempts.map((attempt) => [attempt.questionId, attempt]),
+  );
+  const missingRequiredAttemptCount = requiredQuestionKeys.reduce((count, questionKey) => {
+    const matchingAttempt = attemptByQuestionKey.get(questionKey);
+    return count + (
+      matchingAttempt &&
+      (attemptCountsByQuestionKey.get(questionKey) ?? 0) === 1 &&
+      hasSubmittedPracticeAnswer(matchingAttempt.answer)
+        ? 0
+        : 1
+    );
+  }, 0);
+  const submittedAttemptAnswer = submittedAttempt === "AMBIGUOUS"
+    ? "NOT_CHECKED" as const
+    : submittedAttempt === "MISSING"
+      ? "MISSING" as const
+      : missingRequiredAttemptCount
+        ? "EMPTY" as const
+        : "PRESENT" as const;
+
+  return {
+    currentRoundQuestionCount: requiredQuestionKeys.length,
+    missingRequiredAttemptCount,
+    submittedAttempt,
+    submittedAttemptAnswer,
+    submittedAttemptCount: attempts.length,
+  };
+}
+
 export function formatDuration(ms: number) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);

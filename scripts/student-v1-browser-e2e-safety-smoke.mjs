@@ -139,6 +139,7 @@ for (const phase of [
   "browser_assignment_practice_answer_committed",
   "browser_assignment_practice_submit_button",
   "browser_assignment_practice_submit_click",
+  "browser_assignment_practice_guard_passed",
   "browser_assignment_practice_review_api_wait",
   "browser_assignment_practice_review_api_status",
   "browser_assignment_practice_grade_api_wait",
@@ -255,6 +256,20 @@ assert(
     practiceAnswerSequence.indexOf('[data-client-ready="yes"]') < practiceAnswerSequence.indexOf('answerControl.fill("2")') &&
     practiceAnswerSequence.indexOf('answerControl.fill("2")') < practiceAnswerSequence.indexOf('[data-answer-committed="yes"]'),
   "full browser harness must wait for client readiness and authoritative answer commit before Submit",
+);
+const practiceSubmitSequence = sourceBlock(
+  'setHarnessPhase(fixtures, "browser_assignment_practice_submit_button")',
+  'setHarnessPhase(fixtures, "browser_assignment_practice_review_api_wait")',
+);
+assert(
+  practiceSubmitSequence.includes("waitForReviewOutcome(page, fixtures.server.origin)") &&
+    practiceSubmitSequence.indexOf("waitForReviewOutcome(page, fixtures.server.origin)") <
+      practiceSubmitSequence.indexOf("submitButton.click()") &&
+    practiceSubmitSequence.includes('[data-testid="practice-submission-state"][data-client-missing-answer-guard="PASSED"]') &&
+    practiceSubmitSequence.indexOf("submitButton.click()") <
+      practiceSubmitSequence.indexOf('data-client-missing-answer-guard="PASSED"') &&
+    !/(?:console\.|inputValue|JSON\.stringify)/.test(practiceSubmitSequence),
+  "full browser harness must observe a passed guard and an emitted review request without answer logging",
 );
 assert(
   assignmentStartRoute.includes('"Unable to start assignment practice."') &&

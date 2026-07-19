@@ -34,7 +34,7 @@ const compiledHelpers = ts.transpileModule(helperBlock.replace(/^export /gm, "")
   },
 }).outputText;
 const helpers = Function(
-  `${compiledHelpers}; return { buildPracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
+  `${compiledHelpers}; return { buildPracticeSubmittedAttempts, evaluatePracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
 )();
 
 for (const value of ["submitted", 0, false, ["option"], { part: "structured" }]) {
@@ -74,10 +74,16 @@ const submittedAttempts = helpers.buildPracticeSubmittedAttempts(
   submittedAnswerSnapshot,
   {},
 );
+const submittedEvaluation = helpers.evaluatePracticeSubmittedAttempts(
+  [renderedQuestion],
+  submittedAttempts,
+);
 assert(
   submittedAttempts.length === 1 &&
     submittedAttempts[0].questionId === sourceQuestionId &&
-    helpers.hasSubmittedPracticeAnswer(submittedAttempts[0].answer),
+    helpers.hasSubmittedPracticeAnswer(submittedAttempts[0].answer) &&
+    submittedEvaluation.submittedAttempt === "FOUND" &&
+    submittedEvaluation.missingRequiredAttemptCount === 0,
   "immediate input followed by Submit must retain the canonical answer",
 );
 assert(
@@ -106,12 +112,15 @@ assert(
 );
 assert(
   submitBlock.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&
-    submitBlock.includes("buildPracticeSubmittedAttempts(") &&
+    submitBlock.includes('const submittedAttempts: PracticeReviewRequest["attempts"] = buildPracticeSubmittedAttempts(') &&
+    submitBlock.includes("Object.freeze(submittedAttempts)") &&
+    submitBlock.includes("evaluatePracticeSubmittedAttempts(") &&
     submitBlock.includes('const submittedAttempts: PracticeReviewRequest["attempts"]') &&
-    submitBlock.indexOf("hasSubmittedPracticeAnswer(attempt.answer)") < submitBlock.indexOf("await postReviewStream({") &&
+    submitBlock.indexOf("evaluatePracticeSubmittedAttempts(") < submitBlock.indexOf("await postReviewStream({") &&
     submitBlock.includes("Your answer was not captured. Please review it and try again.") &&
     (submitBlock.match(/attempts: submittedAttempts/g) ?? []).length === 3 &&
-    !submitBlock.includes("reviewPayloadAttempts"),
+    !submitBlock.includes("reviewPayloadAttempts") &&
+    !submitBlock.includes("submittedAttemptInputs"),
   "review, fallback, and client handling must share one guarded submitted-attempt snapshot",
 );
 
@@ -140,7 +149,7 @@ assert(
 
 for (const source of [clientSource, helperSource, questionCardSource, harnessSource]) {
   assert(
-    !/(?:console\.log|console\.error|console\.warn)\([^)]*(?:submitted|SOURCE_QUESTION|RENDERED_QUESTION|ROUND_QUESTION|ATTEMPT_QUESTION)/.test(source),
+    !/(?:console\.log|console\.error|console\.warn)\([^)]*(?:SOURCE_QUESTION|RENDERED_QUESTION|ROUND_QUESTION|ATTEMPT_QUESTION|answer\.length|JSON\.stringify\([^)]*answer)/.test(source),
     "answer and identity content must never be logged",
   );
 }

@@ -2006,6 +2006,11 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
   setHarnessPhase(fixtures, "browser_assignment_practice_submit_click");
   await submitButton.click();
 
+  setHarnessPhase(fixtures, "browser_assignment_practice_guard_passed");
+  await page
+    .locator('[data-testid="practice-submission-state"][data-client-missing-answer-guard="PASSED"]')
+    .waitFor({ timeout: 30_000 });
+
   setHarnessPhase(fixtures, "browser_assignment_practice_review_api_wait");
   const reviewResult = await reviewOutcome;
   fixtures.diagnostics.reviewCategory = reviewResult.category;

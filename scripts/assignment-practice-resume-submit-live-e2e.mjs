@@ -103,6 +103,7 @@ const ALLOWED_FAILURE_CATEGORIES = new Set([
   "ANSWER_DOM_STATE_MISSING",
   "CLIENT_ANSWER_SNAPSHOT_EMPTY",
   "CLIENT_MISSING_ANSWER_GUARD_BLOCKED",
+  "SUBMISSION_GUARD_DIAGNOSTICS_NOT_READY",
   "REVIEW_OR_GRADE_FAILED",
   "REVIEW_REQUEST_ANSWER_EMPTY",
   "REVIEW_REQUEST_ATTEMPT_AMBIGUOUS",
@@ -404,6 +405,8 @@ function createJourneyDiagnostics() {
     gradeCategory: "GRADE_NOT_OBSERVED",
     gradeHttpStatus: 0,
     inputEvent: "NOT_COMMITTED",
+    currentRoundQuestionCount: null,
+    missingRequiredAttemptCount: null,
     persistedAttemptAnswer: "NOT_CHECKED",
     persistedAttemptRow: "NOT_CHECKED",
     persistenceResult: "NOT_OBSERVED",
@@ -421,6 +424,9 @@ function createJourneyDiagnostics() {
     sessionDetailAttempt: "NOT_CHECKED",
     submitButton: "MISSING",
     submitClick: "FAILED",
+    submittedAttempt: "NOT_OBSERVED",
+    submittedAttemptAnswer: "NOT_CHECKED",
+    submittedAttemptCount: null,
   };
 }
 
@@ -436,6 +442,13 @@ function printCompletedAnswerDiagnostics(diagnostics) {
   console.log(`input_event=${diagnostics.inputEvent}`);
   console.log(`client_answer_snapshot=${diagnostics.clientAnswerSnapshot}`);
   console.log(`client_missing_answer_guard=${diagnostics.clientMissingAnswerGuard}`);
+  if (diagnostics.currentRoundQuestionCount !== null) {
+    console.log(`current_round_question_count=${diagnostics.currentRoundQuestionCount}`);
+    console.log(`submitted_attempt_count=${diagnostics.submittedAttemptCount}`);
+    console.log(`submitted_attempt=${diagnostics.submittedAttempt}`);
+    console.log(`submitted_attempt_answer=${diagnostics.submittedAttemptAnswer}`);
+    console.log(`missing_required_attempt_count=${diagnostics.missingRequiredAttemptCount}`);
+  }
   console.log(`review_fetch=${diagnostics.reviewFetch}`);
   console.log(`client_retry_message=${diagnostics.clientRetryMessage}`);
   console.log(`client_error_category=${diagnostics.clientErrorCategory}`);
@@ -484,6 +497,47 @@ function classifyPersistedAttemptRows(rows) {
   if (!rows.length) return { answer: "NOT_CHECKED", row: "MISSING" };
   if (rows.length > 1) return { answer: "NOT_CHECKED", row: "AMBIGUOUS" };
   return { answer: classifyPracticeAnswer(rows[0].answer), row: "FOUND" };
+}
+
+async function readSubmissionGuardDiagnostics(page) {
+  const state = page.locator(
+    '[data-testid="practice-submission-state"][data-client-missing-answer-guard]',
+  );
+  await state.waitFor({ timeout: 30_000 });
+  const diagnostics = await state.evaluate((element) => {
+    const smallCount = (name) => {
+      const raw = element.getAttribute(name);
+      if (!raw || !/^\d{1,3}$/.test(raw)) return null;
+      const value = Number(raw);
+      return Number.isSafeInteger(value) && value >= 0 && value <= 100 ? value : null;
+    };
+    const currentRoundQuestionCount = smallCount("data-current-round-question-count");
+    const submittedAttemptCount = smallCount("data-submitted-attempt-count");
+    const missingRequiredAttemptCount = smallCount("data-missing-required-attempt-count");
+    const submittedAttempt = element.getAttribute("data-submitted-attempt");
+    const submittedAttemptAnswer = element.getAttribute("data-submitted-attempt-answer");
+    const guard = element.getAttribute("data-client-missing-answer-guard");
+    if (
+      currentRoundQuestionCount === null ||
+      submittedAttemptCount === null ||
+      missingRequiredAttemptCount === null ||
+      !["FOUND", "MISSING", "AMBIGUOUS"].includes(submittedAttempt ?? "") ||
+      !["PRESENT", "EMPTY", "MISSING", "NOT_CHECKED"].includes(submittedAttemptAnswer ?? "") ||
+      !["PASSED", "BLOCKED"].includes(guard ?? "")
+    ) {
+      return null;
+    }
+    return {
+      currentRoundQuestionCount,
+      guard,
+      missingRequiredAttemptCount,
+      submittedAttempt,
+      submittedAttemptAnswer,
+      submittedAttemptCount,
+    };
+  });
+  if (!diagnostics) throw new Error("bounded submission diagnostics unavailable");
+  return diagnostics;
 }
 
 async function sessionDetailAttemptDiagnostics(page, { roundId, sessionId, sourceQuestionId }) {
@@ -1452,7 +1506,6 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
       .waitFor({ timeout: 30_000 }),
   );
   diagnostics.inputEvent = "COMMITTED";
-  diagnostics.clientAnswerSnapshot = "PRESENT";
   const browserAnswerPresent = await answerControl.evaluate((element) =>
     (element.tagName === "TEXTAREA" || element.tagName === "INPUT") &&
     typeof element.value === "string" &&
@@ -1482,6 +1535,23 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
     fail("SUBMIT_BUTTON_INTERACTION_FAILED");
   }
 
+  const submissionDiagnostics = await runBounded(
+    "SUBMISSION_GUARD_DIAGNOSTICS_NOT_READY",
+    () => readSubmissionGuardDiagnostics(page),
+  );
+  diagnostics.currentRoundQuestionCount = submissionDiagnostics.currentRoundQuestionCount;
+  diagnostics.submittedAttemptCount = submissionDiagnostics.submittedAttemptCount;
+  diagnostics.submittedAttempt = submissionDiagnostics.submittedAttempt;
+  diagnostics.submittedAttemptAnswer = submissionDiagnostics.submittedAttemptAnswer;
+  diagnostics.missingRequiredAttemptCount = submissionDiagnostics.missingRequiredAttemptCount;
+  diagnostics.clientMissingAnswerGuard = submissionDiagnostics.guard;
+  diagnostics.clientAnswerSnapshot = submissionDiagnostics.submittedAttemptAnswer === "PRESENT"
+    ? "PRESENT"
+    : submissionDiagnostics.submittedAttemptAnswer === "EMPTY" ||
+        submissionDiagnostics.submittedAttemptAnswer === "MISSING"
+      ? "EMPTY"
+      : "NOT_OBSERVED";
+
   phase(fixtures, "ASSIGNMENT_PRACTICE_CLIENT_SUBMIT_OUTCOME");
   const requestObservation = await reviewRequestObserver.read();
   diagnostics.reviewRequestCategory = requestObservation.category;
@@ -1496,11 +1566,10 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
 
   if (requestObservation.category === "REQUEST_NOT_EMITTED") {
     diagnostics.reviewFetch = "NOT_INVOKED";
-    if (retryMessageVisible) {
+    if (retryMessageVisible && diagnostics.clientMissingAnswerGuard === "BLOCKED") {
       if (diagnostics.clientAnswerSnapshot !== "PRESENT") {
         diagnostics.clientAnswerSnapshot = "EMPTY";
       }
-      diagnostics.clientMissingAnswerGuard = "BLOCKED";
       fail("CLIENT_MISSING_ANSWER_GUARD_BLOCKED");
     }
     diagnostics.clientErrorCategory = "UNKNOWN";
@@ -1513,7 +1582,6 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   }
 
   diagnostics.reviewFetch = "INVOKED";
-  diagnostics.clientMissingAnswerGuard = "PASSED";
   diagnostics.clientAnswerSnapshot = requestObservation.answer;
   if (requestObservation.category === "REQUEST_BODY_UNREADABLE") {
     fail("REVIEW_REQUEST_BODY_UNREADABLE");

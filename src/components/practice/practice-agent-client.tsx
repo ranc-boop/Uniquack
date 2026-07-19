@@ -21,8 +21,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   buildPracticeSubmittedAttempts,
   clearLegacyPracticeStorage,
+  evaluatePracticeSubmittedAttempts,
   formatDuration,
-  hasSubmittedPracticeAnswer,
   practiceAnswerKey,
   readPendingPracticeRound,
   recommendationFromHistoryQuestion,
@@ -382,6 +382,9 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [submissionGuardDiagnostics, setSubmissionGuardDiagnostics] = useState<ReturnType<
+    typeof evaluatePracticeSubmittedAttempts
+  > & { guard: "BLOCKED" | "PASSED" } | null>(null);
   const [thinkingElapsedMs, setThinkingElapsedMs] = useState(0);
   const [lastThinkingDurationMs, setLastThinkingDurationMs] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -537,6 +540,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   );
 
   function resetRoundState() {
+    setSubmissionGuardDiagnostics(null);
     answersRef.current = {};
     setAnswers({});
     setHints({});
@@ -791,16 +795,11 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     if (!recommendation || !activeSession || !recommendation.roundId) return;
 
     const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current });
-    const submittedAttemptInputs = buildPracticeSubmittedAttempts(
+    const submittedAttempts: PracticeReviewRequest["attempts"] = buildPracticeSubmittedAttempts(
       recommendation.recommendations,
       submittedAnswerSnapshot,
       hints,
-    );
-    if (submittedAttemptInputs.some((attempt) => !hasSubmittedPracticeAnswer(attempt.answer))) {
-      setError("Your answer was not captured. Please review it and try again.");
-      return;
-    }
-    const submittedAttempts: PracticeReviewRequest["attempts"] = submittedAttemptInputs.map((attempt) => {
+    ).map((attempt) => {
       const recommended = recommendation.recommendations.find((item) => item.id === attempt.questionId);
       return {
         ...attempt,
@@ -816,6 +815,22 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
         title: recommended?.title,
       };
     });
+    Object.freeze(submittedAttempts);
+    const submissionEvaluation = evaluatePracticeSubmittedAttempts(
+      recommendation.recommendations,
+      submittedAttempts,
+    );
+    const guardBlocked =
+      submissionEvaluation.submittedAttempt !== "FOUND" ||
+      submissionEvaluation.missingRequiredAttemptCount > 0;
+    setSubmissionGuardDiagnostics({
+      ...submissionEvaluation,
+      guard: guardBlocked ? "BLOCKED" : "PASSED",
+    });
+    if (guardBlocked) {
+      setError("Your answer was not captured. Please review it and try again.");
+      return;
+    }
 
     setError(null);
     thinkingStartedAtRef.current = Date.now();
@@ -1155,6 +1170,13 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   return (
     <div
       className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
+      data-client-missing-answer-guard={submissionGuardDiagnostics?.guard}
+      data-current-round-question-count={submissionGuardDiagnostics?.currentRoundQuestionCount}
+      data-missing-required-attempt-count={submissionGuardDiagnostics?.missingRequiredAttemptCount}
+      data-submitted-attempt={submissionGuardDiagnostics?.submittedAttempt}
+      data-submitted-attempt-answer={submissionGuardDiagnostics?.submittedAttemptAnswer}
+      data-submitted-attempt-count={submissionGuardDiagnostics?.submittedAttemptCount}
+      data-testid="practice-submission-state"
       style={practiceGridStyle}
     >
       <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
