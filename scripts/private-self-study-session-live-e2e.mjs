@@ -64,6 +64,9 @@ const ALLOWED_FAILURE_CATEGORIES = new Set([
   "SELF_STUDY_CREATE_REQUEST_FAILED",
   "SELF_STUDY_CREATE_NON_2XX",
   "SELF_STUDY_ACTIVE_UI_MISSING",
+  "SELF_STUDY_PERSISTENCE_MISSING",
+  "SELF_STUDY_ACTIVE_SESSION_MISMATCH",
+  "SELF_STUDY_LIST_CONTAINER_MISSING",
   "SELF_STUDY_SESSION_LIST_MISSING",
   "SELF_STUDY_RELOAD_SESSION_MISMATCH",
   "SELF_STUDY_PROVIDER_CALL_DETECTED",
@@ -521,12 +524,48 @@ function isSessionRequest(request, expectedOrigin, method) {
 function sessionPayload(payload) {
   const session = payload && typeof payload === "object" ? payload.session : null;
   const active = payload && typeof payload === "object" ? payload.activeSession : null;
+  const sessions = payload && typeof payload === "object" && Array.isArray(payload.sessions)
+    ? payload.sessions
+    : [];
   return {
     activeId: typeof active?.id === "string" ? active.id : null,
     activeRoundCount: Array.isArray(active?.rounds) ? active.rounds.length : 0,
     sessionId: typeof session?.id === "string" ? session.id : null,
+    sessionIds: sessions
+      .map((item) => (typeof item?.id === "string" ? item.id : null))
+      .filter(Boolean),
     sessionRoundCount: Array.isArray(session?.rounds) ? session.rounds.length : 0,
   };
+}
+
+async function readSessionListThroughBrowser(page) {
+  return page.evaluate(async (path) => {
+    try {
+      const response = await fetch(path, { credentials: "same-origin" });
+      const payload = await response.json().catch(() => null);
+      const active = payload && typeof payload === "object" ? payload.activeSession : null;
+      const sessions = payload && typeof payload === "object" && Array.isArray(payload.sessions)
+        ? payload.sessions
+        : [];
+      return {
+        activeId: typeof active?.id === "string" ? active.id : null,
+        activeRoundCount: Array.isArray(active?.rounds) ? active.rounds.length : 0,
+        request: "OBSERVED",
+        sessionIds: sessions
+          .map((item) => (typeof item?.id === "string" ? item.id : null))
+          .filter(Boolean),
+        status: response.status,
+      };
+    } catch {
+      return {
+        activeId: null,
+        activeRoundCount: 0,
+        request: "FAILED",
+        sessionIds: [],
+        status: 0,
+      };
+    }
+  }, SESSION_PATH);
 }
 
 function waitForSessionOutcome(page, expectedOrigin, method, timeoutMs = 30_000) {
@@ -576,17 +615,16 @@ function observeProviderBackedBrowserRequests(page, expectedOrigin, state) {
   });
 }
 
-async function runBrowserJourney(page, server, state) {
+async function runBrowserJourney(page, server, fixtures, state) {
   const initialListPromise = waitForSessionOutcome(page, server.origin, "GET");
   const navigation = await page.goto(`${server.origin}/practice`, { waitUntil: "domcontentloaded" });
   assert(navigation?.status() === 200, "SELF_STUDY_NAVIGATION_FAILED");
   const initialList = await initialListPromise;
-  assert(initialList.request === "OBSERVED" && initialList.status === 200, "SELF_STUDY_SESSION_LIST_MISSING");
+  assert(initialList.request === "OBSERVED" && initialList.status === 200, "SELF_STUDY_NAVIGATION_FAILED");
 
   const createButton = page.getByRole("button", { name: /New practice session/ });
   await createButton.waitFor({ state: "visible", timeout: 30_000 });
   const createPromise = waitForSessionOutcome(page, server.origin, "POST");
-  const postCreateListPromise = waitForSessionOutcome(page, server.origin, "GET");
   await createButton.click();
   const created = await createPromise;
   state.createHttpStatus = created.status;
@@ -597,22 +635,64 @@ async function runBrowserJourney(page, server, state) {
   state.createdSessionId = created.sessionId;
   state.initialRoundCount = created.sessionRoundCount;
 
-  await page.getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
-    .waitFor({ timeout: 30_000 });
-  await page.locator('button[aria-current="true"]').filter({ hasText: "New practice session" })
-    .waitFor({ timeout: 30_000 });
-  state.activeUi = "PRESENT";
+  const persistedSessionCount = await countRows(
+    fixtures.service
+      .from("practice_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("id", created.sessionId)
+      .eq("user_id", fixtures.student.id),
+    "SELF_STUDY_PERSISTENCE_MISSING",
+  ).catch(() => null);
+  state.persistedSession = persistedSessionCount === 1 ? "FOUND" : "MISSING";
+  assert(state.persistedSession === "FOUND", "SELF_STUDY_PERSISTENCE_MISSING");
 
-  const postCreateList = await postCreateListPromise;
-  assert(postCreateList.request === "OBSERVED" && postCreateList.status === 200, "SELF_STUDY_SESSION_LIST_MISSING");
-  assert(postCreateList.activeId === created.sessionId, "SELF_STUDY_SESSION_LIST_MISSING");
-  state.sessionList = "FOUND";
+  const postCreateList = await readSessionListThroughBrowser(page);
+  state.activeSession =
+    postCreateList.request === "OBSERVED" &&
+    postCreateList.status === 200 &&
+    postCreateList.activeId === created.sessionId
+      ? "MATCH"
+      : "MISMATCH";
+  assert(state.activeSession === "MATCH", "SELF_STUDY_ACTIVE_SESSION_MISMATCH");
 
-  const reloadListPromise = waitForSessionOutcome(page, server.origin, "GET");
+  const sessionsHeading = page.getByRole("heading", { exact: true, level: 2, name: "Sessions" });
+  const sessionsSection = page.locator("section").filter({ has: sessionsHeading });
+  state.listContainer = await sessionsSection
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => "PRESENT", () => "MISSING");
+  assert(state.listContainer === "PRESENT", "SELF_STUDY_LIST_CONTAINER_MISSING");
+
+  state.activeUi = await page
+    .getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
+    .waitFor({ timeout: 30_000 })
+    .then(() => "PRESENT", () => "MISSING");
+  assert(state.activeUi === "PRESENT", "SELF_STUDY_ACTIVE_UI_MISSING");
+  const activeSessionItems = sessionsSection.locator('button[aria-current="true"]');
+  const activeItemCount = await activeSessionItems.count();
+  state.sessionList =
+    postCreateList.sessionIds.filter((sessionId) => sessionId === created.sessionId).length === 1 &&
+    activeItemCount === 1
+      ? "FOUND"
+      : "MISSING";
+  assert(state.sessionList === "FOUND", "SELF_STUDY_SESSION_LIST_MISSING");
+
   await page.reload({ waitUntil: "domcontentloaded" });
-  const reloaded = await reloadListPromise;
-  state.reloadSession = reloaded.activeId === created.sessionId ? "MATCH" : "MISMATCH";
-  assert(reloaded.request === "OBSERVED" && reloaded.status === 200, "SELF_STUDY_RELOAD_SESSION_MISMATCH");
+  const reloaded = await readSessionListThroughBrowser(page);
+  const reloadedActiveItem = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { exact: true, level: 2, name: "Sessions" }) })
+    .locator('button[aria-current="true"]');
+  const reloadedActiveItemVisible = await reloadedActiveItem
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => true, () => false);
+  state.reloadSession =
+    reloaded.request === "OBSERVED" &&
+    reloaded.status === 200 &&
+    reloaded.activeId === created.sessionId &&
+    reloaded.sessionIds.filter((sessionId) => sessionId === created.sessionId).length === 1 &&
+    reloadedActiveItemVisible
+      ? "MATCH"
+      : "MISMATCH";
   assert(state.reloadSession === "MATCH", "SELF_STUDY_RELOAD_SESSION_MISMATCH");
   assert(reloaded.activeRoundCount === 0, "POSTCONDITION_FAILED");
   await page.getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
@@ -717,12 +797,15 @@ async function runFullValidation() {
   let processEnvironmentCleared = false;
   let succeeded = false;
   const state = {
+    activeSession: "NOT_OBSERVED",
     activeUi: "NOT_CHECKED",
     createHttpStatus: 0,
     createdSessionId: null,
     initialAttemptCount: 0,
     initialQuestionCount: 0,
     initialRoundCount: 0,
+    listContainer: "NOT_CHECKED",
+    persistedSession: "NOT_CHECKED",
     providerCalled: false,
     reloadSession: "NOT_OBSERVED",
     sessionList: "NOT_CHECKED",
@@ -744,7 +827,7 @@ async function runFullValidation() {
     await signInThroughBrowser(page, server.origin, fixtures.student).catch(() => {
       fail("AUTHENTICATED_STUDENT_SESSION_FAILED");
     });
-    await runBrowserJourney(page, server, state);
+    await runBrowserJourney(page, server, fixtures, state);
     await verifyPostconditions(fixtures, state);
     succeeded = true;
   } catch (error) {
@@ -766,7 +849,10 @@ async function runFullValidation() {
   if (succeeded && cleanupPassed && temporaryServerStopped && processEnvironmentCleared) {
     console.log("PASS private_self_study_session_live_validation");
     console.log("self_study_create_http_status=200");
+    console.log("self_study_persisted_session=FOUND");
+    console.log("self_study_active_session=MATCH");
     console.log("self_study_active_ui=PRESENT");
+    console.log("self_study_list_container=PRESENT");
     console.log("self_study_session_list=FOUND");
     console.log("self_study_reload_session=MATCH");
     console.log("self_study_initial_round_count=0");
@@ -782,7 +868,10 @@ async function runFullValidation() {
   console.log("FAIL private_self_study_session_live_validation");
   console.log(`failure_category=${failureCategory}`);
   console.log(`self_study_create_http_status=${state.createHttpStatus || "NOT_OBSERVED"}`);
+  console.log(`self_study_persisted_session=${state.persistedSession}`);
+  console.log(`self_study_active_session=${state.activeSession}`);
   console.log(`self_study_active_ui=${state.activeUi}`);
+  console.log(`self_study_list_container=${state.listContainer}`);
   console.log(`self_study_session_list=${state.sessionList}`);
   console.log(`self_study_reload_session=${state.reloadSession}`);
   console.log(`provider_called=${state.providerCalled ? "YES" : "NO"}`);

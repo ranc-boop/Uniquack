@@ -95,20 +95,35 @@ assert(
 assert(
   journey.indexOf("const createPromise = waitForSessionOutcome") <
       journey.indexOf("await createButton.click()") &&
-    journey.indexOf("const postCreateListPromise = waitForSessionOutcome") <
-      journey.indexOf("await createButton.click()") &&
+    journey.indexOf("const postCreateList = await readSessionListThroughBrowser") >
+      journey.indexOf("const created = await createPromise") &&
+    !journey.includes("postCreateListPromise") &&
     (journey.match(/await createButton\.click\(\)/g) ?? []).length === 1,
-  "create and list waiters must be installed before exactly one click",
+  "the exact create waiter must precede one click and the identity-bearing list read must follow create",
 );
 assert(
   journey.includes('name: "Ready when you are."') &&
+    journey.includes('name: "Sessions"') &&
     journey.includes('button[aria-current="true"]') &&
+    !journey.includes('hasText: "New practice session"') &&
     !journey.includes('getByText("Practice session")') &&
     !journey.includes(".first()") &&
     !journey.includes('waitUntil: "networkidle"'),
   "the empty-session contract must use accessible stable state without ambiguous waits",
 );
 assert(
+  journey.indexOf("state.persistedSession =") < journey.indexOf('assert(state.persistedSession === "FOUND"') &&
+    journey.indexOf("state.activeSession =") < journey.indexOf('assert(state.activeSession === "MATCH"') &&
+    journey.indexOf("state.listContainer =") < journey.indexOf('assert(state.listContainer === "PRESENT"') &&
+    journey.indexOf("state.sessionList =") < journey.indexOf('assert(state.sessionList === "FOUND"') &&
+    journey.indexOf("state.reloadSession =") < journey.indexOf('assert(state.reloadSession === "MATCH"'),
+  "each bounded self-study diagnostic must be published before its assertion can throw",
+);
+assert(
+  journey.includes('from("practice_sessions")') &&
+    journey.includes("persistedSessionCount === 1") &&
+    journey.includes("postCreateList.activeId === created.sessionId") &&
+    journey.includes("postCreateList.sessionIds.filter") &&
   journey.includes("reloaded.activeId === created.sessionId") &&
     journey.includes('state.reloadSession === "MATCH"') &&
     !/console\.(?:log|warn|error)/.test(journey),
@@ -199,7 +214,10 @@ for (const output of [
   "PASS private_self_study_session_live_validation",
   "FAIL private_self_study_session_live_validation",
   "self_study_create_http_status=",
+  "self_study_persisted_session=",
+  "self_study_active_session=",
   "self_study_active_ui=",
+  "self_study_list_container=",
   "self_study_session_list=",
   "self_study_reload_session=",
   "self_study_initial_round_count=",

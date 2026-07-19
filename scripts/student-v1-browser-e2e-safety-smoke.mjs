@@ -161,6 +161,8 @@ for (const phase of [
   "browser_self_study_create_button",
   "browser_self_study_create_api_wait",
   "browser_self_study_create_api_status",
+  "browser_self_study_persisted_session",
+  "browser_self_study_active_session",
   "browser_self_study_active_session_ui",
   "browser_self_study_session_list",
   "browser_self_study_reload",
@@ -471,13 +473,30 @@ assert(
 );
 assert(
   selfStudyJourneyBlock.includes('name: "Ready when you are."') &&
+    selfStudyJourneyBlock.includes('name: "Sessions"') &&
     selfStudyJourneyBlock.includes('button[aria-current="true"]') &&
+    !selfStudyJourneyBlock.includes('hasText: "New practice session"') &&
     !selfStudyJourneyBlock.includes('getByText("Practice session")') &&
     !selfStudyJourneyBlock.includes(".first()") &&
     !selfStudyJourneyBlock.includes('waitUntil: "networkidle"'),
   "self-study empty UI must use the unique current contract without broad text, ordering, or networkidle proof",
 );
 assert(
+  selfStudyJourneyBlock.indexOf("selfStudyPersistedSession =") <
+      selfStudyJourneyBlock.indexOf('selfStudyPersistedSession === "FOUND"') &&
+    selfStudyJourneyBlock.indexOf("selfStudyActiveSession =") <
+      selfStudyJourneyBlock.indexOf('selfStudyActiveSession === "MATCH"') &&
+    selfStudyJourneyBlock.indexOf("selfStudyListContainer =") <
+      selfStudyJourneyBlock.indexOf('selfStudyListContainer === "PRESENT"') &&
+    selfStudyJourneyBlock.indexOf("selfStudySessionList =") <
+      selfStudyJourneyBlock.indexOf('selfStudySessionList === "FOUND"') &&
+    selfStudyJourneyBlock.indexOf("selfStudyReloadSession =") <
+      selfStudyJourneyBlock.indexOf('selfStudyReloadSession === "MATCH"'),
+  "self-study diagnostics must be published before their corresponding assertion",
+);
+assert(
+  selfStudyJourneyBlock.includes("sessionsPayload?.activeSession?.id === createOutcome.sessionId") &&
+    selfStudyJourneyBlock.includes("session.id === createOutcome.sessionId") &&
   selfStudyJourneyBlock.includes("reloadSession.activeSessionId === createOutcome.sessionId") &&
     selfStudyJourneyBlock.includes('selfStudyReloadSession === "MATCH"') &&
     !/console\.(?:log|warn|error)/.test(selfStudyJourneyBlock),
@@ -543,7 +562,10 @@ for (const key of [
   "failed_request_category",
   "self_study_create_http_status",
   "self_study_create_request",
+  "self_study_persisted_session",
+  "self_study_active_session",
   "self_study_active_ui",
+  "self_study_list_container",
   "self_study_session_list",
   "self_study_reload_session",
   "self_study_initial_round_count",

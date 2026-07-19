@@ -155,7 +155,10 @@ const SELF_STUDY_FAILED_REQUEST_CATEGORIES = new Set([
 ]);
 const SELF_STUDY_CREATE_REQUEST_STATES = new Set(["OBSERVED", "NOT_OBSERVED", "FAILED"]);
 const SELF_STUDY_UI_STATES = new Set(["PRESENT", "MISSING"]);
-const SELF_STUDY_LIST_STATES = new Set(["FOUND", "MISSING"]);
+const SELF_STUDY_PERSISTENCE_STATES = new Set(["FOUND", "MISSING", "NOT_CHECKED"]);
+const SELF_STUDY_ACTIVE_SESSION_STATES = new Set(["MATCH", "MISMATCH", "NOT_OBSERVED"]);
+const SELF_STUDY_LIST_CONTAINER_STATES = new Set(["PRESENT", "MISSING", "NOT_CHECKED"]);
+const SELF_STUDY_LIST_STATES = new Set(["FOUND", "MISSING", "NOT_REQUIRED", "NOT_CHECKED"]);
 const SERVER_RUNTIME_CATEGORIES = new Set([
   "HTTP_4XX",
   "HTTP_5XX",
@@ -254,13 +257,16 @@ function createSanitizedDiagnostics() {
       healthy: false,
       runtimeCategories: [],
     },
+    selfStudyActiveSession: "NOT_OBSERVED",
     selfStudyActiveUi: "MISSING",
     selfStudyCreateHttpStatus: 0,
     selfStudyCreateRequest: "NOT_OBSERVED",
     selfStudyFailedRequestCategories: [],
     selfStudyInitialRoundCount: 0,
+    selfStudyListContainer: "NOT_CHECKED",
+    selfStudyPersistedSession: "NOT_CHECKED",
     selfStudyReloadSession: "NOT_OBSERVED",
-    selfStudySessionList: "MISSING",
+    selfStudySessionList: "NOT_CHECKED",
     temporaryServersStopped: false,
   };
 }
@@ -1780,13 +1786,16 @@ function classifySelfStudyFailedRequest(request, expectedOrigin) {
 function resetSelfStudyDiagnostics(diagnostics) {
   diagnostics.activeBrowserJourney = "SELF_STUDY";
   diagnostics.failedRequestCategories = [];
+  diagnostics.selfStudyActiveSession = "NOT_OBSERVED";
   diagnostics.selfStudyActiveUi = "MISSING";
   diagnostics.selfStudyCreateHttpStatus = 0;
   diagnostics.selfStudyCreateRequest = "NOT_OBSERVED";
   diagnostics.selfStudyFailedRequestCategories = [];
   diagnostics.selfStudyInitialRoundCount = 0;
+  diagnostics.selfStudyListContainer = "NOT_CHECKED";
+  diagnostics.selfStudyPersistedSession = "NOT_CHECKED";
   diagnostics.selfStudyReloadSession = "NOT_OBSERVED";
-  diagnostics.selfStudySessionList = "MISSING";
+  diagnostics.selfStudySessionList = "NOT_CHECKED";
 }
 
 function installSanitizedBrowserDiagnostics(page, diagnostics, expectedOrigin) {
@@ -2332,26 +2341,64 @@ async function createAndResumePrivateSelfStudy(page, fixtures, fakeProvider) {
   fixtures.selfStudySessionId = createOutcome.sessionId;
   fixtures.diagnostics.selfStudyInitialRoundCount = createOutcome.sessionRoundCount;
 
+  setHarnessPhase(fixtures, "browser_self_study_persisted_session");
+  const persistedSession = await fixtures.service
+    .from("practice_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("id", createOutcome.sessionId)
+    .eq("user_id", fixtures.studentA.id);
+  fixtures.diagnostics.selfStudyPersistedSession =
+    !persistedSession.error && persistedSession.count === 1 ? "FOUND" : "MISSING";
+  assert(
+    fixtures.diagnostics.selfStudyPersistedSession === "FOUND",
+    "private_self_study_persistence_failed",
+  );
+
+  setHarnessPhase(fixtures, "browser_self_study_active_session");
+  const sessionsResult = await browserFetch(page, SELF_STUDY_SESSION_PATH);
+  assertSafeBrowserText(sessionsResult.text, fixtures, fakeProvider);
+  const sessionsPayload = (() => {
+    try {
+      return JSON.parse(sessionsResult.text);
+    } catch {
+      return null;
+    }
+  })();
+  fixtures.diagnostics.selfStudyActiveSession =
+    sessionsResult.status === 200 && sessionsPayload?.activeSession?.id === createOutcome.sessionId
+      ? "MATCH"
+      : "MISMATCH";
+  assert(
+    fixtures.diagnostics.selfStudyActiveSession === "MATCH",
+    "private_self_study_active_session_mismatch",
+  );
+
+  const sessionsHeading = page.getByRole("heading", { exact: true, level: 2, name: "Sessions" });
+  const sessionsSection = page.locator("section").filter({ has: sessionsHeading });
+  fixtures.diagnostics.selfStudyListContainer = await sessionsSection
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => "PRESENT", () => "MISSING");
+  assert(
+    fixtures.diagnostics.selfStudyListContainer === "PRESENT",
+    "private_self_study_list_container_missing",
+  );
+
   setHarnessPhase(fixtures, "browser_self_study_active_session_ui");
-  await page
+  fixtures.diagnostics.selfStudyActiveUi = await page
     .getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
-    .waitFor({ timeout: 30_000 });
-  await page
-    .locator('button[aria-current="true"]')
-    .filter({ hasText: "New practice session" })
-    .waitFor({ timeout: 30_000 });
-  fixtures.diagnostics.selfStudyActiveUi = "PRESENT";
+    .waitFor({ timeout: 30_000 })
+    .then(() => "PRESENT", () => "MISSING");
+  assert(fixtures.diagnostics.selfStudyActiveUi === "PRESENT", "private_self_study_active_ui_missing");
 
   setHarnessPhase(fixtures, "browser_self_study_session_list");
-  const sessionsResult = await browserFetch(page, SELF_STUDY_SESSION_PATH);
-  assert(sessionsResult.status === 200, "private_self_study_session_list_failed");
-  assertSafeBrowserText(sessionsResult.text, fixtures, fakeProvider);
-  const sessionsPayload = JSON.parse(sessionsResult.text);
-  const selfStudy = (sessionsPayload.sessions ?? []).find(
+  const selfStudy = (sessionsPayload?.sessions ?? []).find(
     (session) => session.id === createOutcome.sessionId,
   );
-  assert(selfStudy?.id, "private_self_study_session_not_created");
-  fixtures.diagnostics.selfStudySessionList = "FOUND";
+  const activeSessionItemCount = await sessionsSection.locator('button[aria-current="true"]').count();
+  fixtures.diagnostics.selfStudySessionList = selfStudy?.id && activeSessionItemCount === 1
+    ? "FOUND"
+    : "MISSING";
+  assert(fixtures.diagnostics.selfStudySessionList === "FOUND", "private_self_study_session_not_created");
 
   setHarnessPhase(fixtures, "browser_self_study_reload");
   const reloadSessionPromise = waitForSelfStudySessionListOutcome(page, fixtures.server.origin);
@@ -2359,18 +2406,28 @@ async function createAndResumePrivateSelfStudy(page, fixtures, fakeProvider) {
 
   setHarnessPhase(fixtures, "browser_self_study_reload_session_detail");
   const reloadSession = await reloadSessionPromise;
-  assert(
-    reloadSession.request === "OBSERVED" && reloadSession.httpStatus >= 200 && reloadSession.httpStatus < 300,
-    "private_self_study_reload_session_not_observed",
-  );
+  const reloadHeadingVisible = await page
+    .getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
+    .waitFor({ timeout: 30_000 })
+    .then(() => true, () => false);
+  const reloadActiveItemVisible = await page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { exact: true, level: 2, name: "Sessions" }) })
+    .locator('button[aria-current="true"]')
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => true, () => false);
 
   setHarnessPhase(fixtures, "browser_self_study_same_session");
   fixtures.diagnostics.selfStudyReloadSession =
-    reloadSession.activeSessionId === createOutcome.sessionId ? "MATCH" : "MISMATCH";
+    reloadSession.request === "OBSERVED" &&
+    reloadSession.httpStatus >= 200 &&
+    reloadSession.httpStatus < 300 &&
+    reloadSession.activeSessionId === createOutcome.sessionId &&
+    reloadHeadingVisible &&
+    reloadActiveItemVisible
+      ? "MATCH"
+      : "MISMATCH";
   assert(fixtures.diagnostics.selfStudyReloadSession === "MATCH", "private_self_study_reload_session_mismatch");
-  await page
-    .getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
-    .waitFor({ timeout: 30_000 });
 
   setHarnessPhase(fixtures, "browser_self_study_zero_initial_rounds");
   assert(
@@ -2550,7 +2607,10 @@ async function cleanupFixtures(fixtures) {
 function printSelfStudySuccessSummary(diagnostics) {
   console.log(`self_study_create_http_status=${diagnostics.selfStudyCreateHttpStatus}`);
   console.log(`self_study_create_request=${diagnostics.selfStudyCreateRequest}`);
+  console.log(`self_study_persisted_session=${diagnostics.selfStudyPersistedSession}`);
+  console.log(`self_study_active_session=${diagnostics.selfStudyActiveSession}`);
   console.log(`self_study_active_ui=${diagnostics.selfStudyActiveUi}`);
+  console.log(`self_study_list_container=${diagnostics.selfStudyListContainer}`);
   console.log(`self_study_session_list=${diagnostics.selfStudySessionList}`);
   console.log(`self_study_reload_session=${diagnostics.selfStudyReloadSession}`);
   console.log(`self_study_initial_round_count=${diagnostics.selfStudyInitialRoundCount}`);
@@ -2702,7 +2762,28 @@ function printSanitizedFailureSummary(diagnostics, failureCategory) {
     )}`,
   );
   console.error(
+    `self_study_persisted_session=${allowedOr(
+      diagnostics.selfStudyPersistedSession,
+      SELF_STUDY_PERSISTENCE_STATES,
+      "NOT_CHECKED",
+    )}`,
+  );
+  console.error(
+    `self_study_active_session=${allowedOr(
+      diagnostics.selfStudyActiveSession,
+      SELF_STUDY_ACTIVE_SESSION_STATES,
+      "NOT_OBSERVED",
+    )}`,
+  );
+  console.error(
     `self_study_active_ui=${allowedOr(diagnostics.selfStudyActiveUi, SELF_STUDY_UI_STATES, "MISSING")}`,
+  );
+  console.error(
+    `self_study_list_container=${allowedOr(
+      diagnostics.selfStudyListContainer,
+      SELF_STUDY_LIST_CONTAINER_STATES,
+      "NOT_CHECKED",
+    )}`,
   );
   console.error(
     `self_study_session_list=${allowedOr(diagnostics.selfStudySessionList, SELF_STUDY_LIST_STATES, "MISSING")}`,
