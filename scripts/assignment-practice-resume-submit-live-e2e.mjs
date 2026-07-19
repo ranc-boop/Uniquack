@@ -98,7 +98,15 @@ const ALLOWED_FAILURE_CATEGORIES = new Set([
   "AUTHENTICATED_STUDENT_SESSION_FAILED",
   "ASSIGNMENT_RESUME_FAILED",
   "ANSWER_SUBMISSION_FAILED",
+  "CLIENT_MISSING_ANSWER_GUARD_BLOCKED",
   "REVIEW_OR_GRADE_FAILED",
+  "REVIEW_REQUEST_ANSWER_EMPTY",
+  "REVIEW_REQUEST_ATTEMPT_AMBIGUOUS",
+  "REVIEW_REQUEST_ATTEMPT_MISSING",
+  "REVIEW_REQUEST_BODY_UNREADABLE",
+  "REVIEW_REQUEST_NOT_EMITTED",
+  "REVIEW_REQUEST_OBSERVER_FAILED",
+  "SUBMIT_BUTTON_INTERACTION_FAILED",
   "ASSIGNMENT_START_REQUEST_FAILED",
   "ASSIGNMENT_START_NON_2XX",
   "COMPLETED_RELOAD_ROUTE_FAILED",
@@ -128,6 +136,7 @@ const SERVER_STOP_CATEGORIES = new Set([
 const SERVER_GRACEFUL_STOP_TIMEOUT_MS = 5_000;
 const SERVER_FORCED_STOP_TIMEOUT_MS = 10_000;
 const SERVER_PORT_CLOSE_TIMEOUT_MS = 5_000;
+const REVIEW_REQUEST_TIMEOUT_MS = 30_000;
 
 class HarnessError extends Error {
   constructor(category) {
@@ -377,6 +386,10 @@ function createJourneyDiagnostics() {
     assignmentStartCode: "UNRECOGNIZED_API_CODE",
     assignmentStartHttpStatus: 0,
     browserAnswerControlValue: "NOT_REACHED",
+    clientAnswerSnapshot: "NOT_OBSERVED",
+    clientErrorCategory: "NONE",
+    clientMissingAnswerGuard: "NOT_OBSERVED",
+    clientRetryMessage: "NOT_CHECKED",
     completedAnswerControl: "NOT_CHECKED",
     completedAnswerImmutable: "NOT_CHECKED",
     completedAnswerValue: "NOT_CHECKED",
@@ -393,11 +406,15 @@ function createJourneyDiagnostics() {
     reloadSessionConsistency: "NOT_OBSERVED",
     resultBadgeState: "NOT_OBSERVED",
     reviewCategory: "REVIEW_NOT_OBSERVED",
+    reviewFetch: "NOT_OBSERVED",
     reviewHttpStatus: 0,
+    reviewRequestCategory: "REQUEST_NOT_EMITTED",
     reviewRequestAnswer: "NOT_OBSERVED",
     reviewRequestAttempt: "NOT_OBSERVED",
     sessionDetailAnswer: "NOT_CHECKED",
     sessionDetailAttempt: "NOT_CHECKED",
+    submitButton: "MISSING",
+    submitClick: "FAILED",
   };
 }
 
@@ -407,6 +424,14 @@ function gradeHttpStatusLabel(diagnostics) {
 }
 
 function printCompletedAnswerDiagnostics(diagnostics) {
+  console.log(`submit_button=${diagnostics.submitButton}`);
+  console.log(`submit_click=${diagnostics.submitClick}`);
+  console.log(`client_answer_snapshot=${diagnostics.clientAnswerSnapshot}`);
+  console.log(`client_missing_answer_guard=${diagnostics.clientMissingAnswerGuard}`);
+  console.log(`review_fetch=${diagnostics.reviewFetch}`);
+  console.log(`client_retry_message=${diagnostics.clientRetryMessage}`);
+  console.log(`client_error_category=${diagnostics.clientErrorCategory}`);
+  console.log(`review_request_category=${diagnostics.reviewRequestCategory}`);
   if (diagnostics.browserAnswerControlValue !== "NOT_REACHED") {
     console.log(`browser_answer_control_value=${diagnostics.browserAnswerControlValue}`);
   }
@@ -1112,10 +1137,26 @@ async function signInThroughBrowser(page, origin, student) {
   ]);
 }
 
-function isPracticePost(response, pathname) {
+function isPracticePost(response, pathname, expectedOrigin) {
   try {
     const request = response.request();
-    return request.method() === "POST" && new URL(response.url()).pathname === pathname;
+    const url = new URL(response.url());
+    return request.method() === "POST" &&
+      request.resourceType() === "fetch" &&
+      url.pathname === pathname &&
+      (!expectedOrigin || url.origin === expectedOrigin);
+  } catch {
+    return false;
+  }
+}
+
+function isPracticeRequest(request, pathname, expectedOrigin) {
+  try {
+    const url = new URL(request.url());
+    return request.method() === "POST" &&
+      request.resourceType() === "fetch" &&
+      url.pathname === pathname &&
+      url.origin === expectedOrigin;
   } catch {
     return false;
   }
@@ -1155,30 +1196,104 @@ function reviewCategory(streamText) {
 function reviewRequestAttemptState(request, expectedQuestionId) {
   try {
     const payload = request.postDataJSON();
-    const attempts = Array.isArray(payload?.attempts) ? payload.attempts : [];
+    if (!Array.isArray(payload?.attempts)) {
+      return {
+        answer: "NOT_OBSERVED",
+        attempt: "NOT_OBSERVED",
+        category: "REQUEST_BODY_UNREADABLE",
+      };
+    }
+    const attempts = payload.attempts;
     const matchingAttempts = attempts.filter((item) => item?.questionId === expectedQuestionId);
-    if (!matchingAttempts.length) return { answer: "NOT_OBSERVED", attempt: "MISSING" };
-    if (matchingAttempts.length > 1) return { answer: "NOT_OBSERVED", attempt: "AMBIGUOUS" };
+    if (!matchingAttempts.length) {
+      return {
+        answer: "NOT_OBSERVED",
+        attempt: "MISSING",
+        category: "REQUEST_ATTEMPT_MISSING",
+      };
+    }
+    if (matchingAttempts.length > 1) {
+      return {
+        answer: "NOT_OBSERVED",
+        attempt: "AMBIGUOUS",
+        category: "REQUEST_ATTEMPT_AMBIGUOUS",
+      };
+    }
+    const answer = classifyPracticeAnswer(matchingAttempts[0].answer) === "PRESENT" ? "PRESENT" : "EMPTY";
     return {
-      answer: classifyPracticeAnswer(matchingAttempts[0].answer) === "PRESENT" ? "PRESENT" : "EMPTY",
+      answer,
       attempt: "FOUND",
+      category: answer === "PRESENT" ? "REQUEST_ANSWER_PRESENT" : "REQUEST_ANSWER_EMPTY",
     };
   } catch {
-    return { answer: "NOT_OBSERVED", attempt: "MISSING" };
+    return {
+      answer: "NOT_OBSERVED",
+      attempt: "NOT_OBSERVED",
+      category: "REQUEST_BODY_UNREADABLE",
+    };
   }
 }
 
-async function waitForReview(page, expectedQuestionId) {
-  const response = await page.waitForResponse(
-    (candidate) => isPracticePost(candidate, "/api/practice/review"),
-    { timeout: 60_000 },
-  );
-  const status = response.status();
-  const requestAttempt = reviewRequestAttemptState(response.request(), expectedQuestionId);
-  const category = status >= 200 && status < 300
-    ? reviewCategory(await response.text().catch(() => ""))
-    : "REVIEW_ERROR_EVENT";
-  return { answer: requestAttempt.answer, attempt: requestAttempt.attempt, category, status };
+function observeReviewRequest(page, expectedOrigin, expectedQuestionId) {
+  let resolveObservation;
+  let settled = false;
+  const observation = new Promise((resolve) => {
+    resolveObservation = resolve;
+  });
+  const finish = (result) => {
+    if (settled) return;
+    settled = true;
+    resolveObservation(result);
+  };
+  const onRequest = (request) => {
+    if (!isPracticeRequest(request, "/api/practice/review", expectedOrigin)) return;
+    try {
+      finish(reviewRequestAttemptState(request, expectedQuestionId));
+    } catch {
+      finish({
+        answer: "NOT_OBSERVED",
+        attempt: "NOT_OBSERVED",
+        category: "REQUEST_OBSERVER_FAILED",
+      });
+    }
+  };
+  page.on("request", onRequest);
+
+  return {
+    close() {
+      page.off("request", onRequest);
+    },
+    async read() {
+      let timer;
+      const timeout = new Promise((resolve) => {
+        timer = setTimeout(() => resolve({
+          answer: "NOT_OBSERVED",
+          attempt: "NOT_OBSERVED",
+          category: "REQUEST_NOT_EMITTED",
+        }), REVIEW_REQUEST_TIMEOUT_MS);
+      });
+      const result = await Promise.race([observation, timeout]);
+      clearTimeout(timer);
+      page.off("request", onRequest);
+      return result;
+    },
+  };
+}
+
+async function waitForReviewResponse(page, expectedOrigin) {
+  try {
+    const response = await page.waitForResponse(
+      (candidate) => isPracticePost(candidate, "/api/practice/review", expectedOrigin),
+      { timeout: 60_000 },
+    );
+    const status = response.status();
+    const category = status >= 200 && status < 300
+      ? reviewCategory(await response.text().catch(() => ""))
+      : "REVIEW_ERROR_EVENT";
+    return { category, status };
+  } catch {
+    return { category: "REVIEW_NOT_OBSERVED", status: 0 };
+  }
 }
 
 function observeGrade(page) {
@@ -1322,20 +1437,76 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   );
   diagnostics.browserAnswerControlValue = browserAnswerPresent ? "PRESENT" : "EMPTY";
   assert(browserAnswerPresent, "ANSWER_SUBMISSION_FAILED");
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT_BUTTON");
   const submitButton = page.getByRole("button", { name: "Submit round" });
+  const submitButtonCount = await submitButton.count();
+  diagnostics.submitButton = submitButtonCount === 1 ? "FOUND" : "MISSING";
+  assert(submitButtonCount === 1, "SUBMIT_BUTTON_INTERACTION_FAILED");
   await submitButton.waitFor({ timeout: 30_000 });
-  const reviewPromise = waitForReview(page, contract.questionId);
+  const reviewRequestObserver = observeReviewRequest(page, server.origin, contract.questionId);
+  const reviewResponsePromise = waitForReviewResponse(page, server.origin);
   const gradeObserver = observeGrade(page);
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT");
-  await submitButton.click();
+  try {
+    await submitButton.click({ timeout: 30_000 });
+    diagnostics.submitClick = "HANDLED";
+  } catch {
+    diagnostics.submitClick = "FAILED";
+    diagnostics.clientErrorCategory = "SUBMIT_HANDLER_FAILED";
+    reviewRequestObserver.close();
+    fail("SUBMIT_BUTTON_INTERACTION_FAILED");
+  }
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_CLIENT_SUBMIT_OUTCOME");
+  const requestObservation = await reviewRequestObserver.read();
+  diagnostics.reviewRequestCategory = requestObservation.category;
+  diagnostics.reviewRequestAnswer = requestObservation.answer;
+  diagnostics.reviewRequestAttempt = requestObservation.attempt;
+  const retryMessage = page.getByText(
+    "Your answer was not captured. Please review it and try again.",
+    { exact: true },
+  );
+  const retryMessageVisible = await retryMessage.isVisible().catch(() => false);
+  diagnostics.clientRetryMessage = retryMessageVisible ? "VISIBLE" : "NOT_VISIBLE";
+
+  if (requestObservation.category === "REQUEST_NOT_EMITTED") {
+    diagnostics.reviewFetch = "NOT_INVOKED";
+    if (retryMessageVisible) {
+      diagnostics.clientAnswerSnapshot = "EMPTY";
+      diagnostics.clientMissingAnswerGuard = "BLOCKED";
+      fail("CLIENT_MISSING_ANSWER_GUARD_BLOCKED");
+    }
+    diagnostics.clientErrorCategory = "UNKNOWN";
+    fail("REVIEW_REQUEST_NOT_EMITTED");
+  }
+  if (requestObservation.category === "REQUEST_OBSERVER_FAILED") {
+    diagnostics.reviewFetch = "NOT_OBSERVED";
+    diagnostics.clientErrorCategory = "UNKNOWN";
+    fail("REVIEW_REQUEST_OBSERVER_FAILED");
+  }
+
+  diagnostics.reviewFetch = "INVOKED";
+  diagnostics.clientMissingAnswerGuard = "PASSED";
+  diagnostics.clientAnswerSnapshot = requestObservation.answer;
+  if (requestObservation.category === "REQUEST_BODY_UNREADABLE") {
+    fail("REVIEW_REQUEST_BODY_UNREADABLE");
+  }
+  if (requestObservation.category === "REQUEST_ATTEMPT_MISSING") {
+    fail("REVIEW_REQUEST_ATTEMPT_MISSING");
+  }
+  if (requestObservation.category === "REQUEST_ATTEMPT_AMBIGUOUS") {
+    fail("REVIEW_REQUEST_ATTEMPT_AMBIGUOUS");
+  }
+  if (requestObservation.category === "REQUEST_ANSWER_EMPTY") {
+    fail("REVIEW_REQUEST_ANSWER_EMPTY");
+  }
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_REVIEW_OR_GRADE");
-  const review = await reviewPromise;
+  const review = await reviewResponsePromise;
   diagnostics.reviewCategory = review.category;
   diagnostics.reviewHttpStatus = review.status;
-  diagnostics.reviewRequestAnswer = review.answer;
-  diagnostics.reviewRequestAttempt = review.attempt;
   const grade = await gradeObserver.read({ required: review.category !== "REVIEW_SUCCESS_EVENT" });
   diagnostics.gradeCategory = grade.category;
   diagnostics.gradeHttpStatus = grade.status;

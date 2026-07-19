@@ -173,7 +173,7 @@ assert(
 const browserBoundary = sourceBlock(
   harnessSource,
   'phase(fixtures, "ASSIGNMENT_PRACTICE_ANSWER_INPUT")',
-  'phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT")',
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT_BUTTON")',
 );
 const reviewBoundary = sourceBlock(
   harnessSource,
@@ -183,7 +183,7 @@ const reviewBoundary = sourceBlock(
 assert(
   browserBoundary.includes("answerControl.evaluate") &&
     browserBoundary.includes("Boolean(element.value.trim())") &&
-    browserBoundary.includes('waitForReview(page, contract.questionId)') &&
+    harnessSource.includes('observeReviewRequest(page, server.origin, contract.questionId)') &&
     reviewBoundary.includes("request.postDataJSON()") &&
     reviewBoundary.includes("item?.questionId === expectedQuestionId") &&
     reviewBoundary.includes('attempt: "MISSING"') &&

@@ -218,7 +218,7 @@ assert(
   journey.indexOf("diagnostics.assignmentStartHttpStatus = firstStart.status") >
       journey.indexOf("const firstStart = await firstStartPromise") &&
     journey.indexOf("diagnostics.reviewCategory = review.category") >
-      journey.indexOf("const review = await reviewPromise") &&
+      journey.indexOf("const review = await reviewResponsePromise") &&
     journey.indexOf("diagnostics.gradeCategory = grade.category") >
       journey.indexOf("gradeObserver.read") &&
     journey.indexOf('diagnostics.resultBadgeState = "PRESENT"') <
@@ -248,7 +248,15 @@ const answerDiagnosticOutput = block(
   "function classifyPracticeAnswer",
 );
 assert(
-  answerDiagnosticOutput.includes('browser_answer_control_value=${diagnostics.browserAnswerControlValue}') &&
+  answerDiagnosticOutput.includes('submit_button=${diagnostics.submitButton}') &&
+    answerDiagnosticOutput.includes('submit_click=${diagnostics.submitClick}') &&
+    answerDiagnosticOutput.includes('client_answer_snapshot=${diagnostics.clientAnswerSnapshot}') &&
+    answerDiagnosticOutput.includes('client_missing_answer_guard=${diagnostics.clientMissingAnswerGuard}') &&
+    answerDiagnosticOutput.includes('review_fetch=${diagnostics.reviewFetch}') &&
+    answerDiagnosticOutput.includes('client_retry_message=${diagnostics.clientRetryMessage}') &&
+    answerDiagnosticOutput.includes('client_error_category=${diagnostics.clientErrorCategory}') &&
+    answerDiagnosticOutput.includes('review_request_category=${diagnostics.reviewRequestCategory}') &&
+    answerDiagnosticOutput.includes('browser_answer_control_value=${diagnostics.browserAnswerControlValue}') &&
     answerDiagnosticOutput.includes('review_request_answer=${diagnostics.reviewRequestAnswer}') &&
     answerDiagnosticOutput.includes('review_request_attempt=${diagnostics.reviewRequestAttempt}') &&
     answerDiagnosticOutput.includes('persisted_attempt_row=${diagnostics.persistedAttemptRow}') &&
@@ -268,7 +276,7 @@ assert(
 
 const browserAnswerDiagnostic = block(
   'phase(fixtures, "ASSIGNMENT_PRACTICE_ANSWER_INPUT")',
-  'phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT")',
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT_BUTTON")',
 );
 assert(
   browserAnswerDiagnostic.includes('getByPlaceholder("Enter your final answer")') &&
@@ -276,12 +284,36 @@ assert(
     browserAnswerDiagnostic.includes("answerControl.evaluate") &&
     browserAnswerDiagnostic.includes("Boolean(element.value.trim())") &&
     browserAnswerDiagnostic.includes('diagnostics.browserAnswerControlValue = browserAnswerPresent ? "PRESENT" : "EMPTY"') &&
-    browserAnswerDiagnostic.includes('waitForReview(page, contract.questionId)') &&
     !browserAnswerDiagnostic.includes("inputValue()") &&
     !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
       browserAnswerDiagnostic,
     ),
   "pre-submit diagnostics must retain only browser answer presence",
+);
+
+const submitDiagnostic = block(
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT_BUTTON")',
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_REVIEW_OR_GRADE")',
+);
+assert(
+  submitDiagnostic.includes('diagnostics.submitButton = submitButtonCount === 1 ? "FOUND" : "MISSING"') &&
+    submitDiagnostic.includes("observeReviewRequest(page, server.origin, contract.questionId)") &&
+    submitDiagnostic.includes("waitForReviewResponse(page, server.origin)") &&
+    submitDiagnostic.indexOf("observeReviewRequest(page, server.origin, contract.questionId)") <
+      submitDiagnostic.indexOf("submitButton.click") &&
+    submitDiagnostic.includes('diagnostics.submitClick = "HANDLED"') &&
+    submitDiagnostic.includes('diagnostics.submitClick = "FAILED"') &&
+    submitDiagnostic.includes('diagnostics.reviewFetch = "INVOKED"') &&
+    submitDiagnostic.includes('diagnostics.reviewFetch = "NOT_INVOKED"') &&
+    submitDiagnostic.includes('diagnostics.clientMissingAnswerGuard = "PASSED"') &&
+    submitDiagnostic.includes('diagnostics.clientMissingAnswerGuard = "BLOCKED"') &&
+    submitDiagnostic.includes('diagnostics.clientRetryMessage = retryMessageVisible ? "VISIBLE" : "NOT_VISIBLE"') &&
+    submitDiagnostic.includes('fail("CLIENT_MISSING_ANSWER_GUARD_BLOCKED")') &&
+    submitDiagnostic.includes('fail("REVIEW_REQUEST_NOT_EMITTED")') &&
+    !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
+      submitDiagnostic,
+    ),
+  "Submit diagnostics must distinguish click, guard, request, and parser outcomes",
 );
 
 const answerClassifier = block(
@@ -350,12 +382,20 @@ assert(
     reviewDiagnostics.includes("GRADE_RESPONSE_2XX") &&
     reviewDiagnostics.includes("GRADE_NOT_REQUIRED") &&
     reviewDiagnostics.includes("reviewRequestAttemptState") &&
+    reviewDiagnostics.includes("observeReviewRequest") &&
+    reviewDiagnostics.includes("isPracticeRequest") &&
+    source.includes('request.resourceType() === "fetch"') &&
+    source.includes("url.origin === expectedOrigin") &&
     reviewDiagnostics.includes("request.postDataJSON()") &&
     reviewDiagnostics.includes('item?.questionId === expectedQuestionId') &&
     reviewDiagnostics.includes('attempt: "MISSING"') &&
     reviewDiagnostics.includes('attempt: "AMBIGUOUS"') &&
     reviewDiagnostics.includes('attempt: "FOUND"') &&
     reviewDiagnostics.includes('answer: "NOT_OBSERVED"') &&
+    reviewDiagnostics.includes('category: "REQUEST_NOT_EMITTED"') &&
+    reviewDiagnostics.includes('category: "REQUEST_BODY_UNREADABLE"') &&
+    reviewDiagnostics.includes('category: "REQUEST_OBSERVER_FAILED"') &&
+    reviewDiagnostics.includes('"REQUEST_ANSWER_PRESENT" : "REQUEST_ANSWER_EMPTY"') &&
     !/console\.(?:log|error|warn)/.test(reviewDiagnostics) &&
     !/(?:writeFile|appendFile|createWriteStream)/.test(reviewDiagnostics),
   "review SSE and grade responses must collapse to bounded in-memory categories",
