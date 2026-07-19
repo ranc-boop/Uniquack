@@ -248,7 +248,9 @@ const answerDiagnosticOutput = block(
   "function classifyPracticeAnswer",
 );
 assert(
-  answerDiagnosticOutput.includes('persisted_attempt_row=${diagnostics.persistedAttemptRow}') &&
+  answerDiagnosticOutput.includes('browser_answer_control_value=${diagnostics.browserAnswerControlValue}') &&
+    answerDiagnosticOutput.includes('review_request_answer=${diagnostics.reviewRequestAnswer}') &&
+    answerDiagnosticOutput.includes('persisted_attempt_row=${diagnostics.persistedAttemptRow}') &&
     answerDiagnosticOutput.includes('persisted_attempt_answer=${diagnostics.persistedAttemptAnswer}') &&
     answerDiagnosticOutput.includes('session_detail_attempt=${diagnostics.sessionDetailAttempt}') &&
     answerDiagnosticOutput.includes('session_detail_answer=${diagnostics.sessionDetailAnswer}') &&
@@ -261,6 +263,24 @@ assert(
     !answerDiagnosticOutput.includes("inputValue") &&
     !/(?:writeFile|appendFile|createWriteStream|createHash|JSON\.stringify)/.test(answerDiagnosticOutput),
   "completed answer output must expose only bounded state labels after validation starts",
+);
+
+const browserAnswerDiagnostic = block(
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_ANSWER_INPUT")',
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT")',
+);
+assert(
+  browserAnswerDiagnostic.includes('getByPlaceholder("Enter your final answer")') &&
+    browserAnswerDiagnostic.includes('answerControl.fill("2")') &&
+    browserAnswerDiagnostic.includes("answerControl.evaluate") &&
+    browserAnswerDiagnostic.includes("Boolean(element.value.trim())") &&
+    browserAnswerDiagnostic.includes('diagnostics.browserAnswerControlValue = browserAnswerPresent ? "PRESENT" : "EMPTY"') &&
+    browserAnswerDiagnostic.includes('waitForReview(page, contract.questionId)') &&
+    !browserAnswerDiagnostic.includes("inputValue()") &&
+    !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
+      browserAnswerDiagnostic,
+    ),
+  "pre-submit diagnostics must retain only browser answer presence",
 );
 
 const answerClassifier = block(
@@ -328,6 +348,10 @@ assert(
     reviewDiagnostics.includes("REVIEW_STREAM_INCOMPLETE") &&
     reviewDiagnostics.includes("GRADE_RESPONSE_2XX") &&
     reviewDiagnostics.includes("GRADE_NOT_REQUIRED") &&
+    reviewDiagnostics.includes("reviewRequestAnswerState") &&
+    reviewDiagnostics.includes("request.postDataJSON()") &&
+    reviewDiagnostics.includes('classifyPracticeAnswer(attempt.answer) === "PRESENT"') &&
+    reviewDiagnostics.includes('return "NOT_OBSERVED"') &&
     !/console\.(?:log|error|warn)/.test(reviewDiagnostics) &&
     !/(?:writeFile|appendFile|createWriteStream)/.test(reviewDiagnostics),
   "review SSE and grade responses must collapse to bounded in-memory categories",

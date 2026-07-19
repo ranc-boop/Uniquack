@@ -170,6 +170,25 @@ assert(
     clientSource.includes("buildRestoredPracticeAnswers("),
   "session detail and completed restoration must retain the selected attempt answer",
 );
+const browserBoundary = sourceBlock(
+  harnessSource,
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_ANSWER_INPUT")',
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT")',
+);
+const reviewBoundary = sourceBlock(
+  harnessSource,
+  "function reviewRequestAnswerState",
+  "function observeGrade",
+);
+assert(
+  browserBoundary.includes("answerControl.evaluate") &&
+    browserBoundary.includes("Boolean(element.value.trim())") &&
+    browserBoundary.includes('waitForReview(page, contract.questionId)') &&
+    reviewBoundary.includes("request.postDataJSON()") &&
+    reviewBoundary.includes("item?.questionId === expectedQuestionId") &&
+    reviewBoundary.includes('classifyPracticeAnswer(attempt.answer) === "PRESENT"'),
+  "bounded diagnostics must locate the first empty browser-to-review boundary",
+);
 assert(
   !/(?:console\.log|console\.error|console\.warn)\([^)]*(?:written|choice|structured|wrong|right)/.test(
     await readFile(resolve(root, "scripts/practice-attempt-answer-persistence-smoke.mjs"), "utf8"),

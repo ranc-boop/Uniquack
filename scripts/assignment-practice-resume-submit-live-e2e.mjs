@@ -376,6 +376,7 @@ function createJourneyDiagnostics() {
   return {
     assignmentStartCode: "UNRECOGNIZED_API_CODE",
     assignmentStartHttpStatus: 0,
+    browserAnswerControlValue: "NOT_REACHED",
     completedAnswerControl: "NOT_CHECKED",
     completedAnswerImmutable: "NOT_CHECKED",
     completedAnswerValue: "NOT_CHECKED",
@@ -393,6 +394,7 @@ function createJourneyDiagnostics() {
     resultBadgeState: "NOT_OBSERVED",
     reviewCategory: "REVIEW_NOT_OBSERVED",
     reviewHttpStatus: 0,
+    reviewRequestAnswer: "NOT_OBSERVED",
     sessionDetailAnswer: "NOT_CHECKED",
     sessionDetailAttempt: "NOT_CHECKED",
   };
@@ -404,6 +406,10 @@ function gradeHttpStatusLabel(diagnostics) {
 }
 
 function printCompletedAnswerDiagnostics(diagnostics) {
+  if (diagnostics.browserAnswerControlValue !== "NOT_REACHED") {
+    console.log(`browser_answer_control_value=${diagnostics.browserAnswerControlValue}`);
+  }
+  console.log(`review_request_answer=${diagnostics.reviewRequestAnswer}`);
   if (diagnostics.persistedAttemptRow !== "NOT_CHECKED") {
     console.log(`persisted_attempt_row=${diagnostics.persistedAttemptRow}`);
     console.log(`persisted_attempt_answer=${diagnostics.persistedAttemptAnswer}`);
@@ -1142,16 +1148,30 @@ function reviewCategory(streamText) {
   return "REVIEW_STREAM_INCOMPLETE";
 }
 
-async function waitForReview(page) {
+function reviewRequestAnswerState(request, expectedQuestionId) {
+  try {
+    const payload = request.postDataJSON();
+    const attempts = Array.isArray(payload?.attempts) ? payload.attempts : [];
+    const attempt = attempts.find((item) => item?.questionId === expectedQuestionId);
+    return attempt && classifyPracticeAnswer(attempt.answer) === "PRESENT"
+      ? "PRESENT"
+      : "EMPTY";
+  } catch {
+    return "NOT_OBSERVED";
+  }
+}
+
+async function waitForReview(page, expectedQuestionId) {
   const response = await page.waitForResponse(
     (candidate) => isPracticePost(candidate, "/api/practice/review"),
     { timeout: 60_000 },
   );
   const status = response.status();
+  const answer = reviewRequestAnswerState(response.request(), expectedQuestionId);
   const category = status >= 200 && status < 300
     ? reviewCategory(await response.text().catch(() => ""))
     : "REVIEW_ERROR_EVENT";
-  return { category, status };
+  return { answer, category, status };
 }
 
 function observeGrade(page) {
@@ -1288,9 +1308,16 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   const answerControl = page.getByPlaceholder("Enter your final answer");
   await answerControl.waitFor({ timeout: 30_000 });
   await answerControl.fill("2");
+  const browserAnswerPresent = await answerControl.evaluate((element) =>
+    (element.tagName === "TEXTAREA" || element.tagName === "INPUT") &&
+    typeof element.value === "string" &&
+    Boolean(element.value.trim())
+  );
+  diagnostics.browserAnswerControlValue = browserAnswerPresent ? "PRESENT" : "EMPTY";
+  assert(browserAnswerPresent, "ANSWER_SUBMISSION_FAILED");
   const submitButton = page.getByRole("button", { name: "Submit round" });
   await submitButton.waitFor({ timeout: 30_000 });
-  const reviewPromise = waitForReview(page);
+  const reviewPromise = waitForReview(page, contract.questionId);
   const gradeObserver = observeGrade(page);
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT");
@@ -1300,6 +1327,7 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   const review = await reviewPromise;
   diagnostics.reviewCategory = review.category;
   diagnostics.reviewHttpStatus = review.status;
+  diagnostics.reviewRequestAnswer = review.answer;
   const grade = await gradeObserver.read({ required: review.category !== "REVIEW_SUCCESS_EVENT" });
   diagnostics.gradeCategory = grade.category;
   diagnostics.gradeHttpStatus = grade.status;
