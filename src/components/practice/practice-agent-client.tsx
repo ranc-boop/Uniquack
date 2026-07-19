@@ -25,6 +25,10 @@ import {
   recommendationFromHistoryQuestion,
   resultsFromHistoryRound,
 } from "@/lib/practice/client-helpers";
+import {
+  buildRestoredPracticeAnswers,
+  restoredPracticeQuestionId,
+} from "@/lib/practice/answer-restore";
 import type {
   PracticeAttemptInput,
   PracticeGradeResult,
@@ -426,13 +430,15 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
       trace: round.trace ?? [],
     };
     const restoredResults = resultsFromHistoryRound(round);
-    const restoredAnswers: AnswersState = {};
+    const restoredAnswers: AnswersState = buildRestoredPracticeAnswers(
+      round.attempts,
+      round.questions,
+    );
     const restoredHints: HintsState = {};
 
     for (const attempt of round.attempts) {
-      const questionId = attempt.sourceQuestionId ?? attempt.questionId;
+      const questionId = restoredPracticeQuestionId(attempt, round.questions);
       if (!questionId) continue;
-      restoredAnswers[questionId] = attempt.answer;
       restoredHints[questionId] = attempt.hints;
     }
 

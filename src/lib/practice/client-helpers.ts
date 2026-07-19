@@ -2,6 +2,7 @@ import {
   CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY,
   LEGACY_PRACTICE_STORAGE_KEYS,
 } from "@/lib/practice/schema";
+import { restoredPracticeQuestionId } from "@/lib/practice/answer-restore";
 import type {
   PracticeGradeResult,
   PracticeRecommendResponse,
@@ -40,7 +41,7 @@ export function resultsFromHistoryRound(round: PracticeRoundHistory): PracticeGr
     explanation: attempt.explanation ?? "No saved explanation.",
     gradingMode: "manual" as const,
     isCorrect: attempt.isCorrect,
-    questionId: attempt.sourceQuestionId ?? attempt.questionId ?? "",
+    questionId: restoredPracticeQuestionId(attempt, round.questions) ?? "",
     score: attempt.score,
     solutionHtml: attempt.solutionHtml,
   })).filter((result) => result.questionId);

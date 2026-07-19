@@ -18,6 +18,7 @@ import {
   CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
   isCurrentPracticeQuestionSnapshot,
 } from "@/lib/practice/schema";
+import { normalizePersistedPracticeAnswer } from "@/lib/practice/answer-restore";
 import { initializePracticePreference } from "@/lib/practice/preference-initialization";
 import type { Json, PracticeSession } from "@/types/database";
 
@@ -322,14 +323,6 @@ function buildPracticeQuestionSnapshot(question: PracticeRecommendation): Practi
     ...question,
     practiceSchemaVersion: CURRENT_PRACTICE_QUESTION_SNAPSHOT_SCHEMA_VERSION,
   };
-}
-
-function answerFromJson(value: unknown): string | string[] {
-  if (Array.isArray(value)) {
-    return value.map(String);
-  }
-
-  return typeof value === "string" ? value : "";
 }
 
 function hintsFromJson(value: unknown) {
@@ -638,7 +631,7 @@ export async function getPracticeSession({
 
   const historyRounds: PracticeRoundHistory[] = ((rounds ?? []) as any[]).map((round) => ({
     attempts: (attemptsByRound.get(round.id) ?? []).map((attempt) => ({
-      answer: answerFromJson(attempt.answer),
+      answer: normalizePersistedPracticeAnswer(attempt.answer),
       explanation: attempt.explanation,
       hintCount: attempt.hint_count,
       hints: hintsFromJson(attempt.hints),
@@ -1521,7 +1514,7 @@ export async function listActiveWrongQuestions({
     return [{
       contentHtml: String(snapshot.contentHtml ?? ""),
       id: row.id,
-      lastAnswer: answerFromJson(row.last_answer),
+      lastAnswer: normalizePersistedPracticeAnswer(row.last_answer),
       lastExplanation: row.last_explanation,
       lastMissedAt: row.last_missed_at,
       masteredAt: row.mastered_at,

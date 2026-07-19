@@ -21,6 +21,10 @@ const persistenceSource = await readFile(
   resolve(process.cwd(), "src/lib/practice/persistence.ts"),
   "utf8",
 );
+const answerRestoreSource = await readFile(
+  resolve(process.cwd(), "src/lib/practice/answer-restore.ts"),
+  "utf8",
+);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -241,16 +245,55 @@ assert(
 
 const answerDiagnosticOutput = block(
   "function printCompletedAnswerDiagnostics",
-  "function phase",
+  "function hasPracticeAnswer",
 );
 assert(
-  answerDiagnosticOutput.includes('completed_answer_control=${diagnostics.completedAnswerControl}') &&
+  answerDiagnosticOutput.includes('persisted_attempt_answer=${diagnostics.persistedAttemptAnswer}') &&
+    answerDiagnosticOutput.includes('session_detail_answer=${diagnostics.sessionDetailAnswer}') &&
+    answerDiagnosticOutput.includes('completed_answer_control=${diagnostics.completedAnswerControl}') &&
     answerDiagnosticOutput.includes('completed_answer_immutable=${diagnostics.completedAnswerImmutable}') &&
     answerDiagnosticOutput.includes('completed_answer_value=${diagnostics.completedAnswerValue}') &&
-    answerDiagnosticOutput.includes('completedAnswerControl === "NOT_CHECKED"') &&
+    answerDiagnosticOutput.includes('persistedAttemptAnswer !== "NOT_CHECKED"') &&
+    answerDiagnosticOutput.includes('sessionDetailAnswer !== "NOT_CHECKED"') &&
+    answerDiagnosticOutput.includes('completedAnswerControl !== "NOT_CHECKED"') &&
     !answerDiagnosticOutput.includes("inputValue") &&
     !/(?:writeFile|appendFile|createWriteStream|createHash|JSON\.stringify)/.test(answerDiagnosticOutput),
   "completed answer output must expose only bounded state labels after validation starts",
+);
+
+const persistedAnswerDiagnostic = block(
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_PERSISTENCE")',
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_ROUTE")',
+);
+assert(
+  persistedAnswerDiagnostic.includes('.select("answer")') &&
+    persistedAnswerDiagnostic.includes("persistedAttempts.some") &&
+    persistedAnswerDiagnostic.includes("hasPracticeAnswer(attempt.answer)") &&
+    persistedAnswerDiagnostic.includes('diagnostics.persistedAttemptAnswer =') &&
+    !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
+      persistedAnswerDiagnostic,
+    ),
+  "persisted answer diagnostics must retain only a bounded presence state",
+);
+const sessionDetailDiagnostic = block(
+  "async function sessionDetailHasAnswer",
+  "function phase",
+);
+assert(
+  sessionDetailDiagnostic.includes("response.ok") &&
+    sessionDetailDiagnostic.includes("payload?.session?.rounds") &&
+    sessionDetailDiagnostic.includes("attempt?.answer") &&
+    !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
+      sessionDetailDiagnostic,
+    ),
+  "session-detail answer diagnostics must retain only a boolean",
+);
+assert(
+  completion.indexOf("diagnostics.sessionDetailAnswer =") <
+      completion.indexOf("ASSIGNMENT_PRACTICE_COMPLETED_RESULT_BADGE") &&
+    journey.indexOf("diagnostics.persistedAttemptAnswer =") <
+      journey.indexOf("ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_ROUTE"),
+  "persistence and session-detail answer presence must be captured before completed UI assertions",
 );
 
 const reviewDiagnostics = block("function reviewCategory", "async function verifyPostconditions");
@@ -285,9 +328,15 @@ const sessionDetailSource = blockFrom(
 );
 assert(
   sessionDetailSource.includes('.from("practice_attempts")') &&
-    sessionDetailSource.includes("answer: answerFromJson(attempt.answer)") &&
+    sessionDetailSource.includes("answer: normalizePersistedPracticeAnswer(attempt.answer)") &&
     sessionDetailSource.includes("sourceQuestionId: attempt.source_question_id"),
   "session detail must read and normalize the persisted Practice answer",
+);
+assert(
+  answerRestoreSource.includes("normalizePersistedPracticeAnswer") &&
+    answerRestoreSource.includes("restoredPracticeQuestionId") &&
+    answerRestoreSource.includes("buildRestoredPracticeAnswers"),
+  "completed answer restoration must share normalization and canonical identity helpers",
 );
 const restoreSource = blockFrom(
   clientSource,
@@ -295,8 +344,8 @@ const restoreSource = blockFrom(
   "useEffect(() =>",
 );
 assert(
-  restoreSource.includes("const questionId = attempt.sourceQuestionId ?? attempt.questionId") &&
-    restoreSource.includes("restoredAnswers[questionId] = attempt.answer") &&
+  restoreSource.includes("buildRestoredPracticeAnswers(") &&
+    restoreSource.includes("restoredPracticeQuestionId(attempt, round.questions)") &&
     restoreSource.includes("setAnswers(restoredAnswers)"),
   "completed history must map each restored answer through its restored question identity",
 );

@@ -384,6 +384,7 @@ function createJourneyDiagnostics() {
     completedResultBadgeState: "NOT_OBSERVED",
     gradeCategory: "GRADE_NOT_OBSERVED",
     gradeHttpStatus: 0,
+    persistedAttemptAnswer: "NOT_CHECKED",
     persistenceResult: "NOT_OBSERVED",
     reloadStartCode: "UNRECOGNIZED_API_CODE",
     reloadStartHttpStatus: 0,
@@ -391,6 +392,7 @@ function createJourneyDiagnostics() {
     resultBadgeState: "NOT_OBSERVED",
     reviewCategory: "REVIEW_NOT_OBSERVED",
     reviewHttpStatus: 0,
+    sessionDetailAnswer: "NOT_CHECKED",
   };
 }
 
@@ -400,10 +402,43 @@ function gradeHttpStatusLabel(diagnostics) {
 }
 
 function printCompletedAnswerDiagnostics(diagnostics) {
-  if (diagnostics.completedAnswerControl === "NOT_CHECKED") return;
-  console.log(`completed_answer_control=${diagnostics.completedAnswerControl}`);
-  console.log(`completed_answer_immutable=${diagnostics.completedAnswerImmutable}`);
-  console.log(`completed_answer_value=${diagnostics.completedAnswerValue}`);
+  if (diagnostics.persistedAttemptAnswer !== "NOT_CHECKED") {
+    console.log(`persisted_attempt_answer=${diagnostics.persistedAttemptAnswer}`);
+  }
+  if (diagnostics.sessionDetailAnswer !== "NOT_CHECKED") {
+    console.log(`session_detail_answer=${diagnostics.sessionDetailAnswer}`);
+  }
+  if (diagnostics.completedAnswerControl !== "NOT_CHECKED") {
+    console.log(`completed_answer_control=${diagnostics.completedAnswerControl}`);
+    console.log(`completed_answer_immutable=${diagnostics.completedAnswerImmutable}`);
+    console.log(`completed_answer_value=${diagnostics.completedAnswerValue}`);
+  }
+}
+
+function hasPracticeAnswer(value) {
+  if (Array.isArray(value)) return value.some(hasPracticeAnswer);
+  if (typeof value === "string") return Boolean(value.trim());
+  return typeof value === "number" || typeof value === "boolean";
+}
+
+async function sessionDetailHasAnswer(page, sessionId) {
+  return page.evaluate(async (path) => {
+    const response = await fetch(path, { credentials: "same-origin" });
+    if (!response.ok) return false;
+    const payload = await response.json();
+    const rounds = Array.isArray(payload?.session?.rounds) ? payload.session.rounds : [];
+    return rounds.some((round) => {
+      const attempts = Array.isArray(round?.attempts) ? round.attempts : [];
+      return attempts.some((attempt) => {
+        const value = attempt?.answer;
+        if (Array.isArray(value)) {
+          return value.some((item) => typeof item === "string" && Boolean(item.trim()));
+        }
+        if (typeof value === "string") return Boolean(value.trim());
+        return typeof value === "number" || typeof value === "boolean";
+      });
+    });
+  }, `/api/practice/sessions/${sessionId}`);
 }
 
 function phase(fixtures, name) {
@@ -1250,6 +1285,17 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
     "POSTCONDITION_FAILED",
   );
   assert(attemptCount >= 1, "POSTCONDITION_FAILED");
+  const persistedAttempts = assertNoError(
+    await fixtures.service
+      .from("practice_attempts")
+      .select("answer")
+      .eq("session_id", firstStart.sessionId)
+      .eq("user_id", contract.studentId),
+    "POSTCONDITION_FAILED",
+  ) ?? [];
+  diagnostics.persistedAttemptAnswer = persistedAttempts.some((attempt) =>
+    hasPracticeAnswer(attempt.answer)
+  ) ? "PRESENT" : "MISSING";
   const progress = assertNoError(
     await fixtures.service
       .from("student_assignment_progress")
@@ -1285,6 +1331,10 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_SESSION_CONSISTENCY");
   assert(completedReload.sessionId === firstStart.sessionId, "COMPLETED_SESSION_MISMATCH");
+
+  diagnostics.sessionDetailAnswer = await sessionDetailHasAnswer(page, firstStart.sessionId)
+    ? "PRESENT"
+    : "MISSING";
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RESULT_BADGE");
   await runBounded("COMPLETED_RESULT_BADGE_TIMEOUT", () =>
