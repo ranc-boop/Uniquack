@@ -67,6 +67,52 @@
     @apply mx-auto w-full max-w-[92rem] px-4 py-6 sm:px-6 lg:px-8;
   }
 
+  .admin-route-main {
+    min-height: 100vh;
+    padding: 1.25rem;
+    background: #f8fafc;
+  }
+
+  .admin-shell {
+    animation: admin-shell-in 220ms ease-out both;
+  }
+
+  .admin-page-enter {
+    animation: admin-page-in 260ms ease-out both;
+  }
+
+  .admin-topbar {
+    transition: box-shadow 180ms ease, border-color 180ms ease;
+  }
+
+  .admin-topbar:hover {
+    border-color: hsl(var(--primary) / 0.22);
+    box-shadow: 0 14px 35px -28px hsl(var(--primary) / 0.65);
+  }
+
+  @keyframes admin-shell-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes admin-page-in {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .admin-shell,
+    .admin-page-enter {
+      animation: none !important;
+    }
+  }
+
+  @media (min-width: 640px) {
+    .admin-route-main {
+      padding: 1.75rem 2rem;
+    }
+  }
+
   .student-hero {
     @apply rounded-lg border border-slate-200/70 bg-white/80 p-5 shadow-none ring-1 ring-slate-950/5;
   }

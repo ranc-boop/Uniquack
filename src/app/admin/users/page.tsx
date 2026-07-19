@@ -1,6 +1,6 @@
 import { updateUserRole } from "@/app/admin/users/actions";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
-import { Badge } from "@/components/ui/badge";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -25,7 +25,6 @@ export default async function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Manage platform user roles."
         eyebrow="Settings"
         help="Manage admin, teacher, and student role assignments. Password reset and account disabling remain outside this route."
         helpLabel="Users admin details"
@@ -54,7 +53,7 @@ export default async function AdminUsersPage() {
                 <TableCell>{profile.email ?? "-"}</TableCell>
                 <TableCell>{profile.full_name ?? "-"}</TableCell>
                 <TableCell>
-                  <Badge variant="secondary">{profile.role}</Badge>
+                  <AdminStatusBadge status={profile.role} />
                 </TableCell>
                 <TableCell>
                   <form action={updateUserRole} className="flex gap-2">

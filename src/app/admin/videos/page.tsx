@@ -5,6 +5,7 @@ import {
 } from "@/app/admin/videos/actions";
 import { Fragment } from "react";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
@@ -13,7 +14,6 @@ import {
   type TaxonomyTagChipAssignment,
 } from "@/components/tags/taxonomy-tag-chips";
 import { TaxonomyTagTreePicker } from "@/components/tags/taxonomy-tag-tree-picker";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -189,7 +189,6 @@ export default async function AdminVideosPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Manage linked video content."
         eyebrow="Content management"
         help="Manage external video links and their question bindings. Videos inherit official taxonomy visibility through linked questions."
         helpLabel="Videos admin details"
@@ -204,10 +203,6 @@ export default async function AdminVideosPage({
         </CardHeader>
         <CardContent>
           <form className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Filter videos by the primary curriculum, concept, method, task,
-              and form tag system.
-            </p>
             <TaxonomyTagTreePicker
               namePrefix="tax"
               searchQuery={firstParam(params.tax_search) ?? ""}
@@ -252,12 +247,6 @@ export default async function AdminVideosPage({
                 ) : null}
               </div>
             ) : null}
-            {!taxonomySearchMessage &&
-            taxonomyAssignmentsByVideoId.size === 0 ? (
-              <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                No linked question taxonomy tags assigned yet.
-              </p>
-            ) : null}
             <div className="flex gap-2">
               <Button type="submit">Filter videos</Button>
               <Button asChild type="button" variant="outline">
@@ -288,10 +277,6 @@ export default async function AdminVideosPage({
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-muted-foreground">
-                Only questions without an existing video appear here. The
-                database also enforces one video per question.
-              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="title">Title</Label>
@@ -310,10 +295,6 @@ export default async function AdminVideosPage({
                 placeholder="https://www.youtube.com/embed/..."
                 required
               />
-              <p className="text-xs text-muted-foreground">
-                Use a YouTube /embed/ URL or player.bilibili.com URL. Do not
-                paste iframe HTML.
-              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="thumbnail_url">Thumbnail URL</Label>
@@ -366,30 +347,25 @@ export default async function AdminVideosPage({
               <Fragment key={video.id}>
                 <TableRow>
                   <TableCell>{video.title ?? "Untitled video"}</TableCell>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="font-mono text-sm">
                     {video.question_id}
                   </TableCell>
                   <TableCell>
                     <div className="space-y-2">
-                      <div className="space-y-1">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Official taxonomy tags
-                        </p>
-                        <TaxonomyTagChips
-                          assignments={taxonomyAssignmentsByVideoId.get(video.id)}
-                          emptyLabel="No taxonomy tags assigned yet."
-                          showCategoryHeadings={false}
-                          taxonomyCatalog={taxonomyCatalog}
-                        />
-                      </div>
+                      <TaxonomyTagChips
+                        assignments={taxonomyAssignmentsByVideoId.get(video.id)}
+                        emptyLabel="No taxonomy tags"
+                        showCategoryHeadings={false}
+                        taxonomyCatalog={taxonomyCatalog}
+                      />
                     </div>
                   </TableCell>
                   <TableCell>{video.provider ?? "External"}</TableCell>
                   <TableCell>
-                    <div className="flex flex-col gap-1">
-                      <Badge variant="secondary">{video.status}</Badge>
+                    <div className="flex items-center gap-1">
+                      <AdminStatusBadge status={video.status} />
                       {!isAllowedVideoEmbedUrl(video.embed_url) ? (
-                        <Badge variant="outline">Review embed URL</Badge>
+                        <AdminStatusBadge status="warning" />
                       ) : null}
                     </div>
                   </TableCell>
@@ -491,10 +467,6 @@ export default async function AdminVideosPage({
                               taxonomyCatalog={taxonomyCatalog}
                             />
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            Videos inherit taxonomy through their linked
-                            question.
-                          </p>
                         </div>
                         <div className="lg:col-span-2">
                           <FormSubmitButton size="sm" pendingLabel="Saving...">

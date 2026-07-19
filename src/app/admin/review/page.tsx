@@ -14,7 +14,6 @@ import { DraftReviewCard } from "@/components/draft-review-card";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import type { EditableQuestion } from "@/components/question-editor";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
@@ -462,7 +461,6 @@ export default async function AdminReviewPage({
             <Link href="/admin/imports/pdf">AI PDF imports</Link>
           </Button>
         }
-        description="Review private draft questions."
         eyebrow="Review queue"
         help="Review draft questions, fix readiness blockers, then publish only when an admin explicitly approves the draft."
         helpLabel="Review Drafts details"
@@ -472,30 +470,22 @@ export default async function AdminReviewPage({
       <AdminCard
         compact
         title="Review workflow"
-        description="Imported or generated drafts stay private until a teacher reviews, edits, and explicitly publishes them."
       >
-        <div className="grid gap-3 text-sm md:grid-cols-3">
+        <ol className="grid gap-2 text-sm md:grid-cols-3">
           {[
-            ["1", "Draft imported/generated", "AI import, package import, or generation creates private draft questions."],
-            ["2", "Teacher reviews", "Fix readiness blockers, taxonomy, media, and solution quality before publishing."],
-            ["3", "Publish or reject", "Publishing is explicit. Reject and delete actions stay separated from the primary path."],
-          ].map(([step, title, description]) => (
-            <div className="rounded-md border bg-background p-3" key={step}>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                  {step}
-                </span>
-                <p className="font-medium">{title}</p>
-              </div>
-              <p className="text-muted-foreground">{description}</p>
-            </div>
+            "Import draft",
+            "Review",
+            "Publish or reject",
+          ].map((label) => (
+            <li className="rounded-md border bg-background px-3 py-2 font-medium" key={label}>
+              {label}
+            </li>
           ))}
-        </div>
+        </ol>
       </AdminCard>
       <AdminCard
         compact
         title="Find draft questions"
-        description="Filter the private review queue by question code, title, or a selected import batch."
       >
         <form className="flex flex-wrap items-end gap-2">
           <div className="min-w-64 flex-1 space-y-1">
@@ -526,11 +516,11 @@ export default async function AdminReviewPage({
               <AdminStatusBadge status="pending_review">
                 Batch review handoff
               </AdminStatusBadge>
-              <span className="font-mono text-xs">
+              <span className="sr-only font-mono">
                 {shortId(batchFilter.id)}
               </span>
               {batchFilter.status ? (
-                <Badge variant="outline">Import: {batchFilter.status}</Badge>
+                <AdminStatusBadge status={batchFilter.status} />
               ) : null}
             </div>
             <p>
@@ -538,15 +528,6 @@ export default async function AdminReviewPage({
               {totalDraftQuestions === 1 ? "" : "s"} from{" "}
               {batchFilter.sourceTitle}.
             </p>
-            <p className="text-xs text-sky-900/80">
-              These drafts are private until readiness blockers, taxonomy,
-              media, solution quality, and warnings are reviewed.
-            </p>
-            {batchFilter.createdAt ? (
-              <p className="text-xs text-sky-900/80">
-                Imported {formatDate(batchFilter.createdAt)}
-              </p>
-            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant="outline">
@@ -619,9 +600,6 @@ export default async function AdminReviewPage({
         <input type="hidden" name="return_to" value={currentPath} />
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <AdminStatusBadge status="pending_review">Review selected drafts</AdminStatusBadge>
-          <span className="text-xs text-muted-foreground">
-            Select draft cards below before applying a bulk action.
-          </span>
         </div>
         <AdminActionGroup
           secondary={

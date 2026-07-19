@@ -68,24 +68,23 @@ function ImportedAssetReferenceBadges({
   refs: ImportAssetReferences | null;
 }) {
   if (!refs) {
-    return <Badge variant="outline">No imported asset refs</Badge>;
+    return <Badge title="No imported files or media references" variant="outline">No media refs</Badge>;
   }
 
   const counts = countImportAssetReferences(refs);
 
   if (!counts.total) {
-    return <Badge variant="outline">No imported asset refs</Badge>;
+    return <Badge title="No imported files or media references" variant="outline">No media refs</Badge>;
   }
 
-  return (
-    <>
-      <Badge variant="secondary">Has imported asset refs</Badge>
-      <Badge variant="outline">Needs media review</Badge>
-      <Badge variant="outline">Image URLs: {counts.imageUrls}</Badge>
-      <Badge variant="outline">PDF refs: {counts.sourceFileIds}</Badge>
-      <Badge variant="outline">Asset refs: {counts.questionAssetIds}</Badge>
-    </>
-  );
+  const title = [
+    `${counts.total} imported media reference${counts.total === 1 ? "" : "s"}`,
+    `image URLs ${counts.imageUrls}`,
+    `PDF refs ${counts.sourceFileIds}`,
+    `asset refs ${counts.questionAssetIds}`,
+  ].join(" · ");
+
+  return <Badge title={title} variant="outline">Media review · {counts.total}</Badge>;
 }
 
 export function DraftReviewCard({
@@ -122,9 +121,6 @@ export function DraftReviewCard({
   updateAction,
 }: DraftReviewCardProps) {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const hasImportedRefs =
-    importedAssetReferences &&
-    countImportAssetReferences(importedAssetReferences).total > 0;
 
   return (
     <Card className="overflow-hidden">
@@ -146,13 +142,9 @@ export function DraftReviewCard({
                 <Badge className="font-mono" variant="outline">
                   {questionCode}
                 </Badge>
-                <AdminStatusBadge status={status} />
+                <AdminStatusBadge compact={false} status={status} />
               </div>
               <CardTitle className="text-base leading-6">{title}</CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Draft stays private until review; edit, publish, or reject
-                explicitly.
-              </p>
             </div>
           </div>
           <Button
@@ -165,71 +157,56 @@ export function DraftReviewCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-2 text-sm md:grid-cols-4">
-          <div>
-            <p className="text-xs text-muted-foreground">Type</p>
-            <p>{questionType}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Difficulty</p>
-            <p>{difficultyRating}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Created</p>
-            <p>{formattedCreatedAt}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Imported</p>
-            <p>{formattedImportedAt}</p>
-          </div>
+        <div className="flex flex-wrap items-center gap-2" aria-label="Question metadata">
+          <Badge title="Question type" variant="outline">{questionType}</Badge>
+          <Badge title="Difficulty rating" variant="outline">Difficulty {difficultyRating}</Badge>
+          <Badge title={`Created ${formattedCreatedAt}`} variant="outline">Created</Badge>
+          <Badge title={`Imported ${formattedImportedAt}`} variant="outline">Imported</Badge>
         </div>
         {isAiImport ? (
-          <div className="space-y-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+          <div className="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="font-medium">AI import provenance</p>
-              <Badge variant="outline">Draft-only</Badge>
+              <p className="font-medium">AI import</p>
+              <span className="sr-only">AI import provenance</span>
+              <span className="sr-only">Generated drafts stay private until reviewed.</span>
+              <AdminStatusBadge status="draft" />
               {aiWarnings.length ? (
-                <Badge variant="outline">Warnings: {aiWarnings.length}</Badge>
+                <Badge title="Open import metadata to review warning details" variant="outline">Warnings {aiWarnings.length}</Badge>
+              ) : null}
+              {aiImportBatchId ? (
+                <Link
+                  className="ml-auto text-xs font-medium underline underline-offset-2"
+                  href={`/admin/review?batch=${aiImportBatchId}`}
+                >
+                  Batch {shortId(aiImportBatchId)}
+                </Link>
               ) : null}
             </div>
-            <div className="grid gap-2 text-xs text-sky-900/80 md:grid-cols-4">
-              <p>Provider: {aiProviderName ?? "Unknown provider"}</p>
-              <p>Model: {aiProviderModel ?? "Unknown model"}</p>
-              <p>
-                Source batch:{" "}
-                {aiImportBatchId ? (
-                  <Link
-                    className="font-mono underline underline-offset-2"
-                    href={`/admin/review?batch=${aiImportBatchId}`}
-                  >
-                    {shortId(aiImportBatchId)}
-                  </Link>
-                ) : (
-                  "Unknown"
-                )}
-              </p>
-              <p>Image crop refs: {aiCropCount}</p>
-            </div>
-            <p className="text-xs text-sky-900/80">
-              Generated drafts stay private until readiness, taxonomy, media,
-              and solution quality are checked.
-            </p>
-            {aiWarnings.length ? (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
-                <p className="font-medium">Warnings to review</p>
-                <ul className="mt-1 list-disc space-y-1 pl-4">
-                  {aiWarnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
+            <details className="rounded-md border border-sky-200/80 bg-white/50 px-2 py-1.5">
+              <summary className="cursor-pointer text-xs font-medium text-sky-900">
+                Import metadata
+              </summary>
+              <div className="mt-2 grid gap-2 text-xs text-sky-900/80 sm:grid-cols-3">
+                <span title="Configured AI provider">{aiProviderName ?? "Unknown provider"}</span>
+                <span title="Configured model">{aiProviderModel ?? "Unknown model"}</span>
+                <span title="Image crop references">{aiCropCount} crop refs</span>
               </div>
-            ) : null}
+              {aiWarnings.length ? (
+                <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                  <p className="font-medium">Warnings to review</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-4">
+                    {aiWarnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </details>
           </div>
         ) : null}
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Taxonomy review
-          </p>
+        <section className="space-y-2 rounded-lg border p-3" aria-labelledby={`taxonomy-${questionId}`}>
+          <h3 id={`taxonomy-${questionId}`} className="text-sm font-medium">Taxonomy</h3>
+          <span className="sr-only">Taxonomy review</span>
           <div className="flex min-w-0 flex-wrap gap-1.5">
           {draftTagCount ? (
             <Badge variant="outline">
@@ -251,52 +228,32 @@ export function DraftReviewCard({
             </Badge>
           ) : null}
           </div>
-        </div>
-        <div className="space-y-2 rounded-md border bg-muted/10 p-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Publish readiness
-          </p>
-          <div className="flex flex-wrap gap-2">
-          <Badge variant={readiness.isReady ? "secondary" : "outline"}>
-            {readiness.summaryLabel}
-          </Badge>
-          <Badge variant={readiness.hasContent ? "secondary" : "outline"}>
-            {readiness.hasContent ? "Has content" : "Needs content"}
-          </Badge>
-          <Badge variant={readiness.hasSolution ? "secondary" : "outline"}>
-            {readiness.hasSolution ? "Has solution" : "Needs solution"}
-          </Badge>
-          <Badge variant={readiness.hasTags ? "secondary" : "outline"}>
-            {readiness.hasTags ? "Has tags" : "Needs tags"}
-          </Badge>
-          <Badge variant={readiness.hasDifficulty ? "secondary" : "outline"}>
-            {readiness.hasDifficulty ? "Has difficulty" : "Needs difficulty"}
-          </Badge>
-          <Badge variant="outline">Images: {imageCount}</Badge>
-          <Badge variant="outline">PDF source files: {sourceFileCount}</Badge>
-          <ImportedAssetReferenceBadges refs={importedAssetReferences} />
+        </section>
+        <section className="space-y-2 rounded-lg border bg-muted/10 p-3" aria-labelledby={`readiness-${questionId}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 id={`readiness-${questionId}`} className="text-sm font-medium">Publish readiness</h3>
+            <Badge title={readiness.summaryLabel} variant={readiness.isReady ? "secondary" : "outline"}>
+              {readiness.isReady ? "Ready" : "Needs review"}
+            </Badge>
           </div>
-        </div>
-        {hasImportedRefs ? (
-          <p className="text-xs text-muted-foreground">
-            Imported asset refs need manual media review before publish.
-          </p>
-        ) : null}
+          <details>
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Readiness checks</summary>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Badge variant={readiness.hasContent ? "secondary" : "outline"}>{readiness.hasContent ? "Content" : "Needs content"}</Badge>
+              <Badge variant={readiness.hasSolution ? "secondary" : "outline"}>{readiness.hasSolution ? "Solution" : "Needs solution"}</Badge>
+              <Badge variant={readiness.hasTags ? "secondary" : "outline"}>{readiness.hasTags ? "Tags" : "Needs tags"}</Badge>
+              <Badge variant={readiness.hasDifficulty ? "secondary" : "outline"}>{readiness.hasDifficulty ? "Difficulty" : "Needs difficulty"}</Badge>
+              <Badge title="Question images" variant="outline">Images {imageCount}</Badge>
+              <Badge title="PDF source files" variant="outline">PDF {sourceFileCount}</Badge>
+              <ImportedAssetReferenceBadges refs={importedAssetReferences} />
+            </div>
+          </details>
+        </section>
         {isAiImport ? (
           <AdminDebugDisclosure
             title="Source and AI import details"
-            description="Provider, page, and import warning details are kept secondary so review actions stay primary."
           >
             <div className="space-y-3 text-muted-foreground">
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">AI PDF import</Badge>
-                <Badge variant="outline">
-                  {aiProviderName ?? "Unknown provider"}
-                </Badge>
-                <Badge variant="outline">
-                  {aiProviderModel ?? "Unknown model"}
-                </Badge>
-              </div>
               <p>
                 Pages: {aiPageRefs.length ? aiPageRefs.join(", ") : "Unknown"}
                 {" | "}
@@ -304,16 +261,6 @@ export function DraftReviewCard({
               </p>
               {aiCreatedTags.length ? (
                 <p>Created draft tags: {aiCreatedTags.join(", ")}</p>
-              ) : null}
-              {aiWarnings.length ? (
-                <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
-                  <p className="font-medium">AI/import warnings</p>
-                  <ul className="mt-1 list-disc space-y-1 pl-4">
-                    {aiWarnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                </div>
               ) : null}
             </div>
           </AdminDebugDisclosure>

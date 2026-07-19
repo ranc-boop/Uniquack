@@ -15,27 +15,40 @@ function stateClass(state: PipelineTimelineStep["state"]) {
   return "border-muted bg-muted/30 text-muted-foreground";
 }
 
+function stateDotClass(state: PipelineTimelineStep["state"]) {
+  if (state === "done") return "bg-emerald-500";
+  if (state === "current") return "bg-amber-500";
+  return "bg-muted-foreground/30";
+}
+
 export function PipelineTimeline({
   timeline,
 }: {
   timeline: PipelineTimelineStep[];
 }) {
   return (
-    <div>
-      <p className="mb-2 text-sm font-medium">Pipeline timeline</p>
-      <div className="grid gap-2 md:grid-cols-2">
-        {timeline.map((step) => (
-          <div
+    <div className="rounded-lg border bg-background p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">Pipeline</p>
+        <span className="text-xs text-muted-foreground">
+          {timeline.filter((step) => step.state === "done").length}/{timeline.length}
+        </span>
+      </div>
+      <ol className="grid gap-1.5 md:grid-cols-2" aria-label="Import pipeline">
+        {timeline.map((step, index) => (
+          <li
             key={step.label}
-            className={`rounded-md border px-3 py-2 text-xs ${stateClass(
+            className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${stateClass(
               step.state,
             )}`}
+            role="listitem"
+            title={`${step.label}: ${step.state}`}
           >
-            <span className="font-medium">{step.label}</span>
-            <span className="ml-2 uppercase">{step.state}</span>
-          </div>
+            <span className={`size-1.5 shrink-0 rounded-full ${stateDotClass(step.state)}`} aria-hidden="true" />
+            <span className="min-w-0 truncate font-medium">{index + 1}. {step.label}</span>
+          </li>
         ))}
-      </div>
+      </ol>
     </div>
   );
 }
