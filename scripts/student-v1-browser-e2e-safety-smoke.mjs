@@ -474,7 +474,7 @@ assert(
 assert(
   selfStudyJourneyBlock.includes('name: "Ready when you are."') &&
     selfStudyJourneyBlock.includes('name: "Sessions"') &&
-    selfStudyJourneyBlock.includes('button[aria-current="true"]') &&
+    selfStudyJourneyBlock.includes('[data-testid="practice-session-item"][data-session-active="yes"]') &&
     !selfStudyJourneyBlock.includes('hasText: "New practice session"') &&
     !selfStudyJourneyBlock.includes('getByText("Practice session")') &&
     !selfStudyJourneyBlock.includes(".first()") &&

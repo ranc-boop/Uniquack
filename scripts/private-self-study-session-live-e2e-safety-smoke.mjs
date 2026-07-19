@@ -9,6 +9,10 @@ const source = await readFile(
   resolve(process.cwd(), "scripts/private-self-study-session-live-e2e.mjs"),
   "utf8",
 );
+const clientSource = await readFile(
+  resolve(process.cwd(), "src/components/practice/practice-agent-client.tsx"),
+  "utf8",
+);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -104,7 +108,7 @@ assert(
 assert(
   journey.includes('name: "Ready when you are."') &&
     journey.includes('name: "Sessions"') &&
-    journey.includes('button[aria-current="true"]') &&
+    journey.includes('[data-testid="practice-session-item"][data-session-active="yes"]') &&
     !journey.includes('hasText: "New practice session"') &&
     !journey.includes('getByText("Practice session")') &&
     !journey.includes(".first()") &&
@@ -115,8 +119,11 @@ assert(
   journey.indexOf("state.persistedSession =") < journey.indexOf('assert(state.persistedSession === "FOUND"') &&
     journey.indexOf("state.activeSession =") < journey.indexOf('assert(state.activeSession === "MATCH"') &&
     journey.indexOf("state.listContainer =") < journey.indexOf('assert(state.listContainer === "PRESENT"') &&
-    journey.indexOf("state.sessionList =") < journey.indexOf('assert(state.sessionList === "FOUND"') &&
-    journey.indexOf("state.reloadSession =") < journey.indexOf('assert(state.reloadSession === "MATCH"'),
+    journey.indexOf("state.sessionList =") < journey.indexOf("await page.reload") &&
+    journey.indexOf("await page.reload") < journey.indexOf("state.listAfterReload =") &&
+    journey.indexOf("state.listAfterReload =") < journey.indexOf("state.reloadSession =") &&
+    !journey.includes('assert(state.sessionList === "FOUND"') &&
+    !journey.includes('assert(state.reloadSession === "MATCH"'),
   "each bounded self-study diagnostic must be published before its assertion can throw",
 );
 assert(
@@ -124,10 +131,43 @@ assert(
     journey.includes("persistedSessionCount === 1") &&
     journey.includes("postCreateList.activeId === created.sessionId") &&
     journey.includes("postCreateList.sessionIds.filter") &&
-  journey.includes("reloaded.activeId === created.sessionId") &&
-    journey.includes('state.reloadSession === "MATCH"') &&
+    journey.includes("reloaded.activeId === created.sessionId") &&
     !/console\.(?:log|warn|error)/.test(journey),
   "created and restored session identities must be compared only in memory",
+);
+
+const outcome = block("function classifySelfStudyOutcome", "async function runBrowserJourney");
+assert(
+  outcome.includes("SELF_STUDY_IMMEDIATE_LIST_MISSING_RELOAD_MATCH") &&
+    outcome.includes("SELF_STUDY_LIST_MISSING_BEFORE_AND_AFTER_RELOAD") &&
+    outcome.includes("SELF_STUDY_RELOAD_SESSION_MISMATCH") &&
+    source.indexOf("await verifyPostconditions(fixtures, state)") <
+      source.lastIndexOf("assertSelfStudyOutcome(state)"),
+  "immediate-list failure must be classified only after reload and zero-evidence postconditions",
+);
+
+const refreshFlow = clientSource.slice(
+  clientSource.indexOf("async function refreshPracticeState"),
+  clientSource.indexOf("function restoreRoundFromHistory"),
+);
+const createFlow = clientSource.slice(
+  clientSource.indexOf("function createNewSession"),
+  clientSource.indexOf("function deleteSession"),
+);
+assert(
+  createFlow.indexOf("setActiveSession(payload.session)") <
+      createFlow.indexOf("await refreshPracticeState(payload.session.id)") &&
+    refreshFlow.includes("setSessions(sessionPayload.sessions)") &&
+    refreshFlow.includes("setActiveSession(nextSession)"),
+  "create must activate the response and await the canonical session-list refetch",
+);
+assert(
+  clientSource.includes('data-testid="practice-session-list"') &&
+    clientSource.includes('data-testid="practice-session-item"') &&
+    clientSource.includes('data-session-active={activeSession?.id === item.id ? "yes" : "no"}') &&
+    clientSource.includes("sessions.length ? sessions.map") &&
+    !clientSource.includes("sessions.filter"),
+  "empty sessions must render once with an ID-free semantic active marker",
 );
 
 const postconditions = block("async function verifyPostconditions", "async function collectGeneratedIds");
@@ -219,7 +259,9 @@ for (const output of [
   "self_study_active_ui=",
   "self_study_list_container=",
   "self_study_session_list=",
+  "self_study_list_after_reload=",
   "self_study_reload_session=",
+  "self_study_outcome_classification=",
   "self_study_initial_round_count=",
   "self_study_initial_question_count=",
   "self_study_initial_attempt_count=",

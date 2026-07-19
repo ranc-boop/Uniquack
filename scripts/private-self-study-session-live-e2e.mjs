@@ -68,6 +68,7 @@ const ALLOWED_FAILURE_CATEGORIES = new Set([
   "SELF_STUDY_ACTIVE_SESSION_MISMATCH",
   "SELF_STUDY_LIST_CONTAINER_MISSING",
   "SELF_STUDY_SESSION_LIST_MISSING",
+  "SELF_STUDY_SESSION_LIST_MISSING_AFTER_RELOAD",
   "SELF_STUDY_RELOAD_SESSION_MISMATCH",
   "SELF_STUDY_PROVIDER_CALL_DETECTED",
   "POSTCONDITION_FAILED",
@@ -615,6 +616,27 @@ function observeProviderBackedBrowserRequests(page, expectedOrigin, state) {
   });
 }
 
+function classifySelfStudyOutcome(state) {
+  if (state.reloadSession !== "MATCH") return "SELF_STUDY_RELOAD_SESSION_MISMATCH";
+  if (state.sessionList === "MISSING" && state.listAfterReload === "MISSING") {
+    return "SELF_STUDY_LIST_MISSING_BEFORE_AND_AFTER_RELOAD";
+  }
+  if (state.sessionList === "MISSING") {
+    return "SELF_STUDY_IMMEDIATE_LIST_MISSING_RELOAD_MATCH";
+  }
+  if (state.listAfterReload === "MISSING") {
+    return "SELF_STUDY_LIST_MISSING_AFTER_RELOAD";
+  }
+  return "SELF_STUDY_LIST_AND_RELOAD_VALID";
+}
+
+function assertSelfStudyOutcome(state) {
+  state.outcomeClassification = classifySelfStudyOutcome(state);
+  if (state.reloadSession !== "MATCH") fail("SELF_STUDY_RELOAD_SESSION_MISMATCH");
+  if (state.listAfterReload !== "FOUND") fail("SELF_STUDY_SESSION_LIST_MISSING_AFTER_RELOAD");
+  if (state.sessionList !== "FOUND") fail("SELF_STUDY_SESSION_LIST_MISSING");
+}
+
 async function runBrowserJourney(page, server, fixtures, state) {
   const initialListPromise = waitForSessionOutcome(page, server.origin, "GET");
   const navigation = await page.goto(`${server.origin}/practice`, { waitUntil: "domcontentloaded" });
@@ -667,36 +689,48 @@ async function runBrowserJourney(page, server, fixtures, state) {
     .waitFor({ timeout: 30_000 })
     .then(() => "PRESENT", () => "MISSING");
   assert(state.activeUi === "PRESENT", "SELF_STUDY_ACTIVE_UI_MISSING");
-  const activeSessionItems = sessionsSection.locator('button[aria-current="true"]');
+  const activeSessionItems = sessionsSection.locator(
+    '[data-testid="practice-session-item"][data-session-active="yes"]',
+  );
+  const activeItemVisible = await activeSessionItems
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => true, () => false);
   const activeItemCount = await activeSessionItems.count();
   state.sessionList =
     postCreateList.sessionIds.filter((sessionId) => sessionId === created.sessionId).length === 1 &&
+    activeItemVisible &&
     activeItemCount === 1
       ? "FOUND"
       : "MISSING";
-  assert(state.sessionList === "FOUND", "SELF_STUDY_SESSION_LIST_MISSING");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   const reloaded = await readSessionListThroughBrowser(page);
   const reloadedActiveItem = page
     .locator("section")
     .filter({ has: page.getByRole("heading", { exact: true, level: 2, name: "Sessions" }) })
-    .locator('button[aria-current="true"]');
+    .locator('[data-testid="practice-session-item"][data-session-active="yes"]');
   const reloadedActiveItemVisible = await reloadedActiveItem
     .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => true, () => false);
+  const reloadedActiveItemCount = await reloadedActiveItem.count();
+  state.listAfterReload =
+    reloaded.sessionIds.filter((sessionId) => sessionId === created.sessionId).length === 1 &&
+    reloadedActiveItemVisible &&
+    reloadedActiveItemCount === 1
+      ? "FOUND"
+      : "MISSING";
+  const reloadedEmptyUiVisible = await page
+    .getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
+    .waitFor({ timeout: 30_000 })
     .then(() => true, () => false);
   state.reloadSession =
     reloaded.request === "OBSERVED" &&
     reloaded.status === 200 &&
     reloaded.activeId === created.sessionId &&
-    reloaded.sessionIds.filter((sessionId) => sessionId === created.sessionId).length === 1 &&
-    reloadedActiveItemVisible
+    reloadedEmptyUiVisible
       ? "MATCH"
       : "MISMATCH";
-  assert(state.reloadSession === "MATCH", "SELF_STUDY_RELOAD_SESSION_MISMATCH");
-  assert(reloaded.activeRoundCount === 0, "POSTCONDITION_FAILED");
-  await page.getByRole("heading", { exact: true, level: 1, name: "Ready when you are." })
-    .waitFor({ timeout: 30_000 });
+  state.initialRoundCount = Math.max(state.initialRoundCount, reloaded.activeRoundCount);
   assert(!state.providerCalled, "SELF_STUDY_PROVIDER_CALL_DETECTED");
 }
 
@@ -804,7 +838,9 @@ async function runFullValidation() {
     initialAttemptCount: 0,
     initialQuestionCount: 0,
     initialRoundCount: 0,
+    listAfterReload: "NOT_CHECKED",
     listContainer: "NOT_CHECKED",
+    outcomeClassification: "NOT_CHECKED",
     persistedSession: "NOT_CHECKED",
     providerCalled: false,
     reloadSession: "NOT_OBSERVED",
@@ -829,6 +865,7 @@ async function runFullValidation() {
     });
     await runBrowserJourney(page, server, fixtures, state);
     await verifyPostconditions(fixtures, state);
+    assertSelfStudyOutcome(state);
     succeeded = true;
   } catch (error) {
     failureCategory = boundedFailureCategory(error);
@@ -854,7 +891,9 @@ async function runFullValidation() {
     console.log("self_study_active_ui=PRESENT");
     console.log("self_study_list_container=PRESENT");
     console.log("self_study_session_list=FOUND");
+    console.log("self_study_list_after_reload=FOUND");
     console.log("self_study_reload_session=MATCH");
+    console.log("self_study_outcome_classification=SELF_STUDY_LIST_AND_RELOAD_VALID");
     console.log("self_study_initial_round_count=0");
     console.log("self_study_initial_question_count=0");
     console.log("self_study_initial_attempt_count=0");
@@ -873,7 +912,9 @@ async function runFullValidation() {
   console.log(`self_study_active_ui=${state.activeUi}`);
   console.log(`self_study_list_container=${state.listContainer}`);
   console.log(`self_study_session_list=${state.sessionList}`);
+  console.log(`self_study_list_after_reload=${state.listAfterReload}`);
   console.log(`self_study_reload_session=${state.reloadSession}`);
+  console.log(`self_study_outcome_classification=${classifySelfStudyOutcome(state)}`);
   console.log(`provider_called=${state.providerCalled ? "YES" : "NO"}`);
   console.log(`cleanup=${cleanupPassed ? "PASS" : "FAIL"}`);
   console.log(`temporary_server_stopped=${temporaryServerStopped ? "YES" : "NO"}`);

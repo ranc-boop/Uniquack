@@ -2394,8 +2394,14 @@ async function createAndResumePrivateSelfStudy(page, fixtures, fakeProvider) {
   const selfStudy = (sessionsPayload?.sessions ?? []).find(
     (session) => session.id === createOutcome.sessionId,
   );
-  const activeSessionItemCount = await sessionsSection.locator('button[aria-current="true"]').count();
-  fixtures.diagnostics.selfStudySessionList = selfStudy?.id && activeSessionItemCount === 1
+  const activeSessionItems = sessionsSection.locator(
+    '[data-testid="practice-session-item"][data-session-active="yes"]',
+  );
+  const activeSessionItemVisible = await activeSessionItems
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => true, () => false);
+  const activeSessionItemCount = await activeSessionItems.count();
+  fixtures.diagnostics.selfStudySessionList = selfStudy?.id && activeSessionItemVisible && activeSessionItemCount === 1
     ? "FOUND"
     : "MISSING";
   assert(fixtures.diagnostics.selfStudySessionList === "FOUND", "private_self_study_session_not_created");
@@ -2413,7 +2419,7 @@ async function createAndResumePrivateSelfStudy(page, fixtures, fakeProvider) {
   const reloadActiveItemVisible = await page
     .locator("section")
     .filter({ has: page.getByRole("heading", { exact: true, level: 2, name: "Sessions" }) })
-    .locator('button[aria-current="true"]')
+    .locator('[data-testid="practice-session-item"][data-session-active="yes"]')
     .waitFor({ state: "visible", timeout: 30_000 })
     .then(() => true, () => false);
 

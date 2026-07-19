@@ -1446,7 +1446,7 @@ export function PracticeAgentClient({
                 <p className="text-sm font-bold text-slate-950">Recent</p>
                 <span className="h-px flex-1 bg-slate-100 ml-3" />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1" data-testid="practice-session-list">
               {sessions.length ? sessions.map((item) => (
                 <div
                   key={item.id}
@@ -1459,6 +1459,8 @@ export function PracticeAgentClient({
                   <button
                     aria-current={activeSession?.id === item.id ? "true" : undefined}
                     className="student-focus-ring flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left"
+                    data-session-active={activeSession?.id === item.id ? "yes" : "no"}
+                    data-testid="practice-session-item"
                     onClick={() => switchSession(item.id)}
                     type="button"
                   >
