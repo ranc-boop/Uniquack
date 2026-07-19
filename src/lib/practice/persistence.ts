@@ -18,11 +18,58 @@ import {
   CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
   isCurrentPracticeQuestionSnapshot,
 } from "@/lib/practice/schema";
+import {
+  normalizePersistedPracticeAnswer,
+  submittedPracticeAnswerForPersistence,
+} from "@/lib/practice/answer-restore";
+import { initializePracticePreference } from "@/lib/practice/preference-initialization";
+import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-identity";
 import type { Json, PracticeSession } from "@/types/database";
 
 type SupabaseLike = {
   from: (...args: any[]) => any;
 };
+
+export type PracticeSessionInitializationFailureStage =
+  | "preference_read"
+  | "preference_create"
+  | "preference_merge_read"
+  | "preference_merge_write"
+  | "session";
+
+type PracticeSessionInitializationFailureMapper = (
+  stage: PracticeSessionInitializationFailureStage,
+  cause: unknown,
+) => Error;
+
+function throwPracticeSessionInitializationFailure({
+  cause,
+  mapper,
+  stage,
+}: {
+  cause: unknown;
+  mapper?: PracticeSessionInitializationFailureMapper;
+  stage: PracticeSessionInitializationFailureStage;
+}): never {
+  if (mapper) throw mapper(stage, cause);
+  throw cause;
+}
+
+async function runPracticeSessionInitializationOperation<T>({
+  mapper,
+  operation,
+  stage,
+}: {
+  mapper?: PracticeSessionInitializationFailureMapper;
+  operation: () => PromiseLike<T> | T;
+  stage: PracticeSessionInitializationFailureStage;
+}): Promise<T> {
+  try {
+    return await operation();
+  } catch (cause) {
+    throwPracticeSessionInitializationFailure({ cause, mapper, stage });
+  }
+}
 
 const DEFAULT_TAG_CONTEXT: PracticeTagContext = {
   confirmedTagIds: [],
@@ -154,10 +201,10 @@ function buildRoundContract({
     round_goal: response.roundGoal,
     search_strategy: explicit.search_strategy ?? { tag_context: response.tagContext },
     selected_questions: recommendations.map((question) => ({
-      diagnostic_purpose: compactLine((explicit.diagnostic_purposes as Record<string, unknown> | undefined)?.[question.id] ?? question.reason, 500),
+      diagnostic_purpose: compactLine((explicit.diagnostic_purposes as Record<string, unknown> | undefined)?.[canonicalPracticeSourceQuestionId(question)] ?? question.reason, 500),
       expected_skill: question.expectedSkill,
       question_code: question.questionCode,
-      question_id: question.id,
+      question_id: canonicalPracticeSourceQuestionId(question),
       reason: question.reason,
     })),
     user_note_policy: "When the student adds an outline or next-round note, prefer it over automatic drift unless it contradicts explicit correctness evidence.",
@@ -188,7 +235,7 @@ function buildRecommendThreadEntry({
     selected_question_purposes: recommendations.map((question) => ({
       expected_skill: question.expectedSkill,
       question_code: question.questionCode,
-      question_id: question.id,
+      question_id: canonicalPracticeSourceQuestionId(question),
       reason: question.reason,
     })),
     summary: {
@@ -216,7 +263,9 @@ function buildQuestionReviewThreadText({
   questionReviews: PracticeQuestionReview[];
   recommendations: PracticeRecommendation[];
 }) {
-  const questionById = new Map(recommendations.map((question) => [question.id, question]));
+  const questionById = new Map(
+    recommendations.map((question) => [canonicalPracticeSourceQuestionId(question), question]),
+  );
   return questionReviews
     .map((review, index) => {
       const question = questionById.get(review.questionId);
@@ -280,14 +329,6 @@ function buildPracticeQuestionSnapshot(question: PracticeRecommendation): Practi
     ...question,
     practiceSchemaVersion: CURRENT_PRACTICE_QUESTION_SNAPSHOT_SCHEMA_VERSION,
   };
-}
-
-function answerFromJson(value: unknown): string | string[] {
-  if (Array.isArray(value)) {
-    return value.map(String);
-  }
-
-  return typeof value === "string" ? value : "";
 }
 
 function hintsFromJson(value: unknown) {
@@ -409,41 +450,71 @@ async function loadPracticeCourseFramework({
 }
 
 export async function getOrCreatePracticePreference({
+  onInitializationFailure,
   supabase,
   userId,
 }: {
+  onInitializationFailure?: PracticeSessionInitializationFailureMapper;
   supabase: SupabaseLike;
   userId: string;
 }) {
-  const { data, error } = await supabase
-    .from("user_practice_preferences")
-    .select("user_id,long_term_preference,last_agent_updated_at,created_at,updated_at")
-    .eq("user_id", userId)
-    .maybeSingle();
+  type PracticePreference = {
+    last_agent_updated_at: string | null;
+    long_term_preference: string;
+    user_id: string;
+  };
 
-  if (error) {
-    throw new Error(error.message);
+  const read = async () => {
+    const { data, error } = await runPracticeSessionInitializationOperation({
+      mapper: onInitializationFailure,
+      operation: () => supabase
+        .from("user_practice_preferences")
+        .select("user_id,long_term_preference,last_agent_updated_at,created_at,updated_at")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      stage: "preference_read",
+    });
+
+    if (error) {
+      throwPracticeSessionInitializationFailure({
+        cause: error,
+        mapper: onInitializationFailure,
+        stage: "preference_read",
+      });
+    }
+
+    return data as PracticePreference | null;
+  };
+
+  const outcome = await initializePracticePreference<PracticePreference>({
+    create: async () => {
+      const inserted = await runPracticeSessionInitializationOperation({
+        mapper: onInitializationFailure,
+        operation: () => supabase
+          .from("user_practice_preferences")
+          .insert({ user_id: userId })
+          .select("user_id,long_term_preference,last_agent_updated_at")
+          .single(),
+        stage: "preference_create",
+      });
+
+      return {
+        data: inserted.data as PracticePreference | null,
+        error: inserted.error,
+      };
+    },
+    read,
+  });
+
+  if (outcome.error || !outcome.data) {
+    throwPracticeSessionInitializationFailure({
+      cause: outcome.error,
+      mapper: onInitializationFailure,
+      stage: "preference_create",
+    });
   }
 
-  if (data) {
-    return data as {
-      last_agent_updated_at: string | null;
-      long_term_preference: string;
-      user_id: string;
-    };
-  }
-
-  const inserted = await supabase
-    .from("user_practice_preferences")
-    .insert({ user_id: userId })
-    .select("user_id,long_term_preference,last_agent_updated_at")
-    .single();
-
-  if (inserted.error) {
-    throw new Error(inserted.error.message);
-  }
-
-  return inserted.data as {
+  return outcome.data as {
     last_agent_updated_at: string | null;
     long_term_preference: string;
     user_id: string;
@@ -566,7 +637,7 @@ export async function getPracticeSession({
 
   const historyRounds: PracticeRoundHistory[] = ((rounds ?? []) as any[]).map((round) => ({
     attempts: (attemptsByRound.get(round.id) ?? []).map((attempt) => ({
-      answer: answerFromJson(attempt.answer),
+      answer: normalizePersistedPracticeAnswer(attempt.answer),
       explanation: attempt.explanation,
       hintCount: attempt.hint_count,
       hints: hintsFromJson(attempt.hints),
@@ -591,7 +662,7 @@ export async function getPracticeSession({
         contentHtml: String(snapshot.contentHtml ?? ""),
         difficulty: Number(snapshot.difficulty ?? 0),
         expectedSkill: String(snapshot.expectedSkill ?? question.expected_skill ?? ""),
-        id: String(question.source_question_id ?? snapshot.id ?? ""),
+        id: String(question.id ?? ""),
         options: Array.isArray(snapshot.options) ? snapshot.options : [],
         position: Number(question.position ?? 0),
         questionCode: String(snapshot.questionCode ?? "snapshot"),
@@ -599,7 +670,7 @@ export async function getPracticeSession({
         questionType: String(snapshot.questionType ?? "mixed"),
         reason: String(snapshot.reason ?? question.reason ?? ""),
         source: typeof snapshot.source === "string" ? snapshot.source : null,
-        sourceQuestionId: question.source_question_id,
+        sourceQuestionId: String(question.source_question_id ?? snapshot.sourceQuestionId ?? snapshot.id ?? "") || null,
         tagIds: Array.isArray(snapshot.tagIds) ? snapshot.tagIds.map(String) : [],
         title: String(snapshot.title ?? "Saved question"),
       }];
@@ -622,12 +693,14 @@ export async function getPracticeSession({
 export async function createPracticeSession({
   courseFrameworkId,
   goal,
+  onInitializationFailure,
   supabase,
   title,
   userId,
 }: {
   courseFrameworkId?: string | null;
   goal: string;
+  onInitializationFailure?: PracticeSessionInitializationFailureMapper;
   supabase: SupabaseLike;
   title?: string;
   userId: string;
@@ -635,8 +708,17 @@ export async function createPracticeSession({
   const trimmedGoal = goal.trim().slice(0, 500);
   const sessionTitle =
     (title?.trim() || trimmedGoal || "New practice session").slice(0, 160);
-  await maybeQueuePreferenceMergeJob({ supabase, userId });
-  const preference = await getOrCreatePracticePreference({ supabase, userId });
+  const preference = await getOrCreatePracticePreference({
+    onInitializationFailure,
+    supabase,
+    userId,
+  });
+  await maybeQueuePreferenceMergeJob({
+    onInitializationFailure,
+    preference,
+    supabase,
+    userId,
+  });
   const courseFramework = courseFrameworkId
     ? await loadPracticeCourseFramework({ frameworkId: courseFrameworkId, supabase })
     : null;
@@ -644,99 +726,142 @@ export async function createPracticeSession({
     ? buildDefaultSessionPlan({ courseFramework, goal: trimmedGoal })
     : {};
 
-  const { data, error } = await supabase
-    .from("practice_sessions")
-    .insert({
-      cache_prefix_version: CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
-      course_framework_id: courseFramework?.id ?? null,
-      course_framework_snapshot: courseFramework ? courseFramework as unknown as Json : null,
-      goal: trimmedGoal,
-      long_term_memory_snapshot: preference.long_term_preference.trim().slice(0, 1000),
-      session_memory: "",
-      session_plan: sessionPlan as unknown as Json,
-      session_state: {} as unknown as Json,
-      session_thread_messages: [] as unknown as Json,
-      tag_context: { ...DEFAULT_TAG_CONTEXT, lastGoal: trimmedGoal },
-      title: sessionTitle,
-      user_id: userId,
-    })
-    .select("*")
-    .single();
+  let sessionResult: { data: unknown; error: { message?: string } | null };
+  try {
+    sessionResult = await supabase
+      .from("practice_sessions")
+      .insert({
+        cache_prefix_version: CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
+        course_framework_id: courseFramework?.id ?? null,
+        course_framework_snapshot: courseFramework ? courseFramework as unknown as Json : null,
+        goal: trimmedGoal,
+        long_term_memory_snapshot: preference.long_term_preference.trim().slice(0, 1000),
+        session_memory: "",
+        session_plan: sessionPlan as unknown as Json,
+        session_state: {} as unknown as Json,
+        session_thread_messages: [] as unknown as Json,
+        tag_context: { ...DEFAULT_TAG_CONTEXT, lastGoal: trimmedGoal },
+        title: sessionTitle,
+        user_id: userId,
+      })
+      .select("*")
+      .single();
+  } catch (cause) {
+    throwPracticeSessionInitializationFailure({
+      cause,
+      mapper: onInitializationFailure,
+      stage: "session",
+    });
+  }
+
+  const { data, error } = sessionResult;
 
   if (error) {
-    throw new Error(error.message);
+    throwPracticeSessionInitializationFailure({
+      cause: error,
+      mapper: onInitializationFailure,
+      stage: "session",
+    });
   }
 
   return sessionSummaryFromRow({ ...(data as PracticeSession), round_count: 0 });
 }
 
 async function maybeQueuePreferenceMergeJob({
+  onInitializationFailure,
+  preference,
   supabase,
   userId,
 }: {
+  onInitializationFailure?: PracticeSessionInitializationFailureMapper;
+  preference: Awaited<ReturnType<typeof getOrCreatePracticePreference>>;
   supabase: SupabaseLike;
   userId: string;
 }) {
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data: source, error: sourceError } = await supabase
-    .from("practice_sessions")
-    .select("id,goal,session_memory,session_state,session_thread_messages,outline_user_notes,next_user_notes,preference_merged_at,preference_dirty_at,last_activity_at")
-    .eq("user_id", userId)
-    .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
-    .lt("last_activity_at", cutoff)
-    .or("preference_merged_at.is.null,preference_dirty_at.not.is.null")
-    .order("last_activity_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: source, error: sourceError } =
+    await runPracticeSessionInitializationOperation({
+      mapper: onInitializationFailure,
+      operation: () => supabase
+        .from("practice_sessions")
+        .select("id,goal,session_memory,session_state,session_thread_messages,outline_user_notes,next_user_notes,preference_merged_at,preference_dirty_at,last_activity_at")
+        .eq("user_id", userId)
+        .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
+        .lt("last_activity_at", cutoff)
+        .or("preference_merged_at.is.null,preference_dirty_at.not.is.null")
+        .order("last_activity_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      stage: "preference_merge_read",
+    });
 
   if (sourceError) {
-    throw new Error(sourceError.message);
+    throwPracticeSessionInitializationFailure({
+      cause: sourceError,
+      mapper: onInitializationFailure,
+      stage: "preference_merge_read",
+    });
   }
 
   if (!source) {
     return null;
   }
 
-  const preference = await getOrCreatePracticePreference({ supabase, userId });
-  const existing = await supabase
-    .from("practice_preference_merge_jobs")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("source_session_id", source.id)
-    .in("status", ["pending", "running"])
-    .limit(1)
-    .maybeSingle();
+  const existing = await runPracticeSessionInitializationOperation({
+    mapper: onInitializationFailure,
+    operation: () => supabase
+      .from("practice_preference_merge_jobs")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("source_session_id", source.id)
+      .in("status", ["pending", "running"])
+      .limit(1)
+      .maybeSingle(),
+    stage: "preference_merge_read",
+  });
 
   if (existing.error) {
-    throw new Error(existing.error.message);
+    throwPracticeSessionInitializationFailure({
+      cause: existing.error,
+      mapper: onInitializationFailure,
+      stage: "preference_merge_read",
+    });
   }
 
   if (existing.data) {
     return existing.data;
   }
 
-  const inserted = await supabase
-    .from("practice_preference_merge_jobs")
-    .insert({
-      previous_preference: preference.long_term_preference,
-      source_session_id: source.id,
-      source_session_memory: source.session_memory,
-      source_summary: {
-        goal: source.goal,
-        outline_user_notes: source.outline_user_notes,
-        next_user_notes: source.next_user_notes,
-        session_state: source.session_state,
-        session_thread_messages: Array.isArray(source.session_thread_messages)
-          ? source.session_thread_messages.slice(-12)
-          : [],
-      } as unknown as Json,
-      user_id: userId,
-    })
-    .select("id")
-    .single();
+  const inserted = await runPracticeSessionInitializationOperation({
+    mapper: onInitializationFailure,
+    operation: () => supabase
+      .from("practice_preference_merge_jobs")
+      .insert({
+        previous_preference: preference.long_term_preference,
+        source_session_id: source.id,
+        source_session_memory: source.session_memory,
+        source_summary: {
+          goal: source.goal,
+          outline_user_notes: source.outline_user_notes,
+          next_user_notes: source.next_user_notes,
+          session_state: source.session_state,
+          session_thread_messages: Array.isArray(source.session_thread_messages)
+            ? source.session_thread_messages.slice(-12)
+            : [],
+        } as unknown as Json,
+        user_id: userId,
+      })
+      .select("id")
+      .single(),
+    stage: "preference_merge_write",
+  });
 
   if (inserted.error) {
-    throw new Error(inserted.error.message);
+    throwPracticeSessionInitializationFailure({
+      cause: inserted.error,
+      mapper: onInitializationFailure,
+      stage: "preference_merge_write",
+    });
   }
 
   return inserted.data;
@@ -850,7 +975,7 @@ export async function persistRecommendationRound({
     reason: question.reason,
     round_id: roundId,
     session_id: sessionId,
-    source_question_id: question.id,
+    source_question_id: canonicalPracticeSourceQuestionId(question),
     title: question.title,
     user_id: userId,
   }));
@@ -895,7 +1020,7 @@ export async function persistRecommendationRound({
       recommendationReasons: recommendations.map((question) => ({
         expectedSkill: question.expectedSkill,
         questionCode: question.questionCode,
-        questionId: question.id,
+        questionId: canonicalPracticeSourceQuestionId(question),
         reason: question.reason,
       })),
       roundContract,
@@ -1007,14 +1132,16 @@ export async function persistQuestionReviewResults({
 }) {
   const resultByQuestionId = new Map(results.map((result) => [result.questionId, result]));
   const reviewByQuestionId = new Map(questionReviews.map((review) => [review.questionId, review]));
-  const recommendationById = new Map(recommendations.map((question) => [question.id, question]));
+  const recommendationById = new Map(
+    recommendations.map((question) => [canonicalPracticeSourceQuestionId(question), question]),
+  );
   const rows = attempts.map((attempt) => {
     const result = resultByQuestionId.get(attempt.questionId);
     const review = reviewByQuestionId.get(attempt.questionId);
     const question = recommendationById.get(attempt.questionId);
 
     return {
-      answer: attempt.answer as unknown as Json,
+      answer: submittedPracticeAnswerForPersistence(attempt.answer),
       explanation: result?.explanation ?? review?.judgmentReason ?? null,
       grading_mode: result?.gradingMode ?? "manual",
       hint_count: attempt.hintCount ?? 0,
@@ -1055,7 +1182,9 @@ export async function persistQuestionReviewResults({
   );
   const correct = results.filter((result) => result.isCorrect === true).length;
   const total = results.filter((result) => result.isCorrect !== null).length;
-  const completedQuestionIds = Array.from(new Set(recommendations.map((question) => question.id)));
+  const completedQuestionIds = Array.from(
+    new Set(recommendations.map(canonicalPracticeSourceQuestionId)),
+  );
 
   const existingRoundResult = await supabase
     .from("practice_rounds")
@@ -1184,7 +1313,7 @@ export async function persistQuestionReviewResults({
         .from("practice_wrong_questions")
         .select("miss_count")
         .eq("user_id", userId)
-        .eq("source_question_id", question.id)
+        .eq("source_question_id", canonicalPracticeSourceQuestionId(question))
         .maybeSingle();
 
       if (existing.error) {
@@ -1205,7 +1334,7 @@ export async function persistQuestionReviewResults({
           question_id: null,
           question_snapshot: buildPracticeQuestionSnapshot(question) as unknown as Json,
           question_title: question.title,
-          source_question_id: question.id,
+          source_question_id: canonicalPracticeSourceQuestionId(question),
           user_id: userId,
         },
         { onConflict: "user_id,source_question_id" },
@@ -1222,7 +1351,7 @@ export async function persistQuestionReviewResults({
           mastered_at: new Date().toISOString(),
         })
         .eq("user_id", userId)
-        .eq("source_question_id", question.id)
+        .eq("source_question_id", canonicalPracticeSourceQuestionId(question))
         .is("mastered_at", null);
 
       if (mastered.error) {
@@ -1395,7 +1524,7 @@ export async function listActiveWrongQuestions({
     return [{
       contentHtml: String(snapshot.contentHtml ?? ""),
       id: row.id,
-      lastAnswer: answerFromJson(row.last_answer),
+      lastAnswer: normalizePersistedPracticeAnswer(row.last_answer),
       lastExplanation: row.last_explanation,
       lastMissedAt: row.last_missed_at,
       masteredAt: row.mastered_at,

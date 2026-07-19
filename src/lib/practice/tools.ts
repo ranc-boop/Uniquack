@@ -255,6 +255,7 @@ function questionToCandidate(question: Pick<
     questionCode: question.question_code,
     questionType: question.question_type,
     source: question.source,
+    sourceQuestionId: question.id,
     tagIds,
     title: question.title,
   };

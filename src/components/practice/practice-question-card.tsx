@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { practiceAnswerKey } from "@/lib/practice/client-helpers";
 import type {
   PracticeGradeResult,
   PracticeQuestionReview,
@@ -25,12 +26,28 @@ function answerValue(answer: string | string[] | undefined) {
 function resultBadge(result: PracticeGradeResult | undefined) {
   if (!result) return null;
   if (result.isCorrect === true) {
-    return <Badge className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600">correct</Badge>;
+    return (
+      <Badge
+        className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600"
+        data-result="correct"
+        data-testid="practice-result-badge"
+      >
+        correct
+      </Badge>
+    );
   }
   if (result.isCorrect === false) {
-    return <Badge variant="destructive">incorrect</Badge>;
+    return (
+      <Badge data-result="incorrect" data-testid="practice-result-badge" variant="destructive">
+        incorrect
+      </Badge>
+    );
   }
-  return <Badge variant="outline">manual review</Badge>;
+  return (
+    <Badge data-result="manual-review" data-testid="practice-result-badge" variant="outline">
+      manual review
+    </Badge>
+  );
 }
 
 function reviewingBadge() {
@@ -44,47 +61,58 @@ function reviewingBadge() {
 
 function QuestionAnswerInput({
   answer,
+  answerCommitted,
+  clientReady,
   disabled,
   onChange,
   question,
 }: {
   answer: string | string[] | undefined;
+  answerCommitted: boolean;
+  clientReady: boolean;
   disabled?: boolean;
   onChange: (value: string | string[]) => void;
   question: PracticeRecommendation;
 }) {
-  if (question.questionType === "mcq" && question.options.length) {
-    return (
-      <div className="space-y-2">
-        {question.options.map((option) => {
-          const selected = Array.isArray(answer) ? answer.includes(option.id) : answer === option.id;
-          return (
-            <label key={option.id} className="grid cursor-pointer gap-3 rounded-md border bg-background p-3 sm:grid-cols-[1.5rem_1fr]">
-              <input
-                checked={selected}
-                disabled={disabled}
-                name={`answer-${question.id}`}
-                onChange={() => onChange(option.id)}
-                type="radio"
-              />
-              <div className="space-y-1">
-                <span className="font-mono text-xs text-muted-foreground">{option.label}</span>
-                <OptionText className="border-none bg-transparent p-0" value={option.content_html} />
-              </div>
-            </label>
-          );
-        })}
-      </div>
-    );
-  }
-
-  return (
+  const answerKey = practiceAnswerKey(question);
+  const control = question.questionType === "mcq" && question.options.length ? (
+    <div className="space-y-2">
+      {question.options.map((option) => {
+        const selected = Array.isArray(answer) ? answer.includes(option.id) : answer === option.id;
+        return (
+          <label key={option.id} className="grid cursor-pointer gap-3 rounded-md border bg-background p-3 sm:grid-cols-[1.5rem_1fr]">
+            <input
+              checked={selected}
+              disabled={disabled}
+              name={`answer-${answerKey}`}
+              onChange={() => onChange(option.id)}
+              type="radio"
+            />
+            <div className="space-y-1">
+              <span className="font-mono text-xs text-muted-foreground">{option.label}</span>
+              <OptionText className="border-none bg-transparent p-0" value={option.content_html} />
+            </div>
+          </label>
+        );
+      })}
+    </div>
+  ) : (
     <Textarea
       disabled={disabled}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={(event) => onChange(event.currentTarget.value)}
       placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
       value={answerValue(answer)}
     />
+  );
+
+  return (
+    <div
+      data-answer-committed={answerCommitted ? "yes" : "no"}
+      data-client-ready={clientReady ? "yes" : "no"}
+      data-testid="practice-answer-control"
+    >
+      {control}
+    </div>
   );
 }
 
@@ -126,6 +154,8 @@ function QuestionReviewDiagnostic({ review }: { review?: PracticeQuestionReview 
 }
 
 export function PracticeQuestionCard({
+  answerCommitted,
+  clientReady,
   currentAnswer,
   hints,
   index,
@@ -137,6 +167,8 @@ export function PracticeQuestionCard({
   result,
   review,
 }: {
+  answerCommitted: boolean;
+  clientReady: boolean;
   currentAnswer: string | string[] | undefined;
   hints: string[];
   index: number;
@@ -148,6 +180,8 @@ export function PracticeQuestionCard({
   result?: PracticeGradeResult;
   review?: PracticeQuestionReview;
 }) {
+  const answerKey = practiceAnswerKey(question);
+
   return (
     <Card className="student-card-hover border-slate-200 shadow-sm">
       <CardHeader>
@@ -178,6 +212,8 @@ export function PracticeQuestionCard({
         </div>
         <QuestionAnswerInput
           answer={currentAnswer}
+          answerCommitted={answerCommitted}
+          clientReady={clientReady}
           disabled={phase === "feedback"}
           onChange={onAnswerChange}
           question={question}
@@ -191,7 +227,7 @@ export function PracticeQuestionCard({
         {hints.length ? (
           <div className="space-y-2">
             {hints.map((hint, hintIndex) => (
-              <div key={`${question.id}-hint-${hintIndex}`} className="rounded-lg border border-sky-100 bg-sky-50/70 p-3 text-sm">
+              <div key={`${answerKey}-hint-${hintIndex}`} className="rounded-lg border border-sky-100 bg-sky-50/70 p-3 text-sm">
                 <span className="font-bold text-sky-900">Hint {hintIndex + 1}: </span>
                 <FeedbackText className="inline border-none bg-transparent p-0 text-sky-900/80" compact inline value={hint} />
               </div>

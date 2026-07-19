@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
+import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-identity";
 import {
   CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
   createPracticeSession,
@@ -61,6 +62,7 @@ function recommendationFromQuestion(
     questionType: row.question_type,
     reason: "Selected from the question bank or a saved missed-question record.",
     source: row.source,
+    sourceQuestionId: row.id,
     tagIds,
     title: row.title,
   };
@@ -89,6 +91,7 @@ function recommendationFromWrongSnapshot(row: Record<string, unknown>): Practice
     questionType: (snapshot.questionType ?? "mixed") as PracticeRecommendation["questionType"],
     reason: "Recovered from your saved missed-question snapshot because the source question may no longer be published.",
     source: typeof snapshot.source === "string" ? snapshot.source : null,
+    sourceQuestionId,
     tagIds: Array.isArray(snapshot.tagIds) ? snapshot.tagIds.map(String) : [],
     title: String(row.question_title ?? snapshot.title ?? "Saved missed question"),
   };
@@ -243,7 +246,7 @@ export async function POST(request: Request) {
           question_count: recommendations.length,
           source: "custom_question_selection",
         },
-        selected_question_ids: recommendations.map((question) => question.id),
+        selected_question_ids: recommendations.map(canonicalPracticeSourceQuestionId),
         tag_context: tagContext,
         volatile_notice: "Custom practice round selected directly by the user.",
       },

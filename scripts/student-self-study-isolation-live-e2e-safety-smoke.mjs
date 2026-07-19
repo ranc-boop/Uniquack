@@ -81,8 +81,8 @@ assert(
   "0047 live harness is missing required isolation, Bank, or cleanup assertions",
 );
 assert(
-  harness.includes(
-    '.from("practice_attempts")\n      .select("id")\n      .eq("session_id", fixtures.studentBSessionId)',
+  /student_a_cannot_read_student_b_private_attempt[\s\S]{0,320}\.from\("practice_attempts"\)\s*\.select\("id"\)\s*\.eq\("session_id", fixtures\.studentBSessionId\)/.test(
+    harness,
   ),
   "live harness must build the cross-student attempt read query with select before filters",
 );
