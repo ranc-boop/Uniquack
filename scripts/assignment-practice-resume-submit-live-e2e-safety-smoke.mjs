@@ -9,16 +9,32 @@ const source = await readFile(
   resolve(process.cwd(), "scripts/assignment-practice-resume-submit-live-e2e.mjs"),
   "utf8",
 );
+const clientSource = await readFile(
+  resolve(process.cwd(), "src/components/practice/practice-agent-client.tsx"),
+  "utf8",
+);
+const questionCardSource = await readFile(
+  resolve(process.cwd(), "src/components/practice/practice-question-card.tsx"),
+  "utf8",
+);
+const persistenceSource = await readFile(
+  resolve(process.cwd(), "src/lib/practice/persistence.ts"),
+  "utf8",
+);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function block(startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start + startMarker.length);
+function blockFrom(content, startMarker, endMarker) {
+  const start = content.indexOf(startMarker);
+  const end = content.indexOf(endMarker, start + startMarker.length);
   assert(start >= 0 && end > start, `source block not found: ${startMarker}`);
-  return source.slice(start, end);
+  return content.slice(start, end);
+}
+
+function block(startMarker, endMarker) {
+  return blockFrom(source, startMarker, endMarker);
 }
 
 for (const name of [
@@ -101,7 +117,9 @@ for (const phase of [
   "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_START",
   "ASSIGNMENT_PRACTICE_COMPLETED_SESSION_CONSISTENCY",
   "ASSIGNMENT_PRACTICE_COMPLETED_RESULT_BADGE",
-  "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_STATE",
+  "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_CONTROL",
+  "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_IMMUTABILITY",
+  "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_VALUE",
   "ASSIGNMENT_PRACTICE_COMPLETED_POSTCONDITIONS",
   "ASSIGNMENT_PRACTICE_MY_WORK_NAVIGATION",
   "ASSIGNMENT_PRACTICE_MY_WORK_COMPLETED_SECTION",
@@ -114,7 +132,9 @@ for (const category of [
   "COMPLETED_RELOAD_START_FAILED",
   "COMPLETED_SESSION_MISMATCH",
   "COMPLETED_RESULT_BADGE_TIMEOUT",
-  "COMPLETED_ANSWER_STATE_FAILED",
+  "COMPLETED_ANSWER_CONTROL_NOT_FOUND",
+  "COMPLETED_ANSWER_NOT_IMMUTABLE",
+  "COMPLETED_ANSWER_VALUE_NOT_RESTORED",
   "COMPLETED_POSTCONDITION_FAILED",
   "MY_WORK_NAVIGATION_FAILED",
   "MY_WORK_COMPLETED_SECTION_NOT_FOUND",
@@ -125,6 +145,59 @@ for (const category of [
     `missing bounded completion category ${category}`,
   );
 }
+
+const answerControl = block(
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_CONTROL")',
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_IMMUTABILITY")',
+);
+const answerImmutability = block(
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_IMMUTABILITY")',
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_VALUE")',
+);
+const answerValue = block(
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_VALUE")',
+  'phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_POSTCONDITIONS")',
+);
+assert(
+  completion.indexOf("ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_CONTROL") <
+      completion.indexOf("ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_IMMUTABILITY") &&
+    completion.indexOf("ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_IMMUTABILITY") <
+      completion.indexOf("ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_VALUE"),
+  "completed answer checks must run in control, immutability, then value order",
+);
+assert(
+  answerControl.includes('getByPlaceholder("Enter your final answer", { exact: true })') &&
+    answerControl.includes("completedAnswerControl.waitFor") &&
+    answerControl.includes('element.tagName === "TEXTAREA" || element.tagName === "INPUT"') &&
+    answerControl.includes('diagnostics.completedAnswerControl = "MISSING"') &&
+    answerControl.includes('diagnostics.completedAnswerControl = "PRESENT"') &&
+    answerControl.includes('"COMPLETED_ANSWER_CONTROL_NOT_FOUND"') &&
+    !answerControl.includes(".first()") &&
+    !answerControl.includes("COMPLETED_ANSWER_VALUE_NOT_RESTORED"),
+  "missing or wrong-type completed answer controls must map only to the control category",
+);
+assert(
+  answerImmutability.includes('if (element.disabled) return "DISABLED"') &&
+    answerImmutability.includes('if (element.readOnly) return "READ_ONLY"') &&
+    answerImmutability.includes('diagnostics.completedAnswerImmutable = "NO"') &&
+    answerImmutability.includes('diagnostics.completedAnswerImmutable = "YES"') &&
+    answerImmutability.includes('"COMPLETED_ANSWER_NOT_IMMUTABLE"') &&
+    !answerImmutability.includes("COMPLETED_ANSWER_VALUE_NOT_RESTORED") &&
+    !answerImmutability.includes("COMPLETED_ANSWER_CONTROL_NOT_FOUND"),
+  "enabled completed controls must map only to the immutability category",
+);
+assert(
+  answerValue.includes('diagnostics.completedAnswerValue = "MISSING"') &&
+    answerValue.includes('diagnostics.completedAnswerValue = "PRESENT"') &&
+    answerValue.includes("Boolean(element.value.trim())") &&
+    answerValue.includes('"COMPLETED_ANSWER_VALUE_NOT_RESTORED"') &&
+    !answerValue.includes("inputValue()") &&
+    !answerValue.includes(".length") &&
+    !answerValue.includes("COMPLETED_ANSWER_NOT_IMMUTABLE") &&
+    !answerValue.includes("COMPLETED_ANSWER_CONTROL_NOT_FOUND") &&
+    !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(answerValue),
+  "the completed answer value check must retain only a boolean and map empty values only to its category",
+);
 assert(
   completion.includes('getByRole("heading", {') &&
     completion.includes('name: "Completed"') &&
@@ -142,15 +215,42 @@ assert(
       journey.indexOf("const firstStart = await firstStartPromise") &&
     journey.indexOf("diagnostics.reviewCategory = review.category") >
       journey.indexOf("const review = await reviewPromise") &&
-    journey.indexOf("diagnostics.gradeCategory = grade") >
+    journey.indexOf("diagnostics.gradeCategory = grade.category") >
       journey.indexOf("gradeObserver.read") &&
+    journey.indexOf('diagnostics.resultBadgeState = "PRESENT"') <
+      journey.indexOf('phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_ROUTE")') &&
+    journey.indexOf('diagnostics.persistenceResult = "PASS"') <
+      journey.indexOf('phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_ROUTE")') &&
+    journey.indexOf('diagnostics.completedResultBadgeState = "PRESENT"') <
+      journey.indexOf('phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_CONTROL")') &&
     execution.includes("const diagnostics = createJourneyDiagnostics()") &&
     execution.includes("diagnostics.assignmentStartHttpStatus") &&
     execution.includes("diagnostics.reviewCategory") &&
     execution.includes("diagnostics.gradeCategory") &&
+    source.includes("diagnostics.gradeHttpStatus = grade.status") &&
+    execution.includes("gradeHttpStatusLabel(diagnostics)") &&
+    execution.includes("diagnostics.reloadSessionConsistency") &&
+    execution.includes("diagnostics.resultBadgeState") &&
+    execution.includes("diagnostics.persistenceResult") &&
+    execution.includes("diagnostics.completedResultBadgeState") &&
+    execution.includes("printCompletedAnswerDiagnostics(diagnostics)") &&
     !execution.includes("reviewResultCategory") &&
     !execution.includes("gradeResultCategory"),
-  "observed Start, review, and grade diagnostics must publish before later UI assertions",
+  "observed Start, review, grade, result, and persistence diagnostics must survive later UI assertions",
+);
+
+const answerDiagnosticOutput = block(
+  "function printCompletedAnswerDiagnostics",
+  "function phase",
+);
+assert(
+  answerDiagnosticOutput.includes('completed_answer_control=${diagnostics.completedAnswerControl}') &&
+    answerDiagnosticOutput.includes('completed_answer_immutable=${diagnostics.completedAnswerImmutable}') &&
+    answerDiagnosticOutput.includes('completed_answer_value=${diagnostics.completedAnswerValue}') &&
+    answerDiagnosticOutput.includes('completedAnswerControl === "NOT_CHECKED"') &&
+    !answerDiagnosticOutput.includes("inputValue") &&
+    !/(?:writeFile|appendFile|createWriteStream|createHash|JSON\.stringify)/.test(answerDiagnosticOutput),
+  "completed answer output must expose only bounded state labels after validation starts",
 );
 
 const reviewDiagnostics = block("function reviewCategory", "async function verifyPostconditions");
@@ -175,6 +275,37 @@ assert(
 assert(
   !/console\.log\([^\n]*(?:username|password|email|serviceRoleKey|anonKey|cookie|header|baseUrl)/i.test(source),
   "credentials, identities, URLs, headers, and cookies must never be printed",
+);
+
+// NON_LIVE_COMPLETED_ANSWER_SOURCE_PROOF
+const sessionDetailSource = blockFrom(
+  persistenceSource,
+  "export async function getPracticeSession",
+  "export async function createPracticeSession",
+);
+assert(
+  sessionDetailSource.includes('.from("practice_attempts")') &&
+    sessionDetailSource.includes("answer: answerFromJson(attempt.answer)") &&
+    sessionDetailSource.includes("sourceQuestionId: attempt.source_question_id"),
+  "session detail must read and normalize the persisted Practice answer",
+);
+const restoreSource = blockFrom(
+  clientSource,
+  "function restoreRoundFromHistory",
+  "useEffect(() =>",
+);
+assert(
+  restoreSource.includes("const questionId = attempt.sourceQuestionId ?? attempt.questionId") &&
+    restoreSource.includes("restoredAnswers[questionId] = attempt.answer") &&
+    restoreSource.includes("setAnswers(restoredAnswers)"),
+  "completed history must map each restored answer through its restored question identity",
+);
+assert(
+  clientSource.includes("currentAnswer={answers[question.id]}") &&
+    questionCardSource.includes("answer={currentAnswer}") &&
+    questionCardSource.includes('disabled={phase === "feedback"}') &&
+    questionCardSource.includes("value={answerValue(answer)}"),
+  "the completed Question card must receive the restored answer and render it immutably",
 );
 
 assert(

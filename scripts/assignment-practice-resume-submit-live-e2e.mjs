@@ -105,7 +105,9 @@ const ALLOWED_FAILURE_CATEGORIES = new Set([
   "COMPLETED_RELOAD_START_FAILED",
   "COMPLETED_SESSION_MISMATCH",
   "COMPLETED_RESULT_BADGE_TIMEOUT",
-  "COMPLETED_ANSWER_STATE_FAILED",
+  "COMPLETED_ANSWER_CONTROL_NOT_FOUND",
+  "COMPLETED_ANSWER_NOT_IMMUTABLE",
+  "COMPLETED_ANSWER_VALUE_NOT_RESTORED",
   "COMPLETED_POSTCONDITION_FAILED",
   "MY_WORK_NAVIGATION_FAILED",
   "MY_WORK_COMPLETED_SECTION_NOT_FOUND",
@@ -374,14 +376,34 @@ function createJourneyDiagnostics() {
   return {
     assignmentStartCode: "UNRECOGNIZED_API_CODE",
     assignmentStartHttpStatus: 0,
+    completedAnswerControl: "NOT_CHECKED",
+    completedAnswerImmutable: "NOT_CHECKED",
+    completedAnswerValue: "NOT_CHECKED",
     completedReloadStartCode: "UNRECOGNIZED_API_CODE",
     completedReloadStartHttpStatus: 0,
+    completedResultBadgeState: "NOT_OBSERVED",
     gradeCategory: "GRADE_NOT_OBSERVED",
+    gradeHttpStatus: 0,
+    persistenceResult: "NOT_OBSERVED",
     reloadStartCode: "UNRECOGNIZED_API_CODE",
     reloadStartHttpStatus: 0,
+    reloadSessionConsistency: "NOT_OBSERVED",
+    resultBadgeState: "NOT_OBSERVED",
     reviewCategory: "REVIEW_NOT_OBSERVED",
     reviewHttpStatus: 0,
   };
+}
+
+function gradeHttpStatusLabel(diagnostics) {
+  if (diagnostics.gradeHttpStatus) return diagnostics.gradeHttpStatus;
+  return diagnostics.gradeCategory === "GRADE_NOT_REQUIRED" ? "NOT_REQUIRED" : "NOT_OBSERVED";
+}
+
+function printCompletedAnswerDiagnostics(diagnostics) {
+  if (diagnostics.completedAnswerControl === "NOT_CHECKED") return;
+  console.log(`completed_answer_control=${diagnostics.completedAnswerControl}`);
+  console.log(`completed_answer_immutable=${diagnostics.completedAnswerImmutable}`);
+  console.log(`completed_answer_value=${diagnostics.completedAnswerValue}`);
 }
 
 function phase(fixtures, name) {
@@ -1071,10 +1093,13 @@ function observeGrade(page) {
         }
       }
       page.off("response", onResponse);
-      if (status >= 200 && status < 300) return "GRADE_RESPONSE_2XX";
-      if (status >= 400 && status < 500) return "GRADE_RESPONSE_4XX";
-      if (status >= 500 && status < 600) return "GRADE_RESPONSE_5XX";
-      return required ? "GRADE_NOT_OBSERVED" : "GRADE_NOT_REQUIRED";
+      if (status >= 200 && status < 300) return { category: "GRADE_RESPONSE_2XX", status };
+      if (status >= 400 && status < 500) return { category: "GRADE_RESPONSE_4XX", status };
+      if (status >= 500 && status < 600) return { category: "GRADE_RESPONSE_5XX", status };
+      return {
+        category: required ? "GRADE_NOT_OBSERVED" : "GRADE_NOT_REQUIRED",
+        status,
+      };
     },
   };
 }
@@ -1175,6 +1200,7 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
         ? "MATCH"
         : "MISMATCH"
       : "NOT_OBSERVED";
+  diagnostics.reloadSessionConsistency = reloadSessionConsistency;
   console.log(`reload_session_consistency=${reloadSessionConsistency}`);
   assert(
     reloadStart.status === 200 && reloadStart.code === "NONE" && reloadSessionConsistency === "MATCH",
@@ -1200,10 +1226,11 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   diagnostics.reviewCategory = review.category;
   diagnostics.reviewHttpStatus = review.status;
   const grade = await gradeObserver.read({ required: review.category !== "REVIEW_SUCCESS_EVENT" });
-  diagnostics.gradeCategory = grade;
+  diagnostics.gradeCategory = grade.category;
+  diagnostics.gradeHttpStatus = grade.status;
   assert(
     (review.status === 200 && review.category === "REVIEW_SUCCESS_EVENT") ||
-      grade === "GRADE_RESPONSE_2XX",
+      grade.category === "GRADE_RESPONSE_2XX",
     "REVIEW_OR_GRADE_FAILED",
   );
 
@@ -1211,6 +1238,7 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   await page
     .locator('[data-testid="practice-result-badge"][data-result="correct"]')
     .waitFor({ timeout: 45_000 });
+  diagnostics.resultBadgeState = "PRESENT";
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_PERSISTENCE");
   const attemptCount = await countRows(
@@ -1235,6 +1263,7 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
     progress?.status === "completed" && progress.last_practice_session_id === firstStart.sessionId,
     "POSTCONDITION_FAILED",
   );
+  diagnostics.persistenceResult = "PASS";
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_RELOAD_ROUTE");
   const completedReloadPromise = waitForAssignmentStart(page).catch(() => null);
@@ -1263,14 +1292,43 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
       .locator('[data-testid="practice-result-badge"][data-result="correct"]')
       .waitFor({ timeout: 30_000 }),
   );
+  diagnostics.completedResultBadgeState = "PRESENT";
 
-  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_STATE");
-  await runBounded("COMPLETED_ANSWER_STATE_FAILED", async () => {
-    const completedAnswerControl = page.getByPlaceholder("Enter your final answer");
+  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_CONTROL");
+  diagnostics.completedAnswerControl = "MISSING";
+  const completedAnswerControl = page.getByPlaceholder("Enter your final answer", { exact: true });
+  await runBounded("COMPLETED_ANSWER_CONTROL_NOT_FOUND", async () => {
     await completedAnswerControl.waitFor({ timeout: 30_000 });
-    assert(await completedAnswerControl.isDisabled(), "COMPLETED_ANSWER_STATE_FAILED");
-    assert((await completedAnswerControl.inputValue()).length > 0, "COMPLETED_ANSWER_STATE_FAILED");
+    const isExpectedControl = await completedAnswerControl.evaluate(
+      (element) => element.tagName === "TEXTAREA" || element.tagName === "INPUT",
+    );
+    assert(isExpectedControl, "COMPLETED_ANSWER_CONTROL_NOT_FOUND");
   });
+  diagnostics.completedAnswerControl = "PRESENT";
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_IMMUTABILITY");
+  diagnostics.completedAnswerImmutable = "NO";
+  await runBounded("COMPLETED_ANSWER_NOT_IMMUTABLE", async () => {
+    const immutableMechanism = await completedAnswerControl.evaluate((element) => {
+      if (element.tagName !== "TEXTAREA" && element.tagName !== "INPUT") return "NONE";
+      if (element.disabled) return "DISABLED";
+      if (element.readOnly) return "READ_ONLY";
+      return "NONE";
+    });
+    assert(immutableMechanism !== "NONE", "COMPLETED_ANSWER_NOT_IMMUTABLE");
+  });
+  diagnostics.completedAnswerImmutable = "YES";
+
+  phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_ANSWER_VALUE");
+  diagnostics.completedAnswerValue = "MISSING";
+  await runBounded("COMPLETED_ANSWER_VALUE_NOT_RESTORED", async () => {
+    const answerValuePresent = await completedAnswerControl.evaluate((element) => {
+      if (element.tagName !== "TEXTAREA" && element.tagName !== "INPUT") return false;
+      return typeof element.value === "string" && Boolean(element.value.trim());
+    });
+    assert(answerValuePresent, "COMPLETED_ANSWER_VALUE_NOT_RESTORED");
+  });
+  diagnostics.completedAnswerValue = "PRESENT";
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_COMPLETED_POSTCONDITIONS");
   await runBounded("COMPLETED_POSTCONDITION_FAILED", () =>
@@ -1506,6 +1564,10 @@ async function runFullValidation() {
     console.log(`reload_start_code=${diagnostics.reloadStartCode}`);
     console.log(`completed_reload_start_http_status=${diagnostics.completedReloadStartHttpStatus}`);
     console.log(`completed_reload_start_code=${diagnostics.completedReloadStartCode}`);
+    console.log(`reload_session_consistency=${diagnostics.reloadSessionConsistency}`);
+    console.log(`result_badge_state=${diagnostics.resultBadgeState}`);
+    console.log(`persistence_result=${diagnostics.persistenceResult}`);
+    console.log(`completed_result_badge_state=${diagnostics.completedResultBadgeState}`);
     console.log("preference=PASS");
     console.log("session=PASS");
     console.log("round=PASS");
@@ -1517,6 +1579,8 @@ async function runFullValidation() {
     console.log(`review_category=${diagnostics.reviewCategory}`);
     console.log(`review_http_status=${diagnostics.reviewHttpStatus}`);
     console.log(`grade_category=${diagnostics.gradeCategory}`);
+    console.log(`grade_http_status=${gradeHttpStatusLabel(diagnostics)}`);
+    printCompletedAnswerDiagnostics(diagnostics);
     console.log("cleanup=PASS");
     console.log("temporary_server_stopped=YES");
     console.log("process_environment_cleared=YES");
@@ -1531,10 +1595,16 @@ async function runFullValidation() {
   console.log(`reload_start_code=${diagnostics.reloadStartCode}`);
   console.log(`completed_reload_start_http_status=${diagnostics.completedReloadStartHttpStatus || "NOT_OBSERVED"}`);
   console.log(`completed_reload_start_code=${diagnostics.completedReloadStartCode}`);
+  console.log(`reload_session_consistency=${diagnostics.reloadSessionConsistency}`);
+  console.log(`result_badge_state=${diagnostics.resultBadgeState}`);
+  console.log(`persistence_result=${diagnostics.persistenceResult}`);
+  console.log(`completed_result_badge_state=${diagnostics.completedResultBadgeState}`);
   console.log(`preference_state=${fixtures?.preferenceState ?? "NOT_REACHED"}`);
   console.log(`review_category=${diagnostics.reviewCategory}`);
   console.log(`review_http_status=${diagnostics.reviewHttpStatus || "NOT_OBSERVED"}`);
   console.log(`grade_category=${diagnostics.gradeCategory}`);
+  console.log(`grade_http_status=${gradeHttpStatusLabel(diagnostics)}`);
+  printCompletedAnswerDiagnostics(diagnostics);
   console.log(`cleanup=${cleanupPassed ? "PASS" : "FAIL"}`);
   console.log(`temporary_server_stopped=${temporaryServerStopped ? "YES" : "NO"}`);
   console.log(`process_environment_cleared=${processEnvironmentCleared ? "YES" : "NO"}`);
