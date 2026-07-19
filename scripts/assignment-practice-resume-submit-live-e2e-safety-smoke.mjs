@@ -107,7 +107,7 @@ assert(
 assert(
   journey.includes('[data-testid="practice-result-badge"][data-result="correct"]') &&
     !journey.includes('getByText("correct", { exact: true })') &&
-    journey.includes('getByPlaceholder("Enter your final answer")') &&
+    journey.includes('getByPlaceholder("Enter your final answer", { exact: true })') &&
     journey.includes('getByRole("button", { name: "Submit round" })'),
   "submit must use semantic controls and the unique result badge",
 );
@@ -250,6 +250,8 @@ const answerDiagnosticOutput = block(
 assert(
   answerDiagnosticOutput.includes('submit_button=${diagnostics.submitButton}') &&
     answerDiagnosticOutput.includes('submit_click=${diagnostics.submitClick}') &&
+    answerDiagnosticOutput.includes('client_hydration=${diagnostics.clientHydration}') &&
+    answerDiagnosticOutput.includes('input_event=${diagnostics.inputEvent}') &&
     answerDiagnosticOutput.includes('client_answer_snapshot=${diagnostics.clientAnswerSnapshot}') &&
     answerDiagnosticOutput.includes('client_missing_answer_guard=${diagnostics.clientMissingAnswerGuard}') &&
     answerDiagnosticOutput.includes('review_fetch=${diagnostics.reviewFetch}') &&
@@ -279,8 +281,20 @@ const browserAnswerDiagnostic = block(
   'phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT_BUTTON")',
 );
 assert(
-  browserAnswerDiagnostic.includes('getByPlaceholder("Enter your final answer")') &&
+  browserAnswerDiagnostic.includes('[data-testid="practice-answer-control"]') &&
+    browserAnswerDiagnostic.includes('[data-client-ready="yes"]') &&
+    browserAnswerDiagnostic.includes('[data-answer-committed="yes"]') &&
+    browserAnswerDiagnostic.includes('getByPlaceholder("Enter your final answer", { exact: true })') &&
     browserAnswerDiagnostic.includes('answerControl.fill("2")') &&
+    browserAnswerDiagnostic.indexOf('[data-client-ready="yes"]') < browserAnswerDiagnostic.indexOf('answerControl.fill("2")') &&
+    browserAnswerDiagnostic.indexOf('answerControl.fill("2")') < browserAnswerDiagnostic.indexOf('[data-answer-committed="yes"]') &&
+    browserAnswerDiagnostic.indexOf('[data-answer-committed="yes"]') < browserAnswerDiagnostic.indexOf("answerControl.evaluate") &&
+    browserAnswerDiagnostic.includes('diagnostics.clientHydration = "READY"') &&
+    browserAnswerDiagnostic.includes('diagnostics.inputEvent = "COMMITTED"') &&
+    browserAnswerDiagnostic.includes('diagnostics.clientAnswerSnapshot = "PRESENT"') &&
+    browserAnswerDiagnostic.includes('"CLIENT_HYDRATION_NOT_READY"') &&
+    browserAnswerDiagnostic.includes('"ANSWER_INPUT_EVENT_NOT_COMMITTED"') &&
+    browserAnswerDiagnostic.includes('"ANSWER_DOM_STATE_MISSING"') &&
     browserAnswerDiagnostic.includes("answerControl.evaluate") &&
     browserAnswerDiagnostic.includes("Boolean(element.value.trim())") &&
     browserAnswerDiagnostic.includes('diagnostics.browserAnswerControlValue = browserAnswerPresent ? "PRESENT" : "EMPTY"') &&
@@ -308,7 +322,9 @@ assert(
     submitDiagnostic.includes('diagnostics.clientMissingAnswerGuard = "PASSED"') &&
     submitDiagnostic.includes('diagnostics.clientMissingAnswerGuard = "BLOCKED"') &&
     submitDiagnostic.includes('diagnostics.clientRetryMessage = retryMessageVisible ? "VISIBLE" : "NOT_VISIBLE"') &&
+    submitDiagnostic.includes('diagnostics.clientAnswerSnapshot !== "PRESENT"') &&
     submitDiagnostic.includes('fail("CLIENT_MISSING_ANSWER_GUARD_BLOCKED")') &&
+    submitDiagnostic.includes('fail("CLIENT_ANSWER_SNAPSHOT_EMPTY")') &&
     submitDiagnostic.includes('fail("REVIEW_REQUEST_NOT_EMITTED")') &&
     !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
       submitDiagnostic,
@@ -450,7 +466,8 @@ assert(
     clientSource.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&
     clientSource.includes("buildPracticeSubmittedAttempts(") &&
     questionCardSource.includes("answer={currentAnswer}") &&
-    questionCardSource.includes("onInput={(event) => onChange(event.currentTarget.value)}") &&
+    questionCardSource.includes("onChange={(event) => onChange(event.currentTarget.value)}") &&
+    !questionCardSource.includes("onInput=") &&
     questionCardSource.includes('disabled={phase === "feedback"}') &&
     questionCardSource.includes("value={answerValue(answer)}"),
   "the completed Question card must receive the restored answer and render it immutably",

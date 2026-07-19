@@ -110,7 +110,8 @@ assert(
 assert(
   cardSource.includes('disabled={phase === "feedback"}') &&
     cardSource.includes('data-result="correct"') &&
-    cardSource.includes("onInput={(event) => onChange(event.currentTarget.value)}"),
+    cardSource.includes("onChange={(event) => onChange(event.currentTarget.value)}") &&
+    !cardSource.includes("onInput="),
   "completed answers must be immutable while unfinished answers remain editable beside result state",
 );
 assert(

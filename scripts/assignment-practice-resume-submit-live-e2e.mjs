@@ -98,6 +98,10 @@ const ALLOWED_FAILURE_CATEGORIES = new Set([
   "AUTHENTICATED_STUDENT_SESSION_FAILED",
   "ASSIGNMENT_RESUME_FAILED",
   "ANSWER_SUBMISSION_FAILED",
+  "CLIENT_HYDRATION_NOT_READY",
+  "ANSWER_INPUT_EVENT_NOT_COMMITTED",
+  "ANSWER_DOM_STATE_MISSING",
+  "CLIENT_ANSWER_SNAPSHOT_EMPTY",
   "CLIENT_MISSING_ANSWER_GUARD_BLOCKED",
   "REVIEW_OR_GRADE_FAILED",
   "REVIEW_REQUEST_ANSWER_EMPTY",
@@ -386,6 +390,7 @@ function createJourneyDiagnostics() {
     assignmentStartCode: "UNRECOGNIZED_API_CODE",
     assignmentStartHttpStatus: 0,
     browserAnswerControlValue: "NOT_REACHED",
+    clientHydration: "TIMEOUT",
     clientAnswerSnapshot: "NOT_OBSERVED",
     clientErrorCategory: "NONE",
     clientMissingAnswerGuard: "NOT_OBSERVED",
@@ -398,6 +403,7 @@ function createJourneyDiagnostics() {
     completedResultBadgeState: "NOT_OBSERVED",
     gradeCategory: "GRADE_NOT_OBSERVED",
     gradeHttpStatus: 0,
+    inputEvent: "NOT_COMMITTED",
     persistedAttemptAnswer: "NOT_CHECKED",
     persistedAttemptRow: "NOT_CHECKED",
     persistenceResult: "NOT_OBSERVED",
@@ -426,6 +432,8 @@ function gradeHttpStatusLabel(diagnostics) {
 function printCompletedAnswerDiagnostics(diagnostics) {
   console.log(`submit_button=${diagnostics.submitButton}`);
   console.log(`submit_click=${diagnostics.submitClick}`);
+  console.log(`client_hydration=${diagnostics.clientHydration}`);
+  console.log(`input_event=${diagnostics.inputEvent}`);
   console.log(`client_answer_snapshot=${diagnostics.clientAnswerSnapshot}`);
   console.log(`client_missing_answer_guard=${diagnostics.clientMissingAnswerGuard}`);
   console.log(`review_fetch=${diagnostics.reviewFetch}`);
@@ -1427,16 +1435,31 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   await verifyPostconditions(fixtures, contract);
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_ANSWER_INPUT");
-  const answerControl = page.getByPlaceholder("Enter your final answer");
-  await answerControl.waitFor({ timeout: 30_000 });
+  const answerControlContainer = page.locator('[data-testid="practice-answer-control"]');
+  await answerControlContainer.waitFor({ timeout: 30_000 });
+  assert(await answerControlContainer.count() === 1, "CLIENT_HYDRATION_NOT_READY");
+  await runBounded("CLIENT_HYDRATION_NOT_READY", () =>
+    page
+      .locator('[data-testid="practice-answer-control"][data-client-ready="yes"]')
+      .waitFor({ timeout: 30_000 }),
+  );
+  diagnostics.clientHydration = "READY";
+  const answerControl = answerControlContainer.getByPlaceholder("Enter your final answer", { exact: true });
   await answerControl.fill("2");
+  await runBounded("ANSWER_INPUT_EVENT_NOT_COMMITTED", () =>
+    page
+      .locator('[data-testid="practice-answer-control"][data-answer-committed="yes"]')
+      .waitFor({ timeout: 30_000 }),
+  );
+  diagnostics.inputEvent = "COMMITTED";
+  diagnostics.clientAnswerSnapshot = "PRESENT";
   const browserAnswerPresent = await answerControl.evaluate((element) =>
     (element.tagName === "TEXTAREA" || element.tagName === "INPUT") &&
     typeof element.value === "string" &&
     Boolean(element.value.trim())
   );
   diagnostics.browserAnswerControlValue = browserAnswerPresent ? "PRESENT" : "EMPTY";
-  assert(browserAnswerPresent, "ANSWER_SUBMISSION_FAILED");
+  assert(browserAnswerPresent, "ANSWER_DOM_STATE_MISSING");
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_SUBMIT_BUTTON");
   const submitButton = page.getByRole("button", { name: "Submit round" });
@@ -1474,7 +1497,9 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   if (requestObservation.category === "REQUEST_NOT_EMITTED") {
     diagnostics.reviewFetch = "NOT_INVOKED";
     if (retryMessageVisible) {
-      diagnostics.clientAnswerSnapshot = "EMPTY";
+      if (diagnostics.clientAnswerSnapshot !== "PRESENT") {
+        diagnostics.clientAnswerSnapshot = "EMPTY";
+      }
       diagnostics.clientMissingAnswerGuard = "BLOCKED";
       fail("CLIENT_MISSING_ANSWER_GUARD_BLOCKED");
     }
@@ -1500,7 +1525,8 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
     fail("REVIEW_REQUEST_ATTEMPT_AMBIGUOUS");
   }
   if (requestObservation.category === "REQUEST_ANSWER_EMPTY") {
-    fail("REVIEW_REQUEST_ANSWER_EMPTY");
+    diagnostics.clientAnswerSnapshot = "EMPTY";
+    fail("CLIENT_ANSWER_SNAPSHOT_EMPTY");
   }
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_REVIEW_OR_GRADE");

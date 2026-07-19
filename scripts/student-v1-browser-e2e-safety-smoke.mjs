@@ -134,7 +134,9 @@ for (const phase of [
   "browser_assignment_practice_reload_start_api_status",
   "browser_assignment_practice_reload_session_consistency",
   "browser_assignment_practice_answer_control",
+  "browser_assignment_practice_client_ready",
   "browser_assignment_practice_answer_input",
+  "browser_assignment_practice_answer_committed",
   "browser_assignment_practice_submit_button",
   "browser_assignment_practice_submit_click",
   "browser_assignment_practice_review_api_wait",
@@ -239,6 +241,20 @@ assert(
     source.includes("[data-testid=\"practice-result-badge\"][data-result=\"correct\"]") &&
     !source.includes('getByText("correct", { exact: true })'),
   "Practice success must use the unique semantic result badge",
+);
+const practiceAnswerSequence = sourceBlock(
+  'setHarnessPhase(fixtures, "browser_assignment_practice_answer_control")',
+  'setHarnessPhase(fixtures, "browser_assignment_practice_submit_button")',
+);
+assert(
+  practiceAnswerSequence.includes('[data-testid="practice-answer-control"]') &&
+    practiceAnswerSequence.includes('[data-client-ready="yes"]') &&
+    practiceAnswerSequence.includes('[data-answer-committed="yes"]') &&
+    practiceAnswerSequence.includes('getByPlaceholder("Enter your final answer", { exact: true })') &&
+    practiceAnswerSequence.includes('answerControl.fill("2")') &&
+    practiceAnswerSequence.indexOf('[data-client-ready="yes"]') < practiceAnswerSequence.indexOf('answerControl.fill("2")') &&
+    practiceAnswerSequence.indexOf('answerControl.fill("2")') < practiceAnswerSequence.indexOf('[data-answer-committed="yes"]'),
+  "full browser harness must wait for client readiness and authoritative answer commit before Submit",
 );
 assert(
   assignmentStartRoute.includes('"Unable to start assignment practice."') &&

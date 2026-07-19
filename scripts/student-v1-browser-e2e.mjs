@@ -1979,11 +1979,23 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
   await assertSafePage(page, fixtures, fakeProvider);
 
   setHarnessPhase(fixtures, "browser_assignment_practice_answer_control");
-  const answerControl = page.getByPlaceholder("Enter your final answer");
-  await answerControl.waitFor({ timeout: 30_000 });
+  const answerControlContainer = page.locator('[data-testid="practice-answer-control"]');
+  await answerControlContainer.waitFor({ timeout: 30_000 });
+  assert(await answerControlContainer.count() === 1, "practice_answer_control_not_unique");
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_client_ready");
+  await page
+    .locator('[data-testid="practice-answer-control"][data-client-ready="yes"]')
+    .waitFor({ timeout: 30_000 });
+  const answerControl = answerControlContainer.getByPlaceholder("Enter your final answer", { exact: true });
 
   setHarnessPhase(fixtures, "browser_assignment_practice_answer_input");
   await answerControl.fill("2");
+
+  setHarnessPhase(fixtures, "browser_assignment_practice_answer_committed");
+  await page
+    .locator('[data-testid="practice-answer-control"][data-answer-committed="yes"]')
+    .waitFor({ timeout: 30_000 });
 
   setHarnessPhase(fixtures, "browser_assignment_practice_submit_button");
   const submitButton = page.getByRole("button", { name: "Submit round" });

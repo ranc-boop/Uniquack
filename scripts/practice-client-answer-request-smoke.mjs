@@ -92,9 +92,10 @@ const answerInputBlock = sourceBlock(
   "function QuestionReviewDiagnostic",
 );
 assert(
-  answerInputBlock.includes("onInput={(event) => onChange(event.currentTarget.value)}") &&
+  answerInputBlock.includes("onChange={(event) => onChange(event.currentTarget.value)}") &&
+    !answerInputBlock.includes("onInput=") &&
     !answerInputBlock.includes("onChange={(event) => onChange(event.target.value)}"),
-  "textarea must synchronously forward its native input value",
+  "textarea must synchronously forward its canonical React change value",
 );
 
 const updateBlock = sourceBlock(clientSource, "function updateAnswer", "function requestHint");

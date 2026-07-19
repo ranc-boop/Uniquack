@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { hasSubmittedPracticeAnswer } from "@/lib/practice/client-helpers";
 import type {
   PracticeGradeResult,
   PracticeQuestionReview,
@@ -60,47 +61,55 @@ function reviewingBadge() {
 
 function QuestionAnswerInput({
   answer,
+  clientReady,
   disabled,
   onChange,
   question,
 }: {
   answer: string | string[] | undefined;
+  clientReady: boolean;
   disabled?: boolean;
   onChange: (value: string | string[]) => void;
   question: PracticeRecommendation;
 }) {
-  if (question.questionType === "mcq" && question.options.length) {
-    return (
-      <div className="space-y-2">
-        {question.options.map((option) => {
-          const selected = Array.isArray(answer) ? answer.includes(option.id) : answer === option.id;
-          return (
-            <label key={option.id} className="grid cursor-pointer gap-3 rounded-md border bg-background p-3 sm:grid-cols-[1.5rem_1fr]">
-              <input
-                checked={selected}
-                disabled={disabled}
-                name={`answer-${question.id}`}
-                onChange={() => onChange(option.id)}
-                type="radio"
-              />
-              <div className="space-y-1">
-                <span className="font-mono text-xs text-muted-foreground">{option.label}</span>
-                <OptionText className="border-none bg-transparent p-0" value={option.content_html} />
-              </div>
-            </label>
-          );
-        })}
-      </div>
-    );
-  }
-
-  return (
+  const control = question.questionType === "mcq" && question.options.length ? (
+    <div className="space-y-2">
+      {question.options.map((option) => {
+        const selected = Array.isArray(answer) ? answer.includes(option.id) : answer === option.id;
+        return (
+          <label key={option.id} className="grid cursor-pointer gap-3 rounded-md border bg-background p-3 sm:grid-cols-[1.5rem_1fr]">
+            <input
+              checked={selected}
+              disabled={disabled}
+              name={`answer-${question.id}`}
+              onChange={() => onChange(option.id)}
+              type="radio"
+            />
+            <div className="space-y-1">
+              <span className="font-mono text-xs text-muted-foreground">{option.label}</span>
+              <OptionText className="border-none bg-transparent p-0" value={option.content_html} />
+            </div>
+          </label>
+        );
+      })}
+    </div>
+  ) : (
     <Textarea
       disabled={disabled}
-      onInput={(event) => onChange(event.currentTarget.value)}
+      onChange={(event) => onChange(event.currentTarget.value)}
       placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
       value={answerValue(answer)}
     />
+  );
+
+  return (
+    <div
+      data-answer-committed={hasSubmittedPracticeAnswer(answer) ? "yes" : "no"}
+      data-client-ready={clientReady ? "yes" : "no"}
+      data-testid="practice-answer-control"
+    >
+      {control}
+    </div>
   );
 }
 
@@ -142,6 +151,7 @@ function QuestionReviewDiagnostic({ review }: { review?: PracticeQuestionReview 
 }
 
 export function PracticeQuestionCard({
+  clientReady,
   currentAnswer,
   hints,
   index,
@@ -153,6 +163,7 @@ export function PracticeQuestionCard({
   result,
   review,
 }: {
+  clientReady: boolean;
   currentAnswer: string | string[] | undefined;
   hints: string[];
   index: number;
@@ -194,6 +205,7 @@ export function PracticeQuestionCard({
         </div>
         <QuestionAnswerInput
           answer={currentAnswer}
+          clientReady={clientReady}
           disabled={phase === "feedback"}
           onChange={onAnswerChange}
           question={question}

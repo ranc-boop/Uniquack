@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import {
@@ -330,7 +330,24 @@ function reviewFromGradeFallback({
   };
 }
 
+function subscribeToClientReady() {
+  return () => {};
+}
+
+function getClientReadySnapshot() {
+  return true;
+}
+
+function getServerClientReadySnapshot() {
+  return false;
+}
+
 export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) {
+  const clientReady = useSyncExternalStore(
+    subscribeToClientReady,
+    getClientReadySnapshot,
+    getServerClientReadySnapshot,
+  );
   const [phase, setPhase] = useState<Phase>("start");
   const [sessions, setSessions] = useState<PracticeSessionSummary[]>([]);
   const [activeSession, setActiveSession] = useState<PracticeSessionDetail | null>(null);
@@ -1589,6 +1606,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
                     const questionId = practiceAnswerKey(question);
                     return (
                       <PracticeQuestionCard
+                        clientReady={clientReady}
                         currentAnswer={answers[questionId]}
                         hints={hints[questionId] ?? []}
                         index={index}

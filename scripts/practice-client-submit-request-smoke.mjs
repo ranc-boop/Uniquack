@@ -73,9 +73,10 @@ const answerInput = sourceBlock(cardSource, "function QuestionAnswerInput", "fun
 const updateBlock = sourceBlock(clientSource, "function updateAnswer", "function requestHint");
 const submitBlock = sourceBlock(clientSource, "function submitRound", "function requestFeedbackNextRound");
 assert(
-  answerInput.includes("onInput={(event) => onChange(event.currentTarget.value)}") &&
+  answerInput.includes("onChange={(event) => onChange(event.currentTarget.value)}") &&
+    !answerInput.includes("onInput=") &&
     updateBlock.indexOf("answersRef.current = nextAnswers") < updateBlock.indexOf("setAnswers(nextAnswers)"),
-  "native input must synchronously reach the authoritative ref",
+  "canonical React change input must synchronously reach the authoritative ref",
 );
 assert(
   submitBlock.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&
