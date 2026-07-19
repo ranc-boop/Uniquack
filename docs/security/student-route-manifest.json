@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
-  "audit_date": "2026-07-17",
-  "scope": "Canonical main source plus previously completed, sanitized disposable live evidence. Source checks are non-live proof; no route is marked browser-validated unless a browser journey was actually run.",
+  "audit_date": "2026-07-18",
+  "scope": "Student V1 source, clean-database isolation evidence, and the completed authenticated disposable browser suite. This classification does not cover whole-site deployment readiness.",
   "evidence_legend": {
     "source_static": "Source and embedded regression assertions only.",
-    "live": "Previously recorded clean-disposable role or clean-database validation; no completed harness was rerun for this gate.",
-    "browser": "Full signed-in browser journey. None of the required Student V1 journeys has this evidence yet."
+    "live": "Recorded clean-disposable role, clean-database, or authenticated disposable browser validation.",
+    "browser": "Full signed-in Student browser journey with exact cleanup and no production identity or data."
   },
   "student_page_routes": [
     {
@@ -22,8 +22,8 @@
       "evidence_scope": "own assignment progress summary",
       "asset_path": "none",
       "source_static_tests": ["student-workspace-completion-smoke", "student-my-work-smoke"],
-      "live_evidence": "assignment and Practice evidence is recorded separately; dashboard rendering itself has no live browser proof",
-      "browser_evidence": "NOT_RUN",
+      "live_evidence": "final Student browser suite completed authentication and Student landing",
+      "browser_evidence": "PASS: authentication and Student landing",
       "completion_status": "FUNCTIONAL",
       "remaining_issue": null
     },
@@ -42,7 +42,7 @@
       "asset_path": "none",
       "source_static_tests": ["student-my-work-smoke", "student-workspace-completion-smoke"],
       "live_evidence": "recorded Student assignment/Practice live flow proves entitled work and unrelated-class denial",
-      "browser_evidence": "NOT_RUN",
+      "browser_evidence": "PASS: entitled and completed work visible; unrelated Assignment denied",
       "completion_status": "FUNCTIONAL",
       "remaining_issue": "Availability-window behavior and archived-classroom history are P2 product decisions."
     },
@@ -61,9 +61,9 @@
       "asset_path": "selected-question assets use /api/question-assets/[assetId] in Practice",
       "source_static_tests": ["assignment-practice-evidence-smoke", "assignment-from-bank-smoke", "student-workspace-completion-smoke"],
       "live_evidence": "recorded assignment-to-Practice role flow and sent-feedback/self-study isolation evidence",
-      "browser_evidence": "NOT_RUN",
+      "browser_evidence": "PASS: selected-question scope, sent feedback, private feedback denial, and Practice entry",
       "completion_status": "FUNCTIONAL",
-      "remaining_issue": "A missing/deleted assignment resolves to Next notFound; full browser copy/state remains unverified."
+      "remaining_issue": "A missing/deleted assignment resolves to Next notFound; retain ordinary regression coverage."
     },
     {
       "route": "/student/classrooms",
@@ -80,7 +80,7 @@
       "asset_path": "none",
       "source_static_tests": ["student-workspace-completion-smoke", "classroom-create-rls-smoke"],
       "live_evidence": "completed Classroom role matrix includes student enrollment and removed-student rejoin denial",
-      "browser_evidence": "NOT_RUN",
+      "browser_evidence": "PASS: joined Classroom becomes available to the Student",
       "completion_status": "FUNCTIONAL_BUT_UNPOLISHED",
       "remaining_issue": "Database read failures render raw server error text; classify as P2 copy hardening, not an authorization bypass."
     },
@@ -99,7 +99,7 @@
       "asset_path": "none",
       "source_static_tests": ["student-workspace-completion-smoke", "classroom-live-role-e2e-safety-smoke"],
       "live_evidence": "completed Classroom role matrix confirms valid enrollment, removal, and no silent rejoin",
-      "browser_evidence": "NOT_RUN",
+      "browser_evidence": "PASS: active Student joins the disposable Classroom",
       "completion_status": "FUNCTIONAL",
       "remaining_issue": null
     },
@@ -196,7 +196,7 @@
       "asset_path": "protected /api/question-assets/[assetId] only",
       "source_static_tests": ["practice-provider-execution-smoke", "assignment-practice-evidence-smoke", "student-workspace-completion-smoke"],
       "live_evidence": "Practice provider execution and post-0048 self-study role matrices completed with exact-ID cleanup",
-      "browser_evidence": "NOT_RUN",
+      "browser_evidence": "PASS: Assignment Practice and private self-study create/list/reload/completion journeys",
       "completion_status": "FUNCTIONAL_BUT_REQUEST_BOUND",
       "remaining_issue": "Completed results persist and resume; an interrupted in-flight model request has no durable job guarantee."
     },
@@ -252,10 +252,10 @@
       "evidence_scope": "none",
       "asset_path": "none",
       "source_static_tests": ["route-smoke", "security-smoke"],
-      "live_evidence": "not rerun in this gate",
-      "browser_evidence": "NOT_RUN",
+      "live_evidence": "final Student browser suite completed logout and session-loss checks",
+      "browser_evidence": "PASS: logout, protected-page redirect, and unauthenticated Practice denial",
       "completion_status": "FUNCTIONAL",
-      "remaining_issue": "Session-expiry redirect and logout interaction need browser E2E proof."
+      "remaining_issue": null
     }
   ],
   "practice_api_routes": [
@@ -275,8 +275,8 @@
       "asset_path": "protected route downstream",
       "source_static_tests": ["assignment-practice-evidence-smoke", "student-workspace-completion-smoke"],
       "live_evidence": "recorded assignment-to-Practice validation",
-      "browser_evidence": "NOT_RUN",
-      "completion_status": "FUNCTIONAL",
+      "browser_evidence": "PASS: start, same-session reload/resume, answer submission, and completion",
+      "completion_status": "COMPLETED / LIVE VALIDATED",
       "remaining_issue": "Duplicate successful starts are a P2 idempotency/restart-flow decision."
     },
     {
@@ -355,9 +355,9 @@
       "asset_path": "none",
       "source_static_tests": ["student-self-study-isolation-smoke", "student-workspace-completion-smoke"],
       "live_evidence": "post-0048 matrix validates preference privacy",
-      "browser_evidence": "NOT_RUN",
+      "browser_evidence": "NON_BLOCKING_P2_DIAGNOSTIC: one failed request during an otherwise passing self-study journey",
       "completion_status": "FUNCTIONAL",
-      "remaining_issue": null
+      "remaining_issue": "Investigate the bounded PRACTICE_PREFERENCES request diagnostic separately; it did not block required self-study assertions."
     },
     {
       "route": "/api/practice/preferences/merge/run",
@@ -415,7 +415,7 @@
       "asset_path": "none",
       "source_static_tests": ["practice-provider-execution-smoke", "assignment-practice-evidence-smoke"],
       "live_evidence": "recorded Practice provider execution validation",
-      "browser_evidence": "NOT_RUN",
+      "browser_evidence": "PASS: Review succeeded with submitted answer present",
       "completion_status": "FUNCTIONAL_BUT_REQUEST_BOUND",
       "remaining_issue": "Malformed SSE is retry-safe; in-flight review is not durable."
     },
@@ -455,8 +455,8 @@
       "asset_path": "none",
       "source_static_tests": ["student-self-study-isolation-smoke", "student-workspace-completion-smoke"],
       "live_evidence": "post-0048 matrix validates Student private self-study create/read/resume",
-      "browser_evidence": "NOT_RUN",
-      "completion_status": "FUNCTIONAL",
+      "browser_evidence": "PASS: create, active empty state, immediate list, and same-session reload",
+      "completion_status": "COMPLETED / LIVE VALIDATED",
       "remaining_issue": null
     },
     {
@@ -495,8 +495,8 @@
       "asset_path": "protected route when rendered question has an asset",
       "source_static_tests": ["student-self-study-isolation-smoke", "student-workspace-completion-smoke"],
       "live_evidence": "post-0048 matrix validates owner and read-only manager boundaries",
-      "browser_evidence": "NOT_RUN",
-      "completion_status": "FUNCTIONAL",
+      "browser_evidence": "PASS: created and assignment-linked sessions restore with requester scope",
+      "completion_status": "COMPLETED / LIVE VALIDATED",
       "remaining_issue": null
     },
     {
@@ -536,8 +536,8 @@
       "asset_path": "none",
       "source_static_tests": ["student-workspace-completion-smoke", "classroom-live-role-e2e-safety-smoke"],
       "live_evidence": "completed Classroom role matrix",
-      "browser_evidence": "NOT_RUN",
-      "completion_status": "FUNCTIONAL",
+      "browser_evidence": "PASS: valid join through the Student browser journey",
+      "completion_status": "COMPLETED / LIVE VALIDATED",
       "remaining_issue": null
     },
     {
@@ -555,8 +555,8 @@
       "asset_path": "private question-assets bucket; 60-second no-store signed redirect; no persisted signed URL",
       "source_static_tests": ["question-assets-merged-code-audit-smoke", "check-question-assets-public-url", "student-workspace-completion-smoke"],
       "live_evidence": "P0-STORAGE-01 completed clean-database matrix",
-      "browser_evidence": "NOT_RUN",
-      "completion_status": "COMPLETED / CLEAN-DB LIVE VALIDATED",
+      "browser_evidence": "PASS: selected private asset allowed; unselected private asset denied",
+      "completion_status": "COMPLETED / LIVE VALIDATED",
       "remaining_issue": null
     },
     {
@@ -574,7 +574,7 @@
       "asset_path": "no getPublicUrl path",
       "source_static_tests": ["student-workspace-completion-smoke", "practice-provider-execution-smoke"],
       "live_evidence": "not applicable to source-import boundary",
-      "browser_evidence": "NOT_RUN",
+      "browser_evidence": "PASS: Teacher/Admin controls hidden and safe error copy retained",
       "completion_status": "FUNCTIONAL",
       "remaining_issue": null
     }
@@ -587,11 +587,18 @@
       ],
       "accepted_limitation": "Practice model calls are request-bound. Completed work persists, but an in-flight recommendation, review, hint, title, or preference-merge request is not guaranteed to finish after the page closes.",
       "future_enhancements": ["Student Study Library backend", "Study Group backend", "universal-library product work"],
-      "p2_polish": ["consolidated feedback history", "availability-window contract", "archived-classroom/completed-history decision", "duplicate assignment-start contract", "formal Practice React error boundary", "safe generic classroom-list read-error copy"]
+      "p2_polish": ["consolidated feedback history", "availability-window contract", "archived-classroom/completed-history decision", "duplicate assignment-start contract", "formal Practice React error boundary", "safe generic classroom-list read-error copy", "non-blocking PRACTICE_PREFERENCES request diagnostic"]
     },
-    "classification": "IMPLEMENTATION COMPLETE / BROWSER E2E BLOCKED",
-    "reason": "The required V1 implementation and previously recorded live role matrices are complete. The ten required signed-in browser journeys have not been executed end-to-end, so this gate cannot claim browser or whole-product launch validation.",
-    "next_classification_work": "Run authenticated browser E2E for the ten listed V1 journeys against the approved disposable environment, then address only any reproduced P0/P1 failure. Keep the request-bound Practice limitation explicit unless product promises background completion."
+    "classification": "COMPLETED / LIVE VALIDATED",
+    "assignment_practice_classification": "COMPLETED / LIVE VALIDATED",
+    "private_self_study_classification": "COMPLETED / LIVE VALIDATED",
+    "practice_classification": "FUNCTIONAL_BUT_REQUEST_BOUND / LIVE VALIDATED",
+    "reason": "The authenticated disposable Student browser suite passed all required journeys with exact cleanup, temporary-server shutdown, process-environment clearing, and zero fixture residue. This classification applies only to Student V1, not whole-site deployment readiness.",
+    "provider_behavior": "Practice uses the configured enabled/default compatible Provider, which may be DeepSeek or Gemini OpenAI-compatible depending on the environment. Deterministic grade uses no Provider.",
+    "database_state": "Migrations 0043 through 0048 are unchanged: 0043 remains PARTIALLY_APPLIED_FAILED, 0044 was applied manually exactly once, and 0045/0046/0047/0048 retain clean-database live validation.",
+    "cleanup_result": "PASS: exact-ID cleanup, zero fixture residue, temporary servers stopped, and process-only environment values cleared.",
+    "non_blocking_diagnostic": "One failed PRACTICE_PREFERENCES request occurred during the otherwise passing private self-study journey; track as P2 diagnostic debt.",
+    "next_classification_work": "Keep Student V1 closed. Address remaining P2 product, UX, resilience, and preference-request diagnostics in separately scoped work while preserving the request-bound Practice limitation."
   },
   "findings": [
     {
@@ -611,9 +618,16 @@
     {
       "id": "P2_STUDENT_BROWSER_E2E",
       "severity": "P2 release evidence",
-      "status": "OPEN",
-      "behavior": "No full browser proof exists for join, My Work, assignment start/resume/completion, feedback, self-study, assets, logout/session expiry, or unauthorized direct URLs.",
-      "required_action": "Run the ten authenticated browser journeys before elevating this gate to COMPLETED / LIVE VALIDATED."
+      "status": "COMPLETED / LIVE VALIDATED",
+      "behavior": "The full authenticated Student browser suite passed join, My Work, assignment start/resume/completion, feedback, self-study, assets, logout/session loss, isolation, and unauthorized-access journeys.",
+      "required_action": "Preserve the browser safety contracts and exact-cleanup harness for regression validation; do not rerun without explicit disposable-environment approval."
+    },
+    {
+      "id": "P2_PRACTICE_PREFERENCES_DIAGNOSTIC",
+      "severity": "P2 diagnostic debt",
+      "status": "OPEN / NON_BLOCKING",
+      "behavior": "One bounded PRACTICE_PREFERENCES failed request was observed while all required private self-study assertions and cleanup passed.",
+      "required_action": "Investigate separately without reopening the Student V1 completion gate."
     },
     {
       "id": "P2_STUDENT_PRODUCT_AND_UI_DEBT",

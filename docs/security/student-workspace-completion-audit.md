@@ -188,12 +188,11 @@ The minimum safe disposable validation remains:
 - normal app-auth process environment injected process-only; and
 - no real Student data or broad paid-provider run.
 
-**Practice classification: FUNCTIONAL / LIVE E2E BLOCKED.** Source and embedded
-tests now support normal authenticated execution through a server-only resolver,
-but live disposable role/provider validation has not been run. Practice remains
+This was the pre-live preparation state. The later disposable Assignment/Practice
+and final Student browser validations supersede it. Practice remains
 **request-bound**, not `DURABLE_JOB_BACKED`: only AI PDF, Blueprint, and Coverage
-Recovery use the durable queue today. Durable Practice execution is separate future
-work and must not be inferred from this remediation.
+Recovery use the durable queue today. Durable Practice execution is separate
+future work and must not be inferred from this remediation.
 
 ## Disposable Assignment/Practice Live E2E - 2026-07-16
 
@@ -532,7 +531,7 @@ this validation. The overall website remains separately not deployment-ready.
 
 ---
 
-## Final Student V1 Completion Gate - 2026-07-17
+## Final Student V1 Completion Gate - 2026-07-18
 
 This section supersedes the earlier whole-workspace label for the narrower
 Student V1 launch contract defined in
@@ -540,18 +539,23 @@ Student V1 launch contract defined in
 not reclassify intentionally deferred Study Library, Study Group, and broader
 universal-library work as required V1 delivery.
 
-**Final Student V1 classification: IMPLEMENTATION COMPLETE / BROWSER E2E
-BLOCKED.**
+**Final Student V1 classification: COMPLETED / LIVE VALIDATED.**
 
 The required Student V1 workflow is implemented and its core security/data
 ownership proof is complete:
 
-- My Work and assignment detail are active-membership and assigned-work scoped.
-- Assignment Practice uses selected questions only, persists linked progress after
-  successful work, and does not grant Bank membership.
+- My Work and assignment detail are active-membership and assigned-work scoped;
+  browser validation proved entitled work visibility and unrelated Assignment
+  denial.
+- Assignment Practice uses selected questions only, persists linked progress,
+  resumes the same session after reload, restores submitted/completed answers,
+  and does not grant Bank membership.
 - Practice executes through an authenticated, server-only compatible/default
   provider resolver; normal Practice does not use the super-admin gateway or a
   durable AI worker job.
+- Migrations `0043` through `0048` remain frozen and unchanged: `0043` retains
+  `PARTIALLY_APPLIED_FAILED`, `0044` was applied manually exactly once, and
+  `0045/0046/0047/0048` retain their clean-database live validation.
 - `0047` and `0048` are frozen, applied manually exactly once, and clean-database
   live validated. Private self-study is Student-owned; assignment managers are
   read-only; staff, framework owner, co-teacher, unrelated Student/Teacher, and
@@ -559,19 +563,33 @@ ownership proof is complete:
 - P0-STORAGE-01 is independently completed: protected selected assets work,
   unselected private assets and public URLs are denied, and signed URLs are not
   persisted.
+- Private self-study browser validation proved creation, persistence, active empty
+  state, immediate list visibility, same-session reload, and zero initial evidence.
+- Logout, protected-route redirect, unauthenticated Practice API denial, hidden
+  Teacher/Admin controls, safe error copy, and same-class Student isolation passed.
 
-The remaining gate is evidence, not a discovered P0/P1 defect: authenticated
-browser E2E has not yet executed the required join, My Work, start/resume,
-completion/reload, feedback, self-study, asset, logout/session-expiry, and
-unauthorized-direct-URL journeys. Source/static, embedded, API, and prior
-disposable role evidence are deliberately not presented as browser proof.
+The final authenticated suite reported `PASS Student V1 browser E2E completed
+with exact cleanup`. Cleanup, temporary-server shutdown, process-environment
+clearing, and zero fixture residue all passed. It used no production identity or
+data and did not replay migrations.
+
+Assignment Practice and private self-study are **COMPLETED / LIVE VALIDATED**.
+Practice is **FUNCTIONAL_BUT_REQUEST_BOUND / LIVE VALIDATED**. It uses the
+configured enabled/default compatible Provider, which may be DeepSeek or Gemini
+OpenAI-compatible depending on the environment. Deterministic grade uses no
+Provider; no cross-Provider fallback or circuit behavior is claimed.
 
 Accepted limitation: Practice model calls remain request-bound. Completed work
 persists and resumes; an interrupted in-flight model call is not guaranteed to
 complete after page close. This is not a V1 blocker unless the product promises
 background completion.
 
-P2 follow-ups remain: browser E2E, feedback aggregation, availability/archive/
-history semantics, duplicate-start behavior, Study Library/Groups, a formal
-Practice error boundary, and generic classroom read-error copy. The broader site
-is still not declared deployment-ready.
+One failed `PRACTICE_PREFERENCES` request was observed during the otherwise
+passing private self-study journey. Required creation, persistence, active
+session, list, reload, and zero-evidence assertions passed, so this remains
+non-blocking P2 diagnostic debt.
+
+P2 follow-ups remain: feedback aggregation, availability/archive/history
+semantics, duplicate-start behavior, Study Library/Groups, a formal Practice
+error boundary, generic classroom read-error copy, and the preference-request
+diagnostic. The broader site is still not declared deployment-ready.

@@ -128,8 +128,10 @@ assert(
   "Student support actions and protected question assets must be manifested",
 );
 assert(
-  manifest.final_gate?.classification === "IMPLEMENTATION COMPLETE / BROWSER E2E BLOCKED",
-  "final Student gate must not overclaim browser validation",
+  manifest.final_gate?.classification === "COMPLETED / LIVE VALIDATED" &&
+    manifest.final_gate?.practice_classification === "FUNCTIONAL_BUT_REQUEST_BOUND / LIVE VALIDATED" &&
+    manifest.final_gate?.cleanup_result?.startsWith("PASS:"),
+  "final Student gate must record completed browser validation, exact cleanup, and the request-bound Practice limit",
 );
 console.log("PASS complete Student/shared/API/support route inventory and browser-evidence gate are recorded");
 

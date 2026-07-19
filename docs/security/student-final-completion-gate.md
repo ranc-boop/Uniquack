@@ -1,21 +1,22 @@
 # Student V1 Final Completion Gate
 
-**Audit date:** 2026-07-17
-**Source:** merged canonical `main`, including the completed Student Practice
-provider remediation and clean-database evidence-isolation work.
-**Scope:** audit, route inventory, and source guardrails only. This gate did not
-read an environment file, modify live Supabase, rerun a migration, or rerun a
-completed live fixture harness.
+**Audit date:** 2026-07-18
+**Source:** `codex/student-final-completion-gate`, including the completed
+Student Practice remediation, clean-database evidence isolation, and final
+authenticated disposable browser validation.
+**Scope:** Student V1 only. The final evidence update did not read an environment
+file, modify live Supabase, replay a migration, or rerun the completed browser
+fixture harness.
 
 ## Decision
 
-**IMPLEMENTATION COMPLETE / BROWSER E2E BLOCKED**
+**COMPLETED / LIVE VALIDATED**
 
-The required Student V1 implementation is present, its authorization boundaries
-have prior clean-disposable live proof, and no new P0/P1 authorization defect was
-found by this audit. The ten signed-in browser journeys below have not been run
-end-to-end. Source, embedded PostgreSQL, API, route-smoke, and prior live role
-evidence must not be represented as browser validation.
+The authenticated Student V1 browser suite passed end-to-end with exact-ID
+cleanup. Assignment Practice and private self-study are both **COMPLETED / LIVE
+VALIDATED**. Practice remains **FUNCTIONAL_BUT_REQUEST_BOUND / LIVE VALIDATED**:
+completed results persist and resume, but an interrupted in-flight model call is
+not guaranteed to finish after the page closes.
 
 This decision applies to the Student V1 scope only. It does not declare the
 overall website deployment-ready.
@@ -62,6 +63,8 @@ recovery are the only durable worker job families.
 - Duplicate assignment-start/restart contract.
 - Formal React error boundary for Practice.
 - Generic classroom-list read-error copy instead of raw database error text.
+- Investigate one non-blocking failed `PRACTICE_PREFERENCES` request observed
+  during the otherwise passing private self-study journey.
 
 These are not a newly found authorization defect in the required Student V1
 workflow.
@@ -92,17 +95,27 @@ Practice worker claim.
 
 | Area | Result | Evidence and limit |
 | --- | --- | --- |
-| Student landing and My Work | **Implemented** | Active-Student server guard and assigned-work scoping are source-covered. Prior disposable assignment evidence proves entitled versus unrelated assignment access. Browser flow is not run. |
-| Assignment detail and start/resume | **Implemented** | Selected items, sent feedback, progress state, and scoped Practice entry are present. Assignment-to-Practice evidence is persisted after successful work. Duplicate start behavior is P2. |
-| Deterministic grade/completion | **Implemented** | Grade is provider-independent and updates linked assignment progress/evidence. Browser completion/reload remains unproven. |
-| Practice provider path | **Functional but request-bound** | Authenticated route authorization precedes the trusted server-only compatible/default provider resolver. No normal Practice gateway path or client provider selection exists. |
-| Private self-study | **P1 completed / clean-db live validated** | 0047 and 0048 clean-disposable matrices proved owner access and cross-Student/staff/framework-owner denials with exact-ID cleanup. |
-| Feedback and progress | **Implemented for V1** | Only explicit `sent_to_student` feedback is visible on assignment detail. The Progress page is a summary; a consolidated feedback feed is P2. |
-| Question assets | **P0 dependency completed / clean-db live validated** | Private bucket, zero residual legacy URLs, requester-first authorization, direct-public URL denial, selected asset allowance, and staff upload/delete were previously validated. |
-| Login/logout and session loss | **Source-covered; browser unproven** | Safe local `next` handling, `signOut`, redirect/401 code paths are present. Session expiry needs a browser journey. |
+| Student landing and My Work | **Completed / live validated** | Browser proof covers authentication, Classroom join, entitled work visibility, unrelated Assignment denial, and completed Assignment display. |
+| Assignment detail and start/resume | **Completed / live validated** | Selected-question scoping, sent/private feedback boundaries, start, same-session reload/resume, and linked completion passed. Duplicate-start product semantics remain P2. |
+| Deterministic grade/completion | **Completed / live validated** | Submitted answers, review, completed restoration, and My Work completion persisted. Deterministic grade uses no Provider. |
+| Practice provider path | **Functional but request-bound / live validated** | Practice uses the configured enabled/default compatible Provider; this may be DeepSeek or Gemini OpenAI-compatible by environment. No client Provider selection exists. |
+| Private self-study | **Completed / live validated** | Create, persistence, active empty state, immediate list, same-session reload, zero initial evidence, and 0047/0048 isolation all passed. |
+| Feedback and progress | **Completed for V1 / live validated** | Sent feedback was visible; private feedback and unselected-question content were hidden. Consolidated history remains P2. |
+| Question assets | **Completed / live validated** | Selected private asset access succeeded and unselected private asset access was denied in the browser. |
+| Login/logout and session loss | **Completed / live validated** | Logout, protected-page redirect, unauthenticated Practice API denial, and hidden Teacher/Admin controls passed. |
 
 ## Isolation and Ownership
 
+Migrations `0043` through `0048` remain frozen and unchanged by this completion
+gate:
+
+- **0043** remains `PARTIALLY_APPLIED_FAILED`.
+- **0044** was applied manually exactly once.
+- **0045/0046** retain their clean-database live validation.
+- **0047/0048** retain their clean-database live validation and were each
+  applied manually exactly once.
+
+No migration was required or replayed for this finalization. In particular,
 `0047_practice_self_study_evidence_isolation.sql` and
 `0048_practice_course_framework_evidence_isolation.sql` remain frozen:
 
@@ -132,28 +145,39 @@ affected Practice tables. The completed disposable role matrix proved:
 ## Provider and Routing Note
 
 Practice chooses the configured enabled/default **compatible** provider using the
-server-only resolver. It is not operation-routed specifically to DeepSeek. AI
-PDF/vision retains its own execution path. Changing the global compatible default
-can change Practice selection, so Practice-specific provider routing is a
-**product decision recommended post-launch**, not a verified security dependency
-for Student V1. No routing/default change was made here.
+server-only resolver. Depending on the environment, that compatible default may
+be DeepSeek or Gemini OpenAI-compatible. Practice is not hardcoded to either
+Provider and does not claim cross-Provider fallback or circuit behavior. AI
+PDF/vision retains its own execution path. Deterministic grade uses no Provider.
+No routing/default change was made here.
 
-## Browser E2E Gap
+## Browser E2E Completion Evidence
 
-None of these journeys has full browser evidence yet:
+The final authenticated disposable suite reported `PASS Student V1 browser E2E
+completed with exact cleanup`. It validated:
 
-| Required browser journey | Source/embedded proof | Prior live role proof | Browser proof |
-| --- | --- | --- | --- |
-| Student joins classroom | yes | yes | missing |
-| Student opens My Work | yes | assignment access | missing |
-| Student starts assignment | yes | yes | missing |
-| Student resumes in-progress Practice | yes | persisted-state role evidence | missing |
-| Student completes and reloads | yes | linked evidence proof | missing |
-| Student sees sent Teacher feedback | yes | isolation/feedback proof | missing |
-| Student performs private self-study | yes | yes | missing |
-| Student opens selected question asset | yes | P0 storage matrix | missing |
-| Student logs out or loses session | source only | no dedicated live browser run | missing |
-| Unauthorized direct URL is denied | source/API/RLS | role matrices where applicable | missing |
+- Student authentication, Classroom join, My Work entitlement, and unrelated
+  Assignment denial.
+- Assignment selected-question scoping, sent feedback visibility, private
+  feedback hiding, and unselected-question hiding.
+- Assignment Practice start, same-session reload/resume, authoritative answer
+  state/ref consistency, valid-input guard, Review success, submitted-answer
+  persistence, completed restoration, and completed My Work state.
+- Private self-study creation, persistence, active empty state, visible session
+  list, same-session reload, and zero initial rounds/questions/attempts.
+- Selected private question asset allowance, unselected private asset denial,
+  same-class Student evidence isolation, and source content/Bank isolation.
+- Logout, protected-page redirect, unauthenticated Practice API denial,
+  Teacher/Admin controls hidden from Student, and safe error copy.
+
+Cleanup and containment also passed: `cleanup=PASS`,
+`temporary_servers_stopped=YES`, `process_environment_cleared=YES`, and zero
+fixture residue. No production identity/data was used and no migration was
+replayed.
+
+One failed `PRACTICE_PREFERENCES` request was recorded during private self-study.
+All required self-study creation, persistence, active-session, list, reload, and
+zero-evidence assertions still passed. This is non-blocking P2 diagnostic debt.
 
 ## Remaining Findings
 
@@ -161,41 +185,32 @@ No new P0 or P1 finding was discovered.
 
 | Severity | Finding | Required next action |
 | --- | --- | --- |
-| P2 release evidence | No full browser E2E for the ten required journeys | Run authenticated browser E2E against the approved disposable environment. |
+| P2 diagnostic debt | One failed `PRACTICE_PREFERENCES` request during the passing self-study journey | Reproduce separately without reopening the completed Student V1 gate. |
 | P2 product decision | Availability, archive/history retention, and duplicate-start semantics | Decide contracts before changing behavior. |
 | P2 product scope | Study Library, Study Groups, consolidated feedback history | Plan as separate product work. |
 | P2 resilience | Request-bound model calls and no formal Practice error boundary | Keep the limitation explicit; add a durable job only if product promises completion after disconnect. |
 | P2 UX | Classroom list exposes raw read-error text | Replace with a generic safe message in a narrow UI-hardening change. |
 
-## Completion Path
+## Completion Boundary
 
-To reach **COMPLETED / LIVE VALIDATED** for Student V1, run and record the ten
-browser journeys above without changing migrations, Provider routing, or the
-request-bound Practice contract. Any reproduced P0/P1 issue should be fixed in a
-separate forward-only change. The broader site remains independently subject to
-its other launch gates.
+Student V1 is **COMPLETED / LIVE VALIDATED**. This does not declare the entire
+website deployment-ready. Any remaining P2 item should be handled in a separately
+scoped change without altering the accepted request-bound Practice contract by
+implication.
 
 ## Validation Record
 
-The following source, embedded, and local-server checks passed without reading
-an environment file or creating live fixtures:
+The final closure reran the required source, embedded, and local build checks
+without reading an environment file or creating live fixtures:
 
-- `npm.cmd install`, `npm.cmd run lint`, and `npm.cmd run build`
-- `student-workspace-completion-smoke`, `student-self-study-isolation-smoke`,
-  and the self-study live-harness safety smoke
-- `practice-provider-execution-smoke`, question-assets public URL and merged
-  code-audit smokes, migration reconciliation, and security smoke
-- route smoke against a temporary local production server
-- `perf:budget`, `perf:audit`, and `analyze`
+- `npm.cmd run lint` and `npm.cmd run build`
+- `student-workspace-completion-smoke` and `student-self-study-isolation-smoke`
+- Student browser and private self-study live-harness safety smokes
+- Assignment Practice resume, answer-state consistency, missing-answer guard,
+  and submitted-attempt identity smokes
+- question-assets merged-code audit and Practice provider-execution smokes
+- security smoke and `git diff --check`
 
-`student-my-work-smoke` was correctly blocked at its process-environment gate.
-`assignment-practice-evidence-smoke` and `assignment-from-bank-smoke` completed
-their source phases and were then correctly blocked at the same live
-environment gate. These are not reported as passing live evidence. The
-migration reconciliation smoke also retains its independent, pre-existing
-post-0042 Provider Gateway ownership status; it does not change this Student
-gate.
-
-Completed disposable live harnesses were deliberately not rerun. No migration,
-database, Storage bucket, Provider configuration, or environment file was
-changed during this audit.
+The already completed disposable browser harness was deliberately not rerun for
+this evidence-only closure. No migration, database, Storage bucket, Provider
+configuration, or environment file was changed.
