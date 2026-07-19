@@ -4,11 +4,42 @@ import {
 } from "@/lib/practice/schema";
 import { restoredPracticeQuestionId } from "@/lib/practice/answer-restore";
 import type {
+  PracticeAttemptInput,
   PracticeGradeResult,
   PracticeRecommendResponse,
   PracticeRecommendation,
   PracticeRoundHistory,
 } from "@/lib/practice/types";
+
+type PracticeAnswerMap = Readonly<Record<string, PracticeAttemptInput["answer"]>>;
+type PracticeHintMap = Readonly<Record<string, readonly string[]>>;
+
+export function practiceAnswerKey(question: Pick<PracticeRecommendation, "id">) {
+  return question.id;
+}
+
+export function hasSubmittedPracticeAnswer(value: unknown) {
+  if (typeof value === "string") return Boolean(value.trim());
+  if (typeof value === "number" || typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.keys(value).length > 0;
+  return false;
+}
+
+export function buildPracticeSubmittedAttempts(
+  questions: readonly Pick<PracticeRecommendation, "id">[],
+  answers: PracticeAnswerMap,
+  hints: PracticeHintMap,
+): PracticeAttemptInput[] {
+  return questions.map((question) => {
+    const questionId = practiceAnswerKey(question);
+    return {
+      answer: answers[questionId] ?? "",
+      hintCount: hints[questionId]?.length ?? 0,
+      questionId,
+    };
+  });
+}
 
 export function formatDuration(ms: number) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));

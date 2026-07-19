@@ -250,6 +250,7 @@ const answerDiagnosticOutput = block(
 assert(
   answerDiagnosticOutput.includes('browser_answer_control_value=${diagnostics.browserAnswerControlValue}') &&
     answerDiagnosticOutput.includes('review_request_answer=${diagnostics.reviewRequestAnswer}') &&
+    answerDiagnosticOutput.includes('review_request_attempt=${diagnostics.reviewRequestAttempt}') &&
     answerDiagnosticOutput.includes('persisted_attempt_row=${diagnostics.persistedAttemptRow}') &&
     answerDiagnosticOutput.includes('persisted_attempt_answer=${diagnostics.persistedAttemptAnswer}') &&
     answerDiagnosticOutput.includes('session_detail_attempt=${diagnostics.sessionDetailAttempt}') &&
@@ -348,10 +349,13 @@ assert(
     reviewDiagnostics.includes("REVIEW_STREAM_INCOMPLETE") &&
     reviewDiagnostics.includes("GRADE_RESPONSE_2XX") &&
     reviewDiagnostics.includes("GRADE_NOT_REQUIRED") &&
-    reviewDiagnostics.includes("reviewRequestAnswerState") &&
+    reviewDiagnostics.includes("reviewRequestAttemptState") &&
     reviewDiagnostics.includes("request.postDataJSON()") &&
-    reviewDiagnostics.includes('classifyPracticeAnswer(attempt.answer) === "PRESENT"') &&
-    reviewDiagnostics.includes('return "NOT_OBSERVED"') &&
+    reviewDiagnostics.includes('item?.questionId === expectedQuestionId') &&
+    reviewDiagnostics.includes('attempt: "MISSING"') &&
+    reviewDiagnostics.includes('attempt: "AMBIGUOUS"') &&
+    reviewDiagnostics.includes('attempt: "FOUND"') &&
+    reviewDiagnostics.includes('answer: "NOT_OBSERVED"') &&
     !/console\.(?:log|error|warn)/.test(reviewDiagnostics) &&
     !/(?:writeFile|appendFile|createWriteStream)/.test(reviewDiagnostics),
   "review SSE and grade responses must collapse to bounded in-memory categories",
@@ -399,11 +403,14 @@ assert(
   "completed history must map each restored answer through its restored question identity",
 );
 assert(
-  clientSource.includes("currentAnswer={answers[question.id]}") &&
+  clientSource.includes("const questionId = practiceAnswerKey(question)") &&
+    clientSource.includes("currentAnswer={answers[questionId]}") &&
     clientSource.includes("const answersRef = useRef<AnswersState>({})") &&
     clientSource.includes("answersRef.current = nextAnswers") &&
-    clientSource.includes("answer: answersRef.current[question.id] ?? \"\"") &&
+    clientSource.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&
+    clientSource.includes("buildPracticeSubmittedAttempts(") &&
     questionCardSource.includes("answer={currentAnswer}") &&
+    questionCardSource.includes("onInput={(event) => onChange(event.currentTarget.value)}") &&
     questionCardSource.includes('disabled={phase === "feedback"}') &&
     questionCardSource.includes("value={answerValue(answer)}"),
   "the completed Question card must receive the restored answer and render it immutably",

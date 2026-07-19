@@ -101,7 +101,8 @@ assert(
 assert(
   clientSource.includes("buildRestoredPracticeAnswers(") &&
     clientSource.includes("setAnswers(restoredAnswers)") &&
-    clientSource.includes("currentAnswer={answers[question.id]}") &&
+    clientSource.includes("const questionId = practiceAnswerKey(question)") &&
+    clientSource.includes("currentAnswer={answers[questionId]}") &&
     cardSource.includes("answer={currentAnswer}") &&
     cardSource.includes("value={answerValue(answer)}"),
   "restored answers must reach the controlled completed answer field",
@@ -109,7 +110,7 @@ assert(
 assert(
   cardSource.includes('disabled={phase === "feedback"}') &&
     cardSource.includes('data-result="correct"') &&
-    cardSource.includes("onChange={(event) => onChange(event.target.value)}"),
+    cardSource.includes("onInput={(event) => onChange(event.currentTarget.value)}"),
   "completed answers must be immutable while unfinished answers remain editable beside result state",
 );
 assert(

@@ -40,14 +40,14 @@ assert(
     restoreBlock.includes("answersRef.current = restoredAnswers") &&
     clientSource.includes("answersRef.current = {}") &&
     updateBlock.indexOf("answersRef.current = nextAnswers") < updateBlock.indexOf("setAnswers(nextAnswers)") &&
-    submitBlock.includes('answer: answersRef.current[question.id] ?? ""'),
+    submitBlock.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&
+    submitBlock.includes("buildPracticeSubmittedAttempts("),
   "submission must snapshot the latest controlled answer before React commits another render",
 );
 assert(
-  submitBlock.includes("const attempts: PracticeAttemptInput[]") &&
-    submitBlock.includes("attempts: reviewPayloadAttempts") &&
+  submitBlock.includes('const submittedAttempts: PracticeReviewRequest["attempts"]') &&
+    (submitBlock.match(/attempts: submittedAttempts/g) ?? []).length === 3 &&
     submitBlock.includes("body: JSON.stringify({") &&
-    submitBlock.includes("              attempts,") &&
     submitBlock.includes('"/api/practice/grade"'),
   "review success and deterministic fallback must derive from the same submitted attempt snapshot",
 );
@@ -177,7 +177,7 @@ const browserBoundary = sourceBlock(
 );
 const reviewBoundary = sourceBlock(
   harnessSource,
-  "function reviewRequestAnswerState",
+  "function reviewRequestAttemptState",
   "function observeGrade",
 );
 assert(
@@ -186,7 +186,9 @@ assert(
     browserBoundary.includes('waitForReview(page, contract.questionId)') &&
     reviewBoundary.includes("request.postDataJSON()") &&
     reviewBoundary.includes("item?.questionId === expectedQuestionId") &&
-    reviewBoundary.includes('classifyPracticeAnswer(attempt.answer) === "PRESENT"'),
+    reviewBoundary.includes('attempt: "MISSING"') &&
+    reviewBoundary.includes('attempt: "AMBIGUOUS"') &&
+    reviewBoundary.includes('attempt: "FOUND"'),
   "bounded diagnostics must locate the first empty browser-to-review boundary",
 );
 assert(

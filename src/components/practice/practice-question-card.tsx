@@ -97,7 +97,7 @@ function QuestionAnswerInput({
   return (
     <Textarea
       disabled={disabled}
-      onChange={(event) => onChange(event.target.value)}
+      onInput={(event) => onChange(event.currentTarget.value)}
       placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
       value={answerValue(answer)}
     />

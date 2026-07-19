@@ -19,8 +19,11 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  buildPracticeSubmittedAttempts,
   clearLegacyPracticeStorage,
   formatDuration,
+  hasSubmittedPracticeAnswer,
+  practiceAnswerKey,
   readPendingPracticeRound,
   recommendationFromHistoryQuestion,
   resultsFromHistoryRound,
@@ -748,18 +751,19 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     setError(null);
     startTransition(async () => {
       try {
-        const previousHints = hints[question.id] ?? [];
+        const questionId = practiceAnswerKey(question);
+        const previousHints = hints[questionId] ?? [];
         const response = await jsonRequest<PracticeHintResponse>("/api/practice/hint", {
           body: JSON.stringify({
-            currentAnswer: answersRef.current[question.id] ?? "",
+            currentAnswer: answersRef.current[questionId] ?? "",
             hintLevel: previousHints.length + 1,
             previousHints,
-            questionId: question.id,
+            questionId,
             sessionId: activeSession?.id,
           }),
           method: "POST",
         });
-        setHints((current) => ({ ...current, [question.id]: [...previousHints, response.hint] }));
+        setHints((current) => ({ ...current, [questionId]: [...previousHints, response.hint] }));
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -769,11 +773,32 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   function submitRound() {
     if (!recommendation || !activeSession || !recommendation.roundId) return;
 
-    const attempts: PracticeAttemptInput[] = recommendation.recommendations.map((question) => ({
-      answer: answersRef.current[question.id] ?? "",
-      hintCount: hints[question.id]?.length ?? 0,
-      questionId: question.id,
-    }));
+    const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current });
+    const submittedAttemptInputs = buildPracticeSubmittedAttempts(
+      recommendation.recommendations,
+      submittedAnswerSnapshot,
+      hints,
+    );
+    if (submittedAttemptInputs.some((attempt) => !hasSubmittedPracticeAnswer(attempt.answer))) {
+      setError("Your answer was not captured. Please review it and try again.");
+      return;
+    }
+    const submittedAttempts: PracticeReviewRequest["attempts"] = submittedAttemptInputs.map((attempt) => {
+      const recommended = recommendation.recommendations.find((item) => item.id === attempt.questionId);
+      return {
+        ...attempt,
+        questionCode: recommended?.questionCode,
+        result: {
+          explanation: "Reviewer judgment pending.",
+          gradingMode: "manual" as const,
+          isCorrect: null,
+          questionId: attempt.questionId,
+          score: null,
+          solutionHtml: null,
+        },
+        title: recommended?.title,
+      };
+    });
 
     setError(null);
     thinkingStartedAtRef.current = Date.now();
@@ -797,25 +822,9 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
 
     startTransition(async () => {
       try {
-        const reviewPayloadAttempts = attempts.map((attempt) => {
-          const recommended = recommendation.recommendations.find((item) => item.id === attempt.questionId);
-          return {
-            ...attempt,
-            questionCode: recommended?.questionCode,
-            result: {
-              explanation: "Reviewer judgment pending.",
-              gradingMode: "manual" as const,
-              isCorrect: null,
-              questionId: attempt.questionId,
-              score: null,
-              solutionHtml: null,
-            },
-            title: recommended?.title,
-          };
-        });
         await postReviewStream({
           body: {
-            attempts: reviewPayloadAttempts,
+            attempts: submittedAttempts,
             goal: activeSession.goal || recommendation.roundGoal,
             hintsByQuestionId: hints,
             recommendations: recommendation.recommendations.map((question) => ({
@@ -903,7 +912,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
         try {
           const grade = await jsonRequest<PracticeGradeResponse>("/api/practice/grade", {
             body: JSON.stringify({
-              attempts,
+              attempts: submittedAttempts,
               roundId: recommendation.roundId,
               sessionId: activeSession.id,
             }),
@@ -911,7 +920,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
           });
           const fallbackReview = reviewFromGradeFallback({
             activeSession,
-            attempts,
+            attempts: submittedAttempts,
             error: caught,
             grade,
             recommendation,
@@ -1576,21 +1585,24 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {recommendation.recommendations.map((question, index) => (
-                    <PracticeQuestionCard
-                      currentAnswer={answers[question.id]}
-                      hints={hints[question.id] ?? []}
-                      index={index}
-                      isPending={isPending}
-                      key={question.id}
-                      onAnswerChange={(value) => updateAnswer(question.id, value)}
-                      onHintRequest={requestHint}
-                      phase={phase}
-                      question={question}
-                      result={resultsById.get(question.id)}
-                      review={questionReviewsById.get(question.id)}
-                    />
-                  ))}
+                  {recommendation.recommendations.map((question, index) => {
+                    const questionId = practiceAnswerKey(question);
+                    return (
+                      <PracticeQuestionCard
+                        currentAnswer={answers[questionId]}
+                        hints={hints[questionId] ?? []}
+                        index={index}
+                        isPending={isPending}
+                        key={questionId}
+                        onAnswerChange={(value) => updateAnswer(questionId, value)}
+                        onHintRequest={requestHint}
+                        phase={phase}
+                        question={question}
+                        result={resultsById.get(questionId)}
+                        review={questionReviewsById.get(questionId)}
+                      />
+                    );
+                  })}
                   {phase !== "feedback" ? (
                     <div className="flex justify-end">
                       <Button className="h-11 px-6" disabled={isPending || !recommendation.roundId} onClick={submitRound} type="button">

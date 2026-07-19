@@ -395,6 +395,7 @@ function createJourneyDiagnostics() {
     reviewCategory: "REVIEW_NOT_OBSERVED",
     reviewHttpStatus: 0,
     reviewRequestAnswer: "NOT_OBSERVED",
+    reviewRequestAttempt: "NOT_OBSERVED",
     sessionDetailAnswer: "NOT_CHECKED",
     sessionDetailAttempt: "NOT_CHECKED",
   };
@@ -410,6 +411,9 @@ function printCompletedAnswerDiagnostics(diagnostics) {
     console.log(`browser_answer_control_value=${diagnostics.browserAnswerControlValue}`);
   }
   console.log(`review_request_answer=${diagnostics.reviewRequestAnswer}`);
+  if (diagnostics.reviewRequestAttempt !== "NOT_OBSERVED") {
+    console.log(`review_request_attempt=${diagnostics.reviewRequestAttempt}`);
+  }
   if (diagnostics.persistedAttemptRow !== "NOT_CHECKED") {
     console.log(`persisted_attempt_row=${diagnostics.persistedAttemptRow}`);
     console.log(`persisted_attempt_answer=${diagnostics.persistedAttemptAnswer}`);
@@ -1148,16 +1152,19 @@ function reviewCategory(streamText) {
   return "REVIEW_STREAM_INCOMPLETE";
 }
 
-function reviewRequestAnswerState(request, expectedQuestionId) {
+function reviewRequestAttemptState(request, expectedQuestionId) {
   try {
     const payload = request.postDataJSON();
     const attempts = Array.isArray(payload?.attempts) ? payload.attempts : [];
-    const attempt = attempts.find((item) => item?.questionId === expectedQuestionId);
-    return attempt && classifyPracticeAnswer(attempt.answer) === "PRESENT"
-      ? "PRESENT"
-      : "EMPTY";
+    const matchingAttempts = attempts.filter((item) => item?.questionId === expectedQuestionId);
+    if (!matchingAttempts.length) return { answer: "NOT_OBSERVED", attempt: "MISSING" };
+    if (matchingAttempts.length > 1) return { answer: "NOT_OBSERVED", attempt: "AMBIGUOUS" };
+    return {
+      answer: classifyPracticeAnswer(matchingAttempts[0].answer) === "PRESENT" ? "PRESENT" : "EMPTY",
+      attempt: "FOUND",
+    };
   } catch {
-    return "NOT_OBSERVED";
+    return { answer: "NOT_OBSERVED", attempt: "MISSING" };
   }
 }
 
@@ -1167,11 +1174,11 @@ async function waitForReview(page, expectedQuestionId) {
     { timeout: 60_000 },
   );
   const status = response.status();
-  const answer = reviewRequestAnswerState(response.request(), expectedQuestionId);
+  const requestAttempt = reviewRequestAttemptState(response.request(), expectedQuestionId);
   const category = status >= 200 && status < 300
     ? reviewCategory(await response.text().catch(() => ""))
     : "REVIEW_ERROR_EVENT";
-  return { answer, category, status };
+  return { answer: requestAttempt.answer, attempt: requestAttempt.attempt, category, status };
 }
 
 function observeGrade(page) {
@@ -1328,6 +1335,7 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   diagnostics.reviewCategory = review.category;
   diagnostics.reviewHttpStatus = review.status;
   diagnostics.reviewRequestAnswer = review.answer;
+  diagnostics.reviewRequestAttempt = review.attempt;
   const grade = await gradeObserver.read({ required: review.category !== "REVIEW_SUCCESS_EVENT" });
   diagnostics.gradeCategory = grade.category;
   diagnostics.gradeHttpStatus = grade.status;
