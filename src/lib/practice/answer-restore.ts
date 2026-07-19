@@ -1,4 +1,5 @@
 import type { Json } from "@/types/database";
+import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-identity";
 
 export type RestoredPracticeAnswer = string | string[];
 
@@ -53,7 +54,7 @@ export function restoredPracticeQuestionId(
   const persistedQuestionId = attempt.questionId?.trim() || null;
 
   const matchedQuestion = questions.find((question) => {
-    const renderedQuestionId = question.sourceQuestionId?.trim() || question.id;
+    const renderedQuestionId = canonicalPracticeSourceQuestionId(question);
     return (
       (sourceQuestionId && renderedQuestionId === sourceQuestionId) ||
       (persistedQuestionId &&
@@ -62,7 +63,7 @@ export function restoredPracticeQuestionId(
   });
 
   if (matchedQuestion) {
-    return matchedQuestion.sourceQuestionId?.trim() || matchedQuestion.id;
+    return canonicalPracticeSourceQuestionId(matchedQuestion);
   }
 
   return sourceQuestionId ?? persistedQuestionId;

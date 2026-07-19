@@ -87,7 +87,11 @@ assert(
   "no later Practice attempt write may clear the authoritative answer",
 );
 
-const compiledAnswerContract = ts.transpileModule(answerContractSource, {
+const executableAnswerContractSource = answerContractSource.replace(
+  /import \{ canonicalPracticeSourceQuestionId \} from "@\/lib\/practice\/question-identity";\r?\n/,
+  "const canonicalPracticeSourceQuestionId = (question) => question.sourceQuestionId?.trim() || question.id;\n",
+);
+const compiledAnswerContract = ts.transpileModule(executableAnswerContractSource, {
   compilerOptions: {
     module: ts.ModuleKind.ESNext,
     target: ts.ScriptTarget.ES2022,

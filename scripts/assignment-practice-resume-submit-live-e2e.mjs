@@ -390,6 +390,8 @@ function createJourneyDiagnostics() {
   return {
     assignmentStartCode: "UNRECOGNIZED_API_CODE",
     assignmentStartHttpStatus: 0,
+    answerMapHasRenderedKey: "NOT_OBSERVED",
+    answerMapHasSubmitLookupKey: "NOT_OBSERVED",
     browserAnswerControlValue: "NOT_REACHED",
     clientHydration: "TIMEOUT",
     clientAnswerSnapshot: "NOT_OBSERVED",
@@ -413,6 +415,7 @@ function createJourneyDiagnostics() {
     reloadStartCode: "UNRECOGNIZED_API_CODE",
     reloadStartHttpStatus: 0,
     reloadSessionConsistency: "NOT_OBSERVED",
+    renderedKeyEqualsSubmitLookupKey: "NOT_OBSERVED",
     resultBadgeState: "NOT_OBSERVED",
     reviewCategory: "REVIEW_NOT_OBSERVED",
     reviewFetch: "NOT_OBSERVED",
@@ -424,6 +427,8 @@ function createJourneyDiagnostics() {
     sessionDetailAttempt: "NOT_CHECKED",
     submitButton: "MISSING",
     submitClick: "FAILED",
+    submitIdentityMapping: "NOT_OBSERVED",
+    submitQuestionHasSourceIdentity: "NOT_OBSERVED",
     submittedAttempt: "NOT_OBSERVED",
     submittedAttemptAnswer: "NOT_CHECKED",
     submittedAttemptCount: null,
@@ -441,6 +446,11 @@ function printCompletedAnswerDiagnostics(diagnostics) {
   console.log(`client_hydration=${diagnostics.clientHydration}`);
   console.log(`input_event=${diagnostics.inputEvent}`);
   console.log(`client_answer_snapshot=${diagnostics.clientAnswerSnapshot}`);
+  console.log(`rendered_key_equals_submit_lookup_key=${diagnostics.renderedKeyEqualsSubmitLookupKey}`);
+  console.log(`answer_map_has_rendered_key=${diagnostics.answerMapHasRenderedKey}`);
+  console.log(`answer_map_has_submit_lookup_key=${diagnostics.answerMapHasSubmitLookupKey}`);
+  console.log(`submit_question_has_source_identity=${diagnostics.submitQuestionHasSourceIdentity}`);
+  console.log(`submit_identity_mapping=${diagnostics.submitIdentityMapping}`);
   console.log(`client_missing_answer_guard=${diagnostics.clientMissingAnswerGuard}`);
   if (diagnostics.currentRoundQuestionCount !== null) {
     console.log(`current_round_question_count=${diagnostics.currentRoundQuestionCount}`);
@@ -516,21 +526,43 @@ async function readSubmissionGuardDiagnostics(page) {
     const missingRequiredAttemptCount = smallCount("data-missing-required-attempt-count");
     const submittedAttempt = element.getAttribute("data-submitted-attempt");
     const submittedAttemptAnswer = element.getAttribute("data-submitted-attempt-answer");
+    const answerMapHasRenderedKey = element.getAttribute("data-answer-map-has-rendered-key");
+    const answerMapHasSubmitLookupKey = element.getAttribute("data-answer-map-has-submit-lookup-key");
+    const clientAnswerSnapshot = element.getAttribute("data-client-answer-snapshot");
     const guard = element.getAttribute("data-client-missing-answer-guard");
+    const renderedKeyEqualsSubmitLookupKey = element.getAttribute(
+      "data-rendered-key-equals-submit-lookup-key",
+    );
+    const submitIdentityMapping = element.getAttribute("data-submit-identity-mapping");
+    const submitQuestionHasSourceIdentity = element.getAttribute(
+      "data-submit-question-has-source-identity",
+    );
     if (
       currentRoundQuestionCount === null ||
       submittedAttemptCount === null ||
       missingRequiredAttemptCount === null ||
       !["FOUND", "MISSING", "AMBIGUOUS"].includes(submittedAttempt ?? "") ||
       !["PRESENT", "EMPTY", "MISSING", "NOT_CHECKED"].includes(submittedAttemptAnswer ?? "") ||
+      !["YES", "NO", "NOT_OBSERVED"].includes(answerMapHasRenderedKey ?? "") ||
+      !["YES", "NO", "NOT_OBSERVED"].includes(answerMapHasSubmitLookupKey ?? "") ||
+      !["PRESENT", "EMPTY", "NOT_OBSERVED"].includes(clientAnswerSnapshot ?? "") ||
+      !["SAME", "DIFFERENT", "NOT_OBSERVED"].includes(renderedKeyEqualsSubmitLookupKey ?? "") ||
+      !["VALID", "INVALID", "NOT_OBSERVED"].includes(submitIdentityMapping ?? "") ||
+      !["YES", "NO", "NOT_OBSERVED"].includes(submitQuestionHasSourceIdentity ?? "") ||
       !["PASSED", "BLOCKED"].includes(guard ?? "")
     ) {
       return null;
     }
     return {
+      answerMapHasRenderedKey,
+      answerMapHasSubmitLookupKey,
+      clientAnswerSnapshot,
       currentRoundQuestionCount,
       guard,
       missingRequiredAttemptCount,
+      renderedKeyEqualsSubmitLookupKey,
+      submitIdentityMapping,
+      submitQuestionHasSourceIdentity,
       submittedAttempt,
       submittedAttemptAnswer,
       submittedAttemptCount,
@@ -1545,12 +1577,12 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   diagnostics.submittedAttemptAnswer = submissionDiagnostics.submittedAttemptAnswer;
   diagnostics.missingRequiredAttemptCount = submissionDiagnostics.missingRequiredAttemptCount;
   diagnostics.clientMissingAnswerGuard = submissionDiagnostics.guard;
-  diagnostics.clientAnswerSnapshot = submissionDiagnostics.submittedAttemptAnswer === "PRESENT"
-    ? "PRESENT"
-    : submissionDiagnostics.submittedAttemptAnswer === "EMPTY" ||
-        submissionDiagnostics.submittedAttemptAnswer === "MISSING"
-      ? "EMPTY"
-      : "NOT_OBSERVED";
+  diagnostics.clientAnswerSnapshot = submissionDiagnostics.clientAnswerSnapshot;
+  diagnostics.renderedKeyEqualsSubmitLookupKey = submissionDiagnostics.renderedKeyEqualsSubmitLookupKey;
+  diagnostics.answerMapHasRenderedKey = submissionDiagnostics.answerMapHasRenderedKey;
+  diagnostics.answerMapHasSubmitLookupKey = submissionDiagnostics.answerMapHasSubmitLookupKey;
+  diagnostics.submitQuestionHasSourceIdentity = submissionDiagnostics.submitQuestionHasSourceIdentity;
+  diagnostics.submitIdentityMapping = submissionDiagnostics.submitIdentityMapping;
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_CLIENT_SUBMIT_OUTCOME");
   const requestObservation = await reviewRequestObserver.read();

@@ -24,6 +24,7 @@ import {
   evaluatePracticeSubmittedAttempts,
   formatDuration,
   practiceAnswerKey,
+  practiceSubmittedAttemptQuestionId,
   readPendingPracticeRound,
   recommendationFromHistoryQuestion,
   resultsFromHistoryRound,
@@ -800,7 +801,9 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
       submittedAnswerSnapshot,
       hints,
     ).map((attempt) => {
-      const recommended = recommendation.recommendations.find((item) => item.id === attempt.questionId);
+      const recommended = recommendation.recommendations.find(
+        (item) => practiceSubmittedAttemptQuestionId(item) === attempt.questionId,
+      );
       return {
         ...attempt,
         questionCode: recommended?.questionCode,
@@ -819,6 +822,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     const submissionEvaluation = evaluatePracticeSubmittedAttempts(
       recommendation.recommendations,
       submittedAttempts,
+      submittedAnswerSnapshot,
     );
     const guardBlocked =
       submissionEvaluation.submittedAttempt !== "FOUND" ||
@@ -861,10 +865,11 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
             hintsByQuestionId: hints,
             recommendations: recommendation.recommendations.map((question) => ({
               contentHtml: question.contentHtml,
-              id: question.id,
+              id: practiceSubmittedAttemptQuestionId(question),
               options: question.options,
               questionCode: question.questionCode,
               questionType: question.questionType,
+              sourceQuestionId: practiceSubmittedAttemptQuestionId(question),
               title: question.title,
             })),
             roundId: recommendation.roundId,
@@ -1170,9 +1175,15 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   return (
     <div
       className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
+      data-answer-map-has-rendered-key={submissionGuardDiagnostics?.answerMapHasRenderedKey}
+      data-answer-map-has-submit-lookup-key={submissionGuardDiagnostics?.answerMapHasSubmitLookupKey}
+      data-client-answer-snapshot={submissionGuardDiagnostics?.clientAnswerSnapshot}
       data-client-missing-answer-guard={submissionGuardDiagnostics?.guard}
       data-current-round-question-count={submissionGuardDiagnostics?.currentRoundQuestionCount}
       data-missing-required-attempt-count={submissionGuardDiagnostics?.missingRequiredAttemptCount}
+      data-rendered-key-equals-submit-lookup-key={submissionGuardDiagnostics?.renderedKeyEqualsSubmitLookupKey}
+      data-submit-identity-mapping={submissionGuardDiagnostics?.submitIdentityMapping}
+      data-submit-question-has-source-identity={submissionGuardDiagnostics?.submitQuestionHasSourceIdentity}
       data-submitted-attempt={submissionGuardDiagnostics?.submittedAttempt}
       data-submitted-attempt-answer={submissionGuardDiagnostics?.submittedAttemptAnswer}
       data-submitted-attempt-count={submissionGuardDiagnostics?.submittedAttemptCount}

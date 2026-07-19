@@ -2008,7 +2008,15 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
 
   setHarnessPhase(fixtures, "browser_assignment_practice_guard_passed");
   await page
-    .locator('[data-testid="practice-submission-state"][data-client-missing-answer-guard="PASSED"]')
+    .locator(
+      '[data-testid="practice-submission-state"]' +
+        '[data-client-missing-answer-guard="PASSED"]' +
+        '[data-rendered-key-equals-submit-lookup-key="SAME"]' +
+        '[data-answer-map-has-rendered-key="YES"]' +
+        '[data-answer-map-has-submit-lookup-key="YES"]' +
+        '[data-submit-question-has-source-identity="YES"]' +
+        '[data-submit-identity-mapping="VALID"]',
+    )
     .waitFor({ timeout: 30_000 });
 
   setHarnessPhase(fixtures, "browser_assignment_practice_review_api_wait");

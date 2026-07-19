@@ -11,6 +11,7 @@ import {
   persistRoundReviewSummary,
 } from "@/lib/practice/persistence";
 import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
+import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-identity";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import {
   isCurrentPracticeQuestionSnapshot,
@@ -77,18 +78,24 @@ function recommendationFromRoundQuestion(row: Record<string, unknown>): Practice
   }
 
   const snapshot = row.question_snapshot as Partial<PracticeRecommendation>;
+  const sourceQuestionId = String(row.source_question_id ?? snapshot.sourceQuestionId ?? snapshot.id ?? "").trim();
+
+  if (!sourceQuestionId) {
+    return null;
+  }
 
   return {
     contentExcerpt: String(snapshot.contentExcerpt ?? ""),
     contentHtml: String(snapshot.contentHtml ?? ""),
     difficulty: Number(snapshot.difficulty ?? 0),
     expectedSkill: String(snapshot.expectedSkill ?? ""),
-    id: String(row.source_question_id ?? snapshot.id ?? ""),
+    id: sourceQuestionId,
     options: Array.isArray(snapshot.options) ? snapshot.options : [],
     questionCode: String(snapshot.questionCode ?? "snapshot"),
     questionType: (snapshot.questionType ?? "mixed") as PracticeRecommendation["questionType"],
     reason: String(snapshot.reason ?? ""),
     source: snapshot.source,
+    sourceQuestionId,
     tagIds: Array.isArray(snapshot.tagIds) ? snapshot.tagIds : [],
     title: String(snapshot.title ?? "Saved question"),
   };
@@ -150,7 +157,9 @@ function wantsEventStream(request: Request) {
 }
 
 function buildQuestionThreadText(questionReviews: PracticeQuestionReview[], recommendations: PracticeRecommendation[]) {
-  const questionById = new Map(recommendations.map((question) => [question.id, question]));
+  const questionById = new Map(
+    recommendations.map((question) => [canonicalPracticeSourceQuestionId(question), question]),
+  );
   return questionReviews.map((review, index) => {
     const question = questionById.get(review.questionId);
     const label = question?.questionCode || `Question ${index + 1}`;

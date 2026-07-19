@@ -30,7 +30,7 @@ const compiledHelpers = ts.transpileModule(helperBlock.replace(/^export /gm, "")
   compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const helpers = Function(
-  `${compiledHelpers}; return { buildPracticeSubmittedAttempts, evaluatePracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
+  `const canonicalPracticeSourceQuestionId = (question) => question.sourceQuestionId?.trim() || question.id; ${compiledHelpers}; return { buildPracticeSubmittedAttempts, evaluatePracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
 )();
 
 const sourceQuestionId = "SOURCE_QUESTION_SYMBOLIC_ID";
@@ -40,10 +40,10 @@ assert(
   new Set([sourceQuestionId, roundQuestionRowId, unrelatedQuestionId]).size === 3,
   "source, round-row, and unrelated identities must remain distinct",
 );
-const currentRound = [{ id: sourceQuestionId, roundQuestionRowId }];
+const currentRound = [{ id: roundQuestionRowId, sourceQuestionId }];
 assert(
   helpers.practiceAnswerKey(currentRound[0]) === sourceQuestionId,
-  "current round must use the recommendation ID as its one canonical answer key",
+  "current round must use its explicit source identity as the canonical answer key",
 );
 
 const committedAnswerMap = Object.freeze({
@@ -59,6 +59,7 @@ Object.freeze(submittedAttempts);
 const submittedEvaluation = helpers.evaluatePracticeSubmittedAttempts(
   currentRound,
   submittedAttempts,
+  committedAnswerMap,
 );
 assert(
   submittedEvaluation.currentRoundQuestionCount === 1 &&
@@ -66,6 +67,11 @@ assert(
     submittedEvaluation.submittedAttempt === "FOUND" &&
     submittedEvaluation.submittedAttemptAnswer === "PRESENT" &&
     submittedEvaluation.missingRequiredAttemptCount === 0 &&
+    submittedEvaluation.renderedKeyEqualsSubmitLookupKey === "SAME" &&
+    submittedEvaluation.answerMapHasRenderedKey === "YES" &&
+    submittedEvaluation.answerMapHasSubmitLookupKey === "YES" &&
+    submittedEvaluation.submitQuestionHasSourceIdentity === "YES" &&
+    submittedEvaluation.submitIdentityMapping === "VALID" &&
     submittedAttempts[0].answer === committedAnswerMap[sourceQuestionId],
   "one committed current-round answer must produce one complete submitted attempt",
 );
@@ -78,6 +84,7 @@ const missingCurrentAttempts = helpers.buildPracticeSubmittedAttempts(
 const missingCurrentEvaluation = helpers.evaluatePracticeSubmittedAttempts(
   currentRound,
   missingCurrentAttempts,
+  { [unrelatedQuestionId]: "committed" },
 );
 assert(
   missingCurrentEvaluation.submittedAttempt === "FOUND" &&
@@ -85,7 +92,7 @@ assert(
     missingCurrentEvaluation.missingRequiredAttemptCount === 1,
   "an unrelated answer-map entry must not satisfy a missing current answer",
 );
-const outsideCurrentRound = { id: unrelatedQuestionId, roundQuestionRowId };
+const outsideCurrentRound = { id: unrelatedQuestionId, sourceQuestionId: unrelatedQuestionId };
 assert(
   helpers.evaluatePracticeSubmittedAttempts(currentRound, submittedAttempts)
     .missingRequiredAttemptCount === 0 &&

@@ -23,6 +23,7 @@ import {
   submittedPracticeAnswerForPersistence,
 } from "@/lib/practice/answer-restore";
 import { initializePracticePreference } from "@/lib/practice/preference-initialization";
+import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-identity";
 import type { Json, PracticeSession } from "@/types/database";
 
 type SupabaseLike = {
@@ -200,10 +201,10 @@ function buildRoundContract({
     round_goal: response.roundGoal,
     search_strategy: explicit.search_strategy ?? { tag_context: response.tagContext },
     selected_questions: recommendations.map((question) => ({
-      diagnostic_purpose: compactLine((explicit.diagnostic_purposes as Record<string, unknown> | undefined)?.[question.id] ?? question.reason, 500),
+      diagnostic_purpose: compactLine((explicit.diagnostic_purposes as Record<string, unknown> | undefined)?.[canonicalPracticeSourceQuestionId(question)] ?? question.reason, 500),
       expected_skill: question.expectedSkill,
       question_code: question.questionCode,
-      question_id: question.id,
+      question_id: canonicalPracticeSourceQuestionId(question),
       reason: question.reason,
     })),
     user_note_policy: "When the student adds an outline or next-round note, prefer it over automatic drift unless it contradicts explicit correctness evidence.",
@@ -234,7 +235,7 @@ function buildRecommendThreadEntry({
     selected_question_purposes: recommendations.map((question) => ({
       expected_skill: question.expectedSkill,
       question_code: question.questionCode,
-      question_id: question.id,
+      question_id: canonicalPracticeSourceQuestionId(question),
       reason: question.reason,
     })),
     summary: {
@@ -262,7 +263,9 @@ function buildQuestionReviewThreadText({
   questionReviews: PracticeQuestionReview[];
   recommendations: PracticeRecommendation[];
 }) {
-  const questionById = new Map(recommendations.map((question) => [question.id, question]));
+  const questionById = new Map(
+    recommendations.map((question) => [canonicalPracticeSourceQuestionId(question), question]),
+  );
   return questionReviews
     .map((review, index) => {
       const question = questionById.get(review.questionId);
@@ -659,7 +662,7 @@ export async function getPracticeSession({
         contentHtml: String(snapshot.contentHtml ?? ""),
         difficulty: Number(snapshot.difficulty ?? 0),
         expectedSkill: String(snapshot.expectedSkill ?? question.expected_skill ?? ""),
-        id: String(question.source_question_id ?? snapshot.id ?? ""),
+        id: String(question.id ?? ""),
         options: Array.isArray(snapshot.options) ? snapshot.options : [],
         position: Number(question.position ?? 0),
         questionCode: String(snapshot.questionCode ?? "snapshot"),
@@ -667,7 +670,7 @@ export async function getPracticeSession({
         questionType: String(snapshot.questionType ?? "mixed"),
         reason: String(snapshot.reason ?? question.reason ?? ""),
         source: typeof snapshot.source === "string" ? snapshot.source : null,
-        sourceQuestionId: question.source_question_id,
+        sourceQuestionId: String(question.source_question_id ?? snapshot.sourceQuestionId ?? snapshot.id ?? "") || null,
         tagIds: Array.isArray(snapshot.tagIds) ? snapshot.tagIds.map(String) : [],
         title: String(snapshot.title ?? "Saved question"),
       }];
@@ -972,7 +975,7 @@ export async function persistRecommendationRound({
     reason: question.reason,
     round_id: roundId,
     session_id: sessionId,
-    source_question_id: question.id,
+    source_question_id: canonicalPracticeSourceQuestionId(question),
     title: question.title,
     user_id: userId,
   }));
@@ -1017,7 +1020,7 @@ export async function persistRecommendationRound({
       recommendationReasons: recommendations.map((question) => ({
         expectedSkill: question.expectedSkill,
         questionCode: question.questionCode,
-        questionId: question.id,
+        questionId: canonicalPracticeSourceQuestionId(question),
         reason: question.reason,
       })),
       roundContract,
@@ -1129,7 +1132,9 @@ export async function persistQuestionReviewResults({
 }) {
   const resultByQuestionId = new Map(results.map((result) => [result.questionId, result]));
   const reviewByQuestionId = new Map(questionReviews.map((review) => [review.questionId, review]));
-  const recommendationById = new Map(recommendations.map((question) => [question.id, question]));
+  const recommendationById = new Map(
+    recommendations.map((question) => [canonicalPracticeSourceQuestionId(question), question]),
+  );
   const rows = attempts.map((attempt) => {
     const result = resultByQuestionId.get(attempt.questionId);
     const review = reviewByQuestionId.get(attempt.questionId);
@@ -1177,7 +1182,9 @@ export async function persistQuestionReviewResults({
   );
   const correct = results.filter((result) => result.isCorrect === true).length;
   const total = results.filter((result) => result.isCorrect !== null).length;
-  const completedQuestionIds = Array.from(new Set(recommendations.map((question) => question.id)));
+  const completedQuestionIds = Array.from(
+    new Set(recommendations.map(canonicalPracticeSourceQuestionId)),
+  );
 
   const existingRoundResult = await supabase
     .from("practice_rounds")
@@ -1306,7 +1313,7 @@ export async function persistQuestionReviewResults({
         .from("practice_wrong_questions")
         .select("miss_count")
         .eq("user_id", userId)
-        .eq("source_question_id", question.id)
+        .eq("source_question_id", canonicalPracticeSourceQuestionId(question))
         .maybeSingle();
 
       if (existing.error) {
@@ -1327,7 +1334,7 @@ export async function persistQuestionReviewResults({
           question_id: null,
           question_snapshot: buildPracticeQuestionSnapshot(question) as unknown as Json,
           question_title: question.title,
-          source_question_id: question.id,
+          source_question_id: canonicalPracticeSourceQuestionId(question),
           user_id: userId,
         },
         { onConflict: "user_id,source_question_id" },
@@ -1344,7 +1351,7 @@ export async function persistQuestionReviewResults({
           mastered_at: new Date().toISOString(),
         })
         .eq("user_id", userId)
-        .eq("source_question_id", question.id)
+        .eq("source_question_id", canonicalPracticeSourceQuestionId(question))
         .is("mastered_at", null);
 
       if (mastered.error) {

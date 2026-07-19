@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { hasSubmittedPracticeAnswer } from "@/lib/practice/client-helpers";
+import { hasSubmittedPracticeAnswer, practiceAnswerKey } from "@/lib/practice/client-helpers";
 import type {
   PracticeGradeResult,
   PracticeQuestionReview,
@@ -72,6 +72,7 @@ function QuestionAnswerInput({
   onChange: (value: string | string[]) => void;
   question: PracticeRecommendation;
 }) {
+  const answerKey = practiceAnswerKey(question);
   const control = question.questionType === "mcq" && question.options.length ? (
     <div className="space-y-2">
       {question.options.map((option) => {
@@ -81,7 +82,7 @@ function QuestionAnswerInput({
             <input
               checked={selected}
               disabled={disabled}
-              name={`answer-${question.id}`}
+              name={`answer-${answerKey}`}
               onChange={() => onChange(option.id)}
               type="radio"
             />
@@ -175,6 +176,8 @@ export function PracticeQuestionCard({
   result?: PracticeGradeResult;
   review?: PracticeQuestionReview;
 }) {
+  const answerKey = practiceAnswerKey(question);
+
   return (
     <Card className="student-card-hover border-slate-200 shadow-sm">
       <CardHeader>
@@ -219,7 +222,7 @@ export function PracticeQuestionCard({
         {hints.length ? (
           <div className="space-y-2">
             {hints.map((hint, hintIndex) => (
-              <div key={`${question.id}-hint-${hintIndex}`} className="rounded-lg border border-sky-100 bg-sky-50/70 p-3 text-sm">
+              <div key={`${answerKey}-hint-${hintIndex}`} className="rounded-lg border border-sky-100 bg-sky-50/70 p-3 text-sm">
                 <span className="font-bold text-sky-900">Hint {hintIndex + 1}: </span>
                 <FeedbackText className="inline border-none bg-transparent p-0 text-sky-900/80" compact inline value={hint} />
               </div>

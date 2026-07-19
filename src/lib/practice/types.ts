@@ -46,6 +46,7 @@ export type PracticeQuestionCandidate = {
   questionCode: string;
   questionType: QuestionType;
   source?: string | null;
+  sourceQuestionId?: string | null;
   tagIds: string[];
   title: string;
 };
@@ -166,6 +167,7 @@ export type PracticeReviewRequest = {
   recommendations?: Pick<
     PracticeRecommendation,
     | "id"
+    | "sourceQuestionId"
     | "questionCode"
     | "title"
     | "questionType"

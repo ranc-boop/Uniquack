@@ -44,6 +44,7 @@ function recommendationFromRoundQuestion(row: Record<string, unknown>): Practice
     questionType: snapshot.questionType ?? "mixed",
     reason: String(snapshot.reason ?? row.reason ?? "Assigned practice item."),
     source: typeof snapshot.source === "string" ? snapshot.source : null,
+    sourceQuestionId,
     tagIds: Array.isArray(snapshot.tagIds) ? snapshot.tagIds.map(String).filter(Boolean) : [],
     title: String(snapshot.title ?? row.title ?? "Practice question"),
   };

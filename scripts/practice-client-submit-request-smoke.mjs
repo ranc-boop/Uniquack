@@ -31,7 +31,7 @@ const compiledHelpers = ts.transpileModule(helperBlock.replace(/^export /gm, "")
   compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const helpers = Function(
-  `${compiledHelpers}; return { buildPracticeSubmittedAttempts, evaluatePracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
+  `const canonicalPracticeSourceQuestionId = (question) => question.sourceQuestionId?.trim() || question.id; ${compiledHelpers}; return { buildPracticeSubmittedAttempts, evaluatePracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
 )();
 
 const currentQuestionId = "CURRENT_QUESTION_SYMBOLIC_ID";
@@ -48,13 +48,17 @@ const updateAnswer = (questionId, value) => {
   authoritativeAnswers = nextAnswers;
 };
 updateAnswer(currentQuestionId, "submitted");
-const currentRound = [{ id: currentQuestionId, roundRowId }];
+const currentRound = [{ id: roundRowId, sourceQuestionId: currentQuestionId }];
 const currentAttempts = helpers.buildPracticeSubmittedAttempts(
   currentRound,
   Object.freeze({ ...authoritativeAnswers, [unrelatedQuestionId]: "" }),
   {},
 );
-const currentEvaluation = helpers.evaluatePracticeSubmittedAttempts(currentRound, currentAttempts);
+const currentEvaluation = helpers.evaluatePracticeSubmittedAttempts(
+  currentRound,
+  currentAttempts,
+  authoritativeAnswers,
+);
 assert(
   currentAttempts.length === 1 &&
     currentAttempts[0].questionId === currentQuestionId &&

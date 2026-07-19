@@ -80,7 +80,7 @@ const compiledHelpers = ts.transpileModule(helperBlock.replace(/^export /gm, "")
   compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const { hasSubmittedPracticeAnswer } = Function(
-  `${compiledHelpers}; return { hasSubmittedPracticeAnswer };`,
+  `const canonicalPracticeSourceQuestionId = (question) => question.sourceQuestionId?.trim() || question.id; ${compiledHelpers}; return { hasSubmittedPracticeAnswer };`,
 )();
 for (const value of ["committed", 0, false, ["choice"], { part: "structured" }]) {
   assert(hasSubmittedPracticeAnswer(value), "supported committed answer must pass the guard");

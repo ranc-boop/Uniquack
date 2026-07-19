@@ -3,6 +3,10 @@ import {
   LEGACY_PRACTICE_STORAGE_KEYS,
 } from "@/lib/practice/schema";
 import { restoredPracticeQuestionId } from "@/lib/practice/answer-restore";
+import {
+  canonicalPracticeSourceQuestionId,
+  type PracticeQuestionIdentityLike,
+} from "@/lib/practice/question-identity";
 import type {
   PracticeAttemptInput,
   PracticeGradeResult,
@@ -13,9 +17,19 @@ import type {
 
 type PracticeAnswerMap = Readonly<Record<string, PracticeAttemptInput["answer"]>>;
 type PracticeHintMap = Readonly<Record<string, readonly string[]>>;
+type PracticeQuestionIdentity = Pick<PracticeRecommendation, "id" | "sourceQuestionId"> &
+  PracticeQuestionIdentityLike;
 
-export function practiceAnswerKey(question: Pick<PracticeRecommendation, "id">) {
-  return question.id;
+export function practiceSourceQuestionId(question: PracticeQuestionIdentity) {
+  return canonicalPracticeSourceQuestionId(question);
+}
+
+export function practiceAnswerKey(question: PracticeQuestionIdentity) {
+  return practiceSourceQuestionId(question);
+}
+
+export function practiceSubmittedAttemptQuestionId(question: PracticeQuestionIdentity) {
+  return practiceSourceQuestionId(question);
 }
 
 export function hasSubmittedPracticeAnswer(value: unknown) {
@@ -27,25 +41,27 @@ export function hasSubmittedPracticeAnswer(value: unknown) {
 }
 
 export function buildPracticeSubmittedAttempts(
-  questions: readonly Pick<PracticeRecommendation, "id">[],
+  questions: readonly PracticeQuestionIdentity[],
   answers: PracticeAnswerMap,
   hints: PracticeHintMap,
 ): PracticeAttemptInput[] {
   return questions.map((question) => {
-    const questionId = practiceAnswerKey(question);
+    const answerKey = practiceAnswerKey(question);
+    const questionId = practiceSubmittedAttemptQuestionId(question);
     return {
-      answer: answers[questionId] ?? "",
-      hintCount: hints[questionId]?.length ?? 0,
+      answer: answers[answerKey] ?? "",
+      hintCount: hints[answerKey]?.length ?? 0,
       questionId,
     };
   });
 }
 
 export function evaluatePracticeSubmittedAttempts(
-  questions: readonly Pick<PracticeRecommendation, "id">[],
+  questions: readonly PracticeQuestionIdentity[],
   attempts: readonly PracticeAttemptInput[],
+  answers?: PracticeAnswerMap,
 ) {
-  const requiredQuestionKeys = questions.map(practiceAnswerKey);
+  const requiredQuestionKeys = questions.map(practiceSubmittedAttemptQuestionId);
   const requiredQuestionKeySet = new Set(requiredQuestionKeys);
   const attemptCountsByQuestionKey = new Map<string, number>();
 
@@ -92,10 +108,51 @@ export function evaluatePracticeSubmittedAttempts(
       : missingRequiredAttemptCount
         ? "EMPTY" as const
         : "PRESENT" as const;
+  const renderedKeys = questions.map(practiceAnswerKey);
+  const submitLookupKeys = questions.map(practiceSubmittedAttemptQuestionId);
+  const renderedKeyEqualsSubmitLookupKey = questions.length
+    ? renderedKeys.every((key, index) => key === submitLookupKeys[index])
+      ? "SAME" as const
+      : "DIFFERENT" as const
+    : "NOT_OBSERVED" as const;
+  const answerMapHasRenderedKey = answers
+    ? renderedKeys.every((key) => Object.prototype.hasOwnProperty.call(answers, key))
+      ? "YES" as const
+      : "NO" as const
+    : "NOT_OBSERVED" as const;
+  const answerMapHasSubmitLookupKey = answers
+    ? submitLookupKeys.every((key) => Object.prototype.hasOwnProperty.call(answers, key))
+      ? "YES" as const
+      : "NO" as const
+    : "NOT_OBSERVED" as const;
+  const clientAnswerSnapshot = answers
+    ? renderedKeys.every(
+        (key) => Object.prototype.hasOwnProperty.call(answers, key) &&
+          hasSubmittedPracticeAnswer(answers[key]),
+      )
+      ? "PRESENT" as const
+      : "EMPTY" as const
+    : "NOT_OBSERVED" as const;
+  const submitQuestionHasSourceIdentity = questions.length
+    ? questions.every((question) => Boolean(question.sourceQuestionId?.trim()))
+      ? "YES" as const
+      : "NO" as const
+    : "NOT_OBSERVED" as const;
+  const submitIdentityMapping = questions.length && submittedAttempt !== "AMBIGUOUS"
+    ? submitLookupKeys.every((key) => (attemptCountsByQuestionKey.get(key) ?? 0) === 1)
+      ? "VALID" as const
+      : "INVALID" as const
+    : "NOT_OBSERVED" as const;
 
   return {
+    answerMapHasRenderedKey,
+    answerMapHasSubmitLookupKey,
+    clientAnswerSnapshot,
     currentRoundQuestionCount: requiredQuestionKeys.length,
     missingRequiredAttemptCount,
+    renderedKeyEqualsSubmitLookupKey,
+    submitIdentityMapping,
+    submitQuestionHasSourceIdentity,
     submittedAttempt,
     submittedAttemptAnswer,
     submittedAttemptCount: attempts.length,
@@ -117,12 +174,13 @@ export function recommendationFromHistoryQuestion(
     contentHtml: question.contentHtml,
     difficulty: question.difficulty,
     expectedSkill: question.expectedSkill,
-    id: question.sourceQuestionId ?? question.id,
+    id: question.id,
     options: question.options,
     questionCode: question.questionCode,
     questionType: question.questionType as PracticeRecommendation["questionType"],
     reason: question.reason || "Saved from this practice session.",
     source: question.source,
+    sourceQuestionId: question.sourceQuestionId ?? question.id,
     tagIds: question.tagIds,
     title: question.title,
   };

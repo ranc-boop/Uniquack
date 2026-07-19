@@ -253,6 +253,11 @@ assert(
     answerDiagnosticOutput.includes('client_hydration=${diagnostics.clientHydration}') &&
     answerDiagnosticOutput.includes('input_event=${diagnostics.inputEvent}') &&
     answerDiagnosticOutput.includes('client_answer_snapshot=${diagnostics.clientAnswerSnapshot}') &&
+    answerDiagnosticOutput.includes('rendered_key_equals_submit_lookup_key=${diagnostics.renderedKeyEqualsSubmitLookupKey}') &&
+    answerDiagnosticOutput.includes('answer_map_has_rendered_key=${diagnostics.answerMapHasRenderedKey}') &&
+    answerDiagnosticOutput.includes('answer_map_has_submit_lookup_key=${diagnostics.answerMapHasSubmitLookupKey}') &&
+    answerDiagnosticOutput.includes('submit_question_has_source_identity=${diagnostics.submitQuestionHasSourceIdentity}') &&
+    answerDiagnosticOutput.includes('submit_identity_mapping=${diagnostics.submitIdentityMapping}') &&
     answerDiagnosticOutput.includes('client_missing_answer_guard=${diagnostics.clientMissingAnswerGuard}') &&
     answerDiagnosticOutput.includes('current_round_question_count=${diagnostics.currentRoundQuestionCount}') &&
     answerDiagnosticOutput.includes('submitted_attempt_count=${diagnostics.submittedAttemptCount}') &&
@@ -353,6 +358,13 @@ assert(
     submissionGuardReader.includes('data-submitted-attempt-count') &&
     submissionGuardReader.includes('data-submitted-attempt-answer') &&
     submissionGuardReader.includes('data-missing-required-attempt-count') &&
+    submissionGuardReader.includes('data-rendered-key-equals-submit-lookup-key') &&
+    submissionGuardReader.includes('data-answer-map-has-rendered-key') &&
+    submissionGuardReader.includes('data-answer-map-has-submit-lookup-key') &&
+    submissionGuardReader.includes('data-submit-question-has-source-identity') &&
+    submissionGuardReader.includes('data-submit-identity-mapping') &&
+    submissionGuardReader.includes('["SAME", "DIFFERENT", "NOT_OBSERVED"]') &&
+    submissionGuardReader.includes('["VALID", "INVALID", "NOT_OBSERVED"]') &&
     submissionGuardReader.includes('value <= 100') &&
     !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|inputValue)/.test(
       submissionGuardReader,

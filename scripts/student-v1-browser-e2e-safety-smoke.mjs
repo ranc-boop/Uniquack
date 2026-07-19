@@ -265,7 +265,13 @@ assert(
   practiceSubmitSequence.includes("waitForReviewOutcome(page, fixtures.server.origin)") &&
     practiceSubmitSequence.indexOf("waitForReviewOutcome(page, fixtures.server.origin)") <
       practiceSubmitSequence.indexOf("submitButton.click()") &&
-    practiceSubmitSequence.includes('[data-testid="practice-submission-state"][data-client-missing-answer-guard="PASSED"]') &&
+    practiceSubmitSequence.includes('[data-testid="practice-submission-state"]') &&
+    practiceSubmitSequence.includes('[data-client-missing-answer-guard="PASSED"]') &&
+    practiceSubmitSequence.includes('[data-rendered-key-equals-submit-lookup-key="SAME"]') &&
+    practiceSubmitSequence.includes('[data-answer-map-has-rendered-key="YES"]') &&
+    practiceSubmitSequence.includes('[data-answer-map-has-submit-lookup-key="YES"]') &&
+    practiceSubmitSequence.includes('[data-submit-question-has-source-identity="YES"]') &&
+    practiceSubmitSequence.includes('[data-submit-identity-mapping="VALID"]') &&
     practiceSubmitSequence.indexOf("submitButton.click()") <
       practiceSubmitSequence.indexOf('data-client-missing-answer-guard="PASSED"') &&
     !/(?:console\.|inputValue|JSON\.stringify)/.test(practiceSubmitSequence),

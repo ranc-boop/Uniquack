@@ -23,7 +23,11 @@ const [answerRestoreSource, clientSource, cardSource, persistenceSource, reviewR
     readFile(resolve(root, "src/app/api/practice/review/route.ts"), "utf8"),
   ]);
 
-const compiledHelper = ts.transpileModule(answerRestoreSource, {
+const executableAnswerRestoreSource = answerRestoreSource.replace(
+  /import \{ canonicalPracticeSourceQuestionId \} from "@\/lib\/practice\/question-identity";\r?\n/,
+  "const canonicalPracticeSourceQuestionId = (question) => question.sourceQuestionId?.trim() || question.id;\n",
+);
+const compiledHelper = ts.transpileModule(executableAnswerRestoreSource, {
   compilerOptions: {
     module: ts.ModuleKind.ESNext,
     target: ts.ScriptTarget.ES2022,
@@ -95,7 +99,9 @@ assert(
 assert(
   persistenceSource.includes('.from("practice_attempts")') &&
     persistenceSource.includes('.select("*")') &&
-    persistenceSource.includes("answer: normalizePersistedPracticeAnswer(attempt.answer)"),
+    persistenceSource.includes("answer: normalizePersistedPracticeAnswer(attempt.answer)") &&
+    persistenceSource.includes('id: String(question.id ?? "")') &&
+    persistenceSource.includes("sourceQuestionId: String(question.source_question_id"),
   "session detail must select and preserve the persisted answer",
 );
 assert(

@@ -34,7 +34,7 @@ const compiledHelpers = ts.transpileModule(helperBlock.replace(/^export /gm, "")
   },
 }).outputText;
 const helpers = Function(
-  `${compiledHelpers}; return { buildPracticeSubmittedAttempts, evaluatePracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
+  `const canonicalPracticeSourceQuestionId = (question) => question.sourceQuestionId?.trim() || question.id; ${compiledHelpers}; return { buildPracticeSubmittedAttempts, evaluatePracticeSubmittedAttempts, hasSubmittedPracticeAnswer, practiceAnswerKey };`,
 )();
 
 for (const value of ["submitted", 0, false, ["option"], { part: "structured" }]) {
@@ -53,13 +53,13 @@ assert(
   "question identities must be deliberately distinct",
 );
 const renderedQuestion = {
-  id: sourceQuestionId,
+  id: roundQuestionRowId,
   renderedQuestionId,
-  roundQuestionRowId,
+  sourceQuestionId,
 };
 assert(
   helpers.practiceAnswerKey(renderedQuestion) === sourceQuestionId,
-  "Practice recommendation ID must be the canonical source-question key",
+  "the explicit source identity must be the canonical answer key",
 );
 
 let authoritativeAnswers = {};
@@ -77,6 +77,7 @@ const submittedAttempts = helpers.buildPracticeSubmittedAttempts(
 const submittedEvaluation = helpers.evaluatePracticeSubmittedAttempts(
   [renderedQuestion],
   submittedAttempts,
+  submittedAnswerSnapshot,
 );
 assert(
   submittedAttempts.length === 1 &&

@@ -8,6 +8,7 @@ import {
   persistRecommendationRound,
 } from "@/lib/practice/persistence";
 import { resolveAssignmentPracticeResumeSession } from "@/lib/practice/assignment-resume";
+import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-identity";
 import type {
   PracticeGradeResult,
   PracticeRecommendation,
@@ -172,6 +173,7 @@ function recommendationFromAssignmentQuestion(
     questionType: row.question_type,
     reason: "Assigned by your teacher for this classroom.",
     source: row.source,
+    sourceQuestionId: row.id,
     tagIds,
     title: row.title,
   };
@@ -197,12 +199,13 @@ function recommendationFromPersistedAssignmentSession(
       contentHtml: question.contentHtml,
       difficulty: question.difficulty,
       expectedSkill: question.expectedSkill,
-      id: question.sourceQuestionId ?? question.id,
+      id: question.id,
       options: question.options,
       questionCode: question.questionCode,
       questionType: question.questionType as QuestionType,
       reason: question.reason,
       source: question.source,
+      sourceQuestionId: question.sourceQuestionId ?? question.id,
       tagIds: question.tagIds,
       title: question.title,
     })),
@@ -576,7 +579,7 @@ export async function startAssignmentPractice({
               question_count: recommendations.length,
               source: "assignment_practice",
             },
-            selected_question_ids: recommendations.map((question) => question.id),
+            selected_question_ids: recommendations.map(canonicalPracticeSourceQuestionId),
             tag_context: tagContext,
           },
         },
