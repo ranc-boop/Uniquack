@@ -106,7 +106,7 @@ assert(
 );
 assert(
   clientSource.includes("buildRestoredPracticeAnswers(") &&
-    clientSource.includes("setAnswers(restoredAnswers)") &&
+    clientSource.includes("commitAnswers(restoredAnswers, reason") &&
     clientSource.includes("const questionId = practiceAnswerKey(question)") &&
     clientSource.includes("currentAnswer={answers[questionId]}") &&
     cardSource.includes("answer={currentAnswer}") &&

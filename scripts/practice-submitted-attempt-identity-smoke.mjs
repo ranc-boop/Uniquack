@@ -158,6 +158,8 @@ assert(
 assert(
   clientSource.includes("const questionId = practiceAnswerKey(question)") &&
     clientSource.includes("currentAnswer={answers[questionId]}") &&
+    clientSource.includes("hasSubmittedPracticeAnswer(answers[questionId])") &&
+    clientSource.includes('answerTransitionDiagnostics.answerStateRefConsistency === "MATCH"') &&
     clientSource.includes("hints={hints[questionId] ?? []}") &&
     clientSource.includes("result={resultsById.get(questionId)}") &&
     clientSource.includes("review={questionReviewsById.get(questionId)}") &&

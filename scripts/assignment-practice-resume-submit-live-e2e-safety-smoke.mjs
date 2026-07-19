@@ -252,6 +252,13 @@ assert(
     answerDiagnosticOutput.includes('submit_click=${diagnostics.submitClick}') &&
     answerDiagnosticOutput.includes('client_hydration=${diagnostics.clientHydration}') &&
     answerDiagnosticOutput.includes('input_event=${diagnostics.inputEvent}') &&
+    answerDiagnosticOutput.includes('answer_state_after_input=${diagnostics.answerStateAfterInput}') &&
+    answerDiagnosticOutput.includes('answer_ref_after_input=${diagnostics.answerRefAfterInput}') &&
+    answerDiagnosticOutput.includes('answer_state_before_submit=${diagnostics.answerStateBeforeSubmit}') &&
+    answerDiagnosticOutput.includes('answer_ref_before_submit=${diagnostics.answerRefBeforeSubmit}') &&
+    answerDiagnosticOutput.includes('answer_state_ref_consistency=${diagnostics.answerStateRefConsistency}') &&
+    answerDiagnosticOutput.includes('answer_reset_after_input=${diagnostics.answerResetAfterInput}') &&
+    answerDiagnosticOutput.includes('answer_last_write_reason=${diagnostics.answerLastWriteReason}') &&
     answerDiagnosticOutput.includes('client_answer_snapshot=${diagnostics.clientAnswerSnapshot}') &&
     answerDiagnosticOutput.includes('rendered_key_equals_submit_lookup_key=${diagnostics.renderedKeyEqualsSubmitLookupKey}') &&
     answerDiagnosticOutput.includes('answer_map_has_rendered_key=${diagnostics.answerMapHasRenderedKey}') &&
@@ -298,9 +305,17 @@ assert(
     browserAnswerDiagnostic.includes('answerControl.fill("2")') &&
     browserAnswerDiagnostic.indexOf('[data-client-ready="yes"]') < browserAnswerDiagnostic.indexOf('answerControl.fill("2")') &&
     browserAnswerDiagnostic.indexOf('answerControl.fill("2")') < browserAnswerDiagnostic.indexOf('[data-answer-committed="yes"]') &&
-    browserAnswerDiagnostic.indexOf('[data-answer-committed="yes"]') < browserAnswerDiagnostic.indexOf("answerControl.evaluate") &&
+    browserAnswerDiagnostic.indexOf('[data-answer-committed="yes"]') < browserAnswerDiagnostic.indexOf("readAnswerTransitionDiagnostics(page)") &&
+    browserAnswerDiagnostic.indexOf("readAnswerTransitionDiagnostics(page)") < browserAnswerDiagnostic.indexOf("answerControl.evaluate") &&
     browserAnswerDiagnostic.includes('diagnostics.clientHydration = "READY"') &&
     browserAnswerDiagnostic.includes('diagnostics.inputEvent = "COMMITTED"') &&
+    browserAnswerDiagnostic.includes('diagnostics.answerStateAfterInput = answerTransitionDiagnostics.answerStateAfterInput') &&
+    browserAnswerDiagnostic.includes('diagnostics.answerRefAfterInput = answerTransitionDiagnostics.answerRefAfterInput') &&
+    browserAnswerDiagnostic.includes('diagnostics.answerStateBeforeSubmit = answerTransitionDiagnostics.answerStateBeforeSubmit') &&
+    browserAnswerDiagnostic.includes('diagnostics.answerRefBeforeSubmit = answerTransitionDiagnostics.answerRefBeforeSubmit') &&
+    browserAnswerDiagnostic.includes('diagnostics.answerStateRefConsistency = answerTransitionDiagnostics.answerStateRefConsistency') &&
+    browserAnswerDiagnostic.includes('diagnostics.answerResetAfterInput = answerTransitionDiagnostics.answerResetAfterInput') &&
+    browserAnswerDiagnostic.includes('diagnostics.answerLastWriteReason = answerTransitionDiagnostics.answerLastWriteReason') &&
     !browserAnswerDiagnostic.includes("diagnostics.clientAnswerSnapshot") &&
     browserAnswerDiagnostic.includes('"CLIENT_HYDRATION_NOT_READY"') &&
     browserAnswerDiagnostic.includes('"ANSWER_INPUT_EVENT_NOT_COMMITTED"') &&
@@ -312,7 +327,7 @@ assert(
     !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|setItem)/.test(
       browserAnswerDiagnostic,
     ),
-  "pre-submit diagnostics must retain only browser answer presence",
+  "pre-submit diagnostics must require authoritative state/ref consistency and retain bounded labels only",
 );
 
 const submitDiagnostic = block(
@@ -370,6 +385,29 @@ assert(
       submissionGuardReader,
     ),
   "submission guard reader must retain only bounded counts and allowlisted states",
+);
+
+const answerTransitionReader = block(
+  "async function readAnswerTransitionDiagnostics",
+  "async function sessionDetailAttemptDiagnostics",
+);
+assert(
+  answerTransitionReader.includes('[data-answer-state-after-input="PRESENT"]') &&
+    answerTransitionReader.includes('[data-answer-ref-after-input="PRESENT"]') &&
+    answerTransitionReader.includes('[data-answer-state-before-submit="PRESENT"]') &&
+    answerTransitionReader.includes('[data-answer-ref-before-submit="PRESENT"]') &&
+    answerTransitionReader.includes('[data-answer-state-ref-consistency="MATCH"]') &&
+    answerTransitionReader.includes('[data-answer-reset-after-input="NO"]') &&
+    answerTransitionReader.includes('[data-answer-last-write-reason="INPUT"]') &&
+    answerTransitionReader.includes('["PRESENT", "EMPTY", "NOT_OBSERVED"]') &&
+    answerTransitionReader.includes('["MATCH", "MISMATCH", "NOT_OBSERVED"]') &&
+    answerTransitionReader.includes('["YES", "NO", "NOT_OBSERVED"]') &&
+    answerTransitionReader.includes('"SESSION_HYDRATION"') &&
+    answerTransitionReader.includes('"COMPLETED_RESTORE"') &&
+    !/(?:console\.|writeFile|appendFile|createWriteStream|createHash|JSON\.stringify|inputValue)/.test(
+      answerTransitionReader,
+    ),
+  "answer transition reader must wait for authoritative state/ref consistency and expose allowlisted labels only",
 );
 
 const answerClassifier = block(
@@ -493,16 +531,17 @@ const restoreSource = blockFrom(
   "useEffect(() =>",
 );
 assert(
-  restoreSource.includes("buildRestoredPracticeAnswers(") &&
+    restoreSource.includes("buildRestoredPracticeAnswers(") &&
     restoreSource.includes("restoredPracticeQuestionId(attempt, round.questions)") &&
-    restoreSource.includes("setAnswers(restoredAnswers)"),
+    restoreSource.includes("commitAnswers(restoredAnswers, reason"),
   "completed history must map each restored answer through its restored question identity",
 );
 assert(
   clientSource.includes("const questionId = practiceAnswerKey(question)") &&
     clientSource.includes("currentAnswer={answers[questionId]}") &&
     clientSource.includes("const answersRef = useRef<AnswersState>({})") &&
-    clientSource.includes("answersRef.current = nextAnswers") &&
+    clientSource.includes("answersRef.current = committedAnswers") &&
+    clientSource.includes("setAnswers(committedAnswers)") &&
     clientSource.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&
     clientSource.includes("buildPracticeSubmittedAttempts(") &&
     questionCardSource.includes("answer={currentAnswer}") &&

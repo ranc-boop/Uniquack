@@ -108,8 +108,10 @@ assert(
 const updateBlock = sourceBlock(clientSource, "function updateAnswer", "function requestHint");
 const submitBlock = sourceBlock(clientSource, "function submitRound", "function requestFeedbackNextRound");
 assert(
-  updateBlock.indexOf("answersRef.current = nextAnswers") < updateBlock.indexOf("setAnswers(nextAnswers)"),
-  "authoritative ref must update before React state scheduling",
+  updateBlock.includes('commitAnswers(nextAnswers, "INPUT")') &&
+    clientSource.indexOf("answersRef.current = committedAnswers") <
+      clientSource.indexOf("setAnswers(committedAnswers)"),
+  "authoritative commit must update ref before React state scheduling",
 );
 assert(
   submitBlock.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&

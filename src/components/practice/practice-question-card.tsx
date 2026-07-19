@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { hasSubmittedPracticeAnswer, practiceAnswerKey } from "@/lib/practice/client-helpers";
+import { practiceAnswerKey } from "@/lib/practice/client-helpers";
 import type {
   PracticeGradeResult,
   PracticeQuestionReview,
@@ -61,12 +61,14 @@ function reviewingBadge() {
 
 function QuestionAnswerInput({
   answer,
+  answerCommitted,
   clientReady,
   disabled,
   onChange,
   question,
 }: {
   answer: string | string[] | undefined;
+  answerCommitted: boolean;
   clientReady: boolean;
   disabled?: boolean;
   onChange: (value: string | string[]) => void;
@@ -105,7 +107,7 @@ function QuestionAnswerInput({
 
   return (
     <div
-      data-answer-committed={hasSubmittedPracticeAnswer(answer) ? "yes" : "no"}
+      data-answer-committed={answerCommitted ? "yes" : "no"}
       data-client-ready={clientReady ? "yes" : "no"}
       data-testid="practice-answer-control"
     >
@@ -152,6 +154,7 @@ function QuestionReviewDiagnostic({ review }: { review?: PracticeQuestionReview 
 }
 
 export function PracticeQuestionCard({
+  answerCommitted,
   clientReady,
   currentAnswer,
   hints,
@@ -164,6 +167,7 @@ export function PracticeQuestionCard({
   result,
   review,
 }: {
+  answerCommitted: boolean;
   clientReady: boolean;
   currentAnswer: string | string[] | undefined;
   hints: string[];
@@ -208,6 +212,7 @@ export function PracticeQuestionCard({
         </div>
         <QuestionAnswerInput
           answer={currentAnswer}
+          answerCommitted={answerCommitted}
           clientReady={clientReady}
           disabled={phase === "feedback"}
           onChange={onAnswerChange}

@@ -46,7 +46,7 @@ assert(
 assert(
   answerInput.includes('data-testid="practice-answer-control"') &&
     answerInput.includes('data-client-ready={clientReady ? "yes" : "no"}') &&
-    answerInput.includes('data-answer-committed={hasSubmittedPracticeAnswer(answer) ? "yes" : "no"}') &&
+    answerInput.includes('data-answer-committed={answerCommitted ? "yes" : "no"}') &&
     !answerInput.includes("JSON.stringify") &&
     !answerInput.includes("answer.length"),
   "answer hooks must expose only bounded readiness and authoritative committed state",
@@ -71,8 +71,10 @@ assert(
 const updateAnswer = sourceBlock(clientSource, "function updateAnswer", "function requestHint");
 assert(
   updateAnswer.includes("const nextAnswers = { ...answersRef.current, [questionId]: value }") &&
-    updateAnswer.indexOf("answersRef.current = nextAnswers") < updateAnswer.indexOf("setAnswers(nextAnswers)"),
-  "authoritative answer ref must update synchronously before React state scheduling",
+    updateAnswer.includes('commitAnswers(nextAnswers, "INPUT")') &&
+    clientSource.includes("answersRef.current = committedAnswers") &&
+    clientSource.includes("setAnswers(committedAnswers)"),
+  "controlled input must use the shared authoritative state/ref commit",
 );
 
 const helperBlock = sourceBlock(helperSource, "type PracticeAnswerMap", "export function formatDuration");
@@ -107,10 +109,11 @@ for (const required of [
   assert(narrowSequence.includes(required), `narrow harness is missing ${required}`);
 }
 assert(
-  narrowSequence.indexOf('[data-client-ready="yes"]') < narrowSequence.indexOf('answerControl.fill("2")') &&
+    narrowSequence.indexOf('[data-client-ready="yes"]') < narrowSequence.indexOf('answerControl.fill("2")') &&
     narrowSequence.indexOf('answerControl.fill("2")') < narrowSequence.indexOf('[data-answer-committed="yes"]') &&
-    narrowSequence.indexOf('[data-answer-committed="yes"]') < narrowSequence.indexOf("answerControl.evaluate"),
-  "narrow harness must prove hydration and committed state before inspecting DOM or submitting",
+    narrowSequence.indexOf('[data-answer-committed="yes"]') < narrowSequence.indexOf("readAnswerTransitionDiagnostics(page)") &&
+    narrowSequence.indexOf("readAnswerTransitionDiagnostics(page)") < narrowSequence.indexOf("answerControl.evaluate"),
+  "narrow harness must prove hydration, committed state, and state/ref consistency before submitting",
 );
 
 const fullSequence = sourceBlock(
@@ -120,8 +123,9 @@ const fullSequence = sourceBlock(
 );
 assert(
   fullSequence.indexOf('[data-client-ready="yes"]') < fullSequence.indexOf('answerControl.fill("2")') &&
-    fullSequence.indexOf('answerControl.fill("2")') < fullSequence.indexOf('[data-answer-committed="yes"]'),
-  "full harness must use the same ready-input-commit sequence",
+    fullSequence.indexOf('answerControl.fill("2")') < fullSequence.indexOf('[data-answer-committed="yes"]') &&
+    fullSequence.indexOf('[data-answer-committed="yes"]') < fullSequence.indexOf('[data-answer-state-ref-consistency="MATCH"]'),
+  "full harness must use the same ready-input-commit-consistency sequence",
 );
 
 for (const source of [cardSource, clientSource, narrowHarness, fullHarness]) {

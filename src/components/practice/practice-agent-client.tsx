@@ -23,6 +23,9 @@ import {
   clearLegacyPracticeStorage,
   evaluatePracticeSubmittedAttempts,
   formatDuration,
+  hasSubmittedPracticeAnswer,
+  practiceAnswerMapsMatch,
+  practiceAnswerMapStatus,
   practiceAnswerKey,
   practiceSubmittedAttemptQuestionId,
   readPendingPracticeRound,
@@ -63,6 +66,24 @@ const TracePanel = dynamic(
 type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback";
 type AnswersState = Record<string, string | string[]>;
 type HintsState = Record<string, string[]>;
+type AnswerWriteReason =
+  | "INPUT"
+  | "SESSION_HYDRATION"
+  | "ROUND_CHANGE"
+  | "SESSION_CHANGE"
+  | "RESET"
+  | "RETRY"
+  | "COMPLETED_RESTORE"
+  | "OTHER";
+type AnswerTransitionDiagnostics = {
+  answerRefCurrent: "PRESENT" | "EMPTY" | "NOT_OBSERVED";
+  answerRefAfterInput: "PRESENT" | "EMPTY" | "NOT_OBSERVED";
+  answerResetAfterInput: "YES" | "NO" | "NOT_OBSERVED";
+  answerStateCurrent: "PRESENT" | "EMPTY" | "NOT_OBSERVED";
+  answerStateAfterInput: "PRESENT" | "EMPTY" | "NOT_OBSERVED";
+  answerStateRefConsistency: "MATCH" | "MISMATCH" | "NOT_OBSERVED";
+  lastWriteReason: AnswerWriteReason | "NOT_OBSERVED";
+};
 type ApiError = { error?: string };
 type PracticeAgentClientProps = {
   assignmentId?: string | null;
@@ -358,6 +379,20 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   const [recommendation, setRecommendation] = useState<PracticeRecommendResponse | null>(null);
   const [answers, setAnswers] = useState<AnswersState>({});
   const answersRef = useRef<AnswersState>({});
+  const answerWriteMetaRef = useRef<{
+    hadInput: boolean;
+    lastWriteReason: AnswerWriteReason | "NOT_OBSERVED";
+  }>({ hadInput: false, lastWriteReason: "NOT_OBSERVED" });
+  const [answerTransitionDiagnostics, setAnswerTransitionDiagnostics] =
+    useState<AnswerTransitionDiagnostics>({
+      answerRefCurrent: "NOT_OBSERVED",
+      answerRefAfterInput: "NOT_OBSERVED",
+      answerResetAfterInput: "NOT_OBSERVED",
+      answerStateCurrent: "NOT_OBSERVED",
+      answerStateAfterInput: "NOT_OBSERVED",
+      answerStateRefConsistency: "NOT_OBSERVED",
+      lastWriteReason: "NOT_OBSERVED",
+    });
   const [hints, setHints] = useState<HintsState>({});
   const [results, setResults] = useState<PracticeGradeResult[]>([]);
   const [review, setReview] = useState<PracticeReviewResponse | null>(null);
@@ -393,6 +428,54 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   const thinkingEndRef = useRef<HTMLDivElement | null>(null);
   const thinkingStartedAtRef = useRef<number | null>(null);
   const assignmentLaunchStartedRef = useRef(false);
+
+  function commitAnswers(
+    nextAnswers: AnswersState,
+    reason: AnswerWriteReason,
+    { protectNewerInput = false }: { protectNewerInput?: boolean } = {},
+  ) {
+    if (protectNewerInput && answerWriteMetaRef.current.lastWriteReason === "INPUT") {
+      return false;
+    }
+
+    const committedAnswers = Object.freeze({ ...nextAnswers }) as AnswersState;
+    const hasAnyAnswer = Object.values(committedAnswers).some(hasSubmittedPracticeAnswer);
+    const answerStatus = recommendation?.recommendations.length
+      ? practiceAnswerMapStatus(recommendation.recommendations, committedAnswers)
+      : hasAnyAnswer
+        ? "PRESENT"
+        : "EMPTY";
+    const hadInput = answerWriteMetaRef.current.hadInput;
+    const clearsInputGeneration =
+      reason === "SESSION_CHANGE" ||
+      reason === "ROUND_CHANGE" ||
+      reason === "RESET" ||
+      reason === "COMPLETED_RESTORE";
+    answersRef.current = committedAnswers;
+    setAnswers(committedAnswers);
+    answerWriteMetaRef.current = {
+      hadInput: reason === "INPUT" ? true : clearsInputGeneration ? false : hadInput,
+      lastWriteReason: reason,
+    };
+    setAnswerTransitionDiagnostics((current) => ({
+      answerRefCurrent: answerStatus,
+      answerRefAfterInput: reason === "INPUT"
+        ? answerStatus
+        : current.answerRefAfterInput,
+      answerResetAfterInput: reason === "INPUT"
+        ? "NO"
+        : hadInput && !hasAnyAnswer
+          ? "YES"
+          : current.answerResetAfterInput,
+      answerStateCurrent: answerStatus,
+      answerStateAfterInput: reason === "INPUT"
+        ? answerStatus
+        : current.answerStateAfterInput,
+      answerStateRefConsistency: "MATCH",
+      lastWriteReason: reason,
+    }));
+    return true;
+  }
 
   async function refreshPracticeState(preferredSessionId?: string) {
     const sessionPayload = await jsonRequest<{
@@ -435,7 +518,13 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     return nextSession;
   }
 
-  function restoreRoundFromHistory(round: PracticeRoundHistory, session = activeSession) {
+  function restoreRoundFromHistory(
+    round: PracticeRoundHistory,
+    session = activeSession,
+    reason: AnswerWriteReason = round.reviewSummary || round.attempts.length
+      ? "COMPLETED_RESTORE"
+      : "SESSION_HYDRATION",
+  ) {
     if (!session || !round.questions.length) return;
 
     const restoredRecommendations = round.questions
@@ -468,8 +557,9 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     }
 
     setRecommendation(restoredRecommendation);
-    answersRef.current = restoredAnswers;
-    setAnswers(restoredAnswers);
+    commitAnswers(restoredAnswers, reason, {
+      protectNewerInput: reason === "SESSION_HYDRATION",
+    });
     setHints(restoredHints);
     setResults(restoredResults);
     setLiveTrace(round.trace ?? []);
@@ -539,11 +629,9 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   const questionReviewsById = new Map<string, PracticeQuestionReview>(
     (review?.questionReviews ?? []).map((item) => [item.questionId, item]),
   );
-
-  function resetRoundState() {
+  function resetRoundState(reason: AnswerWriteReason = "RESET") {
     setSubmissionGuardDiagnostics(null);
-    answersRef.current = {};
-    setAnswers({});
+    commitAnswers({}, reason);
     setHints({});
     setResults([]);
     setReview(null);
@@ -639,7 +727,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     setLiveTrace([]);
     setReviewTrace([]);
     setIsTraceCollapsed(true);
-    resetRoundState();
+    resetRoundState("SESSION_CHANGE");
     resetSessionScopedDrafts();
 
     const payload = await jsonRequest<AssignmentPracticeStartPayload>(
@@ -718,7 +806,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     setLiveTrace([]);
     setReviewTrace([]);
     setIsTraceCollapsed(true);
-    resetRoundState();
+    resetRoundState("ROUND_CHANGE");
 
     startTransition(async () => {
       try {
@@ -765,8 +853,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
 
   function updateAnswer(questionId: string, value: string | string[]) {
     const nextAnswers = { ...answersRef.current, [questionId]: value };
-    answersRef.current = nextAnswers;
-    setAnswers(nextAnswers);
+    commitAnswers(nextAnswers, "INPUT");
   }
 
   function requestHint(question: PracticeRecommendation) {
@@ -824,9 +911,25 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
       submittedAttempts,
       submittedAnswerSnapshot,
     );
+    const submittedAnswerState = practiceAnswerMapStatus(
+      recommendation.recommendations,
+      answers,
+    );
+    const submittedAnswerRef = practiceAnswerMapStatus(
+      recommendation.recommendations,
+      submittedAnswerSnapshot,
+    );
+    const submittedAnswerConsistency = practiceAnswerMapsMatch(
+      recommendation.recommendations,
+      answers,
+      submittedAnswerSnapshot,
+    );
     const guardBlocked =
       submissionEvaluation.submittedAttempt !== "FOUND" ||
-      submissionEvaluation.missingRequiredAttemptCount > 0;
+      submissionEvaluation.missingRequiredAttemptCount > 0 ||
+      submittedAnswerState !== "PRESENT" ||
+      submittedAnswerRef !== "PRESENT" ||
+      submittedAnswerConsistency !== "MATCH";
     setSubmissionGuardDiagnostics({
       ...submissionEvaluation,
       guard: guardBlocked ? "BLOCKED" : "PASSED",
@@ -1023,10 +1126,17 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
         );
         setWrongQuestions(wrongPayload.wrongQuestions);
         setOutlineNotes(payload.session.outlineUserNotes ?? "");
-        resetRoundState();
+        resetRoundState("SESSION_CHANGE");
         resetSessionScopedDrafts();
         if (payload.session.rounds.length) {
-          restoreRoundFromHistory(payload.session.rounds[payload.session.rounds.length - 1], payload.session);
+          const latestRound = payload.session.rounds[payload.session.rounds.length - 1];
+          restoreRoundFromHistory(
+            latestRound,
+            payload.session,
+            latestRound.reviewSummary || latestRound.attempts.length
+              ? "COMPLETED_RESTORE"
+              : "SESSION_CHANGE",
+          );
         } else {
           setGoal("");
           setPhase("start");
@@ -1051,7 +1161,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
         setActiveSession(payload.session);
         setOutlineNotes(payload.session.outlineUserNotes ?? "");
         setWrongQuestions([]);
-        resetRoundState();
+        resetRoundState("SESSION_CHANGE");
         resetSessionScopedDrafts();
         setGoal("");
         setPhase("start");
@@ -1067,7 +1177,7 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
     startTransition(async () => {
       try {
         await jsonRequest<{ ok: boolean }>(`/api/practice/sessions/${sessionId}`, { method: "DELETE" });
-        resetRoundState();
+        resetRoundState("SESSION_CHANGE");
         resetSessionScopedDrafts();
         setGoal("");
         setPhase("start");
@@ -1175,8 +1285,15 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
   return (
     <div
       className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
+      data-answer-last-write-reason={answerTransitionDiagnostics.lastWriteReason}
       data-answer-map-has-rendered-key={submissionGuardDiagnostics?.answerMapHasRenderedKey}
       data-answer-map-has-submit-lookup-key={submissionGuardDiagnostics?.answerMapHasSubmitLookupKey}
+      data-answer-ref-after-input={answerTransitionDiagnostics.answerRefAfterInput}
+      data-answer-ref-before-submit={answerTransitionDiagnostics.answerRefCurrent}
+      data-answer-reset-after-input={answerTransitionDiagnostics.answerResetAfterInput}
+      data-answer-state-after-input={answerTransitionDiagnostics.answerStateAfterInput}
+      data-answer-state-before-submit={answerTransitionDiagnostics.answerStateCurrent}
+      data-answer-state-ref-consistency={answerTransitionDiagnostics.answerStateRefConsistency}
       data-client-answer-snapshot={submissionGuardDiagnostics?.clientAnswerSnapshot}
       data-client-missing-answer-guard={submissionGuardDiagnostics?.guard}
       data-current-round-question-count={submissionGuardDiagnostics?.currentRoundQuestionCount}
@@ -1637,8 +1754,12 @@ export function PracticeAgentClient({ assignmentId }: PracticeAgentClientProps) 
                 <CardContent className="space-y-4">
                   {recommendation.recommendations.map((question, index) => {
                     const questionId = practiceAnswerKey(question);
+                    const answerCommitted =
+                      hasSubmittedPracticeAnswer(answers[questionId]) &&
+                      answerTransitionDiagnostics.answerStateRefConsistency === "MATCH";
                     return (
                       <PracticeQuestionCard
+                        answerCommitted={answerCommitted}
                         clientReady={clientReady}
                         currentAnswer={answers[questionId]}
                         hints={hints[questionId] ?? []}

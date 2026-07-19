@@ -37,9 +37,11 @@ const updateBlock = sourceBlock(clientSource, "function updateAnswer", "function
 const submitBlock = sourceBlock(clientSource, "function submitRound", "function requestFeedbackNextRound");
 assert(
   clientSource.includes("const answersRef = useRef<AnswersState>({})") &&
-    restoreBlock.includes("answersRef.current = restoredAnswers") &&
-    clientSource.includes("answersRef.current = {}") &&
-    updateBlock.indexOf("answersRef.current = nextAnswers") < updateBlock.indexOf("setAnswers(nextAnswers)") &&
+    restoreBlock.includes("commitAnswers(restoredAnswers, reason") &&
+    clientSource.includes("commitAnswers({}, reason)") &&
+    updateBlock.includes('commitAnswers(nextAnswers, "INPUT")') &&
+    clientSource.indexOf("answersRef.current = committedAnswers") <
+      clientSource.indexOf("setAnswers(committedAnswers)") &&
     submitBlock.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&
     submitBlock.includes("buildPracticeSubmittedAttempts("),
   "submission must snapshot the latest controlled answer before React commits another render",

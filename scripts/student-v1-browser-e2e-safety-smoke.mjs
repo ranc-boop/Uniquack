@@ -251,11 +251,20 @@ assert(
   practiceAnswerSequence.includes('[data-testid="practice-answer-control"]') &&
     practiceAnswerSequence.includes('[data-client-ready="yes"]') &&
     practiceAnswerSequence.includes('[data-answer-committed="yes"]') &&
+    practiceAnswerSequence.includes('browser_assignment_practice_answer_state_consistent') &&
+    practiceAnswerSequence.includes('[data-answer-state-after-input="PRESENT"]') &&
+    practiceAnswerSequence.includes('[data-answer-ref-after-input="PRESENT"]') &&
+    practiceAnswerSequence.includes('[data-answer-state-before-submit="PRESENT"]') &&
+    practiceAnswerSequence.includes('[data-answer-ref-before-submit="PRESENT"]') &&
+    practiceAnswerSequence.includes('[data-answer-state-ref-consistency="MATCH"]') &&
+    practiceAnswerSequence.includes('[data-answer-reset-after-input="NO"]') &&
+    practiceAnswerSequence.includes('[data-answer-last-write-reason="INPUT"]') &&
     practiceAnswerSequence.includes('getByPlaceholder("Enter your final answer", { exact: true })') &&
     practiceAnswerSequence.includes('answerControl.fill("2")') &&
     practiceAnswerSequence.indexOf('[data-client-ready="yes"]') < practiceAnswerSequence.indexOf('answerControl.fill("2")') &&
-    practiceAnswerSequence.indexOf('answerControl.fill("2")') < practiceAnswerSequence.indexOf('[data-answer-committed="yes"]'),
-  "full browser harness must wait for client readiness and authoritative answer commit before Submit",
+    practiceAnswerSequence.indexOf('answerControl.fill("2")') < practiceAnswerSequence.indexOf('[data-answer-committed="yes"]') &&
+    practiceAnswerSequence.indexOf('[data-answer-committed="yes"]') < practiceAnswerSequence.indexOf('[data-answer-state-ref-consistency="MATCH"]'),
+  "full browser harness must wait for client readiness, authoritative answer commit, and state/ref consistency before Submit",
 );
 const practiceSubmitSequence = sourceBlock(
   'setHarnessPhase(fixtures, "browser_assignment_practice_submit_button")',

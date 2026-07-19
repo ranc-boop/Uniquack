@@ -1997,6 +1997,20 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
     .locator('[data-testid="practice-answer-control"][data-answer-committed="yes"]')
     .waitFor({ timeout: 30_000 });
 
+  setHarnessPhase(fixtures, "browser_assignment_practice_answer_state_consistent");
+  await page
+    .locator(
+      '[data-testid="practice-submission-state"]' +
+        '[data-answer-state-after-input="PRESENT"]' +
+        '[data-answer-ref-after-input="PRESENT"]' +
+        '[data-answer-state-before-submit="PRESENT"]' +
+        '[data-answer-ref-before-submit="PRESENT"]' +
+        '[data-answer-state-ref-consistency="MATCH"]' +
+        '[data-answer-reset-after-input="NO"]' +
+        '[data-answer-last-write-reason="INPUT"]',
+    )
+    .waitFor({ timeout: 30_000 });
+
   setHarnessPhase(fixtures, "browser_assignment_practice_submit_button");
   const submitButton = page.getByRole("button", { name: "Submit round" });
   await submitButton.waitFor({ timeout: 30_000 });

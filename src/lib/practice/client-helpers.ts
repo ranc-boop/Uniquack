@@ -40,6 +40,47 @@ export function hasSubmittedPracticeAnswer(value: unknown) {
   return false;
 }
 
+function practiceAnswerValuesMatch(
+  left: PracticeAttemptInput["answer"] | undefined,
+  right: PracticeAttemptInput["answer"] | undefined,
+) {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => value === right[index]);
+  }
+  return left === right;
+}
+
+export function practiceAnswerMapStatus(
+  questions: readonly PracticeQuestionIdentity[],
+  answers: PracticeAnswerMap,
+) {
+  if (!questions.length) return "NOT_OBSERVED" as const;
+  return questions.every((question) => {
+    const key = practiceAnswerKey(question);
+    return Object.prototype.hasOwnProperty.call(answers, key) &&
+      hasSubmittedPracticeAnswer(answers[key]);
+  })
+    ? "PRESENT" as const
+    : "EMPTY" as const;
+}
+
+export function practiceAnswerMapsMatch(
+  questions: readonly PracticeQuestionIdentity[],
+  left: PracticeAnswerMap,
+  right: PracticeAnswerMap,
+) {
+  if (!questions.length) return "NOT_OBSERVED" as const;
+  return questions.every((question) => {
+    const key = practiceAnswerKey(question);
+    return practiceAnswerValuesMatch(left[key], right[key]);
+  })
+    ? "MATCH" as const
+    : "MISMATCH" as const;
+}
+
 export function buildPracticeSubmittedAttempts(
   questions: readonly PracticeQuestionIdentity[],
   answers: PracticeAnswerMap,

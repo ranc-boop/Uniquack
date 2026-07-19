@@ -114,6 +114,9 @@ assert(
     submitBlock.includes("evaluatePracticeSubmittedAttempts(") &&
     submitBlock.includes('submissionEvaluation.submittedAttempt !== "FOUND"') &&
     submitBlock.includes("submissionEvaluation.missingRequiredAttemptCount > 0") &&
+    submitBlock.includes('submittedAnswerState !== "PRESENT"') &&
+    submitBlock.includes('submittedAnswerRef !== "PRESENT"') &&
+    submitBlock.includes('submittedAnswerConsistency !== "MATCH"') &&
     (submitBlock.match(/attempts: submittedAttempts/g) ?? []).length === 3 &&
     !submitBlock.includes("submittedAttemptInputs"),
   "the guard and every review/fallback path must share one final submitted-attempt array",
@@ -123,6 +126,7 @@ assert(
     clientSource.includes("data-current-round-question-count") &&
     clientSource.includes("data-submitted-attempt-answer") &&
     clientSource.includes("data-missing-required-attempt-count") &&
+    clientSource.includes("data-answer-state-ref-consistency") &&
     harnessSource.includes("readSubmissionGuardDiagnostics(page)"),
   "product and narrow harness must expose only bounded guard evidence",
 );

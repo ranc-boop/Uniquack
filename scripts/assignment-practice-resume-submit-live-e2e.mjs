@@ -390,8 +390,15 @@ function createJourneyDiagnostics() {
   return {
     assignmentStartCode: "UNRECOGNIZED_API_CODE",
     assignmentStartHttpStatus: 0,
+    answerLastWriteReason: "NOT_OBSERVED",
     answerMapHasRenderedKey: "NOT_OBSERVED",
     answerMapHasSubmitLookupKey: "NOT_OBSERVED",
+    answerRefAfterInput: "NOT_OBSERVED",
+    answerRefBeforeSubmit: "NOT_OBSERVED",
+    answerResetAfterInput: "NOT_OBSERVED",
+    answerStateAfterInput: "NOT_OBSERVED",
+    answerStateBeforeSubmit: "NOT_OBSERVED",
+    answerStateRefConsistency: "NOT_OBSERVED",
     browserAnswerControlValue: "NOT_REACHED",
     clientHydration: "TIMEOUT",
     clientAnswerSnapshot: "NOT_OBSERVED",
@@ -445,6 +452,13 @@ function printCompletedAnswerDiagnostics(diagnostics) {
   console.log(`submit_click=${diagnostics.submitClick}`);
   console.log(`client_hydration=${diagnostics.clientHydration}`);
   console.log(`input_event=${diagnostics.inputEvent}`);
+  console.log(`answer_state_after_input=${diagnostics.answerStateAfterInput}`);
+  console.log(`answer_ref_after_input=${diagnostics.answerRefAfterInput}`);
+  console.log(`answer_state_before_submit=${diagnostics.answerStateBeforeSubmit}`);
+  console.log(`answer_ref_before_submit=${diagnostics.answerRefBeforeSubmit}`);
+  console.log(`answer_state_ref_consistency=${diagnostics.answerStateRefConsistency}`);
+  console.log(`answer_reset_after_input=${diagnostics.answerResetAfterInput}`);
+  console.log(`answer_last_write_reason=${diagnostics.answerLastWriteReason}`);
   console.log(`client_answer_snapshot=${diagnostics.clientAnswerSnapshot}`);
   console.log(`rendered_key_equals_submit_lookup_key=${diagnostics.renderedKeyEqualsSubmitLookupKey}`);
   console.log(`answer_map_has_rendered_key=${diagnostics.answerMapHasRenderedKey}`);
@@ -569,6 +583,65 @@ async function readSubmissionGuardDiagnostics(page) {
     };
   });
   if (!diagnostics) throw new Error("bounded submission diagnostics unavailable");
+  return diagnostics;
+}
+
+async function readAnswerTransitionDiagnostics(page) {
+  const state = page.locator(
+    '[data-testid="practice-submission-state"]' +
+      '[data-answer-state-after-input="PRESENT"]' +
+      '[data-answer-ref-after-input="PRESENT"]' +
+      '[data-answer-state-before-submit="PRESENT"]' +
+      '[data-answer-ref-before-submit="PRESENT"]' +
+      '[data-answer-state-ref-consistency="MATCH"]' +
+      '[data-answer-reset-after-input="NO"]' +
+      '[data-answer-last-write-reason="INPUT"]',
+  );
+  await state.waitFor({ timeout: 30_000 });
+  const diagnostics = await state.evaluate((element) => {
+    const statusValues = ["PRESENT", "EMPTY", "NOT_OBSERVED"];
+    const consistencyValues = ["MATCH", "MISMATCH", "NOT_OBSERVED"];
+    const resetValues = ["YES", "NO", "NOT_OBSERVED"];
+    const reasonValues = [
+      "INPUT",
+      "SESSION_HYDRATION",
+      "ROUND_CHANGE",
+      "SESSION_CHANGE",
+      "RESET",
+      "RETRY",
+      "COMPLETED_RESTORE",
+      "OTHER",
+      "NOT_OBSERVED",
+    ];
+    const answerStateAfterInput = element.getAttribute("data-answer-state-after-input");
+    const answerRefAfterInput = element.getAttribute("data-answer-ref-after-input");
+    const answerStateBeforeSubmit = element.getAttribute("data-answer-state-before-submit");
+    const answerRefBeforeSubmit = element.getAttribute("data-answer-ref-before-submit");
+    const answerStateRefConsistency = element.getAttribute("data-answer-state-ref-consistency");
+    const answerResetAfterInput = element.getAttribute("data-answer-reset-after-input");
+    const answerLastWriteReason = element.getAttribute("data-answer-last-write-reason");
+    if (
+      !statusValues.includes(answerStateAfterInput ?? "") ||
+      !statusValues.includes(answerRefAfterInput ?? "") ||
+      !statusValues.includes(answerStateBeforeSubmit ?? "") ||
+      !statusValues.includes(answerRefBeforeSubmit ?? "") ||
+      !consistencyValues.includes(answerStateRefConsistency ?? "") ||
+      !resetValues.includes(answerResetAfterInput ?? "") ||
+      !reasonValues.includes(answerLastWriteReason ?? "")
+    ) {
+      return null;
+    }
+    return {
+      answerLastWriteReason,
+      answerRefAfterInput,
+      answerRefBeforeSubmit,
+      answerResetAfterInput,
+      answerStateAfterInput,
+      answerStateBeforeSubmit,
+      answerStateRefConsistency,
+    };
+  });
+  if (!diagnostics) throw new Error("bounded answer transition diagnostics unavailable");
   return diagnostics;
 }
 
@@ -1538,6 +1611,17 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
       .waitFor({ timeout: 30_000 }),
   );
   diagnostics.inputEvent = "COMMITTED";
+  const answerTransitionDiagnostics = await runBounded(
+    "ANSWER_STATE_REF_NOT_AUTHORITATIVE",
+    () => readAnswerTransitionDiagnostics(page),
+  );
+  diagnostics.answerStateAfterInput = answerTransitionDiagnostics.answerStateAfterInput;
+  diagnostics.answerRefAfterInput = answerTransitionDiagnostics.answerRefAfterInput;
+  diagnostics.answerStateBeforeSubmit = answerTransitionDiagnostics.answerStateBeforeSubmit;
+  diagnostics.answerRefBeforeSubmit = answerTransitionDiagnostics.answerRefBeforeSubmit;
+  diagnostics.answerStateRefConsistency = answerTransitionDiagnostics.answerStateRefConsistency;
+  diagnostics.answerResetAfterInput = answerTransitionDiagnostics.answerResetAfterInput;
+  diagnostics.answerLastWriteReason = answerTransitionDiagnostics.answerLastWriteReason;
   const browserAnswerPresent = await answerControl.evaluate((element) =>
     (element.tagName === "TEXTAREA" || element.tagName === "INPUT") &&
     typeof element.value === "string" &&

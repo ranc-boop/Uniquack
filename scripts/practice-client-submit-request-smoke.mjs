@@ -83,8 +83,10 @@ const submitBlock = sourceBlock(clientSource, "function submitRound", "function 
 assert(
   answerInput.includes("onChange={(event) => onChange(event.currentTarget.value)}") &&
     !answerInput.includes("onInput=") &&
-    updateBlock.indexOf("answersRef.current = nextAnswers") < updateBlock.indexOf("setAnswers(nextAnswers)"),
-  "canonical React change input must synchronously reach the authoritative ref",
+    updateBlock.includes('commitAnswers(nextAnswers, "INPUT")') &&
+    clientSource.indexOf("answersRef.current = committedAnswers") <
+      clientSource.indexOf("setAnswers(committedAnswers)"),
+  "canonical React change input must synchronously reach the authoritative commit",
 );
 assert(
   submitBlock.includes("const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current })") &&
