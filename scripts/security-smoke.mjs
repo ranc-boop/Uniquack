@@ -137,6 +137,15 @@ const teacherBlueprintDetailPage = await read("src/app/teacher/blueprints/[bluep
 const teacherBankBlueprintsPage = await read("src/app/teacher/banks/[bankId]/blueprints/page.tsx");
 const teacherBlueprintActions = await read("src/app/teacher/blueprints/actions.ts");
 const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
+const teacherBankPdfBurstActions = await read(
+  "src/app/teacher/banks/pdf-burst-actions.ts",
+);
+const teacherPdfBurstUpload = await read(
+  "src/components/teacher/teacher-pdf-burst-upload.tsx",
+);
+const pdf50BurstMigration = await read(
+  "supabase/clean-migrations/0049_pdf50_burst_upload_admission.sql",
+);
 const teacherParsingProfiles = await read(
   "src/lib/ai-pdf-import/teacher-parsing-profiles.ts",
 );
@@ -499,19 +508,26 @@ assert(
     !teacherPublishActions.includes("AI_PROVIDER") &&
     !teacherPublishActions.includes("published_at") &&
     teacherBankActions.includes("importBatchImportJson") &&
-    teacherBankActions.includes("importBankPdfDrafts") &&
-    teacherBankActions.includes("resolveTeacherAIPdfProviderProfile") &&
+    !teacherBankActions.includes("importBankPdfDrafts") &&
+    !teacherBankActions.includes("pdfFile.arrayBuffer()") &&
+    teacherBankImportsPage.includes("TeacherPdfBurstUpload") &&
+    teacherPdfBurstUpload.includes("uploadToSignedUrl") &&
+    teacherPdfBurstUpload.includes("AI_PDF_BURST_UPLOAD_CONCURRENCY") &&
+    teacherBankPdfBurstActions.includes("reserveTeacherAIPdfBurst") &&
+    teacherBankPdfBurstActions.includes("finalizeTeacherAIPdfBurstItem") &&
+    teacherBankPdfBurstActions.includes("requireManagedBank") &&
+    teacherBankPdfBurstActions.includes("resolveTeacherAIPdfProviderProfile") &&
+    teacherBankPdfBurstActions.includes("bank_review_required") &&
+    !teacherBankPdfBurstActions.includes('status: "published"') &&
+    !teacherBankPdfBurstActions.includes('.from("assignments")') &&
+    pdf50BurstMigration.includes("release_ai_pdf_burst_admission_jobs") &&
+    pdf50BurstMigration.includes("status = 'admission_ready'") &&
+    pdf50BurstMigration.includes("private.can_actor_manage_ai_pdf_burst_bank") &&
+    pdf50BurstMigration.includes("'ai-import-sources', 'ai-import-sources', false") &&
     teacherBankActions.includes("assertNoRawProviderConfig(formData)") &&
-    teacherBankActions.includes("buildAIPdfJobIdempotencyKey") &&
     teacherBankActions.includes("enqueueAIProviderJob") &&
-    !teacherBankActions
-      .slice(
-        teacherBankActions.indexOf("export async function importBankPdfDrafts"),
-        teacherBankActions.indexOf("export async function approveBankReviewQuestion"),
-      )
-      .includes("processAIPdfImport") &&
     teacherBankActions.includes("canManageBankContent(detail.currentUserRole)") &&
-    teacherBankActions.includes("targetBankId: parsed.bankId") &&
+    teacherBankPdfBurstActions.includes("targetBankId: detail.bank.id") &&
     teacherBankAssignmentNewPage.includes("Assign from") &&
     teacherBankAssignmentNewPage.includes("selected approved bank items") &&
     teacherBankAssignmentNewPage.includes("not access to the full bank") &&
