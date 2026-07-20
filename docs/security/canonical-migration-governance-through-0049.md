@@ -44,7 +44,11 @@ Google migration remains blocked.
 | 49 | `0049_pdf50_burst_upload_admission.sql` | `CANONICAL_EXECUTABLE` | Unapplied; disposable rehearsal required |
 
 `0049_pdf50_burst_upload_admission.sql` is the canonical source head. Its
-registration does not claim that it has been applied to any database.
+registration does not claim that it has been applied to any database. Before
+its first application, it may create an absent private source bucket or adopt
+only a compatible preexisting private PDF-only bucket; incompatible bucket
+state fails closed. The migration becomes frozen after its first successful
+application.
 
 ## Execution Controls
 

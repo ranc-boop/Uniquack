@@ -104,8 +104,11 @@ Prerequisite: 0049 source has been hardened according to
 1. Snapshot or recreate the Stage A reconciled clone.
 2. Confirm the clone has canonical history through `0048`, two preserved
    unmapped legacy rows, and no recorded `0049`.
-3. Confirm the preexisting `ai-import-sources` bucket is private, PDF-only,
-   and bounded to the 50 MB contract.
+3. Confirm the preexisting `ai-import-sources` bucket has the exact canonical
+   identity, is private, and is PDF-only. A positive cap below 50 MB is a
+   stricter compatible setting; an unset or larger cap is tightened to 50 MB
+   by 0049. A public, differently named, MIME-broader, or otherwise unsafe
+   bucket must make the upgrade fail closed.
 4. Apply the approved 0049 exactly once to the clone.
 5. Confirm the migration history records 0049 exactly once and does not alter
    the preserved legacy rows.

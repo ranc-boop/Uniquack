@@ -22,7 +22,11 @@ function assert(condition, message) {
 
 assert(migration.includes("'ai-import-sources', 'ai-import-sources', false"), "source bucket must be private");
 assert(migration.includes("array['application/pdf']"), "source bucket must allow only PDF MIME");
-assert(migration.includes("file_size_limit = excluded.file_size_limit"), "bucket must enforce its size limit");
+assert(migration.includes("canonical_file_size_limit constant bigint := 52428800"), "bucket must enforce the 50 MB maximum");
+assert(migration.includes("existing_bucket.public is distinct from false"), "preexisting public buckets must fail closed");
+assert(migration.includes("existing_bucket.allowed_mime_types is distinct from canonical_mime_types"), "preexisting MIME rules must be exact");
+assert(!/on conflict\s*\(id\)\s*do\s+update/i.test(migration), "bucket adoption must not silently overwrite existing configuration");
+assert(migration.includes("drop policy if exists ai_import_sources_admin_upload on storage.objects;"), "known broad legacy upload policy must be replaced");
 assert(migration.includes("profile.role in ('teacher', 'admin', 'super_admin')"), "students must be excluded from burst policies");
 assert(migration.includes("member.role in ('owner', 'editor')"), "only Bank owners/editors may reserve");
 assert(

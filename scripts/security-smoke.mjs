@@ -524,6 +524,10 @@ assert(
     pdf50BurstMigration.includes("status = 'admission_ready'") &&
     pdf50BurstMigration.includes("private.can_actor_manage_ai_pdf_burst_bank") &&
     pdf50BurstMigration.includes("'ai-import-sources', 'ai-import-sources', false") &&
+    pdf50BurstMigration.includes("existing_bucket.public is distinct from false") &&
+    pdf50BurstMigration.includes("existing_bucket.allowed_mime_types is distinct from canonical_mime_types") &&
+    !/on conflict\s*\(id\)\s*do\s+update/i.test(pdf50BurstMigration) &&
+    pdf50BurstMigration.includes("drop policy if exists ai_import_sources_admin_upload on storage.objects;") &&
     teacherBankActions.includes("assertNoRawProviderConfig(formData)") &&
     teacherBankActions.includes("enqueueAIProviderJob") &&
     teacherBankActions.includes("canManageBankContent(detail.currentUserRole)") &&

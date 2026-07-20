@@ -823,18 +823,52 @@ revoke all on function public.cancel_ai_pdf_upload_burst_items(uuid, uuid)
 grant execute on function public.cancel_ai_pdf_upload_burst_items(uuid, uuid)
   to service_role;
 
-insert into storage.buckets (
-  id, name, public, file_size_limit, allowed_mime_types
-)
-values (
-  'ai-import-sources', 'ai-import-sources', false, 52428800,
-  array['application/pdf']
-)
-on conflict (id) do update
-set
-  public = false,
-  file_size_limit = excluded.file_size_limit,
-  allowed_mime_types = excluded.allowed_mime_types;
+-- Adopt a compatible private source bucket when this migration upgrades a
+-- continuously used clean database. Never recreate the bucket or its objects.
+do $$
+declare
+  existing_bucket storage.buckets%rowtype;
+  canonical_file_size_limit constant bigint := 52428800;
+  canonical_mime_types constant text[] := array['application/pdf'];
+begin
+  select * into existing_bucket
+  from storage.buckets
+  where id = 'ai-import-sources'
+  for update;
+
+  if not found then
+    insert into storage.buckets (
+      id, name, public, file_size_limit, allowed_mime_types
+    ) values (
+      'ai-import-sources', 'ai-import-sources', false,
+      canonical_file_size_limit, canonical_mime_types
+    );
+    return;
+  end if;
+
+  if existing_bucket.name is distinct from 'ai-import-sources'
+    or existing_bucket.public is distinct from false then
+    raise exception 'AI import source bucket is incompatible with the required private PDF contract.';
+  end if;
+
+  -- MIME restrictions are an exact compatibility requirement. Broad or unset
+  -- policies may serve another workload, so 0049 refuses to repurpose them.
+  if existing_bucket.allowed_mime_types is distinct from canonical_mime_types then
+    raise exception 'AI import source bucket is incompatible with the required private PDF contract.';
+  end if;
+
+  if existing_bucket.file_size_limit is null
+    or existing_bucket.file_size_limit > canonical_file_size_limit then
+    -- Tightening an unset or larger cap never broadens access or deletes data.
+    update storage.buckets
+    set file_size_limit = canonical_file_size_limit
+    where id = 'ai-import-sources';
+  elsif existing_bucket.file_size_limit <= 0 then
+    raise exception 'AI import source bucket is incompatible with the required private PDF contract.';
+  end if;
+  -- A smaller existing cap is stricter and is intentionally preserved.
+end;
+$$;
 
 create or replace function private.can_manage_ai_import_source_object(p_object_path text)
 returns boolean
@@ -904,6 +938,41 @@ as $$
       )
   );
 $$;
+
+-- These pre-0049 policies are known arbitrary-path admin grants. They are the
+-- only legacy policy names this migration reconciles; all other policies stay
+-- untouched and an incompatible bucket aborts before this point.
+do $$
+declare
+  unexpected_source_policy_count integer;
+begin
+  select count(*) into unexpected_source_policy_count
+  from pg_policies
+  where schemaname = 'storage'
+    and tablename = 'objects'
+    and (
+      policyname like 'ai_import_sources_%'
+      or coalesce(qual, '') ilike '%ai-import-sources%'
+      or coalesce(with_check, '') ilike '%ai-import-sources%'
+    )
+    and policyname not in (
+      'ai_import_sources_admin_upload',
+      'ai_import_sources_admin_read',
+      'ai_import_sources_admin_delete',
+      'ai_import_sources_reserved_upload',
+      'ai_import_sources_manager_read',
+      'ai_import_sources_manager_delete'
+    );
+
+  if unexpected_source_policy_count > 0 then
+    raise exception 'AI import source storage policies require review before PDF50 migration.';
+  end if;
+end;
+$$;
+
+drop policy if exists ai_import_sources_admin_upload on storage.objects;
+drop policy if exists ai_import_sources_admin_read on storage.objects;
+drop policy if exists ai_import_sources_admin_delete on storage.objects;
 
 drop policy if exists ai_import_sources_reserved_upload on storage.objects;
 create policy ai_import_sources_reserved_upload

@@ -44,24 +44,19 @@ path already reserves an import batch asset before issuing a signed upload
 grant, so it can be covered by the 0049 exact-path helper when validated in a
 clone.
 
-## Current 0049 Behavior
+## Hardened 0049 Behavior
 
-As currently written, 0049 would:
+0049 now locks the named bucket row and takes one deterministic branch:
 
-- safely reuse the existing bucket row instead of failing on bucket insert;
-- overwrite bucket configuration through its conflict-update clause;
-- preserve private objects because it does not delete or recreate the bucket;
-- create the new 0049 Storage policy names without duplicating those names;
-- not collide with 0049 table, function, trigger, index, constraint, or policy
-  names;
-- collide only with the existing bucket category;
-- leave the three legacy admin policies in place;
-- not fail closed if a preexisting bucket is public or otherwise incompatible.
+1. **Absent:** create the canonical private, PDF-only bucket with a 50 MB cap.
+2. **Compatible:** adopt the existing row without recreating it or touching any
+   object. A null or larger size cap is tightened to 50 MB; a smaller positive
+   cap remains unchanged because it is stricter.
+3. **Incompatible:** raise a bounded exception so the enclosing migration
+   transaction rolls back before any PDF50 schema or policy change commits.
 
-The current live bucket happens to be private, PDF-only, and 50 MB, so it is
-compatible. The source still requires hardening because the migration should
-prove compatibility before adoption and should not silently overwrite an
-incompatible bucket.
+The current live bucket is private, PDF-only, and 50 MB, so it is compatible.
+0049 now proves that compatibility instead of silently overwriting it.
 
 ## Required 0049 Hardening
 
@@ -72,21 +67,21 @@ an upgraded clone. The hardened behavior should be:
    PDF-only, 50 MB contract.
 2. If it exists, adopt it only when it is private and compatible with the
    canonical PDF-only contract.
-3. Fail closed if the existing bucket is public.
-4. Fail closed if the existing bucket omits PDF support.
-5. Tighten a broader or unset MIME list to PDF-only; never broaden allowed
-   MIME types.
-6. Tighten an unset or higher file-size limit to 50 MB; do not raise a
+3. Fail closed if the existing bucket is public or has a different name.
+4. Fail closed unless allowed MIME types are exactly PDF-only. An unset or
+   broader MIME list may belong to another workload and is not silently
+   repurposed by this migration.
+5. Tighten an unset or higher file-size limit to 50 MB; do not raise a
    stricter existing size limit without a separate owner decision.
-7. Preserve all existing private objects.
-8. Avoid deleting or recreating the bucket.
-9. Create missing 0049 exact-path policies idempotently.
-10. Do not duplicate policy names.
-11. Replace only the three known legacy admin policies after the clone proves
-    the 0049 exact-path policy covers current admin upload, read, and delete
-    behavior.
-12. Fail closed rather than dropping or weakening any unexpected policy with an
-    `ai_import_sources_` prefix.
+6. Preserve all existing private objects.
+7. Avoid deleting or recreating the bucket.
+8. Create missing 0049 exact-path policies idempotently.
+9. Do not duplicate policy names.
+10. Replace only the three known legacy admin policies transactionally. The
+    clone rehearsal must prove the exact-path policy covers current admin
+    upload, read, and delete behavior.
+11. Fail closed rather than dropping or weakening an unexpected policy that is
+    named for, or whose policy expression targets, `ai-import-sources`.
 
 The intended post-hardening policy set should allow:
 
@@ -96,6 +91,15 @@ The intended post-hardening policy set should allow:
   the same exact-path metadata checks;
 - service-role operational reads through server-side code, not browser grants;
 - no arbitrary authenticated or public source-object access.
+
+The legacy policies are all **BROADER_THAN_CANONICAL**. They authorize admins
+at arbitrary paths within the bucket, whereas 0049 authorizes an authenticated
+admin only through an exact linked import asset. The migration drops only
+`ai_import_sources_admin_upload`, `ai_import_sources_admin_read`, and
+`ai_import_sources_admin_delete`; it uses no prefix or wildcard policy drop.
+Before those three names are dropped, 0049 checks the Storage catalog and
+aborts if any other policy appears to target the source bucket. That policy is
+left untouched for a separate review.
 
 ## 0049 Object Validation Target
 
