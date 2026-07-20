@@ -51,7 +51,7 @@ const routing = await loadRouting();
 
 function profile(id, { defaultProfile = false, provider = "gemini_native", pdf = true, vision = false } = {}) {
   return {
-    api_key_last4: "1234", base_url: "https://provider.example.test", created_at: "2026-01-01T00:00:00.000Z",
+    api_key_last4: "1234", base_url: "https://provider.example.test", created_at: "2026-01-01T00:00:00.000Z", organization_id: null,
     enabled: true, id, is_default: defaultProfile, model: `${provider}-model`, name: id, provider,
     supports_pdf_input: pdf, supports_vision_images: vision, updated_at: "2026-01-01T00:00:00.000Z",
   };

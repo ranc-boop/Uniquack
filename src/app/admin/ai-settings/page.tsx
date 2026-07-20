@@ -32,6 +32,7 @@ import {
 } from "@/lib/ai-providers/adapters";
 import { listSafeAIProviderProfiles } from "@/lib/ai-providers/profiles";
 import {
+  AI_PROVIDER_OPERATION_CONTROL_KINDS,
   AI_PROVIDER_ROUTING_OPERATION_KINDS,
   AIProviderRoutingSchemaMissingError,
   aiProviderRoutingOperationLabel,
@@ -100,7 +101,7 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
     <div className="space-y-6">
       <AdminPageHeader
         eyebrow="Settings"
-        help="Super admin settings for PDF import and blueprint model providers. API keys are encrypted server-side and never displayed back in the UI."
+        help="Super admin settings for PDF import, blueprint generation, and authenticated Practice Agent provider routes. API keys are encrypted server-side and never displayed back in the UI."
         helpLabel="AI settings details"
         title="AI Settings"
       />
@@ -173,7 +174,7 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
               <details className="rounded-md border p-3">
                 <summary className="cursor-pointer font-medium">Operation pauses and circuits</summary>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {AI_PROVIDER_ROUTING_OPERATION_KINDS.map((operationKind) => (
+                  {AI_PROVIDER_OPERATION_CONTROL_KINDS.map((operationKind) => (
                     <form key={operationKind} action={setAIOperationPause} className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
                       <input type="hidden" name="operation_kind" value={operationKind} />
                       <span>{aiProviderRoutingOperationLabel(operationKind)}</span>
@@ -234,11 +235,20 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
           {routingSchemaMissing ? (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               Provider routing setup is needed before durable fallback can run.
-              Apply clean migration 0035, then return here to configure each
-              operation&apos;s primary and optional fallback profiles.
+              Apply clean migrations 0035 and 0049, then return here to configure
+              each operation&apos;s primary and optional fallback profiles.
             </div>
           ) : (
             <>
+              <div className="rounded-md border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+                <p className="font-semibold">Practice Agent route</p>
+                <p className="mt-1 leading-6">
+                  A signed-in user is authorized first, then the server creates or
+                  resumes that user&apos;s Practice thread. The thread never chooses
+                  a provider from the browser; this route selects the primary and
+                  optional fallbacks, while provider credentials stay server-only.
+                </p>
+              </div>
               <div className="grid gap-4">
                 {AI_PROVIDER_ROUTING_OPERATION_KINDS.map((operationKind) => {
                   const policy = routingPolicies.find(

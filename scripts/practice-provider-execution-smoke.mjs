@@ -60,7 +60,7 @@ async function loadPracticeContext() {
 
 function assertAuthorizedBeforeResolver(route, routeName) {
   const authGuard = route.indexOf("if (auth.response)");
-  const resolver = route.indexOf("loadPracticeAIProfile()");
+  const resolver = route.search(/loadPracticeAIProfile\s*\(/);
 
   assert(authGuard >= 0, `${routeName} must deny anonymous callers`);
   assert(resolver > authGuard, `${routeName} must authorize the caller before provider service-role resolution`);
@@ -100,8 +100,11 @@ const [
 assert(
   ai.includes("listEnabledAIProviderProfilesForServerUse") &&
     ai.includes("loadAIProviderProfileForServerUse") &&
+    ai.includes("resolveAIProviderRoute") &&
+    ai.includes("runWithAIProviderRoute") &&
+    ai.includes('operationKind: "practice_generation"') &&
     !ai.includes("listEnabledAIProviderProfiles(supabase)"),
-  "Practice must resolve enabled profiles and credentials through server-only service-role helpers",
+  "Practice must resolve enabled profiles through the current server-side provider router",
 );
 assert(
   ai.includes("compatible.find((profile) => profile.is_default)") &&
@@ -117,9 +120,10 @@ assert(
 assert(
   profiles.includes("listEnabledAIProviderProfilesForServerUse") &&
     profiles.includes("createServiceRoleClient") &&
+    profiles.includes("organization_id") &&
     profiles.includes('.eq("enabled", true)') &&
     profiles.includes("loadAIProviderProfileForServerUse"),
-  "server-use resolver must validate enabled profiles before decrypting credentials",
+  "server-use resolver must validate enabled and scoped profiles before decrypting credentials",
 );
 
 assertAuthorizedBeforeResolver(recommendRoute, "recommend route");

@@ -20,11 +20,16 @@ import { requireAIProviderGatewayToken } from "@/lib/ai-providers/gateway-token"
 
 type SupabaseRoutingClient = any;
 
-export const AI_PROVIDER_ROUTING_OPERATION_KINDS = [
+export const AI_PROVIDER_OPERATION_CONTROL_KINDS = [
   "ai_pdf_extract",
   "blueprint_generate_questions",
   "blueprint_observe_pdf",
   "blueprint_analyze_text",
+] as const;
+
+export const AI_PROVIDER_ROUTING_OPERATION_KINDS = [
+  ...AI_PROVIDER_OPERATION_CONTROL_KINDS,
+  "practice_generation",
 ] as const;
 
 export type AIProviderRoutingOperationKind =
@@ -114,6 +119,10 @@ function boundedPositiveInteger(value: unknown, fallback: number) {
 function operationErrorOperation(
   operationKind: AIProviderRoutingOperationKind,
 ): AIProviderErrorOperation {
+  if (operationKind === "practice_generation") {
+    return "practice_generation";
+  }
+
   return operationKind === "ai_pdf_extract" || operationKind === "blueprint_observe_pdf"
     ? "ai_pdf_extraction"
     : "blueprint_generation";
@@ -219,6 +228,14 @@ export function providerSupportsAIProviderRoutingOperation(
     return capabilities.supportsText && capabilities.supportsJsonMode;
   }
 
+  if (operationKind === "practice_generation") {
+    return (
+      capabilities.supportsText &&
+      capabilities.supportsJsonMode &&
+      ["openai_compatible", "deepseek_openai", "gemini_openai", "mock"].includes(mode)
+    );
+  }
+
   // The existing analyzer uses the OpenAI-compatible chat-completions adapter.
   // Do not route it to Gemini Native merely because that profile can handle PDF.
   return (
@@ -268,7 +285,7 @@ async function readRoutingPolicy({
   supabase,
 }: {
   operationKind: AIProviderRoutingOperationKind;
-  organizationId: string;
+  organizationId: string | null;
   supabase: SupabaseRoutingClient;
 }) {
   const query = (organizationId: string | null) => {
@@ -412,11 +429,11 @@ export async function resolveAIProviderRoute({
 }: {
   now?: Date;
   operationKind: AIProviderRoutingOperationKind;
-  organizationId: string;
+  organizationId: string | null;
   requestedProfileId?: string | null;
   supabase: SupabaseRoutingClient;
 }): Promise<AIProviderRoute> {
-  if (!organizationId) {
+  if (!organizationId && operationKind !== "practice_generation") {
     throw new AIProviderRoutingConfigurationError(
       "AI provider routing requires an organization-scoped job.",
     );
@@ -427,7 +444,10 @@ export async function resolveAIProviderRoute({
     listEnabledAIProviderProfilesForServerUse(),
   ]);
   const policy = safePolicy(rawPolicy);
-  const byId = new Map(profiles.map((profile) => [profile.id, profile]));
+  const scopedProfiles = profiles.filter((profile) =>
+    profile.organization_id === null || profile.organization_id === organizationId,
+  );
+  const byId = new Map(scopedProfiles.map((profile) => [profile.id, profile]));
 
   let source: AIProviderRoute["source"];
   let configuredCandidates: SafeAIProviderProfile[];
@@ -453,8 +473,10 @@ export async function resolveAIProviderRoute({
     );
   } else {
     source = "default_profile";
-    maxProfiles = 1;
-    configuredCandidates = profiles.filter((profile) => profile.is_default);
+    maxProfiles = operationKind === "practice_generation" ? 3 : 1;
+    configuredCandidates = operationKind === "practice_generation"
+      ? scopedProfiles
+      : scopedProfiles.filter((profile) => profile.is_default);
   }
 
   const compatibleCandidates = configuredCandidates.filter((profile) =>
@@ -666,6 +688,7 @@ export function aiProviderRoutingOperationLabel(
     blueprint_analyze_text: "Blueprint text analysis",
     blueprint_generate_questions: "Blueprint question generation",
     blueprint_observe_pdf: "Blueprint PDF observation",
+    practice_generation: "Practice Agent",
   };
   return labels[operationKind];
 }

@@ -31,10 +31,16 @@ export type SafeAIProviderProfile = Pick<
   | "api_key_last4"
   | "created_at"
   | "updated_at"
->;
+> & {
+  // The Admin gateway projection predates organization scoping and may omit
+  // this field. Server-role provider resolution always selects it so routing
+  // can enforce global/current-organization profile boundaries.
+  organization_id?: string | null;
+};
 
 const safeProviderProfileSelect = `
   id,
+  organization_id,
   name,
   provider,
   base_url,
@@ -79,7 +85,7 @@ async function listSafeAIProviderProfilesWithServiceRole({
 }: {
   enabledOnly?: boolean;
 }) {
-  let query = createServiceRoleClient()
+  let query = (createServiceRoleClient() as any)
     .from("ai_provider_profiles")
     .select(safeProviderProfileSelect)
     .is("deleted_at", null)

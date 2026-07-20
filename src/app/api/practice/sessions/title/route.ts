@@ -40,7 +40,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const profile = await loadPracticeAIProfile();
+    const profile = await loadPracticeAIProfile({
+      requestId: `session-title:${auth.user.id}`,
+    });
     const result = await callPracticeJsonModel<SessionTitleResponse>({
       debugContext: {
         operation: "practice_session_title",
