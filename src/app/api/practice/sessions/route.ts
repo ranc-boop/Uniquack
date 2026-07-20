@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
   }
@@ -24,7 +24,8 @@ export async function GET() {
 
   try {
     const sessions = await listPracticeSessions({ supabase, userId: auth.user.id });
-    const active = sessions[0]
+    const includeActive = new URL(request.url).searchParams.get("includeActive") !== "0";
+    const active = includeActive && sessions[0]
       ? await getPracticeSession({ sessionId: sessions[0].id, supabase, userId: auth.user.id })
       : null;
 

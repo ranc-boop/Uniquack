@@ -267,7 +267,9 @@ export async function POST(request: Request) {
           ? sessionRecord.session_thread_messages.slice(-24)
           : [];
         const cachePrefixVersion = CURRENT_PRACTICE_SESSION_SCHEMA_VERSION;
-        const profile = await loadPracticeAIProfile();
+        const profile = await loadPracticeAIProfile({
+          requestId: `review:${sessionId}:${roundId}`,
+        });
         const systemPrompt = await loadPracticePrompt("review-system");
         const usageEnvelopes: Record<string, unknown>[] = [];
 

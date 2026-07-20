@@ -63,6 +63,7 @@ export async function POST() {
 
   const job = jobResult.data as {
     id: string;
+    organization_id: string | null;
     previous_preference: string;
     source_session_id: string | null;
     source_session_memory: string;
@@ -104,7 +105,10 @@ export async function POST() {
       throw new Error(recentEpisodesError.message);
     }
 
-    const profile = await loadPracticeAIProfile();
+    const profile = await loadPracticeAIProfile({
+      organizationId: job.organization_id ?? null,
+      requestId: `preference-merge:${job.id}`,
+    });
     const systemPrompt = await loadPracticePrompt("preference-merge-system");
     const aiResult = await callPracticeJsonModel<MergeResponse>({
       debugContext: { phase: "preference_merge", sourceSessionId: job.source_session_id },

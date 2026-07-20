@@ -80,17 +80,27 @@ function QuestionAnswerInput({
       {question.options.map((option) => {
         const selected = Array.isArray(answer) ? answer.includes(option.id) : answer === option.id;
         return (
-          <label key={option.id} className="grid cursor-pointer gap-3 rounded-md border bg-background p-3 sm:grid-cols-[1.5rem_1fr]">
+          <label
+            className={`grid cursor-pointer gap-3 rounded-xl border px-4 py-3.5 transition-colors sm:grid-cols-[1.5rem_2rem_minmax(0,1fr)] ${
+              selected
+                ? "border-sky-500 bg-sky-50/70 shadow-sm"
+                : "border-slate-200 bg-white hover:border-sky-200 hover:bg-slate-50"
+            }`}
+            key={option.id}
+          >
             <input
               checked={selected}
+              className="mt-1 size-5 accent-sky-600"
               disabled={disabled}
               name={`answer-${answerKey}`}
               onChange={() => onChange(option.id)}
               type="radio"
             />
-            <div className="space-y-1">
-              <span className="font-mono text-xs text-muted-foreground">{option.label}</span>
-              <OptionText className="border-none bg-transparent p-0" value={option.content_html} />
+            <span className={`mt-0.5 flex size-6 items-center justify-center rounded-full text-sm font-semibold ${selected ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-600"}`}>
+              {option.label}
+            </span>
+            <div className="min-w-0">
+              <OptionText className="border-none bg-transparent p-0 text-[1.05rem] leading-7 text-slate-900 [&_p]:leading-7" value={option.content_html} />
             </div>
           </label>
         );
@@ -98,6 +108,7 @@ function QuestionAnswerInput({
     </div>
   ) : (
     <Textarea
+      className="min-h-32 text-base leading-7"
       disabled={disabled}
       onChange={(event) => onChange(event.currentTarget.value)}
       placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
@@ -192,24 +203,13 @@ export function PracticeQuestionCard({
             </span>
             <div className="min-w-0">
               <CardTitle className="text-xl leading-snug">{question.title}</CardTitle>
-              <p className="mt-2 text-sm font-medium text-slate-500">
-                {question.questionCode} / {question.questionType} / difficulty {question.difficulty}
-              </p>
             </div>
           </div>
           {resultBadge(result) ?? (phase === "feedback" ? reviewingBadge() : null)}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <QuestionText value={question.contentHtml} />
-        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-sm">
-          <p className="font-bold text-amber-950">Why this question</p>
-          <FeedbackText className="mt-2 border-none bg-transparent p-0 text-amber-900" compact value={question.reason} />
-          <p className="mt-2 text-sm text-amber-900/80">
-            Expected skill:{" "}
-            <FeedbackText className="inline border-none bg-transparent p-0 text-sm text-amber-900/80" compact inline value={question.expectedSkill} />
-          </p>
-        </div>
+        <QuestionText className="border-none bg-transparent p-0 text-lg leading-8 text-slate-950 [&_p]:leading-8" value={question.contentHtml} />
         <QuestionAnswerInput
           answer={currentAnswer}
           answerCommitted={answerCommitted}
@@ -222,7 +222,6 @@ export function PracticeQuestionCard({
           <Button disabled={isPending || phase === "feedback"} onClick={() => onHintRequest(question)} size="sm" type="button" variant="outline">
             Hint
           </Button>
-          <span className="text-sm text-slate-500">Hints are saved with the submitted round.</span>
         </div>
         {hints.length ? (
           <div className="space-y-2">
@@ -234,6 +233,15 @@ export function PracticeQuestionCard({
             ))}
           </div>
         ) : null}
+        <details className="border-t border-slate-100 pt-3 text-sm text-slate-500">
+          <summary className="cursor-pointer font-medium text-slate-500 marker:text-slate-400 hover:text-slate-800">
+            Why this question?
+          </summary>
+          <div className="mt-2 border-l-2 border-slate-200 pl-3">
+            <FeedbackText className="border-none bg-transparent p-0 text-sm leading-6 text-slate-600" compact value={question.reason} />
+            <FeedbackText className="mt-1 border-none bg-transparent p-0 text-xs text-slate-400" compact value={question.expectedSkill} />
+          </div>
+        </details>
         {phase === "feedback" && result ? (
           <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
             <FeedbackText className="border-none bg-transparent p-0 text-emerald-950" compact value={result.explanation} />

@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 48,
+  "latestActivePrefix": 49,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -59,7 +59,8 @@
     "0045_question_read_authorization_helper.sql",
     "0046_question_assets_bucket_private.sql",
     "0047_practice_self_study_evidence_isolation.sql",
-    "0048_practice_course_framework_evidence_isolation.sql"
+    "0048_practice_course_framework_evidence_isolation.sql",
+    "0049_practice_agent_provider_routing.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -240,6 +241,7 @@
     { "filename": "0045_question_read_authorization_helper.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "live catalog validation plus exact-ID pre-cutover authorization matrix" },
     { "filename": "0046_question_assets_bucket_private.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "clean-database private-bucket post-cutover validation; exactly one private bucket, nine-field zero-residual checks, direct URL denial, and exact-ID cleanup" },
     { "filename": "0047_practice_self_study_evidence_isolation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized helper catalog validation plus completed post-0048 disposable role matrix" },
-    { "filename": "0048_practice_course_framework_evidence_isolation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-apply catalog counts and completed exact-ID disposable framework-boundary role matrix" }
+    { "filename": "0048_practice_course_framework_evidence_isolation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-apply catalog counts and completed exact-ID disposable framework-boundary role matrix" },
+    { "filename": "0049_practice_agent_provider_routing.sql", "status": "NOT_YET_APPLIED", "applicationMethod": "pending forward-only deployment migration", "evidenceSource": "repository review and static security smoke; live application intentionally not run by this task" }
   ]
 }
