@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
@@ -53,6 +54,11 @@ import type {
   PracticeWrongQuestionView,
 } from "@/lib/practice/types";
 
+const TracePanel = dynamic(
+  () => import("@/components/practice/practice-trace-panel").then((module) => module.TracePanel),
+  { loading: () => null, ssr: false },
+);
+
 type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback";
 type AnswersState = Record<string, string | string[]>;
 type HintsState = Record<string, string[]>;
@@ -79,6 +85,31 @@ type PracticeAgentClientProps = {
   assignmentId?: string | null;
   testOnlyDelayedHydration?: boolean;
 };
+
+function PracticeWorkspaceSkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite" className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 sm:px-4 xl:grid-cols-[18rem_minmax(0,1fr)_3rem]" role="status">
+      <span className="sr-only">Loading practice workspace…</span>
+      <aside className="hidden border-r border-slate-100 px-4 py-6 xl:block">
+        <div className="h-5 w-24 animate-pulse rounded bg-slate-100" />
+        <div className="mt-8 h-12 animate-pulse rounded-xl bg-slate-100" />
+        <div className="mt-7 space-y-3">
+          <div className="h-10 animate-pulse rounded-lg bg-slate-50" />
+          <div className="h-10 animate-pulse rounded-lg bg-slate-50" />
+          <div className="h-10 animate-pulse rounded-lg bg-slate-50" />
+        </div>
+      </aside>
+      <main className="mx-auto flex w-full max-w-3xl flex-col justify-center gap-5 py-12">
+        <div className="h-7 w-40 animate-pulse rounded-lg bg-slate-100" />
+        <div className="h-5 w-3/5 animate-pulse rounded bg-slate-100" />
+        <div className="mt-4 space-y-3">
+          <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
+          <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
+        </div>
+      </main>
+    </div>
+  );
+}
 type TestOnlyDelayedHydrationStatus =
   | "NOT_ENABLED"
   | "NOT_REQUESTED"
@@ -407,6 +438,7 @@ export function PracticeAgentClient({
   const [nextRoundNote, setNextRoundNote] = useState("");
   const [courseFrameworks, setCourseFrameworks] = useState<PracticeCourseFrameworkSummary[]>([]);
   const [selectedCourseFrameworkId, setSelectedCourseFrameworkId] = useState("");
+  const [isTraceCollapsed, setIsTraceCollapsed] = useState(true);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(DEFAULT_LEFT_SIDEBAR_WIDTH);
@@ -623,6 +655,12 @@ export function PracticeAgentClient({
     }
   }, [phase]);
 
+  const latestTrace = useMemo(() => {
+    if (phase === "feedback" && review) return reviewTrace;
+    if (phase === "thinking") return liveTrace;
+    return recommendation?.trace ?? liveTrace;
+  }, [phase, liveTrace, recommendation, review, reviewTrace]);
+
   useEffect(() => {
     if (phase !== "thinking") return;
     const updateElapsed = () => {
@@ -672,6 +710,7 @@ export function PracticeAgentClient({
     thinkingStartedAtRef.current = Date.now();
     setThinkingElapsedMs(0);
     setLastThinkingDurationMs(null);
+    setIsTraceCollapsed(true);
     setPhase("thinking");
   }
 
@@ -1330,20 +1369,7 @@ export function PracticeAgentClient({
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
-  if (workspaceLoading) {
-    return (
-      <div
-        aria-live="polite"
-        className="mx-auto flex min-h-[60vh] max-w-2xl flex-col justify-center gap-4 px-6"
-        role="status"
-      >
-        <div className="h-3 w-24 animate-pulse rounded-full bg-slate-200" />
-        <div className="h-8 w-56 animate-pulse rounded-lg bg-slate-200" />
-        <div className="h-3 w-full max-w-md animate-pulse rounded-full bg-slate-100" />
-        <p className="text-sm text-slate-500">Restoring your saved practice…</p>
-      </div>
-    );
-  }
+  if (workspaceLoading || sessionAction) return <PracticeWorkspaceSkeleton />;
 
   return (
     <div
@@ -1605,16 +1631,6 @@ export function PracticeAgentClient({
       ) : null}
 
         <main className="min-w-0 space-y-4 px-0 xl:px-2">
-          {sessionAction ? (
-            <div
-              aria-live="polite"
-              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm"
-              role="status"
-            >
-              <span className="size-2 animate-pulse rounded-full bg-sky-600" />
-              {sessionAction === "creating" ? "Creating a new practice session…" : "Opening saved session…"}
-            </div>
-          ) : null}
           {assignmentLaunch ? (
             <section className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
               <p className="font-bold">Assignment practice</p>
@@ -1742,25 +1758,27 @@ export function PracticeAgentClient({
           )}
 
           {phase === "thinking" ? (
-            <div aria-live="polite" className="sticky top-24 z-20 flex items-center gap-3 rounded-lg border border-sky-200 bg-white/95 px-4 py-3 text-sm shadow-lg shadow-sky-950/5 backdrop-blur" role="status">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="relative flex h-3 w-3 shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-600 opacity-60" />
-                  <span className="relative inline-flex h-3 w-3 rounded-full bg-sky-600" />
-                </span>
-                <span className="truncate font-bold text-slate-900">{recommendation ? "Reviewing your round" : "Thinking"}</span>
-              </div>
-            </div>
-          ) : null}
-
-          {phase === "thinking" ? (
-            <div className="flex min-h-40 items-center justify-center text-sm text-slate-500">
-              {recommendation ? "Checking your answers…" : "Preparing your practice…"}
+            <div className="min-h-24">
+              <TracePanel
+                active
+                collapsed={isTraceCollapsed}
+                elapsedMs={thinkingElapsedMs}
+                onToggle={() => setIsTraceCollapsed((current) => !current)}
+                trace={latestTrace}
+              />
             </div>
           ) : null}
 
           {recommendation && (phase === "recommended" || phase === "practicing" || phase === "feedback") ? (
             <div ref={resultTopRef} className="scroll-mt-4 space-y-4">
+              {lastThinkingDurationMs !== null ? (
+                <TracePanel
+                  collapsed={isTraceCollapsed}
+                  elapsedMs={lastThinkingDurationMs}
+                  onToggle={() => setIsTraceCollapsed((current) => !current)}
+                  trace={latestTrace}
+                />
+              ) : null}
               <Card className="student-panel student-enter">
                 <CardHeader>
                   <div>

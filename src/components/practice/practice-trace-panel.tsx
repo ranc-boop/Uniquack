@@ -1,10 +1,10 @@
 "use client";
 
-import { Search, Sparkles, Wrench } from "lucide-react";
+import { ChevronDown, LoaderCircle, Search, Sparkles, Wrench } from "lucide-react";
 
 import { FeedbackText } from "@/components/math-content";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import type { PracticeTraceEvent } from "@/lib/practice/types";
 
 function formatTrace(event: PracticeTraceEvent) {
@@ -217,6 +217,11 @@ function traceEventKey(event: PracticeTraceEvent | undefined) {
   ].join(":");
 }
 
+function formatElapsed(elapsedMs: number | undefined) {
+  if (!elapsedMs) return "a moment";
+  return `${Math.max(1, Math.round(elapsedMs / 1000))}s`;
+}
+
 function TraceEventSummary({
   animated = false,
   event,
@@ -250,63 +255,44 @@ function TraceEventSummary({
 export function TracePanel({
   active = false,
   collapsed = false,
+  elapsedMs,
   onToggle,
   trace,
 }: {
   active?: boolean;
   collapsed?: boolean;
+  elapsedMs?: number;
   onToggle?: () => void;
   trace: PracticeTraceEvent[];
 }) {
   if (!trace.length && !active) return null;
   const displayTrace = displayTraceEvents(trace);
   const latestEvent = latestDisplayTrace(trace);
-  const latestKey = traceEventKey(latestEvent);
 
   return (
-    <Card className={active ? "animate-in fade-in slide-in-from-bottom-2 border-sky-100 bg-sky-50/40 duration-300" : "border-slate-200/80"}>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">How the agent is working</CardTitle>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              A short, student-safe view of the model&apos;s analysis, searches, and recommendation choices.
-            </p>
-          </div>
-          {trace.length ? (
-            <Button onClick={onToggle} size="sm" type="button" variant="outline">
-              {collapsed ? "Show details" : "Hide details"}
-            </Button>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {active && !collapsed && latestEvent ? (
-          <div className="mb-4 rounded-xl border border-sky-200 bg-white/90 p-3 text-sm shadow-sm shadow-sky-950/5">
-            <div key={`active-${latestKey}`} className="relative">
-              <span className="absolute -left-1 top-3 flex size-2">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-sky-500 opacity-60" />
-                <span className="relative inline-flex size-2 rounded-full bg-sky-600" />
-              </span>
-              <div className="pl-4">
-                <TraceEventSummary animated event={latestEvent} />
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {collapsed ? (
-          latestEvent ? (
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
-              <div key={`collapsed-${latestKey}`}>
-                <TraceEventSummary animated event={latestEvent} />
-              </div>
-            </div>
+    <Card className={active ? "animate-in fade-in slide-in-from-bottom-2 border-sky-100 bg-white duration-300" : "border-slate-200/80 bg-white"}>
+      <CardContent className="p-3">
+        <Button
+          aria-expanded={!collapsed}
+          className="h-auto w-full justify-start gap-3 whitespace-normal px-1 py-1 text-left hover:bg-transparent"
+          onClick={onToggle}
+          type="button"
+          variant="ghost"
+        >
+          {active ? (
+            <LoaderCircle className="size-4 shrink-0 animate-spin text-sky-600" aria-hidden="true" />
           ) : (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600">
-              Waiting for the agent to start.
-            </div>
-          )
-        ) : (
+            <Sparkles className="size-4 shrink-0 text-slate-500" aria-hidden="true" />
+          )}
+          <span className="shrink-0 font-medium text-slate-900">
+            {active ? "Thinking" : `Thought for ${formatElapsed(elapsedMs)}`}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm font-normal text-slate-500">
+            {traceSummaryText(latestEvent)}
+          </span>
+          <ChevronDown className={`size-4 shrink-0 text-slate-400 transition-transform ${collapsed ? "" : "rotate-180"}`} aria-hidden="true" />
+        </Button>
+        {!collapsed ? (
           <div className="space-y-2">
             {displayTrace.map((event, index) => (
               <details
@@ -378,7 +364,7 @@ export function TracePanel({
               </details>
             ))}
           </div>
-        )}
+        ) : null}
       </CardContent>
     </Card>
   );
