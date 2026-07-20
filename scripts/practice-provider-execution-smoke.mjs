@@ -81,6 +81,9 @@ const [
   hintRoute,
   titleRoute,
   mergeRoute,
+  sessionsRoute,
+  practiceLoader,
+  practiceBoundary,
 ] = await Promise.all([
   read("src/lib/practice/ai.ts"),
   read("src/lib/ai-providers/profiles.ts"),
@@ -95,6 +98,9 @@ const [
   read("src/app/api/practice/hint/route.ts"),
   read("src/app/api/practice/sessions/title/route.ts"),
   read("src/app/api/practice/preferences/merge/run/route.ts"),
+  read("src/app/api/practice/sessions/route.ts"),
+  read("src/components/practice/practice-agent-loader.tsx"),
+  read("src/components/practice/practice-workspace-error-boundary.tsx"),
 ]);
 
 assert(
@@ -163,8 +169,25 @@ assert(
 assert(
   client.includes("function parsePracticeSsePayload") &&
     client.includes("A live practice update could not be read") &&
+    client.includes("parseSseEvents(done ? `${buffer}\\n\\n` : buffer)") &&
+    client.includes("appendRoundReviewDelta") &&
+    client.includes("requestAnimationFrame") &&
     !client.includes("JSON.parse(item.data)"),
-  "malformed browser SSE payloads must become safe retryable failures",
+  "browser SSE updates must flush final events and batch safe retryable rendering",
+);
+assert(
+  sessionsRoute.includes('searchParams.get("includeActive")') &&
+    sessionsRoute.includes('includeActive && sessions[0]') &&
+    client.includes("/api/practice/sessions?includeActive=0"),
+  "session refreshes must avoid duplicate active-session detail loads when a session is already selected",
+);
+assert(
+  practiceLoader.includes("PracticeWorkspaceErrorBoundary") &&
+    practiceBoundary.includes("Your saved sessions and submitted work have not been removed") &&
+    client.includes("workspaceLoading") &&
+    client.includes("sessionAction") &&
+    client.includes("isReviewStreaming"),
+  "Practice must preserve a recoverable workspace state while loading, switching, and reviewing",
 );
 assert(
   !gradeRoute.includes("loadPracticeAIProfile") &&

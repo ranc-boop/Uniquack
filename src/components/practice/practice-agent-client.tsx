@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
@@ -22,7 +21,6 @@ import {
   buildPracticeSubmittedAttempts,
   clearLegacyPracticeStorage,
   evaluatePracticeSubmittedAttempts,
-  formatDuration,
   hasSubmittedPracticeAnswer,
   practiceAnswerMapsMatch,
   practiceAnswerMapStatus,
@@ -54,14 +52,6 @@ import type {
   PracticeTraceEvent,
   PracticeWrongQuestionView,
 } from "@/lib/practice/types";
-
-const TracePanel = dynamic(
-  () => import("@/components/practice/practice-trace-panel").then((module) => module.TracePanel),
-  {
-    loading: () => null,
-    ssr: false,
-  },
-);
 
 type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback";
 type AnswersState = Record<string, string | string[]>;
@@ -207,7 +197,7 @@ async function postRecommendationStream({
   while (true) {
     const { done, value } = await reader.read();
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-    const parsed = parseSseEvents(buffer);
+    const parsed = parseSseEvents(done ? `${buffer}\n\n` : buffer);
     buffer = parsed.rest;
 
     for (const item of parsed.events) {
@@ -272,7 +262,7 @@ async function postReviewStream({
   while (true) {
     const { done, value } = await reader.read();
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-    const parsed = parseSseEvents(buffer);
+    const parsed = parseSseEvents(done ? `${buffer}\n\n` : buffer);
     buffer = parsed.rest;
 
     for (const item of parsed.events) {
@@ -412,16 +402,13 @@ export function PracticeAgentClient({
   const [longTermMemory, setLongTermMemory] = useState("");
   const [longTermMemoryDraft, setLongTermMemoryDraft] = useState("");
   const [memoryEditing, setMemoryEditing] = useState(false);
-  const [cacheStatsEnabled, setCacheStatsEnabled] = useState(false);
-  const [fullCallLogsEnabled, setFullCallLogsEnabled] = useState(false);
   const [outlineNotes, setOutlineNotes] = useState("");
   const [outlineSaving, setOutlineSaving] = useState(false);
   const [nextRoundNote, setNextRoundNote] = useState("");
   const [courseFrameworks, setCourseFrameworks] = useState<PracticeCourseFrameworkSummary[]>([]);
   const [selectedCourseFrameworkId, setSelectedCourseFrameworkId] = useState("");
-  const [isTraceCollapsed, setIsTraceCollapsed] = useState(false);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
-  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(DEFAULT_LEFT_SIDEBAR_WIDTH);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(DEFAULT_RIGHT_SIDEBAR_WIDTH);
   const [wrongQuestions, setWrongQuestions] = useState<PracticeWrongQuestionView[]>([]);
@@ -434,10 +421,14 @@ export function PracticeAgentClient({
   > & { guard: "BLOCKED" | "PASSED" } | null>(null);
   const [thinkingElapsedMs, setThinkingElapsedMs] = useState(0);
   const [lastThinkingDurationMs, setLastThinkingDurationMs] = useState<number | null>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
+  const [sessionAction, setSessionAction] = useState<"creating" | "switching" | null>(null);
+  const [isReviewStreaming, setIsReviewStreaming] = useState(false);
   const [isPending, startTransition] = useTransition();
   const resultTopRef = useRef<HTMLDivElement | null>(null);
-  const thinkingEndRef = useRef<HTMLDivElement | null>(null);
   const thinkingStartedAtRef = useRef<number | null>(null);
+  const streamedReviewTextRef = useRef("");
+  const streamedReviewFrameRef = useRef<number | null>(null);
   const assignmentLaunchStartedRef = useRef(false);
   const testOnlyDelayedHydrationStartedRef = useRef(false);
   const [testOnlyDelayedHydrationStatus, setTestOnlyDelayedHydrationStatus] =
@@ -494,10 +485,18 @@ export function PracticeAgentClient({
   }
 
   async function refreshPracticeState(preferredSessionId?: string) {
-    const sessionPayload = await jsonRequest<{
+    const sessionPayloadPromise = jsonRequest<{
       activeSession: PracticeSessionDetail | null;
       sessions: PracticeSessionSummary[];
-    }>("/api/practice/sessions");
+    }>(preferredSessionId ? "/api/practice/sessions?includeActive=0" : "/api/practice/sessions");
+    const preferencePayloadPromise = jsonRequest<{
+      longTermPreference: string;
+      pendingMergeCount: number;
+    }>("/api/practice/preferences");
+    const frameworkPayloadPromise = jsonRequest<{
+      frameworks: PracticeCourseFrameworkSummary[];
+    }>("/api/practice/course-frameworks");
+    const sessionPayload = await sessionPayloadPromise;
 
     let nextSession = sessionPayload.activeSession;
     if (preferredSessionId) {
@@ -507,28 +506,22 @@ export function PracticeAgentClient({
       nextSession = detail.session;
     }
 
+    const wrongPayloadPromise = nextSession
+      ? jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
+          `/api/practice/wrong-questions?sessionId=${encodeURIComponent(nextSession.id)}`,
+        )
+      : Promise.resolve({ wrongQuestions: [] });
+    const [wrongPayload, preferencePayload, frameworkPayload] = await Promise.all([
+      wrongPayloadPromise,
+      preferencePayloadPromise,
+      frameworkPayloadPromise,
+    ]);
     setSessions(sessionPayload.sessions);
     setActiveSession(nextSession);
     setOutlineNotes(nextSession?.outlineUserNotes ?? "");
-    const wrongPayload = nextSession
-      ? await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
-          `/api/practice/wrong-questions?sessionId=${encodeURIComponent(nextSession.id)}`,
-        )
-      : { wrongQuestions: [] };
     setWrongQuestions(wrongPayload.wrongQuestions);
-    const preferencePayload = await jsonRequest<{
-      cacheStatsEnabled?: boolean;
-      fullCallLogsEnabled?: boolean;
-      longTermPreference: string;
-      pendingMergeCount: number;
-    }>("/api/practice/preferences");
     setLongTermMemory(preferencePayload.longTermPreference);
     setLongTermMemoryDraft(preferencePayload.longTermPreference);
-    setCacheStatsEnabled(Boolean(preferencePayload.cacheStatsEnabled));
-    setFullCallLogsEnabled(Boolean(preferencePayload.fullCallLogsEnabled));
-    const frameworkPayload = await jsonRequest<{
-      frameworks: PracticeCourseFrameworkSummary[];
-    }>("/api/practice/course-frameworks");
     setCourseFrameworks(frameworkPayload.frameworks);
 
     return nextSession;
@@ -580,7 +573,6 @@ export function PracticeAgentClient({
     setResults(restoredResults);
     setLiveTrace(round.trace ?? []);
     setReviewTrace([]);
-    setIsTraceCollapsed(true);
     setGoal(round.nextRoundGoal ?? "");
 
     if (round.reviewSummary || restoredResults.length) {
@@ -626,12 +618,6 @@ export function PracticeAgentClient({
   }
 
   useEffect(() => {
-    if (phase === "thinking" && liveTrace.length) {
-      thinkingEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
-  }, [phase, liveTrace.length]);
-
-  useEffect(() => {
     if (phase === "recommended" || phase === "feedback") {
       resultTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -648,11 +634,6 @@ export function PracticeAgentClient({
     return () => window.clearInterval(timer);
   }, [phase]);
 
-  const latestTrace = useMemo(() => {
-    if (phase === "feedback" && review) return reviewTrace;
-    if (phase === "thinking") return liveTrace;
-    return recommendation?.trace ?? liveTrace;
-  }, [phase, liveTrace, recommendation, review, reviewTrace]);
   const isStarterPractice =
     phase === "start" &&
     !recommendation &&
@@ -756,7 +737,7 @@ export function PracticeAgentClient({
       method: "POST",
     });
     setActiveSession(payload.session);
-    await refreshPracticeState(payload.session.id);
+    void refreshPracticeState(payload.session.id).catch(() => undefined);
     void runPreferenceMerge();
     return payload.session;
   }
@@ -766,7 +747,6 @@ export function PracticeAgentClient({
     beginThinking();
     setLiveTrace([]);
     setReviewTrace([]);
-    setIsTraceCollapsed(true);
     resetRoundState("SESSION_CHANGE");
     resetSessionScopedDrafts();
 
@@ -795,7 +775,6 @@ export function PracticeAgentClient({
 
     setRecommendation(payload.recommendation);
     setLiveTrace(payload.recommendation.trace);
-    setIsTraceCollapsed(true);
     setGoal(payload.recommendation.roundGoal);
     finishThinking("recommended");
     void runTestOnlyDelayedHydration();
@@ -819,7 +798,6 @@ export function PracticeAgentClient({
           setRecommendation(pendingRound);
           setGoal(pendingRound.roundGoal);
           setLiveTrace(pendingRound.trace ?? []);
-          setIsTraceCollapsed(true);
           setPhase("recommended");
           if (pendingRound.sessionId) {
             await refreshPracticeState(pendingRound.sessionId);
@@ -829,11 +807,41 @@ export function PracticeAgentClient({
         }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setWorkspaceLoading(false);
       }
     });
     // Run once on page entry to restore the latest persisted round.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => () => {
+    if (streamedReviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(streamedReviewFrameRef.current);
+    }
+  }, []);
+
+  function appendRoundReviewDelta(text: string) {
+    streamedReviewTextRef.current += text;
+    if (streamedReviewFrameRef.current !== null) return;
+
+    streamedReviewFrameRef.current = window.requestAnimationFrame(() => {
+      streamedReviewFrameRef.current = null;
+      const summary = streamedReviewTextRef.current;
+      setReview((current) => ({
+        ...(current ?? {
+          mode: "ai",
+          nextRoundGoal: activeSession?.goal || recommendation?.roundGoal || "",
+          questionReviews: [],
+          results: [],
+          sessionId: activeSession?.id ?? "",
+          trace: [],
+          updatedSessionMemory: "",
+        }),
+        summary,
+      }));
+    });
+  }
 
   function requestRecommendation(nextGoal?: string, wrongIds = selectedWrongQuestionIds) {
     const trimmedGoal = (nextGoal ?? goal).trim();
@@ -846,7 +854,6 @@ export function PracticeAgentClient({
     beginThinking();
     setLiveTrace([]);
     setReviewTrace([]);
-    setIsTraceCollapsed(true);
     resetRoundState("ROUND_CHANGE");
 
     startTransition(async () => {
@@ -868,10 +875,10 @@ export function PracticeAgentClient({
           },
           onTrace: (event) => setLiveTrace((current) => [...current, event]),
         });
-        const [response] = await Promise.all([responsePromise, titlePromise]);
+        const response = await responsePromise;
+        void titlePromise;
         setRecommendation(response);
         setLiveTrace(response.trace);
-        setIsTraceCollapsed(true);
         setGoal(trimmedGoal);
         setSelectedWrongQuestionIds([]);
         setNextRoundNote("");
@@ -883,8 +890,8 @@ export function PracticeAgentClient({
           sessionState: response.sessionState ?? currentSession.sessionState,
           tagContext: response.tagContext,
         });
-        await refreshPracticeState(currentSession.id);
         finishThinking("recommended");
+        void refreshPracticeState(currentSession.id).catch(() => undefined);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
         finishThinking(activeSession ? "start" : "start");
@@ -980,6 +987,7 @@ export function PracticeAgentClient({
       return;
     }
 
+    setIsReviewStreaming(true);
     setError(null);
     thinkingStartedAtRef.current = Date.now();
     setThinkingElapsedMs(0);
@@ -997,8 +1005,8 @@ export function PracticeAgentClient({
       trace: [],
       updatedSessionMemory: "",
     });
+    streamedReviewTextRef.current = "";
     setPhase("feedback");
-    setIsTraceCollapsed(true);
 
     startTransition(async () => {
       try {
@@ -1052,21 +1060,9 @@ export function PracticeAgentClient({
             setReviewTrace(reviewResponse.trace);
             setLiveTrace(reviewResponse.trace);
           },
-          onRoundReviewDelta: (text) => {
-            setReview((current) => ({
-              ...(current ?? {
-                mode: "ai",
-                nextRoundGoal: activeSession.goal || recommendation.roundGoal,
-                questionReviews: [],
-                results: [],
-                sessionId: activeSession.id,
-                trace: [],
-                updatedSessionMemory: "",
-              }),
-              summary: `${current?.summary === "Generating round review..." ? "" : current?.summary ?? ""}${text}`,
-            }));
-          },
+          onRoundReviewDelta: appendRoundReviewDelta,
           onRoundReviewStart: () => {
+            streamedReviewTextRef.current = "";
             setReview((current) => ({
               ...(current ?? {
                 mode: "ai",
@@ -1085,10 +1081,10 @@ export function PracticeAgentClient({
             setLiveTrace((current) => [...current, event]);
           },
         });
-        setIsTraceCollapsed(true);
         setGoal("");
-        await refreshPracticeState(activeSession.id);
         finishThinking("feedback");
+        setIsReviewStreaming(false);
+        void refreshPracticeState(activeSession.id).catch(() => undefined);
       } catch (caught) {
         try {
           const grade = await jsonRequest<PracticeGradeResponse>("/api/practice/grade", {
@@ -1110,15 +1106,16 @@ export function PracticeAgentClient({
           setReview(fallbackReview);
           setReviewTrace(fallbackReview.trace);
           setLiveTrace(fallbackReview.trace);
-          setIsTraceCollapsed(true);
           setGoal("");
-          await refreshPracticeState(activeSession.id);
           finishThinking("feedback");
+          setIsReviewStreaming(false);
+          void refreshPracticeState(activeSession.id).catch(() => undefined);
         } catch (fallbackError) {
           const primaryMessage = caught instanceof Error ? caught.message : String(caught);
           const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
           setError(`${primaryMessage} Deterministic grading fallback also failed: ${fallbackMessage}`);
           finishThinking("feedback");
+          setIsReviewStreaming(false);
         }
       }
     });
@@ -1156,19 +1153,23 @@ export function PracticeAgentClient({
   }
 
   function switchSession(sessionId: string) {
+    setSessionAction("switching");
+    setError(null);
     startTransition(async () => {
       try {
         const payload = await jsonRequest<{ session: PracticeSessionDetail }>(
           `/api/practice/sessions/${sessionId}`,
         );
-        setActiveSession(payload.session);
-        const wrongPayload = await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
+        const wrongQuestionsPromise = jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
           `/api/practice/wrong-questions?sessionId=${encodeURIComponent(payload.session.id)}`,
         );
-        setWrongQuestions(wrongPayload.wrongQuestions);
+        setActiveSession(payload.session);
         setOutlineNotes(payload.session.outlineUserNotes ?? "");
         resetRoundState("SESSION_CHANGE");
         resetSessionScopedDrafts();
+        void wrongQuestionsPromise
+          .then((wrongPayload) => setWrongQuestions(wrongPayload.wrongQuestions))
+          .catch(() => setWrongQuestions([]));
         if (payload.session.rounds.length) {
           const latestRound = payload.session.rounds[payload.session.rounds.length - 1];
           restoreRoundFromHistory(
@@ -1184,11 +1185,15 @@ export function PracticeAgentClient({
         }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setSessionAction(null);
       }
     });
   }
 
   function createNewSession() {
+    setSessionAction("creating");
+    setError(null);
     startTransition(async () => {
       try {
         const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
@@ -1206,10 +1211,12 @@ export function PracticeAgentClient({
         resetSessionScopedDrafts();
         setGoal("");
         setPhase("start");
-        await refreshPracticeState(payload.session.id);
+        void refreshPracticeState(payload.session.id).catch(() => undefined);
         void runPreferenceMerge();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setSessionAction(null);
       }
     });
   }
@@ -1323,6 +1330,21 @@ export function PracticeAgentClient({
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
+  if (workspaceLoading) {
+    return (
+      <div
+        aria-live="polite"
+        className="mx-auto flex min-h-[60vh] max-w-2xl flex-col justify-center gap-4 px-6"
+        role="status"
+      >
+        <div className="h-3 w-24 animate-pulse rounded-full bg-slate-200" />
+        <div className="h-8 w-56 animate-pulse rounded-lg bg-slate-200" />
+        <div className="h-3 w-full max-w-md animate-pulse rounded-full bg-slate-100" />
+        <p className="text-sm text-slate-500">Restoring your saved practice…</p>
+      </div>
+    );
+  }
+
   return (
     <div
       className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
@@ -1407,13 +1429,7 @@ export function PracticeAgentClient({
         <section>
           <div className="sticky top-3 z-30 mb-9 bg-slate-50/95 pb-2">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="student-eyebrow">Practice</p>
-                <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">Sessions</h2>
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                  {sessions.length} saved thread{sessions.length === 1 ? "" : "s"}
-                </p>
-              </div>
+              <h2 className="text-lg font-semibold tracking-tight text-slate-950">Sessions</h2>
               <Button
                 aria-label="Collapse sessions sidebar"
                 className="hidden size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 xl:inline-flex"
@@ -1426,7 +1442,7 @@ export function PracticeAgentClient({
               </Button>
             </div>
           </div>
-          <div className="space-y-16">
+          <div className="space-y-8">
             <button
               className="student-focus-ring group flex w-full cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-3 text-left ring-1 ring-slate-200/80 transition-all duration-200 hover:bg-sky-50 hover:ring-sky-200"
               disabled={isPending}
@@ -1438,7 +1454,6 @@ export function PracticeAgentClient({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-bold text-slate-900">New practice session</span>
-                <span className="block truncate text-xs text-slate-500">Start a fresh practice thread</span>
               </span>
             </button>
             <div className="space-y-3">
@@ -1493,10 +1508,6 @@ export function PracticeAgentClient({
                       ) : (
                         <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
                       )}
-                      <span className="block truncate text-xs leading-5 text-slate-500">
-                        {item.roundCount} round{item.roundCount === 1 ? "" : "s"} ·{" "}
-                        {new Date(item.lastActivityAt).toLocaleString()}
-                      </span>
                     </span>
                   </button>
                   {activeSession?.id === item.id ? (
@@ -1579,26 +1590,31 @@ export function PracticeAgentClient({
                 )}
                 <Button disabled={isPending || !longTermMemory.trim()} onClick={clearLongTermMemory} size="sm" type="button" variant="ghost">Clear</Button>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Applies to newly created sessions. Token stats: {cacheStatsEnabled ? "on" : "off"}; full call logs: {fullCallLogsEnabled ? "on" : "off"}.
-              </p>
             </div>
           </details>
-          <div className="rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
-            Session history stays here while the center stays focused on the current round.
-          </div>
         </div>
         </div>
         )}
       </aside>
 
       {error ? (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive xl:col-span-2">
-          {error}
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive xl:col-span-2" role="alert">
+          <span>{error}</span>
+          <Button onClick={() => setError(null)} size="sm" type="button" variant="ghost">Dismiss</Button>
         </div>
       ) : null}
 
         <main className="min-w-0 space-y-4 px-0 xl:px-2">
+          {sessionAction ? (
+            <div
+              aria-live="polite"
+              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm"
+              role="status"
+            >
+              <span className="size-2 animate-pulse rounded-full bg-sky-600" />
+              {sessionAction === "creating" ? "Creating a new practice session…" : "Opening saved session…"}
+            </div>
+          ) : null}
           {assignmentLaunch ? (
             <section className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
               <p className="font-bold">Assignment practice</p>
@@ -1701,42 +1717,32 @@ export function PracticeAgentClient({
           ) : (
             <section className="student-hero">
               <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="space-y-2">
-                    <Badge className="border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
-                      Practice Agent
-                    </Badge>
-                    <h1 className="text-2xl font-bold tracking-tight text-slate-950">Practice session</h1>
-                    <p className="max-w-3xl text-base leading-7 text-slate-600">
-                      {activeSession
-                        ? `Current session: ${activeSession.title}`
-                        : "Create a session by generating your first round."}
-                    </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h1 className="truncate text-xl font-semibold tracking-tight text-slate-950">
+                      {activeSession?.title || "Practice"}
+                    </h1>
+                    {phase === "feedback" && review?.nextRoundGoal ? (
+                      <FeedbackText className="mt-1 truncate border-none bg-transparent p-0 text-sm text-slate-500" compact value={review.nextRoundGoal} />
+                    ) : null}
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                    <p className="font-semibold text-slate-950">{activeSession?.rounds.length ?? 0} saved rounds</p>
-                    <p className="mt-1 text-slate-500">{wrongQuestions.length} active misses</p>
-                  </div>
+                  <Button
+                    aria-label="Show study details"
+                    className="xl:hidden"
+                    onClick={() => setIsRightSidebarCollapsed(false)}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <SlidersHorizontal className="size-4" aria-hidden="true" />
+                  </Button>
                 </div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                    Current focus
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-slate-700">
-                    {recommendation?.roundGoal || activeSession?.goal || "This session goal is set from the first prompt."}
-                  </p>
-                </div>
-                <p className="text-sm leading-6 text-slate-500">
-                  {selectedWrongQuestionIds.length
-                    ? `${selectedWrongQuestionIds.length} missed question selected for priority practice.`
-                    : "This focus carries through the current practice session."}
-                </p>
               </div>
             </section>
           )}
 
           {phase === "thinking" ? (
-            <div className="sticky top-24 z-20 flex items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/95 px-4 py-3 text-sm shadow-lg shadow-sky-950/5 backdrop-blur">
+            <div aria-live="polite" className="sticky top-24 z-20 flex items-center gap-3 rounded-lg border border-sky-200 bg-white/95 px-4 py-3 text-sm shadow-lg shadow-sky-950/5 backdrop-blur" role="status">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="relative flex h-3 w-3 shrink-0">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-600 opacity-60" />
@@ -1744,56 +1750,23 @@ export function PracticeAgentClient({
                 </span>
                 <span className="truncate font-bold text-slate-900">{recommendation ? "Reviewing your round" : "Thinking"}</span>
               </div>
-              <span className="font-mono text-sm text-slate-500">{formatDuration(thinkingElapsedMs)}</span>
-            </div>
-          ) : lastThinkingDurationMs !== null && (phase === "recommended" || phase === "feedback") ? (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              Thought for <span className="font-mono font-semibold">{formatDuration(lastThinkingDurationMs)}</span>
             </div>
           ) : null}
 
           {phase === "thinking" ? (
-            <div className="space-y-4">
-              <Card className="student-panel student-enter">
-                <CardContent className="space-y-3 p-6">
-                  <div className="flex items-center gap-3 text-sm">
-                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-sky-600" />
-                    <span className="font-bold text-slate-900">
-                      {recommendation ? "Reviewing your round" : "Generating your question set"}
-                    </span>
-                  </div>
-                  <p className="text-sm leading-6 text-slate-600">
-                    The agent is using your saved practice thread, locked long-term memory snapshot, and question history.
-                  </p>
-                </CardContent>
-              </Card>
-              <TracePanel
-                active
-                collapsed={isTraceCollapsed}
-                onToggle={() => setIsTraceCollapsed((current) => !current)}
-                trace={latestTrace}
-              />
-              <div ref={thinkingEndRef} />
+            <div className="flex min-h-40 items-center justify-center text-sm text-slate-500">
+              {recommendation ? "Checking your answers…" : "Preparing your practice…"}
             </div>
           ) : null}
 
           {recommendation && (phase === "recommended" || phase === "practicing" || phase === "feedback") ? (
             <div ref={resultTopRef} className="scroll-mt-4 space-y-4">
-              <TracePanel
-                collapsed={isTraceCollapsed}
-                onToggle={() => setIsTraceCollapsed((current) => !current)}
-                trace={latestTrace}
-              />
               <Card className="student-panel student-enter">
                 <CardHeader>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
                     <div>
-                      <CardTitle className="text-2xl">Recommended round</CardTitle>
-                      <FeedbackText className="mt-2 border-none bg-transparent p-0 text-base text-slate-600" compact value={recommendation.roundGoal} />
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline">{recommendation.mode}</Badge>
-                      {recommendation.providerLabel ? <Badge variant="secondary">{recommendation.providerLabel}</Badge> : null}
+                      <CardTitle className="text-xl">Your round</CardTitle>
+                      <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm text-slate-600" compact value={recommendation.roundGoal} />
                     </div>
                   </div>
                 </CardHeader>
@@ -1836,6 +1809,7 @@ export function PracticeAgentClient({
           {phase === "feedback" && review ? (
             <PracticeRoundReviewPanel
               isPending={isPending}
+              isStreaming={isReviewStreaming}
               nextRoundNote={nextRoundNote}
               onNextRoundNoteChange={setNextRoundNote}
               onQuestionCountChange={setQuestionCount}
