@@ -182,6 +182,14 @@ assert(
   "session refreshes must avoid duplicate active-session detail loads when a session is already selected",
 );
 assert(
+  client.includes("function isReusableEmptyPracticeSession") &&
+    client.includes("session.roundCount === 0") &&
+    client.includes("session.sessionThreadMessages?.length") &&
+    client.includes("handedOffToSessionSwitch") &&
+    client.includes("switchSession(reusableSession.id)"),
+  "new-session actions must reuse a compatible empty thread and hand off through the normal session switch flow",
+);
+assert(
   practiceLoader.includes("PracticeWorkspaceErrorBoundary") &&
     practiceBoundary.includes("Your saved sessions and submitted work have not been removed") &&
     client.includes("workspaceLoading") &&

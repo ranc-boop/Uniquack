@@ -110,6 +110,20 @@ function PracticeWorkspaceSkeleton() {
     </div>
   );
 }
+
+function isReusableEmptyPracticeSession(
+  session: PracticeSessionSummary,
+  courseFrameworkId: string | null,
+) {
+  return session.status === "active" &&
+    (session.courseFrameworkId ?? null) === courseFrameworkId &&
+    session.roundCount === 0 &&
+    !session.goal.trim() &&
+    !session.sessionMemory.trim() &&
+    !session.outlineUserNotes?.trim() &&
+    session.completedQuestionIds.length === 0 &&
+    !(session.sessionThreadMessages?.length);
+}
 type TestOnlyDelayedHydrationStatus =
   | "NOT_ENABLED"
   | "NOT_REQUESTED"
@@ -1231,13 +1245,36 @@ export function PracticeAgentClient({
   }
 
   function createNewSession() {
+    const courseFrameworkId = selectedCourseFrameworkId || null;
     setSessionAction("creating");
     setError(null);
     startTransition(async () => {
+      let handedOffToSessionSwitch = false;
       try {
+        const currentSession = sessions.find((item) => item.id === activeSession?.id);
+        if (currentSession && isReusableEmptyPracticeSession(currentSession, courseFrameworkId)) {
+          resetSessionScopedDrafts();
+          setGoal("");
+          setPhase("start");
+          return;
+        }
+
+        const currentSessions = await jsonRequest<{ sessions: PracticeSessionSummary[] }>(
+          "/api/practice/sessions?includeActive=0",
+        );
+        setSessions(currentSessions.sessions);
+        const reusableSession = currentSessions.sessions.find((item) =>
+          isReusableEmptyPracticeSession(item, courseFrameworkId),
+        );
+        if (reusableSession) {
+          handedOffToSessionSwitch = true;
+          switchSession(reusableSession.id);
+          return;
+        }
+
         const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
           body: JSON.stringify({
-            courseFrameworkId: selectedCourseFrameworkId || null,
+            courseFrameworkId,
             goal: "",
             title: "New practice session",
           }),
@@ -1255,7 +1292,7 @@ export function PracticeAgentClient({
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       } finally {
-        setSessionAction(null);
+        if (!handedOffToSessionSwitch) setSessionAction(null);
       }
     });
   }
