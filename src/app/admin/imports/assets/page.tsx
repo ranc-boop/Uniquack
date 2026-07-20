@@ -84,7 +84,6 @@ export default async function AdminImportAssetsPage() {
             <Link href="/admin/imports">Back to imports</Link>
           </Button>
         }
-        description="Attach assets to draft questions."
         eyebrow="Import tools"
         help="Upload images and PDF source files after draft questions exist. Files are matched by question-code filename prefix before anything is uploaded."
         helpLabel="Bulk asset upload details"
@@ -93,34 +92,26 @@ export default async function AdminImportAssetsPage() {
 
       <AdminCard
         badge={<AdminStatusBadge status="pending">Review matches</AdminStatusBadge>}
-        description="Preview matches before upload."
         help="Use this after draft questions exist. The tool previews filename matches first so skipped or ambiguous files can be reviewed before upload."
         helpLabel="Bulk asset matching workflow details"
         title="Bulk asset matching workflow"
       >
-        <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-4">
+        <ol className="grid gap-2 text-sm md:grid-cols-4">
           {[
-            ["1", "Select image or PDF assets"],
-            ["2", "Match by question-code prefix"],
-            ["3", "Review skipped and duplicate matches"],
-            ["4", "Confirm upload and apply links"],
-          ].map(([step, label]) => (
-            <div
-              className="rounded-md border bg-muted/20 p-3 leading-6"
-              key={step}
-            >
-              <span className="mb-2 inline-flex size-6 items-center justify-center rounded-full border bg-background text-xs font-semibold text-foreground">
-                {step}
-              </span>
-              <p>{label}</p>
-            </div>
+            "Select files",
+            "Match codes",
+            "Review",
+            "Confirm",
+          ].map((label) => (
+            <li className="rounded-md border bg-muted/20 px-3 py-2 font-medium" key={label}>
+              {label}
+            </li>
           ))}
-        </div>
+        </ol>
       </AdminCard>
 
       <AdminCard
         badge={<AdminStatusBadge status="info">Filename rules</AdminStatusBadge>}
-        description="Match by question-code prefix."
         help={
           <>
             <p>
@@ -140,17 +131,7 @@ export default async function AdminImportAssetsPage() {
         }
         helpLabel="Filename matching details"
         title="Matching rules"
-      >
-        <div className="space-y-2 text-sm text-muted-foreground">
-          <p>
-            Supported: PNG, JPEG, WebP, GIF, and PDF.
-          </p>
-          <p className="font-mono text-xs">
-            Q1001_diagram.png -&gt; Q1001, Q1002_source.pdf -&gt; Q1002,
-            ASSET_MULTI_101_cart.png -&gt; ASSET_MULTI_101
-          </p>
-        </div>
-      </AdminCard>
+      />
 
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

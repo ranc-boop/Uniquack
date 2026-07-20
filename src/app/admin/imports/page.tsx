@@ -22,7 +22,15 @@ import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminImportsPage() {
+type AdminImportsPageProps = {
+  searchParams: Promise<{ view?: string }>;
+};
+
+export default async function AdminImportsPage({
+  searchParams,
+}: AdminImportsPageProps) {
+  const params = await searchParams;
+  const showImport = params.view === "new";
   await requireAdmin();
   const supabase = await createClient();
   const { data: batches, error } = await supabase
@@ -48,15 +56,27 @@ export default async function AdminImportsPage() {
       <AdminPageHeader
         actions={
           <>
-            <Button asChild variant="outline">
-              <Link href="/admin/imports/pdf">AI PDF import</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/admin/imports/assets">Bulk asset upload</Link>
-            </Button>
+            {showImport ? (
+              <Button asChild variant="outline">
+                <Link href="/admin/imports">Back to import tools</Link>
+              </Button>
+            ) : (
+              <Button asChild>
+                <Link href="/admin/imports?view=new">New JSON import</Link>
+              </Button>
+            )}
+            {!showImport ? (
+              <>
+                <Button asChild variant="outline">
+                  <Link href="/admin/imports/pdf">AI PDF import</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/admin/imports/assets">Bulk asset upload</Link>
+                </Button>
+              </>
+            ) : null}
           </>
         }
-        description="Choose an import workflow."
         eyebrow="Import tools"
         help={
           <p>
@@ -68,20 +88,19 @@ export default async function AdminImportsPage() {
         title="Import Tools"
       />
 
-      <div className="grid gap-3 md:grid-cols-4">
+      {!showImport ? <div className="grid gap-3 md:grid-cols-4">
         <AdminCard
           actions={
             <AdminActionGroup
               secondary={
                 <Button asChild size="sm" variant="outline">
-                  <Link href="/admin/imports">Open JSON Import</Link>
+                  <Link href="/admin/imports?view=new">Open JSON Import</Link>
                 </Button>
               }
             />
           }
           compact
           badge={<AdminStatusBadge status="draft">Draft-only</AdminStatusBadge>}
-          description="Paste JSON, validate, import drafts."
           help="Use this for validated structured question data pasted from a trusted tool."
           helpLabel="Manual JSON Import details"
           title="Manual JSON Import"
@@ -98,7 +117,6 @@ export default async function AdminImportsPage() {
           }
           compact
           badge={<AdminStatusBadge status="pending">Review matches</AdminStatusBadge>}
-          description="Attach files to existing drafts."
           help="Use this after drafts exist and files can be matched by question-code filename prefix."
           helpLabel="Bulk Asset Matching details"
           title="Bulk Asset Matching"
@@ -115,7 +133,6 @@ export default async function AdminImportsPage() {
           }
           compact
           badge={<AdminStatusBadge status="pending_review">Preview first</AdminStatusBadge>}
-          description="Validate a ZIP before import."
           help="Use this for one ZIP containing questions.json plus referenced image and PDF files."
           helpLabel="Package Import details"
           title="Package Import"
@@ -132,23 +149,23 @@ export default async function AdminImportsPage() {
           }
           compact
           badge={<AdminStatusBadge status="info">AI Parsing</AdminStatusBadge>}
-          description="Parse private PDFs or images."
           help="Use this for private PDFs or images that need AI extraction or blueprint observation."
           helpLabel="AI PDF and image parsing details"
           title="AI PDF / Image Parsing"
         />
-      </div>
+      </div> : null}
 
-      <AdminCard
-        title="Manual JSON import"
-        description="Validate, then import drafts."
-        help="Only valid items are imported, and they are saved as private draft questions for Review Drafts."
-        helpLabel="Manual JSON draft behavior"
-      >
-        <BatchImportJsonPanelLoader tagIds={importPromptTagIds} />
-      </AdminCard>
+      {showImport ? (
+        <AdminCard
+          title="Manual JSON import"
+          help="Only valid items are imported, and they are saved as private draft questions for Review Drafts."
+          helpLabel="Manual JSON draft behavior"
+        >
+          <BatchImportJsonPanelLoader tagIds={importPromptTagIds} />
+        </AdminCard>
+      ) : null}
 
-      <AdminCard title="Recent import batches">
+      {!showImport ? <AdminCard title="Recent import batches">
         {error ? (
           <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {error.message}
@@ -167,7 +184,7 @@ export default async function AdminImportsPage() {
               <TableBody>
                 {(batches ?? []).map((batch) => (
                   <TableRow key={batch.id}>
-                    <TableCell className="text-xs">
+                    <TableCell className="text-sm">
                       {new Date(batch.created_at).toLocaleString()}
                     </TableCell>
                     <TableCell>{batch.source_type}</TableCell>
@@ -198,7 +215,7 @@ export default async function AdminImportsPage() {
             </Table>
           </div>
         )}
-      </AdminCard>
+      </AdminCard> : null}
     </div>
   );
 }

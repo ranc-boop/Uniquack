@@ -30,43 +30,24 @@ export function ProviderSummaryCards({
   warningCount: number;
 }) {
   return (
-    <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-      <div className="min-w-0 rounded-md border bg-muted/20 p-3">
-        <p className="text-xs text-muted-foreground">Provider</p>
-        <p className="break-words font-medium">{providerName}</p>
-        <p className="text-xs text-muted-foreground">{providerModeLabel}</p>
+    <div className="grid gap-2 rounded-lg border bg-muted/10 p-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+      <div className="min-w-0 rounded-md bg-background px-3 py-2" title={`${providerName} · ${providerModeLabel}`}>
+        <p className="text-lg font-semibold leading-6">{providerName}</p>
+        <p className="truncate text-xs text-muted-foreground">Provider</p>
       </div>
-      <div className="min-w-0 rounded-md border bg-muted/20 p-3">
-        <p className="text-xs text-muted-foreground">Model</p>
-        <p className="break-words font-medium">{model}</p>
-        <p className="text-xs text-muted-foreground">
-          Input: {inputStrategyLabel}
-        </p>
+      <div className="min-w-0 rounded-md bg-background px-3 py-2" title={`${model} · ${inputStrategyLabel}`}>
+        <p className="truncate text-lg font-semibold leading-6">{model}</p>
+        <p className="truncate text-xs text-muted-foreground">Model</p>
       </div>
-      <div className="min-w-0 rounded-md border bg-muted/20 p-3">
-        <p className="text-xs text-muted-foreground">Source / pages</p>
-        <p className="break-words font-medium" title={sourceFilename}>
-          {sourceFilename}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Pages processed: {pageCountLabel} / {sizeLabel}
-        </p>
+      <div className="min-w-0 rounded-md bg-background px-3 py-2" title={`${sourceFilename} · ${sizeLabel}`}>
+        <p className="text-lg font-semibold leading-6">{pageCountLabel}</p>
+        <p className="truncate text-xs text-muted-foreground">Pages · {sourceFilename}</p>
       </div>
-      <div className="min-w-0 rounded-md border bg-muted/20 p-3">
-        <p className="text-xs text-muted-foreground">Outputs</p>
-        <div className="mt-1 space-y-1 text-xs text-muted-foreground">
-          <p>
-            <span className="font-medium text-foreground">Drafts:</span>{" "}
-            {createdQuestionCount}
-          </p>
-          <p>Source assets: {sourceAsset ? 1 : 0}</p>
-          <p>Question assets: {uploadedCropCount}</p>
-          <p>Uploaded crops: {uploadedCropCount}</p>
-          <p>
-            Warnings: {warningCount} / Chunks:{" "}
-            {chunkCount !== undefined ? chunkCount : "-"}
-          </p>
-        </div>
+      <div className="min-w-0 rounded-md bg-background px-3 py-2" title={`Assets ${sourceAsset ? 1 : 0} · crops ${uploadedCropCount} · chunks ${chunkCount ?? "-"}`}>
+        <p className="text-lg font-semibold leading-6">{createdQuestionCount}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          Drafts · {warningCount} warnings
+        </p>
       </div>
     </div>
   );

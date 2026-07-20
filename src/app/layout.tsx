@@ -5,6 +5,7 @@ import "katex/dist/katex.min.css";
 import "./globals.css";
 
 import { AuthNav } from "@/components/auth-nav";
+import { AppChrome } from "@/components/app-chrome";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -98,30 +99,35 @@ export default function RootLayout({
           forcedTheme="light"
           disableTransitionOnChange
         >
-          <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur">
-            <div className="mx-auto flex min-h-16 max-w-[92rem] flex-col gap-3 px-4 py-3 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
-              <Link href="/" className="flex items-center gap-3 text-sm font-bold tracking-tight">
-                <span className="flex size-9 items-center justify-center rounded-lg bg-sky-600 text-sm font-black text-white shadow-sm">
-                  O2I
-                </span>
-                <span>Practice</span>
-              </Link>
-              <nav className="flex flex-wrap items-center gap-1.5">
-                <PrimaryNav />
-                {platformNavItems.map((item) => (
-                  <Link
-                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
-                    href={item.href}
-                    key={item.href}
-                  >
-                    {item.label}
+          <AppChrome
+            header={
+              <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur">
+                <div className="mx-auto flex min-h-16 max-w-[92rem] flex-col gap-3 px-4 py-3 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
+                  <Link href="/" className="flex items-center gap-3 text-sm font-bold tracking-tight">
+                    <span className="flex size-9 items-center justify-center rounded-lg bg-sky-600 text-sm font-black text-white shadow-sm">
+                      O2I
+                    </span>
+                    <span>Practice</span>
                   </Link>
-                ))}
-                <AuthNav />
-              </nav>
-            </div>
-          </header>
-          <main className="student-shell">{children}</main>
+                  <nav className="flex flex-wrap items-center gap-1.5">
+                    <PrimaryNav />
+                    {platformNavItems.map((item) => (
+                      <Link
+                        className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+                        href={item.href}
+                        key={item.href}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                    <AuthNav />
+                  </nav>
+                </div>
+              </header>
+            }
+          >
+            {children}
+          </AppChrome>
           <Toaster />
         </ThemeProvider>
       </body>

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   cancelQueuedAIJobAsAdmin,
   createAIProviderProfile,
@@ -9,12 +11,13 @@ import {
   updateAIProviderProfile,
 } from "@/app/admin/ai-settings/actions";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminInfoTip } from "@/components/admin/admin-info-tip";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { AIProviderModeFields } from "@/components/ai-provider-mode-fields";
 import { AIProviderTestButton } from "@/components/ai-provider-test-button";
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +50,7 @@ type PageProps = {
   searchParams: Promise<{
     error?: string;
     saved?: string;
+    view?: string;
   }>;
 };
 
@@ -74,6 +78,7 @@ function Checkbox({
 
 export default async function AdminAISettingsPage({ searchParams }: PageProps) {
   const params = await searchParams;
+  const view = params.view === "routing" || params.view === "providers" ? params.view : "operations";
   await requireSuperAdmin();
   const supabase = await createClient();
   const profiles = await listSafeAIProviderProfiles(supabase);
@@ -94,14 +99,24 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Configure AI providers."
         eyebrow="Settings"
         help="Super admin settings for PDF import and blueprint model providers. API keys are encrypted server-side and never displayed back in the UI."
         helpLabel="AI settings details"
         title="AI Settings"
       />
       <PageFeedback error={params.error} saved={params.saved} />
-      <Card>
+      <nav aria-label="AI settings sections" className="flex flex-wrap gap-1 rounded-lg border bg-card p-1">
+        {[
+          ["operations", "Operations"],
+          ["routing", "Routing"],
+          ["providers", "Providers"],
+        ].map(([key, label]) => (
+          <Button asChild key={key} size="sm" variant={view === key ? "default" : "ghost"}>
+            <Link href={`/admin/ai-settings?view=${key}`}>{label}</Link>
+          </Button>
+        ))}
+      </nav>
+      {view === "operations" ? <Card>
         <CardHeader>
           <CardTitle className="text-base">AI operations</CardTitle>
         </CardHeader>
@@ -124,9 +139,9 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                   ["Tokens today", Number(operations.metrics.tokensToday ?? 0).toLocaleString()],
                   ["Estimated cost today", formatEstimatedMicros(operations.metrics.costTodayMicros ?? null)],
                 ].map(([label, value]) => (
-                  <div key={String(label)} className="rounded-md border bg-muted/20 p-3">
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="mt-1 text-lg font-semibold">{value}</p>
+                  <div key={String(label)} title={String(label)} className="rounded-md border bg-muted/20 p-3">
+                    <p className="text-sm text-muted-foreground">{label}</p>
+                    <p className="mt-0.5 text-lg font-semibold">{value}</p>
                   </div>
                 ))}
               </div>
@@ -137,11 +152,7 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                     <p key={alert.code}>{alert.message}</p>
                   ))}
                 </div>
-              ) : (
-                <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-                  No current operational alert conditions were observed.
-                </p>
-              )}
+              ) : null}
               <details className="rounded-md border p-3">
                 <summary className="cursor-pointer font-medium">Closed-beta controls</summary>
                 <form action={saveAIOperationsControl} className="mt-4 grid gap-3 md:grid-cols-3">
@@ -188,7 +199,7 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                   <Input name="job_id" className="max-w-md" placeholder="Queued job ID" required />
                   <FormSubmitButton pendingLabel="Cancelling...">Cancel queued job</FormSubmitButton>
                 </form>
-                <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+                <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                   {operations.recentTelemetry.map((row) => (
                     <p key={row.id}>{row.operation_kind} · {row.final_status} · {row.drafts_created} drafts · {formatEstimatedMicros(row.estimated_total_cost_micros)} · {formatDuration(row.provider_latency_ms)}</p>
                   ))}
@@ -198,7 +209,7 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
             </>
           )}
         </CardContent>
-      </Card>
+      </Card> : null}
       {!hasEncryptionKey ? (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           AI_PROVIDER_ENCRYPTION_KEY is not configured. You can test a provider
@@ -207,20 +218,15 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
           restart.
         </div>
       ) : null}
-      <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Provider modes</p>
-        <p>
-          DeepSeek is OpenAI-compatible and should usually be configured as a
-          text/json provider, not as the main scanned PDF parser.
-        </p>
-        <p>
-          Gemini OpenAI-compatible can use page images but should not be marked
-          as native/full PDF input. Gemini Native uses the native Gemini API and
-          can use full PDF input through the Files API.
-        </p>
-      </div>
+      {view === "providers" ? <details className="rounded-md border bg-muted/20 p-3">
+        <summary className="cursor-pointer font-medium">Provider modes</summary>
+        <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+          <p>DeepSeek is OpenAI-compatible and should usually be configured as a text/json provider.</p>
+          <p>Gemini OpenAI-compatible uses page images; Gemini Native supports full PDF input.</p>
+        </div>
+      </details> : null}
 
-      <Card>
+      {view === "routing" ? <Card>
         <CardHeader>
           <CardTitle className="text-base">Server-side provider routing</CardTitle>
         </CardHeader>
@@ -233,10 +239,6 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
             </div>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground">
-                These routes are resolved only on the server. Teachers and
-                students never select a provider or model.
-              </p>
               <div className="grid gap-4">
                 {AI_PROVIDER_ROUTING_OPERATION_KINDS.map((operationKind) => {
                   const policy = routingPolicies.find(
@@ -352,9 +354,9 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
             </>
           )}
         </CardContent>
-      </Card>
+      </Card> : null}
 
-      <Card>
+      {view === "providers" ? <Card>
         <CardHeader>
           <CardTitle className="text-base">Create provider profile</CardTitle>
         </CardHeader>
@@ -388,21 +390,12 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                 </FormSubmitButton>
                 <AIProviderTestButton mode="new" />
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Testing uses a tiny text request with the current form values
-                and does not save the provider. DeepSeek defaults should stay
-                text/json unless multimodal support is explicitly verified.
-                For Gemini Native full PDF, use provider type gemini_native,
-                the generativelanguage base URL, and enable native/full PDF.
-                Test connection uses Gemini Native generateContent with a tiny
-                text prompt; PDF import uses the Files API separately.
-              </p>
             </div>
           </form>
         </CardContent>
-      </Card>
+      </Card> : null}
 
-      <div className="grid gap-4">
+      {view === "providers" ? <div className="grid gap-4">
         {profiles.map((profile) => {
           const providerMode = inferAiProviderMode(profile);
           const providerInput = describeAiPdfProviderInput(profile);
@@ -414,34 +407,21 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <CardTitle className="text-base">{profile.name}</CardTitle>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {aiProviderModeSummaryLabel(providerMode)} / {profile.model}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Mode: {aiProviderModeSummaryLabel(providerMode)} / PDF input:{" "}
-                    {aiPdfInputStrategyLabel(providerInput.strategy)}
-                  </p>
+                  <AdminInfoTip label="Provider details">
+                    <p>{aiProviderModeSummaryLabel(providerMode)} · {profile.model}</p>
+                    <p>PDF input: {aiPdfInputStrategyLabel(providerInput.strategy)}</p>
+                  </AdminInfoTip>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  <Badge variant={profile.enabled ? "secondary" : "outline"}>
-                    {profile.enabled ? "enabled" : "disabled"}
-                  </Badge>
+                  <AdminStatusBadge status={profile.enabled ? "enabled" : "disabled"} />
                   {profile.is_default ? (
-                    <Badge variant="secondary">default</Badge>
+                    <AdminStatusBadge status="info" />
                   ) : null}
-                  <Badge variant="outline">
-                    key {profile.api_key_last4 ? `...${profile.api_key_last4}` : "missing"}
-                  </Badge>
-                  {capabilities.supportsPageImages ? (
-                    <Badge variant="outline">page images</Badge>
-                  ) : null}
-                  {capabilities.supportsNativePdf ? (
-                    <Badge variant="outline">native PDF</Badge>
-                  ) : null}
-                  {!capabilities.supportsPageImages &&
-                  !capabilities.supportsNativePdf ? (
-                    <Badge variant="outline">text/json</Badge>
-                  ) : null}
+                  <AdminInfoTip label="Provider status and capabilities">
+                    <p>{profile.enabled ? "Enabled" : "Disabled"}{profile.is_default ? " · Default" : ""}</p>
+                    <p>Key: {profile.api_key_last4 ? `...${profile.api_key_last4}` : "missing"}</p>
+                    <p>{capabilities.supportsPageImages ? "Page images" : capabilities.supportsNativePdf ? "Native PDF" : "Text / JSON"}</p>
+                  </AdminInfoTip>
                 </div>
               </div>
             </CardHeader>
@@ -486,14 +466,6 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
                     <a href="/admin/imports/pdf">Use in PDF import</a>
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground md:col-span-2">
-                  Testing uses a tiny text request with the current visible
-                  values. If Replace API key is blank, the saved encrypted key
-                  is used. Gemini OpenAI-compatible providers should use page
-                  images; Gemini Native should use native/full PDF input. For
-                  Gemini Native, Test connection checks generateContent only;
-                  full PDF import uses the Files API.
-                </p>
               </form>
               <form action={deleteAIProviderProfile} className="mt-3">
                 <input type="hidden" name="id" value={profile.id} />
@@ -508,7 +480,7 @@ export default async function AdminAISettingsPage({ searchParams }: PageProps) {
             No AI provider profiles yet.
           </div>
         ) : null}
-      </div>
+      </div> : null}
     </div>
   );
 }

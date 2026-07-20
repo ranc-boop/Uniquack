@@ -17,6 +17,7 @@ type AdminCardProps = {
   compact?: boolean;
   contentClassName?: string;
   description?: ReactNode;
+  descriptionMode?: "visible" | "tooltip";
   help?: ReactNode;
   helpLabel?: string;
   title: ReactNode;
@@ -30,12 +31,18 @@ export function AdminCard({
   compact = false,
   contentClassName,
   description,
+  descriptionMode = "visible",
   help,
   helpLabel,
   title,
 }: AdminCardProps) {
   return (
-    <Card className={cn("overflow-hidden", className)}>
+    <Card
+      className={cn(
+        "overflow-hidden transition-[border-color,box-shadow] duration-200 hover:border-primary/20 hover:shadow-[0_14px_32px_-28px_rgba(15,23,42,0.55)]",
+        className,
+      )}
+    >
       <CardHeader
         className={cn(
           "flex flex-col gap-3 space-y-0",
@@ -51,10 +58,15 @@ export function AdminCard({
               ) : null}
               {badge}
             </div>
-            {description ? (
+            {description && descriptionMode === "visible" ? (
               <div className="text-sm leading-6 text-muted-foreground">
                 {description}
               </div>
+            ) : null}
+            {description && descriptionMode === "tooltip" && !help ? (
+              <AdminInfoTip label={helpLabel ?? "Card details"}>
+                {description}
+              </AdminInfoTip>
             ) : null}
           </div>
           {actions ? (
