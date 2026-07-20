@@ -1261,16 +1261,31 @@ export function PracticeAgentClient({
   }
 
   function deleteSession(sessionId: string) {
+    const deletedWasActive = activeSession?.id === sessionId;
+    if (deletedWasActive) setSessionAction("switching");
+    setError(null);
     startTransition(async () => {
+      let handedOffToSessionSwitch = false;
       try {
         await jsonRequest<{ ok: boolean }>(`/api/practice/sessions/${sessionId}`, { method: "DELETE" });
+        const payload = await jsonRequest<{ sessions: PracticeSessionSummary[] }>("/api/practice/sessions?includeActive=0");
+        setSessions(payload.sessions);
+        if (!deletedWasActive) return;
+        const nextSession = payload.sessions.find((item) => item.id !== sessionId);
+        if (nextSession) {
+          handedOffToSessionSwitch = true;
+          switchSession(nextSession.id);
+          return;
+        }
+        setActiveSession(null);
         resetRoundState("SESSION_CHANGE");
         resetSessionScopedDrafts();
         setGoal("");
         setPhase("start");
-        await refreshPracticeState();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        if (!handedOffToSessionSwitch) setSessionAction(null);
       }
     });
   }
@@ -1369,7 +1384,7 @@ export function PracticeAgentClient({
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
-  if (workspaceLoading || sessionAction) return <PracticeWorkspaceSkeleton />;
+  if (workspaceLoading) return <PracticeWorkspaceSkeleton />;
 
   return (
     <div
@@ -1630,7 +1645,18 @@ export function PracticeAgentClient({
         </div>
       ) : null}
 
-        <main className="min-w-0 space-y-4 px-0 xl:px-2">
+        <main className="relative min-w-0 space-y-4 px-0 xl:px-2">
+          {sessionAction ? (
+            <section aria-busy="true" aria-live="polite" className="absolute inset-0 z-20 flex min-h-[60vh] flex-col justify-center gap-5 bg-white/95 px-4 backdrop-blur-sm" role="status">
+              <span className="sr-only">Loading practice session…</span>
+              <div className="h-7 w-40 animate-pulse rounded-lg bg-slate-100" />
+              <div className="h-5 w-3/5 animate-pulse rounded bg-slate-100" />
+              <div className="mt-4 space-y-3">
+                <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
+                <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
+              </div>
+            </section>
+          ) : null}
           {assignmentLaunch ? (
             <section className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
               <p className="font-bold">Assignment practice</p>
