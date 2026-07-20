@@ -8,16 +8,24 @@
 //
 // temporary: true. Safe to delete.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { createGoogleAccountLinksPostgresHarness } from './google-account-links-embedded-postgres.mjs';
 import { splitSql } from './sql-split.mjs';
+import {
+  assertCanonicalMigrationExecutable,
+  loadCanonicalMigrationPlan,
+} from './lib/canonical-migration-plan.mjs';
 
 const here = fileURLToPath(import.meta.url);
 const root = resolve(here, '..', '..');
-const cleanDir = resolve(root, 'supabase/clean-migrations');
+const googleMigrationFile = '0032_google_account_links.sql';
+const migrationPlan = await loadCanonicalMigrationPlan({ root });
+assertCanonicalMigrationExecutable(migrationPlan, googleMigrationFile);
+const cleanDir = migrationPlan.cleanDirectory;
+const files = migrationPlan.executableMigrationNames;
 
 const harness = await createGoogleAccountLinksPostgresHarness('google-rls');
 const { instance: pgInstance, connection } = harness;
@@ -128,7 +136,6 @@ try {
     alter default privileges in schema public grant select on tables to rls_tester;
   `);
 
-  const files = readdirSync(cleanDir).filter((f) => f.endsWith('.sql')).sort();
   for (const f of files) {
     const sql = readFileSync(join(cleanDir, f), 'utf8');
     const stmts = splitSql(sql);

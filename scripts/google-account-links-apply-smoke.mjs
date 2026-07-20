@@ -1,14 +1,22 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { createGoogleAccountLinksPostgresHarness } from './google-account-links-embedded-postgres.mjs';
 import { splitSql } from './sql-split.mjs';
+import {
+  assertCanonicalMigrationExecutable,
+  loadCanonicalMigrationPlan,
+} from './lib/canonical-migration-plan.mjs';
 
 const here = fileURLToPath(import.meta.url);
 const root = resolve(here, '..', '..');
-const cleanDir = resolve(root, 'supabase/clean-migrations');
 const googleMigrationFile = '0032_google_account_links.sql';
+const migrationPlan = await loadCanonicalMigrationPlan({ root });
+assertCanonicalMigrationExecutable(migrationPlan, googleMigrationFile);
+const cleanDir = migrationPlan.cleanDirectory;
+const googleMigrationIndex = migrationPlan.executableMigrationNames.indexOf(googleMigrationFile);
+const files = migrationPlan.executableMigrationNames.slice(0, googleMigrationIndex);
 
 const harness = await createGoogleAccountLinksPostgresHarness('google-apply');
 const { instance: pgInstance, connection } = harness;
@@ -61,9 +69,6 @@ try {
     );
   `);
 
-  const files = readdirSync(cleanDir)
-    .filter((f) => f.endsWith('.sql') && f < googleMigrationFile)
-    .sort();
   console.log('applying', files.length, 'pre-Google clean migrations');
   for (const f of files) {
     const sql = readFileSync(join(cleanDir, f), 'utf8');

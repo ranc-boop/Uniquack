@@ -1,15 +1,18 @@
 // Smoke: can we apply the current clean migration chain onto embedded-postgres,
 // with a minimal auth schema mock so private.handle_new_user() works?
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { createGoogleAccountLinksPostgresHarness } from './google-account-links-embedded-postgres.mjs';
 import { splitSql } from './sql-split.mjs';
+import { loadCanonicalMigrationPlan } from './lib/canonical-migration-plan.mjs';
 
 const here = fileURLToPath(import.meta.url);
 const root = resolve(here, '..', '..');
-const cleanDir = resolve(root, 'supabase/clean-migrations');
+const migrationPlan = await loadCanonicalMigrationPlan({ root });
+const cleanDir = migrationPlan.cleanDirectory;
+const files = migrationPlan.executableMigrationNames;
 
 const harness = await createGoogleAccountLinksPostgresHarness('google-baseline');
 const { instance: pgInstance, connection } = harness;
@@ -71,9 +74,6 @@ try {
     );
   `);
 
-  const files = readdirSync(cleanDir)
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
   console.log('applying', files.length, 'clean migrations');
   for (const f of files) {
     const sql = readFileSync(join(cleanDir, f), 'utf8');
