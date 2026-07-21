@@ -410,7 +410,11 @@ function validateCanonicalPlan(plan) {
 
 function makeSupabaseClient(key) {
   return createClient(process.env[apiUrlEnvName], key, {
-    auth: { autoRefreshToken: false, persistSession: false },
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+    },
   });
 }
 
