@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL ?? "http://localhost:3000";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const sourceOnly = process.argv.includes("--source-only");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -42,40 +43,44 @@ async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
 
-await checkRoute("/questions", "Question Bank");
-await checkRoute("/videos", "Videos");
-await checkAdminRoute("/admin", "Dashboard");
-await checkAdminRoute("/admin/questions", "Questions");
-await checkAdminRoute("/admin/review", "Review Drafts");
-await checkAdminRoute("/admin/imports", "Manual JSON Import");
-await checkAdminRoute("/admin/imports/pdf", "AI PDF Import");
-await checkAdminRoute("/admin/imports/assets", "Bulk asset upload");
-await checkAdminRoute("/admin/imports/package", "Package Import");
-await checkAdminRoute("/admin/tags", "Taxonomy");
-await checkAdminRoute("/admin/blueprints", "Question Blueprint Workspace");
-await checkAdminRoute("/admin/blueprints/review", "Blueprint Review Queue");
-await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library");
-await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
-await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
-await checkAdminRoute("/teacher/banks", "Question Bank Library");
-await checkAdminRoute("/teacher", "Teacher Workspace");
-await checkAdminRoute("/teacher/banks/new", "Start a teacher-owned content library");
-await checkAdminRoute("/teacher/banks/join", "Join a shared Question Bank");
-await checkAdminRoute("/teacher/ai-parsing", "AI Parsing");
-await checkAdminRoute("/teacher/blueprints", "Blueprint Library");
-await checkAdminRoute("/teacher/blueprints/new", "Create Blueprint");
-await checkAdminRoute("/teacher/classrooms", "Classrooms");
-await checkAdminRoute("/teacher/publish", "Publish");
-await checkAdminRoute("/teacher/progress", "Progress");
-await checkAdminRoute("/teacher/course-builder", "Course Builder");
-await checkAdminRoute("/student", "Student Dashboard");
-await checkAdminRoute("/student/work", "My Work");
-await checkAdminRoute("/student/library", "Study Library");
-await checkAdminRoute("/student/groups", "Study Groups");
-await checkAdminRoute("/student/public-library", "Public Library");
-await checkAdminRoute("/student/progress", "Progress / Feedback");
-await checkAdminRoute("/student/classrooms", "My classes");
-await checkAdminRoute("/student/classrooms/join", "Enter your class code");
+if (!sourceOnly) {
+  await checkRoute("/questions", "Question Bank");
+  await checkRoute("/videos", "Videos");
+  await checkAdminRoute("/admin", "Dashboard");
+  await checkAdminRoute("/admin/questions", "Questions");
+  await checkAdminRoute("/admin/review", "Review Drafts");
+  await checkAdminRoute("/admin/imports", "Manual JSON Import");
+  await checkAdminRoute("/admin/imports/pdf", "AI PDF Import");
+  await checkAdminRoute("/admin/imports/assets", "Bulk asset upload");
+  await checkAdminRoute("/admin/imports/package", "Package Import");
+  await checkAdminRoute("/admin/tags", "Taxonomy");
+  await checkAdminRoute("/admin/blueprints", "Question Blueprint Workspace");
+  await checkAdminRoute("/admin/blueprints/review", "Blueprint Review Queue");
+  await checkAdminRoute("/admin/blueprints/library", "Approved Blueprint Library");
+  await checkAdminRoute("/admin/blueprints/history", "History / Archive / Trash");
+  await checkAdminRoute("/admin/blueprints/sources", "Blueprint Import Sources");
+  await checkAdminRoute("/teacher/banks", "Question Bank Library");
+  await checkAdminRoute("/teacher", "Teacher Workspace");
+  await checkAdminRoute("/teacher/banks/new", "Start a teacher-owned content library");
+  await checkAdminRoute("/teacher/banks/join", "Join a shared Question Bank");
+  await checkAdminRoute("/teacher/ai-parsing", "AI Parsing");
+  await checkAdminRoute("/teacher/blueprints", "Blueprint Library");
+  await checkAdminRoute("/teacher/blueprints/new", "Create Blueprint");
+  await checkAdminRoute("/teacher/classrooms", "Classrooms");
+  await checkAdminRoute("/teacher/publish", "Publish");
+  await checkAdminRoute("/teacher/progress", "Progress");
+  await checkAdminRoute("/teacher/course-builder", "Course Builder");
+  await checkAdminRoute("/student", "Student Dashboard");
+  await checkAdminRoute("/student/work", "My Work");
+  await checkAdminRoute("/student/library", "Study Library");
+  await checkAdminRoute("/student/groups", "Study Groups");
+  await checkAdminRoute("/student/public-library", "Public Library");
+  await checkAdminRoute("/student/progress", "Progress / Feedback");
+  await checkAdminRoute("/student/classrooms", "My classes");
+  await checkAdminRoute("/student/classrooms/join", "Enter your class code");
+} else {
+  console.log("PASS route smoke source-only mode");
+}
 const blueprintPage = await read("src/app/admin/blueprints/page.tsx");
 const blueprintWorkspace = await read("src/components/blueprints/blueprint-workspace.tsx");
 const blueprintActions = await read("src/app/admin/blueprints/actions.ts");

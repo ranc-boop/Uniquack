@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,13 +10,105 @@ import dotenv from "dotenv";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const root = resolve(__dirname, "..");
-dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const localHosts = new Set(["127.0.0.1", "localhost"]);
+const requiredLocalGate = "CONFIRMED";
+const pdf50LocalOnly =
+  process.env.PDF50_LOCAL_CLONE_REHEARSAL === requiredLocalGate &&
+  process.env.PDF50_LOCALHOST_ONLY === requiredLocalGate;
+const allowedLocalEnvNames = new Set([
+  "PDF50_LOCAL_CLONE_REHEARSAL",
+  "PDF50_LOCALHOST_ONLY",
+  "PDF50_LOCAL_DATABASE_URL",
+  "PDF50_LOCAL_API_URL",
+  "PDF50_LOCAL_SUPABASE_DIR",
+]);
+const forbiddenLocalEnvNamePattern =
+  /^(PDF50_|SUPABASE|DATABASE_URL|DIRECT_URL|POSTGRES|PG|NEXT_PUBLIC_SUPABASE|SUPABASE_)/;
+const forbiddenRemoteValuePattern =
+  /supabase\.co|pooler\.supabase\.com|https?:\/\/(?!localhost(?::|\/|$)|127\.0\.0\.1(?::|\/|$))[^/\s]+/i;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function base64Url(value) {
+  return Buffer.from(value).toString("base64url");
+}
+
+function signJwt(payload, secret) {
+  const header = { alg: "HS256", typ: "JWT" };
+  const encodedHeader = base64Url(JSON.stringify(header));
+  const encodedPayload = base64Url(JSON.stringify(payload));
+  const signature = createHmac("sha256", secret)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest("base64url");
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+function makeAnonToken(secret) {
+  const now = Math.floor(Date.now() / 1000);
+  return signJwt({
+    aud: "anon",
+    exp: now + 60 * 60,
+    iat: now - 10,
+    iss: "supabase",
+    role: "anon",
+    sub: "anon",
+  }, secret);
+}
+
+function getLocalJwtSecret() {
+  const names = execFileSync("docker", ["ps", "--format", "{{.Names}}"], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert(
+    names.split(/\r?\n/).some((name) => name === "supabase_db_o2i_pdf50_local_rehearsal"),
+    "Local Supabase DB container is not running.",
+  );
+  const secret = execFileSync("docker", [
+    "exec",
+    "supabase_db_o2i_pdf50_local_rehearsal",
+    "printenv",
+    "JWT_SECRET",
+  ], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+  assert(secret.length >= 32, "Local JWT secret was unavailable.");
+  return secret;
+}
+
+function requireLocalApiUrl(rawUrl) {
+  assert(rawUrl, "PDF50_LOCAL_API_URL is required.");
+  assert(!/supabase\.co|pooler\.supabase\.com/i.test(rawUrl), "Local API URL must not reference hosted Supabase.");
+  const url = new URL(rawUrl);
+  assert(["http:", "https:"].includes(url.protocol), "Local API URL has an unsupported protocol.");
+  assert(localHosts.has(url.hostname), "Local API URL must use localhost or 127.0.0.1.");
+  return url.toString();
+}
+
+let supabaseUrl;
+let supabaseAnonKey;
+if (pdf50LocalOnly) {
+  for (const [name, value] of Object.entries(process.env)) {
+    if (allowedLocalEnvNames.has(name)) continue;
+    if (forbiddenLocalEnvNamePattern.test(name)) {
+      throw new Error("Forbidden database/API environment variable is present.");
+    }
+    if (forbiddenRemoteValuePattern.test(value ?? "")) {
+      throw new Error("Forbidden non-localhost URL value is present.");
+    }
+  }
+  supabaseUrl = requireLocalApiUrl(process.env.PDF50_LOCAL_API_URL);
+  supabaseAnonKey = makeAnonToken(getLocalJwtSecret());
+} else {
+  dotenv.config({ path: resolve(__dirname, "..", ".env.local") });
+  supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 }
 
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -365,6 +459,11 @@ assert(
   "question blueprint lifecycle/editing must use snapshots, soft-delete actions, and never hard-delete",
 );
 console.log("PASS canonical Blueprint Engine migration enables staff-scoped RLS");
+
+if (pdf50LocalOnly) {
+  console.log("PASS PDF50 localhost-only RLS smoke source checks; generic anon live taxonomy probes skipped");
+  process.exit(0);
+}
 
 const anon = createClient(supabaseUrl, supabaseAnonKey);
 const { data: nodes, error: nodesError } = await anon

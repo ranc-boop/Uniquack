@@ -110,12 +110,14 @@ create or replace function private.can_actor_manage_ai_pdf_burst_bank(
   p_target_bank_id uuid
 )
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public, private
+set row_security = off
 as $$
-  select exists (
+begin
+  return exists (
     select 1
     from public.profiles profile
     join public.question_banks bank on bank.id = p_target_bank_id
@@ -132,6 +134,7 @@ as $$
           and member.role in ('owner', 'editor')
       )
   );
+end;
 $$;
 
 create or replace function private.protect_ai_pdf_upload_burst_identity()
@@ -872,12 +875,14 @@ $$;
 
 create or replace function private.can_manage_ai_import_source_object(p_object_path text)
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public, private, storage
+set row_security = off
 as $$
-  select exists (
+begin
+  return exists (
     select 1
     from public.import_batch_assets asset
     join public.import_batches batch on batch.id = asset.batch_id
@@ -897,18 +902,21 @@ as $$
         )
       )
   );
+end;
 $$;
 
 create or replace function private.can_upload_reserved_ai_import_source_object(
   p_object_path text
 )
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public, private, storage
+set row_security = off
 as $$
-  select exists (
+begin
+  return exists (
     select 1
     from public.import_batch_assets asset
     join public.import_batches batch on batch.id = asset.batch_id
@@ -937,7 +945,97 @@ as $$
         )
       )
   );
+end;
 $$;
+
+-- Existing question-assets Storage policies share storage.objects with this
+-- bucket. Keep their authorization unchanged for question-assets while moving
+-- question/bank lookups behind security-definer helpers so unrelated buckets do
+-- not require caller table grants merely to plan/evaluate Storage policies.
+create or replace function private.can_write_question_asset_storage_object(
+  p_bucket_id text,
+  p_object_path text
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public, private, storage
+set row_security = off
+as $$
+begin
+  if p_bucket_id <> 'question-assets' then
+    return false;
+  end if;
+
+  return exists (
+    select 1
+    from public.question_assets qa
+    join public.questions q on q.id = qa.question_id
+    where qa.storage_bucket = p_bucket_id
+      and qa.storage_path = p_object_path
+      and (
+        qa.created_by = auth.uid()
+        or private.is_org_staff(q.organization_id)
+      )
+  );
+end;
+$$;
+
+create or replace function private.can_read_question_asset_storage_object(
+  p_bucket_id text,
+  p_object_path text
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public, private, storage
+set row_security = off
+as $$
+begin
+  if p_bucket_id <> 'question-assets' then
+    return false;
+  end if;
+
+  return private.is_admin()
+    or exists (
+      select 1
+      from public.question_assets qa
+      join public.questions q on q.id = qa.question_id
+      where qa.storage_bucket = p_bucket_id
+        and qa.storage_path = p_object_path
+        and private.is_org_staff(q.organization_id)
+    );
+end;
+$$;
+
+revoke all on function private.can_write_question_asset_storage_object(text, text)
+  from public, anon, authenticated;
+revoke all on function private.can_read_question_asset_storage_object(text, text)
+  from public, anon, authenticated;
+grant execute on function private.can_write_question_asset_storage_object(text, text)
+  to authenticated;
+grant execute on function private.can_read_question_asset_storage_object(text, text)
+  to authenticated;
+
+drop policy if exists question_assets_staff_upload on storage.objects;
+create policy question_assets_staff_upload
+on storage.objects for insert
+to authenticated
+with check (private.can_write_question_asset_storage_object(bucket_id, name));
+
+drop policy if exists question_assets_staff_list on storage.objects;
+create policy question_assets_staff_list
+on storage.objects for select
+to authenticated
+using (private.can_read_question_asset_storage_object(bucket_id, name));
+
+drop policy if exists question_assets_staff_delete on storage.objects;
+create policy question_assets_staff_delete
+on storage.objects for delete
+to authenticated
+using (private.can_write_question_asset_storage_object(bucket_id, name));
 
 -- These pre-0049 policies are known arbitrary-path admin grants. They are the
 -- only legacy policy names this migration reconciles; all other policies stay
