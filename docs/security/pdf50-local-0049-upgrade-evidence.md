@@ -2,7 +2,8 @@
 
 > **PRE-SEQUENCE-RECONCILIATION EVIDENCE.** This is preserved evidence for the
 > prior PDF50 `0049` candidate. It does not validate the canonical Practice
-> `0049` then PDF50 `0050` sequence; local reruns are required.
+> `0049` then PDF50 `0050` sequence and is superseded by
+> `docs/security/pdf50-local-0049-0050-upgrade-evidence.md`.
 
 Date: 2026-07-21
 

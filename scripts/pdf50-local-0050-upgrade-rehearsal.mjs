@@ -462,7 +462,7 @@ async function verifyPlanAndGit(plan) {
     .filter(Boolean)
     .every((line) => {
       const path = line.replace(/^[? MARCUD!]{1,2}\s+/, "").replaceAll("\\", "/");
-      return /^(scripts\/pdf50-local-0050-upgrade-rehearsal\.mjs|scripts\/pdf50-local-fresh-chain-0050-gate\.mjs|scripts\/pdf50-0050-bucket-adoption-smoke\.mjs|scripts\/route-smoke\.mjs|scripts\/supabase-rls-smoke\.mjs|supabase\/clean-migrations\/0050_pdf50_burst_upload_admission\.sql|docs\/security\/pdf50-local-0050-upgrade-evidence\.md|docs\/security\/pdf50-local-rls-storage-admission-evidence\.md|docs\/security\/pdf50-local-fresh-chain-0050-evidence\.md)$/.test(path);
+      return /^(scripts\/pdf50-local-0050-upgrade-rehearsal\.mjs|scripts\/pdf50-local-fresh-chain-0050-gate\.mjs|scripts\/pdf50-local-0050-release-gate\.mjs|scripts\/pdf50-clone-history-repair\.mjs|scripts\/pdf50-0050-bucket-adoption-smoke\.mjs|scripts\/route-smoke\.mjs|scripts\/supabase-rls-smoke\.mjs|supabase\/clean-migrations\/0050_pdf50_burst_upload_admission\.sql|docs\/security\/pdf50-local-0050-upgrade-evidence\.md|docs\/security\/pdf50-local-0049-0050-upgrade-evidence\.md|docs\/security\/pdf50-local-0050-bucket-adoption-evidence\.md|docs\/security\/pdf50-local-rls-storage-admission-evidence\.md|docs\/security\/pdf50-local-fresh-chain-0050-evidence\.md|docs\/security\/pdf50-local-fresh-chain-0049-evidence\.md|docs\/security\/pdf50-local-0049-upgrade-evidence\.md|docs\/security\/pdf50-local-clone-history-reconciliation-evidence\.md|docs\/security\/migration-application-register\.md|docs\/security\/live-schema-manifest\.json|docs\/security\/canonical-migration-governance-through-0050\.md)$/.test(path);
     });
   assert(branch === "codex/pdf50-burst-clean-db-rehearsal", "Unexpected branch.");
   assert(status.length === 0 || expectedArtifactChanges, "Working tree has unexpected local changes before local 0050 apply.");
@@ -485,6 +485,18 @@ async function verifyBaseline(client) {
   const bucket = await collectBucket(client);
   const schema0050 = await collectSchema0050(client);
   const rows = await collectRowCounts(client);
+  const absentBucketCreatePath = !bucket.exists
+    && bucket.objectCount === 0
+    && bucket.legacyPolicyCount === 0
+    && bucket.canonicalPolicyCount === 0
+    && bucket.unknownBucketTargetingPolicyCount === 0;
+  const compatibleLegacyAdoptionPath = bucket.exists
+    && bucket.identityOk
+    && bucket.private
+    && bucket.pdfOnly
+    && bucket.legacyPolicyCount === 3
+    && bucket.canonicalPolicyCount === 0
+    && bucket.unknownBucketTargetingPolicyCount === 0;
   const ok = history.totalRows === 50
     && history.canonicalCount === 48
     && history.canonicalHead === "0048"
@@ -497,13 +509,7 @@ async function verifyBaseline(client) {
     && history.pendingCanonical[1] === "0050"
     && schema0050.tableCount === 0
     && schema0050.functionCount === 0
-    && bucket.exists
-    && bucket.identityOk
-    && bucket.private
-    && bucket.pdfOnly
-    && bucket.legacyPolicyCount === 3
-    && bucket.canonicalPolicyCount === 0
-    && bucket.unknownBucketTargetingPolicyCount === 0;
+    && (absentBucketCreatePath || compatibleLegacyAdoptionPath);
   return { ok, history, bucket, schema0050, rows };
 }
 

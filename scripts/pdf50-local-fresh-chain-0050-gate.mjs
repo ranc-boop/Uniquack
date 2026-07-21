@@ -209,7 +209,7 @@ async function verifySourceAndPlan(plan) {
     .filter(Boolean)
     .every((line) => {
       const path = line.replace(/^[? MARCUD!]{1,2}\s+/, "").replaceAll("\\", "/");
-      return /^(scripts\/pdf50-local-fresh-chain-0050-gate\.mjs|docs\/security\/pdf50-local-fresh-chain-0050-evidence\.md)$/.test(path);
+      return /^(scripts\/pdf50-local-fresh-chain-0050-gate\.mjs|scripts\/pdf50-local-0050-release-gate\.mjs|scripts\/pdf50-local-0050-upgrade-rehearsal\.mjs|scripts\/pdf50-clone-history-repair\.mjs|docs\/security\/pdf50-local-fresh-chain-0050-evidence\.md|docs\/security\/pdf50-local-0049-0050-upgrade-evidence\.md|docs\/security\/pdf50-local-0050-bucket-adoption-evidence\.md|docs\/security\/pdf50-local-fresh-chain-0049-evidence\.md|docs\/security\/pdf50-local-0049-upgrade-evidence\.md|docs\/security\/pdf50-local-rls-storage-admission-evidence\.md|docs\/security\/pdf50-local-clone-history-reconciliation-evidence\.md|docs\/security\/migration-application-register\.md|docs\/security\/live-schema-manifest\.json|docs\/security\/canonical-migration-governance-through-0050\.md)$/.test(path);
     });
 
   assert(branch === expectedBranch, "Unexpected branch.");

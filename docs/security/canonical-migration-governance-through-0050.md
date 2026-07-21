@@ -41,16 +41,17 @@ Google migration remains blocked.
 | 46 | `0046_question_assets_bucket_private.sql` | `CANONICAL_EXECUTABLE` | Existing applied evidence retained |
 | 47 | `0047_practice_self_study_evidence_isolation.sql` | `CANONICAL_EXECUTABLE` | Existing applied evidence retained |
 | 48 | `0048_practice_course_framework_evidence_isolation.sql` | `CANONICAL_EXECUTABLE` | Existing applied evidence retained |
-| 49 | `0049_practice_agent_provider_routing.sql` | `CANONICAL_EXECUTABLE` | Not yet applied; retained from main |
-| 50 | `0050_pdf50_burst_upload_admission.sql` | `CANONICAL_EXECUTABLE` | Unapplied; local revalidation required after sequence reconciliation |
+| 49 | `0049_practice_agent_provider_routing.sql` | `CANONICAL_EXECUTABLE` | Locally revalidated before PDF50 0050; no hosted application claimed |
+| 50 | `0050_pdf50_burst_upload_admission.sql` | `CANONICAL_EXECUTABLE` | Locally revalidated as canonical PDF50 head; no hosted application claimed |
 
 `0049_practice_agent_provider_routing.sql` remains the canonical Practice
 routing migration from main. `0050_pdf50_burst_upload_admission.sql` is the
-canonical source head. Neither registration claims live application. Before
-its first application, PDF50 may create an absent private source bucket or
-adopt only a compatible preexisting private PDF-only bucket; incompatible
-bucket state fails closed. PDF50 becomes frozen after its first successful
-application.
+canonical source head. Localhost-only fresh-chain, sequential-upgrade, and
+preexisting-bucket adoption rehearsals passed on 2026-07-21. Neither
+registration claims hosted application. Before its first application, PDF50 may
+create an absent private source bucket or adopt only a compatible preexisting
+private PDF-only bucket; incompatible bucket state fails closed. PDF50 becomes
+frozen after its first successful hosted application.
 
 ## Execution Controls
 
@@ -67,7 +68,6 @@ to `activeApplyPlan`.
 
 ## Remaining Gate
 
-Migration governance is reconciled, but PDF50 live readiness is not claimed.
-PDF50 0050 still requires the separately approved disposable fresh-chain,
-0048-to-Practice-0049-to-PDF50-0050 upgrade, RLS, Storage, admission, race,
-recovery, and exact-cleanup rehearsal.
+Migration governance and localhost runtime revalidation are reconciled. Hosted
+Supabase application is still not claimed here; any hosted deployment must use a
+separate forward-only release process and its own approval/evidence.

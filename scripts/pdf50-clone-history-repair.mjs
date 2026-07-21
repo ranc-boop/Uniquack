@@ -619,6 +619,14 @@ function migration0050Status(active, effects, finalStates, live, historySummary)
   const expected = expectedItemsForMigration(migration50, effects.get(migration50), finalStates[49]);
   const nonBucketExpected = expected.filter((item) => item.category !== "buckets" && item.category !== "special" && item.expected === "present");
   const presentNonBucket = nonBucketExpected.filter((item) => liveHas(live, item.category, item.id));
+  const pdf50SpecificExpected = nonBucketExpected.filter((item) => (
+    item.id.includes("ai_pdf_upload_burst")
+    || item.id.includes("reserve_ai_pdf_upload_burst")
+    || item.id.includes("release_ai_pdf_burst_admission_jobs")
+    || item.id.includes("cancel_ai_pdf_upload_burst_items")
+    || item.id.includes("ai_import_sources_")
+  ));
+  const presentPdf50Specific = pdf50SpecificExpected.filter((item) => liveHas(live, item.category, item.id));
   const exact0050PoliciesPresent = [
     "ai_import_sources_reserved_upload",
     "ai_import_sources_manager_read",
@@ -628,8 +636,10 @@ function migration0050Status(active, effects, finalStates, live, historySummary)
     historyAbsent: historySummary.history0050Absent,
     nonBucketObjectExpectedCount: nonBucketExpected.length,
     nonBucketObjectPresentCount: presentNonBucket.length,
+    pdf50SpecificObjectExpectedCount: pdf50SpecificExpected.length,
+    pdf50SpecificObjectPresentCount: presentPdf50Specific.length,
     exact0050PolicyPresentCount: exact0050PoliciesPresent.length,
-    hardened0050Executed: !historySummary.history0050Absent || presentNonBucket.length > 0 || exact0050PoliciesPresent.length > 0,
+    hardened0050Executed: !historySummary.history0050Absent || presentPdf50Specific.length > 0 || exact0050PoliciesPresent.length > 0,
   };
 }
 
@@ -659,6 +669,21 @@ function bucketStatus(live) {
       "ai_import_sources_manager_delete",
     ].includes(name)).length,
   };
+}
+
+function bucketReadyFor0050(bucket) {
+  const absentCreatePath = !bucket.exists
+    && bucket.storageObjectCount === 0
+    && bucket.legacyPolicyCount === 0
+    && bucket.exact0050PolicyCount === 0;
+  const compatibleLegacyAdoptionPath = bucket.exists
+    && bucket.private
+    && bucket.pdfOnly
+    && bucket.fileSizeLimit50Mb
+    && bucket.storageObjectCount === 0
+    && bucket.legacyPolicyCount === 3
+    && bucket.exact0050PolicyCount === 0;
+  return absentCreatePath || compatibleLegacyAdoptionPath;
 }
 
 async function buildStatus(client, plan, sourceModel) {
@@ -715,15 +740,9 @@ function baselineValid(status) {
     && status.history.canonicalMissing0020Through0048.length === 29
     && status.history.unmappedRowsPreserved
     && status.history.history0050Absent
-    && status.migration0050.nonBucketObjectPresentCount === 0
+    && status.migration0050.pdf50SpecificObjectPresentCount === 0
     && status.migration0050.exact0050PolicyPresentCount === 0
-    && status.bucket.exists
-    && status.bucket.private
-    && status.bucket.pdfOnly
-    && status.bucket.fileSizeLimit50Mb
-    && status.bucket.legacyPolicyCount === 3
-    && status.bucket.exact0050PolicyCount === 0
-    && status.bucket.storageObjectCount === 0;
+    && bucketReadyFor0050(status.bucket);
 }
 
 function reconciledValid(status) {
@@ -733,13 +752,9 @@ function reconciledValid(status) {
     && status.history.unmappedRowsPreserved
     && status.history.history0050Absent
     && status.history.nextPendingCanonicalMigration === "0049_practice_agent_provider_routing.sql"
-    && status.migration0050.nonBucketObjectPresentCount === 0
+    && status.migration0050.pdf50SpecificObjectPresentCount === 0
     && status.migration0050.exact0050PolicyPresentCount === 0
-    && status.bucket.exists
-    && status.bucket.private
-    && status.bucket.pdfOnly
-    && status.bucket.legacyPolicyCount === 3
-    && status.bucket.exact0050PolicyCount === 0;
+    && bucketReadyFor0050(status.bucket);
 }
 
 async function repair(client, plan, sourceModel) {
@@ -748,7 +763,7 @@ async function repair(client, plan, sourceModel) {
   assert(beforeStatus.history.unmappedRowsPreserved, "Unmapped legacy rows are missing.");
   assert(beforeStatus.history.history0050Absent, "0050 history must be absent.");
   assert(!beforeStatus.migration0050.hardened0050Executed, "0050 appears to have executed.");
-  assert(beforeStatus.bucket.exists && beforeStatus.bucket.private && beforeStatus.bucket.pdfOnly, "Compatible ai-import-sources bucket is missing.");
+  assert(bucketReadyFor0050(beforeStatus.bucket), "Pre-0050 source bucket state is neither absent nor compatible legacy.");
 
   const beforeRows = await rowCountFingerprint(client);
   const missingVersions = beforeStatus.history.canonicalMissing0020Through0048;

@@ -2,7 +2,9 @@
 
 > **PRE-SEQUENCE-RECONCILIATION EVIDENCE.** This clone history result predates
 > the canonical Practice `0049` and PDF50 `0050` ordering. It remains
-> historical evidence only; it cannot validate the reconciled chain.
+> historical evidence only; it cannot validate the reconciled chain. The current
+> mixed-history reconciliation plus sequential apply is superseded by
+> `docs/security/pdf50-local-0049-0050-upgrade-evidence.md`.
 
 Final classification: **LOCAL_CLONE_HISTORY_RECONCILED_THROUGH_0048**
 
@@ -103,7 +105,8 @@ Final history model:
 | Canonical exact matches | 29 |
 | Unmapped rows | 2 |
 | Canonical head | `0048` |
-| Next pending canonical migration | `0049_pdf50_burst_upload_admission.sql` |
+| Historical next pending canonical migration | `0049_pdf50_burst_upload_admission.sql` |
+| Current superseding next pending after repair | `0049_practice_agent_provider_routing.sql` |
 
 Sanitized fingerprints:
 
@@ -123,6 +126,7 @@ The repair script was run a second time.
 | Schema fingerprint changed | No |
 | Storage metadata changed | No |
 | Synthetic row counts changed | No |
-| Next pending canonical migration | `0049_pdf50_burst_upload_admission.sql` |
+| Historical next pending canonical migration | `0049_pdf50_burst_upload_admission.sql` |
+| Current superseding next pending after repair | `0049_practice_agent_provider_routing.sql` |
 
 Provider calls remained zero for the full rehearsal.

@@ -2,8 +2,8 @@
 
 > **PRE-SEQUENCE-RECONCILIATION EVIDENCE.** This is preserved evidence for the
 > prior PDF50 `0049` candidate. Main subsequently retained Practice routing as
-> canonical `0049`, and PDF50 moved to `0050`. This run cannot validate the
-> current `0049` to `0050` chain; fresh local reruns are required.
+> canonical `0049`, and PDF50 moved to `0050`. This run is superseded by
+> `docs/security/pdf50-local-fresh-chain-0050-evidence.md`.
 
 Date: 2026-07-21
 

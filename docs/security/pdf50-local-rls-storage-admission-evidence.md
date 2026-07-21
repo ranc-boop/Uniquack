@@ -2,7 +2,9 @@
 
 > **PRE-SEQUENCE-RECONCILIATION EVIDENCE.** This previous PDF50 `0049` run is
 > preserved as historical validation only. The canonical Practice `0049` then
-> PDF50 `0050` path must be rerun before any readiness claim.
+> PDF50 `0050` path is now superseded by
+> `docs/security/pdf50-local-0049-0050-upgrade-evidence.md` and
+> `docs/security/pdf50-local-0050-bucket-adoption-evidence.md`.
 
 Date: 2026-07-21
 
