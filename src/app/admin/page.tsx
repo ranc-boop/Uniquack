@@ -8,6 +8,13 @@ import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import { Button } from "@/components/ui/button";
 
+const experienceLinks = [
+  { href: "/teacher", label: "Teacher Studio" },
+  { href: "/practice", label: "Student Practice" },
+  { href: "/questions", label: "Question Bank" },
+  { href: "/videos", label: "Student Videos" },
+];
+
 const cards = [
   {
     href: "/admin/review",
@@ -54,7 +61,6 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   return (
     <div className="space-y-4">
       <AdminPageHeader
-        description="Manage the admin workspace."
         eyebrow="Admin"
         help="Review drafts, manage content, run imports, and keep the question library ready for teachers and students."
         helpLabel="Admin dashboard details"
@@ -73,24 +79,50 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           </FormSubmitButton>
         </form>
       </AdminCard>
-      <div className="grid gap-4 md:grid-cols-2">
-        {cards.map((card) => (
-          <AdminCard
-            actions={
-              <AdminActionGroup
-                primary={
-                  <Button asChild size="sm">
-                    <Link href={card.href}>Open</Link>
-                  </Button>
-                }
-              />
-            }
-            description={card.body}
-            key={card.href}
-            title={card.title}
-          />
-        ))}
-      </div>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Platform operations</h2>
+          <span className="text-sm text-muted-foreground">Manage</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {cards.map((card) => (
+            <AdminCard
+              actions={
+                <AdminActionGroup
+                  primary={
+                    <Button asChild size="sm">
+                      <Link href={card.href}>Open</Link>
+                    </Button>
+                  }
+                />
+              }
+              description={card.body}
+              key={card.href}
+              title={card.title}
+            />
+          ))}
+        </div>
+      </section>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Product experience</h2>
+          <span className="text-sm text-muted-foreground">Inspect</span>
+        </div>
+        <AdminCard
+          description="Open the product as a teacher or student."
+          help="These shortcuts preserve the admin role while letting you inspect the teacher and student experiences without leaving the admin workspace."
+          helpLabel="Experience shortcuts"
+          title="Teacher and student entry points"
+        >
+          <div className="flex flex-wrap gap-2">
+            {experienceLinks.map((link) => (
+              <Button asChild key={link.href} size="sm" variant="outline">
+                <Link href={link.href}>{link.label}</Link>
+              </Button>
+            ))}
+          </div>
+        </AdminCard>
+      </section>
     </div>
   );
 }

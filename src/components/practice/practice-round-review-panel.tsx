@@ -1,7 +1,6 @@
 "use client";
 
 import { FeedbackText } from "@/components/math-content";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +9,7 @@ import type { PracticeReviewResponse } from "@/lib/practice/types";
 
 export function PracticeRoundReviewPanel({
   isPending,
+  isStreaming,
   nextRoundNote,
   onNextRoundNoteChange,
   onQuestionCountChange,
@@ -18,6 +18,7 @@ export function PracticeRoundReviewPanel({
   review,
 }: {
   isPending: boolean;
+  isStreaming: boolean;
   nextRoundNote: string;
   onNextRoundNoteChange: (value: string) => void;
   onQuestionCountChange: (value: number) => void;
@@ -31,9 +32,14 @@ export function PracticeRoundReviewPanel({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="text-xl">Round review</CardTitle>
+            {isStreaming ? (
+              <p aria-live="polite" className="mt-2 flex items-center gap-2 text-sm text-slate-500" role="status">
+                <span aria-hidden="true" className="size-2 animate-pulse rounded-full bg-sky-500" />
+                Reviewing your answers…
+              </p>
+            ) : null}
             <FeedbackText className="mt-2 border-none bg-transparent p-0 text-slate-600" compact value={review.summary} />
           </div>
-          <Badge variant="outline">{review.mode}</Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -50,12 +56,6 @@ export function PracticeRoundReviewPanel({
                 />
               ))}
             </div>
-          </div>
-        ) : null}
-        {review.memoryUpdate?.sessionMemoryNote ? (
-          <div className="rounded-lg border border-amber-100 bg-amber-50/70 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Memory note</p>
-            <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-amber-950" compact value={review.memoryUpdate.sessionMemoryNote} />
           </div>
         ) : null}
         <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-4">

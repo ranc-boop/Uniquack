@@ -471,7 +471,6 @@ export default async function AdminQuestionsPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Manage the official question bank."
         eyebrow="Content management"
         help="Search, filter, edit, and maintain the official question bank. Publishing still flows through explicit admin review."
         helpLabel="Question bank details"
@@ -481,12 +480,7 @@ export default async function AdminQuestionsPage({
       {!focusedQuestionId ? (
       <details className="rounded-lg border bg-card p-5 shadow-sm">
         <summary className="cursor-pointer list-none">
-          <div className="space-y-1">
-            <p className="text-base font-semibold">Create question</p>
-            <p className="text-sm text-muted-foreground">
-              Open this panel only when adding a new manual question.
-            </p>
-          </div>
+          <p className="text-base font-semibold">Create question</p>
         </summary>
         <div className="mt-4 rounded-md border bg-background p-4">
           <form
@@ -549,9 +543,6 @@ export default async function AdminQuestionsPage({
                 placeholder="<p>Question stem placeholder</p>"
                 required
               />
-              <p className="text-xs text-muted-foreground">
-                HTML is sanitized on save before public rendering.
-              </p>
             </div>
             <div className="space-y-2 md:col-span-2">
               <QuestionHtmlEditor
@@ -596,7 +587,6 @@ export default async function AdminQuestionsPage({
       <AdminCard
         compact
         title="Content library filters"
-        description="Search the official question bank without loading full question bodies until you open edit mode."
       >
           <form className="grid gap-3 md:grid-cols-[1.5fr_1fr_auto]">
             <div className="space-y-2">
@@ -633,10 +623,6 @@ export default async function AdminQuestionsPage({
             <div className="space-y-3 rounded-md border p-3 md:col-span-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Taxonomy tags</p>
-                <p className="text-xs text-muted-foreground">
-                  Filter by official curriculum, concept, method, task, and form
-                  assignments.
-                </p>
               </div>
               <TaxonomyTagTreePicker
                 namePrefix="tax"
@@ -698,20 +684,10 @@ export default async function AdminQuestionsPage({
                   ) : null}
                 </div>
               ) : null}
-              {!taxonomySearchMessage &&
-              taxonomyAssignmentsByQuestionId.size === 0 ? (
-                <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                  No taxonomy assignments are present on this result page.
-                </p>
-              ) : null}
             </div>
           </form>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            <p>
-              Showing {filteredQuestions.length} questions from a page size of{" "}
-              {ADMIN_QUESTION_PAGE_SIZE}. Use search, filters, or the next page
-              to find more. Total matching questions: {totalQuestions}.
-            </p>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+            <p className="font-medium">{totalQuestions} results</p>
             <div className="flex items-center gap-2">
               <Button asChild disabled={page <= 1} size="sm" variant="outline">
                 <Link href={pageHref(params, Math.max(1, page - 1))}>
@@ -784,7 +760,6 @@ export default async function AdminQuestionsPage({
       ) : (
       <AdminCard
         title="Question library"
-        description="Manage matching questions in bounded pages. Open edit mode for full content, taxonomy, assets, and source files."
         badge={<AdminStatusBadge status="info">{totalQuestions} matching</AdminStatusBadge>}
         contentClassName="p-0"
       >
@@ -796,9 +771,6 @@ export default async function AdminQuestionsPage({
           <input type="hidden" name="return_to" value={currentPath} />
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <AdminStatusBadge status="pending">Bulk actions</AdminStatusBadge>
-            <span className="text-xs text-muted-foreground">
-              Select rows below before applying a status update or delete action.
-            </span>
           </div>
           <AdminActionGroup
             secondary={
@@ -869,7 +841,7 @@ export default async function AdminQuestionsPage({
                         value={question.id}
                       />
                     </TableCell>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono text-sm">
                       {question.question_code}
                     </TableCell>
                     <TableCell>{question.title}</TableCell>

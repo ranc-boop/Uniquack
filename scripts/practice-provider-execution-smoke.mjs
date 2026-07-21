@@ -60,7 +60,7 @@ async function loadPracticeContext() {
 
 function assertAuthorizedBeforeResolver(route, routeName) {
   const authGuard = route.indexOf("if (auth.response)");
-  const resolver = route.indexOf("loadPracticeAIProfile()");
+  const resolver = route.search(/loadPracticeAIProfile\s*\(/);
 
   assert(authGuard >= 0, `${routeName} must deny anonymous callers`);
   assert(resolver > authGuard, `${routeName} must authorize the caller before provider service-role resolution`);
@@ -81,6 +81,9 @@ const [
   hintRoute,
   titleRoute,
   mergeRoute,
+  sessionsRoute,
+  practiceLoader,
+  practiceBoundary,
 ] = await Promise.all([
   read("src/lib/practice/ai.ts"),
   read("src/lib/ai-providers/profiles.ts"),
@@ -95,13 +98,19 @@ const [
   read("src/app/api/practice/hint/route.ts"),
   read("src/app/api/practice/sessions/title/route.ts"),
   read("src/app/api/practice/preferences/merge/run/route.ts"),
+  read("src/app/api/practice/sessions/route.ts"),
+  read("src/components/practice/practice-agent-loader.tsx"),
+  read("src/components/practice/practice-workspace-error-boundary.tsx"),
 ]);
 
 assert(
   ai.includes("listEnabledAIProviderProfilesForServerUse") &&
     ai.includes("loadAIProviderProfileForServerUse") &&
+    ai.includes("resolveAIProviderRoute") &&
+    ai.includes("runWithAIProviderRoute") &&
+    ai.includes('operationKind: "practice_generation"') &&
     !ai.includes("listEnabledAIProviderProfiles(supabase)"),
-  "Practice must resolve enabled profiles and credentials through server-only service-role helpers",
+  "Practice must resolve enabled profiles through the current server-side provider router",
 );
 assert(
   ai.includes("compatible.find((profile) => profile.is_default)") &&
@@ -117,9 +126,10 @@ assert(
 assert(
   profiles.includes("listEnabledAIProviderProfilesForServerUse") &&
     profiles.includes("createServiceRoleClient") &&
+    profiles.includes("organization_id") &&
     profiles.includes('.eq("enabled", true)') &&
     profiles.includes("loadAIProviderProfileForServerUse"),
-  "server-use resolver must validate enabled profiles before decrypting credentials",
+  "server-use resolver must validate enabled and scoped profiles before decrypting credentials",
 );
 
 assertAuthorizedBeforeResolver(recommendRoute, "recommend route");
@@ -159,8 +169,33 @@ assert(
 assert(
   client.includes("function parsePracticeSsePayload") &&
     client.includes("A live practice update could not be read") &&
+    client.includes("parseSseEvents(done ? `${buffer}\\n\\n` : buffer)") &&
+    client.includes("appendRoundReviewDelta") &&
+    client.includes("requestAnimationFrame") &&
     !client.includes("JSON.parse(item.data)"),
-  "malformed browser SSE payloads must become safe retryable failures",
+  "browser SSE updates must flush final events and batch safe retryable rendering",
+);
+assert(
+  sessionsRoute.includes('searchParams.get("includeActive")') &&
+    sessionsRoute.includes('includeActive && sessions[0]') &&
+    client.includes("/api/practice/sessions?includeActive=0"),
+  "session refreshes must avoid duplicate active-session detail loads when a session is already selected",
+);
+assert(
+  client.includes("function isReusableEmptyPracticeSession") &&
+    client.includes("session.roundCount === 0") &&
+    client.includes("session.sessionThreadMessages?.length") &&
+    client.includes("handedOffToSessionSwitch") &&
+    client.includes("switchSession(reusableSession.id)"),
+  "new-session actions must reuse a compatible empty thread and hand off through the normal session switch flow",
+);
+assert(
+  practiceLoader.includes("PracticeWorkspaceErrorBoundary") &&
+    practiceBoundary.includes("Your saved sessions and submitted work have not been removed") &&
+    client.includes("workspaceLoading") &&
+    client.includes("sessionAction") &&
+    client.includes("isReviewStreaming"),
+  "Practice must preserve a recoverable workspace state while loading, switching, and reviewing",
 );
 assert(
   !gradeRoute.includes("loadPracticeAIProfile") &&

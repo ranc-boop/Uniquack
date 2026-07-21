@@ -71,7 +71,9 @@ export async function POST(request: Request) {
     });
 
     try {
-      const profile = await loadPracticeAIProfile();
+      const profile = await loadPracticeAIProfile({
+        requestId: `hint:${body.sessionId ?? questionId}`,
+      });
       const systemPrompt = await loadPracticePrompt("hint-system");
       const aiResult = await traced({
         inputSummary: `DS hint call for ${question.questionCode}, level ${hintLevel}.`,

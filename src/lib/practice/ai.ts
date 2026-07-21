@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import {
   getAiProviderCapabilities,
   inferAiProviderMode,
@@ -15,7 +17,14 @@ import {
   loadAIProviderProfileForServerUse,
   type SafeAIProviderProfile,
 } from "@/lib/ai-providers/profiles";
+import {
+  AIProviderRoutingSchemaMissingError,
+  resolveAIProviderRoute,
+  runWithAIProviderRoute,
+  type AIProviderRoute,
+} from "@/lib/ai-providers/routing";
 import { writePracticeFullCallLog } from "@/lib/practice/context";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
 const PRACTICE_AGENT_TIMEOUT_MS = 45_000;
 
@@ -58,6 +67,31 @@ export type PracticeChatModelResult = {
 };
 
 type LoadedProfile = Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>;
+
+type PracticeRouteContext = {
+  leaseOwner: string;
+  route: AIProviderRoute;
+  supabase: any;
+};
+
+type PracticeChatModelArgs = {
+  debugContext?: Record<string, unknown>;
+  messages: PracticeChatMessage[];
+  profile: LoadedProfile;
+  responseFormatJson?: boolean;
+  toolChoice?: "auto" | "none" | { type: "function"; function: { name: string } };
+  tools?: PracticeToolDefinition[];
+};
+
+type PracticeChatModelStreamArgs = {
+  debugContext?: Record<string, unknown>;
+  messages: PracticeChatMessage[];
+  onDelta: (text: string) => void | Promise<void>;
+  profile: LoadedProfile;
+  toolChoice?: "auto" | "none" | { type: "function"; function: { name: string } };
+};
+
+const practiceRouteContexts = new WeakMap<object, PracticeRouteContext>();
 
 function endpoint(baseUrl: string) {
   return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -102,22 +136,55 @@ function asPracticeProviderError(error: unknown) {
   });
 }
 
-export async function loadPracticeAIProfile() {
-  // Practice callers authenticate before reaching this resolver. Provider
-  // selection stays in server-only service-role code, never in a caller's
-  // session or the super-admin management gateway.
-  const safeProfiles = await listEnabledAIProviderProfilesForServerUse();
-  const selected = pickPracticeProfile(safeProfiles);
+export async function loadPracticeAIProfile({
+  organizationId = null,
+  requestId = "practice-agent",
+}: {
+  organizationId?: string | null;
+  requestId?: string;
+} = {}) {
+  // Practice routes authenticate the signed-in user before reaching this
+  // resolver. Provider selection and key decryption remain server-only; the
+  // browser can submit a session/thread id but never a provider id or key.
+  const routingSupabase = createServiceRoleClient();
 
-  if (!selected) {
-    throw new AIProviderError({
-      code: "provider_configuration_error",
-      operation: "practice_generation",
-      retryable: false,
+  try {
+    const route = await resolveAIProviderRoute({
+      operationKind: "practice_generation",
+      organizationId,
+      supabase: routingSupabase,
     });
-  }
+    const profile = await loadAIProviderProfileForServerUse({
+      profileId: route.candidates[0].profile.id,
+    });
 
-  return loadAIProviderProfileForServerUse({ profileId: selected.id });
+    practiceRouteContexts.set(profile, {
+      leaseOwner: `practice:${requestId}:${randomUUID()}`.slice(0, 160),
+      route,
+      supabase: routingSupabase,
+    });
+    return profile;
+  } catch (error) {
+    // Keep Practice usable while the forward-only routing migration is being
+    // rolled out. Once routing is installed, every provider call uses the
+    // durable route above; this fallback only preserves the existing default
+    // profile behavior during schema rollout.
+    if (!(error instanceof AIProviderRoutingSchemaMissingError)) {
+      throw error;
+    }
+
+    const safeProfiles = await listEnabledAIProviderProfilesForServerUse();
+    const selected = pickPracticeProfile(safeProfiles);
+    if (!selected) {
+      throw new AIProviderError({
+        code: "provider_configuration_error",
+        operation: "practice_generation",
+        retryable: false,
+      });
+    }
+
+    return loadAIProviderProfileForServerUse({ profileId: selected.id });
+  }
 }
 
 export function parsePracticeToolArguments(value: string) {
@@ -146,21 +213,14 @@ function isDeepSeekProfile(profile: LoadedProfile) {
   return /deepseek/i.test([profile.provider, profile.name, profile.model, profile.base_url].join(" "));
 }
 
-export async function callPracticeChatModel({
+async function callPracticeChatModelOnce({
   debugContext,
   messages,
   profile,
   responseFormatJson,
   toolChoice,
   tools,
-}: {
-  debugContext?: Record<string, unknown>;
-  messages: PracticeChatMessage[];
-  profile: LoadedProfile;
-  responseFormatJson?: boolean;
-  toolChoice?: "auto" | "none" | { type: "function"; function: { name: string } };
-  tools?: PracticeToolDefinition[];
-}): Promise<PracticeChatModelResult> {
+}: PracticeChatModelArgs): Promise<PracticeChatModelResult> {
   const body = {
     messages,
     model: profile.model,
@@ -294,6 +354,24 @@ export async function callPracticeChatModel({
   };
 }
 
+export async function callPracticeChatModel(
+  args: PracticeChatModelArgs,
+): Promise<PracticeChatModelResult> {
+  const routeContext = practiceRouteContexts.get(args.profile);
+  if (!routeContext) {
+    return callPracticeChatModelOnce(args);
+  }
+
+  const routed = await runWithAIProviderRoute({
+    execute: (profile) => callPracticeChatModelOnce({ ...args, profile }),
+    leaseOwner: `${routeContext.leaseOwner}:chat`,
+    route: routeContext.route,
+    supabase: routeContext.supabase,
+  });
+
+  return routed.value;
+}
+
 function parseStreamEvents(buffer: string) {
   const parts = buffer.split(/\n\n/);
   const rest = parts.pop() ?? "";
@@ -307,19 +385,13 @@ function parseStreamEvents(buffer: string) {
   return { events, rest };
 }
 
-export async function callPracticeChatModelStream({
+async function callPracticeChatModelStreamOnce({
   debugContext,
   messages,
   onDelta,
   profile,
   toolChoice,
-}: {
-  debugContext?: Record<string, unknown>;
-  messages: PracticeChatMessage[];
-  onDelta: (text: string) => void | Promise<void>;
-  profile: LoadedProfile;
-  toolChoice?: "auto" | "none" | { type: "function"; function: { name: string } };
-}): Promise<PracticeChatModelResult> {
+}: PracticeChatModelStreamArgs): Promise<PracticeChatModelResult> {
   const body = {
     messages,
     model: profile.model,
@@ -442,6 +514,51 @@ export async function callPracticeChatModelStream({
     toolCalls: [],
     usage,
   };
+}
+
+export async function callPracticeChatModelStream(
+  args: PracticeChatModelStreamArgs,
+): Promise<PracticeChatModelResult> {
+  const routeContext = practiceRouteContexts.get(args.profile);
+  if (!routeContext) {
+    return callPracticeChatModelStreamOnce(args);
+  }
+
+  let emittedDelta = false;
+  const routed = await runWithAIProviderRoute({
+    execute: (profile) =>
+      callPracticeChatModelStreamOnce({
+        ...args,
+        onDelta: async (text) => {
+          emittedDelta = true;
+          await args.onDelta(text);
+        },
+        profile,
+      }).catch((error) => {
+        // Once a streaming response has reached the client, switching
+        // providers would concatenate two partial answers. Let the caller
+        // surface a safe retryable error instead of corrupting the thread.
+        if (!emittedDelta) {
+          throw error;
+        }
+
+        const classified = classifyAIProviderError({
+          error,
+          operation: "practice_generation",
+        });
+        throw new AIProviderError({
+          code: classified.code,
+          operation: "practice_generation",
+          retryable: false,
+          statusCode: classified.statusCode,
+        });
+      }),
+    leaseOwner: `${routeContext.leaseOwner}:stream`,
+    route: routeContext.route,
+    supabase: routeContext.supabase,
+  });
+
+  return routed.value;
 }
 
 export function buildAssistantMessageForToolContinuation(result: PracticeChatModelResult): PracticeChatMessage {

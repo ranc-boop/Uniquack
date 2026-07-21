@@ -1,5 +1,6 @@
 import { archivePracticeFramework, createPracticeFramework } from "@/app/admin/practice-frameworks/actions";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { PageFeedback } from "@/components/page-feedback";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +28,6 @@ export default async function PracticeFrameworksPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Manage practice frameworks."
         eyebrow="Practice"
         help="Upload course frameworks that constrain practice direction while still allowing personalized remediation."
         helpLabel="Practice framework details"
@@ -88,10 +88,15 @@ export default async function PracticeFrameworksPage({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-semibold">{framework.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{framework.description || "No description."}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {framework.status} / {framework.allowed_tag_ids?.length ?? 0} allowed tags
-                  </p>
+                  {framework.description ? (
+                    <p className="mt-1 text-sm text-muted-foreground">{framework.description}</p>
+                  ) : null}
+                  <div className="mt-2 flex items-center gap-2">
+                    <AdminStatusBadge status={framework.status} />
+                    <span className="sr-only">
+                      {framework.allowed_tag_ids?.length ?? 0} allowed tags
+                    </span>
+                  </div>
                 </div>
                 {framework.status === "active" ? (
                   <form action={archivePracticeFramework}>

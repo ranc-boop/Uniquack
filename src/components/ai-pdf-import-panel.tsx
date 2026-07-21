@@ -30,6 +30,8 @@ import {
 } from "@/app/admin/imports/pdf/actions";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminInfoTip } from "@/components/admin/admin-info-tip";
+import { AdminCompactNotice } from "@/components/admin/admin-compact-notice";
+import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { AIPdfSegmentationPlanner } from "@/components/ai-pdf-segmentation-planner";
@@ -320,11 +322,10 @@ function ThinkingIndicator({
           <LoaderCircle className="relative size-4 animate-spin text-primary" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">Thinking...</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {phaseLabel(phase)}
-            {detail ? ` - ${detail}` : ""}
-          </p>
+          <p className="text-sm font-medium">Processing</p>
+          <span className="sr-only">
+            {phaseLabel(phase)}{detail ? ` - ${detail}` : ""}
+          </span>
         </div>
         <div className="flex items-end gap-1" aria-hidden="true">
           {[0, 1, 2].map((index) => (
@@ -339,15 +340,12 @@ function ThinkingIndicator({
           ))}
         </div>
       </div>
-      <div className="space-y-2 px-3 py-3 text-xs text-muted-foreground">
-        <p>
-          AI is reading the full PDF context, identifying question boundaries,
-          matching tags, and preparing draft import records.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">reasoning</Badge>
-          <Badge variant="outline">{phaseLabel(phase)}</Badge>
-        </div>
+      <div className="flex items-center gap-2 px-3 py-3">
+        <AdminStatusBadge compact status="pending" />
+        <AdminInfoTip label="AI processing details">
+          <p>{phaseLabel(phase)}{detail ? ` · ${detail}` : ""}</p>
+          <p className="mt-2">AI is reading the PDF and preparing draft import records.</p>
+        </AdminInfoTip>
       </div>
     </div>
   );
@@ -355,25 +353,17 @@ function ThinkingIndicator({
 
 function BlueprintObservationCompletionCallout() {
   return (
-    <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
-      <div className="space-y-1">
-        <p className="font-medium">Blueprint observation completed</p>
-        <p>No questions were created by design.</p>
-        <p>
-          Next step: Open Blueprint Library to review extracted question
-          blueprints.
-        </p>
-      </div>
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+      <p className="font-medium">Blueprint ready</p>
       <Button asChild className="w-fit" size="sm" variant="outline">
         <Link href="/admin/blueprints">
           Open Blueprint Library
           <ExternalLink className="size-4" />
         </Link>
       </Button>
-      <p className="text-xs text-emerald-900/80">
-        Safety notes: no generated questions, no Review Draft writes, and no
-        official taxonomy writes happened during observation.
-      </p>
+      <AdminInfoTip label="Blueprint safety details" panelClassName="w-80">
+        No questions were created by design. Review Draft writes and official taxonomy writes are also blocked during observation.
+      </AdminInfoTip>
     </div>
   );
 }
@@ -396,18 +386,10 @@ function ReviewDraftHandoffCallout({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
       <div className="min-w-0 space-y-1">
-        <p className="font-medium">Review Drafts are ready</p>
-        <p className="text-xs text-sky-900/80">
-          {createdQuestionCount} draft question
-          {createdQuestionCount === 1 ? "" : "s"} from {sourceTitle}.
-        </p>
-        <p className="text-xs text-sky-900/80">
-          Provider: {providerName} / {model}. Warnings to check: {warningCount}.
-        </p>
-        <p className="text-xs text-sky-900/80">
-          AI-generated questions are private drafts until an admin reviews and
-          publishes them.
-        </p>
+        <p className="font-medium">Review Drafts are ready · {createdQuestionCount}</p>
+        <AdminInfoTip label="Generated draft details" panelClassName="w-80">
+          {sourceTitle} · {providerName} / {model} · {warningCount} warnings. AI-generated questions are private drafts until an admin reviews and publishes them.
+        </AdminInfoTip>
       </div>
       <Button asChild className="shrink-0" size="sm">
         <Link href={`/admin/review?batch=${batchId}`}>
@@ -1112,7 +1094,6 @@ export function AIPdfImportPanel({
                 blocking the UI.
               </AdminInfoTip>
             </div>
-            <p className="text-xs text-muted-foreground">Private PDF upload.</p>
           </div>
           <label
             htmlFor={fileInputId}
@@ -1147,10 +1128,9 @@ export function AIPdfImportPanel({
             onChange={uploadSelectedFile}
           />
         </div>
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          {uploading ? <LoaderCircle className="size-3 animate-spin" /> : null}
-          Available before provider setup. Limit: {AI_PDF_IMPORT_MAX_PAGES} pages / 50MB.
-        </p>
+        <AdminInfoTip label="Upload limits" panelClassName="w-80">
+          Upload is available before provider setup. Limit: {AI_PDF_IMPORT_MAX_PAGES} pages / 50MB.
+        </AdminInfoTip>
       </form>
 
       {operation ? (
@@ -1167,22 +1147,16 @@ export function AIPdfImportPanel({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-medium">{operation.title}</p>
-              {operation.detail ? (
-                <p className="text-xs text-muted-foreground">
-                  {operation.detail}
-                </p>
-              ) : null}
-              {operation.batchId ? (
-                <p className="font-mono text-xs text-muted-foreground">
-                  {operation.batchId}
-                </p>
+              {operation.detail || operation.batchId ? (
+                <AdminInfoTip label="Operation details" panelClassName="w-96">
+                  <div className="space-y-1">
+                    {operation.detail ? <p>{operation.detail}</p> : null}
+                    {operation.batchId ? <p className="font-mono break-all">{operation.batchId}</p> : null}
+                  </div>
+                </AdminInfoTip>
               ) : null}
             </div>
-            <Badge
-              variant={operation.state === "failed" ? "outline" : "secondary"}
-            >
-              {operation.state === "running" ? "running" : operation.state}
-            </Badge>
+            <AdminStatusBadge status={operation.state} />
           </div>
           {statusSnapshot?.batch ? (
             (() => {
@@ -1212,24 +1186,30 @@ export function AIPdfImportPanel({
                   {isBlueprintObservationComplete ? (
                     <BlueprintObservationCompletionCallout />
                   ) : null}
-                  <div className="grid gap-2 rounded-md border bg-background px-3 py-2 text-xs md:grid-cols-3">
-                    <p>Batch: {statusSnapshot.batch.status}</p>
-                    <p>Phase: {display.phaseLabel}</p>
-                    <p>Import assets: {statusSnapshot.assets?.length ?? 0}</p>
-                    <p>Uploaded crops: {display.uploadedCropCount}</p>
-                    <p>Input: {display.inputStrategyLabel}</p>
-                    <p>
-                      Questions:{" "}
-                      {typeof ai.questionCount === "number"
-                        ? ai.questionCount
-                        : display.createdQuestionCount || "-"}
-                    </p>
-                    <p>Warnings: {warnings.debugWarnings.length}</p>
-                    {ai.detail ? (
-                      <p className="md:col-span-3">
-                        Detail: {String(ai.detail)}
-                      </p>
-                    ) : null}
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+                      <AdminStatusBadge compact status={statusSnapshot.batch.status} />
+                      <AdminInfoTip label={`Phase: ${display.phaseLabel}`}>
+                        <p>{display.phaseLabel}</p>
+                      </AdminInfoTip>
+                      {typeof ai.questionCount === "number" || display.createdQuestionCount > 0 ? (
+                        <span className="text-muted-foreground">
+                          {typeof ai.questionCount === "number" ? ai.questionCount : display.createdQuestionCount} drafts
+                        </span>
+                      ) : null}
+                      {warnings.visibleWarnings.length ? (
+                        <AdminStatusBadge compact status="warning" />
+                      ) : null}
+                      <AdminInfoTip label="Run details" panelClassName="w-96">
+                        <div className="space-y-1">
+                          <p>Batch: {statusSnapshot.batch.status}</p>
+                          <p>Assets: {statusSnapshot.assets?.length ?? 0} · Crops: {display.uploadedCropCount}</p>
+                          <p>Input: {display.inputStrategyLabel}</p>
+                          <p>Warnings: {warnings.debugWarnings.length}</p>
+                          {ai.detail ? <p>{String(ai.detail)}</p> : null}
+                        </div>
+                      </AdminInfoTip>
+                    </div>
                     {display.failedWithoutDrafts ? (
                       <div className="space-y-1 text-destructive md:col-span-3">
                         {display.failureMessages.map((message) => (
@@ -1250,39 +1230,23 @@ export function AIPdfImportPanel({
                       </div>
                     ) : null}
                     {warnings.visibleWarnings.length ? (
-                      <div className="space-y-1 md:col-span-3">
-                        <p className="font-medium">Warnings</p>
-                        <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
-                          {warnings.visibleWarnings.map((warning) => (
-                            <li key={warning}>{warning}</li>
-                          ))}
-                        </ul>
-                        {warnings.debugWarnings.length !==
-                        warnings.visibleWarnings.length ? (
-                          <details className="rounded-md border bg-background p-2 text-muted-foreground">
-                            <summary className="cursor-pointer text-foreground">
-                              Debug details
-                            </summary>
-                            <ul className="mt-2 list-disc space-y-1 pl-4">
-                              {warnings.debugWarnings.map((warning, index) => (
-                                <li key={`${warning}-${index}`}>{warning}</li>
-                              ))}
-                            </ul>
-                          </details>
-                        ) : null}
+                      <div className="md:col-span-3">
+                        <AdminCompactNotice label={`${warnings.visibleWarnings.length} warnings`} tone="warning">
+                          <ul className="list-disc space-y-1 pl-4">
+                            {warnings.visibleWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+                            {warnings.debugWarnings.length !== warnings.visibleWarnings.length
+                              ? warnings.debugWarnings.slice(warnings.visibleWarnings.length).map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)
+                              : null}
+                          </ul>
+                        </AdminCompactNotice>
                       </div>
                     ) : null}
                     {ai.error ? (
-                      <div className="space-y-2 text-destructive md:col-span-3">
-                        <p>Error: {summarizeAIPdfError(ai.error)}</p>
-                        <details className="rounded-md border bg-background p-2 text-muted-foreground">
-                          <summary className="cursor-pointer text-foreground">
-                            Technical details
-                          </summary>
-                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap">
-                            {safeTechnicalDetail(ai.error)}
-                          </pre>
-                        </details>
+                      <div className="md:col-span-3">
+                        <AdminCompactNotice label="Import failed" tone="error">
+                          <p>{summarizeAIPdfError(ai.error)}</p>
+                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap">{safeTechnicalDetail(ai.error)}</pre>
+                        </AdminCompactNotice>
                       </div>
                     ) : null}
                   </div>
@@ -1298,23 +1262,16 @@ export function AIPdfImportPanel({
               phase={getAIPdfPhase(result?.summary)}
             />
           ) : null}
-          <ol className="space-y-1 text-xs text-muted-foreground">
-            {operation.steps.map((step, index) => (
-              <li key={`${step}-${index}`}>{step}</li>
-            ))}
-          </ol>
+          <AdminInfoTip label="Activity">
+            <ol className="space-y-1 pl-4">
+              {operation.steps.map((step, index) => <li key={`${step}-${index}`}>{step}</li>)}
+            </ol>
+          </AdminInfoTip>
           {operation.error ? (
-            <div className="space-y-2 rounded-md border border-destructive/30 bg-background p-3 text-xs text-destructive">
+            <AdminCompactNotice label="Operation failed" tone="error">
               <p>{summarizeAIPdfError(operation.error)}</p>
-              <details className="text-muted-foreground">
-                <summary className="cursor-pointer text-foreground">
-                  Technical details
-                </summary>
-                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap">
-                  {safeTechnicalDetail(operation.error)}
-                </pre>
-              </details>
-            </div>
+              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap">{safeTechnicalDetail(operation.error)}</pre>
+            </AdminCompactNotice>
           ) : null}
         </div>
       ) : null}
@@ -1330,7 +1287,6 @@ export function AIPdfImportPanel({
                 delete the private source PDF when it is no longer needed.
               </AdminInfoTip>
             </div>
-            <p className="text-xs text-muted-foreground">Pick a ready source.</p>
           </div>
           <Badge variant="secondary">{sourceChoices.length} files</Badge>
         </div>
@@ -1356,44 +1312,45 @@ export function AIPdfImportPanel({
                       >
                         {source.fileName}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatFileSize(source.sizeBytes)}
-                        {source.pageCount ? ` | ${source.pageCount} pages` : ""}
-                        {source.createdAt
-                          ? ` | ${new Date(source.createdAt).toLocaleString()}`
-                          : ""}
-                      </p>
+                      <AdminInfoTip label="Source file details" panelClassName="w-80">
+                        <div className="space-y-1">
+                          <p>{formatFileSize(source.sizeBytes)}{source.pageCount ? ` · ${source.pageCount} pages` : ""}</p>
+                          {source.createdAt ? <p>{new Date(source.createdAt).toLocaleString()}</p> : null}
+                          <p className="font-mono break-all">Batch: {source.batchId}</p>
+                        </div>
+                      </AdminInfoTip>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <Badge variant="secondary">
-                      source: {source.assetStatus ?? "-"}
-                    </Badge>
-                    <Badge
-                      variant={
-                        source.status === "failed" ? "outline" : "secondary"
-                      }
-                    >
-                      batch: {source.status}
-                    </Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <AdminStatusBadge compact status={source.assetStatus} />
+                    <AdminStatusBadge compact status={source.status} />
                     {source.status === "imported" ? (
-                      <Badge variant="outline">questions kept after delete</Badge>
+                      <AdminInfoTip label="Questions retained">
+                        Existing generated questions stay after the private source is deleted.
+                      </AdminInfoTip>
                     ) : null}
                     {(source.createdQuestionCount ?? 0) > 0 ? (
-                      <Badge variant="outline">
-                        generated drafts: {source.createdQuestionCount}
+                      <Badge
+                        aria-label={`${source.createdQuestionCount} generated drafts`}
+                        className="size-7 justify-center rounded-full p-0"
+                        title={`${source.createdQuestionCount} generated drafts`}
+                        variant="outline"
+                      >
+                        <FileText aria-hidden="true" className="size-3.5" />
+                        <span className="sr-only">{source.createdQuestionCount} drafts</span>
                       </Badge>
                     ) : null}
                   </div>
                   {!extractable && resettable ? (
-                    <p className="text-xs text-muted-foreground">
+                    <AdminInfoTip label="Extraction unavailable">
                       Reset generated drafts before extracting this PDF again.
-                    </p>
+                    </AdminInfoTip>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
                       size="sm"
+                      aria-label={isSelected ? "Selected source" : "Use for extraction"}
                       variant={isSelected ? "default" : "outline"}
                       disabled={!extractable || extracting}
                       onClick={() => selectSource(source)}
@@ -1403,6 +1360,8 @@ export function AIPdfImportPanel({
                     <Button
                       type="button"
                       size="sm"
+                      aria-label="Reset generated drafts"
+                      title="Reset generated drafts"
                       variant="outline"
                       disabled={
                         !resettable ||
@@ -1416,11 +1375,13 @@ export function AIPdfImportPanel({
                       ) : (
                         <RotateCcw className="size-4" />
                       )}
-                      Reset generated drafts
+                      <span className="sr-only">Reset generated drafts</span>
                     </Button>
                     <Button
                       type="button"
                       size="sm"
+                      aria-label="Open PDF"
+                      title="Open PDF"
                       variant="outline"
                       disabled={
                         source.assetStatus !== "ready" ||
@@ -1433,11 +1394,13 @@ export function AIPdfImportPanel({
                       ) : (
                         <ExternalLink className="size-4" />
                       )}
-                      Open PDF
+                      <span className="sr-only">Open PDF</span>
                     </Button>
                     <Button
                       type="button"
+                      aria-label="Delete private source"
                       size="sm"
+                      title="Delete private source"
                       variant="destructive"
                       disabled={
                         !source.canDelete ||
@@ -1452,7 +1415,7 @@ export function AIPdfImportPanel({
                       ) : (
                         <Trash2 className="size-4" />
                       )}
-                      Delete
+                      <span className="sr-only">Delete</span>
                     </Button>
                   </div>
                 </div>
@@ -1466,24 +1429,14 @@ export function AIPdfImportPanel({
             title="No uploaded AI PDF sources yet"
           />
         )}
-        <div className="rounded-md border bg-background/70 p-3 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <p className="font-medium text-foreground">File binding model</p>
-            <AdminInfoTip label="File binding model details">
-              <p>
-                Source PDFs are private import-level assets:
-                import_batch_assets.source_pdf -&gt; import_batches.id. They
-                are not bound to any question before extraction.
-              </p>
-              <p className="mt-2">
-                After AI extraction creates draft questions, only confirmed
-                image crops are uploaded as question_assets and bound to
-                questions.id for preview, delete, and detail-page display.
-              </p>
-            </AdminInfoTip>
-          </div>
-          <p>Private source first, question assets after extraction.</p>
-        </div>
+        <AdminInfoTip label="File binding model" panelClassName="w-96">
+          <p>
+            Source PDFs are private import-level assets and are not bound to a question before extraction.
+          </p>
+          <p className="mt-2">
+            After extraction, confirmed image crops are stored as question assets for previews and detail pages.
+          </p>
+        </AdminInfoTip>
       </div>
 
       <form
@@ -1502,7 +1455,6 @@ export function AIPdfImportPanel({
               creating questions.
             </AdminInfoTip>
           </div>
-          <p className="text-xs text-muted-foreground">Select provider and mode.</p>
         </div>
         <div className="grid gap-4 xl:grid-cols-[1fr_1fr_0.9fr_auto]">
           <div className="space-y-2">
@@ -1587,16 +1539,11 @@ export function AIPdfImportPanel({
                 </option>
               ))}
             </select>
-            {providerOptions.length && !extractableProviderOptions.length ? (
-              <p className="text-xs text-destructive">
-                {providerOptions[0]?.support.reason ??
-                  "No enabled provider supports PDF/image extraction."}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Only supported PDF/image providers are enabled.
-              </p>
-            )}
+            <AdminInfoTip label="Provider availability">
+              {providerOptions.length && !extractableProviderOptions.length
+                ? providerOptions[0]?.support.reason ?? "No enabled provider supports PDF/image extraction."
+                : "Only supported PDF/image providers are enabled."}
+            </AdminInfoTip>
           </div>
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -1639,11 +1586,6 @@ export function AIPdfImportPanel({
                 <option value="page_image_chunks">Page-image chunks</option>
               )}
             </select>
-            <p className="text-xs text-muted-foreground">
-              {selectedProviderUsesFullPdf
-                ? "Full PDF or observation mode."
-                : "Page-image chunk mode."}
-            </p>
           </div>
           {selectedProviderUsesFullPdf && executionMode === "blueprint_observation" ? (
             <div className="space-y-2">
@@ -1674,9 +1616,9 @@ export function AIPdfImportPanel({
                 <option value="fast">Fast</option>
                 <option value="quality">Quality</option>
               </select>
-              <p className="text-xs text-muted-foreground">
+              <AdminInfoTip label="Analysis model details">
                 Analysis model only.
-              </p>
+              </AdminInfoTip>
             </div>
           ) : null}
           <div className="flex items-end">
@@ -1701,16 +1643,16 @@ export function AIPdfImportPanel({
           </div>
         </div>
         {selectedSource ? (
-          <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">
-            Source batch: <span className="font-mono">{selectedSource.batchId}</span>
-            {" | "}
-            File: {selectedSource.fileName}
-            {selectedSource.pageCount ? ` | Pages: ${selectedSource.pageCount}` : ""}
-          </div>
+          <AdminInfoTip label="Selected source details" panelClassName="w-96">
+            <div className="space-y-1">
+              <p>{selectedSource.fileName}{selectedSource.pageCount ? ` · ${selectedSource.pageCount} pages` : ""}</p>
+              <p className="font-mono break-all">{selectedSource.batchId}</p>
+            </div>
+          </AdminInfoTip>
         ) : (
-          <p className="text-xs text-muted-foreground">
+          <AdminInfoTip label="Source required">
             Upload a PDF source before starting AI extraction.
-          </p>
+          </AdminInfoTip>
         )}
         {selectedSource?.pageCount &&
         selectedProviderUsesFullPdf &&
@@ -1740,11 +1682,9 @@ export function AIPdfImportPanel({
           <ThinkingIndicator detail={activeDetail} phase={activePhase} />
         ) : null}
         {!extractableProviderOptions.length ? (
-          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            PDF upload is available. AI extraction is waiting for a super admin
-            to configure an enabled provider that supports page-image or native
-            PDF extraction.
-          </p>
+          <AdminCompactNotice label="No extraction provider" tone="warning">
+            PDF upload is available. A super admin must configure an enabled provider that supports page-image or native PDF extraction.
+          </AdminCompactNotice>
         ) : null}
       </form>
     </div>

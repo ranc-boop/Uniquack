@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { AdminCard } from "@/components/admin/admin-card";
+import { AdminCompactNotice } from "@/components/admin/admin-compact-notice";
+import { AdminInfoTip } from "@/components/admin/admin-info-tip";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import {
@@ -24,7 +26,15 @@ function aiSummary(summary: unknown) {
     : {};
 }
 
-export default async function AdminAIPdfImportPage() {
+type AdminAIPdfImportPageProps = {
+  searchParams: Promise<{ view?: string }>;
+};
+
+export default async function AdminAIPdfImportPage({
+  searchParams,
+}: AdminAIPdfImportPageProps) {
+  const params = await searchParams;
+  const showImport = params.view === "new";
   const profile = await requireAdmin();
   const supabase = await createClient();
   const canViewAllImports = profile.role === "super_admin";
@@ -196,6 +206,11 @@ export default async function AdminAIPdfImportPage() {
       <AdminPageHeader
         actions={
           <>
+          <Button asChild>
+            <Link href={showImport ? "/admin/imports/pdf" : "/admin/imports/pdf?view=new"}>
+              {showImport ? "Run history" : "New import"}
+            </Link>
+          </Button>
           <Button asChild variant="outline">
             <Link href="/admin/imports">Back to imports</Link>
           </Button>
@@ -206,7 +221,6 @@ export default async function AdminAIPdfImportPage() {
           ) : null}
           </>
         }
-        description="Upload private PDFs for AI parsing."
         eyebrow="AI Parsing"
         help="Run configured multimodal providers against private source PDFs. Normal extraction creates draft questions, while blueprint observation creates reviewable blueprint metadata."
         helpLabel="AI PDF Import details"
@@ -214,70 +228,62 @@ export default async function AdminAIPdfImportPage() {
       />
 
       <AdminCard
-        badge={<AdminStatusBadge status="info">AI Parsing</AdminStatusBadge>}
-        description="Five-step draft-safe flow."
-        help="Upload a private source, choose an approved provider path, and keep every output in draft or planning review until an admin approves it."
+        badge={<AdminStatusBadge compact status="info" />}
+        help="The import remains private and draft-safe. Normal extraction creates draft questions; blueprint observation creates reviewable planning metadata without questions."
         helpLabel="AI parsing workflow details"
-        title="AI parsing workflow"
+        title={showImport ? "New AI import" : "AI parsing workflow"}
       >
-        <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-5">
-          {[
-            ["1", "Upload private PDF"],
-            ["2", "Choose source and provider"],
-            ["3", "Run extraction or blueprint observation"],
-            ["4", "Review dashboard status"],
-            ["5", "Open Review Drafts or Blueprint Library"],
-          ].map(([step, label]) => (
-            <div
-              className="rounded-md border bg-muted/20 p-3 leading-6"
-              key={step}
-            >
-              <span className="mb-2 inline-flex size-6 items-center justify-center rounded-full border bg-background text-xs font-semibold text-foreground">
-                {step}
-              </span>
-              <p>{label}</p>
-            </div>
-          ))}
-        </div>
-      </AdminCard>
-
-      <AdminCard
-        badge={<AdminStatusBadge status="draft">Draft-only</AdminStatusBadge>}
-        description="Drafts or observation metadata only."
-        help="Source files stay private. Normal extraction creates draft questions; blueprint observation creates reviewable planning metadata without questions."
-        helpLabel="AI PDF draft behavior"
-        title="Import PDF with AI"
-      >
-        <div>
+        {showImport ? (
+          <div>
           {providerError ? (
-            <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              AI provider configuration is not available yet. Apply the AI PDF
-              import migration and configure a provider in AI Settings.
-            </p>
+            <AdminCompactNotice className="mb-4" label="Provider unavailable" tone="error">
+              AI provider configuration is not available yet. Configure an enabled provider in AI Settings.
+            </AdminCompactNotice>
           ) : null}
           {profile.role !== "super_admin" ? (
-            <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Admins can upload private PDF sources here, but starting AI
-              extraction requires a super admin so provider API keys remain
-              server-side and token use is explicitly controlled.
-            </p>
+            <AdminCompactNotice className="mb-4" label="Super admin required to run" tone="warning">
+              Admins can upload private sources, but only a super admin can start extraction so provider keys remain server-side.
+            </AdminCompactNotice>
           ) : null}
           {sourceAssetsError ? (
-            <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              AI PDF source asset table is not available yet. Apply the latest
-              AI PDF import migration before uploading source PDFs.
-            </p>
+            <AdminCompactNotice className="mb-4" label="Source storage unavailable" tone="error">
+              The source asset table is unavailable. Contact an administrator before uploading.
+            </AdminCompactNotice>
           ) : null}
-          <p className="mb-4 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            {canViewAllImports
-              ? "Scope: all AI PDF imports."
-              : "Scope: your AI PDF imports."}
-          </p>
+          <div className="mb-4 flex items-center gap-2">
+            <AdminStatusBadge compact status="info" />
+            <AdminInfoTip label={canViewAllImports ? "All imports" : "Your imports"}>
+              <p>{canViewAllImports ? "Showing all AI PDF imports." : "Showing only your AI PDF imports."}</p>
+            </AdminInfoTip>
+          </div>
           <AIPdfImportPanelLoader providers={providers} sources={sourceOptions} />
-        </div>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Button asChild className="justify-start" variant="outline">
+              <Link href="/admin/imports/pdf?view=new">Upload source</Link>
+            </Button>
+            <Button asChild className="justify-start" variant="outline">
+              <Link href="/admin/review">Review drafts</Link>
+            </Button>
+            <Button asChild className="justify-start" variant="outline">
+              <Link href="/admin/blueprints">Blueprint Library</Link>
+            </Button>
+          </div>
+        )}
       </AdminCard>
 
-      <AIPdfControlDashboard batches={dashboardBatches} />
+      {!showImport ? (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight">Recent AI runs</h2>
+            <AdminInfoTip label="Recent AI runs">
+              <p>Open a run to inspect its review handoff, pipeline, and warnings.</p>
+            </AdminInfoTip>
+          </div>
+          <AIPdfControlDashboard batches={dashboardBatches} />
+        </section>
+      ) : null}
     </div>
   );
 }

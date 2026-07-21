@@ -8,6 +8,7 @@ type AdminPageHeaderProps = {
   breadcrumbs?: ReactNode;
   className?: string;
   description?: ReactNode;
+  descriptionMode?: "visible" | "tooltip";
   eyebrow?: string;
   help?: ReactNode;
   helpLabel?: string;
@@ -20,6 +21,7 @@ export function AdminPageHeader({
   breadcrumbs,
   className,
   description,
+  descriptionMode = "visible",
   eyebrow,
   help,
   helpLabel,
@@ -34,7 +36,7 @@ export function AdminPageHeader({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-2">
           {eyebrow ? (
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            <p className="sr-only">
               {eyebrow}
             </p>
           ) : null}
@@ -45,10 +47,15 @@ export function AdminPageHeader({
               </h1>
               {help ? <AdminInfoTip label={helpLabel}>{help}</AdminInfoTip> : null}
             </div>
-            {description ? (
+            {description && descriptionMode === "visible" ? (
               <div className="max-w-3xl text-sm leading-6 text-muted-foreground">
                 {description}
               </div>
+            ) : null}
+            {description && descriptionMode === "tooltip" && !help ? (
+              <AdminInfoTip label={helpLabel ?? "Page details"}>
+                {description}
+              </AdminInfoTip>
             ) : null}
           </div>
         </div>

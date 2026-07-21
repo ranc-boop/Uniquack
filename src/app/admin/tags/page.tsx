@@ -144,42 +144,30 @@ function TreeRow({
   const shouldOpen = Boolean(query) || level === 0;
 
   return (
-    <details className="group" open={shouldOpen}>
+    <details className="group relative" open={shouldOpen}>
       <summary
-        className="grid cursor-pointer list-none gap-2 rounded-md border bg-background px-3 py-2 text-sm transition hover:bg-muted/40 md:grid-cols-[1fr_auto]"
+        className="grid cursor-pointer list-none gap-2 rounded-md border bg-background px-3 py-2 pr-32 text-sm transition hover:bg-muted/40 md:grid-cols-[1fr_auto]"
+        title={node.description ? `${node.tag_id} · ${node.description}` : node.tag_id}
         style={{ marginLeft: `${level * 18}px` }}
       >
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground group-open:hidden">▸</span>
-            <span className="hidden text-xs text-muted-foreground group-open:inline">▾</span>
+            <span aria-hidden="true" className="text-sm text-muted-foreground group-open:hidden">▸</span>
+            <span aria-hidden="true" className="hidden text-sm text-muted-foreground group-open:inline">▾</span>
             <span className="font-medium">{displayLabel}</span>
             <Badge variant="outline">{node.facet_key ?? node.node_kind}</Badge>
             {node.is_assignable ? <Badge variant="secondary">assignable</Badge> : null}
-            {children.length ? (
-              <span className="text-[11px] text-muted-foreground">
-                {children.length} children
-              </span>
-            ) : null}
           </div>
-          <p className="break-all font-mono text-[11px] text-muted-foreground">
-            {node.tag_id}
-          </p>
-          {node.description ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {node.description}
-            </p>
-          ) : null}
         </div>
-        {node.node_kind === "tag" ? (
-          <form action={deleteTaxonomyNode}>
-            <input name="tag_id" type="hidden" value={node.tag_id} />
-            <FormSubmitButton pendingLabel="Deleting..." size="sm" variant="destructive">
-              Delete subtree
-            </FormSubmitButton>
-          </form>
-        ) : null}
       </summary>
+      {node.node_kind === "tag" ? (
+        <form action={deleteTaxonomyNode} className="absolute right-3 top-2">
+          <input name="tag_id" type="hidden" value={node.tag_id} />
+          <FormSubmitButton pendingLabel="Deleting..." size="sm" variant="destructive">
+            Delete subtree
+          </FormSubmitButton>
+        </form>
+      ) : null}
       {visibleChildren.length ? (
         <div className="ml-[18px] mt-1 space-y-1 border-l pl-2">
           {visibleChildren.map((child) => (
@@ -282,7 +270,6 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        description="Manage official taxonomy."
         eyebrow="Advanced tools"
         help="Manage the official mathematics taxonomy used by questions, videos, imports, and blueprint workflows."
         helpLabel="Taxonomy details"
@@ -303,9 +290,6 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
         </CardHeader>
         <CardContent>
           <form action={createTaxonomyNode} className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Select a parent node, then enter a display tag. The suffix preview and final ID are generated automatically.
-            </p>
             <TaxonomyNodeCreateFields
               facets={facetRows}
               nodes={parentOptions.map((node) => ({
@@ -348,15 +332,15 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
           </form>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-md border px-3 py-2">
-              <p className="text-xs text-muted-foreground">Facets</p>
+              <p className="text-sm text-muted-foreground">Facets</p>
               <p className="text-lg font-semibold">{facetRows.length}</p>
             </div>
             <div className="rounded-md border px-3 py-2">
-              <p className="text-xs text-muted-foreground">Active nodes</p>
+              <p className="text-sm text-muted-foreground">Active nodes</p>
               <p className="text-lg font-semibold">{nodesById.size}</p>
             </div>
             <div className="rounded-md border px-3 py-2">
-              <p className="text-xs text-muted-foreground">Assignable nodes</p>
+              <p className="text-sm text-muted-foreground">Assignable nodes</p>
               <p className="text-lg font-semibold">{assignableNodes.length}</p>
             </div>
           </div>
@@ -377,9 +361,6 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
                 <p className="text-sm font-medium text-amber-950">
                   Detached taxonomy nodes
                 </p>
-                <p className="text-xs text-amber-900">
-                  These tag nodes have no active parent edge. Delete them if they were left behind by an older subtree delete.
-                </p>
               </div>
               <div className="space-y-2">
                 {detachedNodes.map((node) => (
@@ -391,7 +372,7 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
                       <p className="font-medium">
                         {taxonomyDisplayLabelFromId(node.tag_id)}
                       </p>
-                      <p className="break-all font-mono text-[11px] text-muted-foreground">
+                      <p className="sr-only break-all font-mono">
                         {node.tag_id}
                       </p>
                     </div>
@@ -422,7 +403,7 @@ export default async function AdminTagsPage({ searchParams }: AdminTagsPageProps
             <div className="rounded-md border p-3" key={action.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="font-mono text-xs text-muted-foreground">
+                  <p className="sr-only font-mono">
                     {action.action_id}
                   </p>
                   <p className="text-sm">{action.reason || "No reason provided."}</p>

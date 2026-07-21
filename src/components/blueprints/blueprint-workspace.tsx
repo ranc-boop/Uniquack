@@ -25,9 +25,11 @@ import {
 } from "@/app/admin/blueprints/actions";
 import { AdminActionGroup } from "@/components/admin/admin-action-group";
 import { AdminCard } from "@/components/admin/admin-card";
+import { AdminCompactNotice } from "@/components/admin/admin-compact-notice";
 import { AdminDangerZone } from "@/components/admin/admin-danger-zone";
 import { AdminDebugDisclosure } from "@/components/admin/admin-debug-disclosure";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
+import { AdminInfoTip } from "@/components/admin/admin-info-tip";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { FormSubmitButton } from "@/components/form-submit-button";
@@ -334,15 +336,13 @@ function TaxonomyTargets({ targets }: { targets: unknown }) {
                 <span
                   key={id}
                   className="max-w-full rounded-md border bg-background px-2.5 py-1.5"
+                  title={id}
                 >
-                  <span className="block font-medium leading-snug">
-                    {taxonomyDisplayLabelFromId(id)}
-                  </span>
                   <span
-                    className="block font-mono text-[10px] leading-snug text-muted-foreground"
+                    className="block font-medium leading-snug"
                     style={{ overflowWrap: "anywhere" }}
                   >
-                    {id}
+                    {taxonomyDisplayLabelFromId(id)}
                   </span>
                 </span>
               ))}
@@ -812,7 +812,7 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="text-sm font-medium">
           Short pattern summary
         </p>
         <MathContent
@@ -837,7 +837,7 @@ function DraftSnapshotSummary({ snapshot }: { snapshot: unknown }) {
         </Badge>
       </div>
       <div className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="text-sm font-medium">
           Grouped taxonomy targets
         </p>
         <TaxonomyTargets targets={draft.taxonomyTargets} />
@@ -965,7 +965,6 @@ function ReviewActionCard({
           </AdminStatusBadge>
         </div>
       }
-      description={`Review action: ${action.action_kind.replaceAll("_", " ")}`}
       title={<span className="break-words">{draftTitle}</span>}
     >
       <div className="space-y-4">
@@ -1002,9 +1001,7 @@ function ReviewActionCard({
         ) : null}
         {action.status !== "rejected" ? (
           <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Actions
-            </p>
+            <p className="text-sm font-medium">Decision</p>
             <AdminActionGroup
               primary={
                 canApprove ? (
@@ -1801,7 +1798,6 @@ function OverviewMetricCard({
     >
       <AdminCard
         compact
-        description="Open this workspace section"
         title={label}
       >
         <p className="text-2xl font-semibold tabular-nums">{value}</p>
@@ -2172,25 +2168,25 @@ export async function BlueprintWorkspace({
       ) : null}
 
       {workspaceSetupNeeded ? (
-        <AdminCard
-          badge={<AdminStatusBadge status="warning" />}
-          className="border-amber-300 bg-amber-50"
-          title="Setup needed"
-        >
-          <div className="space-y-2 text-sm text-amber-900">
-            <p>
-              Question Blueprint Library tables or folder columns are not applied
-              yet. Apply the latest blueprint migrations before using review
-              actions.
-            </p>
-            <div className="space-y-1 font-mono text-xs">
-              <p>supabase/migrations/0018_question_blueprint_library.sql</p>
-              <p>supabase/migrations/0016_question_blueprint_folders.sql</p>
-              <p>supabase/migrations/0020_question_blueprint_calibration.sql</p>
-              <p>supabase/migrations/0021_question_blueprint_versions.sql</p>
-            </div>
-          </div>
-        </AdminCard>
+        <AdminCompactNotice label="Setup needed" tone="warning">
+          <p>
+            The admin Blueprint queries do not match the database schema currently
+            exposed by Supabase. Review actions and calibration details are paused
+            until the schema contract is reconciled.
+          </p>
+          <p className="mt-2">
+            Do not blindly apply the legacy migration files listed in older
+            warnings; confirm which clean migration family the project uses first.
+          </p>
+          <AdminDebugDisclosure className="mt-2" title="Historical warning references">
+            <ul className="space-y-1">
+              <li>supabase/migrations/0018_question_blueprint_library.sql</li>
+              <li>supabase/migrations/0016_question_blueprint_folders.sql</li>
+              <li>supabase/migrations/0020_question_blueprint_calibration.sql</li>
+              <li>supabase/migrations/0021_question_blueprint_versions.sql</li>
+            </ul>
+          </AdminDebugDisclosure>
+        </AdminCompactNotice>
       ) : null}
 
       {view === "overview" ? (
@@ -2279,9 +2275,9 @@ export async function BlueprintWorkspace({
                     {batch.reviewActionCount} review actions from{" "}
                     {batch.blueprintDraftCount} blueprint drafts
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    Created {new Date(batch.created_at).toLocaleString()}
-                  </p>
+                  <AdminInfoTip label="Import timestamp">
+                    <p>Created {new Date(batch.created_at).toLocaleString()}</p>
+                  </AdminInfoTip>
                   <AdminDebugDisclosure className="mt-2" title="Import batch ID">
                     <p className="font-mono break-all">{batch.id}</p>
                   </AdminDebugDisclosure>
@@ -2320,10 +2316,10 @@ export async function BlueprintWorkspace({
       <section className="space-y-3">
         <div>
           <h2 className="text-xl font-semibold">Pending blueprint review actions</h2>
-          <p className="text-sm text-muted-foreground">
+          <AdminInfoTip label="Review guidance">
             Approve only reusable assessment patterns. Rejections and evidence
             requests do not generate questions.
-          </p>
+          </AdminInfoTip>
         </div>
         {pendingReviewActions.length ? (
           <div className={view === "overview" ? "grid gap-3 md:grid-cols-3" : "space-y-4"}>

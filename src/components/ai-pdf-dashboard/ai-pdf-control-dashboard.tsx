@@ -13,7 +13,7 @@ import { ProviderSummaryCards } from "@/components/ai-pdf-dashboard/provider-sum
 import { WarningSummary } from "@/components/ai-pdf-dashboard/warning-summary";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AdminInfoTip } from "@/components/admin/admin-info-tip";
 import {
   deriveAIPdfBatchDisplayState,
   isAIPdfBlueprintObservationCompletePhase,
@@ -294,6 +294,13 @@ function recommendedModeCopy(strategy: string, mode: AiProviderMode) {
   return "Use a provider mode that matches the PDF extraction strategy before starting large imports.";
 }
 
+function shortDisplayStatus(status: string) {
+  if (status.toLowerCase().includes("imported")) return "Review";
+  if (status.toLowerCase().includes("completed")) return "Complete";
+  if (status.toLowerCase().includes("running")) return "Running";
+  return status;
+}
+
 export function AIPdfControlDashboard({
   batches,
 }: {
@@ -323,33 +330,23 @@ export function AIPdfControlDashboard({
   const latestReviewHref = reviewableItems[0]?.display.reviewHref ?? "/admin/review";
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">AI Parsing Control Dashboard</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-          AI-generated questions are draft-only and are not visible to students
-          until published. Human review is required before publishing.
-        </p>
+    <div className="space-y-4">
         {reviewableItems.length ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium">Review Draft handoff</p>
-                <Badge variant="outline">
-                  Imports needing review: {reviewableItems.length}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="font-medium">Review Draft handoff</p>
+              <Badge title="Imports with drafts ready for review" variant="outline">
+                Imports needing review: {reviewableItems.length}
+              </Badge>
+              <Badge variant="outline">{totalReviewDrafts} drafts</Badge>
+              {totalReviewWarnings ? (
+                <Badge title="Warnings across drafts in this queue" variant="outline">
+                  {totalReviewWarnings} warnings
                 </Badge>
-              </div>
-              <p className="text-xs text-sky-900/80">
-                {totalReviewDrafts} draft question
-                {totalReviewDrafts === 1 ? "" : "s"} are ready for human
-                review. Warnings to check: {totalReviewWarnings}.
-              </p>
-              <p className="text-xs text-sky-900/80">
-                Review warnings, taxonomy, media, and solutions before any
-                draft is published.
-              </p>
+              ) : null}
+              <AdminInfoTip label="Review handoff details">
+                <p>Review warnings, taxonomy, media, and solutions before any draft is published.</p>
+              </AdminInfoTip>
             </div>
             <Button asChild size="sm">
               <Link href={latestReviewHref}>Review generated drafts</Link>
@@ -546,28 +543,27 @@ export function AIPdfControlDashboard({
                                 : "secondary"
                             }
                           >
-                            {displayStatus}
+                            {shortDisplayStatus(displayStatus)}
                           </Badge>
-                          <span className="truncate text-sm font-medium">
+                          <span className="truncate text-sm font-medium" title={`${sourceTitle} · ${display.shortId}`}>
                             {sourceTitle}
                           </span>
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {display.shortId}
-                          </span>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {providerName} / {model} / {inputStrategyLabel}
-                          {" | "}
-                          Drafts: {createdQuestionCount}
-                          {" | "}
-                          Warnings: {warnings.length}
-                          {" | "}
-                          {new Date(batch.created_at).toLocaleString()}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant="outline">
+                            {createdQuestionCount} draft{createdQuestionCount === 1 ? "" : "s"}
+                          </Badge>
+                          {warnings.length ? (
+                            <Badge className="border-amber-200 bg-amber-50 text-amber-900" variant="outline">
+                              {warnings.length} warning{warnings.length === 1 ? "" : "s"}
+                            </Badge>
+                          ) : null}
+                          <Badge title={`${providerName} · ${model} · ${inputStrategyLabel} · ${new Date(batch.created_at).toLocaleString()}`} variant="outline">
+                            {display.phaseLabel}
+                          </Badge>
+                        </div>
                       </div>
-                      <span className="rounded-md border px-2 py-1 text-xs text-muted-foreground">
-                        Expand details
-                      </span>
+                      <span className="rounded-md border px-2 py-1 text-xs text-muted-foreground">View run</span>
                     </div>
                   </summary>
                   <div className="space-y-4 border-t p-4">
@@ -582,7 +578,7 @@ export function AIPdfControlDashboard({
                                 : "secondary"
                             }
                           >
-                            {displayStatus}
+                            {shortDisplayStatus(displayStatus)}
                           </Badge>
                           <Badge variant="outline">
                             Phase: {display.phaseLabel}
@@ -636,14 +632,26 @@ export function AIPdfControlDashboard({
                       warningCount={warnings.length}
                     />
 
-                    <QuestionBoundaryGuardCard
-                      reviewHref={
-                        createdQuestionCount > 0
-                          ? `/admin/review?batch=${batch.id}`
-                          : null
-                      }
-                      value={batch.summary}
-                    />
+                    <details className="rounded-lg border bg-muted/10 p-3">
+                      <summary className="cursor-pointer list-none">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-sm font-medium">Analysis</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {hasBlueprintLibraryHandoff ? <Badge variant="outline">Blueprint ready</Badge> : null}
+                            {pendingBlueprintReviewCount ? <Badge variant="outline">{pendingBlueprintReviewCount} blueprint reviews</Badge> : null}
+                            {questionBlueprintWarningCount ? <Badge variant="outline">{questionBlueprintWarningCount} blueprint warnings</Badge> : null}
+                          </div>
+                        </div>
+                      </summary>
+                      <div className="mt-3 space-y-3">
+                        <QuestionBoundaryGuardCard
+                          reviewHref={
+                            createdQuestionCount > 0
+                              ? `/admin/review?batch=${batch.id}`
+                              : null
+                          }
+                          value={batch.summary}
+                        />
 
                     {hasBlueprintObservationPlan ? (
                       <div
@@ -793,8 +801,21 @@ export function AIPdfControlDashboard({
                         </Button>
                       </div>
                     ) : null}
+                      </div>
+                    </details>
 
-                    <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                    <details className="rounded-lg border bg-muted/10 p-3">
+                      <summary className="cursor-pointer list-none">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-sm font-medium">Processing details</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            <Badge variant="outline">{chunkCount ?? 0} chunks</Badge>
+                            <Badge variant="outline">{detectedFigureCount ?? 0} figures</Badge>
+                            <Badge variant="outline">{complexity} complexity</Badge>
+                          </div>
+                        </div>
+                      </summary>
+                      <div className="mt-3 grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
                       <div className="space-y-3">
                         <PipelineTimeline timeline={timeline} />
 
@@ -849,18 +870,32 @@ export function AIPdfControlDashboard({
                           runningChunkCount={runningChunkCount}
                         />
                       </div>
-                    </div>
+                      </div>
+                    </details>
 
-                    <CoverageWarningCard ai={ai} />
+                    <details className="rounded-lg border bg-muted/10 p-3">
+                      <summary className="cursor-pointer list-none">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-sm font-medium">Attention</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {aggregatedWarnings.visibleWarnings.length ? <Badge variant="outline">{aggregatedWarnings.visibleWarnings.length} warnings</Badge> : <Badge variant="secondary">No warnings</Badge>}
+                            {needsImageReview ? <Badge variant="outline">Media review</Badge> : null}
+                          </div>
+                        </div>
+                      </summary>
+                      <div className="mt-3 space-y-3">
+                        <CoverageWarningCard ai={ai} />
 
-                    <TaxonomyTagSuggestionsCard ai={ai} />
+                        <TaxonomyTagSuggestionsCard ai={ai} />
 
-                    <WarningSummary
-                      aggregatedWarnings={aggregatedWarnings}
-                      hiddenWarningCount={hiddenWarningCount}
-                      technicalError={technicalError}
-                      visibleWarnings={visibleWarnings}
-                    />
+                        <WarningSummary
+                          aggregatedWarnings={aggregatedWarnings}
+                          hiddenWarningCount={hiddenWarningCount}
+                          technicalError={technicalError}
+                          visibleWarnings={visibleWarnings}
+                        />
+                      </div>
+                    </details>
                   </div>
                 </details>
               );
@@ -872,7 +907,6 @@ export function AIPdfControlDashboard({
             control dashboard.
           </div>
         )}
-      </CardContent>
-    </Card>
+    </div>
   );
 }

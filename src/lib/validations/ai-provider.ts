@@ -55,6 +55,7 @@ export const aiProviderRoutingPolicyFormSchema = z.object({
     "blueprint_generate_questions",
     "blueprint_observe_pdf",
     "blueprint_analyze_text",
+    "practice_generation",
   ]),
   provider_profile_ids: z.array(uuidSchema).max(3),
 });

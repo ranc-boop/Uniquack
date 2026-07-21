@@ -154,7 +154,9 @@ export async function POST(request: Request) {
 
         try {
           send("start", { goal, questionCount });
-          const profile = await loadPracticeAIProfile();
+          const profile = await loadPracticeAIProfile({
+            requestId: `recommend:${sessionId}`,
+          });
           const agentResult = await runPracticeRecommendationAgent({
             cachePrefixVersion,
             completedQuestionIds: effectiveCompletedQuestionIds,
@@ -236,7 +238,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const profile = await loadPracticeAIProfile();
+    const profile = await loadPracticeAIProfile({
+      requestId: `recommend:${sessionId}`,
+    });
     const agentResult = await runPracticeRecommendationAgent({
       cachePrefixVersion,
       completedQuestionIds: effectiveCompletedQuestionIds,

@@ -392,7 +392,8 @@ assert(
     studentWorkDetailPage.includes("full teacher") &&
     practicePage.includes("assignmentId") &&
     practiceLoader.includes("assignmentId") &&
-    practiceLoader.includes("Loading assignment practice workspace") &&
+    practiceLoader.includes('aria-busy="true"') &&
+    practiceLoader.includes("Loading practice workspace") &&
     practiceClient.includes("/api/practice/assignments/start") &&
     practiceClient.includes("Assignment practice") &&
     assignmentPracticeStartRoute.includes("startAssignmentPractice") &&
