@@ -1,8 +1,15 @@
 # Current Clean DB History Divergence Register
 
+> **PRE-SEQUENCE-RECONCILIATION RECORD.** This bounded read-only audit was
+> prepared before main reserved canonical `0049` for Practice routing and
+> PDF50 moved to `0050`. It is retained for forensic context only and does not
+> prove the live state of Practice `0049` or PDF50 `0050`. Hosted databases are
+> untouched; a new approved read-only audit is required before any forward
+> upgrade decision.
+
 Result: **LIVE_SCHEMA_HISTORY_DIVERGENCE_REQUIRES_REPAIR**
 
-Final planning classification: **REPAIR_PLAN_READY_0049_HARDENING_REQUIRED**
+Final planning classification: **REPAIR_PLAN_READY_0050_HARDENING_REQUIRED**
 
 This register is a sanitized read-only reconciliation of the current clean
 working database. It was produced from `PDF50_CURRENT_CLEAN_DATABASE_URL` only,
@@ -157,12 +164,12 @@ Summary:
 - Canonical objects present without matching history: `0020-0048`.
 - History entries whose required canonical objects are absent: none.
 
-## 0049 Status
+## 0050 Status
 
-Migration `0049_pdf50_burst_upload_admission.sql` is not recorded in migration
+Migration `0050_pdf50_burst_upload_admission.sql` is not recorded in migration
 history. Its live status is **PARTIALLY_PRESENT**.
 
-| 0049 category | Expected | Present |
+| 0050 category | Expected | Present |
 |---|---:|---:|
 | Tables | 2 | 0 |
 | Columns | 44 | 0 |
@@ -176,9 +183,9 @@ history. Its live status is **PARTIALLY_PRESENT**.
 | Buckets | 1 | 1 |
 | Total expected objects | 75 | 1 |
 
-The only currently present 0049 object category is the `ai-import-sources`
-bucket. That bucket predates canonical 0049 through runtime/manual creation.
-Potential 0049 collision categories: buckets only.
+The only currently present 0050 object category is the `ai-import-sources`
+bucket. That bucket predates canonical 0050 through runtime/manual creation.
+Potential 0050 collision categories: buckets only.
 
 ## Noncanonical Partition
 
@@ -187,7 +194,7 @@ divergence. The corrected partition separates Supabase platform objects,
 PostgreSQL-generated objects, parser misses, and real application objects
 outside the canonical chain.
 
-Against canonical `0049`:
+Against canonical `0050`:
 
 | Category | Total candidates | Supabase platform | PostgreSQL generated | Parser miss | Application outside canonical | Unknown |
 |---|---:|---:|---:|---:|---:|---:|
@@ -210,8 +217,8 @@ True application objects outside the canonical chain:
 - `storage.objects.ai_import_sources_admin_upload` policy.
 
 Against canonical `0048`, the `ai-import-sources` bucket is also an
-application object outside the chain. Against canonical `0049`, it is a
-partial 0049 object, not noncanonical.
+application object outside the chain. Against canonical `0050`, it is a
+partial 0050 object, not noncanonical.
 
 No table, trigger, index, generated constraint, or platform Storage catalog
 object should be dropped merely because it appeared in a noncanonical count.
@@ -233,8 +240,8 @@ Required repair scope for a clone:
 - Do not reinterpret HIST-020 or HIST-021 as canonical.
 - Add or repair canonical history for `0020-0048` only after the object
   fingerprints above pass on the clone.
-- Confirm the next canonical apply starts at `0049`.
-- Harden 0049 bucket adoption before using 0049 against a clone that already
+- Confirm the next canonical apply starts at `0050`.
+- Harden 0050 bucket adoption before using 0050 against a clone that already
   has `ai-import-sources`.
 
 No live repair, migration application, Storage mutation, row mutation, or

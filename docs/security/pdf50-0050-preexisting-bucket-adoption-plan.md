@@ -1,6 +1,6 @@
-# PDF50 0049 Preexisting Bucket Adoption Plan
+# PDF50 0050 Preexisting Bucket Adoption Plan
 
-Source decision: **0049_REQUIRES_PREEXISTING_BUCKET_ADOPTION_HARDENING**
+Source decision: **0050_REQUIRES_PREEXISTING_BUCKET_ADOPTION_HARDENING**
 
 Bucket compatibility classification:
 **COMPATIBLE_BUT_REQUIRES_ADOPTION**
@@ -22,7 +22,7 @@ Bucket: `ai-import-sources`
 | Allowed MIME types | Matches PDF-only contract |
 | Creation metadata | Present, timestamp not reported |
 | Existing Storage policy count | 3 |
-| Exact reserved-path 0049 policy present | No |
+| Exact reserved-path 0050 policy present | No |
 | Runtime static references bucket | Yes |
 
 Existing Storage policies:
@@ -33,20 +33,20 @@ Existing Storage policies:
 | `ai_import_sources_admin_read` | SELECT | Bucket-scoped | Admin-only, not exact reserved path |
 | `ai_import_sources_admin_delete` | DELETE | Bucket-scoped | Admin-only, not exact reserved path |
 
-The legacy admin policies are not equivalent to 0049. They are bucket-scoped
-and admin-gated, but they permit arbitrary admin paths. The intended 0049
+The legacy admin policies are not equivalent to 0050. They are bucket-scoped
+and admin-gated, but they permit arbitrary admin paths. The intended 0050
 contract requires exact reserved object paths linked to pending/managed import
 metadata.
 
 Current runtime paths depend on `ai-import-sources` for admin AI PDF import,
 teacher bank PDF burst upload, and worker/finalization reads. The admin upload
 path already reserves an import batch asset before issuing a signed upload
-grant, so it can be covered by the 0049 exact-path helper when validated in a
+grant, so it can be covered by the 0050 exact-path helper when validated in a
 clone.
 
-## Hardened 0049 Behavior
+## Hardened 0050 Behavior
 
-0049 now locks the named bucket row and takes one deterministic branch:
+0050 now locks the named bucket row and takes one deterministic branch:
 
 1. **Absent:** create the canonical private, PDF-only bucket with a 50 MB cap.
 2. **Compatible:** adopt the existing row without recreating it or touching any
@@ -56,11 +56,11 @@ clone.
    transaction rolls back before any PDF50 schema or policy change commits.
 
 The current live bucket is private, PDF-only, and 50 MB, so it is compatible.
-0049 now proves that compatibility instead of silently overwriting it.
+0050 now proves that compatibility instead of silently overwriting it.
 
-## Required 0049 Hardening
+## Required 0050 Hardening
 
-0049 must remain valid for an empty fresh-chain database and forward-only for
+0050 must remain valid for an empty fresh-chain database and forward-only for
 an upgraded clone. The hardened behavior should be:
 
 1. If `ai-import-sources` is absent, create it with the canonical private,
@@ -75,7 +75,7 @@ an upgraded clone. The hardened behavior should be:
    stricter existing size limit without a separate owner decision.
 6. Preserve all existing private objects.
 7. Avoid deleting or recreating the bucket.
-8. Create missing 0049 exact-path policies idempotently.
+8. Create missing 0050 exact-path policies idempotently.
 9. Do not duplicate policy names.
 10. Replace only the three known legacy admin policies transactionally. The
     clone rehearsal must prove the exact-path policy covers current admin
@@ -93,17 +93,17 @@ The intended post-hardening policy set should allow:
 - no arbitrary authenticated or public source-object access.
 
 The legacy policies are all **BROADER_THAN_CANONICAL**. They authorize admins
-at arbitrary paths within the bucket, whereas 0049 authorizes an authenticated
+at arbitrary paths within the bucket, whereas 0050 authorizes an authenticated
 admin only through an exact linked import asset. The migration drops only
 `ai_import_sources_admin_upload`, `ai_import_sources_admin_read`, and
 `ai_import_sources_admin_delete`; it uses no prefix or wildcard policy drop.
-Before those three names are dropped, 0049 checks the Storage catalog and
+Before those three names are dropped, 0050 checks the Storage catalog and
 aborts if any other policy appears to target the source bucket. That policy is
 left untouched for a separate review.
 
-## 0049 Object Validation Target
+## 0050 Object Validation Target
 
-A successful cloned 0049 upgrade must validate all 75 expected 0049 objects:
+A successful cloned 0050 upgrade must validate all 75 expected 0050 objects:
 
 | Category | Expected |
 |---|---:|
@@ -117,18 +117,18 @@ A successful cloned 0049 upgrade must validate all 75 expected 0049 objects:
 | Policies | 5 |
 | Buckets | 1 |
 
-Current live status before 0049 is bucket-only partial presence:
+Current live status before 0050 is bucket-only partial presence:
 `PARTIALLY_PRESENT`, 1 of 75 expected objects present.
 
 ## Required Clone Evidence
 
-The 0049 clone rehearsal must prove:
+The 0050 clone rehearsal must prove:
 
 - no bucket recreation occurred;
 - preexisting private objects remained addressable;
 - bucket configuration stayed private, PDF-only, and bounded;
 - legacy arbitrary-path admin access no longer grants more access than the
-  exact-path 0049 helper;
+  exact-path 0050 helper;
 - teacher bank owner/editor can upload only reserved paths;
 - bank viewer, student, unrelated organization, and anonymous actors cannot
   upload, read, delete, reserve, finalize, or cancel;
@@ -138,5 +138,5 @@ The 0049 clone rehearsal must prove:
 - no duplicate burst, item, import batch, source asset, provider job, or Review
   Draft is created by retries.
 
-Do not apply 0049 to the current clean working database until the hardened
+Do not apply 0050 to the current clean working database until the hardened
 source and cloned upgrade rehearsal have passed.

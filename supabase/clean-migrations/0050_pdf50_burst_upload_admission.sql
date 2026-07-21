@@ -855,7 +855,7 @@ begin
   end if;
 
   -- MIME restrictions are an exact compatibility requirement. Broad or unset
-  -- policies may serve another workload, so 0049 refuses to repurpose them.
+  -- policies may serve another workload, so 0050 refuses to repurpose them.
   if existing_bucket.allowed_mime_types is distinct from canonical_mime_types then
     raise exception 'AI import source bucket is incompatible with the required private PDF contract.';
   end if;
@@ -1037,7 +1037,7 @@ on storage.objects for delete
 to authenticated
 using (private.can_write_question_asset_storage_object(bucket_id, name));
 
--- These pre-0049 policies are known arbitrary-path admin grants. They are the
+-- These pre-0050 policies are known arbitrary-path admin grants. They are the
 -- only legacy policy names this migration reconciles; all other policies stay
 -- untouched and an incompatible bucket aborts before this point.
 do $$

@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 49,
+  "latestActivePrefix": 50,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -63,7 +63,7 @@
     "0046_question_assets_bucket_private.sql",
     "0047_practice_self_study_evidence_isolation.sql",
     "0048_practice_course_framework_evidence_isolation.sql",
-    "0049_pdf50_burst_upload_admission.sql"
+    "0050_pdf50_burst_upload_admission.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -245,6 +245,6 @@
     { "filename": "0046_question_assets_bucket_private.sql", "migrationNumber": 46, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 46, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "clean-database private-bucket post-cutover validation; exactly one private bucket, nine-field zero-residual checks, direct URL denial, and exact-ID cleanup" },
     { "filename": "0047_practice_self_study_evidence_isolation.sql", "migrationNumber": 47, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 47, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized helper catalog validation plus completed post-0048 disposable role matrix" },
     { "filename": "0048_practice_course_framework_evidence_isolation.sql", "migrationNumber": 48, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 48, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-apply catalog counts and completed exact-ID disposable framework-boundary role matrix" },
-    { "filename": "0049_pdf50_burst_upload_admission.sql", "migrationNumber": 49, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 49, "status": "UNAPPLIED_PENDING_DISPOSABLE_REHEARSAL", "applicationMethod": "not applied", "evidenceSource": "PDF50 implementation source audit; clean-database and live RLS rehearsal remains required" }
+    { "filename": "0050_pdf50_burst_upload_admission.sql", "migrationNumber": 50, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 50, "status": "UNAPPLIED_PENDING_SEQUENCE_REVALIDATION", "applicationMethod": "not applied", "evidenceSource": "PDF50 migration was renumbered after main reserved 0049 for Practice routing; new local fresh-chain and upgrade rehearsal remains required" }
   ]
 }

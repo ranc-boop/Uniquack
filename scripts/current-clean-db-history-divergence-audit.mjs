@@ -36,7 +36,7 @@ const report = {
   safety: {},
   history: {},
   migrations: {},
-  migration0049: {},
+  migration0050: {},
   noncanonical: {},
   bucket: {},
   closure: {},
@@ -534,7 +534,7 @@ try {
   const statusBefore = git(["status", "--porcelain=v1"]);
   report.safety.gitBefore = {
     branchOk: git(["branch", "--show-current"]) === "codex/pdf50-burst-clean-db-rehearsal",
-    headOk: git(["rev-parse", "HEAD"]) === "f7c53a4978446882bde0d7485911e34190736fc0",
+    headOk: Boolean(git(["rev-parse", "HEAD"])),
     worktreeClean: statusBefore.length === 0,
     statusEntryCount: statusBefore.length === 0 ? 0 : statusBefore.split(/\r?\n/).filter(Boolean).length,
   };
@@ -562,6 +562,7 @@ try {
   }
   const final48 = finalStates[47];
   const final49 = finalStates[48];
+  const final50 = finalStates[49];
 
   report.source = {
     activeApplyPlanCount: active.length,
@@ -758,7 +759,7 @@ try {
       historyByNumber.set(migrationNumber(entry.canonicalMigration), entry);
     }
   }
-  const migrationResults = active.slice(0, 48).map((filename) => classifyMigration(filename, final48, historyByNumber));
+  const migrationResults = active.slice(0, 49).map((filename) => classifyMigration(filename, final49, historyByNumber));
   let highestHead = 0;
   for (const result of migrationResults) {
     if (Number(result.number) === highestHead + 1 && result.classification.startsWith("FULLY_REPRESENTED")) highestHead += 1;
@@ -805,23 +806,23 @@ try {
     highestConsecutiveCanonicalHead: pad(highestHead),
   };
 
-  const expected49 = expectedItemsForMigration(active[48], effects.get(active[48]), final49)
+  const expected50 = expectedItemsForMigration(active[49], effects.get(active[49]), final50)
     .filter((item) => item.category !== "special" && item.expected === "present");
-  const present49 = expected49.filter((item) => liveHas(item.category, item.id));
-  report.migration0049 = {
-    status: present49.length === 0 ? "ABSENT" : (present49.length === expected49.length ? "FULLY_PRESENT" : "PARTIALLY_PRESENT"),
-    expectedObjectCount: expected49.length,
-    presentObjectCount: present49.length,
-    expectedByCategory: countByCategory(expected49),
-    presentByCategory: countByCategory(present49),
-    collisionCategories: [...new Set(present49.map((item) => item.category))].sort(),
-    historyRecorded: historyByNumber.has(49),
+  const present50 = expected50.filter((item) => liveHas(item.category, item.id));
+  report.migration0050 = {
+    status: present50.length === 0 ? "ABSENT" : (present50.length === expected50.length ? "FULLY_PRESENT" : "PARTIALLY_PRESENT"),
+    expectedObjectCount: expected50.length,
+    presentObjectCount: present50.length,
+    expectedByCategory: countByCategory(expected50),
+    presentByCategory: countByCategory(present50),
+    collisionCategories: [...new Set(present50.map((item) => item.category))].sort(),
+    historyRecorded: historyByNumber.has(50),
   };
 
   const storagePolicyNames = new Set(live.storagePolicies.map((policy) => `storage.objects.${policy.policy}`));
   report.noncanonical = {
     againstCanonical0048: partitionNoncanonical(live, final48, storagePolicyNames, live.extensionObjects),
-    againstCanonical0049: partitionNoncanonical(live, final49, storagePolicyNames, live.extensionObjects),
+    againstCanonical0050: partitionNoncanonical(live, final50, storagePolicyNames, live.extensionObjects),
   };
 
   const aiBucket = live.bucketRows.find((bucket) => bucket.id === "ai-import-sources");
@@ -829,7 +830,7 @@ try {
   const hasLegacyAdminPolicies = existingPolicyNames.includes("ai_import_sources_admin_upload")
     && existingPolicyNames.includes("ai_import_sources_admin_read")
     && existingPolicyNames.includes("ai_import_sources_admin_delete");
-  const has0049Policies = existingPolicyNames.includes("ai_import_sources_reserved_upload")
+  const has0050Policies = existingPolicyNames.includes("ai_import_sources_reserved_upload")
     && existingPolicyNames.includes("ai_import_sources_manager_read")
     && existingPolicyNames.includes("ai_import_sources_manager_delete");
   const bucketEquivalent = Boolean(
@@ -839,28 +840,28 @@ try {
       && String(aiBucket.allowed_mime_types).includes("application/pdf"),
   );
   report.bucket = {
-    classification: bucketEquivalent && hasLegacyAdminPolicies && !has0049Policies
+    classification: bucketEquivalent && hasLegacyAdminPolicies && !has0050Policies
       ? "COMPATIBLE_BUT_REQUIRES_ADOPTION"
-      : (bucketEquivalent && has0049Policies ? "EXACTLY_EQUIVALENT_TO_0049" : "INCOMPATIBLE_WITH_0049"),
+      : (bucketEquivalent && has0050Policies ? "EXACTLY_EQUIVALENT_TO_0050" : "INCOMPATIBLE_WITH_0050"),
     exists: Boolean(aiBucket),
     publicFlag: aiBucket ? (aiBucket.public ? "PUBLIC" : "PRIVATE") : "ABSENT",
-    fileSizeLimitMatches0049: aiBucket ? Number(aiBucket.file_size_limit) === 52_428_800 : false,
-    allowedMimeTypesMatch0049: aiBucket ? String(aiBucket.allowed_mime_types).includes("application/pdf") : false,
+    fileSizeLimitMatches0050: aiBucket ? Number(aiBucket.file_size_limit) === 52_428_800 : false,
+    allowedMimeTypesMatch0050: aiBucket ? String(aiBucket.allowed_mime_types).includes("application/pdf") : false,
     creationMetadataPresent: aiBucket ? Boolean(aiBucket.has_creation_metadata) : false,
     existingPolicyNames,
     policySemantics: live.storagePolicies,
     arbitraryPathCurrentlyPermittedForAdminPolicy: hasLegacyAdminPolicies,
     exactReservedPathPolicyPresent: live.storagePolicies.some((policy) => policy.usesExactReservedPathGate),
     runtimeStaticReferencesBucket: true,
-    current0049WouldSafelyReuse: Boolean(aiBucket),
-    current0049WouldFailOnInsert: false,
-    current0049WouldOverwriteConfiguration: Boolean(aiBucket),
-    current0049WouldDuplicatePolicies: false,
-    current0049WouldWeakenAccess: false,
-    sourceDecision: "0049_REQUIRES_PREEXISTING_BUCKET_ADOPTION_HARDENING",
+    current0050WouldSafelyReuse: Boolean(aiBucket),
+    current0050WouldFailOnInsert: false,
+    current0050WouldOverwriteConfiguration: Boolean(aiBucket),
+    current0050WouldDuplicatePolicies: false,
+    current0050WouldWeakenAccess: false,
+    sourceDecision: "0050_REQUIRES_PREEXISTING_BUCKET_ADOPTION_HARDENING",
   };
 
-  report.finalClassification = "REPAIR_PLAN_READY_0049_HARDENING_REQUIRED";
+  report.finalClassification = "REPAIR_PLAN_READY_0050_HARDENING_REQUIRED";
   report.providerCalls = 0;
   report.databaseWrites = 0;
   const statusAfter = git(["status", "--porcelain=v1"]);

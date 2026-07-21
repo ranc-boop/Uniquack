@@ -1,5 +1,9 @@
 # PDF50 Local RLS, Storage, and Admission Evidence
 
+> **PRE-SEQUENCE-RECONCILIATION EVIDENCE.** This previous PDF50 `0049` run is
+> preserved as historical validation only. The canonical Practice `0049` then
+> PDF50 `0050` path must be rerun before any readiness claim.
+
 Date: 2026-07-21
 
 Classification: `LOCAL_0049_UPGRADE_RLS_STORAGE_ADMISSION_VALIDATED`

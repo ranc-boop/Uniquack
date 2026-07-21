@@ -1,5 +1,10 @@
 # PDF50 Local Fresh-Chain 0049 Evidence
 
+> **PRE-SEQUENCE-RECONCILIATION EVIDENCE.** This is preserved evidence for the
+> prior PDF50 `0049` candidate. Main subsequently retained Practice routing as
+> canonical `0049`, and PDF50 moved to `0050`. This run cannot validate the
+> current `0049` to `0050` chain; fresh local reruns are required.
+
 Date: 2026-07-21
 
 Classification: `LOCAL_FRESH_CHAIN_0001_0049_VALIDATED`

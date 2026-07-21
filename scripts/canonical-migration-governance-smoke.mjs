@@ -15,8 +15,8 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(plan.directoryMigrationNames.length === 50, "Raw clean source must contain 50 SQL files.");
-assert(plan.executableMigrationNames.length === 49, "Executable clean chain must contain 49 migrations.");
+assert(plan.directoryMigrationNames.length === 51, "Raw clean source must contain 51 SQL files.");
+assert(plan.executableMigrationNames.length === 50, "Executable clean chain must contain 50 migrations.");
 assert(
   plan.duplicateRawPrefixes.length === 1 &&
     plan.duplicateRawPrefixes[0]?.number === 32,
@@ -40,7 +40,7 @@ try {
 }
 assert(blockedGoogle, "Excluded Google 0032 must fail closed in executable tooling.");
 
-for (let number = 44; number <= 49; number += 1) {
+for (let number = 44; number <= 50; number += 1) {
   const filename = plan.executableMigrationNames[number - 1];
   const entry = plan.inventoryByFilename.get(filename);
   assert(migrationNumber(filename) === number, `Position ${number} has the wrong migration number.`);
@@ -50,9 +50,10 @@ for (let number = 44; number <= 49; number += 1) {
 }
 
 assert(
-  plan.executableMigrationNames.at(-1) === "0049_pdf50_burst_upload_admission.sql" &&
-    plan.manifest.latestActivePrefix === 49,
-  "0049 must be the canonical migration head.",
+  plan.executableMigrationNames.at(-2) === "0049_practice_agent_provider_routing.sql" &&
+    plan.executableMigrationNames.at(-1) === "0050_pdf50_burst_upload_admission.sql" &&
+    plan.manifest.latestActivePrefix === 50,
+  "Practice routing 0049 and PDF50 0050 must be the canonical migration tail.",
 );
 assert(
   plan.manifest.canonicalMigrationDirectory === "supabase/clean-migrations" &&
@@ -74,6 +75,6 @@ for (const filename of [
 
 console.log("PASS raw duplicate 0032 is detected and explicitly classified");
 console.log("PASS executable 0032 is teacher feedback notes; Google 0032 is excluded");
-console.log("PASS canonical registrations 0044-0049 are ordered and complete");
-console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0049");
+console.log("PASS canonical registrations 0044-0050 are ordered and complete");
+console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0050");
 console.log("PASS legacy migrations are absent from the executable plan");

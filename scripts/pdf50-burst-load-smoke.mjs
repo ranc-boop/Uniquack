@@ -6,7 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const policy = await readFile(resolve(root, "src/lib/ai-jobs/policy.ts"), "utf8");
 const worker = await readFile(resolve(root, "src/lib/ai-jobs/worker.ts"), "utf8");
 const migration = await readFile(
-  resolve(root, "supabase/clean-migrations/0049_pdf50_burst_upload_admission.sql"),
+  resolve(root, "supabase/clean-migrations/0050_pdf50_burst_upload_admission.sql"),
   "utf8",
 );
 

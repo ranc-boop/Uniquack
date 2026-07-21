@@ -19,9 +19,9 @@ inventing timestamps for past SQL Editor work.
 ## Future Release Procedure
 
 1. The release owner creates one new SQL file with the next unused monotonic
-   four-digit prefix. The current canonical source head is `0049`; its
-   disposable clean-database rehearsal remains pending and it must not be
-   represented as live-applied evidence.
+   four-digit prefix. The current canonical source head is PDF50 `0050`, after
+   Practice routing `0049`. PDF50 local sequence revalidation remains pending
+   and it must not be represented as live-applied evidence.
 2. The PR records purpose, ownership boundary, RLS/function-grant review,
    forward-only rollback plan, and the exact expected catalog objects.
 3. Register the file's number, executable/excluded classification, expected

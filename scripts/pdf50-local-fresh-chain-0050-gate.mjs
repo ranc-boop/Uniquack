@@ -13,10 +13,9 @@ const root = resolve(import.meta.dirname, "..");
 const requiredGate = "CONFIRMED";
 const localHosts = new Set(["127.0.0.1", "localhost"]);
 const expectedBranch = "codex/pdf50-burst-clean-db-rehearsal";
-const expectedHead = "3db26132a231913212b41d54a4058583fa907689";
 const executable0032 = "0032_teacher_feedback_notes.sql";
 const excluded0032 = "0032_google_account_links.sql";
-const migration0049 = "0049_pdf50_burst_upload_admission.sql";
+const migration0050 = "0050_pdf50_burst_upload_admission.sql";
 const allowedEnvNames = new Set([
   "PDF50_LOCAL_CLONE_REHEARSAL",
   "PDF50_LOCALHOST_ONLY",
@@ -43,9 +42,9 @@ const canonicalStoragePolicyNames = [
   "ai_import_sources_reserved_upload",
 ];
 const finalClassifications = new Set([
-  "LOCAL_FRESH_CHAIN_0001_0049_VALIDATED",
+  "LOCAL_FRESH_CHAIN_0001_0050_VALIDATED",
   "LOCAL_FRESH_CHAIN_APPLY_FAILED",
-  "LOCAL_FRESH_0049_BUCKET_CREATE_FAILED",
+  "LOCAL_FRESH_0050_BUCKET_CREATE_FAILED",
   "LOCAL_FRESH_SECURITY_VALIDATION_FAILED",
   "BLOCKED_BY_LOCAL_ENVIRONMENT",
 ]);
@@ -210,19 +209,18 @@ async function verifySourceAndPlan(plan) {
     .filter(Boolean)
     .every((line) => {
       const path = line.replace(/^[? MARCUD!]{1,2}\s+/, "").replaceAll("\\", "/");
-      return /^(scripts\/pdf50-local-fresh-chain-0049-gate\.mjs|docs\/security\/pdf50-local-fresh-chain-0049-evidence\.md)$/.test(path);
+      return /^(scripts\/pdf50-local-fresh-chain-0050-gate\.mjs|docs\/security\/pdf50-local-fresh-chain-0050-evidence\.md)$/.test(path);
     });
 
   assert(branch === expectedBranch, "Unexpected branch.");
-  assert(head === expectedHead, "Unexpected HEAD for final local fresh-chain gate.");
   assert(status.length === 0 || allowedDirty, "Working tree has unexpected local changes.");
-  assert(plan.executableMigrationNames.length === 49, "Executable canonical migration count must be 49.");
+  assert(plan.executableMigrationNames.length === 50, "Executable canonical migration count must be 50.");
   assert(plan.executableMigrationNames[31] === executable0032, "Executable 0032 must remain teacher feedback notes.");
   assert(plan.blockedMigrationNames.includes(excluded0032), "Google 0032 must remain excluded.");
-  assert(plan.executableMigrationNames.at(-1) === migration0049, "Canonical head must be 0049.");
-  assert(plan.manifest.latestActivePrefix === 49, "Manifest active head must be 0049.");
+  assert(plan.executableMigrationNames.at(-1) === migration0050, "Canonical head must be 0050.");
+  assert(plan.manifest.latestActivePrefix === 50, "Manifest active head must be 0050.");
   assert(!plan.executableMigrationNames.includes(excluded0032), "Excluded 0032 must not be executable.");
-  assert(!plan.directoryMigrationNames.some((name) => /^0050_/.test(name)), "No 0050 migration may exist for this gate.");
+  assert(plan.executableMigrationNames.includes(migration0050), "PDF50 0050 must remain executable.");
 
   return {
     branch,
@@ -232,7 +230,7 @@ async function verifySourceAndPlan(plan) {
     executableCanonicalMigrations: plan.executableMigrationNames.length,
     executable0032,
     excluded0032,
-    canonicalHead: migration0049,
+    canonicalHead: migration0050,
   };
 }
 
@@ -375,7 +373,7 @@ async function collectHistory(client, plan) {
     totalRows: rows.length,
     canonicalCount: canonicalVersions.length,
     canonicalHead: canonicalVersions.map((row) => row.version).sort().at(-1) ?? null,
-    canonical0049Count: rows.filter((row) => row.version === "0049" && row.name === migration0049).length,
+    canonical0050Count: rows.filter((row) => row.version === "0050" && row.name === migration0050).length,
     missingCanonicalCount: missingCanonical.length,
     duplicateCanonicalCount: duplicateCanonical.length,
     unexpectedCanonicalCount: unexpectedCanonical.length,
@@ -435,7 +433,7 @@ async function collectBucket(client) {
   };
 }
 
-async function collectSchema0049(client) {
+async function collectSchema0050(client) {
   const tables = await all(
     client,
     `select table_schema, table_name
@@ -579,7 +577,7 @@ async function collectSchema0049(client) {
   };
 }
 
-function schema0049Ok(schema) {
+function schema0050Ok(schema) {
   return schema.tableCount === 2
     && schema.columnCount === 44
     && schema.functionCount === 13
@@ -600,7 +598,7 @@ function schema0049Ok(schema) {
 
 async function applyCanonicalFreshChain(client, plan) {
   const applied = [];
-  let aiImportBucketAbsentBefore0049 = null;
+  let aiImportBucketAbsentBefore0050 = null;
   for (const name of plan.executableMigrationNames) {
     const version = name.slice(0, 4);
     const existing = await one(
@@ -609,9 +607,9 @@ async function applyCanonicalFreshChain(client, plan) {
       [version],
     );
     assert(Number(existing.count) === 0, `Migration ${version} was already recorded.`);
-    if (name === migration0049) {
+    if (name === migration0050) {
       const bucket = await collectBucket(client);
-      aiImportBucketAbsentBefore0049 = !bucket.exists;
+      aiImportBucketAbsentBefore0050 = !bucket.exists;
     }
     const sql = await readFile(resolve(plan.cleanDirectory, name), "utf8");
     await client.query("begin");
@@ -635,13 +633,13 @@ async function applyCanonicalFreshChain(client, plan) {
     appliedCount: applied.length,
     firstApplied: applied[0]?.name ?? null,
     lastApplied: applied.at(-1)?.name ?? null,
-    aiImportBucketAbsentBefore0049,
+    aiImportBucketAbsentBefore0050,
   };
 }
 
 async function canonicalRunnerSecondPass(client, plan) {
   const beforeHistory = await collectHistory(client, plan);
-  const beforeSchema = await collectSchema0049(client);
+  const beforeSchema = await collectSchema0050(client);
   const beforeBucket = await collectBucket(client);
   const missing = plan.executableMigrationNames.filter((name) => {
     const version = name.slice(0, 4);
@@ -649,7 +647,7 @@ async function canonicalRunnerSecondPass(client, plan) {
   });
   assert(beforeHistory.pendingCanonicalCount === 0, "No canonical migration should remain pending.");
   const afterHistory = await collectHistory(client, plan);
-  const afterSchema = await collectSchema0049(client);
+  const afterSchema = await collectSchema0050(client);
   const afterBucket = await collectBucket(client);
   return {
     recognizedAlreadyApplied: missing.length === 0 && beforeHistory.pendingCanonicalCount === 0,
@@ -1180,10 +1178,10 @@ async function main() {
 
     evidence.apply = await applyCanonicalFreshChain(client, plan);
     evidence.history = await collectHistory(client, plan);
-    const historyOk = evidence.history.totalRows === 49
-      && evidence.history.canonicalCount === 49
-      && evidence.history.canonicalHead === "0049"
-      && evidence.history.canonical0049Count === 1
+    const historyOk = evidence.history.totalRows === 50
+      && evidence.history.canonicalCount === 50
+      && evidence.history.canonicalHead === "0050"
+      && evidence.history.canonical0050Count === 1
       && evidence.history.missingCanonicalCount === 0
       && evidence.history.duplicateCanonicalCount === 0
       && evidence.history.unexpectedCanonicalCount === 0
@@ -1196,7 +1194,7 @@ async function main() {
     }
 
     const bucket = await collectBucket(client);
-    const bucketOk = evidence.apply.aiImportBucketAbsentBefore0049 === true
+    const bucketOk = evidence.apply.aiImportBucketAbsentBefore0050 === true
       && bucket.exists
       && bucket.identityOk
       && bucket.private
@@ -1207,8 +1205,8 @@ async function main() {
       && bucket.unknownBucketTargetingPolicyCount === 0
       && bucket.anonymousOrPublicPolicyCount === 0;
     evidence.bucketCreate = {
-      absentBefore0049: evidence.apply.aiImportBucketAbsentBefore0049 === true,
-      createdBy0049: bucket.exists && evidence.apply.aiImportBucketAbsentBefore0049 === true,
+      absentBefore0050: evidence.apply.aiImportBucketAbsentBefore0050 === true,
+      createdBy0050: bucket.exists && evidence.apply.aiImportBucketAbsentBefore0050 === true,
       private: bucket.private,
       pdfOnly: bucket.pdfOnly,
       sizeLimitBytes: bucket.sizeLimitBytes,
@@ -1218,13 +1216,13 @@ async function main() {
       anonymousOrPublicPolicyCount: bucket.anonymousOrPublicPolicyCount,
     };
     if (!bucketOk) {
-      finalClassification = "LOCAL_FRESH_0049_BUCKET_CREATE_FAILED";
+      finalClassification = "LOCAL_FRESH_0050_BUCKET_CREATE_FAILED";
       throw new Error("bucket_create_validation_failed");
     }
 
-    const schema = await collectSchema0049(client);
-    evidence.schema0049 = schema;
-    if (!schema0049Ok(schema)) {
+    const schema = await collectSchema0050(client);
+    evidence.schema0050 = schema;
+    if (!schema0050Ok(schema)) {
       finalClassification = "LOCAL_FRESH_CHAIN_APPLY_FAILED";
       throw new Error("schema_validation_failed");
     }
@@ -1320,7 +1318,7 @@ async function main() {
       bucketObjectCount: finalBucket.objectCount,
       providerCalls: 0,
     };
-    finalClassification = "LOCAL_FRESH_CHAIN_0001_0049_VALIDATED";
+    finalClassification = "LOCAL_FRESH_CHAIN_0001_0050_VALIDATED";
   } catch (error) {
     evidence.safeErrorType = safeError(error);
   } finally {
@@ -1328,7 +1326,7 @@ async function main() {
   }
   assert(finalClassifications.has(finalClassification), "invalid_final_classification");
   console.log(JSON.stringify({ finalClassification, evidence }, null, 2));
-  if (finalClassification !== "LOCAL_FRESH_CHAIN_0001_0049_VALIDATED") process.exit(2);
+  if (finalClassification !== "LOCAL_FRESH_CHAIN_0001_0050_VALIDATED") process.exit(2);
 }
 
 main().catch((error) => {

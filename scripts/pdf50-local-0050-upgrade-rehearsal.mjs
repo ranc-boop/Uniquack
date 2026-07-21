@@ -25,7 +25,8 @@ const allowedEnvNames = new Set([
 const forbiddenEnvNamePattern =
   /^(PDF50_|SUPABASE|DATABASE_URL|DIRECT_URL|POSTGRES|PG|NEXT_PUBLIC_SUPABASE|SUPABASE_)/;
 const forbiddenValuePattern = /supabase\.co|pooler\.supabase\.com|https?:\/\/(?!localhost(?::|\/|$)|127\.0\.0\.1(?::|\/|$))[^/\s]+/i;
-const migration0049 = "0049_pdf50_burst_upload_admission.sql";
+const practiceRouting0049 = "0049_practice_agent_provider_routing.sql";
+const migration0050 = "0050_pdf50_burst_upload_admission.sql";
 const excluded0032 = "0032_google_account_links.sql";
 const executable0032 = "0032_teacher_feedback_notes.sql";
 const legacyPolicyNames = [
@@ -43,13 +44,13 @@ const unmappedLegacyNames = [
   "fix_taxonomy_closure_rebuild_safe_delete",
 ];
 const finalClassifications = new Set([
-  "LOCAL_0049_UPGRADE_RLS_STORAGE_ADMISSION_VALIDATED",
-  "LOCAL_0049_APPLY_FAILED_AND_ROLLED_BACK",
-  "LOCAL_0049_SCHEMA_VALIDATION_FAILED",
+  "LOCAL_0050_UPGRADE_RLS_STORAGE_ADMISSION_VALIDATED",
+  "LOCAL_0050_APPLY_FAILED_AND_ROLLED_BACK",
+  "LOCAL_0050_SCHEMA_VALIDATION_FAILED",
   "LOCAL_RLS_OR_STORAGE_VALIDATION_FAILED",
   "LOCAL_1_10_50_ADMISSION_VALIDATION_FAILED",
   "BLOCKED_BY_LOCAL_ENVIRONMENT",
-  "LOCAL_0049_BASELINE_MISMATCH",
+  "LOCAL_0050_BASELINE_MISMATCH",
 ]);
 
 const tinyPdf = Buffer.from(`%PDF-1.4
@@ -218,9 +219,10 @@ async function collectHistory(client) {
     canonicalCount: canonicalVersions.length,
     canonicalHead: canonicalVersions.map((row) => row.version).sort().at(-1) ?? null,
     canonical0049Count: rows.filter((row) => row.version === "0049").length,
+    canonical0050Count: rows.filter((row) => row.version === "0050").length,
     unmappedCount: unmappedRows.length,
     unmappedRowsPreserved: unmappedLegacyNames.every((name) => unmappedRows.some((row) => row.name === name)),
-    pendingCanonical: Array.from({ length: 49 }, (_, index) => String(index + 1).padStart(4, "0"))
+    pendingCanonical: Array.from({ length: 50 }, (_, index) => String(index + 1).padStart(4, "0"))
       .filter((version) => !canonicalSet.has(version)),
   };
 }
@@ -270,7 +272,7 @@ async function collectBucket(client) {
   };
 }
 
-async function collectSchema0049(client) {
+async function collectSchema0050(client) {
   const tableRows = await all(
     client,
     `select n.nspname, c.relname
@@ -398,22 +400,23 @@ async function collectSchema0049(client) {
   };
 }
 
-function isPost0049Valid({ history, schema0049, bucket }) {
-  const reconciledCloneHistory = history.totalRows === 51
+function isPost0050Valid({ history, schema0050, bucket }) {
+  const reconciledCloneHistory = history.totalRows === 52
     && history.unmappedCount === 2
     && history.unmappedRowsPreserved;
-  const freshChainHistory = history.totalRows === 49
+  const freshChainHistory = history.totalRows === 50
     && history.unmappedCount === 0;
-  return history.canonicalCount === 49
-    && history.canonicalHead === "0049"
+  return history.canonicalCount === 50
+    && history.canonicalHead === "0050"
     && history.canonical0049Count === 1
+    && history.canonical0050Count === 1
     && (reconciledCloneHistory || freshChainHistory)
     && history.pendingCanonical.length === 0
-    && schema0049.noPartialState
-    && schema0049.uniqueImportBatchConstraint
-    && schema0049.uniqueSourceAssetConstraint
-    && schema0049.uniqueJobConstraint
-    && schema0049.uniqueBurstRequestConstraint
+    && schema0050.noPartialState
+    && schema0050.uniqueImportBatchConstraint
+    && schema0050.uniqueSourceAssetConstraint
+    && schema0050.uniqueJobConstraint
+    && schema0050.uniqueBurstRequestConstraint
     && bucket.exists
     && bucket.private
     && bucket.pdfOnly
@@ -459,16 +462,16 @@ async function verifyPlanAndGit(plan) {
     .filter(Boolean)
     .every((line) => {
       const path = line.replace(/^[? MARCUD!]{1,2}\s+/, "").replaceAll("\\", "/");
-      return /^(scripts\/pdf50-local-0049-upgrade-rehearsal\.mjs|scripts\/pdf50-local-fresh-chain-0049-gate\.mjs|scripts\/pdf50-0049-bucket-adoption-smoke\.mjs|scripts\/route-smoke\.mjs|scripts\/supabase-rls-smoke\.mjs|supabase\/clean-migrations\/0049_pdf50_burst_upload_admission\.sql|docs\/security\/pdf50-local-0049-upgrade-evidence\.md|docs\/security\/pdf50-local-rls-storage-admission-evidence\.md|docs\/security\/pdf50-local-fresh-chain-0049-evidence\.md)$/.test(path);
+      return /^(scripts\/pdf50-local-0050-upgrade-rehearsal\.mjs|scripts\/pdf50-local-fresh-chain-0050-gate\.mjs|scripts\/pdf50-0050-bucket-adoption-smoke\.mjs|scripts\/route-smoke\.mjs|scripts\/supabase-rls-smoke\.mjs|supabase\/clean-migrations\/0050_pdf50_burst_upload_admission\.sql|docs\/security\/pdf50-local-0050-upgrade-evidence\.md|docs\/security\/pdf50-local-rls-storage-admission-evidence\.md|docs\/security\/pdf50-local-fresh-chain-0050-evidence\.md)$/.test(path);
     });
   assert(branch === "codex/pdf50-burst-clean-db-rehearsal", "Unexpected branch.");
-  assert(status.length === 0 || expectedArtifactChanges, "Working tree has unexpected local changes before local 0049 apply.");
+  assert(status.length === 0 || expectedArtifactChanges, "Working tree has unexpected local changes before local 0050 apply.");
   assert(d484 && h0856, "Expected source commits are not both ancestors.");
-  assert(plan.executableMigrationNames.length === 49, "Executable canonical migration count must be 49.");
+  assert(plan.executableMigrationNames.length === 50, "Executable canonical migration count must be 50.");
   assert(plan.executableMigrationNames[31] === executable0032, "Executable 0032 must remain teacher feedback notes.");
   assert(plan.blockedMigrationNames.includes(excluded0032), "Google 0032 must remain excluded.");
-  assert(plan.executableMigrationNames.at(-1) === migration0049, "Canonical head must be 0049.");
-  assert(plan.manifest.latestActivePrefix === 49, "Manifest head must be 0049.");
+  assert(plan.executableMigrationNames.at(-1) === migration0050, "Canonical head must be 0050.");
+  assert(plan.manifest.latestActivePrefix === 50, "Manifest head must be 0050.");
   return {
     branch,
     head,
@@ -480,18 +483,20 @@ async function verifyPlanAndGit(plan) {
 async function verifyBaseline(client) {
   const history = await collectHistory(client);
   const bucket = await collectBucket(client);
-  const schema0049 = await collectSchema0049(client);
+  const schema0050 = await collectSchema0050(client);
   const rows = await collectRowCounts(client);
   const ok = history.totalRows === 50
     && history.canonicalCount === 48
     && history.canonicalHead === "0048"
     && history.canonical0049Count === 0
+    && history.canonical0050Count === 0
     && history.unmappedCount === 2
     && history.unmappedRowsPreserved
-    && history.pendingCanonical.length === 1
+    && history.pendingCanonical.length === 2
     && history.pendingCanonical[0] === "0049"
-    && schema0049.tableCount === 0
-    && schema0049.functionCount === 0
+    && history.pendingCanonical[1] === "0050"
+    && schema0050.tableCount === 0
+    && schema0050.functionCount === 0
     && bucket.exists
     && bucket.identityOk
     && bucket.private
@@ -499,29 +504,36 @@ async function verifyBaseline(client) {
     && bucket.legacyPolicyCount === 3
     && bucket.canonicalPolicyCount === 0
     && bucket.unknownBucketTargetingPolicyCount === 0;
-  return { ok, history, bucket, schema0049, rows };
+  return { ok, history, bucket, schema0050, rows };
 }
 
-async function apply0049Once(client, plan) {
+async function apply0050Once(client, plan) {
   const history = await collectHistory(client);
-  assert(history.pendingCanonical.length === 1 && history.pendingCanonical[0] === "0049", "0049 must be the only pending migration.");
-  const sql = await readFile(resolve(plan.cleanDirectory, migration0049), "utf8");
+  assert(
+    history.pendingCanonical.length === 2 &&
+      history.pendingCanonical[0] === "0049" &&
+      history.pendingCanonical[1] === "0050",
+    "Practice 0049 and PDF50 0050 must be the only pending migrations.",
+  );
   await client.query("begin");
   try {
-    await client.query(sql);
-    await client.query(
-      "insert into supabase_migrations.schema_migrations(version, statements, name) values ($1, $2, $3)",
-      ["0049", [], migration0049],
-    );
+    for (const filename of [practiceRouting0049, migration0050]) {
+      const sql = await readFile(resolve(plan.cleanDirectory, filename), "utf8");
+      await client.query(sql);
+      await client.query(
+        "insert into supabase_migrations.schema_migrations(version, statements, name) values ($1, $2, $3)",
+        [String(migrationNumber(filename)).padStart(4, "0"), [], filename],
+      );
+    }
     await client.query("commit");
-    return { applied: true, recordedHistoryRows: 1 };
+    return { applied: true, recordedHistoryRows: 2 };
   } catch (error) {
     await client.query("rollback").catch(() => {});
     const after = await collectHistory(client);
     return {
       applied: false,
       rolledBack: true,
-      history0049CountAfterRollback: after.canonical0049Count,
+      history0050CountAfterRollback: after.canonical0050Count,
       safeErrorType: safeError(error),
     };
   }
@@ -529,13 +541,16 @@ async function apply0049Once(client, plan) {
 
 async function canonicalRunnerSecondPass(client) {
   const historyBefore = await collectHistory(client);
-  const schemaBefore = await collectSchema0049(client);
+  const schemaBefore = await collectSchema0050(client);
   const bucketBefore = await collectBucket(client);
-  assert(historyBefore.canonical0049Count === 1, "0049 must already be applied before the second runner pass.");
+  assert(
+    historyBefore.canonical0049Count === 1 && historyBefore.canonical0050Count === 1,
+    "Practice 0049 and PDF50 0050 must already be applied before the second runner pass.",
+  );
   const pending = historyBefore.pendingCanonical;
   assert(pending.length === 0, "No canonical migration should remain pending.");
   const historyAfter = await collectHistory(client);
-  const schemaAfter = await collectSchema0049(client);
+  const schemaAfter = await collectSchema0050(client);
   const bucketAfter = await collectBucket(client);
   return {
     recognizedAlreadyApplied: true,
@@ -1375,7 +1390,7 @@ async function main() {
       executableCanonicalMigrations: plan.executableMigrationNames.length,
       executable0032,
       excluded0032,
-      canonicalHead: migration0049,
+      canonicalHead: migration0050,
     };
     const containerNames = docker(["ps", "--format", "{{.Names}}"]);
     evidence.localhostOnly.localSupabaseContainersRunning = containerNames.includes("supabase_db_o2i_pdf50_local_rehearsal")
@@ -1388,13 +1403,13 @@ async function main() {
     evidence.preApply = baseline;
     let applyResult = null;
     if (baseline.ok) {
-      applyResult = await apply0049Once(client, plan);
+      applyResult = await apply0050Once(client, plan);
     } else {
       const currentHistory = await collectHistory(client);
-      const currentSchema = await collectSchema0049(client);
+      const currentSchema = await collectSchema0050(client);
       const currentBucket = await collectBucket(client);
-      if (!isPost0049Valid({ history: currentHistory, schema0049: currentSchema, bucket: currentBucket })) {
-        finalClassification = "LOCAL_0049_BASELINE_MISMATCH";
+      if (!isPost0050Valid({ history: currentHistory, schema0050: currentSchema, bucket: currentBucket })) {
+        finalClassification = "LOCAL_0050_BASELINE_MISMATCH";
         throw new Error("baseline_mismatch");
       }
       applyResult = {
@@ -1404,19 +1419,19 @@ async function main() {
         recordedHistoryRows: 0,
       };
     }
-    evidence.apply0049 = applyResult;
+    evidence.apply0050 = applyResult;
     if (!applyResult.applied && !applyResult.alreadyAppliedBeforeThisRun) {
-      finalClassification = "LOCAL_0049_APPLY_FAILED_AND_ROLLED_BACK";
+      finalClassification = "LOCAL_0050_APPLY_FAILED_AND_ROLLED_BACK";
       throw new Error("apply_failed");
     }
 
     const postHistory = await collectHistory(client);
-    const postSchema = await collectSchema0049(client);
+    const postSchema = await collectSchema0050(client);
     const postBucket = await collectBucket(client);
-    evidence.postApply = { history: postHistory, schema0049: postSchema, bucket: postBucket };
-    const postOk = isPost0049Valid({ history: postHistory, schema0049: postSchema, bucket: postBucket });
+    evidence.postApply = { history: postHistory, schema0050: postSchema, bucket: postBucket };
+    const postOk = isPost0050Valid({ history: postHistory, schema0050: postSchema, bucket: postBucket });
     if (!postOk) {
-      finalClassification = "LOCAL_0049_SCHEMA_VALIDATION_FAILED";
+      finalClassification = "LOCAL_0050_SCHEMA_VALIDATION_FAILED";
       throw new Error("schema_validation_failed");
     }
 
@@ -1546,7 +1561,7 @@ async function main() {
         && !evidence.secondRunnerPass.bucketChanged
         && !evidence.secondRunnerPass.policyDuplication;
       if (!secondOk) {
-        finalClassification = "LOCAL_0049_SCHEMA_VALIDATION_FAILED";
+        finalClassification = "LOCAL_0050_SCHEMA_VALIDATION_FAILED";
         throw new Error("second_pass_failed");
       }
     } finally {
@@ -1574,7 +1589,7 @@ async function main() {
       canonicalHead: finalHistory.canonicalHead,
       pendingCanonicalCount: finalHistory.pendingCanonical.length,
     };
-    finalClassification = "LOCAL_0049_UPGRADE_RLS_STORAGE_ADMISSION_VALIDATED";
+    finalClassification = "LOCAL_0050_UPGRADE_RLS_STORAGE_ADMISSION_VALIDATED";
   } catch (error) {
     evidence.safeErrorType = safeError(error);
   } finally {
@@ -1582,7 +1597,7 @@ async function main() {
   }
   assert(finalClassifications.has(finalClassification), "invalid_final_classification");
   console.log(JSON.stringify({ finalClassification, evidence }, null, 2));
-  if (finalClassification !== "LOCAL_0049_UPGRADE_RLS_STORAGE_ADMISSION_VALIDATED") process.exit(2);
+  if (finalClassification !== "LOCAL_0050_UPGRADE_RLS_STORAGE_ADMISSION_VALIDATED") process.exit(2);
 }
 
 main().catch((error) => {

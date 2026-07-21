@@ -1,5 +1,9 @@
 # PDF50 Local 0049 Upgrade Evidence
 
+> **PRE-SEQUENCE-RECONCILIATION EVIDENCE.** This is preserved evidence for the
+> prior PDF50 `0049` candidate. It does not validate the canonical Practice
+> `0049` then PDF50 `0050` sequence; local reruns are required.
+
 Date: 2026-07-21
 
 Classification: `LOCAL_0049_UPGRADE_RLS_STORAGE_ADMISSION_VALIDATED`

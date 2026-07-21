@@ -1,5 +1,9 @@
 # PDF50 Local Clone History Reconciliation Evidence
 
+> **PRE-SEQUENCE-RECONCILIATION EVIDENCE.** This clone history result predates
+> the canonical Practice `0049` and PDF50 `0050` ordering. It remains
+> historical evidence only; it cannot validate the reconciled chain.
+
 Final classification: **LOCAL_CLONE_HISTORY_RECONCILED_THROUGH_0048**
 
 Scope: local disposable Docker Supabase rehearsal only. Migration `0049` was

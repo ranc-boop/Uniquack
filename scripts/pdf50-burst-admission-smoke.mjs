@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const migration = await readFile(
-  resolve(root, "supabase/clean-migrations/0049_pdf50_burst_upload_admission.sql"),
+  resolve(root, "supabase/clean-migrations/0050_pdf50_burst_upload_admission.sql"),
   "utf8",
 );
 const action = await readFile(

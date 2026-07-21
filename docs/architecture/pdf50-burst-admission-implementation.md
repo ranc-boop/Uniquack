@@ -82,7 +82,11 @@ Admin single-file direct upload remains valid. Teacher Bank upload moves from ra
 
 ## Migration classification
 
-Migration `0049` is a forward-only canonical clean migration. It adds the narrow burst tables, RPCs, triggers, RLS, and canonical private `ai-import-sources` bucket/policies. It does not alter historical rows, execution concurrency, model routing, or provider configuration.
+Migration `0050` is a forward-only canonical clean migration following main's
+Practice routing `0049`. It adds the narrow burst tables, RPCs, triggers, RLS,
+and canonical private `ai-import-sources` bucket/policies. It does not alter
+historical rows, execution concurrency, model routing, or provider
+configuration.
 
 The migration must be rehearsed against a fresh clean database and an upgraded disposable clean database before any live apply. Applied migrations are corrected forward only.
 

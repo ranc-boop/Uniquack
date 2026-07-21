@@ -559,7 +559,7 @@ function summarizeHistory(register, activeMigrationNames) {
     canonicalMissing0020Through0048: missingRepairRange.map(pad),
     unmappedRows: unmapped.map((row) => row.knownLegacyMigration).sort(),
     unmappedRowsPreserved: unmappedLegacyNames.every((name) => unmapped.some((row) => row.knownLegacyMigration === name)),
-    history0049Absent: !canonicalByNumber.has(49),
+    history0050Absent: !canonicalByNumber.has(50),
     nextPendingCanonicalMigration: nextPending ?? null,
   };
 }
@@ -614,22 +614,22 @@ function quoteIdentifier(identifier) {
   return `"${String(identifier).replaceAll('"', '""')}"`;
 }
 
-function migration0049Status(active, effects, finalStates, live, historySummary) {
-  const migration49 = active.find((name) => migrationNumber(name) === 49);
-  const expected = expectedItemsForMigration(migration49, effects.get(migration49), finalStates[48]);
+function migration0050Status(active, effects, finalStates, live, historySummary) {
+  const migration50 = active.find((name) => migrationNumber(name) === 50);
+  const expected = expectedItemsForMigration(migration50, effects.get(migration50), finalStates[49]);
   const nonBucketExpected = expected.filter((item) => item.category !== "buckets" && item.category !== "special" && item.expected === "present");
   const presentNonBucket = nonBucketExpected.filter((item) => liveHas(live, item.category, item.id));
-  const exact0049PoliciesPresent = [
+  const exact0050PoliciesPresent = [
     "ai_import_sources_reserved_upload",
     "ai_import_sources_manager_read",
     "ai_import_sources_manager_delete",
   ].filter((name) => live.policies.has(`storage.objects.${name}`));
   return {
-    historyAbsent: historySummary.history0049Absent,
+    historyAbsent: historySummary.history0050Absent,
     nonBucketObjectExpectedCount: nonBucketExpected.length,
     nonBucketObjectPresentCount: presentNonBucket.length,
-    exact0049PolicyPresentCount: exact0049PoliciesPresent.length,
-    hardened0049Executed: !historySummary.history0049Absent || presentNonBucket.length > 0 || exact0049PoliciesPresent.length > 0,
+    exact0050PolicyPresentCount: exact0050PoliciesPresent.length,
+    hardened0050Executed: !historySummary.history0050Absent || presentNonBucket.length > 0 || exact0050PoliciesPresent.length > 0,
   };
 }
 
@@ -653,7 +653,7 @@ function bucketStatus(live) {
     legacyPolicyNames,
     actualAiImportPolicyNames: policyNames,
     legacyPolicyCount: policyNames.filter((name) => legacyPolicyNames.includes(name)).length,
-    exact0049PolicyCount: policyNames.filter((name) => [
+    exact0050PolicyCount: policyNames.filter((name) => [
       "ai_import_sources_reserved_upload",
       "ai_import_sources_manager_read",
       "ai_import_sources_manager_delete",
@@ -680,7 +680,7 @@ async function buildStatus(client, plan, sourceModel) {
     ));
   const missingObjectMigrations = migrationResults.filter((result) => result.representation !== "FULLY_REPRESENTED");
   const bucket = bucketStatus(live);
-  const migration49 = migration0049Status(sourceModel.active, sourceModel.effects, sourceModel.finalStates, live, history);
+  const migration50 = migration0050Status(sourceModel.active, sourceModel.effects, sourceModel.finalStates, live, history);
   return {
     localhostOnly: {
       databaseHostLocal: true,
@@ -696,7 +696,7 @@ async function buildStatus(client, plan, sourceModel) {
       failedByCategory: result.failedByCategory,
     })),
     history,
-    migration0049: migration49,
+    migration0050: migration50,
     bucket,
     schemaFingerprint: schemaFingerprint(live),
     storageFingerprint: storageFingerprint(live),
@@ -714,15 +714,15 @@ function baselineValid(status) {
     && status.history.canonicalPresentThrough0048Count === 19
     && status.history.canonicalMissing0020Through0048.length === 29
     && status.history.unmappedRowsPreserved
-    && status.history.history0049Absent
-    && status.migration0049.nonBucketObjectPresentCount === 0
-    && status.migration0049.exact0049PolicyPresentCount === 0
+    && status.history.history0050Absent
+    && status.migration0050.nonBucketObjectPresentCount === 0
+    && status.migration0050.exact0050PolicyPresentCount === 0
     && status.bucket.exists
     && status.bucket.private
     && status.bucket.pdfOnly
     && status.bucket.fileSizeLimit50Mb
     && status.bucket.legacyPolicyCount === 3
-    && status.bucket.exact0049PolicyCount === 0
+    && status.bucket.exact0050PolicyCount === 0
     && status.bucket.storageObjectCount === 0;
 }
 
@@ -731,23 +731,23 @@ function reconciledValid(status) {
     && status.history.canonicalPresentThrough0048Count === 48
     && status.history.canonicalMissingThrough0048.length === 0
     && status.history.unmappedRowsPreserved
-    && status.history.history0049Absent
-    && status.history.nextPendingCanonicalMigration === "0049_pdf50_burst_upload_admission.sql"
-    && status.migration0049.nonBucketObjectPresentCount === 0
-    && status.migration0049.exact0049PolicyPresentCount === 0
+    && status.history.history0050Absent
+    && status.history.nextPendingCanonicalMigration === "0049_practice_agent_provider_routing.sql"
+    && status.migration0050.nonBucketObjectPresentCount === 0
+    && status.migration0050.exact0050PolicyPresentCount === 0
     && status.bucket.exists
     && status.bucket.private
     && status.bucket.pdfOnly
     && status.bucket.legacyPolicyCount === 3
-    && status.bucket.exact0049PolicyCount === 0;
+    && status.bucket.exact0050PolicyCount === 0;
 }
 
 async function repair(client, plan, sourceModel) {
   const beforeStatus = await buildStatus(client, plan, sourceModel);
   assert(beforeStatus.canonicalObjectsThrough0048Represented, "Canonical object fingerprint through 0048 is incomplete.");
   assert(beforeStatus.history.unmappedRowsPreserved, "Unmapped legacy rows are missing.");
-  assert(beforeStatus.history.history0049Absent, "0049 history must be absent.");
-  assert(!beforeStatus.migration0049.hardened0049Executed, "0049 appears to have executed.");
+  assert(beforeStatus.history.history0050Absent, "0050 history must be absent.");
+  assert(!beforeStatus.migration0050.hardened0050Executed, "0050 appears to have executed.");
   assert(beforeStatus.bucket.exists && beforeStatus.bucket.private && beforeStatus.bucket.pdfOnly, "Compatible ai-import-sources bucket is missing.");
 
   const beforeRows = await rowCountFingerprint(client);

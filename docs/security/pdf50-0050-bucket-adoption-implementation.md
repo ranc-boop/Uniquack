@@ -1,15 +1,17 @@
-# PDF50 0049 Bucket Adoption Implementation
+# PDF50 0050 Bucket Adoption Implementation
 
 ## Goal
 
-Harden the not-yet-applied canonical migration `0049` so a fresh database can
+Harden the not-yet-applied canonical migration `0050` so a fresh database can
 create `ai-import-sources`, while an upgraded clean-database clone can adopt a
 compatible existing bucket without recreating it or deleting objects.
 
 ## Non-Goals
 
 - No database, Storage, Provider, or runtime operation was performed.
-- No migration through `0048` changed and no `0050` exists.
+- At the original source decision, no migration through `0048` changed.
+  Sequence reconciliation later retained main's Practice routing migration as
+  canonical `0049` and moved PDF50 to `0050`; no PDF50 SQL behavior changed.
 - No historical migration ledger repair, content backfill, assignment creation,
   publication, or Provider routing change is included.
 
@@ -42,7 +44,7 @@ compatible existing bucket without recreating it or deleting objects.
 
 `ai_import_sources_admin_upload`, `ai_import_sources_admin_read`, and
 `ai_import_sources_admin_delete` are **BROADER_THAN_CANONICAL** because they
-allow arbitrary bucket paths to admins. 0049 drops only those exact names and
+allow arbitrary bucket paths to admins. 0050 drops only those exact names and
 installs the canonical reserved-upload, manager-read, and manager-delete
 policies. No wildcard policy deletion occurs. Before this replacement, a
 catalog preflight aborts the migration if another policy is named for, or whose
@@ -60,7 +62,7 @@ Old-demo overlap is not applicable.
 
 ## Freeze and Validation
 
-Changing 0049 is allowed only because it has not been applied. After the first
+Changing 0050 is allowed only because it has not been applied. After the first
 successful application it is frozen and any defect needs a forward migration.
 Local validation is deterministic source coverage only. A disposable clone
 must still prove absent/create, compatible/adopt, incompatible/rollback,

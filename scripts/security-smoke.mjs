@@ -144,7 +144,7 @@ const teacherPdfBurstUpload = await read(
   "src/components/teacher/teacher-pdf-burst-upload.tsx",
 );
 const pdf50BurstMigration = await read(
-  "supabase/clean-migrations/0049_pdf50_burst_upload_admission.sql",
+  "supabase/clean-migrations/0050_pdf50_burst_upload_admission.sql",
 );
 const teacherParsingProfiles = await read(
   "src/lib/ai-pdf-import/teacher-parsing-profiles.ts",

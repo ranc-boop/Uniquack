@@ -1,4 +1,4 @@
-# Canonical Migration Governance Through 0049
+# Canonical Migration Governance Through 0050
 
 Result: **MIGRATION_GOVERNANCE_RECONCILED**
 
@@ -15,8 +15,8 @@ changed.
 - governance checks: `scripts/canonical-migration-governance-smoke.mjs` and
   `scripts/migration-reconciliation-smoke.mjs`
 
-The directory contains 50 SQL files. The manifest-driven executable chain
-contains 49 migrations in positions 1 through 49. A directory glob is never an
+The directory contains 51 SQL files. The manifest-driven executable chain
+contains 50 migrations in positions 1 through 50. A directory glob is never an
 executable plan.
 
 ## Duplicate 0032 Decision
@@ -32,7 +32,7 @@ must be explicitly excluded. Google-specific apply/RLS harnesses now check the
 manifest before starting their embedded database and fail closed while the
 Google migration remains blocked.
 
-## Registrations 0044-0049
+## Registrations 0044-0050
 
 | Order | File | Classification | Registered status |
 |---:|---|---|---|
@@ -41,13 +41,15 @@ Google migration remains blocked.
 | 46 | `0046_question_assets_bucket_private.sql` | `CANONICAL_EXECUTABLE` | Existing applied evidence retained |
 | 47 | `0047_practice_self_study_evidence_isolation.sql` | `CANONICAL_EXECUTABLE` | Existing applied evidence retained |
 | 48 | `0048_practice_course_framework_evidence_isolation.sql` | `CANONICAL_EXECUTABLE` | Existing applied evidence retained |
-| 49 | `0049_pdf50_burst_upload_admission.sql` | `CANONICAL_EXECUTABLE` | Unapplied; disposable rehearsal required |
+| 49 | `0049_practice_agent_provider_routing.sql` | `CANONICAL_EXECUTABLE` | Not yet applied; retained from main |
+| 50 | `0050_pdf50_burst_upload_admission.sql` | `CANONICAL_EXECUTABLE` | Unapplied; local revalidation required after sequence reconciliation |
 
-`0049_pdf50_burst_upload_admission.sql` is the canonical source head. Its
-registration does not claim that it has been applied to any database. Before
-its first application, it may create an absent private source bucket or adopt
-only a compatible preexisting private PDF-only bucket; incompatible bucket
-state fails closed. The migration becomes frozen after its first successful
+`0049_practice_agent_provider_routing.sql` remains the canonical Practice
+routing migration from main. `0050_pdf50_burst_upload_admission.sql` is the
+canonical source head. Neither registration claims live application. Before
+its first application, PDF50 may create an absent private source bucket or
+adopt only a compatible preexisting private PDF-only bucket; incompatible
+bucket state fails closed. PDF50 becomes frozen after its first successful
 application.
 
 ## Execution Controls
@@ -66,6 +68,6 @@ to `activeApplyPlan`.
 ## Remaining Gate
 
 Migration governance is reconciled, but PDF50 live readiness is not claimed.
-Migration 0049 still requires the separately approved disposable fresh-chain,
-0048-to-0049 upgrade, RLS, Storage, admission, race, recovery, and exact-cleanup
-rehearsal.
+PDF50 0050 still requires the separately approved disposable fresh-chain,
+0048-to-Practice-0049-to-PDF50-0050 upgrade, RLS, Storage, admission, race,
+recovery, and exact-cleanup rehearsal.

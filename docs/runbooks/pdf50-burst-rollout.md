@@ -2,7 +2,8 @@
 
 ## Preconditions
 
-- Review migration `0049` as a forward-only canonical clean migration.
+- Review Practice routing `0049` and PDF50 `0050` as ordered forward-only
+  canonical clean migrations.
 - Confirm no migration number collision on active branches.
 - Confirm `ai-import-sources` is private and has no public URLs.
 - Confirm current provider concurrency values are unchanged.
@@ -12,13 +13,16 @@
 
 This PR does not apply a migration. Before rollout, use approved disposable infrastructure only:
 
-1. Apply the full canonical clean chain through `0049` to a fresh database.
+1. Apply the full canonical clean chain through `0050` to a fresh database.
 2. Verify bucket privacy, RLS, RPC grants, indexes, and constraints.
-3. Apply `0049` to a disposable database already at `0048`.
-4. Run owner/editor/viewer/student/cross-organization checks.
-5. Reserve and finalize synthetic 1-, 10-, and 50-item bursts without a Provider.
-6. Verify 50 durable items, bounded queue release, duplicate idempotency, cancellation, and exact cleanup.
-7. Record sanitized aggregate evidence only.
+3. From a disposable database at canonical `0048`, apply Practice routing
+   `0049`, then PDF50 `0050`.
+4. From a canonical Practice-`0049` baseline with a compatible private bucket,
+   apply PDF50 `0050`.
+5. Run owner/editor/viewer/student/cross-organization checks.
+6. Reserve and finalize synthetic 1-, 10-, and 50-item bursts without a Provider.
+7. Verify 50 durable items, bounded queue release, duplicate idempotency, cancellation, and exact cleanup.
+8. Record sanitized aggregate evidence only.
 
 ## Rollout
 
