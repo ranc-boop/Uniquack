@@ -399,12 +399,15 @@ async function collectSchema0049(client) {
 }
 
 function isPost0049Valid({ history, schema0049, bucket }) {
-  return history.totalRows === 51
-    && history.canonicalCount === 49
+  const reconciledCloneHistory = history.totalRows === 51
+    && history.unmappedCount === 2
+    && history.unmappedRowsPreserved;
+  const freshChainHistory = history.totalRows === 49
+    && history.unmappedCount === 0;
+  return history.canonicalCount === 49
     && history.canonicalHead === "0049"
     && history.canonical0049Count === 1
-    && history.unmappedCount === 2
-    && history.unmappedRowsPreserved
+    && (reconciledCloneHistory || freshChainHistory)
     && history.pendingCanonical.length === 0
     && schema0049.noPartialState
     && schema0049.uniqueImportBatchConstraint
@@ -456,7 +459,7 @@ async function verifyPlanAndGit(plan) {
     .filter(Boolean)
     .every((line) => {
       const path = line.replace(/^[? MARCUD!]{1,2}\s+/, "").replaceAll("\\", "/");
-      return /^(scripts\/pdf50-local-0049-upgrade-rehearsal\.mjs|scripts\/pdf50-0049-bucket-adoption-smoke\.mjs|scripts\/route-smoke\.mjs|scripts\/supabase-rls-smoke\.mjs|supabase\/clean-migrations\/0049_pdf50_burst_upload_admission\.sql|docs\/security\/pdf50-local-0049-upgrade-evidence\.md|docs\/security\/pdf50-local-rls-storage-admission-evidence\.md)$/.test(path);
+      return /^(scripts\/pdf50-local-0049-upgrade-rehearsal\.mjs|scripts\/pdf50-local-fresh-chain-0049-gate\.mjs|scripts\/pdf50-0049-bucket-adoption-smoke\.mjs|scripts\/route-smoke\.mjs|scripts\/supabase-rls-smoke\.mjs|supabase\/clean-migrations\/0049_pdf50_burst_upload_admission\.sql|docs\/security\/pdf50-local-0049-upgrade-evidence\.md|docs\/security\/pdf50-local-rls-storage-admission-evidence\.md|docs\/security\/pdf50-local-fresh-chain-0049-evidence\.md)$/.test(path);
     });
   assert(branch === "codex/pdf50-burst-clean-db-rehearsal", "Unexpected branch.");
   assert(status.length === 0 || expectedArtifactChanges, "Working tree has unexpected local changes before local 0049 apply.");
