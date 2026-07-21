@@ -26,6 +26,7 @@ import {
   type AIPdfProcessInput,
 } from "@/lib/ai-pdf-import/service";
 import { AI_IMPORT_SOURCES_BUCKET } from "@/lib/ai-pdf-import/constants";
+import { releaseAIPdfBurstAdmissionJobs } from "@/lib/ai-pdf-import/burst-admission";
 import { generateTeacherBlueprintReviewDrafts } from "@/lib/teacher-blueprint-generation";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -777,6 +778,8 @@ export async function runDurableAIProviderJobs({
   };
   if (control.pauseWorkerClaims) return summary;
 
+  await releaseAIPdfBurstAdmissionJobs({ limit: 4, supabase });
+
   const boundedLimit = Math.max(
     1,
     Math.min(limit, 2, control.maxJobsPerInvocation),
@@ -807,6 +810,8 @@ export async function runDurableAIProviderJobs({
     if (state === "retry_wait") summary.retryWaiting += 1;
     if (state === "failed") summary.failed += 1;
   }
+
+  await releaseAIPdfBurstAdmissionJobs({ limit: 4, supabase });
 
   return summary;
 }

@@ -5,6 +5,9 @@
 - Canonical source: `supabase/clean-migrations`.
 - Legacy/non-canonical source: `supabase/migrations`.
 - Blocked from every live apply plan: `0032_google_account_links.sql`.
+- The executable clean chain is the ordered `activeApplyPlan` in
+  `docs/security/live-schema-manifest.json`. Directory order is inventory
+  evidence only and must never be used as an apply plan.
 - No previously applied migration is renamed, edited, replayed, or represented as
   a different historical version.
 
@@ -16,14 +19,18 @@ inventing timestamps for past SQL Editor work.
 ## Future Release Procedure
 
 1. The release owner creates one new SQL file with the next unused monotonic
-   four-digit prefix. The current active maximum is `0043`; it is pending its
-   reviewed one-time SQL Editor application and must not be renumbered or used
-   to replay earlier Classroom migrations.
+   four-digit prefix. The current canonical source head is PDF50 `0050`, after
+   Practice routing `0049`. PDF50 local sequence revalidation remains pending
+   and it must not be represented as live-applied evidence.
 2. The PR records purpose, ownership boundary, RLS/function-grant review,
    forward-only rollback plan, and the exact expected catalog objects.
-3. Run `node scripts/migration-reconciliation-smoke.mjs`. It verifies the
-   active plan, blocked migration exclusion, historical integrity hashes,
-   canonical RLS policy inventory, and security-definer search paths.
+3. Register the file's number, executable/excluded classification, expected
+   order, status, and evidence source in the manifest. Run
+   `node scripts/canonical-migration-governance-smoke.mjs` and
+   `node scripts/migration-reconciliation-smoke.mjs`. They verify the active
+   plan, duplicate-prefix decisions, blocked migration exclusion, historical
+   integrity hashes, canonical RLS policy inventory, and security-definer
+   search paths.
 4. Apply only the approved active file(s) through the reviewed deployment path.
    Do not apply the legacy directory and do not bulk replay the historical
    clean chain against an existing environment.
@@ -51,6 +58,12 @@ SQL Editor application is an exception, not a deployment mechanism. It needs:
 artifact. It is not a live migration and must not be included by an aggregate
 or release apply harness. Google identity work needs an approved OAuth/OIDC
 design before a new, uniquely numbered forward migration can exist.
+
+The raw directory also contains executable `0032_teacher_feedback_notes.sql`.
+This duplicate numeric prefix is intentional source history, not permission to
+run both files. The manifest assigns executable position 32 only to teacher
+feedback notes and classifies Google account links as excluded with no
+executable order.
 
 ## Live Reconciliation Gate
 

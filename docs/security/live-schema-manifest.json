@@ -3,10 +3,13 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 49,
+  "latestActivePrefix": 50,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
+      "migrationNumber": 32,
+      "classification": "EXCLUDED_NONEXECUTABLE",
+      "expectedOrder": null,
       "reason": "Caller-supplied identity RPC design is not approved; no live apply is authorized.",
       "ownerDecisionRequired": "Google identity/OIDC redesign approval"
     }
@@ -60,7 +63,8 @@
     "0046_question_assets_bucket_private.sql",
     "0047_practice_self_study_evidence_isolation.sql",
     "0048_practice_course_framework_evidence_isolation.sql",
-    "0049_practice_agent_provider_routing.sql"
+    "0049_practice_agent_provider_routing.sql",
+    "0050_pdf50_burst_upload_admission.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -224,8 +228,8 @@
     { "filename": "0029_teacher_role_bank_public_boundary.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "teacher role/bank boundary report" },
     { "filename": "0030_teacher_classroom_rls_fix.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "teacher classroom RLS validation report" },
     { "filename": "0031_blueprint_library_foundation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "Blueprint library foundation report" },
-    { "filename": "0032_google_account_links.sql", "status": "UNAPPLIED_BLOCKED", "applicationMethod": "blocked", "evidenceSource": "Google identity design remains unapproved" },
-    { "filename": "0032_teacher_feedback_notes.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "teacher feedback notes manual-apply report" },
+    { "filename": "0032_google_account_links.sql", "migrationNumber": 32, "classification": "EXCLUDED_NONEXECUTABLE", "expectedOrder": null, "reason": "Caller-supplied identity RPC design is not approved.", "status": "UNAPPLIED_BLOCKED", "applicationMethod": "blocked", "evidenceSource": "Google identity design remains unapproved" },
+    { "filename": "0032_teacher_feedback_notes.sql", "migrationNumber": 32, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 32, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "teacher feedback notes manual-apply report" },
     { "filename": "0033_ai_provider_jobs.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "durable AI queue live validation report" },
     { "filename": "0034_ai_provider_jobs_worker_role_fix.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "durable AI queue worker-role validation report" },
     { "filename": "0035_ai_provider_routing_circuit_breaker.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "AI provider routing/circuit-breaker report" },
@@ -237,11 +241,12 @@
     { "filename": "0041_profile_delete_privilege_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "profile deletion hardening live validation" },
     { "filename": "0042_internal_provider_gateway_hardening.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "post-0042 SQL Editor grant and alias validation" },
     { "filename": "0043_classroom_creation_rls_hardening.sql", "status": "PARTIALLY_APPLIED_FAILED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized 42723 collision and 0043-only helper catalog metadata" },
-    { "filename": "0044_classroom_creation_rpc_reconciliation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-0044 RPC, policy, and grant metadata plus completed disposable role-E2E evidence" },
-    { "filename": "0045_question_read_authorization_helper.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "live catalog validation plus exact-ID pre-cutover authorization matrix" },
-    { "filename": "0046_question_assets_bucket_private.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "clean-database private-bucket post-cutover validation; exactly one private bucket, nine-field zero-residual checks, direct URL denial, and exact-ID cleanup" },
-    { "filename": "0047_practice_self_study_evidence_isolation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized helper catalog validation plus completed post-0048 disposable role matrix" },
-    { "filename": "0048_practice_course_framework_evidence_isolation.sql", "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-apply catalog counts and completed exact-ID disposable framework-boundary role matrix" },
-    { "filename": "0049_practice_agent_provider_routing.sql", "status": "NOT_YET_APPLIED", "applicationMethod": "pending forward-only deployment migration", "evidenceSource": "repository review and static security smoke; live application intentionally not run by this task" }
+    { "filename": "0044_classroom_creation_rpc_reconciliation.sql", "migrationNumber": 44, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 44, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-0044 RPC, policy, and grant metadata plus completed disposable role-E2E evidence" },
+    { "filename": "0045_question_read_authorization_helper.sql", "migrationNumber": 45, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 45, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "live catalog validation plus exact-ID pre-cutover authorization matrix" },
+    { "filename": "0046_question_assets_bucket_private.sql", "migrationNumber": 46, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 46, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "clean-database private-bucket post-cutover validation; exactly one private bucket, nine-field zero-residual checks, direct URL denial, and exact-ID cleanup" },
+    { "filename": "0047_practice_self_study_evidence_isolation.sql", "migrationNumber": 47, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 47, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized helper catalog validation plus completed post-0048 disposable role matrix" },
+    { "filename": "0048_practice_course_framework_evidence_isolation.sql", "migrationNumber": 48, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 48, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-apply catalog counts and completed exact-ID disposable framework-boundary role matrix" },
+    { "filename": "0049_practice_agent_provider_routing.sql", "migrationNumber": 49, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 49, "status": "LOCALLY_REVALIDATED_NOT_HOSTED_APPLIED", "applicationMethod": "localhost-only release gate", "evidenceSource": "docs/security/pdf50-local-0049-0050-upgrade-evidence.md and docs/security/pdf50-local-0050-bucket-adoption-evidence.md; no hosted application is claimed" },
+    { "filename": "0050_pdf50_burst_upload_admission.sql", "migrationNumber": 50, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 50, "status": "LOCALLY_REVALIDATED_NOT_HOSTED_APPLIED", "applicationMethod": "localhost-only fresh-chain, sequential-upgrade, and bucket-adoption release gates", "evidenceSource": "docs/security/pdf50-local-fresh-chain-0050-evidence.md, docs/security/pdf50-local-0049-0050-upgrade-evidence.md, and docs/security/pdf50-local-0050-bucket-adoption-evidence.md; no hosted application is claimed" }
   ]
 }

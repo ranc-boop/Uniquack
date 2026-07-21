@@ -1,10 +1,11 @@
 ﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ClipboardCheck, Upload } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 
 import { AIJobStatusPanel } from "@/components/ai-jobs/ai-job-status-panel";
 import { FormSubmitButton } from "@/components/form-submit-button";
+import { TeacherPdfBurstUpload } from "@/components/teacher/teacher-pdf-burst-upload";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -13,6 +14,10 @@ import {
   listAIProviderJobsForBank,
 } from "@/lib/ai-jobs/queue";
 import type { AIProviderJobSafeStatus } from "@/lib/ai-jobs/types";
+import {
+  listAIPdfBurstsForBank,
+  type AIPdfBurstSafeSummary,
+} from "@/lib/ai-pdf-import/burst-admission";
 import { listTeacherAIPdfParsingProfileState } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import {
   bankMemberRoleLabel,
@@ -26,7 +31,6 @@ import { createClient } from "@/lib/supabase/server";
 
 import {
   importBankJsonDrafts,
-  importBankPdfDrafts,
   queueBankPdfCoverageRecovery,
 } from "../../actions";
 import {
@@ -104,6 +108,8 @@ export default async function TeacherBankImportsPage({
   const supabase = await createClient();
   let detail;
   let importBatches = [];
+  let pdfBursts: AIPdfBurstSafeSummary[] = [];
+  let pdfBurstSchemaAvailable = false;
   let queueJobs: AIProviderJobSafeStatus[] = [];
   let queueSetupNeeded = false;
   const parsingProfileState =
@@ -116,6 +122,9 @@ export default async function TeacherBankImportsPage({
       supabase,
     });
     importBatches = await listBankImportBatches({ bankId, supabase });
+    const burstState = await listAIPdfBurstsForBank({ bankId, supabase });
+    pdfBursts = burstState.bursts;
+    pdfBurstSchemaAvailable = burstState.available;
     try {
       queueJobs = await listAIProviderJobsForBank({ bankId, supabase });
     } catch (error) {
@@ -233,103 +242,28 @@ export default async function TeacherBankImportsPage({
                 private drafts in this bank until review.
               </p>
             </div>
-            <form
-              action={importBankPdfDrafts}
-              className="space-y-4 p-5"
-            >
-              <input name="bankId" type="hidden" value={bank.id} />
-              {parsingProfileState.available &&
-              parsingProfileState.options.length <= 1 ? (
-                <>
-                  <input
-                    name="parsingProfile"
-                    type="hidden"
-                    value={parsingProfileState.defaultProfile}
-                  />
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm font-medium text-sky-900">
-                    AI PDF parsing is enabled.
-                  </div>
-                </>
-              ) : null}
-              {parsingProfileState.available &&
-              parsingProfileState.options.length > 1 ? (
-                <fieldset className="space-y-3">
-                  <legend className="text-sm font-semibold text-slate-950">
-                    Parsing profile
-                  </legend>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {parsingProfileState.options.map((option) => (
-                      <label
-                        className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"
-                        key={option.value}
-                      >
-                        <input
-                          className="mr-2 size-4 align-middle"
-                          defaultChecked={
-                            option.value === parsingProfileState.defaultProfile
-                          }
-                          name="parsingProfile"
-                          type="radio"
-                          value={option.value}
-                        />
-                        <span className="font-semibold text-slate-950">
-                          {option.label}
-                        </span>
-                        <span className="mt-1 block text-xs leading-5 text-slate-600">
-                          {option.description}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-              ) : null}
-              {!parsingProfileState.available ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-                  <p className="font-semibold">
-                    AI PDF parsing is not enabled for this site or organization yet.
-                  </p>
-                  <p className="mt-1">
-                    A platform admin must enable a shared AI provider in Admin
-                    / AI Settings. Teachers can upload PDFs here once the
-                    shared provider is enabled; provider credentials are never
-                    configured in the teacher workspace.
-                  </p>
-                </div>
-              ) : null}
-              <label className="block rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5">
-                <span className="text-sm font-semibold text-slate-950">
-                  Private source PDF
-                </span>
-                <input
-                  accept="application/pdf,.pdf"
-                  className="mt-3 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm file:mr-3 file:rounded-md file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-sky-800"
-                  disabled={!canRunPdfImport}
-                  name="pdf"
-                  required
-                  type="file"
-                />
-              </label>
-              <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 sm:flex-row sm:items-center sm:justify-between">
-                <p>
-                  Review is required before assignment. This does not publish
-                  questions or expose the full bank to students.
+            {!parsingProfileState.available ? (
+              <div className="border-t border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                <p className="font-semibold">
+                  AI PDF parsing is not enabled for this site or organization yet.
                 </p>
-                {canRunPdfImport ? (
-                  <FormSubmitButton pendingLabel="Queueing AI Parsing...">
-                    <Upload aria-hidden="true" className="h-4 w-4" />
-                    Queue AI Parsing
-                  </FormSubmitButton>
-                ) : canImport ? (
-                  <Button disabled type="button">
-                    AI PDF parsing unavailable
-                  </Button>
-                ) : (
-                  <Button disabled type="button">
-                    Import requires owner/editor
-                  </Button>
-                )}
+                <p className="mt-1">
+                  A platform admin must enable a shared AI provider in Admin / AI Settings.
+                </p>
               </div>
-            </form>
+            ) : null}
+            <TeacherPdfBurstUpload
+              bankId={bank.id}
+              bankName={bank.name}
+              canUpload={canRunPdfImport}
+              initialBursts={pdfBursts}
+              parsingProfile={parsingProfileState.defaultProfile}
+              schemaAvailable={pdfBurstSchemaAvailable}
+            />
+            <div className="border-t border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+              Review is required before assignment. Uploading does not publish
+              questions or expose the source Bank to students.
+            </div>
           </section>
 
           <details className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">

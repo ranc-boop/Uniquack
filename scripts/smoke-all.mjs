@@ -22,6 +22,7 @@ await import("./question-asset-url-backfill-jsonb-test.mjs");
 await import("./question-assets-backfill-plan-test.mjs");
 await import("./question-assets-private-cutover-smoke.mjs");
 await runInChildProcess("scripts/question-assets-embedded-rehearsal.mjs");
+await import("./canonical-migration-governance-smoke.mjs");
 await import("./migration-reconciliation-smoke.mjs");
 await import("./provider-gateway-hardening-smoke.mjs");
 await import("./profile-role-immutability-smoke.mjs");

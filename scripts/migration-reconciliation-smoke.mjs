@@ -1,22 +1,18 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  loadCanonicalMigrationPlan,
+  migrationNumber,
+} from "./lib/canonical-migration-plan.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const root = resolve(__dirname, "..");
-const cleanMigrationDirectory = resolve(root, "supabase/clean-migrations");
-const manifestPath = resolve(root, "docs/security/live-schema-manifest.json");
-
 function assert(condition, message) {
   if (!condition) throw new Error(message);
-}
-
-function prefixOf(filename) {
-  const match = /^(\d{4})_/.exec(filename);
-  assert(match, `Clean migration filename is missing a four-digit prefix: ${filename}`);
-  return Number(match[1]);
 }
 
 function sha256(content) {
@@ -27,14 +23,12 @@ async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
 
-const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-const migrationNames = (await readdir(cleanMigrationDirectory))
-  .filter((name) => name.endsWith(".sql"))
-  .sort();
-const blockedMigrationNames = new Set(
-  manifest.blockedMigrations.map((entry) => entry.filename),
-);
-const activeMigrationNames = migrationNames.filter((name) => !blockedMigrationNames.has(name));
+const plan = await loadCanonicalMigrationPlan({ root });
+const { manifest } = plan;
+const cleanMigrationDirectory = plan.cleanDirectory;
+const migrationNames = plan.directoryMigrationNames;
+const activeMigrationNames = plan.executableMigrationNames;
+const blockedMigrationNames = new Set(plan.blockedMigrationNames);
 
 assert(
   manifest.canonicalMigrationDirectory === "supabase/clean-migrations",
@@ -57,7 +51,7 @@ assert(
 
 const activePrefixes = new Map();
 for (const name of activeMigrationNames) {
-  const prefix = prefixOf(name);
+  const prefix = migrationNumber(name);
   const names = activePrefixes.get(prefix) ?? [];
   names.push(name);
   activePrefixes.set(prefix, names);
@@ -66,7 +60,7 @@ for (const [prefix, names] of activePrefixes) {
   assert(names.length === 1, `Duplicate active migration prefix ${prefix}: ${names.join(", ")}`);
 }
 
-const allPrefixes = [...new Set(migrationNames.map(prefixOf))].sort((left, right) => left - right);
+const allPrefixes = [...new Set(migrationNames.map(migrationNumber))].sort((left, right) => left - right);
 for (let expected = allPrefixes[0]; expected <= allPrefixes.at(-1); expected += 1) {
   assert(allPrefixes.includes(expected), `Migration prefix gap requires an explicit owner decision: ${expected}`);
 }
@@ -77,6 +71,36 @@ assert(
 assert(
   !manifest.activeApplyPlan.includes("0032_google_account_links.sql"),
   "Blocked Google 0032 must not be included in the active apply plan.",
+);
+const duplicate0032 = plan.duplicateRawPrefixes.find((entry) => entry.number === 32);
+assert(
+  plan.duplicateRawPrefixes.length === 1 &&
+    duplicate0032?.names.includes("0032_google_account_links.sql") &&
+    duplicate0032?.names.includes("0032_teacher_feedback_notes.sql"),
+  "The raw duplicate 0032 must remain detected and explicitly governed.",
+);
+assert(
+  activeMigrationNames.filter((name) => migrationNumber(name) === 32).join() ===
+    "0032_teacher_feedback_notes.sql" &&
+    blockedMigrationNames.has("0032_google_account_links.sql"),
+  "Exactly one executable canonical 0032 is allowed; Google 0032 must stay excluded.",
+);
+
+for (let number = 44; number <= 50; number += 1) {
+  const filename = activeMigrationNames[number - 1];
+  const entry = manifest.migrationInventory.find((candidate) => candidate.filename === filename);
+  assert(
+    entry?.migrationNumber === number &&
+      entry.classification === "CANONICAL_EXECUTABLE" &&
+      entry.expectedOrder === number,
+    `Canonical migration ${number} requires explicit number, classification, and order.`,
+  );
+}
+assert(
+  manifest.latestActivePrefix === 50 &&
+    activeMigrationNames.at(-2) === "0049_practice_agent_provider_routing.sql" &&
+    activeMigrationNames.at(-1) === "0050_pdf50_burst_upload_admission.sql",
+  "Practice routing 0049 and PDF50 0050 must be the canonical executable tail.",
 );
 
 for (const [filename, expectedHash] of Object.entries(manifest.frozenMigrationHashes)) {
@@ -165,6 +189,19 @@ assert(
   `Release-control violations require a forward review decision:\n- ${releaseControlViolations.join("\n- ")}`,
 );
 
+for (const filename of [
+  "scripts/google-account-links-baseline-smoke.mjs",
+  "scripts/google-account-links-apply-smoke.mjs",
+  "scripts/google-account-links-rls-smoke.mjs",
+]) {
+  const content = await read(filename);
+  assert(
+    content.includes("canonical-migration-plan.mjs") &&
+      !/readdirSync\(cleanDir\)/.test(content),
+    `${filename} must consume the manifest and cannot execute raw directory order.`,
+  );
+}
+
 const unreviewedDrift = manifest.knownLiveDrift.filter((entry) => !entry.ownerDecision);
 if (process.argv.includes("--require-live-reconciliation")) {
   assert(
@@ -175,6 +212,9 @@ if (process.argv.includes("--require-live-reconciliation")) {
 
 console.log(`PASS canonical migration inventory: ${migrationNames.length} files, ${activeMigrationNames.length} active`);
 console.log("PASS blocked Google 0032 is excluded from the active apply plan");
+console.log("PASS executable 0032 is teacher feedback notes only; raw duplicate is explicit");
+console.log("PASS canonical migrations 0044-0050 have explicit number/classification/order");
+console.log("PASS manifest-driven executable chain has canonical head 0050");
 console.log(`PASS canonical RLS policy inventory: ${rlsTables.length} tables`);
 console.log("PASS historical 0039-0041 hashes remain unchanged");
 console.log(
