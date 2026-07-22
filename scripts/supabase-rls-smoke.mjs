@@ -16,11 +16,13 @@ const requiredLocalGate = "CONFIRMED";
 const pdf50LocalOnly =
   (process.env.PDF50_LOCAL_CHECKPOINT_REHEARSAL === requiredLocalGate ||
     process.env.PDF50_LOCAL_CLONE_REHEARSAL === requiredLocalGate) &&
-  process.env.PDF50_LOCALHOST_ONLY === requiredLocalGate;
+  process.env.PDF50_LOCALHOST_ONLY === requiredLocalGate &&
+  process.env.PDF50_FAKE_PROVIDER_ONLY === requiredLocalGate;
 const allowedLocalEnvNames = new Set([
   "PDF50_LOCAL_CHECKPOINT_REHEARSAL",
   "PDF50_LOCAL_CLONE_REHEARSAL",
   "PDF50_LOCALHOST_ONLY",
+  "PDF50_FAKE_PROVIDER_ONLY",
   "PDF50_LOCAL_DATABASE_URL",
   "PDF50_LOCAL_API_URL",
   "PDF50_LOCAL_SUPABASE_DIR",

@@ -1,6 +1,6 @@
 # PDF50 Local Checkpoint Fencing Recovery Evidence
 
-- Run ID: `pdf50-0051-1784684373591-a3712016`
+- Run ID: `pdf50-0051-1784691544638-d725f58e`
 - Classification: `PDF50_2_0051_LOCAL_RUNTIME_VALIDATED`
 - Hosted database/API calls: 0
 - Real Provider calls: 0
@@ -15,6 +15,7 @@
     "databasePort": "54322",
     "apiHost": "127.0.0.1",
     "apiPort": "54321",
+    "fakeProviderOnly": true,
     "remoteEnvironmentPresent": false,
     "providerEnvironmentPresent": false
   },
@@ -23,10 +24,10 @@
     "requiredSourceCommit": "e17bae9",
     "sourceCommit": "e17bae9",
     "sourceCommitIsAncestor": true,
-    "currentHead": "e17bae9",
-    "currentFullHead": "e17bae9f65ba8b2efdb19b21db3ac6c97e7c6220",
+    "currentHead": "73bbb3e",
+    "currentFullHead": "73bbb3ea3375ce5bd6622a80b93fbaa6092705e9",
     "worktreeCleanAtRunnerStart": false,
-    "currentWorktreeChanges": 7,
+    "currentWorktreeChanges": 6,
     "validationDeltaOnly": true,
     "validationDeltaPaths": [
       "docs/security/pdf50-local-0050-0051-upgrade-evidence.md",
@@ -309,10 +310,3 @@
   }
 }
 ```
-
-## Additional Exact Route Smoke
-
-- Command: `node scripts/route-smoke.mjs`
-- Server: local `next start` bound to `127.0.0.1:3000`
-- Result: exit 0
-- Cleanup: local Next process stopped and temporary logs removed

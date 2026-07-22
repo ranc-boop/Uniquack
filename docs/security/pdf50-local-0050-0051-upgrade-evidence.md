@@ -1,6 +1,6 @@
 # PDF50 Local 0050 to 0051 Upgrade Evidence
 
-- Run ID: `pdf50-0051-1784684373591-a3712016`
+- Run ID: `pdf50-0051-1784691544638-d725f58e`
 - Classification: `PDF50_0051_UPGRADE_VALIDATED`
 - Hosted database/API calls: 0
 - Real Provider calls: 0
@@ -15,6 +15,7 @@
     "databasePort": "54322",
     "apiHost": "127.0.0.1",
     "apiPort": "54321",
+    "fakeProviderOnly": true,
     "remoteEnvironmentPresent": false,
     "providerEnvironmentPresent": false
   },
@@ -23,10 +24,10 @@
     "requiredSourceCommit": "e17bae9",
     "sourceCommit": "e17bae9",
     "sourceCommitIsAncestor": true,
-    "currentHead": "e17bae9",
-    "currentFullHead": "e17bae9f65ba8b2efdb19b21db3ac6c97e7c6220",
+    "currentHead": "73bbb3e",
+    "currentFullHead": "73bbb3ea3375ce5bd6622a80b93fbaa6092705e9",
     "worktreeCleanAtRunnerStart": false,
-    "currentWorktreeChanges": 7,
+    "currentWorktreeChanges": 6,
     "validationDeltaOnly": true,
     "validationDeltaPaths": [
       "docs/security/pdf50-local-0050-0051-upgrade-evidence.md",
@@ -77,57 +78,57 @@
       "rows": [
         {
           "kind": "batch",
-          "id": "538ca091-a5bd-4e51-bff8-2f89c1d54c4d",
+          "id": "2b252354-5fc8-46ba-a59f-3a6028d1baf0",
           "status": "draft",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "batch",
-          "id": "53bc97ec-b2bf-40b6-ac1a-8c485bdb6daf",
+          "id": "334aeb2b-b4a7-4077-9967-99063c319a90",
           "status": "draft",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "batch",
-          "id": "8b7c77bc-bff1-4a6e-b7eb-7194fea8f1ac",
+          "id": "35f91dc1-0698-41e8-ba0e-1c140f2c1335",
           "status": "draft",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "batch",
-          "id": "c7729c3a-9928-4bba-9c77-3dd70bf95a55",
+          "id": "6b7ffc3f-53f1-4091-bb15-572be2b684e0",
           "status": "draft",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "burst",
-          "id": "6faf5cc2-97bb-43b0-a4c9-d49eec22b56a",
+          "id": "9700daa6-dfa6-4a43-abfc-3fa50207d296",
           "status": "queued",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "job",
-          "id": "02a503f5-3f5c-48d7-958c-f3b6edca70c9",
-          "status": "completed",
-          "link": "8b7c77bc-bff1-4a6e-b7eb-7194fea8f1ac"
+          "id": "3781d930-7b6a-4d34-864b-52878be0675e",
+          "status": "queued",
+          "link": "35f91dc1-0698-41e8-ba0e-1c140f2c1335"
         },
         {
           "kind": "job",
-          "id": "811618f8-a617-46f8-8460-7e84df8a413c",
+          "id": "51337aaf-7cde-4b5c-a217-fd36803c4981",
           "status": "retry_wait",
-          "link": "538ca091-a5bd-4e51-bff8-2f89c1d54c4d"
+          "link": "6b7ffc3f-53f1-4091-bb15-572be2b684e0"
         },
         {
           "kind": "job",
-          "id": "8243a45d-7f31-4202-9aff-b99ba97876d1",
-          "status": "queued",
-          "link": "53bc97ec-b2bf-40b6-ac1a-8c485bdb6daf"
+          "id": "d5376dc9-58dc-4867-968c-036d4ba7239d",
+          "status": "completed",
+          "link": "334aeb2b-b4a7-4077-9967-99063c319a90"
         },
         {
           "kind": "job",
-          "id": "f6563136-9e46-4499-954a-193451b71e4f",
+          "id": "e5958a57-96c8-47c0-9391-5427d798cb2c",
           "status": "leased",
-          "link": "c7729c3a-9928-4bba-9c77-3dd70bf95a55"
+          "link": "2b252354-5fc8-46ba-a59f-3a6028d1baf0"
         }
       ]
     },
@@ -148,57 +149,57 @@
       "rows": [
         {
           "kind": "batch",
-          "id": "538ca091-a5bd-4e51-bff8-2f89c1d54c4d",
+          "id": "2b252354-5fc8-46ba-a59f-3a6028d1baf0",
           "status": "draft",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "batch",
-          "id": "53bc97ec-b2bf-40b6-ac1a-8c485bdb6daf",
+          "id": "334aeb2b-b4a7-4077-9967-99063c319a90",
           "status": "draft",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "batch",
-          "id": "8b7c77bc-bff1-4a6e-b7eb-7194fea8f1ac",
+          "id": "35f91dc1-0698-41e8-ba0e-1c140f2c1335",
           "status": "draft",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "batch",
-          "id": "c7729c3a-9928-4bba-9c77-3dd70bf95a55",
+          "id": "6b7ffc3f-53f1-4091-bb15-572be2b684e0",
           "status": "draft",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "burst",
-          "id": "6faf5cc2-97bb-43b0-a4c9-d49eec22b56a",
+          "id": "9700daa6-dfa6-4a43-abfc-3fa50207d296",
           "status": "queued",
-          "link": "8081f623-f7a8-4068-b620-a05a5a23c2ee"
+          "link": "715bc156-4f5c-42de-8d74-5a6f897f0f10"
         },
         {
           "kind": "job",
-          "id": "02a503f5-3f5c-48d7-958c-f3b6edca70c9",
-          "status": "completed",
-          "link": "8b7c77bc-bff1-4a6e-b7eb-7194fea8f1ac"
+          "id": "3781d930-7b6a-4d34-864b-52878be0675e",
+          "status": "queued",
+          "link": "35f91dc1-0698-41e8-ba0e-1c140f2c1335"
         },
         {
           "kind": "job",
-          "id": "811618f8-a617-46f8-8460-7e84df8a413c",
+          "id": "51337aaf-7cde-4b5c-a217-fd36803c4981",
           "status": "retry_wait",
-          "link": "538ca091-a5bd-4e51-bff8-2f89c1d54c4d"
+          "link": "6b7ffc3f-53f1-4091-bb15-572be2b684e0"
         },
         {
           "kind": "job",
-          "id": "8243a45d-7f31-4202-9aff-b99ba97876d1",
-          "status": "queued",
-          "link": "53bc97ec-b2bf-40b6-ac1a-8c485bdb6daf"
+          "id": "d5376dc9-58dc-4867-968c-036d4ba7239d",
+          "status": "completed",
+          "link": "334aeb2b-b4a7-4077-9967-99063c319a90"
         },
         {
           "kind": "job",
-          "id": "f6563136-9e46-4499-954a-193451b71e4f",
+          "id": "e5958a57-96c8-47c0-9391-5427d798cb2c",
           "status": "leased",
-          "link": "c7729c3a-9928-4bba-9c77-3dd70bf95a55"
+          "link": "2b252354-5fc8-46ba-a59f-3a6028d1baf0"
         }
       ]
     },

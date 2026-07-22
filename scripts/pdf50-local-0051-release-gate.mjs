@@ -31,6 +31,7 @@ const localHosts = new Set(["127.0.0.1", "localhost"]);
 const allowedEnvNames = new Set([
   "PDF50_LOCAL_CHECKPOINT_REHEARSAL",
   "PDF50_LOCALHOST_ONLY",
+  "PDF50_FAKE_PROVIDER_ONLY",
   "PDF50_LOCAL_DATABASE_URL",
   "PDF50_LOCAL_API_URL",
   "PDF50_LOCAL_SUPABASE_DIR",
@@ -156,6 +157,7 @@ function parseLocalUrl(name, protocols, requiredPort = null) {
 function validateEnvironment() {
   assert(process.env.PDF50_LOCAL_CHECKPOINT_REHEARSAL === requiredGate, "PDF50_LOCAL_CHECKPOINT_REHEARSAL must be CONFIRMED.");
   assert(process.env.PDF50_LOCALHOST_ONLY === requiredGate, "PDF50_LOCALHOST_ONLY must be CONFIRMED.");
+  assert(process.env.PDF50_FAKE_PROVIDER_ONLY === requiredGate, "PDF50_FAKE_PROVIDER_ONLY must be CONFIRMED.");
   assert(process.env.PDF50_LOCAL_SUPABASE_DIR, "PDF50_LOCAL_SUPABASE_DIR is required.");
 
   for (const [name, value] of Object.entries(process.env)) {
@@ -178,6 +180,7 @@ function validateEnvironment() {
       databasePort: databaseUrl.port,
       apiHost: apiUrl.hostname,
       apiPort: apiUrl.port || null,
+      fakeProviderOnly: true,
       remoteEnvironmentPresent: false,
       providerEnvironmentPresent: false,
     },
@@ -190,8 +193,11 @@ function cleanChildEnv(environment) {
     "Path",
     "PATH",
     "SystemRoot",
+    "SystemDrive",
     "ComSpec",
     "PATHEXT",
+    "windir",
+    "WINDIR",
     "TEMP",
     "TMP",
     "USERPROFILE",
@@ -208,6 +214,7 @@ function cleanChildEnv(environment) {
     NEXT_TELEMETRY_DISABLED: "1",
     PDF50_LOCAL_CHECKPOINT_REHEARSAL: requiredGate,
     PDF50_LOCALHOST_ONLY: requiredGate,
+    PDF50_FAKE_PROVIDER_ONLY: requiredGate,
     PDF50_LOCAL_DATABASE_URL: environment.databaseUrl,
     PDF50_LOCAL_API_URL: environment.apiUrl,
     PDF50_LOCAL_SUPABASE_DIR: process.env.PDF50_LOCAL_SUPABASE_DIR,
