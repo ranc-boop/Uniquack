@@ -192,11 +192,19 @@ function redactionCase() {
   assert(!redacted.includes("fakeStack"), "stack traces must be removed");
 }
 
+function functionSlice(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  assert(start >= 0, `${startMarker} source block is missing`);
+  const end = source.indexOf(endMarker, start);
+  return end >= 0 ? source.slice(start, end) : source.slice(start);
+}
+
 function sourceIntegrationChecks({
   blueprintGeneration,
   chunking,
   pdfService,
   teacherActions,
+  teacherPdfBurstActions,
 }) {
   const singlePass = pdfService.slice(
     pdfService.indexOf("async function processAIPdfSinglePass"),
@@ -204,6 +212,21 @@ function sourceIntegrationChecks({
   );
   const sequential = pdfService.slice(
     pdfService.indexOf("export async function processAIPdfImport"),
+  );
+  const coverageRecoveryAction = functionSlice(
+    teacherActions,
+    "export async function queueBankPdfCoverageRecovery",
+    "export async function approveBankReviewQuestion",
+  );
+  const burstReservationAction = functionSlice(
+    teacherPdfBurstActions,
+    "export async function reserveTeacherAIPdfBurst",
+    "async function markBurstItemFailed",
+  );
+  const burstFinalizeAction = functionSlice(
+    teacherPdfBurstActions,
+    "export async function finalizeTeacherAIPdfBurstItem",
+    "export async function cancelTeacherAIPdfBurst",
   );
 
   assert(
@@ -237,14 +260,16 @@ function sourceIntegrationChecks({
     "Blueprint retries must finish before one Review Draft handoff and must not create assignments",
   );
   assert(
-    teacherActions.includes("enqueueAIProviderJob") &&
-      teacherActions.includes("buildAIPdfJobIdempotencyKey") &&
-      teacherActions.includes("resolveTeacherAIPdfProviderProfile") &&
-      !teacherActions.slice(
-        teacherActions.indexOf("export async function importBankPdfDrafts"),
-        teacherActions.indexOf("export async function approveBankReviewQuestion"),
-      ).includes("await processAIPdfImport") &&
-      !teacherActions.includes("providerProfileId: formData"),
+    burstReservationAction.includes("resolveTeacherAIPdfProviderProfile") &&
+      burstReservationAction.includes("p_provider_profile_id: provider.id") &&
+      burstFinalizeAction.includes("releaseAIPdfBurstAdmissionJobs") &&
+      coverageRecoveryAction.includes("assertNoRawProviderConfig(formData)") &&
+      coverageRecoveryAction.includes("enqueueAIProviderJob") &&
+      coverageRecoveryAction.includes("buildAIPdfCoverageRecoveryJobIdempotencyKey") &&
+      coverageRecoveryAction.includes("resolveTeacherAIPdfProviderProfile") &&
+      !coverageRecoveryAction.includes("await processAIPdfImport") &&
+      !coverageRecoveryAction.includes("providerProfileId: formData") &&
+      !burstReservationAction.includes("providerProfileId: formData"),
     "teacher imports must keep provider routing server-side and enqueue durable work without client provider configuration",
   );
 }
@@ -259,6 +284,7 @@ sourceIntegrationChecks({
   chunking: await read("src/lib/ai-pdf-import/chunking.ts"),
   pdfService: await read("src/lib/ai-pdf-import/service.ts"),
   teacherActions: await read("src/app/teacher/banks/actions.ts"),
+  teacherPdfBurstActions: await read("src/app/teacher/banks/pdf-burst-actions.ts"),
 });
 
 console.log("PASS AI provider resilience smoke");
