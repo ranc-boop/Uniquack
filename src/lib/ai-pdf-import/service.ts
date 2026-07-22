@@ -38,6 +38,7 @@ import {
   type AIPdfImportChunkSummary,
 } from "@/lib/ai-pdf-import/chunking";
 import {
+  deterministicAIPdfQuestionCode,
   generateAIPdfQuestionCodeForImport,
   questionCodeKey,
   visibleQuestionNumberKey,
@@ -257,6 +258,9 @@ import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 
 type SupabaseLike = {
   from: (table: string) => any;
+  // 0051 is not applied in this source-only branch, so generated types do not
+  // include its service-role-only fencing RPCs yet.
+  rpc?: any;
   storage: any;
 };
 
@@ -267,6 +271,72 @@ type ActiveTag = {
   description?: string | null;
   aliases?: string[];
 };
+
+export const AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION = 1;
+
+export type AIPdfProviderResultCheckpoint = {
+  contractVersion: typeof AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION;
+  extractions: Record<string, AIPdfExtraction>;
+};
+
+type AIPdfCheckpointStage = "normalized" | "drafts_persisted";
+
+function isAIPdfExtraction(value: unknown): value is AIPdfExtraction {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      Array.isArray((value as { questions?: unknown }).questions) &&
+      Array.isArray((value as { warnings?: unknown }).warnings),
+  );
+}
+
+export function parseAIPdfProviderResultCheckpoint(
+  value: unknown,
+): AIPdfProviderResultCheckpoint | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.contractVersion !== AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION) {
+    return null;
+  }
+  if (!record.extractions || typeof record.extractions !== "object" || Array.isArray(record.extractions)) {
+    return null;
+  }
+
+  const extractions = Object.entries(record.extractions).reduce<
+    Record<string, AIPdfExtraction>
+  >((result, [key, extraction]) => {
+    if (!/^single$|^chunk:\d+$/.test(key) || !isAIPdfExtraction(extraction)) {
+      return result;
+    }
+    result[key] = extraction;
+    return result;
+  }, {});
+
+  return Object.keys(extractions).length || Object.keys(record.extractions).length === 0
+    ? {
+        contractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
+        extractions,
+      }
+    : null;
+}
+
+function appendAIPdfProviderResultCheckpoint({
+  checkpoint,
+  extraction,
+  key,
+}: {
+  checkpoint: AIPdfProviderResultCheckpoint | undefined;
+  extraction: AIPdfExtraction;
+  key: string;
+}): AIPdfProviderResultCheckpoint {
+  return {
+    contractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
+    extractions: {
+      ...(checkpoint?.extractions ?? {}),
+      [key]: extraction,
+    },
+  };
+}
 
 export type AIPdfProcessInput = {
   batchId: string;
@@ -287,6 +357,18 @@ export type AIPdfProcessInput = {
   supabase: SupabaseLike;
   targetBankId?: string | null;
   onProviderUsage?: (usage: GeminiNativeUsage | null) => void;
+  // Durable workers may provide a protected, already-normalized provider
+  // result. Direct/admin imports never set these hooks.
+  providerResultCheckpoint?: AIPdfProviderResultCheckpoint;
+  onProviderResultCheckpoint?: (
+    checkpoint: AIPdfProviderResultCheckpoint,
+  ) => Promise<void>;
+  onCheckpointStage?: (
+    stage: AIPdfCheckpointStage,
+    metadata?: Record<string, unknown>,
+  ) => Promise<void>;
+  persistenceFence?: import("@/lib/ai-jobs/checkpoint").AIProviderJobPersistenceFence;
+  persistenceLineageKey?: string;
 };
 
 export type AIPdfCoverageRecoveryProcessInput = AIPdfProcessInput & {
@@ -552,6 +634,48 @@ async function updateAIPdfBatchProgress(
   if (updateError) {
     throw new Error(updateError.message);
   }
+}
+
+async function finalizeAIPdfImportBatch({
+  input,
+  status,
+  summary,
+}: {
+  input: AIPdfProcessInput;
+  status: "failed" | "imported";
+  summary: Record<string, unknown>;
+}) {
+  if (input.persistenceFence) {
+    if (!input.supabase.rpc) {
+      throw new Error("Fenced import finalization requires the trusted RPC client.");
+    }
+    const { data, error } = await input.supabase.rpc(
+      "finalize_ai_provider_job_import_batch_fenced",
+      {
+        p_execution_fence_token: input.persistenceFence.executionFenceToken,
+        p_job_id: input.persistenceFence.jobId,
+        p_lease_owner: input.persistenceFence.leaseOwner,
+        p_persisted_output_lineage: {
+          contractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
+          persistenceLineageKey: input.persistenceLineageKey ?? null,
+          stage: "drafts_persisted",
+        },
+        p_status: status,
+        p_summary: summary,
+      },
+    );
+    if (error) throw new Error(error.message);
+    if (data === "STALE_FENCE_REJECTED") {
+      throw new Error("STALE_FENCE_REJECTED");
+    }
+    return;
+  }
+
+  const { error } = await input.supabase
+    .from("import_batches")
+    .update({ status, summary })
+    .eq("id", input.batchId);
+  if (error) throw new Error(error.message);
 }
 
 export async function recordAIPdfProviderFailure({
@@ -2764,6 +2888,7 @@ async function buildImportJson({
   profileId,
   provider,
   questionIndexOffset = 0,
+  persistenceLineageKey,
   recovery,
   supabase,
 }: {
@@ -2774,6 +2899,7 @@ async function buildImportJson({
   profileId: string;
   provider: { id: string; model: string; name: string; provider: string };
   questionIndexOffset?: number;
+  persistenceLineageKey?: string;
   recovery?: {
     originalBatchId: string;
     recoveryPlanHash: string;
@@ -2813,12 +2939,14 @@ async function buildImportJson({
     const visibleNumberKey = visibleQuestionNumber
       ? visibleQuestionNumberKey(visibleQuestionNumber)
       : "";
-    const questionCode = generateAIPdfQuestionCodeForImport({
-      batchId,
-      existingQuestionCodes,
-      index: globalQuestionIndex,
-      usedQuestionCodes,
-    });
+    const questionCode = persistenceLineageKey
+      ? deterministicAIPdfQuestionCode(batchId, globalQuestionIndex)
+      : generateAIPdfQuestionCodeForImport({
+          batchId,
+          existingQuestionCodes,
+          index: globalQuestionIndex,
+          usedQuestionCodes,
+        });
 
     if (!visibleQuestionNumber) {
       extraction.warnings.push(
@@ -3785,51 +3913,63 @@ async function processAIPdfSinglePass({
     sourceInput: providerInput.strategy,
   });
   const usageSamples: GeminiNativeUsage[] = [];
-  const providerResult = await runWithAIProviderRetry({
-    onRetry: (retry) =>
-      updateAIPdfProviderRetryProgress({
-        input,
-        pageCount,
-        provider: providerSummary,
-        retry,
-        sourceInput: providerInput.strategy,
-      }),
-    operation: "ai_pdf_extraction",
-    run: async () =>
-      normalizeAIPdfExtractionResponse(
-        await callAIPdfExtractionProvider({
-          debugContext: {
-            batchId: input.batchId,
-            chunkIndex: null,
-            fileName: input.fileName,
-            jobId: input.jobId,
+  const recoveredExtraction = input.providerResultCheckpoint?.extractions.single;
+  const providerResult = recoveredExtraction
+    ? { value: recoveredExtraction }
+    : await runWithAIProviderRetry({
+        onRetry: (retry) =>
+          updateAIPdfProviderRetryProgress({
+            input,
             pageCount,
-            providerProfileId: input.providerProfileId,
-            selectedPageCount: selectiveInput?.plan.sentPageCount ?? null,
-            selectiveExecution: Boolean(selectiveInput),
-            sourceAssetId: input.sourceAssetId,
-            sourceObjectPath: input.sourceObjectPath,
-          },
-          fileName: selectiveInput?.fileName ?? input.fileName,
-          inputStrategy: providerInput.strategy,
-          pageImageDataUrls: [],
-          pdfBase64: (selectiveInput?.pdfBytes ?? input.pdfBuffer).toString("base64"),
-          pdfBytes: selectiveInput?.pdfBytes ?? input.pdfBuffer,
-          onProviderUsage: (usage) => {
-            if (usage) usageSamples.push(usage);
-            input.onProviderUsage?.(usage);
-          },
-          profile: provider,
-          prompt,
-        }),
-      ),
-  });
+            provider: providerSummary,
+            retry,
+            sourceInput: providerInput.strategy,
+          }),
+        operation: "ai_pdf_extraction",
+        run: async () =>
+          normalizeAIPdfExtractionResponse(
+            await callAIPdfExtractionProvider({
+              debugContext: {
+                batchId: input.batchId,
+                chunkIndex: null,
+                fileName: input.fileName,
+                jobId: input.jobId,
+                pageCount,
+                providerProfileId: input.providerProfileId,
+                selectedPageCount: selectiveInput?.plan.sentPageCount ?? null,
+                selectiveExecution: Boolean(selectiveInput),
+                sourceAssetId: input.sourceAssetId,
+                sourceObjectPath: input.sourceObjectPath,
+              },
+              fileName: selectiveInput?.fileName ?? input.fileName,
+              inputStrategy: providerInput.strategy,
+              pageImageDataUrls: [],
+              pdfBase64: (selectiveInput?.pdfBytes ?? input.pdfBuffer).toString("base64"),
+              pdfBytes: selectiveInput?.pdfBytes ?? input.pdfBuffer,
+              onProviderUsage: (usage) => {
+                if (usage) usageSamples.push(usage);
+                input.onProviderUsage?.(usage);
+              },
+              profile: provider,
+              prompt,
+            }),
+          ),
+      });
   const extraction = selectiveInput
     ? remapSegmentExtractionPages({
         extraction: providerResult.value,
         pageMapping: selectiveInput.pageMapping,
       })
     : providerResult.value;
+
+  if (!recoveredExtraction && input.onProviderResultCheckpoint) {
+    input.providerResultCheckpoint = appendAIPdfProviderResultCheckpoint({
+      checkpoint: input.providerResultCheckpoint,
+      extraction,
+      key: "single",
+    });
+    await input.onProviderResultCheckpoint(input.providerResultCheckpoint);
+  }
 
   if (selectiveInput) {
     const sumUsage = (key: keyof GeminiNativeUsage) => {
@@ -3871,7 +4011,12 @@ async function processAIPdfSinglePass({
     extraction,
     profileId: input.profileId,
     provider: providerSummary,
+    persistenceLineageKey: input.persistenceLineageKey,
     supabase: input.supabase,
+  });
+  await input.onCheckpointStage?.("normalized", {
+    providerResultReused: Boolean(recoveredExtraction),
+    questionCount: extraction.questions.length,
   });
   await updateAIPdfBatchProgress(input, {
     detail: "Importing generated questions.",
@@ -3885,12 +4030,19 @@ async function processAIPdfSinglePass({
   const importSummary = await importBatchImportJson({
     allowDraftTags: true,
     batchId: input.batchId,
+    deferFinalization: Boolean(input.persistenceFence),
     initialSummaryExtras: {},
     jsonText,
     profileId: input.profileId,
     sourceType: "ai_pdf",
     supabase: input.supabase,
     targetBankId: input.targetBankId,
+    persistenceFence: input.persistenceFence,
+    persistenceLineageKey: input.persistenceLineageKey,
+  });
+  await input.onCheckpointStage?.("drafts_persisted", {
+    createdDraftCount: importSummary.createdCount,
+    persistenceLineageKey: input.persistenceLineageKey ?? null,
   });
 
   await updateAIPdfBatchProgress(input, {
@@ -3947,17 +4099,11 @@ async function processAIPdfSinglePass({
     ...importSummary,
     aiPdfImport: finalAiPdfImport,
   };
-  const { error } = await input.supabase
-    .from("import_batches")
-    .update({
-      status: importSummary.createdCount > 0 ? "imported" : "failed",
-      summary: finalSummary,
-    })
-    .eq("id", input.batchId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await finalizeAIPdfImportBatch({
+    input,
+    status: importSummary.createdCount > 0 ? "imported" : "failed",
+    summary: finalSummary,
+  });
 
   await generateAndStoreExtractionCoverageAuditPlan({ input });
   await generateAndStoreQuestionBoundaryGuardPlan({ input });
@@ -4276,23 +4422,27 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
             pdfBuffer: input.pdfBuffer,
           })
         : null;
-      const providerResult = await runWithAIProviderRetry({
-        onRetry: (retry) =>
-          updateAIPdfProviderRetryProgress({
-            chunk,
-            input,
-            pageCount,
-            provider: providerSummary,
-            retry,
-            sourceInput: providerInput.strategy,
-          }),
-        operation: "ai_pdf_extraction",
-        policy: input.providerRetryMaxAttempts
-          ? { maxAttempts: input.providerRetryMaxAttempts }
-          : undefined,
-        run: async () =>
-          normalizeAIPdfExtractionResponse(
-            await callAIPdfExtractionProvider({
+      const checkpointKey = `chunk:${chunk.chunkIndex}`;
+      const checkpointedExtraction = input.providerResultCheckpoint?.extractions[checkpointKey];
+      const providerResult = checkpointedExtraction
+        ? { value: checkpointedExtraction }
+        : await runWithAIProviderRetry({
+            onRetry: (retry) =>
+              updateAIPdfProviderRetryProgress({
+                chunk,
+                input,
+                pageCount,
+                provider: providerSummary,
+                retry,
+                sourceInput: providerInput.strategy,
+              }),
+            operation: "ai_pdf_extraction",
+            policy: input.providerRetryMaxAttempts
+              ? { maxAttempts: input.providerRetryMaxAttempts }
+              : undefined,
+            run: async () =>
+              normalizeAIPdfExtractionResponse(
+                await callAIPdfExtractionProvider({
               debugContext: {
                 batchId: input.batchId,
                 chunkIndex: chunk.chunkIndex,
@@ -4319,10 +4469,10 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
               pdfBytes: segmentedPdf?.pdfBytes ?? input.pdfBuffer,
               onProviderUsage: input.onProviderUsage,
               profile: provider,
-              prompt: chunkPrompt,
-            }),
-          ),
-      });
+                  prompt: chunkPrompt,
+                }),
+              ),
+          });
       const rawExtraction = providerResult.value;
       const extraction = segmentChunk
         ? remapSegmentExtractionPages({
@@ -4330,6 +4480,15 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
             pageMapping: segmentChunk.pageMapping,
           })
         : rawExtraction;
+
+      if (!checkpointedExtraction && input.onProviderResultCheckpoint) {
+        input.providerResultCheckpoint = appendAIPdfProviderResultCheckpoint({
+          checkpoint: input.providerResultCheckpoint,
+          extraction,
+          key: checkpointKey,
+        });
+        await input.onProviderResultCheckpoint(input.providerResultCheckpoint);
+      }
 
       await updateAIPdfChunkProgress({
         chunk,
@@ -4364,7 +4523,15 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
         profileId: input.profileId,
         provider: providerSummary,
         questionIndexOffset,
+        persistenceLineageKey: input.persistenceLineageKey
+          ? `${input.persistenceLineageKey}:chunk:${chunk.chunkIndex}`
+          : undefined,
         supabase: input.supabase,
+      });
+      await input.onCheckpointStage?.("normalized", {
+        chunkIndex: chunk.chunkIndex,
+        providerResultReused: Boolean(checkpointedExtraction),
+        questionCount: extraction.questions.length,
       });
       await updateAIPdfBatchProgress(input, {
         detail: `Importing generated questions for ${formatAIPdfChunkPageRange(chunk)}.`,
@@ -4378,6 +4545,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
       const importSummary = await importBatchImportJson({
         allowDraftTags: true,
         batchId: input.batchId,
+        deferFinalization: Boolean(input.persistenceFence),
         initialSummaryExtras: {},
         itemIndexOffset: chunk.chunkIndex * 1000,
         jsonText,
@@ -4385,6 +4553,10 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
         sourceType: "ai_pdf",
         supabase: input.supabase,
         targetBankId: input.targetBankId,
+        persistenceFence: input.persistenceFence,
+        persistenceLineageKey: input.persistenceLineageKey
+          ? `${input.persistenceLineageKey}:chunk:${chunk.chunkIndex}`
+          : undefined,
       });
       const cropSummary =
         importSummary.createdCount > 0
@@ -4533,17 +4705,16 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
       warnings: uniqueStrings(allWarnings),
     }),
   };
-  const { error } = await input.supabase
-    .from("import_batches")
-    .update({
-      status: finalStatus,
-      summary: finalSummary,
-    })
-    .eq("id", input.batchId);
+  await finalizeAIPdfImportBatch({
+    input,
+    status: finalStatus,
+    summary: finalSummary,
+  });
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  await input.onCheckpointStage?.("drafts_persisted", {
+    createdDraftCount: aggregate.createdCount,
+    persistenceLineageKey: input.persistenceLineageKey ?? null,
+  });
 
   await generateAndStoreExtractionCoverageAuditPlan({ input });
   await generateAndStoreQuestionBoundaryGuardPlan({ input });

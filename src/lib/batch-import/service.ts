@@ -8,9 +8,13 @@ import {
   extractImportAssetReferences,
   type ImportAssetReferences,
 } from "@/lib/batch-import/asset-references";
+import type { AIProviderJobPersistenceFence } from "@/lib/ai-jobs/checkpoint";
 
 type SupabaseLike = {
   from: (table: string) => any;
+  // New forward-only worker RPCs are intentionally not in generated types
+  // until the migration has been applied and types are regenerated.
+  rpc?: any;
 };
 
 const MISSING_ORGANIZATION_MESSAGE =
@@ -307,24 +311,37 @@ export async function previewBatchImportJson({
 export async function importBatchImportJson({
   allowDraftTags = false,
   batchId: providedBatchId,
+  deferFinalization = false,
   initialSummaryExtras = {},
   itemIndexOffset = 0,
   supabase,
   profileId,
+  persistenceFence,
+  persistenceLineageKey,
   jsonText,
   sourceType = "manual_json",
   targetBankId,
 }: {
   allowDraftTags?: boolean;
   batchId?: string;
+  deferFinalization?: boolean;
   initialSummaryExtras?: Record<string, unknown>;
   itemIndexOffset?: number;
+  persistenceFence?: AIProviderJobPersistenceFence;
   supabase: SupabaseLike;
   profileId: string;
+  persistenceLineageKey?: string;
   jsonText: string;
   sourceType?: ImportBatchSourceType;
   targetBankId?: string | null;
 }): Promise<BatchImportSummary> {
+  const normalizedPersistenceLineageKey = persistenceLineageKey?.trim().toLowerCase() || null;
+  if (
+    normalizedPersistenceLineageKey &&
+    !/^[a-z0-9:_-]{16,200}$/.test(normalizedPersistenceLineageKey)
+  ) {
+    throw new Error("Import persistence lineage is invalid.");
+  }
   const preview = await previewBatchImportJson({
     allowDraftTags,
     supabase,
@@ -391,30 +408,32 @@ export async function importBatchImportJson({
     ) {
       throw new Error("Existing import batch is scoped to a different bank.");
     }
-    const existingSummary = asSummaryRecord(existingBatch.summary);
-    const { error: batchUpdateError } = await supabase
-      .from("import_batches")
-      .update({
-        organization_id:
-          existingBatch.organization_id ?? organizationContext.organizationId,
-        status: "validating",
-        target_bank_id: targetBankContext?.bankId ?? existingBatch.target_bank_id ?? null,
-        summary: {
-          ...existingSummary,
-          ...initialSummary,
-          ...initialSummaryExtras,
-          ...(targetBankContext
-            ? {
-                targetBankId: targetBankContext.bankId,
-                reviewScope: "question_bank",
-              }
-            : {}),
-        },
-      })
-      .eq("id", activeBatchId);
+    if (!persistenceFence) {
+      const existingSummary = asSummaryRecord(existingBatch.summary);
+      const { error: batchUpdateError } = await supabase
+        .from("import_batches")
+        .update({
+          organization_id:
+            existingBatch.organization_id ?? organizationContext.organizationId,
+          status: "validating",
+          target_bank_id: targetBankContext?.bankId ?? existingBatch.target_bank_id ?? null,
+          summary: {
+            ...existingSummary,
+            ...initialSummary,
+            ...initialSummaryExtras,
+            ...(targetBankContext
+              ? {
+                  targetBankId: targetBankContext.bankId,
+                  reviewScope: "question_bank",
+                }
+              : {}),
+          },
+        })
+        .eq("id", activeBatchId);
 
-    if (batchUpdateError) {
-      throw new Error(batchUpdateError.message);
+      if (batchUpdateError) {
+        throw new Error(batchUpdateError.message);
+      }
     }
   } else {
     organizationContext = await resolveImportOrganizationContext({
@@ -459,17 +478,131 @@ export async function importBatchImportJson({
     throw new Error("Import batch was not initialized.");
   }
 
+  if (persistenceFence) {
+    if (!supabase.rpc) {
+      throw new Error("Fenced import persistence requires the trusted RPC client.");
+    }
+
+    let fencedCreatedCount = 0;
+    let fencedSkippedCount = preview.invalidCount;
+    let fencedErrorCount = preview.invalidCount;
+    const fencedCreatedQuestions: BatchImportSummary["createdQuestions"] = [];
+
+    for (const item of preview.items) {
+      const normalized = item.normalized;
+      const itemIndex = item.index + itemIndexOffset;
+      const itemLineageKey = normalizedPersistenceLineageKey
+        ? `${normalizedPersistenceLineageKey}:item:${itemIndex}`
+        : null;
+      if (!itemLineageKey) {
+        throw new Error("Fenced import persistence requires a deterministic lineage key.");
+      }
+
+      const { data, error } = await supabase.rpc(
+        "persist_ai_provider_job_import_item_fenced",
+        {
+          p_execution_fence_token: persistenceFence.executionFenceToken,
+          p_item_index: itemIndex,
+          p_job_id: persistenceFence.jobId,
+          p_lease_owner: persistenceFence.leaseOwner,
+          p_normalized_question_json: normalized,
+          p_persistence_lineage_key: itemLineageKey,
+          p_raw_payload: item.raw,
+          p_source_type: sourceType,
+          p_validation_errors: [...item.errors, ...item.warnings],
+          p_visibility: targetBankContext?.visibility ?? "private",
+        },
+      );
+      if (error) throw new Error(error.message);
+
+      const result = asSummaryRecord(data);
+      if (result.outcome === "STALE_FENCE_REJECTED") {
+        throw new Error("STALE_FENCE_REJECTED");
+      }
+      if (!normalized || result.outcome === "INVALID") {
+        continue;
+      }
+
+      const questionId = asString(result.questionId);
+      if (!questionId) {
+        fencedSkippedCount += 1;
+        fencedErrorCount += 1;
+        continue;
+      }
+
+      fencedCreatedCount += 1;
+      const assetReferences = extractImportAssetReferences(normalized);
+      fencedCreatedQuestions.push({
+        id: questionId,
+        assetReferences,
+        assetReferenceCounts: countImportAssetReferences(assetReferences),
+        questionCode: normalized.question_code,
+        title: normalized.title,
+      });
+    }
+
+    const fencedSummary = {
+      batchId: activeBatchId,
+      createdCount: fencedCreatedCount,
+      skippedCount: fencedSkippedCount,
+      errorCount: fencedErrorCount,
+      duplicateCount: preview.duplicateCount,
+      validCount: preview.validCount,
+      invalidCount: preview.invalidCount,
+      unknownTagCount: preview.unknownTagCount,
+      validationErrorReasons,
+      createdQuestions: fencedCreatedQuestions,
+    };
+    if (!deferFinalization) {
+      const existingSummaryBeforeFinal = await loadImportBatchSummary({
+        batchId: activeBatchId,
+        supabase,
+      });
+      const { error: finalizeError } = await supabase.rpc(
+        "finalize_ai_provider_job_import_batch_fenced",
+        {
+          p_execution_fence_token: persistenceFence.executionFenceToken,
+          p_job_id: persistenceFence.jobId,
+          p_lease_owner: persistenceFence.leaseOwner,
+          p_persisted_output_lineage: {
+            contractVersion: 1,
+            logicalItemCount: preview.items.length,
+            persistenceLineageKey: normalizedPersistenceLineageKey,
+          },
+          p_status: fencedErrorCount > 0 ? "failed" : "imported",
+          p_summary: {
+            ...existingSummaryBeforeFinal,
+            ...fencedSummary,
+            ...initialSummaryExtras,
+          },
+        },
+      );
+      if (finalizeError) throw new Error(finalizeError.message);
+    }
+
+    return fencedSummary;
+  }
+
   if (preview.items.length) {
-    const { error: itemsError } = await supabase.from("import_batch_items").insert(
-      preview.items.map((item) => ({
-        batch_id: activeBatchId,
-        item_index: item.index + itemIndexOffset,
-        raw_payload: item.raw,
-        normalized_question_json: item.normalized,
-        validation_errors: [...item.errors, ...item.warnings],
-        status: item.normalized ? "valid" : "invalid",
-      })),
-    );
+    const itemRows = preview.items.map((item) => ({
+      batch_id: activeBatchId,
+      item_index: item.index + itemIndexOffset,
+      raw_payload: item.raw,
+      normalized_question_json: item.normalized,
+      persistence_lineage_key: normalizedPersistenceLineageKey
+        ? `${normalizedPersistenceLineageKey}:item:${item.index + itemIndexOffset}`
+        : null,
+      validation_errors: [...item.errors, ...item.warnings],
+      status: item.normalized ? "valid" : "invalid",
+    }));
+    const { error: itemsError } = normalizedPersistenceLineageKey
+      ? await supabase
+          .from("import_batch_items")
+          .upsert(itemRows, {
+            ignoreDuplicates: true,
+            onConflict: "batch_id,persistence_lineage_key",
+          })
+      : await supabase.from("import_batch_items").insert(itemRows);
 
     if (itemsError) {
       throw new Error(itemsError.message);
@@ -488,7 +621,37 @@ export async function importBatchImportJson({
     }
 
     const normalized = item.normalized;
-    const { data: question, error: questionError } = await supabase
+    const persistenceItemKey = normalizedPersistenceLineageKey
+      ? `${normalizedPersistenceLineageKey}:item:${item.index + itemIndexOffset}`
+      : null;
+    let reusedQuestion = false;
+    let question: { id: string } | null = null;
+
+    if (persistenceItemKey) {
+      const { data: existingItem, error: existingItemError } = await supabase
+        .from("import_batch_items")
+        .select("created_question_id, status")
+        .eq("batch_id", activeBatchId)
+        .eq("persistence_lineage_key", persistenceItemKey)
+        .maybeSingle();
+      if (existingItemError) throw new Error(existingItemError.message);
+
+      if (existingItem?.created_question_id) {
+        const { data: existingQuestion, error: existingQuestionError } = await supabase
+          .from("questions")
+          .select("id")
+          .eq("id", existingItem.created_question_id)
+          .maybeSingle();
+        if (existingQuestionError) throw new Error(existingQuestionError.message);
+        if (existingQuestion) {
+          question = existingQuestion;
+          reusedQuestion = true;
+        }
+      }
+    }
+
+    if (!question) {
+      const { data: insertedQuestion, error: questionError } = await supabase
       .from("questions")
       .insert({
         organization_id: organizationContext.organizationId,
@@ -518,7 +681,25 @@ export async function importBatchImportJson({
       .select("id")
       .single();
 
-    if (questionError) {
+      question = insertedQuestion;
+      if (questionError && persistenceItemKey && questionError.code === "23505") {
+        const { data: existingQuestion, error: existingQuestionError } = await supabase
+          .from("questions")
+          .select("id")
+          .eq("question_code", normalized.question_code)
+          .eq(
+            "source",
+            questionSourceLabelForImport({ batchId: activeBatchId, sourceType }),
+          )
+          .maybeSingle();
+        if (existingQuestionError) throw new Error(existingQuestionError.message);
+        if (existingQuestion) {
+          question = existingQuestion;
+          reusedQuestion = true;
+        }
+      }
+
+      if (questionError && !question) {
       skippedCount += 1;
       errorCount += 1;
       runtimeErrorReasons.add(questionError.message);
@@ -535,13 +716,31 @@ export async function importBatchImportJson({
         .eq("batch_id", activeBatchId)
         .eq("item_index", item.index + itemIndexOffset);
       continue;
+      }
+    }
+
+    if (!question) {
+      throw new Error("Import question persistence did not return a stable question reference.");
     }
 
     if (normalized.tag_ids.length) {
+      let tagIdsToInsert = normalized.tag_ids;
+      if (reusedQuestion) {
+        const { data: existingTags, error: existingTagsError } = await supabase
+          .from("question_taxonomy_assignments")
+          .select("tag_id")
+          .eq("question_id", question.id);
+        if (existingTagsError) throw new Error(existingTagsError.message);
+        const existingTagIds = new Set((existingTags ?? []).map((tag: { tag_id: string }) => tag.tag_id));
+        tagIdsToInsert = normalized.tag_ids.filter((tagId) => !existingTagIds.has(tagId));
+      }
+      if (!tagIdsToInsert.length) {
+        // A recovery replay must not append duplicate pending-review tags.
+      } else {
       const { error: tagsError } = await supabase
         .from("question_taxonomy_assignments")
         .insert(
-        normalized.tag_ids.map((tagId) => ({
+        tagIdsToInsert.map((tagId) => ({
           question_id: question.id,
           tag_id: tagId,
           review_status: "pending_review",
@@ -553,7 +752,9 @@ export async function importBatchImportJson({
         skippedCount += 1;
         errorCount += 1;
         runtimeErrorReasons.add(tagsError.message);
-        await supabase.from("questions").delete().eq("id", question.id);
+        if (!reusedQuestion) {
+          await supabase.from("questions").delete().eq("id", question.id);
+        }
         await supabase
           .from("import_batch_items")
           .update({
@@ -564,6 +765,7 @@ export async function importBatchImportJson({
         .eq("item_index", item.index + itemIndexOffset);
       continue;
     }
+      }
     }
 
     createdCount += 1;

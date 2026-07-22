@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   classifyAIProviderError,
@@ -14,6 +14,17 @@ import {
 import { queueRetryDelayMs } from "@/lib/ai-jobs/policy";
 import type { AIProviderJob } from "@/lib/ai-jobs/types";
 import {
+  AIProviderJobFenceLostError,
+  STALE_FENCE_REJECTED,
+  beginAIProviderJobPdfProcessing,
+  checkpointAIProviderJobProviderResult,
+  checkpointAIProviderJobStage,
+  finishAIProviderJobFence,
+  persistenceFenceForJob,
+  heartbeatAIProviderJobFence,
+  loadAIProviderJobProviderResult,
+} from "@/lib/ai-jobs/checkpoint";
+import {
   getAIWorkerOperationsControl,
   recordAIOperationTelemetry,
   type AIOperationExecutionMetadata,
@@ -21,6 +32,8 @@ import {
 import {
   processAIPdfCoverageRecovery,
   processAIPdfImport,
+  parseAIPdfProviderResultCheckpoint,
+  AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
   recordAIPdfCoverageRecoveryFailure,
   recordAIPdfProviderFailure,
   type AIPdfProcessInput,
@@ -80,55 +93,6 @@ function normalizeJob(value: unknown): AIProviderJob {
 
 function safeWorkerFailureMessage() {
   return "This run could not be completed. Nothing was published or assigned. Your source and target Library were preserved.";
-}
-
-async function claimAIPdfBatchResource({
-  batch,
-  job,
-  providerProfileId,
-  sourceAssetId,
-  supabase,
-}: {
-  batch: { id: string; status: string; summary: unknown };
-  job: AIProviderJob;
-  providerProfileId: string;
-  sourceAssetId: string;
-  supabase: SupabaseWorkerClient;
-}) {
-  if (batch.status === "imported") return false;
-
-  const summary = asRecord(batch.summary);
-  const aiPdfImport = asRecord(summary.aiPdfImport);
-  const { data, error } = await supabase
-    .from("import_batches")
-    .update({
-      status: "validating",
-      summary: {
-        ...summary,
-        aiPdfImport: {
-          ...aiPdfImport,
-          detail: "AI processing is underway. You can leave this page.",
-          durableJobId: job.id,
-          jobId: job.id,
-          phase: "queue_processing",
-          providerProfileId,
-          queueStatus: "processing",
-          sourceAssetId,
-          targetBankId: job.target_bank_id,
-          updatedAt: new Date().toISOString(),
-        },
-      },
-    })
-    .eq("id", job.resource_id)
-    .in("status", ["draft", "failed", "ready"])
-    .select("id")
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  if (!data) {
-    throw new Error("The PDF batch is already active, cancelled, or no longer retryable.");
-  }
-  return true;
 }
 
 async function ensureBankIsActive({
@@ -207,13 +171,11 @@ async function markProcessing({
   leaseOwner: string;
   supabase: SupabaseWorkerClient;
 }) {
-  const { data, error } = await supabase.rpc("heartbeat_ai_provider_job", {
-    p_job_id: job.id,
-    p_lease_owner: leaseOwner,
-    p_lease_seconds: 900,
+  await heartbeatAIProviderJobFence({
+    job: { ...job, lease_owner: leaseOwner },
+    leaseSeconds: 900,
+    supabase,
   });
-  if (error) throw new Error(error.message);
-  if (data !== true) throw new Error("The worker lease was lost before processing started.");
 }
 
 async function finishJob({
@@ -239,19 +201,42 @@ async function finishJob({
   const availableAt = retryDelay
     ? new Date(Date.now() + retryDelay).toISOString()
     : null;
-  const { data, error } = await supabase.rpc("finish_ai_provider_job", {
-    p_available_at: availableAt,
-    p_job_id: job.id,
-    p_lease_owner: leaseOwner,
-    p_provider_attempt_count: providerAttemptCount,
-    p_retryable: status === "retry_wait",
-    p_safe_error_code: safeErrorCode,
-    p_safe_message: safeMessage,
-    p_safe_result: safeResult,
-    p_status: status,
+  const result = await finishAIProviderJobFence({
+    availableAt,
+    job: { ...job, lease_owner: leaseOwner },
+    providerAttemptCount,
+    retryable: status === "retry_wait",
+    safeErrorCode,
+    safeMessage,
+    safeResult,
+    status,
+    supabase,
   });
-  if (error) throw new Error(error.message);
-  return data === true;
+  return result === "APPLIED" || result === "NOOP_ALREADY_CHECKPOINTED";
+}
+
+function buildPdfPersistenceLineageKey({
+  job,
+  sourceAssetId,
+}: {
+  job: AIProviderJob;
+  sourceAssetId: string;
+}) {
+  const digest = createHash("sha256")
+    .update(
+      [
+        "ai-pdf-review-drafts",
+        sourceAssetId,
+        job.id,
+        String(AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION),
+      ].join("\u0000"),
+    )
+    .digest("hex");
+  return `pdf50:${digest}`;
+}
+
+function checkpointPayloadSha256(payload: Record<string, unknown>) {
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
 async function runAIPdfExtractJob({
@@ -278,6 +263,12 @@ async function runAIPdfExtractJob({
     throw new Error("The original PDF import is no longer available for this Library.");
   }
   if (batch.status === "imported") {
+    await checkpointAIProviderJobStage({
+      job: { ...job, lease_owner: leaseOwner },
+      metadata: { recoveryClassification: "already_persisted" },
+      stage: "drafts_persisted",
+      supabase,
+    });
     return { alreadyCompleted: true, createdCount: 0, reviewRoute: `/teacher/banks/${job.target_bank_id}/review` };
   }
 
@@ -323,14 +314,27 @@ async function runAIPdfExtractJob({
     throw new Error("The private PDF source is no longer ready for extraction.");
   }
 
-  const claimedResource = await claimAIPdfBatchResource({
-    batch,
-    job,
+  const fencedJob = { ...job, lease_owner: leaseOwner };
+  await checkpointAIProviderJobStage({
+    job: fencedJob,
+    metadata: { sourceAssetReady: true, targetBankScoped: Boolean(job.target_bank_id) },
+    stage: "source_validated",
+    supabase,
+  });
+
+  const beginResult = await beginAIProviderJobPdfProcessing({
+    job: fencedJob,
     providerProfileId: route.candidates[0]!.profile.id,
     sourceAssetId,
     supabase,
   });
-  if (!claimedResource) {
+  if (beginResult === "NOOP_ALREADY_PERSISTED") {
+    await checkpointAIProviderJobStage({
+      job: fencedJob,
+      metadata: { recoveryClassification: "already_persisted" },
+      stage: "drafts_persisted",
+      supabase,
+    });
     return {
       alreadyCompleted: true,
       createdCount: 0,
@@ -339,6 +343,24 @@ async function runAIPdfExtractJob({
         : "/admin/review",
       warningCount: 0,
     };
+  }
+
+  await checkpointAIProviderJobStage({
+    job: fencedJob,
+    metadata: { recoveryClassification: "provider_required" },
+    stage: "provider_request_started",
+    supabase,
+  });
+
+  const storedProviderCheckpoint = await loadAIProviderJobProviderResult({
+    job: fencedJob,
+    supabase,
+  });
+  const providerResultCheckpoint = storedProviderCheckpoint
+    ? parseAIPdfProviderResultCheckpoint(storedProviderCheckpoint.payload)
+    : undefined;
+  if (storedProviderCheckpoint && !providerResultCheckpoint) {
+    throw new Error("The protected provider result checkpoint is incompatible and cannot be replayed.");
   }
 
   const { data: sourceBlob, error: downloadError } = await supabase.storage
@@ -360,6 +382,27 @@ async function runAIPdfExtractJob({
     routingLeaseOwner: `${leaseOwner}:${job.id}`,
     routingOrganizationId: job.organization_id,
     selectiveExecutionEnabled,
+    providerResultCheckpoint: providerResultCheckpoint ?? undefined,
+    persistenceFence: persistenceFenceForJob(fencedJob),
+    persistenceLineageKey: buildPdfPersistenceLineageKey({ job, sourceAssetId }),
+    onProviderResultCheckpoint: async (checkpoint) => {
+      const payload = checkpoint as unknown as Record<string, unknown>;
+      await checkpointAIProviderJobProviderResult({
+        job: fencedJob,
+        outputContractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
+        payload,
+        payloadSha256: checkpointPayloadSha256(payload),
+        supabase,
+      });
+    },
+    onCheckpointStage: async (stage, metadata) => {
+      await checkpointAIProviderJobStage({
+        job: fencedJob,
+        metadata: metadata ?? {},
+        stage,
+        supabase,
+      });
+    },
     sourceAssetId,
     sourceObjectPath: sourceAsset.object_path,
     supabase,
@@ -415,7 +458,14 @@ async function runAIPdfExtractJob({
       },
     };
   } catch (error) {
-    await recordAIPdfProviderFailure({ error, input });
+    // A superseded lease cannot write a batch failure after recovery has
+    // started under a newer fence.
+    if (
+      !(error instanceof AIProviderJobFenceLostError) &&
+      !(error instanceof Error && error.message === STALE_FENCE_REJECTED)
+    ) {
+      await recordAIPdfProviderFailure({ error, input });
+    }
     throw error;
   }
 }
@@ -471,10 +521,24 @@ async function runAIPdfCoverageRecoveryJob({
     throw new Error("The private PDF source is no longer ready for targeted recovery.");
   }
 
+  const fencedJob = { ...job, lease_owner: leaseOwner };
+  await checkpointAIProviderJobStage({
+    job: fencedJob,
+    metadata: { sourceAssetReady: true, targetedRecovery: true },
+    stage: "source_validated",
+    supabase,
+  });
+
   const route = await resolveAIProviderRoute({
     operationKind: "ai_pdf_extract",
     organizationId: job.organization_id,
     requestedProfileId: providerProfileId,
+    supabase,
+  });
+  await checkpointAIProviderJobStage({
+    job: fencedJob,
+    metadata: { recoveryClassification: "provider_required" },
+    stage: "provider_request_started",
     supabase,
   });
   const { data: sourceBlob, error: downloadError } = await supabase.storage
@@ -519,6 +583,15 @@ async function runAIPdfCoverageRecoveryJob({
     const routeCandidate = route.candidates.find(
       (candidate) => candidate.profile.id === routed.profile.id,
     );
+    await checkpointAIProviderJobStage({
+      job: fencedJob,
+      metadata: {
+        createdDraftCount: routed.value.recoveredDraftCount,
+        recoveryClassification: "coverage_recovery_persisted",
+      },
+      stage: "drafts_persisted",
+      supabase,
+    });
     return {
       createdCount: routed.value.recoveredDraftCount,
       fallbackUsed: routed.fallbackUsed,
@@ -564,6 +637,7 @@ async function runBlueprintGenerateQuestionsJob({
   maxProviderCalls?: number;
   supabase: SupabaseWorkerClient;
 }): Promise<WorkerExecutionResult> {
+  const fencedJob = { ...job, lease_owner: leaseOwner };
   await ensureBankIsActive({
     bankId: job.target_bank_id,
     profileId: job.created_by,
@@ -601,6 +675,12 @@ async function runBlueprintGenerateQuestionsJob({
   });
 
   if (completedBatch) {
+    await checkpointAIProviderJobStage({
+      job: fencedJob,
+      metadata: { recoveryClassification: "already_persisted" },
+      stage: "drafts_persisted",
+      supabase,
+    });
     const generation = asRecord(asRecord(completedBatch.summary).blueprintGeneration);
     return {
       createdCount: numberValue(generation.createdDraftCount),
@@ -610,6 +690,18 @@ async function runBlueprintGenerateQuestionsJob({
   }
 
   const usageSamples: NonNullable<AIOperationExecutionMetadata["usageSamples"]> = [];
+  await checkpointAIProviderJobStage({
+    job: fencedJob,
+    metadata: { blueprintValidated: true },
+    stage: "source_validated",
+    supabase,
+  });
+  await checkpointAIProviderJobStage({
+    job: fencedJob,
+    metadata: { recoveryClassification: "provider_required" },
+    stage: "provider_request_started",
+    supabase,
+  });
   const providerStartedAt = Date.now();
   const result = await generateTeacherBlueprintReviewDrafts({
     blueprint,
@@ -619,6 +711,13 @@ async function runBlueprintGenerateQuestionsJob({
     routingOrganizationId: job.organization_id,
     onProviderUsage: (usage) => usageSamples.push(usage),
     providerMaxAttempts: maxProviderCalls,
+    supabase,
+  });
+
+  await checkpointAIProviderJobStage({
+    job: fencedJob,
+    metadata: { createdDraftCount: result.createdDraftCount },
+    stage: "drafts_persisted",
     supabase,
   });
 

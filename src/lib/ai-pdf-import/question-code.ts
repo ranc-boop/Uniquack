@@ -2,7 +2,7 @@ export function questionCodeKey(value: string) {
   return value.trim().toLowerCase();
 }
 
-function defaultQuestionCode(batchId: string, index: number) {
+export function deterministicAIPdfQuestionCode(batchId: string, index: number) {
   return `AI-${batchId.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, "0")}`;
 }
 
@@ -17,7 +17,7 @@ function uniqueGeneratedQuestionCode({
   index: number;
   usedQuestionCodes: Set<string>;
 }) {
-  const baseCode = defaultQuestionCode(batchId, index);
+  const baseCode = deterministicAIPdfQuestionCode(batchId, index);
   let questionCode = baseCode;
   let suffix = 1;
 
