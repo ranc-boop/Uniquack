@@ -46,6 +46,11 @@ export type AIProviderJob = {
   max_execution_attempts: number;
   available_at: string;
   lease_owner: string | null;
+  execution_fence_token: string | null;
+  lease_generation: number;
+  checkpoint_stage: string;
+  checkpoint_version: number;
+  checkpointed_at: string | null;
   lease_acquired_at: string | null;
   lease_expires_at: string | null;
   last_heartbeat_at: string | null;

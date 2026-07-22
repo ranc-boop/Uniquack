@@ -2078,6 +2078,9 @@ const durableAiJobsMigration = await read(
 const durableAiJobsWorkerRoleFix = await read(
   "supabase/clean-migrations/0034_ai_provider_jobs_worker_role_fix.sql",
 );
+const durableAiJobsCheckpointFencingMigration = await read(
+  "supabase/clean-migrations/0051_pdf50_worker_checkpoint_fencing.sql",
+);
 const providerRoutingCircuitMigration = await read(
   "supabase/clean-migrations/0035_ai_provider_routing_circuit_breaker.sql",
 );
@@ -2163,6 +2166,21 @@ assert(
     durableAiJobsRoute.includes("x-ai-jobs-internal-token") &&
     !durableAiJobsRoute.includes("request.json"),
   "durable AI worker must preserve Review Draft safety and reject arbitrary public job payloads",
+);
+assert(
+  durableAiJobsCheckpointFencingMigration.includes("execution_fence_token") &&
+    durableAiJobsCheckpointFencingMigration.includes("private.ai_provider_job_provider_result_checkpoints") &&
+    durableAiJobsCheckpointFencingMigration.includes("STALE_FENCE_REJECTED") &&
+    durableAiJobsCheckpointFencingMigration.includes("persist_ai_provider_job_import_item_fenced") &&
+    durableAiJobsCheckpointFencingMigration.includes("finalize_ai_provider_job_import_batch_fenced") &&
+    durableAiJobsCheckpointFencingMigration.includes("revoke all on function public.finish_ai_provider_job") &&
+    durableAiJobsCheckpointFencingMigration.includes("grant execute on function public.finish_ai_provider_job_fenced") &&
+    !durableAiJobsCheckpointFencingMigration.includes("grant execute on function public.finish_ai_provider_job_fenced(uuid, text, uuid, text, jsonb, text, text, boolean, timestamptz, integer) to authenticated") &&
+    durableAiJobsWorker.includes("finishAIProviderJobFence") &&
+    durableAiJobsWorker.includes("checkpointAIProviderJobProviderResult") &&
+    durableAiJobsWorker.includes("persistenceFenceForJob") &&
+    !durableAiJobsWorker.includes("createAssignment"),
+  "checkpointed AI jobs must fence stale workers, protect provider checkpoints, and preserve Review Draft-only output",
 );
 assert(
   aiOperationsMigration.includes("create table if not exists public.ai_operations_controls") &&
