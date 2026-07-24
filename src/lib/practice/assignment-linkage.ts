@@ -21,6 +21,7 @@ import type { Json, QuestionType } from "@/types/database";
 
 type SupabaseLike = {
   from: (table: string) => any;
+  rpc: (...args: any[]) => any;
 };
 
 export const ASSIGNMENT_PRACTICE_START_ERROR_CODES = [
@@ -56,6 +57,7 @@ export const ASSIGNMENT_PRACTICE_START_STAGES = [
   "preference_merge_read",
   "preference_merge_write",
   "session",
+  "sources",
   "round",
   "assignment_linkage",
   "session_reload",
@@ -524,6 +526,7 @@ export async function startAssignmentPractice({
     code: "SESSION_CREATE_FAILED",
     operation: () =>
       createPracticeSession({
+        assignmentId,
         goal,
         onInitializationFailure: (stage, cause) => {
           const codeByStage = {
@@ -532,6 +535,7 @@ export async function startAssignmentPractice({
             preference_merge_write: "PREFERENCE_MERGE_WRITE_FAILED",
             preference_read: "PREFERENCE_READ_FAILED",
             session: "SESSION_CREATE_FAILED",
+            sources: "SESSION_CREATE_FAILED",
           } as const;
           return assignmentPracticeStartError({
             cause,

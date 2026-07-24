@@ -2,7 +2,10 @@ import "server-only";
 
 import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { normalizeQuestionOptions } from "@/lib/questions/answer-spec";
-import type { PracticeQuestionCandidate } from "@/lib/practice/types";
+import type {
+  PracticeInventory,
+  PracticeQuestionCandidate,
+} from "@/lib/practice/types";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
 import type { Question, QuestionType } from "@/types/database";
 
@@ -71,17 +74,20 @@ type PracticeSearchShortCandidate = {
   match_source: string;
   question_code: string;
   question_type: QuestionType;
+  selection_state: "unseen" | "needs_retry";
   tag_ids: string[];
   title_excerpt: string;
 };
 
 export type PracticeSearchBatchResult = {
   candidates: PracticeQuestionCandidate[];
+  inventory: PracticeInventory;
   laneSummaries: Array<{
     effective_tags: string[];
     lane_id: string;
     match_quality: "strict" | "relaxed" | "keyword" | "empty";
     mode: PracticeSearchMode;
+    inventory: PracticeInventory;
     requested_tags: string[];
     result_count: number;
   }>;
@@ -157,12 +163,12 @@ export function formatPracticeSearchBatchForModel({
 }) {
   const returned = result.candidates.length;
   const lines = [
-    `SEARCH_RESULT enough=${poolSize >= questionCount ? "true" : "false"} pool=${poolSize} mode=${mode} returned=${returned}`,
+    `SEARCH_RESULT enough=${poolSize >= questionCount ? "true" : "false"} pool=${poolSize} mode=${mode} returned=${returned} inventory=${JSON.stringify(result.inventory)}`,
   ];
 
   for (const lane of result.laneSummaries) {
     lines.push(
-      `LANE ${lane.lane_id} mode=${lane.mode} tags=${lane.effective_tags.join(",") || "none"} results=${lane.result_count} quality=${lane.match_quality}`,
+      `LANE ${lane.lane_id} mode=${lane.mode} tags=${lane.effective_tags.join(",") || "none"} results=${lane.result_count} quality=${lane.match_quality} inventory=${JSON.stringify(lane.inventory)}`,
     );
   }
 
@@ -178,6 +184,7 @@ export function formatPracticeSearchBatchForModel({
         `d=${candidate.difficulty}`,
         `tags=${shortTagIds(candidate.tagIds).slice(0, 8).join(",") || "none"}`,
         `match=${short?.match_quality ?? mode}/${short?.match_source ?? "unknown"}`,
+        `state=${candidate.selectionState ?? "unseen"}`,
       ].join(" | "),
     );
     lines.push(`STEM: ${stemForModel(candidate)}`);
@@ -245,7 +252,7 @@ function questionToCandidate(question: Pick<
   | "options"
   | "question_type"
   | "source"
->, tagIds: string[]): PracticeQuestionCandidate {
+>, tagIds: string[], selectionState?: "unseen" | "needs_retry"): PracticeQuestionCandidate {
   return {
     contentExcerpt: htmlToPlainTextExcerpt(question.content_html, 520),
     contentHtml: question.content_html,
@@ -256,6 +263,7 @@ function questionToCandidate(question: Pick<
     questionType: question.question_type,
     source: question.source,
     sourceQuestionId: question.id,
+    selectionState,
     tagIds,
     title: question.title,
   };
@@ -528,6 +536,7 @@ type PracticeSearchRow = {
   question_code: string;
   question_id: string;
   question_type: QuestionType;
+  selection_state: "unseen" | "needs_retry";
   title: string;
 };
 
@@ -607,20 +616,20 @@ function allocateVisibleRowsFairly({
 }
 
 export async function practiceSearchBatch({
-  completedQuestionIds,
   difficultyMax = 1000,
   difficultyMin = 0,
   lanes,
   mode,
   questionCount,
+  sessionId,
   supabase,
 }: {
-  completedQuestionIds: string[];
   difficultyMax?: number;
   difficultyMin?: number;
   lanes: PracticeSearchBatchLane[];
   mode: PracticeSearchMode;
   questionCount: number;
+  sessionId: string;
   supabase: SupabaseLike;
 }): Promise<PracticeSearchBatchResult> {
   const limitedLanes = lanes.slice(0, SEARCH_LANE_LIMIT);
@@ -629,6 +638,14 @@ export async function practiceSearchBatch({
   const laneRows: PracticeSearchRow[][] = [];
   const laneSummaries: PracticeSearchBatchResult["laneSummaries"] = [];
   const seenQuestionIds = new Set<string>();
+  const emptyInventory: PracticeInventory = {
+    deferred: 0,
+    eligible: 0,
+    mastered: 0,
+    needsRetry: 0,
+    ungraded: 0,
+    unseen: 0,
+  };
 
   for (const lane of limitedLanes) {
     const requestedTags = uniqueStrings(lane.confirmed_tag_ids);
@@ -636,34 +653,59 @@ export async function practiceSearchBatch({
     const normalizedQueryText = mode === "relaxed" ? lane.query_text?.slice(0, 120) || null : null;
     const limit = searchLimit(lane.limit, Math.max(DEFAULT_SEARCH_LIMIT, visibleCandidateCap));
     const quality = matchQuality(mode, effectiveTags, normalizedQueryText ?? undefined);
-    const result = await supabase.rpc("search_questions_by_taxonomy", {
-      assignment_review_status: "approved",
-      difficulty_max: Math.min(1000, Math.max(0, Math.trunc(difficultyMax))),
-      difficulty_min: Math.min(1000, Math.max(0, Math.trunc(difficultyMin))),
-      exclude_tag_ids: [],
-      include_tag_ids: effectiveTags,
-      page_limit: Math.max(limit * SEARCH_BUFFER_MULTIPLIER, visibleCandidateCap),
-      page_offset: 0,
-      query_text: normalizedQueryText,
-      question_status: "published",
+    const result = await supabase.rpc("search_practice_questions_in_session", {
+      p_difficulty_max: Math.min(1000, Math.max(0, Math.trunc(difficultyMax))),
+      p_difficulty_min: Math.min(1000, Math.max(0, Math.trunc(difficultyMin))),
+      p_include_tag_ids: effectiveTags,
+      p_page_limit: Math.max(limit * SEARCH_BUFFER_MULTIPLIER, visibleCandidateCap),
+      p_query_text: normalizedQueryText,
+      p_session_id: sessionId,
     });
 
     if (result.error) {
       throw new Error(result.error.message ?? "Question search failed.");
     }
 
-    const rows = ((Array.isArray(result.data) ? result.data : []) as Array<{
+    const rawRows = (Array.isArray(result.data) ? result.data : []) as Array<{
+      deferred_count?: number;
       difficulty_rating: number;
+      eligible_count?: number;
+      mastered_count?: number;
       matched_tag_ids?: string[];
+      needs_retry_count?: number;
       question_code: string;
-      question_id: string;
+      question_id: string | null;
       question_type: QuestionType;
+      selection_state: "unseen" | "needs_retry" | null;
       title: string;
-    }>).filter((row) => !completedQuestionIds.includes(row.question_id));
+      ungraded_count?: number;
+      unseen_count?: number;
+    }>;
+    const inventoryRow = rawRows[0];
+    const inventory: PracticeInventory = inventoryRow
+      ? {
+          deferred: Number(inventoryRow.deferred_count ?? 0),
+          eligible: Number(inventoryRow.eligible_count ?? 0),
+          mastered: Number(inventoryRow.mastered_count ?? 0),
+          needsRetry: Number(inventoryRow.needs_retry_count ?? 0),
+          ungraded: Number(inventoryRow.ungraded_count ?? 0),
+          unseen: Number(inventoryRow.unseen_count ?? 0),
+        }
+      : emptyInventory;
+    const rows = rawRows.filter(
+      (row): row is typeof row & {
+        question_id: string;
+        selection_state: "unseen" | "needs_retry";
+      } => Boolean(row.question_id && row.selection_state),
+    );
 
     const laneVisibleBuffer = Math.max(limit, Math.min(2, visibleCandidateCap));
     laneRows.push(
-      rows.slice(0, laneVisibleBuffer).map((row) => ({ ...row, laneId: lane.lane_id, matchQuality: quality })),
+      rows.slice(0, laneVisibleBuffer).map((row) => ({
+        ...row,
+        laneId: lane.lane_id,
+        matchQuality: quality,
+      })),
     );
 
     laneSummaries.push({
@@ -671,6 +713,7 @@ export async function practiceSearchBatch({
       lane_id: lane.lane_id,
       match_quality: rows.length ? quality : "empty",
       mode,
+      inventory,
       requested_tags: requestedTags,
       result_count: rows.length,
     });
@@ -682,7 +725,18 @@ export async function practiceSearchBatch({
   const order = new Map(orderedIds.map((id, index) => [id, index]));
 
   if (!orderedIds.length) {
-    return { candidates: [], laneSummaries, shortCandidates: [] };
+    const inventory = laneSummaries.reduce(
+      (current, lane) => ({
+        deferred: Math.max(current.deferred, lane.inventory.deferred),
+        eligible: Math.max(current.eligible, lane.inventory.eligible),
+        mastered: Math.max(current.mastered, lane.inventory.mastered),
+        needsRetry: Math.max(current.needsRetry, lane.inventory.needsRetry),
+        ungraded: Math.max(current.ungraded, lane.inventory.ungraded),
+        unseen: Math.max(current.unseen, lane.inventory.unseen),
+      }),
+      emptyInventory,
+    );
+    return { candidates: [], inventory, laneSummaries, shortCandidates: [] };
   }
 
   const { data: questions, error: questionsError } = await supabase
@@ -712,10 +766,30 @@ export async function practiceSearchBatch({
         (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
         (order.get(right.id) ?? Number.MAX_SAFE_INTEGER),
     )
-    .map((question) => questionToCandidate(question, tagsByQuestionId.get(question.id) ?? []));
+    .map((question) => {
+      const row = rowByQuestionId.get(question.id);
+      return questionToCandidate(
+        question,
+        tagsByQuestionId.get(question.id) ?? [],
+        row?.selection_state,
+      );
+    });
+
+  const inventory = laneSummaries.reduce(
+    (current, lane) => ({
+      deferred: Math.max(current.deferred, lane.inventory.deferred),
+      eligible: Math.max(current.eligible, lane.inventory.eligible),
+      mastered: Math.max(current.mastered, lane.inventory.mastered),
+      needsRetry: Math.max(current.needsRetry, lane.inventory.needsRetry),
+      ungraded: Math.max(current.ungraded, lane.inventory.ungraded),
+      unseen: Math.max(current.unseen, lane.inventory.unseen),
+    }),
+    emptyInventory,
+  );
 
   return {
     candidates,
+    inventory,
     laneSummaries,
     shortCandidates: candidates.map((candidate) => {
       const row = rowByQuestionId.get(candidate.id);
@@ -726,6 +800,7 @@ export async function practiceSearchBatch({
         match_source: row?.laneId ?? "unknown",
         question_code: candidate.questionCode,
         question_type: candidate.questionType,
+        selection_state: candidate.selectionState ?? "unseen",
         tag_ids: shortTagIds(candidate.tagIds).slice(0, 8),
         title_excerpt: candidate.title.slice(0, 160),
       };

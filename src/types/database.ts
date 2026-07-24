@@ -735,11 +735,24 @@ export type PracticeSession = {
   next_user_notes: string;
   cache_prefix_version: string;
   preference_dirty_at: string | null;
-  status: "active" | "archived";
+  status: "active" | "completed" | "abandoned" | "archived";
+  summary: Json;
+  completed_at: string | null;
   preference_merged_at: string | null;
   last_activity_at: string;
   created_at: string;
   updated_at: string;
+};
+
+export type PracticeSessionSource = {
+  id: string;
+  session_id: string;
+  source_kind: "public_catalog" | "question_bank" | "assignment";
+  bank_id: string | null;
+  assignment_id: string | null;
+  source_snapshot: Json;
+  created_by: string;
+  created_at: string;
 };
 
 export type PracticeRound = {
@@ -954,6 +967,7 @@ export type Database = {
       import_batch_items: TableDefinition<ImportBatchItem>;
       import_batch_assets: TableDefinition<ImportBatchAsset>;
       practice_sessions: TableDefinition<PracticeSession>;
+      practice_session_sources: TableDefinition<PracticeSessionSource>;
       practice_rounds: TableDefinition<PracticeRound>;
       practice_round_questions: TableDefinition<PracticeRoundQuestion>;
       practice_attempts: TableDefinition<PracticeAttempt>;
@@ -1197,6 +1211,60 @@ export type Database = {
           status: string;
           title: string;
           total_count: number;
+        }>;
+      };
+      initialize_practice_session_sources: {
+        Args: {
+          p_assignment_id?: string | null;
+          p_bank_ids?: string[];
+          p_include_public?: boolean;
+          p_session_id: string;
+        };
+        Returns: Array<{
+          assignment_id: string | null;
+          bank_id: string | null;
+          source_kind: string;
+          source_snapshot: Json;
+        }>;
+      };
+      list_selectable_practice_sources: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          mastered_count: number;
+          membership_role: string | null;
+          name: string;
+          needs_retry_count: number;
+          question_count: number;
+          source_id: string | null;
+          source_kind: string;
+          ungraded_count: number;
+          unseen_count: number;
+          visibility: string;
+        }>;
+      };
+      search_practice_questions_in_session: {
+        Args: {
+          p_difficulty_max?: number;
+          p_difficulty_min?: number;
+          p_include_tag_ids?: string[];
+          p_page_limit?: number;
+          p_query_text?: string | null;
+          p_session_id: string;
+        };
+        Returns: Array<{
+          deferred_count: number;
+          difficulty_rating: number;
+          eligible_count: number;
+          mastered_count: number;
+          matched_tag_ids: string[];
+          needs_retry_count: number;
+          question_code: string;
+          question_id: string;
+          question_type: string;
+          selection_state: "unseen" | "needs_retry";
+          title: string;
+          ungraded_count: number;
+          unseen_count: number;
         }>;
       };
       create_teacher_classroom: {

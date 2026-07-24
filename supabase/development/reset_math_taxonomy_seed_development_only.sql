@@ -1,28 +1,46 @@
--- Development-only taxonomy reset. Do not apply to production data.
--- This intentionally clears taxonomy review/actions and question taxonomy assignments.
+-- Development-only taxonomy reset. Never apply to production data.
+--
+-- Intentional data effects:
+--   * clears taxonomy review actions and question taxonomy assignments;
+--   * clears practice weakness links because their historical taxonomy IDs
+--     cannot be trusted after a full taxonomy replacement;
+--   * preserves question rubric steps, but clears their taxonomy links;
+--   * replaces taxonomy nodes, facets, edges, aliases, and closure rows.
+--
+-- This script deliberately avoids TRUNCATE ... CASCADE so that a future
+-- taxonomy foreign key cannot silently erase an unrelated product table.
 
 begin;
+set constraints all deferred;
 
-alter table public.taxonomy_nodes drop constraint if exists taxonomy_nodes_subject_fkey;
-alter table public.taxonomy_nodes drop constraint if exists taxonomy_nodes_facet_fkey;
-alter table public.taxonomy_facets drop constraint if exists taxonomy_facets_subject_fkey;
-alter table public.taxonomy_facets drop constraint if exists taxonomy_facets_root_fkey;
-
-drop trigger if exists taxonomy_nodes_validate on public.taxonomy_nodes;
-drop trigger if exists taxonomy_edges_validate_parent on public.taxonomy_edges;
-drop trigger if exists question_taxonomy_assignments_validate on public.question_taxonomy_assignments;
-drop trigger if exists taxonomy_nodes_refresh_closure on public.taxonomy_nodes;
-drop trigger if exists taxonomy_edges_refresh_closure on public.taxonomy_edges;
-
-truncate table
+lock table
   public.taxonomy_review_actions,
   public.question_taxonomy_assignments,
+  public.question_rubric_steps,
+  public.practice_weakness_links,
   public.taxonomy_aliases,
   public.taxonomy_node_closure,
   public.taxonomy_edges,
   public.taxonomy_facets,
   public.taxonomy_nodes
-restart identity cascade;
+in access exclusive mode;
+
+drop trigger if exists taxonomy_nodes_validate on public.taxonomy_nodes;
+drop trigger if exists taxonomy_edges_validate_parent on public.taxonomy_edges;
+drop trigger if exists taxonomy_nodes_refresh_closure on public.taxonomy_nodes;
+drop trigger if exists taxonomy_edges_refresh_closure on public.taxonomy_edges;
+
+delete from public.taxonomy_review_actions;
+delete from public.question_taxonomy_assignments;
+update public.question_rubric_steps
+set linked_taxonomy_tag_id = null
+where linked_taxonomy_tag_id is not null;
+delete from public.practice_weakness_links;
+delete from public.taxonomy_aliases;
+delete from public.taxonomy_node_closure;
+delete from public.taxonomy_edges;
+delete from public.taxonomy_facets;
+delete from public.taxonomy_nodes;
 
 insert into public.taxonomy_nodes (tag_id, node_kind, subject_tag_id, facet_key, label, description, is_assignable, sort_order, status, metadata) values
   ('math', 'subject', null, null, 'Math', 'Root of the mathematics taxonomy.', false, 0, 'active', '{"seed":"math_taxonomy_v2","subject":"math","display":"id_only"}'::jsonb),
@@ -464,15 +482,6 @@ insert into public.taxonomy_facets (facet_key, subject_tag_id, root_tag_id, labe
   ('task', 'math', 'math.task', 'Task', 'What the question asks the learner to do.', 4, 'active', '{"seed":"math_taxonomy_v2","subject":"math","idPrefix":"math.task"}'::jsonb),
   ('form', 'math', 'math.form', 'Form', 'Question representation, format, and context.', 5, 'active', '{"seed":"math_taxonomy_v2","subject":"math","idPrefix":"math.form"}'::jsonb)
 on conflict (facet_key) do update set subject_tag_id = excluded.subject_tag_id, root_tag_id = excluded.root_tag_id, label = excluded.label, description = excluded.description, sort_order = excluded.sort_order, status = excluded.status, config = excluded.config;
-
-
-alter table public.taxonomy_facets
-  add constraint taxonomy_facets_subject_fkey foreign key (subject_tag_id) references public.taxonomy_nodes(tag_id) on delete restrict,
-  add constraint taxonomy_facets_root_fkey foreign key (root_tag_id) references public.taxonomy_nodes(tag_id) on delete restrict;
-
-alter table public.taxonomy_nodes
-  add constraint taxonomy_nodes_subject_fkey foreign key (subject_tag_id) references public.taxonomy_nodes(tag_id) on delete restrict,
-  add constraint taxonomy_nodes_facet_fkey foreign key (facet_key) references public.taxonomy_facets(facet_key) on delete restrict;
 
 insert into public.taxonomy_edges (from_tag_id, to_tag_id, edge_kind, is_primary, sort_order, status, metadata) values
   ('math', 'math.curriculum', 'parent_child', true, 0, 'active', '{"seed":"math_taxonomy_v2","subjectRoot":true}'::jsonb),
@@ -926,6 +935,22 @@ insert into public.taxonomy_edges (from_tag_id, to_tag_id, edge_kind, is_primary
   ('math.curriculum.sat.geometry_trigonometry', 'math.concept.trigonometry', 'maps_to', false, 448, 'active', '{"seed":"math_taxonomy_v2","sourceEdgeKind":"curriculum_maps_to_concept"}'::jsonb)
 on conflict (from_tag_id, to_tag_id, edge_kind) do update set is_primary = excluded.is_primary, sort_order = excluded.sort_order, status = excluded.status, metadata = excluded.metadata;
 
+-- Only active leaf tags may be assigned to questions. Keeping this derived
+-- from the actual parent-child graph prevents newly added branch nodes from
+-- accidentally becoming assignable.
+update public.taxonomy_nodes as node
+set is_assignable = (
+  node.node_kind = 'tag'
+  and node.status = 'active'
+  and not exists (
+    select 1
+    from public.taxonomy_edges as edge
+    where edge.from_tag_id = node.tag_id
+      and edge.edge_kind = 'parent_child'
+      and edge.status = 'active'
+  )
+);
+
 insert into public.taxonomy_aliases (alias_text, normalized_alias, tag_id, status, metadata) values
   ('quadratic max', 'quadratic max', 'math.concept.functions.quadratic.extreme_value', 'active', '{"seed":"math_taxonomy_v2"}'::jsonb),
   ('maximum value', 'maximum value', 'math.concept.functions.quadratic.extreme_value', 'active', '{"seed":"math_taxonomy_v2"}'::jsonb),
@@ -957,14 +982,112 @@ create trigger taxonomy_edges_validate_parent
 before insert or update on public.taxonomy_edges
 for each row execute function private.validate_taxonomy_parent_edge();
 
-drop trigger if exists question_taxonomy_assignments_validate on public.question_taxonomy_assignments;
-create trigger question_taxonomy_assignments_validate
-before insert or update on public.question_taxonomy_assignments
-for each row execute function private.validate_question_taxonomy_assignment();
-
 drop trigger if exists taxonomy_nodes_refresh_closure on public.taxonomy_nodes;
 create trigger taxonomy_nodes_refresh_closure
 after insert or update or delete on public.taxonomy_nodes
 for each statement execute function private.refresh_taxonomy_node_closure_trigger();
+
+drop trigger if exists taxonomy_edges_refresh_closure on public.taxonomy_edges;
+create trigger taxonomy_edges_refresh_closure
+after insert or update or delete on public.taxonomy_edges
+for each statement execute function private.refresh_taxonomy_node_closure_trigger();
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.taxonomy_nodes as node
+    where node.is_assignable
+      and (
+        node.node_kind <> 'tag'
+        or node.status <> 'active'
+        or exists (
+          select 1
+          from public.taxonomy_edges as edge
+          where edge.from_tag_id = node.tag_id
+            and edge.edge_kind = 'parent_child'
+            and edge.status = 'active'
+        )
+      )
+  ) then
+    raise exception 'taxonomy reset rejected: only active leaf tags may be assignable';
+  end if;
+
+  if exists (
+    select 1
+    from public.taxonomy_nodes as node
+    where node.node_kind <> 'subject'
+      and node.status = 'active'
+      and not exists (
+        select 1
+        from public.taxonomy_edges as edge
+        where edge.to_tag_id = node.tag_id
+          and edge.edge_kind = 'parent_child'
+          and edge.is_primary
+          and edge.status = 'active'
+      )
+  ) then
+    raise exception 'taxonomy reset rejected: active non-subject node has no active primary parent';
+  end if;
+
+  if exists (
+    select edge.to_tag_id
+    from public.taxonomy_edges as edge
+    where edge.edge_kind = 'parent_child'
+      and edge.is_primary
+      and edge.status = 'active'
+    group by edge.to_tag_id
+    having count(*) > 1
+  ) then
+    raise exception 'taxonomy reset rejected: node has multiple active primary parents';
+  end if;
+
+  if exists (
+    select 1
+    from public.taxonomy_edges as edge
+    where edge.edge_kind = 'parent_child'
+      and edge.status = 'active'
+      and not exists (
+        select 1
+        from public.taxonomy_node_closure as closure
+        where closure.ancestor_tag_id = edge.from_tag_id
+          and closure.descendant_tag_id = edge.to_tag_id
+          and closure.depth = 1
+      )
+  ) then
+    raise exception 'taxonomy reset rejected: closure is missing an active parent-child edge';
+  end if;
+
+  if exists (
+    select 1
+    from public.taxonomy_nodes as node
+    where node.status = 'active'
+      and not exists (
+        select 1
+        from public.taxonomy_node_closure as closure
+        where closure.ancestor_tag_id = node.tag_id
+          and closure.descendant_tag_id = node.tag_id
+          and closure.depth = 0
+      )
+  ) then
+    raise exception 'taxonomy reset rejected: closure is missing an active node self-row';
+  end if;
+
+  if exists (
+    select facet.facet_key
+    from public.taxonomy_facets as facet
+    where facet.status = 'active'
+      and not exists (
+        select 1
+        from public.taxonomy_nodes as node
+        where node.facet_key = facet.facet_key
+          and node.is_assignable
+          and node.status = 'active'
+      )
+  ) then
+    raise exception 'taxonomy reset rejected: active facet has no assignable leaf tags';
+  end if;
+end;
+$$;
 
 commit;

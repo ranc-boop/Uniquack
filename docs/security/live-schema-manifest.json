@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 51,
+  "latestActivePrefix": 53,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -65,7 +65,9 @@
     "0048_practice_course_framework_evidence_isolation.sql",
     "0049_practice_agent_provider_routing.sql",
     "0050_pdf50_burst_upload_admission.sql",
-    "0051_pdf50_worker_checkpoint_fencing.sql"
+    "0051_pdf50_worker_checkpoint_fencing.sql",
+    "0052_practice_library_scope_and_inventory.sql",
+    "0053_practice_session_source_rpc_ambiguity_fix.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -249,6 +251,8 @@
     { "filename": "0048_practice_course_framework_evidence_isolation.sql", "migrationNumber": 48, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 48, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor", "evidenceSource": "sanitized post-apply catalog counts and completed exact-ID disposable framework-boundary role matrix" },
     { "filename": "0049_practice_agent_provider_routing.sql", "migrationNumber": 49, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 49, "status": "LOCALLY_REVALIDATED_NOT_HOSTED_APPLIED", "applicationMethod": "localhost-only release gate", "evidenceSource": "docs/security/pdf50-local-0049-0050-upgrade-evidence.md and docs/security/pdf50-local-0050-bucket-adoption-evidence.md; no hosted application is claimed" },
     { "filename": "0050_pdf50_burst_upload_admission.sql", "migrationNumber": 50, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 50, "status": "LOCALLY_REVALIDATED_NOT_HOSTED_APPLIED", "applicationMethod": "localhost-only fresh-chain, sequential-upgrade, and bucket-adoption release gates", "evidenceSource": "docs/security/pdf50-local-fresh-chain-0050-evidence.md, docs/security/pdf50-local-0049-0050-upgrade-evidence.md, and docs/security/pdf50-local-0050-bucket-adoption-evidence.md; no hosted application is claimed" },
-    { "filename": "0051_pdf50_worker_checkpoint_fencing.sql", "migrationNumber": 51, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 51, "status": "SOURCE_COMPLETE_NOT_APPLIED", "applicationMethod": "manual forward-only apply required after local checkpoint/fencing validation", "evidenceSource": "docs/architecture/pdf50-worker-checkpoint-fencing-implementation.md and docs/security/pdf50-worker-fencing-security.md; no hosted application is claimed" }
+    { "filename": "0051_pdf50_worker_checkpoint_fencing.sql", "migrationNumber": 51, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 51, "status": "SOURCE_COMPLETE_NOT_APPLIED", "applicationMethod": "manual forward-only apply required after local checkpoint/fencing validation", "evidenceSource": "docs/architecture/pdf50-worker-checkpoint-fencing-implementation.md and docs/security/pdf50-worker-fencing-security.md; no hosted application is claimed" },
+    { "filename": "0052_practice_library_scope_and_inventory.sql", "migrationNumber": 52, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 52, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor reported by operator", "evidenceSource": "operator-reported apply followed by runtime 42702 source-binding reproduction; corrected forward-only by 0053" },
+    { "filename": "0053_practice_session_source_rpc_ambiguity_fix.sql", "migrationNumber": 53, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 53, "status": "SOURCE_COMPLETE_NOT_APPLIED", "applicationMethod": "manual forward-only apply required after local runtime validation", "evidenceSource": "docs/architecture/practice-library-scope-and-completion-implementation.md; no hosted application is claimed" }
   ]
 }

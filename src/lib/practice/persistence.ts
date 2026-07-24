@@ -8,6 +8,8 @@ import type {
   PracticeRecommendation,
   PracticeRoundHistory,
   PracticeSessionDetail,
+  PracticeSourceSelection,
+  PracticeSourceSummary,
   PracticeSessionSummary,
   PracticeTagContext,
   PracticeTraceEvent,
@@ -28,6 +30,7 @@ import type { Json, PracticeSession } from "@/types/database";
 
 type SupabaseLike = {
   from: (...args: any[]) => any;
+  rpc: (...args: any[]) => any;
 };
 
 export type PracticeSessionInitializationFailureStage =
@@ -35,12 +38,27 @@ export type PracticeSessionInitializationFailureStage =
   | "preference_create"
   | "preference_merge_read"
   | "preference_merge_write"
-  | "session";
+  | "session"
+  | "sources";
 
 type PracticeSessionInitializationFailureMapper = (
   stage: PracticeSessionInitializationFailureStage,
   cause: unknown,
 ) => Error;
+
+function practiceInitializationCauseMessage(cause: unknown) {
+  if (cause instanceof Error) return cause.message;
+  if (cause && typeof cause === "object") {
+    const record = cause as Record<string, unknown>;
+    const code = typeof record.code === "string" ? record.code.trim() : "";
+    const message = typeof record.message === "string" ? record.message.trim() : "";
+    const hint = typeof record.hint === "string" ? record.hint.trim() : "";
+    const detail = typeof record.details === "string" ? record.details.trim() : "";
+    const readable = [message, detail, hint].filter(Boolean).join(" ");
+    if (readable) return `${code ? `[${code}] ` : ""}${readable}`;
+  }
+  return String(cause || "Unknown initialization failure");
+}
 
 function throwPracticeSessionInitializationFailure({
   cause,
@@ -52,7 +70,9 @@ function throwPracticeSessionInitializationFailure({
   stage: PracticeSessionInitializationFailureStage;
 }): never {
   if (mapper) throw mapper(stage, cause);
-  throw cause;
+  throw new Error(
+    `Practice session initialization failed at ${stage}: ${practiceInitializationCauseMessage(cause)}`,
+  );
 }
 
 async function runPracticeSessionInitializationOperation<T>({
@@ -354,7 +374,79 @@ function isUniqueConstraintError(error: unknown) {
   );
 }
 
-function sessionSummaryFromRow(row: PracticeSession & { round_count?: number }): PracticeSessionSummary {
+function sourceSummaryFromRow(value: unknown): PracticeSourceSummary | null {
+  const row = asObject(value);
+  const snapshot = asObject(row.source_snapshot);
+  const sourceKind = String(row.source_kind ?? "");
+  if (
+    sourceKind !== "public_catalog" &&
+    sourceKind !== "question_bank" &&
+    sourceKind !== "assignment"
+  ) {
+    return null;
+  }
+
+  const role = String(snapshot.membershipRole ?? "");
+  const visibility = String(snapshot.visibility ?? "");
+  return {
+    assignmentId: row.assignment_id ? String(row.assignment_id) : null,
+    bankId: row.bank_id ? String(row.bank_id) : null,
+    membershipRole:
+      role === "owner" || role === "editor" || role === "viewer" ? role : null,
+    name: String(
+      snapshot.name ??
+        (sourceKind === "public_catalog"
+          ? "Public Question Bank"
+          : sourceKind === "assignment"
+            ? "Assignment"
+            : "Library"),
+    ),
+    sourceKind,
+    visibility:
+      visibility === "private" ||
+      visibility === "shared" ||
+      visibility === "organization" ||
+      visibility === "public"
+        ? visibility
+        : null,
+  };
+}
+
+function completionFromSummary(row: PracticeSession) {
+  const summary = asObject(row.summary);
+  const completion = asObject(summary.completion);
+  const inventory = asObject(completion.inventory);
+  const reason = String(completion.reason ?? "");
+  const trigger = String(completion.trigger ?? "");
+  if (!completion.completedAt || !completion.report) return undefined;
+
+  return {
+    completedAt: String(completion.completedAt),
+    inventory: {
+      deferred: Number(inventory.deferred ?? 0),
+      eligible: Number(inventory.eligible ?? 0),
+      mastered: Number(inventory.mastered ?? 0),
+      needsRetry: Number(inventory.needsRetry ?? 0),
+      ungraded: Number(inventory.ungraded ?? 0),
+      unseen: Number(inventory.unseen ?? 0),
+    },
+    reason:
+      reason === "goal_satisfied" ||
+      reason === "diminishing_returns" ||
+      reason === "source_access_lost"
+        ? reason
+        : "scope_exhausted",
+    report: String(completion.report),
+    trigger: trigger === "agent" ? "agent" : "backend",
+  } as const;
+}
+
+function sessionSummaryFromRow(
+  row: PracticeSession & {
+    practice_session_sources?: unknown[];
+    round_count?: number;
+  },
+): PracticeSessionSummary {
   const record = row as PracticeSession & Record<string, unknown>;
   const courseFrameworkSnapshot = hasObjectKeys(row.course_framework_snapshot)
     ? asObject(row.course_framework_snapshot) as PracticeCourseFrameworkSummary
@@ -373,6 +465,7 @@ function sessionSummaryFromRow(row: PracticeSession & { round_count?: number }):
 
   return {
     cachePrefixVersion: CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
+    completion: completionFromSummary(row),
     completedQuestionIds: asStringArray(row.completed_question_ids),
     courseFrameworkId: row.course_framework_id,
     courseFrameworkSnapshot: row.course_framework_snapshot,
@@ -387,7 +480,15 @@ function sessionSummaryFromRow(row: PracticeSession & { round_count?: number }):
     sessionPlan,
     sessionState,
     sessionThreadMessages: asArray(record.session_thread_messages),
-    status: row.status,
+    sourceScope: asArray(row.practice_session_sources)
+      .map(sourceSummaryFromRow)
+      .filter((source): source is PracticeSourceSummary => Boolean(source)),
+    status:
+      row.status === "completed"
+        ? "completed"
+        : row.status === "archived"
+          ? "archived"
+          : "active",
     tagContext: normalizePracticeTagContext(row.tag_context, row.goal),
     title: row.title,
   };
@@ -550,7 +651,7 @@ export async function listPracticeSessions({
 }) {
   const { data, error } = await supabase
     .from("practice_sessions")
-    .select("*,practice_rounds(id)")
+    .select("*,practice_rounds(id),practice_session_sources(*)")
     .eq("user_id", userId)
     .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
     .order("last_activity_at", { ascending: false });
@@ -559,7 +660,12 @@ export async function listPracticeSessions({
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as Array<PracticeSession & { practice_rounds?: unknown[] }>).map((row) =>
+  return ((data ?? []) as Array<
+    PracticeSession & {
+      practice_rounds?: unknown[];
+      practice_session_sources?: unknown[];
+    }
+  >).map((row) =>
     sessionSummaryFromRow({ ...row, round_count: row.practice_rounds?.length ?? 0 }),
   );
 }
@@ -575,7 +681,7 @@ export async function getPracticeSession({
 }): Promise<PracticeSessionDetail | null> {
   const { data: session, error: sessionError } = await supabase
     .from("practice_sessions")
-    .select("*")
+    .select("*,practice_session_sources(*)")
     .eq("user_id", userId)
     .eq("id", sessionId)
     .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
@@ -691,16 +797,20 @@ export async function getPracticeSession({
 }
 
 export async function createPracticeSession({
+  assignmentId,
   courseFrameworkId,
   goal,
   onInitializationFailure,
+  sourceSelection,
   supabase,
   title,
   userId,
 }: {
+  assignmentId?: string | null;
   courseFrameworkId?: string | null;
   goal: string;
   onInitializationFailure?: PracticeSessionInitializationFailureMapper;
+  sourceSelection?: PracticeSourceSelection;
   supabase: SupabaseLike;
   title?: string;
   userId: string;
@@ -764,7 +874,42 @@ export async function createPracticeSession({
     });
   }
 
-  return sessionSummaryFromRow({ ...(data as PracticeSession), round_count: 0 });
+  const normalizedBankIds = Array.from(
+    new Set((sourceSelection?.bankIds ?? []).map(String).filter(Boolean)),
+  ).slice(0, 10);
+  const includePublicCatalog = assignmentId
+    ? false
+    : sourceSelection?.includePublicCatalog ?? true;
+  const sourceResult = await runPracticeSessionInitializationOperation({
+    mapper: onInitializationFailure,
+    operation: () =>
+      supabase.rpc("initialize_practice_session_sources", {
+        p_assignment_id: assignmentId ?? null,
+        p_bank_ids: normalizedBankIds,
+        p_include_public: includePublicCatalog,
+        p_session_id: (data as PracticeSession).id,
+      }),
+    stage: "sources",
+  });
+
+  if (sourceResult.error) {
+    await supabase
+      .from("practice_sessions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("id", (data as PracticeSession).id);
+    throwPracticeSessionInitializationFailure({
+      cause: sourceResult.error,
+      mapper: onInitializationFailure,
+      stage: "sources",
+    });
+  }
+
+  return sessionSummaryFromRow({
+    ...(data as PracticeSession),
+    practice_session_sources: sourceResult.data ?? [],
+    round_count: 0,
+  });
 }
 
 async function maybeQueuePreferenceMergeJob({

@@ -21,6 +21,31 @@ assert(taxonomyMigration.includes("create table if not exists public.taxonomy_no
 assert(reviewDraftsQuestionBankMigration.includes("create table if not exists public.question_taxonomy_assignments"), "question taxonomy assignments table is missing");
 const developmentTaxonomySeed = await read("supabase/development/reset_math_taxonomy_seed_development_only.sql");
 assert(developmentTaxonomySeed.includes("math.concept.algebra.equations"), "math-prefixed taxonomy seed is missing");
+assert(
+  !developmentTaxonomySeed.toLowerCase().includes("truncate table"),
+  "development taxonomy reset must not use cascading table truncation",
+);
+assert(
+  developmentTaxonomySeed.includes("delete from public.practice_weakness_links") &&
+    developmentTaxonomySeed.includes("set linked_taxonomy_tag_id = null"),
+  "development taxonomy reset must explicitly handle external taxonomy references",
+);
+assert(
+  developmentTaxonomySeed.includes("not exists (") &&
+    developmentTaxonomySeed.includes("edge.from_tag_id = node.tag_id") &&
+    developmentTaxonomySeed.includes("node.node_kind = 'tag'"),
+  "development taxonomy reset must derive assignability from active leaf tags",
+);
+assert(
+  developmentTaxonomySeed.includes("create trigger taxonomy_nodes_refresh_closure") &&
+    developmentTaxonomySeed.includes("create trigger taxonomy_edges_refresh_closure"),
+  "development taxonomy reset must restore node and edge closure triggers",
+);
+assert(
+  developmentTaxonomySeed.includes("taxonomy reset rejected: only active leaf tags may be assignable") &&
+    developmentTaxonomySeed.includes("taxonomy reset rejected: closure is missing an active parent-child edge"),
+  "development taxonomy reset must validate graph and closure invariants before commit",
+);
 const legacySubjectRoot = ["subject", "math"].join(".");
 assert(!taxonomyMigration.includes(legacySubjectRoot), `${legacySubjectRoot} should not exist in replacement taxonomy`);
 console.log("PASS math-prefixed taxonomy schema and seed are present");
