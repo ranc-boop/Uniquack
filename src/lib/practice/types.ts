@@ -106,6 +106,7 @@ export type PracticeRecommendRequest = {
   questionCount?: number;
   sessionId?: string;
   sessionMemory?: string;
+  sourceSelection?: PracticeSourceSelection;
   tagContext?: PracticeTagContext;
   userNextRoundNote?: string;
   wrongQuestionIds?: string[];
@@ -270,6 +271,7 @@ export type PracticeSessionSummary = {
   sessionState?: unknown;
   sessionThreadMessages?: unknown[];
   sourceScope: PracticeSourceSummary[];
+  sourceScopeLockedAt?: string | null;
   status: "active" | "completed" | "archived";
   tagContext: PracticeTagContext;
   title: string;

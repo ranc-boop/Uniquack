@@ -809,10 +809,6 @@ export function PracticeAgentClient({
       body: JSON.stringify({
         courseFrameworkId: selectedCourseFrameworkId || null,
         goal: trimmedGoal,
-        sourceSelection: {
-          bankIds: selectedBankIds,
-          includePublicCatalog,
-        },
         title: "New practice session",
       }),
       method: "POST",
@@ -935,7 +931,12 @@ export function PracticeAgentClient({
       setError("Enter a practice goal first.");
       return;
     }
-    if (!activeSession && !includePublicCatalog && selectedBankIds.length === 0) {
+    if (
+      !assignmentId &&
+      !activeSession?.sourceScopeLockedAt &&
+      !includePublicCatalog &&
+      selectedBankIds.length === 0
+    ) {
       setError("Choose at least one Library or the Public Question Bank.");
       return;
     }
@@ -960,6 +961,10 @@ export function PracticeAgentClient({
             goal: trimmedGoal,
             questionCount,
             sessionId: currentSession.id,
+            sourceSelection: {
+              bankIds: selectedBankIds,
+              includePublicCatalog,
+            },
             userNextRoundNote: nextRoundNote,
             wrongQuestionIds: wrongIds,
           },
@@ -996,6 +1001,7 @@ export function PracticeAgentClient({
           goal: nextRecommendation.roundGoal,
           sessionMemory: nextRecommendation.sessionMemory,
           sessionPlan: nextRecommendation.sessionPlan ?? currentSession.sessionPlan,
+          sourceScopeLockedAt: currentSession.sourceScopeLockedAt ?? new Date().toISOString(),
           sessionState: nextRecommendation.sessionState ?? currentSession.sessionState,
           tagContext: nextRecommendation.tagContext,
         });
@@ -1337,10 +1343,6 @@ export function PracticeAgentClient({
           body: JSON.stringify({
             courseFrameworkId,
             goal: "",
-            sourceSelection: {
-              bankIds: selectedBankIds,
-              includePublicCatalog,
-            },
             title: "New practice session",
           }),
           method: "POST",
@@ -1799,7 +1801,7 @@ export function PracticeAgentClient({
                 {!assignmentId ? (
                   <PracticeSourceSelector
                     includePublicCatalog={includePublicCatalog}
-                    locked={Boolean(activeSession)}
+                    locked={Boolean(activeSession?.sourceScopeLockedAt)}
                     onIncludePublicCatalogChange={setIncludePublicCatalog}
                     onSelectedBankIdsChange={setSelectedBankIds}
                     practiceSources={practiceSources}
@@ -2069,7 +2071,7 @@ export function PracticeAgentClient({
             <div key={activeSession.id} className="space-y-4">
               <Card className="border-0 bg-white shadow-none ring-1 ring-slate-200/80">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Locked sources</CardTitle>
+                  <CardTitle className="text-base">Practice sources</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
                   {activeSession.sourceScope.length ? activeSession.sourceScope.map((source) => (
@@ -2077,7 +2079,7 @@ export function PracticeAgentClient({
                       {source.name}
                     </Badge>
                   )) : (
-                    <span className="text-xs text-slate-500">No source metadata is available.</span>
+                    <span className="text-xs text-slate-500">Choose sources before starting the first round.</span>
                   )}
                 </CardContent>
               </Card>

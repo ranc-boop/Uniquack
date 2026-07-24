@@ -6,10 +6,11 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFile(resolve(root, path), "utf8");
 
-const [migration, ambiguityFix, agent, recommend, sessions, sources, client, panels, completion] =
+const [migration, ambiguityFix, firstRoundLock, agent, recommend, sessions, sources, client, panels, completion] =
   await Promise.all([
     read("supabase/clean-migrations/0052_practice_library_scope_and_inventory.sql"),
     read("supabase/clean-migrations/0053_practice_session_source_rpc_ambiguity_fix.sql"),
+    read("supabase/clean-migrations/0054_practice_source_scope_lock_on_first_round.sql"),
     read("src/lib/practice/agent-loop.ts"),
     read("src/app/api/practice/recommend/route.ts"),
     read("src/app/api/practice/sessions/route.ts"),
@@ -59,6 +60,18 @@ assert(
   !ambiguityFix.includes("array_agg(bank_id order by bank_id)"),
   "0053 cannot restore the ambiguous unqualified bank_id reference.",
 );
+includesAll(
+  firstRoundLock,
+  [
+    "source_scope_locked_at",
+    "lock_practice_session_sources_for_round",
+    "for update",
+    "delete from public.practice_session_sources",
+    "initialize_practice_session_sources",
+    "grant execute on function",
+  ],
+  "0054 must atomically validate and lock sources only when the first round starts",
+);
 assert(
   !/create policy[\s\S]*for (insert|update|delete)/i.test(migration),
   "Browser mutation policies must not make immutable session sources writable.",
@@ -102,6 +115,8 @@ assert(
 includesAll(
   recommend,
   [
+    "lock_practice_session_sources_for_round",
+    "sourceSelection.bankIds",
     "finish_practice_disabled_initial",
     "finish_practice_enabled_after_first_round",
     "source_scope_reduced_",
@@ -140,6 +155,8 @@ includesAll(
     "/api/practice/sources",
     "includePublicCatalog",
     "selectedBankIds",
+    "sourceScopeLockedAt",
+    "This scope locks when the first round starts.",
     '"practice_summary_delta"',
     "Start with more Libraries",
   ],

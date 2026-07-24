@@ -61,7 +61,7 @@ export function PracticeSourceSelector({
             Practice sources
           </div>
           <p className="mt-1 text-sm text-slate-500">
-            Choose up to 10 Libraries. This scope is locked when the session starts.
+            Choose up to 10 Libraries. This scope locks when the first round starts.
           </p>
         </div>
         <Badge variant="outline">
@@ -112,7 +112,7 @@ export function PracticeSourceSelector({
       </div>
       {locked ? (
         <p className="mt-3 text-xs font-medium text-slate-500">
-          This session’s source scope is locked. Start a new session to change it.
+          This source scope was locked when the first round started. Start a new session to change it.
         </p>
       ) : null}
     </div>

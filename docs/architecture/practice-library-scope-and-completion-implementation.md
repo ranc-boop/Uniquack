@@ -21,17 +21,21 @@ The flow remains bank-first:
 
 ```text
 Authorized Library membership
--> immutable Practice source selection
+-> editable empty session source selection
+-> first-round validation and immutable source snapshot
 -> server-scoped question search
 -> attempts and round evidence
 -> final Practice report
 ```
 
 The browser lists only the public-catalog special source and active Libraries
-for which the current user has an active membership. Session creation sends
-only source identifiers; `initialize_practice_session_sources` revalidates
-ownership, active Library status, membership, assignment visibility, and the
-ten-Library limit before writing an immutable source snapshot.
+for which the current user has an active membership. Creating an empty
+self-study conversation does not write or lock a source snapshot. The first
+recommendation sends the selected identifiers to
+`lock_practice_session_sources_for_round`, which serializes competing starts,
+revalidates ownership, active Library status, membership, and the ten-Library
+limit, then writes the immutable source snapshot. Assignment Practice remains
+fixed by the assignment delivery event.
 
 ## Role and ownership boundaries
 
@@ -91,6 +95,14 @@ After operator application, the source-binding RPC reproduced PostgreSQL
 column or the `RETURNS TABLE` output variable. Migration
 `0053_practice_session_source_rpc_ambiguity_fix.sql` corrects this forward-only
 by qualifying the deduplicated query column. `0052` remains unchanged.
+
+Migration `0054_practice_source_scope_lock_on_first_round.sql` adds the explicit
+lock timestamp and owner-checked first-round RPC. Existing self-study sessions
+with round evidence are backfilled as locked; round-less sessions remain
+editable even if `0052` had provisionally attached a source. The RPC replaces
+only that unlocked provisional scope and uses the corrected initializer for
+the final permission validation. Existing and future Assignment sessions are
+locked independently of the self-study selector.
 
 Rollback should be an additional forward migration that disables new source
 creation/search entry points while preserving session source and evidence

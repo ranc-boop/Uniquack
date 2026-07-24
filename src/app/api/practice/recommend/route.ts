@@ -31,6 +31,10 @@ type RecommendationRequestContext = {
   goal: string;
   questionCount: number;
   sessionId: string;
+  sourceSelection: {
+    bankIds: string[];
+    includePublicCatalog: boolean;
+  };
   userNextRoundNote: string;
   wrongQuestionIds: string[];
 };
@@ -168,6 +172,9 @@ function normalizeQuestionCount(value: unknown) {
 function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequestContext | NextResponse {
   const goal = (body.goal ?? "").trim().slice(0, 500);
   const sessionId = (body.sessionId ?? "").trim();
+  const bankIds = Array.from(
+    new Set((body.sourceSelection?.bankIds ?? []).map(String).filter(Boolean)),
+  );
 
   if (!goal) {
     return NextResponse.json({ error: "Practice goal is required." }, { status: 400 });
@@ -177,11 +184,19 @@ function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequest
     return NextResponse.json({ error: "sessionId is required." }, { status: 400 });
   }
 
+  if (bankIds.length > 10) {
+    return NextResponse.json({ error: "Choose at most 10 Libraries." }, { status: 400 });
+  }
+
   return {
     completedQuestionIds: Array.from(new Set(body.completedQuestionIds ?? [])),
     goal,
     questionCount: normalizeQuestionCount(body.questionCount),
     sessionId,
+    sourceSelection: {
+      bankIds,
+      includePublicCatalog: body.sourceSelection?.includePublicCatalog !== false,
+    },
     userNextRoundNote: String(body.userNextRoundNote ?? "").trim().slice(0, 1200),
     wrongQuestionIds: Array.from(new Set(body.wrongQuestionIds ?? [])),
   };
@@ -212,11 +227,19 @@ export async function POST(request: Request) {
     return parsed;
   }
 
-  const { completedQuestionIds, goal, questionCount, sessionId, userNextRoundNote, wrongQuestionIds } = parsed;
+  const {
+    completedQuestionIds,
+    goal,
+    questionCount,
+    sessionId,
+    sourceSelection,
+    userNextRoundNote,
+    wrongQuestionIds,
+  } = parsed;
   const trace: PracticeTraceEvent[] = [];
   const sessionResult = await supabase
     .from("practice_sessions")
-    .select("cache_prefix_version,completed_question_ids,course_framework_snapshot,long_term_memory_snapshot,outline_user_notes,session_plan,session_thread_messages,tag_context,status,summary,practice_rounds(id,status,score_total,review_summary),practice_session_sources(source_kind,bank_id)")
+    .select("cache_prefix_version,completed_question_ids,course_framework_snapshot,long_term_memory_snapshot,outline_user_notes,session_plan,session_thread_messages,source_scope_locked_at,tag_context,status,summary,practice_rounds(id,status,score_total,review_summary),practice_session_sources(source_kind,bank_id)")
     .eq("user_id", auth.user.id)
     .eq("id", sessionId)
     .maybeSingle();
@@ -238,6 +261,15 @@ export async function POST(request: Request) {
   }
 
   const sessionData = sessionResult.data;
+  let effectiveSources: Array<{
+    bank_id: string | null;
+    source_kind: string;
+  }> = Array.isArray(sessionData.practice_session_sources)
+    ? sessionData.practice_session_sources.map((source) => ({
+        bank_id: source.bank_id ?? null,
+        source_kind: source.source_kind,
+      }))
+    : [];
   if (sessionData.cache_prefix_version !== CURRENT_PRACTICE_SESSION_SCHEMA_VERSION) {
     return NextResponse.json({ error: PRACTICE_SESSION_EXPIRED_MESSAGE }, { status: 410 });
   }
@@ -262,6 +294,29 @@ export async function POST(request: Request) {
   }
   if (sessionData.status !== "active") {
     return NextResponse.json({ error: "This practice session is not active." }, { status: 409 });
+  }
+  if (!sessionData.source_scope_locked_at) {
+    const { data: lockedSources, error: lockError } = await supabase.rpc(
+      "lock_practice_session_sources_for_round",
+      {
+        p_bank_ids: sourceSelection.bankIds,
+        p_include_public: sourceSelection.includePublicCatalog,
+        p_session_id: sessionId,
+      },
+    );
+    if (lockError) {
+      return NextResponse.json(
+        {
+          code: lockError.code ?? "PRACTICE_SOURCE_LOCK_FAILED",
+          error: lockError.message || "Practice sources could not be locked for this round.",
+        },
+        { status: 409 },
+      );
+    }
+    effectiveSources = (lockedSources ?? []).map((source) => ({
+      bank_id: source.bank_id,
+      source_kind: source.source_kind,
+    }));
   }
   const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
   const completedFromSession = Array.isArray(sessionData.completed_question_ids)
@@ -297,10 +352,7 @@ export async function POST(request: Request) {
       ).length
     : 0;
   const sourceKinds = new Set(
-    (Array.isArray(sessionData.practice_session_sources)
-      ? sessionData.practice_session_sources
-      : []
-    ).map((source: { source_kind?: string }) => source.source_kind),
+    effectiveSources.map((source) => source.source_kind),
   );
   if (sourceKinds.has("assignment")) {
     return NextResponse.json(
@@ -308,10 +360,7 @@ export async function POST(request: Request) {
       { status: 409 },
     );
   }
-  const selectedBankIds = (Array.isArray(sessionData.practice_session_sources)
-    ? sessionData.practice_session_sources
-    : []
-  ).flatMap((source: { bank_id?: string | null; source_kind?: string }) =>
+  const selectedBankIds = effectiveSources.flatMap((source) =>
     source.source_kind === "question_bank" && source.bank_id ? [source.bank_id] : [],
   );
   let activeMembershipCount = selectedBankIds.length;

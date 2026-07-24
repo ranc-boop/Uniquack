@@ -483,6 +483,9 @@ function sessionSummaryFromRow(
     sourceScope: asArray(row.practice_session_sources)
       .map(sourceSummaryFromRow)
       .filter((source): source is PracticeSourceSummary => Boolean(source)),
+    sourceScopeLockedAt: typeof record.source_scope_locked_at === "string"
+      ? record.source_scope_locked_at
+      : null,
     status:
       row.status === "completed"
         ? "completed"
@@ -874,6 +877,14 @@ export async function createPracticeSession({
     });
   }
 
+  if (!assignmentId) {
+    return sessionSummaryFromRow({
+      ...(data as PracticeSession),
+      practice_session_sources: [],
+      round_count: 0,
+    });
+  }
+
   const normalizedBankIds = Array.from(
     new Set((sourceSelection?.bankIds ?? []).map(String).filter(Boolean)),
   ).slice(0, 10);
@@ -905,10 +916,30 @@ export async function createPracticeSession({
     });
   }
 
+  const sourceScopeLockedAt = new Date().toISOString();
+  const assignmentLockResult = await supabase
+    .from("practice_sessions")
+    .update({ source_scope_locked_at: sourceScopeLockedAt })
+    .eq("user_id", userId)
+    .eq("id", (data as PracticeSession).id);
+  if (assignmentLockResult.error) {
+    await supabase
+      .from("practice_sessions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("id", (data as PracticeSession).id);
+    throwPracticeSessionInitializationFailure({
+      cause: assignmentLockResult.error,
+      mapper: onInitializationFailure,
+      stage: "sources",
+    });
+  }
+
   return sessionSummaryFromRow({
     ...(data as PracticeSession),
     practice_session_sources: sourceResult.data ?? [],
     round_count: 0,
+    source_scope_locked_at: sourceScopeLockedAt,
   });
 }
 

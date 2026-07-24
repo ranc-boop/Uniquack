@@ -731,6 +731,7 @@ export type PracticeSession = {
   session_plan: Json;
   session_thread_messages: Json;
   session_state: Json;
+  source_scope_locked_at: string | null;
   outline_user_notes: string;
   next_user_notes: string;
   cache_prefix_version: string;
@@ -1216,6 +1217,19 @@ export type Database = {
       initialize_practice_session_sources: {
         Args: {
           p_assignment_id?: string | null;
+          p_bank_ids?: string[];
+          p_include_public?: boolean;
+          p_session_id: string;
+        };
+        Returns: Array<{
+          assignment_id: string | null;
+          bank_id: string | null;
+          source_kind: string;
+          source_snapshot: Json;
+        }>;
+      };
+      lock_practice_session_sources_for_round: {
+        Args: {
           p_bank_ids?: string[];
           p_include_public?: boolean;
           p_session_id: string;
