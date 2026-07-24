@@ -52,6 +52,10 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     courseFrameworkId?: string | null;
     goal?: string;
+    sourceSelection?: {
+      bankIds?: string[];
+      includePublicCatalog?: boolean;
+    };
     title?: string;
   };
 
@@ -59,6 +63,14 @@ export async function POST(request: Request) {
     const session = await createPracticeSession({
       courseFrameworkId: body.courseFrameworkId,
       goal: body.goal ?? "",
+      sourceSelection: body.sourceSelection
+        ? {
+            bankIds: Array.isArray(body.sourceSelection.bankIds)
+              ? body.sourceSelection.bankIds.map(String)
+              : [],
+            includePublicCatalog: body.sourceSelection.includePublicCatalog !== false,
+          }
+        : undefined,
       supabase,
       title: body.title,
       userId: auth.user.id,

@@ -13,6 +13,7 @@ import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
 import { safePracticeProviderFailure } from "@/lib/practice/provider-safety";
 import { CURRENT_PRACTICE_SESSION_SCHEMA_VERSION } from "@/lib/practice/schema";
 import type {
+  PracticeInventory,
   PracticeQuestionCandidate,
   PracticeRecommendation,
   PracticeTagContext,
@@ -53,6 +54,12 @@ type FinalizeArgs = {
   visible_thought?: string;
 };
 
+export type PracticeFinishRequest = {
+  reason: "scope_exhausted" | "goal_satisfied" | "diminishing_returns";
+  reportFocus: string;
+  visibleThought: string;
+};
+
 type RetainedBrowseTag = {
   searchableQuestionCount?: number;
   tagId: string;
@@ -64,13 +71,17 @@ type ToolExecutionState = {
   browseCallsUsed: number;
   candidatePool: Map<string, PracticeQuestionCandidate>;
   completedQuestionIds: string[];
+  completedRoundCount: number;
   confirmedTargetTagIds: Set<string>;
   finalized?: FinalizeArgs;
+  finishRequested?: PracticeFinishRequest;
   goal: string;
+  latestInventory: PracticeInventory;
   onTrace?: (event: PracticeTraceEvent) => void | Promise<void>;
   questionCount: number;
   retainedBrowseTags: Map<string, RetainedBrowseTag>;
   searchCallsUsed: number;
+  sessionId: string;
   supabase: SupabaseLike;
   tagContext: PracticeTagContext;
   trace: PracticeTraceEvent[];
@@ -319,10 +330,41 @@ const finalizeTool: PracticeToolDefinition = {
   },
 };
 
-const ALL_RECOMMENDATION_TOOLS: PracticeToolDefinition[] = [browseTool, searchTool, finalizeTool];
+const finishTool: PracticeToolDefinition = {
+  type: "function",
+  function: {
+    name: "finish_practice",
+    description:
+      "End this self-study session when the current goal is satisfied, useful candidates are exhausted, or further repetition has diminishing returns. The backend validates session evidence and creates the final report.",
+    parameters: schema(
+      {
+        reason_code: {
+          enum: ["scope_exhausted", "goal_satisfied", "diminishing_returns"],
+          type: "string",
+        },
+        report_focus: {
+          description: "A concise request for what the final learning report should emphasize.",
+          type: "string",
+        },
+      },
+      ["visible_thought", "reason_code", "report_focus"],
+    ),
+  },
+};
+
+export const ALL_RECOMMENDATION_TOOLS: PracticeToolDefinition[] = [
+  browseTool,
+  searchTool,
+  finalizeTool,
+  finishTool,
+];
 
 function allowedToolNamesForState(state: ToolExecutionState) {
   const allowed = new Set<string>([finalizeTool.function.name]);
+
+  if (state.completedRoundCount > 0) {
+    allowed.add(finishTool.function.name);
+  }
 
   if (state.searchCallsUsed < SEARCH_CALL_LIMIT) {
     allowed.add(searchTool.function.name);
@@ -636,12 +678,13 @@ async function executePracticeTool({
       const mode: PracticeSearchMode = state.searchCallsUsed === 1 ? "strict" : requestedMode;
       const lanes = asSearchLanes(args.lanes, state);
       const result = await practiceSearchBatch({
-        completedQuestionIds: state.completedQuestionIds,
         lanes,
         mode,
         questionCount: state.questionCount,
+        sessionId: state.sessionId,
         supabase: state.supabase,
       });
+      state.latestInventory = result.inventory;
 
       for (const candidate of result.candidates) {
         state.candidatePool.set(candidate.id, candidate);
@@ -652,6 +695,8 @@ async function executePracticeTool({
         candidate_pool_size: state.candidatePool.size,
         candidates: result.shortCandidates,
         lane_summaries: result.laneSummaries,
+        inventory: result.inventory,
+        low_inventory: result.inventory.unseen < state.questionCount * 2,
         mode,
         search_call: state.searchCallsUsed,
         tag_retention: {
@@ -675,8 +720,28 @@ async function executePracticeTool({
         `mode=${mode}`,
         `lanes=${result.laneSummaries.map((lane) => `${lane.lane_id}:${lane.result_count}:${lane.match_quality}`).join(",")}`,
         `pool=${state.candidatePool.size}`,
+        `eligible=${result.inventory.eligible}`,
+        result.inventory.unseen < state.questionCount * 2 ? "low_inventory=true" : "",
         retention.warnings.length ? `keep_tags_note=${retention.warnings.length}` : "",
       ].filter(Boolean).join("; ");
+    } else if (toolName === "finish_practice") {
+      const rawReason = asString(args.reason_code);
+      const reason: PracticeFinishRequest["reason"] =
+        rawReason === "goal_satisfied" || rawReason === "diminishing_returns"
+          ? rawReason
+          : "scope_exhausted";
+      state.finishRequested = {
+        reason,
+        reportFocus: asString(args.report_focus).slice(0, 600),
+        visibleThought,
+      };
+      logObservation = {
+        accepted: true,
+        inventory: state.latestInventory,
+        reason,
+      };
+      modelObservation = `FINISH accepted=true reason=${reason}`;
+      outputSummary = `finish accepted; reason=${reason}`;
     } else if (toolName === "finalize_recommendation") {
       const generatedTagContext = buildGeneratedTagContext(state);
       state.finalized = {
@@ -813,10 +878,23 @@ function buildRecommendationPromptParts({
     },
   };
 
-  const threadEntries = compactThreadMessages(sessionThreadMessages).map((entry, index) => ({
+  const compactEntries = compactThreadMessages(sessionThreadMessages);
+  const policyNotices = compactEntries.filter((entry) => {
+    return entry && typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      (entry as Record<string, unknown>).kind === "tool_policy_notice";
+  });
+  const threadEntries = compactEntries
+    .filter((entry) => !policyNotices.includes(entry))
+    .map((entry, index) => ({
+      content: stableStringify(entry),
+      name: `practice_thread_${index + 1}`,
+      role: "assistant" as const,
+    }));
+  const tailPolicyNotices = policyNotices.map((entry, index) => ({
     content: stableStringify(entry),
-    name: `practice_thread_${index + 1}`,
-    role: "assistant" as const,
+    name: `tool_policy_notice_${index + 1}`,
+    role: "system" as const,
   }));
 
   const dynamicSuffix = {
@@ -832,21 +910,17 @@ function buildRecommendationPromptParts({
       snapshot_policy: "This is the long-term memory snapshot locked when the session was created. Do not assume later global preference edits apply to this session.",
     },
     tag_context: tagContext,
-    tool_policy: {
-      browse_taxonomy_batch: "allowed until browse limit or confirmed tag context is enough",
-      finalize_recommendation: "always available; required to finish",
-      practice_search_batch: "allowed until search limit",
-    },
     user_outline_notes: outlineUserNotes?.trim() || "",
     volatile_notice: "This suffix intentionally contains changing IDs, user notes, current goal, completed ids, tags, and locked memory to protect the cached prefix.",
   };
 
-  return { dynamicSuffix, stablePrefix, threadEntries };
+  return { dynamicSuffix, stablePrefix, tailPolicyNotices, threadEntries };
 }
 
 export async function runPracticeRecommendationAgent({
   cachePrefixVersion,
   completedQuestionIds,
+  completedRoundCount,
   courseFrameworkSnapshot,
   goal,
   longTermMemory,
@@ -854,6 +928,7 @@ export async function runPracticeRecommendationAgent({
   outlineUserNotes,
   profile,
   questionCount,
+  sessionId,
   sessionPlan,
   sessionThreadMessages,
   supabase,
@@ -863,6 +938,7 @@ export async function runPracticeRecommendationAgent({
 }: {
   cachePrefixVersion?: string;
   completedQuestionIds: string[];
+  completedRoundCount: number;
   courseFrameworkSnapshot?: unknown;
   goal: string;
   longTermMemory?: string;
@@ -870,6 +946,7 @@ export async function runPracticeRecommendationAgent({
   outlineUserNotes?: string;
   profile: PracticeProfile;
   questionCount: number;
+  sessionId: string;
   sessionPlan?: unknown;
   sessionThreadMessages?: unknown;
   supabase: SupabaseLike;
@@ -885,18 +962,28 @@ export async function runPracticeRecommendationAgent({
     browseCallsUsed: 0,
     candidatePool: new Map(),
     completedQuestionIds,
+    completedRoundCount,
     confirmedTargetTagIds: new Set(normalizedTagContext.confirmedTagIds),
     goal,
+    latestInventory: {
+      deferred: 0,
+      eligible: 0,
+      mastered: 0,
+      needsRetry: 0,
+      ungraded: 0,
+      unseen: 0,
+    },
     onTrace,
     questionCount,
     retainedBrowseTags: new Map(),
     searchCallsUsed: 0,
+    sessionId,
     supabase,
     tagContext: normalizedTagContext,
     trace,
   };
   const systemPrompt = await buildSystemPrompt(maxToolCalls);
-  const { dynamicSuffix, stablePrefix, threadEntries } = buildRecommendationPromptParts({
+  const { dynamicSuffix, stablePrefix, tailPolicyNotices, threadEntries } = buildRecommendationPromptParts({
     cachePrefixVersion,
     completedQuestionIds,
     courseFrameworkSnapshot,
@@ -914,12 +1001,13 @@ export async function runPracticeRecommendationAgent({
     { role: "system", content: stableStringify(stablePrefix) },
     ...threadEntries,
     { role: "user", content: stableStringify(dynamicSuffix) },
+    ...tailPolicyNotices,
   ];
 
   await pushTrace(state, {
     inputSummary:
       "Cache-first context: stable prefix + append-only episode cards + volatile tail suffix. Dynamic IDs and user notes are kept at the tail.",
-    outputSummary: `prefix_hash=${stableHash(stablePrefix)}; suffix_hash=${stableHash(dynamicSuffix)}; thread_entries=${threadEntries.length}; locked_memory=${(longTermMemory ?? "").trim().length} chars; completed=${completedQuestionIds.length}; tag_context=${normalizedTagContext.confirmedTagIds.length}; max_tool_calls=${maxToolCalls}`,
+    outputSummary: `prefix_hash=${stableHash(stablePrefix)}; suffix_hash=${stableHash(dynamicSuffix)}; thread_entries=${threadEntries.length}; policy_notices=${tailPolicyNotices.length}; locked_memory=${(longTermMemory ?? "").trim().length} chars; completed=${completedQuestionIds.length}; tag_context=${normalizedTagContext.confirmedTagIds.length}; max_tool_calls=${maxToolCalls}`,
     phase: "context",
     toolName: "compact_agent_context",
   });
@@ -1022,10 +1110,12 @@ export async function runPracticeRecommendationAgent({
 
       toolCallsUsed += 1;
 
-      if (state.finalized) {
+      if (state.finalized || state.finishRequested) {
         messages.push(await rejectPracticeToolCall({
           iteration,
-          reason: "recommendation already finalized",
+          reason: state.finishRequested
+            ? "practice completion already requested"
+            : "recommendation already finalized",
           state,
           toolCall,
         }));
@@ -1047,7 +1137,7 @@ export async function runPracticeRecommendationAgent({
       messages.push(toolMessage);
     }
 
-    if (state.finalized) {
+    if (state.finalized || state.finishRequested) {
       break;
     }
   }
@@ -1070,6 +1160,8 @@ export async function runPracticeRecommendationAgent({
   });
 
   return {
+    finishRequested: state.finishRequested ?? null,
+    inventory: state.latestInventory,
     maxToolCalls,
     providerLabel,
     currentTaskSuffix: dynamicSuffix,
@@ -1077,6 +1169,7 @@ export async function runPracticeRecommendationAgent({
     recommendations,
     roundContract: state.finalized?.round_contract ?? null,
     roundGoal: state.finalized?.round_goal?.trim() || goal,
+    searchCallsUsed: state.searchCallsUsed,
     sessionMemory: "",
     sessionState: null,
     tagContext: buildGeneratedTagContext(state),

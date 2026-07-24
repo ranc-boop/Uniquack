@@ -11,6 +11,13 @@ import {
 import { PracticeQuestionCard } from "@/components/practice/practice-question-card";
 import { ReadableDataCard, threadStudyContext } from "@/components/practice/practice-readable-data-card";
 import { PracticeRoundReviewPanel } from "@/components/practice/practice-round-review-panel";
+import {
+  PracticeCompletionPanel,
+  PracticeRoundNavigator,
+  PracticeSourceSelector,
+  PracticeStarterGoals,
+  PracticeWorkspaceSkeleton,
+} from "@/components/practice/practice-session-scope-panels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +32,8 @@ import {
   hasSubmittedPracticeAnswer,
   practiceAnswerMapsMatch,
   practiceAnswerMapStatus,
+  parsePracticeSsePayload,
+  practiceApiErrorMessage,
   practiceAnswerKey,
   practiceSubmittedAttemptQuestionId,
   readPendingPracticeRound,
@@ -37,6 +46,7 @@ import {
 } from "@/lib/practice/answer-restore";
 import type {
   PracticeAttemptInput,
+  PracticeCompletion,
   PracticeGradeResult,
   PracticeGradeResponse,
   PracticeHintResponse,
@@ -50,6 +60,7 @@ import type {
   PracticeReviewResponse,
   PracticeSessionDetail,
   PracticeSessionSummary,
+  PracticeSourceOption,
   PracticeTraceEvent,
   PracticeWrongQuestionView,
 } from "@/lib/practice/types";
@@ -59,7 +70,7 @@ const TracePanel = dynamic(
   { loading: () => null, ssr: false },
 );
 
-type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback";
+type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback" | "ending" | "completed";
 type AnswersState = Record<string, string | string[]>;
 type HintsState = Record<string, string[]>;
 type AnswerWriteReason =
@@ -80,36 +91,11 @@ type AnswerTransitionDiagnostics = {
   answerStateRefConsistency: "MATCH" | "MISMATCH" | "NOT_OBSERVED";
   lastWriteReason: AnswerWriteReason | "NOT_OBSERVED";
 };
-type ApiError = { error?: string };
+type ApiError = { error?: unknown };
 type PracticeAgentClientProps = {
   assignmentId?: string | null;
   testOnlyDelayedHydration?: boolean;
 };
-
-function PracticeWorkspaceSkeleton() {
-  return (
-    <div aria-busy="true" aria-live="polite" className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 sm:px-4 xl:grid-cols-[18rem_minmax(0,1fr)_3rem]" role="status">
-      <span className="sr-only">Loading practice workspace…</span>
-      <aside className="hidden border-r border-slate-100 px-4 py-6 xl:block">
-        <div className="h-5 w-24 animate-pulse rounded bg-slate-100" />
-        <div className="mt-8 h-12 animate-pulse rounded-xl bg-slate-100" />
-        <div className="mt-7 space-y-3">
-          <div className="h-10 animate-pulse rounded-lg bg-slate-50" />
-          <div className="h-10 animate-pulse rounded-lg bg-slate-50" />
-          <div className="h-10 animate-pulse rounded-lg bg-slate-50" />
-        </div>
-      </aside>
-      <main className="mx-auto flex w-full max-w-3xl flex-col justify-center gap-5 py-12">
-        <div className="h-7 w-40 animate-pulse rounded-lg bg-slate-100" />
-        <div className="h-5 w-3/5 animate-pulse rounded bg-slate-100" />
-        <div className="mt-4 space-y-3">
-          <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
-          <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
-        </div>
-      </main>
-    </div>
-  );
-}
 
 function isReusableEmptyPracticeSession(
   session: PracticeSessionSummary,
@@ -143,13 +129,6 @@ type AssignmentPracticeStartPayload = {
   session: PracticeSessionDetail;
 };
 
-const starterGoals = [
-  "AP Calculus: implicit differentiation with harder MCQs",
-  "Review missed integration questions and explain traps",
-  "Build a short mixed round on limits and continuity",
-  "Practice FRQ-style derivative applications",
-];
-
 const COLLAPSED_SIDEBAR_WIDTH = 60;
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 304;
 const DEFAULT_RIGHT_SIDEBAR_WIDTH = 384;
@@ -171,7 +150,7 @@ async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & ApiError;
 
   if (!response.ok) {
-    throw new Error(payload.error || `Request failed with ${response.status}`);
+    throw new Error(practiceApiErrorMessage(payload.error, response.status));
   }
 
   return payload;
@@ -200,23 +179,22 @@ function parseSseEvents(buffer: string) {
   return { events, rest };
 }
 
-function parsePracticeSsePayload(data: string) {
-  try {
-    return JSON.parse(data) as unknown;
-  } catch {
-    throw new Error(
-      "A live practice update could not be read. Your saved work is still available; please retry.",
-    );
-  }
-}
-
 async function postRecommendationStream({
   body,
+  onEnding,
+  onPolicyNotice,
+  onSummaryDelta,
   onTrace,
 }: {
   body: PracticeRecommendRequest;
+  onEnding: () => void;
+  onPolicyNotice: (notice: Record<string, unknown>) => void;
+  onSummaryDelta: (text: string) => void;
   onTrace: (event: PracticeTraceEvent) => void;
-}) {
+}): Promise<
+  | { kind: "completed"; completion: PracticeCompletion }
+  | { kind: "round"; recommendation: PracticeRecommendResponse }
+> {
   const response = await fetch("/api/practice/recommend", {
     body: JSON.stringify(body),
     headers: {
@@ -228,7 +206,7 @@ async function postRecommendationStream({
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiError | null;
-    throw new Error(payload?.error || `Request failed with ${response.status}`);
+    throw new Error(practiceApiErrorMessage(payload?.error, response.status));
   }
   if (!response.body) {
     throw new Error("Streaming response body is not available.");
@@ -238,6 +216,7 @@ async function postRecommendationStream({
   const decoder = new TextDecoder();
   let buffer = "";
   let result: PracticeRecommendResponse | null = null;
+  let completion: PracticeCompletion | null = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -249,22 +228,33 @@ async function postRecommendationStream({
       const payload = parsePracticeSsePayload(item.data);
       if (item.event === "trace") {
         onTrace(payload as PracticeTraceEvent);
+      } else if (item.event === "policy_notice") {
+        onPolicyNotice(payload as Record<string, unknown>);
+      } else if (item.event === "practice_ending") {
+        onEnding();
+      } else if (item.event === "practice_summary_delta") {
+        onSummaryDelta(String((payload as { text?: string }).text ?? ""));
+      } else if (item.event === "practice_completed") {
+        completion = payload as PracticeCompletion;
       } else if (item.event === "result") {
         result = payload as PracticeRecommendResponse;
       } else if (item.event === "error") {
         const errorPayload = payload as ApiError & { trace?: PracticeTraceEvent[] };
         errorPayload.trace?.forEach(onTrace);
-        throw new Error(errorPayload.error || "Practice recommendation failed.");
+        throw new Error(practiceApiErrorMessage(errorPayload.error, 500, "Practice recommendation failed."));
       }
     }
 
     if (done) break;
   }
 
+  if (completion) {
+    return { completion, kind: "completed" };
+  }
   if (!result) {
     throw new Error("Practice recommendation stream ended before a result was returned.");
   }
-  return result;
+  return { kind: "round", recommendation: result };
 }
 
 async function postReviewStream({
@@ -293,7 +283,7 @@ async function postReviewStream({
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiError | null;
-    throw new Error(payload?.error || `Request failed with ${response.status}`);
+    throw new Error(practiceApiErrorMessage(payload?.error, response.status));
   }
   if (!response.body) {
     throw new Error("Streaming response body is not available.");
@@ -326,7 +316,7 @@ async function postReviewStream({
       } else if (item.event === "error") {
         const errorPayload = payload as ApiError & { trace?: PracticeTraceEvent[] };
         errorPayload.trace?.forEach(onTrace);
-        throw new Error(errorPayload.error || "Practice review failed.");
+        throw new Error(practiceApiErrorMessage(errorPayload.error, 500, "Practice review failed."));
       }
     }
 
@@ -452,6 +442,11 @@ export function PracticeAgentClient({
   const [nextRoundNote, setNextRoundNote] = useState("");
   const [courseFrameworks, setCourseFrameworks] = useState<PracticeCourseFrameworkSummary[]>([]);
   const [selectedCourseFrameworkId, setSelectedCourseFrameworkId] = useState("");
+  const [practiceSources, setPracticeSources] = useState<PracticeSourceOption[]>([]);
+  const [includePublicCatalog, setIncludePublicCatalog] = useState(true);
+  const [selectedBankIds, setSelectedBankIds] = useState<string[]>([]);
+  const [completion, setCompletion] = useState<PracticeCompletion | null>(null);
+  const [streamedCompletionReport, setStreamedCompletionReport] = useState("");
   const [isTraceCollapsed, setIsTraceCollapsed] = useState(true);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
@@ -542,6 +537,9 @@ export function PracticeAgentClient({
     const frameworkPayloadPromise = jsonRequest<{
       frameworks: PracticeCourseFrameworkSummary[];
     }>("/api/practice/course-frameworks");
+    const sourcePayloadPromise = assignmentId
+      ? Promise.resolve({ sources: [] as PracticeSourceOption[] })
+      : jsonRequest<{ sources: PracticeSourceOption[] }>("/api/practice/sources");
     const sessionPayload = await sessionPayloadPromise;
 
     let nextSession = sessionPayload.activeSession;
@@ -557,10 +555,11 @@ export function PracticeAgentClient({
           `/api/practice/wrong-questions?sessionId=${encodeURIComponent(nextSession.id)}`,
         )
       : Promise.resolve({ wrongQuestions: [] });
-    const [wrongPayload, preferencePayload, frameworkPayload] = await Promise.all([
+    const [wrongPayload, preferencePayload, frameworkPayload, sourcePayload] = await Promise.all([
       wrongPayloadPromise,
       preferencePayloadPromise,
       frameworkPayloadPromise,
+      sourcePayloadPromise,
     ]);
     setSessions(sessionPayload.sessions);
     setActiveSession(nextSession);
@@ -569,6 +568,22 @@ export function PracticeAgentClient({
     setLongTermMemory(preferencePayload.longTermPreference);
     setLongTermMemoryDraft(preferencePayload.longTermPreference);
     setCourseFrameworks(frameworkPayload.frameworks);
+    setPracticeSources(sourcePayload.sources);
+    if (nextSession?.status === "active" && nextSession.sourceScope.length) {
+      setIncludePublicCatalog(
+        nextSession.sourceScope.some((source) => source.sourceKind === "public_catalog"),
+      );
+      setSelectedBankIds(
+        nextSession.sourceScope.flatMap((source) =>
+          source.sourceKind === "question_bank" && source.bankId ? [source.bankId] : [],
+        ),
+      );
+    }
+    setCompletion(nextSession?.completion ?? null);
+    if (nextSession?.completion) {
+      setStreamedCompletionReport(nextSession.completion.report);
+      setPhase("completed");
+    }
 
     return nextSession;
   }
@@ -689,8 +704,7 @@ export function PracticeAgentClient({
   const isStarterPractice =
     phase === "start" &&
     !recommendation &&
-    !activeSession?.rounds.length &&
-    !selectedWrongQuestionIds.length;
+    !activeSession?.rounds.length;
   const practiceGridStyle = {
     "--practice-left": `${isLeftSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : leftSidebarWidth}px`,
     "--practice-right": `${isRightSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : rightSidebarWidth}px`,
@@ -718,6 +732,8 @@ export function PracticeAgentClient({
     setSelectedWrongQuestionIds([]);
     setRenamingSessionId(null);
     setRenameValue("");
+    setCompletion(null);
+    setStreamedCompletionReport("");
   }
 
   function beginThinking() {
@@ -855,6 +871,11 @@ export function PracticeAgentClient({
           if (pendingRound.sessionId) {
             await refreshPracticeState(pendingRound.sessionId);
           }
+        } else if (restoredSession?.status === "completed" && restoredSession.completion) {
+          setCompletion(restoredSession.completion);
+          setStreamedCompletionReport(restoredSession.completion.report);
+          setGoal(restoredSession.goal);
+          setPhase("completed");
         } else if (restoredSession?.rounds.length) {
           restoreRoundFromHistory(restoredSession.rounds[restoredSession.rounds.length - 1], restoredSession);
         }
@@ -902,6 +923,15 @@ export function PracticeAgentClient({
       setError("Enter a practice goal first.");
       return;
     }
+    if (
+      !assignmentId &&
+      !activeSession?.sourceScopeLockedAt &&
+      !includePublicCatalog &&
+      selectedBankIds.length === 0
+    ) {
+      setError("Choose at least one Library or the Public Question Bank.");
+      return;
+    }
 
     setError(null);
     beginThinking();
@@ -923,25 +953,48 @@ export function PracticeAgentClient({
             goal: trimmedGoal,
             questionCount,
             sessionId: currentSession.id,
+            sourceSelection: {
+              bankIds: selectedBankIds,
+              includePublicCatalog,
+            },
             userNextRoundNote: nextRoundNote,
             wrongQuestionIds: wrongIds,
           },
+          onEnding: () => {
+            setStreamedCompletionReport("");
+            finishThinking("ending");
+          },
+          onPolicyNotice: () => undefined,
+          onSummaryDelta: (text) =>
+            setStreamedCompletionReport((current) => current + text),
           onTrace: (event) => setLiveTrace((current) => [...current, event]),
         });
         const response = await responsePromise;
         void titlePromise;
-        setRecommendation(response);
-        setLiveTrace(response.trace);
+        if (response.kind === "completed") {
+          setCompletion(response.completion);
+          setStreamedCompletionReport(response.completion.report);
+          setGoal(trimmedGoal);
+          setSelectedWrongQuestionIds([]);
+          setNextRoundNote("");
+          finishThinking("completed");
+          void refreshPracticeState(currentSession.id).catch(() => undefined);
+          return;
+        }
+        const nextRecommendation = response.recommendation;
+        setRecommendation(nextRecommendation);
+        setLiveTrace(nextRecommendation.trace);
         setGoal(trimmedGoal);
         setSelectedWrongQuestionIds([]);
         setNextRoundNote("");
         setActiveSession({
           ...currentSession,
-          goal: response.roundGoal,
-          sessionMemory: response.sessionMemory,
-          sessionPlan: response.sessionPlan ?? currentSession.sessionPlan,
-          sessionState: response.sessionState ?? currentSession.sessionState,
-          tagContext: response.tagContext,
+          goal: nextRecommendation.roundGoal,
+          sessionMemory: nextRecommendation.sessionMemory,
+          sessionPlan: nextRecommendation.sessionPlan ?? currentSession.sessionPlan,
+          sourceScopeLockedAt: currentSession.sourceScopeLockedAt ?? new Date().toISOString(),
+          sessionState: nextRecommendation.sessionState ?? currentSession.sessionState,
+          tagContext: nextRecommendation.tagContext,
         });
         finishThinking("recommended");
         void refreshPracticeState(currentSession.id).catch(() => undefined);
@@ -1223,7 +1276,12 @@ export function PracticeAgentClient({
         void wrongQuestionsPromise
           .then((wrongPayload) => setWrongQuestions(wrongPayload.wrongQuestions))
           .catch(() => setWrongQuestions([]));
-        if (payload.session.rounds.length) {
+        if (payload.session.status === "completed" && payload.session.completion) {
+          setCompletion(payload.session.completion);
+          setStreamedCompletionReport(payload.session.completion.report);
+          setGoal(payload.session.goal);
+          setPhase("completed");
+        } else if (payload.session.rounds.length) {
           const latestRound = payload.session.rounds[payload.session.rounds.length - 1];
           restoreRoundFromHistory(
             latestRound,
@@ -1295,6 +1353,36 @@ export function PracticeAgentClient({
         if (!handedOffToSessionSwitch) setSessionAction(null);
       }
     });
+  }
+
+  function showHistoricalRound(roundId: string) {
+    const round = activeSession?.rounds.find((item) => item.id === roundId);
+    if (round && activeSession) {
+      restoreRoundFromHistory(round, activeSession, "COMPLETED_RESTORE");
+    }
+  }
+
+  function showCompletionSummary() {
+    if (!activeSession?.completion) return;
+    setRecommendation(null);
+    setReview(null);
+    setResults([]);
+    setCompletion(activeSession.completion);
+    setStreamedCompletionReport(activeSession.completion.report);
+    setPhase("completed");
+  }
+
+  function prepareScopedNewSession({ retryMistakes = false } = {}) {
+    setActiveSession(null);
+    resetRoundState("SESSION_CHANGE");
+    resetSessionScopedDrafts();
+    setGoal(retryMistakes ? "Review my remaining mistakes in the selected Libraries" : "");
+    if (retryMistakes) {
+      setSelectedWrongQuestionIds(
+        wrongQuestions.filter((question) => !question.masteredAt).map((question) => question.sourceQuestionId),
+      );
+    }
+    setPhase("start");
   }
 
   function deleteSession(sessionId: string) {
@@ -1718,6 +1806,16 @@ export function PracticeAgentClient({
                     Tell O2I what you want to practice, or pick a starter goal below.
                   </p>
                 </div>
+                {!assignmentId ? (
+                  <PracticeSourceSelector
+                    includePublicCatalog={includePublicCatalog}
+                    locked={Boolean(activeSession?.sourceScopeLockedAt)}
+                    onIncludePublicCatalogChange={setIncludePublicCatalog}
+                    onSelectedBankIdsChange={setSelectedBankIds}
+                    practiceSources={practiceSources}
+                    selectedBankIds={selectedBankIds}
+                  />
+                ) : null}
                 <div className="mx-auto max-w-5xl rounded-full border border-slate-200 bg-white p-2 shadow-[0_24px_70px_-42px_rgba(15,23,42,0.75)] ring-1 ring-slate-950/5">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <div className="flex min-w-0 flex-1 items-center px-3">
@@ -1778,19 +1876,7 @@ export function PracticeAgentClient({
                     </div>
                   </div>
                 </div>
-                <div className="mx-auto grid max-w-5xl gap-2 sm:grid-cols-2">
-                  {starterGoals.map((starterGoal) => (
-                    <button
-                      className="student-focus-ring rounded-full border border-slate-200 bg-white/80 px-4 py-3 text-left text-sm font-semibold text-slate-600 shadow-sm transition-all duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 hover:shadow-md"
-                      disabled={isPending}
-                      key={starterGoal}
-                      onClick={() => selectStarterGoal(starterGoal)}
-                      type="button"
-                    >
-                      {starterGoal}
-                    </button>
-                  ))}
-                </div>
+                <PracticeStarterGoals disabled={isPending} onSelect={selectStarterGoal} />
               </div>
             </section>
           ) : (
@@ -1820,6 +1906,16 @@ export function PracticeAgentClient({
             </section>
           )}
 
+          {activeSession?.rounds.length ? (
+            <PracticeRoundNavigator
+              completed={Boolean(activeSession.completion)}
+              onSelectCompletion={showCompletionSummary}
+              onSelectRound={showHistoricalRound}
+              rounds={activeSession.rounds}
+              selectedRoundId={phase === "completed" ? null : recommendation?.roundId ?? null}
+            />
+          ) : null}
+
           {phase === "thinking" ? (
             <div className="min-h-24">
               <TracePanel
@@ -1830,6 +1926,17 @@ export function PracticeAgentClient({
                 trace={latestTrace}
               />
             </div>
+          ) : null}
+
+          {phase === "ending" || phase === "completed" ? (
+            <PracticeCompletionPanel
+              completion={completion}
+              isCompleted={phase === "completed"}
+              onNewSession={() => prepareScopedNewSession()}
+              onRetryMistakes={() => prepareScopedNewSession({ retryMistakes: true })}
+              report={streamedCompletionReport || completion?.report || ""}
+              retryAvailable={wrongQuestions.some((question) => !question.masteredAt)}
+            />
           ) : null}
 
           {recommendation && (phase === "recommended" || phase === "practicing" || phase === "feedback") ? (
@@ -1962,6 +2069,20 @@ export function PracticeAgentClient({
           </div>
           {activeSession ? (
             <div key={activeSession.id} className="space-y-4">
+              <Card className="border-0 bg-white shadow-none ring-1 ring-slate-200/80">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Practice sources</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-2">
+                  {activeSession.sourceScope.length ? activeSession.sourceScope.map((source) => (
+                    <Badge key={`${source.sourceKind}-${source.bankId ?? source.assignmentId ?? "public"}`} variant="outline">
+                      {source.name}
+                    </Badge>
+                  )) : (
+                    <span className="text-xs text-slate-500">Choose sources before starting the first round.</span>
+                  )}
+                </CardContent>
+              </Card>
               <ReadableDataCard
                 empty="No outline yet. Generate a round and the agent will form a lightweight study path here."
                 title="Session outline"

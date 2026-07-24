@@ -47,8 +47,51 @@ export type PracticeQuestionCandidate = {
   questionType: QuestionType;
   source?: string | null;
   sourceQuestionId?: string | null;
+  selectionState?: "unseen" | "needs_retry";
   tagIds: string[];
   title: string;
+};
+
+export type PracticeSourceSelection = {
+  bankIds: string[];
+  includePublicCatalog: boolean;
+};
+
+export type PracticeSourceSummary = {
+  assignmentId?: string | null;
+  bankId?: string | null;
+  membershipRole?: "owner" | "editor" | "viewer" | null;
+  name: string;
+  sourceKind: "public_catalog" | "question_bank" | "assignment";
+  visibility?: "private" | "shared" | "organization" | "public" | null;
+};
+
+export type PracticeSourceOption = PracticeSourceSummary & {
+  counts: {
+    mastered: number;
+    needsRetry: number;
+    questionCount: number;
+    ungraded: number;
+    unseen: number;
+  };
+  id: string;
+};
+
+export type PracticeInventory = {
+  deferred: number;
+  eligible: number;
+  mastered: number;
+  needsRetry: number;
+  ungraded: number;
+  unseen: number;
+};
+
+export type PracticeCompletion = {
+  completedAt: string;
+  inventory: PracticeInventory;
+  reason: "scope_exhausted" | "goal_satisfied" | "diminishing_returns" | "source_access_lost";
+  report: string;
+  trigger: "agent" | "backend";
 };
 
 export type PracticeRecommendation = PracticeQuestionCandidate & {
@@ -63,12 +106,14 @@ export type PracticeRecommendRequest = {
   questionCount?: number;
   sessionId?: string;
   sessionMemory?: string;
+  sourceSelection?: PracticeSourceSelection;
   tagContext?: PracticeTagContext;
   userNextRoundNote?: string;
   wrongQuestionIds?: string[];
 };
 
 export type PracticeRecommendResponse = {
+  completion?: PracticeCompletion;
   llmUsage?: Record<string, unknown>[];
   maxToolCalls: number;
   mode: "ai" | "heuristic";
@@ -210,6 +255,7 @@ export type PracticeCourseFrameworkSummary = {
 
 export type PracticeSessionSummary = {
   cachePrefixVersion?: string;
+  completion?: PracticeCompletion;
   completedQuestionIds: string[];
   courseFrameworkId?: string | null;
   courseFrameworkSnapshot?: unknown;
@@ -224,7 +270,9 @@ export type PracticeSessionSummary = {
   sessionPlan?: unknown;
   sessionState?: unknown;
   sessionThreadMessages?: unknown[];
-  status: "active" | "archived";
+  sourceScope: PracticeSourceSummary[];
+  sourceScopeLockedAt?: string | null;
+  status: "active" | "completed" | "archived";
   tagContext: PracticeTagContext;
   title: string;
 };

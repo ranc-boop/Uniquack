@@ -20,6 +20,29 @@ type PracticeHintMap = Readonly<Record<string, readonly string[]>>;
 type PracticeQuestionIdentity = Pick<PracticeRecommendation, "id" | "sourceQuestionId"> &
   PracticeQuestionIdentityLike;
 
+export function practiceApiErrorMessage(
+  error: unknown,
+  status: number,
+  fallback = `Request failed with ${status}`,
+) {
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object") {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
+}
+
+export function parsePracticeSsePayload(data: string) {
+  try {
+    return JSON.parse(data) as unknown;
+  } catch {
+    throw new Error(
+      "A live practice update could not be read. Your saved work is still available; please retry.",
+    );
+  }
+}
+
 export function practiceSourceQuestionId(question: PracticeQuestionIdentity) {
   return canonicalPracticeSourceQuestionId(question);
 }

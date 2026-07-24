@@ -98,6 +98,75 @@ try {
   }
 
   if (!migrationFailed) {
+    const practiceUserId = '10000000-0000-4000-8000-000000000053';
+    const practiceSessionId = '20000000-0000-4000-8000-000000000053';
+    await client.query(`
+      create or replace function auth.uid() returns uuid
+        language sql stable
+        as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$
+    `);
+    await client.query(`
+      insert into auth.users (id, email, raw_user_meta_data)
+      values ($1, 'practice-0054@example.invalid', '{"role":"student"}'::jsonb)
+      on conflict (id) do nothing
+    `, [practiceUserId]);
+    await client.query(`select set_config('request.jwt.claim.role', 'service_role', false)`);
+    await client.query(`
+      insert into public.profiles (id, email, role, status)
+      values ($1, 'practice-0054@example.invalid', 'student', 'active')
+      on conflict (id) do nothing
+    `, [practiceUserId]);
+    await client.query(`
+      insert into public.practice_sessions (id, user_id, title)
+      values ($2, $1, '0054 first-round source lock runtime smoke')
+    `, [practiceUserId, practiceSessionId]);
+    const beforeLock = await client.query(
+      `select source_scope_locked_at
+       from public.practice_sessions
+       where id = $1`,
+      [practiceSessionId],
+    );
+    if (beforeLock.rows[0]?.source_scope_locked_at !== null) {
+      throw new Error('0054 empty Practice session must remain source-editable.');
+    }
+    await client.query(
+      `select set_config('request.jwt.claim.sub', $1, false)`,
+      [practiceUserId],
+    );
+    const sourceBinding = await client.query(
+      `select source_kind, bank_id
+       from public.lock_practice_session_sources_for_round($1, '{}'::uuid[], true)`,
+      [practiceSessionId],
+    );
+    if (
+      sourceBinding.rows.length !== 1 ||
+      sourceBinding.rows[0]?.source_kind !== 'public_catalog' ||
+      sourceBinding.rows[0]?.bank_id !== null
+    ) {
+      throw new Error('0054 first-round Practice source-lock RPC runtime smoke failed.');
+    }
+    const afterLock = await client.query(
+      `select source_scope_locked_at
+       from public.practice_sessions
+       where id = $1`,
+      [practiceSessionId],
+    );
+    if (!afterLock.rows[0]?.source_scope_locked_at) {
+      throw new Error('0054 first-round Practice source lock timestamp was not persisted.');
+    }
+    const repeatedBinding = await client.query(
+      `select source_kind, bank_id
+       from public.lock_practice_session_sources_for_round($1, '{}'::uuid[], false)`,
+      [practiceSessionId],
+    );
+    if (
+      repeatedBinding.rows.length !== 1 ||
+      repeatedBinding.rows[0]?.source_kind !== 'public_catalog'
+    ) {
+      throw new Error('0054 locked Practice source scope must be idempotent and immutable.');
+    }
+    console.log('PASS 0054 empty session stays editable and first-round source lock is atomic');
+
     const r = await client.query(
       "select count(*)::int as n from pg_tables where schemaname='public'"
     );

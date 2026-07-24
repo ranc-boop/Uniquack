@@ -15,8 +15,8 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(plan.directoryMigrationNames.length === 52, "Raw clean source must contain 52 SQL files.");
-assert(plan.executableMigrationNames.length === 51, "Executable clean chain must contain 51 migrations.");
+assert(plan.directoryMigrationNames.length === 55, "Raw clean source must contain 55 SQL files.");
+assert(plan.executableMigrationNames.length === 54, "Executable clean chain must contain 54 migrations.");
 assert(
   plan.duplicateRawPrefixes.length === 1 &&
     plan.duplicateRawPrefixes[0]?.number === 32,
@@ -40,7 +40,7 @@ try {
 }
 assert(blockedGoogle, "Excluded Google 0032 must fail closed in executable tooling.");
 
-for (let number = 44; number <= 51; number += 1) {
+for (let number = 44; number <= 54; number += 1) {
   const filename = plan.executableMigrationNames[number - 1];
   const entry = plan.inventoryByFilename.get(filename);
   assert(migrationNumber(filename) === number, `Position ${number} has the wrong migration number.`);
@@ -50,11 +50,10 @@ for (let number = 44; number <= 51; number += 1) {
 }
 
 assert(
-  plan.executableMigrationNames.at(-3) === "0049_practice_agent_provider_routing.sql" &&
-    plan.executableMigrationNames.at(-2) === "0050_pdf50_burst_upload_admission.sql" &&
-    plan.executableMigrationNames.at(-1) === "0051_pdf50_worker_checkpoint_fencing.sql" &&
-    plan.manifest.latestActivePrefix === 51,
-  "PDF50 checkpoint fencing 0051 must follow Practice routing 0049 and PDF50 0050.",
+  plan.executableMigrationNames.at(-2) === "0053_practice_session_source_rpc_ambiguity_fix.sql" &&
+    plan.executableMigrationNames.at(-1) === "0054_practice_source_scope_lock_on_first_round.sql" &&
+    plan.manifest.latestActivePrefix === 54,
+  "First-round Practice source locking 0054 must follow the RPC ambiguity fix 0053.",
 );
 assert(
   plan.manifest.canonicalMigrationDirectory === "supabase/clean-migrations" &&
@@ -76,6 +75,6 @@ for (const filename of [
 
 console.log("PASS raw duplicate 0032 is detected and explicitly classified");
 console.log("PASS executable 0032 is teacher feedback notes; Google 0032 is excluded");
-console.log("PASS canonical registrations 0044-0051 are ordered and complete");
-console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0051");
+console.log("PASS canonical registrations 0044-0054 are ordered and complete");
+console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0054");
 console.log("PASS legacy migrations are absent from the executable plan");

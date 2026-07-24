@@ -86,7 +86,7 @@ assert(
   "Exactly one executable canonical 0032 is allowed; Google 0032 must stay excluded.",
 );
 
-for (let number = 44; number <= 51; number += 1) {
+for (let number = 44; number <= 54; number += 1) {
   const filename = activeMigrationNames[number - 1];
   const entry = manifest.migrationInventory.find((candidate) => candidate.filename === filename);
   assert(
@@ -97,11 +97,10 @@ for (let number = 44; number <= 51; number += 1) {
   );
 }
 assert(
-  manifest.latestActivePrefix === 51 &&
-    activeMigrationNames.at(-3) === "0049_practice_agent_provider_routing.sql" &&
-    activeMigrationNames.at(-2) === "0050_pdf50_burst_upload_admission.sql" &&
-    activeMigrationNames.at(-1) === "0051_pdf50_worker_checkpoint_fencing.sql",
-  "PDF50 checkpoint fencing 0051 must be the canonical executable tail.",
+  manifest.latestActivePrefix === 54 &&
+    activeMigrationNames.at(-2) === "0053_practice_session_source_rpc_ambiguity_fix.sql" &&
+    activeMigrationNames.at(-1) === "0054_practice_source_scope_lock_on_first_round.sql",
+  "First-round Practice source locking 0054 must be the canonical executable tail.",
 );
 
 for (const [filename, expectedHash] of Object.entries(manifest.frozenMigrationHashes)) {
@@ -214,8 +213,8 @@ if (process.argv.includes("--require-live-reconciliation")) {
 console.log(`PASS canonical migration inventory: ${migrationNames.length} files, ${activeMigrationNames.length} active`);
 console.log("PASS blocked Google 0032 is excluded from the active apply plan");
 console.log("PASS executable 0032 is teacher feedback notes only; raw duplicate is explicit");
-console.log("PASS canonical migrations 0044-0051 have explicit number/classification/order");
-console.log("PASS manifest-driven executable chain has canonical head 0051");
+console.log("PASS canonical migrations 0044-0054 have explicit number/classification/order");
+console.log("PASS manifest-driven executable chain has canonical head 0054");
 console.log(`PASS canonical RLS policy inventory: ${rlsTables.length} tables`);
 console.log("PASS historical 0039-0041 hashes remain unchanged");
 console.log(

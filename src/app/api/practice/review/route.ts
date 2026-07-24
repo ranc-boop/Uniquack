@@ -46,6 +46,26 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function normalizeRoundReviewSummary(value: string) {
+  const trimmed = value.trim();
+  const candidate = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    const parsed = JSON.parse(candidate);
+    const record = asObject(parsed);
+    if (typeof record.summary === "string" && record.summary.trim()) {
+      return compactText(record.summary, 2400);
+    }
+  } catch {
+    // Plain-text summaries remain valid.
+  }
+
+  return compactText(trimmed, 2400);
+}
+
 function answerText(value: unknown) {
   return Array.isArray(value) ? value.map(String).join(", ") : String(value ?? "");
 }
@@ -384,6 +404,7 @@ export async function POST(request: Request) {
         const roundReviewPrompt = [
           "You are the O2I Practice main thread. This call is only for a round review summary.",
           "Do not call tools. Do not select next questions. Do not create a plan node. Do not update memory.",
+          "Return plain prose only. Do not wrap the summary in JSON, Markdown fences, or a round_review object.",
           "Use the existing practice thread plus the current question judgments to write a concise coaching summary for the frontend.",
           "Include: overall performance, what is stable, what still needs practice, and a next focus direction without choosing questions.",
           "",
@@ -395,6 +416,10 @@ export async function POST(request: Request) {
         ].join("\n");
 
         send("round_review_start", {});
+        const roundReviewStream: {
+          mode: "plain" | "structured" | "unknown";
+          probe: string;
+        } = { mode: "unknown", probe: "" };
         const roundReviewResult = await traced({
           inputSummary: "Main-thread round review summary with tool_choice none.",
           outputSummary: (value) => `provider=${value.providerLabel}; chars=${value.contentText.length}`,
@@ -413,7 +438,23 @@ export async function POST(request: Request) {
               ...threadMessages,
               { role: "user", content: roundReviewPrompt },
             ],
-            onDelta: (text) => send("round_review_delta", { text }),
+            onDelta: (text) => {
+              if (roundReviewStream.mode === "plain") {
+                send("round_review_delta", { text });
+                return;
+              }
+              if (roundReviewStream.mode === "structured") return;
+
+              roundReviewStream.probe += text;
+              const trimmedProbe = roundReviewStream.probe.trimStart();
+              if (trimmedProbe.startsWith("{") || trimmedProbe.startsWith("```")) {
+                roundReviewStream.mode = "structured";
+              } else if (trimmedProbe.length >= 32 || /[.!?]\s/.test(trimmedProbe)) {
+                roundReviewStream.mode = "plain";
+                send("round_review_delta", { text: roundReviewStream.probe });
+                roundReviewStream.probe = "";
+              }
+            },
             profile,
             toolChoice: "none",
           }),
@@ -427,8 +468,11 @@ export async function POST(request: Request) {
             toolName: "model_usage",
           });
         }
-        const summary = compactText(roundReviewResult.contentText, 2400) ||
+        const summary = normalizeRoundReviewSummary(roundReviewResult.contentText) ||
           "Round review completed, but the main thread returned an empty summary.";
+        if (roundReviewStream.mode !== "plain") {
+          send("round_review_delta", { text: summary });
+        }
 
         await persistRoundReviewSummary({
           providerLabel: roundReviewResult.providerLabel,
