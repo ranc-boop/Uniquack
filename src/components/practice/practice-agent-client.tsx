@@ -13,7 +13,9 @@ import { ReadableDataCard, threadStudyContext } from "@/components/practice/prac
 import { PracticeRoundReviewPanel } from "@/components/practice/practice-round-review-panel";
 import {
   PracticeCompletionPanel,
+  PracticeRoundNavigator,
   PracticeSourceSelector,
+  PracticeStarterGoals,
   PracticeWorkspaceSkeleton,
 } from "@/components/practice/practice-session-scope-panels";
 import { Badge } from "@/components/ui/badge";
@@ -126,13 +128,6 @@ type AssignmentPracticeStartPayload = {
   recommendation: PracticeRecommendResponse;
   session: PracticeSessionDetail;
 };
-
-const starterGoals = [
-  "AP Calculus: implicit differentiation with harder MCQs",
-  "Review missed integration questions and explain traps",
-  "Build a short mixed round on limits and continuity",
-  "Practice FRQ-style derivative applications",
-];
 
 const COLLAPSED_SIDEBAR_WIDTH = 60;
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 304;
@@ -452,7 +447,6 @@ export function PracticeAgentClient({
   const [selectedBankIds, setSelectedBankIds] = useState<string[]>([]);
   const [completion, setCompletion] = useState<PracticeCompletion | null>(null);
   const [streamedCompletionReport, setStreamedCompletionReport] = useState("");
-  const [policyNotice, setPolicyNotice] = useState<string | null>(null);
   const [isTraceCollapsed, setIsTraceCollapsed] = useState(true);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
@@ -710,8 +704,7 @@ export function PracticeAgentClient({
   const isStarterPractice =
     phase === "start" &&
     !recommendation &&
-    !activeSession?.rounds.length &&
-    !selectedWrongQuestionIds.length;
+    !activeSession?.rounds.length;
   const practiceGridStyle = {
     "--practice-left": `${isLeftSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : leftSidebarWidth}px`,
     "--practice-right": `${isRightSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : rightSidebarWidth}px`,
@@ -741,7 +734,6 @@ export function PracticeAgentClient({
     setRenameValue("");
     setCompletion(null);
     setStreamedCompletionReport("");
-    setPolicyNotice(null);
   }
 
   function beginThinking() {
@@ -972,8 +964,7 @@ export function PracticeAgentClient({
             setStreamedCompletionReport("");
             finishThinking("ending");
           },
-          onPolicyNotice: (notice) =>
-            setPolicyNotice(String(notice.change ?? "Practice policy updated.")),
+          onPolicyNotice: () => undefined,
           onSummaryDelta: (text) =>
             setStreamedCompletionReport((current) => current + text),
           onTrace: (event) => setLiveTrace((current) => [...current, event]),
@@ -1362,6 +1353,23 @@ export function PracticeAgentClient({
         if (!handedOffToSessionSwitch) setSessionAction(null);
       }
     });
+  }
+
+  function showHistoricalRound(roundId: string) {
+    const round = activeSession?.rounds.find((item) => item.id === roundId);
+    if (round && activeSession) {
+      restoreRoundFromHistory(round, activeSession, "COMPLETED_RESTORE");
+    }
+  }
+
+  function showCompletionSummary() {
+    if (!activeSession?.completion) return;
+    setRecommendation(null);
+    setReview(null);
+    setResults([]);
+    setCompletion(activeSession.completion);
+    setStreamedCompletionReport(activeSession.completion.report);
+    setPhase("completed");
   }
 
   function prepareScopedNewSession({ retryMistakes = false } = {}) {
@@ -1868,19 +1876,7 @@ export function PracticeAgentClient({
                     </div>
                   </div>
                 </div>
-                <div className="mx-auto grid max-w-5xl gap-2 sm:grid-cols-2">
-                  {starterGoals.map((starterGoal) => (
-                    <button
-                      className="student-focus-ring rounded-full border border-slate-200 bg-white/80 px-4 py-3 text-left text-sm font-semibold text-slate-600 shadow-sm transition-all duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 hover:shadow-md"
-                      disabled={isPending}
-                      key={starterGoal}
-                      onClick={() => selectStarterGoal(starterGoal)}
-                      type="button"
-                    >
-                      {starterGoal}
-                    </button>
-                  ))}
-                </div>
+                <PracticeStarterGoals disabled={isPending} onSelect={selectStarterGoal} />
               </div>
             </section>
           ) : (
@@ -1910,6 +1906,16 @@ export function PracticeAgentClient({
             </section>
           )}
 
+          {activeSession?.rounds.length ? (
+            <PracticeRoundNavigator
+              completed={Boolean(activeSession.completion)}
+              onSelectCompletion={showCompletionSummary}
+              onSelectRound={showHistoricalRound}
+              rounds={activeSession.rounds}
+              selectedRoundId={phase === "completed" ? null : recommendation?.roundId ?? null}
+            />
+          ) : null}
+
           {phase === "thinking" ? (
             <div className="min-h-24">
               <TracePanel
@@ -1919,12 +1925,6 @@ export function PracticeAgentClient({
                 onToggle={() => setIsTraceCollapsed((current) => !current)}
                 trace={latestTrace}
               />
-            </div>
-          ) : null}
-
-          {policyNotice ? (
-            <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-              {policyNotice}
             </div>
           ) : null}
 

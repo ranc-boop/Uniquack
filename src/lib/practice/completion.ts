@@ -79,7 +79,7 @@ function deterministicReport({
   const reasonText = {
     diminishing_returns: "Further repetition in this session would have diminishing returns.",
     goal_satisfied: "The current learning goal has been satisfied for this session.",
-    scope_exhausted: "There are no unseen or eligible retry questions left in the selected scope.",
+    scope_exhausted: "No questions that are not yet attempted or eligible for retry remain in the selected scope.",
     source_access_lost: "The selected practice sources are no longer available.",
   }[reason];
 
@@ -92,7 +92,7 @@ function deterministicReport({
       ? `Still strengthen: ${strengthenTags.join(", ")}.`
       : "No unresolved taxonomy focus was identified.",
     reasonText,
-    `Remaining inventory: ${inventory.unseen} unseen, ${inventory.needsRetry} eligible retries, ${inventory.deferred} deferred retries, and ${inventory.mastered} mastered.`,
+    `Remaining inventory: ${inventory.unseen} not yet attempted, ${inventory.needsRetry} eligible retries, ${inventory.deferred} deferred retries, and ${inventory.mastered} answered correctly.`,
     "Start a new session with a broader Library scope or return to your mistakes when you are ready.",
   ].join("\n\n");
 }

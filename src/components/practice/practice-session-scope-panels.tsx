@@ -9,8 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   PracticeCompletion,
+  PracticeRoundHistory,
   PracticeSourceOption,
 } from "@/lib/practice/types";
+
+const starterGoals = [
+  "AP Calculus: implicit differentiation with harder MCQs",
+  "Review missed integration questions and explain traps",
+  "Build a short mixed round on limits and continuity",
+  "Practice FRQ-style derivative applications",
+];
 
 export function PracticeWorkspaceSkeleton() {
   return (
@@ -33,6 +41,30 @@ export function PracticeWorkspaceSkeleton() {
           <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
         </div>
       </main>
+    </div>
+  );
+}
+
+export function PracticeStarterGoals({
+  disabled,
+  onSelect,
+}: {
+  disabled: boolean;
+  onSelect: (goal: string) => void;
+}) {
+  return (
+    <div className="mx-auto grid max-w-5xl gap-2 sm:grid-cols-2">
+      {starterGoals.map((goal) => (
+        <button
+          className="student-focus-ring rounded-full border border-slate-200 bg-white/80 px-4 py-3 text-left text-sm font-semibold text-slate-600 shadow-sm transition-all duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 hover:shadow-md"
+          disabled={disabled}
+          key={goal}
+          onClick={() => onSelect(goal)}
+          type="button"
+        >
+          {goal}
+        </button>
+      ))}
     </div>
   );
 }
@@ -60,9 +92,6 @@ export function PracticeSourceSelector({
             <BookOpen className="size-4 text-sky-700" aria-hidden="true" />
             Practice sources
           </div>
-          <p className="mt-1 text-sm text-slate-500">
-            Choose up to 10 Libraries. This scope locks when the first round starts.
-          </p>
         </div>
         <Badge variant="outline">
           {(includePublicCatalog ? 1 : 0) + selectedBankIds.length} selected
@@ -102,8 +131,10 @@ export function PracticeSourceSelector({
                   {source.name}
                 </span>
                 <span className="mt-1 block text-xs text-slate-500">
-                  {source.counts.unseen} unseen · {source.counts.needsRetry} retry ·{" "}
-                  {source.counts.mastered} mastered
+                  {source.counts.questionCount} total ·{" "}
+                  {source.counts.unseen + source.counts.needsRetry} available ·{" "}
+                  {source.counts.unseen} not attempted · {source.counts.needsRetry} retry ·{" "}
+                  {source.counts.mastered} answered correctly
                 </span>
               </span>
             </label>
@@ -116,6 +147,58 @@ export function PracticeSourceSelector({
         </p>
       ) : null}
     </div>
+  );
+}
+
+export function PracticeRoundNavigator({
+  completed,
+  onSelectCompletion,
+  onSelectRound,
+  rounds,
+  selectedRoundId,
+}: {
+  completed: boolean;
+  onSelectCompletion: () => void;
+  onSelectRound: (roundId: string) => void;
+  rounds: PracticeRoundHistory[];
+  selectedRoundId: string | null;
+}) {
+  if (!rounds.length) return null;
+
+  return (
+    <nav aria-label="Practice round history" className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+      <div className="flex items-center gap-2 overflow-x-auto">
+        <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-slate-500">
+          History
+        </span>
+        {rounds.map((round, index) => (
+          <Button
+            aria-current={selectedRoundId === round.id ? "page" : undefined}
+            className="shrink-0"
+            key={round.id}
+            onClick={() => onSelectRound(round.id)}
+            size="sm"
+            type="button"
+            variant={selectedRoundId === round.id ? "default" : "outline"}
+          >
+            Round {index + 1}
+            {round.score.total > 0 ? ` · ${round.score.correct}/${round.score.total}` : ""}
+          </Button>
+        ))}
+        {completed ? (
+          <Button
+            aria-current={selectedRoundId === null ? "page" : undefined}
+            className="shrink-0"
+            onClick={onSelectCompletion}
+            size="sm"
+            type="button"
+            variant={selectedRoundId === null ? "default" : "outline"}
+          >
+            Final report
+          </Button>
+        ) : null}
+      </div>
+    </nav>
   );
 }
 
@@ -153,7 +236,7 @@ export function PracticeCompletionPanel({
           <div className="grid gap-2 text-sm sm:grid-cols-3">
             {[
               ["Mastered", completion.inventory.mastered],
-              ["Unseen", completion.inventory.unseen],
+              ["Not attempted", completion.inventory.unseen],
               ["Retry later", completion.inventory.deferred],
             ].map(([label, value]) => (
               <div className="rounded-xl bg-slate-50 p-3" key={label}>

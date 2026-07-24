@@ -6,13 +6,15 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFile(resolve(root, path), "utf8");
 
-const [migration, ambiguityFix, firstRoundLock, agent, recommend, sessions, sources, client, panels, completion] =
+const [migration, ambiguityFix, firstRoundLock, agent, recommend, reviewRoute, tools, sessions, sources, client, panels, completion] =
   await Promise.all([
     read("supabase/clean-migrations/0052_practice_library_scope_and_inventory.sql"),
     read("supabase/clean-migrations/0053_practice_session_source_rpc_ambiguity_fix.sql"),
     read("supabase/clean-migrations/0054_practice_source_scope_lock_on_first_round.sql"),
     read("src/lib/practice/agent-loop.ts"),
     read("src/app/api/practice/recommend/route.ts"),
+    read("src/app/api/practice/review/route.ts"),
+    read("src/lib/practice/tools.ts"),
     read("src/app/api/practice/sessions/route.ts"),
     read("src/app/api/practice/sources/route.ts"),
     read("src/components/practice/practice-agent-client.tsx"),
@@ -156,11 +158,31 @@ includesAll(
     "includePublicCatalog",
     "selectedBankIds",
     "sourceScopeLockedAt",
-    "This scope locks when the first round starts.",
+    "not attempted",
     '"practice_summary_delta"',
     "Start with more Libraries",
+    "PracticeRoundNavigator",
+    "questionCount",
   ],
   "Practice source selector and completion UI contract",
+);
+assert(
+  !client.includes("setPolicyNotice") && !client.includes("{policyNotice ?"),
+  "Internal tool-policy notices must stay in the agent context and not render in the student UI.",
+);
+includesAll(
+  reviewRoute,
+  [
+    "normalizeRoundReviewSummary",
+    "Return plain prose only.",
+    'mode: "plain" | "structured" | "unknown"',
+  ],
+  "Round review must unwrap structured provider output without streaming raw JSON",
+);
+includesAll(
+  tools,
+  ["session_scope_fallback", 'mode === "relaxed"', "authorized session scope"],
+  "Relaxed search must fall back to the full authorized session scope",
 );
 
 const sample = [

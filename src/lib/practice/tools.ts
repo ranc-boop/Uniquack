@@ -633,6 +633,21 @@ export async function practiceSearchBatch({
   supabase: SupabaseLike;
 }): Promise<PracticeSearchBatchResult> {
   const limitedLanes = lanes.slice(0, SEARCH_LANE_LIMIT);
+  const searchLanes = mode === "relaxed" &&
+    !limitedLanes.some((lane) =>
+      !uniqueStrings(lane.confirmed_tag_ids).length && !lane.query_text?.trim()
+    )
+    ? [
+        ...limitedLanes.slice(0, SEARCH_LANE_LIMIT - 1),
+        {
+          confirmed_tag_ids: [],
+          lane_id: "session_scope_fallback",
+          limit: Math.max(DEFAULT_SEARCH_LIMIT, questionCount),
+          query_text: "",
+          rationale: "Use the authorized session scope when taxonomy or keyword matching is sparse.",
+        },
+      ]
+    : limitedLanes;
   const visibleCandidateCap = Math.max(1, Math.trunc(questionCount) * 2);
   const candidateRows: PracticeSearchRow[] = [];
   const laneRows: PracticeSearchRow[][] = [];
@@ -647,7 +662,7 @@ export async function practiceSearchBatch({
     unseen: 0,
   };
 
-  for (const lane of limitedLanes) {
+  for (const lane of searchLanes) {
     const requestedTags = uniqueStrings(lane.confirmed_tag_ids);
     const effectiveTags = mode === "strict" ? requestedTags : requestedTags;
     const normalizedQueryText = mode === "relaxed" ? lane.query_text?.slice(0, 120) || null : null;
