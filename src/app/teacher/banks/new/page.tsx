@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -124,7 +125,9 @@ export default async function NewTeacherBankPage() {
             <Button asChild variant="outline">
               <Link href="/teacher/banks">Cancel</Link>
             </Button>
-            <Button type="submit">Create Library</Button>
+            <FormSubmitButton pendingLabel="Creating Library...">
+              Create Library
+            </FormSubmitButton>
           </div>
         </div>
       </form>

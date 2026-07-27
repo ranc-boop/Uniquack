@@ -195,7 +195,7 @@ export function TeacherDashboardActionBoard({
             </Link>
           ))
         ) : (
-          <EmptyState actionHref="/teacher/ai-parsing" actionLabel="Import materials">
+          <EmptyState actionHref="/teacher/banks?intent=import" actionLabel="Import materials">
             No Review Drafts are waiting. Import owned materials into a Library when you are ready.
           </EmptyState>
         )}
@@ -371,7 +371,7 @@ export function TeacherDashboardEvidencePanel({
       <DashboardSection
         action={
           <Button asChild size="sm" variant="outline">
-            <Link href="/teacher/ai-parsing">Open AI Parsing</Link>
+            <Link href="/teacher/banks?intent=import">Open AI Parsing</Link>
           </Button>
         }
         description="Recent Library-targeted imports, with draft counts when the import summary provides them."
@@ -381,7 +381,11 @@ export function TeacherDashboardEvidencePanel({
           summary.recentImports.map((item) => (
             <Link
               className="block rounded-lg border border-slate-200 bg-white p-4 transition hover:border-sky-200 hover:bg-sky-50/40"
-              href={item.bankId ? `/teacher/banks/${item.bankId}/imports` : "/teacher/ai-parsing"}
+              href={
+                item.bankId
+                  ? `/teacher/banks/${item.bankId}/imports?mode=ai`
+                  : "/teacher/banks?intent=import"
+              }
               key={item.id}
             >
               <h3 className="font-semibold text-slate-950">{item.bankName ?? "Library import"}</h3>
@@ -393,7 +397,7 @@ export function TeacherDashboardEvidencePanel({
             </Link>
           ))
         ) : (
-          <EmptyState actionHref="/teacher/ai-parsing" actionLabel="Import materials">
+          <EmptyState actionHref="/teacher/banks?intent=import" actionLabel="Import materials">
             No imports yet. Pick a bank first, then send owned materials to Review Drafts.
           </EmptyState>
         )}
@@ -416,7 +420,7 @@ export function TeacherDashboardWorkflowPanel({
       text: "Create or join a Library and keep content private by default.",
     },
     {
-      href: "/teacher/ai-parsing",
+      href: "/teacher/banks?intent=import",
       label: "2. Review imports",
       text: "AI Parsing creates Review Drafts. No unreviewed draft can be assigned to students.",
     },

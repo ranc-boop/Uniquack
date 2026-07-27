@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { ArrowLeft, Boxes } from "lucide-react";
 
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
@@ -335,7 +336,9 @@ export default async function NewTeacherBlueprintPage({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button type="submit">Create Blueprint</Button>
+            <FormSubmitButton pendingLabel="Creating Blueprint...">
+              Create Blueprint
+            </FormSubmitButton>
             <Button asChild variant="outline">
               <Link href="/teacher/blueprints">Cancel</Link>
             </Button>

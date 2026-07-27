@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { KeyRound, Share2, Users } from "lucide-react";
 
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -234,16 +235,22 @@ export default async function TeacherBankMembersPage({
                             type="hidden"
                             value={member.role === "viewer" ? "editor" : "viewer"}
                           />
-                          <Button type="submit" variant="outline">
+                          <FormSubmitButton
+                            pendingLabel="Updating role..."
+                            variant="outline"
+                          >
                             Make {member.role === "viewer" ? "editor" : "viewer"}
-                          </Button>
+                          </FormSubmitButton>
                         </form>
                         <form action={removeBankMember}>
                           <input name="bankId" type="hidden" value={bank.id} />
                           <input name="userId" type="hidden" value={member.user_id} />
-                          <Button type="submit" variant="outline">
+                          <FormSubmitButton
+                            pendingLabel="Removing member..."
+                            variant="outline"
+                          >
                             Remove
-                          </Button>
+                          </FormSubmitButton>
                         </form>
                       </div>
                     ) : null}
@@ -279,7 +286,9 @@ export default async function TeacherBankMembersPage({
                     <option value="editor">Editor</option>
                   </select>
                 </label>
-                <Button type="submit">Create share code</Button>
+                <FormSubmitButton pendingLabel="Creating share code...">
+                  Create share code
+                </FormSubmitButton>
               </form>
             ) : (
               <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
@@ -316,9 +325,12 @@ export default async function TeacherBankMembersPage({
                             type="hidden"
                             value={code.id}
                           />
-                          <Button type="submit" variant="outline">
+                          <FormSubmitButton
+                            pendingLabel="Revoking code..."
+                            variant="outline"
+                          >
                             Revoke
-                          </Button>
+                          </FormSubmitButton>
                         </form>
                       ) : null}
                     </div>

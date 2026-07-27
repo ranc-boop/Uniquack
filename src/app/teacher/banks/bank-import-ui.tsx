@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AlertTriangle, Boxes, ClipboardCheck, FileText, Upload } from "lucide-react";
 
 import { InlineMathText } from "@/components/math-content";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { QuestionBoundaryGuardCard } from "@/components/ai-pdf-dashboard/question-boundary-guard-card";
 import { friendlyAIPdfPhaseLabel } from "@/lib/ai-pdf-import/display";
@@ -336,7 +337,7 @@ export function BankTargetSelector({
                 <Link
                   aria-current={selected ? "true" : undefined}
                   className={className}
-                  href={`/teacher/ai-parsing?bankId=${bank.id}`}
+                  href={`/teacher/banks/${bank.id}/imports?mode=ai`}
                   key={bank.id}
                 >
                   <TargetBankCardContent bank={bank} selected={selected} />
@@ -440,7 +441,7 @@ export function BankImportEntryPanel({
             <div className="flex shrink-0 flex-wrap gap-2">
               {showChangeTarget ? (
                 <Button asChild variant="outline">
-                  <Link href="/teacher/ai-parsing">Change target</Link>
+                  <Link href="/teacher/banks?intent=import">Change target</Link>
                 </Button>
               ) : null}
               {showImportAction && canImport ? (
@@ -611,9 +612,13 @@ export function RecentBankImportsPanel({
                         <form action={coverageRecoveryAction} className="mt-3">
                           <input name="bankId" type="hidden" value={batch.target_bank_id ?? ""} />
                           <input name="batchId" type="hidden" value={batch.id} />
-                          <Button size="sm" type="submit" variant="outline">
+                          <FormSubmitButton
+                            pendingLabel="Queueing recovery..."
+                            size="sm"
+                            variant="outline"
+                          >
                             Recheck missing sections
-                          </Button>
+                          </FormSubmitButton>
                         </form>
                       ) : null}
                     </div>

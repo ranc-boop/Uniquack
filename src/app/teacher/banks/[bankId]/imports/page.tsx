@@ -5,6 +5,7 @@ import { ClipboardCheck } from "lucide-react";
 
 import { AIJobStatusPanel } from "@/components/ai-jobs/ai-job-status-panel";
 import { BatchImportJsonPanelLoader } from "@/components/batch-import-json-panel-loader";
+import { TeacherBankImportTransition } from "@/components/teacher/teacher-bank-import-transition";
 import { TeacherPdfBurstUpload } from "@/components/teacher/teacher-pdf-burst-upload";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -97,10 +98,12 @@ export default async function TeacherBankImportsPage({
     saved?: string;
   }>;
 }) {
-  const profile = await requireTeacher();
-  const { bankId } = await params;
-  const query = await searchParams;
-  const supabase = await createClient();
+  const [profile, { bankId }, query, supabase] = await Promise.all([
+    requireTeacher(),
+    params,
+    searchParams,
+    createClient(),
+  ]);
   const mode = ["manual", "json", "ai"].includes(query.mode ?? "")
     ? (query.mode as "manual" | "json" | "ai")
     : "manual";
@@ -206,26 +209,7 @@ export default async function TeacherBankImportsPage({
 
       <BankRouteTabs bankId={bank.id} />
 
-      <nav
-        aria-label="Library import modes"
-        className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm"
-      >
-        {[
-          ["manual", "Manual"],
-          ["json", "JSON"],
-          ["ai", "AI Parsing"],
-        ].map(([value, label]) => (
-          <Button
-            asChild
-            key={value}
-            variant={mode === value ? "default" : "ghost"}
-          >
-            <Link href={`/teacher/banks/${bank.id}/imports?mode=${value}`}>
-              {label}
-            </Link>
-          </Button>
-        ))}
-      </nav>
+      <TeacherBankImportTransition bankId={bank.id} mode={mode}>
 
       {query.saved ? (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
@@ -348,6 +332,7 @@ export default async function TeacherBankImportsPage({
             importBatches={importBatches}
         />
       </section>
+      </TeacherBankImportTransition>
     </BankWorkbenchPage>
   );
 }

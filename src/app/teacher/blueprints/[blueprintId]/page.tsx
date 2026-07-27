@@ -388,7 +388,9 @@ export default async function TeacherBlueprintDetailPage({
                   Drafts before Library approval.
                 </div>
                 <div>
-                  <Button type="submit">Save Blueprint plan</Button>
+                  <FormSubmitButton pendingLabel="Saving Blueprint plan...">
+                    Save Blueprint plan
+                  </FormSubmitButton>
                 </div>
               </div>
             </form>

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import {
   bankBlueprintRelationLabel,
   blueprintKindLabel,
@@ -247,7 +248,9 @@ export function NewFolderPanel() {
             <option value="public">Public review</option>
           </select>
         </label>
-        <Button type="submit">Create folder</Button>
+        <FormSubmitButton pendingLabel="Creating folder...">
+          Create folder
+        </FormSubmitButton>
       </form>
     </details>
   );

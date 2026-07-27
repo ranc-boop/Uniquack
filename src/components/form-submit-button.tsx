@@ -10,6 +10,8 @@ type FormSubmitButtonProps = {
   children: React.ReactNode;
   pendingLabel?: string;
   className?: string;
+  disabled?: boolean;
+  form?: string;
   name?: string;
   size?: "default" | "sm" | "lg" | "icon";
   value?: string;
@@ -20,6 +22,8 @@ export function FormSubmitButton({
   children,
   pendingLabel = "Saving...",
   className,
+  disabled,
+  form,
   name,
   size,
   value,
@@ -30,17 +34,22 @@ export function FormSubmitButton({
   return (
     <Button
       type="submit"
+      aria-busy={pending || undefined}
       name={name}
       value={value}
-      disabled={pending}
+      disabled={disabled || pending}
+      form={form}
       className={className}
       size={size}
       variant={variant}
     >
       {pending ? (
-        <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
+        <LoaderCircle
+          aria-hidden="true"
+          className="h-4 w-4 motion-safe:animate-spin"
+        />
       ) : null}
-      {pending ? pendingLabel : children}
+      <span aria-live="polite">{pending ? pendingLabel : children}</span>
     </Button>
   );
 }
