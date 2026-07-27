@@ -9,7 +9,6 @@ import {
   ensureQuestionDraftForUpload,
   finalizeQuestionAssetUpload,
   reserveQuestionAssetUpload,
-  type QuestionAssetView,
   updateQuestionAssetDisplay,
 } from "@/app/admin/questions/asset-actions";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -19,9 +18,14 @@ import {
   QUESTION_ASSET_MIME_TYPES,
 } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/client";
+import type {
+  QuestionAssetView,
+  QuestionAssetWorkspaceActions,
+} from "@/lib/questions/media-workspace";
 import { cn } from "@/lib/utils";
 
 type QuestionAssetsPanelProps = {
+  actions?: QuestionAssetWorkspaceActions;
   questionId?: string;
   initialAssets?: QuestionAssetView[];
   draftInputId?: string;
@@ -43,12 +47,20 @@ function inputValue(id: string | undefined) {
 }
 
 export function QuestionAssetsPanel({
+  actions,
   questionId,
   initialAssets = [],
   draftInputId,
   questionCodeInputId,
   titleInputId,
 }: QuestionAssetsPanelProps) {
+  const workspaceActions = actions ?? {
+    deleteAsset: deleteQuestionAsset,
+    ensureDraft: ensureQuestionDraftForUpload,
+    finalizeUpload: finalizeQuestionAssetUpload,
+    reserveUpload: reserveQuestionAssetUpload,
+    updateDisplay: updateQuestionAssetDisplay,
+  };
   const fileInputId = useId();
   const [currentQuestionId, setCurrentQuestionId] = useState(questionId ?? "");
   const [assets, setAssets] = useState(initialAssets);
@@ -70,7 +82,7 @@ export function QuestionAssetsPanel({
     }
 
     const draftId = inputValue(draftInputId);
-    const result = await ensureQuestionDraftForUpload({
+    const result = await workspaceActions.ensureDraft({
       draftId: draftId || undefined,
       questionCode,
       title,
@@ -125,7 +137,7 @@ export function QuestionAssetsPanel({
 
       for (const file of validFiles) {
         try {
-          const reservation = await reserveQuestionAssetUpload({
+          const reservation = await workspaceActions.reserveUpload({
             questionId: resolvedQuestionId,
             originalFilename: file.name,
             mimeType: file.type,
@@ -144,7 +156,7 @@ export function QuestionAssetsPanel({
             throw new Error(error.message);
           }
 
-          const uploadedAsset = await finalizeQuestionAssetUpload({
+          const uploadedAsset = await workspaceActions.finalizeUpload({
             assetId: reservation.assetId,
           });
 
@@ -186,7 +198,7 @@ export function QuestionAssetsPanel({
     setDeletingId(asset.id);
 
     try {
-      await deleteQuestionAsset({ assetId: asset.id });
+      await workspaceActions.deleteAsset({ assetId: asset.id });
       setAssets((current) => current.filter((item) => item.id !== asset.id));
       toast.success("Image deleted.");
     } catch (error) {
@@ -200,7 +212,7 @@ export function QuestionAssetsPanel({
     setUpdatingDisplayId(asset.id);
 
     try {
-      const result = await updateQuestionAssetDisplay({
+      const result = await workspaceActions.updateDisplay({
         assetId: asset.id,
         displayOnDetail: !asset.displayOnDetail,
       });

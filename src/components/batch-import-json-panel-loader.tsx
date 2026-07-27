@@ -2,7 +2,24 @@
 
 import dynamic from "next/dynamic";
 
+import type {
+  JsonImportCommitAction,
+  JsonImportPreviewAction,
+} from "@/components/batch-import-json-panel";
+import type {
+  QuestionWorkspaceCapabilities,
+  QuestionWorkspaceScope,
+} from "@/lib/questions/workspace";
+
 type BatchImportJsonPanelLoaderProps = {
+  capabilities: QuestionWorkspaceCapabilities;
+  importAction: JsonImportCommitAction;
+  previewAction: JsonImportPreviewAction;
+  questionsHref: string;
+  resultDescription: string;
+  reviewHref: string;
+  scope: QuestionWorkspaceScope;
+  scopeLabel: string;
   tagIds?: string[];
 };
 

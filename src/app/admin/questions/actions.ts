@@ -67,10 +67,34 @@ type PublishReviewDraftQuestionRpc = {
 };
 
 type QuestionPublishMetadata = {
+  owner_bank_id: string | null;
   source_kind: string | null;
   source_review_item_id: string | null;
   status: string;
 };
+
+async function assertGlobalQuestionIds({
+  questionIds,
+  supabase,
+}: {
+  questionIds: string[];
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const { data, error } = await supabase
+    .from("questions")
+    .select("id, owner_bank_id")
+    .in("id", questionIds);
+
+  if (error) throw new Error(error.message);
+  if (
+    (data?.length ?? 0) !== questionIds.length ||
+    data?.some((question) => question.owner_bank_id !== null)
+  ) {
+    throw new Error(
+      "Admin global actions can only mutate Central Public Library questions.",
+    );
+  }
+}
 
 type QuestionPublishMetadataQuery = {
   select(columns: string): {
@@ -107,11 +131,13 @@ function taxonomyTagIdsFromForm(formData: FormData, prefix = "question_tax") {
 async function replaceQuestionTaxonomyAssignments({
   profileId,
   questionId,
+  reviewStatus = "approved",
   supabase,
   tagIds,
 }: {
   profileId: string;
   questionId: string;
+  reviewStatus?: "approved" | "pending_review";
   supabase: Awaited<ReturnType<typeof createClient>>;
   tagIds: string[];
 }) {
@@ -134,13 +160,14 @@ async function replaceQuestionTaxonomyAssignments({
     .from("question_taxonomy_assignments")
     .insert(
       uniqueTagIds.map((tagId) => ({
-        approved_at: new Date().toISOString(),
-        approved_by: profileId,
+        approved_at:
+          reviewStatus === "approved" ? new Date().toISOString() : null,
+        approved_by: reviewStatus === "approved" ? profileId : null,
         confidence: 1,
         created_by: profileId,
         evidence: { source: "admin_question_form" },
         question_id: questionId,
-        review_status: "approved",
+        review_status: reviewStatus,
         source: "manual",
         tag_id: tagId,
         updated_by: profileId,
@@ -209,7 +236,8 @@ function questionSourceValues(values: {
 export async function createQuestion(formData: FormData) {
   try {
     const profile = await requireAdmin();
-    const parsed = questionCreateSchema.parse(Object.fromEntries(formData));
+    const parsedInput = questionCreateSchema.parse(Object.fromEntries(formData));
+    const parsed = { ...parsedInput, status: "draft" as const };
     const draftIdValue = formData.get("draft_id");
     const draftId =
       typeof draftIdValue === "string" && draftIdValue
@@ -226,19 +254,34 @@ export async function createQuestion(formData: FormData) {
       options: optionsToJson(answerData.options),
       updated_by: profile.id,
       published_at:
-        parsed.status === "published" ? new Date().toISOString() : null,
-      visibility: globalVisibilityForStatus(parsed.status),
+        null,
+      source_kind: "review_draft" as const,
+      visibility: "private" as const,
     };
-    const questionRequest = draftId
-      ? supabase
-          .from("questions")
-          .update(values)
-          .eq("id", draftId)
-          .eq("status", "draft")
-          .eq("created_by", profile.id)
-          .select("id")
-          .single()
-      : supabase.from("questions").insert(values).select("id").single();
+    let resolvedDraftId = draftId;
+    if (!resolvedDraftId) {
+      const { data, error } = await supabase.rpc(
+        "create_global_manual_question_draft",
+        {
+          p_question_code: parsed.question_code,
+          p_title: parsed.title,
+        },
+      );
+      if (error) throw new Error(error.message);
+      resolvedDraftId = data;
+    }
+    if (!resolvedDraftId) {
+      throw new Error("The global Review Draft could not be created.");
+    }
+    const questionRequest = supabase
+      .from("questions")
+      .update(values)
+      .eq("id", resolvedDraftId)
+      .eq("status", "draft")
+      .eq("created_by", profile.id)
+      .is("owner_bank_id", null)
+      .select("id")
+      .single();
     const { data: question, error } = await questionRequest;
 
     if (error) {
@@ -248,6 +291,7 @@ export async function createQuestion(formData: FormData) {
     await replaceQuestionTaxonomyAssignments({
       profileId: profile.id,
       questionId: question.id,
+      reviewStatus: "pending_review",
       supabase,
       tagIds: taxonomyTagIdsFromForm(formData),
     });
@@ -256,10 +300,14 @@ export async function createQuestion(formData: FormData) {
   }
 
   revalidatePath("/admin/questions");
+  revalidatePath("/admin/review");
   revalidatePath("/questions");
   revalidatePath("/admin/videos");
   revalidatePath("/videos");
-  redirectWithSaved("/admin/questions", "Question created.");
+  redirectWithSaved(
+    "/admin/review",
+    "Global Review Draft created. Review is required before publication.",
+  );
 }
 
 export async function updateQuestion(formData: FormData) {
@@ -277,7 +325,7 @@ export async function updateQuestion(formData: FormData) {
     const { data: existingQuestion, error: existingQuestionError } = await (
       supabase.from("questions") as unknown as QuestionPublishMetadataQuery
     )
-      .select("source_kind, source_review_item_id, status")
+      .select("source_kind, source_review_item_id, status, owner_bank_id")
       .eq("id", id)
       .single();
 
@@ -288,15 +336,16 @@ export async function updateQuestion(formData: FormData) {
     if (!existingQuestion) {
       throw new Error("Question was not found.");
     }
+    if (existingQuestion.owner_bank_id !== null) {
+      throw new Error(
+        "Teacher-owned Library questions must be revised in the Teacher workspace.",
+      );
+    }
 
-    const needsGeneratedReviewPublish =
+    const needsReviewPublish =
       values.status === "published" &&
-      existingQuestion.status !== "published" &&
-      ["ai_import", "blueprint_generation"].includes(
-        existingQuestion.source_kind ?? "",
-      ) &&
-      !existingQuestion.source_review_item_id;
-    const updateStatus = needsGeneratedReviewPublish ? "draft" : values.status;
+      existingQuestion.status !== "published";
+    const updateStatus = needsReviewPublish ? "draft" : values.status;
 
     const { error } = await supabase
       .from("questions")
@@ -324,7 +373,7 @@ export async function updateQuestion(formData: FormData) {
       tagIds: taxonomyTagIdsFromForm(formData),
     });
 
-    if (needsGeneratedReviewPublish) {
+    if (needsReviewPublish) {
       await publishQuestionsWithReviewLineage({
         questionIds: [id],
         supabase,
@@ -350,6 +399,10 @@ export async function updateQuestionStatus(formData: FormData) {
     const parsed = questionStatusSchema.parse(Object.fromEntries(formData));
     const supabase = await createClient();
     questionId = parsed.id;
+    await assertGlobalQuestionIds({
+      questionIds: [parsed.id],
+      supabase,
+    });
 
     if (parsed.status === "published") {
       await publishQuestionsWithReviewLineage({
@@ -418,6 +471,8 @@ async function deleteQuestionById({
   questionId: string;
   supabase: Awaited<ReturnType<typeof createClient>>;
 }) {
+  await assertGlobalQuestionIds({ questionIds: [questionId], supabase });
+
   const { data: assets, error: assetsError } = await supabase
     .from("question_assets")
     .select("id, storage_path")
@@ -505,6 +560,7 @@ export async function bulkUpdateQuestions(formData: FormData) {
     }
 
     const supabase = await createClient();
+    await assertGlobalQuestionIds({ questionIds, supabase });
 
     if (parsed.bulk_action === "status") {
       if (!parsed.status) {

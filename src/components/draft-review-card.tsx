@@ -269,10 +269,19 @@ export function DraftReviewCard({
           <QuestionEditor
             action={updateAction}
             assets={assets}
+            capabilities={{
+              canArchive: true,
+              canCreate: true,
+              canEdit: true,
+              canImport: true,
+              canPublishGlobal: true,
+              canReview: true,
+            }}
             importedAssetReferences={importedAssetReferences}
             question={editableQuestion}
             readiness={readiness}
             returnTo={returnTo}
+            scope={{ kind: "global" }}
             selectedTaxonomyTagIds={selectedTaxonomyTagIds}
             sourceFiles={sourceFiles}
             taxonomyCatalog={taxonomyCatalog}

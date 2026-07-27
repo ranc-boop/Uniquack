@@ -17,7 +17,6 @@ import {
   ensureQuestionDraftForSourceUpload,
   finalizeQuestionSourceFileUpload,
   reserveQuestionSourceFileUpload,
-  type QuestionSourceFileView,
 } from "@/app/admin/questions/source-file-actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -28,9 +27,14 @@ import {
   QUESTION_SOURCE_FILES_BUCKET,
 } from "@/lib/question-source-files";
 import { createClient } from "@/lib/supabase/client";
+import type {
+  QuestionSourceFileView,
+  QuestionSourceFileWorkspaceActions,
+} from "@/lib/questions/media-workspace";
 import { cn } from "@/lib/utils";
 
 type QuestionSourceFilesPanelProps = {
+  actions?: QuestionSourceFileWorkspaceActions;
   questionId?: string;
   initialSourceFiles?: QuestionSourceFileView[];
   draftInputId?: string;
@@ -52,12 +56,21 @@ function inputValue(id: string | undefined) {
 }
 
 export function QuestionSourceFilesPanel({
+  actions,
   questionId,
   initialSourceFiles = [],
   draftInputId,
   questionCodeInputId,
   titleInputId,
 }: QuestionSourceFilesPanelProps) {
+  const workspaceActions = actions ?? {
+    cancelUpload: cancelQuestionSourceFileUpload,
+    createSignedUrl: createQuestionSourceFileSignedUrl,
+    deleteSourceFile: deleteQuestionSourceFile,
+    ensureDraft: ensureQuestionDraftForSourceUpload,
+    finalizeUpload: finalizeQuestionSourceFileUpload,
+    reserveUpload: reserveQuestionSourceFileUpload,
+  };
   const fileInputId = useId();
   const [currentQuestionId, setCurrentQuestionId] = useState(questionId ?? "");
   const [sourceFiles, setSourceFiles] = useState(initialSourceFiles);
@@ -79,7 +92,7 @@ export function QuestionSourceFilesPanel({
     }
 
     const draftId = inputValue(draftInputId);
-    const result = await ensureQuestionDraftForSourceUpload({
+    const result = await workspaceActions.ensureDraft({
       draftId: draftId || undefined,
       questionCode,
       title,
@@ -139,7 +152,7 @@ export function QuestionSourceFilesPanel({
           | null = null;
 
         try {
-          reservation = await reserveQuestionSourceFileUpload({
+          reservation = await workspaceActions.reserveUpload({
             questionId: resolvedQuestionId,
             originalFilename: file.name,
             mimeType,
@@ -158,7 +171,7 @@ export function QuestionSourceFilesPanel({
             throw new Error(error.message);
           }
 
-          const uploadedSourceFile = await finalizeQuestionSourceFileUpload({
+          const uploadedSourceFile = await workspaceActions.finalizeUpload({
             sourceFileId: reservation.sourceFileId,
           });
 
@@ -166,7 +179,7 @@ export function QuestionSourceFilesPanel({
           toast.success(`${file.name} uploaded.`);
         } catch (error) {
           if (reservation) {
-            void cancelQuestionSourceFileUpload({
+            void workspaceActions.cancelUpload({
               sourceFileId: reservation.sourceFileId,
             }).catch((cleanupError) => {
               toast.error(
@@ -193,7 +206,7 @@ export function QuestionSourceFilesPanel({
     setOpeningId(sourceFile.id);
 
     try {
-      const result = await createQuestionSourceFileSignedUrl({
+      const result = await workspaceActions.createSignedUrl({
         sourceFileId: sourceFile.id,
       });
       window.open(result.signedUrl, "_blank", "noopener,noreferrer");
@@ -217,7 +230,7 @@ export function QuestionSourceFilesPanel({
     setDeletingId(sourceFile.id);
 
     try {
-      await deleteQuestionSourceFile({ sourceFileId: sourceFile.id });
+      await workspaceActions.deleteSourceFile({ sourceFileId: sourceFile.id });
       setSourceFiles((current) =>
         current.filter((item) => item.id !== sourceFile.id),
       );
@@ -235,8 +248,8 @@ export function QuestionSourceFilesPanel({
         <div>
           <p className="text-sm font-medium">Question source files</p>
           <p className="text-xs text-muted-foreground">
-            Admin-only PDFs for worksheets, scans, source documents, and future
-            AI parsing. They are not shown on public question pages.
+            Private PDFs for worksheets, scans, source documents, and future AI
+            parsing. They are never shown on public question pages.
           </p>
         </div>
         <label

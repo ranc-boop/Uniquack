@@ -1,7 +1,5 @@
 "use client";
 
-import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
-import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { QuestionAnswerFields } from "@/components/question-answer-fields";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
@@ -21,6 +19,16 @@ import {
 } from "@/lib/batch-import/asset-references";
 import type { QuestionSourceFormat } from "@/lib/markdown-latex/markdown";
 import type { QuestionReadiness } from "@/lib/questions/readiness";
+import type {
+  QuestionAssetView,
+  QuestionAssetWorkspaceActions,
+  QuestionSourceFileView,
+  QuestionSourceFileWorkspaceActions,
+} from "@/lib/questions/media-workspace";
+import type {
+  QuestionWorkspaceCapabilities,
+  QuestionWorkspaceScope,
+} from "@/lib/questions/workspace";
 import { useState } from "react";
 
 export type EditableQuestion = {
@@ -42,14 +50,19 @@ export type EditableQuestion = {
 
 export type QuestionEditorProps = {
   action: (formData: FormData) => void | Promise<void>;
+  assetActions?: QuestionAssetWorkspaceActions;
   assets?: QuestionAssetView[];
+  capabilities?: QuestionWorkspaceCapabilities;
   defaultOpen?: boolean;
   importedAssetReferences: ImportAssetReferences | null;
   question: EditableQuestion;
   readiness: QuestionReadiness;
   returnTo?: string;
+  reviewHref?: string;
+  scope?: QuestionWorkspaceScope;
   selectedTaxonomyTagIds?: Partial<Record<string, string[]>>;
   sourceFiles?: QuestionSourceFileView[];
+  sourceFileActions?: QuestionSourceFileWorkspaceActions;
   taxonomyCatalog?: TaxonomyCatalogView;
 };
 
@@ -199,17 +212,31 @@ function PublishReadinessBox({
 
 export function QuestionEditor({
   action,
+  assetActions,
   assets = [],
+  capabilities,
   defaultOpen = false,
   importedAssetReferences,
   question,
   readiness,
   returnTo,
+  reviewHref,
+  scope,
   selectedTaxonomyTagIds = {},
   sourceFiles = [],
+  sourceFileActions,
   taxonomyCatalog,
 }: QuestionEditorProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const canEdit = capabilities?.canEdit ?? true;
+
+  if (!canEdit) {
+    return (
+      <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+        This question is read-only in your current Library role.
+      </div>
+    );
+  }
 
   return (
     <details
@@ -225,6 +252,12 @@ export function QuestionEditor({
           className="mt-3 grid gap-4 rounded-md border bg-background p-4 lg:grid-cols-2"
         >
           <input type="hidden" name="id" value={question.id} />
+          {scope?.kind === "bank" ? (
+            <input type="hidden" name="bankId" value={scope.bankId} />
+          ) : null}
+          {reviewHref ? (
+            <input type="hidden" name="review_href" value={reviewHref} />
+          ) : null}
           {returnTo ? (
             <input type="hidden" name="return_to" value={returnTo} />
           ) : null}
@@ -310,12 +343,14 @@ export function QuestionEditor({
           ) : null}
           <div className="lg:col-span-2">
             <QuestionAssetsPanel
+              actions={assetActions}
               questionId={question.id}
               initialAssets={assets}
             />
           </div>
           <div className="lg:col-span-2">
             <QuestionSourceFilesPanel
+              actions={sourceFileActions}
               questionId={question.id}
               initialSourceFiles={sourceFiles}
             />

@@ -6,10 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-  importManualJsonDrafts,
-  previewManualJsonImport,
-} from "@/app/admin/imports/actions";
 import { FeedbackText } from "@/components/math-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +17,30 @@ import {
 } from "@/lib/batch-import/asset-references";
 import type { BatchImportPreview } from "@/lib/batch-import/json";
 import type { BatchImportSummary } from "@/lib/batch-import/service";
+import type {
+  QuestionWorkspaceCapabilities,
+  QuestionWorkspaceScope,
+} from "@/lib/questions/workspace";
+
+export type JsonImportPreviewAction = (input: {
+  jsonText: string;
+}) => Promise<BatchImportPreview>;
+
+export type JsonImportCommitAction = (input: {
+  jsonText: string;
+}) => Promise<BatchImportSummary>;
+
+type BatchImportJsonPanelProps = {
+  capabilities: QuestionWorkspaceCapabilities;
+  importAction: JsonImportCommitAction;
+  previewAction: JsonImportPreviewAction;
+  questionsHref: string;
+  resultDescription: string;
+  reviewHref: string;
+  scope: QuestionWorkspaceScope;
+  scopeLabel: string;
+  tagIds?: string[];
+};
 
 const starterJson = JSON.stringify(
   {
@@ -217,7 +237,18 @@ function buildAiJsonPrompt(tagIds: string[]) {
   ].join("\n\n");
 }
 
-export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
+export function BatchImportJsonPanel({
+  capabilities,
+  importAction,
+  previewAction,
+  questionsHref,
+  resultDescription,
+  reviewHref,
+  scope,
+  scopeLabel,
+  tagIds = [],
+}: BatchImportJsonPanelProps) {
+  const isReadOnly = !capabilities.canImport;
   const router = useRouter();
   const [jsonText, setJsonText] = useState("");
   const [preview, setPreview] = useState<BatchImportPreview | null>(null);
@@ -242,7 +273,7 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
     setSummary(null);
 
     try {
-      const result = await previewManualJsonImport({ jsonText });
+      const result = await previewAction({ jsonText });
       setPreview(result);
       toast.success("Import preview ready.");
     } catch (error) {
@@ -262,7 +293,7 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
     setImporting(true);
 
     try {
-      const result = await importManualJsonDrafts({ jsonText });
+      const result = await importAction({ jsonText });
       setSummary(result);
       setJsonText("");
       setPreview(null);
@@ -302,6 +333,7 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="space-y-3">
         <Textarea
+          disabled={isReadOnly}
           value={jsonText}
           onChange={(event) => updateJsonText(event.target.value)}
           className="min-h-[520px] font-mono text-sm"
@@ -311,7 +343,7 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
-            disabled={previewing || !jsonText.trim()}
+            disabled={isReadOnly || previewing || !jsonText.trim()}
             onClick={previewImport}
           >
             {previewing ? (
@@ -322,7 +354,9 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
           <Button
             type="button"
             variant="secondary"
-            disabled={importing || !preview?.validCount || !jsonText.trim()}
+            disabled={
+              isReadOnly || importing || !preview?.validCount || !jsonText.trim()
+            }
             onClick={importDrafts}
           >
             {importing ? <LoaderCircle className="size-4 animate-spin" /> : null}
@@ -356,7 +390,11 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
         <div className="rounded-md border p-3">
           <p className="text-sm font-medium">Rules</p>
           <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-            <li>Questions are always imported as drafts.</li>
+            <li>Questions are always imported as drafts into {scopeLabel}.</li>
+            <li>
+              Scope: {scope.kind === "global" ? "global" : `Library · ${scope.role}`}
+              {isReadOnly ? " · read-only" : ""}.
+            </li>
             <li>Tags must already exist by exact tag_id.</li>
             <li>Unsafe HTML is sanitized before saving.</li>
             <li>FRQ/mixed questions can omit answer_spec.</li>
@@ -369,8 +407,7 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
                 {summary.errorCount > 0 ? "Import completed with errors" : "Import completed"}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                All imported questions are saved as Draft and can be reviewed in
-                Admin Questions.
+                {resultDescription}
               </p>
             </div>
             {summary.validationErrorReasons.length ? (
@@ -422,18 +459,10 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
                   ))}
                 </div>
                 <Button asChild size="sm" variant="outline">
-                  <Link href="/admin/questions">Review in Questions</Link>
+                  <Link href={questionsHref}>Open questions</Link>
                 </Button>
                 <Button asChild size="sm">
-                  <Link
-                    href={
-                      summary.createdQuestions.length === 1
-                        ? `/admin/review?search=${encodeURIComponent(
-                            summary.createdQuestions[0].questionCode,
-                          )}`
-                        : "/admin/review"
-                    }
-                  >
+                  <Link href={reviewHref}>
                     Review imported drafts
                   </Link>
                 </Button>
@@ -476,7 +505,7 @@ export function BatchImportJsonPanel({ tagIds = [] }: { tagIds?: string[] }) {
                           showValues
                         />
                         <p className="mt-2">
-                          Preserved for admin review only. No files are
+                          Preserved for scoped review only. No files are
                           downloaded, uploaded, or attached by Batch Import v2.
                         </p>
                       </div>

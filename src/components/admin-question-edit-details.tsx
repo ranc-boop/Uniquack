@@ -38,11 +38,20 @@ export function AdminQuestionEditDetails({
     <QuestionEditor
       action={updateQuestion}
       assets={assets}
+      capabilities={{
+        canArchive: true,
+        canCreate: true,
+        canEdit: true,
+        canImport: true,
+        canPublishGlobal: true,
+        canReview: true,
+      }}
       defaultOpen={defaultOpen}
       importedAssetReferences={importedAssetReferences}
       question={question}
       readiness={readiness}
       returnTo={returnTo}
+      scope={{ kind: "global" }}
       selectedTaxonomyTagIds={selectedTaxonomyTagIds}
       sourceFiles={sourceFiles}
       taxonomyCatalog={taxonomyCatalog}
