@@ -16,6 +16,8 @@ async function read(relativePath) {
 
 const taxonomyMigration = await read("supabase/clean-migrations/0003_taxonomy_runtime_source.sql");
 const taxonomyCatalogMigration = await read("supabase/clean-migrations/0056_add_math_taxonomy_v2_catalog.sql");
+const assignmentReadinessMigration = await read("supabase/clean-migrations/0057_assignment_readiness_and_anon_search_hardening.sql");
+const anonymousPublicQuestionPolicyMigration = await read("supabase/clean-migrations/0058_anonymous_public_question_policy_evaluation.sql");
 const localTaxonomySeed = await read("supabase/clean-seeds/0002_local_taxonomy_seed.sql");
 const reviewDraftsQuestionBankMigration = await read("supabase/clean-migrations/0006_review_drafts_and_question_bank.sql");
 const questionSearchMigration = await read("supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql");
@@ -80,6 +82,34 @@ assert(
   "local taxonomy seed must add local-only rows without overwriting canonical catalog rows",
 );
 console.log("PASS local taxonomy seed preserves the canonical 0056 catalog after fresh reset");
+
+assert(
+  assignmentReadinessMigration.includes(
+    "grant execute on function private.is_question_bank_member(uuid) to anon",
+  ) &&
+    assignmentReadinessMigration.includes("status = 'draft'") &&
+    assignmentReadinessMigration.includes("assigned_at = null") &&
+    assignmentReadinessMigration.includes("unreviewed_library_question") &&
+    assignmentReadinessMigration.includes("assert_assignment_library_questions_ready") &&
+    assignmentReadinessMigration.includes("assignments_enforce_library_readiness") &&
+    assignmentReadinessMigration.includes("assignment_items_enforce_library_readiness") &&
+    assignmentReadinessMigration.includes("questions_prevent_assigned_library_regression") &&
+    !assignmentReadinessMigration.includes("delete from public.student_assignment_progress") &&
+    !assignmentReadinessMigration.includes("delete from public.questions"),
+  "0057 must repair anonymous public search and quarantine unreviewed Assignment delivery without deleting evidence.",
+);
+console.log("PASS Assignment readiness and anonymous public-search hardening is forward-only");
+assert(
+  anonymousPublicQuestionPolicyMigration.includes(
+    "grant execute on function private.can_read_question_child(uuid) to anon",
+  ) &&
+    anonymousPublicQuestionPolicyMigration.includes(
+      "grant execute on function private.can_manage_question_child(uuid) to anon",
+    ) &&
+    !anonymousPublicQuestionPolicyMigration.includes("to public"),
+  "0058 must grant only the anonymous child-policy helper execution required for public question reads.",
+);
+console.log("PASS anonymous public-question child policy evaluation uses least-scope grants");
 
 assert(questionSearchMigration.includes("create or replace function public.search_questions_by_taxonomy"), "taxonomy search RPC is missing");
 assert(questionSearchMigration.includes("matched_tags jsonb"), "taxonomy search RPC does not return matched tag metadata");
