@@ -15,6 +15,8 @@ async function read(relativePath) {
 }
 
 const taxonomyMigration = await read("supabase/clean-migrations/0003_taxonomy_runtime_source.sql");
+const taxonomyCatalogMigration = await read("supabase/clean-migrations/0056_add_math_taxonomy_v2_catalog.sql");
+const localTaxonomySeed = await read("supabase/clean-seeds/0002_local_taxonomy_seed.sql");
 const reviewDraftsQuestionBankMigration = await read("supabase/clean-migrations/0006_review_drafts_and_question_bank.sql");
 const questionSearchMigration = await read("supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql");
 assert(taxonomyMigration.includes("create table if not exists public.taxonomy_nodes"), "taxonomy_nodes table is missing");
@@ -49,6 +51,35 @@ assert(
 const legacySubjectRoot = ["subject", "math"].join(".");
 assert(!taxonomyMigration.includes(legacySubjectRoot), `${legacySubjectRoot} should not exist in replacement taxonomy`);
 console.log("PASS math-prefixed taxonomy schema and seed are present");
+
+assert(
+  !/^\s*(?:delete\s+from|truncate\s+(?:table\s+)?)/im.test(taxonomyCatalogMigration) &&
+    !taxonomyCatalogMigration.includes("public.question_taxonomy_assignments") &&
+    !taxonomyCatalogMigration.includes("public.question_rubric_steps") &&
+    !taxonomyCatalogMigration.includes("public.practice_weakness_links"),
+  "forward taxonomy catalog migration must not reset taxonomy references or product evidence",
+);
+assert(
+  taxonomyCatalogMigration.includes("0056 rejected: existing taxonomy node identifiers have incompatible structure") &&
+    taxonomyCatalogMigration.includes("on conflict (tag_id) do nothing") &&
+    taxonomyCatalogMigration.includes("on conflict (from_tag_id, to_tag_id, edge_kind) do nothing") &&
+    taxonomyCatalogMigration.includes("select private.rebuild_taxonomy_node_closure()"),
+  "forward taxonomy catalog migration must fail closed, preserve existing rows, and rebuild only derived closure",
+);
+assert(
+  taxonomyCatalogMigration.includes("<> 430") &&
+    taxonomyCatalogMigration.includes("<> 449") &&
+    taxonomyCatalogMigration.includes("<> 16") &&
+    taxonomyCatalogMigration.includes("catalog assignability does not match the active leaf graph"),
+  "forward taxonomy catalog migration must embed and validate the complete v2 graph",
+);
+console.log("PASS additive Math taxonomy v2 catalog migration is forward-only and fail-closed");
+assert(
+  (localTaxonomySeed.match(/on conflict \([^)]*\) do nothing/g) ?? []).length === 5 &&
+    !/on conflict[\s\S]{0,120}do update/i.test(localTaxonomySeed),
+  "local taxonomy seed must add local-only rows without overwriting canonical catalog rows",
+);
+console.log("PASS local taxonomy seed preserves the canonical 0056 catalog after fresh reset");
 
 assert(questionSearchMigration.includes("create or replace function public.search_questions_by_taxonomy"), "taxonomy search RPC is missing");
 assert(questionSearchMigration.includes("matched_tags jsonb"), "taxonomy search RPC does not return matched tag metadata");
