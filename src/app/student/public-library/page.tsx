@@ -13,7 +13,7 @@ export default async function StudentPublicLibraryPage() {
     <StudentWorkspaceShell
       eyebrow="Discovery"
       title="Public Library"
-      description="Browse public study material while private teacher banks stay private."
+      description="Browse public study material while private teacher Libraries stay private."
       actions={
         <Button asChild>
           <Link href="/questions">Browse public questions</Link>
@@ -23,8 +23,8 @@ export default async function StudentPublicLibraryPage() {
       <section className="grid gap-4 md:grid-cols-3">
         {[
           ["Public does not mean verified", "Verified content still needs a review signal."],
-          ["Pull later, practice now", "Use the current public question bank for study rounds."],
-          ["Private stays private", "Assignments do not expose the full teacher source bank."],
+          ["Pull later, practice now", "Use the current Public Library for study rounds."],
+          ["Private stays private", "Assignments do not expose the full teacher source Library."],
         ].map(([title, body]) => (
           <article className="student-panel p-5" key={title}>
             <h2 className="text-lg font-semibold text-slate-950">{title}</h2>

@@ -51,13 +51,13 @@ function SetupNeededState() {
       <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
         <p className="student-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Bank sharing tables are not available yet.
+          Library sharing tables are not available yet.
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
           Apply clean migration 0026, then return to this member workbench.
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Banks / Library</Link>
+          <Link href="/teacher/banks">Back to Libraries</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -113,10 +113,10 @@ export default async function TeacherBankMembersPage({
         actions={
           <>
             <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
+              <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
             </Button>
             <BankQuickAction href="/teacher/banks/join" icon={Share2}>
-              Join another bank
+              Join another Library
             </BankQuickAction>
           </>
         }
@@ -134,8 +134,8 @@ export default async function TeacherBankMembersPage({
         title={bank.name}
       >
         <p>
-          Manage explicit bank membership. Classroom membership does not grant
-          access to this Question Bank.
+          Manage explicit Library membership. Classroom membership does not grant
+          access to this Library.
         </p>
       </BankHeroPanel>
 
@@ -155,7 +155,7 @@ export default async function TeacherBankMembersPage({
 
       <section className="grid gap-3 md:grid-cols-3">
         <BankMetricCard
-          description="Active teacher collaborators on this bank."
+          description="Active teacher collaborators on this Library."
           icon={Users}
           label="Active members"
           value={activeMembers.length}
@@ -283,7 +283,7 @@ export default async function TeacherBankMembersPage({
               </form>
             ) : (
               <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                Only bank owners can create or revoke share codes.
+                Only Library owners can create or revoke share codes.
               </p>
             )}
           </section>

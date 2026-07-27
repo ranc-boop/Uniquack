@@ -13,18 +13,17 @@ import { createClient } from "@/lib/supabase/server";
 
 const studentNavItems = [
   { href: "/practice", label: "Practice" },
-  { href: "/questions", label: "Question Bank" },
+  { href: "/questions", label: "Public Library" },
   { href: "/mistakes", label: "Mistakes" },
   { href: "/videos", label: "Videos" },
 ];
 
 const teacherNavItems = [
   { href: "/teacher", label: "Dashboard" },
-  { href: "/teacher/banks", label: "Question Bank" },
-  { href: "/teacher/ai-parsing", label: "AI Parsing" },
-  { href: "/teacher/blueprints", label: "Blueprint" },
-  { href: "/teacher/classrooms", label: "Classroom" },
-  { href: "/teacher/publish", label: "Publish" },
+  { href: "/teacher/banks", label: "Libraries" },
+  { href: "/teacher/blueprints", label: "Blueprints" },
+  { href: "/teacher/classrooms", label: "Classrooms" },
+  { href: "/teacher/publish", label: "Assignments" },
   { href: "/teacher/progress", label: "Progress" },
 ];
 

@@ -168,7 +168,7 @@ function assignmentReadinessReasons({
   const reasons: string[] = [];
 
   if (bankQuestionStatus !== "active") {
-    reasons.push("Bank question is not active.");
+    reasons.push("Library question is not active.");
   }
 
   if (!question) {
@@ -189,7 +189,7 @@ function assignmentReadinessReasons({
   }
 
   if (question.owner_bank_id && question.owner_bank_id !== bankId) {
-    reasons.push("Question belongs to a different source bank.");
+    reasons.push("Question belongs to a different source Library.");
   }
 
   return reasons;
@@ -562,7 +562,7 @@ export function verifyPublishableSelection({
 
   if (missing.length) {
     throw new Error(
-      "Some selected questions are no longer assignment-ready. Reload Publish and choose reviewed bank questions again.",
+      "Some selected questions are no longer assignment-ready. Reload Assignments and choose reviewed Library questions again.",
     );
   }
 

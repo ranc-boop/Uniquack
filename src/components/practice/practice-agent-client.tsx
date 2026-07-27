@@ -929,7 +929,7 @@ export function PracticeAgentClient({
       !includePublicCatalog &&
       selectedBankIds.length === 0
     ) {
-      setError("Choose at least one Library or the Public Question Bank.");
+      setError("Choose at least one Library or the Public Library.");
       return;
     }
 

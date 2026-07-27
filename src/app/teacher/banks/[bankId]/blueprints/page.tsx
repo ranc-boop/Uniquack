@@ -46,7 +46,7 @@ function SetupNeededState({ message }: { message: string }) {
           {message}
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Banks / Library</Link>
+          <Link href="/teacher/banks">Back to Libraries</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -72,7 +72,7 @@ export default async function TeacherBankBlueprintsPage({
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
       return (
-        <SetupNeededState message="Apply clean migration 0025 before using bank blueprint links." />
+        <SetupNeededState message="Apply clean migration 0025 before using Library Blueprint links." />
       );
     }
 
@@ -90,7 +90,7 @@ export default async function TeacherBankBlueprintsPage({
   } catch (error) {
     if (error instanceof BlueprintLibrarySchemaMissingError) {
       return (
-        <SetupNeededState message="Apply clean migration 0031 before using bank-linked Blueprints." />
+        <SetupNeededState message="Apply clean migration 0031 before using Library-linked Blueprints." />
       );
     }
 
@@ -105,12 +105,12 @@ export default async function TeacherBankBlueprintsPage({
         actions={
           <>
             <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
+              <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
             </Button>
             <Button asChild>
               <Link href={`/teacher/blueprints/new?bankId=${bank.id}`}>
                 <Plus aria-hidden="true" className="h-4 w-4" />
-                Build from bank questions
+                Build from Library questions
               </Link>
             </Button>
           </>
@@ -125,13 +125,13 @@ export default async function TeacherBankBlueprintsPage({
             </BankBadge>
           </>
         }
-        eyebrow="Bank blueprints"
+        eyebrow="Library Blueprints"
         title={`Blueprint links for ${bank.name}`}
       >
         <p>
-          Blueprints linked to this bank are planning assets. They can organize
+          Blueprints linked to this Library are planning assets. They can organize
           reusable question patterns, but they do not create student-visible
-          work without Review Draft and bank approval gates.
+          work without Review Draft and Library approval gates.
         </p>
       </BankHeroPanel>
 
@@ -145,8 +145,8 @@ export default async function TeacherBankBlueprintsPage({
               <Link href="/teacher/blueprints">Open Blueprint Library</Link>
             </Button>
           }
-          description="Bank-linked Blueprints stay visible to bank members only unless the Blueprint has broader visibility."
-          title="Blueprints linked to this bank"
+          description="Library-linked Blueprints stay visible to Library members only unless the Blueprint has broader visibility."
+          title="Blueprints linked to this Library"
         />
         <div className="p-5">
           {links.length ? (
@@ -173,7 +173,7 @@ export default async function TeacherBankBlueprintsPage({
                     </h2>
                     <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
                       {link.blueprint.description ||
-                        "Bank-linked reusable planning asset."}
+                        "Library-linked reusable planning asset."}
                     </p>
                     <dl className="mt-4 grid gap-2 text-sm md:grid-cols-2">
                       <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -224,16 +224,16 @@ export default async function TeacherBankBlueprintsPage({
             <div className="p-8 text-center">
               <Sparkles aria-hidden="true" className="mx-auto h-10 w-10 text-sky-600" />
               <h2 className="mt-4 text-2xl font-bold text-slate-950">
-                No Blueprints linked to this bank yet.
+                No Blueprints linked to this Library yet.
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Blueprints generated from this bank or imported into this bank
+                Blueprints generated from this Library or imported into this Library
                 will appear here.
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 <Button asChild>
                   <Link href={`/teacher/blueprints/new?bankId=${bank.id}`}>
-                    Create Blueprint from this bank
+                    Create Blueprint from this Library
                   </Link>
                 </Button>
                 <Button asChild variant="outline">

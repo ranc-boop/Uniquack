@@ -37,7 +37,7 @@ type TeacherClassroomDetailPageProps = {
 };
 
 function sourceKindLabel(kind: string) {
-  if (kind === "question_bank") return "Question Bank";
+  if (kind === "question_bank") return "Library";
   if (kind === "course_builder_run") return "Course Builder";
   if (kind === "practice_framework") return "Practice framework";
   return "Manual";
@@ -103,7 +103,7 @@ export default async function TeacherClassroomDetailPage({
                 </h1>
                 <p className="max-w-3xl text-base leading-7 text-slate-600">
                   {classroom.description ||
-                    "Review joined students, delivery history, and evidence for selected bank content."}
+                    "Review joined students, delivery history, and evidence for selected Library content."}
                 </p>
               </div>
             </div>
@@ -180,7 +180,7 @@ export default async function TeacherClassroomDetailPage({
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
                 Students can join the roster, but joining a class does not grant
-                access to the teacher&apos;s source banks.
+                access to the teacher&apos;s source Libraries.
               </p>
             </div>
             <code className="rounded-lg border border-sky-200 bg-white px-4 py-3 text-2xl font-bold tracking-[0.16em] text-slate-950">
@@ -200,7 +200,7 @@ export default async function TeacherClassroomDetailPage({
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
                 Manage join-code rotation, disablement, and reopening from
-                Settings. Codes never grant source bank access.
+                Settings. Codes never grant source Library access.
               </p>
             </div>
             <Button asChild variant="outline">
@@ -333,10 +333,10 @@ export default async function TeacherClassroomDetailPage({
               <div className="p-8 text-center">
                 <p className="teacher-eyebrow">No assignment history</p>
                 <h3 className="mt-2 text-xl font-bold text-slate-950">
-                  Publish selected bank content to start class delivery.
+                  Assign selected Library content to start class delivery.
                 </h3>
                 <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                  New work should start from reviewed bank content. This class
+                  New work should start from reviewed Library content. This class
                   overview will show delivery and practice evidence afterward.
                 </p>
                 <div className="mt-5">
@@ -458,7 +458,7 @@ export default async function TeacherClassroomDetailPage({
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {classroom.linkedBlueprintCount === null
                 ? "Blueprints linked to this class will appear here. Use Blueprint Library to organize plans before publishing."
-                : `${classroom.linkedBlueprintCount} blueprint(s) are connected through assigned bank content.`}
+                : `${classroom.linkedBlueprintCount} blueprint(s) are connected through assigned Library content.`}
             </p>
             <Button asChild className="mt-4 w-full" variant="outline">
               <Link href="/teacher/blueprints">Open Blueprint Library</Link>

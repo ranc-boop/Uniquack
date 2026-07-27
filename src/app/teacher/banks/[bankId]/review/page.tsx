@@ -1,7 +1,8 @@
 ﻿import Link from "next/link";
-import { notFound } from "next/navigation";
+import Image from "next/image";
+import { notFound, redirect } from "next/navigation";
 
-import { AlertTriangle, ClipboardCheck, FileText, Pencil, Upload } from "lucide-react";
+import { AlertTriangle, Pencil, Upload } from "lucide-react";
 
 import { FormSubmitButton } from "@/components/form-submit-button";
 import {
@@ -11,16 +12,17 @@ import {
   SolutionText,
 } from "@/components/math-content";
 import { QuestionAnswerSummary } from "@/components/question-answer-summary";
+import { QuestionAssetsPanel } from "@/components/question-assets-panel";
+import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import { Button } from "@/components/ui/button";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
-  bankMemberRoleLabel,
   canManageBankContent,
   getTeacherQuestionBankDetail,
   listBankReviewDraftQuestions,
   QuestionBankSchemaMissingError,
-  questionBankVisibilityLabel,
   type BankReviewDraftQuestion,
 } from "@/lib/question-banks";
 import {
@@ -36,9 +38,20 @@ import {
   rejectBankReviewDraftQuestion,
 } from "../../actions";
 import {
+  cancelBankQuestionSourceFileUpload,
+  createBankQuestionSourceFileSignedUrl,
+  deleteBankQuestionAsset,
+  deleteBankQuestionSourceFile,
+  ensureBankQuestionDraftForSourceUpload,
+  ensureBankQuestionDraftForUpload,
+  finalizeBankQuestionAssetUpload,
+  finalizeBankQuestionSourceFileUpload,
+  reserveBankQuestionAssetUpload,
+  reserveBankQuestionSourceFileUpload,
+  updateBankQuestionAssetDisplay,
+} from "../../bank-media-actions";
+import {
   BankBadge,
-  BankHeroPanel,
-  BankMetricCard,
   BankQuickAction,
   BankRouteTabs,
   BankSectionHeader,
@@ -184,13 +197,13 @@ function SetupNeededState() {
       <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
         <p className="student-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Bank Review Draft scope is not available yet.
+          Library Review Draft scope is not available yet.
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply clean migration 0027 before approving drafts into a bank.
+          Apply clean migration 0027 before approving drafts into a Library.
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Banks / Library</Link>
+          <Link href="/teacher/banks">Back to Libraries</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -202,14 +215,27 @@ export default async function TeacherBankReviewPage({
   searchParams,
 }: {
   params: Promise<{ bankId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    page?: string;
+    q?: string;
+    saved?: string;
+    status?: string;
+  }>;
 }) {
   const profile = await requireTeacher();
   const { bankId } = await params;
   const query = await searchParams;
   const supabase = await createClient();
   let detail;
-  let draftQuestions = [];
+  const pageSize = 25;
+  const page = Math.max(1, Number.parseInt(query.page ?? "1", 10) || 1);
+  const reviewStatus =
+    query.status === "needs_more_evidence" ||
+    query.status === "pending_review"
+      ? query.status
+      : undefined;
+  let draftPage;
 
   try {
     detail = await getTeacherQuestionBankDetail({
@@ -217,7 +243,14 @@ export default async function TeacherBankReviewPage({
       profileId: profile.id,
       supabase,
     });
-    draftQuestions = await listBankReviewDraftQuestions({ bankId, supabase });
+    draftPage = await listBankReviewDraftQuestions({
+      bankId,
+      page,
+      pageSize,
+      query: query.q,
+      reviewStatus,
+      supabase,
+    });
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
       return <SetupNeededState />;
@@ -230,53 +263,62 @@ export default async function TeacherBankReviewPage({
     notFound();
   }
 
+  const draftQuestions = draftPage.items;
+  const totalPages = Math.max(1, Math.ceil(draftPage.total / pageSize));
   const { bank, currentUserRole } = detail;
   const canApprove = canManageBankContent(currentUserRole);
-  const warningCount = draftQuestions.reduce(
-    (sum, question) => sum + question.warningCount,
-    0,
-  );
+  const assetActions = {
+    deleteAsset: deleteBankQuestionAsset.bind(null, bank.id),
+    ensureDraft: ensureBankQuestionDraftForUpload.bind(null, bank.id),
+    finalizeUpload: finalizeBankQuestionAssetUpload.bind(null, bank.id),
+    reserveUpload: reserveBankQuestionAssetUpload.bind(null, bank.id),
+    updateDisplay: updateBankQuestionAssetDisplay.bind(null, bank.id),
+  };
+  const sourceFileActions = {
+    cancelUpload: cancelBankQuestionSourceFileUpload.bind(null, bank.id),
+    createSignedUrl: createBankQuestionSourceFileSignedUrl.bind(null, bank.id),
+    deleteSourceFile: deleteBankQuestionSourceFile.bind(null, bank.id),
+    ensureDraft: ensureBankQuestionDraftForSourceUpload.bind(null, bank.id),
+    finalizeUpload: finalizeBankQuestionSourceFileUpload.bind(null, bank.id),
+    reserveUpload: reserveBankQuestionSourceFileUpload.bind(null, bank.id),
+  };
+  const pageHref = (nextPage: number) => {
+    const nextQuery = new URLSearchParams();
+    if (query.q?.trim()) nextQuery.set("q", query.q.trim());
+    if (reviewStatus) nextQuery.set("status", reviewStatus);
+    if (nextPage > 1) nextQuery.set("page", String(nextPage));
+    const suffix = nextQuery.toString();
+    return `/teacher/banks/${bank.id}/review${suffix ? `?${suffix}` : ""}`;
+  };
+  if (page > totalPages) {
+    redirect(pageHref(totalPages));
+  }
 
   return (
     <BankWorkbenchPage>
-      <BankHeroPanel
-        actions={
+      <section className="rounded-lg border bg-white shadow-sm">
+        <BankSectionHeader
+          action={
           <>
             <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
+              <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
             </Button>
-            <BankQuickAction
-              href={`/teacher/banks/${bank.id}/imports`}
-              icon={Upload}
-            >
-              Import material
-            </BankQuickAction>
+            {canApprove ? (
+              <BankQuickAction
+                href={`/teacher/banks/${bank.id}/imports`}
+                icon={Upload}
+              >
+                Import material
+              </BankQuickAction>
+            ) : null}
           </>
         }
-        badges={
-          <>
-            <BankBadge tone="sky">
-              {questionBankVisibilityLabel(bank.visibility)}
-            </BankBadge>
-            <BankBadge tone="blue">
-              {bankMemberRoleLabel(currentUserRole ?? "viewer")}
-            </BankBadge>
-          </>
-        }
-        eyebrow="Teacher QA queue"
-        title={`Review Drafts for ${bank.name}`}
-      >
-        <p>
-          Approve drafts into this bank. This does not publish them to the
-          public library.
-        </p>
-        <p className="mt-2 text-sm text-slate-600">
-          Approval adds reviewed content to this bank only and does not create
-          an assignment.
-        </p>
-      </BankHeroPanel>
+          description={`Role: ${currentUserRole ?? "viewer"}. Approve drafts into this Library. This does not publish them to the public library or create an Assignment.`}
+          eyebrow="Teacher QA queue · Library / Review"
+          title={`Review Drafts for ${bank.name}`}
+        />
+      </section>
 
-      <TeacherWorkspaceNav />
       <BankRouteTabs bankId={bank.id} />
 
       {query.saved ? (
@@ -290,32 +332,41 @@ export default async function TeacherBankReviewPage({
         </section>
       ) : null}
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <BankMetricCard
-          description="Draft questions scoped to this bank."
-          icon={ClipboardCheck}
-          label="Pending drafts"
-          value={draftQuestions.length}
-        />
-        <BankMetricCard
-          description="Warnings to inspect before approval."
-          icon={AlertTriangle}
-          label="Warnings"
-          value={warningCount}
-        />
-        <BankMetricCard
-          description="Only owners and editors can approve into a bank."
-          icon={FileText}
-          label="Review role"
-          value={canApprove ? "Can approve" : "Read-only"}
-        />
-      </section>
-
       <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
         <BankSectionHeader
-          description="Source lineage, taxonomy suggestions, and validation warnings remain attached for bank-level review."
+          description="Source lineage, taxonomy suggestions, and validation warnings remain attached for Library review."
           title="Pending private drafts"
         />
+        <form className="grid gap-3 border-y border-slate-200 p-4 md:grid-cols-[minmax(14rem,1fr)_14rem_auto]">
+          <div className="space-y-2">
+            <Label htmlFor="review-draft-search">Search drafts</Label>
+            <Input
+              defaultValue={query.q ?? ""}
+              id="review-draft-search"
+              name="q"
+              placeholder="Question code or title"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="review-draft-status">Review state</Label>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              defaultValue={reviewStatus ?? ""}
+              id="review-draft-status"
+              name="status"
+            >
+              <option value="">All pending drafts</option>
+              <option value="pending_review">Pending review</option>
+              <option value="needs_more_evidence">Needs fix</option>
+            </select>
+          </div>
+          <div className="flex items-end gap-2">
+            <Button type="submit">Filter</Button>
+            <Button asChild type="button" variant="outline">
+              <Link href={`/teacher/banks/${bank.id}/review`}>Reset</Link>
+            </Button>
+          </div>
+        </form>
         <div className="divide-y divide-slate-100">
           {draftQuestions.length ? (
             draftQuestions.map((question) => {
@@ -394,7 +445,7 @@ export default async function TeacherBankReviewPage({
                             value={question.id}
                           />
                           <FormSubmitButton pendingLabel="Approving...">
-                            Approve into bank
+                            Approve into Library
                           </FormSubmitButton>
                         </form>
                       ) : null}
@@ -557,7 +608,7 @@ export default async function TeacherBankReviewPage({
                     </details>
                   ) : (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-                      You can inspect this draft, but only bank owners and
+                      You can inspect this draft, but only Library owners and
                       editors can edit, reject, or approve Review Drafts.
                     </div>
                   )}
@@ -783,10 +834,81 @@ export default async function TeacherBankReviewPage({
                     </div>
                   </details>
 
+                  <section className="grid gap-3 lg:grid-cols-2">
+                    {canApprove ? (
+                      <>
+                        <QuestionAssetsPanel
+                          actions={assetActions}
+                          initialAssets={question.assets}
+                          questionId={question.id}
+                        />
+                        <QuestionSourceFilesPanel
+                          actions={sourceFileActions}
+                          initialSourceFiles={question.sourceFiles}
+                          questionId={question.id}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-3 rounded-md border bg-muted/20 p-3 text-sm">
+                          <p className="font-medium">
+                            Reviewed images: {question.assets.length}
+                          </p>
+                          {question.assets.length ? (
+                            <div className="grid grid-cols-2 gap-2">
+                              {question.assets.map((asset) => (
+                                <figure
+                                  className="overflow-hidden rounded border bg-white"
+                                  key={asset.id}
+                                >
+                                  <Image
+                                    alt={asset.originalFilename}
+                                    className="h-24 w-full object-contain"
+                                    height={96}
+                                    src={asset.publicUrl}
+                                    width={160}
+                                  />
+                                  <figcaption className="truncate border-t px-2 py-1 text-xs">
+                                    {asset.originalFilename}
+                                  </figcaption>
+                                </figure>
+                              ))}
+                            </div>
+                          ) : null}
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Viewer access can inspect the draft but cannot
+                            upload, hide, or delete images.
+                          </p>
+                        </div>
+                        <div className="space-y-2 rounded-md border bg-muted/20 p-3 text-sm">
+                          <p className="font-medium">
+                            Private source files: {question.sourceFiles.length}
+                          </p>
+                          {question.sourceFiles.length ? (
+                            <ul className="space-y-1 text-xs">
+                              {question.sourceFiles.map((sourceFile) => (
+                                <li
+                                  className="truncate rounded border bg-white px-2 py-1.5"
+                                  key={sourceFile.id}
+                                >
+                                  {sourceFile.originalFilename}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Source-file download and mutation require an owner
+                            or editor capability.
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </section>
+
                   <div className="grid gap-3 lg:grid-cols-[1fr_0.8fr]">
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
                       Approval adds this question to {bank.name}. It stays
-                      bank-scoped and is not globally published.
+                      private to this Library and is not globally published.
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
                       {generatedFromBlueprint ? (
@@ -800,7 +922,7 @@ export default async function TeacherBankReviewPage({
                             ) : null}
                           </div>
                           <p className="mt-2">
-                            Target Bank: <span className="font-semibold">{bank.name}</span>
+                            Target Library: <span className="font-semibold">{bank.name}</span>
                             {sourceQuestionCount ? (
                               <>
                                 {" "}
@@ -842,20 +964,43 @@ export default async function TeacherBankReviewPage({
             <div className="p-8 text-center">
               <p className="teacher-eyebrow">No pending drafts</p>
               <h3 className="mt-2 text-xl font-bold text-slate-950">
-                This bank has no private Review Drafts waiting.
+                This Library has no private Review Drafts waiting.
               </h3>
               <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Import material into the bank to create review-gated draft
+                Import material into the Library to create review-gated draft
                 questions.
               </p>
-              <Button asChild className="mt-5" variant="outline">
-                <Link href={`/teacher/banks/${bank.id}/imports`}>
-                  Import material
-                </Link>
-              </Button>
+              {canApprove ? (
+                <Button asChild className="mt-5" variant="outline">
+                  <Link href={`/teacher/banks/${bank.id}/imports`}>
+                    Import material
+                  </Link>
+                </Button>
+              ) : null}
             </div>
           )}
         </div>
+        {draftPage.total ? (
+          <div className="flex items-center justify-between border-t border-slate-200 p-4 text-sm">
+            <span>
+              {draftPage.total} result{draftPage.total === 1 ? "" : "s"} · Page{" "}
+              {page} of {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <Button asChild disabled={page <= 1} size="sm" variant="outline">
+                <Link href={pageHref(Math.max(1, page - 1))}>Previous</Link>
+              </Button>
+              <Button
+                asChild
+                disabled={page >= totalPages}
+                size="sm"
+                variant="outline"
+              >
+                <Link href={pageHref(Math.min(totalPages, page + 1))}>Next</Link>
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </section>
     </BankWorkbenchPage>
   );

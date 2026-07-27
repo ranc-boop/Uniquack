@@ -4,12 +4,12 @@ export default function TeacherBankImportsLoading() {
   return (
     <AIPdfImportLoadingSkeleton
       backHref="/teacher/banks"
-      backLabel="Back to banks"
-      description="Loading this bank's PDF import controls, Review Draft handoff, and recent bank-scoped imports."
-      detailsLabel="Loading private bank import access..."
-      importTitle="Create bank Review Drafts"
+      backLabel="Back to Libraries"
+      description="Loading this Library's PDF import controls, Review Draft handoff, and recent Library-scoped imports."
+      detailsLabel="Loading private Library import access..."
+      importTitle="Create Library Review Drafts"
       showSettingsAction={false}
-      title="Bank AI Parsing"
+      title="Library AI Parsing"
     />
   );
 }

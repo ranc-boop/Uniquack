@@ -16,12 +16,12 @@ export default async function JoinTeacherBankPage() {
       <section className="teacher-hero">
         <div className="space-y-5">
           <div className="space-y-2">
-            <p className="teacher-eyebrow">Join Bank by Share Code</p>
+            <p className="teacher-eyebrow">Join Library by Share Code</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Join a shared Question Bank.
+              Join a shared Library.
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Enter a teacher-issued bank code. Joining a bank is separate from
+              Enter a teacher-issued Library code. Joining a Library is separate from
               joining a classroom.
             </p>
           </div>
@@ -32,10 +32,10 @@ export default async function JoinTeacherBankPage() {
       <form action={joinQuestionBankByCode} className="teacher-panel overflow-hidden">
         <div className="border-b border-slate-200 bg-white/70 p-6">
           <h2 className="text-xl font-bold text-slate-950">
-            Bank collaboration code
+            Library collaboration code
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Share codes grant explicit bank membership. Classroom membership
+            Share codes grant explicit Library membership. Classroom membership
             never grants access to a teacher bank.
           </p>
         </div>
@@ -54,15 +54,15 @@ export default async function JoinTeacherBankPage() {
             />
           </label>
           <div className="rounded-lg border border-sky-100 bg-sky-50/70 p-4 text-sm leading-6 text-sky-950">
-            Students should use classroom join codes, not bank share codes.
-            Bank access is for teacher collaboration and content review.
+            Students should use classroom join codes, not Library share codes.
+            Library access is for teacher collaboration and content review.
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-6">
           <Button asChild variant="outline">
-            <Link href="/teacher/banks">Back to Banks / Library</Link>
+            <Link href="/teacher/banks">Back to Libraries</Link>
           </Button>
-          <Button type="submit">Join Question Bank</Button>
+          <Button type="submit">Join Library</Button>
         </div>
       </form>
     </main>

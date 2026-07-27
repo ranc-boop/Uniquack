@@ -128,7 +128,7 @@ export default async function TeacherBlueprintDetailPage({
       return (
         <TeacherWorkspaceShell
           title="Blueprint Library"
-          description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and bank approval."
+          description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and Library approval."
         >
           <TeacherWorkspaceNav />
           <SetupNeededState />
@@ -187,7 +187,7 @@ export default async function TeacherBlueprintDetailPage({
           </Link>
         </Button>
       }
-      description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and bank approval."
+      description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and Library approval."
       eyebrow="Blueprint detail"
       title={blueprint.title}
     >
@@ -249,7 +249,7 @@ export default async function TeacherBlueprintDetailPage({
                 value={blueprint.folder?.name ?? "Unfiled"}
               />
               <BlueprintDetailMetric
-                label="Source bank"
+                label="Source Library"
                 value={
                   blueprint.sourceBank ? (
                     <Link
@@ -259,7 +259,7 @@ export default async function TeacherBlueprintDetailPage({
                       {blueprint.sourceBank.name}
                     </Link>
                   ) : (
-                    "No source bank"
+                    "No source Library"
                   )
                 }
               />
@@ -385,7 +385,7 @@ export default async function TeacherBlueprintDetailPage({
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
                   Saving a meaningful edit sets generation readiness back to
                   uncalibrated. Later generation must still create Review
-                  Drafts before bank approval.
+                  Drafts before Library approval.
                 </div>
                 <div>
                   <Button type="submit">Save Blueprint plan</Button>
@@ -405,7 +405,7 @@ export default async function TeacherBlueprintDetailPage({
                   <p className="mt-1 text-sm leading-6 text-slate-600">
                     Blueprints are planning assets. They do not go directly to
                     students. Generation and assignment require Review Draft
-                    and Bank approval.
+                    and Library approval.
                   </p>
                 </div>
               </div>

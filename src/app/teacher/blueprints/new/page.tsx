@@ -94,7 +94,7 @@ export default async function NewTeacherBlueprintPage({
       {query.error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
           {query.error === "missing-source-question"
-            ? "Select at least one approved source question from the bank."
+            ? "Select at least one approved source question from the Library."
             : query.error === "invalid-source-question"
               ? "One selected source question is no longer active or assignment-ready."
               : "Blueprint could not be created. Check the required fields and try again."}
@@ -110,7 +110,7 @@ export default async function NewTeacherBlueprintPage({
                 Creating from {selectedBank.name}
               </h2>
               <p className="mt-1 text-sm leading-6 text-sky-900">
-                The new Blueprint will be linked to this bank as a planning
+                The new Blueprint will be linked to this Library as a planning
                 asset. It still cannot go directly to students.
               </p>
             </div>
@@ -180,13 +180,13 @@ export default async function NewTeacherBlueprintPage({
             </label>
 
             <label className="grid gap-1 text-sm font-semibold text-slate-700">
-            Source bank
+            Source Library
             <select
               className="min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-950"
               defaultValue={selectedBank?.id ?? ""}
               name="sourceBankId"
             >
-                <option value="">No bank link</option>
+                <option value="">No Library link</option>
                 {banks.map((bank) => (
                   <option key={bank.id} value={bank.id}>
                     {bank.name}
@@ -203,7 +203,7 @@ export default async function NewTeacherBlueprintPage({
                   Select source/example questions
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Only active approved questions from this bank are shown. The
+                  Only active approved questions from this Library are shown. The
                   Blueprint stores lineage and planning structure; it does not
                   modify the source questions.
                 </p>
@@ -242,7 +242,7 @@ export default async function NewTeacherBlueprintPage({
                   ))
                 ) : (
                   <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                    No active approved source questions are ready in this bank
+                    No active approved source questions are ready in this Library
                     yet. Approve Review Drafts into the bank before building a
                     Blueprint from bank examples.
                   </div>
@@ -330,8 +330,8 @@ export default async function NewTeacherBlueprintPage({
           </section>
 
           <div className="rounded-lg border border-sky-100 bg-sky-50/80 p-4 text-sm leading-6 text-sky-950">
-            Blueprint output must flow through Review Drafts and bank approval
-            before assignment. This form only creates the library asset.
+            Blueprint output must flow through Review Drafts and Library approval
+            before assignment. This form only creates the Library asset.
           </div>
 
           <div className="flex flex-wrap gap-2">

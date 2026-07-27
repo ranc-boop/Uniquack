@@ -18,7 +18,7 @@ const primaryActions = [
     href: "/questions",
     icon: BookOpen,
     label: "Choose questions",
-    title: "Question Bank",
+    title: "Library",
   },
   {
     body: "Review active missed questions from saved snapshots and send them back into the current session.",

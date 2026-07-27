@@ -24,7 +24,7 @@ export default async function StudentStudyGroupsPage() {
       }
     >
       <StudentComingSoonPanel
-        description="Study Groups are planned as student collaboration spaces and do not grant access to teacher private banks."
+        description="Study Groups are planned as student collaboration spaces and do not grant access to teacher private Libraries."
         href="/student/classrooms"
         hrefLabel="View teacher classes"
         title="Study Group shell"

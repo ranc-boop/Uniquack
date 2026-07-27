@@ -317,7 +317,7 @@ export async function generateTeacherBlueprintReviewDraftsAction(formData: FormD
     const targetBankId = detail.blueprint.source_bank_id;
 
     if (!targetBankId) {
-      throw new Error("Blueprint must be linked to a target Question Bank before generation.");
+      throw new Error("Blueprint must be linked to a target Library before generation.");
     }
 
     const queuedJob = await enqueueAIProviderJob({

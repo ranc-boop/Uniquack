@@ -122,7 +122,7 @@ export function BlueprintFilterTabs({
     {
       href: "/teacher/blueprints?filter=bank-linked",
       key: "bank-linked",
-      label: "Bank-linked",
+      label: "Library-linked",
     },
     { href: "/teacher/blueprints?filter=recent", key: "recent", label: "Recently Updated" },
   ];
@@ -293,12 +293,12 @@ export function BlueprintCard({ blueprint }: { blueprint: TeacherBlueprintLibrar
             </div>
             <div className="rounded-lg border border-slate-200 bg-white/70 p-3">
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Source bank
+                Source Library
               </dt>
               <dd className="mt-1 font-medium text-slate-800">
                 {blueprint.sourceBank?.name ||
                   blueprint.linkedBanks[0]?.name ||
-                "No bank link"}
+                "No Library link"}
               </dd>
             </div>
           </div>
@@ -346,7 +346,7 @@ export function BlueprintEmptyState() {
         No Blueprints yet.
       </h2>
       <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-        Start with a private Blueprint, or generate one from a bank in a later
+        Start with a private Blueprint, or generate one from a Library in a later
         step.
       </p>
       <Button asChild className="mt-5">
@@ -381,7 +381,7 @@ export function BlueprintWorkflowPanel() {
 
 export function DisabledBlueprintActions() {
   const actions = [
-    "Link to Bank",
+    "Link to Library",
     "Generate Review Drafts",
     "Use in Publish",
     "Share / Submit to Public Review",

@@ -180,7 +180,7 @@ export default async function ClassroomAnalyticsPage({
             <div className="p-8 text-center">
               <p className="teacher-eyebrow">No analytics yet</p>
               <h3 className="mt-2 text-xl font-bold text-slate-950">
-                Assign selected bank content to begin evidence collection.
+                Assign selected Library content to begin evidence collection.
               </h3>
               <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
                 This page will remain empty until assigned work and Practice

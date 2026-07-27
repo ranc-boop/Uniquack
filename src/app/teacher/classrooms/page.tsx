@@ -67,7 +67,7 @@ export default async function TeacherClassroomsPage({
           <div className="max-w-4xl space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <p className="teacher-eyebrow">Delivery layer</p>
-              <ClassroomBadge tone="sky">Bank-first workflow</ClassroomBadge>
+              <ClassroomBadge tone="sky">Library-first workflow</ClassroomBadge>
             </div>
             <div className="space-y-2">
               <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
@@ -75,7 +75,7 @@ export default async function TeacherClassroomsPage({
               </h1>
               <p className="max-w-3xl text-base leading-7 text-slate-600">
                 Classes are roster and delivery spaces. Build content in
-                Question Bank or Blueprint, then publish selected work to
+                Library or Blueprint, then assign selected work to
                 classes.
               </p>
             </div>
@@ -181,7 +181,7 @@ export default async function TeacherClassroomsPage({
                         </h3>
                         <p className="line-clamp-2 text-sm leading-6 text-slate-600">
                           {classroom.description ||
-                            "Classroom delivery space for selected reviewed bank content."}
+                            "Classroom delivery space for selected reviewed Library content."}
                         </p>
                       </div>
                     </div>
@@ -241,7 +241,7 @@ export default async function TeacherClassroomsPage({
                         </div>
                       ) : (
                         <p className="mt-2 text-sm leading-6 text-slate-600">
-                          No assignments yet. Publish selected bank content when
+                          No assignments yet. Assign selected Library content when
                           this class is ready.
                         </p>
                       )}
@@ -293,12 +293,12 @@ export default async function TeacherClassroomsPage({
                 ready.
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Start with a Question Bank, approve reusable content, then
+                Start with a Library, approve reusable content, then
                 create a class for roster and assignment delivery.
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 <Button asChild variant="outline">
-                  <Link href="/teacher/banks">Open Question Bank</Link>
+                  <Link href="/teacher/banks">Open Libraries</Link>
                 </Button>
                 <Button asChild>
                   <a href="#create-class">Create Class</a>

@@ -35,13 +35,13 @@ function SetupNeededState() {
       <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
         <p className="student-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Bank source lineage is not available yet.
+          Library source lineage is not available yet.
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply clean migrations 0025 and 0027 before using bank source history.
+          Apply clean migrations 0025 and 0027 before using Library source history.
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Banks / Library</Link>
+          <Link href="/teacher/banks">Back to Libraries</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -85,7 +85,7 @@ export default async function TeacherBankSourcesPage({
       <BankHeroPanel
         actions={
           <Button asChild variant="outline">
-            <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
+            <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
           </Button>
         }
         badges={
@@ -102,7 +102,7 @@ export default async function TeacherBankSourcesPage({
         title={`Sources for ${bank.name}`}
       >
         <p>
-          Source material and import lineage for this bank stay visible here so
+          Source material and import lineage for this Library stay visible here so
           teachers can trace reviewed questions back to their owned material.
         </p>
       </BankHeroPanel>
@@ -112,7 +112,7 @@ export default async function TeacherBankSourcesPage({
 
       <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
         <BankSectionHeader
-          description="This list uses existing bank-scoped import batches only. It does not expose private files to students."
+          description="This list uses this Library's import batches only. It does not expose private files to students."
           title="Recent source activity"
         />
         <div className="divide-y divide-slate-100">
@@ -138,7 +138,7 @@ export default async function TeacherBankSourcesPage({
                 No source activity yet.
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Import private material into this bank to begin building source
+                Import private material into this Library to begin building source
                 lineage.
               </p>
             </div>

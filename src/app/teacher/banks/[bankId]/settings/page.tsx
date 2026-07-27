@@ -31,13 +31,13 @@ function SetupNeededState() {
       <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
         <p className="student-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Question Bank settings are not available yet.
+          Library settings are not available yet.
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply clean migration 0025 before using bank settings.
+          Apply clean migration 0025 before using Library settings.
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Banks / Library</Link>
+          <Link href="/teacher/banks">Back to Libraries</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -79,7 +79,7 @@ export default async function TeacherBankSettingsPage({
       <BankHeroPanel
         actions={
           <Button asChild variant="outline">
-            <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
+            <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
           </Button>
         }
         badges={
@@ -92,11 +92,11 @@ export default async function TeacherBankSettingsPage({
             </BankBadge>
           </>
         }
-        eyebrow="Bank settings"
+        eyebrow="Library settings"
         title={`Settings for ${bank.name}`}
       >
         <p>
-          Bank metadata and visibility controls will live here once safe mutation
+          Library metadata and visibility controls will live here once safe mutation
           flows are added. This PR keeps settings read-only.
         </p>
       </BankHeroPanel>

@@ -21,7 +21,7 @@ type ClassroomBlueprintsPageProps = {
 };
 
 function sourceKindLabel(kind: string) {
-  if (kind === "question_bank") return "Question Bank";
+  if (kind === "question_bank") return "Library";
   if (kind === "course_builder_run") return "Course Builder";
   if (kind === "practice_framework") return "Practice framework";
   return "Manual";
@@ -76,7 +76,7 @@ export default async function ClassroomBlueprintsPage({
 
       <section className="grid gap-3 md:grid-cols-3">
         <ClassroomMetricCard
-          description="Blueprints connected through assigned bank content when available."
+          description="Blueprints connected through assigned Library content when available."
           icon={Sparkles}
           label="Linked blueprints"
           value={
@@ -86,9 +86,9 @@ export default async function ClassroomBlueprintsPage({
           }
         />
         <ClassroomMetricCard
-          description="Assignments carrying Question Bank lineage."
+          description="Assignments carrying Library lineage."
           icon={ClipboardCheck}
-          label="Bank-sourced assignments"
+          label="Library-sourced assignments"
           value={bankLinkedAssignments.length}
         />
         <ClassroomMetricCard
@@ -149,7 +149,7 @@ export default async function ClassroomBlueprintsPage({
             <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               Use Blueprint Library to organize plans before publishing. Class
               links can be introduced through bank-linked assignments without
-              exposing source banks to students.
+              exposing source Libraries to students.
             </p>
             <Button asChild className="mt-5" variant="outline">
               <Link href="/teacher/blueprints">Open Blueprint Library</Link>

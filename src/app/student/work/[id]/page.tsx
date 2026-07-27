@@ -128,9 +128,9 @@ export default async function StudentWorkDetailPage({
 
       {assignment.source_kind === "question_bank" ? (
         <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-          <strong className="font-bold">Assigned from your teacher&apos;s bank:</strong>{" "}
+          <strong className="font-bold">Assigned from your teacher&apos;s Library:</strong>{" "}
           you can work on the selected questions here, but the full teacher
-          bank stays private.
+          Library stays private.
         </section>
       ) : null}
 

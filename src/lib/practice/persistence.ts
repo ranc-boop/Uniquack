@@ -396,7 +396,7 @@ function sourceSummaryFromRow(value: unknown): PracticeSourceSummary | null {
     name: String(
       snapshot.name ??
         (sourceKind === "public_catalog"
-          ? "Public Question Bank"
+          ? "Public Library"
           : sourceKind === "assignment"
             ? "Assignment"
             : "Library"),

@@ -127,10 +127,10 @@ async function requireManagedBank(bankId: string) {
   });
 
   if (!detail || !canManageBankContent(detail.currentUserRole)) {
-    throw new Error("Only Bank owners or editors can manage PDF uploads.");
+    throw new Error("Only Library owners or editors can manage PDF uploads.");
   }
   if (detail.bank.status !== "active") {
-    throw new Error("Only active Banks can receive PDF imports.");
+    throw new Error("Only active Libraries can receive PDF imports.");
   }
 
   return { detail, profile, supabase };

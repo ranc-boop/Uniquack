@@ -83,11 +83,11 @@ function SetupNeededState() {
       <section className="teacher-panel p-6">
         <p className="teacher-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Publish Center needs the bank assignment schema.
+          Assignments need the Library assignment schema.
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply the clean Question Bank, classroom, and assignment migrations,
-          then return to Publish.
+          Apply the clean Library, classroom, and assignment migrations,
+          then return to Assignments.
         </p>
         <Button asChild className="mt-5" variant="outline">
           <Link href="/teacher">Back to Teacher Workspace</Link>
@@ -178,16 +178,16 @@ function makeSourceOptions(summary: PublishContentSummary): SourceOption[] {
     {
       count: summary.bankQuestionCount,
       description:
-        "Choose approved active questions from a bank and deliver selected items as assignment-only work.",
+        "Choose approved active questions from a Library and deliver selected items as assignment-only work.",
       icon: BookOpenCheck,
-      label: "Question Bank",
+      label: "Library",
       source: "bank",
       status: `${summary.bankQuestionCount} ready`,
     },
     {
       count: summary.blueprintApprovedCount,
       description:
-        "Use only Blueprint-generated questions after they pass Review Draft approval and enter this bank.",
+        "Use only Blueprint-generated questions after they pass Review Draft approval and enter this Library.",
       disabled: summary.blueprintApprovedCount === 0,
       icon: Sparkles,
       label: "Blueprint",
@@ -299,20 +299,20 @@ function BankPicker({
       <div className="border-b border-slate-100 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="teacher-eyebrow">Source bank</p>
+            <p className="teacher-eyebrow">Source Library</p>
             <h2 className="text-xl font-bold text-slate-950">
-              Choose the content owner
+              Choose the source Library
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Publish can deliver selected reviewed items from one accessible
-              bank at a time. The bank itself stays private unless separately
+              Assignments can deliver selected reviewed items from one accessible
+              Library at a time. The Library itself stays private unless separately
               shared.
             </p>
           </div>
           <form action="/teacher/publish" className="flex flex-wrap gap-2">
             <input name="source" type="hidden" value={selectedSource} />
             <Label className="sr-only" htmlFor="sourceBankId">
-              Source bank
+              Source Library
             </Label>
             <select
               className="h-11 min-w-64 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
@@ -327,7 +327,7 @@ function BankPicker({
               ))}
             </select>
             <Button type="submit" variant="outline">
-              Load bank
+              Load Library
             </Button>
           </form>
         </div>
@@ -416,7 +416,7 @@ function PublishFilters({
           </h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             Filters affect the visible checklist only. Submit still rechecks
-            approved status, bank scope, classroom access, and source lineage.
+            approved status, Library scope, classroom access, and source lineage.
           </p>
         </div>
       </div>
@@ -491,7 +491,7 @@ function PublishFilters({
               id="blueprintId"
               name="blueprintId"
             >
-              <option value="">All approved Blueprint-generated bank questions</option>
+              <option value="">All approved Blueprint-generated Library questions</option>
               {contentStats.blueprintSources.map((source) => (
                 <option
                   key={source.blueprintId ?? source.blueprintTitle}
@@ -521,16 +521,16 @@ function QuestionChecklist({
 }) {
   const emptyTitle =
     selectedSource === "blueprint"
-      ? "No approved Blueprint-generated bank questions match these filters."
+      ? "No approved Blueprint-generated Library questions match these filters."
       : selectedSource === "package"
         ? "Package publishing is not assignment-ready yet."
         : "No assignment-ready questions match these filters.";
   const emptyCopy =
     selectedSource === "blueprint"
-      ? "Blueprint rows are not directly publishable. Generate questions from an approved Blueprint, send them through Review Drafts, approve them into this bank, then return here."
+      ? "Blueprint rows are not directly assignable. Generate questions from an approved Blueprint, send them through Review Drafts, approve them into this Library, then return here."
       : selectedSource === "package"
-        ? "Package sources are visible for workflow clarity, but only approved bank questions can be assigned in this PR."
-        : "Publish cannot deliver raw AI drafts or unreviewed material. Approve usable bank Review Drafts, then return here.";
+        ? "Package sources are visible for workflow clarity, but only approved Library questions can be assigned in this PR."
+        : "Assignments cannot deliver raw AI drafts or unreviewed material. Approve usable Library Review Drafts, then return here.";
 
   return (
     <section className="teacher-panel overflow-hidden">
@@ -542,8 +542,8 @@ function QuestionChecklist({
               Select approved assignment-ready rows
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Every checked row is an active bank question. Students receive the
-              assignment item, not the source bank, answer key, or Blueprint
+              Every checked row is an active Library question. Students receive the
+              assignment item, not the source Library, answer key, or Blueprint
               internals.
             </p>
           </div>
@@ -643,7 +643,7 @@ function QuestionChecklist({
                         {row.isBlueprintApprovedContent
                           ? row.blueprintLineage?.blueprintTitle ??
                             "Approved Blueprint-generated question"
-                          : "Question Bank"}
+                          : "Library"}
                       </span>
                       <span className="mt-1 block text-xs text-slate-500">
                         Student preview hides this source context.
@@ -657,7 +657,7 @@ function QuestionChecklist({
                     </summary>
                     <dl className="mt-3 grid gap-2 text-xs text-slate-600 lg:grid-cols-2">
                       <div>
-                        <dt className="font-semibold text-slate-500">Bank question</dt>
+                        <dt className="font-semibold text-slate-500">Library question</dt>
                         <dd className="break-all">{shortId(row.bankQuestionId)}</dd>
                       </div>
                       <div>
@@ -707,7 +707,7 @@ function QuestionChecklist({
           {selectedSource !== "package" ? (
             <Button asChild className="mt-5" variant="outline">
               <Link href={`/teacher/banks/${bankId}/review`}>
-                Open bank Review Drafts
+                Open Library Review Drafts
               </Link>
             </Button>
           ) : null}
@@ -809,7 +809,7 @@ function ClassroomTargets({
           </h3>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
             Classrooms are roster and delivery spaces. They receive selected
-            bank items through Publish.
+            Library items through Assignments.
           </p>
           <Button asChild className="mt-5" variant="outline">
             <Link href="/teacher/classrooms">Open classrooms</Link>
@@ -843,7 +843,7 @@ function StudentPreviewPanel({
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
           <dt className="font-semibold text-emerald-700">Hidden from students</dt>
           <dd className="mt-1 text-emerald-950">
-            Answers, solutions, full source bank, Blueprint internals, provider
+            Answers, solutions, full source Library, Blueprint internals, provider
             metadata, and import metadata.
           </dd>
         </div>
@@ -851,7 +851,7 @@ function StudentPreviewPanel({
           <dt className="font-semibold text-slate-500">Current source mode</dt>
           <dd className="mt-1 font-bold capitalize text-slate-950">
             {selectedSource === "blueprint"
-              ? "Blueprint-approved bank questions"
+              ? "Blueprint-approved Library questions"
               : selectedSource}
           </dd>
         </div>
@@ -932,13 +932,13 @@ export default async function TeacherPublishPage({
 
   return (
     <TeacherWorkspaceShell
-      eyebrow="Teacher publish workflow"
-      title="Publish"
-      description="Publish distributes selected approved bank content to classes. Students see assigned items only, not the full source bank."
+      eyebrow="Teacher assignment workflow"
+      title="Assignments"
+      description="Assignments deliver selected approved Library content to classes. Students see assigned items only, not the full source Library."
       actions={
         <>
           <Button asChild variant="outline">
-            <Link href="/teacher/banks">Open banks</Link>
+            <Link href="/teacher/banks">Open Libraries</Link>
           </Button>
           <Button asChild variant="outline">
             <Link href="/teacher/classrooms">Open classrooms</Link>
@@ -967,16 +967,16 @@ export default async function TeacherPublishPage({
 
       {!banks.length ? (
         <section className="teacher-panel p-8 text-center">
-          <p className="teacher-eyebrow">No source banks</p>
+          <p className="teacher-eyebrow">No source Libraries</p>
           <h2 className="mt-2 text-xl font-bold text-slate-950">
-            Create or join a Question Bank first.
+            Create or join a Library first.
           </h2>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Publish starts from reviewed bank content. Classrooms are selected
-            after the source bank is ready.
+            Assignment creation starts from reviewed Library content. Classrooms
+            are selected after the source Library is ready.
           </p>
           <Button asChild className="mt-5">
-            <Link href="/teacher/banks/new">Create Question Bank</Link>
+            <Link href="/teacher/banks/new">Create Library</Link>
           </Button>
         </section>
       ) : (
@@ -1035,7 +1035,7 @@ export default async function TeacherPublishPage({
                 <div className="mt-5 space-y-4">
                   <AssignmentSelectionSummary
                     formId="publish-center-form"
-                    helperText="Choose approved bank questions before saving or assigning."
+                    helperText="Choose approved Library questions before saving or assigning."
                     inputName="bankQuestionIds"
                     totalLabel="visible assignment-ready question(s)."
                     totalQuestions={visibleQuestions.length}
@@ -1086,9 +1086,9 @@ export default async function TeacherPublishPage({
                 </div>
                 <dl className="mt-5 space-y-3 text-sm">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <dt className="font-semibold text-slate-500">Source bank</dt>
+                    <dt className="font-semibold text-slate-500">Source Library</dt>
                     <dd className="mt-1 break-words font-bold text-slate-950">
-                      {selectedBank?.name ?? "No bank selected"}
+                      {selectedBank?.name ?? "No Library selected"}
                     </dd>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -1104,7 +1104,7 @@ export default async function TeacherPublishPage({
                       Student visibility
                     </dt>
                     <dd className="mt-1 font-bold text-sky-950">
-                      Assignment-only. No full source bank access.
+                      Assignment-only. No full source Library access.
                     </dd>
                   </div>
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -1112,7 +1112,7 @@ export default async function TeacherPublishPage({
                       Blueprint / Package
                     </dt>
                     <dd className="mt-1 text-amber-950">
-                      Blueprint rows must generate reviewed bank questions.
+                      Blueprint rows must generate reviewed Library questions.
                       Package publishing remains not ready.
                     </dd>
                   </div>
@@ -1155,7 +1155,7 @@ export default async function TeacherPublishPage({
                     <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-700">
                       <li>No global question publishing.</li>
                       <li>No Review Draft bypass.</li>
-                      <li>No student bank browsing.</li>
+                      <li>No student Library browsing.</li>
                       <li>No provider or AI calls.</li>
                     </ul>
                   </div>

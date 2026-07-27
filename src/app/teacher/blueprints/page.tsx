@@ -47,7 +47,7 @@ export default async function TeacherBlueprintsPage({
       return (
         <TeacherWorkspaceShell
           title="Blueprint Library"
-          description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and bank approval."
+          description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and Library approval."
         >
           <TeacherWorkspaceNav />
           <SetupNeededState />
@@ -76,7 +76,7 @@ export default async function TeacherBlueprintsPage({
           </Button>
         </>
       }
-      description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and bank approval."
+      description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and Library approval."
       eyebrow="Teacher Blueprint workspace"
       title="Blueprint Library"
     >
@@ -107,7 +107,7 @@ export default async function TeacherBlueprintsPage({
           <div className="grid gap-3 md:grid-cols-3">
             {[
               ["Blueprints", library.counts.all],
-              ["Bank-linked", library.bankLinkCount],
+              ["Library-linked", library.bankLinkCount],
               ["Folders", library.folders.length],
             ].map(([label, value]) => (
               <div

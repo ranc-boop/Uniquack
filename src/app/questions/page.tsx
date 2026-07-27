@@ -170,7 +170,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
             <p className="student-eyebrow">
-              Question Bank
+              Public Library
             </p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">Build your next practice round</h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">

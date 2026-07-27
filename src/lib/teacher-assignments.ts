@@ -711,7 +711,7 @@ export async function getTeacherAssignmentDetail({
       latestActivityAt: latestIso(attempts.map((attempt) => attempt.createdAt)),
       question,
       sourceLabel: item.bank_question_id
-        ? "Selected Question Bank item"
+        ? "Selected Library item"
         : "Assignment item",
       studentAttemptedCount,
     } satisfies TeacherAssignmentQuestionPerformance;

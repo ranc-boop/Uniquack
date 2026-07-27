@@ -162,6 +162,7 @@ export default async function QuestionDetailPage({
       .from("question_assets")
       .select("id, storage_path, label, alt_text")
       .eq("question_id", question.id)
+      .eq("display_on_detail", true)
       .order("created_at", { ascending: true }),
     supabase
       .from("question_taxonomy_assignments")

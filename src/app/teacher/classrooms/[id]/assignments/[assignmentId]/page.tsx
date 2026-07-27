@@ -64,7 +64,7 @@ function summaryText(
 function sourceKindLabel(kind: string) {
   if (kind === "course_builder_run") return "Course Builder run";
   if (kind === "practice_framework") return "Practice framework";
-  if (kind === "question_bank") return "Question Bank";
+  if (kind === "question_bank") return "Library";
   return "Manual";
 }
 
@@ -208,7 +208,7 @@ export default async function TeacherAssignmentDetailPage({
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
         <strong className="font-bold">Assignment-only visibility:</strong> this
         page tracks selected delivered items. It does not grant students access
-        to the teacher&apos;s full bank.
+        to the teacher&apos;s full Library.
       </section>
 
       <section className="teacher-panel overflow-hidden" aria-labelledby="assignment-evidence-heading">
@@ -423,7 +423,7 @@ export default async function TeacherAssignmentDetailPage({
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-bold text-slate-950">Question performance</h2>
               <p className="teacher-muted">
-                Performance across the selected assignment items. Source bank access remains
+                Performance across the selected assignment items. Source Library access remains
                 teacher-private.
               </p>
             </div>
@@ -712,7 +712,7 @@ export default async function TeacherAssignmentDetailPage({
                       </div>
                       <p className="text-xs leading-5 text-slate-500">
                         Private notes are visible only to classroom managers. Sending does not expose
-                        source-bank content, internal evidence, or other students&apos; work.
+                        source Library content, internal evidence, or other students&apos; work.
                       </p>
                     </form>
                   </details>
@@ -765,7 +765,7 @@ export default async function TeacherAssignmentDetailPage({
                         )}
                         {item.bank_question_id ? (
                           <p className="text-xs font-semibold text-sky-700">
-                            Delivered from selected Question Bank item.
+                            Delivered from selected Library item.
                           </p>
                         ) : null}
                       </div>
@@ -833,7 +833,7 @@ export default async function TeacherAssignmentDetailPage({
               <h2 className="text-lg font-bold text-slate-950">Assignment source</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 {assignment.source_kind === "question_bank"
-                  ? "This assignment was created from selected approved Question Bank items."
+                  ? "This assignment was created from selected approved Library items."
                   : "This assignment was created from a reviewed planning source."}
               </p>
               <dl className="mt-4 space-y-3 text-sm">
@@ -854,10 +854,10 @@ export default async function TeacherAssignmentDetailPage({
                 {assignment.source_kind === "question_bank" ? (
                   <>
                     <div className="flex items-center justify-between gap-3">
-                      <dt className="text-slate-500">Bank visibility</dt>
+                      <dt className="text-slate-500">Library visibility</dt>
                       <dd className="font-semibold capitalize text-slate-950">
                         {summaryText(assignment.source_summary, "bankVisibility") ||
-                          "bank-scoped"}
+                          "Library-scoped"}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-3">
@@ -901,7 +901,7 @@ export default async function TeacherAssignmentDetailPage({
               {assignment.source_kind === "question_bank" && assignment.source_record_id ? (
                 <Button asChild className="mt-4 w-full" variant="outline">
                   <Link href={`/teacher/banks/${assignment.source_record_id}`}>
-                    Open source bank
+                    Open source Library
                   </Link>
                 </Button>
               ) : assignment.source_record_id ? (

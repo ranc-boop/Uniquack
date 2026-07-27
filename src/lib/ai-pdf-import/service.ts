@@ -4843,7 +4843,7 @@ export async function processAIPdfCoverageRecovery(
     .maybeSingle();
   if (originalBatchError) throw new Error(originalBatchError.message);
   if (!originalBatch || originalBatch.target_bank_id !== input.targetBankId) {
-    throw new Error("The original bank-scoped import is no longer available.");
+    throw new Error("The original Library-scoped import is no longer available.");
   }
 
   const pageCount = await getPdfPageCount(input.pdfBuffer);

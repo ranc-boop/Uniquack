@@ -166,7 +166,7 @@ export function buildTeacherBlueprintReadiness(input: {
   const blockingReasons: string[] = [];
 
   if (!input.examples.length) {
-    blockingReasons.push("Select at least one approved source question from the bank.");
+    blockingReasons.push("Select at least one approved source question from the Library.");
   }
   if (!input.taxonomyTargetCount) {
     blockingReasons.push("Source examples need existing taxonomy targets before generation readiness.");
@@ -253,7 +253,7 @@ export function buildTeacherBlueprintPayload({
     questionPattern: {
       purpose: input.description,
       sourceExampleCount: examples.length,
-      summary: input.description || "Reusable pattern built from selected bank questions.",
+      summary: input.description || "Reusable pattern built from selected Library questions.",
     },
     requiredElements: input.requiredElements,
     sourceRefs: examples.map((example) => ({
@@ -352,7 +352,7 @@ export function readinessChecklist(blueprint: QuestionBlueprint) {
     {
       label: "Generation remains gated",
       passed: generationConstraints.reviewDraftGateRequired === true,
-      value: "Review Draft and bank approval required",
+      value: "Review Draft and Library approval required",
     },
   ];
 }

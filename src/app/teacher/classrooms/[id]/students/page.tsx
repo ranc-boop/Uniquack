@@ -225,7 +225,7 @@ export default async function ClassroomStudentsPage({
           <h2 className="text-xl font-bold text-slate-950">Student roster</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
             Removing a student stops future classroom access. It does not grant
-            or revoke source bank membership, and it keeps historical evidence.
+            or revoke source Library membership, and it keeps historical evidence.
           </p>
         </div>
         {students.length ? (
@@ -247,7 +247,7 @@ export default async function ClassroomStudentsPage({
             </h3>
             <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               Students join through the approved class-code flow. That join
-              grants roster visibility only, not the teacher source bank.
+              grants roster visibility only, not the teacher source Library.
             </p>
             <Button asChild className="mt-5" variant="outline">
               <Link href={`/teacher/classrooms/${classroom.id}/settings`}>

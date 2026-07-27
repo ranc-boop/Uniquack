@@ -160,7 +160,7 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
           </p>
         </div>
         <Button asChild size="sm" variant="outline">
-          <Link href="/teacher/publish">Publish assignment</Link>
+          <Link href="/teacher/publish">Create assignment</Link>
         </Button>
       </div>
 
@@ -264,8 +264,8 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
         <div className="p-5">
           <EmptyState
             actionHref="/teacher/publish"
-            actionLabel="Publish assignment"
-            description="Select reviewed Question Bank items and publish them to a classroom to begin collecting evidence."
+            actionLabel="Create assignment"
+            description="Select reviewed Library items and assign them to a classroom to begin collecting evidence."
             title="No assigned work yet"
           />
         </div>
@@ -274,7 +274,7 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
           <EmptyState
             actionHref="/teacher/classrooms"
             actionLabel="Create classroom"
-            description="Create a classroom roster before delivering reviewed bank content."
+            description="Create a classroom roster before delivering reviewed Library content."
             title="No classrooms yet"
           />
         </div>
@@ -304,7 +304,7 @@ export default async function TeacherProgressPage() {
             <Link href="/teacher/classrooms">Open classrooms</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/teacher/publish">Publish assignment</Link>
+            <Link href="/teacher/publish">Create assignment</Link>
           </Button>
         </>
       }
@@ -315,7 +315,7 @@ export default async function TeacherProgressPage() {
         {[
           "Assignment and classroom evidence only.",
           "Private student self-study is not included.",
-          "Source Question Banks remain private.",
+          "Source Libraries remain private.",
         ].map((message) => (
           <div
             className="rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm font-semibold leading-6 text-sky-950"
@@ -439,8 +439,8 @@ export default async function TeacherProgressPage() {
             <div className="p-5">
               <EmptyState
                 actionHref={summary.hasClassrooms ? "/teacher/publish" : "/teacher/classrooms"}
-                actionLabel={summary.hasClassrooms ? "Publish assignment" : "Create classroom"}
-                description="Attention signals appear after reviewed bank content is assigned to active classroom students."
+                actionLabel={summary.hasClassrooms ? "Create assignment" : "Create classroom"}
+                description="Attention signals appear after reviewed Library content is assigned to active classroom students."
                 title="No assigned work yet"
               />
             </div>
@@ -486,7 +486,7 @@ export default async function TeacherProgressPage() {
             <div className="p-5">
               <EmptyState
                 actionHref={summary.hasAssignedWork ? "/teacher/classrooms" : "/teacher/publish"}
-                actionLabel={summary.hasAssignedWork ? "Open classrooms" : "Publish assignment"}
+                actionLabel={summary.hasAssignedWork ? "Open classrooms" : "Create assignment"}
                 description="Evidence arrives here after students start Practice from assigned work."
                 title="No evidence yet"
               />
@@ -506,7 +506,7 @@ export default async function TeacherProgressPage() {
             <h2 className="text-lg font-bold text-sky-950">Evidence boundary</h2>
             <p className="mt-1 max-w-4xl text-sm leading-6 text-sky-900">
               Progress here is limited to classroom assignments and their linked Practice sessions.
-              Private student self-study stays private, and students never receive source Question Bank access through this page.
+              Private student self-study stays private, and students never receive source Library access through this page.
               Open an assignment detail to save a private note or send feedback to an active student.
             </p>
           </div>

@@ -115,7 +115,7 @@ export default async function StudentHomePage() {
         />
         <StudentModuleCard
           actionLabel="Browse public questions"
-          description="Use public/verified material without exposing teacher private banks."
+          description="Use public/verified material without exposing teacher private Libraries."
           eyebrow="Discovery"
           href="/student/public-library"
           title="Public Library"

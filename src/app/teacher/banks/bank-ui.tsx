@@ -9,6 +9,7 @@ import {
   FileText,
   FolderOpen,
   Settings,
+  Send,
   Share2,
   Sparkles,
   Upload,
@@ -168,10 +169,13 @@ export function BankSectionHeader({
 }
 
 export function BankRouteTabs({ bankId }: { bankId: string }) {
-  const tabs = [
+  const primaryTabs = [
     { href: `/teacher/banks/${bankId}/questions`, icon: BookOpen, label: "Questions" },
-    { href: `/teacher/banks/${bankId}/imports`, icon: Upload, label: "Imports" },
-    { href: `/teacher/banks/${bankId}/review`, icon: ClipboardCheck, label: "Review Drafts" },
+    { href: `/teacher/banks/${bankId}/review`, icon: ClipboardCheck, label: "Review" },
+    { href: `/teacher/banks/${bankId}/imports`, icon: Upload, label: "Import" },
+  ];
+  const secondaryTabs = [
+    { href: `/teacher/banks/${bankId}/submissions`, icon: Send, label: "Public Submissions" },
     { href: `/teacher/banks/${bankId}/blueprints`, icon: Sparkles, label: "Blueprints" },
     { href: `/teacher/banks/${bankId}/members`, icon: Users, label: "Members" },
     { href: `/teacher/banks/${bankId}/sources`, icon: FolderOpen, label: "Sources" },
@@ -179,28 +183,36 @@ export function BankRouteTabs({ bankId }: { bankId: string }) {
   ];
 
   return (
-    <nav
-      aria-label="Question Bank sections"
-      className="flex gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-white/85 p-2 shadow-sm"
-    >
-      {tabs.map(({ href, icon: Icon, label }) => (
-        <Link
-          className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
-          href={href}
-          key={href}
+    <div className="space-y-2">
+      {[
+        { ariaLabel: "Library workflow", tabs: primaryTabs },
+        { ariaLabel: "Library tools", tabs: secondaryTabs },
+      ].map((group) => (
+        <nav
+          aria-label={group.ariaLabel}
+          className="flex gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-white/85 p-2 shadow-sm"
+          key={group.ariaLabel}
         >
-          <Icon aria-hidden="true" className="h-4 w-4" />
-          {label}
-        </Link>
+          {group.tabs.map(({ href, icon: Icon, label }) => (
+            <Link
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+              href={href}
+              key={href}
+            >
+              <Icon aria-hidden="true" className="h-4 w-4" />
+              {label}
+            </Link>
+          ))}
+        </nav>
       ))}
-    </nav>
+    </div>
   );
 }
 
 export function BankSafetyList() {
   const notes = [
     "AI drafts stay private until reviewed.",
-    "Assignments expose selected approved items, not the full bank.",
+    "Assignments expose selected approved items, not the full Library.",
     "Public movement requires a separate review gate.",
   ];
 
