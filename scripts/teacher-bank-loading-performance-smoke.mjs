@@ -10,10 +10,12 @@ function assert(condition, message) {
   }
 }
 
-const [dashboard, questionBanks, importsPage] = await Promise.all([
+const [dashboard, questionBanks, importsPage, questionsPage, adminQuestionsPage] = await Promise.all([
   read("src/lib/teacher-dashboard.ts"),
   read("src/lib/question-banks.ts"),
   read("src/app/teacher/banks/[bankId]/imports/page.tsx"),
+  read("src/app/teacher/banks/[bankId]/questions/page.tsx"),
+  read("src/app/admin/questions/page.tsx"),
 ]);
 
 assert(
@@ -38,6 +40,7 @@ assert(
 );
 const bankListSource = questionBanks.slice(bankListStart, bankDetailStart);
 const bankDetailSource = questionBanks.slice(bankDetailStart, bankAccessStart);
+const bankAccessSource = questionBanks.slice(bankAccessStart);
 
 assert(
   bankListSource.includes("await Promise.all([") &&
@@ -53,6 +56,12 @@ assert(
   bankDetailSource.includes("await Promise.all([") &&
     bankDetailSource.match(/count: "exact", head: true/g)?.length === 3,
   "Teacher Library detail must parallelize metrics and use three head-only exact counts.",
+);
+assert(
+  bankAccessSource.includes("await Promise.all([") &&
+    bankAccessSource.includes('.from("question_banks")') &&
+    bankAccessSource.includes('.from("bank_members")'),
+  "Teacher Library access must load the visible bank and current membership in parallel.",
 );
 
 assert(
@@ -70,6 +79,18 @@ assert(
     importsPage.includes("getTeacherQuestionBankAccess({") &&
     importsPage.includes("listBankImportBatches({ bankId, supabase })"),
   "Library access and recent imports must load in parallel.",
+);
+assert(
+  questionsPage.includes("getTeacherQuestionBankAccess({") &&
+    !questionsPage.includes("getTeacherQuestionBankDetail({") &&
+    questionsPage.includes("[access, questionPage, { error: governanceProbeError }] = await Promise.all(["),
+  "Library questions must use lightweight access and parallelize access, pagination, and governance capability checks.",
+);
+assert(
+  adminQuestionsPage.includes("const [params, , supabase] = await Promise.all([") &&
+    adminQuestionsPage.includes("{ data: taxonomyAssignments, error: taxonomyAssignmentsError }") &&
+    adminQuestionsPage.includes("{ data: importItems }"),
+  "Admin questions must overlap request setup and batch detail-only taxonomy/import lookups.",
 );
 
 console.log("PASS Teacher/Bank loading performance query-shape guard");

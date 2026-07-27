@@ -76,7 +76,10 @@ import type {
 
 const TracePanel = dynamic(
   () => import("@/components/practice/practice-trace-panel").then((module) => module.TracePanel),
-  { loading: () => null, ssr: false },
+  {
+    loading: () => <PracticeInlineLoading label="Loading trace..." />,
+    ssr: false,
+  },
 );
 
 type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback" | "ending" | "completed";

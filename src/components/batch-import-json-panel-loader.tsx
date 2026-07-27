@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 
+import { LoadingIndicator } from "@/components/loading-indicator";
 import type {
   JsonImportCommitAction,
   JsonImportPreviewAction,
@@ -30,8 +31,8 @@ const BatchImportJsonPanel = dynamic<BatchImportJsonPanelLoaderProps>(
     ),
   {
     loading: () => (
-      <div className="rounded-md border bg-muted/20 px-3 py-4 text-sm text-muted-foreground">
-        Loading JSON import editor...
+      <div className="rounded-md border bg-muted/20 px-3 py-4">
+        <LoadingIndicator label="Loading JSON import editor..." />
       </div>
     ),
     ssr: false,
