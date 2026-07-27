@@ -8,8 +8,7 @@ import { AuthNav } from "@/components/auth-nav";
 import { AppChrome } from "@/components/app-chrome";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/auth/guards";
 
 const studentNavItems = [
   { href: "/practice", label: "Practice" },
@@ -35,25 +34,8 @@ export const metadata: Metadata = {
 };
 
 async function getPrimaryNavItems() {
-  if (!isSupabaseConfigured()) {
-    return studentNavItems;
-  }
-
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return studentNavItems;
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
+    const profile = await getCurrentProfile();
 
     if (profile?.role && ["teacher", "admin", "super_admin"].includes(profile.role)) {
       return teacherNavItems;

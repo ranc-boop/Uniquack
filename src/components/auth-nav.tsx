@@ -3,11 +3,12 @@ import Link from "next/link";
 import { signOut } from "@/app/auth/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentAuthContext } from "@/lib/auth/guards";
 
 export async function AuthNav() {
-  if (!isSupabaseConfigured()) {
+  const authContext = await getCurrentAuthContext();
+
+  if (!authContext) {
     return (
       <Button asChild variant="outline" size="sm">
         <Link href="/auth/login">Sign in</Link>
@@ -15,24 +16,7 @@ export async function AuthNav() {
     );
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return (
-      <Button asChild variant="outline" size="sm">
-        <Link href="/auth/login">Sign in</Link>
-      </Button>
-    );
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("username, role")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { email, profile } = authContext;
   const teacherLabel =
     profile?.role === "teacher" ? "Teacher Workspace" : "Teacher Workspace preview";
   const canOpenTeacherStudio =
@@ -49,7 +33,7 @@ export async function AuthNav() {
       ) : null}
       <div className="hidden items-center gap-2 sm:flex">
         <span className="text-sm text-muted-foreground">
-          {profile?.username ?? user.email}
+          {profile?.username ?? email}
         </span>
         {profile?.role ? <Badge variant="secondary">{profile.role}</Badge> : null}
       </div>
