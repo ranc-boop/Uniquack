@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { LoadingIndicator } from "@/components/loading-indicator";
 import { cn } from "@/lib/utils";
 
 type AdminLoadingStateProps = {
@@ -12,7 +13,11 @@ type AdminLoadingStateProps = {
 };
 
 function SkeletonBlock({ className }: { className: string }) {
-  return <div className={cn("animate-pulse rounded-md bg-muted", className)} />;
+  return (
+    <div
+      className={cn("rounded-md bg-muted motion-safe:animate-pulse", className)}
+    />
+  );
 }
 
 export function AdminLoadingState({
@@ -32,8 +37,7 @@ export function AdminLoadingState({
           className,
         )}
       >
-        <span className="size-2 animate-pulse rounded-full bg-primary" />
-        <span>{label}</span>
+        <LoadingIndicator label={typeof label === "string" ? label : "Loading..."} />
       </div>
     );
   }
