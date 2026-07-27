@@ -42,6 +42,7 @@ await import("./course-builder-assignment-bridge-smoke.mjs");
 await import("./teacher-role-bank-boundary-smoke.mjs");
 await import("./teacher-workspace-shell-smoke.mjs");
 await import("./teacher-dashboard-real-data-smoke.mjs");
+await import("./teacher-bank-loading-performance-smoke.mjs");
 await import("./teacher-progress-evidence-foundation-smoke.mjs");
 await import("./teacher-assignment-attempt-drilldown-smoke.mjs");
 await import("./teacher-feedback-notes-mvp-smoke.mjs");

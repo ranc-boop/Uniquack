@@ -527,46 +527,48 @@ export async function getTeacherDashboardSummary({
   profileId: string;
   supabase: SupabaseServerClient;
 }): Promise<TeacherDashboardSummary> {
-  let banks: TeacherQuestionBankSummary[] = [];
+  const [bankResult, classrooms] = await Promise.all([
+    listTeacherQuestionBanks({ profileId, supabase })
+      .then((banks) => ({ banks, error: null }))
+      .catch((error: unknown) => ({ banks: null, error })),
+    listTeacherClassroomSummaries({ supabase }),
+  ]);
 
-  try {
-    banks = await listTeacherQuestionBanks({ profileId, supabase });
-  } catch (error) {
-    if (error instanceof QuestionBankSchemaMissingError) {
+  if (bankResult.error) {
+    if (bankResult.error instanceof QuestionBankSchemaMissingError) {
       return emptyTeacherDashboardSummary(true);
     }
-
-    throw error;
+    throw bankResult.error;
   }
 
-  const classrooms = await listTeacherClassroomSummaries({ supabase });
+  const banks = bankResult.banks ?? [];
   const bankNameById = new Map(banks.map((bank) => [bank.id, bank.name]));
   const classroomNameById = new Map(classrooms.map((classroom) => [classroom.id, classroom.name]));
   const studentCountByClassroomId = new Map(
     classrooms.map((classroom) => [classroom.id, classroom.studentCount]),
   );
   const classroomIds = classrooms.map((classroom) => classroom.id);
-  const assignments = await listDashboardAssignments({ classroomIds, supabase });
-  const assignmentIds = assignments.map((assignment) => assignment.id);
-  const { practiceLinks, progressRows } = await listDashboardProgress({
-    assignmentIds,
-    supabase,
-  });
-
-  const [reviewQueue, recentImports, recentEvidence] = await Promise.all([
+  const [assignments, reviewQueue, recentImports] = await Promise.all([
+    listDashboardAssignments({ classroomIds, supabase }),
     buildReviewQueue({ banks, supabase }),
     listRecentImports({
       bankIds: banks.map((bank) => bank.id),
       bankNameById,
       supabase,
     }),
-    buildRecentEvidence({
-      assignments,
-      classroomNameById,
-      practiceLinks,
-      supabase,
-    }),
   ]);
+  const assignmentIds = assignments.map((assignment) => assignment.id);
+  const { practiceLinks, progressRows } = await listDashboardProgress({
+    assignmentIds,
+    supabase,
+  });
+
+  const recentEvidence = await buildRecentEvidence({
+    assignments,
+    classroomNameById,
+    practiceLinks,
+    supabase,
+  });
 
   const assignmentReadyBanks = buildAssignmentReadyBanks(banks);
   const classroomActivity = buildClassroomActivity(classrooms);
