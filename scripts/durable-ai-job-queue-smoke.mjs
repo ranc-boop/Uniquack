@@ -213,13 +213,13 @@ function queueStateCases() {
 }
 
 async function sourceAndSecurityCases() {
-  const [migration, roleFixMigration, queue, worker, pdfActions, bankActions, blueprintActions, route, policy] = await Promise.all([
+  const [migration, roleFixMigration, queue, worker, pdfActions, pdfBurstActions, blueprintActions, route, policy] = await Promise.all([
     read("supabase/clean-migrations/0033_ai_provider_jobs.sql"),
     read("supabase/clean-migrations/0034_ai_provider_jobs_worker_role_fix.sql"),
     read("src/lib/ai-jobs/queue.ts"),
     read("src/lib/ai-jobs/worker.ts"),
     read("src/app/admin/imports/pdf/actions.ts"),
-    read("src/app/teacher/banks/actions.ts"),
+    read("src/app/teacher/banks/pdf-burst-actions.ts"),
     read("src/app/teacher/blueprints/actions.ts"),
     read("src/app/api/internal/ai-jobs/run/route.ts"),
     read("src/lib/ai-jobs/policy.ts"),
@@ -277,10 +277,10 @@ async function sourceAndSecurityCases() {
     "worker must reuse existing safe services, schedule durable retry, and never assign content",
   );
   assert(
-    bankActions.includes("enqueueAIProviderJob") &&
-      bankActions.includes("AI PDF Parsing is queued") &&
-      !bankActions.slice(bankActions.indexOf("export async function importBankPdfDrafts"), bankActions.indexOf("export async function approveBankReviewQuestion")).includes("await processAIPdfImport"),
-    "teacher PDF action must persist the source then enqueue rather than wait for provider execution",
+    pdfBurstActions.includes("releaseAIPdfBurstAdmissionJobs") &&
+      pdfBurstActions.includes("reserve_ai_pdf_upload_burst") &&
+      !pdfBurstActions.includes("await processAIPdfImport"),
+    "teacher PDF burst actions must persist private sources then release durable jobs rather than wait for provider execution",
   );
   assert(
     blueprintActions.includes("enqueueAIProviderJob") &&

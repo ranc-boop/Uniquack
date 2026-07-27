@@ -430,7 +430,7 @@ assert(
     courseBuilderBridgeActions.includes("source_kind: source.kind") &&
     courseBuilderBridgeActions.includes("source_record_id: source.id") &&
     courseBuilderBridgeActions.includes("source_summary: buildAssignmentSourceSummary(source)") &&
-    courseBuilderBridgeActions.includes("No published Question Bank questions are available") &&
+    courseBuilderBridgeActions.includes("No reviewed Library questions are available") &&
     courseBuilderBridgeActions.includes("revalidatePath(\"/student/work\")") &&
     !courseBuilderBridgeActions.includes("google") &&
     !courseBuilderBridgeActions.includes("wearable") &&
@@ -439,11 +439,11 @@ assert(
   "Course Builder bridge action must stay teacher-only, draft-by-default, published-question-only, and provider-free",
 );
 assert(
-    courseBuilderBridgePage.includes("Course Builder will generate bank packages before assignment") &&
+    courseBuilderBridgePage.includes("Course Builder will generate Library packages before assignment") &&
     courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
     courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&
     courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&
-    courseBuilderBridgePage.includes("bank review") &&
+    courseBuilderBridgePage.includes("Library review") &&
     courseBuilderBridgePage.includes("does not add") &&
     courseBuilderBridgePage.includes("provider calls") &&
     teacherAssignmentDetailPage.includes("Assignment source"),
@@ -451,56 +451,54 @@ assert(
 );
 assert(
     teacherHomePage.includes("Teacher Workspace") &&
-    teacherHomePage.includes("Start with a Question Bank") &&
+    teacherHomePage.includes("Start with a Library") &&
     teacherHomePage.includes("review imported content") &&
-    teacherHomePage.includes("Bank-first teacher workflow") &&
+    teacherHomePage.includes("Library-first teacher workflow") &&
     teacherHomePage.includes("Student visibility stays assignment-only") &&
     teacherHomePage.includes("No unreviewed draft can be assigned to students") &&
     teacherWorkspaceNav.includes("Dashboard") &&
-    teacherWorkspaceNav.includes("Question Bank") &&
-    teacherWorkspaceNav.includes("AI Parsing") &&
-    teacherWorkspaceNav.includes("Blueprint") &&
-    teacherWorkspaceNav.includes("Classroom") &&
-    teacherWorkspaceNav.includes("Publish") &&
+    teacherWorkspaceNav.includes("Libraries") &&
+    !teacherWorkspaceNav.includes("AI Parsing") &&
+    teacherWorkspaceNav.includes("Blueprints") &&
+    teacherWorkspaceNav.includes("Classrooms") &&
+    teacherWorkspaceNav.includes("Assignments") &&
     teacherWorkspaceNav.includes("Progress") &&
     !teacherWorkspaceNav.includes("/admin/imports/pdf") &&
     !teacherWorkspaceNav.includes("/admin/review") &&
-    teacherAiParsingPage.includes("Choose a Question Bank before importing. AI drafts stay private until reviewed.") &&
-    teacherAiParsingPage.includes("BankTargetSelector") &&
-    teacherAiParsingPage.includes("Import into selected bank") &&
-    teacherAiParsingPage.includes("listTeacherQuestionBanks") &&
+    teacherAiParsingPage.includes("getTeacherQuestionBankDetail") &&
+    teacherAiParsingPage.includes("canManageBankContent") &&
+    teacherAiParsingPage.includes("imports?mode=ai") &&
     !teacherAiParsingPage.includes("/admin/imports/pdf") &&
     !teacherAiParsingPage.includes("/admin/review") &&
-    teacherBanksPage.includes("Question Bank Library") &&
-    teacherBanksPage.includes("Join Bank by Code") &&
+    teacherBanksPage.includes('title="Libraries"') &&
+    teacherBanksPage.includes("Join Library by Code") &&
     teacherBanksPage.includes("Assignment Ready") &&
-    teacherBanksPage.includes("Create Question Bank") &&
-    teacherBanksPage.includes("Question Bank tables are not available yet") &&
+    teacherBanksPage.includes("Create Library") &&
+    teacherBanksPage.includes("Library tables are not available yet") &&
     teacherBankNewPage.includes("action={createQuestionBank}") &&
-    teacherBankNewPage.includes("Creating a bank creates your owner membership only") &&
-    teacherBankDetailPage.includes("No reviewed questions in this bank yet") &&
-    teacherBankDetailPage.includes("Question Bank operating surface") &&
+    teacherBankNewPage.includes("Creating a Library creates your owner membership only") &&
+    teacherBankDetailPage.includes("No reviewed questions in this Library yet") &&
+    teacherBankDetailPage.includes("Library workspace") &&
     teacherBankDetailPage.includes("BankRouteTabs") &&
     teacherBankDetailPage.includes("Import Material") &&
-    teacherBankDetailPage.includes("Publish from bank") &&
+    teacherBankDetailPage.includes("Create an Assignment from this Library") &&
     teacherBankDetailPage.includes("Assignments expose selected") &&
-    teacherBankImportsPage.includes("BankImportEntryPanel") &&
-    teacherBankImportUi.includes("Import into selected bank") &&
-    teacherBankImportsPage.includes("Advanced / Developer fixture") &&
-    teacherBankImportsPage.includes("Developer fixture for smoke testing. Normal teachers should") &&
-    teacherBankImportsPage.includes("Create bank Review Drafts") &&
+    teacherBankImportsPage.includes('aria-label="Library import modes"') &&
+    teacherBankImportsPage.includes('["manual", "json", "ai"]') &&
+    teacherBankImportsPage.includes("BankManualQuestionForm") &&
+    teacherBankImportsPage.includes("BatchImportJsonPanelLoader") &&
     !teacherBankImportsPage.includes("/admin/imports/pdf") &&
     teacherBankImportsPage.includes("Drafts stay") &&
-    teacherBankReviewPage.includes("Approve drafts into this bank") &&
-    teacherBankReviewPage.includes("Approve into bank") &&
+    teacherBankReviewPage.includes("Approve drafts into this Library") &&
+    teacherBankReviewPage.includes("Approve into Library") &&
     teacherBankReviewPage.includes("not globally published") &&
     teacherBankQuestionsPage.includes("Question database") &&
-    teacherBankQuestionsPage.includes("Taxonomy / knowledge point") &&
+    teacherBankQuestionsPage.includes("Taxonomy") &&
     teacherBankQuestionsPage.includes("not public/global questions") &&
-    teacherBankQuestionsPage.includes("Assignment ready") &&
+    teacherBankQuestionsPage.includes("Ready for assignment") &&
     teacherBankDetailPage.includes("Manage members and share codes") &&
     teacherBankJoinPage.includes("action={joinQuestionBankByCode}") &&
-    teacherBankJoinPage.includes("Joining a bank is separate from") &&
+    teacherBankJoinPage.includes("Joining a Library is separate from") &&
     teacherBankMembersPage.includes("Owner-controlled sharing") &&
     teacherBankMembersPage.includes("Share codes are shown") &&
     teacherBankMembersPage.includes("only once") &&
@@ -514,13 +512,13 @@ assert(
     teacherBankActions.includes('rpc("approve_bank_review_question"') &&
     teacherBankActions.includes("create_assignment_from_bank") &&
     teacherBankActions.includes("createAssignmentFromBankQuestions") &&
-    teacherPublishPage.includes("Publish distributes selected approved bank content to classes") &&
-    teacherPublishPage.includes("Choose the content owner") &&
+    teacherPublishPage.includes("Assignments deliver selected approved Library content to classes") &&
+    teacherPublishPage.includes("Choose the source Library") &&
     teacherPublishPage.includes("Select approved assignment-ready rows") &&
     teacherPublishPage.includes("Choose classroom delivery") &&
     teacherPublishPage.includes("Selected students") &&
-    teacherPublishPage.includes("Assignment-only. No full source bank access.") &&
-    teacherPublishPage.includes("Blueprint rows are not directly publishable") &&
+    teacherPublishPage.includes("Assignment-only. No full source Library access.") &&
+    teacherPublishPage.includes("Blueprint rows are not directly assignable") &&
     teacherPublishPage.includes("Package publishing is not assignment-ready yet.") &&
     teacherPublishPage.includes("No Review Draft bypass") &&
     teacherPublishActions.includes("requireTeacher") &&
@@ -558,21 +556,21 @@ assert(
     teacherBankActions.includes("canManageBankContent(detail.currentUserRole)") &&
     teacherBankPdfBurstActions.includes("targetBankId: detail.bank.id") &&
     teacherBankAssignmentNewPage.includes("Assign from") &&
-    teacherBankAssignmentNewPage.includes("selected approved bank items") &&
-    teacherBankAssignmentNewPage.includes("not access to the full bank") &&
+    teacherBankAssignmentNewPage.includes("selected approved Library items") &&
+    teacherBankAssignmentNewPage.includes("not access to the full Library") &&
     teacherBankAssignmentNewPage.includes("action={createAssignmentFromBankQuestions}") &&
     teacherBankAssignmentNewPage.includes("Choose a class you manage") &&
     teacherBankAssignmentNewPage.includes("Assign to class") &&
     teacherBankAssignmentNewPage.includes("Save draft") &&
-    teacherBankAssignmentNewPage.includes("server rechecks bank membership") &&
+    teacherBankAssignmentNewPage.includes("server rechecks Library membership") &&
     teacherBlueprintPage.includes("Blueprint Library") &&
     teacherBlueprintPage.includes("Blueprints are reusable planning/package assets") &&
     teacherBlueprintPage.includes("Create Blueprint") &&
     teacherBlueprintPage.includes("New Folder") &&
-    teacherBlueprintNewPage.includes("This form only creates the library asset") &&
+    teacherBlueprintNewPage.includes("This form only creates the Library asset") &&
     teacherBlueprintDetailPage.includes("BlueprintWorkflowPanel") &&
     teacherBankBlueprintsPage.includes("Blueprint links for") &&
-    teacherBankBlueprintsPage.includes("Create Blueprint from this bank") &&
+    teacherBankBlueprintsPage.includes("Create Blueprint from this Library") &&
     teacherBlueprintActions.includes("requireTeacher") &&
     teacherBlueprintActions.includes("generation_ready: false") &&
     !teacherBlueprintActions.includes("executeDeepSeek") &&
@@ -673,8 +671,8 @@ assert(
     teacherClassroomDetailPage.includes("View assignments") &&
     teacherClassroomPeoplePage.includes("/students") &&
     teacherClassroomStudentsPage.includes("Remove from active roster") &&
-    teacherClassroomStudentsPage.includes("source bank") &&
-    teacherClassroomTeachersPage.includes("source Question Banks") &&
+    teacherClassroomStudentsPage.includes("source Library") &&
+    teacherClassroomTeachersPage.includes("source Libraries") &&
     teacherClassroomTeachersPage.includes("provider settings") &&
     teacherClassroomAnalyticsPage.includes("Progress") &&
     teacherClassroomAnalyticsPage.includes("Taxonomy mastery") &&
@@ -691,7 +689,7 @@ assert(
     teacherAssignmentsPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Latest activity") &&
     teacherAssignmentNewPage.includes("Published questions") &&
-    teacherAssignmentNewPage.includes("workflow now starts from Question Banks") &&
+    teacherAssignmentNewPage.includes("workflow now starts from Libraries") &&
     teacherAssignmentNewPage.includes("published-question compatibility") &&
     teacherAssignmentNewPage.includes("AssignmentSelectionSummary") &&
     assignmentSelectionSummary.includes("selectedCount") &&
@@ -702,7 +700,7 @@ assert(
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Student handoff") &&
     teacherAssignmentDetailPage.includes("does not grant students") &&
-    teacherAssignmentDetailPage.includes("full bank") &&
+    teacherAssignmentDetailPage.includes("full Library") &&
     teacherAssignmentDetailPage.includes("Student progress") &&
     teacherAssignmentDetailPage.includes("One row per active classroom student") &&
     teacherAssignmentDetailPage.includes("Practice evidence") &&
@@ -785,7 +783,7 @@ assert(
 assert(
   adminQuestionActions.includes("publishQuestionsWithReviewLineage") &&
     adminQuestionActions.includes('rpc("publish_review_draft_questions"') &&
-    adminQuestionActions.includes("needsGeneratedReviewPublish") &&
+    adminQuestionActions.includes("needsReviewPublish") &&
     adminQuestionActions.indexOf("await publishQuestionsWithReviewLineage({") <
       adminQuestionActions.lastIndexOf('if (parsed.status === "published" && returnTo.startsWith("/admin/review"))') &&
     !adminQuestionActions.includes("approveQuestionTaxonomyAssignmentsForPublish"),

@@ -59,6 +59,7 @@ const [
   bankImports,
   bankReview,
   bankActions,
+  bankPdfBurstActions,
   blueprintDetail,
   blueprintActions,
   publishPage,
@@ -80,6 +81,7 @@ const [
   read("src/app/teacher/banks/[bankId]/imports/page.tsx"),
   read("src/app/teacher/banks/[bankId]/review/page.tsx"),
   read("src/app/teacher/banks/actions.ts"),
+  read("src/app/teacher/banks/pdf-burst-actions.ts"),
   read("src/app/teacher/blueprints/[blueprintId]/page.tsx"),
   read("src/app/teacher/blueprints/actions.ts"),
   read("src/app/teacher/publish/page.tsx"),
@@ -105,20 +107,19 @@ assert(
 assert(
   [
     "Dashboard",
-    "Question Bank",
-    "AI Parsing",
-    "Blueprint",
-    "Classroom",
-    "Publish",
+    "Libraries",
+    "Blueprints",
+    "Classrooms",
+    "Assignments",
     "Progress",
   ].every((label) => nav.includes(label)),
   "teacher navigation must keep every major workflow visible",
 );
 assert(
   teacherHome.includes("Progress & Feedback") &&
-    teacherHome.includes("Create Question Bank") &&
+    teacherHome.includes("Create Library") &&
     teacherHome.includes("Review Drafts") &&
-    teacherHome.includes("Publish from Library"),
+    teacherHome.includes("Create Assignment"),
   "teacher dashboard must make the bank-first workflow and feedback discoverable",
 );
 console.log("PASS teacher navigation and dashboard handoffs are discoverable");
@@ -126,7 +127,7 @@ console.log("PASS teacher navigation and dashboard handoffs are discoverable");
 assert(
   bankUi.includes("AI drafts stay private until reviewed") &&
     bankDetail.includes("Assignments expose selected approved items") &&
-    bankImports.includes("importBankPdfDrafts") &&
+    bankImports.includes("TeacherPdfBurstUpload") &&
     bankImports.includes("Review is required before assignment") &&
     bankReview.includes("Open question review") &&
     bankActions.includes("approveBankReviewQuestion") &&
@@ -135,11 +136,10 @@ assert(
   "bank import and review must remain private, actionable, and review-gated",
 );
 assert(
-  bankActions.includes('targetBankId: parsed.bankId') &&
-    bankActions.includes('published_at: null') &&
-    bankActions.includes("formatTeacherAIPdfImportError") &&
-    bankActions.includes("enqueueAIProviderJob") &&
-    bankActions.includes("AI PDF Parsing is queued"),
+  bankPdfBurstActions.includes("requireManagedBank") &&
+    bankPdfBurstActions.includes("reserve_ai_pdf_upload_burst") &&
+    bankPdfBurstActions.includes("releaseAIPdfBurstAdmissionJobs") &&
+    !bankPdfBurstActions.includes('status: "published"'),
   "bank import must preserve target scope and no-publish guarantees",
 );
 assert(
@@ -151,9 +151,9 @@ assert(
   "Blueprint output must remain Review Draft gated with safe failure recovery",
 );
 assert(
-  publishPage.includes("Question Bank") &&
+  publishPage.includes("Library") &&
     publishPage.includes("Assignment-only") &&
-    publishActions.includes("Only bank owners and editors can publish bank content") &&
+    publishActions.includes("Only Library owners and editors can create assignments") &&
     publishActions.includes('.eq("status", "active")'),
   "Publish Center must use approved bank content and active classroom targets only",
 );

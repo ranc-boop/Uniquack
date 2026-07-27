@@ -26,7 +26,7 @@ function extractFunctionBody(source, functionName) {
 }
 
 const aiPdfService = await read("src/lib/ai-pdf-import/service.ts");
-const teacherBankActions = await read("src/app/teacher/banks/actions.ts");
+const teacherPdfBurstActions = await read("src/app/teacher/banks/pdf-burst-actions.ts");
 const teacherBankImportsPage = await read(
   "src/app/teacher/banks/[bankId]/imports/page.tsx",
 );
@@ -35,9 +35,13 @@ const smokeAll = await read("scripts/smoke-all.mjs");
 const migrationFileNames = [
   ...(await readDir("supabase/clean-migrations")),
 ];
-const teacherPdfAction = extractFunctionBody(
-  teacherBankActions,
-  "importBankPdfDrafts",
+const reserveTeacherPdfBurst = extractFunctionBody(
+  teacherPdfBurstActions,
+  "reserveTeacherAIPdfBurst",
+);
+const finalizeTeacherPdfBurst = extractFunctionBody(
+  teacherPdfBurstActions,
+  "finalizeTeacherAIPdfBurstItem",
 );
 
 assert(
@@ -68,24 +72,22 @@ assert(
 );
 
 assert(
-  teacherBankActions.includes("formatTeacherAIPdfImportError") &&
-    teacherBankActions.includes("isAIProviderError(error)") &&
-    teacherBankActions.includes("safeAIProviderMessage(error)") &&
-    teacherPdfAction.includes("enqueueAIProviderJob") &&
-    teacherPdfAction.includes("buildAIPdfJobIdempotencyKey") &&
-    !teacherPdfAction.includes("await processAIPdfImport") &&
-    teacherPdfAction.includes("targetBankId: parsed.bankId") &&
-    teacherPdfAction.includes("redirectWithError(fallbackPath, formatTeacherAIPdfImportError(error))"),
-  "teacher PDF import action must enqueue safe retryable work and preserve targetBankId",
+  reserveTeacherPdfBurst.includes("reserve_ai_pdf_upload_burst") &&
+    reserveTeacherPdfBurst.includes("resolveTeacherAIPdfProviderProfile") &&
+    reserveTeacherPdfBurst.includes("p_target_bank_id: detail.bank.id") &&
+    finalizeTeacherPdfBurst.includes("releaseAIPdfBurstAdmissionJobs") &&
+    finalizeTeacherPdfBurst.includes('"finalize_temporarily_unavailable"') &&
+    !teacherPdfBurstActions.includes("await processAIPdfImport"),
+  "teacher PDF burst actions must reserve private sources, hand off durable work, and preserve target bank scope",
 );
 
 assert(
-  teacherPdfAction.includes("assertNoRawProviderConfig(formData)") &&
-    teacherPdfAction.includes("canManageBankContent(detail.currentUserRole)") &&
-    teacherPdfAction.includes("resolveTeacherAIPdfProviderProfile") &&
-    !teacherPdfAction.includes("published_at") &&
-    !teacherPdfAction.includes('status: "published"') &&
-    !teacherPdfAction.includes('visibility: "public"'),
+  teacherPdfBurstActions.includes("canManageBankContent(detail.currentUserRole)") &&
+    teacherPdfBurstActions.includes("requireManagedBank") &&
+    !teacherPdfBurstActions.includes("published_at") &&
+    !teacherPdfBurstActions.includes('status: "published"') &&
+    !teacherPdfBurstActions.includes('visibility: "public"') &&
+    !teacherPdfBurstActions.includes("apiKey"),
   "teacher failure hardening must preserve admin/provider guards and avoid public/published writes",
 );
 

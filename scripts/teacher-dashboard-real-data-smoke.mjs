@@ -26,8 +26,8 @@ assert(
     page.includes("TeacherDashboardEvidencePanel") &&
     page.includes("TeacherDashboardWorkflowPanel") &&
     page.includes("Review Drafts") &&
-    page.includes("Publish from Library") &&
-    page.includes("Start with a Question Bank") &&
+    panels.includes("Assign from Library") &&
+    page.includes("Start with a Library") &&
     page.includes("No unreviewed draft can be assigned to students") &&
     page.includes("Student visibility stays assignment-only"),
   "/teacher must render a real dashboard while preserving bank-first safety copy",
@@ -69,7 +69,7 @@ assert(
 
 assert(
   !panels.includes('"use client"') &&
-    panels.includes("Question Banks") &&
+    panels.includes("Libraries") &&
     panels.includes("Assignment-ready") &&
     panels.includes("Active classrooms") &&
     panels.includes("Active assignments") &&

@@ -231,18 +231,18 @@ async function staticChecks() {
   const smokeAll = await read("scripts/smoke-all.mjs");
 
   assert(
-    publishPage.includes("Publish distributes selected approved bank content to classes. Students see assigned items only, not the full source bank.") &&
-      publishPage.includes("Question Bank") &&
-      publishPage.includes("Choose the content owner") &&
+    publishPage.includes("Assignments deliver selected approved Library content to classes. Students see assigned items only, not the full source Library.") &&
+      publishPage.includes("Library") &&
+      publishPage.includes("Choose the source Library") &&
       publishPage.includes("Blueprint") &&
-      publishPage.includes("Blueprint rows are not directly publishable") &&
+      publishPage.includes("Blueprint rows are not directly assignable") &&
       publishPage.includes("Package") &&
       publishPage.includes("Package publishing is not assignment-ready yet.") &&
       publishPage.includes("Select approved assignment-ready rows") &&
       publishPage.includes("Choose classroom delivery") &&
       publishPage.includes("Selected students") &&
       publishPage.includes("Student preview") &&
-      publishPage.includes("Assignment-only. No full source bank access.") &&
+      publishPage.includes("Assignment-only. No full source Library access.") &&
       publishPage.includes("No Review Draft bypass") &&
       publishPage.includes("No provider or AI calls"),
     "Publish Center page must expose source cards, class target, student preview, and review boundary copy",

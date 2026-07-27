@@ -98,18 +98,17 @@ async function runStaticChecks() {
       !teacherNav.includes("/admin/review") &&
       !teacherNav.includes("/practice") &&
       teacherNav.includes("Dashboard") &&
-      teacherNav.includes("Question Bank") &&
-      teacherNav.includes("AI Parsing") &&
-      teacherNav.includes("Blueprint") &&
-      teacherNav.includes("Classroom") &&
-      teacherNav.includes("Publish") &&
+      teacherNav.includes("Libraries") &&
+      !teacherNav.includes("AI Parsing") &&
+      teacherNav.includes("Blueprints") &&
+      teacherNav.includes("Classrooms") &&
+      teacherNav.includes("Assignments") &&
       teacherNav.includes("Progress") &&
-      teacherNav.includes("/teacher/ai-parsing") &&
       teacherNav.includes("/teacher/blueprints") &&
       teacherNav.includes("/teacher/publish") &&
       teacherNav.includes("/teacher/progress") &&
-      teacherHome.includes("Choose a bank first") &&
-      teacherHome.includes("Open bank review") &&
+      teacherHome.includes("Choose a Library first") &&
+      teacherHome.includes("Open Library review") &&
       teacherHome.includes("No unreviewed draft can be assigned to students") &&
       teacherHome.includes("Student visibility stays assignment-only"),
     "teacher workspace navigation must stay bank-first instead of pointing to admin/global review",
@@ -125,10 +124,10 @@ async function runStaticChecks() {
     "admin page must remain available for platform operations",
   );
   assert(
-    teacherBankReviewPage.includes("Approve drafts into this bank") &&
+    teacherBankReviewPage.includes("Approve drafts into this Library") &&
       teacherBankReviewPage.includes("public library") &&
       teacherBankQuestionsPage.includes("not public/global questions") &&
-      teacherBankQuestionsPage.includes("Assignment ready"),
+      teacherBankQuestionsPage.includes("Ready for assignment"),
     "teacher bank pages must describe bank-scoped approval and assignment-only visibility",
   );
   assert(
@@ -136,9 +135,10 @@ async function runStaticChecks() {
       adminQuestionActions.includes('status === "published"') &&
       adminQuestionActions.includes('"public" as const') &&
       adminQuestionActions.includes('"private" as const') &&
-      adminQuestionActions.includes("visibility: globalVisibilityForStatus(parsed.status)") &&
+      adminQuestionActions.includes('"create_global_manual_question_draft"') &&
+      adminQuestionActions.includes('visibility: "private" as const') &&
       adminQuestionActions.includes("visibility: globalVisibilityForStatus(updateStatus)"),
-    "admin global publish actions must explicitly set published questions to public visibility",
+    "admin manual creation must stay private-draft and global publish updates must explicitly set public visibility",
   );
   assert(
     boundaryMigration.includes("0029_teacher_role_bank_public_boundary") &&

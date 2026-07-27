@@ -167,7 +167,7 @@ async function runSourceSmoke() {
       teacherBlueprintUi.includes("Shared") &&
       teacherBlueprintUi.includes("Organization") &&
       teacherBlueprintUi.includes("Public review") &&
-      teacherBlueprintUi.includes("Bank-linked") &&
+      teacherBlueprintUi.includes("Library-linked") &&
       teacherBlueprintUi.includes("Start with a private Blueprint") &&
       teacherBlueprintUi.includes("Blueprints do not go directly to students") &&
       teacherBlueprintUi.includes("Generate Review Drafts") &&
@@ -178,7 +178,7 @@ async function runSourceSmoke() {
   assert(
     teacherBlueprintNewPage.includes("action={createTeacherBlueprint}") &&
       teacherBlueprintNewPage.includes("Create a reusable planning asset") &&
-      teacherBlueprintNewPage.includes("This form only creates the library asset") &&
+      teacherBlueprintNewPage.includes("This form only creates the Library asset") &&
       teacherBlueprintActions.includes("requireTeacher") &&
       teacherBlueprintActions.includes("question_blueprints") &&
       teacherBlueprintActions.includes("bank_blueprints") &&
@@ -195,8 +195,8 @@ async function runSourceSmoke() {
       teacherBlueprintDetailPage.includes("Provider choice, model, and credentials stay admin-only") &&
       teacherBlueprintDetailPage.includes("Source lineage and constraints") &&
       teacherBankBlueprintsPage.includes("Blueprint links for") &&
-      teacherBankBlueprintsPage.includes("Create Blueprint from this bank") &&
-      teacherBankBlueprintsPage.includes("No Blueprints linked to this bank yet") &&
+      teacherBankBlueprintsPage.includes("Create Blueprint from this Library") &&
+      teacherBankBlueprintsPage.includes("No Blueprints linked to this Library yet") &&
       teacherBankBlueprintsPage.includes("will appear here") &&
       teacherBlueprintHelper.includes("BlueprintLibrarySchemaMissingError"),
     "teacher Blueprint detail and bank-linked pages must expose safe lineage and bank linkage",

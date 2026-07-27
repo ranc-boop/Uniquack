@@ -99,7 +99,7 @@ assert(
 );
 assert(
   studyLibraryPage.includes("without creating a new backend") &&
-    studyGroupsPage.includes("do not grant access to teacher private banks") &&
+    studyGroupsPage.includes("do not grant access to teacher private Libraries") &&
     publicLibraryPage.includes("Public does not mean verified") &&
     progressPage.includes("Feedback history"),
   "student placeholder modules must be clearly shell-only and boundary-safe",
