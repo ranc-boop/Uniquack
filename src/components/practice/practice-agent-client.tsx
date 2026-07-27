@@ -28,10 +28,14 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   buildPracticeSubmittedAttempts,
   clearLegacyPracticeStorage,
+  clampPracticeSidebarWidth as clampSidebarWidth,
   evaluatePracticeSubmittedAttempts,
   hasSubmittedPracticeAnswer,
+  isReusableEmptyPracticeSession,
   practiceAnswerMapsMatch,
   practiceAnswerMapStatus,
+  practiceJsonRequest as jsonRequest,
+  parsePracticeSseEvents as parseSseEvents,
   parsePracticeSsePayload,
   practiceApiErrorMessage,
   practiceAnswerKey,
@@ -97,19 +101,6 @@ type PracticeAgentClientProps = {
   testOnlyDelayedHydration?: boolean;
 };
 
-function isReusableEmptyPracticeSession(
-  session: PracticeSessionSummary,
-  courseFrameworkId: string | null,
-) {
-  return session.status === "active" &&
-    (session.courseFrameworkId ?? null) === courseFrameworkId &&
-    session.roundCount === 0 &&
-    !session.goal.trim() &&
-    !session.sessionMemory.trim() &&
-    !session.outlineUserNotes?.trim() &&
-    session.completedQuestionIds.length === 0 &&
-    !(session.sessionThreadMessages?.length);
-}
 type TestOnlyDelayedHydrationStatus =
   | "NOT_ENABLED"
   | "NOT_REQUESTED"
@@ -132,52 +123,6 @@ type AssignmentPracticeStartPayload = {
 const COLLAPSED_SIDEBAR_WIDTH = 60;
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 304;
 const DEFAULT_RIGHT_SIDEBAR_WIDTH = 384;
-const MIN_SIDEBAR_WIDTH = 240;
-const MAX_SIDEBAR_WIDTH = 560;
-
-function clampSidebarWidth(value: number) {
-  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, Math.round(value)));
-}
-
-async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-  const payload = (await response.json().catch(() => ({}))) as T & ApiError;
-
-  if (!response.ok) {
-    throw new Error(practiceApiErrorMessage(payload.error, response.status));
-  }
-
-  return payload;
-}
-
-function parseSseEvents(buffer: string) {
-  const parts = buffer.split(/\n\n/);
-  const rest = parts.pop() ?? "";
-  const events = parts
-    .map((part) => {
-      let event = "message";
-      const dataLines: string[] = [];
-
-      for (const line of part.split(/\n/)) {
-        if (line.startsWith("event:")) {
-          event = line.slice("event:".length).trim();
-        } else if (line.startsWith("data:")) {
-          dataLines.push(line.slice("data:".length).trimStart());
-        }
-      }
-
-      return dataLines.length ? { data: dataLines.join("\n"), event } : null;
-    })
-    .filter((event): event is { data: string; event: string } => event !== null);
-
-  return { events, rest };
-}
 
 async function postRecommendationStream({
   body,

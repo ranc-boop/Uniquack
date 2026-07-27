@@ -13,12 +13,31 @@ import type {
   PracticeRecommendResponse,
   PracticeRecommendation,
   PracticeRoundHistory,
+  PracticeSessionSummary,
 } from "@/lib/practice/types";
 
 type PracticeAnswerMap = Readonly<Record<string, PracticeAttemptInput["answer"]>>;
 type PracticeHintMap = Readonly<Record<string, readonly string[]>>;
 type PracticeQuestionIdentity = Pick<PracticeRecommendation, "id" | "sourceQuestionId"> &
   PracticeQuestionIdentityLike;
+
+export function clampPracticeSidebarWidth(value: number) {
+  return Math.min(560, Math.max(240, Math.round(value)));
+}
+
+export function isReusableEmptyPracticeSession(
+  session: PracticeSessionSummary,
+  courseFrameworkId: string | null,
+) {
+  return session.status === "active" &&
+    (session.courseFrameworkId ?? null) === courseFrameworkId &&
+    session.roundCount === 0 &&
+    !session.goal.trim() &&
+    !session.sessionMemory.trim() &&
+    !session.outlineUserNotes?.trim() &&
+    session.completedQuestionIds.length === 0 &&
+    !session.sessionThreadMessages?.length;
+}
 
 export function practiceApiErrorMessage(
   error: unknown,
@@ -31,6 +50,51 @@ export function practiceApiErrorMessage(
     if (typeof message === "string" && message.trim()) return message;
   }
   return fallback;
+}
+
+export async function practiceJsonRequest<T>(
+  url: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+  const payload = (await response.json().catch(() => ({}))) as T & {
+    error?: unknown;
+  };
+
+  if (!response.ok) {
+    throw new Error(practiceApiErrorMessage(payload.error, response.status));
+  }
+
+  return payload;
+}
+
+export function parsePracticeSseEvents(buffer: string) {
+  const parts = buffer.split(/\n\n/);
+  const rest = parts.pop() ?? "";
+  const events = parts
+    .map((part) => {
+      let event = "message";
+      const dataLines: string[] = [];
+
+      for (const line of part.split(/\n/)) {
+        if (line.startsWith("event:")) {
+          event = line.slice("event:".length).trim();
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice("data:".length).trimStart());
+        }
+      }
+
+      return dataLines.length ? { data: dataLines.join("\n"), event } : null;
+    })
+    .filter((event): event is { data: string; event: string } => event !== null);
+
+  return { events, rest };
 }
 
 export function parsePracticeSsePayload(data: string) {
