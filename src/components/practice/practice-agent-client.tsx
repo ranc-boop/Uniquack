@@ -470,6 +470,7 @@ export function PracticeAgentClient({
   const thinkingStartedAtRef = useRef<number | null>(null);
   const streamedReviewTextRef = useRef("");
   const streamedReviewFrameRef = useRef<number | null>(null);
+  const initialHydrationStartedRef = useRef(false);
   const assignmentLaunchStartedRef = useRef(false);
   const testOnlyDelayedHydrationStartedRef = useRef(false);
   const [testOnlyDelayedHydrationStatus, setTestOnlyDelayedHydrationStatus] =
@@ -525,7 +526,10 @@ export function PracticeAgentClient({
     return true;
   }
 
-  async function refreshPracticeState(preferredSessionId?: string) {
+  async function refreshPracticeState(
+    preferredSessionId?: string,
+    { deferAuxiliary = false }: { deferAuxiliary?: boolean } = {},
+  ) {
     const sessionPayloadPromise = jsonRequest<{
       activeSession: PracticeSessionDetail | null;
       sessions: PracticeSessionSummary[];
@@ -537,9 +541,6 @@ export function PracticeAgentClient({
     const frameworkPayloadPromise = jsonRequest<{
       frameworks: PracticeCourseFrameworkSummary[];
     }>("/api/practice/course-frameworks");
-    const sourcePayloadPromise = assignmentId
-      ? Promise.resolve({ sources: [] as PracticeSourceOption[] })
-      : jsonRequest<{ sources: PracticeSourceOption[] }>("/api/practice/sources");
     const sessionPayload = await sessionPayloadPromise;
 
     let nextSession = sessionPayload.activeSession;
@@ -550,25 +551,40 @@ export function PracticeAgentClient({
       nextSession = detail.session;
     }
 
+    const sourcePayloadPromise = assignmentId || nextSession?.sourceScopeLockedAt
+      ? Promise.resolve({ sources: [] as PracticeSourceOption[] })
+      : jsonRequest<{ sources: PracticeSourceOption[] }>("/api/practice/sources");
     const wrongPayloadPromise = nextSession
       ? jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
           `/api/practice/wrong-questions?sessionId=${encodeURIComponent(nextSession.id)}`,
         )
       : Promise.resolve({ wrongQuestions: [] });
-    const [wrongPayload, preferencePayload, frameworkPayload, sourcePayload] = await Promise.all([
-      wrongPayloadPromise,
-      preferencePayloadPromise,
-      frameworkPayloadPromise,
-      sourcePayloadPromise,
-    ]);
+    const preferenceStatePromise = preferencePayloadPromise.then((preferencePayload) => {
+      setLongTermMemory(preferencePayload.longTermPreference);
+      setLongTermMemoryDraft(preferencePayload.longTermPreference);
+    });
+    const frameworkStatePromise = frameworkPayloadPromise.then((frameworkPayload) => {
+      setCourseFrameworks(frameworkPayload.frameworks);
+    });
+    const sourceStatePromise = sourcePayloadPromise.then((sourcePayload) => {
+      setPracticeSources(sourcePayload.sources);
+    });
+    const wrongStatePromise = wrongPayloadPromise.then((wrongPayload) => {
+      setWrongQuestions(wrongPayload.wrongQuestions);
+    });
+    const auxiliaryStatePromise = Promise.all([
+      preferenceStatePromise,
+      frameworkStatePromise,
+      sourceStatePromise,
+      wrongStatePromise,
+    ]).then(
+      () => ({ error: null as unknown }),
+      (caught: unknown) => ({ error: caught }),
+    );
+
     setSessions(sessionPayload.sessions);
     setActiveSession(nextSession);
     setOutlineNotes(nextSession?.outlineUserNotes ?? "");
-    setWrongQuestions(wrongPayload.wrongQuestions);
-    setLongTermMemory(preferencePayload.longTermPreference);
-    setLongTermMemoryDraft(preferencePayload.longTermPreference);
-    setCourseFrameworks(frameworkPayload.frameworks);
-    setPracticeSources(sourcePayload.sources);
     if (nextSession?.status === "active" && nextSession.sourceScope.length) {
       setIncludePublicCatalog(
         nextSession.sourceScope.some((source) => source.sourceKind === "public_catalog"),
@@ -583,6 +599,21 @@ export function PracticeAgentClient({
     if (nextSession?.completion) {
       setStreamedCompletionReport(nextSession.completion.report);
       setPhase("completed");
+    }
+
+    if (deferAuxiliary) {
+      void auxiliaryStatePromise.then(({ error: auxiliaryError }) => {
+        if (auxiliaryError) {
+          setError(
+            auxiliaryError instanceof Error
+              ? auxiliaryError.message
+              : String(auxiliaryError),
+          );
+        }
+      });
+    } else {
+      const { error: auxiliaryError } = await auxiliaryStatePromise;
+      if (auxiliaryError) throw auxiliaryError;
     }
 
     return nextSession;
@@ -850,6 +881,9 @@ export function PracticeAgentClient({
   }
 
   useEffect(() => {
+    if (initialHydrationStartedRef.current) return;
+    initialHydrationStartedRef.current = true;
+
     startTransition(async () => {
       try {
         clearLegacyPracticeStorage();
@@ -861,7 +895,9 @@ export function PracticeAgentClient({
           return;
         }
 
-        const restoredSession = await refreshPracticeState();
+        const restoredSession = await refreshPracticeState(undefined, {
+          deferAuxiliary: true,
+        });
         const pendingRound = readPendingPracticeRound();
         if (pendingRound) {
           setRecommendation(pendingRound);
@@ -1269,6 +1305,9 @@ export function PracticeAgentClient({
         const wrongQuestionsPromise = jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
           `/api/practice/wrong-questions?sessionId=${encodeURIComponent(payload.session.id)}`,
         );
+        const sourcesPromise = !assignmentId && !payload.session.sourceScopeLockedAt
+          ? jsonRequest<{ sources: PracticeSourceOption[] }>("/api/practice/sources")
+          : Promise.resolve({ sources: [] as PracticeSourceOption[] });
         setActiveSession(payload.session);
         setOutlineNotes(payload.session.outlineUserNotes ?? "");
         resetRoundState("SESSION_CHANGE");
@@ -1276,6 +1315,9 @@ export function PracticeAgentClient({
         void wrongQuestionsPromise
           .then((wrongPayload) => setWrongQuestions(wrongPayload.wrongQuestions))
           .catch(() => setWrongQuestions([]));
+        void sourcesPromise
+          .then((sourcePayload) => setPracticeSources(sourcePayload.sources))
+          .catch(() => setPracticeSources([]));
         if (payload.session.status === "completed" && payload.session.completion) {
           setCompletion(payload.session.completion);
           setStreamedCompletionReport(payload.session.completion.report);

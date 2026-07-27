@@ -22,8 +22,10 @@ export async function GET() {
     return auth.response;
   }
 
-  const preference = await getOrCreatePracticePreference({ supabase, userId: auth.user.id });
-  const pendingMergeCount = await countPendingPreferenceJobs({ supabase, userId: auth.user.id });
+  const [preference, pendingMergeCount] = await Promise.all([
+    getOrCreatePracticePreference({ supabase, userId: auth.user.id }),
+    countPendingPreferenceJobs({ supabase, userId: auth.user.id }),
+  ]);
 
   return NextResponse.json({
     lastAgentUpdatedAt: preference.last_agent_updated_at,
