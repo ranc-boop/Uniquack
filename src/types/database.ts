@@ -545,6 +545,8 @@ export type Question = {
   source_kind: string | null;
   source_review_item_id: string | null;
   owner_bank_id: string | null;
+  revision_of_question_id: string | null;
+  public_submission_id: string | null;
   visibility: QuestionBankVisibility;
   created_by: string | null;
   updated_by: string | null;
@@ -553,6 +555,47 @@ export type Question = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+};
+
+export type PublicQuestionSubmissionStatus =
+  | "pending"
+  | "in_review"
+  | "changes_requested"
+  | "accepted"
+  | "rejected"
+  | "withdrawn";
+
+export type PublicQuestionSubmission = {
+  id: string;
+  source_bank_id: string;
+  source_bank_question_id: string;
+  source_question_id: string;
+  supersedes_submission_id: string | null;
+  submitted_snapshot: Json;
+  submitted_by: string;
+  status: PublicQuestionSubmissionStatus;
+  review_reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  published_question_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PublicQuestionSubmissionEvent = {
+  id: string;
+  submission_id: string;
+  action_kind:
+    | "submitted"
+    | "review_started"
+    | "changes_requested"
+    | "accepted"
+    | "rejected"
+    | "withdrawn";
+  actor_id: string | null;
+  reason: string | null;
+  evidence: Json;
+  created_at: string;
 };
 
 export type Video = {
@@ -595,6 +638,7 @@ export type QuestionAsset = {
   label: string | null;
   alt_text: string | null;
   display_order: number;
+  display_on_detail: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -958,6 +1002,8 @@ export type Database = {
         depth: number;
       }>;
       questions: TableDefinition<Question>;
+      public_question_submissions: TableDefinition<PublicQuestionSubmission>;
+      public_question_submission_events: TableDefinition<PublicQuestionSubmissionEvent>;
       question_taxonomy_assignments: TableDefinition<QuestionTaxonomyAssignment>;
       taxonomy_review_actions: TableDefinition<TaxonomyReviewAction>;
       videos: TableDefinition<Video>;
@@ -1327,6 +1373,125 @@ export type Database = {
       can_read_question_asset: {
         Args: { p_asset_id: string };
         Returns: boolean;
+      };
+      create_bank_question_revision_draft: {
+        Args: {
+          p_actor_id?: string | null;
+          p_bank_id: string;
+          p_copied_assets?: Json;
+          p_source_question_id: string;
+        };
+        Returns: string;
+      };
+      create_bank_manual_question_draft: {
+        Args: {
+          p_bank_id: string;
+          p_question_code: string;
+          p_title: string;
+        };
+        Returns: string;
+      };
+      create_global_manual_question_draft: {
+        Args: {
+          p_question_code: string;
+          p_title: string;
+        };
+        Returns: string;
+      };
+      submit_bank_questions_to_public_review: {
+        Args: {
+          p_public_license_confirmed: boolean;
+          p_source_bank_question_ids: string[];
+        };
+        Returns: Array<{
+          source_question_id: string;
+          status: string;
+          submission_id: string;
+        }>;
+      };
+      review_public_question_submission: {
+        Args: {
+          p_decision: string;
+          p_public_assets?: Json;
+          p_reason?: string | null;
+          p_submission_id: string;
+        };
+        Returns: string | null;
+      };
+      withdraw_public_question_submission: {
+        Args: { p_submission_id: string };
+        Returns: undefined;
+      };
+      pull_public_question_to_bank: {
+        Args: {
+          p_actor_id?: string | null;
+          p_bank_id: string;
+          p_copied_assets?: Json;
+          p_public_question_id: string;
+        };
+        Returns: string;
+      };
+      count_bank_question_rows: {
+        Args: {
+          p_bank_id: string;
+          p_query?: string | null;
+          p_readiness?: string;
+          p_source_kind?: string | null;
+          p_taxonomy_tag_id?: string | null;
+        };
+        Returns: number;
+      };
+      count_bank_review_questions: {
+        Args: {
+          p_bank_id: string;
+          p_query?: string | null;
+          p_review_status?: string | null;
+        };
+        Returns: number;
+      };
+      search_bank_question_rows: {
+        Args: {
+          p_bank_id: string;
+          p_limit?: number;
+          p_offset?: number;
+          p_query?: string | null;
+          p_readiness?: string;
+          p_source_kind?: string | null;
+          p_taxonomy_tag_id?: string | null;
+        };
+        Returns: Array<{
+          added_at: string;
+          bank_question_id: string;
+          bank_question_status: string;
+          bank_source_kind: string;
+          difficulty_rating: number;
+          metadata: Json;
+          published_at: string | null;
+          question_code: string;
+          question_id: string;
+          question_source: string | null;
+          question_source_kind: string | null;
+          question_status: string;
+          question_type: string;
+          source_review_item_id: string | null;
+          tag_summaries: Json;
+          title: string;
+          total_count: number;
+          visibility: string;
+        }>;
+      };
+      search_bank_review_question_ids: {
+        Args: {
+          p_bank_id: string;
+          p_limit?: number;
+          p_offset?: number;
+          p_query?: string | null;
+          p_review_status?: string | null;
+        };
+        Returns: Array<{
+          question_id: string;
+          total_count: number;
+        }>;
       };
     };
     Enums: Record<string, never>;
