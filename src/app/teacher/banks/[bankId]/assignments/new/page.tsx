@@ -34,10 +34,10 @@ function SetupNeededState() {
           Bank assignment tables are not available yet.
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply clean migration 0028, then return to this bank assignment page.
+          Apply clean migration 0028, then return to this Library assignment page.
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Banks / Library</Link>
+          <Link href="/teacher/banks">Back to Libraries</Link>
         </Button>
       </section>
     </main>
@@ -91,7 +91,7 @@ export default async function NewBankAssignmentPage({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="teacher-eyebrow">Question Bank assignment</p>
+              <p className="teacher-eyebrow">Library assignment</p>
               <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
                 {questionBankVisibilityLabel(bank.visibility)}
               </span>
@@ -103,19 +103,19 @@ export default async function NewBankAssignmentPage({
               Assign from {bank.name}
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Select active approved bank questions, choose a class you manage,
+              Select active approved Library questions, choose a class you manage,
               then save a draft or assign it. Students receive only these
-              selected items, not access to the full bank.
+              selected items, not access to the full Library.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild>
               <Link href={`/teacher/publish?sourceBankId=${bank.id}`}>
-                Open Publish Center
+                Open Assignments
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}`}>Back to bank</Link>
+              <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
             </Button>
             <Button asChild variant="outline">
               <Link href="/teacher/classrooms">Classrooms</Link>
@@ -129,9 +129,9 @@ export default async function NewBankAssignmentPage({
 
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
         <strong className="font-bold">Assignment-only delivery:</strong> this
-        creates a classroom delivery event from selected approved bank items.
+        creates a classroom delivery event from selected approved Library items.
         It does not publish questions globally or expose bank browsing to
-        students. The top-level Publish Center is now the primary workflow for
+        students. The top-level Assignments workspace is now the primary workflow for
         publishing selected bank work to one or more classes.
       </section>
 
@@ -143,7 +143,7 @@ export default async function NewBankAssignmentPage({
 
       <section className="grid gap-3 md:grid-cols-4">
         {[
-          ["Bank", bank.name],
+          ["Library", bank.name],
           ["Approved items", usableQuestions.length],
           ["Available classes", classrooms.length],
           ["Updated", formatDate(bank.updated_at)],
@@ -165,11 +165,11 @@ export default async function NewBankAssignmentPage({
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-950">
-                  Approved bank questions
+                  Approved Library questions
                 </h2>
                 <p className="teacher-muted">
-                  These questions are approved inside this bank. They can be
-                  delivered to a class without becoming public Question Bank
+                  These questions are approved inside this Library. They can be
+                  delivered to a class without becoming Central Public Library
                   results.
                 </p>
               </div>
@@ -223,15 +223,15 @@ export default async function NewBankAssignmentPage({
             ) : (
               <div className="p-8 text-center">
                 <h3 className="text-base font-bold text-slate-950">
-                  No approved bank questions yet.
+                  No approved Library questions yet.
                 </h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                  Import material and approve Review Drafts into this bank
+                  Import material and approve Review Drafts into this Library
                   before creating assignments for students.
                 </p>
                 <Button asChild className="mt-4" variant="outline">
                   <Link href={`/teacher/banks/${bank.id}/review`}>
-                    Open bank Review Drafts
+                    Open Library Review Drafts
                   </Link>
                 </Button>
               </div>
@@ -247,9 +247,9 @@ export default async function NewBankAssignmentPage({
             <div className="mt-5 space-y-4">
               <AssignmentSelectionSummary
                 formId="bank-assignment-create-form"
-                helperText="Choose at least one approved bank question before saving or assigning."
+                helperText="Choose at least one approved Library question before saving or assigning."
                 inputName="bankQuestionIds"
-                totalLabel="approved bank question(s) available in this view."
+                totalLabel="approved Library question(s) available in this view."
                 totalQuestions={usableQuestions.length}
               />
               <div className="space-y-2">
@@ -271,7 +271,7 @@ export default async function NewBankAssignmentPage({
                 </select>
                 {!classrooms.length ? (
                   <p className="text-xs leading-5 text-amber-700">
-                    Create a classroom before assigning selected bank content.
+                    Create a classroom before assigning selected Library content.
                   </p>
                 ) : null}
               </div>
@@ -337,8 +337,8 @@ export default async function NewBankAssignmentPage({
               </Button>
             </div>
             <p className="mt-4 text-xs leading-5 text-slate-500">
-              The server rechecks bank membership, classroom management, and
-              every selected active bank question before creating the
+              The server rechecks Library membership, classroom management, and
+              every selected active Library question before creating the
               assignment.
             </p>
           </section>

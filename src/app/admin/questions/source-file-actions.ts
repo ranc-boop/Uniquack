@@ -9,6 +9,7 @@ import {
   questionSourceFileExtensionForMimeType,
 } from "@/lib/question-source-files";
 import { createClient } from "@/lib/supabase/server";
+import type { QuestionSourceFileView } from "@/lib/questions/media-workspace";
 import {
   cancelQuestionSourceFileUploadSchema,
   createQuestionSourceFileSignedUrlSchema,
@@ -18,14 +19,26 @@ import {
   reserveQuestionSourceFileUploadSchema,
 } from "@/lib/validations/question-source-file";
 
-export type QuestionSourceFileView = {
-  id: string;
-  questionId: string | null;
-  originalFilename: string;
-  mimeType: string;
-  sizeBytes: number;
-  status: "pending" | "ready" | "deleted";
-};
+export type { QuestionSourceFileView } from "@/lib/questions/media-workspace";
+
+async function assertGlobalQuestion(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  questionId: string,
+) {
+  const { data, error } = await supabase
+    .from("questions")
+    .select("id")
+    .eq("id", questionId)
+    .is("owner_bank_id", null)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error(
+      "Admin source-file actions only support Central Public Library questions.",
+    );
+  }
+}
 
 export async function ensureQuestionDraftForSourceUpload(input: unknown) {
   const profile = await requireAdmin();
@@ -37,6 +50,7 @@ export async function ensureQuestionDraftForSourceUpload(input: unknown) {
       .from("questions")
       .select("id, status, created_by")
       .eq("id", parsed.draftId)
+      .is("owner_bank_id", null)
       .maybeSingle();
 
     if (draftError) {
@@ -67,27 +81,22 @@ export async function ensureQuestionDraftForSourceUpload(input: unknown) {
     return { questionId: parsed.draftId };
   }
 
-  const { data: question, error } = await supabase
-    .from("questions")
-    .insert({
-      question_code: parsed.questionCode,
-      title: parsed.title,
-      content_html: "",
-      difficulty_rating: 500,
-      question_type: "frq",
-      status: "draft",
-      created_by: profile.id,
-      updated_by: profile.id,
-    })
-    .select("id")
-    .single();
+  const { data: questionId, error } = await supabase.rpc(
+    "create_global_manual_question_draft",
+    {
+      p_question_code: parsed.questionCode,
+      p_title: parsed.title,
+    },
+  );
 
   if (error) {
     throw new Error(error.message);
   }
+  if (!questionId) throw new Error("The global Review Draft was not created.");
 
   revalidatePath("/admin/questions");
-  return { questionId: question.id };
+  revalidatePath("/admin/review");
+  return { questionId };
 }
 
 export async function reserveQuestionSourceFileUpload(input: unknown) {
@@ -110,6 +119,7 @@ export async function reserveQuestionSourceFileUpload(input: unknown) {
     .from("questions")
     .select("id")
     .eq("id", parsed.questionId)
+    .is("owner_bank_id", null)
     .maybeSingle();
 
   if (questionError) {
@@ -177,6 +187,7 @@ export async function finalizeQuestionSourceFileUpload(input: unknown) {
   if (!sourceFile?.question_id) {
     throw new Error("Source file upload record not found.");
   }
+  await assertGlobalQuestion(supabase, sourceFile.question_id);
 
   const directory = `questions/${sourceFile.question_id}`;
   const filename = sourceFile.object_path.slice(directory.length + 1);
@@ -220,7 +231,7 @@ export async function cancelQuestionSourceFileUpload(input: unknown) {
   const supabase = await createClient();
   const { data: sourceFile, error: sourceFileError } = await supabase
     .from("question_source_files")
-    .select("id, object_path, status")
+    .select("id, question_id, object_path, status")
     .eq("id", parsed.sourceFileId)
     .maybeSingle();
 
@@ -231,6 +242,10 @@ export async function cancelQuestionSourceFileUpload(input: unknown) {
   if (!sourceFile || sourceFile.status !== "pending") {
     return { cancelled: false, sourceFileId: parsed.sourceFileId };
   }
+  if (!sourceFile.question_id) {
+    throw new Error("Source file is not attached to a global question.");
+  }
+  await assertGlobalQuestion(supabase, sourceFile.question_id);
 
   const { error: updateError } = await supabase
     .from("question_source_files")
@@ -261,7 +276,7 @@ export async function createQuestionSourceFileSignedUrl(input: unknown) {
   const supabase = await createClient();
   const { data: sourceFile, error: sourceFileError } = await supabase
     .from("question_source_files")
-    .select("id, object_path, status")
+    .select("id, question_id, object_path, status")
     .eq("id", parsed.sourceFileId)
     .neq("status", "deleted")
     .maybeSingle();
@@ -273,6 +288,10 @@ export async function createQuestionSourceFileSignedUrl(input: unknown) {
   if (!sourceFile || sourceFile.status !== "ready") {
     throw new Error("Source file is not ready.");
   }
+  if (!sourceFile.question_id) {
+    throw new Error("Source file is not attached to a global question.");
+  }
+  await assertGlobalQuestion(supabase, sourceFile.question_id);
 
   const { data, error } = await supabase.storage
     .from(QUESTION_SOURCE_FILES_BUCKET)
@@ -291,7 +310,7 @@ export async function deleteQuestionSourceFile(input: unknown) {
   const supabase = await createClient();
   const { data: sourceFile, error: sourceFileError } = await supabase
     .from("question_source_files")
-    .select("id, object_path")
+    .select("id, question_id, object_path")
     .eq("id", parsed.sourceFileId)
     .maybeSingle();
 
@@ -302,6 +321,10 @@ export async function deleteQuestionSourceFile(input: unknown) {
   if (!sourceFile) {
     throw new Error("Source file not found.");
   }
+  if (!sourceFile.question_id) {
+    throw new Error("Source file is not attached to a global question.");
+  }
+  await assertGlobalQuestion(supabase, sourceFile.question_id);
 
   const { error: storageError } = await supabase.storage
     .from(QUESTION_SOURCE_FILES_BUCKET)

@@ -229,14 +229,15 @@ async function main() {
   );
   assert(
     bankDetailPage.includes("Create assignment") &&
-      bankAssignmentPage.includes("Question Bank assignment") &&
+      bankAssignmentPage.includes("Library assignment") &&
       bankAssignmentPage.includes("selected approved") &&
-      bankAssignmentPage.includes("full bank") &&
+      bankAssignmentPage.includes("full Library") &&
       bankActions.includes("create_assignment_from_bank") &&
-      assignmentLinkage.includes("no longer available to you") &&
+      assignmentLinkage.includes("missingQuestionIds") &&
+      assignmentLinkage.includes("ASSIGNMENT_CONTENT_UNAVAILABLE") &&
       !assignmentLinkage.includes('.eq("status", "published")') &&
       studentWorkDetailPage.includes("full teacher") &&
-      studentWorkDetailPage.includes("bank stays private"),
+      studentWorkDetailPage.includes("Library stays private"),
     "assignment-from-bank UI and practice path must be bank-first and assignment-only",
   );
   console.log("PASS assignment-from-bank static checks protect bank-first assignment workflow");

@@ -29,11 +29,11 @@ const [
 ]);
 
 assert(
-  page.includes("Question Bank") &&
+  page.includes("Library") &&
     page.includes("Blueprint") &&
     page.includes("Package") &&
     page.includes("Package publishing is not assignment-ready yet.") &&
-    page.includes("Blueprint rows are not directly publishable") &&
+    page.includes("Blueprint rows are not directly assignable") &&
     page.includes("Student preview") &&
     page.includes("Hidden from students") &&
     page.includes("Choose classroom delivery") &&
@@ -74,7 +74,7 @@ assert(
     actions.includes("buildPublishAssignmentSourceSummary") &&
     actions.includes("create_assignment_from_bank") &&
     actions.includes("source_summary") &&
-    actions.includes("Selected classrooms must belong to the source bank organization.") &&
+    actions.includes("Selected classrooms must belong to the source Library organization.") &&
     !actions.includes("AI_PROVIDER") &&
     !actions.includes("providerProfiles") &&
     !actions.includes("published_at"),

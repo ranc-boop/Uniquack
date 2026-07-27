@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import type {
   BankMember,
   BankMemberRole,
+  BankQuestion,
   BankShareCode,
   QuestionTaxonomyAssignment,
   Profile,
@@ -18,6 +19,11 @@ import type {
   TaxonomyNode,
   TaxonomyReviewStatus,
 } from "@/types/database";
+import type {
+  QuestionAssetView,
+  QuestionSourceFileView,
+} from "@/lib/questions/media-workspace";
+import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -108,6 +114,8 @@ export type BankReviewDraftQuestion = Pick<
   boundaryFindings: QuestionBoundaryGuardFinding[];
   warningCount: number;
   warningMessages: string[];
+  assets: QuestionAssetView[];
+  sourceFiles: QuestionSourceFileView[];
 };
 
 export type BankApprovedQuestion = {
@@ -142,7 +150,7 @@ export type BankQuestionTaxonomySummary = Pick<
 };
 
 export class QuestionBankSchemaMissingError extends Error {
-  constructor(message = "Question Bank tables are not available yet.") {
+  constructor(message = "Library tables are not available yet.") {
     super(message);
     this.name = "QuestionBankSchemaMissingError";
   }
@@ -461,20 +469,62 @@ export async function listBankImportBatches({
 
 export async function listBankReviewDraftQuestions({
   bankId,
+  page = 1,
+  pageSize = 25,
+  query,
+  reviewStatus,
   supabase,
 }: {
   bankId: string;
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  reviewStatus?: "needs_more_evidence" | "pending_review";
   supabase: SupabaseServerClient;
 }) {
+  const safePage = Math.max(1, Math.floor(page));
+  const safePageSize = Math.min(50, Math.max(1, Math.floor(pageSize)));
+  const reviewFilters = {
+    p_bank_id: bankId,
+    p_query: query?.trim() || null,
+    p_review_status: reviewStatus ?? null,
+  };
+  const [
+    { data: reviewPageRows, error: reviewPageError },
+    { data: reviewTotal, error: reviewCountError },
+  ] = await Promise.all([
+    supabase.rpc("search_bank_review_question_ids", {
+      ...reviewFilters,
+      p_bank_id: bankId,
+      p_limit: safePageSize,
+      p_offset: (safePage - 1) * safePageSize,
+    }),
+    supabase.rpc("count_bank_review_questions", reviewFilters),
+  ]);
+
+  assertQuestionBankSchema(reviewPageError);
+  assertQuestionBankSchema(reviewCountError);
+  if (reviewPageError) throw new Error(reviewPageError.message);
+  if (reviewCountError) throw new Error(reviewCountError.message);
+  const reviewQuestionIds = (reviewPageRows ?? []).map((row) => row.question_id);
+  const total = Number(reviewTotal ?? 0);
+
+  if (!reviewQuestionIds.length) {
+    return {
+      items: [] as BankReviewDraftQuestion[],
+      page: safePage,
+      pageSize: safePageSize,
+      total,
+    };
+  }
+
   const { data: questions, error } = await supabase
     .from("questions")
     .select(
       "id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, published_at, created_at, answer_spec, content_html, content_source, content_source_format, options, solution_html, solution_source, solution_source_format",
     )
-    .eq("owner_bank_id", bankId)
-    .eq("status", "draft")
-    .order("created_at", { ascending: false })
-    .limit(50);
+    .in("id", reviewQuestionIds)
+    .order("created_at", { ascending: false });
 
   assertQuestionBankSchema(error);
 
@@ -483,7 +533,7 @@ export async function listBankReviewDraftQuestions({
   }
 
   const questionIds = (questions ?? []).map((question) => question.id);
-  const [tagResult, importItemResult] = questionIds.length
+  const [tagResult, importItemResult, assetResult, sourceFileResult] = questionIds.length
     ? await Promise.all([
         supabase
           .from("question_taxonomy_assignments")
@@ -495,8 +545,27 @@ export async function listBankReviewDraftQuestions({
           .select("batch_id, created_question_id, validation_errors")
           .in("created_question_id", questionIds)
           .limit(100),
+        supabase
+          .from("question_assets")
+          .select(
+            "id, question_id, storage_path, label, alt_text, display_on_detail",
+          )
+          .in("question_id", questionIds)
+          .order("display_order")
+          .limit(300),
+        supabase
+          .from("question_source_files")
+          .select(
+            "id, question_id, original_filename, mime_type, size_bytes, status",
+          )
+          .in("question_id", questionIds)
+          .neq("status", "deleted")
+          .order("created_at")
+          .limit(300),
       ])
     : [
+        { data: [], error: null },
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
       ];
@@ -507,6 +576,40 @@ export async function listBankReviewDraftQuestions({
 
   if (importItemResult.error) {
     throw new Error(importItemResult.error.message);
+  }
+  if (assetResult.error) throw new Error(assetResult.error.message);
+  if (sourceFileResult.error) throw new Error(sourceFileResult.error.message);
+
+  const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
+  for (const asset of assetResult.data ?? []) {
+    const current = assetsByQuestionId.get(asset.question_id) ?? [];
+    current.push({
+      displayOnDetail: asset.display_on_detail,
+      id: asset.id,
+      originalFilename:
+        asset.label ||
+        asset.alt_text ||
+        asset.storage_path.split("/").pop() ||
+        "Question image",
+      publicUrl: getQuestionAssetUrl(asset.id),
+      questionId: asset.question_id,
+    });
+    assetsByQuestionId.set(asset.question_id, current);
+  }
+
+  const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
+  for (const sourceFile of sourceFileResult.data ?? []) {
+    if (!sourceFile.question_id) continue;
+    const current = sourceFilesByQuestionId.get(sourceFile.question_id) ?? [];
+    current.push({
+      id: sourceFile.id,
+      mimeType: sourceFile.mime_type,
+      originalFilename: sourceFile.original_filename,
+      questionId: sourceFile.question_id,
+      sizeBytes: sourceFile.size_bytes,
+      status: sourceFile.status,
+    });
+    sourceFilesByQuestionId.set(sourceFile.question_id, current);
   }
 
   const importBatchIdByQuestionId = new Map<string, string>();
@@ -692,7 +795,7 @@ export async function listBankReviewDraftQuestions({
     warningCountByQuestionId.set(item.created_question_id, merged.length);
   }
 
-  return (questions ?? [])
+  const items = (questions ?? [])
     .map((question) => {
       const reviewItem =
         (question.source_review_item_id
@@ -715,6 +818,8 @@ export async function listBankReviewDraftQuestions({
         tagSummaries: tagSummariesByQuestionId.get(question.id) ?? [],
         warningCount: warningCountByQuestionId.get(question.id) ?? 0,
         warningMessages: warningMessagesByQuestionId.get(question.id) ?? [],
+        assets: assetsByQuestionId.get(question.id) ?? [],
+        sourceFiles: sourceFilesByQuestionId.get(question.id) ?? [],
       };
     })
     .filter(
@@ -723,6 +828,13 @@ export async function listBankReviewDraftQuestions({
         question.reviewItemStatus !== "archived" &&
         question.reviewItemStatus !== "rejected",
     ) as BankReviewDraftQuestion[];
+
+  return {
+    items,
+    page: safePage,
+    pageSize: safePageSize,
+    total,
+  };
 }
 
 export async function listBankApprovedQuestions({
@@ -740,7 +852,7 @@ export async function listBankApprovedQuestions({
     .eq("bank_id", bankId)
     .eq("status", "active")
     .order("added_at", { ascending: false })
-    .limit(100);
+    .limit(500);
 
   assertQuestionBankSchema(error);
 
@@ -816,6 +928,84 @@ export async function listBankApprovedQuestions({
   })) as BankApprovedQuestion[];
 }
 
+export async function listBankQuestionsPage({
+  bankId,
+  page = 1,
+  pageSize = 25,
+  query,
+  readiness = "active",
+  sourceKind,
+  supabase,
+  taxonomyTagId,
+}: {
+  bankId: string;
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  readiness?: "active" | "archived";
+  sourceKind?: BankQuestion["source_kind"];
+  supabase: SupabaseServerClient;
+  taxonomyTagId?: string;
+}) {
+  const safePage = Math.max(1, Math.floor(page));
+  const safePageSize = Math.min(100, Math.max(1, Math.floor(pageSize)));
+  const rpcFilters = {
+    p_bank_id: bankId,
+    p_query: query?.trim() || null,
+    p_readiness: readiness,
+    p_source_kind: sourceKind ?? null,
+    p_taxonomy_tag_id: taxonomyTagId?.trim() || null,
+  };
+  const [
+    { data, error },
+    { data: totalCount, error: countError },
+  ] = await Promise.all([
+    supabase.rpc("search_bank_question_rows", {
+      ...rpcFilters,
+      p_limit: safePageSize,
+      p_offset: (safePage - 1) * safePageSize,
+    }),
+    supabase.rpc("count_bank_question_rows", rpcFilters),
+  ]);
+
+  assertQuestionBankSchema(error);
+  assertQuestionBankSchema(countError);
+  if (error) throw new Error(error.message);
+  if (countError) throw new Error(countError.message);
+  const rows = data ?? [];
+  return {
+    items: rows.map((row) => {
+      const tagSummaries = Array.isArray(row.tag_summaries)
+        ? (row.tag_summaries as unknown as BankQuestionTaxonomySummary[])
+        : [];
+      return {
+        added_at: row.added_at,
+        bank_question_id: row.bank_question_id,
+        metadata: row.metadata,
+        question: {
+          difficulty_rating: row.difficulty_rating,
+          id: row.question_id,
+          published_at: row.published_at,
+          question_code: row.question_code,
+          question_type: row.question_type as Question["question_type"],
+          source: row.question_source,
+          source_kind: row.question_source_kind,
+          source_review_item_id: row.source_review_item_id,
+          status: row.question_status as Question["status"],
+          title: row.title,
+          visibility: row.visibility as Question["visibility"],
+        },
+        source_kind: row.bank_source_kind,
+        status: row.bank_question_status,
+        tagSummaries,
+      };
+    }) as BankApprovedQuestion[],
+    page: safePage,
+    pageSize: safePageSize,
+    total: Number(totalCount ?? 0),
+  };
+}
+
 export function canManageBankMembers(role: BankMemberRole | null | undefined) {
   return role === "owner";
 }
@@ -840,7 +1030,7 @@ export function questionBankVisibilityLabel(
   const labels: Record<QuestionBankVisibility, string> = {
     organization: "Organization",
     private: "Private",
-    public: "Public review",
+    public: "Legacy public-review scope",
     shared: "Shared",
   };
 

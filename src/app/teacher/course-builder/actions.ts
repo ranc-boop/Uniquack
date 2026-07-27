@@ -60,7 +60,7 @@ export async function createAssignmentFromCourseBuilder(formData: FormData) {
 
     if (!questionIds.length) {
       throw new Error(
-        "No published Question Bank questions are available from this source yet. Review and publish questions first.",
+        "No reviewed Library questions are available from this source yet. Review questions first.",
       );
     }
 

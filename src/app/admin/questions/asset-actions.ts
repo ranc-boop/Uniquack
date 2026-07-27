@@ -9,6 +9,7 @@ import {
 } from "@/lib/question-assets";
 import { createClient } from "@/lib/supabase/server";
 import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
+import type { QuestionAssetView } from "@/lib/questions/media-workspace";
 import {
   deleteQuestionAssetSchema,
   ensureQuestionDraftForUploadSchema,
@@ -17,13 +18,7 @@ import {
   updateQuestionAssetDisplaySchema,
 } from "@/lib/validations/question-asset";
 
-export type QuestionAssetView = {
-  id: string;
-  questionId: string | null;
-  originalFilename: string;
-  publicUrl: string;
-  displayOnDetail: boolean;
-};
+export type { QuestionAssetView } from "@/lib/questions/media-workspace";
 
 function assetDisplayName(asset: {
   alt_text?: string | null;
@@ -38,6 +33,25 @@ function assetDisplayName(asset: {
   );
 }
 
+async function assertGlobalQuestion(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  questionId: string,
+) {
+  const { data, error } = await supabase
+    .from("questions")
+    .select("id")
+    .eq("id", questionId)
+    .is("owner_bank_id", null)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error(
+      "Admin asset actions only support Central Public Library questions.",
+    );
+  }
+}
+
 export async function ensureQuestionDraftForUpload(input: unknown) {
   const profile = await requireAdmin();
   const parsed = ensureQuestionDraftForUploadSchema.parse(input);
@@ -48,6 +62,7 @@ export async function ensureQuestionDraftForUpload(input: unknown) {
       .from("questions")
       .select("id, status, created_by")
       .eq("id", parsed.draftId)
+      .is("owner_bank_id", null)
       .maybeSingle();
 
     if (draftError) {
@@ -78,27 +93,22 @@ export async function ensureQuestionDraftForUpload(input: unknown) {
     return { questionId: parsed.draftId };
   }
 
-  const { data: question, error } = await supabase
-    .from("questions")
-    .insert({
-      question_code: parsed.questionCode,
-      title: parsed.title,
-      content_html: "",
-      difficulty_rating: 500,
-      question_type: "frq",
-      status: "draft",
-      created_by: profile.id,
-      updated_by: profile.id,
-    })
-    .select("id")
-    .single();
+  const { data: questionId, error } = await supabase.rpc(
+    "create_global_manual_question_draft",
+    {
+      p_question_code: parsed.questionCode,
+      p_title: parsed.title,
+    },
+  );
 
   if (error) {
     throw new Error(error.message);
   }
+  if (!questionId) throw new Error("The global Review Draft was not created.");
 
   revalidatePath("/admin/questions");
-  return { questionId: question.id };
+  revalidatePath("/admin/review");
+  return { questionId };
 }
 
 export async function reserveQuestionAssetUpload(input: unknown) {
@@ -115,6 +125,7 @@ export async function reserveQuestionAssetUpload(input: unknown) {
     .from("questions")
     .select("id")
     .eq("id", parsed.questionId)
+    .is("owner_bank_id", null)
     .maybeSingle();
 
   if (questionError) {
@@ -165,7 +176,7 @@ export async function finalizeQuestionAssetUpload(input: unknown) {
   const supabase = await createClient();
   const { data: asset, error: assetError } = await supabase
     .from("question_assets")
-    .select("id, question_id, storage_path, label, alt_text")
+    .select("id, question_id, storage_path, label, alt_text, display_on_detail")
     .eq("id", parsed.assetId)
     .maybeSingle();
 
@@ -176,6 +187,7 @@ export async function finalizeQuestionAssetUpload(input: unknown) {
   if (!asset || !asset.question_id) {
     throw new Error("Image upload record not found.");
   }
+  await assertGlobalQuestion(supabase, asset.question_id);
 
   const directory = `questions/${asset.question_id}`;
   const filename = asset.storage_path.slice(directory.length + 1);
@@ -196,7 +208,7 @@ export async function finalizeQuestionAssetUpload(input: unknown) {
     questionId: asset.question_id,
     originalFilename: assetDisplayName(asset),
     publicUrl: getQuestionAssetUrl(asset.id),
-    displayOnDetail: true,
+    displayOnDetail: asset.display_on_detail,
   } satisfies QuestionAssetView;
 }
 
@@ -206,13 +218,15 @@ export async function updateQuestionAssetDisplay(input: unknown) {
   const supabase = await createClient();
   const { data: asset, error } = await supabase
     .from("question_assets")
-    .select("id, question_id")
+    .update({ display_on_detail: parsed.displayOnDetail })
     .eq("id", parsed.assetId)
+    .select("id, question_id, display_on_detail")
     .single();
 
   if (error) {
     throw new Error(error.message);
   }
+  await assertGlobalQuestion(supabase, asset.question_id);
 
   if (asset.question_id) {
     revalidatePath(`/questions/${asset.question_id}`);
@@ -221,7 +235,7 @@ export async function updateQuestionAssetDisplay(input: unknown) {
   revalidatePath("/admin/questions");
   return {
     assetId: asset.id,
-    displayOnDetail: true,
+    displayOnDetail: asset.display_on_detail,
   };
 }
 
@@ -231,7 +245,7 @@ export async function deleteQuestionAsset(input: unknown) {
   const supabase = await createClient();
   const { data: asset, error: assetError } = await supabase
     .from("question_assets")
-    .select("id, storage_path")
+    .select("id, question_id, storage_path")
     .eq("id", parsed.assetId)
     .maybeSingle();
 
@@ -242,6 +256,7 @@ export async function deleteQuestionAsset(input: unknown) {
   if (!asset) {
     throw new Error("Image not found.");
   }
+  await assertGlobalQuestion(supabase, asset.question_id);
 
   const { error: storageError } = await supabase.storage
     .from(QUESTION_ASSETS_BUCKET)

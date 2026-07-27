@@ -9,7 +9,7 @@ export default function QuestionsLoading() {
       <div className="student-hero">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Question Bank</p>
+            <p className="student-eyebrow">Public Library</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Build your next practice round
             </h1>

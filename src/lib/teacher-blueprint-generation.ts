@@ -137,7 +137,7 @@ export type TeacherBlueprintGenerationSummary = {
 };
 
 export const TEACHER_BLUEPRINT_TRANSIENT_PROVIDER_FAILURE_MESSAGE =
-  "The AI provider is temporarily busy. No questions were published or assigned. The Blueprint and target Bank were preserved; retry later.";
+  "The AI provider is temporarily busy. No questions were published or assigned. The Blueprint and target Library were preserved; retry later.";
 
 const SUPPORTED_QUESTION_TYPES = new Set<QuestionType>([
   "mcq",
@@ -398,7 +398,7 @@ async function loadBlueprintSourceExamples({
   const approvedSelectedIds = sourceIds.filter((id) => approvedSourceIds.has(id));
 
   if (!approvedSelectedIds.length) {
-    throw new Error("Blueprint source questions must still be approved in the linked bank.");
+    throw new Error("Blueprint source questions must still be approved in the linked Library.");
   }
 
   const { data, error } = await supabase
@@ -432,7 +432,7 @@ async function loadBlueprintSourceExamples({
   }));
 
   if (!examples.length) {
-    throw new Error("Blueprint source examples could not be loaded from the linked bank.");
+    throw new Error("Blueprint source examples could not be loaded from the linked Library.");
   }
 
   return examples;
@@ -456,7 +456,7 @@ export function buildTeacherBlueprintGenerationGate({
   }
 
   if (!targetBankId) {
-    blockingReasons.add("Blueprint must be linked to a target Question Bank.");
+    blockingReasons.add("Blueprint must be linked to a target Library.");
   }
   if (blueprint.deleted_at) {
     blockingReasons.add("Archived or deleted Blueprints cannot generate Review Drafts.");
@@ -1237,7 +1237,7 @@ export async function generateTeacherBlueprintReviewDrafts({
   const bankId = blueprint.source_bank_id;
 
   if (!bankId) {
-    throw new Error("Blueprint must be linked to a Question Bank before generation.");
+    throw new Error("Blueprint must be linked to a Library before generation.");
   }
 
   const detail = await getTeacherQuestionBankDetail({
@@ -1247,13 +1247,13 @@ export async function generateTeacherBlueprintReviewDrafts({
   });
 
   if (!detail) {
-    throw new Error("Linked Question Bank was not found.");
+    throw new Error("Linked Library was not found.");
   }
   if (!canManageBankContent(detail.currentUserRole)) {
-    throw new Error("Only bank owners and editors can generate Review Drafts from this Blueprint.");
+    throw new Error("Only Library owners and editors can generate Review Drafts from this Blueprint.");
   }
   if (detail.bank.status !== "active") {
-    throw new Error("Only active Question Banks can receive Blueprint-generated Review Drafts.");
+    throw new Error("Only active Libraries can receive Blueprint-generated Review Drafts.");
   }
 
   const directProvider = routingOrganizationId

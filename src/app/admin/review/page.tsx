@@ -16,6 +16,7 @@ import { PageFeedback } from "@/components/page-feedback";
 import type { EditableQuestion } from "@/components/question-editor";
 import { Button } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/auth/guards";
+import { AdminQuestionLibraryNav } from "@/components/admin/admin-question-library-nav";
 import {
   countImportAssetReferences,
   extractImportAssetReferences,
@@ -196,7 +197,8 @@ export default async function AdminReviewPage({
     let batchQuery = supabase
       .from("import_batches")
       .select("id, source_type, status, summary, created_at, created_by")
-      .eq("id", batchId);
+      .eq("id", batchId)
+      .is("target_bank_id", null);
 
     if (profile.role !== "super_admin") {
       batchQuery = batchQuery.eq("created_by", profile.id);
@@ -247,6 +249,7 @@ export default async function AdminReviewPage({
         { count: "exact" },
       )
       .eq("status", "draft")
+      .is("owner_bank_id", null)
       .order("created_at", { ascending: false });
 
     if (batchQuestionIds) {
@@ -464,8 +467,9 @@ export default async function AdminReviewPage({
         eyebrow="Review queue"
         help="Review draft questions, fix readiness blockers, then publish only when an admin explicitly approves the draft."
         helpLabel="Review Drafts details"
-        title="Review Drafts"
+        title="Global Review Drafts"
       />
+      <AdminQuestionLibraryNav />
       <PageFeedback error={params.error} saved={params.saved} />
       <AdminCard
         compact

@@ -29,11 +29,11 @@ const questionBankHelpers = await read("src/lib/question-banks.ts");
 const smokeAll = await read("scripts/smoke-all.mjs");
 
 assert(
-  banksPage.includes("Question Bank Library") &&
-    banksPage.includes("Banks are your teacher content repositories") &&
+  banksPage.includes('title="Libraries"') &&
+    banksPage.includes("Libraries are your teacher content repositories") &&
     banksPage.includes("deliver selected approved items") &&
-    banksPage.includes("Create Question Bank") &&
-    banksPage.includes("Join Bank by Code") &&
+    banksPage.includes("Create Library") &&
+    banksPage.includes("Join Library by Code") &&
     banksPage.includes("Private") &&
     banksPage.includes("Shared") &&
     banksPage.includes("Organization") &&
@@ -41,28 +41,29 @@ assert(
     banksPage.includes("Needs Review") &&
     banksPage.includes("Recently Updated") &&
     banksPage.includes("Assignment Ready") &&
-    banksPage.includes("No banks yet. Create your first Question Bank or join a shared") &&
-    banksPage.includes("bank by code."),
+    banksPage.includes("No Libraries yet. Create your first Library or join a shared") &&
+    banksPage.includes("Library by code."),
   "/teacher/banks must render the library title, bank-first copy, CTAs, filters, and empty state",
 );
 
 assert(
-  bankUi.includes("BankRouteTabs") &&
+    bankUi.includes("BankRouteTabs") &&
     bankUi.includes("Questions") &&
-    bankUi.includes("Imports") &&
-    bankUi.includes("Review Drafts") &&
+    bankUi.includes('label: "Import"') &&
+    bankUi.includes('label: "Review"') &&
+    bankUi.includes("Public Submissions") &&
     bankUi.includes("Blueprints") &&
     bankUi.includes("Members") &&
     bankUi.includes("Sources") &&
     bankUi.includes("Settings") &&
     bankUi.includes("AI drafts stay private until reviewed.") &&
-    bankUi.includes("Assignments expose selected approved items, not the full bank.") &&
+    bankUi.includes("Assignments expose selected approved items, not the full Library.") &&
     bankUi.includes("Public movement requires a separate review gate."),
   "bank UI helper must expose repository tabs and review/assignment/public safety copy",
 );
 
 assert(
-  bankDetailPage.includes("Question Bank operating surface") &&
+  bankDetailPage.includes("Library workspace") &&
     bankDetailPage.includes("Repository workflow") &&
     bankDetailPage.includes("Open question database") &&
     bankDetailPage.includes("Boundary notes") &&
@@ -73,35 +74,35 @@ assert(
 
 assert(
   bankQuestionsPage.includes("Question database") &&
-    bankQuestionsPage.includes("Taxonomy / knowledge point") &&
-    bankQuestionsPage.includes("Not tagged yet") &&
+    bankQuestionsPage.includes("Taxonomy") &&
+    bankQuestionsPage.includes("Not tagged") &&
     bankQuestionsPage.includes("Not set") &&
-    bankQuestionsPage.includes("Source lineage") &&
-    bankQuestionsPage.includes("Assignment ready") &&
-    bankQuestionsPage.includes("Use in assignment") &&
+    bankQuestionsPage.includes("Source") &&
+    bankQuestionsPage.includes("Ready for assignment") &&
+    bankQuestionsPage.includes("Assign") &&
+    bankQuestionsPage.includes("Revise") &&
+    bankQuestionsPage.includes("Submit selected to Public Library") &&
     !bankQuestionsPage.includes("Start Practice"),
   "/teacher/banks/[bankId]/questions must read as a question database, not a Practice entry point",
 );
 
 assert(
-  bankImportsPage.includes("BankImportEntryPanel") &&
-    bankImportUi.includes("Import into selected bank") &&
-    bankImportsPage.includes("Review gate: no imported draft is assignable or globally") &&
-    bankImportsPage.includes("published from this page") &&
-    bankImportsPage.includes("Advanced / Developer fixture") &&
-    bankImportsPage.includes("Developer fixture for smoke testing. Normal teachers should") &&
-    bankImportsPage.includes("JSON is not the primary teacher flow") &&
-    bankImportsPage.indexOf("BankImportEntryPanel") <
-      bankImportsPage.indexOf("Draft question JSON"),
-  "/teacher/banks/[bankId]/imports must lead with AI Parsing and hide JSON behind an advanced fixture",
+  bankImportsPage.includes('aria-label="Library import modes"') &&
+    bankImportsPage.includes('["manual", "json", "ai"]') &&
+    bankImportsPage.includes("BankManualQuestionForm") &&
+    bankImportsPage.includes("BatchImportJsonPanelLoader") &&
+    bankImportsPage.includes("TeacherPdfBurstUpload") &&
+    bankImportsPage.includes("private Review Drafts") &&
+    !bankImportsPage.includes("Advanced / Developer fixture"),
+  "/teacher/banks/[bankId]/imports must expose Manual, JSON, and AI as equal bank-scoped entry points without a duplicate target selector",
 );
 
 assert(
   bankReviewPage.includes("Teacher QA queue") &&
-    bankReviewPage.includes("Approve drafts into this bank. This does not publish them to the") &&
+    bankReviewPage.includes("Approve drafts into this Library. This does not publish them to the") &&
     bankReviewPage.includes("Pending private drafts") &&
     bankReviewPage.includes("Review required") &&
-    bankReviewPage.includes("bank-scoped and is not globally published") &&
+    bankReviewPage.includes("private to this Library and is not globally published") &&
     bankReviewPage.includes("Source lineage"),
   "/teacher/banks/[bankId]/review must render bank/private teacher QA language",
 );
@@ -118,9 +119,9 @@ assert(
 
 assert(
   bankBlueprintsPage.includes("Blueprint links for") &&
-    bankBlueprintsPage.includes("Create Blueprint from this bank") &&
-    bankBlueprintsPage.includes("No Blueprints linked to this bank yet") &&
-    bankBlueprintsPage.includes("Review Draft and bank approval gates") &&
+    bankBlueprintsPage.includes("Create Blueprint from this Library") &&
+    bankBlueprintsPage.includes("No Blueprints linked to this Library yet") &&
+    bankBlueprintsPage.includes("Review Draft and Library approval gates") &&
     bankBlueprintsPage.includes("listBankLinkedBlueprints") &&
     !bankBlueprintsPage.includes("executeDeepSeek") &&
     !bankBlueprintsPage.includes("callAIPdfExtractionProvider") &&

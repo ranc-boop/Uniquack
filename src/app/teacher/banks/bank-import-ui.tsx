@@ -45,7 +45,7 @@ const roleLabels: Record<BankMemberRole, string> = {
 const visibilityLabels: Record<QuestionBankVisibility, string> = {
   organization: "Organization",
   private: "Private",
-  public: "Public review",
+  public: "Legacy public-review scope",
   shared: "Shared",
 };
 
@@ -276,7 +276,7 @@ function TargetBankCardContent({
         <h3 className="text-base font-bold text-slate-950">{bank.name}</h3>
         <p className="line-clamp-2 text-sm leading-6 text-slate-600">
           {bank.description ||
-            "Teacher-owned bank for private imports, review drafts, and assignment-ready questions."}
+            "Teacher-owned Library for private imports, Review Drafts, and assignment-ready questions."}
         </p>
       </div>
       <dl className="grid grid-cols-3 gap-2 text-xs">
@@ -293,7 +293,7 @@ function TargetBankCardContent({
       </dl>
       {!importable ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-medium leading-5 text-amber-900">
-          Viewer banks are visible for context, but only owners and editors can
+          Viewer Libraries are visible for context, but only owners and editors can
           import new Review Drafts.
         </p>
       ) : null}
@@ -313,8 +313,8 @@ export function BankTargetSelector({
   return (
     <section className="teacher-panel overflow-hidden">
       <BankSectionHeader
-        description="Choose the bank that will own the import batch and its Review Drafts. View-only banks cannot receive new imported drafts."
-        title="Choose target Question Bank"
+        description="Choose the Library that will own the import batch and its Review Drafts. View-only Libraries cannot receive new imported drafts."
+        title="Choose target Library"
       />
       <div className="space-y-4 p-5">
         {banks.length ? (
@@ -350,20 +350,20 @@ export function BankTargetSelector({
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-            <p className="teacher-eyebrow">No banks yet</p>
+            <p className="teacher-eyebrow">No Libraries yet</p>
             <h3 className="mt-2 text-xl font-bold text-slate-950">
-              Create or join a Question Bank before importing.
+              Create or join a Library before importing.
             </h3>
             <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              AI Parsing always targets a bank first so drafts remain private
+              AI Parsing always targets a Library first so drafts remain private
               and review-gated.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               <Button asChild>
-                <Link href="/teacher/banks/new">Create Question Bank</Link>
+                <Link href="/teacher/banks/new">Create Library</Link>
               </Button>
               <Button asChild variant="outline">
-                <Link href="/teacher/banks/join">Join Bank by Code</Link>
+                <Link href="/teacher/banks/join">Join Library by Code</Link>
               </Button>
             </div>
           </div>
@@ -371,7 +371,7 @@ export function BankTargetSelector({
 
         {banks.length && !importableCount ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-medium leading-6 text-amber-900">
-            You only have viewer access right now. Ask a bank owner to grant
+            You only have viewer access right now. Ask a Library owner to grant
             editor access before importing source material.
           </div>
         ) : null}
@@ -384,7 +384,7 @@ export function TeacherImportSafetyCallout() {
   return (
     <section className="grid gap-2 md:grid-cols-3">
       {[
-        "Choose a bank before importing.",
+        "Choose a Library before importing.",
         "Drafts stay private until reviewed.",
         "No import auto-publishes or assigns content.",
       ].map((note) => (
@@ -413,8 +413,8 @@ export function BankImportEntryPanel({
   return (
     <article className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
       <BankSectionHeader
-        description="This is the teacher-facing import handoff. Outputs stay scoped to the selected bank and move through Review Drafts before they become assignment-ready."
-        title="Import into selected bank"
+        description="This is the teacher-facing import handoff. Outputs stay scoped to the selected Library and move through Review Drafts before they become assignment-ready."
+        title="Import into selected Library"
       />
       <div className="space-y-5 p-5">
         <div className="rounded-xl border border-sky-100 bg-sky-50/70 p-5">
@@ -422,7 +422,7 @@ export function BankImportEntryPanel({
             <div className="min-w-0 space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <BankBadge tone="blue">
-                  {bank.membershipRole ? roleLabels[bank.membershipRole] : "Bank member"}
+                  {bank.membershipRole ? roleLabels[bank.membershipRole] : "Library member"}
                 </BankBadge>
                 <BankBadge tone="sky">{visibilityLabels[bank.visibility]}</BankBadge>
                 <BankBadge tone={canImport ? "cyan" : "amber"}>
@@ -433,7 +433,7 @@ export function BankImportEntryPanel({
                 <h3 className="text-xl font-bold text-slate-950">{bank.name}</h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
                   {bank.description ||
-                    "Owned source material will create bank-scoped Review Drafts for this Question Bank."}
+                    "Owned source material will create private Review Drafts for this Library."}
                 </p>
               </div>
             </div>
@@ -447,7 +447,7 @@ export function BankImportEntryPanel({
                 <Button asChild>
                   <Link href={`/teacher/banks/${bank.id}/imports`}>
                     <Upload aria-hidden="true" className="h-4 w-4" />
-                    Import into selected bank
+                    Import into selected Library
                   </Link>
                 </Button>
               ) : null}
@@ -462,19 +462,19 @@ export function BankImportEntryPanel({
 
         <div className="grid gap-3 md:grid-cols-3">
           <BankMetricCard
-            description="Source batches already targeting this bank."
+            description="Source batches already targeting this Library."
             icon={Upload}
             label="Recent imports"
             value={bank.importBatchCount ?? 0}
           />
           <BankMetricCard
-            description="Private draft questions awaiting bank review."
+            description="Private draft questions awaiting Library review."
             icon={ClipboardCheck}
             label="Review Drafts"
             value={bank.reviewDraftCount ?? 0}
           />
           <BankMetricCard
-            description="Approved bank items ready for assignment selection."
+            description="Approved Library items ready for assignment selection."
             icon={Boxes}
             label="Assignment ready"
             value={bank.assignmentReadyCount ?? bank.questionCount ?? 0}
@@ -492,14 +492,14 @@ export function BankImportEntryPanel({
             href={`/teacher/banks/${bank.id}`}
             icon={FileText}
           >
-            Open bank
+            Open Library
           </BankQuickAction>
         </div>
 
         {!canImport ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
             <AlertTriangle aria-hidden="true" className="mr-2 inline h-4 w-4" />
-            This bank is visible to you, but import is disabled because your
+            This Library is visible to you, but import is disabled because your
             current role is read-only.
           </div>
         ) : null}
@@ -556,9 +556,9 @@ export function RecentBankImportsPanel({
 
                   <dl className="grid gap-2 text-xs sm:grid-cols-2">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                      <dt className="font-semibold text-slate-500">Target bank</dt>
+                      <dt className="font-semibold text-slate-500">Target Library</dt>
                       <dd className="mt-1 break-words font-bold text-slate-900">
-                        {bankName ?? "Selected bank"}
+                        {bankName ?? "Selected Library"}
                       </dd>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
@@ -648,7 +648,7 @@ export function RecentBankImportsPanel({
           })
         ) : (
           <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-            No bank-scoped imports yet. Start with AI Parsing, then review
+            No Library imports yet. Start with AI Parsing, then review
             drafts before adding anything to the bank.
           </p>
         )}

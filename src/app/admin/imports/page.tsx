@@ -17,8 +17,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth/guards";
+import { globalQuestionWorkspaceCapabilities } from "@/lib/questions/workspace";
 import { createClient } from "@/lib/supabase/server";
 import { loadTaxonomyCatalog } from "@/lib/tags/taxonomy-db";
+
+import {
+  importManualJsonDrafts,
+  previewManualJsonImport,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -161,7 +167,17 @@ export default async function AdminImportsPage({
           help="Only valid items are imported, and they are saved as private draft questions for Review Drafts."
           helpLabel="Manual JSON draft behavior"
         >
-          <BatchImportJsonPanelLoader tagIds={importPromptTagIds} />
+          <BatchImportJsonPanelLoader
+            capabilities={globalQuestionWorkspaceCapabilities}
+            importAction={importManualJsonDrafts}
+            previewAction={previewManualJsonImport}
+            questionsHref="/admin/questions"
+            resultDescription="All imported questions are saved as global Drafts and must pass Global Review before publication."
+            reviewHref="/admin/review"
+            scope={{ kind: "global" }}
+            scopeLabel="the Central Public Library review queue"
+            tagIds={importPromptTagIds}
+          />
         </AdminCard>
       ) : null}
 

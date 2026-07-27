@@ -82,11 +82,11 @@ function SetupNeededState() {
     <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
       <p className="student-eyebrow">Setup needed</p>
       <h2 className="mt-2 text-xl font-bold text-slate-950">
-        Question Bank tables are not available yet.
+        Library tables are not available yet.
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-        Apply clean migration 0025 to enable teacher-owned Question Banks.
-        Classrooms and assignments remain delivery layers until bank content is
+        Apply clean migration 0025 to enable teacher-owned Libraries.
+        Classrooms and assignments remain delivery layers until Library content is
         reviewed and selected.
       </p>
     </section>
@@ -138,23 +138,23 @@ export default async function TeacherBanksPage({
             <Button asChild>
               <Link className="inline-flex items-center gap-2" href="/teacher/banks/new">
                 <Plus aria-hidden="true" className="h-4 w-4" />
-                Create Question Bank
+                Create Library
               </Link>
             </Button>
             <Button asChild variant="outline">
               <Link className="inline-flex items-center gap-2" href="/teacher/banks/join">
                 <Share2 aria-hidden="true" className="h-4 w-4" />
-                Join Bank by Code
+                Join Library by Code
               </Link>
             </Button>
           </>
         }
         badges={<BankBadge tone="sky">Teacher repository</BankBadge>}
-        eyebrow="Question Bank Library"
-        title="Question Bank Library"
+        eyebrow="My Libraries"
+        title="Libraries"
       >
         <p>
-          Banks are your teacher content repositories. Classrooms and assignments
+          Libraries are your teacher content repositories. Classrooms and assignments
           deliver selected approved items.
         </p>
       </BankHeroPanel>
@@ -170,17 +170,17 @@ export default async function TeacherBanksPage({
               {
                 description: "Private, shared, organization, and public-review repositories.",
                 icon: Layers,
-                label: "Total banks",
+                label: "Total Libraries",
                 value: banks.length,
               },
               {
-                description: "Approved items already inside teacher banks.",
+                description: "Approved items already inside teacher Libraries.",
                 icon: BookOpen,
                 label: "Questions",
                 value: totals.questions,
               },
               {
-                description: "Drafts waiting for bank-level approval.",
+                description: "Drafts waiting for Library review.",
                 icon: ClipboardCheck,
                 label: "Review Drafts",
                 value: totals.reviewDrafts,
@@ -292,7 +292,7 @@ export default async function TeacherBanksPage({
                           icon={bankActionIcons.bank}
                           variant="default"
                         >
-                          Open bank
+                          Open Library
                         </BankQuickAction>
                         <BankQuickAction
                           href={`/teacher/banks/${bank.id}/review`}
@@ -316,7 +316,7 @@ export default async function TeacherBanksPage({
                         ) : (
                           <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
                             Create assignment appears after reviewed questions are
-                            approved into this bank.
+                            approved into this Library.
                           </p>
                         )}
                       </div>
@@ -326,7 +326,7 @@ export default async function TeacherBanksPage({
 
                 {!filteredBanks.length ? (
                   <div className="p-8 text-center">
-                    <p className="student-eyebrow">No matching banks</p>
+                    <p className="student-eyebrow">No matching Libraries</p>
                     <h2 className="mt-2 text-2xl font-bold text-slate-950">
                       No banks match this filter yet.
                     </h2>
@@ -340,24 +340,24 @@ export default async function TeacherBanksPage({
               <section className="p-8 text-center">
                 <p className="student-eyebrow">Empty library</p>
                 <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                  No banks yet. Create your first Question Bank or join a shared
-                  bank by code.
+                  No Libraries yet. Create your first Library or join a shared
+                  Library by code.
                 </h2>
                 <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                  Banks hold reviewed teacher content before it moves into
+                  Libraries hold reviewed teacher content before it moves into
                   classroom delivery.
                 </p>
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
                   <Button asChild>
                     <Link className="inline-flex items-center gap-2" href="/teacher/banks/new">
                       <Plus aria-hidden="true" className="h-4 w-4" />
-                      Create Question Bank
+                      Create Library
                     </Link>
                   </Button>
                   <Button asChild variant="outline">
                     <Link className="inline-flex items-center gap-2" href="/teacher/banks/join">
                       <Share2 aria-hidden="true" className="h-4 w-4" />
-                      Join Bank by Code
+                      Join Library by Code
                     </Link>
                   </Button>
                 </div>

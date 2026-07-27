@@ -167,11 +167,11 @@ async function resolveImportTargetBankContext({
   }
 
   if (!bank || bank.status !== "active") {
-    throw new Error("Target Question Bank was not found or is not active.");
+    throw new Error("Target Library was not found or is not active.");
   }
 
   if (bank.organization_id !== organizationId) {
-    throw new Error("Target Question Bank belongs to a different organization.");
+    throw new Error("Target Library belongs to a different organization.");
   }
 
   return {
@@ -406,7 +406,7 @@ export async function importBatchImportJson({
       existingBatch.target_bank_id &&
       existingBatch.target_bank_id !== targetBankContext.bankId
     ) {
-      throw new Error("Existing import batch is scoped to a different bank.");
+      throw new Error("Existing import batch is scoped to a different Library.");
     }
     if (!persistenceFence) {
       const existingSummary = asSummaryRecord(existingBatch.summary);
@@ -510,7 +510,7 @@ export async function importBatchImportJson({
           p_raw_payload: item.raw,
           p_source_type: sourceType,
           p_validation_errors: [...item.errors, ...item.warnings],
-          p_visibility: targetBankContext?.visibility ?? "private",
+          p_visibility: "private",
         },
       );
       if (error) throw new Error(error.message);
@@ -676,7 +676,7 @@ export async function importBatchImportJson({
         status: "draft",
         created_by: profileId,
         updated_by: profileId,
-        visibility: targetBankContext?.visibility ?? "private",
+        visibility: "private",
       })
       .select("id")
       .single();

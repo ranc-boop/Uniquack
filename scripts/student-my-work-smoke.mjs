@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -74,55 +75,64 @@ async function resolveOrganizationId(supabase, userId) {
   return memberships[0].organization_id;
 }
 
-async function createSmokeClassroom({ name, organizationId, studentUserId, teacher }) {
-  const { data: classroom, error: classroomError } = await teacher.client
-    .from("classrooms")
-    .insert({
-      created_by: teacher.user.id,
-      name,
-      organization_id: organizationId,
-      owner_id: teacher.user.id,
-      subject: "Smoke test",
-      updated_by: teacher.user.id,
-    })
-    .select("id, name")
-    .single();
+async function createSmokeClassroom({ name, organizationId, student, teacher }) {
+  const { data: classroomRows, error: classroomError } = await teacher.client.rpc(
+    "create_teacher_classroom",
+    {
+      p_description: "Disposable Student My Work smoke classroom.",
+      p_name: name,
+      p_organization_id: organizationId,
+      p_request_id: randomUUID(),
+      p_subject: "Smoke test",
+    },
+  );
+  const created = Array.isArray(classroomRows) ? classroomRows[0] : classroomRows;
   assert(
-    !classroomError && classroom,
+    !classroomError && created?.classroom_id && created?.display_code,
     `teacher could not create My Work smoke classroom: ${summarizeSupabaseError(classroomError)}`,
   );
+  const classroom = { id: created.classroom_id, name };
 
-  const { error: teacherMemberError } = await teacher.client
-    .from("classroom_members")
-    .insert({
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "teacher",
-      status: "active",
-      user_id: teacher.user.id,
-    });
-  assert(
-    !teacherMemberError,
-    `teacher member insert failed: ${summarizeSupabaseError(teacherMemberError)}`,
-  );
-
-  if (studentUserId) {
-    const { error: studentMemberError } = await teacher.client
-      .from("classroom_members")
-      .insert({
-        classroom_id: classroom.id,
-        joined_at: new Date().toISOString(),
-        role: "student",
-        status: "active",
-        user_id: studentUserId,
-      });
+  if (student) {
+    const { data: joinedRows, error: studentMemberError } = await student.client.rpc(
+      "join_classroom_by_code",
+      {
+        join_code: created.display_code,
+      },
+    );
+    const joined = Array.isArray(joinedRows) ? joinedRows[0] : joinedRows;
     assert(
-      !studentMemberError,
-      `student member insert failed: ${summarizeSupabaseError(studentMemberError)}`,
+      !studentMemberError && joined?.classroom_id === classroom.id,
+      `student member join failed: ${summarizeSupabaseError(studentMemberError)}`,
     );
   }
 
   return classroom;
+}
+
+async function removeSmokeStudents({ classroomId, teacher }) {
+  const { data: studentMembers, error: memberReadError } = await teacher.client
+    .from("classroom_members")
+    .select("id")
+    .eq("classroom_id", classroomId)
+    .eq("role", "student")
+    .eq("status", "active");
+  assert(
+    !memberReadError,
+    `classroom member cleanup lookup failed: ${summarizeSupabaseError(memberReadError)}`,
+  );
+
+  for (const member of studentMembers ?? []) {
+    const { error } = await teacher.client.rpc("set_classroom_student_membership_status", {
+      p_classroom_id: classroomId,
+      p_member_id: member.id,
+      p_status: "removed",
+    });
+    assert(
+      !error,
+      `classroom member cleanup failed: ${summarizeSupabaseError(error)}`,
+    );
+  }
 }
 
 async function main() {
@@ -159,7 +169,7 @@ async function main() {
     const classroom = await createSmokeClassroom({
       name: `My Work smoke classroom ${suffix}`,
       organizationId,
-      studentUserId: student.user.id,
+      student,
       teacher,
     });
     cleanup.classrooms.push(classroom.id);
@@ -167,7 +177,7 @@ async function main() {
     const unrelatedClassroom = await createSmokeClassroom({
       name: `My Work unrelated classroom ${suffix}`,
       organizationId,
-      studentUserId: null,
+      student: null,
       teacher,
     });
     cleanup.classrooms.push(unrelatedClassroom.id);
@@ -308,13 +318,10 @@ async function main() {
       if (error) cleanupErrors.push(`question ${questionId}: ${summarizeSupabaseError(error)}`);
     }
     for (const classroomId of cleanup.classrooms) {
-      const { error: memberError } = await teacher.client
-        .from("classroom_members")
-        .update({ status: "removed" })
-        .eq("classroom_id", classroomId)
-        .neq("user_id", teacher.user.id);
-      if (memberError) {
-        cleanupErrors.push(`classroom members ${classroomId}: ${summarizeSupabaseError(memberError)}`);
+      try {
+        await removeSmokeStudents({ classroomId, teacher });
+      } catch (error) {
+        cleanupErrors.push(`classroom members ${classroomId}: ${error.message}`);
       }
       const { error } = await teacher.client
         .from("classrooms")

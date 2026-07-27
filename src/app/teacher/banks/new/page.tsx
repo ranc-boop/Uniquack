@@ -16,12 +16,12 @@ export default async function NewTeacherBankPage() {
       <section className="teacher-hero">
         <div className="space-y-5">
           <div className="space-y-2">
-            <p className="teacher-eyebrow">Create Question Bank</p>
+            <p className="teacher-eyebrow">Create Library</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               Start a teacher-owned content library.
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Banks are the source of truth for reviewed questions before they
+              Libraries are the source of truth for reviewed questions before they
               move into classrooms, assignments, and student practice.
             </p>
           </div>
@@ -32,24 +32,25 @@ export default async function NewTeacherBankPage() {
       <form action={createQuestionBank} className="teacher-panel overflow-hidden">
         <div className="border-b border-slate-200 bg-white/70 p-6">
           <h2 className="text-xl font-bold text-slate-950">
-            Bank details
+            Library details
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Private banks are the default. Shared and organization visibility
-            prepare collaboration without assigning anything to students.
+            Private Libraries are the default. Shared and organization
+            visibility enable collaboration without publishing anything to
+            students or the Central Public Library.
           </p>
         </div>
 
         <div className="space-y-5 p-6">
           <label className="block">
             <span className="text-sm font-semibold text-slate-900">
-              Bank name
+              Library name
             </span>
             <input
               className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
               maxLength={120}
               name="name"
-              placeholder="AP Calculus BC private bank"
+              placeholder="AP Calculus BC private Library"
               required
             />
           </label>
@@ -62,7 +63,7 @@ export default async function NewTeacherBankPage() {
               className="mt-2 min-h-28 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
               maxLength={2000}
               name="description"
-              placeholder="What this bank is for, who owns it, and what reviewed content belongs here."
+              placeholder="What this Library is for, who owns it, and what reviewed content belongs here."
             />
           </label>
 
@@ -73,7 +74,7 @@ export default async function NewTeacherBankPage() {
             <div className="grid gap-3 md:grid-cols-2">
               {[
                 {
-                  description: "Only the bank owner and invited members.",
+                  description: "Only the Library owner and invited members.",
                   label: "Private",
                   value: "private",
                 },
@@ -86,12 +87,6 @@ export default async function NewTeacherBankPage() {
                   description: "Visible to organization staff under RLS.",
                   label: "Organization",
                   value: "organization",
-                },
-                {
-                  description:
-                    "Reserved for governed public-review workflows.",
-                  label: "Public review",
-                  value: "public",
                 },
               ].map((option) => (
                 <label
@@ -121,7 +116,7 @@ export default async function NewTeacherBankPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-6">
           <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Creating a bank creates your owner membership only. Import,
+            Creating a Library creates your owner membership only. Import,
             share-code, approval-to-bank, and assignment-from-bank actions come
             in later review-gated slices.
           </p>
@@ -129,7 +124,7 @@ export default async function NewTeacherBankPage() {
             <Button asChild variant="outline">
               <Link href="/teacher/banks">Cancel</Link>
             </Button>
-            <Button type="submit">Create Question Bank</Button>
+            <Button type="submit">Create Library</Button>
           </div>
         </div>
       </form>

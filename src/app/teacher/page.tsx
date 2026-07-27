@@ -15,9 +15,9 @@ import { getTeacherDashboardSummary, type TeacherDashboardSummary } from "@/lib/
 
 export const dynamic = "force-dynamic";
 
-const workflowTitle = "Bank-first teacher workflow";
+const workflowTitle = "Library-first teacher workflow";
 const workflowDescription =
-  "Teachers create or join banks, import and review questions, then deliver selected bank content through classrooms and assignments. No unreviewed draft can be assigned to students. Student visibility stays assignment-only unless content is intentionally published elsewhere.";
+  "Teachers create or join Libraries, import and review questions, then deliver selected Library content through classrooms and assignments. No unreviewed draft can be assigned to students. Student visibility stays assignment-only unless content is intentionally published elsewhere.";
 
 function buildTeacherModules({
   summary,
@@ -30,23 +30,23 @@ function buildTeacherModules({
     {
       title: "Dashboard",
       description:
-        "See Review Drafts, assignment-ready bank content, classroom activity, and Practice evidence in one place.",
+        "See Review Drafts, assignment-ready Library content, classroom activity, and Practice evidence in one place.",
       href: "/teacher",
       eyebrow: "Workspace",
       status: `${summary.overview.recentEvidenceCount} evidence links`,
     },
     {
-      title: "Question Bank",
+      title: "Library",
       description:
-        "Create, join, share, and organize private or collaborative question banks before delivery.",
+        "Create, join, share, and organize private or collaborative Libraries before delivery.",
       href: "/teacher/banks",
       eyebrow: "Content source",
-      status: setupNeeded ? "Setup needed" : `${summary.overview.totalBankCount} banks`,
+      status: setupNeeded ? "Setup needed" : `${summary.overview.totalBankCount} Libraries`,
     },
     {
       title: "AI Parsing",
       description:
-        "Choose a bank first, then import owned materials into Review Drafts for approval.",
+        "Choose a Library first, then import owned materials into Review Drafts for approval.",
       href: "/teacher/ai-parsing",
       eyebrow: "Review gated",
       status: `${summary.recentImports.length} recent imports`,
@@ -62,7 +62,7 @@ function buildTeacherModules({
     {
       title: "Classroom",
       description:
-        "Manage rosters and delivery spaces after bank content is reviewed and ready to assign.",
+        "Manage rosters and delivery spaces after Library content is reviewed and ready to assign.",
       href: "/teacher/classrooms",
       eyebrow: "Roster layer",
       status: `${summary.overview.activeClassroomCount} active`,
@@ -70,7 +70,7 @@ function buildTeacherModules({
     {
       title: "Publish",
       description:
-        "Move reviewed bank content into classroom assignments without publishing private content globally.",
+        "Move reviewed Library content into classroom assignments without publishing private content globally.",
       href: "/teacher/publish",
       eyebrow: "Assignment flow",
       status: `${summary.overview.assignmentReadyQuestionCount} ready`,
@@ -100,14 +100,14 @@ function buildPrimaryAction(summary: TeacherDashboardSummary) {
   if (firstReadyBank) {
     return {
       href: `/teacher/publish?sourceBankId=${firstReadyBank.bankId}`,
-      label: "Publish from Library",
+      label: "Create Assignment",
     };
   }
 
   if (!summary.overview.totalBankCount) {
     return {
       href: "/teacher/banks/new",
-      label: "Create Question Bank",
+      label: "Create Library",
     };
   }
 
@@ -133,14 +133,14 @@ export default async function TeacherHomePage() {
   return (
     <TeacherWorkspaceShell
       title="Teacher Workspace"
-      description="Start with a Question Bank. Create or join a bank, review imported content, publish selected bank content to assignments, then read student Practice evidence as it returns."
+      description="Start with a Library. Create or join one, review imported content, assign selected questions, then read student Practice evidence as it returns."
       actions={
         <>
           <Button asChild>
             <Link href={primaryAction.href}>{primaryAction.label}</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/teacher/banks">Open bank review</Link>
+            <Link href="/teacher/banks">Open Library review</Link>
           </Button>
           <Button asChild variant="outline">
             <Link href="/teacher/ai-parsing">Import materials</Link>
@@ -154,10 +154,10 @@ export default async function TeacherHomePage() {
         <section className="teacher-panel p-5">
           <p className="teacher-eyebrow">Setup needed</p>
           <h2 className="mt-2 text-lg font-bold text-slate-950">
-            Question Bank dashboard data is waiting on the clean bank schema.
+            Library dashboard data is waiting on the clean Library schema.
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Apply the clean Question Bank migrations, then return here to see Review Drafts,
+            Apply the clean Library migrations, then return here to see Review Drafts,
             assignment-ready questions, classroom activity, and Practice evidence.
           </p>
         </section>

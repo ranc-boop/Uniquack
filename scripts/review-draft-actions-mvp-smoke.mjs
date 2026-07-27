@@ -92,7 +92,7 @@ assert(
     rejectAction.includes("published_at: null") &&
     rejectAction.includes("actionKind: \"reject\"") &&
     rejectAction.includes("question_status_events") &&
-    rejectAction.includes("not published, assigned, or added to the bank") &&
+    rejectAction.includes("not published, assigned, or added to the Library") &&
     !rejectAction.includes("status: \"published\"") &&
     !rejectAction.includes("published_at: new Date") &&
     !rejectAction.includes("bank_questions") &&

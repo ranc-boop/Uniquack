@@ -130,7 +130,7 @@ export default async function ClassroomTeachersPage({
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
               Manage classroom operators without automatically granting access
-              to source banks, provider settings, or Blueprint internals.
+              to source Libraries, provider settings, or Blueprint internals.
             </p>
           </div>
           <Button asChild variant="outline">
@@ -185,8 +185,8 @@ export default async function ClassroomTeachersPage({
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               Co-teachers can help with classroom operations under existing
-              policy. They still need separate bank membership to inspect source
-              bank content.
+              policy. They still need separate Library membership to inspect source
+              Library content.
             </p>
           </div>
           {teacherMembers.length ? (
@@ -212,7 +212,7 @@ export default async function ClassroomTeachersPage({
             <h2 className="text-lg font-bold text-slate-950">Add co-teacher</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Add an existing teacher-capable account by email or username.
-              This does not add them to source Question Banks.
+              This does not add them to source Libraries.
             </p>
             {canManageCoTeachers ? (
               <form action={addClassroomCoTeacher} className="mt-4 space-y-4">
@@ -244,7 +244,7 @@ export default async function ClassroomTeachersPage({
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Classroom roles are operational. They do not expose provider
               settings, public library controls, private student self-study, or
-              unrestricted source bank questions.
+              unrestricted source Library questions.
             </p>
           </section>
         </aside>

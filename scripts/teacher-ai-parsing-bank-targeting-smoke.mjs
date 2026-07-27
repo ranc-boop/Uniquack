@@ -83,20 +83,17 @@ async function runSourceSmoke() {
   const smokeAll = await read("scripts/smoke-all.mjs");
 
   assert(
-    teacherAiParsingPage.includes("Choose a Question Bank before importing. AI drafts stay private until reviewed.") &&
-      teacherAiParsingPage.includes("listTeacherQuestionBanks") &&
-      teacherAiParsingPage.includes("BankTargetSelector") &&
-      teacherAiParsingPage.includes("BankImportEntryPanel") &&
-      teacherAiParsingPage.includes("Import into selected bank") &&
-      teacherAiParsingPage.includes("/teacher/banks/${selectedBank.id}/imports") &&
-      teacherAiParsingPage.includes("/teacher/banks/${selectedBank.id}/review") &&
+    teacherAiParsingPage.includes("getTeacherQuestionBankDetail") &&
+      teacherAiParsingPage.includes("canManageBankContent") &&
+      teacherAiParsingPage.includes('redirect(`/teacher/banks/${bankId}/imports?mode=ai`)') &&
+      teacherAiParsingPage.includes('redirect("/teacher/banks?intent=import")') &&
       !teacherAiParsingPage.includes("/admin/imports/pdf") &&
       !teacherAiParsingPage.includes("/admin/review"),
-    "/teacher/ai-parsing must be a bank-targeted teacher entry point, not an admin import/review shortcut",
+    "/teacher/ai-parsing must be a compatibility redirect into the bank-scoped Library Import workspace",
   );
 
   assert(
-      bankImportUi.includes("Viewer banks are visible for context") &&
+      bankImportUi.includes("Viewer Libraries are visible for context") &&
       bankImportUi.includes("only owners and editors can") &&
       bankImportUi.includes("aria-disabled") &&
       bankImportUi.includes("No import auto-publishes or assigns content.") &&
@@ -106,13 +103,14 @@ async function runSourceSmoke() {
   );
 
   assert(
-    bankImportsPage.includes("Advanced / Developer fixture") &&
-      bankImportsPage.includes("Developer fixture for smoke testing. Normal teachers should") &&
-      bankImportsPage.includes("Create bank Review Drafts") &&
-      bankImportsPage.includes("Review gate: no imported draft is assignable or globally") &&
+    bankImportsPage.includes('["manual", "json", "ai"]') &&
+      bankImportsPage.includes("BankManualQuestionForm") &&
+      bankImportsPage.includes("BatchImportJsonPanelLoader") &&
+      bankImportsPage.includes("TeacherPdfBurstUpload") &&
+      bankImportsPage.includes("Review Drafts") &&
       !bankImportsPage.includes("/admin/imports/pdf") &&
       !bankImportsPage.includes("/admin/review"),
-    "/teacher/banks/[bankId]/imports must keep JSON fixture advanced and avoid admin/global handoffs",
+    "/teacher/banks/[bankId]/imports must keep Manual/JSON/AI bank-scoped and avoid admin/global handoffs",
   );
 
   assert(

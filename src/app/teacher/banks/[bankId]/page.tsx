@@ -47,13 +47,13 @@ function SetupNeededState() {
       <section className="rounded-lg border border-slate-200/80 bg-white/90 p-6 shadow-sm">
         <p className="student-eyebrow">Setup needed</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">
-          Question Bank tables are not available yet.
+          Library tables are not available yet.
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Apply clean migration 0025, then return to this bank detail page.
+          Apply clean migration 0025, then return to this Library.
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <Link href="/teacher/banks">Back to Banks / Library</Link>
+          <Link href="/teacher/banks">Back to Libraries</Link>
         </Button>
       </section>
     </BankWorkbenchPage>
@@ -98,7 +98,7 @@ export default async function TeacherBankDetailPage({
         actions={
           <>
             <Button asChild variant="outline">
-              <Link href="/teacher/banks">Back to Banks</Link>
+              <Link href="/teacher/banks">Back to Libraries</Link>
             </Button>
             <BankQuickAction
               href={`/teacher/banks/${bank.id}/imports`}
@@ -126,18 +126,18 @@ export default async function TeacherBankDetailPage({
             </BankBadge>
           </>
         }
-        eyebrow="Question Bank operating surface"
+        eyebrow="Library workspace"
         title={bank.name}
       >
         <p>
           {bank.description ||
-            "This bank is ready for reviewed content. Import, approval, and assignment handoffs are intentionally separate review-gated slices."}
+            "This Library is ready for reviewed content. Import, approval, and assignment handoffs remain review-gated."}
         </p>
         <p className="mt-2 text-sm font-semibold text-slate-700">
           {activeMembers.length} active member
           {activeMembers.length === 1 ? "" : "s"} can access this repository.
           Classrooms deliver selected approved items; they do not expose the full
-          bank.
+          Library.
         </p>
       </BankHeroPanel>
 
@@ -148,13 +148,13 @@ export default async function TeacherBankDetailPage({
       <section className="grid gap-3 md:grid-cols-4">
         {[
           {
-            description: "Approved bank-scoped items.",
+            description: "Approved Library items.",
             icon: BookOpen,
             label: "Questions",
             value: detail.questionCount,
           },
           {
-            description: "Private drafts waiting for this bank.",
+            description: "Private drafts waiting for this Library.",
             icon: ClipboardCheck,
             label: "Review Drafts",
             value: detail.reviewDraftCount,
@@ -166,7 +166,7 @@ export default async function TeacherBankDetailPage({
             value: detail.importBatchCount,
           },
           {
-            description: "Explicit bank collaborators.",
+            description: "Explicit Library collaborators.",
             icon: Users,
             label: "Members",
             value: detail.activeMemberCount,
@@ -179,20 +179,20 @@ export default async function TeacherBankDetailPage({
       <section className="grid gap-4 lg:grid-cols-[1.35fr_0.8fr]">
         <article className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
           <BankSectionHeader
-            description="Reviewed questions stay bank-scoped. Assignments expose selected approved items, not the full bank."
-            title="Bank questions"
+            description="Reviewed questions stay private to this Library. Assignments expose selected approved items, not the full Library."
+            title="Library questions"
           />
           <div className="p-6 text-center">
             {detail.questionCount ? (
               <div className="mx-auto max-w-xl space-y-4">
                 <p className="text-sm leading-6 text-slate-600">
-                  This bank has approved content ready for classroom delivery.
+                  This Library has approved content ready for classroom delivery.
                   Choose specific questions, then save a teacher draft or assign
-                  them to a class. Publish from bank through the Publish Center.
+                  them to a class. Create an Assignment from this Library.
                 </p>
                 <Button asChild>
                   <Link href={`/teacher/publish?sourceBankId=${bank.id}`}>
-                    Create assignment in Publish Center
+                    Create Assignment
                   </Link>
                 </Button>
                 <Button asChild variant="outline">
@@ -203,13 +203,13 @@ export default async function TeacherBankDetailPage({
               </div>
               ) : (
               <>
-                <p className="teacher-eyebrow">Empty bank</p>
+                <p className="teacher-eyebrow">Empty Library</p>
                 <h3 className="mt-2 text-xl font-bold text-slate-950">
-                  No reviewed questions in this bank yet.
+                  No reviewed questions in this Library yet.
                 </h3>
                 <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
                   Use Review Drafts after import, then add approved content to a
-                  teacher-owned bank before classroom delivery.
+                  teacher-owned Library before classroom delivery.
                 </p>
               </>
             )}
@@ -223,7 +223,7 @@ export default async function TeacherBankDetailPage({
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Import private material, review drafts, then add approved content
-              to this bank.
+              to this Library.
             </p>
             <div className="mt-4 grid gap-2">
               <BankQuickAction
@@ -255,7 +255,7 @@ export default async function TeacherBankDetailPage({
             </div>
             {!canManageContent ? (
               <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                Viewers can use shared bank content for assignments they manage,
+                Viewers can use shared Library content for assignments they manage,
                 but owners and editors handle import and approval.
               </p>
             ) : null}
@@ -264,8 +264,8 @@ export default async function TeacherBankDetailPage({
           <section className="rounded-lg border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
             <h2 className="text-lg font-bold text-slate-950">Members</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Explicit bank membership controls access. Classroom membership
-              does not grant access to this bank.
+              Explicit Library membership controls access. Classroom membership
+              does not grant access to this Library.
             </p>
             <div className="mt-4 space-y-3">
               {activeMembers.map((member) => (

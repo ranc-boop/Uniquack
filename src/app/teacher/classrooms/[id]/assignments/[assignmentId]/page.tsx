@@ -9,6 +9,7 @@ import {
   savePrivateTeacherFeedbackNote,
   sendTeacherFeedbackNote,
 } from "@/app/teacher/classrooms/[id]/assignments/[assignmentId]/feedback-actions";
+import { resumeQuarantinedAssignment } from "@/app/teacher/classrooms/[id]/assignments/[assignmentId]/delivery-actions";
 import { QuestionText } from "@/components/math-content";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,7 +17,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
-import { getTeacherAssignmentDetail } from "@/lib/teacher-assignments";
+import {
+  getAssignmentDeliveryQuarantine,
+  getTeacherAssignmentDetail,
+} from "@/lib/teacher-assignments";
 import { listTeacherAssignmentFeedbackNotes } from "@/lib/teacher-feedback-notes";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +68,7 @@ function summaryText(
 function sourceKindLabel(kind: string) {
   if (kind === "course_builder_run") return "Course Builder run";
   if (kind === "practice_framework") return "Practice framework";
-  if (kind === "question_bank") return "Question Bank";
+  if (kind === "question_bank") return "Library";
   return "Manual";
 }
 
@@ -168,6 +172,16 @@ export default async function TeacherAssignmentDetailPage({
   const attachableQuestions = assignment.questionPerformanceRows.filter(
     (row) => row.question,
   );
+  const deliveryQuarantine = getAssignmentDeliveryQuarantine(
+    assignment.source_summary,
+  );
+  const affectedItems = assignment.items.filter(
+    (item) => item.item_type === "question" && item.readinessIssues.length > 0,
+  );
+  const sourceBankId =
+    assignment.source_record_id ??
+    assignment.items.find((item) => item.source_bank_id)?.source_bank_id ??
+    null;
 
   return (
     <main className="teacher-shell space-y-6">
@@ -208,7 +222,7 @@ export default async function TeacherAssignmentDetailPage({
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
         <strong className="font-bold">Assignment-only visibility:</strong> this
         page tracks selected delivered items. It does not grant students access
-        to the teacher&apos;s full bank.
+        to the teacher&apos;s full Library.
       </section>
 
       <section className="teacher-panel overflow-hidden" aria-labelledby="assignment-evidence-heading">
@@ -290,7 +304,68 @@ export default async function TeacherAssignmentDetailPage({
         />
       </section>
 
-      {assignment.status === "draft" ? (
+      {deliveryQuarantine ? (
+        <section className="rounded-lg border border-amber-300 bg-amber-50 p-5">
+          <h2 className="text-base font-bold text-amber-950">
+            Delivery paused by Library Review
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-amber-900">
+            Students cannot open this Assignment while {affectedItems.length || "one or more"} Library
+            item{affectedItems.length === 1 ? "" : "s"} still need review. Existing
+            student progress and Assignment history are preserved.
+          </p>
+          <p className="mt-2 text-xs text-amber-800">
+            Paused {formatDateTime(deliveryQuarantine.quarantinedAt)}. Review the
+            affected questions, then resume this same Assignment.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {sourceBankId ? (
+              <Button asChild variant="outline">
+                <Link href={`/teacher/banks/${sourceBankId}/review`}>
+                  Open Library Review
+                </Link>
+              </Button>
+            ) : null}
+            <form action={resumeQuarantinedAssignment}>
+              <input name="assignmentId" type="hidden" value={assignment.id} />
+              <input
+                name="classroomId"
+                type="hidden"
+                value={assignment.classroom.id}
+              />
+              <Button disabled={affectedItems.length > 0} type="submit">
+                Resume delivery
+              </Button>
+            </form>
+            <Button asChild variant="outline">
+              <Link
+                href={`/teacher/publish?classroomId=${assignment.classroom.id}${
+                  sourceBankId ? `&sourceBankId=${sourceBankId}` : ""
+                }`}
+              >
+                Create replacement Assignment
+              </Link>
+            </Button>
+          </div>
+          {affectedItems.length ? (
+            <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-amber-900">
+              {affectedItems.map((item) => (
+                <li key={item.id}>
+                  {item.question?.title || "Unavailable Library question"} —{" "}
+                  {item.readinessIssues.join("; ")}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {affectedItems.length ? (
+            <p className="mt-3 text-xs leading-5 text-amber-800">
+              Resume unlocks only after every listed issue is cleared. Use
+              Library Review for draft content; use a replacement Assignment
+              when a Library link cannot be repaired.
+            </p>
+          ) : null}
+        </section>
+      ) : assignment.status === "draft" ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-5">
           <h2 className="text-base font-bold text-amber-950">
             Draft assignment is teacher-only.
@@ -423,7 +498,7 @@ export default async function TeacherAssignmentDetailPage({
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-bold text-slate-950">Question performance</h2>
               <p className="teacher-muted">
-                Performance across the selected assignment items. Source bank access remains
+                Performance across the selected assignment items. Source Library access remains
                 teacher-private.
               </p>
             </div>
@@ -712,7 +787,7 @@ export default async function TeacherAssignmentDetailPage({
                       </div>
                       <p className="text-xs leading-5 text-slate-500">
                         Private notes are visible only to classroom managers. Sending does not expose
-                        source-bank content, internal evidence, or other students&apos; work.
+                        source Library content, internal evidence, or other students&apos; work.
                       </p>
                     </form>
                   </details>
@@ -765,7 +840,7 @@ export default async function TeacherAssignmentDetailPage({
                         )}
                         {item.bank_question_id ? (
                           <p className="text-xs font-semibold text-sky-700">
-                            Delivered from selected Question Bank item.
+                            Delivered from selected Library item.
                           </p>
                         ) : null}
                       </div>
@@ -833,7 +908,7 @@ export default async function TeacherAssignmentDetailPage({
               <h2 className="text-lg font-bold text-slate-950">Assignment source</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 {assignment.source_kind === "question_bank"
-                  ? "This assignment was created from selected approved Question Bank items."
+                  ? "This assignment was created from selected approved Library items."
                   : "This assignment was created from a reviewed planning source."}
               </p>
               <dl className="mt-4 space-y-3 text-sm">
@@ -854,10 +929,10 @@ export default async function TeacherAssignmentDetailPage({
                 {assignment.source_kind === "question_bank" ? (
                   <>
                     <div className="flex items-center justify-between gap-3">
-                      <dt className="text-slate-500">Bank visibility</dt>
+                      <dt className="text-slate-500">Library visibility</dt>
                       <dd className="font-semibold capitalize text-slate-950">
                         {summaryText(assignment.source_summary, "bankVisibility") ||
-                          "bank-scoped"}
+                          "Library-scoped"}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-3">
@@ -901,7 +976,7 @@ export default async function TeacherAssignmentDetailPage({
               {assignment.source_kind === "question_bank" && assignment.source_record_id ? (
                 <Button asChild className="mt-4 w-full" variant="outline">
                   <Link href={`/teacher/banks/${assignment.source_record_id}`}>
-                    Open source bank
+                    Open source Library
                   </Link>
                 </Button>
               ) : assignment.source_record_id ? (

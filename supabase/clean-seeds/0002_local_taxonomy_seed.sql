@@ -1,6 +1,7 @@
 -- Clean Supabase local seed draft.
--- Minimal representative taxonomy for local smoke tests.
--- This is not a full production taxonomy and does not import legacy tag data.
+-- Minimal representative taxonomy additions for local smoke tests.
+-- Canonical taxonomy migrations win on identifier conflicts; this seed only
+-- fills local-only rows and never overwrites the production catalog.
 
 begin;
 set constraints all deferred;
@@ -24,18 +25,7 @@ values
   ('math.method', 'facet_root', 'math', 'method', 'Method', 'Method roots are browse-only.', false, 30, 'active', '{"seed":"local"}'::jsonb),
   ('math.task', 'facet_root', 'math', 'task', 'Task', 'Task roots are browse-only.', false, 40, 'active', '{"seed":"local"}'::jsonb),
   ('math.form', 'facet_root', 'math', 'form', 'Form', 'Form roots are browse-only.', false, 50, 'active', '{"seed":"local"}'::jsonb)
-on conflict (tag_id) do update
-set
-  node_kind = excluded.node_kind,
-  subject_tag_id = excluded.subject_tag_id,
-  facet_key = excluded.facet_key,
-  label = excluded.label,
-  description = excluded.description,
-  is_assignable = excluded.is_assignable,
-  sort_order = excluded.sort_order,
-  status = excluded.status,
-  metadata = excluded.metadata,
-  updated_at = now();
+on conflict (tag_id) do nothing;
 
 insert into public.taxonomy_facets (
   facet_key,
@@ -53,16 +43,7 @@ values
   ('method', 'math', 'math.method', 'Method', 'Solution methods and procedures.', 30, 'active', '{"seed":"local"}'::jsonb),
   ('task', 'math', 'math.task', 'Task', 'Question intent or action.', 40, 'active', '{"seed":"local"}'::jsonb),
   ('form', 'math', 'math.form', 'Form', 'Question representation or response format.', 50, 'active', '{"seed":"local"}'::jsonb)
-on conflict (facet_key) do update
-set
-  subject_tag_id = excluded.subject_tag_id,
-  root_tag_id = excluded.root_tag_id,
-  label = excluded.label,
-  description = excluded.description,
-  sort_order = excluded.sort_order,
-  status = excluded.status,
-  config = excluded.config,
-  updated_at = now();
+on conflict (facet_key) do nothing;
 
 insert into public.taxonomy_nodes (
   tag_id,
@@ -89,18 +70,7 @@ values
   ('math.form.free_response', 'tag', 'math', 'form', 'Free Response', 'Written solution or explanation.', true, 10, 'active', '{"seed":"local"}'::jsonb),
   ('math.form.table', 'tag', 'math', 'form', 'Table', 'Question uses tabular information.', true, 20, 'active', '{"seed":"local"}'::jsonb),
   ('math.form.multiple_choice', 'tag', 'math', 'form', 'Multiple Choice', 'Question uses answer options.', true, 30, 'active', '{"seed":"local"}'::jsonb)
-on conflict (tag_id) do update
-set
-  node_kind = excluded.node_kind,
-  subject_tag_id = excluded.subject_tag_id,
-  facet_key = excluded.facet_key,
-  label = excluded.label,
-  description = excluded.description,
-  is_assignable = excluded.is_assignable,
-  sort_order = excluded.sort_order,
-  status = excluded.status,
-  metadata = excluded.metadata,
-  updated_at = now();
+on conflict (tag_id) do nothing;
 
 insert into public.taxonomy_edges (
   from_tag_id,
@@ -131,13 +101,7 @@ values
   ('math.form', 'math.form.multiple_choice', 'parent_child', true, 30, 'active', '{"seed":"local"}'::jsonb),
   ('math.curriculum.ap_calculus_bc.applications_of_integration', 'math.concept.integration.accumulation', 'maps_to', true, 10, 'active', '{"seed":"local"}'::jsonb),
   ('math.curriculum.ap_calculus_bc.applications_of_integration', 'math.concept.integration.area_between_curves', 'maps_to', true, 20, 'active', '{"seed":"local"}'::jsonb)
-on conflict (from_tag_id, to_tag_id, edge_kind) do update
-set
-  is_primary = excluded.is_primary,
-  sort_order = excluded.sort_order,
-  status = excluded.status,
-  metadata = excluded.metadata,
-  updated_at = now();
+on conflict (from_tag_id, to_tag_id, edge_kind) do nothing;
 
 insert into public.taxonomy_aliases (
   alias_text,
@@ -151,12 +115,7 @@ values
   ('Accumulation', 'accumulation', 'math.concept.integration.accumulation', 'active', '{"seed":"local"}'::jsonb),
   ('Area between curves', 'area between curves', 'math.concept.integration.area_between_curves', 'active', '{"seed":"local"}'::jsonb),
   ('FRQ', 'frq', 'math.form.free_response', 'active', '{"seed":"local"}'::jsonb)
-on conflict (normalized_alias, tag_id) do update
-set
-  alias_text = excluded.alias_text,
-  status = excluded.status,
-  metadata = excluded.metadata,
-  updated_at = now();
+on conflict (normalized_alias, tag_id) do nothing;
 
 select private.rebuild_taxonomy_node_closure();
 

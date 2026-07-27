@@ -68,7 +68,7 @@ export async function publishQuestionBankAssignments(formData: FormData) {
     const selectedClassroomIds = uniqueStrings(formData.getAll("classroomIds"));
 
     if (!selectedBankQuestionIds.length) {
-      throw new Error("Choose at least one approved bank question.");
+      throw new Error("Choose at least one approved Library question.");
     }
 
     if (!selectedClassroomIds.length) {
@@ -83,11 +83,11 @@ export async function publishQuestionBankAssignments(formData: FormData) {
     });
 
     if (!bankDetail || bankDetail.bank.status !== "active") {
-      throw new Error("Selected source bank is not active.");
+      throw new Error("Selected source Library is not active.");
     }
 
     if (!canPublishFromBank(bankDetail.currentUserRole)) {
-      throw new Error("Only bank owners and editors can publish bank content.");
+      throw new Error("Only Library owners and editors can create assignments.");
     }
 
     const publishableQuestions = await listPublishableBankQuestions({
@@ -120,7 +120,7 @@ export async function publishQuestionBankAssignments(formData: FormData) {
           classroom.organization_id !== bankDetail.bank.organization_id,
       )
     ) {
-      throw new Error("Selected classrooms must belong to the source bank organization.");
+      throw new Error("Selected classrooms must belong to the source Library organization.");
     }
 
     const created: Array<{ assignmentId: string; classroomId: string }> = [];
@@ -153,7 +153,7 @@ export async function publishQuestionBankAssignments(formData: FormData) {
       }
 
       if (!assignmentId) {
-        throw new Error("Assignment was not created from this bank.");
+        throw new Error("Assignment was not created from this Library.");
       }
 
       const { error: summaryError } = await supabase
@@ -189,7 +189,7 @@ export async function publishQuestionBankAssignments(formData: FormData) {
     redirectWithSaved(
       successPath,
       parsed.publishMode === "assigned"
-        ? `Assigned selected bank content to ${created.length} classroom(s). Students see assignment items only.`
+        ? `Assigned selected Library content to ${created.length} classroom(s). Students see assignment items only.`
         : `Saved ${created.length} teacher draft assignment(s). Students cannot see drafts.`,
     );
   } catch (error) {

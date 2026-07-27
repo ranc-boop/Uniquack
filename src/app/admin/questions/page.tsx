@@ -10,6 +10,7 @@ import { AdminCard } from "@/components/admin/admin-card";
 import { AdminDangerZone } from "@/components/admin/admin-danger-zone";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminQuestionLibraryNav } from "@/components/admin/admin-question-library-nav";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
@@ -301,6 +302,7 @@ export default async function AdminQuestionsPage({
       : supabase
           .from("questions")
           .select(ADMIN_QUESTION_SUMMARY_SELECT, { count: "exact" });
+    fallbackQuery = fallbackQuery.is("owner_bank_id", null);
 
     if (selectedStatus) {
       fallbackQuery = fallbackQuery.eq("status", selectedStatus);
@@ -347,10 +349,12 @@ export default async function AdminQuestionsPage({
                 .from("questions")
                 .select(ADMIN_QUESTION_DETAIL_SELECT)
                 .in("id", orderedQuestionIds)
+                .is("owner_bank_id", null)
             : supabase
                 .from("questions")
                 .select(ADMIN_QUESTION_SUMMARY_SELECT)
                 .in("id", orderedQuestionIds)
+                .is("owner_bank_id", null)
           : Promise.resolve({ data: [], error: null }),
       focusedQuestionId && orderedQuestionIds.length
         ? supabase
@@ -472,10 +476,11 @@ export default async function AdminQuestionsPage({
     <div className="space-y-6">
       <AdminPageHeader
         eyebrow="Content management"
-        help="Search, filter, edit, and maintain the official question bank. Publishing still flows through explicit admin review."
-        helpLabel="Question bank details"
-        title="Questions"
+        help="Search, filter, edit, and maintain global questions. Teacher-owned Library questions are governed separately and never appear in this workspace."
+        helpLabel="Central Public Library details"
+        title="Central Public Library"
       />
+      <AdminQuestionLibraryNav />
       <PageFeedback error={params.error} saved={params.saved} />
       {!focusedQuestionId ? (
       <details className="rounded-lg border bg-card p-5 shadow-sm">
@@ -522,18 +527,10 @@ export default async function AdminQuestionsPage({
               />
             </div>
             <QuestionAnswerFields defaultQuestionType="frq" />
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <select
-                id="status"
-                name="status"
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                defaultValue="draft"
-              >
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
-                <option value="archived">Archived</option>
-              </select>
+            <input name="status" type="hidden" value="draft" />
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              Manual authoring creates a private Global Review Draft.
+              Publication is available only after review.
             </div>
             <div className="space-y-2 md:col-span-2">
               <QuestionHtmlEditor

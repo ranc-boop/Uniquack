@@ -5,9 +5,9 @@ export default function TeacherAiParsingLoading() {
     <AIPdfImportLoadingSkeleton
       backHref="/teacher"
       backLabel="Back to teacher"
-      description="Loading bank targets, private import controls, and recent bank-scoped AI Parsing activity."
-      detailsLabel="Loading bank-scoped AI Parsing access..."
-      importTitle="Import into a Question Bank"
+      description="Loading Library targets, private import controls, and recent Library-scoped AI Parsing activity."
+      detailsLabel="Loading Library-scoped AI Parsing access..."
+      importTitle="Import into a Library"
       showSettingsAction={false}
       title="AI Parsing"
     />

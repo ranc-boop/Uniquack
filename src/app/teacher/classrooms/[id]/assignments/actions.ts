@@ -73,7 +73,7 @@ export async function createTeacherAssignment(formData: FormData) {
     const publishedQuestionIds = new Set((questions ?? []).map((question) => question.id));
 
     if (publishedQuestionIds.size !== questionIds.length) {
-      throw new Error("Assignments can include only published Question Bank questions.");
+      throw new Error("Assignments can include only reviewed Library questions.");
     }
 
     const assignedAt =

@@ -417,7 +417,7 @@ export function blueprintVisibilityLabel(visibility: QuestionBlueprintVisibility
 
 export function blueprintKindLabel(kind: QuestionBlueprintKind) {
   const labels: Record<QuestionBlueprintKind, string> = {
-    bank_generated: "Bank-generated",
+    bank_generated: "Library-generated",
     course_builder: "Course Builder",
     imported: "Imported",
     manual: "Manual",
@@ -442,8 +442,8 @@ export function blueprintStatusLabel(status: QuestionBlueprintStatus) {
 
 export function bankBlueprintRelationLabel(relationKind: BankBlueprint["relation_kind"]) {
   const labels: Record<BankBlueprint["relation_kind"], string> = {
-    generated_from_bank: "Generated from bank",
-    imported_to_bank: "Imported to bank",
+    generated_from_bank: "Generated from Library",
+    imported_to_bank: "Imported to Library",
     linked: "Linked",
   };
 

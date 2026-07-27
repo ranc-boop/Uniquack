@@ -51,7 +51,7 @@ const adminNavGroups: AdminNavGroup[] = [
     items: [
       { exact: true, href: "/admin", icon: LayoutDashboard, label: "Dashboard" },
       { href: "/admin/review", icon: ClipboardCheck, label: "Review Drafts" },
-      { href: "/admin/questions", icon: Library, label: "Questions" },
+      { href: "/admin/questions", icon: Library, label: "Central Public Library" },
       { href: "/admin/blueprints", icon: Boxes, label: "Blueprint Library" },
       { href: "/admin/practice-frameworks", icon: BookOpen, label: "Practice" },
       { href: "/admin/videos", icon: PlaySquare, label: "Videos" },

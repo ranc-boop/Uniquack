@@ -468,7 +468,7 @@ export async function removeClassroomStudent(formData: FormData) {
     revalidateClassroom(parsed.classroomId);
     redirectWithSaved(
       `/teacher/classrooms/${parsed.classroomId}/students`,
-      "Student removed from this classroom. Their source bank access remains unchanged.",
+      "Student removed from this classroom. Their source Library access remains unchanged.",
     );
   } catch (error) {
     const path = fallbackClassroomId
@@ -578,7 +578,7 @@ export async function addClassroomCoTeacher(formData: FormData) {
     revalidateClassroom(parsed.classroomId);
     redirectWithSaved(
       `/teacher/classrooms/${parsed.classroomId}/teachers`,
-      "Co-teacher added for classroom operations only. Source bank membership was not changed.",
+      "Co-teacher added for classroom operations only. Source Library membership was not changed.",
     );
   } catch (error) {
     const path = fallbackClassroomId
@@ -626,7 +626,7 @@ export async function removeClassroomCoTeacher(formData: FormData) {
     revalidateClassroom(parsed.classroomId);
     redirectWithSaved(
       `/teacher/classrooms/${parsed.classroomId}/teachers`,
-      "Co-teacher removed from classroom operations. Bank access was not changed.",
+      "Co-teacher removed from classroom operations. Library access was not changed.",
     );
   } catch (error) {
     const path = fallbackClassroomId

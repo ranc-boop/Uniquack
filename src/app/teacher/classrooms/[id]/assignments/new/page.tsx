@@ -68,7 +68,7 @@ export default async function NewTeacherAssignmentPage({
             <p className="max-w-2xl text-base leading-7 text-slate-600">
               Select reviewed questions, write student-facing instructions,
               then save a teacher draft or assign it to class. The primary
-              workflow now starts from Question Banks.
+              workflow now starts from Libraries.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -98,12 +98,12 @@ export default async function NewTeacherAssignmentPage({
       ) : null}
 
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-        <strong className="font-bold">Bank-first workflow:</strong> create new
-        assignments from a Question Bank when possible. This direct classroom
+        <strong className="font-bold">Library-first workflow:</strong> create new
+        assignments from a Library when possible. This direct classroom
         picker remains for published-question compatibility and regression
         checks.
         <Button asChild className="ml-3" size="sm" variant="outline">
-          <Link href="/teacher/banks">Open Question Banks</Link>
+          <Link href="/teacher/banks">Open Libraries</Link>
         </Button>
       </section>
 
@@ -138,7 +138,7 @@ export default async function NewTeacherAssignmentPage({
                 </h2>
                 <p className="teacher-muted">
                   Compatibility path for globally published questions. Bank
-                  assignments should start from selected approved bank items.
+                  assignments should start from selected approved Library items.
                 </p>
               </div>
               <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
@@ -200,12 +200,12 @@ export default async function NewTeacherAssignmentPage({
                   No published questions available
                 </h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                  Approve questions through bank review or adjust the search
+                  Approve questions through Library review or adjust the search
                   before assigning work. Draft or unreviewed questions cannot be
                   assigned.
                 </p>
                 <Button asChild className="mt-4" variant="outline">
-                  <Link href="/teacher/banks">Open bank review</Link>
+                  <Link href="/teacher/banks">Open Library review</Link>
                 </Button>
               </div>
             )}

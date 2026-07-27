@@ -10,11 +10,10 @@ type TeacherWorkspaceNavItem = {
 
 const teacherWorkspaceNavItems: TeacherWorkspaceNavItem[] = [
   { href: "/teacher", label: "Dashboard" },
-  { href: "/teacher/banks", label: "Question Bank" },
-  { href: "/teacher/ai-parsing", label: "AI Parsing" },
-  { href: "/teacher/blueprints", label: "Blueprint" },
-  { href: "/teacher/classrooms", label: "Classroom" },
-  { href: "/teacher/publish", label: "Publish" },
+  { href: "/teacher/banks", label: "Libraries" },
+  { href: "/teacher/blueprints", label: "Blueprints" },
+  { href: "/teacher/classrooms", label: "Classrooms" },
+  { href: "/teacher/publish", label: "Assignments" },
   { href: "/teacher/progress", label: "Progress" },
 ];
 

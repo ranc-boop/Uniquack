@@ -82,7 +82,7 @@ export function TeacherDashboardOverviewCards({
 }) {
   const cards = [
     {
-      label: "Question Banks",
+      label: "Libraries",
       value: summary.overview.totalBankCount,
       detail: "private/shared libraries",
       href: null,
@@ -96,7 +96,7 @@ export function TeacherDashboardOverviewCards({
     {
       label: "Assignment-ready",
       value: summary.overview.assignmentReadyQuestionCount,
-      detail: "reviewed bank questions",
+      detail: "reviewed Library questions",
       href: null,
     },
     {
@@ -166,7 +166,7 @@ export function TeacherDashboardActionBoard({
         action={
           firstReviewBank ? (
             <Button asChild size="sm">
-              <Link href={`/teacher/banks/${firstReviewBank.bankId}/review`}>Open bank review</Link>
+              <Link href={`/teacher/banks/${firstReviewBank.bankId}/review`}>Open Library review</Link>
             </Button>
           ) : null
         }
@@ -196,7 +196,7 @@ export function TeacherDashboardActionBoard({
           ))
         ) : (
           <EmptyState actionHref="/teacher/ai-parsing" actionLabel="Import materials">
-            No Review Drafts are waiting. Import owned materials into a bank when you are ready.
+            No Review Drafts are waiting. Import owned materials into a Library when you are ready.
           </EmptyState>
         )}
       </DashboardSection>
@@ -206,12 +206,12 @@ export function TeacherDashboardActionBoard({
           firstReadyBank ? (
             <Button asChild size="sm">
               <Link href={`/teacher/publish?sourceBankId=${firstReadyBank.bankId}`}>
-                Publish from Library
+                Assign from Library
               </Link>
             </Button>
           ) : null
         }
-        description="Reviewed bank questions that can become assignment-only student work."
+        description="Reviewed Library questions that can become assignment-only student work."
         title="Assignment-ready"
       >
         {summary.assignmentReadyBanks.length ? (
@@ -235,8 +235,8 @@ export function TeacherDashboardActionBoard({
             </Link>
           ))
         ) : (
-          <EmptyState actionHref="/teacher/banks" actionLabel="Open Question Bank">
-            No reviewed bank questions are assignment-ready yet. Review imported drafts first.
+          <EmptyState actionHref="/teacher/banks" actionLabel="Open Libraries">
+            No reviewed Library questions are assignment-ready yet. Review imported drafts first.
           </EmptyState>
         )}
       </DashboardSection>
@@ -247,7 +247,7 @@ export function TeacherDashboardActionBoard({
             <Link href="/teacher/classrooms">Open Classrooms</Link>
           </Button>
         }
-        description="Roster and delivery spaces fed by approved bank content."
+        description="Roster and delivery spaces fed by approved Library content."
         title="Classroom activity"
       >
         {summary.classroomActivity.length ? (
@@ -362,7 +362,7 @@ export function TeacherDashboardEvidencePanel({
             </Link>
           ))
         ) : (
-          <EmptyState actionHref="/teacher/publish" actionLabel="Publish assignment">
+          <EmptyState actionHref="/teacher/publish" actionLabel="Create assignment">
             No assignment Practice evidence yet. Evidence arrives after students start assigned work.
           </EmptyState>
         )}
@@ -374,7 +374,7 @@ export function TeacherDashboardEvidencePanel({
             <Link href="/teacher/ai-parsing">Open AI Parsing</Link>
           </Button>
         }
-        description="Recent bank-targeted imports, with draft counts when the import summary provides them."
+        description="Recent Library-targeted imports, with draft counts when the import summary provides them."
         title="Recent imports"
       >
         {summary.recentImports.length ? (
@@ -384,7 +384,7 @@ export function TeacherDashboardEvidencePanel({
               href={item.bankId ? `/teacher/banks/${item.bankId}/imports` : "/teacher/ai-parsing"}
               key={item.id}
             >
-              <h3 className="font-semibold text-slate-950">{item.bankName ?? "Bank import"}</h3>
+              <h3 className="font-semibold text-slate-950">{item.bankName ?? "Library import"}</h3>
               <p className="mt-1 text-sm text-slate-600">
                 {item.sourceType} · {item.status}
                 {item.draftCount !== null ? ` · ${formatNumber(item.draftCount)} drafts` : ""}
@@ -412,8 +412,8 @@ export function TeacherDashboardWorkflowPanel({
   const steps = [
     {
       href: "/teacher/banks",
-      label: "1. Build the bank",
-      text: "Create or join a Question Bank and keep content private by default.",
+      label: "1. Build the Library",
+      text: "Create or join a Library and keep content private by default.",
     },
     {
       href: "/teacher/ai-parsing",
@@ -422,8 +422,8 @@ export function TeacherDashboardWorkflowPanel({
     },
     {
       href: "/teacher/publish",
-      label: "3. Publish assignments",
-      text: "Publish selected reviewed bank questions to classes as assignment-only work.",
+      label: "3. Create assignments",
+      text: "Assign selected reviewed Library questions to classes as assignment-only work.",
     },
     {
       href: "/teacher/progress",
@@ -442,7 +442,7 @@ export function TeacherDashboardWorkflowPanel({
           </p>
         </div>
         <Button asChild variant="outline">
-          <Link href="/teacher/banks">Open Question Bank</Link>
+          <Link href="/teacher/banks">Open Libraries</Link>
         </Button>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-4">

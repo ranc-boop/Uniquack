@@ -193,7 +193,7 @@ export function ClassroomSafetyStrip() {
   const notes = [
     "Classes are roster and delivery spaces.",
     "Students receive selected assignment items only.",
-    "Joining a class does not grant source bank access.",
+    "Joining a class does not grant source Library access.",
   ];
 
   return (

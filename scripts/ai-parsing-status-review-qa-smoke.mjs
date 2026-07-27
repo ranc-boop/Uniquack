@@ -30,32 +30,39 @@ const bankImportUi = await read("src/app/teacher/banks/bank-import-ui.tsx");
 const bankImportsPage = await read("src/app/teacher/banks/[bankId]/imports/page.tsx");
 const bankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
 const bankActions = await read("src/app/teacher/banks/actions.ts");
+const bankPdfBurstActions = await read("src/app/teacher/banks/pdf-burst-actions.ts");
 const questionBanks = await read("src/lib/question-banks.ts");
 const smokeAll = await read("scripts/smoke-all.mjs");
 const migrationFileNames = [
   ...(await readDir("supabase/clean-migrations")),
 ];
-const importBankPdfDrafts = extractFunctionBody(bankActions, "importBankPdfDrafts");
+const reserveTeacherAIPdfBurst = extractFunctionBody(
+  bankPdfBurstActions,
+  "reserveTeacherAIPdfBurst",
+);
+const finalizeTeacherAIPdfBurstItem = extractFunctionBody(
+  bankPdfBurstActions,
+  "finalizeTeacherAIPdfBurstItem",
+);
 const approveBankReviewQuestion = extractFunctionBody(
   bankActions,
   "approveBankReviewQuestion",
 );
 
 assert(
-  teacherAiParsingPage.includes("Teacher import workspace") &&
-    teacherAiParsingPage.includes("AI drafts stay private until reviewed") &&
-    teacherAiParsingPage.includes("RecentBankImportsPanel") &&
-    teacherAiParsingPage.includes("bankName={selectedBank.name}") &&
-    teacherAiParsingPage.includes("Import into selected bank") &&
+  teacherAiParsingPage.includes("getTeacherQuestionBankDetail") &&
+    teacherAiParsingPage.includes("canManageBankContent") &&
+    teacherAiParsingPage.includes("imports?mode=ai") &&
+    teacherAiParsingPage.includes('redirect("/teacher/banks?intent=import")') &&
     !teacherAiParsingPage.includes("/admin/imports/pdf") &&
     !teacherAiParsingPage.includes("/admin/review"),
-  "/teacher/ai-parsing must remain a teacher bank-targeted AI Parsing entry point with status history",
+  "/teacher/ai-parsing must remain a scoped compatibility redirect into Library Import/AI",
 );
 
 assert(
   bankImportUi.includes("Recent AI Parsing status") &&
     bankImportUi.includes("AI Parsing status history uses existing import batches only") &&
-    bankImportUi.includes("Target bank") &&
+    bankImportUi.includes("Target Library") &&
     bankImportUi.includes("Drafts") &&
     bankImportUi.includes("Warnings") &&
     bankImportUi.includes("Retryable import") &&
@@ -68,16 +75,13 @@ assert(
 
 assert(
   bankImportsPage.includes("AI Parsing runs server-side") &&
-    bankImportsPage.includes("private drafts in this bank until review") &&
+    bankImportsPage.includes("private drafts in this Library until review") &&
     bankImportsPage.includes("Review is required before assignment") &&
-    bankImportsPage.includes("provider credentials are never") &&
-    bankImportsPage.includes("Advanced / Developer fixture") &&
-    bankImportsPage.includes("Developer fixture for smoke testing") &&
     bankImportsPage.includes("bankName={bank.name}") &&
     !bankImportsPage.includes("providerProfileId") &&
     !bankImportsPage.includes("api_key") &&
     !bankImportsPage.includes("apiKey"),
-  "teacher bank imports page must explain review-gated private drafts, hide provider config, and keep JSON fixture advanced",
+  "teacher Library imports page must explain review-gated private drafts and hide provider configuration",
 );
 
 assert(
@@ -93,7 +97,7 @@ assert(
     bankReviewPage.includes("Mark needs fix") &&
     bankReviewPage.includes("Reject and archive") &&
     bankReviewPage.includes("Approval adds this question") &&
-    bankReviewPage.includes("bank-scoped and is not globally published") &&
+    bankReviewPage.includes("private to this Library and is not globally published") &&
     bankReviewPage.includes("Source lineage") &&
     !bankReviewPage.includes("published_at"),
   "teacher bank Review Draft QA must expose expandable prompt/answer/solution/taxonomy/warning review without publishing",
@@ -112,15 +116,14 @@ assert(
 );
 
 assert(
-  importBankPdfDrafts.includes("assertNoRawProviderConfig(formData)") &&
-    importBankPdfDrafts.includes("resolveTeacherAIPdfProviderProfile") &&
-    importBankPdfDrafts.includes("targetBankId: parsed.bankId") &&
-    importBankPdfDrafts.includes("enqueueAIProviderJob") &&
-    importBankPdfDrafts.includes("buildAIPdfJobIdempotencyKey") &&
-    !importBankPdfDrafts.includes("await processAIPdfImport") &&
-    !importBankPdfDrafts.includes('visibility: "public"') &&
-    !importBankPdfDrafts.includes('status: "published"') &&
-    !importBankPdfDrafts.includes("published_at"),
+  reserveTeacherAIPdfBurst.includes("resolveTeacherAIPdfProviderProfile") &&
+    reserveTeacherAIPdfBurst.includes("p_target_bank_id: detail.bank.id") &&
+    reserveTeacherAIPdfBurst.includes("reserve_ai_pdf_upload_burst") &&
+    finalizeTeacherAIPdfBurstItem.includes("releaseAIPdfBurstAdmissionJobs") &&
+    !bankPdfBurstActions.includes("await processAIPdfImport") &&
+    !bankPdfBurstActions.includes('visibility: "public"') &&
+    !bankPdfBurstActions.includes('status: "published"') &&
+    !bankPdfBurstActions.includes("published_at"),
   "teacher PDF import must preserve server-side provider routing, durable retry handoff, bank scope, and no auto-publish",
 );
 

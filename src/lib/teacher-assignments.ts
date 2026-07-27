@@ -48,7 +48,10 @@ export type TeacherAssignmentQuestion = Pick<
 >;
 
 export type TeacherAssignmentEvidenceQuestion = TeacherAssignmentQuestion &
-  Pick<Question, "content_html">;
+  Pick<
+    Question,
+    "content_html" | "deleted_at" | "owner_bank_id" | "published_at"
+  >;
 
 export type TeacherAssignableQuestion = TeacherAssignmentQuestion & {
   contentPreview: string;
@@ -65,6 +68,7 @@ export type TeacherAssignmentItem = Pick<
   | "source_bank_id"
 > & {
   question: TeacherAssignmentEvidenceQuestion | null;
+  readinessIssues: string[];
 };
 
 export type TeacherAssignmentProgressSummary = {
@@ -141,6 +145,38 @@ export type TeacherAssignmentDetail = TeacherAssignmentSummary & {
   questionPerformanceRows: TeacherAssignmentQuestionPerformance[];
   studentProgressRows: TeacherAssignmentStudentProgress[];
 };
+
+export type AssignmentDeliveryQuarantine = {
+  previousAssignedAt: string | null;
+  quarantinedAt: string | null;
+};
+
+export function getAssignmentDeliveryQuarantine(
+  summary: Json,
+): AssignmentDeliveryQuarantine | null {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return null;
+  }
+
+  const record = summary as Record<string, Json | undefined>;
+  if (
+    record.deliveryQuarantineReason !== "unreviewed_library_question" ||
+    typeof record.deliveryResumedAt === "string"
+  ) {
+    return null;
+  }
+
+  return {
+    previousAssignedAt:
+      typeof record.deliveryQuarantinedPreviousAssignedAt === "string"
+        ? record.deliveryQuarantinedPreviousAssignedAt
+        : null,
+    quarantinedAt:
+      typeof record.deliveryQuarantinedAt === "string"
+        ? record.deliveryQuarantinedAt
+        : null,
+  };
+}
 
 const MAX_ASSIGNMENT_ITEMS = 120;
 const MAX_ASSIGNMENT_STUDENTS = 320;
@@ -457,7 +493,9 @@ export async function getTeacherAssignmentDetail({
   const { data: questions } = questionIds.length
     ? await supabase
         .from("questions")
-        .select("id, question_code, title, content_html, question_type, difficulty_rating, status")
+        .select(
+          "id, question_code, title, content_html, question_type, difficulty_rating, status, owner_bank_id, published_at, deleted_at",
+        )
         .in("id", questionIds)
         .limit(MAX_ASSIGNMENT_ITEMS)
     : { data: [] };
@@ -467,6 +505,66 @@ export async function getTeacherAssignmentDetail({
       question,
     ]),
   );
+  const bankQuestionIds = Array.from(
+    new Set(
+      itemRows
+        .map((item) => item.bank_question_id)
+        .filter(Boolean) as string[],
+    ),
+  );
+  const { data: bankQuestions, error: bankQuestionError } = bankQuestionIds.length
+    ? await supabase
+        .from("bank_questions")
+        .select("id, bank_id, question_id, status")
+        .in("id", bankQuestionIds)
+    : { data: [], error: null };
+
+  if (bankQuestionError) {
+    throw new Error(bankQuestionError.message);
+  }
+  const bankQuestionById = new Map(
+    (bankQuestions ?? []).map((bankQuestion) => [bankQuestion.id, bankQuestion]),
+  );
+
+  function readinessIssues(
+    item: (typeof itemRows)[number],
+    question: TeacherAssignmentEvidenceQuestion | null,
+  ) {
+    if (
+      question?.owner_bank_id === null ||
+      (!question && !item.source_bank_id && !item.bank_question_id)
+    ) {
+      return [];
+    }
+    const issues: string[] = [];
+    const bankQuestion = item.bank_question_id
+      ? bankQuestionById.get(item.bank_question_id)
+      : null;
+
+    if (!question) issues.push("Question is unavailable");
+    if (question?.status !== "review") issues.push("Question needs Library Review");
+    if (question?.deleted_at) issues.push("Question is archived or deleted");
+    if (question?.published_at) issues.push("Bank-owned question has invalid publish state");
+    if (!item.bank_question_id) issues.push("Library item link is missing");
+    if (!item.source_bank_id) issues.push("Source Library link is missing");
+    if (
+      question?.owner_bank_id &&
+      item.source_bank_id !== question.owner_bank_id
+    ) {
+      issues.push("Source Library link does not match question ownership");
+    }
+    if (
+      !bankQuestion ||
+      bankQuestion.question_id !== item.question_id ||
+      bankQuestion.bank_id !== item.source_bank_id
+    ) {
+      issues.push("Library item mapping needs replacement");
+    } else if (bankQuestion.status !== "active") {
+      issues.push("Library item is not active");
+    }
+
+    return Array.from(new Set(issues));
+  }
   const [{ data: members }, { data: progressRows }, { data: practiceLinks }] =
     await Promise.all([
       supabase
@@ -711,7 +809,7 @@ export async function getTeacherAssignmentDetail({
       latestActivityAt: latestIso(attempts.map((attempt) => attempt.createdAt)),
       question,
       sourceLabel: item.bank_question_id
-        ? "Selected Question Bank item"
+        ? "Selected Library item"
         : "Assignment item",
       studentAttemptedCount,
     } satisfies TeacherAssignmentQuestionPerformance;
@@ -746,6 +844,10 @@ export async function getTeacherAssignmentDetail({
     items: itemRows.map((item) => ({
       ...item,
       question: item.question_id ? questionById.get(item.question_id) ?? null : null,
+      readinessIssues: readinessIssues(
+        item,
+        item.question_id ? questionById.get(item.question_id) ?? null : null,
+      ),
     })),
     evidenceSummary,
     progressSummary,
