@@ -413,32 +413,35 @@ export async function getTeacherQuestionBankAccess({
   profileId: string;
   supabase: SupabaseServerClient;
 }): Promise<TeacherQuestionBankAccess | null> {
-  const { data: bank, error: bankError } = await supabase
-    .from("question_banks")
-    .select(
-      "id, organization_id, owner_id, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
-    )
-    .eq("id", bankId)
-    .maybeSingle();
+  const [
+    { data: bank, error: bankError },
+    { data: membership, error: membershipError },
+  ] = await Promise.all([
+    supabase
+      .from("question_banks")
+      .select(
+        "id, organization_id, owner_id, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
+      )
+      .eq("id", bankId)
+      .maybeSingle(),
+    supabase
+      .from("bank_members")
+      .select("role")
+      .eq("bank_id", bankId)
+      .eq("user_id", profileId)
+      .maybeSingle(),
+  ]);
 
   assertQuestionBankSchema(bankError);
+  assertQuestionBankSchema(membershipError);
   if (bankError) {
     throw new Error(bankError.message);
   }
-  if (!bank) {
-    return null;
-  }
-
-  const { data: membership, error: membershipError } = await supabase
-    .from("bank_members")
-    .select("role")
-    .eq("bank_id", bankId)
-    .eq("user_id", profileId)
-    .maybeSingle();
-
-  assertQuestionBankSchema(membershipError);
   if (membershipError) {
     throw new Error(membershipError.message);
+  }
+  if (!bank) {
+    return null;
   }
 
   return {

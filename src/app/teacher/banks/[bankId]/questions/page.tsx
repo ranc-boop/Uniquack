@@ -18,7 +18,7 @@ import {
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   canManageBankContent,
-  getTeacherQuestionBankDetail,
+  getTeacherQuestionBankAccess,
   listBankQuestionsPage,
   QuestionBankSchemaMissingError,
 } from "@/lib/question-banks";
@@ -87,11 +87,13 @@ export default async function TeacherBankQuestionsPage({
     taxonomy?: string;
   }>;
 }) {
-  const profile = await requireTeacher();
-  const { bankId } = await params;
-  const query = await searchParams;
-  const supabase = await createClient();
-  let detail;
+  const [profile, { bankId }, query, supabase] = await Promise.all([
+    requireTeacher(),
+    params,
+    searchParams,
+    createClient(),
+  ]);
+  let access;
   const requestedPage = Math.max(1, Number.parseInt(query.page ?? "1", 10) || 1);
   const pageSize = 25;
   const readiness = query.readiness === "archived" ? "archived" : "active";
@@ -108,23 +110,27 @@ export default async function TeacherBankQuestionsPage({
     ? (query.source as BankQuestion["source_kind"])
     : undefined;
   let questionPage;
+  let governanceProbeError;
 
   try {
-    detail = await getTeacherQuestionBankDetail({
-      bankId,
-      profileId: profile.id,
-      supabase,
-    });
-    questionPage = await listBankQuestionsPage({
-      bankId,
-      page: requestedPage,
-      pageSize,
-      query: query.q,
-      readiness,
-      sourceKind,
-      supabase,
-      taxonomyTagId: query.taxonomy,
-    });
+    [access, questionPage, { error: governanceProbeError }] = await Promise.all([
+      getTeacherQuestionBankAccess({
+        bankId,
+        profileId: profile.id,
+        supabase,
+      }),
+      listBankQuestionsPage({
+        bankId,
+        page: requestedPage,
+        pageSize,
+        query: query.q,
+        readiness,
+        sourceKind,
+        supabase,
+        taxonomyTagId: query.taxonomy,
+      }),
+      supabase.from("questions").select("revision_of_question_id").limit(1),
+    ]);
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
       return <SetupNeededState />;
@@ -133,17 +139,13 @@ export default async function TeacherBankQuestionsPage({
     throw error;
   }
 
-  if (!detail) {
+  if (!access) {
     notFound();
   }
 
   const questions = questionPage.items;
-  const { bank, currentUserRole } = detail;
+  const { bank, currentUserRole } = access;
   const canManage = canManageBankContent(currentUserRole);
-  const { error: governanceProbeError } = await supabase
-    .from("questions")
-    .select("revision_of_question_id")
-    .limit(1);
   const governanceAvailable = !(
     governanceProbeError &&
     ["42P01", "42703", "42883"].includes(governanceProbeError.code ?? "")
