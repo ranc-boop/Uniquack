@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
+import { StudentDashboardLoadingContent } from "@/components/student/student-loading-skeletons";
 import { StudentModuleCard, StudentWorkspaceShell } from "@/components/student/student-workspace-shell";
 import { Button } from "@/components/ui/button";
 import { requireStudent } from "@/lib/auth/guards";
@@ -17,7 +19,7 @@ function countDueSoon(value: string | null | undefined) {
   return days <= 7;
 }
 
-export default async function StudentHomePage() {
+async function StudentDashboardOverview() {
   const profile = await requireStudent();
   const supabase = await createClient();
   const assignments = await listStudentAssignedWork({
@@ -36,20 +38,7 @@ export default async function StudentHomePage() {
   ).length;
 
   return (
-    <StudentWorkspaceShell
-      title="Student Dashboard"
-      description="Your assignments, practice loop, mistakes, and self-study spaces live here."
-      actions={
-        <>
-          <Button asChild>
-            <Link href="/student/work">Open My Work</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/practice">Start Practice</Link>
-          </Button>
-        </>
-      }
-    >
+    <>
       <section className="grid gap-3 md:grid-cols-4">
         {[
           ["Assigned work", assignments.length],
@@ -95,6 +84,29 @@ export default async function StudentHomePage() {
           title="Progress / Feedback"
         />
       </section>
+    </>
+  );
+}
+
+export default function StudentHomePage() {
+  return (
+    <StudentWorkspaceShell
+      title="Student Dashboard"
+      description="Your assignments, practice loop, mistakes, and self-study spaces live here."
+      actions={
+        <>
+          <Button asChild>
+            <Link href="/student/work">Open My Work</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/practice">Start Practice</Link>
+          </Button>
+        </>
+      }
+    >
+      <Suspense fallback={<StudentDashboardLoadingContent />}>
+        <StudentDashboardOverview />
+      </Suspense>
 
       <section className="grid gap-4 lg:grid-cols-3">
         <StudentModuleCard

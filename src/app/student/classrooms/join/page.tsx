@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { joinClassroomByCode } from "@/app/student/classrooms/join/actions";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,7 +72,9 @@ export default async function JoinClassroomPage({
               required
             />
           </div>
-          <Button type="submit">Join classroom</Button>
+          <FormSubmitButton pendingLabel="Joining classroom…">
+            Join classroom
+          </FormSubmitButton>
         </form>
       </section>
     </main>

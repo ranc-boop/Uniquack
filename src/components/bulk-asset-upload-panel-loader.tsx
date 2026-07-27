@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 
+import { ImportPanelLoadingSkeleton } from "@/components/import-panel-loading-skeleton";
 import { LoadingIndicator } from "@/components/loading-indicator";
 import type {
   BulkAssetExistingFilesByQuestionId,
@@ -20,8 +21,9 @@ const BulkAssetUploadPanel = dynamic<BulkAssetUploadPanelLoaderProps>(
     ),
   {
     loading: () => (
-      <div className="rounded-md border bg-muted/20 px-3 py-4">
+      <div className="space-y-3">
         <LoadingIndicator label="Loading bulk asset matcher..." />
+        <ImportPanelLoadingSkeleton variant="assets" />
       </div>
     ),
     ssr: false,
