@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -215,9 +216,13 @@ function SourceCard({
               </select>
             </div>
 
-            <Button className="w-full" disabled={!canCreate} type="submit">
+            <FormSubmitButton
+              className="w-full"
+              disabled={!canCreate}
+              pendingLabel="Creating assignment..."
+            >
               Create assignment
-            </Button>
+            </FormSubmitButton>
             {!canCreate ? (
               <p className="text-xs leading-5 text-slate-500">
                 A classroom and at least one published source question are required.

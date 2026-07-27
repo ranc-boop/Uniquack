@@ -56,22 +56,21 @@ export async function updateSessionAndProtectRoutes(request: NextRequest) {
     pathname === "/student" || pathname.startsWith("/student/");
 
   if (!isAdminRoute && !isTeacherRoute && !isStudentRoute) {
-    await supabase.auth.getUser();
+    await supabase.auth.getClaims();
     return response;
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const userId = claimsData?.claims.sub;
 
-  if (!user) {
+  if (typeof userId !== "string" || !userId) {
     return redirectToLogin(request);
   }
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single();
 
   const role = profile?.role;

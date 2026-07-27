@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -62,7 +63,9 @@ export default async function JoinTeacherBankPage() {
           <Button asChild variant="outline">
             <Link href="/teacher/banks">Back to Libraries</Link>
           </Button>
-          <Button type="submit">Join Library</Button>
+          <FormSubmitButton pendingLabel="Joining Library...">
+            Join Library
+          </FormSubmitButton>
         </div>
       </form>
     </main>

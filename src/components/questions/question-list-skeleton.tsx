@@ -4,7 +4,11 @@ type QuestionListSkeletonProps = {
 };
 
 function SkeletonBlock({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
+  return (
+    <div
+      className={`rounded-md bg-muted motion-safe:animate-pulse ${className}`}
+    />
+  );
 }
 
 export function QuestionListSkeleton({

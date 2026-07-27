@@ -47,7 +47,7 @@ function buildTeacherModules({
       title: "AI Parsing",
       description:
         "Choose a Library first, then import owned materials into Review Drafts for approval.",
-      href: "/teacher/ai-parsing",
+      href: "/teacher/banks?intent=import",
       eyebrow: "Review gated",
       status: `${summary.recentImports.length} recent imports`,
     },
@@ -112,7 +112,7 @@ function buildPrimaryAction(summary: TeacherDashboardSummary) {
   }
 
   return {
-    href: "/teacher/ai-parsing",
+    href: "/teacher/banks?intent=import",
     label: "Import materials",
   };
 }
@@ -143,7 +143,7 @@ export default async function TeacherHomePage() {
             <Link href="/teacher/banks">Open Library review</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/teacher/ai-parsing">Import materials</Link>
+            <Link href="/teacher/banks?intent=import">Import materials</Link>
           </Button>
         </>
       }

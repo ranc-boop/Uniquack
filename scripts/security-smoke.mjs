@@ -232,6 +232,9 @@ const teacherBankNewPage = await read("src/app/teacher/banks/new/page.tsx");
 const teacherBankJoinPage = await read("src/app/teacher/banks/join/page.tsx");
 const teacherBankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
 const teacherBankImportsPage = await read("src/app/teacher/banks/[bankId]/imports/page.tsx");
+const teacherBankImportTransition = await read(
+  "src/components/teacher/teacher-bank-import-transition.tsx",
+);
 const teacherBankImportUi = await read("src/app/teacher/banks/bank-import-ui.tsx");
 const teacherBankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.tsx");
 const teacherBankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
@@ -566,8 +569,11 @@ assert(
     teacherBankDetailPage.includes("Import Material") &&
     teacherBankDetailPage.includes("Create an Assignment from this Library") &&
     teacherBankDetailPage.includes("Assignments expose selected") &&
-    teacherBankImportsPage.includes('aria-label="Library import modes"') &&
-    teacherBankImportsPage.includes('["manual", "json", "ai"]') &&
+    teacherBankImportsPage.includes("TeacherBankImportTransition") &&
+    teacherBankImportTransition.includes('aria-label="Library import modes"') &&
+    teacherBankImportTransition.includes('"manual"') &&
+    teacherBankImportTransition.includes('"json"') &&
+    teacherBankImportTransition.includes('"ai"') &&
     teacherBankImportsPage.includes("BankManualQuestionForm") &&
     teacherBankImportsPage.includes("BatchImportJsonPanelLoader") &&
     !teacherBankImportsPage.includes("/admin/imports/pdf") &&
@@ -917,6 +923,9 @@ const assignmentPracticeLinkage = await read("src/lib/practice/assignment-linkag
 const assignmentPracticeStartRoute = await read("src/app/api/practice/assignments/start/route.ts");
 const practicePage = await read("src/app/practice/page.tsx");
 const practiceLoader = await read("src/components/practice/practice-agent-loader.tsx");
+const practiceScopePanels = await read(
+  "src/components/practice/practice-session-scope-panels.tsx",
+);
 assert(!practiceClient.includes("localStorage"), "practice client still uses localStorage");
 assert(practiceClient.includes("/api/practice/sessions"), "practice client does not load database sessions");
 assert(practiceClient.includes("/api/practice/wrong-questions"), "practice client does not load wrong-question records");
@@ -956,8 +965,9 @@ assert(
     assignmentPracticeLinkage.includes("updateLinkedAssignmentProgressAfterPractice") &&
     practicePage.includes("assignmentId") &&
     practiceLoader.includes("assignmentId") &&
-    practiceLoader.includes('aria-busy="true"') &&
-    practiceLoader.includes("Loading practice workspace") &&
+    practiceLoader.includes("PracticeWorkspaceSkeleton") &&
+    practiceScopePanels.includes('aria-busy="true"') &&
+    practiceScopePanels.includes("Loading practice workspace") &&
     practiceClient.includes("/api/practice/assignments/start") &&
     practiceClient.includes("Assignment practice") &&
     practiceReviewRoute.includes("updateLinkedAssignmentProgressAfterPractice"),

@@ -46,21 +46,37 @@ export function MistakesPageClient() {
   const [wrongQuestions, setWrongQuestions] = useState<PracticeWrongQuestionView[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [listLoading, setListLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   async function loadWrongQuestions() {
-    const payload = await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
-      "/api/practice/wrong-questions",
-    );
-    setWrongQuestions(payload.wrongQuestions);
+    setRefreshing(true);
+    setError(null);
+    try {
+      const payload = await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
+        "/api/practice/wrong-questions",
+      );
+      setWrongQuestions(payload.wrongQuestions);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setListLoading(false);
+      setRefreshing(false);
+    }
   }
 
   useEffect(() => {
     startTransition(async () => {
       try {
-        await loadWrongQuestions();
+        const payload = await jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
+          "/api/practice/wrong-questions",
+        );
+        setWrongQuestions(payload.wrongQuestions);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setListLoading(false);
       }
     });
   }, []);
@@ -130,8 +146,17 @@ export function MistakesPageClient() {
             <Button asChild variant="outline">
               <Link href="/questions">Question Bank</Link>
             </Button>
-            <Button disabled={isPending} onClick={loadWrongQuestions} variant="outline" type="button">
-              <RefreshCw className="mr-2 size-4" aria-hidden="true" />
+            <Button
+              disabled={isPending || refreshing}
+              onClick={() => void loadWrongQuestions()}
+              variant="outline"
+              type="button"
+            >
+              {refreshing ? (
+                <LoaderCircle className="mr-2 size-4 motion-safe:animate-spin" aria-hidden="true" />
+              ) : (
+                <RefreshCw className="mr-2 size-4" aria-hidden="true" />
+              )}
               Refresh
             </Button>
           </div>
@@ -144,7 +169,23 @@ export function MistakesPageClient() {
         </div>
       ) : null}
 
-      {wrongQuestions.length ? (
+      {listLoading ? (
+        <div aria-busy="true" className="grid gap-4" role="status">
+          <span className="sr-only">Loading missed questions…</span>
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card className="student-panel" key={index}>
+              <CardHeader className="space-y-3">
+                <div className="h-5 w-2/5 rounded bg-slate-100 motion-safe:animate-pulse" />
+                <div className="h-7 w-3/5 rounded bg-slate-100 motion-safe:animate-pulse" />
+              </CardHeader>
+              <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+                <div className="h-28 rounded-lg bg-slate-100 motion-safe:animate-pulse" />
+                <div className="h-28 rounded-lg bg-slate-100 motion-safe:animate-pulse" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : wrongQuestions.length ? (
         <div className="grid gap-4">
           {wrongQuestions.map((question) => (
             <Card key={question.id} className="student-panel student-card-hover">

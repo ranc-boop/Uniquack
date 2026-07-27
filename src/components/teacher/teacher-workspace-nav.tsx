@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
 
 type TeacherWorkspaceNavItem = {
   href: string;
@@ -32,19 +33,20 @@ export function TeacherWorkspaceNav() {
             : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
         return (
-          <Link
+          <TeacherPendingLink
             aria-current={active ? "page" : undefined}
             className={[
-              "rounded-md px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2",
+              "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2",
               active
                 ? "bg-sky-100 text-sky-950 shadow-sm"
                 : "text-slate-600 hover:bg-sky-50 hover:text-sky-800",
             ].join(" ")}
             href={item.href}
             key={`${item.href}-${item.label}`}
+            pendingLabel={item.label}
           >
             {item.label}
-          </Link>
+          </TeacherPendingLink>
         );
       })}
     </nav>

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { createClassroom } from "@/app/teacher/classrooms/actions";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import {
   ClassroomBadge,
   ClassroomMetricCard,
@@ -370,9 +371,12 @@ export default async function TeacherClassroomsPage({
                   rows={4}
                 />
               </div>
-              <Button className="w-full" type="submit">
+              <FormSubmitButton
+                className="w-full"
+                pendingLabel="Creating class..."
+              >
                 Create Class
-              </Button>
+              </FormSubmitButton>
             </form>
             <p className="mt-4 text-xs leading-5 text-slate-500">
               Signed in as {profile.username || profile.email || "teacher"}.

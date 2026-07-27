@@ -47,6 +47,11 @@ export type TeacherQuestionBankDetail = {
   reviewDraftCount: number;
 };
 
+export type TeacherQuestionBankAccess = {
+  bank: QuestionBank;
+  currentUserRole: BankMemberRole | null;
+};
+
 export type BankMemberWithProfile = BankMember & {
   profile: Pick<
     Profile,
@@ -228,65 +233,52 @@ export async function listTeacherQuestionBanks({
     return [];
   }
 
-  const { data: banks, error: banksError } = await supabase
-    .from("question_banks")
-    .select(
-      "id, organization_id, owner_id, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
-    )
-    .in("id", bankIds)
-    .order("updated_at", { ascending: false });
+  const [
+    { data: banks, error: banksError },
+    { data: bankQuestionRows, error: questionError },
+    { data: memberRows, error: memberCountError },
+    { data: reviewDraftRows, error: reviewDraftError },
+    { data: importRows, error: importError },
+  ] = await Promise.all([
+    supabase
+      .from("question_banks")
+      .select(
+        "id, organization_id, owner_id, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
+      )
+      .in("id", bankIds)
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("bank_questions")
+      .select("bank_id")
+      .in("bank_id", bankIds)
+      .eq("status", "active"),
+    supabase
+      .from("bank_members")
+      .select("bank_id")
+      .in("bank_id", bankIds)
+      .eq("status", "active"),
+    supabase
+      .from("questions")
+      .select("owner_bank_id")
+      .in("owner_bank_id", bankIds)
+      .eq("status", "draft"),
+    supabase
+      .from("import_batches")
+      .select("target_bank_id")
+      .in("target_bank_id", bankIds),
+  ]);
 
-  assertQuestionBankSchema(banksError);
-
-  if (banksError) {
-    throw new Error(banksError.message);
-  }
-
-  const { data: bankQuestionRows, error: questionError } = await supabase
-    .from("bank_questions")
-    .select("bank_id")
-    .in("bank_id", bankIds)
-    .eq("status", "active");
-
-  assertQuestionBankSchema(questionError);
-
-  if (questionError) {
-    throw new Error(questionError.message);
-  }
-
-  const { data: memberRows, error: memberCountError } = await supabase
-    .from("bank_members")
-    .select("bank_id")
-    .in("bank_id", bankIds)
-    .eq("status", "active");
-
-  assertQuestionBankSchema(memberCountError);
-
-  if (memberCountError) {
-    throw new Error(memberCountError.message);
-  }
-
-  const { data: reviewDraftRows, error: reviewDraftError } = await supabase
-    .from("questions")
-    .select("owner_bank_id")
-    .in("owner_bank_id", bankIds)
-    .eq("status", "draft");
-
-  assertQuestionBankSchema(reviewDraftError);
-
-  if (reviewDraftError) {
-    throw new Error(reviewDraftError.message);
-  }
-
-  const { data: importRows, error: importError } = await supabase
-    .from("import_batches")
-    .select("target_bank_id")
-    .in("target_bank_id", bankIds);
-
-  assertQuestionBankSchema(importError);
-
-  if (importError) {
-    throw new Error(importError.message);
+  for (const error of [
+    banksError,
+    questionError,
+    memberCountError,
+    reviewDraftError,
+    importError,
+  ]) {
+    assertQuestionBankSchema(error);
+    if (error) {
+      throw new Error(error.message);
+    }
   }
 
   const questionCounts = countByBankId(bankQuestionRows);
@@ -336,51 +328,43 @@ export async function getTeacherQuestionBankDetail({
     return null;
   }
 
-  const { data: members, error: memberError } = await supabase
-    .from("bank_members")
-    .select("id, bank_id, user_id, role, status, invited_by, joined_at, created_at, updated_at")
-    .eq("bank_id", bankId)
-    .order("created_at", { ascending: true });
+  const [
+    { data: members, error: memberError },
+    { count: questionCount, error: questionError },
+    { count: reviewDraftCount, error: reviewDraftError },
+    { count: importBatchCount, error: importError },
+  ] = await Promise.all([
+    supabase
+      .from("bank_members")
+      .select("id, bank_id, user_id, role, status, invited_by, joined_at, created_at, updated_at")
+      .eq("bank_id", bankId)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("bank_questions")
+      .select("id", { count: "exact", head: true })
+      .eq("bank_id", bankId)
+      .eq("status", "active"),
+    supabase
+      .from("questions")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_bank_id", bankId)
+      .eq("status", "draft"),
+    supabase
+      .from("import_batches")
+      .select("id", { count: "exact", head: true })
+      .eq("target_bank_id", bankId),
+  ]);
 
-  assertQuestionBankSchema(memberError);
-
-  if (memberError) {
-    throw new Error(memberError.message);
-  }
-
-  const { data: bankQuestionRows, error: questionError } = await supabase
-    .from("bank_questions")
-    .select("bank_id")
-    .eq("bank_id", bankId)
-    .eq("status", "active");
-
-  assertQuestionBankSchema(questionError);
-
-  if (questionError) {
-    throw new Error(questionError.message);
-  }
-
-  const { data: reviewDraftRows, error: reviewDraftError } = await supabase
-    .from("questions")
-    .select("id")
-    .eq("owner_bank_id", bankId)
-    .eq("status", "draft");
-
-  assertQuestionBankSchema(reviewDraftError);
-
-  if (reviewDraftError) {
-    throw new Error(reviewDraftError.message);
-  }
-
-  const { data: importRows, error: importError } = await supabase
-    .from("import_batches")
-    .select("id")
-    .eq("target_bank_id", bankId);
-
-  assertQuestionBankSchema(importError);
-
-  if (importError) {
-    throw new Error(importError.message);
+  for (const error of [
+    memberError,
+    questionError,
+    reviewDraftError,
+    importError,
+  ]) {
+    assertQuestionBankSchema(error);
+    if (error) {
+      throw new Error(error.message);
+    }
   }
 
   const userIds = Array.from(new Set((members ?? []).map((member) => member.user_id)));
@@ -409,15 +393,61 @@ export async function getTeacherQuestionBankDetail({
   return {
     activeMemberCount:
       members?.filter((member) => member.status === "active").length ?? 0,
-    assignmentReadyCount: bankQuestionRows?.length ?? 0,
+    assignmentReadyCount: questionCount ?? 0,
     bank,
     currentUserRole:
       members?.find((member) => member.user_id === profileId)?.role ?? null,
-    importBatchCount: importRows?.length ?? 0,
+    importBatchCount: importBatchCount ?? 0,
     members: membersWithProfiles,
-    questionCount: bankQuestionRows?.length ?? 0,
-    reviewDraftCount: reviewDraftRows?.length ?? 0,
+    questionCount: questionCount ?? 0,
+    reviewDraftCount: reviewDraftCount ?? 0,
   } satisfies TeacherQuestionBankDetail;
+}
+
+export async function getTeacherQuestionBankAccess({
+  bankId,
+  profileId,
+  supabase,
+}: {
+  bankId: string;
+  profileId: string;
+  supabase: SupabaseServerClient;
+}): Promise<TeacherQuestionBankAccess | null> {
+  const [
+    { data: bank, error: bankError },
+    { data: membership, error: membershipError },
+  ] = await Promise.all([
+    supabase
+      .from("question_banks")
+      .select(
+        "id, organization_id, owner_id, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
+      )
+      .eq("id", bankId)
+      .maybeSingle(),
+    supabase
+      .from("bank_members")
+      .select("role")
+      .eq("bank_id", bankId)
+      .eq("user_id", profileId)
+      .maybeSingle(),
+  ]);
+
+  assertQuestionBankSchema(bankError);
+  assertQuestionBankSchema(membershipError);
+  if (bankError) {
+    throw new Error(bankError.message);
+  }
+  if (membershipError) {
+    throw new Error(membershipError.message);
+  }
+  if (!bank) {
+    return null;
+  }
+
+  return {
+    bank,
+    currentUserRole: membership?.role ?? null,
+  };
 }
 
 export async function listBankShareCodes({

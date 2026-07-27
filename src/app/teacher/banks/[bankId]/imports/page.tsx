@@ -5,6 +5,7 @@ import { ClipboardCheck } from "lucide-react";
 
 import { AIJobStatusPanel } from "@/components/ai-jobs/ai-job-status-panel";
 import { BatchImportJsonPanelLoader } from "@/components/batch-import-json-panel-loader";
+import { TeacherBankImportTransition } from "@/components/teacher/teacher-bank-import-transition";
 import { TeacherPdfBurstUpload } from "@/components/teacher/teacher-pdf-burst-upload";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -13,15 +14,11 @@ import {
   AIProviderJobQueueSchemaMissingError,
   listAIProviderJobsForBank,
 } from "@/lib/ai-jobs/queue";
-import type { AIProviderJobSafeStatus } from "@/lib/ai-jobs/types";
-import {
-  listAIPdfBurstsForBank,
-  type AIPdfBurstSafeSummary,
-} from "@/lib/ai-pdf-import/burst-admission";
+import { listAIPdfBurstsForBank } from "@/lib/ai-pdf-import/burst-admission";
 import { listTeacherAIPdfParsingProfileState } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import {
   canManageBankContent,
-  getTeacherQuestionBankDetail,
+  getTeacherQuestionBankAccess,
   listBankImportBatches,
   QuestionBankSchemaMissingError,
 } from "@/lib/question-banks";
@@ -69,6 +66,26 @@ function SetupNeededState() {
   );
 }
 
+async function listAIQueueState({
+  bankId,
+  supabase,
+}: {
+  bankId: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  try {
+    return {
+      jobs: await listAIProviderJobsForBank({ bankId, supabase }),
+      setupNeeded: false,
+    };
+  } catch (error) {
+    if (error instanceof AIProviderJobQueueSchemaMissingError) {
+      return { jobs: [], setupNeeded: true };
+    }
+    throw error;
+  }
+}
+
 export default async function TeacherBankImportsPage({
   params,
   searchParams,
@@ -81,39 +98,46 @@ export default async function TeacherBankImportsPage({
     saved?: string;
   }>;
 }) {
-  const profile = await requireTeacher();
-  const { bankId } = await params;
-  const query = await searchParams;
-  const supabase = await createClient();
-  let detail;
-  let importBatches = [];
-  let pdfBursts: AIPdfBurstSafeSummary[] = [];
-  let pdfBurstSchemaAvailable = false;
-  let queueJobs: AIProviderJobSafeStatus[] = [];
-  let queueSetupNeeded = false;
-  const parsingProfileState =
-    await listTeacherAIPdfParsingProfileState(supabase);
-  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
+  const [profile, { bankId }, query, supabase] = await Promise.all([
+    requireTeacher(),
+    params,
+    searchParams,
+    createClient(),
+  ]);
+  const mode = ["manual", "json", "ai"].includes(query.mode ?? "")
+    ? (query.mode as "manual" | "json" | "ai")
+    : "manual";
+  const taxonomyPromise =
+    mode === "ai" ? Promise.resolve(null) : loadTaxonomyCatalog(supabase);
+  const parsingProfilePromise =
+    mode === "ai"
+      ? listTeacherAIPdfParsingProfileState(supabase)
+      : Promise.resolve(null);
+  const burstPromise =
+    mode === "ai"
+      ? listAIPdfBurstsForBank({ bankId, supabase })
+      : Promise.resolve(null);
+  const queuePromise =
+    mode === "ai"
+      ? listAIQueueState({ bankId, supabase })
+      : Promise.resolve(null);
+  const loadPageData = () =>
+    Promise.all([
+      getTeacherQuestionBankAccess({
+        bankId,
+        profileId: profile.id,
+        supabase,
+      }),
+      listBankImportBatches({ bankId, supabase }),
+      taxonomyPromise,
+      parsingProfilePromise,
+      burstPromise,
+      queuePromise,
+    ] as const);
+  let pageData: Awaited<ReturnType<typeof loadPageData>>;
 
   try {
-    detail = await getTeacherQuestionBankDetail({
-      bankId,
-      profileId: profile.id,
-      supabase,
-    });
-    importBatches = await listBankImportBatches({ bankId, supabase });
-    const burstState = await listAIPdfBurstsForBank({ bankId, supabase });
-    pdfBursts = burstState.bursts;
-    pdfBurstSchemaAvailable = burstState.available;
-    try {
-      queueJobs = await listAIProviderJobsForBank({ bankId, supabase });
-    } catch (error) {
-      if (error instanceof AIProviderJobQueueSchemaMissingError) {
-        queueSetupNeeded = true;
-      } else {
-        throw error;
-      }
-    }
+    pageData = await loadPageData();
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
       return <SetupNeededState />;
@@ -122,18 +146,32 @@ export default async function TeacherBankImportsPage({
     throw error;
   }
 
+  const [
+    detail,
+    importBatches,
+    taxonomyResult,
+    parsingProfileState,
+    burstState,
+    queueState,
+  ] = pageData;
+
   if (!detail) {
     notFound();
   }
 
   const { bank, currentUserRole } = detail;
+  const taxonomyCatalog = taxonomyResult?.catalog ?? {
+    facets: [],
+    nodes: [],
+  };
+  const pdfBursts = burstState?.bursts ?? [];
+  const pdfBurstSchemaAvailable = burstState?.available ?? false;
+  const queueJobs = queueState?.jobs ?? [];
+  const queueSetupNeeded = queueState?.setupNeeded ?? false;
   const canImport = canManageBankContent(currentUserRole);
   const workspaceRole = currentUserRole ?? "viewer";
   const capabilities = bankQuestionWorkspaceCapabilities(workspaceRole);
-  const canRunPdfImport = canImport && parsingProfileState.available;
-  const mode = ["manual", "json", "ai"].includes(query.mode ?? "")
-    ? (query.mode as "manual" | "json" | "ai")
-    : "manual";
+  const canRunPdfImport = canImport && (parsingProfileState?.available ?? false);
   const parentTagIds = new Set(
     taxonomyCatalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
   );
@@ -171,26 +209,7 @@ export default async function TeacherBankImportsPage({
 
       <BankRouteTabs bankId={bank.id} />
 
-      <nav
-        aria-label="Library import modes"
-        className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm"
-      >
-        {[
-          ["manual", "Manual"],
-          ["json", "JSON"],
-          ["ai", "AI Parsing"],
-        ].map(([value, label]) => (
-          <Button
-            asChild
-            key={value}
-            variant={mode === value ? "default" : "ghost"}
-          >
-            <Link href={`/teacher/banks/${bank.id}/imports?mode=${value}`}>
-              {label}
-            </Link>
-          </Button>
-        ))}
-      </nav>
+      <TeacherBankImportTransition bankId={bank.id} mode={mode}>
 
       {query.saved ? (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
@@ -280,7 +299,7 @@ export default async function TeacherBankImportsPage({
                 private drafts in this Library until review.
               </p>
             </div>
-            {!parsingProfileState.available ? (
+            {!parsingProfileState?.available ? (
               <div className="border-t border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
                 <p className="font-semibold">
                   AI PDF parsing is not enabled for this site or organization yet.
@@ -295,7 +314,7 @@ export default async function TeacherBankImportsPage({
               bankName={bank.name}
               canUpload={canRunPdfImport}
               initialBursts={pdfBursts}
-              parsingProfile={parsingProfileState.defaultProfile}
+              parsingProfile={parsingProfileState?.defaultProfile ?? "standard"}
               schemaAvailable={pdfBurstSchemaAvailable}
             />
             <div className="border-t border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
@@ -313,6 +332,7 @@ export default async function TeacherBankImportsPage({
             importBatches={importBatches}
         />
       </section>
+      </TeacherBankImportTransition>
     </BankWorkbenchPage>
   );
 }

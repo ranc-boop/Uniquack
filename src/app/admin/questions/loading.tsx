@@ -5,11 +5,27 @@ export default function AdminQuestionsLoading() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Questions</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage the question bank. Filters and actions are loading first;
-          question rows will appear below.
+        <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Content management
         </p>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Central Public Library
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Search, filter, edit, and maintain global questions. Teacher-owned
+          Library content stays in its own workspace.
+        </p>
+      </div>
+      <div
+        aria-hidden="true"
+        className="flex gap-2 overflow-hidden rounded-lg border bg-white p-2 shadow-sm"
+      >
+        {["w-28", "w-40", "w-36", "w-32", "w-20"].map((width) => (
+          <div
+            className={`h-10 shrink-0 rounded-md bg-muted motion-safe:animate-pulse ${width}`}
+            key={width}
+          />
+        ))}
       </div>
       <details className="rounded-lg border bg-card p-5 shadow-sm">
         <summary className="cursor-pointer list-none">

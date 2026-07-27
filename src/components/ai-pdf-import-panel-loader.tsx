@@ -3,6 +3,8 @@
 import dynamic from "next/dynamic";
 
 import type { AIPdfImportPanelProps } from "@/components/ai-pdf-import-panel";
+import { ImportPanelLoadingSkeleton } from "@/components/import-panel-loading-skeleton";
+import { LoadingIndicator } from "@/components/loading-indicator";
 
 const AIPdfImportPanel = dynamic<AIPdfImportPanelProps>(
   () =>
@@ -11,8 +13,9 @@ const AIPdfImportPanel = dynamic<AIPdfImportPanelProps>(
     ),
   {
     loading: () => (
-      <div className="rounded-md border bg-muted/20 px-3 py-4 text-sm text-muted-foreground">
-        Loading AI PDF import controls...
+      <div className="space-y-3">
+        <LoadingIndicator label="Loading AI PDF import controls..." />
+        <ImportPanelLoadingSkeleton variant="pdf" />
       </div>
     ),
     ssr: false,

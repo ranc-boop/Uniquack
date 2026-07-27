@@ -97,6 +97,25 @@ const DEFAULT_TAG_CONTEXT: PracticeTagContext = {
   version: 1,
 };
 
+const PRACTICE_COURSE_FRAMEWORK_SELECT =
+  "allowed_tag_ids,description,framework_prompt,id,learning_path,priority_rules,status,title";
+const PRACTICE_SESSION_FIELDS =
+  "cache_prefix_version,completed_question_ids,course_framework_id,course_framework_snapshot,created_at,goal,id,last_activity_at,long_term_memory_snapshot,outline_user_notes,session_memory,session_plan,session_state,session_thread_messages,source_scope_locked_at,status,summary,tag_context,title";
+const PRACTICE_SESSION_SOURCE_FIELDS =
+  "assignment_id,bank_id,source_kind,source_snapshot";
+const PRACTICE_SESSION_DETAIL_SELECT =
+  `${PRACTICE_SESSION_FIELDS},practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
+const PRACTICE_SESSION_SUMMARY_SELECT =
+  `${PRACTICE_SESSION_FIELDS},practice_rounds(id),practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
+const PRACTICE_ROUND_HISTORY_SELECT =
+  "id,next_round_goal,review_summary,round_goal,score_correct,score_total,trace";
+const PRACTICE_ROUND_QUESTION_HISTORY_SELECT =
+  "expected_skill,id,position,question_id,question_snapshot,reason,round_id,source_question_id";
+const PRACTICE_ATTEMPT_HISTORY_SELECT =
+  "answer,explanation,hint_count,hints,id,is_correct,question_id,round_id,score,solution_html,source_question_id";
+const PRACTICE_WRONG_QUESTION_SELECT =
+  "id,last_answer,last_explanation,last_missed_at,mastered_at,miss_count,question_code,question_id,question_snapshot,question_title,source_question_id";
+
 export { CURRENT_PRACTICE_SESSION_SCHEMA_VERSION };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -517,7 +536,7 @@ export async function listActivePracticeCourseFrameworks({
 }) {
   const { data, error } = await supabase
     .from("practice_course_frameworks")
-    .select("*")
+    .select(PRACTICE_COURSE_FRAMEWORK_SELECT)
     .eq("status", "active")
     .order("updated_at", { ascending: false });
 
@@ -541,7 +560,7 @@ async function loadPracticeCourseFramework({
 
   const { data, error } = await supabase
     .from("practice_course_frameworks")
-    .select("*")
+    .select(PRACTICE_COURSE_FRAMEWORK_SELECT)
     .eq("id", frameworkId)
     .eq("status", "active")
     .maybeSingle();
@@ -573,7 +592,7 @@ export async function getOrCreatePracticePreference({
       mapper: onInitializationFailure,
       operation: () => supabase
         .from("user_practice_preferences")
-        .select("user_id,long_term_preference,last_agent_updated_at,created_at,updated_at")
+        .select("user_id,long_term_preference,last_agent_updated_at")
         .eq("user_id", userId)
         .maybeSingle(),
       stage: "preference_read",
@@ -654,7 +673,7 @@ export async function listPracticeSessions({
 }) {
   const { data, error } = await supabase
     .from("practice_sessions")
-    .select("*,practice_rounds(id),practice_session_sources(*)")
+    .select(PRACTICE_SESSION_SUMMARY_SELECT)
     .eq("user_id", userId)
     .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
     .order("last_activity_at", { ascending: false });
@@ -675,57 +694,73 @@ export async function listPracticeSessions({
 
 export async function getPracticeSession({
   sessionId,
+  sessionSummary,
   supabase,
   userId,
 }: {
   sessionId: string;
+  sessionSummary?: PracticeSessionSummary;
   supabase: SupabaseLike;
   userId: string;
 }): Promise<PracticeSessionDetail | null> {
-  const { data: session, error: sessionError } = await supabase
-    .from("practice_sessions")
-    .select("*,practice_session_sources(*)")
-    .eq("user_id", userId)
-    .eq("id", sessionId)
-    .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
-    .maybeSingle();
-
-  if (sessionError) {
-    throw new Error(sessionError.message);
+  if (sessionSummary && sessionSummary.id !== sessionId) {
+    throw new Error("Practice session summary does not match the requested session.");
   }
 
-  if (!session) {
-    return null;
-  }
-
-  const { data: rounds, error: roundsError } = await supabase
+  const sessionPromise = sessionSummary
+    ? Promise.resolve({ data: null, error: null })
+    : supabase
+        .from("practice_sessions")
+        .select(PRACTICE_SESSION_DETAIL_SELECT)
+        .eq("user_id", userId)
+        .eq("id", sessionId)
+        .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
+        .maybeSingle();
+  const roundsPromise = supabase
     .from("practice_rounds")
-    .select("*")
+    .select(PRACTICE_ROUND_HISTORY_SELECT)
     .eq("user_id", userId)
     .eq("session_id", sessionId)
     .order("round_index", { ascending: true });
+  const [sessionResult, roundsResult] = await Promise.all([
+    sessionPromise,
+    roundsPromise,
+  ]);
 
-  if (roundsError) {
-    throw new Error(roundsError.message);
+  if (sessionResult.error) {
+    throw new Error(sessionResult.error.message);
+  }
+  if (roundsResult.error) {
+    throw new Error(roundsResult.error.message);
   }
 
+  const session = sessionResult.data;
+  if (!sessionSummary && !session) {
+    return null;
+  }
+
+  const rounds = roundsResult.data;
   const roundIds = ((rounds ?? []) as Array<{ id: string }>).map((round) => round.id);
-  const questionsResult = roundIds.length
-    ? await supabase
+  const questionsPromise = roundIds.length
+    ? supabase
         .from("practice_round_questions")
-        .select("*")
+        .select(PRACTICE_ROUND_QUESTION_HISTORY_SELECT)
         .eq("user_id", userId)
         .in("round_id", roundIds)
         .order("position", { ascending: true })
     : { data: [], error: null };
-  const attemptsResult = roundIds.length
-    ? await supabase
+  const attemptsPromise = roundIds.length
+    ? supabase
         .from("practice_attempts")
-        .select("*")
+        .select(PRACTICE_ATTEMPT_HISTORY_SELECT)
         .eq("user_id", userId)
         .in("round_id", roundIds)
         .order("created_at", { ascending: true })
     : { data: [], error: null };
+  const [questionsResult, attemptsResult] = await Promise.all([
+    questionsPromise,
+    attemptsPromise,
+  ]);
 
   if (questionsResult.error) {
     throw new Error(questionsResult.error.message);
@@ -794,7 +829,12 @@ export async function getPracticeSession({
   }));
 
   return {
-    ...sessionSummaryFromRow({ ...(session as PracticeSession), round_count: historyRounds.length }),
+    ...(sessionSummary ??
+      sessionSummaryFromRow({
+        ...(session as PracticeSession),
+        round_count: historyRounds.length,
+      })),
+    roundCount: historyRounds.length,
     rounds: historyRounds,
   };
 }
@@ -1675,7 +1715,7 @@ export async function listActiveWrongQuestions({
 }): Promise<PracticeWrongQuestionView[]> {
   let query = supabase
     .from("practice_wrong_questions")
-    .select("*")
+    .select(PRACTICE_WRONG_QUESTION_SELECT)
     .eq("user_id", userId)
     .is("mastered_at", null)
     .order("last_missed_at", { ascending: false });

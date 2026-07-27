@@ -2,6 +2,9 @@
 
 import dynamic from "next/dynamic";
 
+import { ImportPanelLoadingSkeleton } from "@/components/import-panel-loading-skeleton";
+import { LoadingIndicator } from "@/components/loading-indicator";
+
 const PackageImportPanel = dynamic(
   () =>
     import("@/components/package-import-panel").then(
@@ -9,8 +12,9 @@ const PackageImportPanel = dynamic(
     ),
   {
     loading: () => (
-      <div className="rounded-md border bg-muted/20 px-3 py-4 text-sm text-muted-foreground">
-        Loading package import controls...
+      <div className="space-y-3">
+        <LoadingIndicator label="Loading package import controls..." />
+        <ImportPanelLoadingSkeleton variant="package" />
       </div>
     ),
     ssr: false,

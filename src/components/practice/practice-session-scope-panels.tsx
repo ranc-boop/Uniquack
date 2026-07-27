@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 
+import { LoadingIndicator } from "@/components/loading-indicator";
 import { FeedbackText } from "@/components/math-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   PracticeCompletion,
+  PracticeCourseFrameworkSummary,
   PracticeRoundHistory,
   PracticeSourceOption,
 } from "@/lib/practice/types";
@@ -20,29 +22,146 @@ const starterGoals = [
   "Practice FRQ-style derivative applications",
 ];
 
-export function PracticeWorkspaceSkeleton() {
+export function PracticeWorkspaceSkeleton({
+  mode = "starter",
+}: {
+  mode?: "assignment" | "starter";
+}) {
   return (
-    <div aria-busy="true" aria-live="polite" className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 sm:px-4 xl:grid-cols-[18rem_minmax(0,1fr)_3rem]" role="status">
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 sm:px-4 xl:grid-cols-[19rem_minmax(0,1fr)_3rem]"
+      role="status"
+    >
       <span className="sr-only">Loading practice workspace…</span>
-      <aside className="hidden border-r border-slate-100 px-4 py-6 xl:block">
-        <div className="h-5 w-24 animate-pulse rounded bg-slate-100" />
-        <div className="mt-8 h-12 animate-pulse rounded-xl bg-slate-100" />
-        <div className="mt-7 space-y-3">
-          <div className="h-10 animate-pulse rounded-lg bg-slate-50" />
-          <div className="h-10 animate-pulse rounded-lg bg-slate-50" />
-          <div className="h-10 animate-pulse rounded-lg bg-slate-50" />
+      <aside className="hidden min-h-full border-r border-slate-200 bg-slate-50/80 px-4 py-6 xl:block">
+        <div className="h-6 w-24 rounded bg-slate-200 motion-safe:animate-pulse" />
+        <div className="mt-9 flex h-14 items-center gap-3 rounded-xl bg-white px-3 ring-1 ring-slate-200">
+          <div className="size-9 rounded-md bg-sky-100 motion-safe:animate-pulse" />
+          <div className="h-4 w-32 rounded bg-slate-100 motion-safe:animate-pulse" />
+        </div>
+        <div className="mt-8">
+          <div className="flex items-center gap-3">
+            <div className="h-4 w-14 rounded bg-slate-200 motion-safe:animate-pulse" />
+            <div className="h-px flex-1 bg-slate-200" />
+          </div>
+          <div className="mt-4 space-y-2">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div className="flex items-center gap-3 rounded-xl bg-white/70 px-3 py-3" key={index}>
+                <div className="h-7 w-1 rounded-full bg-slate-200 motion-safe:animate-pulse" />
+                <div className="h-4 flex-1 rounded bg-slate-100 motion-safe:animate-pulse" />
+              </div>
+            ))}
+          </div>
         </div>
       </aside>
-      <main className="mx-auto flex w-full max-w-3xl flex-col justify-center gap-5 py-12">
-        <div className="h-7 w-40 animate-pulse rounded-lg bg-slate-100" />
-        <div className="h-5 w-3/5 animate-pulse rounded bg-slate-100" />
-        <div className="mt-4 space-y-3">
-          <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
-          <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
-        </div>
+      <main className="relative min-w-0 px-0 xl:px-2">
+        <section className="flex min-h-[calc(100vh-10rem)] items-center justify-center py-10">
+          <div className="mx-auto w-full max-w-6xl space-y-8 text-center">
+            <div className="space-y-3">
+              <div className="mx-auto h-6 w-28 rounded-full bg-sky-100 motion-safe:animate-pulse" />
+              <div className="mx-auto h-12 w-80 max-w-full rounded-xl bg-slate-200 motion-safe:animate-pulse" />
+              <div className="mx-auto h-5 w-[32rem] max-w-full rounded bg-slate-100 motion-safe:animate-pulse" />
+            </div>
+            {mode === "starter" ? (
+              <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white/90 p-4 text-left shadow-sm sm:grid-cols-2 lg:grid-cols-3">
+                <div className="h-5 w-36 rounded bg-slate-200 motion-safe:animate-pulse sm:col-span-2 lg:col-span-3" />
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div
+                    className="h-16 rounded-xl bg-slate-100 motion-safe:animate-pulse"
+                    key={index}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="h-16 rounded-xl border border-sky-100 bg-sky-50 motion-safe:animate-pulse" />
+            )}
+            <div className="rounded-full border border-slate-200 bg-white p-2 shadow-lg ring-1 ring-slate-950/5">
+              <div className="flex h-14 items-center gap-3 px-3">
+                <div className="h-5 flex-1 rounded bg-slate-100 motion-safe:animate-pulse" />
+                <div className="h-10 w-28 rounded-full bg-slate-100 motion-safe:animate-pulse" />
+                <div className="size-12 rounded-full bg-sky-100 motion-safe:animate-pulse" />
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  className="h-12 rounded-full border border-slate-100 bg-white motion-safe:animate-pulse"
+                  key={index}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
       </main>
+      <aside className="hidden min-h-full flex-col items-center border-l border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
+        <div className="size-10 rounded-xl bg-slate-200 motion-safe:animate-pulse" />
+        <div className="mt-8 size-10 rounded-xl bg-slate-100 motion-safe:animate-pulse" />
+        <div className="mt-auto size-9 rounded-full bg-slate-200 motion-safe:animate-pulse" />
+      </aside>
     </div>
   );
+}
+
+export function PracticeSessionListLoading() {
+  return (
+    <div
+      aria-busy="true"
+      className="space-y-2 rounded-xl border border-slate-200/80 bg-white/70 p-3"
+      role="status"
+    >
+      <LoadingIndicator label="Loading recent sessions..." />
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div className="flex items-center gap-3 py-1.5" key={index}>
+          <div className="h-7 w-1 rounded-full bg-slate-100 motion-safe:animate-pulse" />
+          <div className="h-4 flex-1 rounded bg-slate-100 motion-safe:animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function PracticeInlineLoading({ label }: { label: string }) {
+  return <LoadingIndicator className="text-xs" label={label} />;
+}
+
+export function PracticeFrameworkSelector({
+  frameworks,
+  loading,
+  onChange,
+  value,
+}: {
+  frameworks: PracticeCourseFrameworkSummary[];
+  loading: boolean;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  if (frameworks.length) {
+    return (
+      <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+        <span>Framework</span>
+        <select
+          className="max-w-44 bg-transparent text-sm font-bold text-slate-900 outline-none"
+          onChange={(event) => onChange(event.target.value)}
+          value={value}
+        >
+          <option value="">None</option>
+          {frameworks.map((framework) => (
+            <option key={framework.id} value={framework.id}>
+              {framework.title}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  return loading ? (
+    <span className="flex h-10 items-center rounded-full border border-slate-200 bg-slate-50 px-3">
+      <LoadingIndicator label="Loading options" />
+    </span>
+  ) : null;
 }
 
 export function PracticeStarterGoals({
@@ -71,6 +190,7 @@ export function PracticeStarterGoals({
 
 export function PracticeSourceSelector({
   includePublicCatalog,
+  loading,
   locked,
   onIncludePublicCatalogChange,
   onSelectedBankIdsChange,
@@ -78,6 +198,7 @@ export function PracticeSourceSelector({
   selectedBankIds,
 }: {
   includePublicCatalog: boolean;
+  loading: boolean;
   locked: boolean;
   onIncludePublicCatalogChange: (checked: boolean) => void;
   onSelectedBankIdsChange: (update: (current: string[]) => string[]) => void;
@@ -98,7 +219,19 @@ export function PracticeSourceSelector({
         </Badge>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {practiceSources.map((source) => {
+        {loading ? (
+          <>
+            <div className="rounded-xl border border-slate-200 p-3 sm:col-span-2 lg:col-span-3">
+              <LoadingIndicator label="Loading available question sources..." />
+            </div>
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                className="h-16 rounded-xl bg-slate-100 motion-safe:animate-pulse"
+                key={index}
+              />
+            ))}
+          </>
+        ) : practiceSources.map((source) => {
           const checked = source.sourceKind === "public_catalog"
             ? includePublicCatalog
             : Boolean(source.bankId && selectedBankIds.includes(source.bankId));

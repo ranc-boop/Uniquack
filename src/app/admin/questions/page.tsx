@@ -205,9 +205,11 @@ function hasQuestionDetailFields(
 export default async function AdminQuestionsPage({
   searchParams,
 }: AdminQuestionsPageProps) {
-  const params = await searchParams;
-  await requireAdmin();
-  const supabase = await createClient();
+  const [params, , supabase] = await Promise.all([
+    searchParams,
+    requireAdmin(),
+    createClient(),
+  ]);
   const search = (params.q ?? "").trim().toLowerCase();
   const focusedQuestionId = uuidPattern.test(firstParam(params.edit) ?? "")
     ? firstParam(params.edit)!.trim()
@@ -391,25 +393,32 @@ export default async function AdminQuestionsPage({
       ? "Taxonomy search RPC is unavailable. Apply migrations 0011 and 0012."
       : `Taxonomy search is unavailable: ${taxonomyRpcError.message}`
     : null;
-  const { data: importItems } = focusedQuestionId && questionIds.length
-    ? await supabase
-        .from("import_batch_items")
-        .select("created_question_id, normalized_question_json")
-        .eq("status", "imported")
-        .in("created_question_id", questionIds)
-    : { data: [] };
-  if (questionIds.length) {
-    const { data, error: taxonomyAssignmentsError } = await supabase
-      .from("question_taxonomy_assignments")
-      .select("question_id, tag_id, review_status")
-      .in("question_id", questionIds);
+  const [
+    { data: importItems },
+    { data: taxonomyAssignments, error: taxonomyAssignmentsError },
+  ] = await Promise.all([
+    focusedQuestionId && questionIds.length
+      ? supabase
+          .from("import_batch_items")
+          .select("created_question_id, normalized_question_json")
+          .eq("status", "imported")
+          .in("created_question_id", questionIds)
+      : Promise.resolve({ data: [] }),
+    questionIds.length
+      ? supabase
+          .from("question_taxonomy_assignments")
+          .select("question_id, tag_id, review_status")
+          .in("question_id", questionIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
 
+  if (questionIds.length) {
     if (taxonomyAssignmentsError) {
       taxonomySearchMessage = isMissingTaxonomyTableError(taxonomyAssignmentsError)
         ? "Taxonomy assignment tables are not available yet. Apply migration 0011_math_taxonomy_source_of_truth.sql to enable these filters."
         : `Taxonomy filters are unavailable: ${taxonomyAssignmentsError.message}`;
     } else {
-      for (const assignment of data ?? []) {
+      for (const assignment of taxonomyAssignments ?? []) {
         const current =
           taxonomyAssignmentsByQuestionId.get(assignment.question_id) ?? [];
         current.push({

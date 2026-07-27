@@ -10,6 +10,7 @@ import {
   sendTeacherFeedbackNote,
 } from "@/app/teacher/classrooms/[id]/assignments/[assignmentId]/feedback-actions";
 import { resumeQuarantinedAssignment } from "@/app/teacher/classrooms/[id]/assignments/[assignmentId]/delivery-actions";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { QuestionText } from "@/components/math-content";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -333,9 +334,12 @@ export default async function TeacherAssignmentDetailPage({
                 type="hidden"
                 value={assignment.classroom.id}
               />
-              <Button disabled={affectedItems.length > 0} type="submit">
+              <FormSubmitButton
+                disabled={affectedItems.length > 0}
+                pendingLabel="Resuming delivery..."
+              >
                 Resume delivery
-              </Button>
+              </FormSubmitButton>
             </form>
             <Button asChild variant="outline">
               <Link

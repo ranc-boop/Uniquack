@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
 
 type ClassroomBadgeTone = "amber" | "blue" | "cyan" | "slate" | "sky";
 
@@ -76,14 +77,15 @@ export function ClassroomRouteTabs({ classroomId }: { classroomId: string }) {
       className="flex gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-white/85 p-2 shadow-sm"
     >
       {classroomTabs.map(({ href, icon: Icon, label }) => (
-        <Link
+        <TeacherPendingLink
           className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
           href={`/teacher/classrooms/${classroomId}${href}`}
           key={label}
+          pendingLabel={`${label} classroom page`}
         >
           <Icon aria-hidden="true" className="h-4 w-4" />
           {label}
-        </Link>
+        </TeacherPendingLink>
       ))}
     </nav>
   );

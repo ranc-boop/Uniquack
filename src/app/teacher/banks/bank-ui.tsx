@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
 
 type BadgeTone =
   | "amber"
@@ -194,14 +195,15 @@ export function BankRouteTabs({ bankId }: { bankId: string }) {
           key={group.ariaLabel}
         >
           {group.tabs.map(({ href, icon: Icon, label }) => (
-            <Link
+            <TeacherPendingLink
               className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
               href={href}
               key={href}
+              pendingLabel={`${label} Library page`}
             >
               <Icon aria-hidden="true" className="h-4 w-4" />
               {label}
-            </Link>
+            </TeacherPendingLink>
           ))}
         </nav>
       ))}

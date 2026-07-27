@@ -26,7 +26,12 @@ export async function GET(request: Request) {
     const sessions = await listPracticeSessions({ supabase, userId: auth.user.id });
     const includeActive = new URL(request.url).searchParams.get("includeActive") !== "0";
     const active = includeActive && sessions[0]
-      ? await getPracticeSession({ sessionId: sessions[0].id, supabase, userId: auth.user.id })
+      ? await getPracticeSession({
+          sessionId: sessions[0].id,
+          sessionSummary: sessions[0],
+          supabase,
+          userId: auth.user.id,
+        })
       : null;
 
     return NextResponse.json({ activeSession: active, sessions });
@@ -75,7 +80,12 @@ export async function POST(request: Request) {
       title: body.title,
       userId: auth.user.id,
     });
-    const detail = await getPracticeSession({ sessionId: session.id, supabase, userId: auth.user.id });
+    const detail = await getPracticeSession({
+      sessionId: session.id,
+      sessionSummary: session,
+      supabase,
+      userId: auth.user.id,
+    });
 
     return NextResponse.json({ session: detail ?? session });
   } catch (error) {
