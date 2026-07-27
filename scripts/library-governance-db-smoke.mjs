@@ -12,6 +12,8 @@ const plan = await loadCanonicalMigrationPlan({ root });
 const harness = await createGoogleAccountLinksPostgresHarness("library-governance");
 const { connection, instance } = harness;
 let client;
+let concurrencyClientA;
+let concurrencyClientB;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -101,6 +103,12 @@ try {
     questionSourceReference: "75000000-0000-4000-8000-000000000055",
     draftStatusEvent: "76000000-0000-4000-8000-000000000055",
     draftStorageObject: "77000000-0000-4000-8000-000000000055",
+    classroom: "78000000-0000-4000-8000-000000000055",
+    validAssignedAssignment: "79000000-0000-4000-8000-000000000055",
+    assignedDraftAssignment: "7a000000-0000-4000-8000-000000000055",
+    draftTransitionAssignment: "7b000000-0000-4000-8000-000000000055",
+    draftBankQuestion: "7c000000-0000-4000-8000-000000000055",
+    concurrentAssignment: "7d000000-0000-4000-8000-000000000055",
   };
 
   await client.query(
@@ -227,6 +235,60 @@ try {
      ) values ($1, $2, $3, 'active', 'manual', $4)`,
     [ids.sourceBankQuestion, ids.bank, ids.sourceQuestion, ids.teacher],
   );
+  await client.query(
+    `insert into public.classrooms (
+       id, organization_id, owner_id, name, status, created_by, updated_by
+     ) values ($1, $2, $3, 'Library readiness classroom', 'active', $3, $3)`,
+    [ids.classroom, ids.org, ids.teacher],
+  );
+
+  await client.query(
+    `insert into public.assignments (
+       id, organization_id, classroom_id, created_by, title, status, assigned_at,
+       source_kind, source_summary
+     ) values (
+       $1, $2, $3, $4, 'Reviewed Library assignment', 'assigned', now(),
+       'question_bank', '{}'::jsonb
+     )`,
+    [ids.validAssignedAssignment, ids.org, ids.classroom, ids.teacher],
+  );
+  await client.query(
+    `insert into public.assignment_items (
+       assignment_id, question_id, item_type, order_index, points,
+       bank_question_id, source_bank_id
+     ) values ($1, $2, 'question', 1, 1, $3, $4)`,
+    [
+      ids.validAssignedAssignment,
+      ids.sourceQuestion,
+      ids.sourceBankQuestion,
+      ids.bank,
+    ],
+  );
+  const validAssignedItem = await client.query(
+    `select count(*)::integer as count
+       from public.assignment_items
+      where assignment_id = $1
+        and question_id = $2`,
+    [ids.validAssignedAssignment, ids.sourceQuestion],
+  );
+  assert(
+    validAssignedItem.rows[0]?.count === 1,
+    "A reviewed active Library question must be deliverable in an assigned Assignment.",
+  );
+
+  let assignedQuestionRegressionDenied = false;
+  try {
+    await client.query(
+      "update public.questions set status = 'draft' where id = $1",
+      [ids.sourceQuestion],
+    );
+  } catch {
+    assignedQuestionRegressionDenied = true;
+  }
+  assert(
+    assignedQuestionRegressionDenied,
+    "An assigned reviewed Library question must not regress to draft.",
+  );
 
   await client.query(
     `select set_config('request.jwt.claim.role', 'authenticated', false),
@@ -282,6 +344,79 @@ try {
       manualDraftLineage.rows[0]?.target_bank_id === ids.bank &&
       manualDraftLineage.rows[0]?.created_question_id === manualDraftId,
     "Manual draft RPC must atomically create a private bank-scoped Review Draft.",
+  );
+  await client.query(
+    `insert into public.bank_questions (
+       id, bank_id, question_id, status, source_kind, added_by
+     ) values ($1, $2, $3, 'active', 'manual', $4)`,
+    [ids.draftBankQuestion, ids.bank, manualDraftId, ids.teacher],
+  );
+  await client.query(
+    `insert into public.assignments (
+       id, organization_id, classroom_id, created_by, title, status, assigned_at,
+       source_kind, source_summary
+     ) values (
+       $1, $2, $3, $4, 'Assigned draft rejection', 'assigned', now(),
+       'question_bank', '{}'::jsonb
+     )`,
+    [ids.assignedDraftAssignment, ids.org, ids.classroom, ids.teacher],
+  );
+  let assignedDraftInsertDenied = false;
+  try {
+    await client.query(
+      `insert into public.assignment_items (
+         assignment_id, question_id, item_type, order_index, points,
+         bank_question_id, source_bank_id
+       ) values ($1, $2, 'question', 1, 1, $3, $4)`,
+      [
+        ids.assignedDraftAssignment,
+        manualDraftId,
+        ids.draftBankQuestion,
+        ids.bank,
+      ],
+    );
+  } catch {
+    assignedDraftInsertDenied = true;
+  }
+  assert(
+    assignedDraftInsertDenied,
+    "An assigned Assignment must reject insertion of a draft Library question.",
+  );
+
+  await client.query(
+    `insert into public.assignments (
+       id, organization_id, classroom_id, created_by, title, status,
+       source_kind, source_summary
+     ) values (
+       $1, $2, $3, $4, 'Draft transition rejection', 'draft',
+       'question_bank', '{}'::jsonb
+     )`,
+    [ids.draftTransitionAssignment, ids.org, ids.classroom, ids.teacher],
+  );
+  await client.query(
+    `insert into public.assignment_items (
+       assignment_id, question_id, item_type, order_index, points,
+       bank_question_id, source_bank_id
+     ) values ($1, $2, 'question', 1, 1, $3, $4)`,
+    [
+      ids.draftTransitionAssignment,
+      manualDraftId,
+      ids.draftBankQuestion,
+      ids.bank,
+    ],
+  );
+  let draftTransitionDenied = false;
+  try {
+    await client.query(
+      "update public.assignments set status = 'assigned', assigned_at = now() where id = $1",
+      [ids.draftTransitionAssignment],
+    );
+  } catch {
+    draftTransitionDenied = true;
+  }
+  assert(
+    draftTransitionDenied,
+    "A draft Assignment containing a draft Library question must not become assigned.",
   );
 
   await client.query("begin");
@@ -744,6 +879,26 @@ try {
   );
 
   await client.query(
+    `select set_config('request.jwt.claim.role', 'anon', false),
+            set_config('request.jwt.claim.sub', '', false)`,
+  );
+  await client.query("set role anon");
+  const anonymousQuestionScope = await client.query(
+    `select
+       count(*) filter (where id = $1)::integer as public_count,
+       count(*) filter (where id in ($2, $3))::integer as bank_owned_count
+     from public.questions
+     where id in ($1, $2, $3)`,
+    [publicQuestionId, ids.sourceQuestion, revisionId],
+  );
+  await client.query("reset role");
+  assert(
+    anonymousQuestionScope.rows[0]?.public_count === 1 &&
+      anonymousQuestionScope.rows[0]?.bank_owned_count === 0,
+    "Anonymous question SELECT must evaluate RLS without helper permission errors and expose only global public questions.",
+  );
+
+  await client.query(
     `select set_config('request.jwt.claim.role', 'authenticated', false),
             set_config('request.jwt.claim.sub', $1, false)`,
     [ids.student],
@@ -808,17 +963,99 @@ try {
     "Public pull must create an independent assignment-ready Library copy with lineage.",
   );
 
+  const pulledBankQuestion = await client.query(
+    `select id
+       from public.bank_questions
+      where bank_id = $1
+        and question_id = $2
+        and status = 'active'`,
+    [ids.bank, pulledQuestionId],
+  );
+  const pulledBankQuestionId = pulledBankQuestion.rows[0]?.id;
+  assert(pulledBankQuestionId, "Public pull must have an active bank row.");
+
+  await client.query(
+    `insert into public.assignments (
+       id, organization_id, classroom_id, created_by, title, status,
+       source_kind, source_summary
+     ) values (
+       $1, $2, $3, $4, 'Concurrent readiness gate', 'draft',
+       'question_bank', '{}'::jsonb
+     )`,
+    [ids.concurrentAssignment, ids.org, ids.classroom, ids.teacher],
+  );
+  await client.query(
+    `insert into public.assignment_items (
+       assignment_id, question_id, item_type, order_index, points,
+       bank_question_id, source_bank_id
+     ) values ($1, $2, 'question', 1, 1, $3, $4)`,
+    [
+      ids.concurrentAssignment,
+      pulledQuestionId,
+      pulledBankQuestionId,
+      ids.bank,
+    ],
+  );
+
+  concurrencyClientA = new pg.Client({
+    ...connection,
+    database: "library_governance_test",
+  });
+  concurrencyClientB = new pg.Client({
+    ...connection,
+    database: "library_governance_test",
+  });
+  await concurrencyClientA.connect();
+  await concurrencyClientB.connect();
+  await concurrencyClientA.query("begin");
+  await concurrencyClientB.query("begin");
+  await concurrencyClientA.query(
+    "update public.assignments set status = 'assigned', assigned_at = now() where id = $1",
+    [ids.concurrentAssignment],
+  );
+
+  let concurrentRegressionSettled = false;
+  const concurrentRegression = concurrencyClientB
+    .query("update public.questions set status = 'draft' where id = $1", [
+      pulledQuestionId,
+    ])
+    .then(() => ({ denied: false }))
+    .catch(() => ({ denied: true }))
+    .finally(() => {
+      concurrentRegressionSettled = true;
+    });
+
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 150));
+  assert(
+    !concurrentRegressionSettled,
+    "Question regression must wait for an in-flight Assignment delivery decision.",
+  );
+  await concurrencyClientA.query("commit");
+  const concurrentRegressionResult = await concurrentRegression;
+  await concurrencyClientB.query("rollback");
+  assert(
+    concurrentRegressionResult.denied,
+    "A concurrent question regression must fail after Assignment delivery commits.",
+  );
+
   console.log("PASS viewer cannot create Library drafts or revisions");
   console.log("PASS owner manual draft is private and bank-scoped");
   console.log("PASS direct bank activation and global publication bypasses are denied");
+  console.log("PASS reviewed active Library question can enter an assigned Assignment");
+  console.log("PASS assigned and transitioning Assignments reject draft Library questions");
+  console.log("PASS assigned reviewed Library question cannot regress to draft");
   console.log("PASS revision FK lineage and atomic active-row swap");
   console.log("PASS immutable submission and independent Super Admin public copy");
   console.log("PASS viewer read-only Review blocks every question child and Storage mutation");
   console.log("PASS unrelated teacher, ordinary Admin, student, and anon submission isolation");
   console.log("PASS student sees public copy without teacher Library enumeration");
+  console.log("PASS anonymous question SELECT exposes public rows without bank-owned rows");
+  console.log("PASS concurrent Assignment delivery and question regression serialize safely");
   console.log("PASS independent public pull lineage");
   console.log("PASS public pull asset finalization is server-only");
 } finally {
+  if (concurrencyClientA) await concurrencyClientA.end().catch(() => {});
+  if (concurrencyClientB) await concurrencyClientB.end().catch(() => {});
   if (client) await client.end().catch(() => {});
   await harness.cleanup();
 }
