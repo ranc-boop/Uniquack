@@ -130,6 +130,18 @@ export type PracticeRecommendResponse = {
   trace: PracticeTraceEvent[];
 };
 
+export type AssignmentPracticeStartPayload = {
+  assignment: {
+    dueAt: string | null;
+    id: string;
+    itemCount: number;
+    title: string;
+  };
+  progressStatus: "not_started" | "in_progress" | "completed";
+  recommendation: PracticeRecommendResponse;
+  session: PracticeSessionDetail;
+};
+
 export type PracticeQuestionReview = {
   answerFormIssue?: string | null;
   conceptGap?: string | null;

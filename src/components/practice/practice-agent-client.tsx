@@ -13,7 +13,10 @@ import { ReadableDataCard, threadStudyContext } from "@/components/practice/prac
 import { PracticeRoundReviewPanel } from "@/components/practice/practice-round-review-panel";
 import {
   PracticeCompletionPanel,
+  PracticeFrameworkSelector,
+  PracticeInlineLoading,
   PracticeRoundNavigator,
+  PracticeSessionListLoading,
   PracticeSourceSelector,
   PracticeStarterGoals,
   PracticeWorkspaceSkeleton,
@@ -43,12 +46,14 @@ import {
   readPendingPracticeRound,
   recommendationFromHistoryQuestion,
   resultsFromHistoryRound,
+  settlePracticeRequest,
 } from "@/lib/practice/client-helpers";
 import {
   buildRestoredPracticeAnswers,
   restoredPracticeQuestionId,
 } from "@/lib/practice/answer-restore";
 import type {
+  AssignmentPracticeStartPayload,
   PracticeAttemptInput,
   PracticeCompletion,
   PracticeGradeResult,
@@ -108,18 +113,6 @@ type TestOnlyDelayedHydrationStatus =
   | "REJECTED_AS_STALE"
   | "APPLIED"
   | "FAILED";
-type AssignmentPracticeStartPayload = {
-  assignment: {
-    dueAt: string | null;
-    id: string;
-    itemCount: number;
-    title: string;
-  };
-  progressStatus: "not_started" | "in_progress" | "completed";
-  recommendation: PracticeRecommendResponse;
-  session: PracticeSessionDetail;
-};
-
 const COLLAPSED_SIDEBAR_WIDTH = 60;
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 304;
 const DEFAULT_RIGHT_SIDEBAR_WIDTH = 384;
@@ -407,7 +400,11 @@ export function PracticeAgentClient({
   > & { guard: "BLOCKED" | "PASSED" } | null>(null);
   const [thinkingElapsedMs, setThinkingElapsedMs] = useState(0);
   const [lastThinkingDurationMs, setLastThinkingDurationMs] = useState<number | null>(null);
-  const [workspaceLoading, setWorkspaceLoading] = useState(true);
+  const [workspaceLoading, setWorkspaceLoading] = useState(Boolean(assignmentId));
+  const [sessionHistoryLoading, setSessionHistoryLoading] = useState(true);
+  const [practiceSourcesLoading, setPracticeSourcesLoading] = useState(!assignmentId);
+  const [courseFrameworksLoading, setCourseFrameworksLoading] = useState(true);
+  const [preferenceLoading, setPreferenceLoading] = useState(true);
   const [sessionAction, setSessionAction] = useState<"creating" | "switching" | null>(null);
   const [isReviewStreaming, setIsReviewStreaming] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -473,59 +470,96 @@ export function PracticeAgentClient({
 
   async function refreshPracticeState(
     preferredSessionId?: string,
-    { deferAuxiliary = false }: { deferAuxiliary?: boolean } = {},
+    {
+      deferAuxiliary = false,
+      loadWorkspaceOptions = false,
+      restoreActive = true,
+      sessionOverride,
+    }: {
+      deferAuxiliary?: boolean;
+      loadWorkspaceOptions?: boolean;
+      restoreActive?: boolean;
+      sessionOverride?: PracticeSessionDetail;
+    } = {},
   ) {
+    const shouldRestoreSession = restoreActive || Boolean(preferredSessionId);
     const sessionPayloadPromise = jsonRequest<{
       activeSession: PracticeSessionDetail | null;
       sessions: PracticeSessionSummary[];
-    }>(preferredSessionId ? "/api/practice/sessions?includeActive=0" : "/api/practice/sessions");
-    const preferencePayloadPromise = jsonRequest<{
-      longTermPreference: string;
-      pendingMergeCount: number;
-    }>("/api/practice/preferences");
-    const frameworkPayloadPromise = jsonRequest<{
-      frameworks: PracticeCourseFrameworkSummary[];
-    }>("/api/practice/course-frameworks");
-    const sessionPayload = await sessionPayloadPromise;
+    }>(
+      shouldRestoreSession && !preferredSessionId
+        ? "/api/practice/sessions"
+        : "/api/practice/sessions?includeActive=0",
+    );
+    const preferenceStatePromise = loadWorkspaceOptions
+      ? settlePracticeRequest(
+          jsonRequest<{ longTermPreference: string }>("/api/practice/preferences"),
+          (payload) => {
+            setLongTermMemory(payload.longTermPreference);
+            setLongTermMemoryDraft(payload.longTermPreference);
+          },
+          () => setPreferenceLoading(false),
+        )
+      : Promise.resolve(null);
+    const frameworkStatePromise = loadWorkspaceOptions
+      ? settlePracticeRequest(
+          jsonRequest<{ frameworks: PracticeCourseFrameworkSummary[] }>(
+            "/api/practice/course-frameworks",
+          ),
+          (payload) => setCourseFrameworks(payload.frameworks),
+          () => setCourseFrameworksLoading(false),
+        )
+      : Promise.resolve(null);
+    const eagerSourceStatePromise = !assignmentId && !shouldRestoreSession
+      ? settlePracticeRequest(
+          jsonRequest<{ sources: PracticeSourceOption[] }>("/api/practice/sources"),
+          (payload) => setPracticeSources(payload.sources),
+          () => setPracticeSourcesLoading(false),
+        )
+      : null;
+    let sessionPayload: {
+      activeSession: PracticeSessionDetail | null;
+      sessions: PracticeSessionSummary[];
+    };
+    try {
+      sessionPayload = await sessionPayloadPromise;
+    } finally {
+      setSessionHistoryLoading(false);
+    }
 
-    let nextSession = sessionPayload.activeSession;
-    if (preferredSessionId) {
+    let nextSession = restoreActive ? sessionPayload.activeSession : null;
+    if (sessionOverride) {
+      nextSession = sessionOverride;
+    } else if (preferredSessionId) {
       const detail = await jsonRequest<{ session: PracticeSessionDetail }>(
         `/api/practice/sessions/${preferredSessionId}`,
       );
       nextSession = detail.session;
     }
 
-    const sourcePayloadPromise = assignmentId || nextSession?.sourceScopeLockedAt
-      ? Promise.resolve({ sources: [] as PracticeSourceOption[] })
-      : jsonRequest<{ sources: PracticeSourceOption[] }>("/api/practice/sources");
+    const sourceStatePromise = eagerSourceStatePromise ??
+      settlePracticeRequest(
+        assignmentId || nextSession?.sourceScopeLockedAt
+          ? Promise.resolve({ sources: [] as PracticeSourceOption[] })
+          : jsonRequest<{ sources: PracticeSourceOption[] }>("/api/practice/sources"),
+        (payload) => setPracticeSources(payload.sources),
+        () => setPracticeSourcesLoading(false),
+      );
     const wrongPayloadPromise = nextSession
       ? jsonRequest<{ wrongQuestions: PracticeWrongQuestionView[] }>(
           `/api/practice/wrong-questions?sessionId=${encodeURIComponent(nextSession.id)}`,
         )
       : Promise.resolve({ wrongQuestions: [] });
-    const preferenceStatePromise = preferencePayloadPromise.then((preferencePayload) => {
-      setLongTermMemory(preferencePayload.longTermPreference);
-      setLongTermMemoryDraft(preferencePayload.longTermPreference);
-    });
-    const frameworkStatePromise = frameworkPayloadPromise.then((frameworkPayload) => {
-      setCourseFrameworks(frameworkPayload.frameworks);
-    });
-    const sourceStatePromise = sourcePayloadPromise.then((sourcePayload) => {
-      setPracticeSources(sourcePayload.sources);
-    });
-    const wrongStatePromise = wrongPayloadPromise.then((wrongPayload) => {
-      setWrongQuestions(wrongPayload.wrongQuestions);
-    });
+    const wrongStatePromise = settlePracticeRequest(
+      wrongPayloadPromise,
+      (payload) => setWrongQuestions(payload.wrongQuestions),
+    );
     const auxiliaryStatePromise = Promise.all([
       preferenceStatePromise,
       frameworkStatePromise,
       sourceStatePromise,
       wrongStatePromise,
-    ]).then(
-      () => ({ error: null as unknown }),
-      (caught: unknown) => ({ error: caught }),
-    );
+    ]).then((errors) => ({ error: errors.find(Boolean) }));
 
     setSessions(sessionPayload.sessions);
     setActiveSession(nextSession);
@@ -738,7 +772,7 @@ export function PracticeAgentClient({
       );
       setLongTermMemory(preferencePayload.longTermPreference);
     } catch {
-      // Preference merge is intentionally opportunistic and should not block practice.
+      // Preference merge is opportunistic and must not block the active round.
     }
   }
 
@@ -767,7 +801,7 @@ export function PracticeAgentClient({
         await updateSessionTitle(sessionId, payload.title);
       }
     } catch {
-      // Auto naming is a convenience; recommendation should keep moving if it fails.
+      // Auto naming is a convenience and must not block recommendation.
     }
   }
 
@@ -782,7 +816,10 @@ export function PracticeAgentClient({
       method: "POST",
     });
     setActiveSession(payload.session);
-    void refreshPracticeState(payload.session.id).catch(() => undefined);
+    void refreshPracticeState(payload.session.id, {
+      deferAuxiliary: true,
+      sessionOverride: payload.session,
+    }).catch(() => undefined);
     void runPreferenceMerge();
     return payload.session;
   }
@@ -805,7 +842,11 @@ export function PracticeAgentClient({
 
     setAssignmentLaunch(payload.assignment);
     setActiveSession(payload.session);
-    const restoredSession = await refreshPracticeState(payload.session.id);
+    const restoredSession = await refreshPracticeState(payload.session.id, {
+      deferAuxiliary: true,
+      loadWorkspaceOptions: true,
+      sessionOverride: payload.session,
+    });
     const currentRound = restoredSession?.rounds[restoredSession.rounds.length - 1];
 
     if (restoredSession && currentRound?.questions.length) {
@@ -833,16 +874,12 @@ export function PracticeAgentClient({
       try {
         clearLegacyPracticeStorage();
         if (assignmentId && !assignmentLaunchStartedRef.current) {
-          // This ref prevents a duplicate request within one mounted client.
-          // Reload correctness comes from the server-side linked-session resume.
+          // Prevent duplicate assignment-start requests within one mounted client.
           assignmentLaunchStartedRef.current = true;
           await startAssignmentPractice(assignmentId);
           return;
         }
 
-        const restoredSession = await refreshPracticeState(undefined, {
-          deferAuxiliary: true,
-        });
         const pendingRound = readPendingPracticeRound();
         if (pendingRound) {
           setRecommendation(pendingRound);
@@ -850,15 +887,22 @@ export function PracticeAgentClient({
           setLiveTrace(pendingRound.trace ?? []);
           setPhase("recommended");
           if (pendingRound.sessionId) {
-            await refreshPracticeState(pendingRound.sessionId);
+            await refreshPracticeState(pendingRound.sessionId, {
+              loadWorkspaceOptions: true,
+            });
+          } else {
+            await refreshPracticeState(undefined, {
+              deferAuxiliary: true,
+              loadWorkspaceOptions: true,
+              restoreActive: false,
+            });
           }
-        } else if (restoredSession?.status === "completed" && restoredSession.completion) {
-          setCompletion(restoredSession.completion);
-          setStreamedCompletionReport(restoredSession.completion.report);
-          setGoal(restoredSession.goal);
-          setPhase("completed");
-        } else if (restoredSession?.rounds.length) {
-          restoreRoundFromHistory(restoredSession.rounds[restoredSession.rounds.length - 1], restoredSession);
+        } else {
+          await refreshPracticeState(undefined, {
+            deferAuxiliary: true,
+            loadWorkspaceOptions: true,
+            restoreActive: false,
+          });
         }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -866,7 +910,6 @@ export function PracticeAgentClient({
         setWorkspaceLoading(false);
       }
     });
-    // Run once on page entry to restore the latest persisted round.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -981,7 +1024,7 @@ export function PracticeAgentClient({
         void refreshPracticeState(currentSession.id).catch(() => undefined);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
-        finishThinking(activeSession ? "start" : "start");
+        finishThinking("start");
       }
     });
   }
@@ -1615,7 +1658,9 @@ export function PracticeAgentClient({
                 <span className="h-px flex-1 bg-slate-100 ml-3" />
               </div>
               <div className="space-y-1" data-testid="practice-session-list">
-              {sessions.length ? sessions.map((item) => (
+              {sessionHistoryLoading ? (
+                <PracticeSessionListLoading />
+              ) : sessions.length ? sessions.map((item) => (
                 <div
                   key={item.id}
                   className={`group flex items-center gap-1 rounded-xl pr-1 transition-all duration-200 ${
@@ -1719,7 +1764,9 @@ export function PracticeAgentClient({
           <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
             <summary className="cursor-pointer text-sm font-bold text-slate-900">Long-term memory</summary>
             <div className="mt-3 space-y-2">
-              {memoryEditing ? (
+              {preferenceLoading ? (
+                <PracticeInlineLoading label="Loading learning memory..." />
+              ) : memoryEditing ? (
                 <Textarea
                   className="min-h-28 bg-white text-xs"
                   onChange={(event) => setLongTermMemoryDraft(event.target.value)}
@@ -1796,6 +1843,7 @@ export function PracticeAgentClient({
                 {!assignmentId ? (
                   <PracticeSourceSelector
                     includePublicCatalog={includePublicCatalog}
+                    loading={practiceSourcesLoading}
                     locked={Boolean(activeSession?.sourceScopeLockedAt)}
                     onIncludePublicCatalogChange={setIncludePublicCatalog}
                     onSelectedBankIdsChange={setSelectedBankIds}
@@ -1821,23 +1869,12 @@ export function PracticeAgentClient({
                       />
                     </div>
                     <div className="flex items-center justify-between gap-2 px-2 sm:justify-end">
-                      {courseFrameworks.length ? (
-                        <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
-                          <span>Framework</span>
-                          <select
-                            className="max-w-44 bg-transparent text-sm font-bold text-slate-900 outline-none"
-                            onChange={(event) => setSelectedCourseFrameworkId(event.target.value)}
-                            value={selectedCourseFrameworkId}
-                          >
-                            <option value="">None</option>
-                            {courseFrameworks.map((framework) => (
-                              <option key={framework.id} value={framework.id}>
-                                {framework.title}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : null}
+                      <PracticeFrameworkSelector
+                        frameworks={courseFrameworks}
+                        loading={courseFrameworksLoading}
+                        onChange={setSelectedCourseFrameworkId}
+                        value={selectedCourseFrameworkId}
+                      />
                       <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
                         <SlidersHorizontal className="size-4" aria-hidden="true" />
                         <span>Questions</span>

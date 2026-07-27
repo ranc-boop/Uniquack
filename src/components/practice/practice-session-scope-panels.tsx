@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 
+import { LoadingIndicator } from "@/components/loading-indicator";
 import { FeedbackText } from "@/components/math-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   PracticeCompletion,
+  PracticeCourseFrameworkSummary,
   PracticeRoundHistory,
   PracticeSourceOption,
 } from "@/lib/practice/types";
@@ -45,6 +47,66 @@ export function PracticeWorkspaceSkeleton() {
   );
 }
 
+export function PracticeSessionListLoading() {
+  return (
+    <div
+      aria-busy="true"
+      className="space-y-2 rounded-xl border border-slate-200/80 bg-white/70 p-3"
+      role="status"
+    >
+      <LoadingIndicator label="Loading recent sessions..." />
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div className="flex items-center gap-3 py-1.5" key={index}>
+          <div className="h-7 w-1 rounded-full bg-slate-100 motion-safe:animate-pulse" />
+          <div className="h-4 flex-1 rounded bg-slate-100 motion-safe:animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function PracticeInlineLoading({ label }: { label: string }) {
+  return <LoadingIndicator className="text-xs" label={label} />;
+}
+
+export function PracticeFrameworkSelector({
+  frameworks,
+  loading,
+  onChange,
+  value,
+}: {
+  frameworks: PracticeCourseFrameworkSummary[];
+  loading: boolean;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  if (frameworks.length) {
+    return (
+      <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+        <span>Framework</span>
+        <select
+          className="max-w-44 bg-transparent text-sm font-bold text-slate-900 outline-none"
+          onChange={(event) => onChange(event.target.value)}
+          value={value}
+        >
+          <option value="">None</option>
+          {frameworks.map((framework) => (
+            <option key={framework.id} value={framework.id}>
+              {framework.title}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  return loading ? (
+    <span className="flex h-10 items-center rounded-full border border-slate-200 bg-slate-50 px-3">
+      <LoadingIndicator label="Loading options" />
+    </span>
+  ) : null;
+}
+
 export function PracticeStarterGoals({
   disabled,
   onSelect,
@@ -71,6 +133,7 @@ export function PracticeStarterGoals({
 
 export function PracticeSourceSelector({
   includePublicCatalog,
+  loading,
   locked,
   onIncludePublicCatalogChange,
   onSelectedBankIdsChange,
@@ -78,6 +141,7 @@ export function PracticeSourceSelector({
   selectedBankIds,
 }: {
   includePublicCatalog: boolean;
+  loading: boolean;
   locked: boolean;
   onIncludePublicCatalogChange: (checked: boolean) => void;
   onSelectedBankIdsChange: (update: (current: string[]) => string[]) => void;
@@ -98,7 +162,19 @@ export function PracticeSourceSelector({
         </Badge>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {practiceSources.map((source) => {
+        {loading ? (
+          <>
+            <div className="rounded-xl border border-slate-200 p-3 sm:col-span-2 lg:col-span-3">
+              <LoadingIndicator label="Loading available question sources..." />
+            </div>
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                className="h-16 rounded-xl bg-slate-100 motion-safe:animate-pulse"
+                key={index}
+              />
+            ))}
+          </>
+        ) : practiceSources.map((source) => {
           const checked = source.sourceKind === "public_catalog"
             ? includePublicCatalog
             : Boolean(source.bankId && selectedBankIds.includes(source.bankId));

@@ -73,6 +73,7 @@ const [
   auth,
   contextSource,
   client,
+  clientHelpers,
   adminPage,
   adminActions,
   gradeRoute,
@@ -90,6 +91,7 @@ const [
   read("src/lib/practice/auth.ts"),
   read("src/lib/practice/context.ts"),
   read("src/components/practice/practice-agent-client.tsx"),
+  read("src/lib/practice/client-helpers.ts"),
   read("src/app/admin/ai-settings/page.tsx"),
   read("src/app/admin/ai-settings/actions.ts"),
   read("src/app/api/practice/grade/route.ts"),
@@ -167,8 +169,8 @@ assert(
   "full-call logs must be local-only, bounded, and controlled by a non-public process variable",
 );
 assert(
-  client.includes("function parsePracticeSsePayload") &&
-    client.includes("A live practice update could not be read") &&
+  clientHelpers.includes("function parsePracticeSsePayload") &&
+    clientHelpers.includes("A live practice update could not be read") &&
     client.includes("parseSseEvents(done ? `${buffer}\\n\\n` : buffer)") &&
     client.includes("appendRoundReviewDelta") &&
     client.includes("requestAnimationFrame") &&
@@ -182,9 +184,17 @@ assert(
   "session refreshes must avoid duplicate active-session detail loads when a session is already selected",
 );
 assert(
-  client.includes("function isReusableEmptyPracticeSession") &&
-    client.includes("session.roundCount === 0") &&
-    client.includes("session.sessionThreadMessages?.length") &&
+  client.includes("useState(Boolean(assignmentId))") &&
+    client.includes("sessionHistoryLoading") &&
+    client.includes("restoreActive: false") &&
+    client.includes("loadWorkspaceOptions = false") &&
+    client.includes("eagerSourceStatePromise"),
+  "normal Practice entry must render a fresh-session shell immediately and hydrate history, sources, and workspace options progressively",
+);
+assert(
+  clientHelpers.includes("function isReusableEmptyPracticeSession") &&
+    clientHelpers.includes("session.roundCount === 0") &&
+    clientHelpers.includes("session.sessionThreadMessages?.length") &&
     client.includes("handedOffToSessionSwitch") &&
     client.includes("switchSession(reusableSession.id)"),
   "new-session actions must reuse a compatible empty thread and hand off through the normal session switch flow",

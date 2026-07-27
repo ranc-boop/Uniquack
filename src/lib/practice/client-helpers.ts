@@ -21,6 +21,20 @@ type PracticeHintMap = Readonly<Record<string, readonly string[]>>;
 type PracticeQuestionIdentity = Pick<PracticeRecommendation, "id" | "sourceQuestionId"> &
   PracticeQuestionIdentityLike;
 
+export function settlePracticeRequest<T>(
+  request: Promise<T>,
+  onSuccess: (value: T) => void,
+  onSettled?: () => void,
+) {
+  return request.then(
+    (value) => {
+      onSuccess(value);
+      return null;
+    },
+    (error: unknown) => error,
+  ).finally(onSettled);
+}
+
 export function clampPracticeSidebarWidth(value: number) {
   return Math.min(560, Math.max(240, Math.round(value)));
 }

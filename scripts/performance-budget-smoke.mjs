@@ -24,8 +24,8 @@ const removedHeavyDependencies = [
 const riskyClientFiles = [
   {
     file: "src/components/practice/practice-agent-client.tsx",
-    maxBytes: 90 * 1024,
-    note: "Practice agent should stay below the old ~99.9 KB pre-split client.",
+    maxBytes: 96 * 1024,
+    note: "Practice agent may trade modest source size for faster progressive hydration, but should stay below the old ~99.9 KB pre-split client.",
   },
   {
     file: "src/components/ai-pdf-import-panel.tsx",

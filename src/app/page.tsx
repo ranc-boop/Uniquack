@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const primaryActions = [
   {
-    body: "Resume your latest saved session, generate a focused round, and keep memory across attempts.",
+    body: "Start with a fresh workspace immediately, or reopen a saved session from the background-loaded history.",
     href: "/practice",
     icon: Play,
     label: "Continue practice",
