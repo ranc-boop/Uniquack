@@ -109,6 +109,8 @@ try {
     draftTransitionAssignment: "7b000000-0000-4000-8000-000000000055",
     draftBankQuestion: "7c000000-0000-4000-8000-000000000055",
     concurrentAssignment: "7d000000-0000-4000-8000-000000000055",
+    recoverableAssignment: "7e000000-0000-4000-8000-000000000055",
+    recoverableProgress: "7f000000-0000-4000-8000-000000000055",
   };
 
   await client.query(
@@ -291,6 +293,104 @@ try {
   );
 
   await client.query(
+    `insert into public.assignments (
+       id, organization_id, classroom_id, created_by, title, status,
+       source_kind, source_summary
+     ) values (
+       $1, $2, $3, $4, 'Recoverable quarantined assignment', 'draft',
+       'question_bank',
+       '{"deliveryQuarantineReason":"unreviewed_library_question"}'::jsonb
+     )`,
+    [ids.recoverableAssignment, ids.org, ids.classroom, ids.teacher],
+  );
+  await client.query(
+    `insert into public.assignment_items (
+       assignment_id, question_id, item_type, order_index, points,
+       bank_question_id, source_bank_id
+     ) values ($1, $2, 'question', 1, 1, $3, $4)`,
+    [
+      ids.recoverableAssignment,
+      ids.sourceQuestion,
+      ids.sourceBankQuestion,
+      ids.bank,
+    ],
+  );
+  await client.query(
+    `insert into public.student_assignment_progress (
+       id, assignment_id, student_id, status, started_at, evidence_summary
+     ) values (
+       $1, $2, $3, 'in_progress', now(), '{"preserve":true}'::jsonb
+     )`,
+    [ids.recoverableProgress, ids.recoverableAssignment, ids.student],
+  );
+
+  for (const [actorLabel, actorId] of [
+    ["student", ids.student],
+    ["unrelated teacher", ids.unrelatedTeacher],
+  ]) {
+    await client.query(
+      `select set_config('request.jwt.claim.role', 'authenticated', false),
+              set_config('request.jwt.claim.sub', $1, false)`,
+      [actorId],
+    );
+    await client.query("set role authenticated");
+    let resumeDenied = false;
+    try {
+      await client.query(
+        "select public.resume_quarantined_assignment($1)",
+        [ids.recoverableAssignment],
+      );
+    } catch {
+      resumeDenied = true;
+    }
+    await client.query("reset role");
+    assert(
+      resumeDenied,
+      `${actorLabel} must not resume a teacher-managed quarantined Assignment.`,
+    );
+  }
+
+  await client.query(
+    `select set_config('request.jwt.claim.role', 'authenticated', false),
+            set_config('request.jwt.claim.sub', $1, false)`,
+    [ids.teacher],
+  );
+  await client.query("set role authenticated");
+  const resumedAssignmentResult = await client.query(
+    "select public.resume_quarantined_assignment($1) as id",
+    [ids.recoverableAssignment],
+  );
+  await client.query("reset role");
+  const resumedAssignmentEvidence = await client.query(
+    `select
+       assignment.status,
+       assignment.assigned_at is not null as has_assigned_at,
+       assignment.source_summary ? 'deliveryResumedAt' as has_resume_event,
+       (select count(*)::integer
+          from public.assignment_items item
+         where item.assignment_id = assignment.id) as item_count,
+       (select count(*)::integer
+          from public.student_assignment_progress progress
+         where progress.assignment_id = assignment.id
+           and progress.id = $2
+           and progress.status = 'in_progress'
+           and progress.evidence_summary = '{"preserve":true}'::jsonb
+       ) as progress_count
+     from public.assignments assignment
+     where assignment.id = $1`,
+    [ids.recoverableAssignment, ids.recoverableProgress],
+  );
+  assert(
+    resumedAssignmentResult.rows[0]?.id === ids.recoverableAssignment &&
+      resumedAssignmentEvidence.rows[0]?.status === "assigned" &&
+      resumedAssignmentEvidence.rows[0]?.has_assigned_at === true &&
+      resumedAssignmentEvidence.rows[0]?.has_resume_event === true &&
+      resumedAssignmentEvidence.rows[0]?.item_count === 1 &&
+      resumedAssignmentEvidence.rows[0]?.progress_count === 1,
+    "The managing teacher must resume a ready quarantined Assignment without deleting items or student progress.",
+  );
+
+  await client.query(
     `select set_config('request.jwt.claim.role', 'authenticated', false),
             set_config('request.jwt.claim.sub', $1, false)`,
     [ids.viewer],
@@ -417,6 +517,28 @@ try {
   assert(
     draftTransitionDenied,
     "A draft Assignment containing a draft Library question must not become assigned.",
+  );
+  await client.query(
+    `update public.assignments
+        set source_summary =
+          '{"deliveryQuarantineReason":"unreviewed_library_question"}'::jsonb
+      where id = $1`,
+    [ids.draftTransitionAssignment],
+  );
+  await client.query("set role authenticated");
+  let unreviewedResumeDenied = false;
+  try {
+    await client.query(
+      "select public.resume_quarantined_assignment($1)",
+      [ids.draftTransitionAssignment],
+    );
+  } catch {
+    unreviewedResumeDenied = true;
+  }
+  await client.query("reset role");
+  assert(
+    unreviewedResumeDenied,
+    "A quarantined Assignment must not resume while a Library item remains unreviewed.",
   );
 
   await client.query("begin");
@@ -1044,6 +1166,9 @@ try {
   console.log("PASS reviewed active Library question can enter an assigned Assignment");
   console.log("PASS assigned and transitioning Assignments reject draft Library questions");
   console.log("PASS assigned reviewed Library question cannot regress to draft");
+  console.log("PASS unreviewed quarantined Assignment cannot resume");
+  console.log("PASS teacher resumes ready quarantine while preserving items and progress");
+  console.log("PASS student and unrelated teacher cannot resume a quarantine");
   console.log("PASS revision FK lineage and atomic active-row swap");
   console.log("PASS immutable submission and independent Super Admin public copy");
   console.log("PASS viewer read-only Review blocks every question child and Storage mutation");

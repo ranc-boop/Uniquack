@@ -27,6 +27,10 @@ const [
   publicBoundaryMigration,
   teacherMediaActions,
   manualForm,
+  teacherAssignmentDetail,
+  teacherAssignmentList,
+  teacherDeliveryActions,
+  studentAssignmentDetail,
 ] = await Promise.all([
   read("supabase/clean-migrations/0055_library_revision_public_governance.sql"),
   read("src/app/teacher/banks/actions.ts"),
@@ -46,6 +50,10 @@ const [
   read("supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql"),
   read("src/app/teacher/banks/bank-media-actions.ts"),
   read("src/app/teacher/banks/bank-manual-question-form.tsx"),
+  read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx"),
+  read("src/app/teacher/classrooms/[id]/assignments/page.tsx"),
+  read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/delivery-actions.ts"),
+  read("src/app/student/work/[id]/page.tsx"),
 ]);
 
 assert(
@@ -145,6 +153,17 @@ assert(
     manualForm.includes("draft_id") &&
     teacherQuestions.includes("publicLicenseConfirmed"),
   "Teacher Manual must reuse shared media workspaces, persist one bank-scoped Review Draft, and require explicit public-license confirmation.",
+);
+
+assert(
+  teacherAssignmentDetail.includes("Delivery paused by Library Review") &&
+    teacherAssignmentDetail.includes("Open Library Review") &&
+    teacherAssignmentDetail.includes("resumeQuarantinedAssignment") &&
+    teacherAssignmentList.includes("Delivery paused") &&
+    teacherDeliveryActions.includes("resume_quarantined_assignment") &&
+    studentAssignmentDetail.includes("This work is currently unavailable") &&
+    studentAssignmentDetail.includes("No private Library details are shown"),
+  "Quarantined Assignment delivery must be explicit and recoverable for teachers while students receive a non-enumerating unavailable state.",
 );
 
 assert(

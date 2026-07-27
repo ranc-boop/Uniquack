@@ -11,6 +11,7 @@ import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav"
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import {
+  getAssignmentDeliveryQuarantine,
   getManagedClassroom,
   listTeacherClassroomAssignments,
   type TeacherAssignmentSummary,
@@ -73,6 +74,10 @@ function AssignmentCard({
   classroomId: string;
 }) {
   const progressSummary = assignment.progressSummary;
+  const isDeliveryPaused = Boolean(
+    getAssignmentDeliveryQuarantine(assignment.source_summary),
+  );
+  const displayStatus = isDeliveryPaused ? "paused" : assignment.status;
 
   return (
     <Link
@@ -87,10 +92,10 @@ function AssignmentCard({
             </h3>
             <span
               className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusClasses(
-                assignment.status,
+                displayStatus,
               )}`}
             >
-              {statusLabel(assignment.status)}
+              {isDeliveryPaused ? "Delivery paused" : statusLabel(assignment.status)}
             </span>
           </div>
           {assignment.instructions ? (
@@ -224,10 +229,24 @@ export default async function TeacherAssignmentsPage({
     notFound();
   }
 
+  const paused = assignments.filter((assignment) =>
+    Boolean(getAssignmentDeliveryQuarantine(assignment.source_summary)),
+  );
   const assigned = assignments.filter((assignment) => assignment.status === "assigned");
-  const draft = assignments.filter((assignment) => assignment.status === "draft");
+  const draft = assignments.filter(
+    (assignment) =>
+      assignment.status === "draft" &&
+      !getAssignmentDeliveryQuarantine(assignment.source_summary),
+  );
   const archived = assignments.filter((assignment) => assignment.status === "archived");
   const groups: AssignmentGroup[] = [
+    {
+      title: "Delivery paused",
+      description:
+        "Review-gated work withdrawn from students without deleting progress. Open an item for recovery steps.",
+      empty: "No Assignment delivery is paused.",
+      items: paused,
+    },
     {
       title: "Assigned",
       description: "Visible in Student My Work for active class members.",
@@ -333,6 +352,7 @@ export default async function TeacherAssignmentsPage({
           <section className="grid gap-3 md:grid-cols-4">
             {[
               ["Assigned", assigned.length],
+              ["Paused", paused.length],
               ["Draft", draft.length],
               ["Archived", archived.length],
               ["Latest activity", formatDateTime(latestActivity)],

@@ -1383,6 +1383,12 @@ export type Database = {
         };
         Returns: string;
       };
+      resume_quarantined_assignment: {
+        Args: {
+          p_assignment_id: string;
+        };
+        Returns: string;
+      };
       create_bank_manual_question_draft: {
         Args: {
           p_bank_id: string;

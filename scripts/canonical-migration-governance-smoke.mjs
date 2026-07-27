@@ -15,8 +15,8 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(plan.directoryMigrationNames.length === 59, "Raw clean source must contain 59 SQL files.");
-assert(plan.executableMigrationNames.length === 58, "Executable clean chain must contain 58 migrations.");
+assert(plan.directoryMigrationNames.length === 60, "Raw clean source must contain 60 SQL files.");
+assert(plan.executableMigrationNames.length === 59, "Executable clean chain must contain 59 migrations.");
 assert(
   plan.duplicateRawPrefixes.length === 1 &&
     plan.duplicateRawPrefixes[0]?.number === 32,
@@ -40,7 +40,7 @@ try {
 }
 assert(blockedGoogle, "Excluded Google 0032 must fail closed in executable tooling.");
 
-for (let number = 44; number <= 58; number += 1) {
+for (let number = 44; number <= 59; number += 1) {
   const filename = plan.executableMigrationNames[number - 1];
   const entry = plan.inventoryByFilename.get(filename);
   assert(migrationNumber(filename) === number, `Position ${number} has the wrong migration number.`);
@@ -50,10 +50,10 @@ for (let number = 44; number <= 58; number += 1) {
 }
 
 assert(
-  plan.executableMigrationNames.at(-2) === "0057_assignment_readiness_and_anon_search_hardening.sql" &&
-    plan.executableMigrationNames.at(-1) === "0058_anonymous_public_question_policy_evaluation.sql" &&
-    plan.manifest.latestActivePrefix === 58,
-  "Anonymous public-question policy fix 0058 must follow Assignment readiness hardening 0057.",
+  plan.executableMigrationNames.at(-2) === "0058_anonymous_public_question_policy_evaluation.sql" &&
+    plan.executableMigrationNames.at(-1) === "0059_quarantined_assignment_recovery.sql" &&
+    plan.manifest.latestActivePrefix === 59,
+  "Quarantined Assignment recovery 0059 must follow the anonymous policy fix 0058.",
 );
 assert(
   plan.manifest.canonicalMigrationDirectory === "supabase/clean-migrations" &&
@@ -75,6 +75,6 @@ for (const filename of [
 
 console.log("PASS raw duplicate 0032 is detected and explicitly classified");
 console.log("PASS executable 0032 is teacher feedback notes; Google 0032 is excluded");
-console.log("PASS canonical registrations 0044-0058 are ordered and complete");
-console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0058");
+console.log("PASS canonical registrations 0044-0059 are ordered and complete");
+console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0059");
 console.log("PASS legacy migrations are absent from the executable plan");

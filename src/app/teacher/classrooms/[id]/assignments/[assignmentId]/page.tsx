@@ -9,6 +9,7 @@ import {
   savePrivateTeacherFeedbackNote,
   sendTeacherFeedbackNote,
 } from "@/app/teacher/classrooms/[id]/assignments/[assignmentId]/feedback-actions";
+import { resumeQuarantinedAssignment } from "@/app/teacher/classrooms/[id]/assignments/[assignmentId]/delivery-actions";
 import { QuestionText } from "@/components/math-content";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,7 +17,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
-import { getTeacherAssignmentDetail } from "@/lib/teacher-assignments";
+import {
+  getAssignmentDeliveryQuarantine,
+  getTeacherAssignmentDetail,
+} from "@/lib/teacher-assignments";
 import { listTeacherAssignmentFeedbackNotes } from "@/lib/teacher-feedback-notes";
 
 export const dynamic = "force-dynamic";
@@ -168,6 +172,16 @@ export default async function TeacherAssignmentDetailPage({
   const attachableQuestions = assignment.questionPerformanceRows.filter(
     (row) => row.question,
   );
+  const deliveryQuarantine = getAssignmentDeliveryQuarantine(
+    assignment.source_summary,
+  );
+  const affectedItems = assignment.items.filter(
+    (item) => item.item_type === "question" && item.readinessIssues.length > 0,
+  );
+  const sourceBankId =
+    assignment.source_record_id ??
+    assignment.items.find((item) => item.source_bank_id)?.source_bank_id ??
+    null;
 
   return (
     <main className="teacher-shell space-y-6">
@@ -290,7 +304,68 @@ export default async function TeacherAssignmentDetailPage({
         />
       </section>
 
-      {assignment.status === "draft" ? (
+      {deliveryQuarantine ? (
+        <section className="rounded-lg border border-amber-300 bg-amber-50 p-5">
+          <h2 className="text-base font-bold text-amber-950">
+            Delivery paused by Library Review
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-amber-900">
+            Students cannot open this Assignment while {affectedItems.length || "one or more"} Library
+            item{affectedItems.length === 1 ? "" : "s"} still need review. Existing
+            student progress and Assignment history are preserved.
+          </p>
+          <p className="mt-2 text-xs text-amber-800">
+            Paused {formatDateTime(deliveryQuarantine.quarantinedAt)}. Review the
+            affected questions, then resume this same Assignment.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {sourceBankId ? (
+              <Button asChild variant="outline">
+                <Link href={`/teacher/banks/${sourceBankId}/review`}>
+                  Open Library Review
+                </Link>
+              </Button>
+            ) : null}
+            <form action={resumeQuarantinedAssignment}>
+              <input name="assignmentId" type="hidden" value={assignment.id} />
+              <input
+                name="classroomId"
+                type="hidden"
+                value={assignment.classroom.id}
+              />
+              <Button disabled={affectedItems.length > 0} type="submit">
+                Resume delivery
+              </Button>
+            </form>
+            <Button asChild variant="outline">
+              <Link
+                href={`/teacher/publish?classroomId=${assignment.classroom.id}${
+                  sourceBankId ? `&sourceBankId=${sourceBankId}` : ""
+                }`}
+              >
+                Create replacement Assignment
+              </Link>
+            </Button>
+          </div>
+          {affectedItems.length ? (
+            <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-amber-900">
+              {affectedItems.map((item) => (
+                <li key={item.id}>
+                  {item.question?.title || "Unavailable Library question"} —{" "}
+                  {item.readinessIssues.join("; ")}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {affectedItems.length ? (
+            <p className="mt-3 text-xs leading-5 text-amber-800">
+              Resume unlocks only after every listed issue is cleared. Use
+              Library Review for draft content; use a replacement Assignment
+              when a Library link cannot be repaired.
+            </p>
+          ) : null}
+        </section>
+      ) : assignment.status === "draft" ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-5">
           <h2 className="text-base font-bold text-amber-950">
             Draft assignment is teacher-only.

@@ -18,6 +18,7 @@ const taxonomyMigration = await read("supabase/clean-migrations/0003_taxonomy_ru
 const taxonomyCatalogMigration = await read("supabase/clean-migrations/0056_add_math_taxonomy_v2_catalog.sql");
 const assignmentReadinessMigration = await read("supabase/clean-migrations/0057_assignment_readiness_and_anon_search_hardening.sql");
 const anonymousPublicQuestionPolicyMigration = await read("supabase/clean-migrations/0058_anonymous_public_question_policy_evaluation.sql");
+const quarantinedAssignmentRecoveryMigration = await read("supabase/clean-migrations/0059_quarantined_assignment_recovery.sql");
 const localTaxonomySeed = await read("supabase/clean-seeds/0002_local_taxonomy_seed.sql");
 const reviewDraftsQuestionBankMigration = await read("supabase/clean-migrations/0006_review_drafts_and_question_bank.sql");
 const questionSearchMigration = await read("supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql");
@@ -110,6 +111,27 @@ assert(
   "0058 must grant only the anonymous child-policy helper execution required for public question reads.",
 );
 console.log("PASS anonymous public-question child policy evaluation uses least-scope grants");
+assert(
+  quarantinedAssignmentRecoveryMigration.includes(
+    "create or replace function public.resume_quarantined_assignment",
+  ) &&
+    quarantinedAssignmentRecoveryMigration.includes(
+      "private.can_manage_assignment(assignment_row.id)",
+    ) &&
+    quarantinedAssignmentRecoveryMigration.includes(
+      "private.assert_assignment_library_questions_ready",
+    ) &&
+    quarantinedAssignmentRecoveryMigration.includes(
+      "deliveryQuarantineReason",
+    ) &&
+    quarantinedAssignmentRecoveryMigration.includes("deliveryResumedAt") &&
+    quarantinedAssignmentRecoveryMigration.includes(
+      "grant execute on function public.resume_quarantined_assignment(uuid)",
+    ) &&
+    !quarantinedAssignmentRecoveryMigration.includes("to anon"),
+  "0059 must resume only managed, readiness-safe quarantined Assignments without granting anonymous execution.",
+);
+console.log("PASS quarantined Assignment recovery preserves evidence and rechecks readiness");
 
 assert(questionSearchMigration.includes("create or replace function public.search_questions_by_taxonomy"), "taxonomy search RPC is missing");
 assert(questionSearchMigration.includes("matched_tags jsonb"), "taxonomy search RPC does not return matched tag metadata");

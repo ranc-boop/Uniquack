@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { requireStudent } from "@/lib/auth/guards";
@@ -65,7 +64,25 @@ export default async function StudentWorkDetailPage({
   });
 
   if (!assignment) {
-    notFound();
+    return (
+      <main className="student-shell space-y-6">
+        <section className="student-hero">
+          <p className="student-eyebrow">Assigned work</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
+            This work is currently unavailable
+          </h1>
+          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+            The Assignment may be paused for teacher review, archived, or not
+            available to your account. No private Library details are shown.
+          </p>
+          <div className="mt-5">
+            <Button asChild variant="outline">
+              <Link href="/student/work">Back to My Work</Link>
+            </Button>
+          </div>
+        </section>
+      </main>
+    );
   }
   const feedbackNotes = await listStudentSentAssignmentFeedbackNotes({
     assignmentId: assignment.id,
