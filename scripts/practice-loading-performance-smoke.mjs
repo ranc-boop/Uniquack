@@ -26,6 +26,7 @@ const [
   rawPracticeScopePanels,
   rawPracticeSkeleton,
   rawClientHelpers,
+  rawPracticeAuth,
 ] = await Promise.all([
   readFile(resolve(root, "src/components/practice/practice-agent-client.tsx"), "utf8"),
   readFile(resolve(root, "src/lib/practice/persistence.ts"), "utf8"),
@@ -37,6 +38,7 @@ const [
   readFile(resolve(root, "src/components/practice/practice-session-scope-panels.tsx"), "utf8"),
   readFile(resolve(root, "src/components/practice/practice-workspace-skeleton.tsx"), "utf8"),
   readFile(resolve(root, "src/lib/practice/client-helpers.ts"), "utf8"),
+  readFile(resolve(root, "src/lib/practice/auth.ts"), "utf8"),
 ]);
 const client = rawClient.replaceAll("\r\n", "\n");
 const persistence = rawPersistence.replaceAll("\r\n", "\n");
@@ -48,6 +50,7 @@ const practicePage = rawPracticePage.replaceAll("\r\n", "\n");
 const practiceScopePanels = rawPracticeScopePanels.replaceAll("\r\n", "\n");
 const practiceSkeleton = rawPracticeSkeleton.replaceAll("\r\n", "\n");
 const clientHelpers = rawClientHelpers.replaceAll("\r\n", "\n");
+const practiceAuth = rawPracticeAuth.replaceAll("\r\n", "\n");
 
 assert(
   practiceLoading.includes("@/components/practice/practice-workspace-skeleton") &&
@@ -100,8 +103,10 @@ const listSessions = sourceBlock(
 );
 assert(
   !listSessions.includes('.select("*') &&
-    listSessions.includes("PRACTICE_SESSION_SUMMARY_SELECT"),
-  "Practice session lists must select only fields used by summaries",
+    listSessions.includes("PRACTICE_SESSION_SUMMARY_SELECT") &&
+    persistence.includes("practice_rounds(count)") &&
+    listSessions.includes(".range(boundedOffset, boundedOffset + boundedLimit - 1)"),
+  "Practice session lists must use a bounded summary page and aggregate round counts",
 );
 
 const getSession = sourceBlock(
@@ -118,8 +123,21 @@ assert(
   "Practice detail hydration must reuse the list summary and parallelize independent history reads",
 );
 assert(
-  sessionsRoute.includes("sessionSummary: sessions[0]"),
+  sessionsRoute.includes("sessionSummary: sessions[0]") &&
+    sessionsRoute.includes("const hasMore = sessionPage.length > limit") &&
+    sessionsRoute.includes("nextOffset: offset + sessions.length"),
   "Sessions API must not reload the active practice_sessions row already returned by its list query",
+);
+const loadMoreSessions = sourceBlock(
+  client,
+  "async function loadMoreSessions",
+  "function createNewSession",
+);
+assert(
+  loadMoreSessions.includes("includeActive=0&limit=25&offset=${sessions.length}") &&
+    loadMoreSessions.includes("setSessionHistoryHasMore") &&
+    client.includes("Load more sessions"),
+  "Bounded Practice session history must retain access to older sessions through incremental loading",
 );
 const sessionsPost = sourceBlock(
   sessionsRoute,
@@ -172,6 +190,12 @@ assert(
   practicePage.includes("supabase.auth.getClaims()") &&
     !practicePage.includes("supabase.auth.getUser()"),
   "Practice first-screen auth must use locally verifiable claims instead of a remote user lookup",
+);
+assert(
+  practiceAuth.includes("supabase.auth.getClaims()") &&
+    practiceAuth.includes("data?.claims?.sub") &&
+    !practiceAuth.includes("supabase.auth.getUser()"),
+  "Practice APIs must reuse verified claims instead of repeating a remote Auth user lookup per bootstrap request",
 );
 
 const preferencesGet = sourceBlock(

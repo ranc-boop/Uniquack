@@ -1,21 +1,25 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import type { User } from "@supabase/supabase-js";
 
 type SupabaseLike = {
   auth: {
-    getUser: () => Promise<{ data: { user: User | null }; error?: { message?: string } | null }>;
+    getClaims: () => Promise<{
+      data: {
+        claims?: {
+          sub?: unknown;
+        } | null;
+      } | null;
+      error?: { message?: string } | null;
+    }>;
   };
 };
 
 export async function requirePracticeApiUser(supabase: SupabaseLike) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
 
-  if (error || !user) {
+  if (error || typeof userId !== "string" || !userId) {
     return {
       response: NextResponse.json(
         { error: "Authentication required." },
@@ -25,5 +29,5 @@ export async function requirePracticeApiUser(supabase: SupabaseLike) {
     };
   }
 
-  return { response: null, user };
+  return { response: null, user: { id: userId } };
 }

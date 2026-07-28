@@ -155,6 +155,14 @@ type PracticeAgentClientProps = {
   assignmentId?: string | null;
   testOnlyDelayedHydration?: boolean;
 };
+type PracticeSessionsPayload = {
+  activeSession: PracticeSessionDetail | null;
+  pagination?: {
+    hasMore: boolean;
+    nextOffset: number;
+  };
+  sessions: PracticeSessionSummary[];
+};
 
 type TestOnlyDelayedHydrationStatus =
   | "NOT_ENABLED"
@@ -452,6 +460,8 @@ export function PracticeAgentClient({
   const [lastThinkingDurationMs, setLastThinkingDurationMs] = useState<number | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(Boolean(assignmentId));
   const [sessionHistoryLoading, setSessionHistoryLoading] = useState(true);
+  const [sessionHistoryHasMore, setSessionHistoryHasMore] = useState(false);
+  const [sessionHistoryLoadingMore, setSessionHistoryLoadingMore] = useState(false);
   const [practiceSourcesLoading, setPracticeSourcesLoading] = useState(!assignmentId);
   const [courseFrameworksLoading, setCourseFrameworksLoading] = useState(true);
   const [preferenceLoading, setPreferenceLoading] = useState(true);
@@ -533,10 +543,7 @@ export function PracticeAgentClient({
     } = {},
   ) {
     const shouldRestoreSession = restoreActive || Boolean(preferredSessionId);
-    const sessionPayloadPromise = jsonRequest<{
-      activeSession: PracticeSessionDetail | null;
-      sessions: PracticeSessionSummary[];
-    }>(
+    const sessionPayloadPromise = jsonRequest<PracticeSessionsPayload>(
       shouldRestoreSession && !preferredSessionId
         ? "/api/practice/sessions"
         : "/api/practice/sessions?includeActive=0",
@@ -567,10 +574,7 @@ export function PracticeAgentClient({
           () => setPracticeSourcesLoading(false),
         )
       : null;
-    let sessionPayload: {
-      activeSession: PracticeSessionDetail | null;
-      sessions: PracticeSessionSummary[];
-    };
+    let sessionPayload: PracticeSessionsPayload;
     try {
       sessionPayload = await sessionPayloadPromise;
     } finally {
@@ -612,6 +616,7 @@ export function PracticeAgentClient({
     ]).then((errors) => ({ error: errors.find(Boolean) }));
 
     setSessions(sessionPayload.sessions);
+    setSessionHistoryHasMore(Boolean(sessionPayload.pagination?.hasMore));
     setActiveSession(nextSession);
     setOutlineNotes(nextSession?.outlineUserNotes ?? "");
     if (nextSession?.status === "active" && nextSession.sourceScope.length) {
@@ -1382,6 +1387,26 @@ export function PracticeAgentClient({
     });
   }
 
+  async function loadMoreSessions() {
+    setSessionHistoryLoadingMore(true);
+    setError(null);
+    try {
+      const payload = await jsonRequest<PracticeSessionsPayload>(
+        `/api/practice/sessions?includeActive=0&limit=25&offset=${sessions.length}`,
+      );
+      setSessions((current) => {
+        const byId = new Map(current.map((item) => [item.id, item]));
+        payload.sessions.forEach((item) => byId.set(item.id, item));
+        return Array.from(byId.values());
+      });
+      setSessionHistoryHasMore(Boolean(payload.pagination?.hasMore));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setSessionHistoryLoadingMore(false);
+    }
+  }
+
   function createNewSession() {
     const courseFrameworkId = selectedCourseFrameworkId || null;
     setSessionAction("creating");
@@ -1478,8 +1503,9 @@ export function PracticeAgentClient({
       let handedOffToSessionSwitch = false;
       try {
         await jsonRequest<{ ok: boolean }>(`/api/practice/sessions/${sessionId}`, { method: "DELETE" });
-        const payload = await jsonRequest<{ sessions: PracticeSessionSummary[] }>("/api/practice/sessions?includeActive=0");
+        const payload = await jsonRequest<PracticeSessionsPayload>("/api/practice/sessions?includeActive=0");
         setSessions(payload.sessions);
+        setSessionHistoryHasMore(Boolean(payload.pagination?.hasMore));
         if (!deletedWasActive) return;
         const nextSession = payload.sessions.find((item) => item.id !== sessionId);
         if (nextSession) {
@@ -1812,6 +1838,18 @@ export function PracticeAgentClient({
                 </div>
               )}
               </div>
+              {sessionHistoryHasMore ? (
+                <Button
+                  className="mt-2 w-full"
+                  disabled={isPending || sessionHistoryLoadingMore}
+                  onClick={() => void loadMoreSessions()}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  {sessionHistoryLoadingMore ? "Loading more..." : "Load more sessions"}
+                </Button>
+              ) : null}
             </div>
           </div>
         </section>

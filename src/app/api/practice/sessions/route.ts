@@ -11,6 +11,16 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+const DEFAULT_SESSION_PAGE_SIZE = 25;
+const MAX_SESSION_PAGE_SIZE = 50;
+
+function boundedInteger(value: string | null, fallback: number, maximum: number) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed)
+    ? Math.min(maximum, Math.max(0, parsed))
+    : fallback;
+}
+
 export async function GET(request: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
@@ -23,9 +33,22 @@ export async function GET(request: Request) {
   }
 
   try {
-    const sessions = await listPracticeSessions({ supabase, userId: auth.user.id });
-    const includeActive = new URL(request.url).searchParams.get("includeActive") !== "0";
-    const active = includeActive && sessions[0]
+    const searchParams = new URL(request.url).searchParams;
+    const limit = Math.max(
+      1,
+      boundedInteger(searchParams.get("limit"), DEFAULT_SESSION_PAGE_SIZE, MAX_SESSION_PAGE_SIZE),
+    );
+    const offset = boundedInteger(searchParams.get("offset"), 0, Number.MAX_SAFE_INTEGER);
+    const sessionPage = await listPracticeSessions({
+      limit: limit + 1,
+      offset,
+      supabase,
+      userId: auth.user.id,
+    });
+    const hasMore = sessionPage.length > limit;
+    const sessions = sessionPage.slice(0, limit);
+    const includeActive = searchParams.get("includeActive") !== "0";
+    const active = includeActive && offset === 0 && sessions[0]
       ? await getPracticeSession({
           sessionId: sessions[0].id,
           sessionSummary: sessions[0],
@@ -34,7 +57,14 @@ export async function GET(request: Request) {
         })
       : null;
 
-    return NextResponse.json({ activeSession: active, sessions });
+    return NextResponse.json({
+      activeSession: active,
+      pagination: {
+        hasMore,
+        nextOffset: offset + sessions.length,
+      },
+      sessions,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },
