@@ -813,14 +813,14 @@ export function PracticeAgentClient({
 
   async function runPreferenceMerge() {
     try {
-      await jsonRequest<{ status: string }>(
+      const mergePayload = await jsonRequest<{
+        longTermPreference: string;
+        status: string;
+      }>(
         "/api/practice/preferences/merge/run",
         { method: "POST", body: "{}" },
       );
-      const preferencePayload = await jsonRequest<{ longTermPreference: string }>(
-        "/api/practice/preferences",
-      );
-      setLongTermMemory(preferencePayload.longTermPreference);
+      setLongTermMemory(mergePayload.longTermPreference);
     } catch {
       // Preference merge is opportunistic and must not block the active round.
     }

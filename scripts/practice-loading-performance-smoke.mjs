@@ -155,6 +155,17 @@ assert(
     createNewSession.includes("setSessions("),
   "New Practice sessions must reuse hydrated history and avoid duplicate list/detail requests",
 );
+const preferenceMerge = sourceBlock(
+  client,
+  "async function runPreferenceMerge",
+  "async function updateSessionTitle",
+);
+assert(
+  preferenceMerge.includes("longTermPreference") &&
+    preferenceMerge.includes("setLongTermMemory(mergePayload.longTermPreference)") &&
+    !preferenceMerge.includes('jsonRequest<{ longTermPreference: string }>("/api/practice/preferences")'),
+  "Practice preference merge must reuse the merge response instead of issuing a duplicate GET.",
+);
 assert(
   practicePage.includes("supabase.auth.getClaims()") &&
     !practicePage.includes("supabase.auth.getUser()"),
