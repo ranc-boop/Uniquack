@@ -37,6 +37,7 @@ await import("./teacher-assignment-flow-smoke.mjs");
 await import("./assignment-practice-evidence-smoke.mjs");
 await import("./practice-provider-execution-smoke.mjs");
 await import("./loading-feedback-smoke.mjs");
+await import("./public-library-loading-performance-smoke.mjs");
 await import("./practice-library-scope-finish-smoke.mjs");
 await import("./teacher-progress-ui-smoke.mjs");
 await import("./course-builder-assignment-bridge-smoke.mjs");

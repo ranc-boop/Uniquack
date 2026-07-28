@@ -95,7 +95,7 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
   }
 
   const supabase = await createClient();
-  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
+  const taxonomyCatalogPromise = loadTaxonomyCatalog(supabase);
   const { data: video, error: videoError } = await supabase
     .from("videos")
     .select(
@@ -113,14 +113,29 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
     notFound();
   }
 
-  const { data: question, error: questionError } = await supabase
-    .from("questions")
-    .select(
-      "id, question_code, title, content_html, solution_html, difficulty_rating, question_type, status, source, published_at, created_at, updated_at",
-    )
-    .eq("id", video.question_id)
-    .eq("status", "published")
-    .maybeSingle();
+  const [questionResult, taxonomyAssignmentsResult, taxonomyResult] =
+    await Promise.all([
+      supabase
+        .from("questions")
+        .select(
+          "id, question_code, title, content_html, solution_html, difficulty_rating, question_type, status, source, published_at, created_at, updated_at",
+        )
+        .eq("id", video.question_id)
+        .eq("status", "published")
+        .maybeSingle(),
+      supabase
+        .from("question_taxonomy_assignments")
+        .select("tag_id, review_status")
+        .eq("question_id", video.question_id)
+        .eq("review_status", "approved"),
+      taxonomyCatalogPromise,
+    ]);
+  const { data: question, error: questionError } = questionResult;
+  const {
+    data: taxonomyAssignments,
+    error: taxonomyAssignmentsError,
+  } = taxonomyAssignmentsResult;
+  const { catalog: taxonomyCatalog } = taxonomyResult;
 
   if (questionError) {
     return <ErrorCard message={questionError.message} />;
@@ -129,13 +144,6 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
   if (!question) {
     notFound();
   }
-
-  const { data: taxonomyAssignments, error: taxonomyAssignmentsError } =
-    await supabase
-      .from("question_taxonomy_assignments")
-      .select("tag_id, review_status")
-      .eq("question_id", question.id)
-      .eq("review_status", "approved");
 
   const officialTaxonomyAssignments =
     taxonomyAssignmentsError &&
