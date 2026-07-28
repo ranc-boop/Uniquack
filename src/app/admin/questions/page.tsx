@@ -70,14 +70,12 @@ const questionStatuses = ["draft", "published", "archived"] as const;
 type QuestionRow = Database["public"]["Tables"]["questions"]["Row"];
 type AdminQuestionSummaryRow = Pick<
   QuestionRow,
-  | "created_at"
   | "difficulty_rating"
   | "id"
   | "question_code"
   | "question_type"
   | "status"
   | "title"
-  | "updated_at"
 >;
 type AdminQuestionDetailRow = Pick<
   QuestionRow,
@@ -97,6 +95,8 @@ type AdminQuestionDetailRow = Pick<
   | "title"
 >;
 type AdminQuestionRow = AdminQuestionSummaryRow | AdminQuestionDetailRow;
+type AdminQuestionSearchRow =
+  Database["public"]["Functions"]["search_questions_by_taxonomy"]["Returns"][number];
 type AdminQuestionEditBundle = AdminQuestionDetailRow & {
   import_batch_items?: Array<{
     created_question_id: string | null;
@@ -187,6 +187,53 @@ function selectedTagsForFacets({
   ) as Record<string, string[]>;
 }
 
+function selectedTaxonomyTagIdsForSearch(
+  params: Record<string, string | string[] | undefined>,
+  kind: "exclude" | "include",
+) {
+  const tagIds: string[] = [];
+
+  for (const [key, value] of Object.entries(params)) {
+    const isMatch =
+      kind === "exclude"
+        ? key.startsWith("tax_exclude_") && key !== "tax_exclude_search"
+        : key.startsWith("tax_") &&
+          !key.startsWith("tax_exclude_") &&
+          ![
+            "tax_difficulty_max",
+            "tax_difficulty_min",
+            "tax_reviewed",
+            "tax_search",
+          ].includes(key);
+
+    if (isMatch) {
+      tagIds.push(...tagIdList(value));
+    }
+  }
+
+  return Array.from(new Set(tagIds));
+}
+
+function taxonomyAssignmentsFromRpcValue(
+  value: Database["public"]["Functions"]["search_questions_by_taxonomy"]["Returns"][number]["matched_tags"],
+) {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item): TaxonomyTagChipAssignment[] => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const tagId = item.tag_id;
+    if (typeof tagId !== "string") return [];
+
+    return [{
+      facet_key:
+        typeof item.facet_key === "string" ? item.facet_key : undefined,
+      review_status:
+        typeof item.review_status === "string" ? item.review_status : undefined,
+      tag_id: tagId,
+    }];
+  });
+}
+
 
 function selectedTaxonomyTagMapFromAssignments(
   assignments: TaxonomyTagChipAssignment[] | undefined,
@@ -244,6 +291,28 @@ export default async function AdminQuestionsPage({
     : "";
   const editReturnTo = firstParam(params.return_to) ?? "";
   const selectedStatus = safeStatusFilter(params.status);
+  const page = parsePage(params.page);
+  const pageSize = ADMIN_QUESTION_PAGE_SIZE;
+  const difficultyMinValue = numericParam(params.tax_difficulty_min);
+  const difficultyMaxValue = numericParam(params.tax_difficulty_max);
+  const difficultyMin = Number.isFinite(difficultyMinValue)
+    ? difficultyMinValue
+    : null;
+  const difficultyMax = Number.isFinite(difficultyMaxValue)
+    ? difficultyMaxValue
+    : null;
+  const taxonomySearchArgs = {
+    assignment_review_status:
+      firstParam(params.tax_reviewed) !== "false" ? "approved" : null,
+    difficulty_max: difficultyMax,
+    difficulty_min: difficultyMin,
+    exclude_tag_ids: selectedTaxonomyTagIdsForSearch(params, "exclude"),
+    include_tag_ids: selectedTaxonomyTagIdsForSearch(params, "include"),
+    page_limit: pageSize,
+    page_offset: (page - 1) * pageSize,
+    query_text: search || null,
+    question_status: selectedStatus || null,
+  };
   const taxonomyCatalogPromise = loadTaxonomyCatalog(supabase);
   const focusedQuestionBundlePromise = focusedQuestionId
     ? supabase
@@ -255,12 +324,20 @@ export default async function AdminQuestionsPage({
         .eq("import_batch_items.status", "imported")
         .maybeSingle()
     : Promise.resolve({ data: null, error: null });
+  const taxonomySearchPromise = focusedQuestionId
+    ? Promise.resolve({
+        data: null as AdminQuestionSearchRow[] | null,
+        error: null,
+      })
+    : supabase.rpc("search_questions_by_taxonomy", taxonomySearchArgs);
   const [
     { catalog: taxonomyCatalog, errorMessage: taxonomyCatalogError },
     focusedQuestionBundleResult,
+    { data: taxonomySearchRows, error: taxonomyRpcError },
   ] = await Promise.all([
     taxonomyCatalogPromise,
     focusedQuestionBundlePromise,
+    taxonomySearchPromise,
   ]);
   const focusedQuestionBundle =
     focusedQuestionBundleResult.data as AdminQuestionEditBundle | null;
@@ -283,42 +360,10 @@ export default async function AdminQuestionsPage({
   };
   const selectedTaxonomyInclude = taxonomyFilter.include;
   const selectedTaxonomyExclude = taxonomyFilter.exclude;
-  const page = parsePage(params.page);
   const currentPath = pageHref(params, page);
-  const pageSize = ADMIN_QUESTION_PAGE_SIZE;
-  const includeTagIds = Object.values(taxonomyFilter.include).flat();
-  const excludeTagIds = Object.values(taxonomyFilter.exclude).flat();
-  const difficultyMin = Number.isFinite(taxonomyFilter.difficulty.min)
-    ? taxonomyFilter.difficulty.min
-    : null;
-  const difficultyMax = Number.isFinite(taxonomyFilter.difficulty.max)
-    ? taxonomyFilter.difficulty.max
-    : null;
   const facetByTagId = new Map(
     taxonomyCatalog.nodes.map((node) => [node.tag_id, node.facet_key]),
   );
-  const taxonomySearchArgs = {
-    assignment_review_status: taxonomyFilter.requireReviewed
-      ? "approved"
-      : null,
-    difficulty_max: difficultyMax,
-    difficulty_min: difficultyMin,
-    exclude_tag_ids: excludeTagIds,
-    include_tag_ids: includeTagIds,
-    page_limit: pageSize,
-    page_offset: (page - 1) * pageSize,
-    query_text: search || null,
-    question_status: selectedStatus || null,
-  };
-  const {
-    data: taxonomySearchRows,
-    error: taxonomyRpcError,
-  } = focusedQuestionId
-    ? {
-        data: [{ question_id: focusedQuestionId, total_count: 1 }],
-        error: null,
-      }
-    : await supabase.rpc("search_questions_by_taxonomy", taxonomySearchArgs);
   let fallbackTotalQuestions = 0;
   if (!taxonomyRpcError && page > 1 && !taxonomySearchRows?.length) {
     const { data: firstPageRows } = await supabase.rpc(
@@ -331,9 +376,6 @@ export default async function AdminQuestionsPage({
     );
     fallbackTotalQuestions = Number(firstPageRows?.[0]?.total_count ?? 0);
   }
-  let orderedQuestionIds = (taxonomySearchRows ?? []).map(
-    (row) => row.question_id,
-  );
   let totalQuestions = Number(
     taxonomySearchRows?.[0]?.total_count ?? fallbackTotalQuestions,
   );
@@ -374,15 +416,19 @@ export default async function AdminQuestionsPage({
     fallbackQuestionsResult = await fallbackQuery
       .order("created_at", { ascending: false })
       .range((page - 1) * pageSize, page * pageSize - 1);
-    orderedQuestionIds = (fallbackQuestionsResult.data ?? []).map(
-      (question) => question.id,
-    );
     totalQuestions = fallbackQuestionsResult.count ?? 0;
   }
 
-  const questionOrder = new Map(
-    orderedQuestionIds.map((questionId, index) => [questionId, index]),
-  );
+  const rpcQuestions = taxonomyRpcError || focusedQuestionId
+    ? []
+    : (taxonomySearchRows ?? []).map((row): AdminQuestionSummaryRow => ({
+        difficulty_rating: row.difficulty_rating,
+        id: row.question_id,
+        question_code: row.question_code,
+        question_type: row.question_type as QuestionRow["question_type"],
+        status: row.status as QuestionRow["status"],
+        title: row.title,
+      }));
   const [
     { data: questions, error },
     { data: questionAssets },
@@ -398,13 +444,7 @@ export default async function AdminQuestionsPage({
           })
         : fallbackQuestionsResult
         ? Promise.resolve(fallbackQuestionsResult)
-        : orderedQuestionIds.length
-          ? supabase
-              .from("questions")
-              .select(ADMIN_QUESTION_SUMMARY_SELECT)
-              .in("id", orderedQuestionIds)
-              .is("owner_bank_id", null)
-          : Promise.resolve({ data: [], error: null }),
+        : Promise.resolve({ data: rpcQuestions, error: null }),
       focusedQuestionId
         ? Promise.resolve({ data: focusedQuestionBundle?.question_assets ?? [] })
         : Promise.resolve({ data: [], error: null }),
@@ -413,11 +453,7 @@ export default async function AdminQuestionsPage({
         : Promise.resolve({ data: [], error: null }),
     ]);
 
-  const filteredQuestions = [...(questions ?? [])].sort(
-    (left, right) =>
-      (questionOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
-      (questionOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
-  );
+  const filteredQuestions = [...(questions ?? [])];
   const questionIds = filteredQuestions.map((question) => question.id);
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   const sourceFilesByQuestionId = new Map<string, QuestionSourceFileView[]>();
@@ -431,6 +467,14 @@ export default async function AdminQuestionsPage({
       ? "Taxonomy search RPC is unavailable. Apply migrations 0011 and 0012."
       : `Taxonomy search is unavailable: ${taxonomyRpcError.message}`
     : null;
+  if (!taxonomyRpcError && !focusedQuestionId) {
+    for (const row of taxonomySearchRows ?? []) {
+      taxonomyAssignmentsByQuestionId.set(
+        row.question_id,
+        taxonomyAssignmentsFromRpcValue(row.matched_tags),
+      );
+    }
+  }
   const [
     { data: importItems },
     { data: taxonomyAssignments, error: taxonomyAssignmentsError },
@@ -443,6 +487,8 @@ export default async function AdminQuestionsPage({
           data: focusedQuestionBundle?.question_taxonomy_assignments ?? [],
           error: focusedQuestionBundleResult.error,
         })
+      : !taxonomyRpcError
+      ? Promise.resolve({ data: [], error: null })
       : questionIds.length
       ? supabase
           .from("question_taxonomy_assignments")
