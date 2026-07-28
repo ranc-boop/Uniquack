@@ -22,6 +22,7 @@ const [
   rawSessionsRoute,
   rawPracticeLoading,
   rawPracticeLoader,
+  rawPracticePage,
   rawPracticeSkeleton,
   rawClientHelpers,
 ] = await Promise.all([
@@ -31,6 +32,7 @@ const [
   readFile(resolve(root, "src/app/api/practice/sessions/route.ts"), "utf8"),
   readFile(resolve(root, "src/app/practice/loading.tsx"), "utf8"),
   readFile(resolve(root, "src/components/practice/practice-agent-loader.tsx"), "utf8"),
+  readFile(resolve(root, "src/app/practice/page.tsx"), "utf8"),
   readFile(resolve(root, "src/components/practice/practice-workspace-skeleton.tsx"), "utf8"),
   readFile(resolve(root, "src/lib/practice/client-helpers.ts"), "utf8"),
 ]);
@@ -40,6 +42,7 @@ const preferencesRoute = rawPreferencesRoute.replaceAll("\r\n", "\n");
 const sessionsRoute = rawSessionsRoute.replaceAll("\r\n", "\n");
 const practiceLoading = rawPracticeLoading.replaceAll("\r\n", "\n");
 const practiceLoader = rawPracticeLoader.replaceAll("\r\n", "\n");
+const practicePage = rawPracticePage.replaceAll("\r\n", "\n");
 const practiceSkeleton = rawPracticeSkeleton.replaceAll("\r\n", "\n");
 const clientHelpers = rawClientHelpers.replaceAll("\r\n", "\n");
 
@@ -101,6 +104,45 @@ assert(
 assert(
   sessionsRoute.includes("sessionSummary: sessions[0]"),
   "Sessions API must not reload the active practice_sessions row already returned by its list query",
+);
+const sessionsPost = sourceBlock(
+  sessionsRoute,
+  "export async function POST",
+  "\n}",
+);
+assert(
+  sessionsPost.includes("rounds: []") &&
+    !sessionsPost.includes("getPracticeSession("),
+  "Creating an empty Practice session must return its known empty detail without reloading history",
+);
+
+const ensureSession = sourceBlock(
+  client,
+  "async function ensureSession",
+  "async function startAssignmentPractice",
+);
+assert(
+  ensureSession.includes("setSessions(") &&
+    !ensureSession.includes("refreshPracticeState("),
+  "Creating the first Practice session must update local history without a redundant list refresh",
+);
+
+const createNewSession = sourceBlock(
+  client,
+  "function createNewSession",
+  "function showHistoricalRound",
+);
+assert(
+  !createNewSession.includes('"/api/practice/sessions?includeActive=0"') &&
+    !createNewSession.includes("refreshPracticeState(") &&
+    createNewSession.includes("sessions.find((item) =>") &&
+    createNewSession.includes("setSessions("),
+  "New Practice sessions must reuse hydrated history and avoid duplicate list/detail requests",
+);
+assert(
+  practicePage.includes("supabase.auth.getClaims()") &&
+    !practicePage.includes("supabase.auth.getUser()"),
+  "Practice first-screen auth must use locally verifiable claims instead of a remote user lookup",
 );
 
 const preferencesGet = sourceBlock(

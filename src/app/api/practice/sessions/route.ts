@@ -80,14 +80,13 @@ export async function POST(request: Request) {
       title: body.title,
       userId: auth.user.id,
     });
-    const detail = await getPracticeSession({
-      sessionId: session.id,
-      sessionSummary: session,
-      supabase,
-      userId: auth.user.id,
-    });
 
-    return NextResponse.json({ session: detail ?? session });
+    return NextResponse.json({
+      session: {
+        ...session,
+        rounds: [],
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },

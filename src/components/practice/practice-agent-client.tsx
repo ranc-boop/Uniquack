@@ -819,10 +819,10 @@ export function PracticeAgentClient({
       method: "POST",
     });
     setActiveSession(payload.session);
-    void refreshPracticeState(payload.session.id, {
-      deferAuxiliary: true,
-      sessionOverride: payload.session,
-    }).catch(() => undefined);
+    setSessions((current) => [
+      payload.session,
+      ...current.filter((item) => item.id !== payload.session.id),
+    ]);
     void runPreferenceMerge();
     return payload.session;
   }
@@ -1342,21 +1342,16 @@ export function PracticeAgentClient({
     startTransition(async () => {
       let handedOffToSessionSwitch = false;
       try {
-        const currentSession = sessions.find((item) => item.id === activeSession?.id);
-        if (currentSession && isReusableEmptyPracticeSession(currentSession, courseFrameworkId)) {
+        const reusableSession = sessions.find((item) =>
+          isReusableEmptyPracticeSession(item, courseFrameworkId),
+        );
+        if (reusableSession?.id === activeSession?.id) {
           resetSessionScopedDrafts();
           setGoal("");
           setPhase("start");
           return;
         }
 
-        const currentSessions = await jsonRequest<{ sessions: PracticeSessionSummary[] }>(
-          "/api/practice/sessions?includeActive=0",
-        );
-        setSessions(currentSessions.sessions);
-        const reusableSession = currentSessions.sessions.find((item) =>
-          isReusableEmptyPracticeSession(item, courseFrameworkId),
-        );
         if (reusableSession) {
           handedOffToSessionSwitch = true;
           switchSession(reusableSession.id);
@@ -1372,13 +1367,16 @@ export function PracticeAgentClient({
           method: "POST",
         });
         setActiveSession(payload.session);
+        setSessions((current) => [
+          payload.session,
+          ...current.filter((item) => item.id !== payload.session.id),
+        ]);
         setOutlineNotes(payload.session.outlineUserNotes ?? "");
         setWrongQuestions([]);
         resetRoundState("SESSION_CHANGE");
         resetSessionScopedDrafts();
         setGoal("");
         setPhase("start");
-        void refreshPracticeState(payload.session.id).catch(() => undefined);
         void runPreferenceMerge();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -1600,7 +1598,7 @@ export function PracticeAgentClient({
               <Button
                 aria-label="New practice session"
                 className="size-10"
-                disabled={isPending}
+                disabled={isPending || sessionHistoryLoading}
                 onClick={createNewSession}
                 size="icon"
                 type="button"
@@ -1644,7 +1642,7 @@ export function PracticeAgentClient({
           <div className="space-y-8">
             <button
               className="student-focus-ring group flex w-full cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-3 text-left ring-1 ring-slate-200/80 transition-all duration-200 hover:bg-sky-50 hover:ring-sky-200"
-              disabled={isPending}
+              disabled={isPending || sessionHistoryLoading}
               onClick={createNewSession}
               type="button"
             >
