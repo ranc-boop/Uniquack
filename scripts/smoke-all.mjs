@@ -35,6 +35,7 @@ await import("./classroom-foundation-smoke.mjs");
 await import("./student-my-work-smoke.mjs");
 await import("./teacher-assignment-flow-smoke.mjs");
 await import("./assignment-practice-evidence-smoke.mjs");
+await import("./assignment-practice-loading-performance-smoke.mjs");
 await import("./practice-provider-execution-smoke.mjs");
 await import("./loading-feedback-smoke.mjs");
 await import("./workspace-upload-performance-smoke.mjs");
