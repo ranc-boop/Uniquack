@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 
 import { PracticeWorkspaceErrorBoundary } from "@/components/practice/practice-workspace-error-boundary";
-import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-session-scope-panels";
+import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-workspace-skeleton";
 
 const PracticeAgentClient = dynamic(
   () =>

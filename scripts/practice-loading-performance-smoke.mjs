@@ -15,16 +15,42 @@ function sourceBlock(content, startMarker, endMarker) {
 }
 
 const root = process.cwd();
-const [rawClient, rawPersistence, rawPreferencesRoute, rawSessionsRoute] = await Promise.all([
+const [
+  rawClient,
+  rawPersistence,
+  rawPreferencesRoute,
+  rawSessionsRoute,
+  rawPracticeLoading,
+  rawPracticeLoader,
+  rawPracticeSkeleton,
+  rawClientHelpers,
+] = await Promise.all([
   readFile(resolve(root, "src/components/practice/practice-agent-client.tsx"), "utf8"),
   readFile(resolve(root, "src/lib/practice/persistence.ts"), "utf8"),
   readFile(resolve(root, "src/app/api/practice/preferences/route.ts"), "utf8"),
   readFile(resolve(root, "src/app/api/practice/sessions/route.ts"), "utf8"),
+  readFile(resolve(root, "src/app/practice/loading.tsx"), "utf8"),
+  readFile(resolve(root, "src/components/practice/practice-agent-loader.tsx"), "utf8"),
+  readFile(resolve(root, "src/components/practice/practice-workspace-skeleton.tsx"), "utf8"),
+  readFile(resolve(root, "src/lib/practice/client-helpers.ts"), "utf8"),
 ]);
 const client = rawClient.replaceAll("\r\n", "\n");
 const persistence = rawPersistence.replaceAll("\r\n", "\n");
 const preferencesRoute = rawPreferencesRoute.replaceAll("\r\n", "\n");
 const sessionsRoute = rawSessionsRoute.replaceAll("\r\n", "\n");
+const practiceLoading = rawPracticeLoading.replaceAll("\r\n", "\n");
+const practiceLoader = rawPracticeLoader.replaceAll("\r\n", "\n");
+const practiceSkeleton = rawPracticeSkeleton.replaceAll("\r\n", "\n");
+const clientHelpers = rawClientHelpers.replaceAll("\r\n", "\n");
+
+assert(
+  practiceLoading.includes("@/components/practice/practice-workspace-skeleton") &&
+    practiceLoader.includes("@/components/practice/practice-workspace-skeleton") &&
+    client.includes("@/components/practice/practice-workspace-skeleton") &&
+    !practiceSkeleton.includes('"use client"') &&
+    !practiceSkeleton.includes("@/components/math-content"),
+  "Practice loading fallback must remain a dependency-light shared skeleton.",
+);
 
 const initialHydration = sourceBlock(
   client,
@@ -41,7 +67,8 @@ assert(
   client.includes("deferAuxiliary: true") &&
     client.includes("nextSession?.sourceScopeLockedAt") &&
     client.includes("void auxiliaryStatePromise.then") &&
-    client.includes("(caught: unknown) => ({ error: caught })") &&
+    client.includes("settlePracticeRequest(") &&
+    clientHelpers.includes("(error: unknown) => error") &&
     client.includes("wrongStatePromise") &&
     !client.includes("const wrongPayload = await wrongPayloadPromise"),
   "Practice entry must not block critical session hydration on auxiliary source/framework/preferences data",

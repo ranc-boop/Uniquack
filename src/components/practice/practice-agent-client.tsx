@@ -19,8 +19,8 @@ import {
   PracticeSessionListLoading,
   PracticeSourceSelector,
   PracticeStarterGoals,
-  PracticeWorkspaceSkeleton,
 } from "@/components/practice/practice-session-scope-panels";
+import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-workspace-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
