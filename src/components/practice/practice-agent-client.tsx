@@ -1387,7 +1387,6 @@ export function PracticeAgentClient({
     setSessionAction("creating");
     setError(null);
     startTransition(async () => {
-      let handedOffToSessionSwitch = false;
       try {
         const reusableSession = sessions.find((item) =>
           isReusableEmptyPracticeSession(item, courseFrameworkId),
@@ -1400,8 +1399,16 @@ export function PracticeAgentClient({
         }
 
         if (reusableSession) {
-          handedOffToSessionSwitch = true;
-          switchSession(reusableSession.id);
+          setActiveSession({
+            ...reusableSession,
+            rounds: [],
+          });
+          setOutlineNotes(reusableSession.outlineUserNotes ?? "");
+          setWrongQuestions([]);
+          resetRoundState("SESSION_CHANGE");
+          resetSessionScopedDrafts();
+          setGoal("");
+          setPhase("start");
           return;
         }
 
@@ -1428,7 +1435,7 @@ export function PracticeAgentClient({
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       } finally {
-        if (!handedOffToSessionSwitch) setSessionAction(null);
+        setSessionAction(null);
       }
     });
   }

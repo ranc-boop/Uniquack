@@ -151,7 +151,9 @@ const createNewSession = sourceBlock(
 assert(
   !createNewSession.includes('"/api/practice/sessions?includeActive=0"') &&
     !createNewSession.includes("refreshPracticeState(") &&
+    !createNewSession.includes("switchSession(") &&
     createNewSession.includes("sessions.find((item) =>") &&
+    createNewSession.includes("rounds: []") &&
     createNewSession.includes("setSessions("),
   "New Practice sessions must reuse hydrated history and avoid duplicate list/detail requests",
 );
