@@ -23,6 +23,7 @@ const [
   rawPracticeLoading,
   rawPracticeLoader,
   rawPracticePage,
+  rawPracticeScopePanels,
   rawPracticeSkeleton,
   rawClientHelpers,
 ] = await Promise.all([
@@ -33,6 +34,7 @@ const [
   readFile(resolve(root, "src/app/practice/loading.tsx"), "utf8"),
   readFile(resolve(root, "src/components/practice/practice-agent-loader.tsx"), "utf8"),
   readFile(resolve(root, "src/app/practice/page.tsx"), "utf8"),
+  readFile(resolve(root, "src/components/practice/practice-session-scope-panels.tsx"), "utf8"),
   readFile(resolve(root, "src/components/practice/practice-workspace-skeleton.tsx"), "utf8"),
   readFile(resolve(root, "src/lib/practice/client-helpers.ts"), "utf8"),
 ]);
@@ -43,6 +45,7 @@ const sessionsRoute = rawSessionsRoute.replaceAll("\r\n", "\n");
 const practiceLoading = rawPracticeLoading.replaceAll("\r\n", "\n");
 const practiceLoader = rawPracticeLoader.replaceAll("\r\n", "\n");
 const practicePage = rawPracticePage.replaceAll("\r\n", "\n");
+const practiceScopePanels = rawPracticeScopePanels.replaceAll("\r\n", "\n");
 const practiceSkeleton = rawPracticeSkeleton.replaceAll("\r\n", "\n");
 const clientHelpers = rawClientHelpers.replaceAll("\r\n", "\n");
 
@@ -53,6 +56,19 @@ assert(
     !practiceSkeleton.includes('"use client"') &&
     !practiceSkeleton.includes("@/components/math-content"),
   "Practice loading fallback must remain a dependency-light shared skeleton.",
+);
+assert(
+  !client.includes('} from "@/components/math-content"') &&
+    !client.includes('import { PracticeQuestionCard }') &&
+    !client.includes('import { PracticeRoundReviewPanel }') &&
+    !client.includes('import { ReadableDataCard') &&
+    !practiceScopePanels.includes("@/components/math-content") &&
+    client.includes('import("@/components/math-content")') &&
+    client.includes('import("@/components/practice/practice-question-card")') &&
+    client.includes('import("@/components/practice/practice-round-review-panel")') &&
+    client.includes('import("@/components/practice/practice-completion-panel")') &&
+    client.includes('import("@/components/practice/practice-readable-data-card")'),
+  "Practice starter must defer math rendering and round-only panels until their UI is visible.",
 );
 
 const initialHydration = sourceBlock(

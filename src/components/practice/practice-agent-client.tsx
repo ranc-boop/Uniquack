@@ -5,14 +5,6 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransiti
 import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import {
-  FeedbackText,
-  QuestionText,
-} from "@/components/math-content";
-import { PracticeQuestionCard } from "@/components/practice/practice-question-card";
-import { ReadableDataCard, threadStudyContext } from "@/components/practice/practice-readable-data-card";
-import { PracticeRoundReviewPanel } from "@/components/practice/practice-round-review-panel";
-import {
-  PracticeCompletionPanel,
   PracticeFrameworkSelector,
   PracticeInlineLoading,
   PracticeRoundNavigator,
@@ -73,6 +65,61 @@ import type {
   PracticeTraceEvent,
   PracticeWrongQuestionView,
 } from "@/lib/practice/types";
+import { threadStudyContext } from "@/lib/practice/thread-study-context";
+
+const FeedbackText = dynamic(
+  () => import("@/components/math-content").then((module) => module.FeedbackText),
+  { loading: () => null, ssr: false },
+);
+
+const QuestionText = dynamic(
+  () => import("@/components/math-content").then((module) => module.QuestionText),
+  { loading: () => null, ssr: false },
+);
+
+const PracticeCompletionPanel = dynamic(
+  () =>
+    import("@/components/practice/practice-completion-panel").then(
+      (module) => module.PracticeCompletionPanel,
+    ),
+  {
+    loading: () => <PracticeInlineLoading label="Loading completion report..." />,
+    ssr: false,
+  },
+);
+
+const PracticeQuestionCard = dynamic(
+  () =>
+    import("@/components/practice/practice-question-card").then(
+      (module) => module.PracticeQuestionCard,
+    ),
+  {
+    loading: () => <PracticeInlineLoading label="Loading question..." />,
+    ssr: false,
+  },
+);
+
+const PracticeRoundReviewPanel = dynamic(
+  () =>
+    import("@/components/practice/practice-round-review-panel").then(
+      (module) => module.PracticeRoundReviewPanel,
+    ),
+  {
+    loading: () => <PracticeInlineLoading label="Loading round review..." />,
+    ssr: false,
+  },
+);
+
+const ReadableDataCard = dynamic(
+  () =>
+    import("@/components/practice/practice-readable-data-card").then(
+      (module) => module.ReadableDataCard,
+    ),
+  {
+    loading: () => <PracticeInlineLoading label="Loading study state..." />,
+    ssr: false,
+  },
+);
 
 const TracePanel = dynamic(
   () => import("@/components/practice/practice-trace-panel").then((module) => module.TracePanel),
