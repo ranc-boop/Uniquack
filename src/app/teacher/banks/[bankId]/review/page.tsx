@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   canManageBankContent,
-  getTeacherQuestionBankDetail,
+  getTeacherQuestionBankAccess,
   listBankReviewDraftQuestions,
   QuestionBankSchemaMissingError,
   type BankReviewDraftQuestion,
@@ -238,19 +238,21 @@ export default async function TeacherBankReviewPage({
   let draftPage;
 
   try {
-    detail = await getTeacherQuestionBankDetail({
-      bankId,
-      profileId: profile.id,
-      supabase,
-    });
-    draftPage = await listBankReviewDraftQuestions({
-      bankId,
-      page,
-      pageSize,
-      query: query.q,
-      reviewStatus,
-      supabase,
-    });
+    [detail, draftPage] = await Promise.all([
+      getTeacherQuestionBankAccess({
+        bankId,
+        profileId: profile.id,
+        supabase,
+      }),
+      listBankReviewDraftQuestions({
+        bankId,
+        page,
+        pageSize,
+        query: query.q,
+        reviewStatus,
+        supabase,
+      }),
+    ]);
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
       return <SetupNeededState />;

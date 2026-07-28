@@ -1260,6 +1260,33 @@ export type Database = {
           total_count: number;
         }>;
       };
+      get_active_taxonomy_catalog_v1: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      list_teacher_question_bank_summaries_v1: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          active_member_count: number;
+          assignment_ready_count: number;
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          id: string;
+          import_batch_count: number;
+          membership_role: string;
+          metadata: Json;
+          name: string;
+          organization_id: string;
+          owner_id: string;
+          question_count: number;
+          review_draft_count: number;
+          status: string;
+          updated_at: string;
+          updated_by: string | null;
+          visibility: string;
+        }>;
+      };
       initialize_practice_session_sources: {
         Args: {
           p_assignment_id?: string | null;
