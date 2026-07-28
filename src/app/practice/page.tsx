@@ -18,11 +18,10 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
 
   const query = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const userId = claimsData?.claims.sub;
 
-  if (!user) {
+  if (typeof userId !== "string" || !userId) {
     const next = query.assignmentId
       ? `/practice?assignmentId=${encodeURIComponent(query.assignmentId)}`
       : "/practice";

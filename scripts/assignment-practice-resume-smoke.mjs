@@ -148,8 +148,7 @@ assert(
   "completed and in-progress linked sessions must return without creating a new attempt",
 );
 assert(
-  client.includes("server-side linked-session resume") &&
-    client.includes("restoreRoundFromHistory(currentRound, restoredSession)") &&
+  client.includes("restoreRoundFromHistory(currentRound, restoredSession)") &&
     !client.includes("localStorage.setItem") &&
     !client.includes("sessionId: launchAssignmentId"),
   "the client may suppress a mounted duplicate but must restore server-owned session state",

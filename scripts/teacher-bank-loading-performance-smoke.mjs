@@ -10,11 +10,19 @@ function assert(condition, message) {
   }
 }
 
-const [dashboard, questionBanks, importsPage, questionsPage, adminQuestionsPage] = await Promise.all([
+const [
+  dashboard,
+  questionBanks,
+  importsPage,
+  questionsPage,
+  reviewPage,
+  adminQuestionsPage,
+] = await Promise.all([
   read("src/lib/teacher-dashboard.ts"),
   read("src/lib/question-banks.ts"),
   read("src/app/teacher/banks/[bankId]/imports/page.tsx"),
   read("src/app/teacher/banks/[bankId]/questions/page.tsx"),
+  read("src/app/teacher/banks/[bankId]/review/page.tsx"),
   read("src/app/admin/questions/page.tsx"),
 ]);
 
@@ -41,6 +49,46 @@ assert(
 const bankListSource = questionBanks.slice(bankListStart, bankDetailStart);
 const bankDetailSource = questionBanks.slice(bankDetailStart, bankAccessStart);
 const bankAccessSource = questionBanks.slice(bankAccessStart);
+const reviewListStart = questionBanks.indexOf(
+  "export async function listBankReviewDraftQuestions",
+);
+const reviewItemsStart = questionBanks.indexOf(
+  "if (!reviewQuestionIds.length)",
+  reviewListStart,
+);
+const approvedQuestionListStart = questionBanks.indexOf(
+  "export async function listBankApprovedQuestions",
+);
+const bankQuestionPageStart = questionBanks.indexOf(
+  "export async function listBankQuestionsPage",
+);
+const bankQuestionPageEnd = questionBanks.indexOf(
+  "export function canManageBankMembers",
+  bankQuestionPageStart,
+);
+const reviewPageRequestSource = questionBanks.slice(
+  reviewListStart,
+  reviewItemsStart,
+);
+const reviewEnrichmentSource = questionBanks.slice(
+  reviewItemsStart,
+  approvedQuestionListStart,
+);
+const bankQuestionPageSource = questionBanks.slice(
+  bankQuestionPageStart,
+  bankQuestionPageEnd,
+);
+
+assert(
+  bankListSource.includes(
+    'supabase.rpc("list_teacher_question_bank_summaries_v1")',
+  ) &&
+    bankListSource.indexOf(
+      'supabase.rpc("list_teacher_question_bank_summaries_v1")',
+    ) < bankListSource.indexOf('.from("bank_members")') &&
+    bankListSource.includes("isMissingQuestionBankSummaryRpc"),
+  "Teacher Library list must prefer one current-user read-model RPC and retain a missing-migration fallback.",
+);
 
 assert(
   bankListSource.includes("await Promise.all([") &&
@@ -63,6 +111,37 @@ assert(
     bankAccessSource.includes('.from("bank_members")'),
   "Teacher Library access must load the visible bank and current membership in parallel.",
 );
+assert(
+  reviewListStart >= 0 &&
+    reviewItemsStart > reviewListStart &&
+    approvedQuestionListStart > reviewItemsStart &&
+    reviewPageRequestSource.includes('"search_bank_review_question_ids"') &&
+    reviewPageRequestSource.includes("reviewPageRows?.[0]?.total_count") &&
+    !reviewPageRequestSource.includes("await Promise.all([") &&
+    reviewPageRequestSource.includes(
+      "if (!reviewPageRows?.length && safePage > 1)",
+    ) &&
+    reviewPageRequestSource.includes('"count_bank_review_questions"'),
+  "Library Review Draft pagination must reuse the page RPC total and reserve the count RPC for an empty deep-page fallback.",
+);
+assert(
+  reviewEnrichmentSource.includes("reviewItemsByQuestionResult") &&
+    reviewEnrichmentSource.includes("reviewItemsByIdResult") &&
+    reviewEnrichmentSource.includes(
+      "const [importBatchResult, tagNodeResult] = await Promise.all([",
+    ),
+  "Library Review Draft enrichment must batch review-item lookups with media metadata and overlap import-batch and taxonomy lookups.",
+);
+assert(
+  bankQuestionPageStart >= 0 &&
+    bankQuestionPageEnd > bankQuestionPageStart &&
+    bankQuestionPageSource.includes('"search_bank_question_rows"') &&
+    bankQuestionPageSource.includes("rows[0]?.total_count") &&
+    !bankQuestionPageSource.includes("await Promise.all([") &&
+    bankQuestionPageSource.includes("if (!rows.length && safePage > 1)") &&
+    bankQuestionPageSource.includes('"count_bank_question_rows"'),
+  "Library question pagination must avoid a duplicate count scan on normal pages and retain only the empty deep-page fallback.",
+);
 
 assert(
   importsPage.includes('mode === "ai" ? Promise.resolve(null) : loadTaxonomyCatalog(supabase)') &&
@@ -83,14 +162,27 @@ assert(
 assert(
   questionsPage.includes("getTeacherQuestionBankAccess({") &&
     !questionsPage.includes("getTeacherQuestionBankDetail({") &&
-    questionsPage.includes("[access, questionPage, { error: governanceProbeError }] = await Promise.all(["),
-  "Library questions must use lightweight access and parallelize access, pagination, and governance capability checks.",
+    questionsPage.includes("[access, questionPage] = await Promise.all([") &&
+    !questionsPage.includes("governanceProbeError") &&
+    questionsPage.includes("const governanceAvailable = true"),
+  "Library questions must overlap lightweight access with pagination and reuse the page RPC as the governance capability check.",
+);
+assert(
+  reviewPage.includes("getTeacherQuestionBankAccess({") &&
+    !reviewPage.includes("getTeacherQuestionBankDetail({") &&
+    reviewPage.includes("[detail, draftPage] = await Promise.all(["),
+  "Library Review Drafts must overlap lightweight access with draft loading instead of fetching unused detail metrics first.",
 );
 assert(
   adminQuestionsPage.includes("const [params, , supabase] = await Promise.all([") &&
-    adminQuestionsPage.includes("{ data: taxonomyAssignments, error: taxonomyAssignmentsError }") &&
-    adminQuestionsPage.includes("{ data: importItems }"),
-  "Admin questions must overlap request setup and batch detail-only taxonomy/import lookups.",
+    adminQuestionsPage.includes("const taxonomyCatalogPromise = loadTaxonomyCatalog(supabase)") &&
+    adminQuestionsPage.includes("const focusedQuestionBundlePromise = focusedQuestionId") &&
+    adminQuestionsPage.includes("ADMIN_QUESTION_EDIT_SELECT") &&
+    adminQuestionsPage.includes("question_assets(") &&
+    adminQuestionsPage.includes("question_source_files(") &&
+    adminQuestionsPage.includes("import_batch_items(") &&
+    adminQuestionsPage.includes("question_taxonomy_assignments("),
+  "Admin focused-question loading must overlap taxonomy with one root-scoped edit bundle.",
 );
 
 console.log("PASS Teacher/Bank loading performance query-shape guard");

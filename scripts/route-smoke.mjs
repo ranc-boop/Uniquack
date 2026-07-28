@@ -452,9 +452,11 @@ assert(
   adminQuestionsPage.includes("ADMIN_QUESTION_PAGE_SIZE = 50") &&
     adminQuestionsPage.includes("ADMIN_QUESTION_SUMMARY_SELECT") &&
     adminQuestionsPage.includes("ADMIN_QUESTION_DETAIL_SELECT") &&
-    adminQuestionsPage.includes("focusedQuestionId && orderedQuestionIds.length") &&
+    adminQuestionsPage.includes("ADMIN_QUESTION_EDIT_SELECT") &&
+    adminQuestionsPage.includes("focusedQuestionBundlePromise") &&
+    adminQuestionsPage.includes('.is("owner_bank_id", null)') &&
     !adminQuestionsPage.includes('select("*"'),
-  "admin questions must use summary-first paged list loading and focused detail loading",
+  "admin questions must use summary-first paging and one root-scoped focused edit bundle",
 );
 assert(
   publicQuestionsPage.includes("const pageSize = 25") &&

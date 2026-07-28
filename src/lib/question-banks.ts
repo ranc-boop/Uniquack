@@ -177,6 +177,21 @@ function assertQuestionBankSchema(error: { message?: string } | null) {
   }
 }
 
+function isMissingQuestionBankSummaryRpc(error: {
+  code?: string;
+  message?: string;
+} | null) {
+  const message = error?.message?.toLowerCase() ?? "";
+  return (
+    error?.code === "42883" ||
+    error?.code === "PGRST202" ||
+    (
+      message.includes("list_teacher_question_bank_summaries_v1") &&
+      (message.includes("does not exist") || message.includes("schema cache"))
+    )
+  );
+}
+
 function countByBankId(rows: Array<{ bank_id: string }> | null | undefined) {
   const counts = new Map<string, number>();
 
@@ -212,6 +227,39 @@ export async function listTeacherQuestionBanks({
   profileId: string;
   supabase: SupabaseServerClient;
 }) {
+  const {
+    data: summaryRows,
+    error: summaryError,
+  } = await supabase.rpc("list_teacher_question_bank_summaries_v1");
+
+  if (!summaryError) {
+    return (summaryRows ?? []).map((row) => ({
+      activeMemberCount: Number(row.active_member_count ?? 0),
+      assignmentReadyCount: Number(row.assignment_ready_count ?? 0),
+      created_at: row.created_at,
+      created_by: row.created_by,
+      description: row.description,
+      id: row.id,
+      importBatchCount: Number(row.import_batch_count ?? 0),
+      membershipRole: row.membership_role as BankMemberRole,
+      metadata: row.metadata,
+      name: row.name,
+      organization_id: row.organization_id,
+      owner_id: row.owner_id,
+      questionCount: Number(row.question_count ?? 0),
+      reviewDraftCount: Number(row.review_draft_count ?? 0),
+      status: row.status as QuestionBankStatus,
+      updated_at: row.updated_at,
+      updated_by: row.updated_by,
+      visibility: row.visibility as QuestionBankVisibility,
+    } satisfies TeacherQuestionBankSummary));
+  }
+
+  if (!isMissingQuestionBankSummaryRpc(summaryError)) {
+    throw new Error(summaryError.message);
+  }
+
+  // Forward-compatible fallback while migration 0060 is not yet applied.
   const { data: memberships, error: membershipError } = await supabase
     .from("bank_members")
     .select("bank_id, role, status")
@@ -519,25 +567,33 @@ export async function listBankReviewDraftQuestions({
     p_query: query?.trim() || null,
     p_review_status: reviewStatus ?? null,
   };
-  const [
-    { data: reviewPageRows, error: reviewPageError },
-    { data: reviewTotal, error: reviewCountError },
-  ] = await Promise.all([
-    supabase.rpc("search_bank_review_question_ids", {
+  const { data: reviewPageRows, error: reviewPageError } = await supabase.rpc(
+    "search_bank_review_question_ids",
+    {
       ...reviewFilters,
       p_bank_id: bankId,
       p_limit: safePageSize,
       p_offset: (safePage - 1) * safePageSize,
-    }),
-    supabase.rpc("count_bank_review_questions", reviewFilters),
-  ]);
+    },
+  );
 
   assertQuestionBankSchema(reviewPageError);
-  assertQuestionBankSchema(reviewCountError);
   if (reviewPageError) throw new Error(reviewPageError.message);
-  if (reviewCountError) throw new Error(reviewCountError.message);
   const reviewQuestionIds = (reviewPageRows ?? []).map((row) => row.question_id);
-  const total = Number(reviewTotal ?? 0);
+  let total = Number(reviewPageRows?.[0]?.total_count ?? 0);
+
+  // The page RPC already returns count(*) over() for every non-empty page.
+  // Only an out-of-range deep page needs the count-only fallback so the caller
+  // can redirect to the last valid page.
+  if (!reviewPageRows?.length && safePage > 1) {
+    const { data: reviewTotal, error: reviewCountError } = await supabase.rpc(
+      "count_bank_review_questions",
+      reviewFilters,
+    );
+    assertQuestionBankSchema(reviewCountError);
+    if (reviewCountError) throw new Error(reviewCountError.message);
+    total = Number(reviewTotal ?? 0);
+  }
 
   if (!reviewQuestionIds.length) {
     return {
@@ -563,7 +619,21 @@ export async function listBankReviewDraftQuestions({
   }
 
   const questionIds = (questions ?? []).map((question) => question.id);
-  const [tagResult, importItemResult, assetResult, sourceFileResult] = questionIds.length
+  const sourceReviewItemIds = Array.from(
+    new Set(
+      (questions ?? [])
+        .map((question) => question.source_review_item_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const [
+    tagResult,
+    importItemResult,
+    assetResult,
+    sourceFileResult,
+    reviewItemsByQuestionResult,
+    reviewItemsByIdResult,
+  ] = questionIds.length
     ? await Promise.all([
         supabase
           .from("question_taxonomy_assignments")
@@ -592,8 +662,28 @@ export async function listBankReviewDraftQuestions({
           .neq("status", "deleted")
           .order("created_at")
           .limit(300),
+        supabase
+          .from("review_draft_items")
+          .select(
+            "id, created_question_id, status, target_bank_id, draft_payload, validation_warnings",
+          )
+          .eq("item_kind", "question")
+          .in("created_question_id", questionIds)
+          .limit(200),
+        sourceReviewItemIds.length
+          ? supabase
+              .from("review_draft_items")
+              .select(
+                "id, created_question_id, status, target_bank_id, draft_payload, validation_warnings",
+              )
+              .eq("item_kind", "question")
+              .in("id", sourceReviewItemIds)
+              .limit(200)
+          : Promise.resolve({ data: [], error: null }),
       ])
     : [
+        { data: [], error: null },
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
@@ -609,6 +699,12 @@ export async function listBankReviewDraftQuestions({
   }
   if (assetResult.error) throw new Error(assetResult.error.message);
   if (sourceFileResult.error) throw new Error(sourceFileResult.error.message);
+  if (reviewItemsByQuestionResult.error) {
+    throw new Error(reviewItemsByQuestionResult.error.message);
+  }
+  if (reviewItemsByIdResult.error) {
+    throw new Error(reviewItemsByIdResult.error.message);
+  }
 
   const assetsByQuestionId = new Map<string, QuestionAssetView[]>();
   for (const asset of assetResult.data ?? []) {
@@ -649,20 +745,35 @@ export async function listBankReviewDraftQuestions({
     }
   }
   const importBatchIds = Array.from(new Set(importBatchIdByQuestionId.values()));
-  const { data: importBatches, error: importBatchesError } = importBatchIds.length
-    ? await supabase
-        .from("import_batches")
-        .select("id, summary")
-        .in("id", importBatchIds)
-        .limit(100)
-    : { data: [], error: null };
+  const tagIds = Array.from(
+    new Set((tagResult.data ?? []).map((row) => row.tag_id).filter(Boolean)),
+  );
+  const [importBatchResult, tagNodeResult] = await Promise.all([
+    importBatchIds.length
+      ? supabase
+          .from("import_batches")
+          .select("id, summary")
+          .in("id", importBatchIds)
+          .limit(100)
+      : Promise.resolve({ data: [], error: null }),
+    tagIds.length
+      ? supabase
+          .from("taxonomy_nodes")
+          .select("tag_id, label, facet_key")
+          .in("tag_id", tagIds)
+          .limit(300)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
 
-  if (importBatchesError) {
-    throw new Error(importBatchesError.message);
+  if (importBatchResult.error) {
+    throw new Error(importBatchResult.error.message);
+  }
+  if (tagNodeResult.error) {
+    throw new Error(tagNodeResult.error.message);
   }
 
   const questionBoundaryPlanByBatchId = new Map<string, unknown>(
-    (importBatches ?? []).map((batch) => {
+    (importBatchResult.data ?? []).map((batch) => {
       const summary =
         batch.summary && typeof batch.summary === "object"
           ? (batch.summary as Record<string, unknown>)
@@ -676,60 +787,18 @@ export async function listBankReviewDraftQuestions({
     }),
   );
 
-  const sourceReviewItemIds = Array.from(
-    new Set(
-      (questions ?? [])
-        .map((question) => question.source_review_item_id)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  );
-  const reviewItems: Array<{
+  type ReviewItemRow = {
     created_question_id: string | null;
     draft_payload: unknown;
     id: string;
     status: BankReviewDraftQuestion["reviewItemStatus"];
     target_bank_id: string | null;
     validation_warnings?: unknown;
-  }> = [];
-
-  if (questionIds.length) {
-    const { data: itemsByQuestion, error: itemsByQuestionError } =
-      await supabase
-        .from("review_draft_items")
-        .select("id, created_question_id, status, target_bank_id, draft_payload, validation_warnings")
-        .eq("item_kind", "question")
-        .in("created_question_id", questionIds)
-        .limit(200);
-
-    if (itemsByQuestionError) {
-      throw new Error(itemsByQuestionError.message);
-    }
-
-    reviewItems.push(
-      ...((itemsByQuestion ?? []) as typeof reviewItems).filter(
-        (item) => !item.target_bank_id || item.target_bank_id === bankId,
-      ),
-    );
-  }
-
-  if (sourceReviewItemIds.length) {
-    const { data: itemsById, error: itemsByIdError } = await supabase
-      .from("review_draft_items")
-      .select("id, created_question_id, status, target_bank_id, draft_payload, validation_warnings")
-      .eq("item_kind", "question")
-      .in("id", sourceReviewItemIds)
-      .limit(200);
-
-    if (itemsByIdError) {
-      throw new Error(itemsByIdError.message);
-    }
-
-    reviewItems.push(
-      ...((itemsById ?? []) as typeof reviewItems).filter(
-        (item) => !item.target_bank_id || item.target_bank_id === bankId,
-      ),
-    );
-  }
+  };
+  const reviewItems = [
+    ...((reviewItemsByQuestionResult.data ?? []) as ReviewItemRow[]),
+    ...((reviewItemsByIdResult.data ?? []) as ReviewItemRow[]),
+  ].filter((item) => !item.target_bank_id || item.target_bank_id === bankId);
 
   const reviewItemByQuestionId = new Map<
     string,
@@ -744,23 +813,8 @@ export async function listBankReviewDraftQuestions({
     }
   }
 
-  const tagIds = Array.from(
-    new Set((tagResult.data ?? []).map((row) => row.tag_id).filter(Boolean)),
-  );
-  const { data: tagNodes, error: tagNodesError } = tagIds.length
-    ? await supabase
-        .from("taxonomy_nodes")
-        .select("tag_id, label, facet_key")
-        .in("tag_id", tagIds)
-        .limit(300)
-    : { data: [], error: null };
-
-  if (tagNodesError) {
-    throw new Error(tagNodesError.message);
-  }
-
   const tagNodeById = new Map(
-    (tagNodes ?? []).map((tag) => [tag.tag_id, tag]),
+    (tagNodeResult.data ?? []).map((tag) => [tag.tag_id, tag]),
   );
   const tagsByQuestionId = new Map<string, string[]>();
   const tagSummariesByQuestionId = new Map<
@@ -986,23 +1040,30 @@ export async function listBankQuestionsPage({
     p_source_kind: sourceKind ?? null,
     p_taxonomy_tag_id: taxonomyTagId?.trim() || null,
   };
-  const [
-    { data, error },
-    { data: totalCount, error: countError },
-  ] = await Promise.all([
-    supabase.rpc("search_bank_question_rows", {
-      ...rpcFilters,
-      p_limit: safePageSize,
-      p_offset: (safePage - 1) * safePageSize,
-    }),
-    supabase.rpc("count_bank_question_rows", rpcFilters),
-  ]);
+  const { data, error } = await supabase.rpc("search_bank_question_rows", {
+    ...rpcFilters,
+    p_limit: safePageSize,
+    p_offset: (safePage - 1) * safePageSize,
+  });
 
   assertQuestionBankSchema(error);
-  assertQuestionBankSchema(countError);
   if (error) throw new Error(error.message);
-  if (countError) throw new Error(countError.message);
   const rows = data ?? [];
+  let total = Number(rows[0]?.total_count ?? 0);
+
+  // The search RPC includes count(*) over(), so the normal list/filter path
+  // should not repeat the same filtered scan through a second count RPC.
+  // Preserve a count-only fallback for stale, out-of-range deep-page URLs.
+  if (!rows.length && safePage > 1) {
+    const { data: totalCount, error: countError } = await supabase.rpc(
+      "count_bank_question_rows",
+      rpcFilters,
+    );
+    assertQuestionBankSchema(countError);
+    if (countError) throw new Error(countError.message);
+    total = Number(totalCount ?? 0);
+  }
+
   return {
     items: rows.map((row) => {
       const tagSummaries = Array.isArray(row.tag_summaries)
@@ -1032,7 +1093,7 @@ export async function listBankQuestionsPage({
     }) as BankApprovedQuestion[],
     page: safePage,
     pageSize: safePageSize,
-    total: Number(totalCount ?? 0),
+    total,
   };
 }
 

@@ -121,7 +121,7 @@ export default async function QuestionDetailPage({
   }
 
   const supabase = await createClient();
-  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
+  const taxonomyCatalogPromise = loadTaxonomyCatalog(supabase);
   const { data: question, error: questionError } = await supabase
     .from("questions")
     .select(
@@ -146,10 +146,12 @@ export default async function QuestionDetailPage({
   }
 
   const [
+    { catalog: taxonomyCatalog },
     { data: video, error: videoError },
     { data: displayedAssets, error: displayedAssetsError },
     { data: taxonomyAssignments, error: taxonomyAssignmentsError },
   ] = await Promise.all([
+    taxonomyCatalogPromise,
     supabase
       .from("videos")
       .select(

@@ -156,17 +156,18 @@ const createFlow = clientSource.slice(
 );
 assert(
   createFlow.indexOf("setActiveSession(payload.session)") <
-      createFlow.indexOf("await refreshPracticeState(payload.session.id)") &&
+      createFlow.indexOf("setSessions((current)") &&
+    createFlow.includes("current.filter((item) => item.id !== payload.session.id)") &&
+    !createFlow.includes("refreshPracticeState(") &&
     refreshFlow.includes("setSessions(sessionPayload.sessions)") &&
     refreshFlow.includes("setActiveSession(nextSession)"),
-  "create must activate the response and await the canonical session-list refetch",
+  "create must activate and upsert the canonical response without a duplicate session refetch",
 );
 assert(
   clientSource.includes('data-testid="practice-session-list"') &&
     clientSource.includes('data-testid="practice-session-item"') &&
     clientSource.includes('data-session-active={activeSession?.id === item.id ? "yes" : "no"}') &&
-    clientSource.includes("sessions.length ? sessions.map") &&
-    !clientSource.includes("sessions.filter"),
+    clientSource.includes("sessions.length ? sessions.map"),
   "empty sessions must render once with an ID-free semantic active marker",
 );
 

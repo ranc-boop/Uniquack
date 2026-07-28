@@ -105,23 +105,19 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
   }
 
   const supabase = await createClient();
-  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   const searchPattern = postgrestLikePattern(search);
   const difficultyFiltered = minDifficulty !== 0 || maxDifficulty !== 1000;
-  const { data: difficultyQuestions } = difficultyFiltered
-    ? await supabase
+  const difficultyQuestionsPromise = difficultyFiltered
+    ? supabase
         .from("questions")
         .select("id")
         .eq("status", "published")
         .gte("difficulty_rating", minDifficulty)
         .lte("difficulty_rating", maxDifficulty)
         .limit(VIDEO_QUESTION_PREFILTER_LIMIT)
-    : { data: null };
-  const difficultyQuestionIds = (difficultyQuestions ?? []).map(
-    (question) => question.id,
-  );
-  const { data: searchQuestions } = searchPattern
-    ? await supabase
+    : Promise.resolve({ data: null });
+  const searchQuestionsPromise = searchPattern
+    ? supabase
         .from("questions")
         .select("id")
         .eq("status", "published")
@@ -129,7 +125,17 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
           `question_code.ilike.%${searchPattern}%,title.ilike.%${searchPattern}%`,
         )
         .limit(VIDEO_SEARCH_QUESTION_LIMIT)
-    : { data: null };
+    : Promise.resolve({ data: null });
+  const [taxonomyResult, difficultyResult, searchResult] = await Promise.all([
+    loadTaxonomyCatalog(supabase),
+    difficultyQuestionsPromise,
+    searchQuestionsPromise,
+  ]);
+  const { catalog: taxonomyCatalog } = taxonomyResult;
+  const difficultyQuestionIds = (difficultyResult.data ?? []).map(
+    (question) => question.id,
+  );
+  const searchQuestions = searchResult.data;
   const searchQuestionIds = (searchQuestions ?? []).map(
     (question) => question.id,
   );
@@ -164,22 +170,32 @@ export default async function VideosPage({ searchParams }: VideosPageProps) {
     from,
     to,
   );
-  const questionIds = (videos ?? []).map((video) => video.question_id);
-  const { data: questions, error: questionsError } = questionIds.length
-    ? await supabase
+  const questionIds = Array.from(
+    new Set((videos ?? []).map((video) => video.question_id)),
+  );
+  const questionsPromise = questionIds.length
+    ? supabase
         .from("questions")
         .select("id, question_code, title, difficulty_rating")
         .eq("status", "published")
-        .in("id", Array.from(new Set(questionIds)))
-    : { data: [], error: null };
-  const { data: taxonomyAssignments, error: taxonomyAssignmentsError } =
-    questionIds.length
-      ? await supabase
-          .from("question_taxonomy_assignments")
-          .select("question_id, tag_id, review_status")
-          .eq("review_status", "approved")
-          .in("question_id", Array.from(new Set(questionIds)))
-      : { data: [], error: null };
+        .in("id", questionIds)
+    : Promise.resolve({ data: [], error: null });
+  const taxonomyAssignmentsPromise = questionIds.length
+    ? supabase
+        .from("question_taxonomy_assignments")
+        .select("question_id, tag_id, review_status")
+        .eq("review_status", "approved")
+        .in("question_id", questionIds)
+    : Promise.resolve({ data: [], error: null });
+  const [questionsResult, taxonomyAssignmentsResult] = await Promise.all([
+    questionsPromise,
+    taxonomyAssignmentsPromise,
+  ]);
+  const { data: questions, error: questionsError } = questionsResult;
+  const {
+    data: taxonomyAssignments,
+    error: taxonomyAssignmentsError,
+  } = taxonomyAssignmentsResult;
   const questionById = new Map(
     (questions ?? []).map((question) => [question.id, question]),
   );

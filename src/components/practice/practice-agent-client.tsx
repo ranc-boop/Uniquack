@@ -5,22 +5,14 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransiti
 import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import {
-  FeedbackText,
-  QuestionText,
-} from "@/components/math-content";
-import { PracticeQuestionCard } from "@/components/practice/practice-question-card";
-import { ReadableDataCard, threadStudyContext } from "@/components/practice/practice-readable-data-card";
-import { PracticeRoundReviewPanel } from "@/components/practice/practice-round-review-panel";
-import {
-  PracticeCompletionPanel,
   PracticeFrameworkSelector,
   PracticeInlineLoading,
   PracticeRoundNavigator,
   PracticeSessionListLoading,
   PracticeSourceSelector,
   PracticeStarterGoals,
-  PracticeWorkspaceSkeleton,
 } from "@/components/practice/practice-session-scope-panels";
+import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-workspace-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,6 +65,61 @@ import type {
   PracticeTraceEvent,
   PracticeWrongQuestionView,
 } from "@/lib/practice/types";
+import { threadStudyContext } from "@/lib/practice/thread-study-context";
+
+const FeedbackText = dynamic(
+  () => import("@/components/math-content").then((module) => module.FeedbackText),
+  { loading: () => null, ssr: false },
+);
+
+const QuestionText = dynamic(
+  () => import("@/components/math-content").then((module) => module.QuestionText),
+  { loading: () => null, ssr: false },
+);
+
+const PracticeCompletionPanel = dynamic(
+  () =>
+    import("@/components/practice/practice-completion-panel").then(
+      (module) => module.PracticeCompletionPanel,
+    ),
+  {
+    loading: () => <PracticeInlineLoading label="Loading completion report..." />,
+    ssr: false,
+  },
+);
+
+const PracticeQuestionCard = dynamic(
+  () =>
+    import("@/components/practice/practice-question-card").then(
+      (module) => module.PracticeQuestionCard,
+    ),
+  {
+    loading: () => <PracticeInlineLoading label="Loading question..." />,
+    ssr: false,
+  },
+);
+
+const PracticeRoundReviewPanel = dynamic(
+  () =>
+    import("@/components/practice/practice-round-review-panel").then(
+      (module) => module.PracticeRoundReviewPanel,
+    ),
+  {
+    loading: () => <PracticeInlineLoading label="Loading round review..." />,
+    ssr: false,
+  },
+);
+
+const ReadableDataCard = dynamic(
+  () =>
+    import("@/components/practice/practice-readable-data-card").then(
+      (module) => module.ReadableDataCard,
+    ),
+  {
+    loading: () => <PracticeInlineLoading label="Loading study state..." />,
+    ssr: false,
+  },
+);
 
 const TracePanel = dynamic(
   () => import("@/components/practice/practice-trace-panel").then((module) => module.TracePanel),
@@ -107,6 +154,14 @@ type ApiError = { error?: unknown };
 type PracticeAgentClientProps = {
   assignmentId?: string | null;
   testOnlyDelayedHydration?: boolean;
+};
+type PracticeSessionsPayload = {
+  activeSession: PracticeSessionDetail | null;
+  pagination?: {
+    hasMore: boolean;
+    nextOffset: number;
+  };
+  sessions: PracticeSessionSummary[];
 };
 
 type TestOnlyDelayedHydrationStatus =
@@ -405,6 +460,8 @@ export function PracticeAgentClient({
   const [lastThinkingDurationMs, setLastThinkingDurationMs] = useState<number | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(Boolean(assignmentId));
   const [sessionHistoryLoading, setSessionHistoryLoading] = useState(true);
+  const [sessionHistoryHasMore, setSessionHistoryHasMore] = useState(false);
+  const [sessionHistoryLoadingMore, setSessionHistoryLoadingMore] = useState(false);
   const [practiceSourcesLoading, setPracticeSourcesLoading] = useState(!assignmentId);
   const [courseFrameworksLoading, setCourseFrameworksLoading] = useState(true);
   const [preferenceLoading, setPreferenceLoading] = useState(true);
@@ -486,10 +543,7 @@ export function PracticeAgentClient({
     } = {},
   ) {
     const shouldRestoreSession = restoreActive || Boolean(preferredSessionId);
-    const sessionPayloadPromise = jsonRequest<{
-      activeSession: PracticeSessionDetail | null;
-      sessions: PracticeSessionSummary[];
-    }>(
+    const sessionPayloadPromise = jsonRequest<PracticeSessionsPayload>(
       shouldRestoreSession && !preferredSessionId
         ? "/api/practice/sessions"
         : "/api/practice/sessions?includeActive=0",
@@ -520,10 +574,7 @@ export function PracticeAgentClient({
           () => setPracticeSourcesLoading(false),
         )
       : null;
-    let sessionPayload: {
-      activeSession: PracticeSessionDetail | null;
-      sessions: PracticeSessionSummary[];
-    };
+    let sessionPayload: PracticeSessionsPayload;
     try {
       sessionPayload = await sessionPayloadPromise;
     } finally {
@@ -565,6 +616,7 @@ export function PracticeAgentClient({
     ]).then((errors) => ({ error: errors.find(Boolean) }));
 
     setSessions(sessionPayload.sessions);
+    setSessionHistoryHasMore(Boolean(sessionPayload.pagination?.hasMore));
     setActiveSession(nextSession);
     setOutlineNotes(nextSession?.outlineUserNotes ?? "");
     if (nextSession?.status === "active" && nextSession.sourceScope.length) {
@@ -766,14 +818,14 @@ export function PracticeAgentClient({
 
   async function runPreferenceMerge() {
     try {
-      await jsonRequest<{ status: string }>(
+      const mergePayload = await jsonRequest<{
+        longTermPreference: string;
+        status: string;
+      }>(
         "/api/practice/preferences/merge/run",
         { method: "POST", body: "{}" },
       );
-      const preferencePayload = await jsonRequest<{ longTermPreference: string }>(
-        "/api/practice/preferences",
-      );
-      setLongTermMemory(preferencePayload.longTermPreference);
+      setLongTermMemory(mergePayload.longTermPreference);
     } catch {
       // Preference merge is opportunistic and must not block the active round.
     }
@@ -819,10 +871,10 @@ export function PracticeAgentClient({
       method: "POST",
     });
     setActiveSession(payload.session);
-    void refreshPracticeState(payload.session.id, {
-      deferAuxiliary: true,
-      sessionOverride: payload.session,
-    }).catch(() => undefined);
+    setSessions((current) => [
+      payload.session,
+      ...current.filter((item) => item.id !== payload.session.id),
+    ]);
     void runPreferenceMerge();
     return payload.session;
   }
@@ -1335,31 +1387,53 @@ export function PracticeAgentClient({
     });
   }
 
+  async function loadMoreSessions() {
+    setSessionHistoryLoadingMore(true);
+    setError(null);
+    try {
+      const payload = await jsonRequest<PracticeSessionsPayload>(
+        `/api/practice/sessions?includeActive=0&limit=25&offset=${sessions.length}`,
+      );
+      setSessions((current) => {
+        const byId = new Map(current.map((item) => [item.id, item]));
+        payload.sessions.forEach((item) => byId.set(item.id, item));
+        return Array.from(byId.values());
+      });
+      setSessionHistoryHasMore(Boolean(payload.pagination?.hasMore));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setSessionHistoryLoadingMore(false);
+    }
+  }
+
   function createNewSession() {
     const courseFrameworkId = selectedCourseFrameworkId || null;
     setSessionAction("creating");
     setError(null);
     startTransition(async () => {
-      let handedOffToSessionSwitch = false;
       try {
-        const currentSession = sessions.find((item) => item.id === activeSession?.id);
-        if (currentSession && isReusableEmptyPracticeSession(currentSession, courseFrameworkId)) {
+        const reusableSession = sessions.find((item) =>
+          isReusableEmptyPracticeSession(item, courseFrameworkId),
+        );
+        if (reusableSession?.id === activeSession?.id) {
           resetSessionScopedDrafts();
           setGoal("");
           setPhase("start");
           return;
         }
 
-        const currentSessions = await jsonRequest<{ sessions: PracticeSessionSummary[] }>(
-          "/api/practice/sessions?includeActive=0",
-        );
-        setSessions(currentSessions.sessions);
-        const reusableSession = currentSessions.sessions.find((item) =>
-          isReusableEmptyPracticeSession(item, courseFrameworkId),
-        );
         if (reusableSession) {
-          handedOffToSessionSwitch = true;
-          switchSession(reusableSession.id);
+          setActiveSession({
+            ...reusableSession,
+            rounds: [],
+          });
+          setOutlineNotes(reusableSession.outlineUserNotes ?? "");
+          setWrongQuestions([]);
+          resetRoundState("SESSION_CHANGE");
+          resetSessionScopedDrafts();
+          setGoal("");
+          setPhase("start");
           return;
         }
 
@@ -1372,18 +1446,21 @@ export function PracticeAgentClient({
           method: "POST",
         });
         setActiveSession(payload.session);
+        setSessions((current) => [
+          payload.session,
+          ...current.filter((item) => item.id !== payload.session.id),
+        ]);
         setOutlineNotes(payload.session.outlineUserNotes ?? "");
         setWrongQuestions([]);
         resetRoundState("SESSION_CHANGE");
         resetSessionScopedDrafts();
         setGoal("");
         setPhase("start");
-        void refreshPracticeState(payload.session.id).catch(() => undefined);
         void runPreferenceMerge();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       } finally {
-        if (!handedOffToSessionSwitch) setSessionAction(null);
+        setSessionAction(null);
       }
     });
   }
@@ -1426,8 +1503,9 @@ export function PracticeAgentClient({
       let handedOffToSessionSwitch = false;
       try {
         await jsonRequest<{ ok: boolean }>(`/api/practice/sessions/${sessionId}`, { method: "DELETE" });
-        const payload = await jsonRequest<{ sessions: PracticeSessionSummary[] }>("/api/practice/sessions?includeActive=0");
+        const payload = await jsonRequest<PracticeSessionsPayload>("/api/practice/sessions?includeActive=0");
         setSessions(payload.sessions);
+        setSessionHistoryHasMore(Boolean(payload.pagination?.hasMore));
         if (!deletedWasActive) return;
         const nextSession = payload.sessions.find((item) => item.id !== sessionId);
         if (nextSession) {
@@ -1600,7 +1678,7 @@ export function PracticeAgentClient({
               <Button
                 aria-label="New practice session"
                 className="size-10"
-                disabled={isPending}
+                disabled={isPending || sessionHistoryLoading}
                 onClick={createNewSession}
                 size="icon"
                 type="button"
@@ -1644,7 +1722,7 @@ export function PracticeAgentClient({
           <div className="space-y-8">
             <button
               className="student-focus-ring group flex w-full cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-3 text-left ring-1 ring-slate-200/80 transition-all duration-200 hover:bg-sky-50 hover:ring-sky-200"
-              disabled={isPending}
+              disabled={isPending || sessionHistoryLoading}
               onClick={createNewSession}
               type="button"
             >
@@ -1760,6 +1838,18 @@ export function PracticeAgentClient({
                 </div>
               )}
               </div>
+              {sessionHistoryHasMore ? (
+                <Button
+                  className="mt-2 w-full"
+                  disabled={isPending || sessionHistoryLoadingMore}
+                  onClick={() => void loadMoreSessions()}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  {sessionHistoryLoadingMore ? "Loading more..." : "Load more sessions"}
+                </Button>
+              ) : null}
             </div>
           </div>
         </section>

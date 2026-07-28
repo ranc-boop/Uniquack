@@ -27,6 +27,7 @@ import {
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
 import type { TeacherAIPdfParsingProfile } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
+import { runWithConcurrency } from "@/lib/async-concurrency";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 
@@ -86,24 +87,6 @@ function statusTone(status: LocalStatus) {
     return "border-sky-200 bg-sky-50 text-sky-800";
   }
   return "border-amber-200 bg-amber-50 text-amber-900";
-}
-
-async function runWithConcurrency<T>(
-  values: T[],
-  limit: number,
-  task: (value: T) => Promise<void>,
-) {
-  let nextIndex = 0;
-  async function worker() {
-    while (nextIndex < values.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      await task(values[index]!);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, values.length) }, () => worker()),
-  );
 }
 
 export function TeacherPdfBurstUpload({

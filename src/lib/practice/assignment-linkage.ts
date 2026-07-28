@@ -231,8 +231,8 @@ async function loadAssignmentPracticeResumeContext({
   supabase: SupabaseLike;
   userId: string;
 }) {
-  const { data: progress, error: progressError } =
-    await runAssignmentPracticeStartStage({
+  const [progressResult, linksResult] = await Promise.all([
+    runAssignmentPracticeStartStage({
       code: "ASSIGNMENT_LINKAGE_FAILED",
       operation: () =>
         supabase
@@ -242,7 +242,22 @@ async function loadAssignmentPracticeResumeContext({
           .eq("student_id", userId)
           .maybeSingle(),
       stage: "assignment_linkage",
-    });
+    }),
+    runAssignmentPracticeStartStage({
+      code: "ASSIGNMENT_LINKAGE_FAILED",
+      operation: () =>
+        supabase
+          .from("assignment_practice_sessions")
+          .select("practice_session_id, created_at")
+          .eq("assignment_id", assignmentId)
+          .eq("student_id", userId)
+          .order("created_at", { ascending: false })
+          .order("practice_session_id", { ascending: false }),
+      stage: "assignment_linkage",
+    }),
+  ]);
+  const { data: progress, error: progressError } = progressResult;
+  const { data: links, error: linksError } = linksResult;
 
   if (progressError) {
     throw assignmentPracticeStartError({
@@ -251,19 +266,6 @@ async function loadAssignmentPracticeResumeContext({
       stage: "assignment_linkage",
     });
   }
-
-  const { data: links, error: linksError } = await runAssignmentPracticeStartStage({
-    code: "ASSIGNMENT_LINKAGE_FAILED",
-    operation: () =>
-      supabase
-        .from("assignment_practice_sessions")
-        .select("practice_session_id, created_at")
-        .eq("assignment_id", assignmentId)
-        .eq("student_id", userId)
-        .order("created_at", { ascending: false })
-        .order("practice_session_id", { ascending: false }),
-    stage: "assignment_linkage",
-  });
 
   if (linksError) {
     throw assignmentPracticeStartError({
@@ -388,15 +390,29 @@ async function loadAssignedQuestionPracticeItems({
     });
   }
 
-  const { data: questions, error: questionError } = await runAssignmentPracticeStartStage({
-    code: "ASSIGNMENT_CONTENT_UNAVAILABLE",
-    operation: () =>
-      supabase
-        .from("questions")
-        .select("id, question_code, title, content_html, difficulty_rating, options, question_type, source")
-        .in("id", questionIds),
-    stage: "assignment_content",
-  });
+  const [questionsResult, taxonomyResult] = await Promise.all([
+    runAssignmentPracticeStartStage({
+      code: "ASSIGNMENT_CONTENT_UNAVAILABLE",
+      operation: () =>
+        supabase
+          .from("questions")
+          .select("id, question_code, title, content_html, difficulty_rating, options, question_type, source")
+          .in("id", questionIds),
+      stage: "assignment_content",
+    }),
+    runAssignmentPracticeStartStage({
+      code: "TAXONOMY_READ_FAILED",
+      operation: () =>
+        supabase
+          .from("question_taxonomy_assignments")
+          .select("question_id, tag_id")
+          .in("question_id", questionIds)
+          .eq("review_status", "approved"),
+      stage: "taxonomy",
+    }),
+  ]);
+  const { data: questions, error: questionError } = questionsResult;
+  const { data: taxonomyRows, error: taxonomyError } = taxonomyResult;
 
   if (questionError) {
     throw assignmentPracticeStartError({
@@ -419,18 +435,6 @@ async function loadAssignedQuestionPracticeItems({
       stage: "assignment_content",
     });
   }
-
-  const { data: taxonomyRows, error: taxonomyError } =
-    await runAssignmentPracticeStartStage({
-      code: "TAXONOMY_READ_FAILED",
-      operation: () =>
-        supabase
-          .from("question_taxonomy_assignments")
-          .select("question_id, tag_id")
-          .in("question_id", questionIds)
-          .eq("review_status", "approved"),
-      stage: "taxonomy",
-    });
 
   if (taxonomyError) {
     throw assignmentPracticeStartError({
@@ -472,11 +476,22 @@ export async function startAssignmentPractice({
   supabase: SupabaseLike;
   userId: string;
 }): Promise<AssignmentPracticeStartResult> {
-  await assertStudentProfile({ supabase, userId });
-  const { assignment, recommendations } = await loadAssignedQuestionPracticeItems({
+  const studentProfilePromise = assertStudentProfile({ supabase, userId });
+  const assignmentContentPromise = loadAssignedQuestionPracticeItems({
     assignmentId,
     supabase,
   });
+  const [studentProfileResult, assignmentContentResult] = await Promise.allSettled([
+    studentProfilePromise,
+    assignmentContentPromise,
+  ]);
+  if (studentProfileResult.status === "rejected") {
+    throw studentProfileResult.reason;
+  }
+  if (assignmentContentResult.status === "rejected") {
+    throw assignmentContentResult.reason;
+  }
+  const { assignment, recommendations } = assignmentContentResult.value;
   const goal = `Assignment: ${assignment.title}`;
   const resumeContext = await loadAssignmentPracticeResumeContext({
     assignmentId,

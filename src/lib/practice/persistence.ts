@@ -106,7 +106,7 @@ const PRACTICE_SESSION_SOURCE_FIELDS =
 const PRACTICE_SESSION_DETAIL_SELECT =
   `${PRACTICE_SESSION_FIELDS},practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
 const PRACTICE_SESSION_SUMMARY_SELECT =
-  `${PRACTICE_SESSION_FIELDS},practice_rounds(id),practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
+  `${PRACTICE_SESSION_FIELDS},practice_rounds(count),practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
 const PRACTICE_ROUND_HISTORY_SELECT =
   "id,next_round_goal,review_summary,round_goal,score_correct,score_total,trace";
 const PRACTICE_ROUND_QUESTION_HISTORY_SELECT =
@@ -130,6 +130,16 @@ function hasObjectKeys(value: unknown) {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function embeddedRelationCount(value: unknown) {
+  if (!Array.isArray(value) || !value.length) {
+    return 0;
+  }
+
+  const aggregate = asObject(value[0]);
+  const count = Number(aggregate.count);
+  return Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : value.length;
 }
 
 function compactLine(value: unknown, maxLength = 500) {
@@ -665,18 +675,26 @@ export async function countPendingPreferenceJobs({
 }
 
 export async function listPracticeSessions({
+  limit = 26,
+  offset = 0,
   supabase,
   userId,
 }: {
+  limit?: number;
+  offset?: number;
   supabase: SupabaseLike;
   userId: string;
 }) {
+  const boundedLimit = Math.min(51, Math.max(1, Math.trunc(limit)));
+  const boundedOffset = Math.max(0, Math.trunc(offset));
   const { data, error } = await supabase
     .from("practice_sessions")
     .select(PRACTICE_SESSION_SUMMARY_SELECT)
     .eq("user_id", userId)
     .eq("cache_prefix_version", CURRENT_PRACTICE_SESSION_SCHEMA_VERSION)
-    .order("last_activity_at", { ascending: false });
+    .order("last_activity_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(boundedOffset, boundedOffset + boundedLimit - 1);
 
   if (error) {
     throw new Error(error.message);
@@ -688,7 +706,10 @@ export async function listPracticeSessions({
       practice_session_sources?: unknown[];
     }
   >).map((row) =>
-    sessionSummaryFromRow({ ...row, round_count: row.practice_rounds?.length ?? 0 }),
+    sessionSummaryFromRow({
+      ...row,
+      round_count: embeddedRelationCount(row.practice_rounds),
+    }),
   );
 }
 

@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 59,
+  "latestActivePrefix": 61,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -73,7 +73,9 @@
     "0056_add_math_taxonomy_v2_catalog.sql",
     "0057_assignment_readiness_and_anon_search_hardening.sql",
     "0058_anonymous_public_question_policy_evaluation.sql",
-    "0059_quarantined_assignment_recovery.sql"
+    "0059_quarantined_assignment_recovery.sql",
+    "0060_question_management_read_models.sql",
+    "0061_question_taxonomy_search_materialization.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -265,6 +267,8 @@
     { "filename": "0056_add_math_taxonomy_v2_catalog.sql", "migrationNumber": 56, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 56, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "SQL Editor reported by operator", "evidenceSource": "Operator-reported apply followed by live taxonomy graph, closure, assignment, and question-integrity audit; no migration-ledger claim" },
     { "filename": "0057_assignment_readiness_and_anon_search_hardening.sql", "migrationNumber": 57, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 57, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Independent SQL review and embedded concurrency smoke passed before apply; hosted transaction preserved questions/items/progress and quarantined invalid delivery state; no migration-ledger claim" },
     { "filename": "0058_anonymous_public_question_policy_evaluation.sql", "migrationNumber": 58, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 58, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Independent helper-branch review and fresh-chain anonymous policy regression passed before hosted apply; no migration-ledger claim" },
-    { "filename": "0059_quarantined_assignment_recovery.sql", "migrationNumber": 59, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 59, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Independent SQL lock-order review plus embedded manager/student/unrelated-teacher recovery matrix passed before hosted apply; no migration-ledger claim" }
+    { "filename": "0059_quarantined_assignment_recovery.sql", "migrationNumber": 59, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 59, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Independent SQL lock-order review plus embedded manager/student/unrelated-teacher recovery matrix passed before hosted apply; no migration-ledger claim" },
+    { "filename": "0060_question_management_read_models.sql", "migrationNumber": 60, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 60, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Hosted catalog/ACL fingerprint, anon/authenticated role matrix, taxonomy payload parity, Library membership/count parity, and EXPLAIN ANALYZE validation passed; no migration-ledger claim" },
+    { "filename": "0061_question_taxonomy_search_materialization.sql", "migrationNumber": 61, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 61, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Hosted pre/post old-body comparison preserved rows, order, scalar fields, taxonomy sets and paths for admin include/exclude/default and anonymous published calls; DB execution fell from 3119 ms/83646 shared hits to 58.65 ms/1532 shared hits without owner, ACL, volatility, security mode, or search-path changes; no migration-ledger claim" }
   ]
 }

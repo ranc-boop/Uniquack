@@ -110,10 +110,9 @@ export default async function TeacherBankQuestionsPage({
     ? (query.source as BankQuestion["source_kind"])
     : undefined;
   let questionPage;
-  let governanceProbeError;
 
   try {
-    [access, questionPage, { error: governanceProbeError }] = await Promise.all([
+    [access, questionPage] = await Promise.all([
       getTeacherQuestionBankAccess({
         bankId,
         profileId: profile.id,
@@ -129,7 +128,6 @@ export default async function TeacherBankQuestionsPage({
         supabase,
         taxonomyTagId: query.taxonomy,
       }),
-      supabase.from("questions").select("revision_of_question_id").limit(1),
     ]);
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
@@ -146,13 +144,10 @@ export default async function TeacherBankQuestionsPage({
   const questions = questionPage.items;
   const { bank, currentUserRole } = access;
   const canManage = canManageBankContent(currentUserRole);
-  const governanceAvailable = !(
-    governanceProbeError &&
-    ["42P01", "42703", "42883"].includes(governanceProbeError.code ?? "")
-  );
-  if (governanceProbeError && governanceAvailable) {
-    throw new Error(governanceProbeError.message);
-  }
+  // search_bank_question_rows is installed by the same forward migration as
+  // revision/public governance. A successful page result is the capability
+  // check, so avoid a separate schema-probe query on every filter/page change.
+  const governanceAvailable = true;
   let publicQuestions: Array<{
     difficulty_rating: number;
     id: string;

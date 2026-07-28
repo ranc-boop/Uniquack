@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 import { FeedbackText } from "@/components/math-content";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { PracticeSessionDetail } from "@/lib/practice/types";
 
 function compactJson(value: unknown, maxLength = 1600) {
   try {
@@ -74,26 +73,6 @@ function objectHighlights(value: unknown, limit = 5): Array<{ label: string; val
     .map((key) => ({ label: humanizeKey(key), value: plainText(record[key]) }))
     .filter((item) => item.value)
     .slice(0, limit);
-}
-
-export function threadStudyContext(session: PracticeSessionDetail | null) {
-  const entries = session?.sessionThreadMessages ?? [];
-  const records = entries.map(asRecord).filter((entry): entry is Record<string, unknown> => Boolean(entry));
-  const checkpoint = [...records].reverse().find((entry) => entry.kind === "thread_checkpoint");
-  const currentTask = [...records].reverse().find((entry) => entry.kind === "current_task");
-  const episode = [...records].reverse().find((entry) => entry.kind === "episode_card");
-
-  if (!checkpoint && !currentTask && !episode) {
-    return session?.sessionState || session?.sessionMemory || null;
-  }
-
-  return {
-    checkpoint: checkpoint?.summary ?? checkpoint ?? null,
-    latest_episode: episode?.summary ?? episode ?? null,
-    latest_task: currentTask?.summary ?? currentTask ?? null,
-    locked_long_term_memory: session?.longTermMemorySnapshot || "",
-    thread_entries: records.length,
-  };
 }
 
 export function ReadableDataCard({

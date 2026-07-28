@@ -380,11 +380,15 @@ export async function getTeacherClassroomWorkspace({
   if (error) throw new Error(error.message);
   if (!classroom) return null;
 
-  const [summary] = await buildClassroomSummaries({
-    classrooms: [classroom as ClassroomBase],
-    supabase,
-  });
-  const [{ data: roster, error: rosterError }, assignments] = await Promise.all([
+  const [
+    summaries,
+    { data: roster, error: rosterError },
+    assignments,
+  ] = await Promise.all([
+    buildClassroomSummaries({
+      classrooms: [classroom as ClassroomBase],
+      supabase,
+    }),
     supabase
       .from("classroom_members")
       .select("id, user_id, role, status, joined_at, created_at")
@@ -396,6 +400,7 @@ export async function getTeacherClassroomWorkspace({
       supabase,
     }),
   ]);
+  const [summary] = summaries;
 
   if (rosterError) throw new Error(rosterError.message);
 
@@ -403,7 +408,11 @@ export async function getTeacherClassroomWorkspace({
   const assignedAssignmentIds = assignments
     .filter((assignment) => assignment.status === "assigned")
     .map((assignment) => assignment.id);
-  const [{ data: progressRows }, { data: practiceLinks }] = await Promise.all([
+  const [
+    { data: progressRows },
+    { data: practiceLinks },
+    { data: profiles },
+  ] = await Promise.all([
     assignedAssignmentIds.length
       ? supabase
           .from("student_assignment_progress")
@@ -416,13 +425,13 @@ export async function getTeacherClassroomWorkspace({
           .select("assignment_id, student_id, created_at")
           .in("assignment_id", assignedAssignmentIds)
       : Promise.resolve({ data: [] }),
+    userIds.length
+      ? supabase
+          .from("profiles")
+          .select("id, username, email, full_name, display_name, role")
+          .in("id", userIds)
+      : Promise.resolve({ data: [] }),
   ]);
-  const { data: profiles } = userIds.length
-    ? await supabase
-        .from("profiles")
-        .select("id, username, email, full_name, display_name, role")
-        .in("id", userIds)
-    : { data: [] };
   const profileById = new Map(
     ((profiles ?? []) as TeacherClassroomRosterMember["profile"][]).map((profile) => [
       profile?.id ?? "",

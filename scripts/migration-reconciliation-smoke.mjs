@@ -86,7 +86,7 @@ assert(
   "Exactly one executable canonical 0032 is allowed; Google 0032 must stay excluded.",
 );
 
-for (let number = 44; number <= 59; number += 1) {
+for (let number = 44; number <= 61; number += 1) {
   const filename = activeMigrationNames[number - 1];
   const entry = manifest.migrationInventory.find((candidate) => candidate.filename === filename);
   assert(
@@ -97,10 +97,11 @@ for (let number = 44; number <= 59; number += 1) {
   );
 }
 assert(
-  manifest.latestActivePrefix === 59 &&
-    activeMigrationNames.at(-2) === "0058_anonymous_public_question_policy_evaluation.sql" &&
-    activeMigrationNames.at(-1) === "0059_quarantined_assignment_recovery.sql",
-  "Quarantined Assignment recovery 0059 must be the canonical executable tail.",
+  manifest.latestActivePrefix === 61 &&
+    activeMigrationNames.at(-2) === "0060_question_management_read_models.sql" &&
+    activeMigrationNames.at(-1) ===
+      "0061_question_taxonomy_search_materialization.sql",
+  "Question taxonomy search materialization 0061 must be the canonical executable tail.",
 );
 
 for (const [filename, expectedHash] of Object.entries(manifest.frozenMigrationHashes)) {
@@ -213,8 +214,8 @@ if (process.argv.includes("--require-live-reconciliation")) {
 console.log(`PASS canonical migration inventory: ${migrationNames.length} files, ${activeMigrationNames.length} active`);
 console.log("PASS blocked Google 0032 is excluded from the active apply plan");
 console.log("PASS executable 0032 is teacher feedback notes only; raw duplicate is explicit");
-console.log("PASS canonical migrations 0044-0059 have explicit number/classification/order");
-console.log("PASS manifest-driven executable chain has canonical head 0059");
+console.log("PASS canonical migrations 0044-0061 have explicit number/classification/order");
+console.log("PASS manifest-driven executable chain has canonical head 0061");
 console.log(`PASS canonical RLS policy inventory: ${rlsTables.length} tables`);
 console.log("PASS historical 0039-0041 hashes remain unchanged");
 console.log(

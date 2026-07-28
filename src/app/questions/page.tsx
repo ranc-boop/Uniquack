@@ -93,7 +93,6 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   }
 
   const supabase = await createClient();
-  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   const from = (page - 1) * pageSize;
   const taxonomySearchArgs = {
     assignment_review_status: "approved",
@@ -106,10 +105,12 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
     query_text: search || null,
     question_status: "published",
   };
-  const { data: taxonomySearchRows, error } = await supabase.rpc(
-    "search_questions_by_taxonomy",
-    taxonomySearchArgs,
-  );
+  const [taxonomyResult, taxonomySearchResult] = await Promise.all([
+    loadTaxonomyCatalog(supabase),
+    supabase.rpc("search_questions_by_taxonomy", taxonomySearchArgs),
+  ]);
+  const { catalog: taxonomyCatalog } = taxonomyResult;
+  const { data: taxonomySearchRows, error } = taxonomySearchResult;
   let fallbackTotalCount = 0;
   if (!error && page > 1 && !taxonomySearchRows?.length) {
     const { data: firstPageRows } = await supabase.rpc(

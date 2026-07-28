@@ -53,6 +53,7 @@ import {
   describeAiPdfProviderInput,
 } from "@/lib/ai-providers/adapters";
 import type { SafeAIProviderProfile } from "@/lib/ai-providers/profiles";
+import { runWithConcurrency } from "@/lib/async-concurrency";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +78,8 @@ type AIPdfExecutionMode =
   | "segmented_full_pdf"
   | "page_image_chunks"
   | "blueprint_observation";
+
+const AI_PDF_ADMIN_UPLOAD_CONCURRENCY = 3;
 
 type ImportResult =
   | {
@@ -759,39 +762,43 @@ export function AIPdfImportPanel({
     const failures: string[] = [];
 
     try {
-      for (const file of files) {
-        const validationError = validatePdfFile(file);
+      await runWithConcurrency(
+        files,
+        AI_PDF_ADMIN_UPLOAD_CONCURRENCY,
+        async (file) => {
+          const validationError = validatePdfFile(file);
 
-        if (validationError) {
-          failures.push(validationError);
-          appendOperationStep(operationId, validationError);
-          continue;
-        }
-
-        try {
-          const nextResult = await uploadOneFile(file, operationId);
-          const nextSource = sourceFromUpload(nextResult);
-
-          setUploadedResults((current) => [
-            nextResult,
-            ...current.filter((result) => result?.batchId !== nextResult.batchId),
-          ]);
-
-          if (nextSource) {
-            selectSource(nextSource);
+          if (validationError) {
+            failures.push(validationError);
+            appendOperationStep(operationId, validationError);
+            return;
           }
 
-          uploadedCount += 1;
-          appendOperationStep(operationId, `${file.name} is ready for AI extraction.`);
-        } catch (error) {
-          const message = `${file.name}: ${formatError(
-            error,
-            "PDF source upload failed.",
-          )}`;
-          failures.push(message);
-          appendOperationStep(operationId, message);
-        }
-      }
+          try {
+            const nextResult = await uploadOneFile(file, operationId);
+            const nextSource = sourceFromUpload(nextResult);
+
+            setUploadedResults((current) => [
+              nextResult,
+              ...current.filter((result) => result?.batchId !== nextResult.batchId),
+            ]);
+
+            if (nextSource) {
+              selectSource(nextSource);
+            }
+
+            uploadedCount += 1;
+            appendOperationStep(operationId, `${file.name} is ready for AI extraction.`);
+          } catch (error) {
+            const message = `${file.name}: ${formatError(
+              error,
+              "PDF source upload failed.",
+            )}`;
+            failures.push(message);
+            appendOperationStep(operationId, message);
+          }
+        },
+      );
 
       if (uploadedCount > 0) {
         finishOperation(

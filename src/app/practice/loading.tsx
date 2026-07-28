@@ -1,4 +1,4 @@
-import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-session-scope-panels";
+import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-workspace-skeleton";
 
 export default function PracticeLoading() {
   return <PracticeWorkspaceSkeleton />;

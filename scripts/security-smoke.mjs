@@ -923,8 +923,8 @@ const assignmentPracticeLinkage = await read("src/lib/practice/assignment-linkag
 const assignmentPracticeStartRoute = await read("src/app/api/practice/assignments/start/route.ts");
 const practicePage = await read("src/app/practice/page.tsx");
 const practiceLoader = await read("src/components/practice/practice-agent-loader.tsx");
-const practiceScopePanels = await read(
-  "src/components/practice/practice-session-scope-panels.tsx",
+const practiceWorkspaceSkeleton = await read(
+  "src/components/practice/practice-workspace-skeleton.tsx",
 );
 assert(!practiceClient.includes("localStorage"), "practice client still uses localStorage");
 assert(practiceClient.includes("/api/practice/sessions"), "practice client does not load database sessions");
@@ -966,8 +966,8 @@ assert(
     practicePage.includes("assignmentId") &&
     practiceLoader.includes("assignmentId") &&
     practiceLoader.includes("PracticeWorkspaceSkeleton") &&
-    practiceScopePanels.includes('aria-busy="true"') &&
-    practiceScopePanels.includes("Loading practice workspace") &&
+    practiceWorkspaceSkeleton.includes('aria-busy="true"') &&
+    practiceWorkspaceSkeleton.includes("Loading practice workspace") &&
     practiceClient.includes("/api/practice/assignments/start") &&
     practiceClient.includes("Assignment practice") &&
     practiceReviewRoute.includes("updateLinkedAssignmentProgressAfterPractice"),
