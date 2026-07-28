@@ -97,11 +97,39 @@ type AdminQuestionDetailRow = Pick<
   | "title"
 >;
 type AdminQuestionRow = AdminQuestionSummaryRow | AdminQuestionDetailRow;
+type AdminQuestionEditBundle = AdminQuestionDetailRow & {
+  import_batch_items?: Array<{
+    created_question_id: string | null;
+    normalized_question_json: Parameters<typeof extractImportAssetReferences>[0];
+  }> | null;
+  question_assets?: Array<{
+    alt_text: string | null;
+    id: string;
+    label: string | null;
+    question_id: string | null;
+    storage_path: string;
+  }> | null;
+  question_source_files?: Array<{
+    id: string;
+    mime_type: string;
+    original_filename: string;
+    question_id: string | null;
+    size_bytes: number;
+    status: QuestionSourceFileView["status"];
+  }> | null;
+  question_taxonomy_assignments?: Array<{
+    question_id: string;
+    review_status: string;
+    tag_id: string;
+  }> | null;
+};
 const ADMIN_QUESTION_PAGE_SIZE = 50;
 const ADMIN_QUESTION_SUMMARY_SELECT =
   "id, question_code, title, question_type, difficulty_rating, status, created_at, updated_at";
 const ADMIN_QUESTION_DETAIL_SELECT =
   "id, question_code, title, question_type, difficulty_rating, status, answer_spec, options, content_html, content_source, content_source_format, solution_html, solution_source, solution_source_format";
+const ADMIN_QUESTION_EDIT_SELECT =
+  `${ADMIN_QUESTION_DETAIL_SELECT}, question_assets(id, question_id, storage_path, label, alt_text), question_source_files(id, question_id, original_filename, mime_type, size_bytes, status), import_batch_items(created_question_id, normalized_question_json), question_taxonomy_assignments(question_id, tag_id, review_status)`;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -216,8 +244,26 @@ export default async function AdminQuestionsPage({
     : "";
   const editReturnTo = firstParam(params.return_to) ?? "";
   const selectedStatus = safeStatusFilter(params.status);
-  const { catalog: taxonomyCatalog, errorMessage: taxonomyCatalogError } =
-    await loadTaxonomyCatalog(supabase);
+  const taxonomyCatalogPromise = loadTaxonomyCatalog(supabase);
+  const focusedQuestionBundlePromise = focusedQuestionId
+    ? supabase
+        .from("questions")
+        .select(ADMIN_QUESTION_EDIT_SELECT)
+        .eq("id", focusedQuestionId)
+        .is("owner_bank_id", null)
+        .neq("question_source_files.status", "deleted")
+        .eq("import_batch_items.status", "imported")
+        .maybeSingle()
+    : Promise.resolve({ data: null, error: null });
+  const [
+    { catalog: taxonomyCatalog, errorMessage: taxonomyCatalogError },
+    focusedQuestionBundleResult,
+  ] = await Promise.all([
+    taxonomyCatalogPromise,
+    focusedQuestionBundlePromise,
+  ]);
+  const focusedQuestionBundle =
+    focusedQuestionBundleResult.data as AdminQuestionEditBundle | null;
   const taxonomyFilter = {
     difficulty: {
       max: numericParam(params.tax_difficulty_max),
@@ -343,35 +389,27 @@ export default async function AdminQuestionsPage({
     { data: questionSourceFiles },
   ] =
     await Promise.all([
-      fallbackQuestionsResult
+      focusedQuestionId
+        ? Promise.resolve({
+            data: focusedQuestionBundle
+              ? [focusedQuestionBundle as AdminQuestionDetailRow]
+              : [],
+            error: focusedQuestionBundleResult.error,
+          })
+        : fallbackQuestionsResult
         ? Promise.resolve(fallbackQuestionsResult)
         : orderedQuestionIds.length
-          ? focusedQuestionId
-            ? supabase
-                .from("questions")
-                .select(ADMIN_QUESTION_DETAIL_SELECT)
-                .in("id", orderedQuestionIds)
-                .is("owner_bank_id", null)
-            : supabase
-                .from("questions")
-                .select(ADMIN_QUESTION_SUMMARY_SELECT)
-                .in("id", orderedQuestionIds)
-                .is("owner_bank_id", null)
+          ? supabase
+              .from("questions")
+              .select(ADMIN_QUESTION_SUMMARY_SELECT)
+              .in("id", orderedQuestionIds)
+              .is("owner_bank_id", null)
           : Promise.resolve({ data: [], error: null }),
-      focusedQuestionId && orderedQuestionIds.length
-        ? supabase
-            .from("question_assets")
-            .select("id, question_id, storage_path, label, alt_text")
-            .in("question_id", orderedQuestionIds)
+      focusedQuestionId
+        ? Promise.resolve({ data: focusedQuestionBundle?.question_assets ?? [] })
         : Promise.resolve({ data: [], error: null }),
-      focusedQuestionId && orderedQuestionIds.length
-        ? supabase
-            .from("question_source_files")
-            .select(
-              "id, question_id, original_filename, mime_type, size_bytes, status",
-            )
-            .neq("status", "deleted")
-            .in("question_id", orderedQuestionIds)
+      focusedQuestionId
+        ? Promise.resolve({ data: focusedQuestionBundle?.question_source_files ?? [] })
         : Promise.resolve({ data: [], error: null }),
     ]);
 
@@ -397,14 +435,15 @@ export default async function AdminQuestionsPage({
     { data: importItems },
     { data: taxonomyAssignments, error: taxonomyAssignmentsError },
   ] = await Promise.all([
-    focusedQuestionId && questionIds.length
-      ? supabase
-          .from("import_batch_items")
-          .select("created_question_id, normalized_question_json")
-          .eq("status", "imported")
-          .in("created_question_id", questionIds)
+    focusedQuestionId
+      ? Promise.resolve({ data: focusedQuestionBundle?.import_batch_items ?? [] })
       : Promise.resolve({ data: [] }),
-    questionIds.length
+    focusedQuestionId
+      ? Promise.resolve({
+          data: focusedQuestionBundle?.question_taxonomy_assignments ?? [],
+          error: focusedQuestionBundleResult.error,
+        })
+      : questionIds.length
       ? supabase
           .from("question_taxonomy_assignments")
           .select("question_id, tag_id, review_status")

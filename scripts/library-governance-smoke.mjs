@@ -179,6 +179,9 @@ assert(
 
 assert(
   adminQuestions.includes("Central Public Library") &&
+    adminQuestions.includes("focusedQuestionBundlePromise") &&
+    adminQuestions.includes("ADMIN_QUESTION_EDIT_SELECT") &&
+    adminQuestions.includes('.is("owner_bank_id", null)') &&
     adminReview.includes('.is("owner_bank_id", null)') &&
     adminReview.includes('.is("target_bank_id", null)') &&
     adminActions.includes("assertGlobalQuestionIds") &&

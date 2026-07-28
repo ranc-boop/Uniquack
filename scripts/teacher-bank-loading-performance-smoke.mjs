@@ -88,9 +88,14 @@ assert(
 );
 assert(
   adminQuestionsPage.includes("const [params, , supabase] = await Promise.all([") &&
-    adminQuestionsPage.includes("{ data: taxonomyAssignments, error: taxonomyAssignmentsError }") &&
-    adminQuestionsPage.includes("{ data: importItems }"),
-  "Admin questions must overlap request setup and batch detail-only taxonomy/import lookups.",
+    adminQuestionsPage.includes("const taxonomyCatalogPromise = loadTaxonomyCatalog(supabase)") &&
+    adminQuestionsPage.includes("const focusedQuestionBundlePromise = focusedQuestionId") &&
+    adminQuestionsPage.includes("ADMIN_QUESTION_EDIT_SELECT") &&
+    adminQuestionsPage.includes("question_assets(") &&
+    adminQuestionsPage.includes("question_source_files(") &&
+    adminQuestionsPage.includes("import_batch_items(") &&
+    adminQuestionsPage.includes("question_taxonomy_assignments("),
+  "Admin focused-question loading must overlap taxonomy with one root-scoped edit bundle.",
 );
 
 console.log("PASS Teacher/Bank loading performance query-shape guard");
