@@ -38,7 +38,12 @@ export function PracticeRoundReviewPanel({
                 Reviewing your answers…
               </p>
             ) : null}
-            <FeedbackText className="mt-2 border-none bg-transparent p-0 text-slate-600" compact value={review.summary} />
+            <FeedbackText
+              className="mt-2 border-none bg-transparent p-0 text-slate-600"
+              compact
+              preserveSoftBreaks
+              value={review.summary}
+            />
           </div>
         </div>
       </CardHeader>
@@ -52,6 +57,7 @@ export function PracticeRoundReviewPanel({
                   className="border-none bg-transparent p-0 text-sm leading-6 text-slate-700"
                   compact
                   key={`${pattern}-${index}`}
+                  preserveSoftBreaks
                   value={pattern}
                 />
               ))}
@@ -60,7 +66,12 @@ export function PracticeRoundReviewPanel({
         ) : null}
         <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-4">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Next round focus</p>
-          <FeedbackText className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-slate-700" compact value={review.nextRoundGoal} />
+          <FeedbackText
+            className="mt-2 border-none bg-transparent p-0 text-sm leading-6 text-slate-700"
+            compact
+            preserveSoftBreaks
+            value={review.nextRoundGoal}
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="next-round-goal">Add your thoughts for the next round</Label>

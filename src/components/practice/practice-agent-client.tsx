@@ -1006,11 +1006,19 @@ export function PracticeAgentClient({
             });
           }
         } else {
-          await refreshPracticeState(undefined, {
+          const restoredSession = await refreshPracticeState(undefined, {
             deferAuxiliary: true,
             loadWorkspaceOptions: true,
-            restoreActive: false,
+            restoreActive: true,
           });
+          const latestRound =
+            restoredSession?.rounds[restoredSession.rounds.length - 1];
+          if (
+            restoredSession?.status !== "completed" &&
+            latestRound?.questions.length
+          ) {
+            restoreRoundFromHistory(latestRound, restoredSession);
+          }
         }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -1970,14 +1978,13 @@ export function PracticeAgentClient({
         )}
       </aside>
 
-      {error ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive xl:col-span-2" role="alert">
-          <span>{error}</span>
-          <Button onClick={() => setError(null)} size="sm" type="button" variant="ghost">Dismiss</Button>
-        </div>
-      ) : null}
-
         <main className="relative min-w-0 space-y-4 px-0 xl:px-2">
+          {error ? (
+            <div className="flex items-start justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
+              <span className="min-w-0 flex-1">{error}</span>
+              <Button className="shrink-0" onClick={() => setError(null)} size="sm" type="button" variant="ghost">Dismiss</Button>
+            </div>
+          ) : null}
           {sessionAction ? (
             <section aria-busy="true" aria-live="polite" className="absolute inset-0 z-20 flex min-h-[60vh] flex-col justify-center gap-5 bg-white/95 px-4 backdrop-blur-sm" role="status">
               <span className="sr-only">Loading practice session…</span>

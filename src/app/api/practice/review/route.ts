@@ -46,6 +46,15 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function boundedRoundReviewMarkdown(value: unknown, maxLength = 2400) {
+  const normalized = String(value ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u0000/g, "")
+    .trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength).trimEnd()}\n\n…`;
+}
+
 function normalizeRoundReviewSummary(value: string) {
   const trimmed = value.trim();
   const candidate = trimmed
@@ -57,13 +66,13 @@ function normalizeRoundReviewSummary(value: string) {
     const parsed = JSON.parse(candidate);
     const record = asObject(parsed);
     if (typeof record.summary === "string" && record.summary.trim()) {
-      return compactText(record.summary, 2400);
+      return boundedRoundReviewMarkdown(record.summary);
     }
   } catch {
     // Plain-text summaries remain valid.
   }
 
-  return compactText(trimmed, 2400);
+  return boundedRoundReviewMarkdown(trimmed);
 }
 
 function answerText(value: unknown) {
@@ -459,7 +468,7 @@ export async function POST(request: Request) {
         const roundReviewPrompt = [
           "You are the O2I Practice main thread. This call is only for a round review summary.",
           "Do not call tools. Do not select next questions. Do not create a plan node. Do not update memory.",
-          "Return plain prose only. Do not wrap the summary in JSON, Markdown fences, or a round_review object.",
+          "Return concise Markdown prose. Short paragraphs, bold labels, and bullet lists are allowed. Do not wrap the summary in JSON, Markdown fences, or a round_review object.",
           "Use the existing practice thread plus the current question judgments to write a concise coaching summary for the frontend.",
           "Include: overall performance, what is stable, what still needs practice, and a next focus direction without choosing questions.",
           "",

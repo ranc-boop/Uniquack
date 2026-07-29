@@ -7,11 +7,13 @@ const read = (path) => readFile(resolve(root, path), "utf8");
 
 const [
   client,
+  questionBankClient,
   persistence,
   scopePanels,
   types,
 ] = await Promise.all([
   read("src/components/practice/practice-agent-client.tsx"),
+  read("src/components/question-bank-client.tsx"),
   read("src/lib/practice/persistence.ts"),
   read("src/components/practice/practice-session-scope-panels.tsx"),
   read("src/lib/practice/types.ts"),
@@ -63,6 +65,33 @@ assert(
       "round.reviewSummary || restoredResults.length",
     ),
   "Restoring a round must not infer completion from a partial attempt or transient review payload",
+);
+
+const initialHydrationStart = client.indexOf("initialHydrationStartedRef.current = true");
+const initialHydrationEnd = client.indexOf(
+  "// eslint-disable-next-line react-hooks/exhaustive-deps",
+  initialHydrationStart,
+);
+const initialHydrationBlock = client.slice(
+  initialHydrationStart,
+  initialHydrationEnd,
+);
+assert(
+  initialHydrationBlock.includes("restoreActive: true"),
+  "Refreshing /practice must restore the owned active session and its latest authoritative round",
+);
+assert(
+  questionBankClient.includes("CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY") &&
+    !questionBankClient.includes('"o2i:pendingPracticeRound"'),
+  "Question Bank handoff must write the current pending-round key instead of a key cleared as legacy",
+);
+
+const errorBannerIndex = client.indexOf('{error ? (');
+const mainIndex = client.indexOf('<main className=');
+const mainEndIndex = client.indexOf("</main>", mainIndex);
+assert(
+  errorBannerIndex > mainIndex && errorBannerIndex < mainEndIndex,
+  "Practice errors must render inside the main column instead of changing the outer three-column grid placement",
 );
 
 console.log("PASS practice round state recovery and stale-operation guard");
