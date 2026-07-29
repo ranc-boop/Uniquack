@@ -166,6 +166,7 @@ export type PracticeHintRequest = {
   hintLevel?: number;
   previousHints?: string[];
   questionId: string;
+  roundId?: string;
   sessionId?: string;
 };
 

@@ -43,6 +43,7 @@ import {
   buildRestoredPracticeAnswers,
   restoredPracticeQuestionId,
 } from "@/lib/practice/answer-restore";
+import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
 import type {
   AssignmentPracticeStartPayload,
   PracticeAttemptInput,
@@ -1196,6 +1197,7 @@ export function PracticeAgentClient({
             hintLevel: previousHints.length + 1,
             previousHints,
             questionId,
+            roundId: recommendation?.roundId,
             sessionId: activeSession?.id,
           }),
           method: "POST",
@@ -1856,6 +1858,7 @@ export function PracticeAgentClient({
                         <Input
                           autoFocus
                           className="h-8 border-sky-200 bg-white text-sm font-bold"
+                          maxLength={PRACTICE_INPUT_LIMITS.SESSION_TITLE_CHARS}
                           onBlur={() => submitRenameSession(item.id)}
                           onChange={(event) => setRenameValue(event.target.value)}
                           onClick={(event) => event.stopPropagation()}
@@ -1950,6 +1953,7 @@ export function PracticeAgentClient({
               ) : memoryEditing ? (
                 <Textarea
                   className="min-h-28 bg-white text-xs"
+                  maxLength={PRACTICE_INPUT_LIMITS.SESSION_MEMORY_CHARS}
                   onChange={(event) => setLongTermMemoryDraft(event.target.value)}
                   value={longTermMemoryDraft}
                 />
@@ -2038,6 +2042,7 @@ export function PracticeAgentClient({
                         aria-label="Practice goal"
                         className="h-14 border-0 bg-transparent px-0 text-base shadow-none ring-offset-0 placeholder:text-slate-400 focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-lg"
                         id="goal"
+                        maxLength={PRACTICE_INPUT_LIMITS.GOAL_CHARS}
                         onChange={(event) => setGoal(event.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
@@ -2300,6 +2305,7 @@ export function PracticeAgentClient({
                     <Textarea
                       className="min-h-24 bg-white text-sm"
                       id="outline-notes"
+                      maxLength={PRACTICE_INPUT_LIMITS.OUTLINE_NOTES_CHARS}
                       onChange={(event) => setOutlineNotes(event.target.value)}
                       placeholder="Prioritize, skip, slow down, or change difficulty."
                       value={outlineNotes}

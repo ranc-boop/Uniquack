@@ -9,6 +9,10 @@ import {
 import {
   isCurrentPracticeQuestionSnapshot,
 } from "@/lib/practice/schema";
+import {
+  practiceValidationResponse,
+  validatePracticeRoundAttempts,
+} from "@/lib/practice/request-validation";
 import type {
   PracticeGradeRequest,
   PracticeGradeResponse,
@@ -88,22 +92,65 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as PracticeGradeRequest;
-  const attempts = body.attempts ?? [];
   const trace: PracticeTraceEvent[] = [];
+  const sessionId = String(body.sessionId ?? "").trim();
+  const roundId = String(body.roundId ?? "").trim();
 
-  if (!attempts.length) {
-    return NextResponse.json({ error: "No attempts submitted." }, { status: 400 });
+  if (!sessionId || !roundId) {
+    return NextResponse.json(
+      { code: "ROUND_CONTEXT_REQUIRED", error: "sessionId and roundId are required." },
+      { status: 400 },
+    );
   }
 
   const started = Date.now();
 
   try {
-    const questionIds = Array.from(new Set(attempts.map((attempt) => attempt.questionId)));
-    const questions = await loadQuestionsForReview({ questionIds, supabase });
+    const { data: round, error: roundError } = await supabase
+      .from("practice_rounds")
+      .select("id,status")
+      .eq("user_id", auth.user.id)
+      .eq("session_id", sessionId)
+      .eq("id", roundId)
+      .maybeSingle();
+    if (roundError) throw new Error(roundError.message);
+    if (!round) {
+      return NextResponse.json(
+        { code: "ROUND_NOT_FOUND", error: "Practice round not found." },
+        { status: 404 },
+      );
+    }
+    if (round.status !== "active") {
+      return NextResponse.json(
+        { code: "ROUND_NOT_ACTIVE", error: "This practice round has already been submitted." },
+        { status: 409 },
+      );
+    }
+
+    const { data: roundQuestions, error: roundQuestionError } = await supabase
+      .from("practice_round_questions")
+      .select("source_question_id,question_snapshot")
+      .eq("user_id", auth.user.id)
+      .eq("session_id", sessionId)
+      .eq("round_id", roundId)
+      .order("position", { ascending: true });
+    if (roundQuestionError) throw new Error(roundQuestionError.message);
+
+    const validatedRoundQuestionIds = (roundQuestions ?? [])
+      .map((row) => String(row.source_question_id ?? "").trim())
+      .filter(Boolean);
+    const attempts = validatePracticeRoundAttempts({
+      attempts: body.attempts,
+      expectedQuestionIds: validatedRoundQuestionIds,
+    });
+    const questions = await loadQuestionsForReview({
+      questionIds: validatedRoundQuestionIds,
+      supabase,
+    });
     const byId = new Map(questions.map((question) => [question.id, question]));
     trace.push({
       elapsedMs: Date.now() - started,
-      inputSummary: `${questionIds.length} submitted question IDs`,
+      inputSummary: `${validatedRoundQuestionIds.length} validated round question IDs`,
       outputSummary: `Loaded ${questions.length} question records with answer_spec after submit.`,
       phase: "grading",
       resultCount: questions.length,
@@ -127,80 +174,70 @@ export async function POST(request: Request) {
       return gradePracticeAttempt({ attempt, question });
     });
 
-    if (body.sessionId && body.roundId) {
-      const { data: roundQuestions, error: roundQuestionError } = await supabase
-        .from("practice_round_questions")
-        .select("source_question_id,question_snapshot")
-        .eq("user_id", auth.user.id)
-        .eq("session_id", body.sessionId)
-        .eq("round_id", body.roundId);
+    const recommendations = ((roundQuestions ?? []) as Record<string, unknown>[])
+      .map(recommendationFromRoundQuestion)
+      .filter((question): question is PracticeRecommendation => Boolean(question?.id));
+    const resultByQuestionId = new Map(results.map((result) => [result.questionId, result]));
+    const questionReviews = attempts
+      .map((attempt) => {
+        const result = resultByQuestionId.get(attempt.questionId);
+        return result
+          ? reviewFromGradeResult({
+              answer: attempt.answer,
+              explanation: result.explanation,
+              isCorrect: result.isCorrect,
+              questionId: result.questionId,
+              score: result.score,
+              solutionHtml: result.solutionHtml,
+            })
+          : null;
+      })
+      .filter((review): review is PracticeQuestionReview => review !== null);
 
-      if (roundQuestionError) {
-        throw new Error(roundQuestionError.message);
-      }
-
-      const recommendations = ((roundQuestions ?? []) as Record<string, unknown>[])
-        .map(recommendationFromRoundQuestion)
-        .filter((question): question is PracticeRecommendation => Boolean(question?.id));
-      const resultByQuestionId = new Map(results.map((result) => [result.questionId, result]));
-      const questionReviews = attempts
-        .map((attempt) => {
-          const result = resultByQuestionId.get(attempt.questionId);
-          return result
-            ? reviewFromGradeResult({
-                answer: attempt.answer,
-                explanation: result.explanation,
-                isCorrect: result.isCorrect,
-                questionId: result.questionId,
-                score: result.score,
-                solutionHtml: result.solutionHtml,
-              })
-            : null;
-        })
-        .filter((review): review is PracticeQuestionReview => review !== null);
-
-      if (recommendations.length && questionReviews.length) {
-        await persistQuestionReviewResults({
-          attempts,
-          hintsByQuestionId: {},
-          llmUsage: [],
-          providerLabel: "Deterministic fallback",
-          questionReviews,
-          recommendations,
-          results,
-          roundId: body.roundId,
-          sessionId: body.sessionId,
-          supabase,
-          trace,
-          userId: auth.user.id,
-        });
-        trace.push({
-          inputSummary: `${attempts.length} submitted answer${attempts.length === 1 ? "" : "s"}`,
-          outputSummary: `Persisted ${questionReviews.length} deterministic review result${questionReviews.length === 1 ? "" : "s"}.`,
-          phase: "review",
-          resultCount: questionReviews.length,
-          toolName: "persist_deterministic_grade_review",
-        });
-      }
+    if (recommendations.length && questionReviews.length) {
+      await persistQuestionReviewResults({
+        attempts,
+        hintsByQuestionId: {},
+        llmUsage: [],
+        providerLabel: "Deterministic fallback",
+        questionReviews,
+        recommendations,
+        results,
+        roundId,
+        sessionId,
+        supabase,
+        trace,
+        userId: auth.user.id,
+      });
+      trace.push({
+        inputSummary: `${attempts.length} submitted answer${attempts.length === 1 ? "" : "s"}`,
+        outputSummary: `Persisted ${questionReviews.length} deterministic review result${questionReviews.length === 1 ? "" : "s"}.`,
+        phase: "review",
+        resultCount: questionReviews.length,
+        toolName: "persist_deterministic_grade_review",
+      });
     }
 
-    const assignmentProgress = body.sessionId
-      ? await updateLinkedAssignmentProgressAfterPractice({
-          attemptedQuestionIds: attempts.map((attempt) => attempt.questionId),
-          results,
-          roundId: body.roundId,
-          sessionId: body.sessionId,
-          supabase,
-          userId: auth.user.id,
-        })
-      : undefined;
+    const assignmentProgress = await updateLinkedAssignmentProgressAfterPractice({
+      attemptedQuestionIds: validatedRoundQuestionIds,
+      results,
+      roundId,
+      sessionId,
+      supabase,
+      userId: auth.user.id,
+    });
     const response: PracticeGradeResponse = { assignmentProgress, results, trace };
 
     return NextResponse.json(response);
   } catch (error) {
+    const validation = practiceValidationResponse(error);
+    if (validation) {
+      return NextResponse.json(validation.body, { status: validation.status });
+    }
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : String(error),
+        code: "PRACTICE_GRADE_FAILED",
+        error: "Unable to grade this practice round.",
         trace,
       },
       { status: 500 },

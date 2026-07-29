@@ -56,12 +56,12 @@ assert(
 
 const reviewPersistence = sourceBlock(
   reviewSource,
-  "const attempts = body.attempts ?? []",
+  "const attempts = validatePracticeRoundAttempts({",
   "await updateLinkedAssignmentProgressAfterPractice",
 );
 const gradePersistence = sourceBlock(
   gradeSource,
-  "const attempts = body.attempts ?? []",
+  "const attempts = validatePracticeRoundAttempts({",
   "const assignmentProgress",
 );
 const attemptWrite = sourceBlock(
@@ -71,9 +71,9 @@ const attemptWrite = sourceBlock(
 );
 assert(
   reviewPersistence.includes("persistQuestionReviewResults({") &&
-    reviewPersistence.includes("          attempts,") &&
+    reviewPersistence.includes("attempts,") &&
     gradePersistence.includes("persistQuestionReviewResults({") &&
-    gradePersistence.includes("          attempts,") &&
+    gradePersistence.includes("attempts,") &&
     attemptWrite.includes("answer: submittedPracticeAnswerForPersistence(attempt.answer)"),
   "both review paths must persist the original submitted answer",
 );

@@ -802,6 +802,7 @@ export type PracticeSessionSource = {
 
 export type PracticeRound = {
   id: string;
+  organization_id: string | null;
   user_id: string;
   session_id: string;
   round_index: number;
@@ -812,7 +813,12 @@ export type PracticeRound = {
   score_total: number;
   mode: string | null;
   provider_label: string | null;
+  target_taxonomy_node_ids: string[];
+  status: "active" | "completed" | "skipped";
   trace: Json;
+  summary: Json;
+  started_at: string;
+  completed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -858,6 +864,20 @@ export type PracticeAttempt = {
   result: Json;
   created_at: string;
   updated_at: string;
+};
+
+export type PracticeHintEvent = {
+  id: string;
+  organization_id: string | null;
+  user_id: string;
+  session_id: string;
+  round_id: string | null;
+  attempt_id: string | null;
+  hint_kind: "standard" | "scaffold" | "conceptual" | "worked_step";
+  hint_level: number;
+  prompt_context: Json;
+  response_summary: string | null;
+  created_at: string;
 };
 
 export type PracticeWrongQuestion = {
@@ -1018,6 +1038,7 @@ export type Database = {
       practice_rounds: TableDefinition<PracticeRound>;
       practice_round_questions: TableDefinition<PracticeRoundQuestion>;
       practice_attempts: TableDefinition<PracticeAttempt>;
+      practice_hint_events: TableDefinition<PracticeHintEvent>;
       practice_wrong_questions: TableDefinition<PracticeWrongQuestion>;
       user_practice_preferences: TableDefinition<UserPracticePreference>;
       practice_preference_merge_jobs: TableDefinition<PracticePreferenceMergeJob>;

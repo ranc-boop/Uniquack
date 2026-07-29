@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
+import {
+  PRACTICE_INPUT_LIMITS,
+  boundedPracticeText,
+  practiceValidationResponse,
+} from "@/lib/practice/request-validation";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -33,10 +38,19 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => ({}))) as { goal?: string };
-  const goal = typeof body.goal === "string" ? body.goal.trim().slice(0, 500) : "";
-
-  if (!goal) {
-    return NextResponse.json({ error: "Goal is required." }, { status: 400 });
+  let goal = "";
+  try {
+    goal = boundedPracticeText(body.goal, {
+      field: "goal",
+      maxLength: PRACTICE_INPUT_LIMITS.GOAL_CHARS,
+      required: true,
+    });
+  } catch (error) {
+    const validation = practiceValidationResponse(error);
+    return NextResponse.json(
+      validation?.body ?? { code: "INVALID_GOAL", error: "Goal is invalid." },
+      { status: validation?.status ?? 400 },
+    );
   }
 
   try {
@@ -55,7 +69,7 @@ export async function POST(request: Request) {
           role: "system",
         },
         {
-          content: `Goal: ${goal}`,
+          content: JSON.stringify({ goal, trust: "untrusted_user_data" }),
           role: "user",
         },
       ],

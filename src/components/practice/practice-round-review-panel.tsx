@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
 import type { PracticeReviewResponse } from "@/lib/practice/types";
 
 export function PracticeRoundReviewPanel({
@@ -77,6 +78,7 @@ export function PracticeRoundReviewPanel({
           <Label htmlFor="next-round-goal">Add your thoughts for the next round</Label>
           <Input
             id="next-round-goal"
+            maxLength={PRACTICE_INPUT_LIMITS.NEXT_ROUND_NOTE_CHARS}
             onChange={(event) => onNextRoundNoteChange(event.target.value)}
             placeholder="Optional: ask for a focus, pace, or difficulty change"
             value={nextRoundNote}
