@@ -43,9 +43,10 @@ assert(
     middleware.includes('.from("profiles")') &&
     middleware.includes('.select("*")') &&
     middleware.includes("AUTH_CONTEXT_HEADER") &&
-    middleware.includes("ADMIN_ROLES.includes(role)") &&
-    middleware.includes("TEACHER_ROLES.includes(role)") &&
-    middleware.includes("STUDENT_ROLES.includes(role)"),
+    middleware.includes("canAccessAdmin(role)") &&
+    middleware.includes("canAccessTeacher(role)") &&
+    middleware.includes("canAccessStudent(role)") &&
+    middleware.includes("canManageUsers(role)"),
   "middleware verifies role and forwards its authenticated profile lookup to the RSC tree",
 );
 

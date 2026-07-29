@@ -12,7 +12,6 @@ import { createClient } from "@/lib/supabase/server";
 import {
   videoCreateSchema,
   videoDeleteSchema,
-  videoStatusSchema,
   videoUpdateSchema,
 } from "@/lib/validations/video";
 
@@ -79,38 +78,6 @@ export async function updateVideo(formData: FormData) {
   revalidatePath("/videos");
   revalidatePath(`/videos/${videoId}`);
   redirectWithSaved("/admin/videos", "Video updated.");
-}
-
-export async function updateVideoStatus(formData: FormData) {
-  let videoId = "";
-
-  try {
-    const profile = await requireAdmin();
-    const parsed = videoStatusSchema.parse(Object.fromEntries(formData));
-    const supabase = await createClient();
-    videoId = parsed.id;
-
-    const { error } = await supabase
-      .from("videos")
-      .update({
-        status: parsed.status,
-        updated_by: profile.id,
-        published_at:
-          parsed.status === "published" ? new Date().toISOString() : null,
-      })
-      .eq("id", parsed.id);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-  } catch (error) {
-    redirectWithError("/admin/videos", formatActionError(error));
-  }
-
-  revalidatePath("/admin/videos");
-  revalidatePath("/videos");
-  revalidatePath(`/videos/${videoId}`);
-  redirectWithSaved("/admin/videos", "Video status updated.");
 }
 
 export async function deleteVideo(formData: FormData) {

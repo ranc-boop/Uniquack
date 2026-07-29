@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "middleware.ts",
+    "scripts/**/*.mjs",
+    "src/app/**/{page,layout,loading,error,not-found,route}.{ts,tsx}"
+  ],
+  "ignoreBinaries": [
+    "taskkill"
+  ],
+  "project": [
+    "middleware.ts",
+    "scripts/**/*.mjs",
+    "src/**/*.{ts,tsx}"
+  ]
+}

@@ -1,8 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
-
 type TeacherWorkspaceShellProps = {
   children: ReactNode;
   eyebrow?: string;
@@ -43,7 +41,6 @@ export function TeacherWorkspaceShell({
     </div>
   );
 }
-
 export function TeacherModuleCard({
   title,
   description,
@@ -73,30 +70,5 @@ export function TeacherModuleCard({
       </div>
       <span className="text-sm font-semibold text-sky-700">{actionLabel}</span>
     </Link>
-  );
-}
-
-export function TeacherComingSoonPanel({
-  title,
-  description,
-  href,
-  hrefLabel,
-}: {
-  title: string;
-  description: string;
-  href?: string;
-  hrefLabel?: string;
-}) {
-  return (
-    <section className="teacher-panel space-y-3 p-5">
-      <p className="teacher-eyebrow">Module shell</p>
-      <h2 className="text-2xl font-semibold text-slate-950">{title}</h2>
-      <p className="teacher-muted max-w-3xl">{description}</p>
-      {href && hrefLabel ? (
-        <Button asChild>
-          <Link href={href}>{hrefLabel}</Link>
-        </Button>
-      ) : null}
-    </section>
   );
 }

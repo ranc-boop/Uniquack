@@ -162,35 +162,6 @@ export function ClassroomProgressRing({
   );
 }
 
-export function ClassroomSectionHeader({
-  action,
-  description,
-  eyebrow,
-  title,
-}: {
-  action?: ReactNode;
-  description?: string;
-  eyebrow?: string;
-  title: string;
-}) {
-  return (
-    <div className="border-b border-slate-200 bg-white/70 p-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          {eyebrow ? <p className="teacher-eyebrow">{eyebrow}</p> : null}
-          <h2 className="text-xl font-bold text-slate-950">{title}</h2>
-          {description ? (
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              {description}
-            </p>
-          ) : null}
-        </div>
-        {action}
-      </div>
-    </div>
-  );
-}
-
 export function ClassroomSafetyStrip() {
   const notes = [
     "Classes are roster and delivery spaces.",

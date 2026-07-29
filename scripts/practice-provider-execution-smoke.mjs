@@ -179,7 +179,7 @@ assert(
 );
 assert(
   sessionsRoute.includes('searchParams.get("includeActive")') &&
-    sessionsRoute.includes('includeActive && sessions[0]') &&
+    sessionsRoute.includes("includeActive && offset === 0 && sessions[0]") &&
     client.includes("/api/practice/sessions?includeActive=0"),
   "session refreshes must avoid duplicate active-session detail loads when a session is already selected",
 );
@@ -192,12 +192,11 @@ assert(
   "normal Practice entry must render a fresh-session shell immediately and hydrate history, sources, and workspace options progressively",
 );
 assert(
-  clientHelpers.includes("function isReusableEmptyPracticeSession") &&
-    clientHelpers.includes("session.roundCount === 0") &&
-    clientHelpers.includes("session.sessionThreadMessages?.length") &&
-    client.includes("handedOffToSessionSwitch") &&
-    client.includes("switchSession(reusableSession.id)"),
-  "new-session actions must reuse a compatible empty thread and hand off through the normal session switch flow",
+  !clientHelpers.includes("function isReusableEmptyPracticeSession") &&
+    client.includes("function createNewSession") &&
+    client.includes("prepareScopedNewSession()") &&
+    client.includes("async function ensureSession"),
+  "new-session actions must stay local until first generation persists the thread",
 );
 assert(
   practiceLoader.includes("PracticeWorkspaceErrorBoundary") &&
