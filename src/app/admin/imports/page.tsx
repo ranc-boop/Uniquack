@@ -35,16 +35,32 @@ type AdminImportsPageProps = {
 export default async function AdminImportsPage({
   searchParams,
 }: AdminImportsPageProps) {
-  const params = await searchParams;
+  const [params, , supabase] = await Promise.all([
+    searchParams,
+    requireAdmin(),
+    createClient(),
+  ]);
   const showImport = params.view === "new";
-  await requireAdmin();
-  const supabase = await createClient();
-  const { data: batches, error } = await supabase
-    .from("import_batches")
-    .select("id, source_type, status, summary, created_at")
-    .order("created_at", { ascending: false })
-    .limit(10);
-  const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
+  const batchesPromise = showImport
+    ? Promise.resolve({ data: [], error: null })
+    : supabase
+        .from("import_batches")
+        .select("id, source_type, status, summary, created_at")
+        .order("created_at", { ascending: false })
+        .limit(10);
+  const taxonomyPromise = showImport
+    ? loadTaxonomyCatalog(supabase)
+    : Promise.resolve({
+        catalog: { facets: [], nodes: [] },
+        errorMessage: null,
+      });
+  const [
+    { data: batches, error },
+    { catalog: taxonomyCatalog },
+  ] = await Promise.all([
+    batchesPromise,
+    taxonomyPromise,
+  ]);
   const parentTagIds = new Set(
     taxonomyCatalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
   );

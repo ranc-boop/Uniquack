@@ -826,8 +826,8 @@ assert(
     authGuards.includes("requireStudent") &&
     supabaseMiddleware.includes("isTeacherRoute") &&
     supabaseMiddleware.includes("isStudentRoute") &&
-    supabaseMiddleware.includes("TEACHER_ROLES") &&
-    supabaseMiddleware.includes("STUDENT_ROLES"),
+    supabaseMiddleware.includes("canAccessTeacher(role)") &&
+    supabaseMiddleware.includes("canAccessStudent(role)"),
   "teacher/student classroom routes must be protected by role-specific guards and middleware",
 );
 console.log("PASS native classroom foundation keeps hash-only joins and scoped teacher/student access");

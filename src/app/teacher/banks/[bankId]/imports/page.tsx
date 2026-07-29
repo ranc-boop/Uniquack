@@ -18,8 +18,7 @@ import { listAIPdfBurstsForBank } from "@/lib/ai-pdf-import/burst-admission";
 import { listTeacherAIPdfParsingProfileState } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import {
   canManageBankContent,
-  getTeacherQuestionBankAccess,
-  listBankImportBatches,
+  getTeacherBankImportWorkspace,
   QuestionBankSchemaMissingError,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
@@ -98,8 +97,8 @@ export default async function TeacherBankImportsPage({
     saved?: string;
   }>;
 }) {
-  const [profile, { bankId }, query, supabase] = await Promise.all([
-    requireTeacher(),
+  const profilePromise = requireTeacher();
+  const [{ bankId }, query, supabase] = await Promise.all([
     params,
     searchParams,
     createClient(),
@@ -123,12 +122,14 @@ export default async function TeacherBankImportsPage({
       : Promise.resolve(null);
   const loadPageData = () =>
     Promise.all([
-      getTeacherQuestionBankAccess({
-        bankId,
-        profileId: profile.id,
-        supabase,
-      }),
-      listBankImportBatches({ bankId, supabase }),
+      Promise.all([
+        profilePromise,
+        getTeacherBankImportWorkspace({
+          bankId,
+          resolveProfileId: async () => (await profilePromise).id,
+          supabase,
+        }),
+      ]).then(([, workspace]) => workspace),
       taxonomyPromise,
       parsingProfilePromise,
       burstPromise,
@@ -147,19 +148,19 @@ export default async function TeacherBankImportsPage({
   }
 
   const [
-    detail,
-    importBatches,
+    importWorkspace,
     taxonomyResult,
     parsingProfileState,
     burstState,
     queueState,
   ] = pageData;
 
-  if (!detail) {
+  if (!importWorkspace.access) {
     notFound();
   }
 
-  const { bank, currentUserRole } = detail;
+  const { bank, currentUserRole } = importWorkspace.access;
+  const importBatches = importWorkspace.importBatches;
   const taxonomyCatalog = taxonomyResult?.catalog ?? {
     facets: [],
     nodes: [],

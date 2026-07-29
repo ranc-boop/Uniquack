@@ -25,6 +25,7 @@ export default async function AdminImportAssetsPage() {
     .from("questions")
     .select("id, question_code, title", { count: "exact" })
     .eq("status", "draft")
+    .is("owner_bank_id", null)
     .order("question_code", { ascending: true })
     .limit(BULK_ASSET_DRAFT_QUESTION_LIMIT);
   const draftQuestions: BulkAssetQuestionMatch[] = (questions ?? []).map(

@@ -161,8 +161,6 @@ function TreeNode({
       nodeOrDescendantMatches(child, facetKey, query, childrenById),
   );
   const matches = nodeMatchesSearch(node, query);
-  if (query && !matches && !children.length) return null;
-
   const aliases = node.aliases ?? [];
   const isSelected = selected.has(node.tag_id);
   const canSelect =
@@ -173,9 +171,22 @@ function TreeNode({
     Boolean(query) ||
     (level > 0 &&
       (isSelected || hasSelectedDescendant(node, selected, childrenById)));
+  const [manuallyOpen, setManuallyOpen] = useState(false);
+  const [hasExpanded, setHasExpanded] = useState(shouldOpen);
+  const isOpen = shouldOpen || manuallyOpen;
+
+  if (query && !matches && !children.length) return null;
 
   return (
-    <details className="group min-w-0" open={shouldOpen}>
+    <details
+      className="group min-w-0"
+      onToggle={(event) => {
+        const nextOpen = event.currentTarget.open;
+        if (nextOpen) setHasExpanded(true);
+        if (!shouldOpen) setManuallyOpen(nextOpen);
+      }}
+      open={isOpen}
+    >
       <summary
         className="flex min-w-0 cursor-pointer list-none items-start gap-2 rounded-md border bg-background px-2 py-1.5 text-sm transition hover:bg-muted/40"
         style={{ marginLeft: `${level * 14}px` }}
@@ -222,7 +233,7 @@ function TreeNode({
           ) : null}
         </span>
       </summary>
-      {children.length ? (
+      {children.length && (hasExpanded || shouldOpen) ? (
         <div className="ml-4 mt-1 space-y-1 border-l pl-2">
           {children.map((child) => (
             <TreeNode

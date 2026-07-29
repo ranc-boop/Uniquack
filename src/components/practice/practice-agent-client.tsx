@@ -26,7 +26,6 @@ import {
   clampPracticeSidebarWidth as clampSidebarWidth,
   evaluatePracticeSubmittedAttempts,
   hasSubmittedPracticeAnswer,
-  isReusableEmptyPracticeSession,
   practiceAnswerMapsMatch,
   practiceAnswerMapStatus,
   practiceJsonRequest as jsonRequest,
@@ -1408,61 +1407,8 @@ export function PracticeAgentClient({
   }
 
   function createNewSession() {
-    const courseFrameworkId = selectedCourseFrameworkId || null;
-    setSessionAction("creating");
     setError(null);
-    startTransition(async () => {
-      try {
-        const reusableSession = sessions.find((item) =>
-          isReusableEmptyPracticeSession(item, courseFrameworkId),
-        );
-        if (reusableSession?.id === activeSession?.id) {
-          resetSessionScopedDrafts();
-          setGoal("");
-          setPhase("start");
-          return;
-        }
-
-        if (reusableSession) {
-          setActiveSession({
-            ...reusableSession,
-            rounds: [],
-          });
-          setOutlineNotes(reusableSession.outlineUserNotes ?? "");
-          setWrongQuestions([]);
-          resetRoundState("SESSION_CHANGE");
-          resetSessionScopedDrafts();
-          setGoal("");
-          setPhase("start");
-          return;
-        }
-
-        const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
-          body: JSON.stringify({
-            courseFrameworkId,
-            goal: "",
-            title: "New practice session",
-          }),
-          method: "POST",
-        });
-        setActiveSession(payload.session);
-        setSessions((current) => [
-          payload.session,
-          ...current.filter((item) => item.id !== payload.session.id),
-        ]);
-        setOutlineNotes(payload.session.outlineUserNotes ?? "");
-        setWrongQuestions([]);
-        resetRoundState("SESSION_CHANGE");
-        resetSessionScopedDrafts();
-        setGoal("");
-        setPhase("start");
-        void runPreferenceMerge();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      } finally {
-        setSessionAction(null);
-      }
-    });
+    prepareScopedNewSession();
   }
 
   function showHistoricalRound(roundId: string) {
@@ -1483,14 +1429,19 @@ export function PracticeAgentClient({
   }
 
   function prepareScopedNewSession({ retryMistakes = false } = {}) {
+    const retryQuestionIds = retryMistakes
+      ? wrongQuestions
+          .filter((question) => !question.masteredAt)
+          .map((question) => question.sourceQuestionId)
+      : [];
     setActiveSession(null);
+    setOutlineNotes("");
+    setWrongQuestions([]);
     resetRoundState("SESSION_CHANGE");
     resetSessionScopedDrafts();
     setGoal(retryMistakes ? "Review my remaining mistakes in the selected Libraries" : "");
     if (retryMistakes) {
-      setSelectedWrongQuestionIds(
-        wrongQuestions.filter((question) => !question.masteredAt).map((question) => question.sourceQuestionId),
-      );
+      setSelectedWrongQuestionIds(retryQuestionIds);
     }
     setPhase("start");
   }

@@ -13,7 +13,6 @@ import type {
   PracticeRecommendResponse,
   PracticeRecommendation,
   PracticeRoundHistory,
-  PracticeSessionSummary,
 } from "@/lib/practice/types";
 
 type PracticeAnswerMap = Readonly<Record<string, PracticeAttemptInput["answer"]>>;
@@ -37,20 +36,6 @@ export function settlePracticeRequest<T>(
 
 export function clampPracticeSidebarWidth(value: number) {
   return Math.min(560, Math.max(240, Math.round(value)));
-}
-
-export function isReusableEmptyPracticeSession(
-  session: PracticeSessionSummary,
-  courseFrameworkId: string | null,
-) {
-  return session.status === "active" &&
-    (session.courseFrameworkId ?? null) === courseFrameworkId &&
-    session.roundCount === 0 &&
-    !session.goal.trim() &&
-    !session.sessionMemory.trim() &&
-    !session.outlineUserNotes?.trim() &&
-    session.completedQuestionIds.length === 0 &&
-    !session.sessionThreadMessages?.length;
 }
 
 export function practiceApiErrorMessage(
@@ -121,7 +106,7 @@ export function parsePracticeSsePayload(data: string) {
   }
 }
 
-export function practiceSourceQuestionId(question: PracticeQuestionIdentity) {
+function practiceSourceQuestionId(question: PracticeQuestionIdentity) {
   return canonicalPracticeSourceQuestionId(question);
 }
 
@@ -299,13 +284,6 @@ export function evaluatePracticeSubmittedAttempts(
     submittedAttemptAnswer,
     submittedAttemptCount: attempts.length,
   };
-}
-
-export function formatDuration(ms: number) {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return minutes ? `${minutes}m ${seconds.toString().padStart(2, "0")}s` : `${seconds}s`;
 }
 
 export function recommendationFromHistoryQuestion(

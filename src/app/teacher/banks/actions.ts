@@ -768,42 +768,6 @@ export async function removeBankMember(formData: FormData) {
   }
 }
 
-export async function importBankJsonDrafts(formData: FormData) {
-  const fallbackPath = `/teacher/banks/${formData.get("bankId")}/imports`;
-
-  try {
-    const profile = await requireTeacher();
-    const parsed = bankImportJsonSchema.parse(Object.fromEntries(formData));
-    const { supabase } = await requireManageableBankForAction({
-      bankId: parsed.bankId,
-      profileId: profile.id,
-    });
-
-    const summary = await importBatchImportJson({
-      initialSummaryExtras: {
-        importedFrom: "teacher_bank_import",
-        reviewGate: "bank_review_required",
-        targetBankId: parsed.bankId,
-      },
-      jsonText: parsed.jsonText,
-      profileId: profile.id,
-      sourceType: "manual_json",
-      supabase,
-      targetBankId: parsed.bankId,
-    });
-
-    revalidatePath(`/teacher/banks/${parsed.bankId}`);
-    revalidatePath(`/teacher/banks/${parsed.bankId}/imports`);
-    revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
-    redirectWithSaved(
-      `/teacher/banks/${parsed.bankId}/review`,
-      `Imported ${summary.createdCount} draft question(s). Review before adding them to this Library.`,
-    );
-  } catch (error) {
-    redirectWithError(fallbackPath, formatActionError(error));
-  }
-}
-
 export async function previewBankJsonImport(
   bankId: string,
   input: { jsonText: string },

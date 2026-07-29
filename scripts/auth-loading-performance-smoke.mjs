@@ -41,11 +41,13 @@ assert(
   middleware.includes("supabase.auth.getClaims()") &&
     !middleware.includes("supabase.auth.getUser()") &&
     middleware.includes('.from("profiles")') &&
-    middleware.includes('.select("role")') &&
-    middleware.includes("ADMIN_ROLES.includes(role)") &&
-    middleware.includes("TEACHER_ROLES.includes(role)") &&
-    middleware.includes("STUDENT_ROLES.includes(role)"),
-  "middleware avoids a mandatory Auth user round trip while retaining database role checks",
+    middleware.includes('.select("*")') &&
+    middleware.includes("AUTH_CONTEXT_HEADER") &&
+    middleware.includes("canAccessAdmin(role)") &&
+    middleware.includes("canAccessTeacher(role)") &&
+    middleware.includes("canAccessStudent(role)") &&
+    middleware.includes("canManageUsers(role)"),
+  "middleware verifies role and forwards its authenticated profile lookup to the RSC tree",
 );
 
 const signInIndex = authActions.indexOf("supabase.auth.signInWithPassword");

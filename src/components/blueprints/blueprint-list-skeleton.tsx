@@ -85,7 +85,7 @@ function BlueprintFolderShell() {
   );
 }
 
-export function BlueprintListSkeleton({
+function BlueprintListSkeleton({
   cardCount = 4,
 }: {
   cardCount?: number;
@@ -124,7 +124,7 @@ export function BlueprintListSkeleton({
   );
 }
 
-export function SourcePlanSkeleton() {
+function SourcePlanSkeleton() {
   return (
     <div
       aria-busy="true"
