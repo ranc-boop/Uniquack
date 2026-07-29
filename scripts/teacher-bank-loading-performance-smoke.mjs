@@ -162,10 +162,22 @@ assert(
 assert(
   questionsPage.includes("getTeacherQuestionBankAccess({") &&
     !questionsPage.includes("getTeacherQuestionBankDetail({") &&
+    questionsPage.includes("const showPublicCatalog = query.public === \"1\"") &&
+    /showPublicCatalog\s*\?\s*Promise\.resolve\(null\)\s*:\s*listBankQuestionsPage\(\{/.test(
+      questionsPage,
+    ) &&
     questionsPage.includes("[access, questionPage] = await Promise.all([") &&
+    questionsPage.includes("{!showPublicCatalog ? (") &&
     !questionsPage.includes("governanceProbeError") &&
     questionsPage.includes("const governanceAvailable = true"),
-  "Library questions must overlap lightweight access with pagination and reuse the page RPC as the governance capability check.",
+  "Library questions must overlap lightweight access with private pagination, skip that private page query in Public Catalog mode, and reuse the page RPC as the governance capability check.",
+);
+assert(
+  questionsPage.includes('.is("owner_bank_id", null)') &&
+    questionsPage.includes('.eq("status", "published")') &&
+    questionsPage.includes('.eq("visibility", "public")') &&
+    questionsPage.includes('.is("deleted_at", null)'),
+  "Teacher Public Catalog queries must remain restricted to live Central Public Library questions.",
 );
 assert(
   reviewPage.includes("getTeacherQuestionBankAccess({") &&
@@ -174,7 +186,7 @@ assert(
   "Library Review Drafts must overlap lightweight access with draft loading instead of fetching unused detail metrics first.",
 );
 assert(
-  adminQuestionsPage.includes("const [params, , supabase] = await Promise.all([") &&
+  adminQuestionsPage.includes("const [params, profile, supabase] = await Promise.all([") &&
     adminQuestionsPage.includes("const taxonomyCatalogPromise = loadTaxonomyCatalog(supabase)") &&
     adminQuestionsPage.includes("const focusedQuestionBundlePromise = focusedQuestionId") &&
     adminQuestionsPage.includes("ADMIN_QUESTION_EDIT_SELECT") &&

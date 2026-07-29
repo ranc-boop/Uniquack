@@ -33,10 +33,12 @@ type AdminAIPdfImportPageProps = {
 export default async function AdminAIPdfImportPage({
   searchParams,
 }: AdminAIPdfImportPageProps) {
-  const params = await searchParams;
+  const [params, profile, supabase] = await Promise.all([
+    searchParams,
+    requireAdmin(),
+    createClient(),
+  ]);
   const showImport = params.view === "new";
-  const profile = await requireAdmin();
-  const supabase = await createClient();
   const canViewAllImports = profile.role === "super_admin";
   let batchesQuery = supabase
     .from("import_batches")
@@ -59,13 +61,44 @@ export default async function AdminAIPdfImportPage({
     sourceAssetsQuery = sourceAssetsQuery.eq("created_by", profile.id);
   }
 
-  const { data: batches } = await batchesQuery;
-  const { data: sourceAssets, error: sourceAssetsError } =
-    await sourceAssetsQuery;
-  const sourceBatchIds = Array.from(
-    new Set((sourceAssets ?? []).map((asset) => asset.batch_id)),
-  );
-  let sourceBatches: NonNullable<typeof batches> = [];
+  const batchesPromise = showImport
+    ? Promise.resolve({ data: [], error: null })
+    : batchesQuery;
+  const providerPromise =
+    showImport && profile.role === "super_admin"
+      ? listEnabledAIProviderProfiles(supabase)
+          .then((providers) => ({
+            providerError: null as string | null,
+            providers,
+          }))
+          .catch((error: unknown) => ({
+            providerError:
+              error instanceof Error
+                ? error.message
+                : "Could not load AI providers.",
+            providers: [] as SafeAIProviderProfile[],
+          }))
+      : Promise.resolve({
+          providerError: null as string | null,
+          providers: [] as SafeAIProviderProfile[],
+        });
+  const [
+    { data: batches },
+    { data: sourceAssets, error: sourceAssetsError },
+    { providerError, providers },
+  ] = await Promise.all([
+    batchesPromise,
+    sourceAssetsQuery,
+    providerPromise,
+  ]);
+  const sourceBatchIds = showImport
+    ? Array.from(
+        new Set((sourceAssets ?? []).map((asset) => asset.batch_id)),
+      )
+    : (batches ?? []).map((batch) => batch.id);
+  let sourceBatches: NonNullable<typeof batches> = showImport
+    ? []
+    : (batches ?? []);
   let sourceBatchItems: {
     batch_id: string;
     created_question_id: string | null;
@@ -73,39 +106,31 @@ export default async function AdminAIPdfImportPage({
   }[] = [];
 
   if (sourceBatchIds.length) {
-    let loadedBatchesQuery = supabase
+    const loadedItemsQuery = supabase
+      .from("import_batch_items")
+      .select("batch_id, status, created_question_id")
+      .in("batch_id", sourceBatchIds)
+      .not("created_question_id", "is", null);
+
+    if (showImport) {
+      let loadedBatchesQuery = supabase
         .from("import_batches")
         .select("id, status, summary, created_at, created_by")
         .eq("source_type", "ai_pdf")
         .in("id", sourceBatchIds);
-    const loadedItemsQuery = supabase
-        .from("import_batch_items")
-        .select("batch_id, status, created_question_id")
-        .in("batch_id", sourceBatchIds)
-        .not("created_question_id", "is", null);
 
-    if (!canViewAllImports) {
-      loadedBatchesQuery = loadedBatchesQuery.eq("created_by", profile.id);
-    }
+      if (!canViewAllImports) {
+        loadedBatchesQuery = loadedBatchesQuery.eq("created_by", profile.id);
+      }
 
-    const [{ data: loadedBatches }, { data: loadedItems }] = await Promise.all([
-      loadedBatchesQuery,
-      loadedItemsQuery,
-    ]);
+      const [{ data: loadedBatches }, { data: loadedItems }] =
+        await Promise.all([loadedBatchesQuery, loadedItemsQuery]);
 
-    sourceBatches = loadedBatches ?? [];
-    sourceBatchItems = loadedItems ?? [];
-  }
-
-  let providers: SafeAIProviderProfile[] = [];
-  let providerError: string | null = null;
-
-  if (profile.role === "super_admin") {
-    try {
-      providers = await listEnabledAIProviderProfiles(supabase);
-    } catch (error) {
-      providerError =
-        error instanceof Error ? error.message : "Could not load AI providers.";
+      sourceBatches = loadedBatches ?? [];
+      sourceBatchItems = loadedItems ?? [];
+    } else {
+      const { data: loadedItems } = await loadedItemsQuery;
+      sourceBatchItems = loadedItems ?? [];
     }
   }
   const sourceBatchById = new Map(

@@ -296,7 +296,7 @@ export async function createQuestion(formData: FormData) {
       tagIds: taxonomyTagIdsFromForm(formData),
     });
   } catch (error) {
-    redirectWithError("/admin/questions", formatActionError(error));
+    redirectWithError("/admin/questions/new", formatActionError(error));
   }
 
   revalidatePath("/admin/questions");

@@ -31,9 +31,11 @@ export default async function AdminBankGovernancePage({
     saved?: string;
   }>;
 }) {
-  await requireSuperAdmin();
-  const params = await searchParams;
-  const supabase = await createClient();
+  const [profile, params, supabase] = await Promise.all([
+    requireSuperAdmin(),
+    searchParams,
+    createClient(),
+  ]);
   const q = (params.q ?? "").trim();
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   const pageSize = 25;
@@ -131,7 +133,7 @@ export default async function AdminBankGovernancePage({
         helpLabel="Legacy public-review scope"
         title="Bank Governance"
       />
-      <AdminQuestionLibraryNav />
+      <AdminQuestionLibraryNav role={profile.role} />
       <PageFeedback error={params.error} saved={params.saved} />
 
       <section className="overflow-hidden rounded-lg border bg-white shadow-sm">

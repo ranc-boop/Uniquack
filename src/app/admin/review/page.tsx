@@ -469,7 +469,7 @@ export default async function AdminReviewPage({
         helpLabel="Review Drafts details"
         title="Global Review Drafts"
       />
-      <AdminQuestionLibraryNav />
+      <AdminQuestionLibraryNav role={profile.role} />
       <PageFeedback error={params.error} saved={params.saved} />
       <AdminCard
         compact

@@ -39,6 +39,8 @@ await import("./assignment-practice-loading-performance-smoke.mjs");
 await import("./practice-provider-execution-smoke.mjs");
 await import("./loading-feedback-smoke.mjs");
 await import("./workspace-upload-performance-smoke.mjs");
+await import("./admin-import-navigation-performance-smoke.mjs");
+await import("./admin-question-create-performance-smoke.mjs");
 await import("./public-library-loading-performance-smoke.mjs");
 await import("./practice-library-scope-finish-smoke.mjs");
 await import("./teacher-progress-ui-smoke.mjs");

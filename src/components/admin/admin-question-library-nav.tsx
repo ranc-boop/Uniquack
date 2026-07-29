@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import { getCurrentProfile } from "@/lib/auth/guards";
 import { canManageUsers } from "@/lib/auth/roles";
+import type { UserRole } from "@/types/database";
 
 const items = [
   { governance: false, href: "/admin/questions", label: "Questions" },
@@ -11,9 +11,8 @@ const items = [
   { governance: false, href: "/admin/imports", label: "Import" },
 ];
 
-export async function AdminQuestionLibraryNav() {
-  const profile = await getCurrentProfile();
-  const canGovernPublic = Boolean(profile && canManageUsers(profile.role));
+export function AdminQuestionLibraryNav({ role }: { role: UserRole }) {
+  const canGovernPublic = canManageUsers(role);
 
   return (
     <nav

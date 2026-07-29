@@ -109,6 +109,7 @@ export default async function TeacherBankQuestionsPage({
   )
     ? (query.source as BankQuestion["source_kind"])
     : undefined;
+  const showPublicCatalog = query.public === "1";
   let questionPage;
 
   try {
@@ -118,16 +119,18 @@ export default async function TeacherBankQuestionsPage({
         profileId: profile.id,
         supabase,
       }),
-      listBankQuestionsPage({
-        bankId,
-        page: requestedPage,
-        pageSize,
-        query: query.q,
-        readiness,
-        sourceKind,
-        supabase,
-        taxonomyTagId: query.taxonomy,
-      }),
+      showPublicCatalog
+        ? Promise.resolve(null)
+        : listBankQuestionsPage({
+            bankId,
+            page: requestedPage,
+            pageSize,
+            query: query.q,
+            readiness,
+            sourceKind,
+            supabase,
+            taxonomyTagId: query.taxonomy,
+          }),
     ]);
   } catch (error) {
     if (error instanceof QuestionBankSchemaMissingError) {
@@ -141,7 +144,7 @@ export default async function TeacherBankQuestionsPage({
     notFound();
   }
 
-  const questions = questionPage.items;
+  const questions = questionPage?.items ?? [];
   const { bank, currentUserRole } = access;
   const canManage = canManageBankContent(currentUserRole);
   // search_bank_question_rows is installed by the same forward migration as
@@ -162,7 +165,7 @@ export default async function TeacherBankQuestionsPage({
   );
   let publicTotal = 0;
 
-  if (query.public === "1" && canManage && governanceAvailable) {
+  if (showPublicCatalog && canManage && governanceAvailable) {
     let publicQuestionQuery = supabase
       .from("questions")
       .select("id, question_code, title, question_type, difficulty_rating", {
@@ -204,7 +207,10 @@ export default async function TeacherBankQuestionsPage({
   if (publicPage > publicTotalPages) {
     redirect(publicPageHref(publicTotalPages));
   }
-  const totalPages = Math.max(1, Math.ceil(questionPage.total / pageSize));
+  const totalPages = Math.max(
+    1,
+    Math.ceil((questionPage?.total ?? 0) / pageSize),
+  );
   const page = requestedPage;
   const pageHref = (nextPage: number) => {
     const params = new URLSearchParams();
@@ -216,7 +222,7 @@ export default async function TeacherBankQuestionsPage({
     const suffix = params.toString();
     return `/teacher/banks/${bank.id}/questions${suffix ? `?${suffix}` : ""}`;
   };
-  if (page > totalPages) {
+  if (!showPublicCatalog && page > totalPages) {
     redirect(pageHref(totalPages));
   }
   const hasQuestionFilters = Boolean(
@@ -239,7 +245,7 @@ export default async function TeacherBankQuestionsPage({
               <BankQuickAction
                 href={`/teacher/publish?sourceBankId=${bank.id}`}
                 icon={bankActionIcons.assignment}
-                variant={questionPage.total ? "default" : "outline"}
+                variant={questionPage?.total ? "default" : "outline"}
               >
                 Assign selected work
               </BankQuickAction>
@@ -262,7 +268,7 @@ export default async function TeacherBankQuestionsPage({
         </section>
       ) : null}
 
-      {query.public === "1" && governanceAvailable ? (
+      {showPublicCatalog && governanceAvailable ? (
         <section className="overflow-hidden rounded-lg border border-sky-200 bg-white shadow-sm">
           <BankSectionHeader
             action={
@@ -390,30 +396,31 @@ export default async function TeacherBankQuestionsPage({
         </section>
       ) : null}
 
-      <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
-        <BankSectionHeader
-          action={
-            <div className="flex flex-wrap gap-2">
-              {canManage && governanceAvailable ? (
-                <Button asChild variant="outline">
-                  <Link href={`/teacher/banks/${bank.id}/questions?public=1`}>
-                    Add from Public Library
-                  </Link>
-                </Button>
-              ) : null}
-              {canManage ? (
-                <BankQuickAction
-                  href={`/teacher/banks/${bank.id}/imports`}
-                  icon={Upload}
-                >
-                  Import material
-                </BankQuickAction>
-              ) : null}
-            </div>
-          }
-          description="Source lineage, taxonomy status, and assignment readiness stay visible before classroom delivery."
-          title="Active Library questions"
-        />
+      {!showPublicCatalog ? (
+        <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
+          <BankSectionHeader
+            action={
+              <div className="flex flex-wrap gap-2">
+                {canManage && governanceAvailable ? (
+                  <Button asChild variant="outline">
+                    <Link href={`/teacher/banks/${bank.id}/questions?public=1`}>
+                      Add from Public Library
+                    </Link>
+                  </Button>
+                ) : null}
+                {canManage ? (
+                  <BankQuickAction
+                    href={`/teacher/banks/${bank.id}/imports`}
+                    icon={Upload}
+                  >
+                    Import material
+                  </BankQuickAction>
+                ) : null}
+              </div>
+            }
+            description="Source lineage, taxonomy status, and assignment readiness stay visible before classroom delivery."
+            title="Active Library questions"
+          />
         <form className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_12rem_12rem_auto]">
           <div className="space-y-2">
             <Label htmlFor="library-question-search">Search</Label>
@@ -469,7 +476,7 @@ export default async function TeacherBankQuestionsPage({
           </div>
         </form>
         <div>
-          {questionPage.total ? (
+          {questionPage?.total ? (
             <>
               <div className="overflow-x-auto">
                 <Table>
@@ -670,7 +677,8 @@ export default async function TeacherBankQuestionsPage({
             </div>
           )}
         </div>
-      </section>
+        </section>
+      ) : null}
     </BankWorkbenchPage>
   );
 }

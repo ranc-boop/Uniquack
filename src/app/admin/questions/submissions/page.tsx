@@ -84,9 +84,11 @@ export default async function AdminPublicSubmissionsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireSuperAdmin();
-  const params = await searchParams;
-  const supabase = await createClient();
+  const [profile, params, supabase] = await Promise.all([
+    requireSuperAdmin(),
+    searchParams,
+    createClient(),
+  ]);
   const q = (params.q ?? "").trim();
   const allowedStatuses: PublicQuestionSubmissionStatus[] = [
     "pending",
@@ -174,7 +176,7 @@ export default async function AdminPublicSubmissionsPage({
         helpLabel="Public submission boundary"
         title="Public Submissions"
       />
-      <AdminQuestionLibraryNav />
+      <AdminQuestionLibraryNav role={profile.role} />
       <PageFeedback error={params.error} saved={params.saved} />
 
       {setupNeeded ? (

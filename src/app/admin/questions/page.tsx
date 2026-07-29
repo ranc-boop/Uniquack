@@ -1,6 +1,5 @@
 import {
   bulkUpdateQuestions,
-  createQuestion,
   deleteQuestion,
 } from "@/app/admin/questions/actions";
 import { Fragment } from "react";
@@ -18,10 +17,6 @@ import { AdminQuestionEditDetails } from "@/components/admin-question-edit-detai
 import { DeleteSubmitButton } from "@/components/delete-submit-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
-import { QuestionAnswerFields } from "@/components/question-answer-fields";
-import { QuestionHtmlEditor } from "@/components/question-html-editor";
-import { QuestionAssetsPanel } from "@/components/question-assets-panel";
-import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
 import {
   TaxonomyTagChips,
   type TaxonomyTagChipAssignment,
@@ -280,7 +275,7 @@ function hasQuestionDetailFields(
 export default async function AdminQuestionsPage({
   searchParams,
 }: AdminQuestionsPageProps) {
-  const [params, , supabase] = await Promise.all([
+  const [params, profile, supabase] = await Promise.all([
     searchParams,
     requireAdmin(),
     createClient(),
@@ -569,111 +564,20 @@ export default async function AdminQuestionsPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
+        actions={
+          !focusedQuestionId ? (
+            <Button asChild>
+              <Link href="/admin/questions/new">Create question</Link>
+            </Button>
+          ) : null
+        }
         eyebrow="Content management"
         help="Search, filter, edit, and maintain global questions. Teacher-owned Library questions are governed separately and never appear in this workspace."
         helpLabel="Central Public Library details"
         title="Central Public Library"
       />
-      <AdminQuestionLibraryNav />
+      <AdminQuestionLibraryNav role={profile.role} />
       <PageFeedback error={params.error} saved={params.saved} />
-      {!focusedQuestionId ? (
-      <details className="rounded-lg border bg-card p-5 shadow-sm">
-        <summary className="cursor-pointer list-none">
-          <p className="text-base font-semibold">Create question</p>
-        </summary>
-        <div className="mt-4 rounded-md border bg-background p-4">
-          <form
-            id="create-question-form"
-            action={createQuestion}
-            className="grid gap-4 md:grid-cols-2"
-          >
-            <input id="create-question-draft-id" type="hidden" name="draft_id" />
-            <div className="space-y-2">
-              <Label htmlFor="question_code">Code</Label>
-              <Input
-                id="question_code"
-                name="question_code"
-                placeholder="Q10042"
-                required
-                maxLength={80}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="title">Title</Label>
-              <Input
-                id="title"
-                name="title"
-                placeholder="Newton's laws FRQ"
-                required
-                maxLength={240}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="difficulty_rating">Difficulty 0-1000</Label>
-              <Input
-                id="difficulty_rating"
-                name="difficulty_rating"
-                type="number"
-                min="0"
-                max="1000"
-                defaultValue="500"
-                required
-              />
-            </div>
-            <QuestionAnswerFields defaultQuestionType="frq" />
-            <input name="status" type="hidden" value="draft" />
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-              Manual authoring creates a private Global Review Draft.
-              Publication is available only after review.
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <QuestionHtmlEditor
-                id="content_html"
-                label="Content HTML"
-                name="content_html"
-                placeholder="<p>Question stem placeholder</p>"
-                required
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <QuestionHtmlEditor
-                id="solution_html"
-                label="Solution HTML"
-                name="solution_html"
-                placeholder="<p>Optional solution placeholder</p>"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <TaxonomyTagTreePicker
-                namePrefix="question_tax"
-                selectable="assignable"
-                taxonomyCatalog={taxonomyCatalog}
-                title="Question taxonomy tags"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <QuestionAssetsPanel
-                draftInputId="create-question-draft-id"
-                questionCodeInputId="question_code"
-                titleInputId="title"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <QuestionSourceFilesPanel
-                draftInputId="create-question-draft-id"
-                questionCodeInputId="question_code"
-                titleInputId="title"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <FormSubmitButton pendingLabel="Creating question...">
-                Create question
-              </FormSubmitButton>
-            </div>
-          </form>
-        </div>
-      </details>
-      ) : null}
       {!focusedQuestionId ? (
       <AdminCard
         compact
