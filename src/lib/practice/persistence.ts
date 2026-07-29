@@ -108,7 +108,7 @@ const PRACTICE_SESSION_DETAIL_SELECT =
 const PRACTICE_SESSION_SUMMARY_SELECT =
   `${PRACTICE_SESSION_FIELDS},practice_rounds(count),practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
 const PRACTICE_ROUND_HISTORY_SELECT =
-  "id,next_round_goal,review_summary,round_goal,score_correct,score_total,trace";
+  "id,next_round_goal,review_summary,round_goal,score_correct,score_total,status,trace";
 const PRACTICE_ROUND_QUESTION_HISTORY_SELECT =
   "expected_skill,id,position,question_id,question_snapshot,reason,round_id,source_question_id";
 const PRACTICE_ATTEMPT_HISTORY_SELECT =
@@ -846,6 +846,12 @@ export async function getPracticeSession({
       correct: round.score_correct,
       total: round.score_total,
     },
+    status:
+      round.status === "completed"
+        ? "completed"
+        : round.status === "skipped"
+          ? "skipped"
+          : "active",
     trace: traceEventsFromJson(round.trace),
   }));
 
@@ -1447,10 +1453,12 @@ export async function persistQuestionReviewResults({
   const roundUpdate = await supabase
     .from("practice_rounds")
     .update({
+      completed_at: new Date().toISOString(),
       mode: "ai",
       provider_label: providerLabel ?? null,
       score_correct: correct,
       score_total: total,
+      status: "completed",
       trace: mergedTrace as unknown as Json,
     })
     .eq("user_id", userId)

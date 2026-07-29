@@ -327,6 +327,7 @@ export type PracticeRoundHistory = {
     correct: number;
     total: number;
   };
+  status: "active" | "completed" | "skipped";
   trace: PracticeTraceEvent[];
 };
 
