@@ -14,9 +14,7 @@ export type PracticeTraceEvent = {
   inputPayload?: unknown;
   iteration?: number;
   llmUsage?: Record<string, unknown> | null;
-  modelThought?: string;
   outputSummary?: string;
-  reasoningContent?: string | null;
   outputPayload?: unknown;
   phase: PracticePhase | "context";
   resultCount?: number;

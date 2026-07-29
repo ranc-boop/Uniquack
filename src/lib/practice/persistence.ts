@@ -26,6 +26,7 @@ import {
 } from "@/lib/practice/answer-restore";
 import { initializePracticePreference } from "@/lib/practice/preference-initialization";
 import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-identity";
+import { sanitizePublicPracticeTrace } from "@/lib/practice/trace-safety";
 import type { Json, PracticeSession } from "@/types/database";
 
 type SupabaseLike = {
@@ -385,13 +386,7 @@ function hintsFromJson(value: unknown) {
 }
 
 function traceEventsFromJson(value: unknown): PracticeTraceEvent[] {
-  return Array.isArray(value)
-    ? value.filter((event): event is PracticeTraceEvent => Boolean(
-      event &&
-      typeof event === "object" &&
-      "toolName" in event,
-    ))
-    : [];
+  return sanitizePublicPracticeTrace(value);
 }
 
 function isUniqueConstraintError(error: unknown) {
@@ -1169,7 +1164,7 @@ export async function persistRecommendationRound({
         round_goal: response.roundGoal,
         round_index: roundIndex,
         session_id: sessionId,
-        trace: trace as unknown as Json,
+        trace: sanitizePublicPracticeTrace(trace) as unknown as Json,
         user_id: userId,
       })
       .select("id")
@@ -1443,7 +1438,7 @@ export async function persistQuestionReviewResults({
   const existingTrace = traceEventsFromJson(existingRoundResult.data?.trace);
   const mergedTrace = [
     ...existingTrace,
-    ...trace.filter((event) => !existingTrace.some((existing) =>
+    ...sanitizePublicPracticeTrace(trace).filter((event) => !existingTrace.some((existing) =>
       existing.toolName === event.toolName &&
       existing.iteration === event.iteration &&
       existing.inputSummary === event.inputSummary &&
@@ -1637,7 +1632,7 @@ export async function persistRoundReviewSummary({
   const existingTrace = traceEventsFromJson(existingRoundResult.data?.trace);
   const mergedTrace = [
     ...existingTrace,
-    ...trace.filter((event) => !existingTrace.some((existing) =>
+    ...sanitizePublicPracticeTrace(trace).filter((event) => !existingTrace.some((existing) =>
       existing.toolName === event.toolName &&
       existing.iteration === event.iteration &&
       existing.inputSummary === event.inputSummary &&
