@@ -45,6 +45,7 @@ await import("./admin-question-create-performance-smoke.mjs");
 await import("./admin-review-editor-loading-smoke.mjs");
 await import("./taxonomy-tree-progressive-mount-smoke.mjs");
 await import("./workspace-navigation-loading-smoke.mjs");
+await import("./redundancy-cleanup-smoke.mjs");
 await import("./auth-context-handoff-performance-smoke.mjs");
 await import("./teacher-import-workspace-read-model-smoke.mjs");
 await import("./public-library-loading-performance-smoke.mjs");

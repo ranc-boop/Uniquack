@@ -2,12 +2,14 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { AUTH_CONTEXT_HEADER } from "@/lib/auth/request-context";
+import {
+  canAccessAdmin,
+  canAccessStudent,
+  canAccessTeacher,
+  canManageUsers,
+} from "@/lib/auth/roles";
 import { getSupabaseConfig, isSupabaseConfigured } from "@/lib/supabase/config";
-import type { Database, Profile, UserRole } from "@/types/database";
-
-const ADMIN_ROLES: UserRole[] = ["admin", "super_admin"];
-const TEACHER_ROLES: UserRole[] = ["teacher", "admin", "super_admin"];
-const STUDENT_ROLES: UserRole[] = ["student"];
+import type { Database, Profile } from "@/types/database";
 
 function redirectToLogin(request: NextRequest) {
   const loginUrl = request.nextUrl.clone();
@@ -122,24 +124,24 @@ export async function updateSessionAndProtectRoutes(request: NextRequest) {
   }
 
   if (pathname === "/admin/users" || pathname.startsWith("/admin/users/")) {
-    return role === "super_admin"
+    return canManageUsers(role)
       ? response
       : applyPendingCookies(redirectToUnauthorized(request));
   }
 
   if (isAdminRoute) {
-    return role && ADMIN_ROLES.includes(role)
+    return canAccessAdmin(role)
       ? response
       : applyPendingCookies(redirectToUnauthorized(request));
   }
 
   if (isTeacherRoute) {
-    return role && TEACHER_ROLES.includes(role)
+    return canAccessTeacher(role)
       ? response
       : applyPendingCookies(redirectToUnauthorized(request));
   }
 
-  return role && STUDENT_ROLES.includes(role)
+  return canAccessStudent(role)
     ? response
     : applyPendingCookies(redirectToUnauthorized(request));
 }

@@ -86,5 +86,3 @@ export function AdminCard({
     </Card>
   );
 }
-
-export const AdminSectionCard = AdminCard;

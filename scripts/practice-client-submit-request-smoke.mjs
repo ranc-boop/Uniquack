@@ -26,7 +26,7 @@ const [cardSource, clientSource, helperSource, harnessSource] = await Promise.al
   readFile(resolve(root, "scripts/assignment-practice-resume-submit-live-e2e.mjs"), "utf8"),
 ]);
 
-const helperBlock = sourceBlock(helperSource, "type PracticeAnswerMap", "export function formatDuration");
+const helperBlock = sourceBlock(helperSource, "type PracticeAnswerMap", "export function recommendationFromHistoryQuestion");
 const compiledHelpers = ts.transpileModule(helperBlock.replace(/^export /gm, ""), {
   compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022 },
 }).outputText;

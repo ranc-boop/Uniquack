@@ -53,11 +53,6 @@ export const videoUpdateSchema = videoCreateSchema.extend({
   id: uuidSchema,
 });
 
-export const videoStatusSchema = z.object({
-  id: uuidSchema,
-  status: contentStatusSchema,
-});
-
 export const videoDeleteSchema = z.object({
   id: uuidSchema,
 });

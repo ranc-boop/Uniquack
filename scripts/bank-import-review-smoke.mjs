@@ -139,12 +139,13 @@ async function main() {
   );
   assert(
     detailPage.includes("Import Material") &&
-      importsPage.includes("BankImportEntryPanel") &&
-      importUi.includes("Import into selected bank") &&
-      importsPage.includes("Advanced / Developer fixture") &&
-      importsPage.includes("Developer fixture for smoke testing. Normal teachers should") &&
-      importsPage.includes("Create bank Review Drafts") &&
-      reviewPage.includes("Approve into bank") &&
+      importsPage.includes("TeacherBankImportTransition") &&
+      importsPage.includes("BankManualQuestionForm") &&
+      importsPage.includes("BatchImportJsonPanelLoader") &&
+      importsPage.includes("TeacherPdfBurstUpload") &&
+      importUi.includes("Recent AI Parsing status") &&
+      importsPage.includes("Manual, JSON, and AI Parsing all create Review Drafts") &&
+      reviewPage.includes("Approve into Library") &&
       questionsPage.includes("not public/global questions") &&
       bankActions.includes('rpc("approve_bank_review_question"'),
     "bank import/review routes are missing expected workflow copy or action wiring",

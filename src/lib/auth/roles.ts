@@ -1,9 +1,5 @@
 import type { UserRole } from "@/types/database";
 
-export const ADMIN_ROLES: UserRole[] = ["admin", "super_admin"];
-export const TEACHER_ROLES: UserRole[] = ["teacher", "admin", "super_admin"];
-export const STUDENT_ROLES: UserRole[] = ["student"];
-
 export function canAccessAdmin(role: UserRole | null | undefined) {
   return role === "admin" || role === "super_admin";
 }

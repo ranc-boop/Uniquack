@@ -391,58 +391,6 @@ export async function updateQuestion(formData: FormData) {
   redirectWithSaved(returnTo, "Question updated.");
 }
 
-export async function updateQuestionStatus(formData: FormData) {
-  let questionId = "";
-
-  try {
-    const profile = await requireAdmin();
-    const parsed = questionStatusSchema.parse(Object.fromEntries(formData));
-    const supabase = await createClient();
-    questionId = parsed.id;
-    await assertGlobalQuestionIds({
-      questionIds: [parsed.id],
-      supabase,
-    });
-
-    if (parsed.status === "published") {
-      await publishQuestionsWithReviewLineage({
-        questionIds: [parsed.id],
-        supabase,
-      });
-    } else {
-      const { data: updatedQuestions, error } = await supabase
-        .from("questions")
-        .update({
-          status: parsed.status,
-          updated_by: profile.id,
-          published_at: null,
-          visibility: "private",
-        })
-        .eq("id", parsed.id)
-        .select("id");
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if ((updatedQuestions?.length ?? 0) !== 1) {
-        throw new Error(
-          "Question status update did not affect the selected question.",
-        );
-      }
-    }
-  } catch (error) {
-    redirectWithError("/admin/questions", formatActionError(error));
-  }
-
-  revalidatePath("/admin/questions");
-  revalidatePath("/questions");
-  revalidatePath("/admin/videos");
-  revalidatePath("/videos");
-  revalidatePath(`/questions/${questionId}`);
-  redirectWithSaved("/admin/questions", "Question status updated.");
-}
-
 export async function deleteQuestion(formData: FormData) {
   let questionId = "";
 

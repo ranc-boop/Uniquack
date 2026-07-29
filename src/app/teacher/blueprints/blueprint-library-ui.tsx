@@ -382,25 +382,6 @@ export function BlueprintWorkflowPanel() {
   );
 }
 
-export function DisabledBlueprintActions() {
-  const actions = [
-    "Link to Library",
-    "Generate Review Drafts",
-    "Use in Publish",
-    "Share / Submit to Public Review",
-  ];
-
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      {actions.map((action) => (
-        <Button disabled key={action} type="button" variant="outline">
-          {action} - coming next
-        </Button>
-      ))}
-    </div>
-  );
-}
-
 export function BankLinkSummary({
   bankName,
   relationKind,
