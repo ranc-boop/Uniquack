@@ -155,9 +155,10 @@ assert(
 assert(
   importsPage.includes("const loadPageData = () =>") &&
     importsPage.includes("Promise.all([") &&
-    importsPage.includes("getTeacherQuestionBankAccess({") &&
-    importsPage.includes("listBankImportBatches({ bankId, supabase })"),
-  "Library access and recent imports must load in parallel.",
+    importsPage.includes("getTeacherBankImportWorkspace({") &&
+    importsPage.includes("taxonomyPromise") &&
+    importsPage.includes("parsingProfilePromise"),
+  "Library shared import state must use one read model and overlap mode-specific data.",
 );
 assert(
   questionsPage.includes("getTeacherQuestionBankAccess({") &&

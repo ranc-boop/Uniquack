@@ -176,6 +176,8 @@ function wantsEventStream(request: Request) {
   return request.headers.get("accept")?.includes("text/event-stream") ?? false;
 }
 
+const REVIEW_CONCURRENCY = 3;
+
 function buildQuestionThreadText(questionReviews: PracticeQuestionReview[], recommendations: PracticeRecommendation[]) {
   const questionById = new Map(
     recommendations.map((question) => [canonicalPracticeSourceQuestionId(question), question]),
@@ -301,71 +303,124 @@ export async function POST(request: Request) {
         });
         send("trace", trace[trace.length - 1]);
 
-        const results: PracticeGradeResult[] = [];
-        const questionReviews: PracticeQuestionReview[] = [];
+        const resultsByIndex: Array<PracticeGradeResult | undefined> =
+          new Array(attempts.length);
+        const questionReviewsByIndex: Array<
+          PracticeQuestionReview | undefined
+        > = new Array(attempts.length);
+        let nextAttemptIndex = 0;
+        let reviewFailure: unknown = null;
 
-        for (const attempt of attempts) {
-          const stored = questionById.get(attempt.questionId);
-          const recommended = recommendationById.get(attempt.questionId);
-          const reviewInput = {
-            answer_spec: compactAnswerSpec(stored?.answer_spec),
-            hint_count: attempt.hintCount ?? 0,
-            options: optionText(stored?.options ?? recommended?.options),
-            question_code: stored?.question_code ?? recommended?.questionCode ?? attempt.questionCode,
-            question_id: attempt.questionId,
-            question_type: stored?.question_type ?? recommended?.questionType,
-            solution: compactText(stored?.solution_html, 1400),
-            stem: compactText(stored?.content_html ?? recommended?.contentHtml, 1400),
-            student_answer: attempt.answer,
-            task_type: "single_question_correctness_review",
-            title: compactText(stored?.title ?? recommended?.title ?? attempt.title, 180),
-          };
+        async function reviewNextAttempt() {
+          while (!reviewFailure) {
+            const index = nextAttemptIndex;
+            nextAttemptIndex += 1;
+            if (index >= attempts.length) return;
 
-          const started = Date.now();
-          const aiResult = await callPracticeJsonModel<AIQuestionReviewResponse>({
-            debugContext: { phase: "review", questionId: attempt.questionId, roundId, sessionId },
-            profile,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: stableStringify(reviewInput) },
-            ],
-          });
-          if (aiResult.usage) {
-            const usageEnvelope = buildUsageEnvelope({
-              cachePrefixVersion,
-              phase: "review",
-              prefixPayload: { reviewPrompt: "single-question-review" },
-              providerLabel: aiResult.providerLabel,
-              suffixPayload: reviewInput,
-              usage: aiResult.usage,
-            });
-            usageEnvelopes.push(usageEnvelope);
-            void writePracticeStatsLog({
-              context: { phase: "review", questionId: attempt.questionId, roundId, sessionId },
-              payload: usageEnvelope,
-            });
+            const attempt = attempts[index];
+            try {
+              const stored = questionById.get(attempt.questionId);
+              const recommended = recommendationById.get(attempt.questionId);
+              const reviewInput = {
+                answer_spec: compactAnswerSpec(stored?.answer_spec),
+                hint_count: attempt.hintCount ?? 0,
+                options: optionText(stored?.options ?? recommended?.options),
+                question_code:
+                  stored?.question_code ??
+                  recommended?.questionCode ??
+                  attempt.questionCode,
+                question_id: attempt.questionId,
+                question_type:
+                  stored?.question_type ?? recommended?.questionType,
+                solution: compactText(stored?.solution_html, 1400),
+                stem: compactText(
+                  stored?.content_html ?? recommended?.contentHtml,
+                  1400,
+                ),
+                student_answer: attempt.answer,
+                task_type: "single_question_correctness_review",
+                title: compactText(
+                  stored?.title ?? recommended?.title ?? attempt.title,
+                  180,
+                ),
+              };
+
+              const started = Date.now();
+              const aiResult =
+                await callPracticeJsonModel<AIQuestionReviewResponse>({
+                  debugContext: {
+                    phase: "review",
+                    questionId: attempt.questionId,
+                    roundId,
+                    sessionId,
+                  },
+                  profile,
+                  messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: stableStringify(reviewInput) },
+                  ],
+                });
+              if (aiResult.usage) {
+                const usageEnvelope = buildUsageEnvelope({
+                  cachePrefixVersion,
+                  phase: "review",
+                  prefixPayload: { reviewPrompt: "single-question-review" },
+                  providerLabel: aiResult.providerLabel,
+                  suffixPayload: reviewInput,
+                  usage: aiResult.usage,
+                });
+                usageEnvelopes.push(usageEnvelope);
+                void writePracticeStatsLog({
+                  context: {
+                    phase: "review",
+                    questionId: attempt.questionId,
+                    roundId,
+                    sessionId,
+                  },
+                  payload: usageEnvelope,
+                });
+              }
+              const normalized = normalizeQuestionReview({
+                attempt,
+                parsed: {
+                  ...aiResult.parsed,
+                  question_id: attempt.questionId,
+                },
+                solutionHtml: solutionByQuestionId.get(attempt.questionId),
+              });
+              resultsByIndex[index] = normalized.result;
+              questionReviewsByIndex[index] = normalized.review;
+              const event: PracticeTraceEvent = {
+                elapsedMs: Date.now() - started,
+                inputSummary: `Reviewed ${attempt.questionId}`,
+                outputSummary: `${normalized.review.verdict}: ${compactText(normalized.review.judgmentReason ?? "", 160)}`,
+                phase: "review",
+                toolName: "question_review",
+              };
+              trace.push(event);
+              send("trace", event);
+              send("question_review", {
+                result: normalized.result,
+                review: normalized.review,
+              });
+            } catch (error) {
+              reviewFailure ??= error;
+            }
           }
-          const normalized = normalizeQuestionReview({
-            attempt,
-            parsed: { ...aiResult.parsed, question_id: attempt.questionId },
-            solutionHtml: solutionByQuestionId.get(attempt.questionId),
-          });
-          results.push(normalized.result);
-          questionReviews.push(normalized.review);
-          const event: PracticeTraceEvent = {
-            elapsedMs: Date.now() - started,
-            inputSummary: `Reviewed ${attempt.questionId}`,
-            outputSummary: `${normalized.review.verdict}: ${compactText(normalized.review.judgmentReason ?? "", 160)}`,
-            phase: "review",
-            toolName: "question_review",
-          };
-          trace.push(event);
-          send("trace", event);
-          send("question_review", {
-            result: normalized.result,
-            review: normalized.review,
-          });
         }
+
+        const workerCount = Math.min(REVIEW_CONCURRENCY, attempts.length);
+        await Promise.all(
+          Array.from({ length: workerCount }, () => reviewNextAttempt()),
+        );
+        if (reviewFailure) throw reviewFailure;
+
+        const results = resultsByIndex.filter(
+          (result): result is PracticeGradeResult => Boolean(result),
+        );
+        const questionReviews = questionReviewsByIndex.filter(
+          (review): review is PracticeQuestionReview => Boolean(review),
+        );
 
         await persistQuestionReviewResults({
           attempts,

@@ -1,8 +1,9 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { AUTH_CONTEXT_HEADER } from "@/lib/auth/request-context";
 import { getSupabaseConfig, isSupabaseConfigured } from "@/lib/supabase/config";
-import type { Database, UserRole } from "@/types/database";
+import type { Database, Profile, UserRole } from "@/types/database";
 
 const ADMIN_ROLES: UserRole[] = ["admin", "super_admin"];
 const TEACHER_ROLES: UserRole[] = ["teacher", "admin", "super_admin"];
@@ -26,7 +27,29 @@ function redirectToUnauthorized(request: NextRequest) {
 }
 
 export async function updateSessionAndProtectRoutes(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(AUTH_CONTEXT_HEADER);
+
+  let pendingCookies: Array<{
+    name: string;
+    options: CookieOptions;
+    value: string;
+  }> = [];
+
+  function applyPendingCookies(response: NextResponse) {
+    pendingCookies.forEach(({ name, value, options }) => {
+      response.cookies.set(name, value, options);
+    });
+    return response;
+  }
+
+  function createPassThroughResponse() {
+    return applyPendingCookies(
+      NextResponse.next({ request: { headers: requestHeaders } }),
+    );
+  }
+
+  let response = createPassThroughResponse();
 
   if (!isSupabaseConfigured()) {
     return response;
@@ -40,10 +63,16 @@ export async function updateSessionAndProtectRoutes(request: NextRequest) {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, options);
-        });
+        const refreshedCookieHeader = request.headers.get("cookie");
+        if (refreshedCookieHeader) {
+          requestHeaders.set("cookie", refreshedCookieHeader);
+        }
+        const refreshedNames = new Set(cookiesToSet.map(({ name }) => name));
+        pendingCookies = [
+          ...pendingCookies.filter(({ name }) => !refreshedNames.has(name)),
+          ...cookiesToSet,
+        ];
+        response = createPassThroughResponse();
       },
     },
   });
@@ -64,34 +93,53 @@ export async function updateSessionAndProtectRoutes(request: NextRequest) {
   const userId = claimsData?.claims.sub;
 
   if (typeof userId !== "string" || !userId) {
-    return redirectToLogin(request);
+    return applyPendingCookies(redirectToLogin(request));
   }
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("*")
     .eq("id", userId)
     .single();
 
-  const role = profile?.role;
+  const verifiedProfile = profile as Profile | null;
+  const role = verifiedProfile?.role;
+
+  if (verifiedProfile?.id === userId) {
+    const authContext = {
+      email:
+        typeof claimsData.claims.email === "string"
+          ? claimsData.claims.email
+          : null,
+      profile: verifiedProfile,
+      userId,
+    };
+    requestHeaders.set(
+      AUTH_CONTEXT_HEADER,
+      encodeURIComponent(JSON.stringify(authContext)),
+    );
+    response = createPassThroughResponse();
+  }
 
   if (pathname === "/admin/users" || pathname.startsWith("/admin/users/")) {
-    return role === "super_admin" ? response : redirectToUnauthorized(request);
+    return role === "super_admin"
+      ? response
+      : applyPendingCookies(redirectToUnauthorized(request));
   }
 
   if (isAdminRoute) {
     return role && ADMIN_ROLES.includes(role)
       ? response
-      : redirectToUnauthorized(request);
+      : applyPendingCookies(redirectToUnauthorized(request));
   }
 
   if (isTeacherRoute) {
     return role && TEACHER_ROLES.includes(role)
       ? response
-      : redirectToUnauthorized(request);
+      : applyPendingCookies(redirectToUnauthorized(request));
   }
 
   return role && STUDENT_ROLES.includes(role)
     ? response
-    : redirectToUnauthorized(request);
+    : applyPendingCookies(redirectToUnauthorized(request));
 }

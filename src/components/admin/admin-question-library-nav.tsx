@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { AdminPendingLink } from "@/components/admin/admin-pending-link";
 import { canManageUsers } from "@/lib/auth/roles";
 import type { UserRole } from "@/types/database";
 
@@ -20,13 +19,14 @@ export function AdminQuestionLibraryNav({ role }: { role: UserRole }) {
       className="flex gap-2 overflow-x-auto rounded-lg border bg-white p-2 shadow-sm"
     >
       {items.filter((item) => !item.governance || canGovernPublic).map((item) => (
-        <Link
+        <AdminPendingLink
           className="min-h-10 shrink-0 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
           href={item.href}
           key={item.href}
+          pendingLabel={item.label}
         >
           {item.label}
-        </Link>
+        </AdminPendingLink>
       ))}
     </nav>
   );

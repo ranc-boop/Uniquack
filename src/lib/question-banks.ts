@@ -192,6 +192,19 @@ function isMissingQuestionBankSummaryRpc(error: {
   );
 }
 
+function isMissingBankImportWorkspaceRpc(error: {
+  code?: string;
+  message?: string;
+} | null) {
+  const message = error?.message?.toLowerCase() ?? "";
+  return (
+    error?.code === "42883" ||
+    error?.code === "PGRST202" ||
+    (message.includes("get_teacher_bank_import_workspace_v1") &&
+      (message.includes("does not exist") || message.includes("schema cache")))
+  );
+}
+
 function countByBankId(rows: Array<{ bank_id: string }> | null | undefined) {
   const counts = new Map<string, number>();
 
@@ -543,6 +556,66 @@ export async function listBankImportBatches({
   }
 
   return (data ?? []) as BankImportBatchSummary[];
+}
+
+type TeacherBankImportWorkspacePayload = {
+  bank?: QuestionBank;
+  current_user_role?: BankMemberRole | null;
+  import_batches?: BankImportBatchSummary[];
+};
+
+type TeacherBankImportWorkspaceRpc = {
+  rpc(
+    functionName: "get_teacher_bank_import_workspace_v1",
+    args: { p_bank_id: string },
+  ): Promise<{
+    data: TeacherBankImportWorkspacePayload | null;
+    error: { code?: string; message: string } | null;
+  }>;
+};
+
+export async function getTeacherBankImportWorkspace({
+  bankId,
+  resolveProfileId,
+  supabase,
+}: {
+  bankId: string;
+  resolveProfileId: () => Promise<string>;
+  supabase: SupabaseServerClient;
+}) {
+  const { data, error } = await (
+    supabase as unknown as TeacherBankImportWorkspaceRpc
+  ).rpc("get_teacher_bank_import_workspace_v1", {
+    p_bank_id: bankId,
+  });
+
+  if (!error) {
+    return {
+      access: data?.bank
+        ? {
+            bank: data.bank,
+            currentUserRole: data.current_user_role ?? null,
+          }
+        : null,
+      importBatches: Array.isArray(data?.import_batches)
+        ? data.import_batches
+        : [],
+      usedReadModel: true,
+    };
+  }
+
+  if (!isMissingBankImportWorkspaceRpc(error)) {
+    assertQuestionBankSchema(error);
+    throw new Error(error.message);
+  }
+
+  const profileId = await resolveProfileId();
+  const [access, importBatches] = await Promise.all([
+    getTeacherQuestionBankAccess({ bankId, profileId, supabase }),
+    listBankImportBatches({ bankId, supabase }),
+  ]);
+
+  return { access, importBatches, usedReadModel: false };
 }
 
 export async function listBankReviewDraftQuestions({

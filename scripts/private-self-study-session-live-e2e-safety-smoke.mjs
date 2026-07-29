@@ -155,13 +155,12 @@ const createFlow = clientSource.slice(
   clientSource.indexOf("function deleteSession"),
 );
 assert(
-  createFlow.indexOf("setActiveSession(payload.session)") <
-      createFlow.indexOf("setSessions((current)") &&
-    createFlow.includes("current.filter((item) => item.id !== payload.session.id)") &&
+  createFlow.includes("prepareScopedNewSession()") &&
+    !createFlow.includes("jsonRequest") &&
     !createFlow.includes("refreshPracticeState(") &&
     refreshFlow.includes("setSessions(sessionPayload.sessions)") &&
     refreshFlow.includes("setActiveSession(nextSession)"),
-  "create must activate and upsert the canonical response without a duplicate session refetch",
+  "new-session UI must stay local until first generation while refresh restores canonical sessions",
 );
 assert(
   clientSource.includes('data-testid="practice-session-list"') &&

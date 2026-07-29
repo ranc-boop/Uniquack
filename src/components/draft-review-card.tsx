@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useState } from "react";
 
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
 import type { QuestionSourceFileView } from "@/app/admin/questions/source-file-actions";
-import {
-  QuestionEditor,
-  type EditableQuestion,
-} from "@/components/question-editor";
+import type { EditableQuestion } from "@/components/question-editor";
 import { AdminDebugDisclosure } from "@/components/admin/admin-debug-disclosure";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import type { TaxonomyCatalogView } from "@/components/tags/taxonomy-tag-tree-picker";
@@ -20,6 +18,24 @@ import {
   type ImportAssetReferences,
 } from "@/lib/batch-import/asset-references";
 import type { QuestionReadiness } from "@/lib/questions/readiness";
+
+const QuestionEditor = dynamic(
+  () =>
+    import("@/components/question-editor").then(
+      (module) => module.QuestionEditor,
+    ),
+  {
+    loading: () => (
+      <div
+        aria-busy="true"
+        className="h-32 animate-pulse rounded-lg border bg-muted/30"
+        role="status"
+      >
+        <span className="sr-only">Loading question editor…</span>
+      </div>
+    ),
+  },
+);
 
 type DraftReviewCardProps = {
   // Card display fields

@@ -9,6 +9,7 @@ import { AdminCard } from "@/components/admin/admin-card";
 import { AdminDangerZone } from "@/components/admin/admin-danger-zone";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminPendingLink } from "@/components/admin/admin-pending-link";
 import { AdminQuestionLibraryNav } from "@/components/admin/admin-question-library-nav";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import type { QuestionAssetView } from "@/app/admin/questions/asset-actions";
@@ -859,13 +860,14 @@ export default async function AdminQuestionsPage({
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-2">
                         <Button asChild size="sm" variant="outline">
-                          <Link
+                          <AdminPendingLink
                             href={`/admin/questions?edit=${question.id}&return_to=${encodeURIComponent(
                               currentPath,
                             )}`}
+                            pendingLabel={`question ${question.question_code}`}
                           >
                             Edit
-                          </Link>
+                          </AdminPendingLink>
                         </Button>
                         <form action={deleteQuestion}>
                           <input type="hidden" name="id" value={question.id} />

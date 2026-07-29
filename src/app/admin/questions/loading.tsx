@@ -27,16 +27,7 @@ export default function AdminQuestionsLoading() {
           />
         ))}
       </div>
-      <details className="rounded-lg border bg-card p-5 shadow-sm">
-        <summary className="cursor-pointer list-none">
-          <div className="space-y-1">
-            <p className="text-base font-semibold">Create question</p>
-            <p className="text-sm text-muted-foreground">
-              Manual creation controls are loading.
-            </p>
-          </div>
-        </summary>
-      </details>
+      <div className="h-10 w-40 rounded-md bg-muted motion-safe:animate-pulse" />
       <AdminLoadingState
         description="Showing first 50 questions. Use search or filters to narrow results."
         label="Loading questions..."

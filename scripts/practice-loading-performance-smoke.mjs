@@ -167,13 +167,11 @@ const createNewSession = sourceBlock(
   "function showHistoricalRound",
 );
 assert(
-  !createNewSession.includes('"/api/practice/sessions?includeActive=0"') &&
-    !createNewSession.includes("refreshPracticeState(") &&
-    !createNewSession.includes("switchSession(") &&
-    createNewSession.includes("sessions.find((item) =>") &&
-    createNewSession.includes("rounds: []") &&
-    createNewSession.includes("setSessions("),
-  "New Practice sessions must reuse hydrated history and avoid duplicate list/detail requests",
+  createNewSession.includes("prepareScopedNewSession()") &&
+    !createNewSession.includes("jsonRequest") &&
+    !createNewSession.includes("startTransition") &&
+    !createNewSession.includes("setSessionAction"),
+  "New Practice session clicks must switch to a local draft without waiting on persistence",
 );
 const preferenceMerge = sourceBlock(
   client,

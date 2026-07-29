@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -25,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { AdminPendingLink } from "@/components/admin/admin-pending-link";
 import { cn } from "@/lib/utils";
 
 type AdminNavItem = {
@@ -112,7 +112,7 @@ function AdminNavGroups({ role }: Pick<AdminSidebarProps, "role">) {
                 const Icon = item.icon;
 
                 return (
-                  <Link
+                  <AdminPendingLink
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -122,11 +122,12 @@ function AdminNavGroups({ role }: Pick<AdminSidebarProps, "role">) {
                     )}
                     href={item.href}
                     key={item.href}
+                    pendingLabel={item.label}
                     title={item.label}
                   >
                     <Icon aria-hidden="true" className="size-4 shrink-0" />
                     <span>{item.label}</span>
-                  </Link>
+                  </AdminPendingLink>
                 );
               })}
             </div>
