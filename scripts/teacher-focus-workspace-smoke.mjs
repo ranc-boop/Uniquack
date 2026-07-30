@@ -213,7 +213,7 @@ assert(
     focusLink.includes('target="_blank"') &&
     focusLink.includes('rel="noopener noreferrer"') &&
     focusLink.includes('referrerPolicy="no-referrer"') &&
-    focusLink.includes("<span>New tab</span>") &&
+    focusLink.includes("<span>Open in new tab</span>") &&
     !focusLink.includes("BroadcastChannel") &&
     !focusLink.includes("window.close") &&
     !focusLink.includes("sessionStorage") &&
@@ -223,8 +223,7 @@ assert(
 
 assert(
   focusBridge.includes("Back to {returnSurfaceLabel}") &&
-    focusBridge.includes("Your list filters") &&
-    focusBridge.includes("selection, and scroll position") &&
+    focusBridge.includes("Your filters, page, selection, and scroll position") &&
     focusBridge.includes('target="_blank"') &&
     focusBridge.includes('rel="noopener noreferrer"') &&
     !focusBridge.includes("window.close()") &&

@@ -63,7 +63,7 @@ export function FocusTaskLink({
           title={`${newTabLabel} (opens in new tab)`}
         >
           <ExternalLink aria-hidden="true" className="h-4 w-4" />
-          <span>New tab</span>
+          <span>Open in new tab</span>
         </a>
       ) : null}
     </span>

@@ -222,30 +222,36 @@ export function CurrentPageSelectionProvider({
       selectedIdsRef.current = restoredIds;
       hydratedRef.current = true;
     }, 0);
+    let restoreFrame = 0;
+    let settleFrame = 0;
     const restoreTimer = snapshot?.restore
       ? window.setTimeout(() => {
-          window.scrollTo({
-            behavior: "auto",
-            top: snapshot.restore?.scrollY ?? 0,
-          });
-          const preferred = document.getElementById(
-            snapshot.restore?.triggerId ?? "",
-          );
-          const fallback = document.getElementById(fallbackFocusId);
-          const focusTarget =
-            preferred instanceof HTMLElement
-              ? preferred
-              : fallback instanceof HTMLElement
-                ? fallback
-                : null;
+          restoreFrame = window.requestAnimationFrame(() => {
+            settleFrame = window.requestAnimationFrame(() => {
+              window.scrollTo({
+                behavior: "auto",
+                top: snapshot.restore?.scrollY ?? 0,
+              });
+              const preferred = document.getElementById(
+                snapshot.restore?.triggerId ?? "",
+              );
+              const fallback = document.getElementById(fallbackFocusId);
+              const focusTarget =
+                preferred instanceof HTMLElement
+                  ? preferred
+                  : fallback instanceof HTMLElement
+                    ? fallback
+                    : null;
 
-          focusTarget?.focus({ preventScroll: true });
-          if (!(preferred instanceof HTMLElement)) {
-            focusTarget?.scrollIntoView({
-              block: "center",
-              behavior: "auto",
+              focusTarget?.focus({ preventScroll: true });
+              if (!(preferred instanceof HTMLElement)) {
+                focusTarget?.scrollIntoView({
+                  block: "center",
+                  behavior: "auto",
+                });
+              }
             });
-          }
+          });
         }, 0)
       : 0;
 
@@ -253,6 +259,8 @@ export function CurrentPageSelectionProvider({
     return () => {
       window.clearTimeout(hydrateTimer);
       window.clearTimeout(restoreTimer);
+      window.cancelAnimationFrame(restoreFrame);
+      window.cancelAnimationFrame(settleFrame);
     };
   }, [fallbackFocusId, itemById, storageKey]);
 

@@ -28,12 +28,13 @@ export function FocusWorkspaceBridge({
           Focused, read-only workspace
         </p>
         <p className="mt-1 text-sm leading-6 text-slate-600">
-          Return to {returnSurfaceLabel} when you finish. Your list filters,
-          page, selection, and scroll position are preserved on this device.
+          {returnSurfaceLabel === "Assignment detail"
+            ? "Return to Assignment detail when you finish. This preview does not change the Assignment."
+            : `Return to ${returnSurfaceLabel} when you finish. Your filters, page, selection, and scroll position are preserved on this device.`}
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
-        <Button asChild>
+        <Button asChild className="min-h-11 whitespace-normal">
           <a
             href={returnHref}
             referrerPolicy="no-referrer"
@@ -42,7 +43,11 @@ export function FocusWorkspaceBridge({
             Back to {returnSurfaceLabel}
           </a>
         </Button>
-        <Button asChild variant="outline">
+        <Button
+          asChild
+          className="min-h-11 whitespace-normal"
+          variant="outline"
+        >
           <a
             aria-label={`Open ${returnSurfaceLabel} in a new tab`}
             href={returnHref}
@@ -51,7 +56,7 @@ export function FocusWorkspaceBridge({
             target="_blank"
           >
             <ExternalLink aria-hidden="true" />
-            New tab
+            Open in new tab
           </a>
         </Button>
       </div>
