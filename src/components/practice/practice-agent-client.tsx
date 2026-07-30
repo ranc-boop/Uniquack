@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
@@ -471,6 +472,7 @@ export function PracticeAgentClient({
   const [isPending, startTransition] = useTransition();
   const resultTopRef = useRef<HTMLDivElement | null>(null);
   const answerErrorSummaryRef = useRef<HTMLDivElement | null>(null);
+  const rightSidebarRef = useRef<HTMLElement | null>(null);
   const submitInFlightRef = useRef(false);
   const thinkingStartedAtRef = useRef<number | null>(null);
   const streamedReviewTextRef = useRef("");
@@ -1640,6 +1642,17 @@ export function PracticeAgentClient({
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
+  function showStudyDetails() {
+    setIsRightSidebarCollapsed(false);
+    window.requestAnimationFrame(() => {
+      rightSidebarRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      rightSidebarRef.current?.focus({ preventScroll: true });
+    });
+  }
+
   if (workspaceLoading) return <PracticeWorkspaceSkeleton />;
 
   return (
@@ -2041,7 +2054,7 @@ export function PracticeAgentClient({
                   <Button
                     aria-label="Show study details"
                     className="xl:hidden"
-                    onClick={() => setIsRightSidebarCollapsed(false)}
+                    onClick={showStudyDetails}
                     size="icon"
                     type="button"
                     variant="ghost"
@@ -2077,6 +2090,7 @@ export function PracticeAgentClient({
 
           {phase === "ending" || phase === "completed" ? (
             <PracticeCompletionPanel
+              assignmentId={assignmentId}
               completion={completion}
               isCompleted={phase === "completed"}
               onNewSession={() => prepareScopedNewSession()}
@@ -2188,9 +2202,42 @@ export function PracticeAgentClient({
             />
           ) : null}
 
+          {isAssignmentMode && assignmentId && phase === "feedback" ? (
+            <section
+              aria-labelledby="assignment-round-next-step-heading"
+              className="student-panel p-5"
+            >
+              <p className="student-eyebrow">Assignment round saved</p>
+              <h2
+                className="mt-2 text-lg font-bold text-slate-950"
+                id="assignment-round-next-step-heading"
+              >
+                Choose what to do next
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Review this Assignment and teacher feedback, or return to My Work.
+                Your Practice evidence is already saved.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button asChild className="min-h-11">
+                  <Link href={`/student/work/${assignmentId}`}>
+                    Review this Assignment
+                  </Link>
+                </Button>
+                <Button asChild className="min-h-11" variant="outline">
+                  <Link href="/student/work">Back to My Work</Link>
+                </Button>
+              </div>
+            </section>
+          ) : null}
+
         </main>
 
-        <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+        <aside
+          className="relative scroll-mt-4 transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto"
+          ref={rightSidebarRef}
+          tabIndex={-1}
+        >
           {!isRightSidebarCollapsed ? (
             <button
               aria-label="Resize study sidebar"
@@ -2207,7 +2254,7 @@ export function PracticeAgentClient({
               <Button
                 aria-label="Expand study sidebar"
                 className="size-10 rounded-xl bg-slate-200/70 text-slate-900 hover:bg-slate-200"
-                onClick={() => setIsRightSidebarCollapsed(false)}
+                onClick={showStudyDetails}
                 size="icon"
                 type="button"
                 variant="ghost"
@@ -2218,7 +2265,7 @@ export function PracticeAgentClient({
                 <Button
                   aria-label="Show study state"
                   className="size-10"
-                  onClick={() => setIsRightSidebarCollapsed(false)}
+                  onClick={showStudyDetails}
                   size="icon"
                   type="button"
                   variant="ghost"

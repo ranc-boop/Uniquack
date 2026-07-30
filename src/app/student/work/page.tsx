@@ -282,45 +282,47 @@ export default async function StudentWorkPage() {
   const completed = assignments.filter(
     (assignment) => assignment.progressStatus === "completed",
   );
+  const nextAssignment = incomplete[0] ?? null;
+  const queuedIncomplete = nextAssignment
+    ? incomplete.filter((assignment) => assignment.id !== nextAssignment.id)
+    : incomplete;
   const groups: WorkGroup[] = [
     {
       title: "Overdue",
       description: "Past-due work comes first.",
-      items: incomplete.filter(
+      items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "overdue",
       ),
     },
     {
       title: "Due today",
       description: "Finish these before today ends.",
-      items: incomplete.filter(
+      items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "today",
       ),
     },
     {
       title: "Due soon",
       description: "Assignments due within the next seven days.",
-      items: incomplete.filter(
+      items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "due_soon",
       ),
     },
     {
       title: "In progress",
       description: "Continue active Practice that is not yet urgent.",
-      items: incomplete.filter(
+      items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "in_progress",
       ),
     },
     {
       title: "Ready later",
       description: "Upcoming work without an urgent due date.",
-      items: incomplete.filter(
+      items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "later",
       ),
     },
   ].filter((group) => group.items.length > 0);
-  const nextAssignment = incomplete[0] ?? null;
-
   return (
     <main className="student-shell space-y-6">
       <section className="student-hero">
