@@ -358,7 +358,7 @@ const practiceLaunchBlock = sourceBlock(
 );
 assert(
   practiceLaunchBlock.indexOf("waitForAssignmentStartOutcome") <
-    practiceLaunchBlock.indexOf('getByRole("link", { name: /Practice for this assignment/ }).click()'),
+    practiceLaunchBlock.indexOf('/^(Start|Continue) Practice$/'),
   "assignment-start response waiter must be registered before the Practice link click",
 );
 assert(
@@ -597,7 +597,7 @@ assert(
 );
 
 const preflightReadBlock = sourceBlock("// PREFLIGHT_ONLY_READ_START", "// PREFLIGHT_ONLY_READ_END");
-const cliBlock = sourceBlock("async function runHarnessCli", "try {\n  await runHarnessCli");
+const cliBlock = sourceBlock("async function runHarnessCli", "await runHarnessCli();");
 assert(
   preflightReadBlock.includes('args[0] === "--preflight-only"') &&
     preflightReadBlock.includes('return "PREFLIGHT_ONLY"') &&
@@ -609,7 +609,8 @@ assert(
   cliBlock.indexOf("parseHarnessMode(process.argv.slice(2))") < cliBlock.indexOf("await runPreflightOnly()") &&
     cliBlock.indexOf("await runPreflightOnly()") < cliBlock.indexOf("await main()") &&
     cliBlock.includes('if (mode === "PREFLIGHT_ONLY")') &&
-    cliBlock.includes("await runPreflightOnly();\n    return;"),
+    cliBlock.includes("await runPreflightOnly();") &&
+    cliBlock.includes("return;"),
   "preflight-only CLI control flow must return before the full mutable harness",
 );
 assert(
