@@ -73,6 +73,13 @@
     background: #f8fafc;
   }
 
+  .focus-route-main {
+    min-height: 100dvh;
+    background:
+      radial-gradient(circle at top left, rgb(224 242 254 / 0.7), transparent 30rem),
+      linear-gradient(180deg, #f8fafc, #ffffff 24rem);
+  }
+
   .admin-shell {
     animation: admin-shell-in 220ms ease-out both;
   }

@@ -14,9 +14,10 @@ import {
 import { QuestionAnswerSummary } from "@/components/question-answer-summary";
 import { QuestionAssetsPanel } from "@/components/question-assets-panel";
 import { QuestionSourceFilesPanel } from "@/components/question-source-files-panel";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FocusTaskLink } from "@/components/teacher/focus-task-link";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   canManageBankContent,
@@ -30,6 +31,11 @@ import {
   normalizeQuestionOptions,
 } from "@/lib/questions/answer-spec";
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildFocusHref,
+  sanitizeTeacherBankReturnTo,
+} from "@/lib/teacher-focus-workspace";
+import { cn } from "@/lib/utils";
 
 import {
   approveBankReviewQuestion,
@@ -295,6 +301,18 @@ export default async function TeacherBankReviewPage({
   if (page > totalPages) {
     redirect(pageHref(totalPages));
   }
+  const reviewPreviewReturnTo = sanitizeTeacherBankReturnTo({
+    bankId: bank.id,
+    rawReturnTo: `/teacher/banks/${bank.id}/review${
+      page > 1 || reviewStatus
+        ? `?${new URLSearchParams({
+            ...(page > 1 ? { page: String(page) } : {}),
+            ...(reviewStatus ? { status: reviewStatus } : {}),
+          }).toString()}`
+        : ""
+    }`,
+    surface: "review",
+  });
 
   return (
     <BankWorkbenchPage>
@@ -430,6 +448,37 @@ export default async function TeacherBankReviewPage({
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      {question.reviewItemId ? (
+                        <>
+                          <FocusTaskLink
+                            bankId={bank.id}
+                            className={cn(
+                              buttonVariants({
+                                size: "sm",
+                                variant: "outline",
+                              }),
+                              "h-auto min-h-9 whitespace-normal",
+                            )}
+                            href={`/teacher/banks/${bank.id}/review/${question.reviewItemId}`}
+                            returnTo={reviewPreviewReturnTo}
+                            taskKind="review-preview"
+                            triggerId={`review-preview-${question.reviewItemId}`}
+                          >
+                            Preview
+                          </FocusTaskLink>
+                          <a
+                            className="inline-flex min-h-9 items-center rounded-md px-2 text-xs font-semibold text-slate-600 underline-offset-4 hover:text-sky-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+                            href={buildFocusHref({
+                              href: `/teacher/banks/${bank.id}/review/${question.reviewItemId}`,
+                              returnTo: reviewPreviewReturnTo,
+                            })}
+                            referrerPolicy="no-referrer"
+                            rel="noreferrer"
+                          >
+                            Open in current tab
+                          </a>
+                        </>
+                      ) : null}
                       {canApprove ? (
                         <Button asChild variant="outline">
                           <a href={`#${editPanelId}`}>

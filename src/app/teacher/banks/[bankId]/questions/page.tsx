@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 
 import { Upload } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { FocusTaskLink } from "@/components/teacher/focus-task-link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,11 @@ import {
   QuestionBankSchemaMissingError,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildFocusHref,
+  sanitizeTeacherBankReturnTo,
+} from "@/lib/teacher-focus-workspace";
+import { cn } from "@/lib/utils";
 import type { BankQuestion } from "@/types/database";
 
 import {
@@ -225,6 +231,18 @@ export default async function TeacherBankQuestionsPage({
   if (!showPublicCatalog && page > totalPages) {
     redirect(pageHref(totalPages));
   }
+  const questionPreviewReturnTo = sanitizeTeacherBankReturnTo({
+    bankId: bank.id,
+    rawReturnTo: `/teacher/banks/${bank.id}/questions${
+      page > 1 || readiness === "archived"
+        ? `?${new URLSearchParams({
+            ...(page > 1 ? { page: String(page) } : {}),
+            ...(readiness === "archived" ? { status: "archived" } : {}),
+          }).toString()}`
+        : ""
+    }`,
+    surface: "questions",
+  });
   const hasQuestionFilters = Boolean(
     query.q?.trim() ||
       query.taxonomy?.trim() ||
@@ -547,6 +565,33 @@ export default async function TeacherBankQuestionsPage({
                           <TableCell>{row.source_kind}</TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-2">
+                              <FocusTaskLink
+                                bankId={bank.id}
+                                className={cn(
+                                  buttonVariants({
+                                    size: "sm",
+                                    variant: "outline",
+                                  }),
+                                  "h-auto min-h-9 whitespace-normal",
+                                )}
+                                href={`/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview`}
+                                returnTo={questionPreviewReturnTo}
+                                taskKind="question-preview"
+                                triggerId={`question-preview-${row.bank_question_id}`}
+                              >
+                                Preview
+                              </FocusTaskLink>
+                              <a
+                                className="inline-flex min-h-9 items-center rounded-md px-2 text-xs font-semibold text-slate-600 underline-offset-4 hover:text-sky-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+                                href={buildFocusHref({
+                                  href: `/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview`,
+                                  returnTo: questionPreviewReturnTo,
+                                })}
+                                referrerPolicy="no-referrer"
+                                rel="noreferrer"
+                              >
+                                Open in current tab
+                              </a>
                               {canManage ? (
                                 <Button asChild size="sm" variant="outline">
                                   <Link href={`/teacher/publish?sourceBankId=${bank.id}`}>
