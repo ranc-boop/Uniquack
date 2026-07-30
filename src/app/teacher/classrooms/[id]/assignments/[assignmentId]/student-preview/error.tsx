@@ -15,7 +15,7 @@ export default function TeacherStudentPreviewError({
 
   return (
     <TeacherRouteError
-      description="This read-only tab did not change the Assignment. Retry the preview, or close the tab and return to Assignment detail."
+      description="The read-only student view did not change the Assignment. Retry it or return to Assignment detail."
       reset={reset}
       returnHref={assignmentHref}
       returnLabel="Back to Assignment detail"

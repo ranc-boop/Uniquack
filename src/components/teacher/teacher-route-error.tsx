@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -17,11 +18,19 @@ export function TeacherRouteError({
   returnLabel: string;
   title: string;
 }) {
+  const alertRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    alertRef.current?.focus({ preventScroll: true });
+  }, []);
+
   return (
     <main className="teacher-shell">
       <section
         className="teacher-panel mx-auto max-w-3xl p-6 sm:p-8"
+        ref={alertRef}
         role="alert"
+        tabIndex={-1}
       >
         <p className="teacher-eyebrow">Could not load this workspace</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950">{title}</h1>

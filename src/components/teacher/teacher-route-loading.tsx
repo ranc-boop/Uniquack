@@ -9,7 +9,9 @@ export function TeacherRouteLoading({
       aria-live="polite"
       className="teacher-shell space-y-5"
     >
-      <p className="sr-only">Loading {label}.</p>
+      <p className="sr-only" role="status">
+        Loading {label}.
+      </p>
       <section className="teacher-panel animate-pulse p-6 motion-reduce:animate-none">
         <div className="h-3 w-28 rounded bg-slate-200" />
         <div className="mt-4 h-8 w-full max-w-xl rounded bg-slate-200" />
