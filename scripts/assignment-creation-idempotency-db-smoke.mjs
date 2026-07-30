@@ -144,6 +144,14 @@ try {
     }
   }
   console.log("PASS fresh-chain migrations applied through 0069");
+  // A real Supabase project supplies table privileges outside the migration SQL.
+  // Mirror that platform bootstrap here so the embedded harness still exercises RLS.
+  await admin.query(
+    "grant select, insert, update, delete on public.teacher_feedback_notes to authenticated",
+  );
+  await admin.query(
+    "revoke all on public.teacher_feedback_notes from anon",
+  );
   await admin.query(
     "select set_config('request.jwt.claim.role', 'service_role', false)",
   );
@@ -154,8 +162,10 @@ try {
     classroom: "73000000-0000-4000-8000-000000000068",
     firstRequest: "74000000-0000-4000-8000-000000000068",
     secondRequest: "75000000-0000-4000-8000-000000000068",
+    feedbackRequest: "79000000-0000-4000-8000-000000000069",
     organization: "76000000-0000-4000-8000-000000000068",
     question: "77000000-0000-4000-8000-000000000068",
+    student: "79000000-0000-4000-8000-000000000068",
     teacher: "78000000-0000-4000-8000-000000000068",
   };
 
@@ -163,6 +173,11 @@ try {
     `insert into auth.users (id, email, raw_user_meta_data)
      values ($1, 'assignment-idempotency@example.invalid', '{"role":"teacher"}')`,
     [ids.teacher],
+  );
+  await admin.query(
+    `insert into auth.users (id, email, raw_user_meta_data)
+     values ($1, 'assignment-idempotency-student@example.invalid', '{"role":"student"}')`,
+    [ids.student],
   );
   await admin.query(
     `insert into public.organizations (id, name, slug)
@@ -174,6 +189,12 @@ try {
        id, email, role, status, default_organization_id
      ) values ($1, 'assignment-idempotency@example.invalid', 'teacher', 'active', $2)`,
     [ids.teacher, ids.organization],
+  );
+  await admin.query(
+    `insert into public.profiles (
+       id, email, role, status, default_organization_id
+     ) values ($1, 'assignment-idempotency-student@example.invalid', 'student', 'active', $2)`,
+    [ids.student, ids.organization],
   );
   await admin.query(
     `insert into public.organization_members (
@@ -204,6 +225,12 @@ try {
        classroom_id, user_id, role, status, joined_at
      ) values ($1, $2, 'teacher', 'active', now())`,
     [ids.classroom, ids.teacher],
+  );
+  await admin.query(
+    `insert into public.classroom_members (
+       classroom_id, user_id, role, status, joined_at
+     ) values ($1, $2, 'student', 'active', now())`,
+    [ids.classroom, ids.student],
   );
   await admin.query(
     `insert into public.questions (
@@ -263,6 +290,41 @@ try {
     counts.rows[0]?.assignments === 1 && counts.rows[0]?.receipts === 1,
     "same-key concurrency did not produce exactly one Assignment and one receipt",
   );
+
+  const feedbackValues = [
+    ids.organization,
+    ids.classroom,
+    firstId,
+    ids.student,
+    ids.teacher,
+    ids.feedbackRequest,
+  ];
+  await teacherA.query(
+    `insert into public.teacher_feedback_notes (
+       id, organization_id, classroom_id, assignment_id, student_id, author_id,
+       visibility, status, body, sent_at
+     ) values ($6, $1, $2, $3, $4, $5, 'sent_to_student', 'sent',
+       'Retry-safe feedback', now())`,
+    feedbackValues,
+  );
+  let duplicateFeedbackRejected = false;
+  try {
+    await teacherB.query(
+      `insert into public.teacher_feedback_notes (
+         id, organization_id, classroom_id, assignment_id, student_id, author_id,
+         visibility, status, body, sent_at
+       ) values ($6, $1, $2, $3, $4, $5, 'sent_to_student', 'sent',
+         'Retry-safe feedback', now())`,
+      feedbackValues,
+    );
+  } catch (error) {
+    duplicateFeedbackRejected = error.code === "23505";
+  }
+  assert(
+    duplicateFeedbackRejected,
+    "same-id teacher feedback retries were not rejected by the existing primary key",
+  );
+  console.log("PASS same-id teacher feedback retry produced one note");
 
   let mismatchRejected = false;
   try {
