@@ -24,11 +24,13 @@ export function FocusWorkspaceBridge({
   launchId,
   mainId,
   returnHref,
+  returnSurfaceLabel = "Library list",
   taskKind,
 }: {
   launchId?: string | null;
   mainId: string;
   returnHref: string;
+  returnSurfaceLabel?: string;
   taskKind: FocusTaskKind;
 }) {
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -141,14 +143,14 @@ export function FocusWorkspaceBridge({
 
   const statusCopy =
     connectionState === "connected"
-      ? "The original Library list is connected. Closing this preview will restore your previous position."
+      ? `The original ${returnSurfaceLabel} is connected. Closing this preview will restore your previous position.`
       : connectionState === "syncing"
-        ? "Updating the original list before closing this preview."
+        ? `Updating the original ${returnSurfaceLabel} before closing this preview.`
         : connectionState === "return_failed"
-          ? "The preview is safe to close, but the original list has not confirmed return yet."
+          ? `The preview is safe to close, but the original ${returnSurfaceLabel} has not confirmed return yet.`
           : connectionState === "standalone"
-            ? "The original list is unavailable. This tab will stay open."
-            : "Connecting to the original Library list.";
+            ? `The original ${returnSurfaceLabel} is unavailable. This tab will stay open.`
+            : `Connecting to the original ${returnSurfaceLabel}.`;
 
   return (
     <section
@@ -189,7 +191,7 @@ export function FocusWorkspaceBridge({
                 aria-hidden="true"
                 className="animate-spin motion-reduce:animate-none"
               />
-              Syncing original list
+              Syncing original {returnSurfaceLabel}
             </Button>
           ) : null}
           {connectionState === "return_failed" ? (
@@ -208,7 +210,7 @@ export function FocusWorkspaceBridge({
                   rel="noreferrer"
                 >
                   <ExternalLink aria-hidden="true" />
-                  Open original list in this tab
+                  Open original {returnSurfaceLabel} in this tab
                 </a>
               </Button>
               <Button
@@ -233,7 +235,7 @@ export function FocusWorkspaceBridge({
             referrerPolicy="no-referrer"
             rel="noreferrer"
           >
-            open the original list in this tab
+            open the original {returnSurfaceLabel} in this tab
           </a>
           .
         </p>

@@ -33,7 +33,10 @@ function isTeacherFocusRoute(pathname: string) {
     /^\/teacher\/banks\/[^/]+\/questions\/(?:preview|[^/]+\/preview)$/.test(
       pathname,
     ) ||
-    /^\/teacher\/banks\/[^/]+\/review\/[^/]+$/.test(pathname)
+    /^\/teacher\/banks\/[^/]+\/review\/[^/]+$/.test(pathname) ||
+    /^\/teacher\/classrooms\/[^/]+\/assignments\/[^/]+\/student-preview$/.test(
+      pathname,
+    )
   );
 }
 

@@ -26,6 +26,11 @@ const nextConfig: NextConfig = {
         source: "/teacher/banks/:bankId/review/:reviewItemId",
         headers: focusHeaders,
       },
+      {
+        source:
+          "/teacher/classrooms/:classroomId/assignments/:assignmentId/student-preview",
+        headers: focusHeaders,
+      },
     ];
   },
 };

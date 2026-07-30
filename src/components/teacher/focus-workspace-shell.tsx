@@ -11,6 +11,7 @@ export function FocusWorkspaceShell({
   eyebrow,
   launchId,
   returnHref,
+  returnSurfaceLabel,
   taskKind,
   title,
 }: {
@@ -20,6 +21,7 @@ export function FocusWorkspaceShell({
   eyebrow: string;
   launchId?: string | null;
   returnHref: string;
+  returnSurfaceLabel?: string;
   taskKind: FocusTaskKind;
   title: string;
 }) {
@@ -56,6 +58,7 @@ export function FocusWorkspaceShell({
         launchId={launchId}
         mainId={mainId}
         returnHref={returnHref}
+        returnSurfaceLabel={returnSurfaceLabel}
         taskKind={taskKind}
       />
 

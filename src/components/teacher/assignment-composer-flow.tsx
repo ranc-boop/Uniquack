@@ -1,16 +1,27 @@
 "use client";
 
 import {
+  createContext,
   type FormEvent,
   type ReactNode,
+  useActionState,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
 } from "react";
 import { useFormStatus } from "react-dom";
 
+import {
+  publishQuestionBankAssignments,
+  type AssignmentComposerActionState,
+  type AssignmentComposerErrorField,
+} from "@/app/teacher/publish/actions";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type ComposerStage = "content" | "target" | "review";
 
@@ -23,6 +34,10 @@ const stages: Array<{
   { id: "target", label: "2. Choose classroom", shortLabel: "Classroom" },
   { id: "review", label: "3. Review and assign", shortLabel: "Review" },
 ];
+
+const initialActionState: AssignmentComposerActionState = { status: "idle" };
+const AssignmentActionStateContext =
+  createContext<AssignmentComposerActionState>(initialActionState);
 
 function focusStageHeading(stage: ComposerStage) {
   window.requestAnimationFrame(() => {
@@ -71,21 +86,33 @@ function AssignmentSubmitButtons({
 }
 
 export function AssignmentComposerFlow({
+  bankId,
+  clientRequestKey,
   content,
+  formId,
   initialStage = "content",
   review,
+  sourceType,
   target,
 }: {
+  bankId: string;
+  clientRequestKey: string;
   content: ReactNode;
+  formId: string;
   initialStage?: ComposerStage;
   review: ReactNode;
+  sourceType: string;
   target: ReactNode;
 }) {
+  const [actionState, formAction] = useActionState(
+    publishQuestionBankAssignments,
+    initialActionState,
+  );
   const [stage, setStage] = useState<ComposerStage>(initialStage);
   const [selectedClassrooms, setSelectedClassrooms] = useState(0);
   const [selectedQuestions, setSelectedQuestions] = useState(0);
   const [stageError, setStageError] = useState("");
-  const rootRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLFormElement>(null);
 
   const syncSelection = useCallback(() => {
     const root = rootRef.current;
@@ -107,13 +134,41 @@ export function AssignmentComposerFlow({
     syncSelection();
   }, [syncSelection]);
 
+  useEffect(() => {
+    if (actionState.status !== "error") return;
+
+    const nextStage =
+      actionState.field === "content"
+        ? "content"
+        : actionState.field === "classroom"
+          ? "target"
+          : "review";
+    window.requestAnimationFrame(() => {
+      setStage(nextStage);
+      const fieldId =
+        actionState.field === "classroom"
+          ? "assignment-classroom-options"
+          : actionState.field === "content"
+            ? "assignment-question-options"
+            : actionState.field === "form"
+              ? "assignment-composer-action-error"
+              : actionState.field;
+      const field = document.getElementById(fieldId);
+      if (field && actionState.field === "instructions") {
+        const disclosure = field.closest("details");
+        if (disclosure instanceof HTMLDetailsElement) disclosure.open = true;
+      }
+      field?.focus({ preventScroll: false });
+    });
+  }, [actionState]);
+
   function changeStage(nextStage: ComposerStage) {
     setStageError("");
     setStage(nextStage);
     focusStageHeading(nextStage);
   }
 
-  function handleChange(event: FormEvent<HTMLDivElement>) {
+  function handleChange(event: FormEvent<HTMLFormElement>) {
     if (event.target instanceof HTMLInputElement) {
       syncSelection();
     }
@@ -156,11 +211,21 @@ export function AssignmentComposerFlow({
   }
 
   return (
-    <div
+    <form
+      action={formAction}
       className="space-y-5"
+      id={formId}
       onChange={handleChange}
       ref={rootRef}
     >
+      <input name="bankId" type="hidden" value={bankId} />
+      <input
+        name="clientRequestKey"
+        type="hidden"
+        value={clientRequestKey}
+      />
+      <input name="sourceType" type="hidden" value={sourceType} />
+      <AssignmentActionStateContext.Provider value={actionState}>
       <nav aria-label="Assignment creation progress" className="teacher-panel p-3">
         <ol className="grid grid-cols-3 gap-2">
           {stages.map((item) => {
@@ -195,6 +260,20 @@ export function AssignmentComposerFlow({
           })}
         </ol>
       </nav>
+
+      {actionState.status === "error" ? (
+        <div
+          className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          id="assignment-composer-action-error"
+          role="alert"
+          tabIndex={-1}
+        >
+          <p className="font-semibold">{actionState.message}</p>
+          <p className="mt-1">
+            Your selected questions, classroom, and Assignment details are still here.
+          </p>
+        </div>
+      ) : null}
 
       {stageError ? (
         <p
@@ -282,6 +361,68 @@ export function AssignmentComposerFlow({
           </Button>
         </div>
       </section>
-    </div>
+      </AssignmentActionStateContext.Provider>
+    </form>
+  );
+}
+
+function fieldError(
+  state: AssignmentComposerActionState,
+  field: AssignmentComposerErrorField,
+) {
+  return state.status === "error" && state.field === field
+    ? "assignment-composer-action-error"
+    : undefined;
+}
+
+export function AssignmentDetailsFields() {
+  const actionState = useContext(AssignmentActionStateContext);
+  const titleError = fieldError(actionState, "title");
+  const dueAtError = fieldError(actionState, "dueAt");
+  const instructionsError = fieldError(actionState, "instructions");
+
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor="title">Title</Label>
+        <Input
+          aria-describedby={titleError}
+          aria-invalid={titleError ? true : undefined}
+          id="title"
+          maxLength={180}
+          name="title"
+          placeholder="Applications of Integration practice"
+          required
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="dueAt">Due date optional</Label>
+        <Input
+          aria-describedby={dueAtError}
+          aria-invalid={dueAtError ? true : undefined}
+          id="dueAt"
+          name="dueAt"
+          type="datetime-local"
+        />
+      </div>
+      <details className="rounded-lg border border-slate-200 bg-slate-50">
+        <summary className="teacher-focus-ring min-h-11 cursor-pointer px-4 py-3 text-sm font-bold text-slate-800">
+          Add optional instructions
+        </summary>
+        <div className="border-t border-slate-200 p-4">
+          <Label htmlFor="instructions">Instructions</Label>
+          <Textarea
+            aria-describedby={instructionsError}
+            aria-invalid={instructionsError ? true : undefined}
+            className="mt-2"
+            id="instructions"
+            maxLength={4000}
+            name="instructions"
+            placeholder="Complete the selected questions. Start Practice from My Work if you need guided review."
+            rows={4}
+          />
+        </div>
+      </details>
+    </>
   );
 }

@@ -10,8 +10,10 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-import { publishQuestionBankAssignments } from "@/app/teacher/publish/actions";
-import { AssignmentComposerFlow } from "@/components/teacher/assignment-composer-flow";
+import {
+  AssignmentComposerFlow,
+  AssignmentDetailsFields,
+} from "@/components/teacher/assignment-composer-flow";
 import { AssignmentSelectionSummary } from "@/components/teacher/assignment-selection-summary";
 import { PublishSelectionControls } from "@/components/teacher/publish-selection-controls";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
@@ -19,7 +21,6 @@ import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav"
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { requireTeacher } from "@/lib/auth/guards";
 import { readTeacherFocusSelectionReceipt } from "@/lib/teacher-focus-selection";
 import { isDatabaseUuid } from "@/lib/teacher-focus-workspace";
@@ -141,7 +142,11 @@ function SourceLibraryPicker({
   banks: TeacherQuestionBankSummary[];
 }) {
   return (
-    <section className="teacher-panel overflow-hidden">
+    <section
+      className="teacher-panel overflow-hidden"
+      id="assignment-question-options"
+      tabIndex={-1}
+    >
       <div className="border-b border-slate-100 p-5">
         <p className="teacher-eyebrow">Step 1 of 2</p>
         <h2 className="text-xl font-bold text-slate-950">
@@ -354,7 +359,11 @@ function QuestionChecklist({
         : "Assignments cannot deliver raw AI drafts or unreviewed material. Approve usable Library Review Drafts, then return here.";
 
   return (
-    <section className="teacher-panel overflow-hidden">
+    <section
+      className="teacher-panel overflow-hidden"
+      id="assignment-classroom-options"
+      tabIndex={-1}
+    >
       <div className="border-b border-slate-100 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -815,18 +824,9 @@ export default async function TeacherPublishPage({
             selectedSource={selectedSource}
           />
 
-          <form
-            action={publishQuestionBankAssignments}
-            id="publish-center-form"
-          >
-            <input name="bankId" type="hidden" value={selectedBankId} />
-            <input
-              name="clientRequestKey"
-              type="hidden"
-              value={clientRequestKey}
-            />
-            <input name="sourceType" type="hidden" value={selectedSource} />
-            <AssignmentComposerFlow
+          <AssignmentComposerFlow
+              bankId={selectedBankId}
+              clientRequestKey={clientRequestKey}
               content={
                 <QuestionChecklist
                   bankId={selectedBankId}
@@ -836,7 +836,7 @@ export default async function TeacherPublishPage({
                   totalReadyCount={totalReadyCount}
                 />
               }
-              initialStage={query.error ? "review" : "content"}
+              formId="publish-center-form"
               target={
                 <ClassroomTargets
                   classrooms={classrooms}
@@ -867,47 +867,7 @@ export default async function TeacherPublishPage({
                         totalLabel="visible assignment-ready question(s)."
                         totalQuestions={visibleQuestions.length}
                       />
-                      <div className="space-y-2">
-                        <Label htmlFor="title">Title</Label>
-                        <Input
-                          aria-describedby={
-                            query.error ? "assignment-server-error" : undefined
-                          }
-                          aria-invalid={query.error ? true : undefined}
-                          id="title"
-                          maxLength={180}
-                          name="title"
-                          placeholder="Applications of Integration practice"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="dueAt">Due date optional</Label>
-                        <Input
-                          aria-describedby={
-                            query.error ? "assignment-server-error" : undefined
-                          }
-                          id="dueAt"
-                          name="dueAt"
-                          type="datetime-local"
-                        />
-                      </div>
-                      <details className="rounded-lg border border-slate-200 bg-slate-50">
-                        <summary className="teacher-focus-ring min-h-11 cursor-pointer px-4 py-3 text-sm font-bold text-slate-800">
-                          Add optional instructions
-                        </summary>
-                        <div className="border-t border-slate-200 p-4">
-                          <Label htmlFor="instructions">Instructions</Label>
-                          <Textarea
-                            className="mt-2"
-                            id="instructions"
-                            maxLength={4000}
-                            name="instructions"
-                            placeholder="Complete the selected questions. Start Practice from My Work if you need guided review."
-                            rows={4}
-                          />
-                        </div>
-                      </details>
+                      <AssignmentDetailsFields />
                     </div>
                   </section>
 
@@ -965,8 +925,8 @@ export default async function TeacherPublishPage({
                   </section>
                 </div>
               }
+              sourceType={selectedSource}
             />
-          </form>
         </>
       )}
     </TeacherWorkspaceShell>

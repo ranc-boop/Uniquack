@@ -12,6 +12,7 @@ type FormSubmitButtonProps = {
   className?: string;
   disabled?: boolean;
   form?: string;
+  formAction?: React.ButtonHTMLAttributes<HTMLButtonElement>["formAction"];
   name?: string;
   size?: "default" | "sm" | "lg" | "icon";
   value?: string;
@@ -24,32 +25,38 @@ export function FormSubmitButton({
   className,
   disabled,
   form,
+  formAction,
   name,
   size,
   value,
   variant,
 }: FormSubmitButtonProps) {
-  const { pending } = useFormStatus();
+  const { action, pending } = useFormStatus();
+  const isActiveSubmitter =
+    pending && (formAction === undefined || action === formAction);
 
   return (
     <Button
       type="submit"
-      aria-busy={pending || undefined}
+      aria-busy={isActiveSubmitter || undefined}
       name={name}
       value={value}
       disabled={disabled || pending}
       form={form}
+      formAction={formAction}
       className={className}
       size={size}
       variant={variant}
     >
-      {pending ? (
+      {isActiveSubmitter ? (
         <LoaderCircle
           aria-hidden="true"
           className="h-4 w-4 motion-safe:animate-spin"
         />
       ) : null}
-      <span aria-live="polite">{pending ? pendingLabel : children}</span>
+      <span aria-live={isActiveSubmitter ? "polite" : undefined}>
+        {isActiveSubmitter ? pendingLabel : children}
+      </span>
     </Button>
   );
 }

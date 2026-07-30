@@ -5,7 +5,6 @@ import { z } from "zod";
 
 import {
   formatActionError,
-  redirectWithError,
   redirectWithSaved,
 } from "@/lib/actions/feedback";
 import { requireTeacher } from "@/lib/auth/guards";
@@ -27,6 +26,31 @@ const publishQuestionBankAssignmentsSchema = z.object({
   title: z.string().trim().min(1).max(180),
 });
 
+export type AssignmentComposerErrorField =
+  | "classroom"
+  | "content"
+  | "dueAt"
+  | "form"
+  | "instructions"
+  | "title";
+
+export type AssignmentComposerActionState =
+  | { status: "idle" }
+  | {
+      status: "error";
+      field: AssignmentComposerErrorField;
+      message: string;
+    };
+
+class AssignmentInputError extends Error {
+  constructor(
+    message: string,
+    readonly field: AssignmentComposerErrorField,
+  ) {
+    super(message);
+  }
+}
+
 function normalizeDueAt(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -34,7 +58,10 @@ function normalizeDueAt(value: string) {
   const parsed = new Date(trimmed);
 
   if (Number.isNaN(parsed.getTime())) {
-    throw new Error("Due date is invalid.");
+    throw new AssignmentInputError(
+      "Enter a valid due date and time, or leave it blank.",
+      "dueAt",
+    );
   }
 
   return parsed.toISOString();
@@ -50,33 +77,54 @@ function uniqueStrings(values: FormDataEntryValue[]) {
   );
 }
 
-export async function publishQuestionBankAssignments(formData: FormData) {
-  const fallbackBankId = String(formData.get("bankId") ?? "");
-  const fallbackPath = fallbackBankId
-    ? `/teacher/publish?sourceBankId=${encodeURIComponent(fallbackBankId)}`
-    : "/teacher/publish";
-
+export async function publishQuestionBankAssignments(
+  _previousState: AssignmentComposerActionState,
+  formData: FormData,
+): Promise<AssignmentComposerActionState> {
   try {
     const profile = await requireTeacher();
-    const parsed = publishQuestionBankAssignmentsSchema.parse(
+    const parsedResult = publishQuestionBankAssignmentsSchema.safeParse(
       Object.fromEntries(formData),
     );
+    if (!parsedResult.success) {
+      const issue = parsedResult.error.issues[0];
+      const field =
+        issue?.path[0] === "title" ||
+        issue?.path[0] === "dueAt" ||
+        issue?.path[0] === "instructions"
+          ? issue.path[0]
+          : "form";
+      throw new AssignmentInputError(
+        field === "title"
+          ? "Enter an Assignment title between 1 and 180 characters."
+          : issue?.message || "Check the Assignment details and try again.",
+        field,
+      );
+    }
+    const parsed = parsedResult.data;
     const selectedBankQuestionIds = uniqueStrings(
       formData.getAll("bankQuestionIds"),
     );
     const selectedClassroomIds = uniqueStrings(formData.getAll("classroomIds"));
 
     if (!selectedBankQuestionIds.length) {
-      throw new Error("Choose at least one approved Library question.");
+      throw new AssignmentInputError(
+        "Choose at least one approved Library question.",
+        "content",
+      );
     }
 
     if (!selectedClassroomIds.length) {
-      throw new Error("Choose one classroom target.");
+      throw new AssignmentInputError(
+        "Choose one classroom target.",
+        "classroom",
+      );
     }
 
     if (selectedClassroomIds.length !== 1) {
-      throw new Error(
+      throw new AssignmentInputError(
         "Create one classroom delivery at a time so every result is clear and recoverable.",
+        "classroom",
       );
     }
 
@@ -88,7 +136,10 @@ export async function publishQuestionBankAssignments(formData: FormData) {
     });
 
     if (!bankDetail || bankDetail.bank.status !== "active") {
-      throw new Error("Selected source Library is not active.");
+      throw new AssignmentInputError(
+        "The selected source Library is no longer active. Return to Content and choose another Library.",
+        "content",
+      );
     }
 
     if (!canPublishFromBank(bankDetail.currentUserRole)) {
@@ -99,10 +150,19 @@ export async function publishQuestionBankAssignments(formData: FormData) {
       bankId: parsed.bankId,
       supabase,
     });
-    verifyPublishableSelection({
-      questions: publishableQuestions,
-      selectedBankQuestionIds,
-    });
+    try {
+      verifyPublishableSelection({
+        questions: publishableQuestions,
+        selectedBankQuestionIds,
+      });
+    } catch (error) {
+      throw new AssignmentInputError(
+        error instanceof Error
+          ? error.message
+          : "One or more selected questions are no longer assignment-ready.",
+        "content",
+      );
+    }
     const { data: classrooms, error: classroomError } = await supabase
       .from("classrooms")
       .select("id, organization_id, status")
@@ -114,8 +174,9 @@ export async function publishQuestionBankAssignments(formData: FormData) {
     }
 
     if ((classrooms ?? []).length !== selectedClassroomIds.length) {
-      throw new Error(
+      throw new AssignmentInputError(
         "One or more selected classrooms are unavailable or not manageable.",
+        "classroom",
       );
     }
 
@@ -125,7 +186,10 @@ export async function publishQuestionBankAssignments(formData: FormData) {
           classroom.organization_id !== bankDetail.bank.organization_id,
       )
     ) {
-      throw new Error("Selected classrooms must belong to the source Library organization.");
+      throw new AssignmentInputError(
+        "The selected classroom must belong to the source Library organization.",
+        "classroom",
+      );
     }
 
     const classroomId = selectedClassroomIds[0]!;
@@ -168,6 +232,18 @@ export async function publishQuestionBankAssignments(formData: FormData) {
         : "Saved one teacher draft Assignment. Students cannot see drafts.",
     );
   } catch (error) {
-    redirectWithError(fallbackPath, formatActionError(error));
+    if (error instanceof AssignmentInputError) {
+      return {
+        field: error.field,
+        message: error.message,
+        status: "error",
+      };
+    }
+
+    return {
+      field: "form",
+      message: formatActionError(error),
+      status: "error",
+    };
   }
 }

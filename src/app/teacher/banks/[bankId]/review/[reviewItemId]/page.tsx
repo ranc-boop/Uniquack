@@ -71,6 +71,7 @@ export default async function TeacherReviewPreviewPage({
       eyebrow="Review Draft · Focused preview"
       launchId={query.launchId}
       returnHref={returnHref}
+      returnSurfaceLabel="Review list"
       taskKind="review-preview"
       title={preview.question.title}
     >

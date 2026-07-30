@@ -81,6 +81,7 @@ export default async function TeacherReviewSelectionPreviewPage({
       eyebrow="Review Drafts · Focused batch preview"
       launchId={query.launchId}
       returnHref={returnHref}
+      returnSurfaceLabel="Review list"
       taskKind="review-batch"
       title={`Preview ${safePreviews.length} selected Review Drafts`}
     >

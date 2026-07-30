@@ -2,10 +2,7 @@ import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
-  BookOpenCheck,
   CheckCircle2,
-  School,
-  Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -151,31 +148,31 @@ function AssignmentStatusBadge({ assignment }: { assignment: TeacherProgressAssi
 
 function AssignmentProgressSection({ progress }: { progress: TeacherProgressSummary }) {
   return (
-    <section className="teacher-panel overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-slate-200 p-5 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-slate-950">Assignment progress</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            Cross-class completion from active rosters and assignment-linked Practice evidence.
-          </p>
-        </div>
-        <Button asChild size="sm" variant="outline">
-          <Link href="/teacher/publish">Create assignment</Link>
-        </Button>
-      </div>
+    <details className="teacher-panel overflow-hidden">
+      <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
+        <span className="block text-xl font-bold text-slate-950">
+          All Assignment progress
+        </span>
+        <span className="mt-1 block text-sm leading-6 text-slate-600">
+          Optional cross-class completion and latest activity.
+        </span>
+      </summary>
 
       {progress.assignments.length ? (
         <>
-          <div className="hidden lg:block">
+          <div className="hidden border-t border-slate-100 lg:block">
             <table className="w-full table-fixed border-collapse text-left text-sm">
+              <caption className="sr-only">
+                Assignment progress across active classroom rosters.
+              </caption>
               <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
                 <tr>
-                  <th className="w-[26%] px-5 py-3">Assignment</th>
-                  <th className="w-[14%] px-3 py-3">Status / due</th>
-                  <th className="w-[10%] px-3 py-3">Students</th>
-                  <th className="w-[27%] px-3 py-3">Progress</th>
-                  <th className="w-[15%] px-3 py-3">Latest activity</th>
-                  <th className="w-[8%] px-3 py-3 text-right">Open</th>
+                  <th className="w-[26%] px-5 py-3" scope="col">Assignment</th>
+                  <th className="w-[14%] px-3 py-3" scope="col">Status / due</th>
+                  <th className="w-[10%] px-3 py-3" scope="col">Students</th>
+                  <th className="w-[27%] px-3 py-3" scope="col">Progress</th>
+                  <th className="w-[15%] px-3 py-3" scope="col">Latest activity</th>
+                  <th className="w-[8%] px-3 py-3 text-right" scope="col">Open</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -225,7 +222,7 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
             </table>
           </div>
 
-          <div className="divide-y divide-slate-100 lg:hidden">
+          <div className="divide-y divide-slate-100 border-t border-slate-100 lg:hidden">
             {progress.assignments.map((assignment) => (
               <article className="space-y-4 p-5" key={assignment.assignmentId}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -279,7 +276,7 @@ function AssignmentProgressSection({ progress }: { progress: TeacherProgressSumm
           />
         </div>
       )}
-    </section>
+    </details>
   );
 }
 
@@ -297,45 +294,19 @@ export default async function TeacherProgressPage() {
     <TeacherWorkspaceShell
       eyebrow="Teacher evidence"
       title="Progress / Feedback"
-      description="Read classroom and assignment evidence after students work through teacher-delivered Practice."
+      description="Start with the students and Assignments that need action, then open supporting evidence only when needed."
       actions={
-        <>
-          <Button asChild>
-            <Link href="/teacher/classrooms">Open classrooms</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/teacher/publish">Create assignment</Link>
-          </Button>
-        </>
+        <Button asChild variant="outline">
+          <Link href="/teacher/publish">Create assignment</Link>
+        </Button>
       }
     >
       <TeacherWorkspaceNav />
 
-      <section className="grid gap-3 md:grid-cols-3">
-        {[
-          "Assignment and classroom evidence only.",
-          "Private student self-study is not included.",
-          "Source Libraries remain private.",
-        ].map((message) => (
-          <div
-            className="rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm font-semibold leading-6 text-sky-950"
-            key={message}
-          >
-            {message}
-          </div>
-        ))}
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <SummaryCard
-          detail="Active roster and delivery spaces"
-          icon={School}
-          label="Active classes"
-          value={formatNumber(summary.overview.activeClassroomCount)}
-        />
+      <section className="grid gap-3 sm:grid-cols-3">
         <SummaryCard
           detail={`${formatNumber(summary.overview.draftAssignmentCount)} drafts saved`}
-          icon={BookOpenCheck}
+          icon={Activity}
           label="Active assignments"
           value={formatNumber(summary.overview.activeAssignmentCount)}
         />
@@ -351,16 +322,9 @@ export default async function TeacherProgressPage() {
           label="Students needing attention"
           value={formatNumber(summary.overview.studentsNeedingAttentionCount)}
         />
-        <SummaryCard
-          detail="Assignment-linked sessions in the last 14 days"
-          icon={Activity}
-          label="Recent evidence"
-          value={formatNumber(summary.overview.recentEvidenceCount)}
-        />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <section className="teacher-panel overflow-hidden">
+      <section className="teacher-panel overflow-hidden">
           <div className="border-b border-slate-200 p-5">
             <h2 className="text-xl font-bold text-slate-950">Needs attention</h2>
             <p className="mt-1 text-sm leading-6 text-slate-600">
@@ -445,17 +409,20 @@ export default async function TeacherProgressPage() {
               />
             </div>
           )}
-        </section>
+      </section>
 
-        <section className="teacher-panel overflow-hidden">
-          <div className="border-b border-slate-200 p-5">
-            <h2 className="text-xl font-bold text-slate-950">Recent evidence</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              Latest assignment-linked Practice sessions, newest first.
-            </p>
-          </div>
+      <details className="teacher-panel overflow-hidden">
+        <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
+          <span className="block text-xl font-bold text-slate-950">
+            Recent evidence
+          </span>
+          <span className="mt-1 block text-sm leading-6 text-slate-600">
+            Optional. {formatNumber(summary.overview.recentEvidenceCount)}{" "}
+            assignment-linked session(s) in the last 14 days.
+          </span>
+        </summary>
           {summary.recentEvidence.length ? (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 border-t border-slate-100">
               {summary.recentEvidence.map((evidence) => (
                 <Link
                   className="teacher-focus-ring block p-5 transition hover:bg-sky-50/50"
@@ -492,26 +459,14 @@ export default async function TeacherProgressPage() {
               />
             </div>
           )}
-        </section>
-      </section>
+      </details>
 
       <AssignmentProgressSection progress={assignmentProgress} />
-
-      <section className="teacher-soft-panel p-5">
-        <div className="flex items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-sky-200 bg-white text-sky-700">
-            <Users aria-hidden="true" className="size-5" />
-          </span>
-          <div>
-            <h2 className="text-lg font-bold text-sky-950">Evidence boundary</h2>
-            <p className="mt-1 max-w-4xl text-sm leading-6 text-sky-900">
-              Progress here is limited to classroom assignments and their linked Practice sessions.
-              Private student self-study stays private, and students never receive source Library access through this page.
-              Open an assignment detail to save a private note or send feedback to an active student.
-            </p>
-          </div>
-        </div>
-      </section>
+      <p className="text-xs leading-5 text-slate-500">
+        Evidence is limited to classroom Assignments and their linked Practice
+        sessions. Private self-study and source Libraries stay outside this
+        workspace.
+      </p>
     </TeacherWorkspaceShell>
   );
 }

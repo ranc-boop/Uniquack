@@ -270,6 +270,45 @@ export function sanitizeTeacherBankReturnTo({
   return `${sanitized.pathname}${sanitized.search}`;
 }
 
+export function sanitizeTeacherAssignmentReturnTo({
+  assignmentId,
+  classroomId,
+  rawReturnTo,
+}: {
+  assignmentId: string;
+  classroomId: string;
+  rawReturnTo?: string | null;
+}) {
+  const fallback = `/teacher/classrooms/${encodeURIComponent(
+    classroomId,
+  )}/assignments/${encodeURIComponent(assignmentId)}`;
+  const raw = rawReturnTo?.trim();
+
+  if (
+    !raw ||
+    !raw.startsWith("/") ||
+    raw.startsWith("//") ||
+    raw.includes("\\") ||
+    /%2f|%5c/i.test(raw)
+  ) {
+    return fallback;
+  }
+
+  let parsed: URL;
+
+  try {
+    parsed = new URL(raw, FOCUS_ORIGIN);
+  } catch {
+    return fallback;
+  }
+
+  if (parsed.origin !== FOCUS_ORIGIN || parsed.pathname !== fallback) {
+    return fallback;
+  }
+
+  return fallback;
+}
+
 export function buildFocusHref({
   href,
   launchId,

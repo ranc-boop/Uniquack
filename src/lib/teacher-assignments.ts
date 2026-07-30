@@ -146,6 +146,25 @@ export type TeacherAssignmentDetail = TeacherAssignmentSummary & {
   studentProgressRows: TeacherAssignmentStudentProgress[];
 };
 
+export type TeacherAssignmentStudentPreview = Pick<
+  Assignment,
+  "assigned_at" | "due_at" | "id" | "instructions" | "status" | "title"
+> & {
+  classroom: Pick<Classroom, "id" | "name" | "subject">;
+  items: Array<
+    Pick<AssignmentItem, "id" | "order_index" | "points"> & {
+      question: Pick<
+        Question,
+        | "content_html"
+        | "difficulty_rating"
+        | "id"
+        | "question_type"
+        | "title"
+      > | null;
+    }
+  >;
+};
+
 export type AssignmentDeliveryQuarantine = {
   previousAssignedAt: string | null;
   quarantinedAt: string | null;
@@ -435,6 +454,90 @@ export async function listTeacherClassroomAssignments({
       progressRows: progressByAssignmentId.get(assignment.id) ?? [],
     }),
   }));
+}
+
+export async function getTeacherAssignmentStudentPreview({
+  assignmentId,
+  classroomId,
+  supabase,
+}: {
+  assignmentId: string;
+  classroomId: string;
+  supabase: SupabaseServerClient;
+}): Promise<TeacherAssignmentStudentPreview | null> {
+  const classroom = await getManagedClassroom({ classroomId, supabase });
+  const { data: assignment, error } = await supabase
+    .from("assignments")
+    .select("id, title, instructions, status, assigned_at, due_at")
+    .eq("id", assignmentId)
+    .eq("classroom_id", classroomId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (!assignment) {
+    return null;
+  }
+
+  const { data: items, error: itemError } = await supabase
+    .from("assignment_items")
+    .select("id, order_index, points, question_id")
+    .eq("assignment_id", assignmentId)
+    .order("order_index", { ascending: true })
+    .limit(MAX_ASSIGNMENT_ITEMS);
+
+  if (itemError) {
+    throw new Error(itemError.message);
+  }
+
+  const itemRows = (items ?? []) as Array<
+    Pick<AssignmentItem, "id" | "order_index" | "points" | "question_id">
+  >;
+  const questionIds = Array.from(
+    new Set(itemRows.map((item) => item.question_id).filter(Boolean) as string[]),
+  );
+  const { data: questions, error: questionError } = questionIds.length
+    ? await supabase
+        .from("questions")
+        .select(
+          "id, title, content_html, question_type, difficulty_rating",
+        )
+        .in("id", questionIds)
+        .limit(MAX_ASSIGNMENT_ITEMS)
+    : { data: [], error: null };
+
+  if (questionError) {
+    throw new Error(questionError.message);
+  }
+
+  const questionById = new Map(
+    (
+      (questions ?? []) as Array<
+        Pick<
+          Question,
+          | "content_html"
+          | "difficulty_rating"
+          | "id"
+          | "question_type"
+          | "title"
+        >
+      >
+    ).map((question) => [question.id, question]),
+  );
+
+  return {
+    ...assignment,
+    classroom: {
+      id: classroom.id,
+      name: classroom.name,
+      subject: classroom.subject,
+    },
+    items: itemRows.map(({ question_id, ...item }) => ({
+      ...item,
+      question: question_id ? questionById.get(question_id) ?? null : null,
+    })),
+  };
 }
 
 export async function getTeacherAssignmentDetail({
@@ -758,6 +861,18 @@ export async function getTeacherAssignmentDetail({
       } satisfies TeacherAssignmentStudentProgress;
     })
     .sort((a, b) => {
+      const attentionRank = (row: TeacherAssignmentStudentProgress) =>
+        row.practiceAttemptCount >= 2 &&
+        row.practiceIncorrectCount >= row.practiceCorrectCount
+          ? 0
+          : row.status === "in_progress"
+            ? 1
+            : row.status === "not_started"
+              ? 2
+              : 3;
+      const attentionDelta = attentionRank(a) - attentionRank(b);
+      if (attentionDelta) return attentionDelta;
+
       const statusOrder: Record<StudentAssignmentProgress["status"], number> = {
         completed: 2,
         in_progress: 0,
