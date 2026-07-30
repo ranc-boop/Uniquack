@@ -21,6 +21,7 @@
     "smoke:assets-security": "node scripts/question-assets-security-smoke.mjs",
     "smoke:teacher-focus": "node scripts/teacher-focus-workspace-smoke.mjs",
     "smoke:teacher-bulk": "node scripts/teacher-bulk-workflow-smoke.mjs",
+    "smoke:teacher-assignment:db": "node scripts/assignment-creation-idempotency-db-smoke.mjs",
     "smoke:teacher-focus:live": "node scripts/teacher-focus-workspace-live-e2e.mjs --live",
     "test:question-asset-url-backfill": "node scripts/question-asset-url-backfill-test.mjs",
     "backfill:question-asset-urls": "node scripts/backfill-question-asset-urls.mjs",
