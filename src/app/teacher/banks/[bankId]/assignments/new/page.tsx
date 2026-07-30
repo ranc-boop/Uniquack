@@ -12,17 +12,23 @@ import { requireTeacher } from "@/lib/auth/guards";
 import {
   getTeacherQuestionBankDetail,
   listBankApprovedQuestions,
+  canManageBankContent,
   QuestionBankSchemaMissingError,
   questionBankVisibilityLabel,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 import { listManagedClassrooms } from "@/lib/teacher-assignments";
+import { readTeacherFocusSelectionReceipt } from "@/lib/teacher-focus-selection";
+import { isDatabaseUuid } from "@/lib/teacher-focus-workspace";
 
 export const dynamic = "force-dynamic";
 
 type NewBankAssignmentPageProps = {
   params: Promise<{ bankId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    selection?: string;
+  }>;
 };
 
 function SetupNeededState() {
@@ -83,7 +89,25 @@ export default async function NewBankAssignmentPage({
   }
 
   const { bank, currentUserRole } = detail;
+  if (!canManageBankContent(currentUserRole)) {
+    notFound();
+  }
   const usableQuestions = questions.filter((row) => row.question);
+  const selectedIds =
+    query.selection && isDatabaseUuid(query.selection)
+      ? ((await readTeacherFocusSelectionReceipt({
+          bankId,
+          receiptId: query.selection,
+          supabase,
+          surface: "questions",
+        })) ?? [])
+      : [];
+  const usableQuestionIds = new Set(
+    usableQuestions.map((row) => row.bank_question_id),
+  );
+  const selectedQuestionIds = new Set(
+    selectedIds.filter((id) => usableQuestionIds.has(id)),
+  );
 
   return (
     <main className="teacher-shell space-y-6">
@@ -181,6 +205,17 @@ export default async function NewBankAssignmentPage({
 
           <form action={createAssignmentFromBankQuestions} id="bank-assignment-create-form">
             <input name="bankId" type="hidden" value={bank.id} />
+            {selectedQuestionIds.size ? (
+              <p
+                className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-900"
+                role="status"
+              >
+                {selectedQuestionIds.size} question
+                {selectedQuestionIds.size === 1 ? "" : "s"} carried forward
+                from the Library selection. You can still change the selection
+                here.
+              </p>
+            ) : null}
             {usableQuestions.length ? (
               <div className="divide-y divide-slate-100">
                 {usableQuestions.map((row) => {
@@ -193,6 +228,9 @@ export default async function NewBankAssignmentPage({
                     >
                       <input
                         className="mt-1 h-5 w-5 rounded border-slate-300"
+                        defaultChecked={selectedQuestionIds.has(
+                          row.bank_question_id,
+                        )}
                         name="bankQuestionIds"
                         type="checkbox"
                         value={row.bank_question_id}

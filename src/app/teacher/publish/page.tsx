@@ -29,6 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   bankMemberRoleLabel,
+  canManageBankContent,
   listTeacherQuestionBanks,
   QuestionBankSchemaMissingError,
   questionBankVisibilityLabel,
@@ -888,6 +889,8 @@ export default async function TeacherPublishPage({
     throw dataError;
   }
 
+  banks = banks.filter((bank) => canManageBankContent(bank.membershipRole));
+
   const selectedSource = normalizePublishSourceType(query.source);
   const selectedBankId =
     banks.find((bank) => bank.id === query.sourceBankId)?.id ??
@@ -967,13 +970,13 @@ export default async function TeacherPublishPage({
 
       {!banks.length ? (
         <section className="teacher-panel p-8 text-center">
-          <p className="teacher-eyebrow">No source Libraries</p>
+          <p className="teacher-eyebrow">No manageable source Libraries</p>
           <h2 className="mt-2 text-xl font-bold text-slate-950">
-            Create or join a Library first.
+            Create a Library or request editor access.
           </h2>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Assignment creation starts from reviewed Library content. Classrooms
-            are selected after the source Library is ready.
+            Assignment delivery requires owner or editor access to reviewed
+            Library content. Viewer membership remains read-only.
           </p>
           <Button asChild className="mt-5">
             <Link href="/teacher/banks/new">Create Library</Link>

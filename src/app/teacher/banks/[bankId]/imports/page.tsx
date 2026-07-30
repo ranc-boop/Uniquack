@@ -170,6 +170,9 @@ export default async function TeacherBankImportsPage({
   const queueJobs = queueState?.jobs ?? [];
   const queueSetupNeeded = queueState?.setupNeeded ?? false;
   const canImport = canManageBankContent(currentUserRole);
+  if (!canImport) {
+    notFound();
+  }
   const workspaceRole = currentUserRole ?? "viewer";
   const capabilities = bankQuestionWorkspaceCapabilities(workspaceRole);
   const canRunPdfImport = canImport && (parsingProfileState?.available ?? false);
@@ -208,7 +211,7 @@ export default async function TeacherBankImportsPage({
         />
       </section>
 
-      <BankRouteTabs bankId={bank.id} />
+      <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 
       <TeacherBankImportTransition bankId={bank.id} mode={mode}>
 

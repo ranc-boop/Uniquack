@@ -171,7 +171,10 @@ export default async function TeacherPublicSubmissionsPage({
           title={`Public submissions from ${detail.bank.name}`}
         />
       </section>
-      <BankRouteTabs bankId={bankId} />
+      <BankRouteTabs
+        bankId={bankId}
+        currentUserRole={detail.currentUserRole}
+      />
 
       {!canManage ? (
         <section className="rounded-lg border bg-white p-6 text-sm text-muted-foreground">

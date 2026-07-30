@@ -56,14 +56,14 @@ const { buildFocusHref, sanitizeTeacherBankReturnTo } = await import(
 const returnCases = [
   {
     expected:
-      "/teacher/banks/11111111-1111-4111-8111-111111111111/questions?page=2&readiness=archived&source=review_draft&taxonomy=math.course.ap_calculus",
+      "/teacher/banks/11111111-1111-4111-8111-111111111111/questions?page=2&q=private+search&readiness=archived&source=review_draft&taxonomy=math.course.ap_calculus",
     input:
       "/teacher/banks/11111111-1111-4111-8111-111111111111/questions?q=private+search&page=2&readiness=archived&source=review_draft&taxonomy=math.course.ap_calculus&status=pending_review",
     surface: "questions",
   },
   {
     expected:
-      "/teacher/banks/11111111-1111-4111-8111-111111111111/review?page=3&status=needs_more_evidence",
+      "/teacher/banks/11111111-1111-4111-8111-111111111111/review?page=3&q=private+search&status=needs_more_evidence",
     input:
       "/teacher/banks/11111111-1111-4111-8111-111111111111/review?q=private+search&page=3&status=needs_more_evidence&readiness=archived",
     surface: "review",
@@ -91,7 +91,12 @@ for (const testCase of returnCases) {
     surface: testCase.surface,
   });
   assert(actual === testCase.expected, `Unexpected safe return URL: ${actual}`);
-  assert(!actual.includes("q="), "Free-text q must never enter a focus return URL.");
+  if (testCase.input.includes("q=private")) {
+    assert(
+      actual.includes("q=private+search"),
+      "Safe free-text search state must survive return-to-list navigation.",
+    );
+  }
 }
 
 const focusHref = buildFocusHref({
@@ -217,11 +222,11 @@ assert(
 assert(
   questionsPage.includes("FocusTaskLink") &&
     questionsPage.includes("question-preview-") &&
-    questionsPage.includes("Open in current tab") &&
+    questionsPage.includes("Open preview in this tab") &&
     reviewPage.includes("FocusTaskLink") &&
     reviewPage.includes("review-preview-") &&
-    reviewPage.includes("Open in current tab"),
-  "Question and Review rows must expose warned new-tab previews plus a permanent current-tab fallback.",
+    focusBridge.includes("Open original list in this tab"),
+  "Question and Review rows must expose warned new-tab previews while the focus workspace preserves a permanent current-tab fallback.",
 );
 assert(
   strictLineageMigration.includes(

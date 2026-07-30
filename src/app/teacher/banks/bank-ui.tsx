@@ -177,11 +177,19 @@ export function BankSectionHeader({
   );
 }
 
-export function BankRouteTabs({ bankId }: { bankId: string }) {
+export function BankRouteTabs({
+  bankId,
+  currentUserRole,
+}: {
+  bankId: string;
+  currentUserRole: "editor" | "owner" | "viewer" | null;
+}) {
   const primaryTabs = [
     { href: `/teacher/banks/${bankId}/questions`, icon: BookOpen, label: "Questions" },
     { href: `/teacher/banks/${bankId}/review`, icon: ClipboardCheck, label: "Review" },
-    { href: `/teacher/banks/${bankId}/imports`, icon: Upload, label: "Import" },
+    ...(currentUserRole === "owner" || currentUserRole === "editor"
+      ? [{ href: `/teacher/banks/${bankId}/imports`, icon: Upload, label: "Import" }]
+      : []),
   ];
   const secondaryTabs = [
     { href: `/teacher/banks/${bankId}/submissions`, icon: Send, label: "Public Submissions" },

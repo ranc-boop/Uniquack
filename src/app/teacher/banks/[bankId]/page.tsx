@@ -100,13 +100,14 @@ export default async function TeacherBankDetailPage({
             <Button asChild variant="outline">
               <Link href="/teacher/banks">Back to Libraries</Link>
             </Button>
-            <BankQuickAction
-              href={`/teacher/banks/${bank.id}/imports`}
-              icon={Upload}
-              variant={canManageContent ? "default" : "outline"}
-            >
-              Import Material
-            </BankQuickAction>
+            {canManageContent ? (
+              <BankQuickAction
+                href={`/teacher/banks/${bank.id}/imports`}
+                icon={Upload}
+              >
+                Import Material
+              </BankQuickAction>
+            ) : null}
             <BankQuickAction
               href={`/teacher/banks/${bank.id}/review`}
               icon={ClipboardCheck}
@@ -142,7 +143,7 @@ export default async function TeacherBankDetailPage({
       </BankHeroPanel>
 
       <TeacherWorkspaceNav />
-      <BankRouteTabs bankId={bank.id} />
+      <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
       <BankSafetyList />
 
       <section className="grid gap-3 md:grid-cols-4">
@@ -186,15 +187,17 @@ export default async function TeacherBankDetailPage({
             {detail.questionCount ? (
               <div className="mx-auto max-w-xl space-y-4">
                 <p className="text-sm leading-6 text-slate-600">
-                  This Library has approved content ready for classroom delivery.
-                  Choose specific questions, then save a teacher draft or assign
-                  them to a class. Create an Assignment from this Library.
+                  {canManageContent
+                    ? "This Library has approved content ready for classroom delivery. Choose specific questions, then save a teacher draft or assign them to a class."
+                    : "Reviewed content is available for read-only inspection. Owners and editors choose questions for Assignment delivery."}
                 </p>
-                <Button asChild>
-                  <Link href={`/teacher/publish?sourceBankId=${bank.id}`}>
-                    Create Assignment
-                  </Link>
-                </Button>
+                {canManageContent ? (
+                  <Button asChild>
+                    <Link href={`/teacher/publish?sourceBankId=${bank.id}`}>
+                      Create Assignment
+                    </Link>
+                  </Button>
+                ) : null}
                 <Button asChild variant="outline">
                   <Link href={`/teacher/banks/${bank.id}/questions`}>
                     Open question database
@@ -226,13 +229,14 @@ export default async function TeacherBankDetailPage({
               to this Library.
             </p>
             <div className="mt-4 grid gap-2">
-              <BankQuickAction
-                href={`/teacher/banks/${bank.id}/imports`}
-                icon={bankActionIcons.import}
-                variant={canManageContent ? "default" : "outline"}
-              >
-                Import Material
-              </BankQuickAction>
+              {canManageContent ? (
+                <BankQuickAction
+                  href={`/teacher/banks/${bank.id}/imports`}
+                  icon={bankActionIcons.import}
+                >
+                  Import Material
+                </BankQuickAction>
+              ) : null}
               <BankQuickAction
                 href={`/teacher/banks/${bank.id}/review`}
                 icon={bankActionIcons.review}
@@ -245,18 +249,21 @@ export default async function TeacherBankDetailPage({
               >
                 Open questions
               </BankQuickAction>
-              <BankQuickAction
-                href={`/teacher/publish?sourceBankId=${bank.id}`}
-                icon={bankActionIcons.assignment}
-                variant={detail.questionCount ? "default" : "outline"}
-              >
-                Create assignment
-              </BankQuickAction>
+              {canManageContent ? (
+                <BankQuickAction
+                  href={`/teacher/publish?sourceBankId=${bank.id}`}
+                  icon={bankActionIcons.assignment}
+                  variant={detail.questionCount ? "default" : "outline"}
+                >
+                  Create assignment
+                </BankQuickAction>
+              ) : null}
             </div>
             {!canManageContent ? (
               <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                Viewers can use shared Library content for assignments they manage,
-                but owners and editors handle import and approval.
+                Viewers can inspect shared Library content. Owners and editors
+                handle import, approval, question management, and Assignment
+                delivery.
               </p>
             ) : null}
           </section>

@@ -567,7 +567,10 @@ assert(
     teacherBankDetailPage.includes("Library workspace") &&
     teacherBankDetailPage.includes("BankRouteTabs") &&
     teacherBankDetailPage.includes("Import Material") &&
-    teacherBankDetailPage.includes("Create an Assignment from this Library") &&
+    teacherBankDetailPage.includes(
+      "Reviewed content is available for read-only inspection",
+    ) &&
+    teacherBankDetailPage.includes("{canManageContent ? (") &&
     teacherBankDetailPage.includes("Assignments expose selected") &&
     teacherBankImportsPage.includes("TeacherBankImportTransition") &&
     teacherBankImportTransition.includes('aria-label="Library import modes"') &&

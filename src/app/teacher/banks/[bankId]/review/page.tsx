@@ -18,6 +18,13 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FocusTaskLink } from "@/components/teacher/focus-task-link";
+import {
+  BulkRowCheckbox,
+  BulkSelectAllCheckbox,
+  CurrentPageSelectionProvider,
+  ReviewBulkActionBar,
+  type TeacherBulkSelectionItem,
+} from "@/components/teacher/teacher-bulk-selection";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   getTeacherQuestionBankAccess,
@@ -32,13 +39,13 @@ import {
 } from "@/lib/questions/answer-spec";
 import { createClient } from "@/lib/supabase/server";
 import {
-  buildFocusHref,
   sanitizeTeacherBankReturnTo,
 } from "@/lib/teacher-focus-workspace";
 import { cn } from "@/lib/utils";
 
 import {
   approveBankReviewQuestion,
+  approveBankReviewQuestions,
   editBankReviewDraftQuestion,
   markBankReviewDraftNeedsFix,
   rejectBankReviewDraftQuestion,
@@ -305,15 +312,50 @@ export default async function TeacherBankReviewPage({
   const reviewPreviewReturnTo = sanitizeTeacherBankReturnTo({
     bankId: bank.id,
     rawReturnTo: `/teacher/banks/${bank.id}/review${
-      page > 1 || reviewStatus
+      page > 1 || reviewStatus || Boolean(query.q?.trim())
         ? `?${new URLSearchParams({
             ...(page > 1 ? { page: String(page) } : {}),
             ...(reviewStatus ? { status: reviewStatus } : {}),
+            ...(query.q?.trim() ? { q: query.q.trim() } : {}),
           }).toString()}`
         : ""
     }`,
     surface: "review",
   });
+  const reviewBulkItems: TeacherBulkSelectionItem[] = draftQuestions.map(
+    (question) => {
+      const eligible =
+        canApprove &&
+        question.status === "draft" &&
+        question.reviewItemStatus === "pending_review" &&
+        question.lineageLinked &&
+        Boolean(question.reviewItemId);
+
+      return {
+        disabledReason: eligible
+          ? undefined
+          : question.reviewItemStatus === "needs_more_evidence"
+            ? "This draft is marked Needs fix and cannot be approved."
+            : !question.lineageLinked
+              ? "This draft requires lineage repair before approval."
+              : "This draft is no longer pending approval.",
+        eligible,
+        id: question.id,
+        label: `${question.question_code || "Code pending"} · ${question.title}`,
+        previewId: question.reviewItemId ?? undefined,
+      };
+    },
+  );
+  const reviewBulkScopeKey = [
+    bank.id,
+    "review",
+    page,
+    reviewStatus ?? "all",
+    query.q?.trim() ?? "",
+  ].join(":");
+  const approvableDraftCount = reviewBulkItems.filter(
+    (item) => item.eligible,
+  ).length;
 
   return (
     <BankWorkbenchPage>
@@ -340,7 +382,10 @@ export default async function TeacherBankReviewPage({
         />
       </section>
 
-      <BankRouteTabs bankId={bank.id} />
+      <BankRouteTabs
+        bankId={bank.id}
+        currentUserRole={detail.currentUserRole}
+      />
 
       {query.saved ? (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
@@ -353,6 +398,18 @@ export default async function TeacherBankReviewPage({
         </section>
       ) : null}
 
+      <CurrentPageSelectionProvider
+        action={approveBankReviewQuestions}
+        bankId={bank.id}
+        checkboxName="questionIds"
+        fallbackFocusId="review-draft-results-focus"
+        formId="review-bulk-approve-form"
+        items={reviewBulkItems}
+        key={reviewBulkScopeKey}
+        returnTo={reviewPreviewReturnTo}
+        scopeKey={reviewBulkScopeKey}
+        totalResults={draftPage.total}
+      >
       <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
         <BankSectionHeader
           description="Source lineage, taxonomy suggestions, and validation warnings remain attached for Library review."
@@ -389,13 +446,27 @@ export default async function TeacherBankReviewPage({
             </Button>
           </div>
         </form>
+        {canApprove && draftQuestions.length ? (
+          <div className="flex min-h-12 items-center gap-2 border-b border-slate-200 px-4 py-1 text-sm font-semibold text-slate-700">
+            <BulkSelectAllCheckbox
+              label={`Select all ${approvableDraftCount} approvable Review Drafts on this page`}
+            />
+            <span>
+              Select all {approvableDraftCount} approvable draft
+              {approvableDraftCount === 1 ? "" : "s"} on this page
+            </span>
+          </div>
+        ) : null}
         <div className="divide-y divide-slate-100">
           {draftQuestions.length ? (
             draftQuestions.map((question) => {
               const signals = buildDraftReviewSignals(question);
               const warningTotal = signals.warnings.length || question.warningCount;
               const canApproveQuestion =
-                canApprove && question.lineageLinked;
+                canApprove &&
+                question.status === "draft" &&
+                question.reviewItemStatus === "pending_review" &&
+                question.lineageLinked;
               const editPanelId = `edit-${question.id}`;
               const contentSource = draftSourceValue({
                 html: question.content_html,
@@ -414,16 +485,21 @@ export default async function TeacherBankReviewPage({
                 stringValue(lineagePayload.source) === "blueprint_generation";
 
               return (
-                <article className="space-y-4 p-5" key={question.id}>
+                <article
+                  className="relative space-y-4 p-5 pl-16"
+                  key={question.id}
+                >
+                  {canApprove ? (
+                    <div className="absolute left-3 top-4">
+                      <BulkRowCheckbox itemId={question.id} />
+                    </div>
+                  ) : null}
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <BankBadge tone="amber">Review required</BankBadge>
-                        {reviewItemStatusBadge(question.reviewItemStatus)}
-                        <BankBadge>{question.question_type}</BankBadge>
-                        <BankBadge tone="slate">
-                          Difficulty {question.difficulty_rating}
-                        </BankBadge>
+                        {reviewItemStatusBadge(question.reviewItemStatus) ?? (
+                          <BankBadge tone="amber">Review required</BankBadge>
+                        )}
                         {warningTotal ? (
                           <BankBadge tone="rose">
                             {warningTotal} warning
@@ -437,16 +513,6 @@ export default async function TeacherBankReviewPage({
                             Lineage repair required
                           </BankBadge>
                         ) : null}
-                        {question.boundaryFindings.map((finding) => (
-                          <BankBadge
-                            key={finding.findingId}
-                            tone={
-                              finding.severity === "high" ? "rose" : "amber"
-                            }
-                          >
-                            {boundaryFindingLabel(finding.issueKind)}
-                          </BankBadge>
-                        ))}
                       </div>
                       <h3 className="text-lg font-bold text-slate-950">
                         {question.title}
@@ -465,7 +531,7 @@ export default async function TeacherBankReviewPage({
                                 size: "sm",
                                 variant: "outline",
                               }),
-                              "h-auto min-h-9 whitespace-normal",
+                              "h-auto min-h-11 whitespace-normal",
                             )}
                             fallbackFocusId="review-draft-results-focus"
                             href={`/teacher/banks/${bank.id}/review/${question.reviewItemId}`}
@@ -475,48 +541,43 @@ export default async function TeacherBankReviewPage({
                           >
                             Preview
                           </FocusTaskLink>
-                          <a
-                            className="inline-flex min-h-9 items-center rounded-md px-2 text-xs font-semibold text-slate-600 underline-offset-4 hover:text-sky-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
-                            href={buildFocusHref({
-                              href: `/teacher/banks/${bank.id}/review/${question.reviewItemId}`,
-                              returnTo: reviewPreviewReturnTo,
-                            })}
-                            referrerPolicy="no-referrer"
-                            rel="noreferrer"
-                          >
-                            Open in current tab
-                          </a>
                         </>
                       ) : null}
-                      {canApprove ? (
-                        <Button asChild variant="outline">
-                          <a href={`#${editPanelId}`}>
-                            <Pencil aria-hidden="true" className="h-4 w-4" />
-                            Edit draft
-                          </a>
-                        </Button>
-                      ) : null}
+                    </div>
+                  </div>
+
+                  <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
+                      <Pencil aria-hidden="true" className="h-4 w-4" />
+                      More review actions and supporting details
+                    </summary>
+                    <div className="space-y-4 border-t border-slate-100 p-4">
                       {canApproveQuestion ? (
-                        <form action={approveBankReviewQuestion}>
+                        <form
+                          action={approveBankReviewQuestion}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3"
+                        >
                           <input name="bankId" type="hidden" value={bank.id} />
                           <input
                             name="questionId"
                             type="hidden"
                             value={question.id}
                           />
+                          <p className="text-sm leading-6 text-emerald-900">
+                            Approval adds this reviewed draft to the Library. It
+                            does not publish or assign it.
+                          </p>
                           <FormSubmitButton pendingLabel="Approving...">
                             Approve into Library
                           </FormSubmitButton>
                         </form>
                       ) : null}
                       {canApprove && !question.lineageLinked ? (
-                        <span className="max-w-56 text-xs font-semibold leading-5 text-rose-700">
+                        <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-semibold leading-6 text-rose-800">
                           Approval is blocked until this draft is relinked to
                           its Review item.
-                        </span>
+                        </p>
                       ) : null}
-                    </div>
-                  </div>
 
                   {canApprove ? (
                     <details
@@ -681,7 +742,6 @@ export default async function TeacherBankReviewPage({
 
                   <details
                     className="group rounded-xl border border-slate-200 bg-white shadow-sm"
-                    open={Boolean(warningTotal)}
                   >
                     <summary className="flex min-h-12 cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-slate-50">
                       <span>
@@ -900,6 +960,17 @@ export default async function TeacherBankReviewPage({
                     </div>
                   </details>
 
+                  <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <summary className="flex min-h-12 cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-slate-50">
+                      <span>Source, images, and provenance</span>
+                      <span className="text-xs font-semibold text-slate-500 group-open:hidden">
+                        Open only when needed
+                      </span>
+                      <span className="hidden text-xs font-semibold text-slate-500 group-open:inline">
+                        Hide supporting details
+                      </span>
+                    </summary>
+                  <div className="space-y-4 border-t border-slate-100 p-4">
                   <section className="grid gap-3 lg:grid-cols-2">
                     {canApprove ? (
                       <>
@@ -1023,6 +1094,10 @@ export default async function TeacherBankReviewPage({
                       ) : null}
                     </div>
                   </div>
+                  </div>
+                  </details>
+                    </div>
+                  </details>
                 </article>
               );
             })
@@ -1067,7 +1142,14 @@ export default async function TeacherBankReviewPage({
             </div>
           </div>
         ) : null}
+        {canApprove ? (
+          <ReviewBulkActionBar
+            bankId={bank.id}
+            returnTo={reviewPreviewReturnTo}
+          />
+        ) : null}
       </section>
+      </CurrentPageSelectionProvider>
     </BankWorkbenchPage>
   );
 }

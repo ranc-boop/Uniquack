@@ -10,6 +10,7 @@ import dotenv from "dotenv";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const live = process.argv.includes("--live");
+const bulkOnly = process.argv.includes("--bulk-only");
 const confirmation = "DISPOSABLE_CLEAN_SUPABASE";
 const fixtureKind = "teacher_focus_workspace_live_e2e";
 const expectProductionHeaders =
@@ -716,6 +717,7 @@ async function createFixtures(fixtures) {
     mismatchReviewItemId: mismatchReview.mismatchReviewItemId,
     missingImportLineageQuestionId: missingImportLineage.questionId,
     nextBankQuestionId,
+    nextQuestionId,
     privateMarkers: [
       `TEACHER-FOCUS-${runId}`,
       `Teacher focus private ${runId}`,
@@ -875,6 +877,9 @@ async function assertLineageGates({
     await draft
       .getByText("Lineage repair required", { exact: true })
       .waitFor();
+    await draft
+      .getByText("More review actions and supporting details", { exact: true })
+      .click();
     await draft
       .getByText(/Approval is blocked until this draft is relinked/)
       .waitFor();
@@ -1122,7 +1127,13 @@ async function runBrowserJourney(browser, contract, baseUrl) {
       new URL(child.url()).searchParams.has("launchId"),
       "coordinated_child_launch_id_missing",
     );
-    assert(!child.url().includes(searchCanary), "search_query_leaked_to_child");
+    assert(
+      !new URL(child.url()).searchParams.has("q") &&
+        new URL(child.url()).searchParams
+          .get("returnTo")
+          ?.includes(`q=${searchCanary}`),
+      "search_query_must_only_survive_inside_sanitized_return_state",
+    );
     assert(
       (await child.evaluate(() => document.referrer)) === "",
       "child_referrer_not_empty",
@@ -1252,8 +1263,9 @@ async function runBrowserJourney(browser, contract, baseUrl) {
     const originalRow = page
       .locator("tr")
       .filter({ has: page.locator(`#${triggerId}`) });
+    await originalRow.getByText("More", { exact: true }).click();
     const sameTabLink = originalRow.getByRole("link", {
-      name: "Open in current tab",
+      name: "Open preview in this tab",
       exact: true,
     });
     assert((await sameTabLink.count()) === 1, "same_tab_fallback_missing");
@@ -1262,7 +1274,8 @@ async function runBrowserJourney(browser, contract, baseUrl) {
       sameTabLink.click(),
     ]);
     assert(
-      page.url().includes("/preview") && !page.url().includes(searchCanary),
+      page.url().includes("/preview") &&
+        !new URL(page.url()).searchParams.has("q"),
       "same_tab_fallback_navigation_invalid",
     );
 
@@ -1513,6 +1526,381 @@ async function runCrossBrowserFocusJourney(args) {
   });
 }
 
+async function runBulkInteractionJourney({
+  baseUrl,
+  browser,
+  contract,
+  engineName,
+}) {
+  const context = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { height: 812, width: 375 },
+  });
+  const page = await context.newPage();
+  let capturedFocusPost = null;
+  let actionRequestSawInvalidBank = false;
+  context.on("request", (request) => {
+    const requestUrl = new URL(request.url());
+    if (
+      request.method() === "POST" &&
+      requestUrl.pathname === "/api/teacher/focus-selections"
+    ) {
+      const form = new URLSearchParams(request.postData() ?? "");
+      capturedFocusPost = {
+        destination: form.get("destination"),
+        launchId: form.get("launchId"),
+        method: request.method(),
+        selectedIds: form.getAll("selectedId"),
+        url: request.url(),
+      };
+    }
+    if (
+      request.method() === "POST" &&
+      request.postData()?.includes("invalid-bank-id")
+    ) {
+      actionRequestSawInvalidBank = true;
+    }
+  });
+  const readQuestionStatuses = async () => {
+    const { data, error } = await contract.fixtures.service
+      .from("bank_questions")
+      .select("id,status")
+      .in("id", [
+        contract.privateBankQuestionId,
+        contract.nextBankQuestionId,
+      ]);
+    assert(!error, `${engineName}_bulk_status_probe_failed`);
+    return (data ?? [])
+      .map((row) => ({ id: row.id, status: row.status }))
+      .sort((left, right) => left.id.localeCompare(right.id));
+  };
+
+  try {
+    await signIn(page, baseUrl, contract.actors.owner);
+    const statusesBeforeFailure = await readQuestionStatuses();
+    await page.goto(
+      `${baseUrl}/teacher/banks/${contract.privateBankId}/questions?q=Focused`,
+      { waitUntil: "domcontentloaded" },
+    );
+
+    const results = page.locator("#library-question-results-focus");
+    await results.waitFor();
+    assert(
+      await results.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1,
+      ),
+      `${engineName}_bulk_questions_horizontal_overflow`,
+    );
+
+    const firstQuestion = page.getByRole("checkbox", {
+      name: /Select .*Focused Question fixture/,
+    });
+    const secondQuestion = page.getByRole("checkbox", {
+      name: /Select .*Focused Next Question fixture/,
+    });
+    const selectAll = page.getByRole("checkbox", {
+      name: /Select all 2 eligible questions on this page/,
+    });
+    await firstQuestion.check();
+    assert(
+      (await selectAll.getAttribute("aria-checked")) === "mixed" &&
+        (await selectAll.evaluate((element) => element.indeterminate)) === true,
+      `${engineName}_bulk_select_all_not_mixed`,
+    );
+    await selectAll.check();
+    assert(
+      (await firstQuestion.isChecked()) && (await secondQuestion.isChecked()),
+      `${engineName}_bulk_select_all_did_not_select_current_page`,
+    );
+
+    for (const control of [firstQuestion, secondQuestion, selectAll]) {
+      const labelBox = await control.locator("xpath=..").boundingBox();
+      assert(
+        labelBox && labelBox.width >= 44 && labelBox.height >= 44,
+        `${engineName}_bulk_checkbox_target_below_44px`,
+      );
+    }
+
+    const bulkBar = page.getByRole("region", { name: "Bulk actions" });
+    await bulkBar.waitFor();
+    const reserve = await bulkBar.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        height: element.getBoundingClientRect().height,
+        marginBottom: Number.parseFloat(style.marginBottom),
+      };
+    });
+    assert(
+      reserve.marginBottom >= reserve.height,
+      `${engineName}_bulk_bar_bottom_reserve_too_small`,
+    );
+
+    const archiveTrigger = bulkBar.getByRole("button", {
+      name: "Archive",
+      exact: true,
+    });
+    await archiveTrigger.click();
+    const dialog = page.getByRole("dialog");
+    await dialog.waitFor();
+    await dialog.evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations().map((animation) => animation.finished),
+      );
+    });
+    const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+    assert(
+      (await page.evaluate(() => document.activeElement?.textContent?.trim())) ===
+        "Cancel",
+      `${engineName}_bulk_dialog_cancel_not_initial_focus`,
+    );
+    const cancelBox = await cancel.boundingBox();
+    const closeBox = await dialog
+      .getByRole("button", { name: "Close", exact: true })
+      .boundingBox();
+    assert(
+      cancelBox &&
+        cancelBox.height >= 44 &&
+        closeBox &&
+        closeBox.width >= 44 &&
+        closeBox.height >= 44,
+      `${engineName}_bulk_dialog_targets_below_44px_${JSON.stringify({
+        cancelBox,
+        closeBox,
+      })}`,
+    );
+
+    const archiveConfirm = dialog.getByRole("button", {
+      name: "Archive 2 questions",
+      exact: true,
+    });
+    await page.evaluate(() => {
+      const bankId = document.querySelector(
+        '#question-bulk-management-form input[name="bankId"]',
+      );
+      if (bankId instanceof HTMLInputElement) {
+        bankId.value = "invalid-bank-id";
+      }
+    });
+    assert(
+      (await page
+        .locator('#question-bulk-management-form input[name="bankId"]')
+        .inputValue()) === "invalid-bank-id",
+      `${engineName}_bulk_invalid_bank_fixture_not_applied`,
+    );
+    await archiveConfirm.click();
+    const resultId = "question-bulk-management-form-result";
+    try {
+      await page.locator(`#${resultId}`).waitFor({ timeout: 15_000 });
+    } catch {
+      const statuses = await contract.fixtures.service
+        .from("bank_questions")
+        .select("status")
+        .in("id", [
+          contract.privateBankQuestionId,
+          contract.nextBankQuestionId,
+        ]);
+      throw new Error(
+        `${engineName}_bulk_action_result_missing_${JSON.stringify({
+          actionRequestSawInvalidBank,
+          checked: [
+            await firstQuestion.isChecked(),
+            await secondQuestion.isChecked(),
+          ],
+          dialogCount: await page.getByRole("dialog").count(),
+          resultCount: await page.locator(`#${resultId}`).count(),
+          statuses: statuses.data?.map((row) => row.status),
+          url: page.url(),
+        })}`,
+      );
+    }
+    await page.waitForFunction(
+      (id) => document.activeElement?.id === id,
+      resultId,
+      { timeout: 8_000 },
+    );
+    const failureState = {
+      dialogCount: await page.getByRole("dialog").count(),
+      firstChecked: await firstQuestion.isChecked(),
+      secondChecked: await secondQuestion.isChecked(),
+    };
+    assert(
+      failureState.dialogCount === 0 &&
+        failureState.firstChecked &&
+        failureState.secondChecked,
+      `${engineName}_bulk_failure_must_close_dialog_and_preserve_selection_${JSON.stringify(failureState)}`,
+    );
+    assert(
+      await page.locator(`#${resultId}`).evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return box.bottom > 0 && box.top < innerHeight;
+      }),
+      `${engineName}_bulk_failure_result_not_scrolled_into_view`,
+    );
+    const statusesAfterFailure = await readQuestionStatuses();
+    assert(
+      JSON.stringify(statusesAfterFailure) ===
+        JSON.stringify(statusesBeforeFailure),
+      `${engineName}_bulk_failure_changed_database_state`,
+    );
+    await page
+      .locator('#question-bulk-management-form input[name="bankId"]')
+      .evaluate((element, bankId) => {
+        if (element instanceof HTMLInputElement) element.value = bankId;
+      }, contract.privateBankId);
+
+    const previewTrigger = page.locator("#question-bulk-preview");
+    await page.waitForFunction(
+      () =>
+        document
+          .getElementById("question-bulk-preview")
+          ?.matches('[data-focus-launch-ready="true"]:not(:disabled)') === true,
+      null,
+      { timeout: 8_000 },
+    );
+    const [child] = await Promise.all([
+      page.waitForEvent("popup"),
+      previewTrigger.click(),
+    ]);
+    await child.waitForLoadState("domcontentloaded");
+    await child
+      .getByRole("heading", { name: "Preview 2 selected questions" })
+      .waitFor({ timeout: 15_000 });
+    const childUrl = new URL(child.url());
+    const receiptId = childUrl.searchParams.get("selection");
+    assert(
+      capturedFocusPost?.method === "POST" &&
+        capturedFocusPost.destination === "question_preview" &&
+        capturedFocusPost.selectedIds.length === 2 &&
+        capturedFocusPost.selectedIds.includes(
+          contract.privateBankQuestionId,
+        ) &&
+        capturedFocusPost.selectedIds.includes(contract.nextBankQuestionId) &&
+        !capturedFocusPost.url.includes(contract.privateBankQuestionId) &&
+        !capturedFocusPost.url.includes(contract.nextBankQuestionId) &&
+        childUrl.pathname ===
+          `/teacher/banks/${contract.privateBankId}/questions/preview` &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          receiptId ?? "",
+        ) &&
+        !childUrl.searchParams.has("selected") &&
+        !child.url().includes(contract.privateBankQuestionId) &&
+        !child.url().includes(contract.nextBankQuestionId),
+      `${engineName}_bulk_preview_did_not_use_opaque_post_receipt`,
+    );
+    await child
+      .getByText("Question 1 of 2", { exact: true })
+      .waitFor({ timeout: 8_000 });
+    await child.getByRole("button", { name: "Next", exact: true }).click();
+    await child
+      .getByText("Question 2 of 2", { exact: true })
+      .waitFor({ timeout: 8_000 });
+    await child.locator("#preview-queue-jump").selectOption("0");
+    await child
+      .getByText("Question 1 of 2", { exact: true })
+      .waitFor({ timeout: 8_000 });
+    await Promise.all([
+      child.waitForEvent("close"),
+      child.getByRole("button", { name: "Close and return" }).click(),
+    ]);
+    await page.bringToFront();
+    await waitForValue(
+      () => page.evaluate(() => document.activeElement?.id ?? ""),
+      (value) => value === "question-bulk-preview",
+      `${engineName}_bulk_preview_focus_not_restored`,
+    );
+
+    console.log(
+      `PASS ${engineName} bulk 375px selection, zero-write failure, real receipt queue, and return focus`,
+    );
+  } finally {
+    await context.close();
+  }
+}
+
+async function assertViewerManagementBoundaries({
+  baseUrl,
+  browser,
+  contract,
+}) {
+  const context = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { height: 900, width: 1280 },
+  });
+  const page = await context.newPage();
+
+  try {
+    await signIn(page, baseUrl, contract.actors.viewer);
+    await page.goto(
+      `${baseUrl}/teacher/banks/${contract.privateBankId}`,
+      { waitUntil: "domcontentloaded" },
+    );
+    await page
+      .getByRole("heading", { level: 1 })
+      .waitFor({ timeout: 10_000 });
+    assert(
+      (await page
+        .getByRole("link", { name: "Create Assignment", exact: true })
+        .count()) === 0 &&
+        (await page
+          .getByRole("link", { name: "Create assignment", exact: true })
+          .count()) === 0 &&
+        (await page
+          .getByRole("link", { name: "Import Material", exact: true })
+          .count()) === 0 &&
+        (await page.locator(
+          `a[href="/teacher/banks/${contract.privateBankId}/imports"]`,
+        ).count()) === 0,
+      "viewer_library_exposes_management_entrypoint",
+    );
+
+    const directImportResponse = await page.goto(
+      `${baseUrl}/teacher/banks/${contract.privateBankId}/imports`,
+      { waitUntil: "domcontentloaded" },
+    );
+    const importRendersNotFound = await page
+      .getByText("This page could not be found.", { exact: true })
+      .count();
+    assert(
+      (directImportResponse?.status() === 404 || importRendersNotFound > 0) &&
+        (await page
+          .getByRole("navigation", { name: "Library import modes" })
+          .count()) === 0,
+      "viewer_direct_import_route_must_be_not_found",
+    );
+
+    await page.goto(
+      `${baseUrl}/teacher/publish?sourceBankId=${contract.privateBankId}`,
+      { waitUntil: "domcontentloaded" },
+    );
+    await page
+      .getByText("No manageable source Libraries", { exact: true })
+      .waitFor({ timeout: 10_000 });
+    assert(
+      (await page.locator("#publish-center-form").count()) === 0 &&
+        (await page.locator("#sourceBankId").count()) === 0,
+      "viewer_publish_route_exposes_library_editor",
+    );
+
+    const directAssignmentResponse = await page.goto(
+      `${baseUrl}/teacher/banks/${contract.privateBankId}/assignments/new`,
+      { waitUntil: "domcontentloaded" },
+    );
+    const rendersNotFound = await page
+      .getByText("This page could not be found.", { exact: true })
+      .count();
+    assert(
+      (directAssignmentResponse?.status() === 404 || rendersNotFound > 0) &&
+        (await page.locator("#bank-assignment-create-form").count()) === 0,
+      "viewer_direct_assignment_route_must_be_not_found",
+    );
+    console.log(
+      "PASS viewer Library UI, publish source filtering, and direct assignment route share one read-only boundary",
+    );
+  } finally {
+    await context.close();
+  }
+}
+
 async function cleanup(fixtures) {
   let clean = true;
   async function remove(table, ids) {
@@ -1653,6 +2041,41 @@ try {
   contract = await createFixtures(fixtures);
   browser = await chromium.launch({ executablePath: edgePath, headless: true });
   browsers.push(browser);
+  await assertViewerManagementBoundaries({
+    baseUrl,
+    browser,
+    contract,
+  });
+  if (bulkOnly) {
+    const bulkTarget = process.env.TEACHER_FOCUS_BULK_ENGINE?.trim();
+    if (!bulkTarget || bulkTarget === "edge") {
+      await runBulkInteractionJourney({
+        baseUrl,
+        browser,
+        contract,
+        engineName: "edge",
+      });
+    }
+    for (const [engineName, browserType] of [
+      ["chromium", chromium],
+      ["firefox", compatibleFirefox],
+      ["webkit", compatibleWebkit],
+    ].filter(([engineName]) => !bulkTarget || engineName === bulkTarget)) {
+      const executablePath = browserExecutablePaths[engineName];
+      const engineBrowser = await browserType.launch({
+        headless: true,
+        ...(executablePath ? { executablePath } : {}),
+      });
+      browsers.push(engineBrowser);
+      await runBulkInteractionJourney({
+        baseUrl,
+        browser: engineBrowser,
+        contract,
+        engineName,
+      });
+    }
+    passed = true;
+  } else {
   assert(
     contract.actors.owner.profileRole === "teacher",
     "primary_browser_actor_must_be_teacher",
@@ -1752,6 +2175,12 @@ try {
     contract,
     engineName: "edge",
   });
+  await runBulkInteractionJourney({
+    baseUrl,
+    browser,
+    contract,
+    engineName: "edge",
+  });
   for (const [engineName, browserType] of [
     ["chromium", chromium],
     ["firefox", compatibleFirefox],
@@ -1775,6 +2204,12 @@ try {
       contract,
       engineName,
     });
+    await runBulkInteractionJourney({
+      baseUrl,
+      browser: engineBrowser,
+      contract,
+      engineName,
+    });
   }
   await assertValidLineageApproval({
     anonKey,
@@ -1782,6 +2217,7 @@ try {
     supabaseUrl,
   });
   passed = true;
+  }
 } finally {
   await Promise.all(
     browsers.map((activeBrowser) => activeBrowser.close().catch(() => {})),
@@ -1792,5 +2228,7 @@ try {
 
 assert(passed, "teacher_focus_live_e2e_failed");
 console.log(
-  "PASS real teacher focus preview roles, strict lineage, denied HTML/Flight boundaries, Edge/Chromium/Firefox/WebKit new tabs, 375 CSS px and observable 750-physical-pixel DPR2 reflow, rendered math/image-dialog layout, return focus, and fallbacks",
+  bulkOnly
+    ? `PASS real ${process.env.TEACHER_FOCUS_BULK_ENGINE?.trim() || "Edge/Chromium/Firefox/WebKit"} bulk workflow: 375px selection, dialog failure recovery, opaque POST handoff, and return focus`
+    : "PASS real teacher focus and bulk workflows: roles, strict lineage, denied HTML/Flight boundaries, Edge/Chromium/Firefox/WebKit 375px selection, dialog failure recovery, opaque POST handoff, new tabs, return focus, reflow, rendered math/images, and fallbacks",
 );
