@@ -5,6 +5,7 @@ import {
 } from "react";
 
 import { buildFocusHref } from "@/lib/teacher-focus-workspace";
+import type { FocusTaskKind } from "@/lib/teacher-focus-workspace";
 import { cn } from "@/lib/utils";
 
 type FocusTaskLinkProps = Omit<
@@ -12,11 +13,10 @@ type FocusTaskLinkProps = Omit<
   "children" | "href" | "target"
 > & {
   children: ReactNode;
-  fallbackFocusId: string;
   href: string;
   newTabLabel?: string;
   returnTo: string;
-  taskKind: string;
+  taskKind: FocusTaskKind;
   triggerId: string;
 };
 
@@ -27,7 +27,6 @@ type FocusTaskLinkProps = Omit<
 export function FocusTaskLink({
   children,
   className,
-  fallbackFocusId: _fallbackFocusId,
   href,
   newTabLabel,
   returnTo,
@@ -76,7 +75,6 @@ export function FocusTaskForm({
   children,
   className,
   destination,
-  fallbackFocusId: _fallbackFocusId,
   returnTo,
   selectedIds,
   taskKind,
@@ -86,10 +84,9 @@ export function FocusTaskForm({
   children: ReactNode;
   className?: string;
   destination: "question_preview" | "review_preview";
-  fallbackFocusId: string;
   returnTo: string;
   selectedIds: string[];
-  taskKind: string;
+  taskKind: FocusTaskKind;
   triggerId: string;
 }) {
   return (

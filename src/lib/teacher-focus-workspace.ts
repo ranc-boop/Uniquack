@@ -1,6 +1,11 @@
 const FOCUS_ORIGIN = "https://focus.edustruct.invalid";
 
 type FocusReturnSurface = "questions" | "review";
+export type FocusTaskKind =
+  | "question-preview"
+  | "review-batch"
+  | "review-preview"
+  | "student-preview";
 
 const allowedQuestionReadinessValues = new Set(["active", "archived"]);
 const allowedQuestionSourceValues = new Set([

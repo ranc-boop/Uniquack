@@ -661,7 +661,6 @@ export default async function TeacherBankQuestionsPage({
                                   }),
                                   "h-auto min-h-11 whitespace-normal",
                                 )}
-                                fallbackFocusId="library-question-results-focus"
                                 href={`/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview`}
                                 returnTo={questionPreviewReturnTo}
                                 taskKind="question-preview"

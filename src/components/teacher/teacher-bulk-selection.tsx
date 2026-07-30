@@ -672,7 +672,6 @@ export function ReviewBulkActionBar({
           "min-h-11 whitespace-normal",
         )}
         destination="review_preview"
-        fallbackFocusId="review-draft-results-focus"
         returnTo={returnTo}
         selectedIds={previewIds}
         taskKind="review-batch"
@@ -716,7 +715,6 @@ export function QuestionBulkActionBar({
           "min-h-11 whitespace-normal",
         )}
         destination="question_preview"
-        fallbackFocusId="library-question-results-focus"
         returnTo={returnTo}
         selectedIds={selectedIds}
         taskKind="question-preview"
