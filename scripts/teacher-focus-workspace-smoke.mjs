@@ -27,6 +27,7 @@ const [
   questionsPage,
   reviewPage,
   reviewPreviewPage,
+  selectionRoute,
   strictLineageMigration,
   supabaseMiddleware,
 ] = await Promise.all([
@@ -46,11 +47,99 @@ const [
   read("src/app/teacher/banks/[bankId]/questions/page.tsx"),
   read("src/app/teacher/banks/[bankId]/review/page.tsx"),
   read("src/app/teacher/banks/[bankId]/review/[reviewItemId]/page.tsx"),
+  read("src/app/api/teacher/focus-selections/route.ts"),
   read("supabase/clean-migrations/0066_strict_bank_review_lineage_gate.sql"),
   read("src/lib/supabase/middleware.ts"),
 ]);
 const { buildFocusHref, sanitizeTeacherBankReturnTo } = await import(
   pathToFileURL(resolve(root, "src/lib/teacher-focus-workspace.ts")).href
+);
+const { resolveTrustedPostOrigin } = await import(
+  pathToFileURL(resolve(root, "src/lib/request-origin.ts")).href
+);
+
+const directOrigin = resolveTrustedPostOrigin({
+  environment: "development",
+  host: "127.0.0.1:3317",
+  origin: "http://127.0.0.1:3317",
+  requestUrl: "http://internal-next:3000/api/teacher/focus-selections",
+  secFetchSite: "same-origin",
+});
+const proxyOrigin = resolveTrustedPostOrigin({
+  configuredSiteUrl: "https://teacher.example.test",
+  environment: "production",
+  host: "internal-next:3000",
+  origin: "https://teacher.example.test",
+  requestUrl: "http://internal-next:3000/api/teacher/focus-selections",
+  secFetchSite: "same-origin",
+  trustProxyHeaders: true,
+  xForwardedHost: "teacher.example.test",
+  xForwardedProto: "https",
+});
+assert(
+  directOrigin === "http://127.0.0.1:3317" &&
+    proxyOrigin === "https://teacher.example.test",
+  "Trusted POST origins must support direct development and explicitly configured proxy deployments.",
+);
+for (const input of [
+  {
+    environment: "development",
+    host: "127.0.0.1:3317",
+    origin: "https://evil.example",
+    requestUrl: "http://internal-next:3000/api/teacher/focus-selections",
+  },
+  {
+    environment: "development",
+    host: "127.0.0.1:3317",
+    origin: null,
+    requestUrl: "http://internal-next:3000/api/teacher/focus-selections",
+  },
+  {
+    environment: "production",
+    host: "teacher.example.test",
+    origin: "https://teacher.example.test",
+    requestUrl: "https://teacher.example.test/api/teacher/focus-selections",
+  },
+  {
+    configuredSiteUrl: "https://teacher.example.test",
+    environment: "production",
+    host: "internal-next:3000",
+    origin: "https://teacher.example.test",
+    requestUrl: "http://internal-next:3000/api/teacher/focus-selections",
+    trustProxyHeaders: true,
+    xForwardedHost: "teacher.example.test,evil.example",
+    xForwardedProto: "https",
+  },
+  {
+    configuredSiteUrl: "https://teacher.example.test",
+    environment: "production",
+    host: "internal-next:3000",
+    origin: "https://teacher.example.test",
+    requestUrl: "http://internal-next:3000/api/teacher/focus-selections",
+    trustProxyHeaders: true,
+    xForwardedHost: "teacher.example.test",
+    xForwardedProto: "javascript",
+  },
+  {
+    configuredSiteUrl: "https://teacher.example.test",
+    environment: "production",
+    host: "teacher.example.test",
+    origin: "https://teacher.example.test",
+    requestUrl: "https://teacher.example.test/api/teacher/focus-selections",
+    secFetchSite: "cross-site",
+  },
+]) {
+  assert(
+    resolveTrustedPostOrigin(input) === null,
+    "Ambiguous, unconfigured, or cross-origin POST metadata must fail closed.",
+  );
+}
+assert(
+  selectionRoute.includes("resolveTrustedPostOrigin") &&
+    selectionRoute.includes("if (!trustedOrigin)") &&
+    selectionRoute.includes("trustedOrigin,") &&
+    !selectionRoute.includes("requestUrl.origin,"),
+  "Focus receipt POST validation and its 303 Location must share the same trusted external origin.",
 );
 
 const returnCases = [
@@ -131,7 +220,9 @@ assert(
     focusLink.includes("focus moved to the results") &&
     !focusLink.includes("sessionStorage") &&
     !focusLink.includes("parentLocation") &&
-    !focusLink.includes("window.open("),
+    !focusLink
+      .slice(0, focusLink.indexOf("export function FocusTaskForm"))
+      .includes("window.open("),
   "Focus launches must use a real warned anchor, strong launch IDs, accurate fallback focus, no persisted q, and no popup inference.",
 );
 
@@ -143,8 +234,16 @@ assert(
     focusBridge.includes("15_000") &&
     focusBridge.includes("Retry return sync") &&
     focusBridge.includes("window.close()") &&
-    focusBridge.includes("Open original list in this tab"),
+    focusBridge.includes("Open original {returnSurfaceLabel} in this tab") &&
+    focusBridge.includes('returnSurfaceLabel = "Library list"'),
   "The child handshake must retry ready, time out safely, and retain manual return/close recovery.",
+);
+assert(
+  focusLink.includes("window.open(\"\", childWindowName)") &&
+    focusLink.includes("childWindow.opener = null") &&
+    focusLink.includes("event.currentTarget.target = childWindowName") &&
+    focusLink.includes('target="_blank"'),
+  "POST-backed batch previews must open a script-closable random target, sever its opener, and retain a native popup fallback.",
 );
 assert(
   focusBridge.includes("motion-reduce:animate-none") &&
@@ -225,7 +324,7 @@ assert(
     questionsPage.includes("Open preview in this tab") &&
     reviewPage.includes("FocusTaskLink") &&
     reviewPage.includes("review-preview-") &&
-    focusBridge.includes("Open original list in this tab"),
+    focusBridge.includes("Open original {returnSurfaceLabel} in this tab"),
   "Question and Review rows must expose warned new-tab previews while the focus workspace preserves a permanent current-tab fallback.",
 );
 assert(

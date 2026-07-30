@@ -323,6 +323,12 @@ export function FocusTaskForm({
     const launchId = preparedLaunchId;
     const connectionNonce = randomToken(16);
     const channel = new BroadcastChannel(focusChannelName(launchId));
+    const childWindowName = `edustruct-focus-${launchId}`;
+    const childWindow = window.open("", childWindowName);
+    if (childWindow) {
+      childWindow.opener = null;
+      event.currentTarget.target = childWindowName;
+    }
     let pendingVisibilityHandler: (() => void) | null = null;
     let cleanupTimer = 0;
 

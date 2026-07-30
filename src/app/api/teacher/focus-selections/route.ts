@@ -9,6 +9,7 @@ import {
   sanitizeTeacherBankReturnTo,
 } from "@/lib/teacher-focus-workspace";
 import { createClient } from "@/lib/supabase/server";
+import { resolveTrustedPostOrigin } from "@/lib/request-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,20 @@ function privateError(message: string, status: number) {
 export async function POST(request: Request) {
   await requireTeacher();
   const requestUrl = new URL(request.url);
-  const origin = request.headers.get("origin");
+  const trustedOrigin = resolveTrustedPostOrigin({
+    configuredSiteUrl:
+      process.env.SITE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? null,
+    environment: process.env.NODE_ENV,
+    host: request.headers.get("host"),
+    origin: request.headers.get("origin"),
+    requestUrl: request.url,
+    secFetchSite: request.headers.get("sec-fetch-site"),
+    trustProxyHeaders: process.env.TRUST_PROXY_HEADERS === "1",
+    xForwardedHost: request.headers.get("x-forwarded-host"),
+    xForwardedProto: request.headers.get("x-forwarded-proto"),
+  });
 
-  if (origin && origin !== requestUrl.origin) {
+  if (!trustedOrigin) {
     return privateError("Invalid request origin.", 403);
   }
 
@@ -81,7 +93,7 @@ export async function POST(request: Request) {
         : destination === "question_preview"
           ? `/teacher/banks/${bankId}/questions/preview`
           : `/teacher/banks/${bankId}/review/bulk`,
-      requestUrl.origin,
+      trustedOrigin,
     );
 
     destinationUrl.searchParams.set("selection", receiptId);
