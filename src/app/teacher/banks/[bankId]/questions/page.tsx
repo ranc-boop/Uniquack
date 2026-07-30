@@ -18,10 +18,10 @@ import {
 } from "@/components/ui/table";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
-  canManageBankContent,
   getTeacherQuestionBankAccess,
   listBankQuestionsPage,
   QuestionBankSchemaMissingError,
+  teacherQuestionBankAccessLabel,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -151,8 +151,9 @@ export default async function TeacherBankQuestionsPage({
   }
 
   const questions = questionPage?.items ?? [];
-  const { bank, currentUserRole } = access;
-  const canManage = canManageBankContent(currentUserRole);
+  const { bank } = access;
+  const canManage = access.canManage;
+  const accessLabel = teacherQuestionBankAccessLabel(access);
   // search_bank_question_rows is installed by the same forward migration as
   // revision/public governance. A successful page result is the capability
   // check, so avoid a separate schema-probe query on every filter/page change.
@@ -234,10 +235,17 @@ export default async function TeacherBankQuestionsPage({
   const questionPreviewReturnTo = sanitizeTeacherBankReturnTo({
     bankId: bank.id,
     rawReturnTo: `/teacher/banks/${bank.id}/questions${
-      page > 1 || readiness === "archived"
+      page > 1 ||
+      readiness === "archived" ||
+      Boolean(sourceKind) ||
+      Boolean(query.taxonomy?.trim())
         ? `?${new URLSearchParams({
             ...(page > 1 ? { page: String(page) } : {}),
-            ...(readiness === "archived" ? { status: "archived" } : {}),
+            ...(readiness === "archived" ? { readiness: "archived" } : {}),
+            ...(sourceKind ? { source: sourceKind } : {}),
+            ...(query.taxonomy?.trim()
+              ? { taxonomy: query.taxonomy.trim() }
+              : {}),
           }).toString()}`
         : ""
     }`,
@@ -270,7 +278,7 @@ export default async function TeacherBankQuestionsPage({
             ) : null}
           </>
         }
-          description={`Role: ${currentUserRole ?? "viewer"}. These assignment-ready Library questions are not public/global questions.`}
+          description={`Access: ${accessLabel}. These assignment-ready Library questions are not public/global questions.`}
           eyebrow="Question database · Library / Questions"
           title={`Reviewed content in ${bank.name}`}
         />
@@ -417,27 +425,28 @@ export default async function TeacherBankQuestionsPage({
       {!showPublicCatalog ? (
         <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
           <BankSectionHeader
-            action={
-              <div className="flex flex-wrap gap-2">
-                {canManage && governanceAvailable ? (
-                  <Button asChild variant="outline">
-                    <Link href={`/teacher/banks/${bank.id}/questions?public=1`}>
-                      Add from Public Library
-                    </Link>
-                  </Button>
-                ) : null}
-                {canManage ? (
-                  <BankQuickAction
-                    href={`/teacher/banks/${bank.id}/imports`}
-                    icon={Upload}
-                  >
-                    Import material
-                  </BankQuickAction>
-                ) : null}
-              </div>
-            }
-            description="Source lineage, taxonomy status, and assignment readiness stay visible before classroom delivery."
-            title="Active Library questions"
+              action={
+                <div className="flex flex-wrap gap-2">
+                  {canManage && governanceAvailable ? (
+                    <Button asChild variant="outline">
+                      <Link href={`/teacher/banks/${bank.id}/questions?public=1`}>
+                        Add from Public Library
+                      </Link>
+                    </Button>
+                  ) : null}
+                  {canManage ? (
+                    <BankQuickAction
+                      href={`/teacher/banks/${bank.id}/imports`}
+                      icon={Upload}
+                    >
+                      Import material
+                    </BankQuickAction>
+                  ) : null}
+                </div>
+              }
+              description="Source lineage, taxonomy status, and assignment readiness stay visible before classroom delivery."
+              focusId="library-question-results-focus"
+              title="Active Library questions"
           />
         <form className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_12rem_12rem_auto]">
           <div className="space-y-2">
@@ -566,7 +575,6 @@ export default async function TeacherBankQuestionsPage({
                           <TableCell>
                             <div className="flex flex-wrap gap-2">
                               <FocusTaskLink
-                                bankId={bank.id}
                                 className={cn(
                                   buttonVariants({
                                     size: "sm",
@@ -574,6 +582,7 @@ export default async function TeacherBankQuestionsPage({
                                   }),
                                   "h-auto min-h-9 whitespace-normal",
                                 )}
+                                fallbackFocusId="library-question-results-focus"
                                 href={`/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview`}
                                 returnTo={questionPreviewReturnTo}
                                 taskKind="question-preview"

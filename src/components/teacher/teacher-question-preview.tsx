@@ -23,9 +23,35 @@ function sourceKindLabel(value: string) {
   return labels[value] ?? "Source recorded";
 }
 
+function accessLabel(preview: PreviewDTO) {
+  if (preview.bank.role) {
+    return `${preview.bank.role} member`;
+  }
+
+  if (preview.bank.accessSource === "platform_admin") {
+    return "Platform administrator";
+  }
+
+  if (preview.bank.organizationRole) {
+    return `Organization ${preview.bank.organizationRole}`;
+  }
+
+  return "Read access";
+}
+
 export function TeacherQuestionPreview({ preview }: { preview: PreviewDTO }) {
   const { question } = preview;
   const review = preview.kind === "review-preview" ? preview.review : null;
+  const reviewWarnings = review
+    ? [
+        ...(review.lineageStatus === "missing"
+          ? [
+              "The question-to-review lineage is incomplete. Approval must stay blocked until it is repaired.",
+            ]
+          : []),
+        ...review.warnings,
+      ]
+    : [];
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -128,8 +154,16 @@ export function TeacherQuestionPreview({ preview }: { preview: PreviewDTO }) {
             </div>
             <div>
               <dt className="text-slate-500">Your access</dt>
-              <dd className="font-semibold capitalize text-slate-900">
-                {preview.bank.role ?? "organization read"}
+              <dd className="font-semibold text-slate-900">
+                {accessLabel(preview)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Library capability</dt>
+              <dd className="font-semibold text-slate-900">
+                {preview.bank.canManage
+                  ? "Can manage content"
+                  : "Read-only access"}
               </dd>
             </div>
             <div>
@@ -176,7 +210,7 @@ export function TeacherQuestionPreview({ preview }: { preview: PreviewDTO }) {
         {review ? (
           <section
             className={
-              review.warnings.length
+              reviewWarnings.length
                 ? "rounded-lg border border-amber-200 bg-amber-50 p-4"
                 : "rounded-lg border border-emerald-200 bg-emerald-50 p-4"
             }
@@ -185,16 +219,16 @@ export function TeacherQuestionPreview({ preview }: { preview: PreviewDTO }) {
               <AlertTriangle
                 aria-hidden="true"
                 className={
-                  review.warnings.length
+                  reviewWarnings.length
                     ? "h-5 w-5 text-amber-700"
                     : "h-5 w-5 text-emerald-700"
                 }
               />
               <h2 className="font-bold text-slate-950">Review checks</h2>
             </div>
-            {review.warnings.length ? (
+            {reviewWarnings.length ? (
               <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-amber-950">
-                {review.warnings.map((warning) => (
+                {reviewWarnings.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>

@@ -30,7 +30,7 @@ export function QuestionDetailImageGallery({
           <DialogTrigger asChild>
             <button
               type="button"
-              className="group overflow-hidden rounded-md border bg-muted/20 p-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="group overflow-hidden rounded-md border bg-muted/20 p-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
               aria-label={`Enlarge ${image.originalFilename}`}
             >
               {/* Storage URLs are dynamic and should be rendered without optimization. */}
@@ -38,7 +38,7 @@ export function QuestionDetailImageGallery({
               <img
                 src={image.publicUrl}
                 alt={image.originalFilename}
-                className="h-56 w-full rounded object-contain transition-transform group-hover:scale-[1.02]"
+                className="h-56 w-full rounded object-contain transition-transform group-hover:scale-[1.02] motion-reduce:transform-none motion-reduce:transition-none"
               />
             </button>
           </DialogTrigger>

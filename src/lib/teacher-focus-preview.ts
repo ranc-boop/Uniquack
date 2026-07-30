@@ -1,6 +1,10 @@
 import "server-only";
 
 import { getTeacherQuestionBankAccess } from "@/lib/question-banks";
+import {
+  normalizeAnswerSpec,
+  normalizeQuestionOptions,
+} from "@/lib/questions/answer-spec";
 import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -39,9 +43,15 @@ export type TeacherQuestionPreviewDTO = {
     url: string;
   }>;
   bank: {
+    accessSource:
+      | "active_membership"
+      | "organization_policy"
+      | "platform_admin";
+    canManage: boolean;
     id: string;
     name: string;
     role: BankMemberRole | null;
+    organizationRole: "admin" | "teacher" | null;
     visibility: QuestionBankVisibility;
   };
   kind: "teacher-question-preview";
@@ -100,18 +110,55 @@ function firstRelation<T>(value: T | T[] | null | undefined) {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
 }
 
+const warningCopyBySignal = [
+  {
+    copy: "The question prompt needs review.",
+    pattern: /content|prompt|question[_ -]?text/i,
+  },
+  {
+    copy: "The answer or option alignment needs review.",
+    pattern: /answer|choice|option/i,
+  },
+  {
+    copy: "The solution or explanation needs review.",
+    pattern: /solution|explanation|rationale/i,
+  },
+  {
+    copy: "The taxonomy assignment needs review.",
+    pattern: /taxonomy|tag|classification/i,
+  },
+  {
+    copy: "The question media association needs review.",
+    pattern: /asset|image|figure|media|visual/i,
+  },
+  {
+    copy: "The source alignment needs review.",
+    pattern: /boundary|page|source|extraction|lineage/i,
+  },
+] as const;
+
 function safeWarningMessages(value: unknown) {
   if (!Array.isArray(value)) return [];
 
-  return Array.from(
-    new Set(
-      value
-        .map((warning) =>
-          typeof warning === "string" ? warning.trim().slice(0, 500) : "",
-        )
-        .filter(Boolean),
-    ),
-  ).slice(0, 25);
+  const safeCopy = value.map((warning) => {
+    const signal =
+      typeof warning === "string"
+        ? warning
+        : warning && typeof warning === "object"
+          ? String(
+              (warning as Record<string, unknown>).code ??
+                (warning as Record<string, unknown>).kind ??
+                "",
+            )
+          : "";
+
+    return (
+      warningCopyBySignal.find(({ pattern }) => pattern.test(signal))?.copy ??
+      "A stored validation check needs review."
+    );
+  });
+
+  return Array.from(new Set(safeCopy)).slice(0, 10);
 }
 
 async function loadPreviewEnrichment({
@@ -191,12 +238,12 @@ function questionProjection(
   bankQuestionId?: string,
 ) {
   return {
-    answerSpec: question.answer_spec,
+    answerSpec: normalizeAnswerSpec(question.answer_spec),
     ...(bankQuestionId ? { bankQuestionId } : {}),
     code: question.question_code,
     contentHtml: question.content_html,
     difficulty: question.difficulty_rating,
-    options: question.options,
+    options: normalizeQuestionOptions(question.options),
     questionId: question.id,
     solutionHtml: question.solution_html,
     status: question.status,
@@ -213,9 +260,12 @@ function bankProjection(
   >,
 ) {
   return {
+    accessSource: access.accessSource,
+    canManage: access.canManage,
     id: access.bank.id,
     name: access.bank.name,
-    role: access.currentUserRole,
+    organizationRole: access.organizationRole,
+    role: access.activeMemberRole,
     visibility: access.bank.visibility,
   };
 }
@@ -332,8 +382,7 @@ export async function getReviewPreviewDTO({
     supabase,
   });
   const lineageLinked =
-    typedQuestion.source_review_item_id === reviewItem.id ||
-    reviewItem.created_question_id === typedQuestion.id;
+    typedQuestion.source_review_item_id === reviewItem.id;
 
   return {
     ...enrichment,

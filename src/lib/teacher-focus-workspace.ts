@@ -54,20 +54,19 @@ const focusChannelEvents = new Set<FocusChannelEvent>([
   "ready",
 ]);
 
-const allowedStatusValues = new Set([
-  "active",
-  "archived",
+const allowedQuestionReadinessValues = new Set(["active", "archived"]);
+const allowedQuestionSourceValues = new Set([
+  "course_builder",
+  "import",
+  "manual",
+  "public_pull",
+  "review_draft",
+]);
+const allowedReviewStatusValues = new Set([
   "needs_more_evidence",
   "pending_review",
 ]);
-const allowedTypeValues = new Set(["fill_blank", "frq", "mcq", "mixed"]);
-const allowedDifficultyValues = new Set(["1", "2", "3", "4", "5"]);
-const allowedSortValues = new Set([
-  "title_asc",
-  "title_desc",
-  "updated_asc",
-  "updated_desc",
-]);
+const taxonomyTagIdPattern = /^math\.[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -216,23 +215,29 @@ export function sanitizeTeacherBankReturnTo({
 
   const sanitized = new URL(expectedPath, FOCUS_ORIGIN);
   const page = safePage(parsed.searchParams.get("page"));
-  const status = parsed.searchParams.get("status");
-  const type = parsed.searchParams.get("type");
-  const difficulty = parsed.searchParams.get("difficulty");
-  const sort = parsed.searchParams.get("sort");
 
   if (page) sanitized.searchParams.set("page", page);
-  if (status && allowedStatusValues.has(status)) {
-    sanitized.searchParams.set("status", status);
-  }
-  if (type && allowedTypeValues.has(type)) {
-    sanitized.searchParams.set("type", type);
-  }
-  if (difficulty && allowedDifficultyValues.has(difficulty)) {
-    sanitized.searchParams.set("difficulty", difficulty);
-  }
-  if (sort && allowedSortValues.has(sort)) {
-    sanitized.searchParams.set("sort", sort);
+
+  if (surface === "questions") {
+    const readiness = parsed.searchParams.get("readiness");
+    const source = parsed.searchParams.get("source");
+    const taxonomy = parsed.searchParams.get("taxonomy");
+
+    if (readiness && allowedQuestionReadinessValues.has(readiness)) {
+      sanitized.searchParams.set("readiness", readiness);
+    }
+    if (source && allowedQuestionSourceValues.has(source)) {
+      sanitized.searchParams.set("source", source);
+    }
+    if (taxonomy && taxonomyTagIdPattern.test(taxonomy)) {
+      sanitized.searchParams.set("taxonomy", taxonomy);
+    }
+  } else {
+    const status = parsed.searchParams.get("status");
+
+    if (status && allowedReviewStatusValues.has(status)) {
+      sanitized.searchParams.set("status", status);
+    }
   }
 
   return `${sanitized.pathname}${sanitized.search}`;

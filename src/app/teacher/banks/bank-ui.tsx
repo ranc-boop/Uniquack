@@ -144,11 +144,13 @@ export function BankSectionHeader({
   action,
   description,
   eyebrow,
+  focusId,
   title,
 }: {
   action?: React.ReactNode;
   description?: string;
   eyebrow?: string;
+  focusId?: string;
   title: string;
 }) {
   return (
@@ -156,7 +158,13 @@ export function BankSectionHeader({
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           {eyebrow ? <p className="student-eyebrow">{eyebrow}</p> : null}
-          <h2 className="text-xl font-bold text-slate-950">{title}</h2>
+          <h2
+            className="text-xl font-bold text-slate-950"
+            id={focusId}
+            tabIndex={focusId ? -1 : undefined}
+          >
+            {title}
+          </h2>
           {description ? (
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               {description}

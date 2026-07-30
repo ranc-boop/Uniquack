@@ -123,6 +123,9 @@ async function main() {
   }
 
   const migration = await read("supabase/clean-migrations/0027_bank_import_review_scope.sql");
+  const strictLineageMigration = await read(
+    "supabase/clean-migrations/0066_strict_bank_review_lineage_gate.sql",
+  );
   const detailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
   const importsPage = await read("src/app/teacher/banks/[bankId]/imports/page.tsx");
   const importUi = await read("src/app/teacher/banks/bank-import-ui.tsx");
@@ -136,6 +139,12 @@ async function main() {
       migration.includes("approve_bank_review_question") &&
       migration.includes("questions_bank_member_read"),
     "bank import review migration is missing scope columns, approval RPC, or bank read policy",
+  );
+  assert(
+    strictLineageMigration.includes(
+      "Review Draft lineage must be linked in both directions before approval.",
+    ),
+    "bank import review smoke requires the strict forward-only Review lineage gate",
   );
   assert(
     detailPage.includes("Import Material") &&
@@ -256,6 +265,80 @@ async function main() {
     });
     assert(!itemError, `bank import item insert failed: ${summarizeSupabaseError(itemError)}`);
     console.log("PASS bank-scoped import item preserved source question linkage");
+
+    const missingLineageApproval = await teacher.client.rpc(
+      "approve_bank_review_question",
+      {
+        p_target_bank_id: bankId,
+        p_target_question_id: questionId,
+      },
+    );
+    assert(
+      missingLineageApproval.error &&
+        !missingLineageApproval.data?.[0]?.bank_question_id,
+      "bank approval must reject import-only lineage before an explicit Review item is linked",
+    );
+    const { count: blockedBankQuestionCount, error: blockedCountError } =
+      await teacher.client
+        .from("bank_questions")
+        .select("id", { count: "exact", head: true })
+        .eq("bank_id", bankId)
+        .eq("question_id", questionId);
+    assert(
+      !blockedCountError && blockedBankQuestionCount === 0,
+      "rejected import-only lineage must not write a bank_questions row",
+    );
+    console.log("PASS import-only lineage is rejected without a Library write");
+
+    const { data: reviewBatch, error: reviewBatchError } = await teacher.client
+      .from("review_batches")
+      .insert({
+        created_by: teacher.user.id,
+        organization_id: teacherProfile.default_organization_id,
+        source_kind: "manual",
+        source_record_id: batchId,
+        status: "pending_review",
+        summary: { smokeOnly: true, targetBankId: bankId },
+        target_bank_id: bankId,
+        title: "Bank import review smoke",
+      })
+      .select("id")
+      .single();
+    assert(
+      !reviewBatchError && reviewBatch?.id,
+      `Review batch insert failed: ${summarizeSupabaseError(reviewBatchError)}`,
+    );
+    const { data: reviewItem, error: reviewItemError } = await teacher.client
+      .from("review_draft_items")
+      .insert({
+        created_question_id: questionId,
+        draft_payload: { smokeOnly: true, targetBankId: bankId },
+        item_kind: "question",
+        review_batch_id: reviewBatch.id,
+        status: "pending_review",
+        target_bank_id: bankId,
+        validation_warnings: [],
+      })
+      .select("id")
+      .single();
+    assert(
+      !reviewItemError && reviewItem?.id,
+      `Review item insert failed: ${summarizeSupabaseError(reviewItemError)}`,
+    );
+    const { error: linkError } = await teacher.client
+      .from("questions")
+      .update({
+        source_review_item_id: reviewItem.id,
+        updated_by: teacher.user.id,
+      })
+      .eq("id", questionId)
+      .eq("owner_bank_id", bankId)
+      .eq("status", "draft");
+    assert(
+      !linkError,
+      `Review Draft lineage link failed: ${summarizeSupabaseError(linkError)}`,
+    );
+    console.log("PASS explicit Review batch/item created complete bidirectional lineage");
 
     const { data: approveRows, error: approveError } = await teacher.client.rpc(
       "approve_bank_review_question",

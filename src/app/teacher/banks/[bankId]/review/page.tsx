@@ -20,10 +20,10 @@ import { Label } from "@/components/ui/label";
 import { FocusTaskLink } from "@/components/teacher/focus-task-link";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
-  canManageBankContent,
   getTeacherQuestionBankAccess,
   listBankReviewDraftQuestions,
   QuestionBankSchemaMissingError,
+  teacherQuestionBankAccessLabel,
   type BankReviewDraftQuestion,
 } from "@/lib/question-banks";
 import {
@@ -273,8 +273,9 @@ export default async function TeacherBankReviewPage({
 
   const draftQuestions = draftPage.items;
   const totalPages = Math.max(1, Math.ceil(draftPage.total / pageSize));
-  const { bank, currentUserRole } = detail;
-  const canApprove = canManageBankContent(currentUserRole);
+  const { bank } = detail;
+  const canApprove = detail.canManage;
+  const accessLabel = teacherQuestionBankAccessLabel(detail);
   const assetActions = {
     deleteAsset: deleteBankQuestionAsset.bind(null, bank.id),
     ensureDraft: ensureBankQuestionDraftForUpload.bind(null, bank.id),
@@ -333,7 +334,7 @@ export default async function TeacherBankReviewPage({
             ) : null}
           </>
         }
-          description={`Role: ${currentUserRole ?? "viewer"}. Approve drafts into this Library. This does not publish them to the public library or create an Assignment.`}
+          description={`Access: ${accessLabel}. Approve drafts into this Library. This does not publish them to the public library or create an Assignment.`}
           eyebrow="Teacher QA queue · Library / Review"
           title={`Review Drafts for ${bank.name}`}
         />
@@ -355,6 +356,7 @@ export default async function TeacherBankReviewPage({
       <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
         <BankSectionHeader
           description="Source lineage, taxonomy suggestions, and validation warnings remain attached for Library review."
+          focusId="review-draft-results-focus"
           title="Pending private drafts"
         />
         <form className="grid gap-3 border-y border-slate-200 p-4 md:grid-cols-[minmax(14rem,1fr)_14rem_auto]">
@@ -392,6 +394,8 @@ export default async function TeacherBankReviewPage({
             draftQuestions.map((question) => {
               const signals = buildDraftReviewSignals(question);
               const warningTotal = signals.warnings.length || question.warningCount;
+              const canApproveQuestion =
+                canApprove && question.lineageLinked;
               const editPanelId = `edit-${question.id}`;
               const contentSource = draftSourceValue({
                 html: question.content_html,
@@ -428,6 +432,11 @@ export default async function TeacherBankReviewPage({
                         ) : (
                           <BankBadge tone="cyan">No warnings</BankBadge>
                         )}
+                        {!question.lineageLinked ? (
+                          <BankBadge tone="rose">
+                            Lineage repair required
+                          </BankBadge>
+                        ) : null}
                         {question.boundaryFindings.map((finding) => (
                           <BankBadge
                             key={finding.findingId}
@@ -451,7 +460,6 @@ export default async function TeacherBankReviewPage({
                       {question.reviewItemId ? (
                         <>
                           <FocusTaskLink
-                            bankId={bank.id}
                             className={cn(
                               buttonVariants({
                                 size: "sm",
@@ -459,6 +467,7 @@ export default async function TeacherBankReviewPage({
                               }),
                               "h-auto min-h-9 whitespace-normal",
                             )}
+                            fallbackFocusId="review-draft-results-focus"
                             href={`/teacher/banks/${bank.id}/review/${question.reviewItemId}`}
                             returnTo={reviewPreviewReturnTo}
                             taskKind="review-preview"
@@ -487,7 +496,7 @@ export default async function TeacherBankReviewPage({
                           </a>
                         </Button>
                       ) : null}
-                      {canApprove ? (
+                      {canApproveQuestion ? (
                         <form action={approveBankReviewQuestion}>
                           <input name="bankId" type="hidden" value={bank.id} />
                           <input
@@ -499,6 +508,12 @@ export default async function TeacherBankReviewPage({
                             Approve into Library
                           </FormSubmitButton>
                         </form>
+                      ) : null}
+                      {canApprove && !question.lineageLinked ? (
+                        <span className="max-w-56 text-xs font-semibold leading-5 text-rose-700">
+                          Approval is blocked until this draft is relinked to
+                          its Review item.
+                        </span>
                       ) : null}
                     </div>
                   </div>

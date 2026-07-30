@@ -185,7 +185,10 @@ export function FocusWorkspaceBridge({
           ) : null}
           {connectionState === "syncing" ? (
             <Button disabled type="button">
-              <RefreshCw aria-hidden="true" className="animate-spin" />
+              <RefreshCw
+                aria-hidden="true"
+                className="animate-spin motion-reduce:animate-none"
+              />
               Syncing original list
             </Button>
           ) : null}
@@ -220,6 +223,21 @@ export function FocusWorkspaceBridge({
           ) : null}
         </div>
       </div>
+      <noscript>
+        <p className="mt-3 text-sm leading-6 text-slate-700">
+          Automatic return is unavailable without JavaScript. Close this tab
+          with your browser, or{" "}
+          <a
+            className="font-semibold text-sky-800 underline"
+            href={returnHref}
+            referrerPolicy="no-referrer"
+            rel="noreferrer"
+          >
+            open the original list in this tab
+          </a>
+          .
+        </p>
+      </noscript>
     </section>
   );
 }

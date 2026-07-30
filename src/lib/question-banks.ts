@@ -48,8 +48,13 @@ export type TeacherQuestionBankDetail = {
 };
 
 export type TeacherQuestionBankAccess = {
+  accessSource: "active_membership" | "organization_policy" | "platform_admin";
+  activeMemberRole: BankMemberRole | null;
   bank: QuestionBank;
+  canManage: boolean;
+  canRead: true;
   currentUserRole: BankMemberRole | null;
+  organizationRole: "admin" | "teacher" | null;
 };
 
 export type BankMemberWithProfile = BankMember & {
@@ -105,6 +110,7 @@ export type BankReviewDraftQuestion = Pick<
   | "title"
   | "visibility"
 > & {
+  lineageLinked: boolean;
   reviewItemId: string | null;
   reviewItemPayload: unknown;
   reviewItemStatus:
@@ -457,7 +463,10 @@ export async function getTeacherQuestionBankDetail({
     assignmentReadyCount: questionCount ?? 0,
     bank,
     currentUserRole:
-      members?.find((member) => member.user_id === profileId)?.role ?? null,
+      members?.find(
+        (member) =>
+          member.user_id === profileId && member.status === "active",
+      )?.role ?? null,
     importBatchCount: importBatchCount ?? 0,
     members: membersWithProfiles,
     questionCount: questionCount ?? 0,
@@ -487,9 +496,10 @@ export async function getTeacherQuestionBankAccess({
       .maybeSingle(),
     supabase
       .from("bank_members")
-      .select("role")
+      .select("role, status")
       .eq("bank_id", bankId)
       .eq("user_id", profileId)
+      .eq("status", "active")
       .maybeSingle(),
   ]);
 
@@ -505,10 +515,82 @@ export async function getTeacherQuestionBankAccess({
     return null;
   }
 
-  return {
-    bank,
-    currentUserRole: membership?.role ?? null,
-  };
+  const activeMemberRole = membership?.role ?? null;
+
+  if (activeMemberRole) {
+    return {
+      accessSource: "active_membership",
+      activeMemberRole,
+      bank,
+      canManage: canManageBankContent(activeMemberRole),
+      canRead: true,
+      currentUserRole: activeMemberRole,
+      organizationRole: null,
+    };
+  }
+
+  const [
+    { data: profile, error: profileError },
+    { data: organizationMembership, error: organizationMembershipError },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", profileId)
+      .maybeSingle(),
+    supabase
+      .from("organization_members")
+      .select("role, status")
+      .eq("organization_id", bank.organization_id)
+      .eq("user_id", profileId)
+      .eq("status", "active")
+      .maybeSingle(),
+  ]);
+
+  if (profileError) throw new Error(profileError.message);
+  if (organizationMembershipError) {
+    throw new Error(organizationMembershipError.message);
+  }
+
+  if (profile?.role === "super_admin") {
+    return {
+      accessSource: "platform_admin",
+      activeMemberRole: null,
+      bank,
+      // Platform administration is not Library content ownership.
+      canManage: false,
+      canRead: true,
+      currentUserRole: null,
+      organizationRole: null,
+    };
+  }
+
+  const organizationRole =
+    organizationMembership?.role === "admin" ||
+    organizationMembership?.role === "teacher"
+      ? organizationMembership.role
+      : null;
+
+  if (
+    organizationRole &&
+    (bank.visibility === "organization" || bank.visibility === "public")
+  ) {
+    return {
+      accessSource: "organization_policy",
+      activeMemberRole: null,
+      bank,
+      // Organization visibility grants read access. Content changes still
+      // require an explicit active owner/editor Library membership.
+      canManage: false,
+      canRead: true,
+      currentUserRole: null,
+      organizationRole,
+    };
+  }
+
+  // Fail closed if a future RLS policy exposes a bank without a matching
+  // application capability classification.
+  return null;
 }
 
 export async function listBankShareCodes({
@@ -968,6 +1050,11 @@ export async function listBankReviewDraftQuestions({
           questionCode: question.question_code,
           questionId: question.id,
         }),
+        lineageLinked: Boolean(
+          reviewItem &&
+            question.source_review_item_id === reviewItem.id &&
+            reviewItem.created_question_id === question.id,
+        ),
         reviewItemId: reviewItem?.id ?? null,
         reviewItemPayload: reviewItem?.draft_payload ?? null,
         reviewItemStatus: reviewItem?.status ?? null,
@@ -1176,6 +1263,24 @@ export function canManageBankMembers(role: BankMemberRole | null | undefined) {
 
 export function canManageBankContent(role: BankMemberRole | null | undefined) {
   return role === "owner" || role === "editor";
+}
+
+export function teacherQuestionBankAccessLabel(
+  access: TeacherQuestionBankAccess,
+) {
+  if (access.activeMemberRole) {
+    return `${access.activeMemberRole} member`;
+  }
+
+  if (access.organizationRole) {
+    return `organization ${access.organizationRole} · read only`;
+  }
+
+  if (access.accessSource === "platform_admin") {
+    return "platform administrator · read only";
+  }
+
+  return "read only";
 }
 
 export function bankMemberProfileLabel(member: BankMemberWithProfile) {

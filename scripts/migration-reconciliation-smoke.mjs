@@ -86,7 +86,7 @@ assert(
   "Exactly one executable canonical 0032 is allowed; Google 0032 must stay excluded.",
 );
 
-for (let number = 44; number <= 65; number += 1) {
+for (let number = 44; number <= 66; number += 1) {
   const filename = activeMigrationNames[number - 1];
   const entry = manifest.migrationInventory.find((candidate) => candidate.filename === filename);
   assert(
@@ -97,19 +97,21 @@ for (let number = 44; number <= 65; number += 1) {
   );
 }
 assert(
-  manifest.latestActivePrefix === 65 &&
-    activeMigrationNames.at(-6) === "0060_question_management_read_models.sql" &&
-    activeMigrationNames.at(-5) ===
+  manifest.latestActivePrefix === 66 &&
+    activeMigrationNames.at(-7) === "0060_question_management_read_models.sql" &&
+    activeMigrationNames.at(-6) ===
       "0061_question_taxonomy_search_materialization.sql" &&
-    activeMigrationNames.at(-4) ===
+    activeMigrationNames.at(-5) ===
       "0062_teacher_bank_import_workspace_read_model.sql" &&
-    activeMigrationNames.at(-3) ===
+    activeMigrationNames.at(-4) ===
       "0063_admin_ai_pdf_workspace_read_model.sql" &&
-    activeMigrationNames.at(-2) ===
+    activeMigrationNames.at(-3) ===
       "0064_admin_ai_pdf_workspace_read_model_item_scan_fix.sql" &&
+    activeMigrationNames.at(-2) ===
+      "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql" &&
     activeMigrationNames.at(-1) ===
-      "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql",
-  "Admin AI read-model disablement 0065 must be the canonical executable tail.",
+      "0066_strict_bank_review_lineage_gate.sql",
+  "Strict Review lineage 0066 must be the canonical executable tail.",
 );
 
 for (const [filename, expectedHash] of Object.entries(manifest.frozenMigrationHashes)) {
@@ -222,8 +224,8 @@ if (process.argv.includes("--require-live-reconciliation")) {
 console.log(`PASS canonical migration inventory: ${migrationNames.length} files, ${activeMigrationNames.length} active`);
 console.log("PASS blocked Google 0032 is excluded from the active apply plan");
 console.log("PASS executable 0032 is teacher feedback notes only; raw duplicate is explicit");
-console.log("PASS canonical migrations 0044-0065 have explicit number/classification/order");
-console.log("PASS manifest-driven executable chain has canonical head 0065");
+console.log("PASS canonical migrations 0044-0066 have explicit number/classification/order");
+console.log("PASS manifest-driven executable chain has canonical head 0066");
 console.log(`PASS canonical RLS policy inventory: ${rlsTables.length} tables`);
 console.log("PASS historical 0039-0041 hashes remain unchanged");
 console.log(

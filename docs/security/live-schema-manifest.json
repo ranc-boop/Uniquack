@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 65,
+  "latestActivePrefix": 66,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -79,7 +79,8 @@
     "0062_teacher_bank_import_workspace_read_model.sql",
     "0063_admin_ai_pdf_workspace_read_model.sql",
     "0064_admin_ai_pdf_workspace_read_model_item_scan_fix.sql",
-    "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql"
+    "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql",
+    "0066_strict_bank_review_lineage_gate.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -277,6 +278,7 @@
     { "filename": "0062_teacher_bank_import_workspace_read_model.sql", "migrationNumber": 62, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 62, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Hosted catalog and ACL validation confirmed SECURITY INVOKER, stable volatility, empty search_path, authenticated-only execute, and anonymous denial; owner-scoped RLS parity matched Library, membership role, and bounded recent imports; EXPLAIN ANALYZE execution was 2.227 ms; no migration-ledger claim" },
     { "filename": "0063_admin_ai_pdf_workspace_read_model.sql", "migrationNumber": 63, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 63, "status": "APPLIED_MANUALLY_NOT_LEDGERED_FORWARD_CORRECTED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Hosted apply succeeded, but role validation exposed a navigation-time import_batch_items RLS aggregate timeout; the exact validation backend was terminated and 0064 is the mandatory forward correction; no migration-ledger claim" },
     { "filename": "0064_admin_ai_pdf_workspace_read_model_item_scan_fix.sql", "migrationNumber": 64, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 64, "status": "APPLIED_MANUALLY_NOT_LEDGERED_FORWARD_CORRECTED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Hosted apply removed the item scan but the remaining multi-CTE RLS aggregate still exceeded the validation latency budget; the exact validation backend was terminated and 0065 disables browser-role execution; no migration-ledger claim" },
-    { "filename": "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql", "migrationNumber": 65, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 65, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Hosted ACL validation confirmed authenticated and anon execute are denied while SECURITY INVOKER remains unchanged; application code uses the previously validated bounded parallel-query path; no migration-ledger claim" }
+    { "filename": "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql", "migrationNumber": 65, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 65, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction authorized by operator", "evidenceSource": "Hosted ACL validation confirmed authenticated and anon execute are denied while SECURITY INVOKER remains unchanged; application code uses the previously validated bounded parallel-query path; no migration-ledger claim" },
+    { "filename": "0066_strict_bank_review_lineage_gate.sql", "migrationNumber": 66, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 66, "status": "SOURCE_COMPLETE_DISPOSABLE_VALIDATED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Forward-only migration applied only to the project-ref-matched disposable clean database for validation; production deployment remains separately reviewed", "evidenceSource": "Disposable catalog definition check plus authenticated owner null-lineage and mismatch RPC denial, valid bidirectional approval regression, and canonical governance checks; no production or migration-ledger application is claimed" }
   ]
 }

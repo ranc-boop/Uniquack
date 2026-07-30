@@ -24,8 +24,8 @@ type FocusTaskLinkProps = Omit<
   AnchorHTMLAttributes<HTMLAnchorElement>,
   "children" | "href" | "onClick" | "target"
 > & {
-  bankId: string;
   children: ReactNode;
+  fallbackFocusId: string;
   href: string;
   returnTo: string;
   taskKind: FocusTaskKind;
@@ -52,22 +52,25 @@ function randomToken(byteLength: number) {
     .replaceAll("=", "");
 }
 
-function restoreTriggerFocus(triggerId: string) {
-  const target = document.getElementById(triggerId);
+function restoreElementFocus(elementId: string) {
+  const target = document.getElementById(elementId);
 
   if (!(target instanceof HTMLElement)) {
     return false;
   }
 
+  if (!target.matches("a, button, input, select, textarea, [tabindex]")) {
+    target.tabIndex = -1;
+  }
   target.focus({ preventScroll: true });
   target.scrollIntoView({ block: "center", behavior: "auto" });
   return document.activeElement === target;
 }
 
 export function FocusTaskLink({
-  bankId,
   children,
   className,
+  fallbackFocusId,
   href,
   returnTo,
   taskKind,
@@ -75,53 +78,46 @@ export function FocusTaskLink({
   ...props
 }: FocusTaskLinkProps) {
   const launchesRef = useRef(new Map<string, ParentLaunchState>());
+  const nextLaunchTimerRef = useRef(0);
   const [announcement, setAnnouncement] = useState("");
+  const [preparedLaunchId, setPreparedLaunchId] = useState("");
 
-  useEffect(
-    () => () => {
-      for (const launch of launchesRef.current.values()) {
+  useEffect(() => {
+    const launches = launchesRef.current;
+    const prepareTimer = window.setTimeout(() => {
+      setPreparedLaunchId(randomToken(24));
+    }, 0);
+
+    return () => {
+      window.clearTimeout(prepareTimer);
+      window.clearTimeout(nextLaunchTimerRef.current);
+      for (const launch of launches.values()) {
         launch.cleanup();
       }
-      launchesRef.current.clear();
-    },
-    [],
-  );
+      launches.clear();
+    };
+  }, []);
 
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
     if (
       event.defaultPrevented ||
       event.button !== 0 ||
+      !preparedLaunchId ||
       !("BroadcastChannel" in window)
     ) {
       return;
     }
 
-    const launchId = randomToken(24);
-    const launchHref = buildFocusHref({ href, launchId, returnTo });
+    const launchId = preparedLaunchId;
     const connectionNonce = randomToken(16);
     const channel = new BroadcastChannel(focusChannelName(launchId));
-    const storageKey = `edustruct:focus-launch:${launchId}`;
     let pendingVisibilityHandler: (() => void) | null = null;
     let cleanupTimer = 0;
 
-    event.currentTarget.href = launchHref;
-
-    try {
-      sessionStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          bankId,
-          createdAt: Date.now(),
-          launchId,
-          parentLocation: `${window.location.pathname}${window.location.search}`,
-          returnTo,
-          taskKind,
-          triggerId,
-        }),
-      );
-    } catch {
-      // Coordination remains optional. The child keeps a safe same-tab return.
-    }
+    window.clearTimeout(nextLaunchTimerRef.current);
+    nextLaunchTimerRef.current = window.setTimeout(() => {
+      setPreparedLaunchId(randomToken(24));
+    }, 0);
 
     const cleanup = () => {
       if (pendingVisibilityHandler) {
@@ -137,12 +133,30 @@ export function FocusTaskLink({
 
     const acknowledgeCompletion = () => {
       const focusNow = () => {
-        restoreTriggerFocus(triggerId);
-        setAnnouncement("Preview closed. Focus returned to its launch control.");
-        try {
-          sessionStorage.removeItem(storageKey);
-        } catch {
-          // Non-critical cleanup only.
+        if (restoreElementFocus(triggerId)) {
+          setAnnouncement(
+            "Preview closed. Focus returned to its launch control.",
+          );
+        } else {
+          const nextTask = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              `[data-focus-task-kind="${taskKind}"]`,
+            ),
+          ).find((candidate) => candidate.id !== triggerId);
+
+          if (nextTask && restoreElementFocus(nextTask.id)) {
+            setAnnouncement(
+              "Preview closed. The original item is no longer available, so focus moved to another available task.",
+            );
+          } else if (restoreElementFocus(fallbackFocusId)) {
+            setAnnouncement(
+              "Preview closed. The original item is no longer available, so focus moved to the results.",
+            );
+          } else {
+            setAnnouncement(
+              "Preview closed. Its original launch control is no longer available.",
+            );
+          }
         }
       };
 
@@ -225,8 +239,14 @@ export function FocusTaskLink({
           "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2",
           className,
         )}
-        href={buildFocusHref({ href, returnTo })}
+        data-focus-launch-ready={preparedLaunchId ? "true" : "false"}
+        href={buildFocusHref({
+          href,
+          launchId: preparedLaunchId,
+          returnTo,
+        })}
         id={triggerId}
+        data-focus-task-kind={taskKind}
         onClick={handleClick}
         referrerPolicy="no-referrer"
         rel="noopener noreferrer"
