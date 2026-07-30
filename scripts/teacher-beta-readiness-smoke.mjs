@@ -174,7 +174,8 @@ assert(
     !classroomAnalytics.includes("Teacher feedback drafting is a later workflow") &&
     classroomOverview.includes("available from assignment detail") &&
     !classroomOverview.includes("feedback drafting are planned") &&
-    progressPage.includes("Open an assignment detail to save a private note") &&
+    progressPage.includes("Needs attention") &&
+    progressPage.includes("Private self-study") &&
     !progressPage.includes("Teacher feedback notes are coming later"),
   "Progress and Classroom Analytics must accurately point teachers to live feedback",
 );

@@ -532,7 +532,7 @@ assert(
     courseBuilderBridgePage.includes("Library review") &&
     courseBuilderBridgePage.includes("does not add") &&
     courseBuilderBridgePage.includes("provider calls") &&
-    teacherAssignmentDetailPage.includes("Assignment source"),
+    teacherAssignmentDetailPage.includes("Assignment setup and source"),
   "Course Builder bridge UI must expose teacher draft/assign choices, Review Draft blockers, and assignment source traceability",
 );
 assert(
@@ -604,21 +604,21 @@ assert(
     teacherBankActions.includes('rpc("approve_bank_review_question"') &&
     teacherBankActions.includes("create_assignment_from_bank") &&
     teacherBankActions.includes("createAssignmentFromBankQuestions") &&
-    teacherPublishPage.includes("Assignments deliver selected approved Library content to classes") &&
-    teacherPublishPage.includes("Choose the source Library") &&
+    teacherPublishPage.includes("Choose one source Library") &&
+    teacherPublishPage.includes("AssignmentComposerFlow") &&
     teacherPublishPage.includes("Select approved assignment-ready rows") &&
-    teacherPublishPage.includes("Choose classroom delivery") &&
-    teacherPublishPage.includes("Selected students") &&
-    teacherPublishPage.includes("Assignment-only. No full source Library access.") &&
-    teacherPublishPage.includes("Blueprint rows are not directly assignable") &&
-    teacherPublishPage.includes("Package publishing is not assignment-ready yet.") &&
-    teacherPublishPage.includes("No Review Draft bypass") &&
+    teacherPublishPage.includes("Choose one classroom") &&
+    teacherPublishPage.includes("Final review") &&
+    teacherPublishPage.includes("Assignment-only") &&
+    !teacherPublishPage.includes("Selected students later") &&
+    !teacherPublishPage.includes("Safety gates") &&
     teacherPublishActions.includes("requireTeacher") &&
     teacherPublishActions.includes("publishQuestionBankAssignments") &&
     teacherPublishActions.includes("verifyPublishableSelection") &&
-    teacherPublishActions.includes("buildPublishAssignmentSourceSummary") &&
     teacherPublishActions.includes("create_assignment_from_bank") &&
     teacherPublishActions.includes("selectedClassroomIds") &&
+    teacherPublishActions.includes("selectedClassroomIds.length !== 1") &&
+    teacherPublishActions.includes("p_client_request_key") &&
     teacherPublishActions.includes("p_selected_bank_question_ids") &&
     !teacherPublishActions.includes("AI_PROVIDER") &&
     !teacherPublishActions.includes("published_at") &&
@@ -790,9 +790,9 @@ assert(
     teacherAssignmentNewPage.includes("Save draft keeps the assignment teacher-only") &&
     teacherAssignmentNewPage.includes("The server rechecks every selected question") &&
     teacherAssignmentNewPage.includes("Assign to class") &&
-    teacherAssignmentDetailPage.includes("Student handoff") &&
-    teacherAssignmentDetailPage.includes("does not grant students") &&
-    teacherAssignmentDetailPage.includes("full Library") &&
+    teacherAssignmentDetailPage.includes("Preview as student") &&
+    teacherAssignmentDetailPage.includes('taskKind="student-preview"') &&
+    teacherAssignmentDetailPage.includes("full Library stays private") &&
     teacherAssignmentDetailPage.includes("Student progress") &&
     teacherAssignmentDetailPage.includes("One row per active classroom student") &&
     teacherAssignmentDetailPage.includes("Practice evidence") &&
@@ -815,9 +815,9 @@ assert(
     studentWorkDetailPage.includes("Practice progress is saved back") &&
     studentWorkDetailPage.includes("Start Practice") &&
     studentWorkDetailPage.includes("Review Practice") &&
-    studentWorkDetailPage.includes("Practice entry unavailable") &&
-    studentWorkDetailPage.includes("Completed work history") &&
-    studentWorkDetailPage.includes("full teacher") &&
+    studentWorkDetailPage.includes("Practice is unavailable") &&
+    studentWorkDetailPage.includes("Assigned questions") &&
+    studentWorkDetailPage.includes("full private Library remains unavailable") &&
     studentClassroomPage.includes("My classes") &&
     studentClassroomPage.includes("Assigned work lives in My Work") &&
     studentClassroomPage.includes("Active membership") &&
