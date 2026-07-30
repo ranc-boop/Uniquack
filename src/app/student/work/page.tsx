@@ -13,9 +13,15 @@ export const dynamic = "force-dynamic";
 type WorkGroup = {
   title: string;
   description: string;
-  empty: string;
   items: StudentWorkSummary[];
 };
+
+type UrgencyBucket =
+  | "overdue"
+  | "today"
+  | "due_soon"
+  | "in_progress"
+  | "later";
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "No due date";
@@ -24,21 +30,30 @@ function formatDate(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
-function daysUntil(value: string | null | undefined) {
-  if (!value) return null;
-  const due = new Date(value).getTime();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.ceil((due - today.getTime()) / 86_400_000);
+function startOfLocalDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
 }
 
-function dueLabel(value: string | null | undefined) {
-  const days = daysUntil(value);
-  if (days === null) return "No due date";
-  if (days < 0) return `Overdue by ${Math.abs(days)} day(s)`;
+function calendarDaysUntil(value: string | null | undefined, now = new Date()) {
+  if (!value) return null;
+  const dueDay = startOfLocalDay(new Date(value)).getTime();
+  const today = startOfLocalDay(now).getTime();
+  return Math.round((dueDay - today) / 86_400_000);
+}
+
+function dueLabel(value: string | null | undefined, now = new Date()) {
+  if (!value) return "No due date";
+  const dueAt = new Date(value);
+  const days = calendarDaysUntil(value, now);
+  if (dueAt.getTime() < now.getTime()) {
+    const overdueDays = Math.max(1, Math.abs(days ?? 0));
+    return `Overdue by ${overdueDays} day(s)`;
+  }
   if (days === 0) return "Due today";
   if (days === 1) return "Due tomorrow";
-  if (days <= 7) return `Due in ${days} days`;
+  if (days !== null && days <= 7) return `Due in ${days} days`;
   return `Due ${formatDate(value)}`;
 }
 
@@ -64,17 +79,73 @@ function statusClasses(status: StudentWorkSummary["progressStatus"]) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
-function isDueSoon(assignment: StudentWorkSummary) {
-  const days = daysUntil(assignment.due_at);
-  return (
-    assignment.progressStatus !== "completed" &&
-    assignment.progressStatus !== "in_progress" &&
-    days !== null &&
-    days <= 7
-  );
+function urgencyBucket(
+  assignment: StudentWorkSummary,
+  now = new Date(),
+): UrgencyBucket {
+  if (assignment.due_at && new Date(assignment.due_at).getTime() < now.getTime()) {
+    return "overdue";
+  }
+  const days = calendarDaysUntil(assignment.due_at, now);
+  if (days === 0) return "today";
+  if (days !== null && days > 0 && days <= 7) return "due_soon";
+  if (assignment.progressStatus === "in_progress") return "in_progress";
+  return "later";
+}
+
+const urgencyRank: Record<UrgencyBucket, number> = {
+  overdue: 0,
+  today: 1,
+  due_soon: 2,
+  in_progress: 3,
+  later: 4,
+};
+
+function compareIncompleteWork(
+  left: StudentWorkSummary,
+  right: StudentWorkSummary,
+  now: Date,
+) {
+  const rankDifference =
+    urgencyRank[urgencyBucket(left, now)] - urgencyRank[urgencyBucket(right, now)];
+  if (rankDifference !== 0) return rankDifference;
+
+  const leftDue = left.due_at
+    ? new Date(left.due_at).getTime()
+    : Number.POSITIVE_INFINITY;
+  const rightDue = right.due_at
+    ? new Date(right.due_at).getTime()
+    : Number.POSITIVE_INFINITY;
+  if (leftDue !== rightDue) return leftDue - rightDue;
+
+  if (left.progressStatus !== right.progressStatus) {
+    return left.progressStatus === "in_progress" ? -1 : 1;
+  }
+  return left.title.localeCompare(right.title);
+}
+
+function assignmentAction(assignment: StudentWorkSummary) {
+  if (assignment.progressStatus === "completed") {
+    return {
+      href: `/student/work/${assignment.id}`,
+      label: "Review work",
+    };
+  }
+  if (assignment.itemCount > 0) {
+    return {
+      href: `/practice?assignmentId=${assignment.id}`,
+      label: actionLabel(assignment.progressStatus),
+    };
+  }
+  return {
+    href: `/student/work/${assignment.id}`,
+    label: "Open assignment",
+  };
 }
 
 function AssignmentCard({ assignment }: { assignment: StudentWorkSummary }) {
+  const action = assignmentAction(assignment);
+
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -101,47 +172,52 @@ function AssignmentCard({ assignment }: { assignment: StudentWorkSummary }) {
             <p className="line-clamp-2 text-sm leading-6 text-slate-600">
               {assignment.instructions}
             </p>
-          ) : (
-            <p className="text-sm leading-6 text-slate-500">
-              No extra instructions from the teacher.
-            </p>
-          )}
+          ) : null}
 
-          <dl className="grid gap-2 text-sm sm:grid-cols-3">
-            <div className="rounded-md bg-slate-50 px-3 py-2">
-              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                Due
-              </dt>
-              <dd className="mt-1 font-semibold text-slate-900">
-                {dueLabel(assignment.due_at)}
-              </dd>
-            </div>
-            <div className="rounded-md bg-slate-50 px-3 py-2">
-              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                Items
-              </dt>
-              <dd className="mt-1 font-semibold text-slate-900">
-                {assignment.itemCount} question(s)
-              </dd>
-            </div>
-            <div className="rounded-md bg-slate-50 px-3 py-2">
-              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                Progress
-              </dt>
-              <dd className="mt-1 font-semibold text-slate-900">
-                {statusLabel(assignment.progressStatus)}
-              </dd>
-            </div>
-          </dl>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate-600">
+            <span>{dueLabel(assignment.due_at)}</span>
+            <span>{assignment.itemCount} question(s)</span>
+          </div>
         </div>
 
         <Button asChild className="w-full lg:w-auto">
-          <Link href={`/student/work/${assignment.id}`}>
-            {actionLabel(assignment.progressStatus)}
-          </Link>
+          <Link href={action.href}>{action.label}</Link>
         </Button>
       </div>
     </article>
+  );
+}
+
+function NextAssignment({ assignment }: { assignment: StudentWorkSummary }) {
+  const action = assignmentAction(assignment);
+
+  return (
+    <div className="mt-6 rounded-xl border border-sky-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">
+            Do this next
+          </p>
+          <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-950">
+            {assignment.title}
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            {assignment.classroomName}
+            {assignment.classroomSubject ? ` - ${assignment.classroomSubject}` : ""}
+            {" · "}
+            {dueLabel(assignment.due_at)}
+          </p>
+          {assignment.instructions ? (
+            <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-6 text-slate-600">
+              {assignment.instructions}
+            </p>
+          ) : null}
+        </div>
+        <Button asChild className="w-full shrink-0 lg:w-auto">
+          <Link href={action.href}>{action.label}</Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -159,15 +235,34 @@ function WorkSection({ group }: { group: WorkGroup }) {
           </span>
         </div>
       </div>
-      {group.items.length ? (
-        <div className="grid gap-4 p-5">
-          {group.items.map((assignment) => (
+      <div className="grid gap-4 p-5">
+        {group.items.map((assignment) => (
+          <AssignmentCard assignment={assignment} key={assignment.id} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CompletedSection({ assignments }: { assignments: StudentWorkSummary[] }) {
+  return (
+    <section className="student-panel overflow-hidden">
+      <details>
+        <summary className="student-focus-ring flex cursor-pointer list-none items-center justify-between gap-3 p-5 marker:content-none">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">Completed</h2>
+            <p className="student-muted">Open finished work when you need to review it.</p>
+          </div>
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
+            {assignments.length}
+          </span>
+        </summary>
+        <div className="grid gap-4 border-t border-slate-100 p-5">
+          {assignments.map((assignment) => (
             <AssignmentCard assignment={assignment} key={assignment.id} />
           ))}
         </div>
-      ) : (
-        <div className="p-5 text-sm leading-6 text-slate-600">{group.empty}</div>
-      )}
+      </details>
     </section>
   );
 }
@@ -180,86 +275,90 @@ export default async function StudentWorkPage() {
     supabase,
   });
 
-  const dueSoon = assignments.filter(isDueSoon);
-  const dueSoonIds = new Set(dueSoon.map((assignment) => assignment.id));
-  const inProgress = assignments.filter(
-    (assignment) => assignment.progressStatus === "in_progress",
-  );
-  const notStarted = assignments.filter(
-    (assignment) =>
-      assignment.progressStatus === "not_started" && !dueSoonIds.has(assignment.id),
-  );
+  const now = new Date();
+  const incomplete = assignments
+    .filter((assignment) => assignment.progressStatus !== "completed")
+    .sort((left, right) => compareIncompleteWork(left, right, now));
   const completed = assignments.filter(
     (assignment) => assignment.progressStatus === "completed",
   );
   const groups: WorkGroup[] = [
     {
+      title: "Overdue",
+      description: "Past-due work comes first.",
+      items: incomplete.filter(
+        (assignment) => urgencyBucket(assignment, now) === "overdue",
+      ),
+    },
+    {
+      title: "Due today",
+      description: "Finish these before today ends.",
+      items: incomplete.filter(
+        (assignment) => urgencyBucket(assignment, now) === "today",
+      ),
+    },
+    {
       title: "Due soon",
-      description: "Assignments that need attention this week.",
-      empty: "No urgent due dates right now.",
-      items: dueSoon,
+      description: "Assignments due within the next seven days.",
+      items: incomplete.filter(
+        (assignment) => urgencyBucket(assignment, now) === "due_soon",
+      ),
     },
     {
       title: "In progress",
-      description: "Pick up where your last Practice session stopped.",
-      empty: "No assignments are currently in progress.",
-      items: inProgress,
+      description: "Continue active Practice that is not yet urgent.",
+      items: incomplete.filter(
+        (assignment) => urgencyBucket(assignment, now) === "in_progress",
+      ),
     },
     {
-      title: "Not started",
-      description: "Ready assignments that have not entered Practice yet.",
-      empty: "No not-started assignments.",
-      items: notStarted,
+      title: "Ready later",
+      description: "Upcoming work without an urgent due date.",
+      items: incomplete.filter(
+        (assignment) => urgencyBucket(assignment, now) === "later",
+      ),
     },
-    {
-      title: "Completed",
-      description: "Finished work stays here for review.",
-      empty: "Completed work history will appear here.",
-      items: completed,
-    },
-  ];
+  ].filter((group) => group.items.length > 0);
+  const nextAssignment = incomplete[0] ?? null;
 
   return (
     <main className="student-shell space-y-6">
       <section className="student-hero">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
             <p className="student-eyebrow">Student workspace</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               My Work
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Start, continue, and review classroom assignments from one place.
+              Focus on the next assignment, then review the rest by urgency.
             </p>
           </div>
           <Button asChild variant="outline">
             <Link href="/student/classrooms">My classes</Link>
           </Button>
         </div>
+
+        {nextAssignment ? (
+          <NextAssignment assignment={nextAssignment} />
+        ) : assignments.length ? (
+          <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+            <p className="text-sm font-bold text-emerald-900">
+              All assigned work is complete.
+            </p>
+            <p className="mt-1 text-sm leading-6 text-emerald-800">
+              Finished assignments remain available below when you want to review them.
+            </p>
+          </div>
+        ) : null}
       </section>
 
       {assignments.length ? (
         <>
-          <section className="grid gap-3 md:grid-cols-4">
-            {[
-              ["Due soon", dueSoon.length],
-              ["In progress", inProgress.length],
-              ["Not started", notStarted.length],
-              ["Completed", completed.length],
-            ].map(([label, count]) => (
-              <div
-                className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
-                key={label}
-              >
-                <p className="text-sm font-medium text-slate-500">{label}</p>
-                <p className="mt-2 text-2xl font-bold text-slate-950">{count}</p>
-              </div>
-            ))}
-          </section>
-
           {groups.map((group) => (
             <WorkSection group={group} key={group.title} />
           ))}
+          {completed.length ? <CompletedSection assignments={completed} /> : null}
         </>
       ) : (
         <section className="student-panel flex min-h-72 items-center justify-center p-8 text-center">

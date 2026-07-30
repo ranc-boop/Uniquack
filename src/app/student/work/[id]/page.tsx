@@ -35,19 +35,19 @@ function actionLabel(status: "not_started" | "in_progress" | "completed") {
 function stateCopy(status: "not_started" | "in_progress" | "completed") {
   if (status === "completed") {
     return {
-      title: "Completed work history",
-      body: "This assignment is finished. You can review the questions and reopen Practice if your teacher asks for more work.",
+      title: "Completed",
+      body: "Review your assignment-linked Practice history whenever you need it.",
     };
   }
   if (status === "in_progress") {
     return {
-      title: "Practice in progress",
-      body: "Continue the assignment-linked Practice session. Your evidence updates this work item.",
+      title: "Continue where you stopped",
+      body: "Your next attempt stays linked to this assignment for teacher feedback.",
     };
   }
   return {
     title: "Ready to start",
-    body: "Open Practice when you are ready. Progress is saved back to this assignment.",
+    body: "Practice progress is saved back to this assignment automatically.",
   };
 }
 
@@ -84,12 +84,12 @@ export default async function StudentWorkDetailPage({
       </main>
     );
   }
+
   const feedbackNotes = await listStudentSentAssignmentFeedbackNotes({
     assignmentId: assignment.id,
     studentId: profile.id,
     supabase,
   });
-
   const usableQuestionItems = assignment.items.filter(
     (item) => item.item_type === "question" && item.question_id && item.question,
   );
@@ -100,7 +100,7 @@ export default async function StudentWorkDetailPage({
     <main className="student-shell space-y-6">
       <section className="student-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <p className="student-eyebrow">Assigned work</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               {assignment.title}
@@ -114,87 +114,118 @@ export default async function StudentWorkDetailPage({
             <Link href="/student/work">Back to My Work</Link>
           </Button>
         </div>
-      </section>
 
-      <section className="grid gap-3 md:grid-cols-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Status</p>
-          <p className="mt-2 text-lg font-bold text-slate-950">
+        <div className="mt-5 flex flex-wrap gap-2 text-sm font-semibold">
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-800">
             {statusLabel(assignment.progressStatus)}
-          </p>
+          </span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-800">
+            Due {formatDateTime(assignment.due_at)}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-800">
+            {usableQuestionItems.length} practice question(s)
+          </span>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Due date</p>
-          <p className="mt-2 text-lg font-bold text-slate-950">
-            {formatDateTime(assignment.due_at)}
-          </p>
+
+        {assignment.instructions ? (
+          <div className="mt-5 max-w-3xl rounded-lg border border-slate-200 bg-white/80 p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+              Teacher instructions
+            </p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+              {assignment.instructions}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex flex-col gap-4 rounded-xl border border-sky-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">{currentState.title}</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+              {currentState.body}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-500">
+              {assignment.progress?.started_at ? (
+                <span>Started {formatDateTime(assignment.progress.started_at)}</span>
+              ) : null}
+              {assignment.progress?.completed_at ? (
+                <span>Completed {formatDateTime(assignment.progress.completed_at)}</span>
+              ) : null}
+              {assignment.progress?.updated_at ? (
+                <span>Updated {formatDateTime(assignment.progress.updated_at)}</span>
+              ) : null}
+            </div>
+          </div>
+          {hasPracticeEntry ? (
+            <Button asChild className="w-full shrink-0 sm:w-auto">
+              <Link href={`/practice?assignmentId=${assignment.id}`}>
+                {actionLabel(assignment.progressStatus)}
+              </Link>
+            </Button>
+          ) : (
+            <div className="max-w-sm rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+              Practice is unavailable until this assignment has a usable question.
+            </div>
+          )}
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Practice items</p>
-          <p className="mt-2 text-lg font-bold text-slate-950">
-            {usableQuestionItems.length} of {assignment.itemCount}
+
+        {assignment.source_kind === "question_bank" ? (
+          <p className="mt-4 text-xs leading-5 text-slate-500">
+            You can access only the questions assigned here. Your teacher&apos;s
+            full private Library remains unavailable.
           </p>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Last update</p>
-          <p className="mt-2 text-lg font-bold text-slate-950">
-            {formatDateTime(assignment.progress?.updated_at)}
-          </p>
-        </div>
+        ) : null}
       </section>
 
-      {assignment.source_kind === "question_bank" ? (
-        <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-          <strong className="font-bold">Assigned from your teacher&apos;s Library:</strong>{" "}
-          you can work on the selected questions here, but the full teacher
-          Library stays private.
+      {feedbackNotes.length ? (
+        <section className="student-panel overflow-hidden">
+          <details>
+            <summary className="student-focus-ring flex cursor-pointer list-none items-center justify-between gap-3 p-5 marker:content-none">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">Teacher feedback</h2>
+                <p className="student-muted">
+                  Feedback your teacher explicitly sent for this assignment.
+                  Private teacher notes are not shown here.
+                </p>
+              </div>
+              <span className="rounded-full bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-700">
+                {feedbackNotes.length}
+              </span>
+            </summary>
+            <div className="divide-y divide-slate-100 border-t border-slate-100">
+              {feedbackNotes.map((note) => (
+                <article className="p-5" key={note.id}>
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-sky-700">
+                    Sent feedback
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
+                    {note.body}
+                  </p>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Sent {formatDateTime(note.sent_at || note.created_at)}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </details>
         </section>
       ) : null}
 
       <section className="student-panel overflow-hidden">
-        <div className="border-b border-slate-100 p-5">
-          <h2 className="text-lg font-bold text-slate-950">Teacher feedback</h2>
-          <p className="student-muted">
-            Feedback your teacher explicitly sent for this assigned work.
-          </p>
-        </div>
-        {feedbackNotes.length ? (
-          <div className="divide-y divide-slate-100">
-            {feedbackNotes.map((note) => (
-              <article className="p-5" key={note.id}>
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-sky-700">
-                  Sent feedback
-                </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
-                  {note.body}
-                </p>
-                <p className="mt-3 text-xs text-slate-500">
-                  Sent {formatDateTime(note.sent_at || note.created_at)}
-                </p>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="p-5 text-sm leading-6 text-slate-600">
-            No feedback has been sent for this assignment yet. Private teacher notes are not
-            shown here.
-          </div>
-        )}
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="student-panel overflow-hidden">
-          <div className="border-b border-slate-100 p-5">
-            <h2 className="text-lg font-bold text-slate-950">
-              Assignment items
-            </h2>
-            <p className="student-muted">
-              Review the assigned questions, then enter Practice when you are
-              ready to work.
-            </p>
-          </div>
+        <details>
+          <summary className="student-focus-ring flex cursor-pointer list-none items-center justify-between gap-3 p-5 marker:content-none">
+            <div>
+              <h2 className="text-lg font-bold text-slate-950">Assigned questions</h2>
+              <p className="student-muted">
+                Preview item metadata without opening your teacher&apos;s Library.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+              {assignment.items.length}
+            </span>
+          </summary>
           {assignment.items.length ? (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 border-t border-slate-100">
               {assignment.items.map((item) => (
                 <article className="p-5" key={item.id}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -212,8 +243,8 @@ export default async function StudentWorkDetailPage({
                         </p>
                       ) : (
                         <p className="text-sm leading-6 text-slate-600">
-                          This item cannot open in Practice yet because it is
-                          not linked to a usable question.
+                          This item cannot open in Practice yet because it is not
+                          linked to a usable question.
                         </p>
                       )}
                     </div>
@@ -227,7 +258,7 @@ export default async function StudentWorkDetailPage({
               ))}
             </div>
           ) : (
-            <div className="p-8 text-center">
+            <div className="border-t border-slate-100 p-8 text-center">
               <h3 className="text-base font-bold text-slate-950">
                 No usable question items yet
               </h3>
@@ -237,55 +268,8 @@ export default async function StudentWorkDetailPage({
               </p>
             </div>
           )}
-        </section>
-
-        <aside className="space-y-6">
-          <section className="student-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">
-              {currentState.title}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {currentState.body}
-            </p>
-            {assignment.progress?.started_at ? (
-              <p className="mt-3 text-xs font-medium text-slate-500">
-                Started {formatDateTime(assignment.progress.started_at)}
-              </p>
-            ) : null}
-            {assignment.progress?.completed_at ? (
-              <p className="mt-1 text-xs font-medium text-slate-500">
-                Completed {formatDateTime(assignment.progress.completed_at)}
-              </p>
-            ) : null}
-          </section>
-
-          <section className="student-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">Practice entry</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Practice progress is saved back to this work item.
-            </p>
-            {hasPracticeEntry ? (
-              <Button asChild className="mt-4 w-full">
-                <Link href={`/practice?assignmentId=${assignment.id}`}>
-                  {actionLabel(assignment.progressStatus)} for this assignment
-                </Link>
-              </Button>
-            ) : (
-              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
-                Practice entry unavailable because this assignment has no
-                usable question items yet.
-              </div>
-            )}
-          </section>
-
-          <section className="student-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">Instructions</h2>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-              {assignment.instructions || "No extra instructions."}
-            </p>
-          </section>
-        </aside>
-      </div>
+        </details>
+      </section>
     </main>
   );
 }

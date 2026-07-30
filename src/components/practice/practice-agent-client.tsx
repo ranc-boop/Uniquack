@@ -396,6 +396,7 @@ export function PracticeAgentClient({
   assignmentId,
   testOnlyDelayedHydration = false,
 }: PracticeAgentClientProps) {
+  const isAssignmentMode = Boolean(assignmentId);
   const clientReady = useSyncExternalStore(
     subscribeToClientReady,
     getClientReadySnapshot,
@@ -452,6 +453,7 @@ export function PracticeAgentClient({
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [answerErrorQuestionIndexes, setAnswerErrorQuestionIndexes] = useState<number[]>([]);
   const [submissionGuardDiagnostics, setSubmissionGuardDiagnostics] = useState<ReturnType<
     typeof evaluatePracticeSubmittedAttempts
   > & { guard: "BLOCKED" | "PASSED" } | null>(null);
@@ -468,6 +470,8 @@ export function PracticeAgentClient({
   const [isReviewStreaming, setIsReviewStreaming] = useState(false);
   const [isPending, startTransition] = useTransition();
   const resultTopRef = useRef<HTMLDivElement | null>(null);
+  const answerErrorSummaryRef = useRef<HTMLDivElement | null>(null);
+  const submitInFlightRef = useRef(false);
   const thinkingStartedAtRef = useRef<number | null>(null);
   const streamedReviewTextRef = useRef("");
   const streamedReviewFrameRef = useRef<number | null>(null);
@@ -614,8 +618,14 @@ export function PracticeAgentClient({
       wrongStatePromise,
     ]).then((errors) => ({ error: errors.find(Boolean) }));
 
-    setSessions(sessionPayload.sessions);
-    setSessionHistoryHasMore(Boolean(sessionPayload.pagination?.hasMore));
+    setSessions(
+      isAssignmentMode && nextSession
+        ? [nextSession]
+        : sessionPayload.sessions,
+    );
+    setSessionHistoryHasMore(
+      isAssignmentMode ? false : Boolean(sessionPayload.pagination?.hasMore),
+    );
     setActiveSession(nextSession);
     setOutlineNotes(nextSession?.outlineUserNotes ?? "");
     if (nextSession?.status === "active" && nextSession.sourceScope.length) {
@@ -782,6 +792,7 @@ export function PracticeAgentClient({
   );
   function resetRoundState(reason: AnswerWriteReason = "RESET") {
     setSubmissionGuardDiagnostics(null);
+    setAnswerErrorQuestionIndexes([]);
     commitAnswers({}, reason);
     setHints({});
     setResults([]);
@@ -861,6 +872,11 @@ export function PracticeAgentClient({
 
   async function ensureSession(trimmedGoal: string) {
     if (activeSession) return activeSession;
+    if (isAssignmentMode) {
+      throw new Error(
+        "This assignment session is unavailable. Return to My Work and reopen this assignment.",
+      );
+    }
     const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
       body: JSON.stringify({
         courseFrameworkId: selectedCourseFrameworkId || null,
@@ -1086,6 +1102,12 @@ export function PracticeAgentClient({
   function updateAnswer(questionId: string, value: string | string[]) {
     const nextAnswers = { ...answersRef.current, [questionId]: value };
     commitAnswers(nextAnswers, "INPUT");
+    setAnswerErrorQuestionIndexes((current) =>
+      current.filter((questionIndex) => {
+        const question = recommendation?.recommendations[questionIndex - 1];
+        return question ? practiceAnswerKey(question) !== questionId : false;
+      }),
+    );
   }
 
   function requestHint(question: PracticeRecommendation) {
@@ -1112,9 +1134,25 @@ export function PracticeAgentClient({
   }
 
   function submitRound() {
-    if (!recommendation || !activeSession || !recommendation.roundId) return;
+    if (
+      submitInFlightRef.current ||
+      isPending ||
+      !recommendation ||
+      !activeSession ||
+      !recommendation.roundId
+    ) {
+      return;
+    }
 
     const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current });
+    const missingAnswerIndexes = recommendation.recommendations.flatMap(
+      (question, index) =>
+        hasSubmittedPracticeAnswer(
+          submittedAnswerSnapshot[practiceAnswerKey(question)],
+        )
+          ? []
+          : [index + 1],
+    );
     const submittedAttempts: PracticeReviewRequest["attempts"] = buildPracticeSubmittedAttempts(
       recommendation.recommendations,
       submittedAnswerSnapshot,
@@ -1167,10 +1205,16 @@ export function PracticeAgentClient({
       guard: guardBlocked ? "BLOCKED" : "PASSED",
     });
     if (guardBlocked) {
+      setAnswerErrorQuestionIndexes(missingAnswerIndexes);
       setError("Your answer was not captured. Please review it and try again.");
+      window.requestAnimationFrame(() => {
+        answerErrorSummaryRef.current?.focus();
+      });
       return;
     }
 
+    setAnswerErrorQuestionIndexes([]);
+    submitInFlightRef.current = true;
     setIsReviewStreaming(true);
     setError(null);
     thinkingStartedAtRef.current = Date.now();
@@ -1301,6 +1345,8 @@ export function PracticeAgentClient({
           finishThinking("feedback");
           setIsReviewStreaming(false);
         }
+      } finally {
+        submitInFlightRef.current = false;
       }
     });
   }
@@ -1337,6 +1383,10 @@ export function PracticeAgentClient({
   }
 
   function switchSession(sessionId: string) {
+    if (isAssignmentMode) {
+      setError("Assignment Practice is locked to this assignment.");
+      return;
+    }
     setSessionAction("switching");
     setError(null);
     startTransition(async () => {
@@ -1387,6 +1437,7 @@ export function PracticeAgentClient({
   }
 
   async function loadMoreSessions() {
+    if (isAssignmentMode) return;
     setSessionHistoryLoadingMore(true);
     setError(null);
     try {
@@ -1407,6 +1458,10 @@ export function PracticeAgentClient({
   }
 
   function createNewSession() {
+    if (isAssignmentMode) {
+      setError("Finish or return to this assignment before starting other Practice.");
+      return;
+    }
     setError(null);
     prepareScopedNewSession();
   }
@@ -1429,6 +1484,16 @@ export function PracticeAgentClient({
   }
 
   function prepareScopedNewSession({ retryMistakes = false } = {}) {
+    if (isAssignmentMode && assignmentId) {
+      startTransition(async () => {
+        try {
+          await startAssignmentPractice(assignmentId);
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : String(caught));
+        }
+      });
+      return;
+    }
     const retryQuestionIds = retryMistakes
       ? wrongQuestions
           .filter((question) => !question.masteredAt)
@@ -1447,6 +1512,10 @@ export function PracticeAgentClient({
   }
 
   function deleteSession(sessionId: string) {
+    if (isAssignmentMode) {
+      setError("Assignment Practice sessions cannot be deleted from this workspace.");
+      return;
+    }
     const deletedWasActive = activeSession?.id === sessionId;
     if (deletedWasActive) setSessionAction("switching");
     setError(null);
@@ -1575,7 +1644,11 @@ export function PracticeAgentClient({
 
   return (
     <div
-      className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
+      className={`mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 ${
+        isAssignmentMode
+          ? "xl:grid-cols-[minmax(0,1fr)_var(--practice-right)]"
+          : "xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
+      }`}
       data-answer-last-write-reason={answerTransitionDiagnostics.lastWriteReason}
       data-answer-map-has-rendered-key={submissionGuardDiagnostics?.answerMapHasRenderedKey}
       data-answer-map-has-submit-lookup-key={submissionGuardDiagnostics?.answerMapHasSubmitLookupKey}
@@ -1601,7 +1674,8 @@ export function PracticeAgentClient({
       data-testid="practice-submission-state"
       style={practiceGridStyle}
     >
-      <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+      {!isAssignmentMode ? (
+        <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
         {!isLeftSidebarCollapsed ? (
           <button
             aria-label="Resize sessions sidebar"
@@ -1839,7 +1913,8 @@ export function PracticeAgentClient({
         </div>
         </div>
         )}
-      </aside>
+        </aside>
+      ) : null}
 
       {error ? (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive xl:col-span-2" role="alert">
@@ -1913,25 +1988,29 @@ export function PracticeAgentClient({
                       />
                     </div>
                     <div className="flex items-center justify-between gap-2 px-2 sm:justify-end">
-                      <PracticeFrameworkSelector
-                        frameworks={courseFrameworks}
-                        loading={courseFrameworksLoading}
-                        onChange={setSelectedCourseFrameworkId}
-                        value={selectedCourseFrameworkId}
-                      />
-                      <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
-                        <SlidersHorizontal className="size-4" aria-hidden="true" />
-                        <span>Questions</span>
-                        <input
-                          aria-label="Question count"
-                          className="w-10 bg-transparent text-center font-mono text-slate-900 outline-none"
-                          max={8}
-                          min={1}
-                          onChange={(event) => setQuestionCount(Number(event.target.value))}
-                          type="number"
-                          value={questionCount}
-                        />
-                      </label>
+                      {!isAssignmentMode ? (
+                        <>
+                          <PracticeFrameworkSelector
+                            frameworks={courseFrameworks}
+                            loading={courseFrameworksLoading}
+                            onChange={setSelectedCourseFrameworkId}
+                            value={selectedCourseFrameworkId}
+                          />
+                          <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+                            <SlidersHorizontal className="size-4" aria-hidden="true" />
+                            <span>Questions</span>
+                            <input
+                              aria-label="Question count"
+                              className="w-10 bg-transparent text-center font-mono text-slate-900 outline-none"
+                              max={8}
+                              min={1}
+                              onChange={(event) => setQuestionCount(Number(event.target.value))}
+                              type="number"
+                              value={questionCount}
+                            />
+                          </label>
+                        </>
+                      ) : null}
                       <Button
                         aria-label="Generate round"
                         className="size-12 rounded-full p-0"
@@ -2017,7 +2096,10 @@ export function PracticeAgentClient({
                   trace={latestTrace}
                 />
               ) : null}
-              <Card className="student-panel student-enter">
+              <Card
+                aria-busy={isPending || isReviewStreaming}
+                className="student-panel student-enter"
+              >
                 <CardHeader>
                   <div>
                     <div>
@@ -2027,6 +2109,31 @@ export function PracticeAgentClient({
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {answerErrorQuestionIndexes.length ? (
+                    <div
+                      aria-labelledby="practice-answer-error-heading"
+                      className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
+                      ref={answerErrorSummaryRef}
+                      tabIndex={-1}
+                    >
+                      <p className="font-bold" id="practice-answer-error-heading">
+                        Answer the highlighted question
+                        {answerErrorQuestionIndexes.length === 1 ? "" : "s"} before submitting.
+                      </p>
+                      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                        {answerErrorQuestionIndexes.map((questionIndex) => (
+                          <li key={questionIndex}>
+                            <a
+                              className="font-semibold underline underline-offset-4"
+                              href={`#practice-question-${questionIndex}`}
+                            >
+                              Question {questionIndex}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {recommendation.recommendations.map((question, index) => {
                     const questionId = practiceAnswerKey(question);
                     const answerCommitted =
@@ -2037,6 +2144,7 @@ export function PracticeAgentClient({
                         answerCommitted={answerCommitted}
                         clientReady={clientReady}
                         currentAnswer={answers[questionId]}
+                        hasAnswerError={answerErrorQuestionIndexes.includes(index + 1)}
                         hints={hints[questionId] ?? []}
                         index={index}
                         isPending={isPending}
@@ -2052,8 +2160,13 @@ export function PracticeAgentClient({
                   })}
                   {phase !== "feedback" ? (
                     <div className="flex justify-end">
-                      <Button className="h-11 px-6" disabled={isPending || !recommendation.roundId} onClick={submitRound} type="button">
-                        Submit round
+                      <Button
+                        className="h-11 px-6"
+                        disabled={isPending || !recommendation.roundId}
+                        onClick={submitRound}
+                        type="button"
+                      >
+                        {isPending ? "Submitting round..." : "Submit round"}
                       </Button>
                     </div>
                   ) : null}
@@ -2062,7 +2175,7 @@ export function PracticeAgentClient({
             </div>
           ) : null}
 
-          {phase === "feedback" && review ? (
+          {!isAssignmentMode && phase === "feedback" && review ? (
             <PracticeRoundReviewPanel
               isPending={isPending}
               isStreaming={isReviewStreaming}
@@ -2126,7 +2239,7 @@ export function PracticeAgentClient({
             </p>
             <Button
               aria-label="Collapse study sidebar"
-              className="hidden size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 xl:inline-flex"
+              className="inline-flex size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200"
               onClick={() => setIsRightSidebarCollapsed(true)}
               size="icon"
               type="button"
