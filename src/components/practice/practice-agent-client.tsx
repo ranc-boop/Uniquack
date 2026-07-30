@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 
@@ -13,6 +12,10 @@ import {
   PracticeSourceSelector,
   PracticeStarterGoals,
 } from "@/components/practice/practice-session-scope-panels";
+import {
+  focusStudyDetails,
+  PracticeAssignmentHandoff,
+} from "@/components/practice/practice-assignment-handoff";
 import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-workspace-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -839,7 +842,6 @@ export function PracticeAgentClient({
       );
       setLongTermMemory(mergePayload.longTermPreference);
     } catch {
-      // Preference merge is opportunistic and must not block the active round.
     }
   }
 
@@ -1644,13 +1646,7 @@ export function PracticeAgentClient({
 
   function showStudyDetails() {
     setIsRightSidebarCollapsed(false);
-    window.requestAnimationFrame(() => {
-      rightSidebarRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-      rightSidebarRef.current?.focus({ preventScroll: true });
-    });
+    window.requestAnimationFrame(() => focusStudyDetails(rightSidebarRef.current));
   }
 
   if (workspaceLoading) return <PracticeWorkspaceSkeleton />;
@@ -2202,34 +2198,10 @@ export function PracticeAgentClient({
             />
           ) : null}
 
-          {isAssignmentMode && assignmentId && phase === "feedback" ? (
-            <section
-              aria-labelledby="assignment-round-next-step-heading"
-              className="student-panel p-5"
-            >
-              <p className="student-eyebrow">Assignment round saved</p>
-              <h2
-                className="mt-2 text-lg font-bold text-slate-950"
-                id="assignment-round-next-step-heading"
-              >
-                Choose what to do next
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Review this Assignment and teacher feedback, or return to My Work.
-                Your Practice evidence is already saved.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button asChild className="min-h-11">
-                  <Link href={`/student/work/${assignmentId}`}>
-                    Review this Assignment
-                  </Link>
-                </Button>
-                <Button asChild className="min-h-11" variant="outline">
-                  <Link href="/student/work">Back to My Work</Link>
-                </Button>
-              </div>
-            </section>
-          ) : null}
+          <PracticeAssignmentHandoff
+            assignmentId={assignmentId}
+            visible={isAssignmentMode && phase === "feedback"}
+          />
 
         </main>
 

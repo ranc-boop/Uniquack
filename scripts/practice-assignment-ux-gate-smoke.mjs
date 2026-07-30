@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = process.cwd();
-const [client, questionCard] = await Promise.all([
+const [client, questionCard, completionPanel, assignmentHandoff] =
+  await Promise.all([
   readFile(
     resolve(root, "src/components/practice/practice-agent-client.tsx"),
     "utf8",
@@ -12,7 +13,15 @@ const [client, questionCard] = await Promise.all([
     resolve(root, "src/components/practice/practice-question-card.tsx"),
     "utf8",
   ),
-]);
+  readFile(
+    resolve(root, "src/components/practice/practice-completion-panel.tsx"),
+    "utf8",
+  ),
+  readFile(
+    resolve(root, "src/components/practice/practice-assignment-handoff.tsx"),
+    "utf8",
+  ),
+  ]);
 
 function sourceBlock(source, start, end) {
   const startIndex = source.indexOf(start);
@@ -78,6 +87,20 @@ assert(
       "{!isAssignmentMode && phase === \"feedback\" && review ? (",
     ),
   "Assignment mode must keep only its current session and hide unrelated next-round quantity controls",
+);
+
+assert(
+  client.includes("assignmentId={assignmentId}") &&
+    client.includes("PracticeAssignmentHandoff") &&
+    assignmentHandoff.includes("Assignment round saved") &&
+    assignmentHandoff.includes("Practice evidence is already saved.") &&
+    assignmentHandoff.includes('href="/student/work"') &&
+    completionPanel.includes("Review this Assignment") &&
+    completionPanel.includes('href={assignmentId ? "/student/work" : "/student"}') &&
+    completionPanel.includes(
+      '{assignmentId ? "Back to My Work" : "Back to student workspace"}',
+    ),
+  "Assignment completion must return to the Assignment or My Work instead of starting an unrelated Library flow",
 );
 
 assert(
