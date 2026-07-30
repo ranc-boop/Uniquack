@@ -3,7 +3,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
@@ -28,7 +28,11 @@ function assert(condition, message) {
 }
 
 function assertNoError(result, message) {
-  if (result.error) throw new Error(message);
+  if (result.error) {
+    throw new Error(
+      `${message}:${result.error.code ?? "unknown"}:${result.error.message}`,
+    );
+  }
   return result.data;
 }
 
@@ -1076,228 +1080,164 @@ async function assertDeniedResponseBoundary({ context, contract, url }) {
   }
 }
 
+function pathAndSearch(value) {
+  const parsed = new URL(value);
+  return `${parsed.pathname}${parsed.search}`;
+}
+
+async function runSameTabSurfaceJourney({
+  baseUrl,
+  context,
+  contract,
+  page,
+  surface,
+}) {
+  const isReview = surface === "review";
+  const listPath =
+    `/teacher/banks/${contract.privateBankId}/${isReview ? "review" : "questions"}` +
+    "?q=Focused";
+  const triggerId = isReview
+    ? `review-preview-${contract.reviewItemId}`
+    : `question-preview-${contract.privateBankQuestionId}`;
+  const expectedPreviewPath = isReview
+    ? `/teacher/banks/${contract.privateBankId}/review/${contract.reviewItemId}`
+    : `/teacher/banks/${contract.privateBankId}/questions/${contract.privateBankQuestionId}/preview`;
+  const selectedItemName = isReview
+    ? /Select .*Focused Review Draft fixture/
+    : /Select .*Focused Question fixture/;
+  const headingName = isReview
+    ? "Focused Review Draft fixture"
+    : "Focused Question fixture";
+  const returnLabel = isReview
+    ? "Back to Review list"
+    : "Back to Library list";
+
+  await page.goto(`${baseUrl}${listPath}`, {
+    waitUntil: "domcontentloaded",
+  });
+  const selectedItem = page.getByRole("checkbox", {
+    name: selectedItemName,
+  });
+  await selectedItem.check();
+  const bulkBar = page.getByRole("region", { name: "Bulk actions" });
+  await bulkBar.getByText(/1 selected on this page/).waitFor();
+
+  const trigger = page.locator(`#${triggerId}`);
+  assert((await trigger.count()) === 1, `${surface}_preview_trigger_missing`);
+  assert(
+    (await trigger.getAttribute("target")) === null &&
+      !`${(await trigger.getAttribute("aria-label")) ?? ""} ${(await trigger.textContent()) ?? ""}`
+        .toLowerCase()
+        .includes("new tab"),
+    `${surface}_primary_preview_must_stay_in_current_tab`,
+  );
+  await trigger.evaluate((element) =>
+    element.scrollIntoView({ block: "center", behavior: "auto" }),
+  );
+  await trigger.focus();
+  const scrollBeforePreview = await page.evaluate(() => window.scrollY);
+  const pageCountBeforePreview = context
+    .pages()
+    .filter((candidate) => !candidate.isClosed()).length;
+
+  await Promise.all([
+    page.waitForURL(
+      (url) => url.pathname === expectedPreviewPath,
+      { timeout: 15_000 },
+    ),
+    trigger.click(),
+  ]);
+  assert(
+    context.pages().filter((candidate) => !candidate.isClosed()).length ===
+      pageCountBeforePreview,
+    `${surface}_primary_preview_opened_another_tab`,
+  );
+  const previewLocation = new URL(page.url());
+  assert(
+    previewLocation.pathname === expectedPreviewPath &&
+      !previewLocation.searchParams.has("q") &&
+      previewLocation.searchParams.get("returnTo") === listPath,
+    `${surface}_same_tab_preview_return_state_invalid`,
+  );
+  assertNoCanaries(
+    await page.content(),
+    contract.canaries,
+    `${surface}_preview_html_canary_leak`,
+  );
+  await page.getByRole("heading", { name: headingName, exact: true }).waitFor();
+  await page.getByText("Read-only preview", { exact: true }).waitFor();
+  await waitForValue(
+    () => page.evaluate(() => document.activeElement?.id ?? ""),
+    (value) => value === "focus-workspace-main",
+    `${surface}_preview_main_focus_missing`,
+  );
+
+  const storedUiState = await page.evaluate(() =>
+    Object.entries(sessionStorage),
+  );
+  assertNoPrivatePayload(
+    JSON.stringify(storedUiState),
+    contract,
+    `${surface}_private_content_persisted_in_session_storage`,
+  );
+
+  await Promise.all([
+    page.waitForURL(
+      (url) => `${url.pathname}${url.search}` === listPath,
+      { timeout: 15_000 },
+    ),
+    page.getByRole("link", { name: returnLabel, exact: true }).click(),
+  ]);
+  assert(
+    pathAndSearch(page.url()) === listPath,
+    `${surface}_return_url_not_restored`,
+  );
+  await waitForValue(
+    () => selectedItem.isChecked(),
+    (checked) => checked,
+    `${surface}_selection_not_restored`,
+  );
+  await page
+    .getByRole("region", { name: "Bulk actions" })
+    .getByText(/1 selected on this page/)
+    .waitFor({ timeout: 8_000 });
+  await waitForValue(
+    () => page.evaluate(() => document.activeElement?.id ?? ""),
+    (value) => value === triggerId,
+    `${surface}_return_focus_not_restored`,
+  );
+  await waitForValue(
+    () => page.evaluate(() => window.scrollY),
+    (scrollY) => Math.abs(scrollY - scrollBeforePreview) <= 96,
+    `${surface}_return_scroll_not_restored`,
+  );
+
+  console.log(
+    `PASS Chromium ${surface} same-tab preview, exact URL, selection, scroll, and focus restore`,
+  );
+}
+
 async function runBrowserJourney(browser, contract, baseUrl) {
-  const context = await browser.newContext();
+  const context = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { height: 900, width: 1024 },
+  });
   const page = await context.newPage();
-  const searchCanary = "Focused";
   const requestedUrls = [];
   context.on("request", (request) => {
     requestedUrls.push(request.url());
   });
   try {
     await signIn(page, baseUrl, contract.actors.owner);
-    const parentUrl =
-      `${baseUrl}/teacher/banks/${contract.privateBankId}/questions` +
-      `?q=${encodeURIComponent(searchCanary)}`;
-    await page.goto(parentUrl, { waitUntil: "domcontentloaded" });
-    const triggerId = `question-preview-${contract.privateBankQuestionId}`;
-    const trigger = page.locator(`#${triggerId}`);
-    assert((await trigger.count()) === 1, "preview_trigger_missing");
-    await page.waitForFunction(
-      (id) =>
-        document
-          .getElementById(id)
-          ?.matches('[data-focus-launch-ready="true"]') === true,
-      triggerId,
-      { timeout: 8000 },
-    );
-    assert(
-      (await trigger.getAttribute("data-focus-launch-ready")) === "true",
-      "preview_trigger_coordination_not_ready",
-    );
-    const accessibleName = await trigger.getAttribute("aria-label");
-    const visibleText = (await trigger.textContent()) ?? "";
-    assert(
-      `${accessibleName ?? ""} ${visibleText}`.includes("Opens in new tab"),
-      "new_tab_warning_not_accessible",
-    );
-    assert(
-      (await trigger.getAttribute("target")) === "_blank" &&
-        (await trigger.getAttribute("rel")) === "noopener noreferrer" &&
-        (await trigger.getAttribute("referrerpolicy")) === "no-referrer",
-      "new_tab_security_attributes_missing",
-    );
-
-    const [child] = await Promise.all([
-      page.waitForEvent("popup"),
-      trigger.click(),
-    ]);
-    await child.waitForLoadState("domcontentloaded");
-    assert(
-      new URL(child.url()).searchParams.has("launchId"),
-      "coordinated_child_launch_id_missing",
-    );
-    assert(
-      !new URL(child.url()).searchParams.has("q") &&
-        new URL(child.url()).searchParams
-          .get("returnTo")
-          ?.includes(`q=${searchCanary}`),
-      "search_query_must_only_survive_inside_sanitized_return_state",
-    );
-    assert(
-      (await child.evaluate(() => document.referrer)) === "",
-      "child_referrer_not_empty",
-    );
-    assertNoCanaries(
-      await child.content(),
-      contract.canaries,
-      "question_preview_html_canary_leak",
-    );
-    await child.getByRole("heading", {
-      name: "Focused Question fixture",
-      exact: true,
-    }).waitFor();
-    await child.getByText("Read-only preview", { exact: true }).waitFor();
-    await child
-      .getByText(/original Library list is connected/)
-      .waitFor({ timeout: 8000 });
-    const parentStorage = await page.evaluate(() =>
-      Object.entries(sessionStorage),
-    );
-    assert(
-      !JSON.stringify(parentStorage).includes(searchCanary),
-      "search_query_persisted_in_session_storage",
-    );
-
-    await Promise.all([
-      child.waitForEvent("close"),
-      child.getByRole("button", {
-        name: "Close and return",
-        exact: true,
-      }).click(),
-    ]);
-    await page.bringToFront();
-    await waitForValue(
-      () => page.evaluate(() => document.activeElement?.id ?? ""),
-      (value) => value === triggerId,
-      "launch_trigger_focus_not_restored",
-    );
-
-    const [fallbackChild] = await Promise.all([
-      page.waitForEvent("popup"),
-      trigger.click(),
-    ]);
-    await fallbackChild.waitForLoadState("domcontentloaded");
-    await fallbackChild
-      .getByText(/original Library list is connected/)
-      .waitFor({ timeout: 8000 });
-    await page.evaluate((id) => document.getElementById(id)?.remove(), triggerId);
-    await Promise.all([
-      fallbackChild.waitForEvent("close"),
-      fallbackChild.getByRole("button", {
-        name: "Close and return",
-        exact: true,
-      }).click(),
-    ]);
-    await page.bringToFront();
-    await waitForValue(
-      () => page.evaluate(() => document.activeElement?.id ?? ""),
-      (value) =>
-        value === `question-preview-${contract.nextBankQuestionId}`,
-      "fallback_available_task_focus_not_restored",
-    );
-    const availableTaskAnnouncement = await page
-      .getByRole("status")
-      .filter({ hasText: "focus moved to another available task" })
-      .textContent();
-    assert(
-      availableTaskAnnouncement?.includes(
-        "focus moved to another available task",
-      ),
-      "fallback_available_task_status_inaccurate",
-    );
-
-    await page.goto(parentUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(
-      (id) =>
-        document
-          .getElementById(id)
-          ?.matches('[data-focus-launch-ready="true"]') === true,
-      triggerId,
-      { timeout: 8000 },
-    );
-    const [resultsFallbackChild] = await Promise.all([
-      page.waitForEvent("popup"),
-      page.locator(`#${triggerId}`).click(),
-    ]);
-    await resultsFallbackChild.waitForLoadState("domcontentloaded");
-    await resultsFallbackChild
-      .getByText(/original Library list is connected/)
-      .waitFor({ timeout: 8000 });
-    await page.evaluate(() => {
-      document
-        .querySelectorAll('[data-focus-task-kind="question-preview"]')
-        .forEach((candidate) => candidate.remove());
-    });
-    await Promise.all([
-      resultsFallbackChild.waitForEvent("close"),
-      resultsFallbackChild.getByRole("button", {
-        name: "Close and return",
-        exact: true,
-      }).click(),
-    ]);
-    await page.bringToFront();
-    await waitForValue(
-      () => page.evaluate(() => document.activeElement?.id ?? ""),
-      (value) => value === "library-question-results-focus",
-      "fallback_results_focus_not_restored",
-    );
-    const fallbackAnnouncement = await page
-      .getByRole("status")
-      .filter({ hasText: "focus moved to the results" })
-      .textContent();
-    assert(
-      fallbackAnnouncement?.includes("focus moved to the results"),
-      "fallback_results_status_inaccurate",
-    );
-
-    await page.goto(parentUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(
-      (id) =>
-        document
-          .getElementById(id)
-          ?.matches('[data-focus-launch-ready="true"]') === true,
-      triggerId,
-      { timeout: 8000 },
-    );
-    const originalRow = page
-      .locator("tr")
-      .filter({ has: page.locator(`#${triggerId}`) });
-    await originalRow.getByText("More", { exact: true }).click();
-    const sameTabLink = originalRow.getByRole("link", {
-      name: "Open preview in this tab",
-      exact: true,
-    });
-    assert((await sameTabLink.count()) === 1, "same_tab_fallback_missing");
-    await Promise.all([
-      page.waitForURL(/\/preview\?/),
-      sameTabLink.click(),
-    ]);
-    assert(
-      page.url().includes("/preview") &&
-        !new URL(page.url()).searchParams.has("q"),
-      "same_tab_fallback_navigation_invalid",
-    );
-
-    const copiedPage = await context.newPage();
-    await copiedPage.goto(
-      previewUrl(
+    for (const surface of ["question", "review"]) {
+      await runSameTabSurfaceJourney({
         baseUrl,
-        contract.privateBankId,
-        contract.privateBankQuestionId,
-      ),
-      { waitUntil: "domcontentloaded" },
-    );
-    await copiedPage
-      .getByText("The original list is unavailable. This tab will stay open.", {
-        exact: true,
-      })
-      .waitFor();
-    await copiedPage.getByRole("link", {
-      name: "Open original list in this tab",
-      exact: true,
-    }).waitFor();
-    await copiedPage.close();
+        context,
+        contract,
+        page,
+        surface,
+      });
+    }
 
     await assertResponseBoundary({
       canaries: contract.canaries,
@@ -1323,207 +1263,148 @@ async function runBrowserJourney(browser, contract, baseUrl) {
   }
 }
 
-async function runCrossBrowserSurfaceJourney({
-  baseUrl,
-  browser,
-  contract,
-  engineName,
-  pixelScalePercent,
-  surface,
-}) {
-  const isReview = surface === "review";
-  const viewport = {
-    height: 812,
-    width: 375,
-  };
+async function runResponsiveLayoutJourney({ baseUrl, browser, contract }) {
+  const viewports = [
+    { height: 812, width: 375 },
+    { height: 900, width: 768 },
+    { height: 900, width: 1024 },
+    { height: 1000, width: 1440 },
+  ];
+  const surfaces = [
+    {
+      heading: "Focused Question fixture",
+      returnLabel: "Back to Library list",
+      url: previewUrl(
+        baseUrl,
+        contract.privateBankId,
+        contract.privateBankQuestionId,
+      ),
+    },
+    {
+      heading: "Focused Review Draft fixture",
+      returnLabel: "Back to Review list",
+      url: `${baseUrl}/teacher/banks/${contract.privateBankId}/review/${contract.reviewItemId}`,
+    },
+  ];
   const context = await browser.newContext({
-    deviceScaleFactor: pixelScalePercent === 200 ? 2 : 1,
     reducedMotion: "reduce",
-    viewport,
+    viewport: viewports[0],
   });
   const page = await context.newPage();
+
   try {
     await signIn(page, baseUrl, contract.actors.owner);
-    const listPath = isReview
-      ? `/teacher/banks/${contract.privateBankId}/review?q=Focused`
-      : `/teacher/banks/${contract.privateBankId}/questions?q=Focused`;
-    await page.goto(
-      `${baseUrl}${listPath}`,
-      { waitUntil: "domcontentloaded" },
-    );
-    const triggerId = isReview
-      ? `review-preview-${contract.reviewItemId}`
-      : `question-preview-${contract.privateBankQuestionId}`;
-    const trigger = page.locator(`#${triggerId}`);
-    await page.waitForFunction(
-      (id) =>
-        document
-          .getElementById(id)
-          ?.matches('[data-focus-launch-ready="true"]') === true,
-      triggerId,
-      { timeout: 8000 },
-    );
-    assert(await trigger.isVisible(), `${engineName}_preview_trigger_hidden`);
-
-    const [child] = await Promise.all([
-      page.waitForEvent("popup"),
-      trigger.click(),
-    ]);
-    await child.waitForLoadState("domcontentloaded");
-    await child
-      .getByText(/original Library list is connected/)
-      .waitFor({ timeout: 8000 });
-    await child.getByText(/Evaluate/, { exact: false }).first().waitFor();
-    await child.locator(".katex").first().waitFor();
-    assert(
-      await child.evaluate(
-        () => matchMedia("(prefers-reduced-motion: reduce)").matches,
-      ),
-      `${engineName}_reduced_motion_not_emulated`,
-    );
-    const viewportEvidence = await child.evaluate(() => ({
-      computedZoom: getComputedStyle(document.documentElement).zoom,
-      devicePixelRatio: window.devicePixelRatio,
-      innerWidth: window.innerWidth,
-      visualViewportWidth: window.visualViewport?.width ?? window.innerWidth,
-    }));
-    if (pixelScalePercent === 200) {
-      const screenshot = await child.screenshot({
-        animations: "disabled",
-        fullPage: false,
-      });
-      assert(
-        viewportEvidence.innerWidth === 375 &&
-          viewportEvidence.visualViewportWidth >= 374 &&
-          viewportEvidence.visualViewportWidth <= 376 &&
-          viewportEvidence.devicePixelRatio === 2 &&
-          screenshot.readUInt32BE(16) === 750,
-        `${engineName}_${surface}_observable_200_percent_pixel_scale_missing`,
-      );
-    } else {
-      assert(
-        viewportEvidence.innerWidth === 375 &&
-          viewportEvidence.visualViewportWidth >= 374 &&
-          viewportEvidence.visualViewportWidth <= 376 &&
-          viewportEvidence.devicePixelRatio === 1 &&
-          viewportEvidence.computedZoom !== "2",
-        `${engineName}_${surface}_375_css_pixel_viewport_missing`,
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      for (const surface of surfaces) {
+        await page.goto(surface.url, { waitUntil: "domcontentloaded" });
+        await page
+          .getByRole("heading", { name: surface.heading, exact: true })
+          .waitFor();
+        await waitForValue(
+          () => page.evaluate(() => document.activeElement?.id ?? ""),
+          (value) => value === "focus-workspace-main",
+          `${viewport.width}_${surface.heading}_main_focus_missing`,
+        );
+        const backLink = page.getByRole("link", {
+          name: surface.returnLabel,
+          exact: true,
+        });
+        await backLink.waitFor();
+        const layout = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }));
+        const backLinkBox = await backLink.boundingBox();
+        assert(
+          layout.scrollWidth <= layout.clientWidth + 1,
+          `${viewport.width}_${surface.heading}_horizontal_overflow`,
+        );
+        assert(
+          backLinkBox &&
+            backLinkBox.width >= 44 &&
+            backLinkBox.height >= 44 &&
+            backLinkBox.x >= -1 &&
+            backLinkBox.x + backLinkBox.width <= viewport.width + 1,
+          `${viewport.width}_${surface.heading}_return_control_clipped_${JSON.stringify(backLinkBox)}`,
+        );
+      }
+      console.log(
+        `PASS Chromium ${viewport.width}px question/review preview reflow`,
       );
     }
-
-    const imageButton = child.getByRole("button", {
-      name: isReview
-        ? "Enlarge Focused Review image"
-        : "Enlarge Focused Question image",
-      exact: true,
-    });
-    await waitForValue(
-      () =>
-        imageButton.locator("img").evaluate((image) => ({
-          complete: image.complete,
-          naturalWidth: image.naturalWidth,
-        })),
-      (image) => image.complete && image.naturalWidth > 0,
-      `${engineName}_${surface}_${pixelScalePercent}_image_not_loaded`,
-    );
-    await imageButton.click();
-    const imageDialog = child.getByRole("dialog");
-    await imageDialog.waitFor();
-    const dialogClose = imageDialog.getByRole("button", {
-      name: "Close",
-      exact: true,
-    });
-    await dialogClose.focus();
-    const dialogLayout = await imageDialog.evaluate((dialog) => {
-      const rect = dialog.getBoundingClientRect();
-      return {
-        bottom: rect.bottom,
-        left: rect.left,
-        right: rect.right,
-        rootClientWidth: document.documentElement.clientWidth,
-        rootScrollWidth: document.documentElement.scrollWidth,
-        top: rect.top,
-        viewportHeight: window.innerHeight,
-        viewportWidth: window.innerWidth,
-      };
-    });
-    assert(
-      dialogLayout.rootScrollWidth <= dialogLayout.rootClientWidth + 1 &&
-        dialogLayout.left >= -1 &&
-        dialogLayout.right <= dialogLayout.viewportWidth + 1 &&
-        dialogLayout.top >= -1 &&
-        dialogLayout.bottom <= dialogLayout.viewportHeight + 1,
-      `${engineName}_${surface}_${pixelScalePercent}_image_dialog_overflow`,
-    );
-    await dialogClose.click();
-
-    const closeButton = child.getByRole("button", {
-      name: "Close and return",
-      exact: true,
-    });
-    await closeButton.focus();
-    const layout = await child.evaluate(() => {
-      const active = document.activeElement;
-      const rect =
-        active instanceof HTMLElement ? active.getBoundingClientRect() : null;
-      return {
-        activeText:
-          active instanceof HTMLElement ? active.innerText.trim() : "",
-        clientWidth: document.documentElement.clientWidth,
-        rect: rect
-          ? {
-              bottom: rect.bottom,
-              left: rect.left,
-              right: rect.right,
-              top: rect.top,
-            }
-          : null,
-        scrollWidth: document.documentElement.scrollWidth,
-      };
-    });
-    assert(
-      layout.scrollWidth <= layout.clientWidth + 1,
-      `${engineName}_focus_preview_horizontal_overflow`,
-    );
-    assert(
-      layout.activeText === "Close and return" &&
-        layout.rect &&
-        layout.rect.left >= 0 &&
-        layout.rect.right <= layout.clientWidth &&
-        layout.rect.top >= 0 &&
-        layout.rect.bottom <= viewport.height,
-      `${engineName}_focus_ring_control_clipped`,
-    );
-
-    await Promise.all([
-      child.waitForEvent("close"),
-      closeButton.click(),
-    ]);
-    await page.bringToFront();
-    await waitForValue(
-      () => page.evaluate(() => document.activeElement?.id ?? ""),
-      (value) => value === triggerId,
-      `${engineName}_launch_focus_not_restored`,
-    );
-    console.log(
-      `PASS ${engineName} ${surface} DPR${pixelScalePercent / 100} focus reflow and return`,
-    );
   } finally {
     await context.close();
   }
 }
 
-async function runCrossBrowserFocusJourney(args) {
-  await runCrossBrowserSurfaceJourney({
-    ...args,
-    pixelScalePercent: 100,
-    surface: "question",
+async function runNewTabSafetySmoke({ baseUrl, browser, contract }) {
+  const context = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { height: 900, width: 1024 },
   });
-  await runCrossBrowserSurfaceJourney({
-    ...args,
-    pixelScalePercent: 200,
-    surface: "review",
-  });
+  const page = await context.newPage();
+  const listPath =
+    `/teacher/banks/${contract.privateBankId}/questions?q=Focused`;
+
+  try {
+    await signIn(page, baseUrl, contract.actors.owner);
+    await page.goto(`${baseUrl}${listPath}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const trigger = page.locator(
+      `#question-preview-${contract.privateBankQuestionId}`,
+    );
+    const row = page.locator("tr").filter({ has: trigger });
+    await row.getByText("More", { exact: true }).click();
+    const newTabLink = row.getByRole("link", {
+      name: "Open preview in new tab",
+      exact: true,
+    });
+    assert(
+      (await newTabLink.getAttribute("target")) === "_blank" &&
+        (await newTabLink.getAttribute("rel")) === "noopener noreferrer" &&
+        (await newTabLink.getAttribute("referrerpolicy")) === "no-referrer",
+      "secondary_new_tab_security_attributes_missing",
+    );
+    const parentUrl = page.url();
+    const parentScrollY = await page.evaluate(() => window.scrollY);
+    const [child] = await Promise.all([
+      page.waitForEvent("popup"),
+      newTabLink.click(),
+    ]);
+    await child.waitForLoadState("domcontentloaded");
+    const childLocation = new URL(child.url());
+    assert(
+      childLocation.pathname ===
+        `/teacher/banks/${contract.privateBankId}/questions/${contract.privateBankQuestionId}/preview` &&
+        childLocation.searchParams.get("returnTo") === listPath &&
+        !childLocation.searchParams.has("q") &&
+        (await child.evaluate(() => window.opener === null)) &&
+        (await child.evaluate(() => document.referrer)) === "",
+      "secondary_new_tab_security_boundary_failed",
+    );
+    assertNoCanaries(
+      child.url(),
+      contract.canaries,
+      "secondary_new_tab_url_canary_leak",
+    );
+    assert(
+      page.url() === parentUrl &&
+        (await page.evaluate(() => window.scrollY)) === parentScrollY,
+      "secondary_new_tab_changed_parent_state",
+    );
+    await child.close();
+    assert(
+      context.pages().filter((candidate) => !candidate.isClosed()).length === 1,
+      "secondary_new_tab_did_not_close_cleanly",
+    );
+    console.log(
+      "PASS Chromium 1024px secondary new-tab noopener, no-referrer, and parent-state safety",
+    );
+  } finally {
+    await context.close();
+  }
 }
 
 async function runBulkInteractionJourney({
@@ -1548,7 +1429,6 @@ async function runBulkInteractionJourney({
       const form = new URLSearchParams(request.postData() ?? "");
       capturedFocusPost = {
         destination: form.get("destination"),
-        launchId: form.get("launchId"),
         method: request.method(),
         selectedIds: form.getAll("selectedId"),
         url: request.url(),
@@ -1578,10 +1458,11 @@ async function runBulkInteractionJourney({
   try {
     await signIn(page, baseUrl, contract.actors.owner);
     const statusesBeforeFailure = await readQuestionStatuses();
-    await page.goto(
-      `${baseUrl}/teacher/banks/${contract.privateBankId}/questions?q=Focused`,
-      { waitUntil: "domcontentloaded" },
-    );
+    const listPath =
+      `/teacher/banks/${contract.privateBankId}/questions?q=Focused`;
+    await page.goto(`${baseUrl}${listPath}`, {
+      waitUntil: "domcontentloaded",
+    });
 
     const results = page.locator("#library-question-results-focus");
     await results.waitFor();
@@ -1749,24 +1630,38 @@ async function runBulkInteractionJourney({
       }, contract.privateBankId);
 
     const previewTrigger = page.locator("#question-bulk-preview");
-    await page.waitForFunction(
-      () =>
-        document
-          .getElementById("question-bulk-preview")
-          ?.matches('[data-focus-launch-ready="true"]:not(:disabled)') === true,
-      null,
-      { timeout: 8_000 },
+    await waitForValue(
+      () => previewTrigger.isEnabled(),
+      (enabled) => enabled,
+      `${engineName}_bulk_preview_not_enabled`,
     );
-    const [child] = await Promise.all([
-      page.waitForEvent("popup"),
+    await previewTrigger.evaluate((element) =>
+      element.scrollIntoView({ block: "center", behavior: "auto" }),
+    );
+    await previewTrigger.focus();
+    const scrollBeforePreview = await page.evaluate(() => window.scrollY);
+    const pageCountBeforePreview = context
+      .pages()
+      .filter((candidate) => !candidate.isClosed()).length;
+    await Promise.all([
+      page.waitForURL(
+        (url) =>
+          url.pathname ===
+          `/teacher/banks/${contract.privateBankId}/questions/preview`,
+        { timeout: 15_000 },
+      ),
       previewTrigger.click(),
     ]);
-    await child.waitForLoadState("domcontentloaded");
-    await child
+    assert(
+      context.pages().filter((candidate) => !candidate.isClosed()).length ===
+        pageCountBeforePreview,
+      `${engineName}_bulk_preview_opened_another_tab`,
+    );
+    await page
       .getByRole("heading", { name: "Preview 2 selected questions" })
       .waitFor({ timeout: 15_000 });
-    const childUrl = new URL(child.url());
-    const receiptId = childUrl.searchParams.get("selection");
+    const previewLocation = new URL(page.url());
+    const receiptId = previewLocation.searchParams.get("selection");
     assert(
       capturedFocusPost?.method === "POST" &&
         capturedFocusPost.destination === "question_preview" &&
@@ -1777,40 +1672,69 @@ async function runBulkInteractionJourney({
         capturedFocusPost.selectedIds.includes(contract.nextBankQuestionId) &&
         !capturedFocusPost.url.includes(contract.privateBankQuestionId) &&
         !capturedFocusPost.url.includes(contract.nextBankQuestionId) &&
-        childUrl.pathname ===
+        previewLocation.pathname ===
           `/teacher/banks/${contract.privateBankId}/questions/preview` &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
           receiptId ?? "",
         ) &&
-        !childUrl.searchParams.has("selected") &&
-        !child.url().includes(contract.privateBankQuestionId) &&
-        !child.url().includes(contract.nextBankQuestionId),
+        previewLocation.searchParams.get("returnTo") === listPath &&
+        !previewLocation.searchParams.has("selected") &&
+        !page.url().includes(contract.privateBankQuestionId) &&
+        !page.url().includes(contract.nextBankQuestionId),
       `${engineName}_bulk_preview_did_not_use_opaque_post_receipt`,
     );
-    await child
+    await page
       .getByText("Question 1 of 2", { exact: true })
       .waitFor({ timeout: 8_000 });
-    await child.getByRole("button", { name: "Next", exact: true }).click();
-    await child
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page
       .getByText("Question 2 of 2", { exact: true })
       .waitFor({ timeout: 8_000 });
-    await child.locator("#preview-queue-jump").selectOption("0");
-    await child
+    await page.locator("#preview-queue-jump").selectOption("0");
+    await page
       .getByText("Question 1 of 2", { exact: true })
       .waitFor({ timeout: 8_000 });
     await Promise.all([
-      child.waitForEvent("close"),
-      child.getByRole("button", { name: "Close and return" }).click(),
+      page.waitForURL(
+        (url) => `${url.pathname}${url.search}` === listPath,
+        { timeout: 15_000 },
+      ),
+      page
+        .getByRole("link", {
+          name: "Back to Library list",
+          exact: true,
+        })
+        .click(),
     ]);
-    await page.bringToFront();
+    assert(
+      pathAndSearch(page.url()) === listPath,
+      `${engineName}_bulk_return_url_not_restored`,
+    );
+    await waitForValue(
+      async () => ({
+        first: await firstQuestion.isChecked(),
+        second: await secondQuestion.isChecked(),
+      }),
+      (selection) => selection.first && selection.second,
+      `${engineName}_bulk_selection_not_restored`,
+    );
+    await page
+      .getByRole("region", { name: "Bulk actions" })
+      .getByText(/2 selected on this page/)
+      .waitFor({ timeout: 8_000 });
     await waitForValue(
       () => page.evaluate(() => document.activeElement?.id ?? ""),
       (value) => value === "question-bulk-preview",
       `${engineName}_bulk_preview_focus_not_restored`,
     );
+    await waitForValue(
+      () => page.evaluate(() => window.scrollY),
+      (scrollY) => Math.abs(scrollY - scrollBeforePreview) <= 96,
+      `${engineName}_bulk_preview_scroll_not_restored`,
+    );
 
     console.log(
-      `PASS ${engineName} bulk 375px selection, zero-write failure, real receipt queue, and return focus`,
+      `PASS ${engineName} bulk 375px selection, zero-write failure, same-tab receipt queue, URL, scroll, and focus restore`,
     );
   } finally {
     await context.close();
@@ -1837,20 +1761,23 @@ async function assertViewerManagementBoundaries({
     await page
       .getByRole("heading", { level: 1 })
       .waitFor({ timeout: 10_000 });
-    assert(
-      (await page
+    const viewerManagementEntryCounts = {
+      createAssignment: await page
         .getByRole("link", { name: "Create Assignment", exact: true })
-        .count()) === 0 &&
-        (await page
-          .getByRole("link", { name: "Create assignment", exact: true })
-          .count()) === 0 &&
-        (await page
-          .getByRole("link", { name: "Import Material", exact: true })
-          .count()) === 0 &&
-        (await page.locator(
-          `a[href="/teacher/banks/${contract.privateBankId}/imports"]`,
-        ).count()) === 0,
-      "viewer_library_exposes_management_entrypoint",
+        .count(),
+      createAssignmentLower: await page
+        .getByRole("link", { name: "Create assignment", exact: true })
+        .count(),
+      importHref: await page
+        .locator(`a[href="/teacher/banks/${contract.privateBankId}/imports"]`)
+        .count(),
+      importMaterial: await page
+        .getByRole("link", { name: "Import Material", exact: true })
+        .count(),
+    };
+    assert(
+      Object.values(viewerManagementEntryCounts).every((count) => count === 0),
+      `viewer_library_exposes_management_entrypoint_${JSON.stringify(viewerManagementEntryCounts)}`,
     );
 
     const directImportResponse = await page.goto(
@@ -1991,89 +1918,32 @@ const baseUrl = localBaseUrl();
 const service = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
-const { chromium, firefox, webkit } = await import("playwright");
-let compatibleFirefox = firefox;
-const compatibleFirefoxDriverPath =
-  process.env.PLAYWRIGHT_FIREFOX_DRIVER_PATH?.trim();
-if (compatibleFirefoxDriverPath) {
-  assert(
-    existsSync(compatibleFirefoxDriverPath),
-    "firefox_compatible_driver_missing",
-  );
-  const compatiblePlaywright = await import(
-    pathToFileURL(compatibleFirefoxDriverPath).href
-  );
-  compatibleFirefox =
-    compatiblePlaywright.firefox ?? compatiblePlaywright.default?.firefox;
-  assert(compatibleFirefox, "firefox_compatible_driver_invalid");
-}
-let compatibleWebkit = webkit;
-const compatibleWebkitDriverPath =
-  process.env.PLAYWRIGHT_WEBKIT_DRIVER_PATH?.trim();
-if (compatibleWebkitDriverPath) {
-  assert(
-    existsSync(compatibleWebkitDriverPath),
-    "webkit_compatible_driver_missing",
-  );
-  const compatiblePlaywright = await import(
-    pathToFileURL(compatibleWebkitDriverPath).href
-  );
-  compatibleWebkit =
-    compatiblePlaywright.webkit ?? compatiblePlaywright.default?.webkit;
-  assert(compatibleWebkit, "webkit_compatible_driver_invalid");
-}
+const { chromium } = await import("playwright");
 const edgePath =
+  process.env.PLAYWRIGHT_CHROMIUM_PATH ??
   process.env.PLAYWRIGHT_EDGE_PATH ??
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-assert(existsSync(edgePath), "edge_executable_missing");
-const browserExecutablePaths = {
-  chromium: process.env.PLAYWRIGHT_CHROMIUM_PATH,
-  firefox: process.env.PLAYWRIGHT_FIREFOX_PATH,
-  webkit: process.env.PLAYWRIGHT_WEBKIT_PATH,
-};
+assert(existsSync(edgePath), "chromium_executable_missing");
 
 let browser;
-const browsers = [];
 let contract;
 const fixtures = createFixtureState(service);
 let passed = false;
 try {
   contract = await createFixtures(fixtures);
   browser = await chromium.launch({ executablePath: edgePath, headless: true });
-  browsers.push(browser);
   await assertViewerManagementBoundaries({
     baseUrl,
     browser,
     contract,
   });
   if (bulkOnly) {
-    const bulkTarget = process.env.TEACHER_FOCUS_BULK_ENGINE?.trim();
-    if (!bulkTarget || bulkTarget === "edge") {
-      await runBulkInteractionJourney({
-        baseUrl,
-        browser,
-        contract,
-        engineName: "edge",
-      });
-    }
-    for (const [engineName, browserType] of [
-      ["chromium", chromium],
-      ["firefox", compatibleFirefox],
-      ["webkit", compatibleWebkit],
-    ].filter(([engineName]) => !bulkTarget || engineName === bulkTarget)) {
-      const executablePath = browserExecutablePaths[engineName];
-      const engineBrowser = await browserType.launch({
-        headless: true,
-        ...(executablePath ? { executablePath } : {}),
-      });
-      browsers.push(engineBrowser);
-      await runBulkInteractionJourney({
-        baseUrl,
-        browser: engineBrowser,
-        contract,
-        engineName,
-      });
-    }
+    await runBulkInteractionJourney({
+      baseUrl,
+      browser,
+      contract,
+      engineName: "chromium",
+    });
     passed = true;
   } else {
   assert(
@@ -2169,48 +2039,18 @@ try {
     supabaseUrl,
   });
   await runBrowserJourney(browser, contract, baseUrl);
-  await runCrossBrowserFocusJourney({
+  await runResponsiveLayoutJourney({
     baseUrl,
     browser,
     contract,
-    engineName: "edge",
   });
   await runBulkInteractionJourney({
     baseUrl,
     browser,
     contract,
-    engineName: "edge",
+    engineName: "chromium",
   });
-  for (const [engineName, browserType] of [
-    ["chromium", chromium],
-    ["firefox", compatibleFirefox],
-    ["webkit", compatibleWebkit],
-  ]) {
-    const executablePath = browserExecutablePaths[engineName];
-    if (executablePath) {
-      assert(
-        existsSync(executablePath),
-        `${engineName}_override_executable_missing`,
-      );
-    }
-    const engineBrowser = await browserType.launch({
-      headless: true,
-      ...(executablePath ? { executablePath } : {}),
-    });
-    browsers.push(engineBrowser);
-    await runCrossBrowserFocusJourney({
-      baseUrl,
-      browser: engineBrowser,
-      contract,
-      engineName,
-    });
-    await runBulkInteractionJourney({
-      baseUrl,
-      browser: engineBrowser,
-      contract,
-      engineName,
-    });
-  }
+  await runNewTabSafetySmoke({ baseUrl, browser, contract });
   await assertValidLineageApproval({
     anonKey,
     contract,
@@ -2219,9 +2059,7 @@ try {
   passed = true;
   }
 } finally {
-  await Promise.all(
-    browsers.map((activeBrowser) => activeBrowser.close().catch(() => {})),
-  );
+  await browser?.close().catch(() => {});
   const cleaned = await cleanup(fixtures);
   assert(cleaned, "teacher_focus_fixture_cleanup_failed");
 }
@@ -2229,6 +2067,6 @@ try {
 assert(passed, "teacher_focus_live_e2e_failed");
 console.log(
   bulkOnly
-    ? `PASS real ${process.env.TEACHER_FOCUS_BULK_ENGINE?.trim() || "Edge/Chromium/Firefox/WebKit"} bulk workflow: 375px selection, dialog failure recovery, opaque POST handoff, and return focus`
-    : "PASS real teacher focus and bulk workflows: roles, strict lineage, denied HTML/Flight boundaries, Edge/Chromium/Firefox/WebKit 375px selection, dialog failure recovery, opaque POST handoff, new tabs, return focus, reflow, rendered math/images, and fallbacks",
+    ? "PASS real Chromium bulk workflow: 375px selection, dialog failure recovery, opaque same-tab POST handoff, URL, scroll, and focus restore"
+    : "PASS real teacher focus and bulk workflows: roles, strict lineage, denied HTML/Flight boundaries, Chromium same-tab Question/Review/bulk navigation, 375/768/1024/1440 reflow, exact return state, and one 1024px secondary new-tab security smoke",
 );
