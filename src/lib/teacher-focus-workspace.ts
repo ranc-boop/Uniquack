@@ -98,6 +98,24 @@ export function isDatabaseUuid(value: unknown): value is string {
   );
 }
 
+export function parseCurrentPageFocusSelection(
+  value: string | string[] | undefined,
+  maxItems = 25,
+) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+
+  if (
+    values.length === 0 ||
+    values.length > maxItems ||
+    new Set(values).size !== values.length ||
+    !values.every(isDatabaseUuid)
+  ) {
+    return null;
+  }
+
+  return values;
+}
+
 export function focusChannelName(launchId: string) {
   return `edustruct:focus:v${FOCUS_PROTOCOL_SCHEMA_VERSION}:${launchId}`;
 }
@@ -177,6 +195,13 @@ function safePage(value: string | null) {
   return value && /^[1-9]\d{0,4}$/.test(value) ? value : null;
 }
 
+function safeSearchQuery(value: string | null) {
+  const query = value?.trim();
+  return query && query.length <= 120 && !/[\u0000-\u001f\u007f]/.test(query)
+    ? query
+    : null;
+}
+
 export function sanitizeTeacherBankReturnTo({
   bankId,
   rawReturnTo,
@@ -215,8 +240,10 @@ export function sanitizeTeacherBankReturnTo({
 
   const sanitized = new URL(expectedPath, FOCUS_ORIGIN);
   const page = safePage(parsed.searchParams.get("page"));
+  const query = safeSearchQuery(parsed.searchParams.get("q"));
 
   if (page) sanitized.searchParams.set("page", page);
+  if (query) sanitized.searchParams.set("q", query);
 
   if (surface === "questions") {
     const readiness = parsed.searchParams.get("readiness");

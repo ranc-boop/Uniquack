@@ -34,6 +34,14 @@ type PreviewQuestionRow = Pick<
   | "visibility"
 >;
 
+type ReviewPreviewRow = {
+  created_question_id: string | null;
+  id: string;
+  status: string;
+  target_bank_id: string | null;
+  validation_warnings: unknown;
+};
+
 export type TeacherQuestionPreviewDTO = {
   assets: Array<{
     altText: string;
@@ -233,6 +241,85 @@ async function loadPreviewEnrichment({
   };
 }
 
+async function loadPreviewEnrichmentBatch({
+  questionIds,
+  supabase,
+}: {
+  questionIds: string[];
+  supabase: SupabaseServerClient;
+}) {
+  const uniqueQuestionIds = Array.from(new Set(questionIds));
+  const [taxonomyResult, assetResult] = await Promise.all([
+    supabase
+      .from("question_taxonomy_assignments")
+      .select("question_id, tag_id, review_status")
+      .in("question_id", uniqueQuestionIds)
+      .limit(1250),
+    supabase
+      .from("question_assets")
+      .select("id, question_id, label, alt_text, display_on_detail, display_order")
+      .in("question_id", uniqueQuestionIds)
+      .order("display_order")
+      .limit(625),
+  ]);
+
+  if (taxonomyResult.error) throw new Error(taxonomyResult.error.message);
+  if (assetResult.error) throw new Error(assetResult.error.message);
+
+  const tagIds = Array.from(
+    new Set((taxonomyResult.data ?? []).map((assignment) => assignment.tag_id)),
+  );
+  const taxonomyNodeResult = tagIds.length
+    ? await supabase
+        .from("taxonomy_nodes")
+        .select("tag_id, facet_key, label")
+        .in("tag_id", tagIds)
+        .limit(1250)
+    : { data: [], error: null };
+
+  if (taxonomyNodeResult.error) {
+    throw new Error(taxonomyNodeResult.error.message);
+  }
+
+  const nodeById = new Map(
+    (taxonomyNodeResult.data ?? []).map((node) => [node.tag_id, node]),
+  );
+  const enrichmentByQuestionId = new Map<string, PreviewEnrichment>(
+    uniqueQuestionIds.map((questionId) => [
+      questionId,
+      { assets: [], taxonomy: [] },
+    ]),
+  );
+
+  for (const asset of assetResult.data ?? []) {
+    const enrichment = enrichmentByQuestionId.get(asset.question_id);
+    if (!enrichment) continue;
+
+    enrichment.assets.push({
+      altText: asset.alt_text?.trim() || asset.label?.trim() || "Question image",
+      displayOnDetail: Boolean(asset.display_on_detail),
+      id: asset.id,
+      label: asset.label?.trim() || asset.alt_text?.trim() || "Question image",
+      url: getQuestionAssetUrl(asset.id),
+    });
+  }
+
+  for (const assignment of taxonomyResult.data ?? []) {
+    const enrichment = enrichmentByQuestionId.get(assignment.question_id);
+    if (!enrichment) continue;
+    const node = nodeById.get(assignment.tag_id);
+
+    enrichment.taxonomy.push({
+      facetKey: node?.facet_key ?? null,
+      label: node?.label?.trim() || "Taxonomy tag",
+      reviewStatus: assignment.review_status as TaxonomyReviewStatus,
+      tagId: assignment.tag_id,
+    });
+  }
+
+  return enrichmentByQuestionId;
+}
+
 function questionProjection(
   question: PreviewQuestionRow,
   bankQuestionId?: string,
@@ -325,6 +412,78 @@ export async function getTeacherQuestionPreviewDTO({
   };
 }
 
+export async function getTeacherQuestionPreviewDTOs({
+  bankId,
+  bankQuestionIds,
+  profileId,
+  supabase,
+}: {
+  bankId: string;
+  bankQuestionIds: string[];
+  profileId: string;
+  supabase: SupabaseServerClient;
+}): Promise<TeacherQuestionPreviewDTO[] | null> {
+  const access = await getTeacherQuestionBankAccess({
+    bankId,
+    profileId,
+    supabase,
+  });
+
+  if (!access) return null;
+
+  const { data, error } = await supabase
+    .from("bank_questions")
+    .select(
+      "id, source_kind, question:questions(id, question_code, title, content_html, solution_html, answer_spec, options, question_type, difficulty_rating, status, source_kind, source_review_item_id, visibility, updated_at)",
+    )
+    .eq("bank_id", bankId)
+    .in("id", bankQuestionIds)
+    .limit(25);
+
+  if (error) throw new Error(error.message);
+  if ((data?.length ?? 0) !== bankQuestionIds.length) return null;
+
+  const rowById = new Map((data ?? []).map((row) => [row.id, row]));
+  const questionRows = bankQuestionIds.map((bankQuestionId) => {
+    const row = rowById.get(bankQuestionId);
+    const question = firstRelation(row?.question) as PreviewQuestionRow | null;
+    return row && question ? { bankQuestionId, question, row } : null;
+  });
+
+  if (questionRows.some((row) => !row)) return null;
+
+  const safeRows = questionRows.filter(
+    (
+      row,
+    ): row is {
+      bankQuestionId: string;
+      question: PreviewQuestionRow;
+      row: NonNullable<(typeof data)[number]>;
+    } => Boolean(row),
+  );
+  const enrichmentByQuestionId = await loadPreviewEnrichmentBatch({
+    questionIds: safeRows.map(({ question }) => question.id),
+    supabase,
+  });
+
+  return safeRows.map(({ bankQuestionId, question, row }) => ({
+    ...(enrichmentByQuestionId.get(question.id) ?? {
+      assets: [],
+      taxonomy: [],
+    }),
+    bank: bankProjection(access),
+    kind: "teacher-question-preview",
+    provenance: {
+      hasReviewLineage: Boolean(question.source_review_item_id),
+      sourceKind: row.source_kind || question.source_kind || "unknown",
+    },
+    question: questionProjection(
+      question,
+      bankQuestionId,
+    ) as TeacherQuestionPreviewDTO["question"],
+  }));
+}
+
 export async function getReviewPreviewDTO({
   bankId,
   profileId,
@@ -403,4 +562,112 @@ export async function getReviewPreviewDTO({
       warnings: safeWarningMessages(reviewItem.validation_warnings),
     },
   };
+}
+
+export async function getReviewPreviewDTOs({
+  bankId,
+  profileId,
+  reviewItemIds,
+  supabase,
+}: {
+  bankId: string;
+  profileId: string;
+  reviewItemIds: string[];
+  supabase: SupabaseServerClient;
+}): Promise<ReviewPreviewDTO[] | null> {
+  const access = await getTeacherQuestionBankAccess({
+    bankId,
+    profileId,
+    supabase,
+  });
+
+  if (!access) return null;
+
+  const reviewResult = await supabase
+    .from("review_draft_items")
+    .select(
+      "id, created_question_id, status, target_bank_id, validation_warnings",
+    )
+    .in("id", reviewItemIds)
+    .eq("target_bank_id", bankId)
+    .eq("item_kind", "question")
+    .limit(25);
+
+  if (reviewResult.error) throw new Error(reviewResult.error.message);
+  if ((reviewResult.data?.length ?? 0) !== reviewItemIds.length) return null;
+
+  const reviewRows = (reviewResult.data ?? []) as ReviewPreviewRow[];
+  const reviewById = new Map(
+    reviewRows.map((reviewItem) => [reviewItem.id, reviewItem]),
+  );
+  const questionIds = reviewItemIds
+    .map((reviewItemId) => reviewById.get(reviewItemId)?.created_question_id)
+    .filter((id): id is string => Boolean(id));
+
+  if (questionIds.length !== reviewItemIds.length) return null;
+
+  const { data: questions, error: questionError } = await supabase
+    .from("questions")
+    .select(
+      "id, question_code, title, content_html, solution_html, answer_spec, options, question_type, difficulty_rating, status, source_kind, source_review_item_id, visibility, updated_at",
+    )
+    .eq("owner_bank_id", bankId)
+    .in("id", questionIds)
+    .limit(25);
+
+  if (questionError) throw new Error(questionError.message);
+  if ((questions?.length ?? 0) !== questionIds.length) return null;
+
+  const questionById = new Map(
+    (questions ?? []).map((question) => [
+      question.id,
+      question as PreviewQuestionRow,
+    ]),
+  );
+  const enrichmentByQuestionId = await loadPreviewEnrichmentBatch({
+    questionIds,
+    supabase,
+  });
+
+  const previews: Array<ReviewPreviewDTO | null> = reviewItemIds.map((reviewItemId) => {
+    const reviewItem = reviewById.get(reviewItemId);
+    const question = reviewItem?.created_question_id
+      ? questionById.get(reviewItem.created_question_id)
+      : null;
+
+    if (
+      !reviewItem ||
+      !question ||
+      question.source_review_item_id !== reviewItem.id
+    ) {
+      return null;
+    }
+
+    return {
+      ...(enrichmentByQuestionId.get(question.id) ?? {
+        assets: [],
+        taxonomy: [],
+      }),
+      bank: bankProjection(access),
+      kind: "review-preview" as const,
+      provenance: {
+        hasReviewLineage: true,
+        sourceAccess: "not_requested" as const,
+        sourceKind: question.source_kind || "unknown",
+      },
+      question: questionProjection(question) as ReviewPreviewDTO["question"],
+      review: {
+        id: reviewItem.id,
+        lineageStatus: "linked" as const,
+        status: reviewItem.status,
+        warnings: safeWarningMessages(reviewItem.validation_warnings),
+      },
+    } satisfies ReviewPreviewDTO;
+  });
+
+  if (previews.some((preview) => !preview)) return null;
+
+  return previews.filter(
+    (preview): preview is ReviewPreviewDTO => Boolean(preview),
+  );
 }

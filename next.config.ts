@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   async headers() {
     const focusHeaders = [
       { key: "Cache-Control", value: "private, no-store" },
+      { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
       { key: "Referrer-Policy", value: "no-referrer" },
       { key: "X-Robots-Tag", value: "noindex, nofollow" },
     ];
@@ -15,6 +16,10 @@ const nextConfig: NextConfig = {
       {
         source:
           "/teacher/banks/:bankId/questions/:bankQuestionId/preview",
+        headers: focusHeaders,
+      },
+      {
+        source: "/teacher/banks/:bankId/questions/preview",
         headers: focusHeaders,
       },
       {

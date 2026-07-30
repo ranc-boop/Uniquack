@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type AnchorHTMLAttributes,
+  type FormEvent,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -256,6 +257,228 @@ export function FocusTaskLink({
         <ExternalLink aria-hidden="true" className="h-4 w-4" />
         <span>Opens in new tab</span>
       </a>
+      <span
+        aria-atomic="true"
+        aria-live="polite"
+        className="sr-only"
+        role="status"
+      >
+        {announcement}
+      </span>
+    </>
+  );
+}
+
+export function FocusTaskForm({
+  bankId,
+  children,
+  className,
+  destination,
+  fallbackFocusId,
+  returnTo,
+  selectedIds,
+  taskKind,
+  triggerId,
+}: {
+  bankId: string;
+  children: ReactNode;
+  className?: string;
+  destination: "question_preview" | "review_preview";
+  fallbackFocusId: string;
+  returnTo: string;
+  selectedIds: string[];
+  taskKind: FocusTaskKind;
+  triggerId: string;
+}) {
+  const launchesRef = useRef(new Map<string, ParentLaunchState>());
+  const nextLaunchTimerRef = useRef(0);
+  const [announcement, setAnnouncement] = useState("");
+  const [preparedLaunchId, setPreparedLaunchId] = useState("");
+
+  useEffect(() => {
+    const launches = launchesRef.current;
+    const prepareTimer = window.setTimeout(() => {
+      setPreparedLaunchId(randomToken(24));
+    }, 0);
+
+    return () => {
+      window.clearTimeout(prepareTimer);
+      window.clearTimeout(nextLaunchTimerRef.current);
+      for (const launch of launches.values()) {
+        launch.cleanup();
+      }
+      launches.clear();
+    };
+  }, []);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (
+      event.defaultPrevented ||
+      !preparedLaunchId ||
+      !("BroadcastChannel" in window)
+    ) {
+      return;
+    }
+
+    const launchId = preparedLaunchId;
+    const connectionNonce = randomToken(16);
+    const channel = new BroadcastChannel(focusChannelName(launchId));
+    let pendingVisibilityHandler: (() => void) | null = null;
+    let cleanupTimer = 0;
+
+    window.clearTimeout(nextLaunchTimerRef.current);
+    nextLaunchTimerRef.current = window.setTimeout(() => {
+      setPreparedLaunchId(randomToken(24));
+    }, 0);
+
+    const cleanup = () => {
+      if (pendingVisibilityHandler) {
+        document.removeEventListener(
+          "visibilitychange",
+          pendingVisibilityHandler,
+        );
+      }
+      window.clearTimeout(cleanupTimer);
+      channel.close();
+      launchesRef.current.delete(launchId);
+    };
+
+    const acknowledgeCompletion = () => {
+      const focusNow = () => {
+        if (restoreElementFocus(triggerId)) {
+          setAnnouncement(
+            "Preview closed. Focus returned to its launch control.",
+          );
+        } else {
+          const nextTask = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              `[data-focus-task-kind="${taskKind}"]`,
+            ),
+          ).find((candidate) => candidate.id !== triggerId);
+
+          if (nextTask && restoreElementFocus(nextTask.id)) {
+            setAnnouncement(
+              "Preview closed. Focus moved to another available task.",
+            );
+          } else if (restoreElementFocus(fallbackFocusId)) {
+            setAnnouncement(
+              "Preview closed. Focus moved to the current results.",
+            );
+          } else {
+            setAnnouncement(
+              "Preview closed. Its original launch control is no longer available.",
+            );
+          }
+        }
+      };
+
+      if (document.visibilityState === "visible") {
+        focusNow();
+      } else {
+        pendingVisibilityHandler = () => {
+          if (document.visibilityState !== "visible") return;
+          focusNow();
+          if (pendingVisibilityHandler) {
+            document.removeEventListener(
+              "visibilitychange",
+              pendingVisibilityHandler,
+            );
+            pendingVisibilityHandler = null;
+          }
+        };
+        document.addEventListener("visibilitychange", pendingVisibilityHandler);
+      }
+
+      channel.postMessage({
+        connectionNonce,
+        event: "completion-ack",
+        launchId,
+        schemaVersion: FOCUS_PROTOCOL_SCHEMA_VERSION,
+        status: "parent_ready",
+        statusCounts: { processed: 0, total: 0 },
+        taskKind,
+      } satisfies FocusChannelMessage);
+      window.setTimeout(() => {
+        window.clearTimeout(cleanupTimer);
+        channel.close();
+        launchesRef.current.delete(launchId);
+      }, 750);
+    };
+
+    channel.addEventListener("message", (messageEvent) => {
+      const message = messageEvent.data;
+
+      if (
+        !isFocusChannelMessage(message) ||
+        message.launchId !== launchId ||
+        message.taskKind !== taskKind
+      ) {
+        return;
+      }
+
+      if (message.event === "ready") {
+        channel.postMessage({
+          connectionNonce,
+          event: "parent-ack",
+          launchId,
+          schemaVersion: FOCUS_PROTOCOL_SCHEMA_VERSION,
+          status: "parent_connected",
+          statusCounts: { processed: 0, total: 0 },
+          taskKind,
+        } satisfies FocusChannelMessage);
+        return;
+      }
+
+      if (
+        message.event === "completion" &&
+        message.connectionNonce === connectionNonce &&
+        message.status === "preview_complete"
+      ) {
+        acknowledgeCompletion();
+      }
+    });
+
+    cleanupTimer = window.setTimeout(cleanup, 10 * 60 * 1000);
+    launchesRef.current.set(launchId, { channel, cleanup });
+  }
+
+  return (
+    <>
+      <form
+        action="/api/teacher/focus-selections"
+        className="inline-flex"
+        method="post"
+        onSubmit={handleSubmit}
+        target="_blank"
+      >
+        <input name="bankId" type="hidden" value={bankId} />
+        <input name="destination" type="hidden" value={destination} />
+        <input name="launchId" type="hidden" value={preparedLaunchId} />
+        <input name="returnTo" type="hidden" value={returnTo} />
+        {selectedIds.map((selectedId) => (
+          <input
+            key={selectedId}
+            name="selectedId"
+            type="hidden"
+            value={selectedId}
+          />
+        ))}
+        <button
+          className={cn(
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2",
+            className,
+          )}
+          data-focus-launch-ready={preparedLaunchId ? "true" : "false"}
+          data-focus-task-kind={taskKind}
+          disabled={!preparedLaunchId || !selectedIds.length}
+          id={triggerId}
+          type="submit"
+        >
+          {children}
+          <ExternalLink aria-hidden="true" className="h-4 w-4" />
+          <span>Opens in new tab</span>
+        </button>
+      </form>
       <span
         aria-atomic="true"
         aria-live="polite"

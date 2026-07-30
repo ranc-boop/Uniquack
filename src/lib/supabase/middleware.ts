@@ -30,7 +30,9 @@ function redirectToUnauthorized(request: NextRequest) {
 
 function isTeacherFocusRoute(pathname: string) {
   return (
-    /^\/teacher\/banks\/[^/]+\/questions\/[^/]+\/preview$/.test(pathname) ||
+    /^\/teacher\/banks\/[^/]+\/questions\/(?:preview|[^/]+\/preview)$/.test(
+      pathname,
+    ) ||
     /^\/teacher\/banks\/[^/]+\/review\/[^/]+$/.test(pathname)
   );
 }
@@ -39,6 +41,7 @@ function applyTeacherFocusHeaders(response: NextResponse, pathname: string) {
   if (!isTeacherFocusRoute(pathname)) return response;
 
   response.headers.set("Cache-Control", "private, no-store");
+  response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
   response.headers.set("Referrer-Policy", "no-referrer");
   response.headers.set("X-Robots-Tag", "noindex, nofollow");
   return response;
