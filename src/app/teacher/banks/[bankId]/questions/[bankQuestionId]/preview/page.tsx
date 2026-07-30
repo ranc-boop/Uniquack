@@ -26,7 +26,7 @@ export default async function TeacherQuestionPreviewPage({
   searchParams,
 }: {
   params: Promise<{ bankId: string; bankQuestionId: string }>;
-  searchParams: Promise<{ launchId?: string; returnTo?: string }>;
+  searchParams: Promise<{ returnTo?: string }>;
 }) {
   noStore();
   const [profile, routeParams, query, supabase] = await Promise.all([
@@ -68,9 +68,7 @@ export default async function TeacherQuestionPreviewPage({
       }
       description="Check the exact teacher-visible prompt, answer, explanation, taxonomy, and permitted media without changing the Library question."
       eyebrow="Library question · Focused preview"
-      launchId={query.launchId}
       returnHref={returnHref}
-      taskKind="question-preview"
       title={preview.question.title}
     >
       <TeacherQuestionPreview preview={preview} />

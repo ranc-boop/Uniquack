@@ -1,58 +1,6 @@
 const FOCUS_ORIGIN = "https://focus.edustruct.invalid";
 
-export const FOCUS_PROTOCOL_SCHEMA_VERSION = 1 as const;
-export const FOCUS_LAUNCH_ID_MIN_LENGTH = 32;
-export const FOCUS_LAUNCH_ID_MAX_LENGTH = 64;
-
-export type FocusTaskKind =
-  | "question-manage"
-  | "question-preview"
-  | "public-submission-preview"
-  | "review-batch"
-  | "review-preview"
-  | "student-preview";
-
-export type FocusChannelEvent =
-  | "completion"
-  | "completion-ack"
-  | "parent-ack"
-  | "ready";
-
-export type FocusStatusCounts = {
-  blocked?: number;
-  processed?: number;
-  total?: number;
-  unchanged?: number;
-};
-
-export type FocusChannelMessage = {
-  connectionNonce?: string;
-  event: FocusChannelEvent;
-  launchId: string;
-  operationReceiptId?: string;
-  schemaVersion: typeof FOCUS_PROTOCOL_SCHEMA_VERSION;
-  status?: string;
-  statusCounts?: FocusStatusCounts;
-  taskKind: FocusTaskKind;
-};
-
 type FocusReturnSurface = "questions" | "review";
-
-const focusTaskKinds = new Set<FocusTaskKind>([
-  "question-manage",
-  "question-preview",
-  "public-submission-preview",
-  "review-batch",
-  "review-preview",
-  "student-preview",
-]);
-
-const focusChannelEvents = new Set<FocusChannelEvent>([
-  "completion",
-  "completion-ack",
-  "parent-ack",
-  "ready",
-]);
 
 const allowedQuestionReadinessValues = new Set(["active", "archived"]);
 const allowedQuestionSourceValues = new Set([
@@ -67,27 +15,6 @@ const allowedReviewStatusValues = new Set([
   "pending_review",
 ]);
 const taxonomyTagIdPattern = /^math\.[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isSafeToken(
-  value: unknown,
-  minLength = 16,
-  maxLength = FOCUS_LAUNCH_ID_MAX_LENGTH,
-) {
-  return (
-    typeof value === "string" &&
-    value.length >= minLength &&
-    value.length <= maxLength &&
-    /^[A-Za-z0-9_-]+$/.test(value)
-  );
-}
-
-export function isValidFocusLaunchId(value: unknown): value is string {
-  return isSafeToken(value, FOCUS_LAUNCH_ID_MIN_LENGTH);
-}
 
 export function isDatabaseUuid(value: unknown): value is string {
   return (
@@ -114,64 +41,6 @@ export function parseCurrentPageFocusSelection(
   }
 
   return values;
-}
-
-export function focusChannelName(launchId: string) {
-  return `edustruct:focus:v${FOCUS_PROTOCOL_SCHEMA_VERSION}:${launchId}`;
-}
-
-export function isFocusChannelMessage(
-  value: unknown,
-): value is FocusChannelMessage {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if (
-    value.schemaVersion !== FOCUS_PROTOCOL_SCHEMA_VERSION ||
-    !isValidFocusLaunchId(value.launchId) ||
-    typeof value.taskKind !== "string" ||
-    !focusTaskKinds.has(value.taskKind as FocusTaskKind) ||
-    typeof value.event !== "string" ||
-    !focusChannelEvents.has(value.event as FocusChannelEvent)
-  ) {
-    return false;
-  }
-
-  if (
-    value.connectionNonce !== undefined &&
-    !isSafeToken(value.connectionNonce)
-  ) {
-    return false;
-  }
-
-  if (
-    value.operationReceiptId !== undefined &&
-    !isSafeToken(value.operationReceiptId, 8, 128)
-  ) {
-    return false;
-  }
-
-  if (value.status !== undefined && typeof value.status !== "string") {
-    return false;
-  }
-
-  if (value.statusCounts !== undefined) {
-    if (!isRecord(value.statusCounts)) {
-      return false;
-    }
-
-    for (const count of Object.values(value.statusCounts)) {
-      if (
-        count !== undefined &&
-        (!Number.isSafeInteger(count) || Number(count) < 0)
-      ) {
-        return false;
-      }
-    }
-  }
-
-  return true;
 }
 
 export function isTeacherFocusPathname(pathname: string) {
@@ -311,11 +180,9 @@ export function sanitizeTeacherAssignmentReturnTo({
 
 export function buildFocusHref({
   href,
-  launchId,
   returnTo,
 }: {
   href: string;
-  launchId?: string | null;
   returnTo: string;
 }) {
   const parsed = new URL(href, FOCUS_ORIGIN);
@@ -325,14 +192,9 @@ export function buildFocusHref({
   }
 
   parsed.searchParams.delete("q");
+  parsed.searchParams.delete("launchId");
   parsed.searchParams.set("presentation", "focus");
   parsed.searchParams.set("returnTo", returnTo);
-
-  if (isValidFocusLaunchId(launchId)) {
-    parsed.searchParams.set("launchId", launchId);
-  } else {
-    parsed.searchParams.delete("launchId");
-  }
 
   return `${parsed.pathname}${parsed.search}`;
 }

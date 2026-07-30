@@ -155,6 +155,7 @@ assert(
   assignmentPage.includes("FocusTaskLink") &&
     assignmentPage.includes('taskKind="student-preview"') &&
     assignmentPage.includes("Preview as student") &&
+    assignmentPage.includes("newTabLabel=") &&
     !assignmentPage.includes('href={`/student/work/${assignment.id}`}') &&
     assignmentPage.includes("Question performance") &&
     assignmentPage.includes("Attempt drilldown") &&
@@ -170,8 +171,8 @@ assert(
 assert(
   previewPage.includes("requireTeacher") &&
     previewPage.includes("getTeacherAssignmentStudentPreview") &&
-    previewPage.includes('taskKind="student-preview"') &&
     previewPage.includes("sanitizeTeacherAssignmentReturnTo") &&
+    previewPage.includes("returnSurfaceLabel=\"Assignment detail\"") &&
     previewPage.includes("QuestionText") &&
     !previewPage.includes("answer_spec") &&
     !previewPage.includes("solution_html") &&

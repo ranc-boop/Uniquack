@@ -199,55 +199,41 @@ assert(
 );
 
 assert(
-  focusWorkspace.includes("FOCUS_PROTOCOL_SCHEMA_VERSION = 1") &&
-    focusWorkspace.includes("isValidFocusLaunchId") &&
-    focusWorkspace.includes("FOCUS_LAUNCH_ID_MIN_LENGTH = 32") &&
-    focusWorkspace.includes("parsed.searchParams.delete(\"q\")") &&
+  focusWorkspace.includes("parsed.searchParams.delete(\"q\")") &&
+    focusWorkspace.includes('parsed.searchParams.delete("launchId")') &&
     focusWorkspace.includes("/%2f|%5c/i") &&
     focusWorkspace.includes("raw.startsWith(\"//\")") &&
     focusWorkspace.includes("parsed.pathname !== expectedPath"),
-  "Focus URLs must use a versioned protocol, strong launch IDs, no q, and a normalized same-bank return allowlist.",
+  "Focus URLs must remove transient query state and use a normalized same-bank return allowlist.",
 );
 
 assert(
-  focusLink.includes("crypto.getRandomValues") &&
-    focusLink.includes("randomToken(24)") &&
+  focusLink.includes("buildFocusHref({ href, returnTo })") &&
+    focusLink.includes("<ArrowRight") &&
     focusLink.includes('target="_blank"') &&
     focusLink.includes('rel="noopener noreferrer"') &&
     focusLink.includes('referrerPolicy="no-referrer"') &&
-    focusLink.includes("Opens in new tab") &&
-    focusLink.includes("focus moved to another available task") &&
-    focusLink.includes("focus moved to the results") &&
+    focusLink.includes("<span>New tab</span>") &&
+    !focusLink.includes("BroadcastChannel") &&
+    !focusLink.includes("window.close") &&
     !focusLink.includes("sessionStorage") &&
-    !focusLink.includes("parentLocation") &&
-    !focusLink
-      .slice(0, focusLink.indexOf("export function FocusTaskForm"))
-      .includes("window.open("),
-  "Focus launches must use a real warned anchor, strong launch IDs, accurate fallback focus, no persisted q, and no popup inference.",
+    !focusLink.includes("window.open("),
+  "Focused navigation must stay in the current tab by default and expose only a warned, noopener secondary new-tab link.",
 );
 
 assert(
-  focusBridge.includes("0)") &&
-    focusBridge.includes("1_000") &&
-    focusBridge.includes("3_000") &&
-    focusBridge.includes("5_000") &&
-    focusBridge.includes("15_000") &&
-    focusBridge.includes("Retry return sync") &&
-    focusBridge.includes("window.close()") &&
-    focusBridge.includes("Open original {returnSurfaceLabel} in this tab") &&
+  focusBridge.includes("Back to {returnSurfaceLabel}") &&
+    focusBridge.includes("Your list filters") &&
+    focusBridge.includes("selection, and scroll position") &&
+    focusBridge.includes('target="_blank"') &&
+    focusBridge.includes('rel="noopener noreferrer"') &&
+    !focusBridge.includes("window.close()") &&
+    !focusBridge.includes("BroadcastChannel") &&
     focusBridge.includes('returnSurfaceLabel = "Library list"'),
-  "The child handshake must retry ready, time out safely, and retain manual return/close recovery.",
+  "The focused workspace must provide one clear same-tab return and an explicit safe secondary new-tab option.",
 );
 assert(
-  focusLink.includes("window.open(\"\", childWindowName)") &&
-    focusLink.includes("childWindow.opener = null") &&
-    focusLink.includes("event.currentTarget.target = childWindowName") &&
-    focusLink.includes('target="_blank"'),
-  "POST-backed batch previews must open a script-closable random target, sever its opener, and retain a native popup fallback.",
-);
-assert(
-  focusBridge.includes("motion-reduce:animate-none") &&
-    questionImageGallery.includes("motion-reduce:transform-none") &&
+  questionImageGallery.includes("motion-reduce:transform-none") &&
     questionImageGallery.includes("motion-reduce:transition-none") &&
     dialog.includes("motion-reduce:animate-none") &&
     dialog.includes("motion-reduce:transition-none"),
@@ -321,11 +307,11 @@ assert(
 assert(
   questionsPage.includes("FocusTaskLink") &&
     questionsPage.includes("question-preview-") &&
-    questionsPage.includes("Open preview in this tab") &&
+    questionsPage.includes("Open preview in new tab") &&
     reviewPage.includes("FocusTaskLink") &&
     reviewPage.includes("review-preview-") &&
-    focusBridge.includes("Open original {returnSurfaceLabel} in this tab"),
-  "Question and Review rows must expose warned new-tab previews while the focus workspace preserves a permanent current-tab fallback.",
+    focusBridge.includes("Back to {returnSurfaceLabel}"),
+  "Question and Review rows must use same-tab previews while retaining a clearly labelled optional new-tab path.",
 );
 assert(
   strictLineageMigration.includes(
@@ -365,5 +351,5 @@ for (const token of mutationTokens) {
 }
 
 console.log(
-  "PASS teacher focus workspace uses safe new-tab coordination and server-projected read-only previews",
+  "PASS teacher focus workspace uses same-tab primary navigation and server-projected read-only previews",
 );

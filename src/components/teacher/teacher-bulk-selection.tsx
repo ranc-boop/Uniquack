@@ -66,6 +66,80 @@ type SelectionContextValue = {
 };
 
 const SelectionContext = createContext<SelectionContextValue | null>(null);
+const SELECTION_STATE_PREFIX = "edustruct:teacher-selection:v1";
+const SELECTION_STATE_TTL_MS = 15 * 60 * 1000;
+const MAX_SAVED_SELECTIONS = 25;
+
+type SelectionSnapshot = {
+  expiresAt: number;
+  restore?: {
+    scrollY: number;
+    triggerId: string;
+  };
+  selectedIds: string[];
+};
+
+function selectionStorageKey(scopeKey: string) {
+  return `${SELECTION_STATE_PREFIX}:${scopeKey}`;
+}
+
+function readSelectionSnapshot(key: string): SelectionSnapshot | null {
+  try {
+    const parsed = JSON.parse(
+      window.sessionStorage.getItem(key) ?? "null",
+    ) as Partial<SelectionSnapshot> | null;
+
+    if (
+      !parsed ||
+      typeof parsed.expiresAt !== "number" ||
+      parsed.expiresAt <= Date.now() ||
+      !Array.isArray(parsed.selectedIds) ||
+      parsed.selectedIds.length > MAX_SAVED_SELECTIONS ||
+      !parsed.selectedIds.every((id) => typeof id === "string")
+    ) {
+      window.sessionStorage.removeItem(key);
+      return null;
+    }
+
+    const restore =
+      parsed.restore &&
+      Number.isFinite(parsed.restore.scrollY) &&
+      parsed.restore.scrollY >= 0 &&
+      typeof parsed.restore.triggerId === "string" &&
+      parsed.restore.triggerId.length <= 160
+        ? {
+            scrollY: parsed.restore.scrollY,
+            triggerId: parsed.restore.triggerId,
+          }
+        : undefined;
+
+    return {
+      expiresAt: parsed.expiresAt,
+      restore,
+      selectedIds: parsed.selectedIds,
+    };
+  } catch {
+    window.sessionStorage.removeItem(key);
+    return null;
+  }
+}
+
+function writeSelectionSnapshot(
+  key: string,
+  snapshot: Omit<SelectionSnapshot, "expiresAt">,
+) {
+  try {
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        ...snapshot,
+        expiresAt: Date.now() + SELECTION_STATE_TTL_MS,
+      } satisfies SelectionSnapshot),
+    );
+  } catch {
+    // Preview remains usable when storage is disabled or full.
+  }
+}
 
 function useSelection() {
   const context = use(SelectionContext);
@@ -108,6 +182,9 @@ export function CurrentPageSelectionProvider({
   );
   const handledErrorReceipt = useRef("initial");
   const handledReceipt = useRef("initial");
+  const hydratedRef = useRef(false);
+  const selectedIdsRef = useRef<string[]>([]);
+  const triggerIdRef = useRef("");
   const itemById = useMemo(
     () => new Map(items.map((item) => [item.id, item])),
     [items],
@@ -129,6 +206,95 @@ export function CurrentPageSelectionProvider({
     eligibleIds.length > 0 && selectedEligibleCount === eligibleIds.length;
   const someEligibleSelected =
     selectedEligibleCount > 0 && !allEligibleSelected;
+  const storageKey = selectionStorageKey(scopeKey);
+
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
+
+  useEffect(() => {
+    const snapshot = readSelectionSnapshot(storageKey);
+    const restoredIds =
+      snapshot?.selectedIds.filter((id) => itemById.get(id)?.eligible) ?? [];
+
+    const hydrateTimer = window.setTimeout(() => {
+      setSelected(new Set(restoredIds));
+      selectedIdsRef.current = restoredIds;
+      hydratedRef.current = true;
+    }, 0);
+    const restoreTimer = snapshot?.restore
+      ? window.setTimeout(() => {
+          window.scrollTo({
+            behavior: "auto",
+            top: snapshot.restore?.scrollY ?? 0,
+          });
+          const preferred = document.getElementById(
+            snapshot.restore?.triggerId ?? "",
+          );
+          const fallback = document.getElementById(fallbackFocusId);
+          const focusTarget =
+            preferred instanceof HTMLElement
+              ? preferred
+              : fallback instanceof HTMLElement
+                ? fallback
+                : null;
+
+          focusTarget?.focus({ preventScroll: true });
+          if (!(preferred instanceof HTMLElement)) {
+            focusTarget?.scrollIntoView({
+              block: "center",
+              behavior: "auto",
+            });
+          }
+        }, 0)
+      : 0;
+
+    writeSelectionSnapshot(storageKey, { selectedIds: restoredIds });
+    return () => {
+      window.clearTimeout(hydrateTimer);
+      window.clearTimeout(restoreTimer);
+    };
+  }, [fallbackFocusId, itemById, storageKey]);
+
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    writeSelectionSnapshot(storageKey, { selectedIds });
+  }, [selectedIds, storageKey]);
+
+  useEffect(() => {
+    function captureTrigger(event: Event) {
+      const target =
+        event instanceof SubmitEvent && event.submitter
+          ? event.submitter
+          : event.target;
+      if (!(target instanceof Element)) return;
+
+      const trigger = target.closest<HTMLElement>("[data-focus-task-kind]");
+      if (trigger?.id) triggerIdRef.current = trigger.id;
+    }
+
+    function persistReturnState() {
+      if (!triggerIdRef.current) return;
+      writeSelectionSnapshot(storageKey, {
+        restore: {
+          scrollY: Math.max(0, window.scrollY),
+          triggerId: triggerIdRef.current,
+        },
+        selectedIds: selectedIdsRef.current,
+      });
+    }
+
+    document.addEventListener("click", captureTrigger, true);
+    document.addEventListener("submit", captureTrigger, true);
+    window.addEventListener("pagehide", persistReturnState);
+
+    return () => {
+      persistReturnState();
+      document.removeEventListener("click", captureTrigger, true);
+      document.removeEventListener("submit", captureTrigger, true);
+      window.removeEventListener("pagehide", persistReturnState);
+    };
+  }, [storageKey]);
 
   useEffect(() => {
     if (
@@ -152,6 +318,7 @@ export function CurrentPageSelectionProvider({
 
     handledReceipt.current = state.receipt;
     setSelected(new Set());
+    window.sessionStorage.removeItem(storageKey);
     const focusTimer = window.setTimeout(() => {
       document.getElementById(fallbackFocusId)?.focus({ preventScroll: true });
     }, 0);
@@ -162,7 +329,7 @@ export function CurrentPageSelectionProvider({
       window.clearTimeout(focusTimer);
       window.clearTimeout(refreshTimer);
     };
-  }, [fallbackFocusId, router, state.receipt, state.status]);
+  }, [fallbackFocusId, router, state.receipt, state.status, storageKey]);
 
   function toggle(id: string, checked: boolean) {
     const item = itemById.get(id);
@@ -185,7 +352,10 @@ export function CurrentPageSelectionProvider({
     actionState: state,
     allEligibleSelected,
     checkboxName,
-    clear: () => setSelected(new Set()),
+    clear: () => {
+      setSelected(new Set());
+      window.sessionStorage.removeItem(storageKey);
+    },
     eligibleCount: eligibleIds.length,
     formId,
     isPending,

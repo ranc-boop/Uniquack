@@ -4,7 +4,6 @@ import { requireTeacher } from "@/lib/auth/guards";
 import { createTeacherFocusSelectionReceipt } from "@/lib/teacher-focus-selection";
 import {
   isDatabaseUuid,
-  isValidFocusLaunchId,
   parseCurrentPageFocusSelection,
   sanitizeTeacherBankReturnTo,
 } from "@/lib/teacher-focus-workspace";
@@ -70,15 +69,6 @@ export async function POST(request: Request) {
     rawReturnTo: String(formData.get("returnTo") ?? ""),
     surface,
   });
-  const launchId = String(formData.get("launchId") ?? "");
-
-  if (
-    destination !== "assignment" &&
-    !isValidFocusLaunchId(launchId)
-  ) {
-    return privateError("Invalid focus launch.", 400);
-  }
-
   try {
     const supabase = await createClient();
     const receiptId = await createTeacherFocusSelectionReceipt({
@@ -99,7 +89,6 @@ export async function POST(request: Request) {
     destinationUrl.searchParams.set("selection", receiptId);
 
     if (destination !== "assignment") {
-      destinationUrl.searchParams.set("launchId", launchId);
       destinationUrl.searchParams.set("presentation", "focus");
       destinationUrl.searchParams.set("returnTo", returnTo);
     }

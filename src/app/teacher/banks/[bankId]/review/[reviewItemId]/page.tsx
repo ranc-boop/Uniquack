@@ -26,7 +26,7 @@ export default async function TeacherReviewPreviewPage({
   searchParams,
 }: {
   params: Promise<{ bankId: string; reviewItemId: string }>;
-  searchParams: Promise<{ launchId?: string; returnTo?: string }>;
+  searchParams: Promise<{ returnTo?: string }>;
 }) {
   noStore();
   const [profile, routeParams, query, supabase] = await Promise.all([
@@ -69,10 +69,8 @@ export default async function TeacherReviewPreviewPage({
       }
       description="Inspect the draft content and stored validation warnings. This preview cannot approve, reject, or edit the Review Draft."
       eyebrow="Review Draft · Focused preview"
-      launchId={query.launchId}
       returnHref={returnHref}
       returnSurfaceLabel="Review list"
-      taskKind="review-preview"
       title={preview.question.title}
     >
       <TeacherQuestionPreview preview={preview} />

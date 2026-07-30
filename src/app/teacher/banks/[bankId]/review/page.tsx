@@ -535,6 +535,7 @@ export default async function TeacherBankReviewPage({
                             )}
                             fallbackFocusId="review-draft-results-focus"
                             href={`/teacher/banks/${bank.id}/review/${question.reviewItemId}`}
+                            newTabLabel="Open Review Draft preview in new tab"
                             returnTo={reviewPreviewReturnTo}
                             taskKind="review-preview"
                             triggerId={`review-preview-${question.reviewItemId}`}

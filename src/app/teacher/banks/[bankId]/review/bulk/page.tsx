@@ -28,7 +28,6 @@ export default async function TeacherReviewSelectionPreviewPage({
 }: {
   params: Promise<{ bankId: string }>;
   searchParams: Promise<{
-    launchId?: string;
     returnTo?: string;
     selection?: string;
   }>;
@@ -79,10 +78,8 @@ export default async function TeacherReviewSelectionPreviewPage({
       }
       description="Inspect one selected pending draft at a time before returning to the Review list. Approval remains a separate atomic action in the original tab."
       eyebrow="Review Drafts · Focused batch preview"
-      launchId={query.launchId}
       returnHref={returnHref}
       returnSurfaceLabel="Review list"
-      taskKind="review-batch"
       title={`Preview ${safePreviews.length} selected Review Drafts`}
     >
       <TeacherQuestionPreviewQueue previews={safePreviews} />

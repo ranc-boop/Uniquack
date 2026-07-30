@@ -148,8 +148,13 @@ assert(
   controls.includes("FocusTaskForm") &&
     controls.includes("Preview selected") &&
     !controls.includes("window.open(") &&
-    !controls.includes("sessionStorage"),
-  "Batch preview must use one real new-tab focus link without popup loops or hidden browser storage.",
+    controls.includes("window.sessionStorage") &&
+    controls.includes("SELECTION_STATE_TTL_MS") &&
+    controls.includes("MAX_SAVED_SELECTIONS") &&
+    controls.includes("itemById.get(id)?.eligible") &&
+    controls.includes("triggerIdRef") &&
+    controls.includes("window.scrollY"),
+  "Batch preview must stay in the current tab and restore only bounded, eligible UI selection state.",
 );
 
 assert(
@@ -219,11 +224,12 @@ assert(
 );
 assert(
   focusTaskLink.includes('action="/api/teacher/focus-selections"') &&
-    focusTaskLink.includes('target="_blank"') &&
-    focusTaskLink.includes("BroadcastChannel") &&
-    focusTaskLink.includes("disabled={!preparedLaunchId || !selectedIds.length}") &&
-    !focusTaskLink.includes("window.open("),
-  "Batch preview must open one native new tab and keep the focus-return protocol.",
+    focusTaskLink.includes("disabled={!selectedIds.length}") &&
+    !focusTaskLink.includes("BroadcastChannel") &&
+    !focusTaskLink.includes("window.open(") &&
+    !selectionApi.includes("isValidFocusLaunchId") &&
+    !selectionApi.includes('searchParams.set("launchId"'),
+  "Batch preview must POST a bounded selection in the current tab without launch-channel coupling.",
 );
 assert(
   previewLoader.includes("loadPreviewEnrichmentBatch") &&
@@ -249,14 +255,13 @@ assert(
     liveE2E.includes("Preview 2 selected questions") &&
     liveE2E.includes("assertViewerManagementBoundaries") &&
     liveE2E.includes("viewer_direct_import_route_must_be_not_found") &&
-    !liveE2E.includes('context.route("**/api/teacher/focus-selections"') &&
-    liveE2E.includes("bulk_preview_focus_not_restored"),
-  "Live browser Gate must cover responsive selection, zero-write Dialog recovery, the real receipt queue, viewer boundaries, and return focus.",
+    !liveE2E.includes('context.route("**/api/teacher/focus-selections"'),
+  "Live browser Gate must cover responsive selection, zero-write Dialog recovery, the real receipt queue, and viewer boundaries.",
 );
 
 console.log("PASS current-page mixed-state selection, 44px controls, and scope reset contract");
 console.log("PASS atomic Review approval and Library question management gates");
-console.log("PASS one-tab question and Review batch previews with opaque, expiring selection receipts");
+console.log("PASS same-tab question and Review batch previews with opaque, expiring selection receipts");
 console.log("PASS bounded batch preview loaders avoid per-item N+1 enrichment calls");
 console.log("PASS selected-question receipt handoff keeps Assignment choice editable");
 console.log("PASS Questions information density is reduced to five primary columns");

@@ -1,271 +1,73 @@
-"use client";
-
-import { ExternalLink } from "lucide-react";
+import { ArrowRight, ExternalLink } from "lucide-react";
 import {
-  useEffect,
-  useRef,
-  useState,
   type AnchorHTMLAttributes,
-  type FormEvent,
-  type MouseEvent,
   type ReactNode,
 } from "react";
 
-import {
-  buildFocusHref,
-  FOCUS_PROTOCOL_SCHEMA_VERSION,
-  focusChannelName,
-  isFocusChannelMessage,
-  type FocusChannelMessage,
-  type FocusTaskKind,
-} from "@/lib/teacher-focus-workspace";
+import { buildFocusHref } from "@/lib/teacher-focus-workspace";
 import { cn } from "@/lib/utils";
 
 type FocusTaskLinkProps = Omit<
   AnchorHTMLAttributes<HTMLAnchorElement>,
-  "children" | "href" | "onClick" | "target"
+  "children" | "href" | "target"
 > & {
   children: ReactNode;
   fallbackFocusId: string;
   href: string;
+  newTabLabel?: string;
   returnTo: string;
-  taskKind: FocusTaskKind;
+  taskKind: string;
   triggerId: string;
 };
 
-type ParentLaunchState = {
-  channel: BroadcastChannel;
-  cleanup: () => void;
-};
-
-function randomToken(byteLength: number) {
-  const bytes = new Uint8Array(byteLength);
-  crypto.getRandomValues(bytes);
-  let binary = "";
-
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  return btoa(binary)
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replaceAll("=", "");
-}
-
-function restoreElementFocus(elementId: string) {
-  const target = document.getElementById(elementId);
-
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  if (!target.matches("a, button, input, select, textarea, [tabindex]")) {
-    target.tabIndex = -1;
-  }
-  target.focus({ preventScroll: true });
-  target.scrollIntoView({ block: "center", behavior: "auto" });
-  return document.activeElement === target;
-}
-
+/**
+ * Focused work stays in the current tab by default. The link remains a native
+ * anchor so teachers can still use the browser's open-in-new-tab affordances.
+ */
 export function FocusTaskLink({
   children,
   className,
-  fallbackFocusId,
+  fallbackFocusId: _fallbackFocusId,
   href,
+  newTabLabel,
   returnTo,
   taskKind,
   triggerId,
   ...props
 }: FocusTaskLinkProps) {
-  const launchesRef = useRef(new Map<string, ParentLaunchState>());
-  const nextLaunchTimerRef = useRef(0);
-  const [announcement, setAnnouncement] = useState("");
-  const [preparedLaunchId, setPreparedLaunchId] = useState("");
-
-  useEffect(() => {
-    const launches = launchesRef.current;
-    const prepareTimer = window.setTimeout(() => {
-      setPreparedLaunchId(randomToken(24));
-    }, 0);
-
-    return () => {
-      window.clearTimeout(prepareTimer);
-      window.clearTimeout(nextLaunchTimerRef.current);
-      for (const launch of launches.values()) {
-        launch.cleanup();
-      }
-      launches.clear();
-    };
-  }, []);
-
-  function handleClick(event: MouseEvent<HTMLAnchorElement>) {
-    if (
-      event.defaultPrevented ||
-      event.button !== 0 ||
-      !preparedLaunchId ||
-      !("BroadcastChannel" in window)
-    ) {
-      return;
-    }
-
-    const launchId = preparedLaunchId;
-    const connectionNonce = randomToken(16);
-    const channel = new BroadcastChannel(focusChannelName(launchId));
-    let pendingVisibilityHandler: (() => void) | null = null;
-    let cleanupTimer = 0;
-
-    window.clearTimeout(nextLaunchTimerRef.current);
-    nextLaunchTimerRef.current = window.setTimeout(() => {
-      setPreparedLaunchId(randomToken(24));
-    }, 0);
-
-    const cleanup = () => {
-      if (pendingVisibilityHandler) {
-        document.removeEventListener(
-          "visibilitychange",
-          pendingVisibilityHandler,
-        );
-      }
-      window.clearTimeout(cleanupTimer);
-      channel.close();
-      launchesRef.current.delete(launchId);
-    };
-
-    const acknowledgeCompletion = () => {
-      const focusNow = () => {
-        if (restoreElementFocus(triggerId)) {
-          setAnnouncement(
-            "Preview closed. Focus returned to its launch control.",
-          );
-        } else {
-          const nextTask = Array.from(
-            document.querySelectorAll<HTMLElement>(
-              `[data-focus-task-kind="${taskKind}"]`,
-            ),
-          ).find((candidate) => candidate.id !== triggerId);
-
-          if (nextTask && restoreElementFocus(nextTask.id)) {
-            setAnnouncement(
-              "Preview closed. The original item is no longer available, so focus moved to another available task.",
-            );
-          } else if (restoreElementFocus(fallbackFocusId)) {
-            setAnnouncement(
-              "Preview closed. The original item is no longer available, so focus moved to the results.",
-            );
-          } else {
-            setAnnouncement(
-              "Preview closed. Its original launch control is no longer available.",
-            );
-          }
-        }
-      };
-
-      if (document.visibilityState === "visible") {
-        focusNow();
-      } else {
-        pendingVisibilityHandler = () => {
-          if (document.visibilityState !== "visible") return;
-          focusNow();
-          if (pendingVisibilityHandler) {
-            document.removeEventListener(
-              "visibilitychange",
-              pendingVisibilityHandler,
-            );
-            pendingVisibilityHandler = null;
-          }
-        };
-        document.addEventListener("visibilitychange", pendingVisibilityHandler);
-      }
-
-      const ack: FocusChannelMessage = {
-        connectionNonce,
-        event: "completion-ack",
-        launchId,
-        schemaVersion: FOCUS_PROTOCOL_SCHEMA_VERSION,
-        status: "parent_ready",
-        statusCounts: { processed: 0, total: 0 },
-        taskKind,
-      };
-      channel.postMessage(ack);
-      window.setTimeout(() => {
-        window.clearTimeout(cleanupTimer);
-        channel.close();
-        launchesRef.current.delete(launchId);
-      }, 750);
-    };
-
-    channel.addEventListener("message", (messageEvent) => {
-      const message = messageEvent.data;
-
-      if (
-        !isFocusChannelMessage(message) ||
-        message.launchId !== launchId ||
-        message.taskKind !== taskKind
-      ) {
-        return;
-      }
-
-      if (message.event === "ready") {
-        channel.postMessage({
-          connectionNonce,
-          event: "parent-ack",
-          launchId,
-          schemaVersion: FOCUS_PROTOCOL_SCHEMA_VERSION,
-          status: "parent_connected",
-          statusCounts: { processed: 0, total: 0 },
-          taskKind,
-        } satisfies FocusChannelMessage);
-        return;
-      }
-
-      if (
-        message.event === "completion" &&
-        message.connectionNonce === connectionNonce &&
-        message.status === "preview_complete"
-      ) {
-        acknowledgeCompletion();
-      }
-    });
-
-    cleanupTimer = window.setTimeout(cleanup, 10 * 60 * 1000);
-    launchesRef.current.set(launchId, { channel, cleanup });
-  }
+  const focusHref = buildFocusHref({ href, returnTo });
 
   return (
-    <>
+    <span className="inline-flex items-stretch gap-1">
       <a
         {...props}
         className={cn(
           "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2",
           className,
         )}
-        data-focus-launch-ready={preparedLaunchId ? "true" : "false"}
-        href={buildFocusHref({
-          href,
-          launchId: preparedLaunchId,
-          returnTo,
-        })}
-        id={triggerId}
         data-focus-task-kind={taskKind}
-        onClick={handleClick}
+        href={focusHref}
+        id={triggerId}
         referrerPolicy="no-referrer"
-        rel="noopener noreferrer"
-        target="_blank"
       >
         {children}
-        <ExternalLink aria-hidden="true" className="h-4 w-4" />
-        <span>Opens in new tab</span>
+        <ArrowRight aria-hidden="true" className="h-4 w-4" />
       </a>
-      <span
-        aria-atomic="true"
-        aria-live="polite"
-        className="sr-only"
-        role="status"
-      >
-        {announcement}
-      </span>
-    </>
+      {newTabLabel ? (
+        <a
+          aria-label={`${newTabLabel} (opens in new tab)`}
+          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+          href={focusHref}
+          referrerPolicy="no-referrer"
+          rel="noopener noreferrer"
+          target="_blank"
+          title={`${newTabLabel} (opens in new tab)`}
+        >
+          <ExternalLink aria-hidden="true" className="h-4 w-4" />
+          <span>New tab</span>
+        </a>
+      ) : null}
+    </span>
   );
 }
 
@@ -274,7 +76,7 @@ export function FocusTaskForm({
   children,
   className,
   destination,
-  fallbackFocusId,
+  fallbackFocusId: _fallbackFocusId,
   returnTo,
   selectedIds,
   taskKind,
@@ -287,212 +89,35 @@ export function FocusTaskForm({
   fallbackFocusId: string;
   returnTo: string;
   selectedIds: string[];
-  taskKind: FocusTaskKind;
+  taskKind: string;
   triggerId: string;
 }) {
-  const launchesRef = useRef(new Map<string, ParentLaunchState>());
-  const nextLaunchTimerRef = useRef(0);
-  const [announcement, setAnnouncement] = useState("");
-  const [preparedLaunchId, setPreparedLaunchId] = useState("");
-
-  useEffect(() => {
-    const launches = launchesRef.current;
-    const prepareTimer = window.setTimeout(() => {
-      setPreparedLaunchId(randomToken(24));
-    }, 0);
-
-    return () => {
-      window.clearTimeout(prepareTimer);
-      window.clearTimeout(nextLaunchTimerRef.current);
-      for (const launch of launches.values()) {
-        launch.cleanup();
-      }
-      launches.clear();
-    };
-  }, []);
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    if (
-      event.defaultPrevented ||
-      !preparedLaunchId ||
-      !("BroadcastChannel" in window)
-    ) {
-      return;
-    }
-
-    const launchId = preparedLaunchId;
-    const connectionNonce = randomToken(16);
-    const channel = new BroadcastChannel(focusChannelName(launchId));
-    const childWindowName = `edustruct-focus-${launchId}`;
-    const childWindow = window.open("", childWindowName);
-    if (childWindow) {
-      childWindow.opener = null;
-      event.currentTarget.target = childWindowName;
-    }
-    let pendingVisibilityHandler: (() => void) | null = null;
-    let cleanupTimer = 0;
-
-    window.clearTimeout(nextLaunchTimerRef.current);
-    nextLaunchTimerRef.current = window.setTimeout(() => {
-      setPreparedLaunchId(randomToken(24));
-    }, 0);
-
-    const cleanup = () => {
-      if (pendingVisibilityHandler) {
-        document.removeEventListener(
-          "visibilitychange",
-          pendingVisibilityHandler,
-        );
-      }
-      window.clearTimeout(cleanupTimer);
-      channel.close();
-      launchesRef.current.delete(launchId);
-    };
-
-    const acknowledgeCompletion = () => {
-      const focusNow = () => {
-        if (restoreElementFocus(triggerId)) {
-          setAnnouncement(
-            "Preview closed. Focus returned to its launch control.",
-          );
-        } else {
-          const nextTask = Array.from(
-            document.querySelectorAll<HTMLElement>(
-              `[data-focus-task-kind="${taskKind}"]`,
-            ),
-          ).find((candidate) => candidate.id !== triggerId);
-
-          if (nextTask && restoreElementFocus(nextTask.id)) {
-            setAnnouncement(
-              "Preview closed. Focus moved to another available task.",
-            );
-          } else if (restoreElementFocus(fallbackFocusId)) {
-            setAnnouncement(
-              "Preview closed. Focus moved to the current results.",
-            );
-          } else {
-            setAnnouncement(
-              "Preview closed. Its original launch control is no longer available.",
-            );
-          }
-        }
-      };
-
-      if (document.visibilityState === "visible") {
-        focusNow();
-      } else {
-        pendingVisibilityHandler = () => {
-          if (document.visibilityState !== "visible") return;
-          focusNow();
-          if (pendingVisibilityHandler) {
-            document.removeEventListener(
-              "visibilitychange",
-              pendingVisibilityHandler,
-            );
-            pendingVisibilityHandler = null;
-          }
-        };
-        document.addEventListener("visibilitychange", pendingVisibilityHandler);
-      }
-
-      channel.postMessage({
-        connectionNonce,
-        event: "completion-ack",
-        launchId,
-        schemaVersion: FOCUS_PROTOCOL_SCHEMA_VERSION,
-        status: "parent_ready",
-        statusCounts: { processed: 0, total: 0 },
-        taskKind,
-      } satisfies FocusChannelMessage);
-      window.setTimeout(() => {
-        window.clearTimeout(cleanupTimer);
-        channel.close();
-        launchesRef.current.delete(launchId);
-      }, 750);
-    };
-
-    channel.addEventListener("message", (messageEvent) => {
-      const message = messageEvent.data;
-
-      if (
-        !isFocusChannelMessage(message) ||
-        message.launchId !== launchId ||
-        message.taskKind !== taskKind
-      ) {
-        return;
-      }
-
-      if (message.event === "ready") {
-        channel.postMessage({
-          connectionNonce,
-          event: "parent-ack",
-          launchId,
-          schemaVersion: FOCUS_PROTOCOL_SCHEMA_VERSION,
-          status: "parent_connected",
-          statusCounts: { processed: 0, total: 0 },
-          taskKind,
-        } satisfies FocusChannelMessage);
-        return;
-      }
-
-      if (
-        message.event === "completion" &&
-        message.connectionNonce === connectionNonce &&
-        message.status === "preview_complete"
-      ) {
-        acknowledgeCompletion();
-      }
-    });
-
-    cleanupTimer = window.setTimeout(cleanup, 10 * 60 * 1000);
-    launchesRef.current.set(launchId, { channel, cleanup });
-  }
-
   return (
-    <>
-      <form
-        action="/api/teacher/focus-selections"
-        className="inline-flex"
-        method="post"
-        onSubmit={handleSubmit}
-        target="_blank"
+    <form action="/api/teacher/focus-selections" className="inline-flex" method="post">
+      <input name="bankId" type="hidden" value={bankId} />
+      <input name="destination" type="hidden" value={destination} />
+      <input name="returnTo" type="hidden" value={returnTo} />
+      {selectedIds.map((selectedId) => (
+        <input
+          key={selectedId}
+          name="selectedId"
+          type="hidden"
+          value={selectedId}
+        />
+      ))}
+      <button
+        className={cn(
+          "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed",
+          className,
+        )}
+        data-focus-task-kind={taskKind}
+        disabled={!selectedIds.length}
+        id={triggerId}
+        type="submit"
       >
-        <input name="bankId" type="hidden" value={bankId} />
-        <input name="destination" type="hidden" value={destination} />
-        <input name="launchId" type="hidden" value={preparedLaunchId} />
-        <input name="returnTo" type="hidden" value={returnTo} />
-        {selectedIds.map((selectedId) => (
-          <input
-            key={selectedId}
-            name="selectedId"
-            type="hidden"
-            value={selectedId}
-          />
-        ))}
-        <button
-          className={cn(
-            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2",
-            className,
-          )}
-          data-focus-launch-ready={preparedLaunchId ? "true" : "false"}
-          data-focus-task-kind={taskKind}
-          disabled={!preparedLaunchId || !selectedIds.length}
-          id={triggerId}
-          type="submit"
-        >
-          {children}
-          <ExternalLink aria-hidden="true" className="h-4 w-4" />
-          <span>Opens in new tab</span>
-        </button>
-      </form>
-      <span
-        aria-atomic="true"
-        aria-live="polite"
-        className="sr-only"
-        role="status"
-      >
-        {announcement}
-      </span>
-    </>
+        {children}
+        <ArrowRight aria-hidden="true" className="h-4 w-4" />
+      </button>
+    </form>
   );
 }

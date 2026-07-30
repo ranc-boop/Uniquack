@@ -2,27 +2,22 @@ import { ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { FocusWorkspaceBridge } from "@/components/teacher/focus-workspace-bridge";
-import type { FocusTaskKind } from "@/lib/teacher-focus-workspace";
 
 export function FocusWorkspaceShell({
   badges,
   children,
   description,
   eyebrow,
-  launchId,
   returnHref,
   returnSurfaceLabel,
-  taskKind,
   title,
 }: {
   badges?: ReactNode;
   children: ReactNode;
   description: string;
   eyebrow: string;
-  launchId?: string | null;
   returnHref: string;
   returnSurfaceLabel?: string;
-  taskKind: FocusTaskKind;
   title: string;
 }) {
   const mainId = "focus-workspace-main";
@@ -55,11 +50,9 @@ export function FocusWorkspaceShell({
       </header>
 
       <FocusWorkspaceBridge
-        launchId={launchId}
         mainId={mainId}
         returnHref={returnHref}
         returnSurfaceLabel={returnSurfaceLabel}
-        taskKind={taskKind}
       />
 
       {children}

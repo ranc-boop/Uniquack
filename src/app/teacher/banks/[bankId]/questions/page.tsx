@@ -681,9 +681,10 @@ export default async function TeacherBankQuestionsPage({
                                       returnTo: questionPreviewReturnTo,
                                     })}
                                     referrerPolicy="no-referrer"
-                                    rel="noreferrer"
+                                    rel="noopener noreferrer"
+                                    target="_blank"
                                   >
-                                    Open preview in this tab
+                                    Open preview in new tab
                                   </a>
                                   <p className="px-3 text-xs leading-5 text-slate-500">
                                     Added {formatDate(row.added_at)} · {row.source_kind}

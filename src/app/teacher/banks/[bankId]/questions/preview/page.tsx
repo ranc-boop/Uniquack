@@ -28,7 +28,6 @@ export default async function TeacherQuestionSelectionPreviewPage({
 }: {
   params: Promise<{ bankId: string }>;
   searchParams: Promise<{
-    launchId?: string;
     returnTo?: string;
     selection?: string;
   }>;
@@ -79,9 +78,7 @@ export default async function TeacherQuestionSelectionPreviewPage({
       }
       description="Review one selected Library question at a time. Use Previous, Next, or the jump list; this queue cannot edit, approve, publish, or assign content."
       eyebrow="Library questions · Focused batch preview"
-      launchId={query.launchId}
       returnHref={returnHref}
-      taskKind="question-preview"
       title={`Preview ${safePreviews.length} selected questions`}
     >
       <TeacherQuestionPreviewQueue previews={safePreviews} />

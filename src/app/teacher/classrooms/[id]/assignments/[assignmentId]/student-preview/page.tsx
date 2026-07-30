@@ -33,7 +33,7 @@ export default async function TeacherAssignmentStudentPreviewPage({
   searchParams,
 }: {
   params: Promise<{ assignmentId: string; id: string }>;
-  searchParams: Promise<{ launchId?: string; returnTo?: string }>;
+  searchParams: Promise<{ returnTo?: string }>;
 }) {
   noStore();
   const [, routeParams, query, supabase] = await Promise.all([
@@ -78,10 +78,8 @@ export default async function TeacherAssignmentStudentPreviewPage({
       }
       description="This teacher-authorized preview contains only the Assignment fields and prompts students can receive. It does not impersonate a student or expose answers, Library content, lineage, or evidence."
       eyebrow="Student-visible Assignment · Focused preview"
-      launchId={query.launchId}
       returnHref={returnHref}
       returnSurfaceLabel="Assignment detail"
-      taskKind="student-preview"
       title={assignment.title}
     >
       <section className="rounded-lg border border-slate-200 bg-white p-5">
