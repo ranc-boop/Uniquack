@@ -308,7 +308,7 @@ export default async function TeacherBanksPage({
                         </BankQuickAction>
                         {bank.assignmentReadyCount ? (
                           <BankQuickAction
-                            href={`/teacher/banks/${bank.id}/assignments/new`}
+                            href={`/teacher/publish?sourceBankId=${bank.id}`}
                             icon={bankActionIcons.assignment}
                           >
                             Create assignment

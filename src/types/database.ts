@@ -1228,6 +1228,7 @@ export type Database = {
           p_assignment_due_at?: string | null;
           p_assignment_instructions?: string | null;
           p_assignment_title: string;
+          p_client_request_key?: string;
           p_selected_bank_question_ids?: string[];
           p_target_bank_id: string;
           p_target_classroom_id: string;

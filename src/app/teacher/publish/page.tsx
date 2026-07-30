@@ -1,23 +1,17 @@
+import { randomUUID } from "node:crypto";
+
 import Link from "next/link";
-import type { ComponentType } from "react";
 
 import {
   BookOpenCheck,
-  Boxes,
-  CalendarClock,
-  CheckCircle2,
   ClipboardList,
   Filter,
-  Megaphone,
-  School,
   Search,
   ShieldCheck,
-  Sparkles,
-  Users,
-  type LucideProps,
 } from "lucide-react";
 
 import { publishQuestionBankAssignments } from "@/app/teacher/publish/actions";
+import { AssignmentComposerFlow } from "@/components/teacher/assignment-composer-flow";
 import { AssignmentSelectionSummary } from "@/components/teacher/assignment-selection-summary";
 import { PublishSelectionControls } from "@/components/teacher/publish-selection-controls";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
@@ -27,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { requireTeacher } from "@/lib/auth/guards";
+import { readTeacherFocusSelectionReceipt } from "@/lib/teacher-focus-selection";
+import { isDatabaseUuid } from "@/lib/teacher-focus-workspace";
 import {
   bankMemberRoleLabel,
   canManageBankContent,
@@ -63,19 +59,10 @@ type TeacherPublishPageProps = {
     q?: string;
     questionType?: string;
     saved?: string;
+    selection?: string;
     source?: string;
     sourceBankId?: string;
   }>;
-};
-
-type SourceOption = {
-  count: number;
-  description: string;
-  disabled?: boolean;
-  icon: ComponentType<LucideProps>;
-  label: string;
-  source: PublishSourceType;
-  status: string;
 };
 
 function SetupNeededState() {
@@ -100,22 +87,28 @@ function SetupNeededState() {
 
 function buildPublishHref({
   blueprintId,
+  classroomId,
   difficulty,
   query,
   questionType,
+  selection,
   source,
   sourceBankId,
 }: {
   blueprintId?: string;
+  classroomId?: string;
   difficulty?: PublishDifficultyFilter;
   query?: string;
   questionType?: string;
+  selection?: string;
   source?: PublishSourceType;
   sourceBankId?: string;
 }) {
   const params = new URLSearchParams();
 
   if (sourceBankId) params.set("sourceBankId", sourceBankId);
+  if (classroomId) params.set("classroomId", classroomId);
+  if (selection) params.set("selection", selection);
   if (source && source !== "bank") params.set("source", source);
   if (query) params.set("q", query);
   if (questionType) params.set("questionType", questionType);
@@ -123,38 +116,6 @@ function buildPublishHref({
   if (blueprintId) params.set("blueprintId", blueprintId);
 
   return params.size ? `/teacher/publish?${params.toString()}` : "/teacher/publish";
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "Not set";
-
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-  }).format(new Date(value));
-}
-
-function sourceCardClass({
-  disabled,
-  selected,
-}: {
-  disabled?: boolean;
-  selected: boolean;
-}) {
-  if (selected) {
-    return "border-sky-300 bg-sky-50 shadow-sm ring-1 ring-sky-100";
-  }
-
-  if (disabled) {
-    return "border-slate-200 bg-slate-50/80 text-slate-600";
-  }
-
-  return "border-slate-200 bg-white/95 shadow-sm transition hover:border-sky-200 hover:bg-sky-50/60";
-}
-
-function sourceBadgeClass({ disabled, selected }: { disabled?: boolean; selected: boolean }) {
-  if (selected) return "border-sky-200 bg-white text-sky-800";
-  if (disabled) return "border-slate-200 bg-white text-slate-600";
-  return "border-emerald-200 bg-emerald-50 text-emerald-800";
 }
 
 function statusClasses(status: string | null | undefined) {
@@ -174,215 +135,49 @@ function shortId(value: string | null | undefined) {
   return value.length > 12 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
 }
 
-function makeSourceOptions(summary: PublishContentSummary): SourceOption[] {
-  return [
-    {
-      count: summary.bankQuestionCount,
-      description:
-        "Choose approved active questions from a Library and deliver selected items as assignment-only work.",
-      icon: BookOpenCheck,
-      label: "Library",
-      source: "bank",
-      status: `${summary.bankQuestionCount} ready`,
-    },
-    {
-      count: summary.blueprintApprovedCount,
-      description:
-        "Use only Blueprint-generated questions after they pass Review Draft approval and enter this Library.",
-      disabled: summary.blueprintApprovedCount === 0,
-      icon: Sparkles,
-      label: "Blueprint",
-      source: "blueprint",
-      status: summary.blueprintApprovedCount
-        ? `${summary.blueprintApprovedCount} approved`
-        : "No approved generated questions",
-    },
-    {
-      count: summary.packageReadyCount,
-      description:
-        "Packages are visible in the workflow, but package publishing is not assignment-ready yet.",
-      disabled: true,
-      icon: Boxes,
-      label: "Package",
-      source: "package",
-      status: "Not ready",
-    },
-  ];
-}
-
-function SourceTypeCards({
-  contentStats,
-  selectedBankId,
-  selectedSource,
-}: {
-  contentStats: PublishContentSummary;
-  selectedBankId: string;
-  selectedSource: PublishSourceType;
-}) {
-  const options = makeSourceOptions(contentStats);
-
-  return (
-    <section className="grid gap-3 lg:grid-cols-3">
-      {options.map(({ description, disabled, icon: Icon, label, source, status }) => {
-        const selected = selectedSource === source;
-        const content = (
-          <article
-            className={`h-full rounded-lg border p-4 ${sourceCardClass({
-              disabled,
-              selected,
-            })}`}
-          >
-            <div className="flex items-start gap-3">
-              <span
-                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                  selected
-                    ? "bg-white text-sky-700"
-                    : disabled
-                      ? "bg-white text-slate-500"
-                      : "bg-sky-100 text-sky-700"
-                }`}
-              >
-                <Icon aria-hidden="true" className="h-5 w-5" />
-              </span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-bold text-slate-950">{label}</h2>
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${sourceBadgeClass(
-                      {
-                        disabled,
-                        selected,
-                      },
-                    )}`}
-                  >
-                    {status}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {description}
-                </p>
-              </div>
-            </div>
-          </article>
-        );
-
-        return disabled ? (
-          <div aria-disabled="true" key={source}>
-            {content}
-          </div>
-        ) : (
-          <Link
-            href={buildPublishHref({
-              source,
-              sourceBankId: selectedBankId,
-            })}
-            key={source}
-          >
-            {content}
-          </Link>
-        );
-      })}
-    </section>
-  );
-}
-
-function BankPicker({
+function SourceLibraryPicker({
   banks,
-  selectedBankId,
-  selectedSource,
 }: {
   banks: TeacherQuestionBankSummary[];
-  selectedBankId: string;
-  selectedSource: PublishSourceType;
 }) {
   return (
     <section className="teacher-panel overflow-hidden">
       <div className="border-b border-slate-100 p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="teacher-eyebrow">Source Library</p>
-            <h2 className="text-xl font-bold text-slate-950">
-              Choose the source Library
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Assignments can deliver selected reviewed items from one accessible
-              Library at a time. The Library itself stays private unless separately
-              shared.
-            </p>
-          </div>
-          <form action="/teacher/publish" className="flex flex-wrap gap-2">
-            <input name="source" type="hidden" value={selectedSource} />
-            <Label className="sr-only" htmlFor="sourceBankId">
-              Source Library
-            </Label>
-            <select
-              className="h-11 min-w-64 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-              defaultValue={selectedBankId}
-              id="sourceBankId"
-              name="sourceBankId"
-            >
-              {banks.map((bank) => (
-                <option key={bank.id} value={bank.id}>
-                  {bank.name}
-                </option>
-              ))}
-            </select>
-            <Button type="submit" variant="outline">
-              Load Library
-            </Button>
-          </form>
-        </div>
+        <p className="teacher-eyebrow">Step 1 of 2</p>
+        <h2 className="text-xl font-bold text-slate-950">
+          Choose one source Library
+        </h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+          Only Libraries you own or edit are listed. Choosing one opens a clean
+          Assignment builder; the Library remains private.
+        </p>
       </div>
 
       <div className="grid gap-3 p-5 lg:grid-cols-3">
-        {banks.slice(0, 6).map((bank) => {
-          const selected = bank.id === selectedBankId;
-
-          return (
-            <Link
-              className={`rounded-lg border p-4 transition hover:bg-sky-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${
-                selected
-                  ? "border-sky-300 bg-sky-50"
-                  : "border-slate-200 bg-white"
-              }`}
-              href={buildPublishHref({
-                source: selectedSource,
-                sourceBankId: bank.id,
-              })}
-              key={bank.id}
-            >
-              <div className="flex flex-wrap items-center gap-2">
+        {banks.map((bank) => (
+          <Link
+            className="teacher-focus-ring flex min-h-28 flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-sky-300 hover:bg-sky-50/70"
+            href={buildPublishHref({ sourceBankId: bank.id })}
+            key={bank.id}
+          >
+            <span>
+              <span className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-800">
                   {questionBankVisibilityLabel(bank.visibility)}
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700">
                   {bankMemberRoleLabel(bank.membershipRole)}
                 </span>
-              </div>
-              <h3 className="mt-3 break-words text-base font-bold text-slate-950">
+              </span>
+              <span className="mt-3 block break-words text-base font-bold text-slate-950">
                 {bank.name}
-              </h3>
-              <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div className="rounded-md bg-white/80 px-3 py-2">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Ready
-                  </dt>
-                  <dd className="font-bold text-slate-950">
-                    {bank.assignmentReadyCount}
-                  </dd>
-                </div>
-                <div className="rounded-md bg-white/80 px-3 py-2">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Drafts
-                  </dt>
-                  <dd className="font-bold text-slate-950">
-                    {bank.reviewDraftCount}
-                  </dd>
-                </div>
-              </dl>
-            </Link>
-          );
-        })}
+              </span>
+            </span>
+            <span className="mt-3 text-sm font-semibold text-sky-800">
+              {bank.assignmentReadyCount} assignment-ready
+            </span>
+          </Link>
+        ))}
       </div>
     </section>
   );
@@ -390,132 +185,157 @@ function BankPicker({
 
 function PublishFilters({
   blueprintId,
+  classroomId,
   contentStats,
   difficulty,
   query,
   questionType,
+  selection,
   selectedBankId,
   selectedSource,
 }: {
   blueprintId: string;
+  classroomId?: string;
   contentStats: PublishContentSummary;
   difficulty: PublishDifficultyFilter;
   query: string;
   questionType: string;
+  selection?: string;
   selectedBankId: string;
   selectedSource: PublishSourceType;
 }) {
+  const hasActiveFilters =
+    Boolean(blueprintId || query || questionType) || difficulty !== "all";
+
   return (
-    <section className="teacher-panel p-5">
-      <div className="flex items-start gap-3">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
-          <Filter aria-hidden="true" className="h-5 w-5" />
+    <details className="teacher-panel overflow-hidden" open={hasActiveFilters}>
+      <summary className="teacher-focus-ring flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 p-4">
+        <span className="flex items-center gap-3">
+          <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+            <Filter aria-hidden="true" className="size-5" />
+          </span>
+          <span>
+            <span className="block font-bold text-slate-950">
+              Filter questions
+            </span>
+            <span className="mt-0.5 block text-sm text-slate-600">
+              {hasActiveFilters
+                ? "Filters are applied to this checklist."
+                : "Optional. Search, type, difficulty, or Blueprint source."}
+            </span>
+          </span>
         </span>
-        <div>
-          <h2 className="text-lg font-bold text-slate-950">
-            Find assignment-ready content
-          </h2>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            Filters affect the visible checklist only. Submit still rechecks
-            approved status, Library scope, classroom access, and source lineage.
-          </p>
-        </div>
-      </div>
-      <form action="/teacher/publish" className="mt-5 grid gap-3 lg:grid-cols-5">
-        <input name="source" type="hidden" value={selectedSource} />
-        <input name="sourceBankId" type="hidden" value={selectedBankId} />
-        <div className="lg:col-span-2">
-          <Label className="sr-only" htmlFor="q">
-            Search content
-          </Label>
-          <div className="relative">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-            />
-            <Input
-              className="pl-9"
-              defaultValue={query}
-              id="q"
-              name="q"
-              placeholder="Search title, prompt, tag, blueprint..."
-            />
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
+          {hasActiveFilters ? "Applied" : "Optional"}
+        </span>
+      </summary>
+      <div className="border-t border-slate-100 p-5">
+        <p className="mb-4 text-sm leading-6 text-slate-600">
+          Filters change only the visible checklist. The server rechecks Library,
+          review, and classroom access before delivery.
+        </p>
+        <form action="/teacher/publish" className="grid gap-3 lg:grid-cols-5">
+          <input name="source" type="hidden" value={selectedSource} />
+          <input name="sourceBankId" type="hidden" value={selectedBankId} />
+          {classroomId ? (
+            <input name="classroomId" type="hidden" value={classroomId} />
+          ) : null}
+          {selection ? (
+            <input name="selection" type="hidden" value={selection} />
+          ) : null}
+          <div className="lg:col-span-2">
+            <Label className="sr-only" htmlFor="q">
+              Search content
+            </Label>
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              />
+              <Input
+                className="pl-9"
+                defaultValue={query}
+                id="q"
+                name="q"
+                placeholder="Search title, prompt, tag, blueprint..."
+              />
+            </div>
           </div>
-        </div>
-        <div>
-          <Label className="sr-only" htmlFor="questionType">
-            Question type
-          </Label>
-          <select
-            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-            defaultValue={questionType}
-            id="questionType"
-            name="questionType"
-          >
-            <option value="">All types</option>
-            {contentStats.questionTypeCounts.map((item) => (
-              <option key={item.questionType} value={item.questionType}>
-                {item.questionType} ({item.count})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label className="sr-only" htmlFor="difficulty">
-            Difficulty
-          </Label>
-          <select
-            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-            defaultValue={difficulty}
-            id="difficulty"
-            name="difficulty"
-          >
-            <option value="all">All difficulty</option>
-            <option value="foundational">Foundational</option>
-            <option value="practice">Practice</option>
-            <option value="challenge">Challenge</option>
-          </select>
-        </div>
-        <div>
-          <Button className="w-full" type="submit" variant="outline">
-            Apply filters
-          </Button>
-        </div>
-        {contentStats.blueprintSources.length ? (
-          <div className="lg:col-span-5">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="blueprintId">
-              Blueprint source
+          <div>
+            <Label className="sr-only" htmlFor="questionType">
+              Question type
             </Label>
             <select
-              className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-              defaultValue={blueprintId}
-              id="blueprintId"
-              name="blueprintId"
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+              defaultValue={questionType}
+              id="questionType"
+              name="questionType"
             >
-              <option value="">All approved Blueprint-generated Library questions</option>
-              {contentStats.blueprintSources.map((source) => (
-                <option
-                  key={source.blueprintId ?? source.blueprintTitle}
-                  value={source.blueprintId ?? ""}
-                >
-                  {source.blueprintTitle} ({source.count})
+              <option value="">All types</option>
+              {contentStats.questionTypeCounts.map((item) => (
+                <option key={item.questionType} value={item.questionType}>
+                  {item.questionType} ({item.count})
                 </option>
               ))}
             </select>
           </div>
-        ) : null}
-      </form>
-    </section>
+          <div>
+            <Label className="sr-only" htmlFor="difficulty">
+              Difficulty
+            </Label>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+              defaultValue={difficulty}
+              id="difficulty"
+              name="difficulty"
+            >
+              <option value="all">All difficulty</option>
+              <option value="foundational">Foundational</option>
+              <option value="practice">Practice</option>
+              <option value="challenge">Challenge</option>
+            </select>
+          </div>
+          <Button className="w-full" type="submit" variant="outline">
+            Apply filters
+          </Button>
+          {contentStats.blueprintSources.length ? (
+            <div className="lg:col-span-5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="blueprintId">
+                Blueprint source
+              </Label>
+              <select
+                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                defaultValue={blueprintId}
+                id="blueprintId"
+                name="blueprintId"
+              >
+                <option value="">All approved Blueprint-generated Library questions</option>
+                {contentStats.blueprintSources.map((source) => (
+                  <option
+                    key={source.blueprintId ?? source.blueprintTitle}
+                    value={source.blueprintId ?? ""}
+                  >
+                    {source.blueprintTitle} ({source.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+        </form>
+      </div>
+    </details>
   );
 }
 
 function QuestionChecklist({
   bankId,
+  defaultSelectedIds,
   questions,
   selectedSource,
   totalReadyCount,
 }: {
   bankId: string;
+  defaultSelectedIds: Set<string>;
   questions: PublishableBankQuestion[];
   selectedSource: PublishSourceType;
   totalReadyCount: number;
@@ -564,21 +384,22 @@ function QuestionChecklist({
         <div className="divide-y divide-slate-100">
           {questions.map((row, index) => {
             const question = row.question!;
-            const tags = row.tagSummaries.slice(0, 5);
+            const tags = row.tagSummaries.slice(0, 3);
 
             return (
               <label
-                className="flex cursor-pointer gap-4 p-5 transition hover:bg-sky-50/40"
+                className="flex min-h-11 cursor-pointer gap-4 p-4 transition-colors hover:bg-sky-50/40"
                 key={row.bankQuestionId}
               >
                 <input
                   className="mt-1 h-5 w-5 rounded border-slate-300 text-sky-600"
+                  defaultChecked={defaultSelectedIds.has(row.bankQuestionId)}
                   form="publish-center-form"
                   name="bankQuestionIds"
                   type="checkbox"
                   value={row.bankQuestionId}
                 />
-                <span className="min-w-0 flex-1 space-y-3">
+                <span className="min-w-0 flex-1 space-y-2">
                   <span className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                     <span>
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -610,53 +431,40 @@ function QuestionChecklist({
                     </span>
                   </span>
 
-                  <span className="block rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
+                  <span className="line-clamp-2 block text-sm leading-6 text-slate-700">
                     {row.promptPreview || "Prompt preview unavailable."}
                   </span>
 
-                  <span className="grid gap-3 lg:grid-cols-[1fr_0.8fr]">
-                    <span className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Taxonomy / knowledge point
+                  <span className="flex flex-wrap gap-1.5">
+                    {tags.map((tag) => (
+                      <span
+                        className="rounded-md border border-sky-100 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-900"
+                        key={`${row.bankQuestionId}-${tag.tag_id}`}
+                      >
+                        {tag.label ?? tag.facet_key ?? "Taxonomy tag"}
                       </span>
-                      <span className="mt-2 flex flex-wrap gap-1.5">
-                        {tags.length ? (
-                          tags.map((tag) => (
-                            <span
-                              className="rounded-md border border-sky-100 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-900"
-                              key={`${row.bankQuestionId}-${tag.tag_id}`}
-                            >
-                              {tag.label ?? tag.facet_key ?? "Taxonomy tag"}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-sm text-slate-500">
-                            Not tagged yet
-                          </span>
-                        )}
+                    ))}
+                    {row.tagSummaries.length > tags.length ? (
+                      <span className="px-2 py-1 text-xs font-semibold text-slate-500">
+                        +{row.tagSummaries.length - tags.length} more
                       </span>
-                    </span>
-                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Source visible to teacher
-                      </span>
-                      <span className="mt-1 block break-words text-sm font-semibold text-slate-900">
-                        {row.isBlueprintApprovedContent
-                          ? row.blueprintLineage?.blueprintTitle ??
-                            "Approved Blueprint-generated question"
-                          : "Library"}
-                      </span>
-                      <span className="mt-1 block text-xs text-slate-500">
-                        Student preview hides this source context.
-                      </span>
-                    </span>
+                    ) : null}
                   </span>
 
-                  <details className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <summary className="cursor-pointer text-sm font-semibold text-slate-700">
-                      Expand source and readiness details
+                  <details className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                    <summary className="teacher-focus-ring min-h-11 cursor-pointer py-2 text-sm font-semibold text-slate-700">
+                      Source and readiness details
                     </summary>
                     <dl className="mt-3 grid gap-2 text-xs text-slate-600 lg:grid-cols-2">
+                      <div className="lg:col-span-2">
+                        <dt className="font-semibold text-slate-500">Teacher source</dt>
+                        <dd className="break-words">
+                          {row.isBlueprintApprovedContent
+                            ? row.blueprintLineage?.blueprintTitle ??
+                              "Approved Blueprint-generated question"
+                            : "Library"}
+                        </dd>
+                      </div>
                       <div>
                         <dt className="font-semibold text-slate-500">Library question</dt>
                         <dd className="break-all">{shortId(row.bankQuestionId)}</dd>
@@ -730,11 +538,11 @@ function ClassroomTargets({
       <div className="border-b border-slate-100 p-5">
         <p className="teacher-eyebrow">Target</p>
         <h2 className="text-xl font-bold text-slate-950">
-          Choose classroom delivery
+          Choose one classroom
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Class-level delivery is supported. Selected-student delivery is shown
-          below as a future targeting option.
+          The standard path creates one recoverable delivery event at a time.
+          Return here to assign the same content to another class.
         </p>
       </div>
 
@@ -742,7 +550,7 @@ function ClassroomTargets({
         <div className="grid gap-3 p-5 lg:grid-cols-2">
           {classrooms.map((classroom) => (
             <label
-              className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-white p-4 transition hover:border-sky-200 hover:bg-sky-50/60"
+              className="flex min-h-11 cursor-pointer gap-3 rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-sky-200 hover:bg-sky-50/60"
               key={classroom.id}
             >
               <input
@@ -750,7 +558,7 @@ function ClassroomTargets({
                 defaultChecked={classroom.id === preselectedClassroomId}
                 form="publish-center-form"
                 name="classroomIds"
-                type="checkbox"
+                type="radio"
                 value={classroom.id}
               />
               <span className="min-w-0 flex-1">
@@ -760,7 +568,7 @@ function ClassroomTargets({
                 <span className="mt-1 block text-sm text-slate-600">
                   {classroom.subject || "No subject set"}
                 </span>
-                <span className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+                <span className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                   <span className="rounded-md bg-slate-50 px-3 py-2">
                     <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Students
@@ -777,30 +585,10 @@ function ClassroomTargets({
                       {classroom.activeAssignmentCount}
                     </span>
                   </span>
-                  <span className="rounded-md bg-slate-50 px-3 py-2">
-                    <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Latest
-                    </span>
-                    <span className="font-bold text-slate-950">
-                      {formatDate(classroom.latestActivityAt)}
-                    </span>
-                  </span>
                 </span>
               </span>
             </label>
           ))}
-          <article className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-600">
-            <div className="flex items-start gap-3">
-              <Users aria-hidden="true" className="mt-1 h-5 w-5" />
-              <div>
-                <h3 className="font-bold text-slate-800">Selected students</h3>
-                <p className="mt-1 text-sm leading-6">
-                  Future option. V2 publishes to whole classrooms so assignment
-                  access remains easy to audit.
-                </p>
-              </div>
-            </div>
-          </article>
         </div>
       ) : (
         <div className="p-8 text-center">
@@ -817,46 +605,6 @@ function ClassroomTargets({
           </Button>
         </div>
       )}
-    </section>
-  );
-}
-
-function StudentPreviewPanel({
-  selectedSource,
-}: {
-  selectedSource: PublishSourceType;
-}) {
-  return (
-    <section className="teacher-panel p-5">
-      <div className="flex items-start gap-3">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-          <ShieldCheck aria-hidden="true" className="h-5 w-5" />
-        </span>
-        <div>
-          <h2 className="text-lg font-bold text-slate-950">Student preview</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            Students see title, instructions, due date, and selected prompts in
-            order.
-          </p>
-        </div>
-      </div>
-      <dl className="mt-5 space-y-3 text-sm">
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-          <dt className="font-semibold text-emerald-700">Hidden from students</dt>
-          <dd className="mt-1 text-emerald-950">
-            Answers, solutions, full source Library, Blueprint internals, provider
-            metadata, and import metadata.
-          </dd>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <dt className="font-semibold text-slate-500">Current source mode</dt>
-          <dd className="mt-1 font-bold capitalize text-slate-950">
-            {selectedSource === "blueprint"
-              ? "Blueprint-approved Library questions"
-              : selectedSource}
-          </dd>
-        </div>
-      </dl>
     </section>
   );
 }
@@ -891,12 +639,12 @@ export default async function TeacherPublishPage({
 
   banks = banks.filter((bank) => canManageBankContent(bank.membershipRole));
 
-  const selectedSource = normalizePublishSourceType(query.source);
-  const selectedBankId =
-    banks.find((bank) => bank.id === query.sourceBankId)?.id ??
-    banks.find((bank) => bank.assignmentReadyCount > 0)?.id ??
-    banks[0]?.id ??
-    "";
+  const requestedSource = normalizePublishSourceType(query.source);
+  const selectedSource: PublishSourceType =
+    requestedSource === "blueprint" ? "blueprint" : "bank";
+  const selectedBank =
+    banks.find((bank) => bank.id === query.sourceBankId) ?? null;
+  const selectedBankId = selectedBank?.id ?? "";
 
   if (selectedBankId) {
     try {
@@ -925,48 +673,60 @@ export default async function TeacherPublishPage({
     questionType,
     source: selectedSource,
   });
-  const selectedBank = banks.find((bank) => bank.id === selectedBankId) ?? null;
   const totalReadyCount =
     selectedSource === "blueprint"
       ? contentStats.blueprintApprovedCount
-      : selectedSource === "package"
-        ? 0
-        : contentStats.assignmentReadyCount;
+      : contentStats.assignmentReadyCount;
+  const clientRequestKey = randomUUID();
+  const selectedQuestionIds =
+    selectedBankId && query.selection && isDatabaseUuid(query.selection)
+      ? new Set(
+          (await readTeacherFocusSelectionReceipt({
+            bankId: selectedBankId,
+            receiptId: query.selection,
+            supabase,
+            surface: "questions",
+          })) ?? [],
+        )
+      : new Set<string>();
 
   return (
     <TeacherWorkspaceShell
       eyebrow="Teacher assignment workflow"
-      title="Assignments"
-      description="Assignments deliver selected approved Library content to classes. Students see assigned items only, not the full source Library."
+      title={selectedBank ? "Create Assignment" : "Choose Assignment source"}
+      description={
+        selectedBank
+          ? "Select reviewed Library questions, choose classroom delivery, then assign now or save a teacher-only draft."
+          : "Start with one Library you own or edit. The next page focuses only on creating the Assignment."
+      }
       actions={
-        <>
-          <Button asChild variant="outline">
-            <Link href="/teacher/banks">Open Libraries</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/teacher/classrooms">Open classrooms</Link>
-          </Button>
-        </>
+        <Button asChild variant="outline">
+          <Link href={selectedBank ? "/teacher/publish" : "/teacher/banks"}>
+            {selectedBank ? "Change Library" : "Open Libraries"}
+          </Link>
+        </Button>
       }
     >
       <TeacherWorkspaceNav />
 
       {query.saved ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+        <p
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"
+          role="status"
+        >
           {query.saved}
         </p>
       ) : null}
       {query.error ? (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+        <p
+          className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+          id="assignment-server-error"
+          role="alert"
+          tabIndex={-1}
+        >
           {query.error}
         </p>
       ) : null}
-
-      <SourceTypeCards
-        contentStats={contentStats}
-        selectedBankId={selectedBankId}
-        selectedSource={selectedSource}
-      />
 
       {!banks.length ? (
         <section className="teacher-panel p-8 text-center">
@@ -982,234 +742,233 @@ export default async function TeacherPublishPage({
             <Link href="/teacher/banks/new">Create Library</Link>
           </Button>
         </section>
+      ) : !selectedBank ? (
+        <SourceLibraryPicker banks={banks} />
       ) : (
         <>
-          <BankPicker
-            banks={banks}
-            selectedBankId={selectedBankId}
-            selectedSource={selectedSource}
-          />
+          <section className="teacher-panel flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+                <BookOpenCheck aria-hidden="true" className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="teacher-eyebrow">Step 2 of 2 · Assignment source</p>
+                <h2 className="break-words text-lg font-bold text-slate-950">
+                  {selectedBank.name}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  {questionBankVisibilityLabel(selectedBank.visibility)} ·{" "}
+                  {bankMemberRoleLabel(selectedBank.membershipRole)} ·{" "}
+                  {selectedBank.assignmentReadyCount} assignment-ready
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                asChild
+                className="min-h-11"
+                variant={selectedSource === "bank" ? "default" : "outline"}
+              >
+                <Link
+                  href={buildPublishHref({
+                    classroomId: query.classroomId,
+                    selection: query.selection,
+                    source: "bank",
+                    sourceBankId: selectedBankId,
+                  })}
+                >
+                  All reviewed questions
+                </Link>
+              </Button>
+              {contentStats.blueprintApprovedCount ? (
+                <Button
+                  asChild
+                  className="min-h-11"
+                  variant={
+                    selectedSource === "blueprint" ? "default" : "outline"
+                  }
+                >
+                  <Link
+                    href={buildPublishHref({
+                      classroomId: query.classroomId,
+                      selection: query.selection,
+                      source: "blueprint",
+                      sourceBankId: selectedBankId,
+                    })}
+                  >
+                    Blueprint-generated only
+                  </Link>
+                </Button>
+              ) : null}
+            </div>
+          </section>
 
           <PublishFilters
             blueprintId={blueprintId}
+            classroomId={query.classroomId}
             contentStats={contentStats}
             difficulty={difficulty}
             query={searchQuery}
             questionType={questionType}
+            selection={query.selection}
             selectedBankId={selectedBankId}
             selectedSource={selectedSource}
           />
 
           <form
             action={publishQuestionBankAssignments}
-            className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_25rem]"
             id="publish-center-form"
           >
             <input name="bankId" type="hidden" value={selectedBankId} />
+            <input
+              name="clientRequestKey"
+              type="hidden"
+              value={clientRequestKey}
+            />
             <input name="sourceType" type="hidden" value={selectedSource} />
-            <div className="space-y-6">
-              <QuestionChecklist
-                bankId={selectedBankId}
-                questions={visibleQuestions}
-                selectedSource={selectedSource}
-                totalReadyCount={totalReadyCount}
-              />
-              <ClassroomTargets
-                classrooms={classrooms}
-                preselectedClassroomId={query.classroomId}
-              />
-            </div>
+            <AssignmentComposerFlow
+              content={
+                <QuestionChecklist
+                  bankId={selectedBankId}
+                  defaultSelectedIds={selectedQuestionIds}
+                  questions={visibleQuestions}
+                  selectedSource={selectedSource}
+                  totalReadyCount={totalReadyCount}
+                />
+              }
+              initialStage={query.error ? "review" : "content"}
+              target={
+                <ClassroomTargets
+                  classrooms={classrooms}
+                  preselectedClassroomId={query.classroomId}
+                />
+              }
+              review={
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                  <section className="teacher-panel p-5">
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+                        <ClipboardList aria-hidden="true" className="size-5" />
+                      </span>
+                      <div>
+                        <h2 className="text-lg font-bold text-slate-950">
+                          Assignment details
+                        </h2>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                          Add only what students need to understand this work.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-5 space-y-4">
+                      <AssignmentSelectionSummary
+                        formId="publish-center-form"
+                        helperText="Return to Content if you need to change the reviewed questions."
+                        inputName="bankQuestionIds"
+                        totalLabel="visible assignment-ready question(s)."
+                        totalQuestions={visibleQuestions.length}
+                      />
+                      <div className="space-y-2">
+                        <Label htmlFor="title">Title</Label>
+                        <Input
+                          aria-describedby={
+                            query.error ? "assignment-server-error" : undefined
+                          }
+                          aria-invalid={query.error ? true : undefined}
+                          id="title"
+                          maxLength={180}
+                          name="title"
+                          placeholder="Applications of Integration practice"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="dueAt">Due date optional</Label>
+                        <Input
+                          aria-describedby={
+                            query.error ? "assignment-server-error" : undefined
+                          }
+                          id="dueAt"
+                          name="dueAt"
+                          type="datetime-local"
+                        />
+                      </div>
+                      <details className="rounded-lg border border-slate-200 bg-slate-50">
+                        <summary className="teacher-focus-ring min-h-11 cursor-pointer px-4 py-3 text-sm font-bold text-slate-800">
+                          Add optional instructions
+                        </summary>
+                        <div className="border-t border-slate-200 p-4">
+                          <Label htmlFor="instructions">Instructions</Label>
+                          <Textarea
+                            className="mt-2"
+                            id="instructions"
+                            maxLength={4000}
+                            name="instructions"
+                            placeholder="Complete the selected questions. Start Practice from My Work if you need guided review."
+                            rows={4}
+                          />
+                        </div>
+                      </details>
+                    </div>
+                  </section>
 
-            <aside className="space-y-6">
-              <section className="teacher-panel p-5">
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
-                    <ClipboardList aria-hidden="true" className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-950">
-                      Assignment details
-                    </h2>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">
-                      Configure the work students will see in My Work.
+                  <section className="teacher-panel p-5 xl:sticky xl:top-24 xl:self-start">
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                        <ShieldCheck aria-hidden="true" className="size-5" />
+                      </span>
+                      <div>
+                        <h2 className="text-lg font-bold text-slate-950">
+                          Final review
+                        </h2>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                          One Library, one classroom, one delivery event.
+                        </p>
+                      </div>
+                    </div>
+                    <dl className="mt-5 space-y-3 text-sm">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <dt className="font-semibold text-slate-500">
+                          Source Library
+                        </dt>
+                        <dd className="mt-1 break-words font-bold text-slate-950">
+                          {selectedBank.name}
+                        </dd>
+                      </div>
+                      <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+                        <dt className="font-semibold text-sky-700">
+                          Student visibility
+                        </dt>
+                        <dd className="mt-1 font-bold text-sky-950">
+                          Assignment-only
+                        </dd>
+                      </div>
+                    </dl>
+                    <details className="mt-4 rounded-lg border border-slate-200">
+                      <summary className="teacher-focus-ring min-h-11 cursor-pointer px-3 py-3 text-sm font-bold text-slate-800">
+                        What students can and cannot see
+                      </summary>
+                      <div className="border-t border-slate-200 px-3 py-3 text-sm leading-6 text-slate-600">
+                        <p>
+                          Students see the title, instructions, due date, and
+                          assigned prompts.
+                        </p>
+                        <p className="mt-2">
+                          Answers, the full Library, Blueprint lineage, provider
+                          data, and import metadata stay hidden.
+                        </p>
+                      </div>
+                    </details>
+                    <p className="mt-4 text-xs leading-5 text-slate-500">
+                      Before creation, the server rechecks your Library role,
+                      review status, question state, and classroom access.
                     </p>
-                  </div>
+                  </section>
                 </div>
-                <div className="mt-5 space-y-4">
-                  <AssignmentSelectionSummary
-                    formId="publish-center-form"
-                    helperText="Choose approved Library questions before saving or assigning."
-                    inputName="bankQuestionIds"
-                    totalLabel="visible assignment-ready question(s)."
-                    totalQuestions={visibleQuestions.length}
-                  />
-                  <div className="space-y-2">
-                    <Label htmlFor="title">Title</Label>
-                    <Input
-                      id="title"
-                      maxLength={180}
-                      name="title"
-                      placeholder="Applications of Integration practice"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="instructions">Instructions</Label>
-                    <Textarea
-                      id="instructions"
-                      maxLength={4000}
-                      name="instructions"
-                      placeholder="Complete the selected questions. Start Practice from My Work if you need guided review."
-                      rows={5}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="dueAt">Due date optional</Label>
-                    <Input id="dueAt" name="dueAt" type="datetime-local" />
-                  </div>
-                </div>
-              </section>
-
-              <StudentPreviewPanel selectedSource={selectedSource} />
-
-              <section className="teacher-panel p-5">
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                    <Megaphone aria-hidden="true" className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-950">
-                      Review boundary
-                    </h2>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">
-                      Confirm source, target, and visibility before creating
-                      classroom delivery.
-                    </p>
-                  </div>
-                </div>
-                <dl className="mt-5 space-y-3 text-sm">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <dt className="font-semibold text-slate-500">Source Library</dt>
-                    <dd className="mt-1 break-words font-bold text-slate-950">
-                      {selectedBank?.name ?? "No Library selected"}
-                    </dd>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <dt className="font-semibold text-slate-500">
-                      Approved content
-                    </dt>
-                    <dd className="mt-1 font-bold text-slate-950">
-                      {totalReadyCount} item(s) available in this source mode
-                    </dd>
-                  </div>
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
-                    <dt className="font-semibold text-sky-700">
-                      Student visibility
-                    </dt>
-                    <dd className="mt-1 font-bold text-sky-950">
-                      Assignment-only. No full source Library access.
-                    </dd>
-                  </div>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <dt className="font-semibold text-amber-800">
-                      Blueprint / Package
-                    </dt>
-                    <dd className="mt-1 text-amber-950">
-                      Blueprint rows must generate reviewed Library questions.
-                      Package publishing remains not ready.
-                    </dd>
-                  </div>
-                </dl>
-                <div className="mt-5 grid gap-2">
-                  <Button
-                    disabled={!visibleQuestions.length || !classrooms.length}
-                    name="publishMode"
-                    type="submit"
-                    value="assigned"
-                  >
-                    Assign now
-                  </Button>
-                  <Button
-                    disabled={!visibleQuestions.length || !classrooms.length}
-                    name="publishMode"
-                    type="submit"
-                    value="draft"
-                    variant="outline"
-                  >
-                    Save draft
-                  </Button>
-                </div>
-                <p className="mt-4 text-xs leading-5 text-slate-500">
-                  The server re-loads selected questions and classrooms before
-                  creating assignments. Stale, draft, archived, or unapproved
-                  selections are blocked.
-                </p>
-              </section>
-
-              <section className="teacher-soft-panel p-5">
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-sky-700">
-                    <CheckCircle2 aria-hidden="true" className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-950">
-                      Safety gates
-                    </h2>
-                    <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-700">
-                      <li>No global question publishing.</li>
-                      <li>No Review Draft bypass.</li>
-                      <li>No student Library browsing.</li>
-                      <li>No provider or AI calls.</li>
-                    </ul>
-                  </div>
-                </div>
-              </section>
-            </aside>
+              }
+            />
           </form>
         </>
       )}
-
-      <section className="grid gap-3 md:grid-cols-3">
-        <div className="teacher-panel p-4">
-          <div className="flex items-start gap-3">
-            <School aria-hidden="true" className="mt-1 h-5 w-5 text-sky-700" />
-            <div>
-              <h2 className="font-bold text-slate-950">Classroom target</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
-                Classrooms receive delivery events. They do not become the
-                source of content ownership.
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="teacher-panel p-4">
-          <div className="flex items-start gap-3">
-            <Users aria-hidden="true" className="mt-1 h-5 w-5 text-sky-700" />
-            <div>
-              <h2 className="font-bold text-slate-950">Selected students later</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
-                Individual targeting stays disabled until roster-level policy is
-                stable.
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="teacher-panel p-4">
-          <div className="flex items-start gap-3">
-            <CalendarClock
-              aria-hidden="true"
-              className="mt-1 h-5 w-5 text-sky-700"
-            />
-            <div>
-              <h2 className="font-bold text-slate-950">Draft or assign now</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
-                Save a teacher-only draft or assign immediately to the selected
-                class.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
     </TeacherWorkspaceShell>
   );
 }

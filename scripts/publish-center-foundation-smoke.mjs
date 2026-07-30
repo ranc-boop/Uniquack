@@ -231,33 +231,29 @@ async function staticChecks() {
   const smokeAll = await read("scripts/smoke-all.mjs");
 
   assert(
-    publishPage.includes("Assignments deliver selected approved Library content to classes. Students see assigned items only, not the full source Library.") &&
-      publishPage.includes("Library") &&
-      publishPage.includes("Choose the source Library") &&
+    publishPage.includes("Choose one source Library") &&
       publishPage.includes("Blueprint") &&
-      publishPage.includes("Blueprint rows are not directly assignable") &&
-      publishPage.includes("Package") &&
-      publishPage.includes("Package publishing is not assignment-ready yet.") &&
       publishPage.includes("Select approved assignment-ready rows") &&
-      publishPage.includes("Choose classroom delivery") &&
-      publishPage.includes("Selected students") &&
-      publishPage.includes("Student preview") &&
-      publishPage.includes("Assignment-only. No full source Library access.") &&
-      publishPage.includes("No Review Draft bypass") &&
-      publishPage.includes("No provider or AI calls"),
-    "Publish Center page must expose source cards, class target, student preview, and review boundary copy",
+      publishPage.includes("Choose one classroom") &&
+      publishPage.includes("Final review") &&
+      publishPage.includes("Assignment-only") &&
+      publishPage.includes("What students can and cannot see") &&
+      !publishPage.includes("Selected students later") &&
+      !publishPage.includes("Safety gates"),
+    "Publish Center page must expose the focused source, content, one-classroom, and final-review flow",
   );
   assert(
     publishPage.includes("action={publishQuestionBankAssignments}") &&
       publishActions.includes("requireTeacher") &&
       publishActions.includes("getTeacherQuestionBankDetail") &&
       publishActions.includes("verifyPublishableSelection") &&
-      publishActions.includes("buildPublishAssignmentSourceSummary") &&
       publishActions.includes("create_assignment_from_bank") &&
       publishActions.includes("selectedClassroomIds") &&
+      publishActions.includes("selectedClassroomIds.length !== 1") &&
       publishActions.includes("p_selected_bank_question_ids") &&
       publishActions.includes("p_assign_now") &&
-      publishActions.includes("Students see assignment items only") &&
+      publishActions.includes("p_client_request_key") &&
+      publishActions.includes("Students see Assignment items only") &&
       !publishActions.includes("AI_PROVIDER") &&
       !publishActions.includes("provider") &&
       !publishActions.includes("published_at"),
@@ -265,7 +261,6 @@ async function staticChecks() {
   );
   assert(
     bankDetailPage.includes("/teacher/publish?sourceBankId=") &&
-      bankQuestionsPage.includes("/teacher/publish?sourceBankId=") &&
       classroomUi.includes("/teacher/publish?classroomId=") &&
       classroomAssignmentsPage.includes("/teacher/publish?classroomId="),
     "bank and classroom routes must link into the top-level Publish Center",
@@ -493,4 +488,6 @@ async function liveChecks() {
 }
 
 await staticChecks();
-await liveChecks();
+if (!process.argv.includes("--source-only")) {
+  await liveChecks();
+}

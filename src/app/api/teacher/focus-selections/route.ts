@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     });
     const destinationUrl = new URL(
       destination === "assignment"
-        ? `/teacher/banks/${bankId}/assignments/new`
+        ? `/teacher/publish?sourceBankId=${encodeURIComponent(bankId)}`
         : destination === "question_preview"
           ? `/teacher/banks/${bankId}/questions/preview`
           : `/teacher/banks/${bankId}/review/bulk`,

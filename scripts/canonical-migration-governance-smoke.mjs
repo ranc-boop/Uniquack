@@ -15,8 +15,8 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(plan.directoryMigrationNames.length === 68, "Raw clean source must contain 68 SQL files.");
-assert(plan.executableMigrationNames.length === 67, "Executable clean chain must contain 67 migrations.");
+assert(plan.directoryMigrationNames.length === 69, "Raw clean source must contain 69 SQL files.");
+assert(plan.executableMigrationNames.length === 68, "Executable clean chain must contain 68 migrations.");
 assert(
   plan.duplicateRawPrefixes.length === 1 &&
     plan.duplicateRawPrefixes[0]?.number === 32,
@@ -40,7 +40,7 @@ try {
 }
 assert(blockedGoogle, "Excluded Google 0032 must fail closed in executable tooling.");
 
-for (let number = 44; number <= 67; number += 1) {
+for (let number = 44; number <= 68; number += 1) {
   const filename = plan.executableMigrationNames[number - 1];
   const entry = plan.inventoryByFilename.get(filename);
   assert(migrationNumber(filename) === number, `Position ${number} has the wrong migration number.`);
@@ -50,23 +50,25 @@ for (let number = 44; number <= 67; number += 1) {
 }
 
 assert(
-  plan.executableMigrationNames.at(-8) === "0060_question_management_read_models.sql" &&
-    plan.executableMigrationNames.at(-7) ===
+  plan.executableMigrationNames.at(-9) === "0060_question_management_read_models.sql" &&
+    plan.executableMigrationNames.at(-8) ===
       "0061_question_taxonomy_search_materialization.sql" &&
-    plan.executableMigrationNames.at(-6) ===
+    plan.executableMigrationNames.at(-7) ===
       "0062_teacher_bank_import_workspace_read_model.sql" &&
-    plan.executableMigrationNames.at(-5) ===
+    plan.executableMigrationNames.at(-6) ===
       "0063_admin_ai_pdf_workspace_read_model.sql" &&
-    plan.executableMigrationNames.at(-4) ===
+    plan.executableMigrationNames.at(-5) ===
       "0064_admin_ai_pdf_workspace_read_model_item_scan_fix.sql" &&
-    plan.executableMigrationNames.at(-3) ===
+    plan.executableMigrationNames.at(-4) ===
       "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql" &&
-    plan.executableMigrationNames.at(-2) ===
+    plan.executableMigrationNames.at(-3) ===
       "0066_strict_bank_review_lineage_gate.sql" &&
-    plan.executableMigrationNames.at(-1) ===
+    plan.executableMigrationNames.at(-2) ===
       "0067_teacher_bulk_review_and_question_management.sql" &&
-    plan.manifest.latestActivePrefix === 67,
-  "Atomic Teacher bulk operations 0067 must follow strict Review lineage 0066.",
+    plan.executableMigrationNames.at(-1) ===
+      "0068_assignment_creation_idempotency.sql" &&
+    plan.manifest.latestActivePrefix === 68,
+  "Assignment idempotency 0068 must follow atomic Teacher bulk operations 0067.",
 );
 assert(
   plan.manifest.canonicalMigrationDirectory === "supabase/clean-migrations" &&
@@ -88,6 +90,6 @@ for (const filename of [
 
 console.log("PASS raw duplicate 0032 is detected and explicitly classified");
 console.log("PASS executable 0032 is teacher feedback notes; Google 0032 is excluded");
-console.log("PASS canonical registrations 0044-0067 are ordered and complete");
-console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0067");
+console.log("PASS canonical registrations 0044-0068 are ordered and complete");
+console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0068");
 console.log("PASS legacy migrations are absent from the executable plan");
