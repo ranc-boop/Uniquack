@@ -6,6 +6,8 @@ import "./globals.css";
 
 import { AuthNav } from "@/components/auth-nav";
 import { AppChrome } from "@/components/app-chrome";
+import { AppPrimaryNav } from "@/components/app-primary-nav";
+import { teacherWorkspaceNavItems } from "@/components/teacher/teacher-workspace-nav";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { getCurrentProfile } from "@/lib/auth/guards";
@@ -17,50 +19,42 @@ const studentNavItems = [
   { href: "/videos", label: "Videos" },
 ];
 
-const teacherNavItems = [
-  { href: "/teacher", label: "Dashboard" },
-  { href: "/teacher/banks", label: "Libraries" },
-  { href: "/teacher/blueprints", label: "Blueprints" },
-  { href: "/teacher/classrooms", label: "Classrooms" },
-  { href: "/teacher/publish", label: "Assignments" },
-  { href: "/teacher/progress", label: "Progress" },
-];
-
-const platformNavItems = [{ href: "/admin", label: "Admin" }];
-
 export const metadata: Metadata = {
   title: "O2I Practice",
   description: "Student-first AP practice workspace",
 };
 
-async function getPrimaryNavItems() {
+async function getPrimaryNavModel() {
   try {
     const profile = await getCurrentProfile();
 
     if (profile?.role && ["teacher", "admin", "super_admin"].includes(profile.role)) {
-      return teacherNavItems;
+      return {
+        canOpenAdmin: ["admin", "super_admin"].includes(profile.role),
+        items: teacherWorkspaceNavItems,
+      };
     }
   } catch {
-    return studentNavItems;
+    return { canOpenAdmin: false, items: studentNavItems };
   }
 
-  return studentNavItems;
+  return { canOpenAdmin: false, items: studentNavItems };
 }
 
 async function PrimaryNav() {
-  const navItems = await getPrimaryNavItems();
+  const { canOpenAdmin, items } = await getPrimaryNavModel();
 
   return (
     <>
-      {navItems.map((item) => (
+      <AppPrimaryNav items={items} />
+      {canOpenAdmin ? (
         <Link
-          className="rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition-colors duration-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
-          href={item.href}
-          key={item.href}
+          className="inline-flex min-h-10 shrink-0 items-center rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition-colors duration-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+          href="/admin"
         >
-          {item.label}
+          Admin
         </Link>
-      ))}
+      ) : null}
     </>
   );
 }
@@ -83,26 +77,20 @@ export default function RootLayout({
           <AppChrome
             header={
               <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur">
-                <div className="mx-auto flex min-h-16 max-w-[92rem] flex-col gap-3 px-4 py-3 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
-                  <Link href="/" className="flex items-center gap-3 text-sm font-bold tracking-tight">
+                <div className="mx-auto flex min-h-16 max-w-[100rem] items-center gap-4 px-4 py-2 sm:px-6 lg:px-8">
+                  <Link
+                    href="/"
+                    className="flex shrink-0 items-center gap-3 text-sm font-bold tracking-tight"
+                  >
                     <span className="flex size-9 items-center justify-center rounded-lg bg-sky-600 text-sm font-black text-white shadow-sm">
                       O2I
                     </span>
-                    <span>Practice</span>
+                    <span className="hidden sm:inline">Practice</span>
                   </Link>
-                  <nav className="flex flex-wrap items-center gap-1.5">
+                  <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <PrimaryNav />
-                    {platformNavItems.map((item) => (
-                      <Link
-                        className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors duration-200 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
-                        href={item.href}
-                        key={item.href}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                    <AuthNav />
                   </nav>
+                  <AuthNav />
                 </div>
               </header>
             }

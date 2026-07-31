@@ -13,6 +13,7 @@ type AppChromeProps = {
 export function AppChrome({ children, header }: AppChromeProps) {
   const pathname = usePathname() ?? "";
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isTeacher = pathname === "/teacher" || pathname.startsWith("/teacher/");
   const isTeacherFocus = isTeacherFocusPathname(pathname);
 
   if (isTeacherFocus) {
@@ -22,7 +23,15 @@ export function AppChrome({ children, header }: AppChromeProps) {
   return (
     <>
       <div className={isAdmin ? "hidden" : undefined}>{header}</div>
-      <main className={isAdmin ? "admin-route-main" : "student-shell"}>
+      <main
+        className={
+          isAdmin
+            ? "admin-route-main"
+            : isTeacher
+              ? "teacher-route-main"
+              : "student-shell"
+        }
+      >
         {children}
       </main>
     </>

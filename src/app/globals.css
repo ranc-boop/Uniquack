@@ -80,6 +80,11 @@
       linear-gradient(180deg, #f8fafc, #ffffff 24rem);
   }
 
+  .teacher-route-main {
+    min-height: 100dvh;
+    background: #f8fafc;
+  }
+
   .admin-shell {
     animation: admin-shell-in 220ms ease-out both;
   }
@@ -153,11 +158,38 @@
   }
 
   .teacher-shell {
-    @apply mx-auto w-full max-w-[92rem] px-4 py-6 sm:px-6 lg:px-8;
+    @apply mx-auto w-full max-w-[100rem] px-4 py-7 sm:px-6 lg:px-8;
+  }
+
+  .teacher-page-header {
+    @apply flex flex-col gap-4 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between;
+  }
+
+  .bank-workbench {
+    @apply space-y-8;
+  }
+
+  @media (min-width: 1024px) {
+    .bank-workbench:has(> .bank-context-nav) {
+      display: grid;
+      grid-template-columns: 14.5rem minmax(0, 1fr);
+      align-items: start;
+      column-gap: 2rem;
+      row-gap: 2rem;
+    }
+
+    .bank-workbench:has(> .bank-context-nav) > .bank-context-nav {
+      grid-column: 1;
+      grid-row: 2 / span 50;
+    }
+
+    .bank-workbench:has(> .bank-context-nav) > :not(.bank-context-nav) {
+      grid-column: 2;
+    }
   }
 
   .teacher-hero {
-    @apply rounded-lg border border-slate-200/70 bg-white/90 p-5 shadow-none ring-1 ring-slate-950/5;
+    @apply border-b border-slate-200 bg-transparent px-0 pb-6 pt-0 shadow-none ring-0;
   }
 
   .teacher-panel {
