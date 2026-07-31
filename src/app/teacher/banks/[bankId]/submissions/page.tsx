@@ -166,7 +166,6 @@ export default async function TeacherPublicSubmissionsPage({
             </Link>
           </Button>
           }
-          description={`Role: ${detail.currentUserRole ?? "viewer"}. Each submission is an immutable snapshot; review and the Central Public Library copy never modify this Library.`}
           eyebrow="Library / Public submissions"
           title={`Public submissions from ${detail.bank.name}`}
         />
@@ -188,10 +187,7 @@ export default async function TeacherPublicSubmissionsPage({
         </section>
       ) : (
         <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
-          <BankSectionHeader
-            description="Submit assignment-ready questions from the Questions table."
-            title="Submission history"
-          />
+          <BankSectionHeader title="Submission history" />
           <form className="grid gap-3 border-y p-4 md:grid-cols-[minmax(14rem,1fr)_13rem_auto]">
             <div className="space-y-2">
               <Label htmlFor="submission-search">Search snapshots</Label>

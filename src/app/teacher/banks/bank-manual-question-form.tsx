@@ -36,9 +36,8 @@ export function BankManualQuestionForm({
 }) {
   if (!canImport) {
     return (
-      <div className="rounded-md border bg-muted/20 p-5 text-sm text-muted-foreground">
-        This Library is read-only for your account. Only owners and editors can
-        create manual drafts.
+      <div className="rounded-md border bg-muted/20 p-5 text-sm font-medium">
+        Read-only
       </div>
     );
   }
@@ -121,37 +120,34 @@ export function BankManualQuestionForm({
           placeholder="<p>Write the worked solution.</p>"
         />
       </div>
+      <details className="md:col-span-2 rounded-md border">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+          More fields
+        </summary>
+        <div className="space-y-4 border-t p-4">
+          <TaxonomyTagTreePicker
+            namePrefix="question_tax"
+            selectable="assignable"
+            taxonomyCatalog={taxonomyCatalog}
+            title="Taxonomy"
+          />
+          <QuestionAssetsPanel
+            actions={assetActions}
+            draftInputId={draftInputId}
+            questionCodeInputId={codeInputId}
+            titleInputId={titleInputId}
+          />
+          <QuestionSourceFilesPanel
+            actions={sourceFileActions}
+            draftInputId={draftInputId}
+            questionCodeInputId={codeInputId}
+            titleInputId={titleInputId}
+          />
+        </div>
+      </details>
       <div className="md:col-span-2">
-        <TaxonomyTagTreePicker
-          namePrefix="question_tax"
-          selectable="assignable"
-          taxonomyCatalog={taxonomyCatalog}
-          title="Taxonomy tags"
-        />
-      </div>
-      <div className="md:col-span-2">
-        <QuestionAssetsPanel
-          actions={assetActions}
-          draftInputId={draftInputId}
-          questionCodeInputId={codeInputId}
-          titleInputId={titleInputId}
-        />
-      </div>
-      <div className="md:col-span-2">
-        <QuestionSourceFilesPanel
-          actions={sourceFileActions}
-          draftInputId={draftInputId}
-          questionCodeInputId={codeInputId}
-          titleInputId={titleInputId}
-        />
-      </div>
-      <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-        Saving creates a private Review Draft in this Library. It cannot be
-        assigned until an owner or editor approves it.
-      </div>
-      <div className="md:col-span-2">
-        <FormSubmitButton pendingLabel="Creating draft…">
-          Create Review Draft
+        <FormSubmitButton pendingLabel="Creating…">
+          Create question
         </FormSubmitButton>
       </div>
     </form>
