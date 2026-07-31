@@ -306,7 +306,7 @@ export default async function TeacherBankQuestionsPage({
       ) : null}
 
       {showPublicCatalog && governanceAvailable ? (
-        <section className="overflow-hidden rounded-lg border border-sky-200 bg-white shadow-sm">
+        <section className="border-y border-slate-200 bg-white">
           <BankSectionHeader
             action={
               <Button asChild variant="outline">
@@ -315,7 +315,6 @@ export default async function TeacherBankQuestionsPage({
                 </Link>
               </Button>
             }
-            description="Each selection becomes an independent Library-owned copy. Later changes in the Central Public Library cannot change your copy or existing Assignments."
             eyebrow="Central Public Library"
             title="Add approved public questions"
           />

@@ -179,21 +179,17 @@ function PublishFilters({
     Boolean(blueprintId || query || questionType) || difficulty !== "all";
 
   return (
-    <details className="teacher-panel overflow-hidden" open={hasActiveFilters}>
+    <details
+      className="border-y border-slate-200 bg-white"
+      open={hasActiveFilters}
+    >
       <summary className="teacher-focus-ring flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 p-4">
         <span className="flex items-center gap-3">
           <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
             <Filter aria-hidden="true" className="size-5" />
           </span>
-          <span>
-            <span className="block font-bold text-slate-950">
-              Filter questions
-            </span>
-            <span className="mt-0.5 block text-sm text-slate-600">
-              {hasActiveFilters
-                ? "Filters are applied to this checklist."
-                : "Optional. Search, type, difficulty, or Blueprint source."}
-            </span>
+          <span className="block font-bold text-slate-950">
+            Filter questions
           </span>
         </span>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -201,10 +197,6 @@ function PublishFilters({
         </span>
       </summary>
       <div className="border-t border-slate-100 p-5">
-        <p className="mb-4 text-sm leading-6 text-slate-600">
-          Filters change only the visible checklist. The server rechecks Library,
-          review, and classroom access before delivery.
-        </p>
         <form action="/teacher/publish" className="grid gap-3 lg:grid-cols-5">
           <input name="source" type="hidden" value={selectedSource} />
           <input name="sourceBankId" type="hidden" value={selectedBankId} />

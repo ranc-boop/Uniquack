@@ -1691,7 +1691,7 @@ export async function createBankQuestionRevisionDraft(formData: FormData) {
     );
 
     if (error) throw new Error(error.message);
-    if (!revisionId) throw new Error("The revision draft was not created.");
+    if (!revisionId) throw new Error("Draft changes could not be created.");
     const { data: createdDraft, error: createdDraftError } = await supabase
       .from("questions")
       .select("source_review_item_id")
