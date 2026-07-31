@@ -32,6 +32,12 @@ assert(
     client.includes("signal.aborted"),
   "Practice streams must be abortable and guarded by the current operation token",
 );
+assert(
+  client.includes("function cancelPracticeOperation({ resetReviewState = true }") &&
+    client.includes("setIsReviewStreaming(false)") &&
+    client.includes("cancelPracticeOperation({ resetReviewState: false })"),
+  "Canceling a practice operation must clear review-streaming state while unmount cleanup avoids state updates",
+);
 
 assert(
   recommendationBlock.includes("phaseBeforeRecommendation") &&

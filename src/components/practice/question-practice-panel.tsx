@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { hasSubmittedPracticeAnswer } from "@/lib/practice/client-helpers";
 import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
 import type {
   PracticeGradeResult,
@@ -129,6 +130,7 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
   const [showAnswer, setShowAnswer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const canSubmit = hasSubmittedPracticeAnswer(answer);
 
   async function ensureSession() {
     const sessionsPayload = await jsonRequest<{
@@ -254,7 +256,7 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
           <div>
             <CardTitle className="text-base">Practice this question</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Practice starts automatically. Multiple choice is checked locally; other question types reveal the answer after submission.
+               Practice starts automatically. Your answer is checked in the current practice round, then the saved result is shown here.
             </p>
           </div>
           {resultBadge(result)}
@@ -288,7 +290,7 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
               <Button disabled={isPending || showAnswer} onClick={requestHint} type="button" variant="outline">
                 Hint
               </Button>
-              <Button disabled={isPending || showAnswer} onClick={submitAnswer} type="button">
+               <Button disabled={isPending || showAnswer || !canSubmit} onClick={submitAnswer} type="button">
                 {isPending ? <LoaderCircle className="mr-2 size-4 animate-spin" aria-hidden="true" /> : null}
                 Submit
               </Button>

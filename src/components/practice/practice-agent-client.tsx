@@ -43,6 +43,10 @@ import {
   buildRestoredPracticeAnswers,
   restoredPracticeQuestionId,
 } from "@/lib/practice/answer-restore";
+import {
+  PRACTICE_RECOMMENDATION_ERROR_CODES,
+  type PracticeRecommendationErrorCode,
+} from "@/lib/practice/recommendation-errors";
 import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
 import type {
   AssignmentPracticeStartPayload,
@@ -150,7 +154,21 @@ type AnswerTransitionDiagnostics = {
   answerStateRefConsistency: "MATCH" | "MISMATCH" | "NOT_OBSERVED";
   lastWriteReason: AnswerWriteReason | "NOT_OBSERVED";
 };
-type ApiError = { error?: unknown };
+type ApiError = { code?: unknown; error?: unknown };
+
+class PracticeRecommendationRequestError extends Error {
+  code: PracticeRecommendationErrorCode | null;
+
+  constructor(code: unknown, message: string) {
+    super(message);
+    this.name = "PracticeRecommendationRequestError";
+    this.code = Object.values(PRACTICE_RECOMMENDATION_ERROR_CODES).includes(
+      code as PracticeRecommendationErrorCode,
+    )
+      ? code as PracticeRecommendationErrorCode
+      : null;
+  }
+}
 type PracticeAgentClientProps = {
   assignmentId?: string | null;
   testOnlyDelayedHydration?: boolean;
@@ -182,10 +200,18 @@ function isAbortError(error: unknown) {
 }
 
 function practiceRecommendationFailureMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message === "No published questions are available for this practice request.") {
-    return "No eligible published questions remain in this practice cycle. Reset question progress to practice the Library again, or start a new session with another Library.";
+  if (error instanceof PracticeRecommendationRequestError) {
+    if (error.code === PRACTICE_RECOMMENDATION_ERROR_CODES.NO_CONTENT) {
+      return "This practice scope has no eligible reviewed questions. Start a new session with another Library or include the Public Library.";
+    }
+    if (error.code === PRACTICE_RECOMMENDATION_ERROR_CODES.SEARCH_FAILED) {
+      return "Practice could not search the selected sources. Try again; your current round has been kept.";
+    }
+    if (error.code === PRACTICE_RECOMMENDATION_ERROR_CODES.PROTOCOL_FAILED) {
+      return "The recommendation agent did not complete a valid search-and-select sequence. Try again; your current round has been kept.";
+    }
   }
+  const message = error instanceof Error ? error.message : String(error);
   return message;
 }
 
@@ -219,7 +245,10 @@ async function postRecommendationStream({
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiError | null;
-    throw new Error(practiceApiErrorMessage(payload?.error, response.status));
+    throw new PracticeRecommendationRequestError(
+      payload?.code,
+      practiceApiErrorMessage(payload?.error, response.status),
+    );
   }
   if (!response.body) {
     throw new Error("Streaming response body is not available.");
@@ -254,7 +283,10 @@ async function postRecommendationStream({
       } else if (item.event === "error") {
         const errorPayload = payload as ApiError & { trace?: PracticeTraceEvent[] };
         errorPayload.trace?.forEach(onTrace);
-        throw new Error(practiceApiErrorMessage(errorPayload.error, 500, "Practice recommendation failed."));
+        throw new PracticeRecommendationRequestError(
+          errorPayload.code,
+          practiceApiErrorMessage(errorPayload.error, 500, "Practice recommendation failed."),
+        );
       }
     }
 
@@ -525,9 +557,12 @@ export function PracticeAgentClient({
     }
   }
 
-  function cancelPracticeOperation() {
+  function cancelPracticeOperation({ resetReviewState = true }: { resetReviewState?: boolean } = {}) {
     activePracticeOperationRef.current?.controller.abort();
     activePracticeOperationRef.current = null;
+    if (resetReviewState) {
+      setIsReviewStreaming(false);
+    }
   }
 
   function commitAnswers(
@@ -1032,7 +1067,7 @@ export function PracticeAgentClient({
   }, []);
 
   useEffect(() => () => {
-    cancelPracticeOperation();
+    cancelPracticeOperation({ resetReviewState: false });
     if (streamedReviewFrameRef.current !== null) {
       window.cancelAnimationFrame(streamedReviewFrameRef.current);
     }
