@@ -280,12 +280,12 @@ assert(
     teacherPublishActions.includes("create_assignment_from_bank") &&
     teacherPublishActions.includes("selectedClassroomIds") &&
     !teacherPublishActions.includes("AI_PROVIDER") &&
-    teacherBankAssignmentNewPage.includes("Library assignment") &&
-    teacherBankAssignmentNewPage.includes("Choose a class you manage") &&
-    teacherBankAssignmentNewPage.includes("selected approved Library items") &&
-    teacherBankAssignmentNewPage.includes("not access to the full Library") &&
-    teacherBankAssignmentNewPage.includes("Assign to class") &&
-    teacherBankAssignmentNewPage.includes("Save draft") &&
+    teacherBankAssignmentNewPage.includes(
+      "new URLSearchParams({ sourceBankId: bankId })",
+    ) &&
+    teacherBankAssignmentNewPage.includes(
+      "redirect(`/teacher/publish?${destination.toString()}`)",
+    ) &&
     teacherBlueprintPage.includes("Blueprint Library") &&
     teacherBlueprintPage.includes("Blueprints are reusable planning/package assets") &&
     teacherBlueprintPage.includes("Create Blueprint") &&
