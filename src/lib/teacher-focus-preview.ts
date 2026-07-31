@@ -5,14 +5,19 @@ import {
   normalizeAnswerSpec,
   normalizeQuestionOptions,
 } from "@/lib/questions/answer-spec";
+import { validateReviewQuestionForPublish } from "@/lib/questions/review-publish-validation";
 import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 import { createClient } from "@/lib/supabase/server";
 import type {
-  BankMemberRole,
-  Question,
-  QuestionBankVisibility,
-  TaxonomyReviewStatus,
-} from "@/types/database";
+  ReviewPreviewDTO,
+  TeacherQuestionPreviewDTO,
+} from "@/lib/teacher-question-preview-types";
+import type { Question, TaxonomyReviewStatus } from "@/types/database";
+
+export type {
+  ReviewPreviewDTO,
+  TeacherQuestionPreviewDTO,
+} from "@/lib/teacher-question-preview-types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -20,12 +25,16 @@ type PreviewQuestionRow = Pick<
   Question,
   | "answer_spec"
   | "content_html"
+  | "content_source"
   | "difficulty_rating"
   | "id"
   | "options"
+  | "owner_bank_id"
   | "question_code"
   | "question_type"
+  | "solution_source"
   | "solution_html"
+  | "source"
   | "source_kind"
   | "source_review_item_id"
   | "status"
@@ -42,77 +51,57 @@ type ReviewPreviewRow = {
   validation_warnings: unknown;
 };
 
-export type TeacherQuestionPreviewDTO = {
-  assets: Array<{
-    altText: string;
-    displayOnDetail: boolean;
-    id: string;
-    label: string;
-    url: string;
-  }>;
-  bank: {
-    accessSource:
-      | "active_membership"
-      | "organization_policy"
-      | "platform_admin";
-    canManage: boolean;
-    id: string;
-    name: string;
-    role: BankMemberRole | null;
-    organizationRole: "admin" | "teacher" | null;
-    visibility: QuestionBankVisibility;
-  };
-  kind: "teacher-question-preview";
-  provenance: {
-    hasReviewLineage: boolean;
-    sourceKind: string;
-  };
-  question: {
-    answerSpec: unknown;
-    bankQuestionId: string;
-    code: string;
-    contentHtml: string;
-    difficulty: number;
-    options: unknown;
-    questionId: string;
-    solutionHtml: string | null;
-    status: string;
-    title: string;
-    type: string;
-    updatedAt: string;
-    visibility: string;
-  };
-  taxonomy: Array<{
-    facetKey: string | null;
-    label: string;
-    reviewStatus: TaxonomyReviewStatus;
-    tagId: string;
-  }>;
-};
-
-export type ReviewPreviewDTO = {
-  assets: TeacherQuestionPreviewDTO["assets"];
-  bank: TeacherQuestionPreviewDTO["bank"];
-  kind: "review-preview";
-  provenance: {
-    hasReviewLineage: boolean;
-    sourceAccess: "not_requested";
-    sourceKind: string;
-  };
-  question: Omit<TeacherQuestionPreviewDTO["question"], "bankQuestionId">;
-  review: {
-    id: string;
-    lineageStatus: "linked" | "missing";
-    status: string;
-    warnings: string[];
-  };
-  taxonomy: TeacherQuestionPreviewDTO["taxonomy"];
-};
-
 type PreviewEnrichment = Pick<
   TeacherQuestionPreviewDTO,
   "assets" | "taxonomy"
->;
+> & {
+  assetValidationRows: Array<{ altText: string | null; id: string }>;
+};
+
+function previewEnrichmentProjection(enrichment: PreviewEnrichment) {
+  return {
+    assets: enrichment.assets,
+    taxonomy: enrichment.taxonomy,
+  };
+}
+
+function reviewValidation({
+  bankId,
+  enrichment,
+  question,
+  reviewItem,
+}: {
+  bankId: string;
+  enrichment: PreviewEnrichment;
+  question: PreviewQuestionRow;
+  reviewItem: ReviewPreviewRow;
+}) {
+  return validateReviewQuestionForPublish({
+    answerSpec: question.answer_spec,
+    assetRows: enrichment.assetValidationRows,
+    contentHtml: question.content_html,
+    contentSource: question.content_source,
+    difficultyRating: question.difficulty_rating,
+    expectedBankId: bankId,
+    options: question.options,
+    ownerBankId: question.owner_bank_id,
+    questionId: question.id,
+    questionType: question.question_type,
+    reviewItem: {
+      createdQuestionId: reviewItem.created_question_id,
+      id: reviewItem.id,
+      status: reviewItem.status,
+      targetBankId: reviewItem.target_bank_id,
+      validationWarnings: reviewItem.validation_warnings,
+    },
+    solutionHtml: question.solution_html,
+    solutionSource: question.solution_source,
+    source: question.source,
+    sourceReviewItemId: question.source_review_item_id,
+    status: question.status,
+    taxonomyCount: enrichment.taxonomy.length,
+  });
+}
 
 function firstRelation<T>(value: T | T[] | null | undefined) {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
@@ -221,6 +210,10 @@ async function loadPreviewEnrichment({
   );
 
   return {
+    assetValidationRows: (assetResult.data ?? []).map((asset) => ({
+      altText: asset.alt_text,
+      id: asset.id,
+    })),
     assets: (assetResult.data ?? []).map((asset) => ({
       altText: asset.alt_text?.trim() || asset.label?.trim() || "Question image",
       displayOnDetail: Boolean(asset.display_on_detail),
@@ -287,7 +280,7 @@ async function loadPreviewEnrichmentBatch({
   const enrichmentByQuestionId = new Map<string, PreviewEnrichment>(
     uniqueQuestionIds.map((questionId) => [
       questionId,
-      { assets: [], taxonomy: [] },
+      { assetValidationRows: [], assets: [], taxonomy: [] },
     ]),
   );
 
@@ -295,6 +288,10 @@ async function loadPreviewEnrichmentBatch({
     const enrichment = enrichmentByQuestionId.get(asset.question_id);
     if (!enrichment) continue;
 
+    enrichment.assetValidationRows.push({
+      altText: asset.alt_text,
+      id: asset.id,
+    });
     enrichment.assets.push({
       altText: asset.alt_text?.trim() || asset.label?.trim() || "Question image",
       displayOnDetail: Boolean(asset.display_on_detail),
@@ -379,7 +376,7 @@ export async function getTeacherQuestionPreviewDTO({
   const { data, error } = await supabase
     .from("bank_questions")
     .select(
-      "id, source_kind, question:questions(id, question_code, title, content_html, solution_html, answer_spec, options, question_type, difficulty_rating, status, source_kind, source_review_item_id, visibility, updated_at)",
+      "id, source_kind, question:questions(id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at)",
     )
     .eq("bank_id", bankId)
     .eq("id", bankQuestionId)
@@ -398,7 +395,7 @@ export async function getTeacherQuestionPreviewDTO({
   });
 
   return {
-    ...enrichment,
+    ...previewEnrichmentProjection(enrichment),
     bank: bankProjection(access),
     kind: "teacher-question-preview",
     provenance: {
@@ -434,7 +431,7 @@ export async function getTeacherQuestionPreviewDTOs({
   const { data, error } = await supabase
     .from("bank_questions")
     .select(
-      "id, source_kind, question:questions(id, question_code, title, content_html, solution_html, answer_spec, options, question_type, difficulty_rating, status, source_kind, source_review_item_id, visibility, updated_at)",
+      "id, source_kind, question:questions(id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at)",
     )
     .eq("bank_id", bankId)
     .in("id", bankQuestionIds)
@@ -466,22 +463,27 @@ export async function getTeacherQuestionPreviewDTOs({
     supabase,
   });
 
-  return safeRows.map(({ bankQuestionId, question, row }) => ({
-    ...(enrichmentByQuestionId.get(question.id) ?? {
+  return safeRows.map(({ bankQuestionId, question, row }) => {
+    const enrichment = enrichmentByQuestionId.get(question.id) ?? {
+      assetValidationRows: [],
       assets: [],
       taxonomy: [],
-    }),
-    bank: bankProjection(access),
-    kind: "teacher-question-preview",
-    provenance: {
-      hasReviewLineage: Boolean(question.source_review_item_id),
-      sourceKind: row.source_kind || question.source_kind || "unknown",
-    },
-    question: questionProjection(
-      question,
-      bankQuestionId,
-    ) as TeacherQuestionPreviewDTO["question"],
-  }));
+    };
+
+    return {
+      ...previewEnrichmentProjection(enrichment),
+      bank: bankProjection(access),
+      kind: "teacher-question-preview",
+      provenance: {
+        hasReviewLineage: Boolean(question.source_review_item_id),
+        sourceKind: row.source_kind || question.source_kind || "unknown",
+      },
+      question: questionProjection(
+        question,
+        bankQuestionId,
+      ) as TeacherQuestionPreviewDTO["question"],
+    };
+  });
 }
 
 export async function getReviewPreviewDTO({
@@ -526,7 +528,7 @@ export async function getReviewPreviewDTO({
   const { data: question, error: questionError } = await supabase
     .from("questions")
     .select(
-      "id, question_code, title, content_html, solution_html, answer_spec, options, question_type, difficulty_rating, status, source_kind, source_review_item_id, visibility, updated_at",
+      "id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at",
     )
     .eq("id", reviewItem.created_question_id)
     .eq("owner_bank_id", bankId)
@@ -542,9 +544,15 @@ export async function getReviewPreviewDTO({
   });
   const lineageLinked =
     typedQuestion.source_review_item_id === reviewItem.id;
+  const validation = reviewValidation({
+    bankId,
+    enrichment,
+    question: typedQuestion,
+    reviewItem,
+  });
 
   return {
-    ...enrichment,
+    ...previewEnrichmentProjection(enrichment),
     bank: bankProjection(access),
     kind: "review-preview",
     provenance: {
@@ -556,10 +564,11 @@ export async function getReviewPreviewDTO({
       typedQuestion,
     ) as ReviewPreviewDTO["question"],
     review: {
+      hardErrors: validation.hardErrors,
       id: reviewItem.id,
       lineageStatus: lineageLinked ? "linked" : "missing",
       status: reviewItem.status,
-      warnings: safeWarningMessages(reviewItem.validation_warnings),
+      warnings: safeWarningMessages(validation.softWarnings),
     },
   };
 }
@@ -609,7 +618,7 @@ export async function getReviewPreviewDTOs({
   const { data: questions, error: questionError } = await supabase
     .from("questions")
     .select(
-      "id, question_code, title, content_html, solution_html, answer_spec, options, question_type, difficulty_rating, status, source_kind, source_review_item_id, visibility, updated_at",
+      "id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at",
     )
     .eq("owner_bank_id", bankId)
     .in("id", questionIds)
@@ -635,32 +644,39 @@ export async function getReviewPreviewDTOs({
       ? questionById.get(reviewItem.created_question_id)
       : null;
 
-    if (
-      !reviewItem ||
-      !question ||
-      question.source_review_item_id !== reviewItem.id
-    ) {
+    if (!reviewItem || !question) {
       return null;
     }
 
+    const enrichment = enrichmentByQuestionId.get(question.id) ?? {
+      assetValidationRows: [],
+      assets: [],
+      taxonomy: [],
+    };
+    const validation = reviewValidation({
+      bankId,
+      enrichment,
+      question,
+      reviewItem,
+    });
+    const lineageLinked = question.source_review_item_id === reviewItem.id;
+
     return {
-      ...(enrichmentByQuestionId.get(question.id) ?? {
-        assets: [],
-        taxonomy: [],
-      }),
+      ...previewEnrichmentProjection(enrichment),
       bank: bankProjection(access),
       kind: "review-preview" as const,
       provenance: {
-        hasReviewLineage: true,
+        hasReviewLineage: lineageLinked,
         sourceAccess: "not_requested" as const,
         sourceKind: question.source_kind || "unknown",
       },
       question: questionProjection(question) as ReviewPreviewDTO["question"],
       review: {
+        hardErrors: validation.hardErrors,
         id: reviewItem.id,
-        lineageStatus: "linked" as const,
+        lineageStatus: lineageLinked ? ("linked" as const) : ("missing" as const),
         status: reviewItem.status,
-        warnings: safeWarningMessages(reviewItem.validation_warnings),
+        warnings: safeWarningMessages(validation.softWarnings),
       },
     } satisfies ReviewPreviewDTO;
   });

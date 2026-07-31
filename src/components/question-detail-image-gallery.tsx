@@ -38,6 +38,8 @@ export function QuestionDetailImageGallery({
               <img
                 src={image.publicUrl}
                 alt={image.originalFilename}
+                decoding="async"
+                loading="lazy"
                 className="h-56 w-full rounded object-contain transition-transform group-hover:scale-[1.02] motion-reduce:transform-none motion-reduce:transition-none"
               />
             </button>
@@ -54,6 +56,7 @@ export function QuestionDetailImageGallery({
             <img
               src={image.publicUrl}
               alt={image.originalFilename}
+              decoding="async"
               className="max-h-[80vh] w-full object-contain"
             />
           </DialogContent>

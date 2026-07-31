@@ -1,15 +1,20 @@
-import { AlertTriangle, CheckCircle2, FileQuestion, Tags } from "lucide-react";
+"use client";
 
-import { QuestionText, SolutionText } from "@/components/math-content";
-import { QuestionAnswerSummary } from "@/components/question-answer-summary";
+import { AlertTriangle } from "lucide-react";
+import { useId } from "react";
+
+import {
+  InlineMathText,
+  OptionText,
+  QuestionText,
+  SolutionText,
+} from "@/components/math-content";
 import { QuestionDetailImageGallery } from "@/components/question-detail-image-gallery";
-import { BankBadge } from "@/app/teacher/banks/bank-ui";
-import type {
-  ReviewPreviewDTO,
-  TeacherQuestionPreviewDTO,
-} from "@/lib/teacher-focus-preview";
-
-type PreviewDTO = ReviewPreviewDTO | TeacherQuestionPreviewDTO;
+import {
+  normalizeAnswerSpec,
+  normalizeQuestionOptions,
+} from "@/lib/questions/answer-spec";
+import type { TeacherPreviewDTO } from "@/lib/teacher-question-preview-types";
 
 function sourceKindLabel(value: string) {
   const labels: Record<string, string> = {
@@ -17,233 +22,259 @@ function sourceKindLabel(value: string) {
     import: "Imported",
     manual: "Manual",
     public_pull: "Public Library copy",
-    review_draft: "Review Draft",
+    review_draft: "Library draft",
   };
 
-  return labels[value] ?? "Source recorded";
+  return labels[value] ?? value;
 }
 
-function accessLabel(preview: PreviewDTO) {
-  if (preview.bank.role) {
-    return `${preview.bank.role} member`;
-  }
-
-  if (preview.bank.accessSource === "platform_admin") {
-    return "Platform administrator";
-  }
-
-  if (preview.bank.organizationRole) {
-    return `Organization ${preview.bank.organizationRole}`;
-  }
-
-  return "Read access";
-}
-
-export function TeacherQuestionPreview({ preview }: { preview: PreviewDTO }) {
-  const { question } = preview;
-  const review = preview.kind === "review-preview" ? preview.review : null;
-  const reviewWarnings = review
-    ? [
-        ...(review.lineageStatus === "missing"
-          ? [
-              "The question-to-review lineage is incomplete. Approval must stay blocked until it is repaired.",
-            ]
-          : []),
-        ...review.warnings,
-      ]
-    : [];
+function CompactAnswer({ preview }: { preview: TeacherPreviewDTO }) {
+  const answer = normalizeAnswerSpec(preview.question.answerSpec);
+  const options = normalizeQuestionOptions(preview.question.options);
+  const compactOptions = options.every(
+    (option) =>
+      (option.content_source ?? option.content_html)
+        .replace(/<[^>]+>/g, " ")
+        .trim().length <= 120,
+  );
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
-      <section className="space-y-5 rounded-lg border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5">
-        <div className="flex flex-wrap items-center gap-2">
-          <BankBadge tone="sky">{question.type}</BankBadge>
-          <BankBadge tone="slate">Difficulty {question.difficulty}</BankBadge>
-          <BankBadge tone="indigo">{question.status}</BankBadge>
-          {review ? (
-            <BankBadge tone="amber">{review.status}</BankBadge>
+    <div className="space-y-3">
+      {options.length ? (
+        <ol
+          className={
+            compactOptions ? "grid gap-2 md:grid-cols-2" : "grid gap-2"
+          }
+        >
+          {options.map((option) => (
+            <li
+              className="flex min-w-0 gap-3 rounded-md border border-slate-200 px-3 py-2.5"
+              key={option.id}
+            >
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-100 px-1.5 text-xs font-semibold text-slate-700">
+                {option.label || option.id}
+              </span>
+              <OptionText
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-slate-900"
+                compact
+                value={option.content_source ?? option.content_html}
+              />
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {answer.kind === "mcq" ? (
+        <p className="text-sm text-slate-700">
+          <span className="font-semibold text-slate-950">Correct answer</span>{" "}
+          {answer.correct_option_ids?.join(", ") || "Not set"}
+        </p>
+      ) : null}
+
+      {answer.kind === "fill_blank" ? (
+        <div className="space-y-1 text-sm text-slate-700">
+          <p>
+            <span className="font-semibold text-slate-950">Final answer</span>{" "}
+            <InlineMathText
+              value={answer.final_answers?.join(", ") || "Not set"}
+            />
+          </p>
+          {answer.accepted_answers?.length ? (
+            <p>
+              <span className="font-semibold text-slate-950">
+                Accepted answers
+              </span>{" "}
+              <InlineMathText value={answer.accepted_answers.join(", ")} />
+            </p>
           ) : null}
         </div>
+      ) : null}
 
-        <section aria-labelledby="preview-question-heading">
-          <div className="flex items-center gap-2">
-            <FileQuestion aria-hidden="true" className="h-5 w-5 text-sky-700" />
-            <h2
-              className="text-lg font-bold text-slate-950"
-              id="preview-question-heading"
-            >
-              Question
-            </h2>
-          </div>
-          <p className="mt-2 text-sm font-semibold text-slate-700">
-            {question.code || "Question code pending"} · {question.title}
+      {answer.kind === "frq" || answer.kind === "mixed" ? (
+        <p className="text-sm text-slate-700">Manual or AI-assisted grading</p>
+      ) : null}
+    </div>
+  );
+}
+
+export function TeacherQuestionPreview({
+  preview,
+  showHeader = true,
+}: {
+  preview: TeacherPreviewDTO;
+  showHeader?: boolean;
+}) {
+  const headingPrefix = useId();
+  const { question } = preview;
+  const review = preview.kind === "review-preview" ? preview.review : null;
+  const hardErrors = review?.hardErrors ?? [];
+  const warnings = review?.warnings ?? [];
+
+  return (
+    <article className="min-w-0 divide-y divide-slate-200 border-t border-slate-200 bg-white">
+      {showHeader ? (
+        <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-3">
+          <h2
+            className="min-w-0 text-base font-semibold text-slate-950"
+            id={`${headingPrefix}-title`}
+          >
+            {question.title}
+          </h2>
+          <p className="text-sm text-slate-500">
+            {[question.code, question.type, question.status]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
-          <QuestionText
-            className="mt-3 border-slate-200 bg-slate-50/70 text-slate-900"
-            value={question.contentHtml}
-          />
-        </section>
+        </header>
+      ) : null}
 
-        {preview.assets.length ? (
-          <section aria-labelledby="preview-images-heading">
-            <h2
-              className="mb-3 text-lg font-bold text-slate-950"
-              id="preview-images-heading"
-            >
-              Question images
-            </h2>
-            <QuestionDetailImageGallery
-              images={preview.assets.map((asset) => ({
-                id: asset.id,
-                originalFilename: asset.altText || asset.label,
-                publicUrl: asset.url,
-              }))}
-            />
-          </section>
-        ) : null}
-
-        <section aria-labelledby="preview-answer-heading">
-          <h2
-            className="mb-3 text-lg font-bold text-slate-950"
-            id="preview-answer-heading"
-          >
-            Answer
-          </h2>
-          <QuestionAnswerSummary
-            answerSpec={question.answerSpec}
-            options={question.options}
-            questionType={question.type}
-          />
-        </section>
-
-        <section aria-labelledby="preview-solution-heading">
-          <h2
-            className="mb-3 text-lg font-bold text-slate-950"
-            id="preview-solution-heading"
-          >
-            Solution or explanation
-          </h2>
-          {question.solutionHtml?.trim() ? (
-            <SolutionText
-              className="border-slate-200 bg-slate-50/70 text-slate-900"
-              value={question.solutionHtml}
-            />
-          ) : (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-              No solution or explanation is attached yet.
-            </p>
-          )}
-        </section>
-      </section>
-
-      <aside className="space-y-4">
-        <section className="rounded-lg border border-slate-200 bg-white/95 p-4">
-          <div className="flex items-center gap-2">
-            <CheckCircle2
+      {hardErrors.length ? (
+        <section
+          aria-labelledby={`${headingPrefix}-errors`}
+          className="py-3"
+        >
+          <div className="flex gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-950">
+            <AlertTriangle
               aria-hidden="true"
-              className="h-5 w-5 text-emerald-700"
+              className="mt-0.5 h-4 w-4 shrink-0"
             />
-            <h2 className="font-bold text-slate-950">Library boundary</h2>
+            <div>
+              <h3 className="font-semibold" id={`${headingPrefix}-errors`}>
+                Must be fixed
+              </h3>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {hardErrors.map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <dl className="mt-3 space-y-3 text-sm">
-            <div>
-              <dt className="text-slate-500">Library</dt>
-              <dd className="font-semibold text-slate-900">
-                {preview.bank.name}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Your access</dt>
-              <dd className="font-semibold text-slate-900">
-                {accessLabel(preview)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Library capability</dt>
-              <dd className="font-semibold text-slate-900">
-                {preview.bank.canManage
-                  ? "Can manage content"
-                  : "Read-only access"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Source</dt>
-              <dd className="font-semibold text-slate-900">
-                {sourceKindLabel(preview.provenance.sourceKind)}
-              </dd>
-            </div>
-          </dl>
-          <p className="mt-4 text-xs leading-5 text-slate-500">
-            This preview does not grant access to an origin Library or private
-            source file.
-          </p>
         </section>
+      ) : null}
 
-        <section className="rounded-lg border border-slate-200 bg-white/95 p-4">
-          <div className="flex items-center gap-2">
-            <Tags aria-hidden="true" className="h-5 w-5 text-sky-700" />
-            <h2 className="font-bold text-slate-950">Taxonomy</h2>
-          </div>
-          {preview.taxonomy.length ? (
-            <ul className="mt-3 space-y-2">
-              {preview.taxonomy.map((tag) => (
-                <li
-                  className="rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2 text-sm"
-                  key={tag.tagId}
-                >
-                  <span className="font-semibold text-slate-900">
-                    {tag.label}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-slate-500">
-                    {tag.facetKey ?? "Unclassified facet"} · {tag.reviewStatus}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              No taxonomy tags are attached.
-            </p>
-          )}
-        </section>
-
-        {review ? (
-          <section
-            className={
-              reviewWarnings.length
-                ? "rounded-lg border border-amber-200 bg-amber-50 p-4"
-                : "rounded-lg border border-emerald-200 bg-emerald-50 p-4"
-            }
-          >
-            <div className="flex items-center gap-2">
-              <AlertTriangle
-                aria-hidden="true"
-                className={
-                  reviewWarnings.length
-                    ? "h-5 w-5 text-amber-700"
-                    : "h-5 w-5 text-emerald-700"
-                }
-              />
-              <h2 className="font-bold text-slate-950">Review checks</h2>
-            </div>
-            {reviewWarnings.length ? (
-              <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-amber-950">
-                {reviewWarnings.map((warning) => (
+      {warnings.length ? (
+        <section
+          aria-labelledby={`${headingPrefix}-warnings`}
+          className="py-3"
+        >
+          <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 h-4 w-4 shrink-0"
+            />
+            <div>
+              <h3 className="font-semibold" id={`${headingPrefix}-warnings`}>
+                Review warnings
+              </h3>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {warnings.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>
-            ) : (
-              <p className="mt-3 text-sm text-emerald-900">
-                No stored validation warnings.
-              </p>
-            )}
-            <p className="mt-3 text-xs leading-5 text-slate-600">
-              Source excerpts stay unavailable until their source object passes
-              a separate read check.
-            </p>
-          </section>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section
+        aria-labelledby={`${headingPrefix}-question`}
+        className="space-y-3 py-4"
+      >
+        <h3
+          className="text-sm font-semibold text-slate-950"
+          id={`${headingPrefix}-question`}
+        >
+          Question
+        </h3>
+        <QuestionText
+          className="border-0 bg-transparent p-0 text-slate-900"
+          compact
+          value={question.contentHtml}
+        />
+        {preview.assets.length ? (
+          <QuestionDetailImageGallery
+            images={preview.assets.map((asset) => ({
+              id: asset.id,
+              originalFilename: asset.altText || asset.label,
+              publicUrl: asset.url,
+            }))}
+          />
         ) : null}
-      </aside>
-    </div>
+      </section>
+
+      <section
+        aria-labelledby={`${headingPrefix}-answer`}
+        className="space-y-3 py-4"
+      >
+        <h3
+          className="text-sm font-semibold text-slate-950"
+          id={`${headingPrefix}-answer`}
+        >
+          Answer
+        </h3>
+        <CompactAnswer preview={preview} />
+      </section>
+
+      <section
+        aria-labelledby={`${headingPrefix}-solution`}
+        className="space-y-3 py-4"
+      >
+        <h3
+          className="text-sm font-semibold text-slate-950"
+          id={`${headingPrefix}-solution`}
+        >
+          Solution
+        </h3>
+        {question.solutionHtml?.trim() ? (
+          <SolutionText
+            className="border-0 bg-transparent p-0 text-slate-900"
+            compact
+            value={question.solutionHtml}
+          />
+        ) : (
+          <p className="text-sm text-amber-800">No solution provided.</p>
+        )}
+      </section>
+
+      <details className="py-3 text-sm">
+        <summary className="cursor-pointer font-medium text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+          Details
+        </summary>
+        <dl className="mt-3 grid gap-x-8 gap-y-2 text-slate-600 sm:grid-cols-2">
+          <div>
+            <dt className="inline font-medium text-slate-900">Library:</dt>{" "}
+            <dd className="inline">{preview.bank.name}</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium text-slate-900">Source:</dt>{" "}
+            <dd className="inline">
+              {sourceKindLabel(preview.provenance.sourceKind)}
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-medium text-slate-900">Lineage:</dt>{" "}
+            <dd className="inline">
+              {preview.provenance.hasReviewLineage ? "Linked" : "Missing"}
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-medium text-slate-900">Updated:</dt>{" "}
+            <dd className="inline">{question.updatedAt.slice(0, 10)}</dd>
+          </div>
+        </dl>
+        {preview.taxonomy.length ? (
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {preview.taxonomy.map((tag) => (
+              <li
+                className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700"
+                key={tag.tagId}
+              >
+                {tag.label}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </details>
+    </article>
   );
 }

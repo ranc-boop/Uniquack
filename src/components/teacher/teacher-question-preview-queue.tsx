@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import type {
   ReviewPreviewDTO,
   TeacherQuestionPreviewDTO,
-} from "@/lib/teacher-focus-preview";
+} from "@/lib/teacher-question-preview-types";
 
 type PreviewDTO = ReviewPreviewDTO | TeacherQuestionPreviewDTO;
 
