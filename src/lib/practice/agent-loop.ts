@@ -81,12 +81,20 @@ type ToolExecutionState = {
   onTrace?: (event: PracticeTraceEvent) => void | Promise<void>;
   questionCount: number;
   retainedBrowseTags: Map<string, RetainedBrowseTag>;
+  searchCallsFailed: number;
+  searchCallsSucceeded: number;
   searchCallsUsed: number;
   sessionId: string;
   supabase: SupabaseLike;
   tagContext: PracticeTagContext;
   trace: PracticeTraceEvent[];
 };
+
+export type PracticeRecommendationOutcome =
+  | "ready"
+  | "protocol_failed"
+  | "scope_exhausted"
+  | "search_failed";
 
 function envToolCallLimit() {
   const parsed = Number(process.env.PRACTICE_AGENT_MAX_TOOL_CALLS ?? DEFAULT_MAX_TOOL_CALLS);
@@ -364,7 +372,11 @@ export const ALL_RECOMMENDATION_TOOLS: PracticeToolDefinition[] = [
 ];
 
 function allowedToolNamesForState(state: ToolExecutionState) {
-  const allowed = new Set<string>([finalizeTool.function.name]);
+  const allowed = new Set<string>();
+
+  if (state.searchCallsSucceeded > 0 && state.candidatePool.size > 0) {
+    allowed.add(finalizeTool.function.name);
+  }
 
   if (state.completedRoundCount > 0) {
     allowed.add(finishTool.function.name);
@@ -651,6 +663,7 @@ async function executePracticeTool({
   const toolName = toolCall.function.name;
   const visibleThought = asString(args.visible_thought).slice(0, 2000);
   const started = Date.now();
+  let searchCompleted = false;
 
   try {
     const retention = processKeepTags({ args, state, toolName });
@@ -688,6 +701,8 @@ async function executePracticeTool({
         sessionId: state.sessionId,
         supabase: state.supabase,
       });
+      searchCompleted = true;
+      state.searchCallsSucceeded += 1;
       state.latestInventory = result.inventory;
 
       for (const candidate of result.candidates) {
@@ -806,6 +821,9 @@ async function executePracticeTool({
 
     return makeToolResultMessage(toolCall, modelObservation ?? logObservation);
   } catch (error) {
+    if (toolName === "practice_search_batch" && !searchCompleted) {
+      state.searchCallsFailed += 1;
+    }
     const errorMessage = safePracticeProviderFailure(error).message;
     const savedFullPayload = await writePracticeFullCallLog({
       context: { iteration, phase: "recommendation", toolCallId: toolCall.id, toolName },
@@ -984,6 +1002,8 @@ export async function runPracticeRecommendationAgent({
     onTrace,
     questionCount,
     retainedBrowseTags: new Map(),
+    searchCallsFailed: 0,
+    searchCallsSucceeded: 0,
     searchCallsUsed: 0,
     sessionId,
     supabase,
@@ -1162,17 +1182,27 @@ export async function runPracticeRecommendationAgent({
     count: questionCount,
     finalized: state.finalized,
   });
+  const recommendationOutcome: PracticeRecommendationOutcome = recommendations.length
+    ? "ready"
+    : state.searchCallsSucceeded >= SEARCH_CALL_LIMIT && state.latestInventory.eligible === 0
+      ? "scope_exhausted"
+      : state.searchCallsFailed > 0
+        ? "search_failed"
+        : "protocol_failed";
 
   return {
     finishRequested: state.finishRequested ?? null,
     inventory: state.latestInventory,
     maxToolCalls,
     providerLabel,
+    recommendationOutcome,
     currentTaskSuffix: dynamicSuffix,
     llmUsage,
     recommendations,
     roundContract: state.finalized?.round_contract ?? null,
     roundGoal: state.finalized?.round_goal?.trim() || goal,
+    searchCallsFailed: state.searchCallsFailed,
+    searchCallsSucceeded: state.searchCallsSucceeded,
     searchCallsUsed: state.searchCallsUsed,
     sessionMemory: "",
     sessionState: null,

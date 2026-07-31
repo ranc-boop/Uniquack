@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { loadPracticeAIProfile } from "@/lib/practice/ai";
-import { runPracticeRecommendationAgent } from "@/lib/practice/agent-loop";
+import {
+  runPracticeRecommendationAgent,
+  type PracticeRecommendationOutcome,
+} from "@/lib/practice/agent-loop";
 import { completePracticeSession } from "@/lib/practice/completion";
 import {
   CURRENT_PRACTICE_SESSION_SCHEMA_VERSION,
@@ -11,6 +14,7 @@ import {
   persistRecommendationRound,
 } from "@/lib/practice/persistence";
 import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
+import { PRACTICE_RECOMMENDATION_ERROR_CODES } from "@/lib/practice/recommendation-errors";
 import { PRACTICE_SESSION_EXPIRED_MESSAGE } from "@/lib/practice/schema";
 import type {
   PracticeRecommendRequest,
@@ -38,6 +42,31 @@ type RecommendationRequestContext = {
   userNextRoundNote: string;
   wrongQuestionIds: string[];
 };
+
+function recommendationFailure(outcome: PracticeRecommendationOutcome) {
+  if (outcome === "ready") {
+    outcome = "protocol_failed";
+  }
+  if (outcome === "scope_exhausted") {
+    return {
+      code: PRACTICE_RECOMMENDATION_ERROR_CODES.NO_CONTENT,
+      error: "No eligible reviewed questions are available in this practice scope.",
+      status: 404,
+    };
+  }
+  if (outcome === "search_failed") {
+    return {
+      code: PRACTICE_RECOMMENDATION_ERROR_CODES.SEARCH_FAILED,
+      error: "Practice could not search the selected sources.",
+      status: 503,
+    };
+  }
+  return {
+    code: PRACTICE_RECOMMENDATION_ERROR_CODES.PROTOCOL_FAILED,
+    error: "The recommendation agent did not complete a valid search and selection sequence.",
+    status: 502,
+  };
+}
 
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -436,8 +465,15 @@ export async function POST(request: Request) {
             trace,
             userNextRoundNote,
           });
+          const verifiedScopeExhausted =
+            agentResult.recommendationOutcome === "scope_exhausted";
+          const acceptedFinishRequest = Boolean(agentResult.finishRequested) &&
+            (
+              agentResult.finishRequested?.reason !== "scope_exhausted" ||
+              verifiedScopeExhausted
+            );
           if (
-            agentResult.searchCallsUsed > 0 &&
+            agentResult.searchCallsSucceeded > 0 &&
             agentResult.inventory.unseen < questionCount * 2
           ) {
             const notice = await appendPolicyTransitionNotice({
@@ -450,15 +486,12 @@ export async function POST(request: Request) {
             if (notice) send("policy_notice", notice);
           }
 
-          const shouldComplete = Boolean(agentResult.finishRequested) ||
+          const shouldComplete = acceptedFinishRequest ||
             (completedRoundCount > 0 && sourceAccessLost) ||
-            (completedRoundCount > 0 &&
-              !agentResult.recommendations.length &&
-              agentResult.searchCallsUsed >= 2 &&
-              agentResult.inventory.eligible === 0);
+            (completedRoundCount > 0 && verifiedScopeExhausted);
           if (shouldComplete) {
-            const trigger = agentResult.finishRequested ? "agent" : "backend";
-            const reason = agentResult.finishRequested?.reason ??
+            const trigger = acceptedFinishRequest ? "agent" : "backend";
+            const reason = (acceptedFinishRequest ? agentResult.finishRequested?.reason : null) ??
               (sourceAccessLost ? "source_access_lost" : "scope_exhausted");
             const endNotice = await appendPolicyTransitionNotice({
               change: `Practice is ending: ${reason}. The main thread will now generate the final report.`,
@@ -481,7 +514,9 @@ export async function POST(request: Request) {
               onDelta: (text) => send("practice_summary_delta", { text }),
               profile,
               reason,
-              reportFocus: agentResult.finishRequested?.reportFocus,
+              reportFocus: acceptedFinishRequest
+                ? agentResult.finishRequested?.reportFocus
+                : undefined,
               sessionId,
               sessionPlan,
               sessionThreadMessages,
@@ -494,9 +529,10 @@ export async function POST(request: Request) {
           }
 
           if (!agentResult.recommendations.length) {
+            const failure = recommendationFailure(agentResult.recommendationOutcome);
             send("error", {
-              code: completedRoundCount === 0 ? "no_content" : "no_candidates",
-              error: "No published questions are available for this practice request.",
+              code: failure.code,
+              error: failure.error,
               trace,
             });
             return;
@@ -578,8 +614,15 @@ export async function POST(request: Request) {
       trace,
       userNextRoundNote,
     });
+    const verifiedScopeExhausted =
+      agentResult.recommendationOutcome === "scope_exhausted";
+    const acceptedFinishRequest = Boolean(agentResult.finishRequested) &&
+      (
+        agentResult.finishRequested?.reason !== "scope_exhausted" ||
+        verifiedScopeExhausted
+      );
     if (
-      agentResult.searchCallsUsed > 0 &&
+      agentResult.searchCallsSucceeded > 0 &&
       agentResult.inventory.unseen < questionCount * 2
     ) {
       await appendPolicyTransitionNotice({
@@ -591,15 +634,13 @@ export async function POST(request: Request) {
       });
     }
 
-    const shouldComplete = Boolean(agentResult.finishRequested) ||
+    const shouldComplete = acceptedFinishRequest ||
       (completedRoundCount > 0 && sourceAccessLost) ||
-      (completedRoundCount > 0 &&
-        !agentResult.recommendations.length &&
-        agentResult.searchCallsUsed >= 2 &&
-        agentResult.inventory.eligible === 0);
+      (completedRoundCount > 0 && verifiedScopeExhausted);
     if (shouldComplete) {
       const profileForCompletion = profile;
-      const completionReason = agentResult.finishRequested?.reason ??
+      const completionReason =
+        (acceptedFinishRequest ? agentResult.finishRequested?.reason : null) ??
         (sourceAccessLost ? "source_access_lost" : "scope_exhausted");
       await appendPolicyTransitionNotice({
         change: `Practice is ending: ${completionReason}. The main thread will now generate the final report.`,
@@ -615,25 +656,28 @@ export async function POST(request: Request) {
         inventory: agentResult.inventory,
         profile: profileForCompletion,
         reason: completionReason,
-        reportFocus: agentResult.finishRequested?.reportFocus,
+        reportFocus: acceptedFinishRequest
+          ? agentResult.finishRequested?.reportFocus
+          : undefined,
         sessionId,
         sessionPlan,
         sessionThreadMessages,
         supabase,
-        trigger: agentResult.finishRequested ? "agent" : "backend",
+        trigger: acceptedFinishRequest ? "agent" : "backend",
         userId: auth.user.id,
       });
       return NextResponse.json({ completion });
     }
 
     if (!agentResult.recommendations.length) {
+      const failure = recommendationFailure(agentResult.recommendationOutcome);
       return NextResponse.json(
         {
-          code: completedRoundCount === 0 ? "no_content" : "no_candidates",
-          error: "No published questions are available for this practice request.",
+          code: failure.code,
+          error: failure.error,
           trace,
         },
-        { status: 404 },
+        { status: failure.status },
       );
     }
 
