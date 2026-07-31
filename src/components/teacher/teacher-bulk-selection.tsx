@@ -6,6 +6,7 @@ import {
   Eye,
   RotateCcw,
   Send,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -777,6 +778,18 @@ export function QuestionBulkActionBar({
             <Button className="min-h-11" type="button" variant="outline">
               <Archive aria-hidden="true" />
               Archive
+            </Button>
+          </BulkConfirmDialog>
+          <BulkConfirmDialog
+            confirmLabel={`Delete ${selectedIds.length} questions`}
+            description="The questions will be removed from this Library. Existing Assignments and student work will not change."
+            formId={formId}
+            operation="delete"
+            title={`Delete ${selectedIds.length} question${selectedIds.length === 1 ? "" : "s"} from this Library?`}
+          >
+            <Button className="min-h-11" type="button" variant="destructive">
+              <Trash2 aria-hidden="true" />
+              Delete
             </Button>
           </BulkConfirmDialog>
         </>

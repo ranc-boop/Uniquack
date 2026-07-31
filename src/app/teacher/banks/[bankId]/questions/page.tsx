@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { Upload } from "lucide-react";
 
 import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
+import { DeleteLibraryQuestionButton } from "@/components/teacher/delete-library-question-button";
 import {
   BulkRowCheckbox,
   BulkSelectAllCheckbox,
@@ -28,6 +29,7 @@ import type { BankQuestion } from "@/types/database";
 
 import {
   createBankQuestionRevisionDraft,
+  deleteBankQuestion,
   manageSelectedBankQuestions,
   pullPublicQuestionIntoBank,
 } from "../../actions";
@@ -67,12 +69,14 @@ export default async function TeacherBankQuestionsPage({
 }: {
   params: Promise<{ bankId: string }>;
   searchParams: Promise<{
+    error?: string;
     page?: string;
     public?: string;
     publicPage?: string;
     publicQ?: string;
     q?: string;
     readiness?: string;
+    saved?: string;
     source?: string;
     taxonomy?: string;
   }>;
@@ -297,6 +301,23 @@ export default async function TeacherBankQuestionsPage({
         bankId={bank.id}
         currentUserRole={access.currentUserRole}
       />
+
+      {query.saved ? (
+        <p
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
+          role="status"
+        >
+          {query.saved}
+        </p>
+      ) : null}
+      {query.error ? (
+        <p
+          className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900"
+          role="alert"
+        >
+          {query.error}
+        </p>
+      ) : null}
 
       {!governanceAvailable ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
@@ -582,7 +603,10 @@ export default async function TeacherBankQuestionsPage({
                         >
                           {row.status === "active" ? "Ready" : "Archived"}
                         </BankBadge>
-                        {canManage && governanceAvailable && question ? (
+                        {canManage &&
+                        governanceAvailable &&
+                        question &&
+                        row.status === "active" ? (
                           <form action={createBankQuestionRevisionDraft}>
                             <input
                               name="bankId"
@@ -617,6 +641,25 @@ export default async function TeacherBankQuestionsPage({
                             >
                               Open in new tab
                             </a>
+                            {!isSuperseded ? (
+                              <form action={deleteBankQuestion}>
+                                <input
+                                  name="bankId"
+                                  type="hidden"
+                                  value={bank.id}
+                                />
+                                <input
+                                  name="bankQuestionId"
+                                  type="hidden"
+                                  value={row.bank_question_id}
+                                />
+                                <DeleteLibraryQuestionButton
+                                  questionTitle={
+                                    question?.title ?? "this question"
+                                  }
+                                />
+                              </form>
+                            ) : null}
                           </div>
                         </details>
                       </div>

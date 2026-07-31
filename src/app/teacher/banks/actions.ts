@@ -164,6 +164,11 @@ const bankQuestionRevisionSchema = z.object({
   questionId: z.string().uuid(),
 });
 
+const bankQuestionDeleteSchema = z.object({
+  bankId: z.string().uuid(),
+  bankQuestionId: z.string().uuid(),
+});
+
 const bankPublicSubmissionSchema = z.object({
   bankId: z.string().uuid(),
   publicLicenseConfirmed: z.literal("confirmed"),
@@ -171,7 +176,7 @@ const bankPublicSubmissionSchema = z.object({
 
 const bankQuestionBulkOperationSchema = z.object({
   bankId: z.string().uuid(),
-  operation: z.enum(["archive", "public_review", "restore"]),
+  operation: z.enum(["archive", "delete", "public_review", "restore"]),
 });
 
 const publicSubmissionWithdrawSchema = z.object({
@@ -219,7 +224,7 @@ type TeacherBulkQuestionRpc = {
       | {
           p_selected_bank_question_ids: string[];
           p_target_bank_id: string;
-          p_target_status: "active" | "archived";
+          p_target_status: "active" | "archived" | "removed";
         }
       | {
           p_public_license_confirmed: true;
@@ -1815,7 +1820,11 @@ export async function manageSelectedBankQuestions(
       revalidatePath(`/teacher/banks/${parsed.bankId}/submissions`);
     } else {
       const targetStatus =
-        parsed.operation === "archive" ? "archived" : "active";
+        parsed.operation === "archive"
+          ? "archived"
+          : parsed.operation === "delete"
+            ? "removed"
+            : "active";
       ({ data, error } = await bulkRpc.rpc("set_bank_question_statuses", {
         p_selected_bank_question_ids: bankQuestionIds,
         p_target_bank_id: parsed.bankId,
@@ -1824,6 +1833,8 @@ export async function manageSelectedBankQuestions(
       successMessage =
         parsed.operation === "archive"
           ? `${data?.length ?? 0} Library question${data?.length === 1 ? "" : "s"} archived. Existing Assignments and evidence were not changed.`
+          : parsed.operation === "delete"
+            ? `${data?.length ?? 0} question${data?.length === 1 ? "" : "s"} deleted from this Library.`
           : `${data?.length ?? 0} Library question${data?.length === 1 ? "" : "s"} restored for new Assignment selection.`;
     }
 
@@ -1848,6 +1859,39 @@ export async function manageSelectedBankQuestions(
       message: `${formatActionError(error)} No selected Library question was changed.`,
       status: "error",
     });
+  }
+}
+
+export async function deleteBankQuestion(formData: FormData) {
+  const bankId = String(formData.get("bankId") ?? "");
+  const fallbackPath = `/teacher/banks/${bankId}/questions`;
+
+  try {
+    const profile = await requireTeacher();
+    const parsed = bankQuestionDeleteSchema.parse(Object.fromEntries(formData));
+    const { supabase } = await requireManageableBankForAction({
+      bankId: parsed.bankId,
+      profileId: profile.id,
+    });
+    const { data, error } = await (
+      supabase as unknown as TeacherBulkQuestionRpc
+    ).rpc("set_bank_question_statuses", {
+      p_selected_bank_question_ids: [parsed.bankQuestionId],
+      p_target_bank_id: parsed.bankId,
+      p_target_status: "removed",
+    });
+
+    if (error) throw new Error(error.message);
+    if (data?.length !== 1) {
+      throw new Error("The question was not deleted.");
+    }
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/assignments/new`);
+    redirectWithSaved(fallbackPath, "Question deleted from this Library.");
+  } catch (error) {
+    redirectWithError(fallbackPath, formatActionError(error));
   }
 }
 
