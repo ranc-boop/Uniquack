@@ -133,9 +133,10 @@ assert(
   "small loading feedback must be accessible and respect reduced-motion preferences",
 );
 assert(
-  teacherRouteError.includes("alertRef.current?.focus") &&
+    teacherRouteError.includes("alertRef.current?.focus") &&
     teacherRouteError.includes("tabIndex={-1}") &&
-    teacherRouteLoading.includes('role="status"'),
+    teacherRouteLoading.includes('role="status"') &&
+    !teacherRouteLoading.includes("<main"),
   "teacher loading and error boundaries must announce state and move keyboard focus into the error context",
 );
 assert(

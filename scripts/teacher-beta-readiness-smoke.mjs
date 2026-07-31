@@ -74,7 +74,10 @@ const [
   actionFeedback,
   smokeAll,
 ] = await Promise.all([
-  read("src/components/teacher/teacher-workspace-nav.tsx"),
+  Promise.all([
+    read("src/components/app-primary-nav.tsx"),
+    read("src/components/teacher/teacher-workspace-nav.tsx"),
+  ]).then((parts) => parts.join("\n")),
   read("src/app/teacher/page.tsx"),
   read("src/app/teacher/banks/bank-ui.tsx"),
   read("src/app/teacher/banks/[bankId]/page.tsx"),
@@ -116,20 +119,23 @@ assert(
   "teacher navigation must keep every major workflow visible",
 );
 assert(
-  teacherHome.includes("Progress & Feedback") &&
-    teacherHome.includes("Create Library") &&
-    teacherHome.includes("Review Drafts") &&
-    teacherHome.includes("Create Assignment"),
-  "teacher dashboard must make the bank-first workflow and feedback discoverable",
+  teacherHome.includes("Next action") &&
+    teacherHome.includes("Libraries") &&
+    teacherHome.includes("Progress") &&
+    teacherHome.includes("getTeacherHomeSummary") &&
+    teacherHome.includes("/teacher/publish"),
+  "teacher dashboard must keep the next Library action and three handoffs discoverable",
 );
 console.log("PASS teacher navigation and dashboard handoffs are discoverable");
 
 assert(
   bankUi.includes("AI drafts stay private until reviewed") &&
-    bankDetail.includes("Assignments expose selected approved items") &&
+    bankDetail.includes("Next action") &&
+    bankDetail.includes('label: "Ready"') &&
     bankImports.includes("TeacherPdfBurstUpload") &&
     bankImports.includes("Review is required before assignment") &&
-    bankReview.includes("Open question review") &&
+    bankReview.includes("Approve current page") &&
+    bankReview.includes("LazyTeacherQuestionPreview") &&
     bankActions.includes("approveBankReviewQuestion") &&
     bankActions.includes("markBankReviewDraftNeedsFix") &&
     bankActions.includes("rejectBankReviewDraftQuestion"),
@@ -152,7 +158,8 @@ assert(
 );
 assert(
   publishPage.includes("Library") &&
-    publishPage.includes("Assignment-only") &&
+    publishPage.includes("AssignmentComposerFlow") &&
+    publishPage.includes("LazyTeacherQuestionPreview") &&
     publishActions.includes("Only Library owners and editors can create assignments") &&
     publishActions.includes('.eq("status", "active")'),
   "Publish Center must use approved bank content and active classroom targets only",

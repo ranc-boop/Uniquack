@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,48 +101,55 @@ async function resolveTeacherOrganizationId(teacher) {
 }
 
 async function createSmokeClassroom({
-  admin,
   organizationId,
-  studentUserId,
+  student,
   suffix,
   teacher,
 }) {
-  const { data: classroom, error: classroomError } = await admin
-    .from("classrooms")
-    .insert({
-      created_by: teacher.user.id,
-      name: `Publish Center smoke ${suffix}`,
-      organization_id: organizationId,
-      owner_id: teacher.user.id,
-      subject: "Publish Center smoke",
-      updated_by: teacher.user.id,
-    })
-    .select("id")
-    .single();
+  const { data: classroomRows, error: classroomError } = await teacher.client.rpc(
+    "create_teacher_classroom",
+    {
+      p_description: "Publish Center smoke classroom",
+      p_name: `Publish Center smoke ${suffix}`,
+      p_organization_id: organizationId,
+      p_request_id: randomUUID(),
+      p_subject: "Publish Center smoke",
+    },
+  );
+  const classroom = Array.isArray(classroomRows) ? classroomRows[0] : classroomRows;
+  assert(
+    !classroomError && classroom?.classroom_id && classroom?.display_code,
+    `classroom RPC failed: ${summarizeSupabaseError(classroomError)}`,
+  );
 
-  assert(!classroomError && classroom?.id, `classroom create failed: ${summarizeSupabaseError(classroomError)}`);
-
-  const { error: teacherMemberError } = await admin.from("classroom_members").insert({
-    classroom_id: classroom.id,
-    joined_at: new Date().toISOString(),
-    role: "teacher",
-    status: "active",
-    user_id: teacher.user.id,
-  });
-  assert(!teacherMemberError, `teacher classroom member insert failed: ${summarizeSupabaseError(teacherMemberError)}`);
-
-  if (studentUserId) {
-    const { error: studentMemberError } = await admin.from("classroom_members").insert({
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "student",
-      status: "active",
-      user_id: studentUserId,
-    });
-    assert(!studentMemberError, `student classroom member insert failed: ${summarizeSupabaseError(studentMemberError)}`);
+  let studentMembershipId = null;
+  if (student) {
+    const { data: joinRows, error: joinError } = await student.client.rpc(
+      "join_classroom_by_code",
+      { join_code: classroom.display_code },
+    );
+    const membership = Array.isArray(joinRows) ? joinRows[0] : joinRows;
+    const joined =
+      !joinError &&
+      membership?.classroom_id === classroom.classroom_id &&
+      membership?.membership_id;
+    if (!joined) {
+      await teacher.client
+        .from("classrooms")
+        .update({ status: "archived", updated_by: teacher.user.id })
+        .eq("id", classroom.classroom_id);
+    }
+    assert(
+      joined,
+      `student classroom join failed: ${summarizeSupabaseError(joinError)}`,
+    );
+    studentMembershipId = membership.membership_id;
   }
 
-  return classroom.id;
+  return {
+    classroomId: classroom.classroom_id,
+    studentMembershipId,
+  };
 }
 
 async function insertBankQuestionFixture({
@@ -198,9 +206,7 @@ async function insertBankQuestionFixture({
   return { bankQuestionId: bankQuestion.id, questionId: question.id };
 }
 
-async function cleanup({ assignmentIds, bankId, classroomIds, questionIds }) {
-  if (!serviceRoleKey) return;
-
+async function cleanup({ assignmentIds, bankId, classrooms, questionIds, teacher }) {
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -208,8 +214,22 @@ async function cleanup({ assignmentIds, bankId, classroomIds, questionIds }) {
   if (assignmentIds.length) {
     await admin.from("assignments").delete().in("id", assignmentIds);
   }
-  if (classroomIds.length) {
-    await admin.from("classrooms").delete().in("id", classroomIds);
+  for (const classroom of classrooms) {
+    if (classroom.studentMembershipId) {
+      await teacher.client.rpc("set_classroom_student_membership_status", {
+        p_classroom_id: classroom.classroomId,
+        p_member_id: classroom.studentMembershipId,
+        p_status: "removed",
+      });
+    }
+    await teacher.client
+      .from("classroom_join_codes")
+      .update({ status: "revoked" })
+      .eq("classroom_id", classroom.classroomId);
+    await teacher.client
+      .from("classrooms")
+      .update({ status: "archived", updated_by: teacher.user.id })
+      .eq("id", classroom.classroomId);
   }
   if (questionIds.length) {
     await admin.from("questions").delete().in("id", questionIds);
@@ -218,12 +238,15 @@ async function cleanup({ assignmentIds, bankId, classroomIds, questionIds }) {
     await admin.from("question_banks").delete().eq("id", bankId);
   }
 
-  console.log("PASS publish-center smoke cleanup removed smoke-created rows");
+  console.log("PASS publish-center smoke cleanup archived classroom fixtures");
 }
 
 async function staticChecks() {
   const publishPage = await read("src/app/teacher/publish/page.tsx");
   const publishActions = await read("src/app/teacher/publish/actions.ts");
+  const assignmentComposer = await read(
+    "src/components/teacher/assignment-composer-flow.tsx",
+  );
   const bankDetailPage = await read("src/app/teacher/banks/[bankId]/page.tsx");
   const bankQuestionsPage = await read("src/app/teacher/banks/[bankId]/questions/page.tsx");
   const classroomAssignmentsPage = await read("src/app/teacher/classrooms/[id]/assignments/page.tsx");
@@ -233,17 +256,24 @@ async function staticChecks() {
   assert(
     publishPage.includes("Choose one source Library") &&
       publishPage.includes("Blueprint") &&
-      publishPage.includes("Select approved assignment-ready rows") &&
-      publishPage.includes("Choose one classroom") &&
-      publishPage.includes("Final review") &&
-      publishPage.includes("Assignment-only") &&
-      publishPage.includes("What students can and cannot see") &&
+      publishPage.includes("<QuestionChecklist") &&
+      publishPage.includes("<ClassroomTargets") &&
+      publishPage.includes("<AssignmentSelectionSummary") &&
+      publishPage.includes('kind="assignment-selection"') &&
+      assignmentComposer.includes("1. Select content") &&
+      assignmentComposer.includes("2. Choose classroom") &&
+      assignmentComposer.includes("3. Review and assign") &&
+      assignmentComposer.includes("Publish Assignment") &&
+      !publishPage.includes("What students can and cannot see") &&
       !publishPage.includes("Selected students later") &&
       !publishPage.includes("Safety gates"),
-    "Publish Center page must expose the focused source, content, one-classroom, and final-review flow",
+    "Publish Center must expose the focused source, lazy preview, content, one-classroom, and final-review flow without explanatory panels",
   );
   assert(
-    publishPage.includes("action={publishQuestionBankAssignments}") &&
+    assignmentComposer.includes(
+      "publishQuestionBankAssignments",
+    ) &&
+      assignmentComposer.includes("action={formAction}") &&
       publishActions.includes("requireTeacher") &&
       publishActions.includes("getTeacherQuestionBankDetail") &&
       publishActions.includes("verifyPublishableSelection") &&
@@ -298,7 +328,7 @@ async function liveChecks() {
   const cleanupState = {
     assignmentIds: [],
     bankId: null,
-    classroomIds: [],
+    classrooms: [],
     questionIds: [],
   };
 
@@ -311,21 +341,21 @@ async function liveChecks() {
     assert(!bankError && bankId, `teacher bank create failed: ${summarizeSupabaseError(bankError)}`);
     cleanupState.bankId = bankId;
 
-    const classroomWithStudentId = await createSmokeClassroom({
-      admin,
+    const classroomWithStudent = await createSmokeClassroom({
       organizationId,
-      studentUserId: student.user.id,
+      student,
       suffix: `${suffix}-student`,
       teacher,
     });
-    const classroomTeacherOnlyId = await createSmokeClassroom({
-      admin,
+    const classroomTeacherOnly = await createSmokeClassroom({
       organizationId,
-      studentUserId: null,
+      student: null,
       suffix: `${suffix}-teacher-only`,
       teacher,
     });
-    cleanupState.classroomIds.push(classroomWithStudentId, classroomTeacherOnlyId);
+    const classroomWithStudentId = classroomWithStudent.classroomId;
+    const classroomTeacherOnlyId = classroomTeacherOnly.classroomId;
+    cleanupState.classrooms.push(classroomWithStudent, classroomTeacherOnly);
 
     const assignedFixture = await insertBankQuestionFixture({
       admin,
@@ -483,7 +513,7 @@ async function liveChecks() {
     assert(!studentBankRead?.length, "student unexpectedly gained source bank browsing access");
     console.log("PASS source bank remains private while assigned item is visible");
   } finally {
-    await cleanup(cleanupState);
+    await cleanup({ ...cleanupState, teacher });
   }
 }
 

@@ -87,8 +87,9 @@ const [
 assert(
   publishPage.includes("Choose one source Library") &&
     publishPage.includes("AssignmentComposerFlow") &&
-    publishPage.includes("Choose one classroom") &&
-    publishPage.includes("Final review") &&
+    publishPage.includes("QuestionChecklist") &&
+    publishPage.includes("LazyTeacherQuestionPreview") &&
+    publishPage.includes("AssignmentSelectionSummary") &&
     publishPage.includes("clientRequestKey") &&
     !publishPage.includes("Selected students later") &&
     !publishPage.includes("Safety gates"),
@@ -98,12 +99,12 @@ assert(
 assert(
   composer.includes('"content" | "target" | "review"') &&
     composer.includes("useActionState") &&
-    composer.includes("Your selected questions, classroom, and Assignment details are still here.") &&
     composer.includes("AssignmentDetailsFields") &&
     composer.includes("aria-invalid={titleError ? true : undefined}") &&
     composer.includes('aria-current={isCurrent ? "step"') &&
     composer.includes("Continue to classroom") &&
     composer.includes("Continue to review") &&
+    composer.includes("Publish Assignment") &&
     composer.includes("useFormStatus") &&
     composer.includes("aria-busy={pending}") &&
     composer.includes("disabled={!canSubmit || pending}") &&

@@ -10,8 +10,28 @@ function assert(condition, message) {
 const source = (
   await readFile(resolve(process.cwd(), "src/lib/teacher-classrooms.ts"), "utf8")
 ).replaceAll("\r\n", "\n");
+const publishPage = (
+  await readFile(
+    resolve(process.cwd(), "src/app/teacher/publish/page.tsx"),
+    "utf8",
+  )
+).replaceAll("\r\n", "\n");
+const choicesStart = source.indexOf(
+  "export async function listTeacherClassroomChoices",
+);
 const start = source.indexOf("export async function getTeacherClassroomWorkspace");
 assert(start >= 0, "Teacher classroom workspace loader is missing.");
+const choices = source.slice(choicesStart, start);
+assert(
+  choicesStart >= 0 &&
+    choices.includes('.select("id, name, subject, status, updated_at")') &&
+    choices.includes('.eq("status", "active")') &&
+    choices.includes(".limit(50)") &&
+    !choices.includes("buildClassroomSummaries") &&
+    publishPage.includes("listTeacherClassroomChoices") &&
+    !publishPage.includes("listTeacherClassroomSummaries"),
+  "Assignment classroom choices must stay bounded and avoid roster, assignment, and join-code enrichment.",
+);
 const workspace = source.slice(start);
 
 const firstWaveStart = workspace.indexOf("const [\n    summaries,");

@@ -26,7 +26,7 @@ const [pendingLink, sidebar, questionNav, questionPage, teacherLoading] =
     ),
     readFile(
       new URL(
-        "../src/app/teacher/banks/[bankId]/loading.tsx",
+        "../src/app/teacher/banks/[bankId]/questions/loading.tsx",
         import.meta.url,
       ),
       "utf8",
@@ -59,9 +59,10 @@ assert(
 );
 
 assert(
-  teacherLoading.includes("Loading Library workspace") &&
-    teacherLoading.includes("lg:grid-cols-[1.3fr_0.8fr]"),
-  "Teacher Library subroutes must have an immediate shared loading boundary.",
+  teacherLoading.includes("Loading Library questions") &&
+    teacherLoading.includes("QuestionListSkeleton") &&
+    teacherLoading.includes("motion-reduce:animate-none"),
+  "Teacher question navigation must have a target-specific reduced-motion loading boundary.",
 );
 
 console.log("PASS workspace navigation uses intent prefetch and loading boundaries");

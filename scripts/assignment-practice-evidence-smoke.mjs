@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -87,50 +88,33 @@ async function resolveOrganizationId(supabase, userId) {
   return memberships[0].organization_id;
 }
 
-async function createSmokeClassroom({ name, organizationId, studentUserId, teacher }) {
-  const { data: classroom, error: classroomError } = await teacher.client
-    .from("classrooms")
-    .insert({
-      created_by: teacher.user.id,
-      name,
-      organization_id: organizationId,
-      owner_id: teacher.user.id,
-      subject: "Assignment practice evidence smoke",
-      updated_by: teacher.user.id,
-    })
-    .select("id, name")
-    .single();
+async function createSmokeClassroom({ name, organizationId, student, teacher }) {
+  const { data: classroomRows, error: classroomError } =
+    await teacher.client.rpc("create_teacher_classroom", {
+      p_description: "Assignment practice evidence smoke classroom",
+      p_name: name,
+      p_organization_id: organizationId,
+      p_request_id: randomUUID(),
+      p_subject: "Assignment practice evidence smoke",
+    });
+  const createdClassroom = Array.isArray(classroomRows)
+    ? classroomRows[0]
+    : classroomRows;
+  const classroom = createdClassroom?.classroom_id
+    ? { id: createdClassroom.classroom_id, name }
+    : null;
   assert(
     !classroomError && classroom,
     `teacher could not create evidence smoke classroom: ${summarizeSupabaseError(classroomError)}`,
   );
 
-  const { error: teacherMemberError } = await teacher.client
-    .from("classroom_members")
-    .insert({
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "teacher",
-      status: "active",
-      user_id: teacher.user.id,
+  const { data: joinRows, error: studentMemberError } =
+    await student.client.rpc("join_classroom_by_code", {
+      join_code: createdClassroom.display_code,
     });
   assert(
-    !teacherMemberError,
-    `teacher member insert failed: ${summarizeSupabaseError(teacherMemberError)}`,
-  );
-
-  const { error: studentMemberError } = await teacher.client
-    .from("classroom_members")
-    .insert({
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "student",
-      status: "active",
-      user_id: studentUserId,
-    });
-  assert(
-    !studentMemberError,
-    `student member insert failed: ${summarizeSupabaseError(studentMemberError)}`,
+    !studentMemberError && joinRows?.[0]?.classroom_id === classroom.id,
+    `student join failed: ${summarizeSupabaseError(studentMemberError)}`,
   );
 
   return classroom;
@@ -198,7 +182,7 @@ async function main() {
     const classroom = await createSmokeClassroom({
       name: `Assignment practice evidence classroom ${suffix}`,
       organizationId,
-      studentUserId: student.user.id,
+      student,
       teacher,
     });
     cleanup.classrooms.push(classroom.id);
@@ -359,13 +343,31 @@ async function main() {
       if (error) cleanupErrors.push(`question ${questionId}: ${summarizeSupabaseError(error)}`);
     }
     for (const classroomId of cleanup.classrooms) {
-      const { error: memberError } = await teacher.client
+      const { data: studentMember, error: memberLookupError } =
+        await teacher.client
         .from("classroom_members")
-        .update({ status: "removed" })
+        .select("id")
         .eq("classroom_id", classroomId)
-        .neq("user_id", teacher.user.id);
-      if (memberError) {
-        cleanupErrors.push(`classroom members ${classroomId}: ${summarizeSupabaseError(memberError)}`);
+        .eq("user_id", student.user.id)
+        .maybeSingle();
+      if (memberLookupError) {
+        cleanupErrors.push(
+          `classroom member lookup ${classroomId}: ${summarizeSupabaseError(memberLookupError)}`,
+        );
+      } else if (studentMember?.id) {
+        const { error: memberError } = await teacher.client.rpc(
+          "set_classroom_student_membership_status",
+          {
+            p_classroom_id: classroomId,
+            p_member_id: studentMember.id,
+            p_status: "removed",
+          },
+        );
+        if (memberError) {
+          cleanupErrors.push(
+            `classroom member ${classroomId}: ${summarizeSupabaseError(memberError)}`,
+          );
+        }
       }
       const { error } = await teacher.client
         .from("classrooms")

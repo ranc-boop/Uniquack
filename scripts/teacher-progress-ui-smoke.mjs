@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,41 +90,35 @@ async function resolveOrganizationId(supabase, userId) {
   return memberships[0].organization_id;
 }
 
-async function createClassroom({ organizationId, studentUserId, suffix, teacher }) {
-  const { data: classroom, error: classroomError } = await teacher.client
-    .from("classrooms")
-    .insert({
-      created_by: teacher.user.id,
-      name: `Teacher progress smoke ${suffix}`,
-      organization_id: organizationId,
-      owner_id: teacher.user.id,
-      subject: "Teacher progress UI smoke",
-      updated_by: teacher.user.id,
-    })
-    .select("id")
-    .single();
+async function createClassroom({ organizationId, student, suffix, teacher }) {
+  const { data: classroomRows, error: classroomError } =
+    await teacher.client.rpc("create_teacher_classroom", {
+      p_description: "Teacher progress UI smoke classroom",
+      p_name: `Teacher progress smoke ${suffix}`,
+      p_organization_id: organizationId,
+      p_request_id: randomUUID(),
+      p_subject: "Teacher progress UI smoke",
+    });
+  const classroom = Array.isArray(classroomRows)
+    ? classroomRows[0]
+    : classroomRows;
   assert(
-    !classroomError && classroom,
+    !classroomError && classroom?.classroom_id,
     `teacher progress classroom insert failed: ${summarizeSupabaseError(classroomError)}`,
   );
 
-  const members = [{ role: "teacher", user_id: teacher.user.id }];
-  if (studentUserId) {
-    members.push({ role: "student", user_id: studentUserId });
+  if (student) {
+    const { data: joinRows, error } = await student.client.rpc(
+      "join_classroom_by_code",
+      { join_code: classroom.display_code },
+    );
+    assert(
+      !error && joinRows?.[0]?.classroom_id === classroom.classroom_id,
+      `teacher progress classroom member insert failed: ${summarizeSupabaseError(error)}`,
+    );
   }
 
-  for (const member of members) {
-    const { error } = await teacher.client.from("classroom_members").insert({
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: member.role,
-      status: "active",
-      user_id: member.user_id,
-    });
-    assert(!error, `teacher progress classroom member insert failed: ${summarizeSupabaseError(error)}`);
-  }
-
-  return classroom.id;
+  return classroom.classroom_id;
 }
 
 async function main() {
@@ -165,7 +160,7 @@ async function main() {
   try {
     const classroomId = await createClassroom({
       organizationId,
-      studentUserId: student.user.id,
+      student,
       suffix,
       teacher,
     });
@@ -173,7 +168,7 @@ async function main() {
 
     const unrelatedClassroomId = await createClassroom({
       organizationId,
-      studentUserId: null,
+      student: null,
       suffix: `${suffix}-hidden`,
       teacher,
     });
@@ -354,12 +349,30 @@ async function main() {
       if (error) cleanupErrors.push(`question ${questionId}: ${summarizeSupabaseError(error)}`);
     }
     for (const classroomId of cleanup.classrooms) {
-      const { error: memberError } = await teacher.client
+      const { data: studentMember, error: memberLookupError } = await teacher.client
         .from("classroom_members")
-        .update({ status: "removed" })
-        .eq("classroom_id", classroomId);
-      if (memberError) {
-        cleanupErrors.push(`classroom member ${classroomId}: ${summarizeSupabaseError(memberError)}`);
+        .select("id")
+        .eq("classroom_id", classroomId)
+        .eq("user_id", student.user.id)
+        .maybeSingle();
+      if (memberLookupError) {
+        cleanupErrors.push(
+          `classroom member lookup ${classroomId}: ${summarizeSupabaseError(memberLookupError)}`,
+        );
+      } else if (studentMember?.id) {
+        const { error: memberError } = await teacher.client.rpc(
+          "set_classroom_student_membership_status",
+          {
+            p_classroom_id: classroomId,
+            p_member_id: studentMember.id,
+            p_status: "removed",
+          },
+        );
+        if (memberError) {
+          cleanupErrors.push(
+            `classroom member ${classroomId}: ${summarizeSupabaseError(memberError)}`,
+          );
+        }
       }
       const { error } = await teacher.client
         .from("classrooms")
