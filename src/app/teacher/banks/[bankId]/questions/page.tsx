@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { Upload } from "lucide-react";
 
-import { FocusTaskLink } from "@/components/teacher/focus-task-link";
+import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
 import {
   BulkRowCheckbox,
   BulkSelectAllCheckbox,
@@ -28,13 +28,9 @@ import {
   getTeacherQuestionBankAccess,
   listBankQuestionsPage,
   QuestionBankSchemaMissingError,
-  teacherQuestionBankAccessLabel,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
-import {
-  buildFocusHref,
-  sanitizeTeacherBankReturnTo,
-} from "@/lib/teacher-focus-workspace";
+import { sanitizeTeacherBankReturnTo } from "@/lib/teacher-focus-workspace";
 import { cn } from "@/lib/utils";
 import type { BankQuestion } from "@/types/database";
 
@@ -53,16 +49,6 @@ import {
 } from "../../bank-ui";
 
 export const dynamic = "force-dynamic";
-
-function formatDate(value: string | null) {
-  if (!value) return "Unknown";
-
-  return new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
-}
 
 function SetupNeededState() {
   return (
@@ -159,7 +145,6 @@ export default async function TeacherBankQuestionsPage({
   const questions = questionPage?.items ?? [];
   const { bank } = access;
   const canManage = access.canManage;
-  const accessLabel = teacherQuestionBankAccessLabel(access);
   // search_bank_question_rows is installed by the same forward migration as
   // revision/public governance. A successful page result is the capability
   // check, so avoid a separate schema-probe query on every filter/page change.
@@ -301,20 +286,19 @@ export default async function TeacherBankQuestionsPage({
 
   return (
     <BankWorkbenchPage>
-      <section className="rounded-lg border bg-white shadow-sm">
-        <BankSectionHeader
-          action={
-          <>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
-            </Button>
-          </>
-        }
-          description={`Access: ${accessLabel}. These assignment-ready Library questions are not public/global questions.`}
-          eyebrow="Question database · Library / Questions"
-          title={`Reviewed content in ${bank.name}`}
-        />
-      </section>
+      <header className="teacher-page-header">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+            Questions
+          </h1>
+          <p className="mt-1 text-base font-medium text-slate-600">
+            {bank.name}
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href={`/teacher/banks/${bank.id}`}>Back</Link>
+        </Button>
+      </header>
 
       <BankRouteTabs
         bankId={bank.id}
@@ -470,7 +454,7 @@ export default async function TeacherBankQuestionsPage({
           scopeKey={questionBulkScopeKey}
           totalResults={questionPage?.total ?? 0}
         >
-        <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
+        <section className="border-y border-slate-200 bg-white">
           <BankSectionHeader
               action={
                 <div className="flex flex-wrap gap-2">
@@ -491,16 +475,15 @@ export default async function TeacherBankQuestionsPage({
                   ) : null}
                 </div>
               }
-              description="Source lineage, taxonomy status, and assignment readiness stay visible before classroom delivery."
               focusId="library-question-results-focus"
               title={
                 readiness === "active"
-                  ? "Assignment-ready Library questions"
-                  : "Archived Library questions"
+                  ? "Ready"
+                  : "Archived"
               }
           />
-        <form className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_12rem_12rem_auto]">
-          <div className="space-y-2">
+        <form className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1 space-y-2">
             <Label htmlFor="library-question-search">Search</Label>
             <Input
               defaultValue={query.q ?? ""}
@@ -509,235 +492,157 @@ export default async function TeacherBankQuestionsPage({
               placeholder="Question code or title"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="library-question-readiness">Readiness</Label>
-            <select
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              defaultValue={readiness}
-              id="library-question-readiness"
-              name="readiness"
+          <details className="group relative">
+            <summary
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "min-h-10 cursor-pointer list-none",
+              )}
             >
-              <option value="active">Ready for assignment</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="library-question-source">Source</Label>
-            <select
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              defaultValue={sourceKind ?? ""}
-              id="library-question-source"
-              name="source"
-            >
-              <option value="">All sources</option>
-              <option value="manual">Manual</option>
-              <option value="review_draft">Reviewed draft</option>
-              <option value="import">JSON / AI import</option>
-              <option value="public_pull">Public Library</option>
-              <option value="course_builder">Course Builder</option>
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="library-question-taxonomy">Taxonomy tag</Label>
-            <Input
-              defaultValue={query.taxonomy ?? ""}
-              id="library-question-taxonomy"
-              name="taxonomy"
-              placeholder="Exact tag ID"
-            />
-          </div>
-          <div className="flex items-end gap-2">
-            <Button type="submit">Filter</Button>
-            <Button asChild type="button" variant="outline">
-              <Link href={`/teacher/banks/${bank.id}/questions`}>Reset</Link>
-            </Button>
-          </div>
+              Filters
+            </summary>
+            <div className="mt-2 w-full space-y-4 rounded-md border border-slate-200 bg-white p-4 shadow-lg sm:absolute sm:right-0 sm:z-20 sm:w-80">
+              <div className="space-y-2">
+                <Label htmlFor="library-question-readiness">State</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  defaultValue={readiness}
+                  id="library-question-readiness"
+                  name="readiness"
+                >
+                  <option value="active">Ready</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="library-question-source">Source</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  defaultValue={sourceKind ?? ""}
+                  id="library-question-source"
+                  name="source"
+                >
+                  <option value="">All sources</option>
+                  <option value="manual">Manual</option>
+                  <option value="review_draft">Reviewed Draft</option>
+                  <option value="import">Import</option>
+                  <option value="public_pull">Public Library</option>
+                  <option value="course_builder">Course Builder</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="library-question-taxonomy">Taxonomy tag</Label>
+                <Input
+                  defaultValue={query.taxonomy ?? ""}
+                  id="library-question-taxonomy"
+                  name="taxonomy"
+                  placeholder="Exact tag ID"
+                />
+              </div>
+              <Button asChild type="button" variant="outline">
+                <Link href={`/teacher/banks/${bank.id}/questions`}>Reset</Link>
+              </Button>
+            </div>
+          </details>
+          <Button type="submit">Search</Button>
         </form>
         <div>
           {questionPage?.total ? (
             <>
               {canManage ? (
-                <div className="flex min-h-12 items-center gap-2 border-y border-slate-200 px-3 text-sm font-semibold text-slate-700 md:hidden">
+                <div className="flex min-h-12 items-center gap-3 border-b border-slate-200 px-4 text-sm font-semibold text-slate-700">
                   <BulkSelectAllCheckbox
                     label={`Select all ${questionBulkItems.filter((item) => item.eligible).length} eligible questions on this page`}
                   />
-                  <span>
-                    Select eligible questions on this page
-                  </span>
+                  Select page
                 </div>
               ) : null}
-              <div>
-                <Table className="block md:table">
-                  <TableHeader className="hidden md:table-header-group">
-                    <TableRow>
-                      {canManage ? (
-                        <TableHead className="w-14">
-                          <BulkSelectAllCheckbox
-                            label={`Select all ${questionBulkItems.filter((item) => item.eligible).length} eligible questions on this page`}
-                          />
-                        </TableHead>
-                      ) : null}
-                      <TableHead>Question</TableHead>
-                      <TableHead>Readiness</TableHead>
-                      <TableHead>Taxonomy</TableHead>
-                      <TableHead className="w-40">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody className="block md:table-row-group">
-                    {questions.map((row) => {
-                      const question = row.question;
-                      const rowMetadata =
-                        row.metadata &&
-                        typeof row.metadata === "object" &&
-                        !Array.isArray(row.metadata)
-                          ? (row.metadata as Record<string, unknown>)
-                          : {};
-                      const isSuperseded =
-                        readiness === "archived" &&
-                        typeof rowMetadata.replacedByQuestionId === "string";
-                      return (
-                        <TableRow
-                          className={cn(
-                            "grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] py-3 md:table-row md:py-0",
-                            canManage ? "" : "grid-cols-1",
-                          )}
-                          key={row.bank_question_id}
-                        >
-                          {canManage ? (
-                            <TableCell className="p-2 md:p-4">
-                              <BulkRowCheckbox itemId={row.bank_question_id} />
-                            </TableCell>
-                          ) : null}
-                          <TableCell className="min-w-0 break-words p-2 font-semibold [overflow-wrap:anywhere] md:min-w-56 md:p-4">
+              <div className="divide-y divide-slate-200">
+                {questions.map((row) => {
+                  const question = row.question;
+                  const rowMetadata =
+                    row.metadata &&
+                    typeof row.metadata === "object" &&
+                    !Array.isArray(row.metadata)
+                      ? (row.metadata as Record<string, unknown>)
+                      : {};
+                  const isSuperseded =
+                    readiness === "archived" &&
+                    typeof rowMetadata.replacedByQuestionId === "string";
+                  const focusHref = `/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview?returnTo=${encodeURIComponent(questionPreviewReturnTo)}`;
+
+                  return (
+                    <article className="px-4 py-4" key={row.bank_question_id}>
+                      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+                        {canManage ? (
+                          <BulkRowCheckbox itemId={row.bank_question_id} />
+                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <h2 className="truncate text-base font-semibold text-slate-950">
                             {question?.title ?? "Question unavailable"}
-                            <p className="mt-1 font-mono text-xs font-normal text-muted-foreground">
-                              {question?.question_code ?? "Code unavailable"} ·{" "}
-                              {question?.question_type ?? "Type unavailable"}
+                          </h2>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {question?.question_code ?? "Code unavailable"} ·{" "}
+                            {question?.question_type ?? "Type unavailable"}
+                          </p>
+                          {isSuperseded ? (
+                            <p className="mt-2 text-sm font-medium text-amber-800">
+                              Replaced by a newer version
                             </p>
-                            {isSuperseded ? (
-                              <p className="mt-2 text-xs font-semibold leading-5 text-amber-800">
-                                Superseded by an approved revision · restore is
-                                unavailable
-                              </p>
-                            ) : null}
-                          </TableCell>
-                          <TableCell className="hidden min-w-44 md:table-cell">
-                            <BankBadge tone={row.status === "active" ? "indigo" : "amber"}>
-                              {row.status === "active"
-                                ? "Ready for assignment"
-                                : "Archived"}
-                            </BankBadge>
-                            <p className="mt-2 text-xs text-muted-foreground">
-                              Difficulty {question?.difficulty_rating ?? "not set"}
-                            </p>
-                          </TableCell>
-                          <TableCell className="hidden min-w-48 md:table-cell">
-                            <div className="flex flex-wrap gap-1">
-                              {row.tagSummaries.length ? (
-                                row.tagSummaries.slice(0, 2).map((tag) => (
-                                  <BankBadge key={tag.tag_id} tone="sky">
-                                    {tag.label ?? tag.tag_id}
-                                  </BankBadge>
-                                ))
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  Not tagged
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell
-                            className={cn(
-                              "min-w-0 p-2 pt-0 md:table-cell md:p-4",
-                              canManage ? "col-start-2" : "",
-                            )}
-                          >
-                            <div className="flex flex-wrap gap-2">
-                              <FocusTaskLink
-                                className={cn(
-                                  buttonVariants({
-                                    size: "sm",
-                                    variant: "outline",
-                                  }),
-                                  "h-auto min-h-11 whitespace-normal",
-                                )}
-                                href={`/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview`}
-                                returnTo={questionPreviewReturnTo}
-                                taskKind="question-preview"
-                                triggerId={`question-preview-${row.bank_question_id}`}
-                              >
-                                Preview
-                              </FocusTaskLink>
-                              <details className="relative min-w-0">
-                                <summary className="inline-flex min-h-11 cursor-pointer list-none items-center rounded-md px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500">
-                                  More
-                                </summary>
-                                <div className="mt-1 min-w-0 space-y-2 rounded-lg border border-slate-200 bg-white p-2 shadow-lg md:absolute md:right-0 md:z-20 md:min-w-52">
-                                  <a
-                                    className="flex min-h-11 items-center rounded-md px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-                                    href={buildFocusHref({
-                                      href: `/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview`,
-                                      returnTo: questionPreviewReturnTo,
-                                    })}
-                                    referrerPolicy="no-referrer"
-                                    rel="noopener noreferrer"
-                                    target="_blank"
-                                  >
-                                    Open preview in new tab
-                                  </a>
-                                  <p className="px-3 text-xs leading-5 text-slate-500">
-                                    Added {formatDate(row.added_at)} · {row.source_kind}
-                                  </p>
-                                  <div className="space-y-2 border-t border-slate-100 px-3 pt-2 text-xs text-slate-600 md:hidden">
-                                    <p>
-                                      {row.status === "active"
-                                        ? "Ready for assignment"
-                                        : "Archived"}{" "}
-                                      · Difficulty{" "}
-                                      {question?.difficulty_rating ?? "not set"}
-                                    </p>
-                                    <p>
-                                      {row.tagSummaries.length
-                                        ? row.tagSummaries
-                                            .slice(0, 2)
-                                            .map((tag) => tag.label ?? tag.tag_id)
-                                            .join(" · ")
-                                        : "Not tagged"}
-                                    </p>
-                                  </div>
-                                  {canManage && governanceAvailable && question ? (
-                                    <form action={createBankQuestionRevisionDraft}>
-                                      <input name="bankId" type="hidden" value={bank.id} />
-                                      <input name="questionId" type="hidden" value={question.id} />
-                                      <FormSubmitButton
-                                        className="min-h-11 w-full"
-                                        pendingLabel="Creating…"
-                                        size="sm"
-                                        variant="outline"
-                                      >
-                                        Create revision draft
-                                      </FormSubmitButton>
-                                    </form>
-                                  ) : null}
-                                </div>
-                              </details>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {!questions.length ? (
-                      <TableRow>
-                        <TableCell
-                          className="h-24 text-center"
-                          colSpan={canManage ? 5 : 4}
+                          ) : null}
+                        </div>
+                        <BankBadge
+                          tone={row.status === "active" ? "indigo" : "amber"}
                         >
-                              No questions match these filters.
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </TableBody>
-                </Table>
+                          {row.status === "active" ? "Ready" : "Archived"}
+                        </BankBadge>
+                        {canManage && governanceAvailable && question ? (
+                          <form action={createBankQuestionRevisionDraft}>
+                            <input
+                              name="bankId"
+                              type="hidden"
+                              value={bank.id}
+                            />
+                            <input
+                              name="questionId"
+                              type="hidden"
+                              value={question.id}
+                            />
+                            <FormSubmitButton
+                              pendingLabel="Opening…"
+                              size="sm"
+                              variant="outline"
+                            >
+                              Edit
+                            </FormSubmitButton>
+                          </form>
+                        ) : null}
+                        <details className="group relative">
+                          <summary className="inline-flex min-h-10 cursor-pointer list-none items-center rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+                            More
+                          </summary>
+                          <div className="mt-1 w-52 rounded-md border border-slate-200 bg-white p-2 shadow-lg lg:absolute lg:right-0 lg:z-20">
+                            <a
+                              className="flex min-h-10 items-center rounded-md px-3 text-sm font-medium hover:bg-slate-50"
+                              href={focusHref}
+                              referrerPolicy="no-referrer"
+                              rel="noopener noreferrer"
+                              target="_blank"
+                            >
+                              Open in new tab
+                            </a>
+                          </div>
+                        </details>
+                      </div>
+                      <LazyTeacherQuestionPreview
+                        bankId={bank.id}
+                        className="mt-2"
+                        id={row.bank_question_id}
+                        kind="question"
+                      />
+                    </article>
+                  );
+                })}
               </div>
               <div className="flex items-center justify-between border-t border-slate-200 p-4 text-sm">
                 <span>
@@ -768,19 +673,11 @@ export default async function TeacherBankQuestionsPage({
               ) : null}
             </>
           ) : (
-            <div className="p-8 text-center">
-              <p className="teacher-eyebrow">
-                {hasQuestionFilters ? "No matching questions" : "Empty Library"}
-              </p>
-              <h3 className="mt-2 text-xl font-bold text-slate-950">
+            <div className="p-10 text-center">
+              <p className="font-semibold text-slate-900">
                 {hasQuestionFilters
-                  ? "No Library questions match these filters."
-                  : "No reviewed questions in this Library yet."}
-              </h3>
-              <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                {hasQuestionFilters
-                  ? "Change or reset the filters to see other Library questions."
-                  : "Import private material, review the drafts, then approve questions into this Library."}
+                  ? "No questions match these filters."
+                  : "This Library has no Ready questions."}
               </p>
               {canManage ? (
                 <Button asChild className="mt-5" variant="outline">
