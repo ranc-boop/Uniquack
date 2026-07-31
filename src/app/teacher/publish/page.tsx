@@ -42,8 +42,8 @@ import {
   type PublishSourceType,
 } from "@/lib/teacher-publish";
 import {
-  listTeacherClassroomSummaries,
-  type TeacherClassroomSummary,
+  listTeacherClassroomChoices,
+  type TeacherClassroomChoice,
 } from "@/lib/teacher-classrooms";
 
 export const dynamic = "force-dynamic";
@@ -325,15 +325,9 @@ function QuestionChecklist({
       <div className="border-b border-slate-100 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="teacher-eyebrow">Selectable content</p>
             <h2 className="text-xl font-bold text-slate-950">
-              Select approved assignment-ready rows
+              Questions
             </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Every checked row is an active Library question. Students receive the
-              assignment item, not the source Library, answer key, or Blueprint
-              internals.
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <PublishSelectionControls
@@ -416,27 +410,22 @@ function ClassroomTargets({
   classrooms,
   preselectedClassroomId,
 }: {
-  classrooms: TeacherClassroomSummary[];
+  classrooms: TeacherClassroomChoice[];
   preselectedClassroomId?: string;
 }) {
   return (
     <section className="teacher-panel overflow-hidden">
       <div className="border-b border-slate-100 p-5">
-        <p className="teacher-eyebrow">Target</p>
         <h2 className="text-xl font-bold text-slate-950">
-          Choose one classroom
+          Classroom
         </h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          The standard path creates one recoverable delivery event at a time.
-          Return here to assign the same content to another class.
-        </p>
       </div>
 
       {classrooms.length ? (
-        <div className="grid gap-3 p-5 lg:grid-cols-2">
+        <div className="divide-y divide-slate-100">
           {classrooms.map((classroom) => (
             <label
-              className="flex min-h-11 cursor-pointer gap-3 rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-sky-200 hover:bg-sky-50/60"
+              className="flex min-h-16 cursor-pointer items-start gap-3 px-5 py-4 transition-colors hover:bg-sky-50/60"
               key={classroom.id}
             >
               <input
@@ -453,24 +442,6 @@ function ClassroomTargets({
                 </span>
                 <span className="mt-1 block text-sm text-slate-600">
                   {classroom.subject || "No subject set"}
-                </span>
-                <span className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                  <span className="rounded-md bg-slate-50 px-3 py-2">
-                    <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Students
-                    </span>
-                    <span className="font-bold text-slate-950">
-                      {classroom.studentCount}
-                    </span>
-                  </span>
-                  <span className="rounded-md bg-slate-50 px-3 py-2">
-                    <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Active
-                    </span>
-                    <span className="font-bold text-slate-950">
-                      {classroom.activeAssignmentCount}
-                    </span>
-                  </span>
                 </span>
               </span>
             </label>
@@ -502,14 +473,19 @@ export default async function TeacherPublishPage({
   const query = await searchParams;
   const supabase = await createClient();
   let banks: TeacherQuestionBankSummary[] = [];
-  let classrooms: TeacherClassroomSummary[] = [];
+  let classrooms: TeacherClassroomChoice[] = [];
   let sourceQuestions: PublishableBankQuestion[] = [];
   let dataError: unknown = null;
 
   try {
     [banks, classrooms] = await Promise.all([
       listTeacherQuestionBanks({ profileId: profile.id, supabase }),
-      listTeacherClassroomSummaries({ supabase }),
+      listTeacherClassroomChoices({
+        includeClassroomId: isDatabaseUuid(query.classroomId)
+          ? query.classroomId
+          : undefined,
+        supabase,
+      }),
     ]);
   } catch (error) {
     dataError = error;

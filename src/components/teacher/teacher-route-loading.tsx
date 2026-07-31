@@ -4,7 +4,7 @@ export function TeacherRouteLoading({
   label: string;
 }) {
   return (
-    <main
+    <div
       aria-busy="true"
       aria-live="polite"
       className="teacher-shell space-y-5"
@@ -25,6 +25,6 @@ export function TeacherRouteLoading({
           <div className="h-16 rounded-lg bg-slate-100" />
         </div>
       </section>
-    </main>
+    </div>
   );
 }
