@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 69,
+  "latestActivePrefix": 71,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -83,7 +83,9 @@
     "0066_strict_bank_review_lineage_gate.sql",
     "0067_teacher_bulk_review_and_question_management.sql",
     "0068_assignment_creation_idempotency.sql",
-    "0069_assignment_creation_idempotency_receipt_fix.sql"
+    "0069_assignment_creation_idempotency_receipt_fix.sql",
+    "0070_simplify_teacher_approval_and_question_delete.sql",
+    "0071_repair_bank_import_review_lineage.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -285,6 +287,8 @@
     { "filename": "0066_strict_bank_review_lineage_gate.sql", "migrationNumber": 66, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 66, "status": "SOURCE_COMPLETE_DISPOSABLE_VALIDATED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Forward-only migration applied only to the project-ref-matched disposable clean database for validation; production deployment remains separately reviewed", "evidenceSource": "Disposable catalog definition check plus authenticated owner null-lineage and mismatch RPC denial, valid bidirectional approval regression, and canonical governance checks; no production or migration-ledger application is claimed" },
     { "filename": "0067_teacher_bulk_review_and_question_management.sql", "migrationNumber": 67, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 67, "status": "SOURCE_COMPLETE_NOT_APPLIED", "applicationMethod": "Forward-only apply requires the current-page bulk Review and Library management release gate", "evidenceSource": "Atomic all-or-none RPC source, role/static smoke, and application workflow validation; no hosted or migration-ledger application is claimed" },
     { "filename": "0068_assignment_creation_idempotency.sql", "migrationNumber": 68, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 68, "status": "DISPOSABLE_APPLIED_FORWARD_CORRECTED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Applied only inside one transaction with mandatory correction 0069 on the project-ref-matched hosted disposable database", "evidenceSource": "Disposable runtime validation exposed an actor variable/receipt column inversion in 0068; the hosted disposable transaction included mandatory 0069 before commit; no production or migration-ledger application is claimed" },
-    { "filename": "0069_assignment_creation_idempotency_receipt_fix.sql", "migrationNumber": 69, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 69, "status": "SOURCE_COMPLETE_DISPOSABLE_VALIDATED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Forward-only migration validated on embedded fresh-chain Postgres and applied with 0068 in one transaction on the project-ref-matched hosted disposable database", "evidenceSource": "Embedded and hosted-disposable validation passed catalog checks; embedded runtime passed concurrent same-key reuse, mismatched-payload denial, distinct-key creation, and authenticated denial on the private receipt table; no production or migration-ledger application is claimed" }
+    { "filename": "0069_assignment_creation_idempotency_receipt_fix.sql", "migrationNumber": 69, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 69, "status": "SOURCE_COMPLETE_DISPOSABLE_VALIDATED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Forward-only migration validated on embedded fresh-chain Postgres and applied with 0068 in one transaction on the project-ref-matched hosted disposable database", "evidenceSource": "Embedded and hosted-disposable validation passed catalog checks; embedded runtime passed concurrent same-key reuse, mismatched-payload denial, distinct-key creation, and authenticated denial on the private receipt table; no production or migration-ledger application is claimed" },
+    { "filename": "0070_simplify_teacher_approval_and_question_delete.sql", "migrationNumber": 70, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 70, "status": "DISPOSABLE_APPLIED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Pre/post function definition validation confirmed needs-more-evidence support; no production or migration-ledger application is claimed" },
+    { "filename": "0071_repair_bank_import_review_lineage.sql", "migrationNumber": 71, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 71, "status": "DISPOSABLE_APPLIED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Strict-valid Draft lineage increased from 1 to 40 while incomplete lineage fell from 40 to 1; no content was approved and no production or migration-ledger application is claimed" }
   ]
 }

@@ -97,27 +97,31 @@ for (let number = 44; number <= 69; number += 1) {
   );
 }
 assert(
-  manifest.latestActivePrefix === 69 &&
-    activeMigrationNames.at(-10) === "0060_question_management_read_models.sql" &&
-    activeMigrationNames.at(-9) ===
+  manifest.latestActivePrefix === 71 &&
+    activeMigrationNames.at(-12) === "0060_question_management_read_models.sql" &&
+    activeMigrationNames.at(-11) ===
       "0061_question_taxonomy_search_materialization.sql" &&
-    activeMigrationNames.at(-8) ===
+    activeMigrationNames.at(-10) ===
       "0062_teacher_bank_import_workspace_read_model.sql" &&
-    activeMigrationNames.at(-7) ===
+    activeMigrationNames.at(-9) ===
       "0063_admin_ai_pdf_workspace_read_model.sql" &&
-    activeMigrationNames.at(-6) ===
+    activeMigrationNames.at(-8) ===
       "0064_admin_ai_pdf_workspace_read_model_item_scan_fix.sql" &&
-    activeMigrationNames.at(-5) ===
+    activeMigrationNames.at(-7) ===
       "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql" &&
-    activeMigrationNames.at(-4) ===
+    activeMigrationNames.at(-6) ===
       "0066_strict_bank_review_lineage_gate.sql" &&
-    activeMigrationNames.at(-3) ===
+    activeMigrationNames.at(-5) ===
       "0067_teacher_bulk_review_and_question_management.sql" &&
-    activeMigrationNames.at(-2) ===
+    activeMigrationNames.at(-4) ===
       "0068_assignment_creation_idempotency.sql" &&
+    activeMigrationNames.at(-3) ===
+      "0069_assignment_creation_idempotency_receipt_fix.sql" &&
+    activeMigrationNames.at(-2) ===
+      "0070_simplify_teacher_approval_and_question_delete.sql" &&
     activeMigrationNames.at(-1) ===
-      "0069_assignment_creation_idempotency_receipt_fix.sql",
-  "Assignment receipt correction 0069 must be the canonical executable tail.",
+      "0071_repair_bank_import_review_lineage.sql",
+  "Import Review lineage repair 0071 must be the canonical executable tail.",
 );
 
 for (const [filename, expectedHash] of Object.entries(manifest.frozenMigrationHashes)) {
