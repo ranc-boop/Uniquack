@@ -220,7 +220,7 @@ function PublishFilters({
                 defaultValue={query}
                 id="q"
                 name="q"
-                placeholder="Search title, prompt, tag, blueprint..."
+                placeholder="Search title, code, type, or Blueprint"
               />
             </div>
           </div>

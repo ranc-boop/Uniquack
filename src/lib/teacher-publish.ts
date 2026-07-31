@@ -1,15 +1,11 @@
 import "server-only";
 
-import { htmlToPlainTextExcerpt } from "@/lib/html/excerpt";
 import { createClient } from "@/lib/supabase/server";
 import type {
   BankMemberRole,
   Json,
   Question,
   QuestionBank,
-  QuestionTaxonomyAssignment,
-  TaxonomyNode,
-  TaxonomyReviewStatus,
 } from "@/types/database";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -35,10 +31,8 @@ export type PublishableBankQuestion = {
   difficultyLabel: string;
   isAssignmentReady: boolean;
   isBlueprintApprovedContent: boolean;
-  promptPreview: string;
   question: Pick<
     Question,
-    | "content_html"
     | "deleted_at"
     | "difficulty_rating"
     | "id"
@@ -54,15 +48,6 @@ export type PublishableBankQuestion = {
     | "visibility"
   > | null;
   readinessReasons: string[];
-  tagSummaries: PublishQuestionTaxonomySummary[];
-};
-
-export type PublishQuestionTaxonomySummary = Pick<
-  QuestionTaxonomyAssignment,
-  "review_status" | "tag_id"
-> & {
-  facet_key: string | null;
-  label: string | null;
 };
 
 export type PublishableQuestionFilters = {
@@ -244,8 +229,6 @@ function matchesQuery(question: PublishableBankQuestion, query: string) {
     question.question?.title,
     question.question?.question_code,
     question.question?.question_type,
-    question.promptPreview,
-    ...question.tagSummaries.map((tag) => tag.label ?? tag.tag_id),
     question.blueprintLineage?.blueprintTitle,
     question.blueprintLineage?.blueprintId,
   ]
@@ -409,69 +392,6 @@ async function loadReviewItems({
   return { byId, byQuestionId };
 }
 
-async function loadTaxonomySummaries({
-  questionIds,
-  supabase,
-}: {
-  questionIds: string[];
-  supabase: SupabaseServerClient;
-}) {
-  const summariesByQuestionId = new Map<string, PublishQuestionTaxonomySummary[]>();
-
-  if (!questionIds.length) {
-    return summariesByQuestionId;
-  }
-
-  const { data: assignments, error } = await supabase
-    .from("question_taxonomy_assignments")
-    .select("question_id, tag_id, review_status")
-    .in("question_id", questionIds)
-    .limit(600);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const tagIds = Array.from(
-    new Set((assignments ?? []).map((assignment) => assignment.tag_id)),
-  );
-  let taxonomyNodesById = new Map<
-    string,
-    Pick<TaxonomyNode, "facet_key" | "label" | "tag_id">
-  >();
-
-  if (tagIds.length) {
-    const { data: nodes, error: nodesError } = await supabase
-      .from("taxonomy_nodes")
-      .select("tag_id, label, facet_key")
-      .in("tag_id", tagIds)
-      .limit(600);
-
-    if (nodesError) {
-      throw new Error(nodesError.message);
-    }
-
-    taxonomyNodesById = new Map(
-      (nodes ?? []).map((node) => [node.tag_id, node]),
-    );
-  }
-
-  for (const assignment of assignments ?? []) {
-    const node = taxonomyNodesById.get(assignment.tag_id);
-    const summaries = summariesByQuestionId.get(assignment.question_id) ?? [];
-
-    summaries.push({
-      facet_key: node?.facet_key ?? null,
-      label: node?.label ?? null,
-      review_status: assignment.review_status as TaxonomyReviewStatus,
-      tag_id: assignment.tag_id,
-    });
-    summariesByQuestionId.set(assignment.question_id, summaries);
-  }
-
-  return summariesByQuestionId;
-}
-
 export async function listPublishableBankQuestions({
   bankId,
   supabase,
@@ -482,7 +402,7 @@ export async function listPublishableBankQuestions({
   const { data, error } = await supabase
     .from("bank_questions")
     .select(
-      "id, bank_id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, published_at, deleted_at, content_html)",
+      "id, bank_id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, published_at, deleted_at)",
     )
     .eq("bank_id", bankId)
     .eq("status", "active")
@@ -505,10 +425,12 @@ export async function listPublishableBankQuestions({
     ),
   );
 
-  const [tagsByQuestionId, reviewItems] = await Promise.all([
-    loadTaxonomySummaries({ questionIds, supabase }),
-    loadReviewItems({ bankId, questionIds, sourceReviewItemIds, supabase }),
-  ]);
+  const reviewItems = await loadReviewItems({
+    bankId,
+    questionIds,
+    sourceReviewItemIds,
+    supabase,
+  });
 
   return rows.map((row) => {
     const question = singleJoin(row.question);
@@ -538,10 +460,8 @@ export async function listPublishableBankQuestions({
       isBlueprintApprovedContent: Boolean(
         blueprintLineage && readinessReasons.length === 0,
       ),
-      promptPreview: htmlToPlainTextExcerpt(question?.content_html ?? "", 220),
       question,
       readinessReasons,
-      tagSummaries: question?.id ? tagsByQuestionId.get(question.id) ?? [] : [],
     } satisfies PublishableBankQuestion;
   });
 }
