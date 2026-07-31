@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, RotateCcw } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { TeacherQuestionPreview } from "@/components/teacher/teacher-question-preview";
 import type {
@@ -169,6 +169,7 @@ export async function loadTeacherQuestionPreviews({
 export function LazyTeacherQuestionPreview({
   bankId,
   className,
+  defaultExpanded = false,
   id,
   kind,
   label = "Preview",
@@ -176,6 +177,7 @@ export function LazyTeacherQuestionPreview({
 }: {
   bankId: string;
   className?: string;
+  defaultExpanded?: boolean;
   id: string;
   kind: TeacherPreviewKind;
   label?: string;
@@ -183,7 +185,7 @@ export function LazyTeacherQuestionPreview({
 }) {
   const panelId = useId();
   const abortRef = useRef<AbortController | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [preview, setPreview] = useState<TeacherPreviewDTO | null>(
     () =>
       previewCache.get(cacheKey({ bankId, id, kind, version })) ?? null,
@@ -191,7 +193,7 @@ export function LazyTeacherQuestionPreview({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (preview || loading) return;
 
     abortRef.current?.abort();
@@ -224,11 +226,17 @@ export function LazyTeacherQuestionPreview({
         setLoading(false);
       }
     }
-  };
+  }, [bankId, id, kind, loading, preview, version]);
 
   useEffect(() => {
-    return () => abortRef.current?.abort();
-  }, []);
+    const loadTimer = defaultExpanded
+      ? window.setTimeout(() => void load(), 0)
+      : null;
+    return () => {
+      if (loadTimer !== null) window.clearTimeout(loadTimer);
+      abortRef.current?.abort();
+    };
+  }, [defaultExpanded, load]);
 
   const toggle = () => {
     const nextExpanded = !expanded;

@@ -15,6 +15,7 @@ import {
   AssignmentDetailsFields,
 } from "@/components/teacher/assignment-composer-flow";
 import { AssignmentSelectionSummary } from "@/components/teacher/assignment-selection-summary";
+import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
 import { PublishSelectionControls } from "@/components/teacher/publish-selection-controls";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
@@ -117,23 +118,6 @@ function buildPublishHref({
   if (blueprintId) params.set("blueprintId", blueprintId);
 
   return params.size ? `/teacher/publish?${params.toString()}` : "/teacher/publish";
-}
-
-function statusClasses(status: string | null | undefined) {
-  if (status === "published" || status === "review") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  }
-
-  if (status === "draft") {
-    return "border-amber-200 bg-amber-50 text-amber-800";
-  }
-
-  return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function shortId(value: string | null | undefined) {
-  if (!value) return "none";
-  return value.length > 12 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
 }
 
 function SourceLibraryPicker({
@@ -391,125 +375,44 @@ function QuestionChecklist({
 
       {questions.length ? (
         <div className="divide-y divide-slate-100">
-          {questions.map((row, index) => {
+          {questions.map((row) => {
             const question = row.question!;
-            const tags = row.tagSummaries.slice(0, 3);
 
             return (
-              <label
-                className="flex min-h-11 cursor-pointer gap-4 p-4 transition-colors hover:bg-sky-50/40"
+              <article
+                className="p-4 transition-colors hover:bg-sky-50/40"
                 key={row.bankQuestionId}
               >
-                <input
-                  className="mt-1 h-5 w-5 rounded border-slate-300 text-sky-600"
-                  defaultChecked={defaultSelectedIds.has(row.bankQuestionId)}
-                  form="publish-center-form"
-                  name="bankQuestionIds"
-                  type="checkbox"
-                  value={row.bankQuestionId}
-                />
-                <span className="min-w-0 flex-1 space-y-2">
-                  <span className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                    <span>
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Student item {index + 1}
-                      </span>
-                      <span className="mt-1 block break-words text-base font-bold text-slate-950">
+                <label className="flex min-h-11 cursor-pointer items-start gap-4">
+                  <input
+                    className="mt-1 h-5 w-5 rounded border-slate-300 text-sky-600"
+                    defaultChecked={defaultSelectedIds.has(row.bankQuestionId)}
+                    form="publish-center-form"
+                    name="bankQuestionIds"
+                    type="checkbox"
+                    value={row.bankQuestionId}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                      <span className="block break-words text-base font-semibold text-slate-950">
                         {question.title}
                       </span>
-                    </span>
-                    <span className="flex flex-wrap gap-2 text-xs font-semibold">
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
                         {question.question_type}
                       </span>
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700">
-                        {row.difficultyLabel}
-                      </span>
-                      <span
-                        className={`rounded-full border px-2 py-1 ${statusClasses(
-                          question.status,
-                        )}`}
-                      >
-                        {question.status}
-                      </span>
-                      {row.isBlueprintApprovedContent ? (
-                        <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-violet-800">
-                          Blueprint-approved
-                        </span>
-                      ) : null}
+                    </span>
+                    <span className="mt-1 block text-sm text-slate-600">
+                      {question.question_code}
                     </span>
                   </span>
-
-                  <span className="line-clamp-2 block text-sm leading-6 text-slate-700">
-                    {row.promptPreview || "Prompt preview unavailable."}
-                  </span>
-
-                  <span className="flex flex-wrap gap-1.5">
-                    {tags.map((tag) => (
-                      <span
-                        className="rounded-md border border-sky-100 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-900"
-                        key={`${row.bankQuestionId}-${tag.tag_id}`}
-                      >
-                        {tag.label ?? tag.facet_key ?? "Taxonomy tag"}
-                      </span>
-                    ))}
-                    {row.tagSummaries.length > tags.length ? (
-                      <span className="px-2 py-1 text-xs font-semibold text-slate-500">
-                        +{row.tagSummaries.length - tags.length} more
-                      </span>
-                    ) : null}
-                  </span>
-
-                  <details className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                    <summary className="teacher-focus-ring min-h-11 cursor-pointer py-2 text-sm font-semibold text-slate-700">
-                      Source and readiness details
-                    </summary>
-                    <dl className="mt-3 grid gap-2 text-xs text-slate-600 lg:grid-cols-2">
-                      <div className="lg:col-span-2">
-                        <dt className="font-semibold text-slate-500">Teacher source</dt>
-                        <dd className="break-words">
-                          {row.isBlueprintApprovedContent
-                            ? row.blueprintLineage?.blueprintTitle ??
-                              "Approved Blueprint-generated question"
-                            : "Library"}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-slate-500">Library question</dt>
-                        <dd className="break-all">{shortId(row.bankQuestionId)}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-slate-500">Question</dt>
-                        <dd className="break-all">{shortId(question.id)}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-slate-500">Review Draft</dt>
-                        <dd className="break-all">
-                          {shortId(row.blueprintLineage?.reviewItemId ?? question.source_review_item_id)}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-slate-500">Blueprint</dt>
-                        <dd className="break-all">
-                          {shortId(row.blueprintLineage?.blueprintId)}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-slate-500">Published globally</dt>
-                        <dd>{question.published_at ? "yes" : "no"}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-slate-500">Readiness</dt>
-                        <dd>
-                          {row.readinessReasons.length
-                            ? row.readinessReasons.join(" ")
-                            : "Assignment-ready"}
-                        </dd>
-                      </div>
-                    </dl>
-                  </details>
-                </span>
-              </label>
+                </label>
+                <LazyTeacherQuestionPreview
+                  bankId={bankId}
+                  className="mt-2"
+                  id={row.bankQuestionId}
+                  kind="assignment-selection"
+                />
+              </article>
             );
           })}
         </div>
@@ -861,6 +764,7 @@ export default async function TeacherPublishPage({
                     </div>
                     <div className="mt-5 space-y-4">
                       <AssignmentSelectionSummary
+                        bankId={selectedBankId}
                         formId="publish-center-form"
                         helperText="Return to Content if you need to change the reviewed questions."
                         inputName="bankQuestionIds"

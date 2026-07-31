@@ -15,14 +15,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   getTeacherQuestionBankAccess,
@@ -356,49 +348,41 @@ export default async function TeacherBankQuestionsPage({
             </p>
           ) : publicQuestions.length ? (
             <>
-              <div className="overflow-x-auto">
-                <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Difficulty</TableHead>
-                    <TableHead>Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {publicQuestions.map((question) => (
-                    <TableRow key={question.id}>
-                      <TableCell className="font-mono text-xs">
-                        {question.question_code}
-                      </TableCell>
-                      <TableCell className="font-semibold">
-                        {question.title}
-                      </TableCell>
-                      <TableCell>{question.question_type}</TableCell>
-                      <TableCell>{question.difficulty_rating}</TableCell>
-                      <TableCell>
-                        <form action={pullPublicQuestionIntoBank}>
-                          <input name="bankId" type="hidden" value={bank.id} />
-                          <input
-                            name="publicQuestionId"
-                            type="hidden"
-                            value={question.id}
-                          />
-                          <FormSubmitButton
-                            pendingLabel="Copying…"
-                            size="sm"
-                            variant="outline"
-                          >
-                            Add independent copy
-                          </FormSubmitButton>
-                        </form>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                </Table>
+              <div className="divide-y divide-slate-200">
+                {publicQuestions.map((question) => (
+                  <article className="px-4 py-4" key={question.id}>
+                    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-base font-semibold text-slate-950">
+                          {question.title}
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {question.question_code} · {question.question_type}
+                        </p>
+                      </div>
+                      <form action={pullPublicQuestionIntoBank}>
+                        <input name="bankId" type="hidden" value={bank.id} />
+                        <input
+                          name="publicQuestionId"
+                          type="hidden"
+                          value={question.id}
+                        />
+                        <FormSubmitButton
+                          pendingLabel="Adding…"
+                          size="sm"
+                        >
+                          Add
+                        </FormSubmitButton>
+                      </form>
+                    </div>
+                    <LazyTeacherQuestionPreview
+                      bankId={bank.id}
+                      className="mt-2 flex w-full flex-col items-start [&>div]:w-full lg:items-end"
+                      id={question.id}
+                      kind="public-question"
+                    />
+                  </article>
+                ))}
               </div>
               <div className="flex items-center justify-between border-t border-sky-100 p-4 text-sm">
                 <span>

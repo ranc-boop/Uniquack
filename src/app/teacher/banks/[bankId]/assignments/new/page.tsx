@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { createAssignmentFromBankQuestions } from "@/app/teacher/banks/actions";
 import { AssignmentSelectionSummary } from "@/components/teacher/assignment-selection-summary";
+import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -222,39 +223,39 @@ export default async function NewBankAssignmentPage({
                   const question = row.question!;
 
                   return (
-                    <label
-                      className="flex cursor-pointer gap-4 p-5 transition hover:bg-slate-50"
+                    <article
+                      className="p-5 transition hover:bg-slate-50"
                       key={row.bank_question_id}
                     >
-                      <input
-                        className="mt-1 h-5 w-5 rounded border-slate-300"
-                        defaultChecked={selectedQuestionIds.has(
-                          row.bank_question_id,
-                        )}
-                        name="bankQuestionIds"
-                        type="checkbox"
-                        value={row.bank_question_id}
-                      />
-                      <span className="min-w-0 flex-1 space-y-2">
-                        <span className="block break-words text-base font-bold text-slate-950">
-                          {question.title}
-                        </span>
-                        <span className="flex flex-wrap gap-2 text-xs font-semibold">
+                      <label className="flex cursor-pointer gap-4">
+                        <input
+                          className="mt-1 h-5 w-5 rounded border-slate-300"
+                          defaultChecked={selectedQuestionIds.has(
+                            row.bank_question_id,
+                          )}
+                          name="bankQuestionIds"
+                          type="checkbox"
+                          value={row.bank_question_id}
+                        />
+                        <span className="min-w-0 flex-1 space-y-2">
+                          <span className="block break-words text-base font-semibold text-slate-950">
+                            {question.title}
+                          </span>
                           <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
                             {question.question_type}
                           </span>
-                          <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
-                            difficulty {question.difficulty_rating}
-                          </span>
-                          <span className="rounded-full bg-blue-50 px-2 py-1 text-blue-700">
-                            {question.status}
+                          <span className="block break-words text-sm leading-6 text-slate-600">
+                            {question.question_code || "Question code pending"}
                           </span>
                         </span>
-                        <span className="block break-words text-sm leading-6 text-slate-600">
-                          {question.question_code || "Question code pending"}
-                        </span>
-                      </span>
-                    </label>
+                      </label>
+                      <LazyTeacherQuestionPreview
+                        bankId={bank.id}
+                        className="mt-2"
+                        id={row.bank_question_id}
+                        kind="assignment-selection"
+                      />
+                    </article>
                   );
                 })}
               </div>
@@ -284,6 +285,7 @@ export default async function NewBankAssignmentPage({
             </h2>
             <div className="mt-5 space-y-4">
               <AssignmentSelectionSummary
+                bankId={bank.id}
                 formId="bank-assignment-create-form"
                 helperText="Choose at least one approved Library question before saving or assigning."
                 inputName="bankQuestionIds"

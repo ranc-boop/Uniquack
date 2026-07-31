@@ -78,6 +78,7 @@ export type TeacherPreviewDTO =
 
 export type TeacherPreviewKind =
   | "assignment-selection"
+  | "public-question"
   | "question"
   | "review";
 

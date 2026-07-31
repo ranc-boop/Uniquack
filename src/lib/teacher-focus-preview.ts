@@ -486,6 +486,81 @@ export async function getTeacherQuestionPreviewDTOs({
   });
 }
 
+export async function getPublicQuestionPreviewDTOs({
+  bankId,
+  profileId,
+  publicQuestionIds,
+  supabase,
+}: {
+  bankId: string;
+  profileId: string;
+  publicQuestionIds: string[];
+  supabase: SupabaseServerClient;
+}): Promise<TeacherQuestionPreviewDTO[] | null> {
+  const access = await getTeacherQuestionBankAccess({
+    bankId,
+    profileId,
+    supabase,
+  });
+
+  if (!access?.canManage) return null;
+
+  const { data, error } = await supabase
+    .from("questions")
+    .select(
+      "id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at",
+    )
+    .in("id", publicQuestionIds)
+    .is("owner_bank_id", null)
+    .eq("status", "published")
+    .eq("visibility", "public")
+    .is("deleted_at", null)
+    .limit(5);
+
+  if (error) throw new Error(error.message);
+  if ((data?.length ?? 0) !== publicQuestionIds.length) return null;
+
+  const questionById = new Map(
+    (data ?? []).map((question) => [
+      question.id,
+      question as PreviewQuestionRow,
+    ]),
+  );
+  const orderedQuestions = publicQuestionIds.map((id) => questionById.get(id));
+
+  if (orderedQuestions.some((question) => !question)) return null;
+
+  const safeQuestions = orderedQuestions.filter(
+    (question): question is PreviewQuestionRow => Boolean(question),
+  );
+  const enrichmentByQuestionId = await loadPreviewEnrichmentBatch({
+    questionIds: safeQuestions.map((question) => question.id),
+    supabase,
+  });
+
+  return safeQuestions.map((question) => {
+    const enrichment = enrichmentByQuestionId.get(question.id) ?? {
+      assetValidationRows: [],
+      assets: [],
+      taxonomy: [],
+    };
+
+    return {
+      ...previewEnrichmentProjection(enrichment),
+      bank: bankProjection(access),
+      kind: "teacher-question-preview",
+      provenance: {
+        hasReviewLineage: Boolean(question.source_review_item_id),
+        sourceKind: question.source_kind || "public",
+      },
+      question: questionProjection(
+        question,
+        question.id,
+      ) as TeacherQuestionPreviewDTO["question"],
+    };
+  });
+}
+
 export async function getReviewPreviewDTO({
   bankId,
   profileId,

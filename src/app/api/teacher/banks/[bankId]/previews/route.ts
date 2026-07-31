@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentProfile } from "@/lib/auth/guards";
 import { canAccessTeacher } from "@/lib/auth/roles";
 import {
+  getPublicQuestionPreviewDTOs,
   getReviewPreviewDTOs,
   getTeacherQuestionPreviewDTOs,
 } from "@/lib/teacher-focus-preview";
@@ -27,6 +28,7 @@ const PRIVATE_HEADERS = {
 
 const PREVIEW_KINDS = new Set<TeacherPreviewKind>([
   "assignment-selection",
+  "public-question",
   "question",
   "review",
 ]);
@@ -132,12 +134,19 @@ export async function POST(
             reviewItemIds: parsed.ids,
             supabase,
           })
-        : await getTeacherQuestionPreviewDTOs({
-            bankId,
-            bankQuestionIds: parsed.ids,
-            profileId: profile.id,
-            supabase,
-          });
+        : parsed.kind === "public-question"
+          ? await getPublicQuestionPreviewDTOs({
+              bankId,
+              profileId: profile.id,
+              publicQuestionIds: parsed.ids,
+              supabase,
+            })
+          : await getTeacherQuestionPreviewDTOs({
+              bankId,
+              bankQuestionIds: parsed.ids,
+              profileId: profile.id,
+              supabase,
+            });
 
     if (!previews) {
       // Missing and inaccessible items deliberately share one response.
