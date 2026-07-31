@@ -148,6 +148,7 @@ export type BankReviewQuestionSummary = {
   softWarnings: string[];
   state: "draft";
   title: string;
+  updatedAt: string;
 };
 
 export type BankApprovedQuestion = {
@@ -165,6 +166,7 @@ export type BankApprovedQuestion = {
     | "source_review_item_id"
     | "status"
     | "title"
+    | "updated_at"
     | "visibility"
     | "published_at"
   > | null;
@@ -738,6 +740,7 @@ type ReviewSummaryQuestionRow = Pick<
   | "source_review_item_id"
   | "status"
   | "title"
+  | "updated_at"
 >;
 
 type ReviewSummaryItemRow = {
@@ -764,7 +767,7 @@ async function loadBankReviewQuestionSummaries({
   const { data: questionRows, error: questionError } = await supabase
     .from("questions")
     .select(
-      "id, question_code, title, question_type, status, owner_bank_id, source_review_item_id, content_html, content_source, solution_html, solution_source, options, answer_spec, difficulty_rating, source",
+      "id, question_code, title, question_type, status, owner_bank_id, source_review_item_id, content_html, content_source, solution_html, solution_source, options, answer_spec, difficulty_rating, source, updated_at",
     )
     .in("id", questionIds);
   assertQuestionBankSchema(questionError);
@@ -929,6 +932,7 @@ async function loadBankReviewQuestionSummaries({
           softWarnings: validation.softWarnings,
           state: "draft" as const,
           title: question.title,
+          updatedAt: question.updated_at,
         } satisfies BankReviewQuestionSummary,
       ] as const;
     }),
@@ -1419,7 +1423,7 @@ export async function listBankApprovedQuestions({
   const { data, error } = await supabase
     .from("bank_questions")
     .select(
-      "id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, visibility, published_at)",
+      "id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, visibility, published_at, updated_at)",
     )
     .eq("bank_id", bankId)
     .eq("status", "active")

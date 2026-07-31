@@ -665,7 +665,7 @@ export async function getReviewPreviewDTOs({
     supabase,
   });
 
-  if (!access) return null;
+  if (!access?.canManage) return null;
 
   const reviewResult = await supabase
     .from("review_draft_items")

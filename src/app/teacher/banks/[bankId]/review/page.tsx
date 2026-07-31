@@ -437,7 +437,9 @@ export default async function TeacherBankReviewPage({
                           bankId={bank.id}
                           className="mt-2"
                           id={question.reviewItemId}
+                          key={`${question.reviewItemId}:${question.updatedAt}`}
                           kind="review"
+                          version={question.updatedAt}
                         />
                       ) : null}
 

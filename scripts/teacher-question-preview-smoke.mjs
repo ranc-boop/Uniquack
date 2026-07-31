@@ -22,6 +22,9 @@ const [
   teacherPublish,
   reviewActions,
   validation,
+  reviewBulkPage,
+  questionBulkPage,
+  previewQueue,
 ] = await Promise.all([
   read("src/app/api/teacher/banks/[bankId]/previews/route.ts"),
   read("src/components/teacher/lazy-teacher-question-preview.tsx"),
@@ -36,6 +39,9 @@ const [
   read("src/lib/teacher-publish.ts"),
   read("src/app/teacher/banks/actions.ts"),
   read("src/lib/questions/review-publish-validation.ts"),
+  read("src/app/teacher/banks/[bankId]/review/bulk/page.tsx"),
+  read("src/app/teacher/banks/[bankId]/questions/preview/page.tsx"),
+  read("src/components/teacher/teacher-question-preview-queue.tsx"),
 ]);
 
 assert(
@@ -55,6 +61,7 @@ assert(
     previewTypes.includes('"question"') &&
     previewTypes.includes('"review"') &&
     previewLoader.includes('.eq("target_bank_id", bankId)') &&
+    previewLoader.includes("if (!access?.canManage) return null") &&
     previewLoader.includes('.eq("owner_bank_id", bankId)') &&
     previewLoader.includes('.eq("status", "published")') &&
     previewLoader.includes('.eq("visibility", "public")'),
@@ -62,8 +69,29 @@ assert(
 );
 
 assert(
+  reviewBulkPage.includes("getTeacherQuestionBankAccess") &&
+    reviewBulkPage.includes("if (!access?.canManage) notFound()") &&
+    questionBulkPage.includes("getTeacherQuestionBankAccess") &&
+    reviewBulkPage.includes('kind="review"') &&
+    questionBulkPage.includes('kind="question"') &&
+    !reviewBulkPage.includes("getReviewPreviewDTOs") &&
+    !questionBulkPage.includes("getTeacherQuestionPreviewDTOs") &&
+    previewQueue.includes("ids.slice(currentIndex, currentIndex + 2)") &&
+    previewQueue.includes("versionsRef") &&
+    previewQueue.includes("bypassUnversionedCache: true") &&
+    previewQueue.includes("loadTeacherQuestionPreviews") &&
+    previewQueue.includes("controller.abort()"),
+  "selected preview queues must authorize before rendering and load only the current plus next question",
+);
+
+assert(
   lazyPreview.includes("activeRequestCount < 2") &&
     lazyPreview.includes("previewCache") &&
+    lazyPreview.includes("MAX_PREVIEW_CACHE_ENTRIES = 50") &&
+    lazyPreview.includes("previewCache.size > MAX_PREVIEW_CACHE_ENTRIES") &&
+    lazyPreview.includes("bypassUnversionedCache") &&
+    lazyPreview.includes("getCachedPreview") &&
+    lazyPreview.includes("setCachedPreview") &&
     lazyPreview.includes("AbortController") &&
     lazyPreview.includes("loadingRef.current") &&
     lazyPreview.includes("abortRef.current === controller") &&
@@ -104,7 +132,12 @@ assert(
 assert(
   questionPage.includes('kind="question"') &&
     questionPage.includes('kind="public-question"') &&
+    questionPage.includes(
+      "version={row.question?.updated_at ?? row.added_at}",
+    ) &&
     publishPage.includes('kind="assignment-selection"') &&
+    publishPage.includes("version={question.updated_at}") &&
+    reviewPage.includes("version={question.updatedAt}") &&
     blueprintPage.includes('kind="question"') &&
     assignmentSummary.includes("Preview selected") &&
     assignmentSummary.includes("nextPreviewId") &&

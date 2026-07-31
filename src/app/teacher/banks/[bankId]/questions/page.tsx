@@ -147,6 +147,7 @@ export default async function TeacherBankQuestionsPage({
     question_code: string;
     question_type: string;
     title: string;
+    updated_at: string;
   }> = [];
   const publicPageSize = 25;
   const publicPage = Math.max(
@@ -158,7 +159,7 @@ export default async function TeacherBankQuestionsPage({
   if (showPublicCatalog && canManage && governanceAvailable) {
     let publicQuestionQuery = supabase
       .from("questions")
-      .select("id, question_code, title, question_type, difficulty_rating", {
+      .select("id, question_code, title, question_type, difficulty_rating, updated_at", {
         count: "exact",
       })
       .is("owner_bank_id", null)
@@ -378,7 +379,9 @@ export default async function TeacherBankQuestionsPage({
                       bankId={bank.id}
                       className="mt-2 flex w-full flex-col items-start [&>div]:w-full lg:items-end"
                       id={question.id}
+                      key={`${question.id}:${question.updated_at}`}
                       kind="public-question"
+                      version={question.updated_at}
                     />
                   </article>
                 ))}
@@ -621,7 +624,9 @@ export default async function TeacherBankQuestionsPage({
                         bankId={bank.id}
                         className="mt-2"
                         id={row.bank_question_id}
+                        key={`${row.bank_question_id}:${row.question?.updated_at ?? row.added_at}`}
                         kind="question"
+                        version={row.question?.updated_at ?? row.added_at}
                       />
                     </article>
                   );

@@ -378,7 +378,9 @@ function QuestionChecklist({
                   bankId={bankId}
                   className="mt-2"
                   id={row.bankQuestionId}
+                  key={`${row.bankQuestionId}:${question.updated_at}`}
                   kind="assignment-selection"
+                  version={question.updated_at}
                 />
               </article>
             );
@@ -708,6 +710,12 @@ export default async function TeacherPublishPage({
                         inputName="bankQuestionIds"
                         totalLabel="visible assignment-ready question(s)."
                         totalQuestions={visibleQuestions.length}
+                        versions={Object.fromEntries(
+                          visibleQuestions.map((row) => [
+                            row.bankQuestionId,
+                            row.question?.updated_at ?? row.addedAt,
+                          ]),
+                        )}
                       />
                       <AssignmentDetailsFields />
                     </div>

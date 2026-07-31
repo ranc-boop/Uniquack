@@ -65,7 +65,7 @@ export default async function TeacherReviewEditPage({
   const { data: question, error } = await supabase
     .from("questions")
     .select(
-      "id, content_source, content_html, solution_source, solution_html, options, answer_spec, question_type, difficulty_rating, title",
+      "id, content_source, content_html, solution_source, solution_html, options, answer_spec, question_type, difficulty_rating, title, updated_at",
     )
     .eq("id", preview.question.questionId)
     .eq("owner_bank_id", bankId)
@@ -228,8 +228,10 @@ export default async function TeacherReviewEditPage({
         <LazyTeacherQuestionPreview
           bankId={bankId}
           id={reviewItemId}
+          key={`${reviewItemId}:${question.updated_at}`}
           kind="review"
           label="Preview saved version"
+          version={question.updated_at}
         />
 
         <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-5">

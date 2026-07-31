@@ -11,6 +11,7 @@ import type {
 } from "@/lib/teacher-question-preview-types";
 import { cn } from "@/lib/utils";
 
+const MAX_PREVIEW_CACHE_ENTRIES = 50;
 const previewCache = new Map<string, TeacherPreviewDTO>();
 const requestQueue: Array<() => void> = [];
 let activeRequestCount = 0;
@@ -27,6 +28,29 @@ function cacheKey({
   version?: string;
 }) {
   return `${bankId}:${kind}:${id}:${version ?? "current"}`;
+}
+
+function getCachedPreview(key: string) {
+  const cached = previewCache.get(key);
+  if (!cached) return null;
+
+  // Map insertion order gives us a small LRU without another bookkeeping
+  // structure. Randomly revisited questions stay warm while older previews
+  // from previous pages are released.
+  previewCache.delete(key);
+  previewCache.set(key, cached);
+  return cached;
+}
+
+function setCachedPreview(key: string, preview: TeacherPreviewDTO) {
+  previewCache.delete(key);
+  previewCache.set(key, preview);
+
+  while (previewCache.size > MAX_PREVIEW_CACHE_ENTRIES) {
+    const oldestKey = previewCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    previewCache.delete(oldestKey);
+  }
 }
 
 function scheduleRequest<T>(request: () => Promise<T>) {
@@ -68,12 +92,14 @@ function isPreviewDTO(value: unknown): value is TeacherPreviewDTO {
 
 export async function loadTeacherQuestionPreviews({
   bankId,
+  bypassUnversionedCache = false,
   ids,
   kind,
   signal,
   versions = {},
 }: {
   bankId: string;
+  bypassUnversionedCache?: boolean;
   ids: string[];
   kind: TeacherPreviewKind;
   signal?: AbortSignal;
@@ -88,7 +114,11 @@ export async function loadTeacherQuestionPreviews({
   const missingIds: string[] = [];
 
   for (const id of ids) {
-    const cached = previewCache.get(
+    if (bypassUnversionedCache && !versions[id]) {
+      missingIds.push(id);
+      continue;
+    }
+    const cached = getCachedPreview(
       cacheKey({ bankId, id, kind, version: versions[id] }),
     );
     if (cached) {
@@ -134,12 +164,13 @@ export async function loadTeacherQuestionPreviews({
       }
 
       payload.previews.forEach((preview, index) => {
-        previewCache.set(
+        const id = missingIds[index];
+        setCachedPreview(
           cacheKey({
             bankId,
-            id: missingIds[index],
+            id,
             kind,
-            version: versions[missingIds[index]],
+            version: versions[id] ?? preview.question.updatedAt,
           }),
           preview,
         );
@@ -156,7 +187,7 @@ export async function loadTeacherQuestionPreviews({
   return ids.map((id) => {
     const preview =
       cachedById.get(id) ??
-      previewCache.get(
+      getCachedPreview(
         cacheKey({ bankId, id, kind, version: versions[id] }),
       );
     if (!preview) {
@@ -189,7 +220,7 @@ export function LazyTeacherQuestionPreview({
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [preview, setPreview] = useState<TeacherPreviewDTO | null>(
     () =>
-      previewCache.get(cacheKey({ bankId, id, kind, version })) ?? null,
+      getCachedPreview(cacheKey({ bankId, id, kind, version })),
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

@@ -9,6 +9,8 @@ import {
 import { Button } from "@/components/ui/button";
 import type { TeacherPreviewKind } from "@/lib/teacher-question-preview-types";
 
+const EMPTY_PREVIEW_VERSIONS: Record<string, string | undefined> = {};
+
 export function AssignmentSelectionSummary({
   bankId,
   formId,
@@ -17,6 +19,7 @@ export function AssignmentSelectionSummary({
   totalLabel = "published question(s) available in this view.",
   totalQuestions,
   previewKind = "assignment-selection",
+  versions = EMPTY_PREVIEW_VERSIONS,
 }: {
   bankId?: string;
   formId: string;
@@ -25,6 +28,7 @@ export function AssignmentSelectionSummary({
   totalLabel?: string;
   totalQuestions: number;
   previewKind?: TeacherPreviewKind;
+  versions?: Record<string, string | undefined>;
 }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
@@ -66,12 +70,13 @@ export function AssignmentSelectionSummary({
       ids: [nextPreviewId],
       kind: previewKind,
       signal: controller.signal,
+      versions: { [nextPreviewId]: versions[nextPreviewId] },
     }).catch(() => {
       // Prefetch failures stay silent; the visible preview owns Retry UI.
     });
 
     return () => controller.abort();
-  }, [bankId, nextPreviewId, previewKind, previewOpen]);
+  }, [bankId, nextPreviewId, previewKind, previewOpen, versions]);
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -135,8 +140,9 @@ export function AssignmentSelectionSummary({
             bankId={bankId}
             defaultExpanded
             id={previewId}
-            key={previewId}
+            key={`${previewId}:${versions[previewId] ?? "current"}`}
             kind={previewKind}
+            version={versions[previewId]}
           />
         </div>
       ) : null}

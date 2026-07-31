@@ -6,7 +6,7 @@ import { BankBadge } from "@/app/teacher/banks/bank-ui";
 import { FocusWorkspaceShell } from "@/components/teacher/focus-workspace-shell";
 import { TeacherQuestionPreviewQueue } from "@/components/teacher/teacher-question-preview-queue";
 import { requireTeacher } from "@/lib/auth/guards";
-import { getReviewPreviewDTOs } from "@/lib/teacher-focus-preview";
+import { getTeacherQuestionBankAccess } from "@/lib/question-banks";
 import { readTeacherFocusSelectionReceipt } from "@/lib/teacher-focus-selection";
 import {
   isDatabaseUuid,
@@ -55,13 +55,12 @@ export default async function TeacherReviewSelectionPreviewPage({
     notFound();
   }
 
-  const safePreviews = await getReviewPreviewDTOs({
+  const access = await getTeacherQuestionBankAccess({
     bankId,
     profileId: profile.id,
-    reviewItemIds: selectedIds,
     supabase,
   });
-  if (!safePreviews) notFound();
+  if (!access?.canManage) notFound();
   const returnHref = sanitizeTeacherBankReturnTo({
     bankId,
     rawReturnTo: query.returnTo,
@@ -72,17 +71,21 @@ export default async function TeacherReviewSelectionPreviewPage({
     <FocusWorkspaceShell
       badges={
         <>
-          <BankBadge tone="sky">{safePreviews[0]?.bank.name}</BankBadge>
-          <BankBadge tone="amber">{safePreviews.length} pending drafts</BankBadge>
+          <BankBadge tone="sky">{access.bank.name}</BankBadge>
+          <BankBadge tone="amber">{selectedIds.length} pending drafts</BankBadge>
         </>
       }
       description="Inspect one selected pending draft at a time before returning to the Review list. Approval remains a separate atomic action in the original tab."
       eyebrow="Review Drafts · Focused batch preview"
       returnHref={returnHref}
       returnSurfaceLabel="Review list"
-      title={`Preview ${safePreviews.length} selected Review Drafts`}
+      title={`Preview ${selectedIds.length} selected Review Drafts`}
     >
-      <TeacherQuestionPreviewQueue previews={safePreviews} />
+      <TeacherQuestionPreviewQueue
+        bankId={bankId}
+        ids={selectedIds}
+        kind="review"
+      />
     </FocusWorkspaceShell>
   );
 }

@@ -6,7 +6,7 @@ import { BankBadge } from "@/app/teacher/banks/bank-ui";
 import { FocusWorkspaceShell } from "@/components/teacher/focus-workspace-shell";
 import { TeacherQuestionPreviewQueue } from "@/components/teacher/teacher-question-preview-queue";
 import { requireTeacher } from "@/lib/auth/guards";
-import { getTeacherQuestionPreviewDTOs } from "@/lib/teacher-focus-preview";
+import { getTeacherQuestionBankAccess } from "@/lib/question-banks";
 import { readTeacherFocusSelectionReceipt } from "@/lib/teacher-focus-selection";
 import {
   isDatabaseUuid,
@@ -55,13 +55,12 @@ export default async function TeacherQuestionSelectionPreviewPage({
     notFound();
   }
 
-  const safePreviews = await getTeacherQuestionPreviewDTOs({
+  const access = await getTeacherQuestionBankAccess({
     bankId,
-    bankQuestionIds: selectedIds,
     profileId: profile.id,
     supabase,
   });
-  if (!safePreviews) notFound();
+  if (!access) notFound();
   const returnHref = sanitizeTeacherBankReturnTo({
     bankId,
     rawReturnTo: query.returnTo,
@@ -72,16 +71,20 @@ export default async function TeacherQuestionSelectionPreviewPage({
     <FocusWorkspaceShell
       badges={
         <>
-          <BankBadge tone="sky">{safePreviews[0]?.bank.name}</BankBadge>
-          <BankBadge tone="slate">{safePreviews.length} selected</BankBadge>
+          <BankBadge tone="sky">{access.bank.name}</BankBadge>
+          <BankBadge tone="slate">{selectedIds.length} selected</BankBadge>
         </>
       }
       description="Review one selected Library question at a time. Use Previous, Next, or the jump list; this queue cannot edit, approve, publish, or assign content."
       eyebrow="Library questions · Focused batch preview"
       returnHref={returnHref}
-      title={`Preview ${safePreviews.length} selected questions`}
+      title={`Preview ${selectedIds.length} selected questions`}
     >
-      <TeacherQuestionPreviewQueue previews={safePreviews} />
+      <TeacherQuestionPreviewQueue
+        bankId={bankId}
+        ids={selectedIds}
+        kind="question"
+      />
     </FocusWorkspaceShell>
   );
 }

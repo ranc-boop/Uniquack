@@ -45,6 +45,7 @@ export type PublishableBankQuestion = {
     | "source_review_item_id"
     | "status"
     | "title"
+    | "updated_at"
     | "visibility"
   > | null;
   readinessReasons: string[];
@@ -402,7 +403,7 @@ export async function listPublishableBankQuestions({
   const { data, error } = await supabase
     .from("bank_questions")
     .select(
-      "id, bank_id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, published_at, deleted_at)",
+      "id, bank_id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, published_at, deleted_at, updated_at)",
     )
     .eq("bank_id", bankId)
     .eq("status", "active")

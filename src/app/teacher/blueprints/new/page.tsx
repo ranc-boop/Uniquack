@@ -245,7 +245,9 @@ export default async function NewTeacherBlueprintPage({
                         bankId={selectedBank.id}
                         className="mt-2 flex w-full flex-col items-start [&>div]:w-full lg:items-end"
                         id={row.bank_question_id}
+                        key={`${row.bank_question_id}:${row.question?.updated_at ?? row.added_at}`}
                         kind="question"
+                        version={row.question?.updated_at ?? row.added_at}
                       />
                     </article>
                   ))
@@ -267,6 +269,12 @@ export default async function NewTeacherBlueprintPage({
                     totalLabel="questions available"
                     totalQuestions={sourceQuestions.length}
                     previewKind="question"
+                    versions={Object.fromEntries(
+                      sourceQuestions.map((row) => [
+                        row.bank_question_id,
+                        row.question?.updated_at ?? row.added_at,
+                      ]),
+                    )}
                   />
                 </div>
               ) : null}
