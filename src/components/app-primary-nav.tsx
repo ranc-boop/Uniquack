@@ -30,6 +30,7 @@ export function AppPrimaryNav({ items }: { items: AppPrimaryNavItem[] }) {
             ].join(" ")}
             href={item.href}
             key={item.href}
+            prefetch={false}
           >
             {item.label}
           </Link>

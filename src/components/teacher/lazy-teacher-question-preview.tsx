@@ -185,6 +185,7 @@ export function LazyTeacherQuestionPreview({
 }) {
   const panelId = useId();
   const abortRef = useRef<AbortController | null>(null);
+  const loadingRef = useRef(false);
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [preview, setPreview] = useState<TeacherPreviewDTO | null>(
     () =>
@@ -194,11 +195,12 @@ export function LazyTeacherQuestionPreview({
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (preview || loading) return;
+    if (preview || loadingRef.current) return;
 
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    loadingRef.current = true;
     setError(null);
     setLoading(true);
 
@@ -222,11 +224,14 @@ export function LazyTeacherQuestionPreview({
         );
       }
     } finally {
+      if (abortRef.current === controller) {
+        loadingRef.current = false;
+      }
       if (!controller.signal.aborted) {
         setLoading(false);
       }
     }
-  }, [bankId, id, kind, loading, preview, version]);
+  }, [bankId, id, kind, preview, version]);
 
   useEffect(() => {
     const loadTimer = defaultExpanded
@@ -234,9 +239,15 @@ export function LazyTeacherQuestionPreview({
       : null;
     return () => {
       if (loadTimer !== null) window.clearTimeout(loadTimer);
-      abortRef.current?.abort();
     };
   }, [defaultExpanded, load]);
+
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+    },
+    [],
+  );
 
   const toggle = () => {
     const nextExpanded = !expanded;
@@ -246,6 +257,7 @@ export function LazyTeacherQuestionPreview({
       void load();
     } else if (loading) {
       abortRef.current?.abort();
+      loadingRef.current = false;
       setLoading(false);
     }
   };

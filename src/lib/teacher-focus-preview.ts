@@ -365,24 +365,24 @@ export async function getTeacherQuestionPreviewDTO({
   profileId: string;
   supabase: SupabaseServerClient;
 }): Promise<TeacherQuestionPreviewDTO | null> {
-  const access = await getTeacherQuestionBankAccess({
-    bankId,
-    profileId,
-    supabase,
-  });
-
-  if (!access) return null;
-
-  const { data, error } = await supabase
-    .from("bank_questions")
-    .select(
-      "id, source_kind, question:questions(id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at)",
-    )
-    .eq("bank_id", bankId)
-    .eq("id", bankQuestionId)
-    .maybeSingle();
+  const [access, { data, error }] = await Promise.all([
+    getTeacherQuestionBankAccess({
+      bankId,
+      profileId,
+      supabase,
+    }),
+    supabase
+      .from("bank_questions")
+      .select(
+        "id, source_kind, question:questions(id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at)",
+      )
+      .eq("bank_id", bankId)
+      .eq("id", bankQuestionId)
+      .maybeSingle(),
+  ]);
 
   if (error) throw new Error(error.message);
+  if (!access) return null;
   if (!data) return null;
 
   const question = firstRelation(data.question) as PreviewQuestionRow | null;
@@ -420,24 +420,24 @@ export async function getTeacherQuestionPreviewDTOs({
   profileId: string;
   supabase: SupabaseServerClient;
 }): Promise<TeacherQuestionPreviewDTO[] | null> {
-  const access = await getTeacherQuestionBankAccess({
-    bankId,
-    profileId,
-    supabase,
-  });
-
-  if (!access) return null;
-
-  const { data, error } = await supabase
-    .from("bank_questions")
-    .select(
-      "id, source_kind, question:questions(id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at)",
-    )
-    .eq("bank_id", bankId)
-    .in("id", bankQuestionIds)
-    .limit(25);
+  const [access, { data, error }] = await Promise.all([
+    getTeacherQuestionBankAccess({
+      bankId,
+      profileId,
+      supabase,
+    }),
+    supabase
+      .from("bank_questions")
+      .select(
+        "id, source_kind, question:questions(id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at)",
+      )
+      .eq("bank_id", bankId)
+      .in("id", bankQuestionIds)
+      .limit(25),
+  ]);
 
   if (error) throw new Error(error.message);
+  if (!access) return null;
   if ((data?.length ?? 0) !== bankQuestionIds.length) return null;
 
   const rowById = new Map((data ?? []).map((row) => [row.id, row]));
@@ -497,27 +497,27 @@ export async function getPublicQuestionPreviewDTOs({
   publicQuestionIds: string[];
   supabase: SupabaseServerClient;
 }): Promise<TeacherQuestionPreviewDTO[] | null> {
-  const access = await getTeacherQuestionBankAccess({
-    bankId,
-    profileId,
-    supabase,
-  });
-
-  if (!access?.canManage) return null;
-
-  const { data, error } = await supabase
-    .from("questions")
-    .select(
-      "id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at",
-    )
-    .in("id", publicQuestionIds)
-    .is("owner_bank_id", null)
-    .eq("status", "published")
-    .eq("visibility", "public")
-    .is("deleted_at", null)
-    .limit(5);
+  const [access, { data, error }] = await Promise.all([
+    getTeacherQuestionBankAccess({
+      bankId,
+      profileId,
+      supabase,
+    }),
+    supabase
+      .from("questions")
+      .select(
+        "id, question_code, title, content_html, content_source, solution_html, solution_source, answer_spec, options, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, updated_at",
+      )
+      .in("id", publicQuestionIds)
+      .is("owner_bank_id", null)
+      .eq("status", "published")
+      .eq("visibility", "public")
+      .is("deleted_at", null)
+      .limit(5),
+  ]);
 
   if (error) throw new Error(error.message);
+  if (!access?.canManage) return null;
   if ((data?.length ?? 0) !== publicQuestionIds.length) return null;
 
   const questionById = new Map(
