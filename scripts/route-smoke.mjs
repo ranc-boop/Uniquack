@@ -234,7 +234,8 @@ assert(
     teacherBankDetailPage.includes("Library workspace") &&
     teacherBankDetailPage.includes("BankRouteTabs") &&
     teacherBankDetailPage.includes("Import Material") &&
-    teacherBankDetailPage.includes("Create an Assignment from this Library") &&
+    teacherBankDetailPage.includes("Create Assignment") &&
+    teacherBankDetailPage.includes("/teacher/publish?sourceBankId=${bank.id}") &&
     teacherBankDetailPage.includes("Assignments expose selected") &&
     teacherBankDetailPage.includes("Review Drafts") &&
     teacherBankImportsPage.includes("TeacherBankImportTransition") &&
@@ -261,17 +262,20 @@ assert(
     teacherBankActions.includes('rpc("remove_bank_member"') &&
     teacherBankActions.includes('rpc("approve_bank_review_question"') &&
     teacherBankActions.includes("create_assignment_from_bank") &&
-    teacherPublishPage.includes("Assignments deliver selected approved Library content to classes") &&
-    teacherPublishPage.includes("Choose the source Library") &&
+    teacherPublishPage.includes("Start with one Library you own or edit") &&
+    teacherPublishPage.includes("Choose one source Library") &&
     teacherPublishPage.includes("Select approved assignment-ready rows") &&
-    teacherPublishPage.includes("Choose classroom delivery") &&
-    teacherPublishPage.includes("Assignment-only. No full source Library access.") &&
+    teacherPublishPage.includes("choose classroom delivery") &&
+    teacherPublishPage.includes("Assignment-only") &&
+    teacherPublishPage.includes("Answers, the full Library") &&
     teacherPublishPage.includes("Blueprint rows are not directly assignable") &&
     teacherPublishPage.includes("Package publishing is not assignment-ready yet.") &&
-    teacherPublishPage.includes("No Review Draft bypass") &&
+    teacherPublishPage.includes("Assignments cannot deliver raw AI drafts or unreviewed material") &&
     teacherPublishActions.includes("publishQuestionBankAssignments") &&
     teacherPublishActions.includes("verifyPublishableSelection") &&
-    teacherPublishActions.includes("buildPublishAssignmentSourceSummary") &&
+    teacherPublishActions.includes("p_target_bank_id: parsed.bankId") &&
+    teacherPublishActions.includes("p_selected_bank_question_ids: selectedBankQuestionIds") &&
+    teacherPublishActions.includes("p_client_request_key: parsed.clientRequestKey") &&
     teacherPublishActions.includes("create_assignment_from_bank") &&
     teacherPublishActions.includes("selectedClassroomIds") &&
     !teacherPublishActions.includes("AI_PROVIDER") &&
@@ -347,11 +351,12 @@ assert(
     teacherAssignmentNewPage.includes("Save draft keeps the assignment teacher-only") &&
     teacherAssignmentNewPage.includes("Assign to class") &&
     teacherAssignmentDetailPage.includes("Assignment items") &&
-    teacherAssignmentDetailPage.includes("does not grant students") &&
+    teacherAssignmentDetailPage.includes("Assignment-only. The full Library stays private.") &&
     teacherAssignmentDetailPage.includes("full Library") &&
-    teacherAssignmentDetailPage.includes("Assignment source") &&
+    teacherAssignmentDetailPage.includes("Assignment setup and source") &&
     teacherAssignmentDetailPage.includes("Library") &&
-    teacherAssignmentDetailPage.includes("Student handoff") &&
+    teacherAssignmentDetailPage.includes('taskKind="student-preview"') &&
+    teacherAssignmentDetailPage.includes("/student-preview") &&
     teacherAssignmentDetailPage.includes("Student progress") &&
     teacherAssignmentDetailPage.includes("One row per active classroom student") &&
     teacherAssignmentDetailPage.includes("Practice evidence") &&
@@ -401,14 +406,15 @@ assert(
     studentWorkDetailPage.includes("Practice progress is saved back") &&
     studentWorkDetailPage.includes("Start Practice") &&
     studentWorkDetailPage.includes("Review Practice") &&
-    studentWorkDetailPage.includes("Practice entry unavailable") &&
-    studentWorkDetailPage.includes("Completed work history") &&
-    studentWorkDetailPage.includes("full teacher") &&
+    studentWorkDetailPage.includes("Practice is unavailable until this assignment has a usable question.") &&
+    studentWorkDetailPage.includes("Review your assignment-linked Practice history") &&
+    studentWorkDetailPage.includes("full private Library remains unavailable.") &&
     practicePage.includes("assignmentId") &&
     practiceLoader.includes("assignmentId") &&
     practiceLoader.includes("PracticeWorkspaceSkeleton") &&
     practiceScopePanels.includes('aria-busy="true"') &&
-    practiceScopePanels.includes("Loading practice workspace") &&
+    practiceScopePanels.includes("PracticeSessionListLoading") &&
+    practiceScopePanels.includes('role="status"') &&
     practiceClient.includes("/api/practice/assignments/start") &&
     practiceClient.includes("Assignment practice") &&
     assignmentPracticeStartRoute.includes("startAssignmentPractice") &&
