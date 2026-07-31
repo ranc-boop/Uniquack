@@ -1,15 +1,4 @@
-"use client";
-
-import { usePathname } from "next/navigation";
-
-import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
-
-type TeacherWorkspaceNavItem = {
-  href: string;
-  label: string;
-};
-
-const teacherWorkspaceNavItems: TeacherWorkspaceNavItem[] = [
+export const teacherWorkspaceNavItems = [
   { href: "/teacher", label: "Dashboard" },
   { href: "/teacher/banks", label: "Libraries" },
   { href: "/teacher/blueprints", label: "Blueprints" },
@@ -19,37 +8,6 @@ const teacherWorkspaceNavItems: TeacherWorkspaceNavItem[] = [
 ];
 
 export function TeacherWorkspaceNav() {
-  const pathname = usePathname();
-
-  return (
-    <nav
-      aria-label="Teacher workflow"
-      className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm"
-    >
-      {teacherWorkspaceNavItems.map((item) => {
-        const active =
-          item.href === "/teacher"
-            ? pathname === item.href
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-        return (
-          <TeacherPendingLink
-            aria-current={active ? "page" : undefined}
-            className={[
-              "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2",
-              active
-                ? "bg-sky-100 text-sky-950 shadow-sm"
-                : "text-slate-600 hover:bg-sky-50 hover:text-sky-800",
-            ].join(" ")}
-            href={item.href}
-            key={`${item.href}-${item.label}`}
-            pendingLabel={item.label}
-          >
-            {item.label}
-          </TeacherPendingLink>
-        );
-      })}
-    </nav>
-  );
+  return null;
 }
 

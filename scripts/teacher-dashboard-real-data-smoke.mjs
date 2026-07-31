@@ -16,43 +16,33 @@ async function read(relativePath) {
 
 const page = await read("src/app/teacher/page.tsx");
 const helper = await read("src/lib/teacher-dashboard.ts");
-const panels = await read("src/components/teacher/teacher-dashboard-panels.tsx");
+const librariesPage = await read("src/app/teacher/banks/page.tsx");
 const smokeAll = await read("scripts/smoke-all.mjs");
 
 assert(
-  page.includes("getTeacherDashboardSummary") &&
-    page.includes("TeacherDashboardOverviewCards") &&
-    page.includes("TeacherDashboardActionBoard") &&
-    page.includes("TeacherDashboardEvidencePanel") &&
-    page.includes("TeacherDashboardWorkflowPanel") &&
-    page.includes("Review Drafts") &&
-    panels.includes("Assign from Library") &&
-    page.includes("Start with a Library") &&
-    page.includes("No unreviewed draft can be assigned to students") &&
-    page.includes("Student visibility stays assignment-only"),
-  "/teacher must render a real dashboard while preserving bank-first safety copy",
+  page.includes("getTeacherHomeSummary") &&
+    page.includes("Next action") &&
+    page.includes('href: "/teacher/banks"') &&
+    page.includes('href: "/teacher/publish"') &&
+    page.includes('href: "/teacher/progress"') &&
+    !page.includes("TeacherDashboardOverviewCards") &&
+    !page.includes("TeacherDashboardEvidencePanel") &&
+    !page.includes("TeacherDashboardWorkflowPanel") &&
+    !page.includes("TeacherWorkspaceNav"),
+  "/teacher must render one next action and three clean workflow shortcuts",
 );
 
 assert(
-  helper.includes("export async function getTeacherDashboardSummary") &&
+  helper.includes("export async function getTeacherHomeSummary") &&
     helper.includes("listTeacherQuestionBanks") &&
-    helper.includes("listTeacherClassroomSummaries") &&
-    helper.includes("assignment_practice_sessions") &&
-    helper.includes("student_assignment_progress") &&
-    helper.includes("practice_attempts") &&
-    helper.includes("import_batches") &&
-    helper.includes("owner_bank_id") &&
-    helper.includes(".limit("),
-  "teacher dashboard helper must aggregate bounded bank, import, classroom, assignment, and Practice evidence data",
-);
-
-assert(
-  helper.includes('eq("status", "draft")') &&
     helper.includes("reviewDraftCount") &&
     helper.includes("assignmentReadyCount") &&
-    helper.includes("assignmentsNeedingAttention") &&
-    helper.includes("recentEvidence"),
-  "teacher dashboard helper must expose review queue, assignment-ready, attention, and evidence sections",
+    !helper.includes("listTeacherClassroomSummaries") &&
+    !helper.includes("assignment_practice_sessions") &&
+    !helper.includes("student_assignment_progress") &&
+    !helper.includes("practice_attempts") &&
+    !helper.includes("import_batches"),
+  "teacher home data must use only the Library summary read model",
 );
 
 assert(
@@ -62,35 +52,26 @@ assert(
     !helper.includes(".delete(") &&
     !helper.includes(".rpc(") &&
     !helper.includes("AI_PROVIDER") &&
-    !helper.includes("SERVICE_ROLE") &&
-    !helper.includes("SUPABASE_SERVICE_ROLE"),
-  "teacher dashboard helper must stay read-only, bounded, and provider-free",
+    !helper.includes("SERVICE_ROLE"),
+  "teacher home helper must stay read-only and provider-free",
 );
 
 assert(
-  !panels.includes('"use client"') &&
-    panels.includes("Libraries") &&
-    panels.includes("Assignment-ready") &&
-    panels.includes("Active classrooms") &&
-    panels.includes("Active assignments") &&
-    panels.includes("Recent Practice evidence") &&
-    panels.includes("assignment-only") &&
-    panels.includes("Student self-study is not mixed in") &&
-    panels.includes("/teacher/publish?sourceBankId="),
-  "teacher dashboard panels must be server-compatible and show the real action board",
-);
-
-assert(
-  !page.includes("@/components/student") &&
-    !page.includes("@/app/admin") &&
-    !panels.includes("@/components/student") &&
-    !panels.includes("@/app/admin"),
-  "teacher dashboard must not import student or admin workspace surfaces",
+  librariesPage.includes('placeholder="Search Libraries"') &&
+    librariesPage.includes("<details") &&
+    librariesPage.includes("More") &&
+    librariesPage.includes('["Questions", bank.questionCount]') &&
+    librariesPage.includes('["Review", bank.reviewDraftCount]') &&
+    librariesPage.includes('["Ready", bank.assignmentReadyCount]') &&
+    !librariesPage.includes("BankMetricCard") &&
+    !librariesPage.includes("Library workbench") &&
+    !librariesPage.includes("TeacherWorkspaceNav"),
+  "Libraries must use search, disclosed filters, three counts, and compact row actions",
 );
 
 assert(
   smokeAll.includes("./teacher-dashboard-real-data-smoke.mjs"),
-  "aggregate smoke runner must include teacher dashboard real data smoke",
+  "aggregate smoke runner must include teacher dashboard smoke",
 );
 
-console.log("PASS teacher dashboard real data source checks");
+console.log("PASS teacher dashboard and Library source checks");

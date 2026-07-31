@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { PracticeCompletion } from "@/lib/practice/types";
 
 export function PracticeCompletionPanel({
+  assignmentId,
   completion,
   isCompleted,
   onNewSession,
@@ -16,6 +17,7 @@ export function PracticeCompletionPanel({
   report,
   retryAvailable,
 }: {
+  assignmentId?: string | null;
   completion: PracticeCompletion | null;
   isCompleted: boolean;
   onNewSession: () => void;
@@ -56,19 +58,29 @@ export function PracticeCompletionPanel({
         ) : null}
         {isCompleted ? (
           <div className="flex flex-wrap gap-2">
-            <Button onClick={onNewSession} type="button">
-              Start with more Libraries
-            </Button>
+            {assignmentId ? (
+              <Button asChild>
+                <Link href={`/student/work/${assignmentId}`}>
+                  Review this Assignment
+                </Link>
+              </Button>
+            ) : (
+              <Button onClick={onNewSession} type="button">
+                Start with more Libraries
+              </Button>
+            )}
             <Button
               disabled={!retryAvailable}
               onClick={onRetryMistakes}
               type="button"
               variant="outline"
             >
-              Review remaining mistakes
+              {assignmentId ? "Retry this Assignment" : "Review remaining mistakes"}
             </Button>
             <Button asChild type="button" variant="ghost">
-              <Link href="/student">Back to student workspace</Link>
+              <Link href={assignmentId ? "/student/work" : "/student"}>
+                {assignmentId ? "Back to My Work" : "Back to student workspace"}
+              </Link>
             </Button>
           </div>
         ) : null}

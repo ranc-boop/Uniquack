@@ -31,15 +31,15 @@ const [
 assert(
   page.includes("Library") &&
     page.includes("Blueprint") &&
-    page.includes("Package") &&
-    page.includes("Package publishing is not assignment-ready yet.") &&
-    page.includes("Blueprint rows are not directly assignable") &&
-    page.includes("Student preview") &&
-    page.includes("Hidden from students") &&
-    page.includes("Choose classroom delivery") &&
-    page.includes("Selected students") &&
+    page.includes("AssignmentComposerFlow") &&
+    page.includes("Choose one classroom") &&
+    page.includes("Final review") &&
+    page.includes("What students can and cannot see") &&
+    page.includes("clientRequestKey") &&
+    !page.includes("Selected students later") &&
+    !page.includes("Safety gates") &&
     page.includes("sourceType"),
-  "Publish Center v2 page must expose bank/Blueprint/Package source modes, preview, and target controls",
+  "Publish Center v2 must use a focused reviewed-Library composer with one-classroom delivery and progressive disclosure",
 );
 
 assert(
@@ -71,14 +71,14 @@ assert(
     actions.includes("canPublishFromBank") &&
     actions.includes("listPublishableBankQuestions") &&
     actions.includes("verifyPublishableSelection") &&
-    actions.includes("buildPublishAssignmentSourceSummary") &&
     actions.includes("create_assignment_from_bank") &&
-    actions.includes("source_summary") &&
+    actions.includes("p_client_request_key") &&
+    actions.includes("selectedClassroomIds.length !== 1") &&
     actions.includes("Selected classrooms must belong to the source Library organization.") &&
     !actions.includes("AI_PROVIDER") &&
     !actions.includes("providerProfiles") &&
     !actions.includes("published_at"),
-  "Publish Center action must re-load source truth, call bank RPC, and avoid providers/global publish",
+  "Publish Center action must re-load source truth, enforce one classroom, use an idempotent bank RPC, and avoid providers/global publish",
 );
 
 assert(

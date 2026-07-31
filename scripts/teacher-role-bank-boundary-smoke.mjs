@@ -107,16 +107,19 @@ async function runStaticChecks() {
       teacherNav.includes("/teacher/blueprints") &&
       teacherNav.includes("/teacher/publish") &&
       teacherNav.includes("/teacher/progress") &&
-      teacherHome.includes("Choose a Library first") &&
-      teacherHome.includes("Open Library review") &&
-      teacherHome.includes("No unreviewed draft can be assigned to students") &&
-      teacherHome.includes("Student visibility stays assignment-only"),
+      teacherHome.includes("getTeacherHomeSummary") &&
+      teacherHome.includes("Next action") &&
+      teacherHome.includes('label: "Libraries"') &&
+      teacherHome.includes('label: "Assignments"') &&
+      teacherHome.includes('label: "Progress"') &&
+      !teacherHome.includes("No unreviewed draft can be assigned to students") &&
+      !teacherHome.includes("Student visibility stays assignment-only"),
     "teacher workspace navigation must stay bank-first instead of pointing to admin/global review",
   );
   assert(
-    rootLayout.includes("teacherNavItems") &&
+    rootLayout.includes("teacherWorkspaceNavItems") &&
       rootLayout.includes("studentNavItems") &&
-      rootLayout.includes("teacher\", \"admin\", \"super_admin"),
+      rootLayout.includes('["teacher", "admin", "super_admin"]'),
     "root layout must keep separate student and teacher primary navigation",
   );
   assert(
@@ -124,11 +127,14 @@ async function runStaticChecks() {
     "admin page must remain available for platform operations",
   );
   assert(
-    teacherBankReviewPage.includes("Approve drafts into this Library") &&
-      teacherBankReviewPage.includes("public library") &&
-      teacherBankQuestionsPage.includes("not public/global questions") &&
-      teacherBankQuestionsPage.includes("Ready for assignment"),
-    "teacher bank pages must describe bank-scoped approval and assignment-only visibility",
+    teacherBankReviewPage.includes("Approve current page") &&
+      teacherBankReviewPage.includes("approveBankReviewQuestion") &&
+      teacherBankReviewPage.includes("LazyTeacherQuestionPreview") &&
+      teacherBankQuestionsPage.includes('\"Ready\"') &&
+      teacherBankQuestionsPage.includes('\"Archived\"') &&
+      teacherBankQuestionsPage.includes("LazyTeacherQuestionPreview") &&
+      teacherBankQuestionsPage.includes("Add from Public Library"),
+    "teacher bank pages must keep approval bank-scoped and public copying explicit without explanatory UI",
   );
   assert(
     adminQuestionActions.includes("function globalVisibilityForStatus") &&

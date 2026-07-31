@@ -52,12 +52,7 @@ export function QuestionAnswerFields({
         </select>
       </div>
       <div className="space-y-3 rounded-md border bg-muted/20 p-3 lg:col-span-2">
-        <div>
-          <p className="text-sm font-medium">Answer data</p>
-          <p className="text-xs text-muted-foreground">
-            Stored for future grading. For MCQ, options and correct option IDs are both required for automatic grading.
-          </p>
-        </div>
+        <p className="text-sm font-medium">Answer</p>
         {questionType === "mcq" ? (
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1 md:col-span-2">
@@ -68,9 +63,6 @@ export function QuestionAnswerFields({
                 name="options_text"
                 placeholder={"A|First option\nB|Second option\nC|Third option"}
               />
-              <p className="text-xs text-muted-foreground">
-                One option per line. Use ID|content, for example A|Choice text.
-              </p>
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium">Correct option IDs</label>
@@ -169,11 +161,6 @@ export function QuestionAnswerFields({
               Case sensitive
             </label>
           </div>
-        ) : null}
-        {questionType === "frq" || questionType === "mixed" ? (
-          <p className="rounded-md border bg-background p-2 text-xs text-muted-foreground">
-            This type is stored for manual or AI-assisted grading. No deterministic answer is required.
-          </p>
         ) : null}
       </div>
     </>

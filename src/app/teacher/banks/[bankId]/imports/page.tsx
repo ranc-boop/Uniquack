@@ -18,6 +18,7 @@ import { listAIPdfBurstsForBank } from "@/lib/ai-pdf-import/burst-admission";
 import { listTeacherAIPdfParsingProfileState } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import {
   canManageBankContent,
+  getTeacherQuestionBankAccess,
   getTeacherBankImportWorkspace,
   QuestionBankSchemaMissingError,
 } from "@/lib/question-banks";
@@ -120,16 +121,25 @@ export default async function TeacherBankImportsPage({
     mode === "ai"
       ? listAIQueueState({ bankId, supabase })
       : Promise.resolve(null);
-  const loadPageData = () =>
-    Promise.all([
-      Promise.all([
-        profilePromise,
-        getTeacherBankImportWorkspace({
+  const importWorkspacePromise =
+    mode === "ai"
+      ? getTeacherBankImportWorkspace({
           bankId,
           resolveProfileId: async () => (await profilePromise).id,
           supabase,
-        }),
-      ]).then(([, workspace]) => workspace),
+        })
+      : profilePromise.then(async (profile) => ({
+          access: await getTeacherQuestionBankAccess({
+            bankId,
+            profileId: profile.id,
+            supabase,
+          }),
+          importBatches: [],
+          usedReadModel: false,
+        }));
+  const loadPageData = () =>
+    Promise.all([
+      importWorkspacePromise,
       taxonomyPromise,
       parsingProfilePromise,
       burstPromise,
@@ -170,6 +180,9 @@ export default async function TeacherBankImportsPage({
   const queueJobs = queueState?.jobs ?? [];
   const queueSetupNeeded = queueState?.setupNeeded ?? false;
   const canImport = canManageBankContent(currentUserRole);
+  if (!canImport) {
+    notFound();
+  }
   const workspaceRole = currentUserRole ?? "viewer";
   const capabilities = bankQuestionWorkspaceCapabilities(workspaceRole);
   const canRunPdfImport = canImport && (parsingProfileState?.available ?? false);
@@ -202,13 +215,12 @@ export default async function TeacherBankImportsPage({
             </BankQuickAction>
           </>
         }
-          description={`Role: ${workspaceRole}. Manual, JSON, and AI Parsing all create Review Drafts in this Library. Drafts stay private until review.`}
           eyebrow="Library Import"
           title={`Import material into ${bank.name}`}
         />
       </section>
 
-      <BankRouteTabs bankId={bank.id} />
+      <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 
       <TeacherBankImportTransition bankId={bank.id} mode={mode}>
 
@@ -240,19 +252,21 @@ export default async function TeacherBankImportsPage({
         />
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[1.3fr_0.8fr]">
+      <section
+        className={
+          mode === "ai"
+            ? "grid gap-4 lg:grid-cols-[1.3fr_0.8fr]"
+            : "grid gap-4"
+        }
+      >
         <div className="space-y-4">
           {mode === "manual" ? (
             <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
                 <p className="teacher-eyebrow">Manual</p>
                 <h2 className="mt-1 text-lg font-bold text-slate-950">
-                  Create a Library Review Draft
+                  Create question
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Author one question with the same structured fields used by
-                  Central Public Library management.
-                </p>
               </div>
               <div className="p-5">
                 <BankManualQuestionForm
@@ -326,12 +340,14 @@ export default async function TeacherBankImportsPage({
           ) : null}
         </div>
 
+        {mode === "ai" ? (
           <RecentBankImportsPanel
-            bankName={bank.name}
-            canQueueCoverageRecovery={canImport}
-            coverageRecoveryAction={queueBankPdfCoverageRecovery}
-            importBatches={importBatches}
-        />
+              bankName={bank.name}
+              canQueueCoverageRecovery={canImport}
+              coverageRecoveryAction={queueBankPdfCoverageRecovery}
+              importBatches={importBatches}
+          />
+        ) : null}
       </section>
       </TeacherBankImportTransition>
     </BankWorkbenchPage>

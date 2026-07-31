@@ -3,6 +3,8 @@ import Link from "next/link";
 import { ArrowLeft, Boxes } from "lucide-react";
 
 import { FormSubmitButton } from "@/components/form-submit-button";
+import { AssignmentSelectionSummary } from "@/components/teacher/assignment-selection-summary";
+import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
@@ -119,7 +121,11 @@ export default async function NewTeacherBlueprintPage({
         </section>
       ) : null}
 
-      <form action={createTeacherBlueprint} className="teacher-panel overflow-hidden">
+      <form
+        action={createTeacherBlueprint}
+        className="teacher-panel overflow-hidden"
+        id="create-blueprint-form"
+      >
         <div className="border-b border-slate-200 bg-white/70 p-5">
           <h2 className="text-xl font-bold text-slate-950">Blueprint details</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
@@ -209,37 +215,41 @@ export default async function NewTeacherBlueprintPage({
                   modify the source questions.
                 </p>
               </div>
-              <div className="grid gap-3 p-4">
+              <div className="divide-y divide-slate-200">
                 {sourceQuestions.length ? (
                   sourceQuestions.map((row, index) => (
-                    <label
-                      className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-white p-3 transition hover:border-sky-200 hover:bg-sky-50/60"
+                    <article
+                      className="p-4"
                       key={row.bank_question_id}
                     >
-                      <input
-                        className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
-                        defaultChecked={index < 6}
-                        name="sourceBankQuestionIds"
-                        type="checkbox"
-                        value={row.bank_question_id}
+                      <div className="flex min-w-0 items-start gap-3">
+                        <input
+                          aria-label={`Select ${row.question?.title ?? "question"}`}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
+                          defaultChecked={index < 6}
+                          name="sourceBankQuestionIds"
+                          type="checkbox"
+                          value={row.bank_question_id}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-slate-950">
+                            {row.question?.title ?? "Untitled source question"}
+                          </span>
+                          <span className="mt-1 block text-sm text-slate-600">
+                            {row.question?.question_code ?? "Code pending"} ·{" "}
+                            {row.question?.question_type ?? "Type pending"}
+                          </span>
+                        </span>
+                      </div>
+                      <LazyTeacherQuestionPreview
+                        bankId={selectedBank.id}
+                        className="mt-2 flex w-full flex-col items-start [&>div]:w-full lg:items-end"
+                        id={row.bank_question_id}
+                        key={`${row.bank_question_id}:${row.question?.updated_at ?? row.added_at}`}
+                        kind="question"
+                        version={row.question?.updated_at ?? row.added_at}
                       />
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-semibold text-slate-950">
-                          {row.question?.title ?? "Untitled source question"}
-                        </span>
-                        <span className="mt-1 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                            {row.question?.question_type ?? "type"}
-                          </span>
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                            Difficulty {row.question?.difficulty_rating ?? "not set"}
-                          </span>
-                          <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-1 text-sky-800">
-                            {row.tagSummaries.length} taxonomy target{row.tagSummaries.length === 1 ? "" : "s"}
-                          </span>
-                        </span>
-                      </span>
-                    </label>
+                    </article>
                   ))
                 ) : (
                   <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
@@ -249,6 +259,25 @@ export default async function NewTeacherBlueprintPage({
                   </div>
                 )}
               </div>
+              {sourceQuestions.length ? (
+                <div className="border-t border-slate-200 p-4">
+                  <AssignmentSelectionSummary
+                    bankId={selectedBank.id}
+                    formId="create-blueprint-form"
+                    helperText="Select source questions."
+                    inputName="sourceBankQuestionIds"
+                    totalLabel="questions available"
+                    totalQuestions={sourceQuestions.length}
+                    previewKind="question"
+                    versions={Object.fromEntries(
+                      sourceQuestions.map((row) => [
+                        row.bank_question_id,
+                        row.question?.updated_at ?? row.added_at,
+                      ]),
+                    )}
+                  />
+                </div>
+              ) : null}
             </section>
           ) : null}
 

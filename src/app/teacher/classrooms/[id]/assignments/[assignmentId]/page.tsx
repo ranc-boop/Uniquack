@@ -1,10 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import {
-  ClassroomRouteTabs,
-  ClassroomSafetyStrip,
-} from "@/app/teacher/classrooms/classroom-ui";
+import { ClassroomRouteTabs } from "@/app/teacher/classrooms/classroom-ui";
 import {
   savePrivateTeacherFeedbackNote,
   sendTeacherFeedbackNote,
@@ -12,6 +11,8 @@ import {
 import { resumeQuarantinedAssignment } from "@/app/teacher/classrooms/[id]/assignments/[assignmentId]/delivery-actions";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { QuestionText } from "@/components/math-content";
+import { EvidenceDisclosureLink } from "@/components/teacher/evidence-disclosure-link";
+import { FocusTaskLink } from "@/components/teacher/focus-task-link";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,26 +45,6 @@ function formatDateTime(value: string | null | undefined) {
 
 function statusLabel(status: string) {
   return status.replace(/_/g, " ");
-}
-
-function summaryText(
-  summary: unknown,
-  key:
-    | "assignmentVisibility"
-    | "bankName"
-    | "bankVisibility"
-    | "eligibleQuestionCount"
-    | "itemCount"
-    | "sourceStatus"
-    | "sourceTitle"
-    | "unavailableQuestionCount",
-) {
-  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
-    return null;
-  }
-
-  const value = (summary as Record<string, unknown>)[key];
-  return value === null || value === undefined ? null : String(value);
 }
 
 function sourceKindLabel(kind: string) {
@@ -207,9 +188,16 @@ export default async function TeacherAssignmentDetailPage({
                 Back to assignments
               </Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link href={`/student/work/${assignment.id}`}>Student view</Link>
-            </Button>
+            <FocusTaskLink
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
+              href={`/teacher/classrooms/${assignment.classroom.id}/assignments/${assignment.id}/student-preview`}
+              newTabLabel="Open student preview in new tab"
+              returnTo={`/teacher/classrooms/${assignment.classroom.id}/assignments/${assignment.id}`}
+              taskKind="student-preview"
+              triggerId="assignment-student-preview"
+            >
+              Preview as student
+            </FocusTaskLink>
           </div>
         </div>
         <div className="mt-5">
@@ -218,15 +206,11 @@ export default async function TeacherAssignmentDetailPage({
       </section>
 
       <ClassroomRouteTabs classroomId={assignment.classroom.id} />
-      <ClassroomSafetyStrip />
 
-      <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-        <strong className="font-bold">Assignment-only visibility:</strong> this
-        page tracks selected delivered items. It does not grant students access
-        to the teacher&apos;s full Library.
-      </section>
-
-      <section className="teacher-panel overflow-hidden" aria-labelledby="assignment-evidence-heading">
+      <section
+        aria-labelledby="assignment-evidence-heading"
+        className="teacher-panel overflow-hidden"
+      >
         <div className="border-b border-slate-100 p-5">
           <p className="teacher-eyebrow">Assignment evidence</p>
           <h2 className="mt-1 text-lg font-bold text-slate-950" id="assignment-evidence-heading">
@@ -237,7 +221,7 @@ export default async function TeacherAssignmentDetailPage({
             self-study is not included.
           </p>
         </div>
-        <div className="grid gap-px bg-slate-100 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-px bg-slate-100 sm:grid-cols-3">
           <ProgressStat
             helper="Students marked completed"
             label="Completion rate"
@@ -253,57 +237,25 @@ export default async function TeacherAssignmentDetailPage({
             label="Students needing attention"
             value={assignment.evidenceSummary.studentsNeedingAttentionCount}
           />
-          <ProgressStat
-            helper={formatDateTime(assignment.evidenceSummary.latestActivityAt)}
-            label="Latest activity"
-            value={assignment.evidenceSummary.latestActivityAt ? "Recorded" : "None"}
-          />
         </div>
       </section>
 
       {query.saved ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+        <p
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
+          role="status"
+        >
           {query.saved}
         </p>
       ) : null}
       {query.error ? (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+        <p
+          className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+          role="alert"
+        >
           {query.error}
         </p>
       ) : null}
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <ProgressStat
-          helper={statusLabel(assignment.status)}
-          label="Assignment"
-          value={assignment.status === "assigned" ? "Live" : "Draft"}
-        />
-        <ProgressStat
-          helper="Active classroom students"
-          label="Students"
-          value={assignment.progressSummary.studentCount}
-        />
-        <ProgressStat
-          helper="No practice started"
-          label="Not started"
-          value={assignment.progressSummary.notStartedCount}
-        />
-        <ProgressStat
-          helper="Practice evidence exists"
-          label="In progress"
-          value={assignment.progressSummary.inProgressCount}
-        />
-        <ProgressStat
-          helper="Marked completed"
-          label="Completed"
-          value={assignment.progressSummary.completedCount}
-        />
-        <ProgressStat
-          helper={formatDateTime(assignment.progressSummary.latestPracticeSessionAt)}
-          label="Latest activity"
-          value={assignment.progressSummary.linkedPracticeSessionCount}
-        />
-      </section>
 
       {deliveryQuarantine ? (
         <section className="rounded-lg border border-amber-300 bg-amber-50 p-5">
@@ -422,16 +374,21 @@ export default async function TeacherAssignmentDetailPage({
             ) : null}
 
             {assignment.studentProgressRows.length ? (
-              <div className="overflow-x-auto">
+              <>
+              <div className="hidden overflow-x-auto lg:block">
                 <table className="min-w-full divide-y divide-slate-100 text-sm">
+                  <caption className="sr-only">
+                    Students ordered by attention need, with Assignment-linked
+                    Practice evidence only.
+                  </caption>
                   <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                     <tr>
-                      <th className="px-5 py-3">Student</th>
-                      <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3">Attempts</th>
-                      <th className="px-5 py-3">Correct / total</th>
-                      <th className="px-5 py-3">Latest activity</th>
-                      <th className="px-5 py-3"><span className="sr-only">View evidence</span></th>
+                      <th className="px-5 py-3" scope="col">Student</th>
+                      <th className="px-5 py-3" scope="col">Status</th>
+                      <th className="px-5 py-3" scope="col">Attempts</th>
+                      <th className="px-5 py-3" scope="col">Correct / total</th>
+                      <th className="px-5 py-3" scope="col">Latest activity</th>
+                      <th className="px-5 py-3" scope="col"><span className="sr-only">View evidence</span></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -480,12 +437,11 @@ export default async function TeacherAssignmentDetailPage({
                         </td>
                         <td className="px-5 py-4 text-right">
                           {row.recentAttempts.length ? (
-                            <a
-                              className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-800 transition hover:bg-slate-50"
-                              href={`#student-evidence-${row.studentId}`}
+                            <EvidenceDisclosureLink
+                              targetId={`student-evidence-${row.studentId}`}
                             >
                               View evidence
-                            </a>
+                            </EvidenceDisclosureLink>
                           ) : (
                             <span className="text-xs text-slate-400">Pending</span>
                           )}
@@ -495,28 +451,93 @@ export default async function TeacherAssignmentDetailPage({
                   </tbody>
                 </table>
               </div>
+              <div className="divide-y divide-slate-100 lg:hidden">
+                {assignment.studentProgressRows.map((row) => (
+                  <article className="space-y-4 p-5" key={row.studentId}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="break-words font-semibold text-slate-950">
+                          {row.displayName}
+                        </h3>
+                        <p className="mt-1 break-all text-xs text-slate-500">
+                          {row.email || row.profile?.username || row.studentId}
+                        </p>
+                      </div>
+                      <span
+                        className={`inline-flex shrink-0 rounded-full px-2 py-1 text-xs font-bold capitalize ring-1 ${statusBadgeClass(
+                          row.status,
+                        )}`}
+                      >
+                        {statusLabel(row.status)}
+                      </span>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-lg bg-slate-50 p-3">
+                        <dt className="text-xs font-semibold text-slate-500">
+                          Attempts
+                        </dt>
+                        <dd className="mt-1 font-bold text-slate-950">
+                          {row.practiceAttemptCount}
+                        </dd>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-3">
+                        <dt className="text-xs font-semibold text-slate-500">
+                          Correct
+                        </dt>
+                        <dd className="mt-1 font-bold text-slate-950">
+                          {row.practiceCorrectCount} / {row.practiceAttemptCount}
+                        </dd>
+                      </div>
+                      <div className="col-span-2 rounded-lg bg-slate-50 p-3">
+                        <dt className="text-xs font-semibold text-slate-500">
+                          Latest activity
+                        </dt>
+                        <dd className="mt-1 font-medium text-slate-800">
+                          {formatDateTime(row.latestPracticeSessionAt)}
+                        </dd>
+                      </div>
+                    </dl>
+                    {row.recentAttempts.length ? (
+                      <EvidenceDisclosureLink
+                        targetId={`student-evidence-${row.studentId}`}
+                      >
+                        View evidence
+                      </EvidenceDisclosureLink>
+                    ) : (
+                      <p className="text-xs text-slate-500">
+                        Evidence pending
+                      </p>
+                    )}
+                  </article>
+                ))}
+              </div>
+              </>
             ) : null}
           </section>
 
-          <section className="teacher-panel overflow-hidden">
-            <div className="border-b border-slate-100 p-5">
-              <h2 className="text-lg font-bold text-slate-950">Question performance</h2>
-              <p className="teacher-muted">
-                Performance across the selected assignment items. Source Library access remains
-                teacher-private.
-              </p>
-            </div>
+          <details className="teacher-panel overflow-hidden">
+            <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
+              <span className="block text-lg font-bold text-slate-950">
+                Question performance
+              </span>
+              <span className="mt-1 block text-sm leading-6 text-slate-600">
+                Optional evidence by assigned question.
+              </span>
+            </summary>
             {assignment.questionPerformanceRows.length ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100 text-sm">
+              <div className="overflow-x-auto border-t border-slate-100">
+                <table
+                  aria-label="Assignment question performance"
+                  className="min-w-full divide-y divide-slate-100 text-sm"
+                >
                   <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                     <tr>
-                      <th className="px-5 py-3">Question</th>
-                      <th className="px-5 py-3">Type / difficulty</th>
-                      <th className="px-5 py-3">Attempted</th>
-                      <th className="px-5 py-3">Correct</th>
-                      <th className="px-5 py-3">Missed</th>
-                      <th className="px-5 py-3">Attention signal</th>
+                      <th className="px-5 py-3" scope="col">Question</th>
+                      <th className="px-5 py-3" scope="col">Type / difficulty</th>
+                      <th className="px-5 py-3" scope="col">Attempted</th>
+                      <th className="px-5 py-3" scope="col">Correct</th>
+                      <th className="px-5 py-3" scope="col">Missed</th>
+                      <th className="px-5 py-3" scope="col">Attention signal</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -584,22 +605,28 @@ export default async function TeacherAssignmentDetailPage({
                 </p>
               </div>
             )}
-          </section>
+          </details>
 
-          <section className="teacher-panel overflow-hidden">
-            <div className="border-b border-slate-100 p-5">
-              <h2 className="text-lg font-bold text-slate-950">Attempt drilldown</h2>
-              <p className="teacher-muted">
-                Recent assignment-linked attempts only. Use feedback notes below to respond to
-                evidence without exposing private student self-study.
-              </p>
-            </div>
+          <details className="teacher-panel overflow-hidden">
+            <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
+              <span className="block text-lg font-bold text-slate-950">
+                Attempt drilldown
+              </span>
+              <span className="mt-1 block text-sm leading-6 text-slate-600">
+                Optional recent assignment-linked evidence.
+              </span>
+            </summary>
             {assignment.studentProgressRows.some((row) => row.recentAttempts.length) ? (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-slate-100 border-t border-slate-100">
                 {assignment.studentProgressRows
                   .filter((row) => row.recentAttempts.length)
                   .map((row) => (
-                    <details className="group p-5" id={`student-evidence-${row.studentId}`} key={row.studentId}>
+                    <details
+                      className="group p-5"
+                      id={`student-evidence-${row.studentId}`}
+                      key={row.studentId}
+                      tabIndex={-1}
+                    >
                       <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
                         <span>
                           <span className="block font-semibold text-slate-950">{row.displayName}</span>
@@ -656,7 +683,7 @@ export default async function TeacherAssignmentDetailPage({
                 </p>
               </div>
             )}
-          </section>
+          </details>
 
           <section className="teacher-panel overflow-hidden">
             <div className="border-b border-slate-100 p-5">
@@ -734,6 +761,11 @@ export default async function TeacherAssignmentDetailPage({
                     <form className="mt-5 space-y-4 border-t border-slate-100 pt-5">
                       <input name="assignmentId" type="hidden" value={assignment.id} />
                       <input name="classroomId" type="hidden" value={assignment.classroom.id} />
+                      <input
+                        name="feedbackId"
+                        type="hidden"
+                        value={randomUUID()}
+                      />
                       <input name="studentId" type="hidden" value={row.studentId} />
                       <div className="space-y-2">
                         <Label htmlFor={`feedback-body-${row.studentId}`}>Feedback note</Label>
@@ -750,7 +782,7 @@ export default async function TeacherAssignmentDetailPage({
                         <label className="space-y-2 text-sm font-medium text-slate-900">
                           Attach question (optional)
                           <select
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                             defaultValue=""
                             name="questionId"
                           >
@@ -768,7 +800,7 @@ export default async function TeacherAssignmentDetailPage({
                         <label className="space-y-2 text-sm font-medium text-slate-900">
                           Attach recent attempt (optional)
                           <select
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                             defaultValue=""
                             name="practiceAttemptId"
                           >
@@ -782,12 +814,21 @@ export default async function TeacherAssignmentDetailPage({
                         </label>
                       </div>
                       <div className="flex flex-wrap gap-3">
-                        <Button formAction={savePrivateTeacherFeedbackNote} variant="outline">
+                        <FormSubmitButton
+                          className="min-h-11"
+                          formAction={savePrivateTeacherFeedbackNote}
+                          pendingLabel="Saving private note…"
+                          variant="outline"
+                        >
                           Save private note
-                        </Button>
-                        <Button formAction={sendTeacherFeedbackNote}>
+                        </FormSubmitButton>
+                        <FormSubmitButton
+                          className="min-h-11"
+                          formAction={sendTeacherFeedbackNote}
+                          pendingLabel="Sending feedback…"
+                        >
                           Send to student
-                        </Button>
+                        </FormSubmitButton>
                       </div>
                       <p className="text-xs leading-5 text-slate-500">
                         Private notes are visible only to classroom managers. Sending does not expose
@@ -800,18 +841,17 @@ export default async function TeacherAssignmentDetailPage({
             ) : null}
           </section>
 
-          <section className="teacher-panel overflow-hidden">
-            <div className="border-b border-slate-100 p-5">
-              <h2 className="text-lg font-bold text-slate-950">
+          <details className="teacher-panel overflow-hidden">
+            <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
+              <span className="block text-lg font-bold text-slate-950">
                 Assignment items
-              </h2>
-              <p className="teacher-muted">
-                These are the selected questions students receive in My Work.
-                Bank-sourced assignments do not expose the full teacher bank.
-              </p>
-            </div>
+              </span>
+              <span className="mt-1 block text-sm leading-6 text-slate-600">
+                Optional delivery content and source references.
+              </span>
+            </summary>
             {assignment.items.length ? (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-slate-100 border-t border-slate-100">
                 {assignment.items.map((item) => (
                   <article className="p-5" key={item.id}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -868,187 +908,78 @@ export default async function TeacherAssignmentDetailPage({
                 </p>
               </div>
             )}
-          </section>
+          </details>
         </div>
 
-        <aside className="space-y-6">
-          <section className="teacher-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">Status</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {assignment.status === "assigned"
-                ? "Assigned = visible to students in My Work."
-                : "Draft = not visible to students."}
-            </p>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">State</dt>
-                <dd className="font-semibold capitalize text-slate-950">
-                  {statusLabel(assignment.status)}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Assigned</dt>
-                <dd className="font-semibold text-slate-950">
-                  {formatDateTime(assignment.assigned_at)}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Due</dt>
-                <dd className="font-semibold text-slate-950">
-                  {formatDateTime(assignment.due_at)}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Items</dt>
-                <dd className="font-semibold text-slate-950">
-                  {assignment.itemCount}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          {assignment.source_kind !== "manual" ? (
-            <section className="teacher-panel p-5">
-              <h2 className="text-lg font-bold text-slate-950">Assignment source</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                {assignment.source_kind === "question_bank"
-                  ? "This assignment was created from selected approved Library items."
-                  : "This assignment was created from a reviewed planning source."}
-              </p>
-              <dl className="mt-4 space-y-3 text-sm">
+        <aside>
+          <details className="teacher-panel overflow-hidden">
+            <summary className="teacher-focus-ring min-h-11 cursor-pointer list-none p-5">
+              <span className="block text-lg font-bold text-slate-950">
+                Assignment setup and source
+              </span>
+              <span className="mt-1 block text-sm leading-6 text-slate-600">
+                Status, timing, instructions, and teacher-only source context.
+              </span>
+            </summary>
+            <div className="space-y-5 border-t border-slate-100 p-5">
+              <dl className="space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-slate-500">State</dt>
+                  <dd className="font-semibold capitalize text-slate-950">
+                    {statusLabel(assignment.status)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-slate-500">Assigned</dt>
+                  <dd className="font-semibold text-slate-950">
+                    {formatDateTime(assignment.assigned_at)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-slate-500">Due</dt>
+                  <dd className="font-semibold text-slate-950">
+                    {formatDateTime(assignment.due_at)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-slate-500">Items</dt>
+                  <dd className="font-semibold text-slate-950">
+                    {assignment.itemCount}
+                  </dd>
+                </div>
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-slate-500">Source</dt>
                   <dd className="font-semibold text-slate-950">
                     {sourceKindLabel(assignment.source_kind)}
                   </dd>
                 </div>
-                <div className="space-y-1">
-                  <dt className="text-slate-500">Title</dt>
+                <div>
+                  <dt className="text-slate-500">Student access</dt>
                   <dd className="font-semibold text-slate-950">
-                    {summaryText(assignment.source_summary, "bankName") ||
-                      summaryText(assignment.source_summary, "sourceTitle") ||
-                      "Assignment source"}
+                    Assignment-only. The full Library stays private.
                   </dd>
                 </div>
-                {assignment.source_kind === "question_bank" ? (
-                  <>
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="text-slate-500">Library visibility</dt>
-                      <dd className="font-semibold capitalize text-slate-950">
-                        {summaryText(assignment.source_summary, "bankVisibility") ||
-                          "Library-scoped"}
-                      </dd>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="text-slate-500">Student access</dt>
-                      <dd className="font-semibold capitalize text-slate-950">
-                        {summaryText(assignment.source_summary, "assignmentVisibility") ||
-                          "assignment_only"}
-                      </dd>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <dt className="text-slate-500">Source status</dt>
-                    <dd className="font-semibold capitalize text-slate-950">
-                      {summaryText(assignment.source_summary, "sourceStatus") || "unknown"}
-                    </dd>
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">
-                    {assignment.source_kind === "question_bank"
-                      ? "Selected items"
-                      : "Published items"}
-                  </dt>
-                  <dd className="font-semibold text-slate-950">
-                    {summaryText(assignment.source_summary, "itemCount") ||
-                      summaryText(assignment.source_summary, "eligibleQuestionCount") ||
-                      assignment.itemCount}
-                  </dd>
-                </div>
-                {assignment.source_kind !== "question_bank" ? (
-                  <div className="flex items-center justify-between gap-3">
-                    <dt className="text-slate-500">Needs review</dt>
-                    <dd className="font-semibold text-slate-950">
-                      {summaryText(assignment.source_summary, "unavailableQuestionCount") ||
-                        "0"}
-                    </dd>
-                  </div>
-                ) : null}
               </dl>
-              {assignment.source_kind === "question_bank" && assignment.source_record_id ? (
-                <Button asChild className="mt-4 w-full" variant="outline">
+              {assignment.instructions ? (
+                <div className="border-t border-slate-100 pt-4">
+                  <h2 className="text-sm font-bold text-slate-950">
+                    Instructions
+                  </h2>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                    {assignment.instructions}
+                  </p>
+                </div>
+              ) : null}
+              {assignment.source_kind === "question_bank" &&
+              assignment.source_record_id ? (
+                <Button asChild className="min-h-11 w-full" variant="outline">
                   <Link href={`/teacher/banks/${assignment.source_record_id}`}>
                     Open source Library
                   </Link>
                 </Button>
-              ) : assignment.source_record_id ? (
-                <p className="mt-4 break-all font-mono text-xs text-slate-400">
-                  {assignment.source_record_id}
-                </p>
               ) : null}
-            </section>
-          ) : null}
-
-          <section className="teacher-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">Student handoff</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Assigned status makes this work visible to active class members in
-              My Work. Draft assignments remain teacher-only.
-            </p>
-            <Button asChild className="mt-4 w-full" variant="outline">
-              <Link href={`/student/work/${assignment.id}`}>
-                Open student view
-              </Link>
-            </Button>
-          </section>
-
-          <section className="teacher-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">Student progress</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Practice sessions started from this assignment update these counts.
-            </p>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Students</dt>
-                <dd className="font-semibold text-slate-950">
-                  {assignment.progressSummary.studentCount}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Not started</dt>
-                <dd className="font-semibold text-slate-950">
-                  {assignment.progressSummary.notStartedCount}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">In progress</dt>
-                <dd className="font-semibold text-slate-950">
-                  {assignment.progressSummary.inProgressCount}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Completed</dt>
-                <dd className="font-semibold text-slate-950">
-                  {assignment.progressSummary.completedCount}
-                </dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-slate-500">Latest practice evidence</dt>
-                <dd className="font-semibold text-slate-950">
-                  {formatDateTime(assignment.progressSummary.latestPracticeSessionAt)}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="teacher-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">Instructions</h2>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-              {assignment.instructions || "No extra instructions."}
-            </p>
-          </section>
+            </div>
+          </details>
         </aside>
       </div>
     </main>

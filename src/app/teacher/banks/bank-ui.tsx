@@ -6,18 +6,17 @@ import {
   BookOpen,
   Boxes,
   ClipboardCheck,
-  FileText,
   FolderOpen,
   Settings,
-  Send,
   Share2,
-  Sparkles,
   Upload,
-  Users,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
+import {
+  BankContextNav,
+  type BankContextNavItem,
+} from "@/components/teacher/bank-context-nav";
 
 type BadgeTone =
   | "amber"
@@ -61,19 +60,16 @@ export function BankWorkbenchPage({
   className?: string;
 }) {
   return (
-    <main
-      className={`student-shell min-h-dvh space-y-6 bg-gradient-to-br from-slate-50 via-sky-50/50 to-white ${className}`}
+    <div
+      className={`bank-workbench teacher-shell min-h-dvh ${className}`}
     >
       {children}
-    </main>
+    </div>
   );
 }
 
 export function BankHeroPanel({
   actions,
-  badges,
-  children,
-  eyebrow,
   title,
 }: {
   actions?: React.ReactNode;
@@ -83,25 +79,14 @@ export function BankHeroPanel({
   title: string;
 }) {
   return (
-    <section className="rounded-lg border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="student-eyebrow">{eyebrow}</p>
-            {badges}
-          </div>
-          <h1 className="text-balance text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
-            {title}
-          </h1>
-          <div className="max-w-4xl text-base leading-7 text-slate-600">
-            {children}
-          </div>
-        </div>
-        {actions ? (
-          <div className="flex shrink-0 flex-wrap gap-2 xl:justify-end">{actions}</div>
-        ) : null}
-      </div>
-    </section>
+    <header className="teacher-page-header">
+      <h1 className="text-balance text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+        {title}
+      </h1>
+      {actions ? (
+        <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>
+      ) : null}
+    </header>
   );
 }
 
@@ -144,11 +129,13 @@ export function BankSectionHeader({
   action,
   description,
   eyebrow,
+  focusId,
   title,
 }: {
   action?: React.ReactNode;
   description?: string;
   eyebrow?: string;
+  focusId?: string;
   title: string;
 }) {
   return (
@@ -156,7 +143,13 @@ export function BankSectionHeader({
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           {eyebrow ? <p className="student-eyebrow">{eyebrow}</p> : null}
-          <h2 className="text-xl font-bold text-slate-950">{title}</h2>
+          <h2
+            className="text-xl font-bold text-slate-950"
+            id={focusId}
+            tabIndex={focusId ? -1 : undefined}
+          >
+            {title}
+          </h2>
           {description ? (
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               {description}
@@ -169,45 +162,33 @@ export function BankSectionHeader({
   );
 }
 
-export function BankRouteTabs({ bankId }: { bankId: string }) {
-  const primaryTabs = [
-    { href: `/teacher/banks/${bankId}/questions`, icon: BookOpen, label: "Questions" },
-    { href: `/teacher/banks/${bankId}/review`, icon: ClipboardCheck, label: "Review" },
-    { href: `/teacher/banks/${bankId}/imports`, icon: Upload, label: "Import" },
+export function BankRouteTabs({
+  bankId,
+  currentUserRole,
+}: {
+  bankId: string;
+  currentUserRole: "editor" | "owner" | "viewer" | null;
+}) {
+  const primaryTabs: BankContextNavItem[] = [
+    { href: `/teacher/banks/${bankId}/questions`, icon: "questions", label: "Questions" },
+    { href: `/teacher/banks/${bankId}/review`, icon: "review", label: "Review" },
+    ...(currentUserRole === "owner" || currentUserRole === "editor"
+      ? [{ href: `/teacher/banks/${bankId}/imports`, icon: "import" as const, label: "Import" }]
+      : []),
   ];
-  const secondaryTabs = [
-    { href: `/teacher/banks/${bankId}/submissions`, icon: Send, label: "Public Submissions" },
-    { href: `/teacher/banks/${bankId}/blueprints`, icon: Sparkles, label: "Blueprints" },
-    { href: `/teacher/banks/${bankId}/members`, icon: Users, label: "Members" },
-    { href: `/teacher/banks/${bankId}/sources`, icon: FolderOpen, label: "Sources" },
-    { href: `/teacher/banks/${bankId}/settings`, icon: Settings, label: "Settings" },
+  const secondaryTabs: BankContextNavItem[] = [
+    { href: `/teacher/banks/${bankId}/submissions`, icon: "public-submissions", label: "Public Submissions" },
+    { href: `/teacher/banks/${bankId}/blueprints`, icon: "blueprints", label: "Blueprints" },
+    { href: `/teacher/banks/${bankId}/members`, icon: "members", label: "Members" },
+    { href: `/teacher/banks/${bankId}/sources`, icon: "sources", label: "Sources" },
+    { href: `/teacher/banks/${bankId}/settings`, icon: "settings", label: "Settings" },
   ];
 
   return (
-    <div className="space-y-2">
-      {[
-        { ariaLabel: "Library workflow", tabs: primaryTabs },
-        { ariaLabel: "Library tools", tabs: secondaryTabs },
-      ].map((group) => (
-        <nav
-          aria-label={group.ariaLabel}
-          className="flex gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-white/85 p-2 shadow-sm"
-          key={group.ariaLabel}
-        >
-          {group.tabs.map(({ href, icon: Icon, label }) => (
-            <TeacherPendingLink
-              className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
-              href={href}
-              key={href}
-              pendingLabel={`${label} Library page`}
-            >
-              <Icon aria-hidden="true" className="h-4 w-4" />
-              {label}
-            </TeacherPendingLink>
-          ))}
-        </nav>
-      ))}
-    </div>
+    <BankContextNav
+      primaryItems={primaryTabs}
+      secondaryItems={secondaryTabs}
+    />
   );
 }
 
