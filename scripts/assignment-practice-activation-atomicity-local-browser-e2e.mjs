@@ -259,7 +259,7 @@ async function removeIsolatedWorkspace(workspace) {
   });
 }
 
-function tagContext() {
+function tagContext(overrides = {}) {
   return {
     confirmedTagIds: ["atomic-tag"],
     usefulTags: [
@@ -270,19 +270,96 @@ function tagContext() {
       },
     ],
     version: 1,
+    ...overrides,
   };
 }
 
-function assignmentFixture() {
+function assignmentFixture(overrides = {}) {
   return {
     dueAt: null,
     id: "LOCAL_BROWSER_ASSIGNMENT",
     itemCount: 1,
     title: "Atomic assignment marker",
+    ...overrides,
   };
 }
 
-function sessionFixture() {
+function traceFixture(overrides = {}) {
+  return {
+    elapsedMs: 12,
+    inputSummary: "Local-only assignment startup",
+    outputSummary: "Prepared a local practice round",
+    phase: "context",
+    toolName: "assignment_practice_start",
+    ...overrides,
+  };
+}
+
+function optionFixture(suffix = "A", overrides = {}) {
+  return {
+    content_html: `Option ${suffix}`,
+    id: suffix,
+    label: suffix,
+    ...overrides,
+  };
+}
+
+function questionFixture(suffix = "A", overrides = {}) {
+  return {
+    contentExcerpt: `Question ${suffix}`,
+    contentHtml: `<p>Question ${suffix}</p>`,
+    difficulty: 500,
+    expectedSkill: `Skill ${suffix}`,
+    id: `ROUND_QUESTION_${suffix}`,
+    options: [optionFixture("A"), optionFixture("B")],
+    position: 0,
+    questionCode: `ATOMIC-${suffix}`,
+    questionId: `QUESTION_${suffix}`,
+    questionType: "mcq",
+    reason: `Reason ${suffix}`,
+    source: "local_assignment",
+    sourceQuestionId: `SOURCE_QUESTION_${suffix}`,
+    tagIds: ["atomic-tag"],
+    title: `Atomic question ${suffix}`,
+    ...overrides,
+  };
+}
+
+function attemptFixture(question, overrides = {}) {
+  return {
+    answer: "A",
+    explanation: "Saved local explanation.",
+    hintCount: 1,
+    hints: ["Saved local hint."],
+    id: `ATTEMPT_${question.id}`,
+    isCorrect: true,
+    questionId: question.questionId,
+    score: 1,
+    solutionHtml: "<p>Saved local solution.</p>",
+    sourceQuestionId: question.sourceQuestionId,
+    ...overrides,
+  };
+}
+
+function roundFixture(suffix = "A", overrides = {}) {
+  const question = questionFixture(suffix);
+  return {
+    attempts: [],
+    id: `ROUND_${suffix}`,
+    nextRoundGoal: null,
+    questions: [question],
+    reviewSummary: null,
+    roundGoal: `Round goal ${suffix}`,
+    score: {
+      correct: 0,
+      total: 0,
+    },
+    trace: [traceFixture()],
+    ...overrides,
+  };
+}
+
+function sessionFixture({ rounds = [], ...overrides } = {}) {
   return {
     completedQuestionIds: [],
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -290,8 +367,8 @@ function sessionFixture() {
     id: "ATOMIC_SESSION",
     lastActivityAt: "2026-01-01T00:00:00.000Z",
     outlineUserNotes: "",
-    roundCount: 0,
-    rounds: [],
+    roundCount: rounds.length,
+    rounds,
     sessionMemory: "",
     sourceScope: [{
       assignmentId: "LOCAL_BROWSER_ASSIGNMENT",
@@ -302,33 +379,283 @@ function sessionFixture() {
     status: "active",
     tagContext: tagContext(),
     title: "Atomic session marker",
+    ...overrides,
   };
 }
 
-function recommendationFixture() {
+function recommendationFixture({ recommendations = [], ...overrides } = {}) {
   return {
     maxToolCalls: 0,
     mode: "heuristic",
-    recommendations: [],
+    recommendations,
     roundGoal: "Atomicity validation",
     sessionId: "ATOMIC_SESSION",
     sessionMemory: "",
     tagContext: tagContext(),
-    trace: [],
+    trace: [traceFixture()],
+    ...overrides,
   };
 }
 
-function startPayload() {
+function startPayload({
+  assignment = assignmentFixture(),
+  recommendation = recommendationFixture(),
+  session = sessionFixture(),
+  ...overrides
+} = {}) {
   return {
-    assignment: assignmentFixture(),
+    assignment,
     progressStatus: "in_progress",
-    recommendation: recommendationFixture(),
-    session: sessionFixture(),
+    recommendation,
+    session,
+    ...overrides,
   };
 }
 
-async function installParsedPayloadCapture(page) {
-  await page.addInitScript(() => {
+function validNestedPayload() {
+  const historicalQuestion = questionFixture("HISTORY");
+  const currentQuestionA = questionFixture("CURRENT_A");
+  const currentQuestionB = questionFixture("CURRENT_B", {
+    options: [],
+    questionId: null,
+    questionType: "frq",
+    source: undefined,
+    sourceQuestionId: null,
+  });
+  const historicalRound = roundFixture("HISTORY", {
+    attempts: [attemptFixture(historicalQuestion)],
+    questions: [historicalQuestion],
+    reviewSummary: "Saved prior-round review.",
+    score: { correct: 1, total: 1 },
+  });
+  const currentRound = roundFixture("CURRENT", {
+    questions: [currentQuestionA, currentQuestionB],
+    trace: [],
+  });
+  const recommendationA = questionFixture("RECOMMENDATION_A");
+  const recommendationB = questionFixture("RECOMMENDATION_B", {
+    options: [],
+    questionId: undefined,
+    questionType: "fill_blank",
+    source: undefined,
+    sourceQuestionId: undefined,
+  });
+
+  return startPayload({
+    assignment: assignmentFixture({ extraAssignmentField: "accepted" }),
+    extraPayloadField: { accepted: true },
+    recommendation: recommendationFixture({
+      extraRecommendationField: "accepted",
+      recommendations: [recommendationA, recommendationB],
+      trace: [],
+    }),
+    session: sessionFixture({
+      extraSessionField: "accepted",
+      rounds: [historicalRound, currentRound],
+      sourceScope: [{
+        assignmentId: "LOCAL_BROWSER_ASSIGNMENT",
+        extraSourceField: "accepted",
+        name: "Atomic session marker",
+        sourceKind: "assignment",
+      }],
+      tagContext: tagContext({ lastGoal: "Prior supported goal" }),
+    }),
+  });
+}
+
+function validRecommendationPayload() {
+  return startPayload({
+    recommendation: recommendationFixture({
+      recommendations: [
+        questionFixture("RECOMMENDATION_A"),
+        questionFixture("RECOMMENDATION_B", {
+          options: [],
+          questionId: undefined,
+          questionType: "fill_blank",
+          source: undefined,
+          sourceQuestionId: undefined,
+        }),
+      ],
+    }),
+  });
+}
+
+function payloadWithRound({
+  attempts,
+  questions,
+  roundOverrides = {},
+} = {}) {
+  const question = questionFixture("MATRIX");
+  const round = roundFixture("MATRIX", {
+    attempts: attempts ?? [],
+    questions: questions ?? [question],
+    ...roundOverrides,
+  });
+  return startPayload({
+    recommendation: recommendationFixture({
+      recommendations: [questionFixture("RECOMMENDATION")],
+    }),
+    session: sessionFixture({ rounds: [round] }),
+  });
+}
+
+const malformedModes = [
+  "invalid_round_question",
+  "invalid_round_null",
+  "invalid_round_primitive",
+  "invalid_round_questions_container",
+  "invalid_round_question_primitive",
+  "invalid_round_question_array",
+  "invalid_round_question_identity",
+  "invalid_sparse_questions",
+  "invalid_attempt_null",
+  "invalid_attempt_primitive",
+  "invalid_attempt_required_field",
+  "invalid_sparse_attempts",
+  "invalid_recommendation_null",
+  "invalid_recommendation_primitive",
+  "invalid_recommendation_identity",
+  "invalid_later_round_question",
+  "invalid_mixed_questions",
+  "invalid_option_null",
+  "invalid_sparse_options",
+  "invalid_recommendation_trace",
+  "invalid_round_trace",
+  "invalid_source_scope",
+  "invalid_tag_context",
+  "invalid_sparse_recommendations",
+  "invalid_sparse_rounds",
+];
+
+const sparseModes = new Set([
+  "invalid_sparse_attempts",
+  "invalid_sparse_options",
+  "invalid_sparse_questions",
+  "invalid_sparse_recommendations",
+  "invalid_sparse_rounds",
+]);
+
+function malformedPayload(mode) {
+  const payload = payloadWithRound();
+  const round = payload.session.rounds[0];
+  const question = round.questions[0];
+
+  switch (mode) {
+    case "invalid_round_question":
+      round.questions = [null];
+      break;
+    case "invalid_round_null":
+      payload.session.rounds = [null];
+      break;
+    case "invalid_round_primitive":
+      payload.session.rounds = ["not-a-round"];
+      break;
+    case "invalid_round_questions_container":
+      round.questions = { invalid: true };
+      break;
+    case "invalid_round_question_primitive":
+      round.questions = [42];
+      break;
+    case "invalid_round_question_array":
+      round.questions = [[]];
+      break;
+    case "invalid_round_question_identity":
+      delete question.id;
+      question.sourceQuestionId = null;
+      break;
+    case "invalid_sparse_questions":
+      break;
+    case "invalid_attempt_null":
+      round.attempts = [null];
+      break;
+    case "invalid_attempt_primitive":
+      round.attempts = ["not-an-attempt"];
+      break;
+    case "invalid_attempt_required_field": {
+      const attempt = attemptFixture(question);
+      delete attempt.answer;
+      round.attempts = [attempt];
+      break;
+    }
+    case "invalid_sparse_attempts":
+      round.attempts = [attemptFixture(question)];
+      break;
+    case "invalid_recommendation_null":
+      payload.session = sessionFixture();
+      payload.recommendation.recommendations = [null];
+      break;
+    case "invalid_recommendation_primitive":
+      payload.session = sessionFixture();
+      payload.recommendation.recommendations = ["not-a-recommendation"];
+      break;
+    case "invalid_recommendation_identity": {
+      payload.session = sessionFixture();
+      const invalidRecommendation = questionFixture("INVALID_RECOMMENDATION");
+      delete invalidRecommendation.id;
+      invalidRecommendation.sourceQuestionId = null;
+      payload.recommendation.recommendations = [invalidRecommendation];
+      break;
+    }
+    case "invalid_later_round_question":
+      payload.session = sessionFixture({
+        rounds: [
+          roundFixture("FIRST"),
+          roundFixture("SECOND", { questions: [null] }),
+        ],
+      });
+      break;
+    case "invalid_mixed_questions":
+      round.questions = [question, null];
+      break;
+    case "invalid_option_null":
+      question.options = [null];
+      break;
+    case "invalid_sparse_options":
+      break;
+    case "invalid_recommendation_trace":
+      payload.recommendation.trace = [null];
+      break;
+    case "invalid_round_trace":
+      round.trace = [null];
+      break;
+    case "invalid_source_scope":
+      payload.session.sourceScope = [null];
+      break;
+    case "invalid_tag_context":
+      payload.recommendation.tagContext.usefulTags = [null];
+      break;
+    case "invalid_sparse_recommendations":
+      payload.session = sessionFixture();
+      payload.recommendation.recommendations = [questionFixture("SPARSE")];
+      break;
+    case "invalid_sparse_rounds":
+      break;
+    default:
+      throw new AssignmentAtomicityHarnessError("UNKNOWN_MALFORMED_MODE");
+  }
+
+  payload.session.roundCount = payload.session.rounds.length;
+  return payload;
+}
+
+function startPayloadForMode(mode) {
+  if (mode === "valid_nested") return validNestedPayload();
+  if (mode === "valid_recommendations") return validRecommendationPayload();
+  if (malformedModes.includes(mode)) return malformedPayload(mode);
+
+  const payload = startPayload();
+  if (mode === "missing_assignment") delete payload.assignment;
+  if (mode === "invalid_assignment_identity") payload.assignment.id = "OTHER_ASSIGNMENT";
+  if (mode === "missing_session") delete payload.session;
+  if (mode === "invalid_session_id") {
+    payload.session.id = " ";
+    payload.recommendation.sessionId = " ";
+  }
+  return payload;
+}
+
+async function installParsedPayloadCapture(page, mode) {
+  await page.addInitScript((activeMode) => {
     const nativeFetch = window.fetch.bind(window);
     window.__assignmentAtomicityProbe = {
       parseCalls: 0,
@@ -345,6 +672,18 @@ async function installParsedPayloadCapture(page) {
         window.__assignmentAtomicityProbe.parseCalls += 1;
         try {
           const payload = await nativeJson();
+          if (activeMode === "invalid_sparse_questions") {
+            payload.session.rounds[0].questions = new Array(1);
+          } else if (activeMode === "invalid_sparse_attempts") {
+            payload.session.rounds[0].attempts = new Array(1);
+          } else if (activeMode === "invalid_sparse_options") {
+            payload.session.rounds[0].questions[0].options = new Array(1);
+          } else if (activeMode === "invalid_sparse_recommendations") {
+            payload.recommendation.recommendations = new Array(1);
+          } else if (activeMode === "invalid_sparse_rounds") {
+            payload.session.rounds = new Array(1);
+            payload.session.roundCount = 1;
+          }
           window.__assignmentAtomicityProbe.payload = payload;
           return payload;
         } catch (error) {
@@ -354,13 +693,14 @@ async function installParsedPayloadCapture(page) {
       };
       return response;
     };
-  });
+  }, mode);
 }
 
 async function activationState(page) {
   return page.evaluate(() => {
     const probe = window.__assignmentAtomicityProbe;
     const assignment = probe?.payload?.assignment;
+    const recommendation = probe?.payload?.recommendation;
     const session = probe?.payload?.session;
     const fibers = new Set();
 
@@ -407,20 +747,25 @@ async function activationState(page) {
 
     let componentFound = false;
     let assignmentReferenceFound = false;
+    let recommendationReferenceFound = false;
     let sessionReferenceFound = false;
     for (const fiber of fibers) {
       const name = fiber.type?.name ?? fiber.elementType?.name ?? "";
       if (name === "PracticeAgentClient") componentFound = true;
       assignmentReferenceFound ||= hookContains(fiber.memoizedState, assignment);
+      recommendationReferenceFound ||= hookContains(fiber.memoizedState, recommendation);
       sessionReferenceFound ||= hookContains(fiber.memoizedState, session);
     }
 
     const assignmentClone = assignment ? { ...assignment } : null;
+    const recommendationClone = recommendation ? { ...recommendation } : null;
     const sessionClone = session ? { ...session } : null;
     let assignmentCloneFound = false;
+    let recommendationCloneFound = false;
     let sessionCloneFound = false;
     for (const fiber of fibers) {
       assignmentCloneFound ||= hookContains(fiber.memoizedState, assignmentClone);
+      recommendationCloneFound ||= hookContains(fiber.memoizedState, recommendationClone);
       sessionCloneFound ||= hookContains(fiber.memoizedState, sessionClone);
     }
 
@@ -431,6 +776,8 @@ async function activationState(page) {
       parseCalls: probe?.parseCalls ?? 0,
       parseRejected: probe?.parseRejected ?? false,
       payloadCaptured: Boolean(probe?.payload),
+      recommendationCloneFound,
+      recommendationReferenceFound,
       sessionCloneFound,
       sessionReferenceFound,
     };
@@ -457,11 +804,26 @@ function jsonResponse(route, body, status = 200) {
   });
 }
 
+const successfulModes = new Set([
+  "valid",
+  "valid_nested",
+  "valid_recommendations",
+]);
+
+function casePrefix(mode) {
+  return mode === "invalid_round_question"
+    ? "INVALID_ROUND_QUESTION"
+    : mode.toUpperCase();
+}
+
 async function runCase(browser, origin, mode) {
   const context = await browser.newContext();
   const page = await context.newPage();
   let phase = "capture_install";
-  await installParsedPayloadCapture(page);
+  await installParsedPayloadCapture(page, mode);
+  const prefix = casePrefix(mode);
+  const isSuccess = successfulModes.has(mode);
+  const isMalformed = malformedModes.includes(mode);
 
   const startObserved = deferred();
   const startRelease = deferred();
@@ -495,9 +857,13 @@ async function runCase(browser, origin, mode) {
       counters.start += 1;
       startRequestBody = request.postDataJSON();
       startObserved.resolve();
-      if (mode === "valid") await startRelease.promise;
+      if (isSuccess) await startRelease.promise;
       if (mode === "request_rejection") {
         await route.abort("failed");
+        return;
+      }
+      if (mode === "non_ok_response") {
+        await jsonResponse(route, { error: "LOCAL_START_REJECTED" }, 503);
         return;
       }
       if (mode === "parse_rejection") {
@@ -509,9 +875,7 @@ async function runCase(browser, origin, mode) {
         return;
       }
 
-      const payload = startPayload();
-      if (mode === "missing_assignment") delete payload.assignment;
-      if (mode === "missing_session") delete payload.session;
+      const payload = startPayloadForMode(mode);
       await jsonResponse(route, payload);
       return;
     }
@@ -519,7 +883,7 @@ async function runCase(browser, origin, mode) {
     if (url.pathname === "/api/practice/sessions" && request.method() === "GET") {
       counters.refresh += 1;
       refreshObserved.resolve();
-      if (mode === "valid") await refreshRelease.promise;
+      if (isSuccess) await refreshRelease.promise;
       if (mode === "refresh_rejection") {
         await jsonResponse(route, { error: "LOCAL_REFRESH_REJECTED" }, 503);
         return;
@@ -568,27 +932,27 @@ async function runCase(browser, origin, mode) {
       waitUntil: "domcontentloaded",
     });
     phase = "start_observation";
-    await withTimeout(startObserved.promise, `${mode.toUpperCase()}_START_NOT_OBSERVED`);
+    await withTimeout(startObserved.promise, `${prefix}_START_NOT_OBSERVED`);
 
-    assert(counters.start === 1, `${mode.toUpperCase()}_START_COUNT_INVALID`);
+    assert(counters.start === 1, `${prefix}_START_COUNT_INVALID`);
     assert(
       startRequestBody?.assignmentId === "LOCAL_BROWSER_ASSIGNMENT",
-      `${mode.toUpperCase()}_ASSIGNMENT_ID_INVALID`,
+      `${prefix}_ASSIGNMENT_ID_INVALID`,
     );
 
-    if (mode === "valid") {
+    if (isSuccess) {
       phase = "pre_resolution";
       const beforeResolution = await visibleActivation(page);
       assert(
         beforeResolution.assignment === 0 &&
           beforeResolution.session === 0 &&
           counters.refresh === 0,
-        "VALID_PRE_RESOLUTION_EFFECT",
+        `${prefix}_PRE_RESOLUTION_EFFECT`,
       );
 
       startRelease.resolve();
       phase = "refresh_observation";
-      await withTimeout(refreshObserved.promise, "VALID_REFRESH_NOT_OBSERVED");
+      await withTimeout(refreshObserved.promise, `${prefix}_REFRESH_NOT_OBSERVED`);
       phase = "pending_refresh_state";
       const whileRefreshPending = await visibleActivation(page);
       const pendingReferences = await activationState(page);
@@ -596,12 +960,13 @@ async function runCase(browser, origin, mode) {
         whileRefreshPending.assignment === 0 &&
           whileRefreshPending.session === 0 &&
           whileRefreshPending.root === 0,
-        "VALID_UI_ACTIVATED_BEFORE_REFRESH",
+        `${prefix}_UI_ACTIVATED_BEFORE_REFRESH`,
       );
       assert(
         !pendingReferences.assignmentReferenceFound &&
+          !pendingReferences.recommendationReferenceFound &&
           !pendingReferences.sessionReferenceFound,
-        "VALID_STATE_ACTIVATED_BEFORE_REFRESH",
+        `${prefix}_STATE_ACTIVATED_BEFORE_REFRESH`,
       );
 
       refreshRelease.resolve();
@@ -615,28 +980,42 @@ async function runCase(browser, origin, mode) {
         .getByText("Atomic session marker", { exact: false })
         .first()
         .waitFor({ timeout: STEP_TIMEOUT_MS });
+      if (mode !== "valid") {
+        phase = "post_refresh_practice_ui";
+        await page
+          .locator('[data-testid="practice-answer-control"]')
+          .first()
+          .waitFor({ timeout: STEP_TIMEOUT_MS });
+      }
 
       phase = "post_refresh_identity";
       const completedReferences = await activationState(page);
-      assert(completedReferences.componentFound, "VALID_REAL_COMPONENT_NOT_FOUND");
-      assert(completedReferences.parseCalls === 1, "VALID_PARSE_COUNT_INVALID");
-      assert(completedReferences.payloadCaptured, "VALID_PAYLOAD_NOT_CAPTURED");
+      assert(completedReferences.componentFound, `${prefix}_REAL_COMPONENT_NOT_FOUND`);
+      assert(completedReferences.parseCalls === 1, `${prefix}_PARSE_COUNT_INVALID`);
+      assert(completedReferences.payloadCaptured, `${prefix}_PAYLOAD_NOT_CAPTURED`);
       assert(
         completedReferences.assignmentReferenceFound &&
           completedReferences.sessionReferenceFound,
-        "VALID_EXACT_STATE_IDENTITY_MISSING",
+        `${prefix}_EXACT_STATE_IDENTITY_MISSING`,
       );
+      if (mode !== "valid_nested") {
+        assert(
+          completedReferences.recommendationReferenceFound,
+          `${prefix}_EXACT_RECOMMENDATION_IDENTITY_MISSING`,
+        );
+      }
       assert(
         !completedReferences.assignmentCloneFound &&
+          !completedReferences.recommendationCloneFound &&
           !completedReferences.sessionCloneFound,
-        "VALID_CLONED_STATE_IDENTITY_ACCEPTED",
+        `${prefix}_CLONED_STATE_IDENTITY_ACCEPTED`,
       );
-      assert(counters.refresh === 1, "VALID_REFRESH_COUNT_INVALID");
-      assert(counters.wrong === 1, "VALID_REFRESH_DERIVED_REQUEST_COUNT_INVALID");
-      assert(refreshSessionId === "ATOMIC_SESSION", "VALID_REFRESH_SESSION_ID_INVALID");
-      assert(counters.unexpectedApi === 0, "VALID_UNEXPECTED_API_REQUEST");
-      assert(counters.pageErrors === 0, "VALID_PAGE_ERROR");
-      assert(counters.external === 0, "VALID_EXTERNAL_REQUEST");
+      assert(counters.refresh === 1, `${prefix}_REFRESH_COUNT_INVALID`);
+      assert(counters.wrong === 1, `${prefix}_REFRESH_DERIVED_REQUEST_COUNT_INVALID`);
+      assert(refreshSessionId === "ATOMIC_SESSION", `${prefix}_REFRESH_SESSION_ID_INVALID`);
+      assert(counters.unexpectedApi === 0, `${prefix}_UNEXPECTED_API_REQUEST`);
+      assert(counters.pageErrors === 0, `${prefix}_PAGE_ERROR`);
+      assert(counters.external === 0, `${prefix}_EXTERNAL_REQUEST`);
       return {
         activationAfterRefresh: true,
         exactReferences: true,
@@ -652,41 +1031,59 @@ async function runCase(browser, origin, mode) {
     const references = await activationState(page);
     assert(
       visible.assignment === 0 && visible.session === 0,
-      `${mode.toUpperCase()}_VISIBLE_PARTIAL_ACTIVATION`,
+      `${prefix}_VISIBLE_PARTIAL_ACTIVATION`,
     );
     assert(
-      !references.assignmentReferenceFound && !references.sessionReferenceFound,
-      `${mode.toUpperCase()}_STATE_PARTIAL_ACTIVATION`,
+      !references.assignmentReferenceFound &&
+        !references.recommendationReferenceFound &&
+        !references.sessionReferenceFound,
+      `${prefix}_STATE_PARTIAL_ACTIVATION`,
     );
 
-    if (mode === "request_rejection" || mode === "parse_rejection") {
-      assert(counters.refresh === 0, `${mode.toUpperCase()}_REFRESH_OCCURRED`);
+    if (
+      mode === "request_rejection" ||
+      mode === "non_ok_response" ||
+      mode === "parse_rejection"
+    ) {
+      assert(counters.refresh === 0, `${prefix}_REFRESH_OCCURRED`);
     }
-    if (mode === "missing_assignment" || mode === "missing_session") {
-      assert(counters.refresh === 0, `${mode.toUpperCase()}_REFRESH_OCCURRED`);
-      assert(references.parseCalls === 1, `${mode.toUpperCase()}_PARSE_COUNT_INVALID`);
+    if (
+      mode === "missing_assignment" ||
+      mode === "invalid_assignment_identity" ||
+      mode === "missing_session" ||
+      mode === "invalid_session_id" ||
+      isMalformed
+    ) {
+      assert(counters.refresh === 0, `${prefix}_REFRESH_OCCURRED`);
+      assert(references.parseCalls === 1, `${prefix}_PARSE_COUNT_INVALID`);
     }
     if (mode === "parse_rejection") {
       assert(references.parseCalls === 1, "PARSE_REJECTION_PARSE_COUNT_INVALID");
       assert(references.parseRejected, "PARSE_REJECTION_NOT_OBSERVED");
     }
+    if (mode === "non_ok_response") {
+      assert(references.parseCalls === 1, "NON_OK_RESPONSE_PARSE_COUNT_INVALID");
+    }
     if (mode === "refresh_rejection") {
       assert(counters.refresh === 1, "REFRESH_REJECTION_COUNT_INVALID");
       assert(references.payloadCaptured, "REFRESH_REJECTION_PAYLOAD_NOT_CAPTURED");
     }
-    assert(counters.wrong === 0, `${mode.toUpperCase()}_WRONG_REQUEST_OCCURRED`);
-    assert(counters.unexpectedApi === 0, `${mode.toUpperCase()}_UNEXPECTED_API_REQUEST`);
-    assert(counters.pageErrors === 0, `${mode.toUpperCase()}_PAGE_ERROR`);
-    assert(counters.external === 0, `${mode.toUpperCase()}_EXTERNAL_REQUEST`);
+    await page.waitForTimeout(150);
+    assert(counters.start === 1, `${prefix}_AUTOMATIC_RETRY_OCCURRED`);
+    assert(counters.wrong === 0, `${prefix}_WRONG_REQUEST_OCCURRED`);
+    assert(counters.unexpectedApi === 0, `${prefix}_UNEXPECTED_API_REQUEST`);
+    assert(counters.pageErrors === 0, `${prefix}_PAGE_ERROR`);
+    assert(counters.external === 0, `${prefix}_EXTERNAL_REQUEST`);
 
     return {
       noActivation: true,
+      parseCalls: references.parseCalls,
       refreshAttempts: counters.refresh,
     };
   } catch (error) {
     if (error instanceof AssignmentAtomicityHarnessError) throw error;
     throw new AssignmentAtomicityHarnessError(
-      `${mode.toUpperCase()}_${phase.toUpperCase()}_FAILED`,
+      `${prefix}_${phase.toUpperCase()}_FAILED`,
     );
   } finally {
     startRelease.resolve();
@@ -713,14 +1110,21 @@ async function main() {
     console.log("phase=browser_launch");
     browser = await chromium.launch({ channel: "msedge", headless: true });
 
-    for (const mode of [
+    const modes = [
       "valid",
+      "valid_nested",
+      "valid_recommendations",
       "request_rejection",
+      "non_ok_response",
       "parse_rejection",
       "missing_assignment",
+      "invalid_assignment_identity",
       "missing_session",
+      "invalid_session_id",
       "refresh_rejection",
-    ]) {
+      ...malformedModes,
+    ];
+    for (const mode of modes) {
       console.log(`phase=case_${mode}`);
       results.set(mode, await runCase(browser, server.origin, mode));
     }
@@ -755,28 +1159,51 @@ async function main() {
 
   if (runFailure) throw runFailure;
   if (cleanupFailure) throw cleanupFailure;
-  assert(results.size === 6, "CASE_COUNT_INVALID");
-  assert(results.get("valid")?.oneInvocation, "VALID_ONE_INVOCATION_NOT_PROVEN");
-  assert(
-    results.get("valid")?.exactReferences,
-    "VALID_EXACT_REFERENCE_CONTRACT_NOT_PROVEN",
-  );
-  for (const mode of [
+  const expectedCaseCount = successfulModes.size + 8 + malformedModes.length;
+  assert(results.size === expectedCaseCount, "CASE_COUNT_INVALID");
+  for (const mode of successfulModes) {
+    assert(results.get(mode)?.oneInvocation, `${casePrefix(mode)}_ONE_INVOCATION_NOT_PROVEN`);
+    assert(
+      results.get(mode)?.exactReferences,
+      `${casePrefix(mode)}_EXACT_REFERENCE_CONTRACT_NOT_PROVEN`,
+    );
+  }
+  const failureModes = [
     "request_rejection",
+    "non_ok_response",
     "parse_rejection",
     "missing_assignment",
+    "invalid_assignment_identity",
     "missing_session",
+    "invalid_session_id",
     "refresh_rejection",
-  ]) {
-    assert(results.get(mode)?.noActivation, `${mode.toUpperCase()}_NOT_PROVEN`);
+    ...malformedModes,
+  ];
+  for (const mode of failureModes) {
+    assert(results.get(mode)?.noActivation, `${casePrefix(mode)}_NOT_PROVEN`);
   }
   assert(
     results.get("request_rejection")?.refreshAttempts === 0 &&
+      results.get("non_ok_response")?.refreshAttempts === 0 &&
       results.get("parse_rejection")?.refreshAttempts === 0 &&
       results.get("missing_assignment")?.refreshAttempts === 0 &&
+      results.get("invalid_assignment_identity")?.refreshAttempts === 0 &&
       results.get("missing_session")?.refreshAttempts === 0 &&
+      results.get("invalid_session_id")?.refreshAttempts === 0 &&
       results.get("refresh_rejection")?.refreshAttempts === 1,
     "FAILURE_REFRESH_COUNTS_INVALID",
+  );
+  assert(
+    malformedModes.every((mode) => results.get(mode)?.refreshAttempts === 0),
+    "MALFORMED_REFRESH_COUNTS_INVALID",
+  );
+  assert(
+    malformedModes.every((mode) => results.get(mode)?.parseCalls === 1),
+    "MALFORMED_PARSE_COUNTS_INVALID",
+  );
+  assert(
+    [...sparseModes].every((mode) => results.get(mode)?.noActivation),
+    "SPARSE_ARRAY_REJECTION_NOT_PROVEN",
   );
   assert(serverStopped, "TEMPORARY_SERVER_NOT_STOPPED");
   assert(workspaceRemoved, "TEMPORARY_WORKSPACE_NOT_REMOVED");
@@ -784,16 +1211,26 @@ async function main() {
   console.log("browser_framework=PLAYWRIGHT_MS_EDGE");
   console.log("real_component=PracticeAgentClient");
   console.log("valid_path=PASS");
+  console.log("valid_nested_rounds_questions_attempts=PASS");
+  console.log("valid_recommendation_elements=PASS");
   console.log("request_rejection=PASS");
+  console.log("non_ok_response=PASS");
   console.log("parse_rejection=PASS");
   console.log("missing_assignment=PASS");
+  console.log("invalid_assignment_identity=PASS");
   console.log("missing_session=PASS");
+  console.log("invalid_session_id=PASS");
   console.log("refresh_rejection=PASS");
+  console.log(`malformed_nested_cases=${malformedModes.length}`);
+  console.log("malformed_nested_validation_before_refresh=PASS");
+  console.log("sparse_array_rejection=PASS");
   console.log("exact_assignment_reference=PASS");
   console.log("exact_session_reference=PASS");
+  console.log("exact_nested_response_identity=PASS");
   console.log("refresh_async_ownership=PASS");
   console.log("mutually_exclusive_false_positive=REJECTED");
   console.log("external_network_calls=0");
+  console.log("production_test_backdoors=0");
   console.log("temporary_server_stopped=YES");
   console.log("temporary_workspace_removed=YES");
   console.log("PASS assignment_practice_activation_atomicity_local_browser_e2e");

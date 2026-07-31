@@ -183,21 +183,178 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && Boolean(value.trim());
 }
 
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+function hasOwn(value: object, key: PropertyKey) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isDenseArray(
+  value: unknown,
+  isValidItem: (item: unknown) => boolean,
+): value is unknown[] {
+  if (!Array.isArray(value)) return false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (!hasOwn(value, index) || !isValidItem(value[index])) return false;
+  }
+
+  return true;
+}
+
+function isStringArray(
+  value: unknown,
+  requireNonEmptyItems = false,
+): value is string[] {
+  return isDenseArray(
+    value,
+    (item) =>
+      typeof item === "string" &&
+      (!requireNonEmptyItems || Boolean(item.trim())),
+  );
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isOptionalNullableString(value: unknown) {
+  return value === undefined || isNullableString(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isPracticeTraceEvent(value: unknown) {
+  if (!isRecord(value)) return false;
+
+  const optionalStringFields = [
+    "error",
+    "inputSummary",
+    "modelThought",
+    "outputSummary",
+    "thoughtSummary",
+    "toolCallId",
+  ];
+  const optionalNumberFields = ["elapsedMs", "iteration", "resultCount"];
+
+  return (
+    ["recommendation", "hint", "grading", "review", "context"].includes(
+      String(value.phase),
+    ) &&
+    isNonEmptyString(value.toolName) &&
+    optionalStringFields.every(
+      (field) => value[field] === undefined || typeof value[field] === "string",
+    ) &&
+    optionalNumberFields.every(
+      (field) => value[field] === undefined || isFiniteNumber(value[field]),
+    ) &&
+    (value.reasoningContent === undefined ||
+      value.reasoningContent === null ||
+      typeof value.reasoningContent === "string") &&
+    (value.savedFullPayload === undefined ||
+      typeof value.savedFullPayload === "boolean")
+  );
+}
+
+function isPracticeTrace(value: unknown) {
+  return isDenseArray(value, isPracticeTraceEvent);
+}
+
+function isQuestionOption(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.content_html === "string" &&
+    (value.content_source === undefined ||
+      typeof value.content_source === "string") &&
+    isNonEmptyString(value.id) &&
+    typeof value.label === "string"
+  );
+}
+
+function isPracticeQuestion(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.contentExcerpt === "string" &&
+    typeof value.contentHtml === "string" &&
+    isFiniteNumber(value.difficulty) &&
+    typeof value.expectedSkill === "string" &&
+    isNonEmptyString(value.id) &&
+    isDenseArray(value.options, isQuestionOption) &&
+    typeof value.questionCode === "string" &&
+    isOptionalNullableString(value.questionId) &&
+    ["mcq", "fill_blank", "frq", "mixed"].includes(
+      String(value.questionType),
+    ) &&
+    typeof value.reason === "string" &&
+    isOptionalNullableString(value.source) &&
+    isOptionalNullableString(value.sourceQuestionId) &&
+    isStringArray(value.tagIds, true) &&
+    typeof value.title === "string"
+  );
+}
+
+function isPracticeAttempt(value: unknown) {
+  return (
+    isRecord(value) &&
+    hasOwn(value, "answer") &&
+    (typeof value.answer === "string" || isStringArray(value.answer)) &&
+    isNullableString(value.explanation) &&
+    isStringArray(value.hints) &&
+    (value.isCorrect === null || typeof value.isCorrect === "boolean") &&
+    isNullableString(value.questionId) &&
+    (value.score === null || isFiniteNumber(value.score)) &&
+    isNullableString(value.solutionHtml) &&
+    isNullableString(value.sourceQuestionId)
+  );
+}
+
+function isPracticeRound(value: unknown) {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.id) &&
+    isDenseArray(value.attempts, isPracticeAttempt) &&
+    (value.nextRoundGoal === null || typeof value.nextRoundGoal === "string") &&
+    isDenseArray(value.questions, isPracticeQuestion) &&
+    isNullableString(value.reviewSummary) &&
+    typeof value.roundGoal === "string" &&
+    isRecord(value.score) &&
+    isFiniteNumber(value.score.correct) &&
+    isFiniteNumber(value.score.total) &&
+    isPracticeTrace(value.trace)
+  );
+}
+
+function isPracticeSourceSummary(value: unknown) {
+  return (
+    isRecord(value) &&
+    isOptionalNullableString(value.assignmentId) &&
+    isOptionalNullableString(value.bankId) &&
+    (value.membershipRole === undefined ||
+      value.membershipRole === null ||
+      ["owner", "editor", "viewer"].includes(String(value.membershipRole))) &&
+    typeof value.name === "string" &&
+    ["assignment", "public_catalog", "question_bank"].includes(
+      String(value.sourceKind),
+    ) &&
+    (value.visibility === undefined ||
+      value.visibility === null ||
+      ["private", "shared", "organization", "public"].includes(
+        String(value.visibility),
+      ))
+  );
 }
 
 function isPracticeTagContext(value: unknown) {
   return (
     isRecord(value) &&
-    isStringArray(value.confirmedTagIds) &&
+    isStringArray(value.confirmedTagIds, true) &&
     (value.lastGoal === undefined || typeof value.lastGoal === "string") &&
-    Array.isArray(value.usefulTags) &&
-    value.usefulTags.every(
+    isDenseArray(
+      value.usefulTags,
       (tag) =>
         isRecord(tag) &&
         (tag.searchableQuestionCount === undefined ||
-          typeof tag.searchableQuestionCount === "number") &&
+          isFiniteNumber(tag.searchableQuestionCount)) &&
         ["memory", "browse", "search"].includes(String(tag.source)) &&
         isNonEmptyString(tag.tagId),
     ) &&
@@ -226,44 +383,28 @@ function isAssignmentPracticeStartPayload(
     (assignment.dueAt === null || typeof assignment.dueAt === "string");
   const recommendationValid =
     (recommendation.mode === "ai" || recommendation.mode === "heuristic") &&
-    typeof recommendation.maxToolCalls === "number" &&
-    Array.isArray(recommendation.recommendations) &&
+    isFiniteNumber(recommendation.maxToolCalls) &&
+    isDenseArray(recommendation.recommendations, isPracticeQuestion) &&
+    (recommendation.roundId === undefined ||
+      isNonEmptyString(recommendation.roundId)) &&
     typeof recommendation.roundGoal === "string" &&
     typeof recommendation.sessionMemory === "string" &&
     isPracticeTagContext(recommendation.tagContext) &&
-    Array.isArray(recommendation.trace);
+    isPracticeTrace(recommendation.trace);
   const sessionValid =
     isNonEmptyString(session.id) &&
-    isStringArray(session.completedQuestionIds) &&
+    isStringArray(session.completedQuestionIds, true) &&
     typeof session.createdAt === "string" &&
     typeof session.goal === "string" &&
     typeof session.lastActivityAt === "string" &&
+    (session.outlineUserNotes === undefined ||
+      typeof session.outlineUserNotes === "string") &&
     Number.isSafeInteger(session.roundCount) &&
     Number(session.roundCount) >= 0 &&
-    Array.isArray(session.rounds) &&
-    session.rounds.every(
-      (round) =>
-        isRecord(round) &&
-        isNonEmptyString(round.id) &&
-        Array.isArray(round.attempts) &&
-        Array.isArray(round.questions) &&
-        (round.reviewSummary === null || typeof round.reviewSummary === "string") &&
-        typeof round.roundGoal === "string" &&
-        isRecord(round.score) &&
-        typeof round.score.correct === "number" &&
-        typeof round.score.total === "number" &&
-        Array.isArray(round.trace),
-    ) &&
+    isDenseArray(session.rounds, isPracticeRound) &&
     typeof session.sessionMemory === "string" &&
-    Array.isArray(session.sourceScope) &&
-    session.sourceScope.every(
-      (source) =>
-        isRecord(source) &&
-        typeof source.name === "string" &&
-        ["assignment", "public_catalog", "question_bank"].includes(
-          String(source.sourceKind),
-        ),
-    ) &&
+    isDenseArray(session.sourceScope, isPracticeSourceSummary) &&
+    isOptionalNullableString(session.sourceScopeLockedAt) &&
     ["active", "archived", "completed"].includes(String(session.status)) &&
     isPracticeTagContext(session.tagContext) &&
     typeof session.title === "string";
