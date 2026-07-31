@@ -3,11 +3,9 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 
 import {
-  BookOpenCheck,
   ClipboardList,
   Filter,
   Search,
-  ShieldCheck,
 } from "lucide-react";
 
 import {
@@ -26,11 +24,9 @@ import { requireTeacher } from "@/lib/auth/guards";
 import { readTeacherFocusSelectionReceipt } from "@/lib/teacher-focus-selection";
 import { isDatabaseUuid } from "@/lib/teacher-focus-workspace";
 import {
-  bankMemberRoleLabel,
   canManageBankContent,
   listTeacherQuestionBanks,
   QuestionBankSchemaMissingError,
-  questionBankVisibilityLabel,
   type TeacherQuestionBankSummary,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
@@ -136,10 +132,6 @@ function SourceLibraryPicker({
         <h2 className="text-xl font-bold text-slate-950">
           Choose one source Library
         </h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Only Libraries you own or edit are listed. Choosing one opens a clean
-          Assignment builder; the Library remains private.
-        </p>
       </div>
 
       <div className="grid gap-3 p-5 lg:grid-cols-3">
@@ -149,19 +141,9 @@ function SourceLibraryPicker({
             href={buildPublishHref({ sourceBankId: bank.id })}
             key={bank.id}
           >
-            <span>
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-800">
-                  {questionBankVisibilityLabel(bank.visibility)}
-                </span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700">
-                  {bankMemberRoleLabel(bank.membershipRole)}
-                </span>
-              </span>
-              <span className="mt-3 block break-words text-base font-bold text-slate-950">
+              <span className="block break-words text-base font-bold text-slate-950">
                 {bank.name}
               </span>
-            </span>
             <span className="mt-3 text-sm font-semibold text-sky-800">
               {bank.assignmentReadyCount} assignment-ready
             </span>
@@ -658,22 +640,14 @@ export default async function TeacherPublishPage({
         <SourceLibraryPicker banks={banks} />
       ) : (
         <>
-          <section className="teacher-panel flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
-                <BookOpenCheck aria-hidden="true" className="size-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="teacher-eyebrow">Step 2 of 2 · Assignment source</p>
-                <h2 className="break-words text-lg font-bold text-slate-950">
-                  {selectedBank.name}
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  {questionBankVisibilityLabel(selectedBank.visibility)} ·{" "}
-                  {bankMemberRoleLabel(selectedBank.membershipRole)} ·{" "}
-                  {selectedBank.assignmentReadyCount} assignment-ready
-                </p>
-              </div>
+          <section className="flex flex-col gap-4 border-y border-slate-200 bg-white p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <h2 className="break-words text-lg font-bold text-slate-950">
+                {selectedBank.name}
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                {selectedBank.assignmentReadyCount} Ready
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -747,8 +721,7 @@ export default async function TeacherPublishPage({
                 />
               }
               review={
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-                  <section className="teacher-panel p-5">
+                <section className="border-y border-slate-200 bg-white p-5">
                     <div className="flex items-start gap-3">
                       <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
                         <ClipboardList aria-hidden="true" className="size-5" />
@@ -757,9 +730,6 @@ export default async function TeacherPublishPage({
                         <h2 className="text-lg font-bold text-slate-950">
                           Assignment details
                         </h2>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">
-                          Add only what students need to understand this work.
-                        </p>
                       </div>
                     </div>
                     <div className="mt-5 space-y-4">
@@ -773,61 +743,7 @@ export default async function TeacherPublishPage({
                       />
                       <AssignmentDetailsFields />
                     </div>
-                  </section>
-
-                  <section className="teacher-panel p-5 xl:sticky xl:top-24 xl:self-start">
-                    <div className="flex items-start gap-3">
-                      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                        <ShieldCheck aria-hidden="true" className="size-5" />
-                      </span>
-                      <div>
-                        <h2 className="text-lg font-bold text-slate-950">
-                          Final review
-                        </h2>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">
-                          One Library, one classroom, one delivery event.
-                        </p>
-                      </div>
-                    </div>
-                    <dl className="mt-5 space-y-3 text-sm">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <dt className="font-semibold text-slate-500">
-                          Source Library
-                        </dt>
-                        <dd className="mt-1 break-words font-bold text-slate-950">
-                          {selectedBank.name}
-                        </dd>
-                      </div>
-                      <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
-                        <dt className="font-semibold text-sky-700">
-                          Student visibility
-                        </dt>
-                        <dd className="mt-1 font-bold text-sky-950">
-                          Assignment-only
-                        </dd>
-                      </div>
-                    </dl>
-                    <details className="mt-4 rounded-lg border border-slate-200">
-                      <summary className="teacher-focus-ring min-h-11 cursor-pointer px-3 py-3 text-sm font-bold text-slate-800">
-                        What students can and cannot see
-                      </summary>
-                      <div className="border-t border-slate-200 px-3 py-3 text-sm leading-6 text-slate-600">
-                        <p>
-                          Students see the title, instructions, due date, and
-                          assigned prompts.
-                        </p>
-                        <p className="mt-2">
-                          Answers, the full Library, Blueprint lineage, provider
-                          data, and import metadata stay hidden.
-                        </p>
-                      </div>
-                    </details>
-                    <p className="mt-4 text-xs leading-5 text-slate-500">
-                      Before creation, the server rechecks your Library role,
-                      review status, question state, and classroom access.
-                    </p>
-                  </section>
-                </div>
+                </section>
               }
               sourceType={selectedSource}
             />

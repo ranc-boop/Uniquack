@@ -66,7 +66,7 @@ function AssignmentSubmitButtons({
         type="submit"
         value="assigned"
       >
-        {pending ? "Creating Assignment…" : "Assign now"}
+        {pending ? "Publishing Assignment…" : "Publish Assignment"}
       </Button>
       <Button
         className="min-h-11"
@@ -269,9 +269,6 @@ export function AssignmentComposerFlow({
           tabIndex={-1}
         >
           <p className="font-semibold">{actionState.message}</p>
-          <p className="mt-1">
-            Your selected questions, classroom, and Assignment details are still here.
-          </p>
         </div>
       ) : null}
 
