@@ -1343,6 +1343,7 @@ async function upsertPracticeAgentEpisode({
 
 export async function persistQuestionReviewResults({
   attempts,
+  completeRound = true,
   hintsByQuestionId,
   llmUsage,
   providerLabel,
@@ -1356,6 +1357,7 @@ export async function persistQuestionReviewResults({
   userId,
 }: {
   attempts: PracticeAttemptInput[];
+  completeRound?: boolean;
   hintsByQuestionId?: Record<string, string[]>;
   llmUsage?: Record<string, unknown>[];
   providerLabel?: string;
@@ -1383,7 +1385,9 @@ export async function persistQuestionReviewResults({
       explanation: result?.explanation ?? review?.judgmentReason ?? null,
       grading_mode: result?.gradingMode ?? "manual",
       hint_count: attempt.hintCount ?? 0,
-      hints: (hintsByQuestionId?.[attempt.questionId] ?? []) as unknown as Json,
+      ...(hintsByQuestionId
+        ? { hints: (hintsByQuestionId[attempt.questionId] ?? []) as unknown as Json }
+        : {}),
       is_correct: result?.isCorrect ?? null,
       question_code: question?.questionCode ?? null,
       question_id: null,
@@ -1448,12 +1452,16 @@ export async function persistQuestionReviewResults({
   const roundUpdate = await supabase
     .from("practice_rounds")
     .update({
-      completed_at: new Date().toISOString(),
+      ...(completeRound
+        ? {
+            completed_at: new Date().toISOString(),
+            status: "completed",
+          }
+        : {}),
       mode: "ai",
       provider_label: providerLabel ?? null,
       score_correct: correct,
       score_total: total,
-      status: "completed",
       trace: mergedTrace as unknown as Json,
     })
     .eq("user_id", userId)
@@ -1642,9 +1650,11 @@ export async function persistRoundReviewSummary({
   const roundUpdate = await supabase
     .from("practice_rounds")
     .update({
+      completed_at: new Date().toISOString(),
       mode: "ai",
       provider_label: providerLabel ?? null,
       review_summary: summary,
+      status: "completed",
       trace: mergedTrace as unknown as Json,
     })
     .eq("user_id", userId)

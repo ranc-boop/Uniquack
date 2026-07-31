@@ -10,6 +10,7 @@ const validation = read("src/lib/practice/request-validation.ts");
 const gradeRoute = read("src/app/api/practice/grade/route.ts");
 const reviewRoute = read("src/app/api/practice/review/route.ts");
 const hintRoute = read("src/app/api/practice/hint/route.ts");
+const persistence = read("src/lib/practice/persistence.ts");
 
 assert.match(validation, /PRACTICE_INPUT_LIMITS/);
 assert.match(validation, /validatePracticeRoundAttempts/);
@@ -33,6 +34,11 @@ assert.doesNotMatch(
   /recommendationById = new Map<string, any>\(\(body\.recommendations/,
 );
 assert.match(reviewRoute, /gradePracticeAttempt/);
+assert.match(reviewRoute, /completeRound:\s*false/);
+assert.match(persistence, /completeRound = true/);
+assert.match(persistence, /completeRound\s*\?/);
+assert.match(persistence, /completed_at: new Date\(\)\.toISOString\(\)/);
+assert.match(persistence, /status: "completed"/);
 
 assert.match(hintRoute, /sessionId and roundId are required/);
 assert.match(hintRoute, /\.from\("practice_round_questions"\)/);

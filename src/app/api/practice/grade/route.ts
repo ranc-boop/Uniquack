@@ -197,7 +197,6 @@ export async function POST(request: Request) {
     if (recommendations.length && questionReviews.length) {
       await persistQuestionReviewResults({
         attempts,
-        hintsByQuestionId: {},
         llmUsage: [],
         providerLabel: "Deterministic fallback",
         questionReviews,

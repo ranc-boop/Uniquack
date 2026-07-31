@@ -494,6 +494,7 @@ export async function POST(request: Request) {
 
         await persistQuestionReviewResults({
           attempts,
+          completeRound: false,
           hintsByQuestionId: body.hintsByQuestionId,
           llmUsage: usageEnvelopes,
           providerLabel: profile.name ? `${profile.name} / ${profile.model}` : profile.model,
