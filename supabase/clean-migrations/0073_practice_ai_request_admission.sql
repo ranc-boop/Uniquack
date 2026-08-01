@@ -112,9 +112,9 @@ begin
     updated_at = excluded.updated_at
   returning request_count into next_hour_count;
 
-  delete from public.practice_ai_request_windows window
-  where window.user_id = actor_id
-    and window.window_started_at < current_time - interval '2 days';
+  delete from public.practice_ai_request_windows counter
+  where counter.user_id = actor_id
+    and counter.window_started_at < current_time - interval '2 days';
 
   if next_minute_count > minute_limit then
     wait_seconds := greatest(
