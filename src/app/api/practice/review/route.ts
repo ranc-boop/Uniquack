@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { updateLinkedAssignmentProgressAfterPractice } from "@/lib/practice/assignment-linkage";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
+import { requirePracticeAiAdmission } from "@/lib/practice/admission";
 import { callPracticeChatModelStream, callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { buildUsageEnvelope, compactText, stableHash, stableStringify, summarizeLLMUsage, traced, writePracticeStatsLog } from "@/lib/practice/context";
 import { gradePracticeAttempt } from "@/lib/practice/grading";
@@ -216,6 +217,9 @@ export async function POST(request: Request) {
   if (auth.response) {
     return auth.response;
   }
+
+  const admission = await requirePracticeAiAdmission({ operation: "review", supabase });
+  if (admission) return admission;
 
   const body = (await request.json()) as PracticeReviewRequest;
   let goal = "";

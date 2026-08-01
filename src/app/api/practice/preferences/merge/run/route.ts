@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
+import { requirePracticeAiAdmission } from "@/lib/practice/admission";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { buildUsageEnvelope, compactText, stableStringify, writePracticeStatsLog } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
@@ -28,6 +29,9 @@ export async function POST() {
   if (auth.response) {
     return auth.response;
   }
+
+  const admission = await requirePracticeAiAdmission({ operation: "preference_merge", supabase });
+  if (admission) return admission;
 
   const jobResult = await supabase
     .from("practice_preference_merge_jobs")

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
+import { requirePracticeAiAdmission } from "@/lib/practice/admission";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { compactText, summarizeLLMUsage, traced } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
@@ -47,6 +48,9 @@ export async function POST(request: Request) {
   if (auth.response) {
     return auth.response;
   }
+
+  const admission = await requirePracticeAiAdmission({ operation: "hint", supabase });
+  if (admission) return admission;
 
   const body = (await request.json()) as PracticeHintRequest;
   const questionId = (body.questionId ?? "").trim();

@@ -887,6 +887,15 @@ export type PracticeProgressReset = {
   updated_at: string;
 };
 
+export type PracticeAiRequestWindow = {
+  user_id: string;
+  operation: "hint" | "preference_merge" | "recommend" | "review" | "session_title";
+  window_seconds: 60 | 3600;
+  window_started_at: string;
+  request_count: number;
+  updated_at: string;
+};
+
 export type PracticeWrongQuestion = {
   id: string;
   user_id: string;
@@ -1046,6 +1055,7 @@ export type Database = {
       practice_round_questions: TableDefinition<PracticeRoundQuestion>;
       practice_attempts: TableDefinition<PracticeAttempt>;
       practice_hint_events: TableDefinition<PracticeHintEvent>;
+      practice_ai_request_windows: TableDefinition<PracticeAiRequestWindow>;
       practice_progress_resets: TableDefinition<PracticeProgressReset>;
       practice_wrong_questions: TableDefinition<PracticeWrongQuestion>;
       user_practice_preferences: TableDefinition<UserPracticePreference>;
@@ -1362,6 +1372,15 @@ export type Database = {
       reset_my_practice_progress: {
         Args: Record<string, never>;
         Returns: string;
+      };
+      claim_practice_ai_request: {
+        Args: { p_operation: string };
+        Returns: Array<{
+          allowed: boolean;
+          retry_after_seconds: number;
+          minute_count: number;
+          hour_count: number;
+        }>;
       };
       search_practice_questions_in_session: {
         Args: {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
+import { requirePracticeAiAdmission } from "@/lib/practice/admission";
 import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
 import {
   PRACTICE_INPUT_LIMITS,
@@ -36,6 +37,9 @@ export async function POST(request: Request) {
   if (auth.response) {
     return auth.response;
   }
+
+  const admission = await requirePracticeAiAdmission({ operation: "session_title", supabase });
+  if (admission) return admission;
 
   const body = (await request.json().catch(() => ({}))) as { goal?: string };
   let goal = "";

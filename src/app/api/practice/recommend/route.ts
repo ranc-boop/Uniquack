@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
+import { requirePracticeAiAdmission } from "@/lib/practice/admission";
 import { loadPracticeAIProfile } from "@/lib/practice/ai";
 import {
   runPracticeRecommendationAgent,
@@ -249,6 +250,9 @@ export async function POST(request: Request) {
   if (auth.response) {
     return auth.response;
   }
+
+  const admission = await requirePracticeAiAdmission({ operation: "recommend", supabase });
+  if (admission) return admission;
 
   const body = (await request.json()) as PracticeRecommendRequest;
   const parsed = parseRequestBody(body);
