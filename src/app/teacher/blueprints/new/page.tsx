@@ -20,6 +20,7 @@ import {
   BlueprintLibrarySchemaMissingError,
   listTeacherBlueprintLibrary,
 } from "@/lib/teacher-blueprints";
+import { TEACHER_BLUEPRINT_INPUT_LIMITS } from "@/lib/teacher-blueprint-builder";
 
 import { createTeacherBlueprint } from "../actions";
 import { BlueprintSafetyStrip, SetupNeededState } from "../blueprint-library-ui";
@@ -96,7 +97,9 @@ export default async function NewTeacherBlueprintPage({
 
       {query.error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-          {query.error === "missing-source-question"
+          {query.error === "required-element-too-long"
+            ? `Use at most ${TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENT_ITEMS} required elements, with ${TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENT_CHARS} characters per element.`
+            : query.error === "missing-source-question"
             ? "Select at least one approved source question from the Library."
             : query.error === "invalid-source-question"
               ? "One selected source question is no longer active or assignment-ready."
@@ -318,6 +321,7 @@ export default async function NewTeacherBlueprintPage({
                 Required elements
                 <textarea
                   className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                  maxLength={TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENTS_INPUT_CHARS}
                   name="requiredElements"
                   placeholder="One source-grounded setup per line"
                   required={Boolean(selectedBank)}

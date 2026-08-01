@@ -1,4 +1,4 @@
-# Practice migrations 0072-0074 hosted validation
+# Practice migrations 0072-0075 hosted validation
 
 ## Scope
 
@@ -10,7 +10,8 @@ This record covers the configured disposable Supabase project only. It does not 
 - 0073 passed a rollback preflight and was applied in a direct PostgreSQL transaction.
 - The first runtime check exposed a PL/pgSQL name collision between the local `current_time` variable and PostgreSQL's built-in `current_time` expression.
 - The applied 0073 file was preserved. Forward-only migration 0074 renamed the variable to `request_time`, passed rollback preflight, and was applied transactionally.
-- Post-apply catalog checks confirmed both tables, both RPCs, RLS, browser-role table denial, authenticated RPC grants, and the corrected function definition.
+- Post-apply catalog checks confirmed the reset/admission tables and RPCs, RLS, browser-role table denial, authenticated RPC grants, and the corrected admission function definition.
+- 0075 passed rollback preflight and hosted apply. Its per-user operation lease rejected a concurrent claim, rejected a mismatched release token, allowed the matching token to release, and then allowed a new claim.
 
 ## Runtime result
 
@@ -22,6 +23,7 @@ The runtime matrix ran inside rollback-only transactions, so it did not reset re
 - Authenticated direct reads of the admission counter table were denied.
 - Anonymous reset RPC execution was denied.
 - Data API calls without a user identity reached both RPCs and failed with authorization errors rather than PostgREST missing-function errors, confirming schema-cache availability without mutation.
+- The same non-mutating Data API schema-cache probes passed for both 0075 lease RPCs.
 
 ## Advisor result
 
@@ -34,4 +36,4 @@ The security baseline warnings are mutable `search_path` findings on eight pre-e
 
 ## Release rule
 
-Other environments must apply 0072, 0073, and 0074 in canonical order before deploying the admission callers. Migration 0074 is mandatory even though 0073 applies successfully, because the defect appears only when the RPC executes.
+Other environments must apply 0072, 0073, 0074, and 0075 in canonical order before deploying the admission and concurrency callers. Migration 0074 is mandatory even though 0073 applies successfully, because the defect appears only when the RPC executes.

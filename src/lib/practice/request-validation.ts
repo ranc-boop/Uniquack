@@ -23,6 +23,9 @@ export type PracticeRequestValidationCode =
   | "DUPLICATE_QUESTION_ID"
   | "INVALID_ATTEMPTS"
   | "INVALID_QUESTION_ID"
+  | "INVALID_TEXT_LIST"
+  | "TEXT_LIST_TOO_LONG"
+  | "TOO_MANY_LIST_ITEMS"
   | "TOO_MANY_ATTEMPTS";
 
 export class PracticeRequestValidationError extends Error {
@@ -79,6 +82,73 @@ export function boundedPracticeText(
   return normalized;
 }
 
+export function boundedPracticeTextList(
+  value: unknown,
+  {
+    field,
+    maxItemLength,
+    maxItems,
+    maxTotalLength,
+  }: {
+    field: string;
+    maxItemLength: number;
+    maxItems: number;
+    maxTotalLength: number;
+  },
+) {
+  if (!Array.isArray(value)) {
+    throw new PracticeRequestValidationError(
+      "INVALID_TEXT_LIST",
+      `${field} must be a list of text values.`,
+      400,
+    );
+  }
+  if (value.length > maxItems) {
+    throw new PracticeRequestValidationError(
+      "TOO_MANY_LIST_ITEMS",
+      `${field} must contain at most ${maxItems} values.`,
+      413,
+    );
+  }
+
+  const items = value.map((item, index) =>
+    boundedPracticeText(item, {
+      field: `${field}[${index}]`,
+      maxLength: maxItemLength,
+    }),
+  );
+  const totalLength = items.reduce((total, item) => total + item.length, 0);
+  if (totalLength > maxTotalLength) {
+    throw new PracticeRequestValidationError(
+      "TEXT_LIST_TOO_LONG",
+      `${field} must contain at most ${maxTotalLength} characters in total.`,
+      413,
+    );
+  }
+  return items;
+}
+
+export function boundedPracticeIdList(
+  value: unknown,
+  {
+    field,
+    maxItemLength,
+    maxItems,
+  }: {
+    field: string;
+    maxItemLength: number;
+    maxItems: number;
+  },
+) {
+  const items = boundedPracticeTextList(value, {
+    field,
+    maxItemLength,
+    maxItems,
+    maxTotalLength: maxItemLength * maxItems,
+  });
+  return Array.from(new Set(items));
+}
+
 function normalizeAnswer(value: unknown, index: number): string | string[] {
   if (typeof value === "string") {
     return boundedPracticeText(value, {
@@ -88,29 +158,26 @@ function normalizeAnswer(value: unknown, index: number): string | string[] {
     });
   }
 
-  if (!Array.isArray(value) || value.length > PRACTICE_INPUT_LIMITS.ANSWER_PARTS) {
+  if (!Array.isArray(value)) {
     throw new PracticeRequestValidationError(
       "INVALID_ATTEMPTS",
       `attempts[${index}].answer must be text or at most ${PRACTICE_INPUT_LIMITS.ANSWER_PARTS} text values.`,
     );
   }
 
-  const parts = value.map((part, partIndex) =>
-    boundedPracticeText(part, {
-      field: `attempts[${index}].answer[${partIndex}]`,
-      maxLength: PRACTICE_INPUT_LIMITS.ANSWER_CHARS,
-      required: true,
-    }),
-  );
+  const parts = boundedPracticeTextList(value, {
+    field: `attempts[${index}].answer`,
+    maxItemLength: PRACTICE_INPUT_LIMITS.ANSWER_CHARS,
+    maxItems: PRACTICE_INPUT_LIMITS.ANSWER_PARTS,
+    maxTotalLength: PRACTICE_INPUT_LIMITS.ANSWER_CHARS,
+  });
   if (
     !parts.length ||
-    parts.reduce((total, part) => total + part.length, 0) >
-      PRACTICE_INPUT_LIMITS.ANSWER_CHARS
+    parts.some((part) => !part)
   ) {
     throw new PracticeRequestValidationError(
-      "ANSWER_TOO_LONG",
-      `attempts[${index}].answer must contain at most ${PRACTICE_INPUT_LIMITS.ANSWER_CHARS} characters in total.`,
-      413,
+      "ANSWER_REQUIRED",
+      `attempts[${index}].answer must contain non-empty text values.`,
     );
   }
   return parts;

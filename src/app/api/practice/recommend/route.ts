@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
-import { requirePracticeAiAdmission } from "@/lib/practice/admission";
+import {
+  releasePracticeAiOperationLease,
+  requirePracticeAiAdmission,
+  requirePracticeAiOperationLease,
+} from "@/lib/practice/admission";
 import {
   PRACTICE_INPUT_LIMITS,
+  boundedPracticeIdList,
   boundedPracticeText,
   practiceValidationResponse,
 } from "@/lib/practice/request-validation";
@@ -207,6 +212,8 @@ function normalizeQuestionCount(value: unknown) {
 function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequestContext | NextResponse {
   let goal = "";
   let userNextRoundNote = "";
+  let completedQuestionIds: string[] = [];
+  let wrongQuestionIds: string[] = [];
   try {
     goal = boundedPracticeText(body.goal, {
       field: "goal",
@@ -216,6 +223,16 @@ function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequest
     userNextRoundNote = boundedPracticeText(body.userNextRoundNote, {
       field: "userNextRoundNote",
       maxLength: PRACTICE_INPUT_LIMITS.NEXT_ROUND_NOTE_CHARS,
+    });
+    completedQuestionIds = boundedPracticeIdList(body.completedQuestionIds ?? [], {
+      field: "completedQuestionIds",
+      maxItemLength: PRACTICE_INPUT_LIMITS.QUESTION_ID_CHARS,
+      maxItems: PRACTICE_INPUT_LIMITS.QUESTION_ID_LIST_ITEMS,
+    });
+    wrongQuestionIds = boundedPracticeIdList(body.wrongQuestionIds ?? [], {
+      field: "wrongQuestionIds",
+      maxItemLength: PRACTICE_INPUT_LIMITS.QUESTION_ID_CHARS,
+      maxItems: PRACTICE_INPUT_LIMITS.QUESTION_ID_LIST_ITEMS,
     });
   } catch (error) {
     const validation = practiceValidationResponse(error);
@@ -242,7 +259,7 @@ function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequest
   }
 
   return {
-    completedQuestionIds: Array.from(new Set(body.completedQuestionIds ?? [])),
+    completedQuestionIds,
     goal,
     questionCount: normalizeQuestionCount(body.questionCount),
     sessionId,
@@ -251,7 +268,7 @@ function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequest
       includePublicCatalog: body.sourceSelection?.includePublicCatalog !== false,
     },
     userNextRoundNote,
-    wrongQuestionIds: Array.from(new Set(body.wrongQuestionIds ?? [])),
+    wrongQuestionIds,
   };
 }
 
@@ -407,6 +424,17 @@ export async function POST(request: Request) {
         Boolean(round.review_summary),
       ).length
     : 0;
+  const hasActiveRound = Array.isArray(sessionData.practice_rounds) &&
+    sessionData.practice_rounds.some((round: { status?: string }) => round.status === "active");
+  if (hasActiveRound) {
+    return NextResponse.json(
+      {
+        code: "ROUND_ALREADY_ACTIVE",
+        error: "Submit or finish the current practice round before generating another one.",
+      },
+      { status: 409 },
+    );
+  }
   const sourceKinds = new Set(
     effectiveSources.map((source) => source.source_kind),
   );
@@ -456,6 +484,13 @@ export async function POST(request: Request) {
   if (sourcePolicyNotice) {
     sessionThreadMessages = [...sessionThreadMessages, sourcePolicyNotice].slice(-80);
   }
+
+  const operationLease = await requirePracticeAiOperationLease({
+    operation: "recommend",
+    scopeId: sessionId,
+    supabase,
+  });
+  if ("response" in operationLease) return operationLease.response;
 
   if (wantsEventStream(request)) {
     const encoder = new TextEncoder();
@@ -605,6 +640,11 @@ export async function POST(request: Request) {
             trace,
           });
         } finally {
+          await releasePracticeAiOperationLease({
+            leaseToken: operationLease.leaseToken,
+            operation: "recommend",
+            supabase,
+          });
           controller.close();
         }
       },
@@ -750,5 +790,11 @@ export async function POST(request: Request) {
       },
       { status: 500 },
     );
+  } finally {
+    await releasePracticeAiOperationLease({
+      leaseToken: operationLease.leaseToken,
+      operation: "recommend",
+      supabase,
+    });
   }
 }

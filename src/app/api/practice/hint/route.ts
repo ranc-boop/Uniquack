@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
-import { requirePracticeAiAdmission } from "@/lib/practice/admission";
+import {
+  releasePracticeAiOperationLease,
+  requirePracticeAiAdmission,
+  requirePracticeAiOperationLease,
+} from "@/lib/practice/admission";
 import { callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { compactText, summarizeLLMUsage, traced } from "@/lib/practice/context";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
@@ -9,6 +13,7 @@ import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
 import {
   PRACTICE_INPUT_LIMITS,
   boundedPracticeText,
+  boundedPracticeTextList,
   practiceValidationResponse,
 } from "@/lib/practice/request-validation";
 import type {
@@ -59,6 +64,7 @@ export async function POST(request: Request) {
   const requestedHintLevel = Math.max(1, Math.trunc(Number(body.hintLevel ?? 1)));
   const hintLevel = Math.min(PRACTICE_INPUT_LIMITS.HINTS_PER_QUESTION, requestedHintLevel);
   const trace: PracticeTraceEvent[] = [];
+  let operationLeaseToken: string | null = null;
 
   if (!questionId) {
     return NextResponse.json({ error: "questionId is required." }, { status: 400 });
@@ -108,16 +114,24 @@ export async function POST(request: Request) {
       );
     }
 
+    const operationLease = await requirePracticeAiOperationLease({
+      operation: "hint",
+      scopeId: `${sessionId}:${roundId}:${questionId}`,
+      supabase,
+    });
+    if ("response" in operationLease) return operationLease.response;
+    operationLeaseToken = operationLease.leaseToken;
+
     let currentAnswer: string | string[];
     let previousHints: string[];
     try {
       currentAnswer = Array.isArray(body.currentAnswer)
-        ? body.currentAnswer.map((part, index) =>
-            boundedPracticeText(part, {
-              field: `currentAnswer[${index}]`,
-              maxLength: PRACTICE_INPUT_LIMITS.ANSWER_CHARS,
-            }),
-          )
+        ? boundedPracticeTextList(body.currentAnswer, {
+            field: "currentAnswer",
+            maxItemLength: PRACTICE_INPUT_LIMITS.ANSWER_CHARS,
+            maxItems: PRACTICE_INPUT_LIMITS.ANSWER_PARTS,
+            maxTotalLength: PRACTICE_INPUT_LIMITS.ANSWER_CHARS,
+          })
         : boundedPracticeText(body.currentAnswer ?? "", {
             field: "currentAnswer",
             maxLength: PRACTICE_INPUT_LIMITS.ANSWER_CHARS,
@@ -292,5 +306,13 @@ export async function POST(request: Request) {
       mode: "heuristic",
       trace,
     } satisfies PracticeHintResponse);
+  } finally {
+    if (operationLeaseToken) {
+      await releasePracticeAiOperationLease({
+        leaseToken: operationLeaseToken,
+        operation: "hint",
+        supabase,
+      });
+    }
   }
 }

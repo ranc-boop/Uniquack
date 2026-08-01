@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 
 import { updateLinkedAssignmentProgressAfterPractice } from "@/lib/practice/assignment-linkage";
 import { requirePracticeApiUser } from "@/lib/practice/auth";
-import { requirePracticeAiAdmission } from "@/lib/practice/admission";
+import {
+  releasePracticeAiOperationLease,
+  requirePracticeAiAdmission,
+  requirePracticeAiOperationLease,
+} from "@/lib/practice/admission";
 import { callPracticeChatModelStream, callPracticeJsonModel, loadPracticeAIProfile } from "@/lib/practice/ai";
 import { buildUsageEnvelope, compactText, stableHash, stableStringify, summarizeLLMUsage, traced, writePracticeStatsLog } from "@/lib/practice/context";
 import { gradePracticeAttempt } from "@/lib/practice/grading";
@@ -254,6 +258,13 @@ export async function POST(request: Request) {
       { status: 406 },
     );
   }
+
+  const operationLease = await requirePracticeAiOperationLease({
+    operation: "review",
+    scopeId: `${sessionId}:${roundId}`,
+    supabase,
+  });
+  if ("response" in operationLease) return operationLease.response;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -660,6 +671,11 @@ export async function POST(request: Request) {
           trace,
         });
       } finally {
+        await releasePracticeAiOperationLease({
+          leaseToken: operationLease.leaseToken,
+          operation: "review",
+          supabase,
+        });
         controller.close();
       }
     },

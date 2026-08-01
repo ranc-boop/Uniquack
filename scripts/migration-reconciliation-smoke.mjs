@@ -86,7 +86,7 @@ assert(
   "Exactly one executable canonical 0032 is allowed; Google 0032 must stay excluded.",
 );
 
-for (let number = 44; number <= 74; number += 1) {
+for (let number = 44; number <= 75; number += 1) {
   const filename = activeMigrationNames[number - 1];
   const entry = manifest.migrationInventory.find((candidate) => candidate.filename === filename);
   assert(
@@ -97,34 +97,35 @@ for (let number = 44; number <= 74; number += 1) {
   );
 }
 assert(
-  manifest.latestActivePrefix === 74 &&
-    activeMigrationNames.at(-15) === "0060_question_management_read_models.sql" &&
-    activeMigrationNames.at(-14) ===
+  manifest.latestActivePrefix === 75 &&
+    activeMigrationNames.at(-16) === "0060_question_management_read_models.sql" &&
+    activeMigrationNames.at(-15) ===
       "0061_question_taxonomy_search_materialization.sql" &&
-    activeMigrationNames.at(-13) ===
+    activeMigrationNames.at(-14) ===
       "0062_teacher_bank_import_workspace_read_model.sql" &&
-    activeMigrationNames.at(-12) ===
+    activeMigrationNames.at(-13) ===
       "0063_admin_ai_pdf_workspace_read_model.sql" &&
-    activeMigrationNames.at(-11) ===
+    activeMigrationNames.at(-12) ===
       "0064_admin_ai_pdf_workspace_read_model_item_scan_fix.sql" &&
-    activeMigrationNames.at(-10) ===
+    activeMigrationNames.at(-11) ===
       "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql" &&
-    activeMigrationNames.at(-9) ===
+    activeMigrationNames.at(-10) ===
       "0066_strict_bank_review_lineage_gate.sql" &&
-    activeMigrationNames.at(-8) ===
+    activeMigrationNames.at(-9) ===
       "0067_teacher_bulk_review_and_question_management.sql" &&
-    activeMigrationNames.at(-7) ===
+    activeMigrationNames.at(-8) ===
       "0068_assignment_creation_idempotency.sql" &&
-    activeMigrationNames.at(-6) ===
+    activeMigrationNames.at(-7) ===
       "0069_assignment_creation_idempotency_receipt_fix.sql" &&
-    activeMigrationNames.at(-5) ===
+    activeMigrationNames.at(-6) ===
       "0070_simplify_teacher_approval_and_question_delete.sql" &&
-    activeMigrationNames.at(-4) ===
+    activeMigrationNames.at(-5) ===
       "0071_repair_bank_import_review_lineage.sql" &&
-    activeMigrationNames.at(-3) === "0072_practice_cycle_reset.sql" &&
-    activeMigrationNames.at(-2) === "0073_practice_ai_request_admission.sql" &&
-    activeMigrationNames.at(-1) === "0074_practice_ai_request_admission_time_fix.sql",
-  "Practice AI admission correction 0074 must be the canonical executable tail.",
+    activeMigrationNames.at(-4) === "0072_practice_cycle_reset.sql" &&
+    activeMigrationNames.at(-3) === "0073_practice_ai_request_admission.sql" &&
+    activeMigrationNames.at(-2) === "0074_practice_ai_request_admission_time_fix.sql" &&
+    activeMigrationNames.at(-1) === "0075_practice_ai_inflight_leases.sql",
+  "Practice AI in-flight leases 0075 must be the canonical executable tail.",
 );
 
 for (const [filename, expectedHash] of Object.entries(manifest.frozenMigrationHashes)) {

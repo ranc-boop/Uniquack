@@ -1382,6 +1382,22 @@ export type Database = {
           hour_count: number;
         }>;
       };
+      claim_practice_ai_inflight_lease: {
+        Args: {
+          p_operation: string;
+          p_scope_id: string;
+          p_ttl_seconds?: number;
+        };
+        Returns: Array<{
+          acquired: boolean;
+          lease_token: string | null;
+          retry_after_seconds: number;
+        }>;
+      };
+      release_practice_ai_inflight_lease: {
+        Args: { p_lease_token: string; p_operation: string };
+        Returns: boolean;
+      };
       search_practice_questions_in_session: {
         Args: {
           p_difficulty_max?: number;

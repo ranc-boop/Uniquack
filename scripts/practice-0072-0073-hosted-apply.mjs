@@ -87,6 +87,9 @@ async function hostedMigrationState(client) {
       to_regclass('public.practice_ai_request_windows') is not null as admission_table,
       to_regprocedure('public.reset_my_practice_progress()') is not null as reset_rpc,
       to_regprocedure('public.claim_practice_ai_request(text)') is not null as admission_rpc,
+      to_regclass('public.practice_ai_inflight_leases') is not null as lease_table,
+      to_regprocedure('public.claim_practice_ai_inflight_lease(text,text,integer)') is not null as lease_claim_rpc,
+      to_regprocedure('public.release_practice_ai_inflight_lease(text,uuid)') is not null as lease_release_rpc,
       coalesce((
         select pg_get_functiondef(p.oid) like '%request_time timestamptz%'
         from pg_proc p
@@ -108,15 +111,17 @@ async function assertCatalog(client) {
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public'
-      and c.relname in ('practice_progress_resets', 'practice_ai_request_windows')
+      and c.relname in ('practice_progress_resets', 'practice_ai_request_windows', 'practice_ai_inflight_leases')
     order by c.relname
   `);
-  assert(result.rowCount === 2, "Expected both Practice security tables.");
+  assert(result.rowCount === 3, "Expected all three Practice security tables.");
   const admission = result.rows.find((row) => row.relname === "practice_ai_request_windows");
+  const lease = result.rows.find((row) => row.relname === "practice_ai_inflight_leases");
   const reset = result.rows.find((row) => row.relname === "practice_progress_resets");
-  assert(admission?.relrowsecurity && reset?.relrowsecurity, "Both tables must have RLS enabled.");
+  assert(admission?.relrowsecurity && lease?.relrowsecurity && reset?.relrowsecurity, "All three tables must have RLS enabled.");
   assert(reset.auth_select && !reset.auth_write && !reset.anon_access, "Reset marker grants are not least privilege.");
   assert(!admission.auth_select && !admission.auth_write && !admission.anon_access, "Admission counters must deny direct browser access.");
+  assert(!lease.auth_select && !lease.auth_write && !lease.anon_access, "In-flight leases must deny direct browser access.");
 
   const functions = await client.query(`
     select
@@ -132,16 +137,23 @@ async function assertCatalog(client) {
       and p.proname in (
         'reset_my_practice_progress',
         'claim_practice_ai_request',
+        'claim_practice_ai_inflight_lease',
+        'release_practice_ai_inflight_lease',
         'list_selectable_practice_sources',
         'search_practice_questions_in_session'
       )
     order by p.proname
   `);
-  assert(functions.rowCount === 4, "Expected both RPCs and both reset-aware read functions.");
+  assert(functions.rowCount === 6, "Expected four Practice security RPCs and both reset-aware read functions.");
   for (const row of functions.rows) {
     assert(row.auth_execute && !row.anon_execute, `${row.proname} execute grants are unsafe.`);
   }
-  for (const name of ["reset_my_practice_progress", "claim_practice_ai_request"]) {
+  for (const name of [
+    "reset_my_practice_progress",
+    "claim_practice_ai_request",
+    "claim_practice_ai_inflight_lease",
+    "release_practice_ai_inflight_lease",
+  ]) {
     const row = functions.rows.find((candidate) => candidate.proname === name);
     assert(row?.prosecdef, `${name} must remain SECURITY DEFINER.`);
     assert(row.proconfig?.includes("search_path=\"\"") || row.proconfig?.includes("search_path="), `${name} must fix search_path.`);
@@ -186,6 +198,20 @@ async function assertRoleRuntime(client) {
 
   await inTransaction(client, async () => {
     await setAuthenticatedActor(client, actorId);
+    const first = await client.query("select * from public.claim_practice_ai_inflight_lease('hint', 'round:question', 300)");
+    assert(first.rows[0].acquired && first.rows[0].lease_token, "First in-flight lease was not acquired.");
+    const second = await client.query("select * from public.claim_practice_ai_inflight_lease('hint', 'other', 300)");
+    assert(!second.rows[0].acquired && second.rows[0].retry_after_seconds > 0, "Concurrent in-flight lease was not rejected.");
+    const wrongRelease = await client.query("select public.release_practice_ai_inflight_lease('hint', $1) as released", [randomUUID()]);
+    assert(!wrongRelease.rows[0].released, "A mismatched lease token released an active lease.");
+    const release = await client.query("select public.release_practice_ai_inflight_lease('hint', $1) as released", [first.rows[0].lease_token]);
+    assert(release.rows[0].released, "The matching lease token did not release its lease.");
+    const third = await client.query("select * from public.claim_practice_ai_inflight_lease('hint', 'other', 300)");
+    assert(third.rows[0].acquired, "A released operation could not acquire a new lease.");
+  }, { rollback: true });
+
+  await inTransaction(client, async () => {
+    await setAuthenticatedActor(client, actorId);
     const decisions = [];
     for (let index = 0; index < 13; index += 1) {
       const result = await client.query("select allowed from public.claim_practice_ai_request('recommend')");
@@ -197,10 +223,10 @@ async function assertRoleRuntime(client) {
   await client.query("begin");
   try {
     await setAuthenticatedActor(client, actorId);
-    await client.query("select * from public.practice_ai_request_windows");
-    throw new Error("Authenticated role unexpectedly read admission counters directly.");
+    await client.query("select * from public.practice_ai_inflight_leases");
+    throw new Error("Authenticated role unexpectedly read in-flight leases directly.");
   } catch (error) {
-    assert(/permission denied/i.test(error instanceof Error ? error.message : String(error)), "Direct admission-table denial returned an unexpected error.");
+    assert(/permission denied/i.test(error instanceof Error ? error.message : String(error)), "Direct lease-table denial returned an unexpected error.");
   } finally {
     await client.query("rollback");
   }
@@ -225,10 +251,11 @@ const apiUrl = new URL(requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL"));
 assert(apiUrl.hostname.split(".")[0] === projectRef, "Configured API URL and disposable project ref do not match.");
 assert(/^[a-z0-9]+$/.test(projectRef), "Project ref format is invalid.");
 
-const [migration72, migration73, migration74] = await Promise.all([
+const [migration72, migration73, migration74, migration75] = await Promise.all([
   readFile(resolve(root, "supabase/clean-migrations/0072_practice_cycle_reset.sql"), "utf8"),
   readFile(resolve(root, "supabase/clean-migrations/0073_practice_ai_request_admission.sql"), "utf8"),
   readFile(resolve(root, "supabase/clean-migrations/0074_practice_ai_request_admission_time_fix.sql"), "utf8"),
+  readFile(resolve(root, "supabase/clean-migrations/0075_practice_ai_inflight_leases.sql"), "utf8"),
 ]);
 const client = await connect(projectRef, databasePassword);
 try {
@@ -263,6 +290,25 @@ try {
     console.log("PASS 0074 hosted apply");
   } else {
     console.log("PASS existing 0074 hosted correction detected without replay");
+  }
+
+
+  const leaseObjects = [
+    initialState.lease_table,
+    initialState.lease_claim_rpc,
+    initialState.lease_release_rpc,
+  ];
+  assert(
+    leaseObjects.every(Boolean) || leaseObjects.every((value) => value === false),
+    "Hosted 0075 state is partial; stop for manual reconciliation.",
+  );
+  if (leaseObjects.every((value) => value === false)) {
+    await inTransaction(client, async () => runStatements(client, migration75), { rollback: true });
+    console.log("PASS 0075 rollback preflight");
+    await inTransaction(client, async () => runStatements(client, migration75));
+    console.log("PASS 0075 hosted apply");
+  } else {
+    console.log("PASS existing 0075 hosted state detected without replay");
   }
 
   await assertCatalog(client);
