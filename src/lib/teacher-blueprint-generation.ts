@@ -26,6 +26,7 @@ import {
   assertMockAIProviderAllowed,
 } from "@/lib/ai-providers/mock";
 import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import { AI_GENERATION_UNTRUSTED_DATA_BOUNDARY } from "@/lib/ai-providers/prompt-safety";
 import { readResponseJsonWithLimit } from "@/lib/ai-providers/response-limits";
 import {
   listEnabledAIProviderProfilesForServerUse,
@@ -600,6 +601,7 @@ export function buildTeacherBlueprintGenerationPrompt(
 
   return [
     "You generate original teacher Review Draft questions from a reusable assessment Blueprint.",
+    AI_GENERATION_UNTRUSTED_DATA_BOUNDARY,
     "Do not copy source question wording, numbers, names, scenarios, diagrams, or surface details.",
     "Preserve only the assessment structure, required elements, taxonomy targets, answer pattern, and cognitive demand.",
     "Every output question must be private draft material for human review. Do not mark anything published or assigned.",

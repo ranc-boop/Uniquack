@@ -2,6 +2,7 @@ import "server-only";
 
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
 import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import { AI_GENERATION_UNTRUSTED_DATA_BOUNDARY } from "@/lib/ai-providers/prompt-safety";
 import { readResponseJsonWithLimit } from "@/lib/ai-providers/response-limits";
 import {
   formatBlueprintQualityError,
@@ -309,6 +310,7 @@ export function buildQuestionBlueprintGenerationPrompt(
 
   return [
     "You are generating original draft assessment questions for admin review.",
+    AI_GENERATION_UNTRUSTED_DATA_BOUNDARY,
     ...QUESTION_BLUEPRINT_GENERATION_PROMPT_CONTRACT,
     "All generated questions must be draft-only and require human review before publishing.",
     "Use $...$ for inline math where helpful.",

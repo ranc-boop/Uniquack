@@ -1,6 +1,7 @@
 import "server-only";
 
 import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import { AI_GENERATION_UNTRUSTED_DATA_BOUNDARY } from "@/lib/ai-providers/prompt-safety";
 import { readResponseJsonWithLimit } from "@/lib/ai-providers/response-limits";
 import { parseQuestionBlueprintGenerationProviderText } from "@/lib/blueprints/question-blueprint-generation";
 import type {
@@ -189,6 +190,7 @@ export function buildBlueprintRepairPrompt(repairRequest: QuestionBlueprintRepai
 
   return [
     "You are repairing one generated draft question that failed deterministic app validation.",
+    AI_GENERATION_UNTRUSTED_DATA_BOUNDARY,
     "You are not the final judge. The app will re-run local validators after this repair.",
     "Do not weaken, reinterpret, or bypass validation blockers.",
     "Do not change the blueprint question type, taxonomy targets, or source constraints.",

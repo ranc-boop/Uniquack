@@ -2,6 +2,7 @@ import "server-only";
 
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
 import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import { AI_GENERATION_UNTRUSTED_DATA_BOUNDARY } from "@/lib/ai-providers/prompt-safety";
 import { readResponseJsonWithLimit } from "@/lib/ai-providers/response-limits";
 import type {
   AIBlueprintObservationPlan,
@@ -576,6 +577,7 @@ export function buildQuestionBlueprintAnalyzerPrompt({
 }) {
   return [
     AI_QUESTION_BLUEPRINT_ANALYZER_PROMPT_CONTRACT,
+    AI_GENERATION_UNTRUSTED_DATA_BOUNDARY,
     "",
     "You receive only normalized text-only observation packets from the website.",
     "If packet IDs include blueprint observation cluster prefixes, analyze only that cluster and do not merge it with other clusters.",
