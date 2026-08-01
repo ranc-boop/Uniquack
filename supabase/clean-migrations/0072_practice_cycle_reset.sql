@@ -111,19 +111,19 @@ bank_ready_questions as (
    and question.status <> 'draft'
 )
 select
-  'public_catalog'::text,
-  null::uuid,
-  'Public Question Bank'::text,
-  'public'::text,
-  null::text,
-  count(*) filter (where latest_attempt.source_question_id is null),
-  count(*) filter (where latest_attempt.is_correct = false),
-  count(*) filter (where latest_attempt.is_correct = true),
+  'public_catalog'::text as source_kind,
+  null::uuid as source_id,
+  'Public Question Bank'::text as name,
+  'public'::text as visibility,
+  null::text as membership_role,
+  count(*) filter (where latest_attempt.source_question_id is null) as unseen_count,
+  count(*) filter (where latest_attempt.is_correct = false) as needs_retry_count,
+  count(*) filter (where latest_attempt.is_correct = true) as mastered_count,
   count(*) filter (
     where latest_attempt.source_question_id is not null
       and latest_attempt.is_correct is null
-  ),
-  count(*)
+  ) as ungraded_count,
+  count(*) as question_count
 from public_questions question
 left join latest_attempt on latest_attempt.source_question_id = question.id
 union all

@@ -22,6 +22,8 @@ assert.match(migration, /reset_my_practice_progress/i);
 assert.match(migration, /revoke execute[\s\S]*from public, anon/i);
 assert.match(migration, /grant execute[\s\S]*to authenticated/i);
 assert.match(migration, /attempt\.created_at > coalesce\(reset\.reset_at/i);
+assert.match(migration, /'public_catalog'::text as source_kind/i);
+assert.match(migration, /count\(\*\) as question_count/i);
 assert.doesNotMatch(migration, /delete from public\.practice_(attempts|wrong_questions)/i);
 assert.doesNotMatch(migration, /delete from public\.student_assignment_progress/i);
 
