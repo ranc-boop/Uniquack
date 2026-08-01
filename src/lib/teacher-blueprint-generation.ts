@@ -25,6 +25,8 @@ import {
   isMockAIProviderUrl,
   assertMockAIProviderAllowed,
 } from "@/lib/ai-providers/mock";
+import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import { readResponseJsonWithLimit } from "@/lib/ai-providers/response-limits";
 import {
   listEnabledAIProviderProfilesForServerUse,
   loadAIProviderProfileForServerUse,
@@ -146,6 +148,7 @@ const SUPPORTED_QUESTION_TYPES = new Set<QuestionType>([
   "mixed",
 ]);
 const BLUEPRINT_GENERATION_TIMEOUT_MS = 120_000;
+const BLUEPRINT_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -665,6 +668,7 @@ async function callTeacherBlueprintGenerationProvider({
   let response: Response;
 
   try {
+    await assertSafeAIProviderBaseUrl(profile.base_url);
     response = await fetch(chatEndpoint(profile.base_url), {
       body: JSON.stringify({
         messages: [{ content: prompt, role: "user" }],
@@ -677,6 +681,7 @@ async function callTeacherBlueprintGenerationProvider({
         "Content-Type": "application/json",
       },
       method: "POST",
+      redirect: "error",
       signal: AbortSignal.timeout(BLUEPRINT_GENERATION_TIMEOUT_MS),
     });
   } catch (error) {
@@ -691,14 +696,14 @@ async function callTeacherBlueprintGenerationProvider({
     throw new Error(`AI provider request failed with status ${response.status}.`);
   }
 
-  const payload = (await response.json()) as {
+  const payload = await readResponseJsonWithLimit<{
     choices?: { message?: { content?: string } }[];
     usage?: {
       completion_tokens?: number;
       prompt_tokens?: number;
       total_tokens?: number;
     };
-  };
+  }>(response, BLUEPRINT_RESPONSE_MAX_BYTES);
   const content = payload.choices?.[0]?.message?.content;
 
   if (!content) {

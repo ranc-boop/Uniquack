@@ -15,6 +15,11 @@ import {
   inferAiProviderMode,
   type AiPdfInputStrategy,
 } from "@/lib/ai-providers/adapters";
+import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import {
+  readResponseJsonWithLimit,
+  readResponseTextWithLimit,
+} from "@/lib/ai-providers/response-limits";
 import {
   generateWithGeminiNativePdf,
   testGeminiNativeTextConnection,
@@ -52,6 +57,8 @@ const MAX_EXTRACTION_ATTEMPTS = 2;
 const MAX_REPAIR_RESPONSE_CHARS = 60_000;
 const CHAT_COMPLETION_TIMEOUT_MS = 180_000;
 const CONNECTION_TEST_TIMEOUT_MS = 15_000;
+const EXTRACTION_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
+const CONNECTION_RESPONSE_MAX_BYTES = 64 * 1024;
 
 function endpoint(baseUrl: string) {
   return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -230,6 +237,7 @@ async function requestChatCompletion({
   });
 
   try {
+    await assertSafeAIProviderBaseUrl(profile.base_url);
     response = await fetch(endpoint(profile.base_url), {
       body: JSON.stringify(requestBody),
       headers: {
@@ -237,6 +245,7 @@ async function requestChatCompletion({
         "Content-Type": "application/json",
       },
       method: "POST",
+      redirect: "error",
       signal: AbortSignal.timeout(CHAT_COMPLETION_TIMEOUT_MS),
     });
   } catch (error) {
@@ -265,7 +274,7 @@ async function requestChatCompletion({
   }
 
   if (!response.ok) {
-    const text = await response.text();
+    const text = await readResponseTextWithLimit(response, CONNECTION_RESPONSE_MAX_BYTES);
     await writeAIImportLLMDebugLog({
       context: {
         ...debugContext,
@@ -291,9 +300,9 @@ async function requestChatCompletion({
     );
   }
 
-  const payload = (await response.json()) as {
+  const payload = await readResponseJsonWithLimit<{
     choices?: { message?: { content?: string } }[];
-  };
+  }>(response, EXTRACTION_RESPONSE_MAX_BYTES);
   await writeAIImportLLMDebugLog({
     context: {
       ...debugContext,
@@ -392,6 +401,7 @@ export async function testAIProviderConnection(
   let response: Response;
 
   try {
+    await assertSafeAIProviderBaseUrl(profile.base_url);
     response = await fetch(endpoint(profile.base_url), {
       body: JSON.stringify({
         max_tokens: 8,
@@ -409,6 +419,7 @@ export async function testAIProviderConnection(
         "Content-Type": "application/json",
       },
       method: "POST",
+      redirect: "error",
       signal: AbortSignal.timeout(CONNECTION_TEST_TIMEOUT_MS),
     });
   } catch (error) {
@@ -423,7 +434,7 @@ export async function testAIProviderConnection(
   }
 
   if (!response.ok) {
-    const text = await response.text();
+    const text = await readResponseTextWithLimit(response, CONNECTION_RESPONSE_MAX_BYTES);
     throw new Error(
       providerHttpErrorMessage({
         body: text,
@@ -434,9 +445,9 @@ export async function testAIProviderConnection(
     );
   }
 
-  const payload = (await response.json()) as {
+  const payload = await readResponseJsonWithLimit<{
     choices?: { message?: { content?: string } }[];
-  };
+  }>(response, CONNECTION_RESPONSE_MAX_BYTES);
   const contentText = payload.choices?.[0]?.message?.content?.trim();
 
   return {
