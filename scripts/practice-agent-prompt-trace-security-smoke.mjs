@@ -12,6 +12,7 @@ const [
   traceSafety,
   tracePanel,
   persistence,
+  recommendRoute,
   recommendationPrompt,
   reviewPrompt,
   hintPrompt,
@@ -22,6 +23,7 @@ const [
   read("src/lib/practice/trace-safety.ts"),
   read("src/components/practice/practice-trace-panel.tsx"),
   read("src/lib/practice/persistence.ts"),
+  read("src/app/api/practice/recommend/route.ts"),
   read("src/lib/practice/prompts/recommendation-system.md"),
   read("src/lib/practice/prompts/review-system.md"),
   read("src/lib/practice/prompts/hint-system.md"),
@@ -64,11 +66,17 @@ includesAll(
   [
     "sanitizePublicPracticeTraceEvent",
     "sanitizePublicPracticeTrace",
-    "delete sanitized.modelThought",
-    "delete sanitized.reasoningContent",
-    'sanitized.toolName === "model_tool_choice"',
+    "publicPracticeTraceToolName",
+    'thoughtSummary: undefined',
+    'inputPayload: undefined',
+    'outputPayload: undefined',
+    'savedFullPayload: undefined',
   ],
-  "Trace sanitizer must remove legacy raw model fields",
+  "Trace sanitizer must replace internal tool names and remove all model-controlled payload channels",
+);
+assert(
+  !recommendRoute.includes("roundContract: agentResult.roundContract"),
+  "Recommendation responses must not expose the model-authored round contract.",
 );
 includesAll(
   persistence,

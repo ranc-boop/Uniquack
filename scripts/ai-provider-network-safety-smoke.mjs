@@ -6,7 +6,18 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const read = (file) => readFile(resolve(root, file), "utf8");
-const [network, limits, validation, practice, chat, gemini, blueprint] = await Promise.all([
+const [
+  network,
+  limits,
+  validation,
+  practice,
+  chat,
+  gemini,
+  blueprint,
+  questionBlueprintGeneration,
+  questionBlueprintRepair,
+  questionBlueprintAnalyzer,
+] = await Promise.all([
   read("src/lib/ai-providers/network-safety.ts"),
   read("src/lib/ai-providers/response-limits.ts"),
   read("src/lib/validations/ai-provider.ts"),
@@ -14,6 +25,9 @@ const [network, limits, validation, practice, chat, gemini, blueprint] = await P
   read("src/lib/ai-providers/chat.ts"),
   read("src/lib/ai-providers/gemini-native.ts"),
   read("src/lib/teacher-blueprint-generation.ts"),
+  read("src/lib/blueprints/question-blueprint-generation.ts"),
+  read("src/lib/blueprints/question-blueprint-repair.ts"),
+  read("src/lib/ai-pdf-import/question-blueprint-analyzer.ts"),
 ]);
 
 assert.match(network, /lookup\(hostname, \{ all: true, verbatim: true \}\)/);
@@ -30,7 +44,15 @@ assert.match(limits, /AIProviderResponseTooLargeError/);
 assert.match(practice, /PRACTICE_PROVIDER_RESPONSE_MAX_BYTES/);
 assert.match(practice, /assertResponseContentLength/);
 assert.match(practice, /responseBytes > PRACTICE_PROVIDER_RESPONSE_MAX_BYTES/);
-for (const provider of [practice, chat, gemini, blueprint]) {
+for (const provider of [
+  practice,
+  chat,
+  gemini,
+  blueprint,
+  questionBlueprintGeneration,
+  questionBlueprintRepair,
+  questionBlueprintAnalyzer,
+]) {
   assert.match(provider, /assertSafeAIProviderBaseUrl/);
   assert.match(provider, /readResponse(Text|Json)WithLimit|PRACTICE_PROVIDER_RESPONSE_MAX_BYTES/);
   assert.match(provider, /redirect: "error"/);

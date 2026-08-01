@@ -19,6 +19,7 @@ import {
 import { logPracticeProviderFailure } from "@/lib/practice/provider-safety";
 import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-identity";
 import { loadPracticePrompt } from "@/lib/practice/prompt-loader";
+import { PRACTICE_SUMMARY_PROMPT_SAFETY_BOUNDARY } from "@/lib/practice/prompt-safety";
 import {
   PRACTICE_INPUT_LIMITS,
   boundedPracticeText,
@@ -571,6 +572,7 @@ export async function POST(request: Request) {
             debugContext: { goal, phase: "review", roundId, sessionId },
             messages: [
               { role: "system", content: "You are O2I Practice main thread. Follow the active user request exactly; this review call must not use tools or choose next-round questions." },
+              { role: "system", content: PRACTICE_SUMMARY_PROMPT_SAFETY_BOUNDARY },
               { role: "system", content: stableStringify({
                 cache_policy: { cache_prefix_version: cachePrefixVersion },
                 course_framework: sessionRecord.course_framework_snapshot ?? null,

@@ -1,6 +1,8 @@
 import "server-only";
 
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
+import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import { readResponseJsonWithLimit } from "@/lib/ai-providers/response-limits";
 import {
   formatBlueprintQualityError,
   validateQuestionBlueprintQuality,
@@ -105,6 +107,7 @@ export const QUESTION_BLUEPRINT_GENERATION_PROMPT_CONTRACT = [
 ] as const;
 
 const QUESTION_BLUEPRINT_GENERATION_TIMEOUT_MS = 90_000;
+const QUESTION_BLUEPRINT_PROVIDER_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const QUESTION_TYPES = new Set<QuestionBlueprintGenerationQuestionType>([
   "mcq",
   "fill_blank",
@@ -326,6 +329,7 @@ export async function executeDeepSeekBlueprintGeneration({
   provider: QuestionBlueprintGenerationProvider;
   request: QuestionBlueprintGenerationRequest;
 }) {
+  await assertSafeAIProviderBaseUrl(provider.base_url);
   const response = await fetch(endpoint(provider.base_url), {
     body: JSON.stringify({
       messages: [
@@ -343,6 +347,7 @@ export async function executeDeepSeekBlueprintGeneration({
       "Content-Type": "application/json",
     },
     method: "POST",
+    redirect: "error",
     signal: AbortSignal.timeout(QUESTION_BLUEPRINT_GENERATION_TIMEOUT_MS),
   });
 
@@ -352,9 +357,9 @@ export async function executeDeepSeekBlueprintGeneration({
     );
   }
 
-  const payload = (await response.json()) as {
+  const payload = await readResponseJsonWithLimit<{
     choices?: { message?: { content?: string } }[];
-  };
+  }>(response, QUESTION_BLUEPRINT_PROVIDER_RESPONSE_MAX_BYTES);
   const providerText = payload.choices?.[0]?.message?.content;
 
   if (!providerText) {

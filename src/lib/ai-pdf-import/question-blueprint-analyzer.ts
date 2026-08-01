@@ -1,6 +1,8 @@
 import "server-only";
 
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
+import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import { readResponseJsonWithLimit } from "@/lib/ai-providers/response-limits";
 import type {
   AIBlueprintObservationPlan,
   AINormalizedBlueprintObservationPacket,
@@ -133,6 +135,7 @@ export const QUESTION_BLUEPRINT_ANALYZER_SNIPPET_MAX_CHARS = 280;
 export const QUESTION_BLUEPRINT_ANALYZER_SUMMARY_MAX_CHARS = 900;
 export const QUESTION_BLUEPRINT_ANALYZER_PACKET_LIMIT = 40;
 export const QUESTION_BLUEPRINT_ANALYZER_TIMEOUT_MS = 120_000;
+const QUESTION_BLUEPRINT_ANALYZER_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 export const QUESTION_BLUEPRINT_ANALYZER_MISSING_DEEPSEEK_WARNING =
   "DeepSeek provider is not configured or not enabled.";
 
@@ -1017,6 +1020,7 @@ export async function executeDeepSeekQuestionBlueprintAnalyzer({
   provider: QuestionBlueprintAnalyzerProvider;
   taxonomyCandidatesByFacet?: AIQuestionBlueprintTaxonomyCandidatesByFacet;
 }) {
+  await assertSafeAIProviderBaseUrl(provider.base_url);
   const response = await fetch(endpoint(provider.base_url), {
     body: JSON.stringify({
       messages: [
@@ -1037,6 +1041,7 @@ export async function executeDeepSeekQuestionBlueprintAnalyzer({
       "Content-Type": "application/json",
     },
     method: "POST",
+    redirect: "error",
     signal: AbortSignal.timeout(QUESTION_BLUEPRINT_ANALYZER_TIMEOUT_MS),
   });
 
@@ -1046,9 +1051,9 @@ export async function executeDeepSeekQuestionBlueprintAnalyzer({
     );
   }
 
-  const payload = (await response.json()) as {
+  const payload = await readResponseJsonWithLimit<{
     choices?: { message?: { content?: string } }[];
-  };
+  }>(response, QUESTION_BLUEPRINT_ANALYZER_RESPONSE_MAX_BYTES);
   const providerText = payload.choices?.[0]?.message?.content;
 
   if (!providerText) {
