@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import {
   PracticeFrameworkSelector,
@@ -1635,6 +1635,26 @@ export function PracticeAgentClient({
     prepareScopedNewSession();
   }
 
+  function resetPracticeProgress() {
+    if (isAssignmentMode) return;
+    cancelPracticeOperation();
+    setError(null);
+    startTransition(async () => {
+      try {
+        await jsonRequest<{ resetAt: string }>("/api/practice/progress/reset", {
+          method: "POST",
+        });
+        prepareScopedNewSession();
+        const payload = await jsonRequest<{ sources: PracticeSourceOption[] }>(
+          "/api/practice/sources",
+        );
+        setPracticeSources(payload.sources);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+  }
+
   function showHistoricalRound(roundId: string) {
     if (practiceNavigationLocked) return;
     const round = activeSession?.rounds.find((item) => item.id === roundId);
@@ -2057,6 +2077,23 @@ export function PracticeAgentClient({
           </div>
         </section>
         <div className="mt-auto space-y-3">
+          <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
+            <summary className="cursor-pointer text-sm font-bold text-slate-900">Practice cycle</summary>
+            <div className="mt-3 space-y-3">
+              <p>Historical attempts and Assignment evidence stay intact. Recommendations will treat every available question as unseen in a new self-study session.</p>
+              <Button
+                className="w-full justify-start"
+                disabled={isPending}
+                onClick={resetPracticeProgress}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <RotateCcw className="size-4" aria-hidden="true" />
+                Practice all questions again
+              </Button>
+            </div>
+          </details>
           <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
             <summary className="cursor-pointer text-sm font-bold text-slate-900">Long-term memory</summary>
             <div className="mt-3 space-y-2">

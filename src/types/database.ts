@@ -880,6 +880,13 @@ export type PracticeHintEvent = {
   created_at: string;
 };
 
+export type PracticeProgressReset = {
+  user_id: string;
+  reset_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PracticeWrongQuestion = {
   id: string;
   user_id: string;
@@ -1039,6 +1046,7 @@ export type Database = {
       practice_round_questions: TableDefinition<PracticeRoundQuestion>;
       practice_attempts: TableDefinition<PracticeAttempt>;
       practice_hint_events: TableDefinition<PracticeHintEvent>;
+      practice_progress_resets: TableDefinition<PracticeProgressReset>;
       practice_wrong_questions: TableDefinition<PracticeWrongQuestion>;
       user_practice_preferences: TableDefinition<UserPracticePreference>;
       practice_preference_merge_jobs: TableDefinition<PracticePreferenceMergeJob>;
@@ -1350,6 +1358,10 @@ export type Database = {
           unseen_count: number;
           visibility: string;
         }>;
+      };
+      reset_my_practice_progress: {
+        Args: Record<string, never>;
+        Returns: string;
       };
       search_practice_questions_in_session: {
         Args: {
