@@ -13,8 +13,6 @@ dotenv.config({ path: resolve(root, ".env.local") });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabaseServiceRoleKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.CLEAN_SUPABASE_SERVICE_ROLE_KEY;
 const teacherUsername =
   process.env.TEST_TEACHER_USERNAME ?? process.env.TEST_ADMIN_USERNAME;
 const teacherPassword =
@@ -140,10 +138,10 @@ async function runSourceSmoke() {
     assert(classroomUi.includes(label), `classroom route tabs missing ${label}`);
   }
   assert(
-    overviewPage.includes("Class delivery snapshot") &&
+    overviewPage.includes("Recent assignments") &&
       overviewPage.includes("Students can join the roster") &&
       overviewPage.includes("Students needing attention") &&
-      overviewPage.includes("Publish selected bank content") &&
+      overviewPage.includes("Class team") &&
       overviewPage.includes("Open Blueprint Library"),
     "classroom overview must show stats, join code, recent assignments, attention, and blueprint context",
   );
@@ -162,7 +160,7 @@ async function runSourceSmoke() {
   );
   assert(
     teachersPage.includes("Add co-teacher") &&
-      teachersPage.includes("source Question Banks") &&
+      teachersPage.includes("separate Library membership") &&
       classroomActions.includes("addClassroomCoTeacher") &&
       classroomActions.includes("removeClassroomCoTeacher") &&
       !classroomActions.includes("bank_members"),
@@ -287,21 +285,14 @@ async function runLiveSmoke() {
     assert(studentCreateError, "student unexpectedly created a classroom");
     console.log("PASS classroom UI live teacher/student boundary checks");
   } finally {
-    if (supabaseServiceRoleKey) {
-      const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-        auth: { persistSession: false },
-      });
-      await admin.from("classrooms").delete().eq("id", classroom.classroom_id);
-    } else {
-      await teacher.client
-        .from("classroom_join_codes")
-        .update({ status: "revoked" })
-        .eq("classroom_id", classroom.classroom_id);
-      await teacher.client
-        .from("classrooms")
-        .update({ status: "archived", updated_by: teacher.user.id })
-        .eq("id", classroom.classroom_id);
-    }
+    await teacher.client
+      .from("classroom_join_codes")
+      .update({ status: "revoked" })
+      .eq("classroom_id", classroom.classroom_id);
+    await teacher.client
+      .from("classrooms")
+      .update({ status: "archived", updated_by: teacher.user.id })
+      .eq("id", classroom.classroom_id);
   }
 }
 

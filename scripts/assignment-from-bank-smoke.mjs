@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,47 +98,47 @@ async function resolveTeacherOrganizationId(teacher) {
   return memberships[0].organization_id;
 }
 
-async function createSmokeClassroom({ admin, organizationId, studentUserId, suffix, teacher }) {
-  const { data: classroom, error: classroomError } = await admin
-    .from("classrooms")
-    .insert({
-      created_by: teacher.user.id,
-      name: `Assignment from bank smoke ${suffix}`,
-      organization_id: organizationId,
-      owner_id: teacher.user.id,
-      subject: "Bank assignment smoke",
-      updated_by: teacher.user.id,
-    })
-    .select("id")
-    .single();
+async function createSmokeClassroom({ organizationId, student, suffix, teacher }) {
+  const { data: classroomRows, error: classroomError } = await teacher.client.rpc(
+    "create_teacher_classroom",
+    {
+      p_description: "Assignment from bank smoke classroom",
+      p_name: `Assignment from bank smoke ${suffix}`,
+      p_organization_id: organizationId,
+      p_request_id: randomUUID(),
+      p_subject: "Bank assignment smoke",
+    },
+  );
+  const classroom = Array.isArray(classroomRows) ? classroomRows[0] : classroomRows;
+  assert(
+    !classroomError && classroom?.classroom_id && classroom?.display_code,
+    `classroom RPC failed: ${summarizeSupabaseError(classroomError)}`,
+  );
 
-  assert(!classroomError && classroom?.id, `classroom create failed: ${summarizeSupabaseError(classroomError)}`);
-
-  const { error: teacherMemberError } = await admin
-    .from("classroom_members")
-    .insert({
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "teacher",
-      status: "active",
-      user_id: teacher.user.id,
-    });
-  assert(!teacherMemberError, `teacher classroom member insert failed: ${summarizeSupabaseError(teacherMemberError)}`);
-
-  if (studentUserId) {
-    const { error: studentMemberError } = await admin
-      .from("classroom_members")
-      .insert({
-        classroom_id: classroom.id,
-        joined_at: new Date().toISOString(),
-        role: "student",
-        status: "active",
-        user_id: studentUserId,
-      });
-    assert(!studentMemberError, `student classroom member insert failed: ${summarizeSupabaseError(studentMemberError)}`);
+  const { data: joinRows, error: joinError } = await student.client.rpc(
+    "join_classroom_by_code",
+    { join_code: classroom.display_code },
+  );
+  const membership = Array.isArray(joinRows) ? joinRows[0] : joinRows;
+  const joined =
+    !joinError &&
+    membership?.classroom_id === classroom.classroom_id &&
+    membership?.membership_id;
+  if (!joined) {
+    await teacher.client
+      .from("classrooms")
+      .update({ status: "archived", updated_by: teacher.user.id })
+      .eq("id", classroom.classroom_id);
   }
+  assert(
+    joined,
+    `student classroom join failed: ${summarizeSupabaseError(joinError)}`,
+  );
 
-  return classroom.id;
+  return {
+    classroomId: classroom.classroom_id,
+    studentMembershipId: membership.membership_id,
+  };
 }
 
 async function insertBankQuestionFixture({ admin, bankId, organizationId, suffix, teacherUserId, title }) {
@@ -187,9 +188,7 @@ async function insertBankQuestionFixture({ admin, bankId, organizationId, suffix
   return { bankQuestionId: bankQuestion.id, questionId: question.id };
 }
 
-async function cleanup({ assignmentIds, bankId, classroomIds, questionIds }) {
-  if (!serviceRoleKey) return;
-
+async function cleanup({ assignmentIds, bankId, classrooms, questionIds, teacher }) {
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -197,8 +196,20 @@ async function cleanup({ assignmentIds, bankId, classroomIds, questionIds }) {
   if (assignmentIds.length) {
     await admin.from("assignments").delete().in("id", assignmentIds);
   }
-  if (classroomIds.length) {
-    await admin.from("classrooms").delete().in("id", classroomIds);
+  for (const classroom of classrooms) {
+    await teacher.client.rpc("set_classroom_student_membership_status", {
+      p_classroom_id: classroom.classroomId,
+      p_member_id: classroom.studentMembershipId,
+      p_status: "removed",
+    });
+    await teacher.client
+      .from("classroom_join_codes")
+      .update({ status: "revoked" })
+      .eq("classroom_id", classroom.classroomId);
+    await teacher.client
+      .from("classrooms")
+      .update({ status: "archived", updated_by: teacher.user.id })
+      .eq("id", classroom.classroomId);
   }
   if (questionIds.length) {
     await admin.from("questions").delete().in("id", questionIds);
@@ -207,7 +218,7 @@ async function cleanup({ assignmentIds, bankId, classroomIds, questionIds }) {
     await admin.from("question_banks").delete().eq("id", bankId);
   }
 
-  console.log("PASS assignment-from-bank smoke cleanup removed smoke-created rows");
+  console.log("PASS assignment-from-bank smoke cleanup archived classroom fixtures");
 }
 
 async function main() {
@@ -228,16 +239,17 @@ async function main() {
     "assignment-from-bank migration must add bank lineage and assignment-scoped question read without publishing questions",
   );
   assert(
-    bankDetailPage.includes("Create assignment") &&
-      bankAssignmentPage.includes("Library assignment") &&
-      bankAssignmentPage.includes("selected approved") &&
-      bankAssignmentPage.includes("full Library") &&
+    bankDetailPage.includes("Create Assignment") &&
+      bankAssignmentPage.includes("redirect(") &&
+      bankAssignmentPage.includes("/teacher/publish?") &&
+      bankAssignmentPage.includes("sourceBankId") &&
+      bankAssignmentPage.includes('destination.set("selection"') &&
       bankActions.includes("create_assignment_from_bank") &&
       assignmentLinkage.includes("missingQuestionIds") &&
       assignmentLinkage.includes("ASSIGNMENT_CONTENT_UNAVAILABLE") &&
       !assignmentLinkage.includes('.eq("status", "published")') &&
-      studentWorkDetailPage.includes("full teacher") &&
-      studentWorkDetailPage.includes("Library stays private"),
+      studentWorkDetailPage.includes("only the questions assigned here") &&
+      studentWorkDetailPage.includes("full private Library remains unavailable"),
     "assignment-from-bank UI and practice path must be bank-first and assignment-only",
   );
   console.log("PASS assignment-from-bank static checks protect bank-first assignment workflow");
@@ -270,7 +282,7 @@ async function main() {
   const cleanupState = {
     assignmentIds: [],
     bankId: null,
-    classroomIds: [],
+    classrooms: [],
     questionIds: [],
   };
 
@@ -286,14 +298,14 @@ async function main() {
     assert(!bankError && bankId, `teacher bank create failed: ${summarizeSupabaseError(bankError)}`);
     cleanupState.bankId = bankId;
 
-    const classroomId = await createSmokeClassroom({
-      admin,
+    const classroom = await createSmokeClassroom({
       organizationId,
-      studentUserId: student.user.id,
+      student,
       suffix,
       teacher,
     });
-    cleanupState.classroomIds.push(classroomId);
+    const classroomId = classroom.classroomId;
+    cleanupState.classrooms.push(classroom);
 
     const assignedFixture = await insertBankQuestionFixture({
       admin,
@@ -407,7 +419,7 @@ async function main() {
     assert(!studentBankRead?.length, "student unexpectedly gained bank browsing access");
     console.log("PASS student receives assigned item access without full bank access");
   } finally {
-    await cleanup(cleanupState);
+    await cleanup({ ...cleanupState, teacher });
   }
 }
 

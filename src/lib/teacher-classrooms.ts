@@ -29,6 +29,11 @@ type ClassroomBase = Pick<
   | "updated_at"
 >;
 
+export type TeacherClassroomChoice = Pick<
+  ClassroomBase,
+  "id" | "name" | "status" | "subject" | "updated_at"
+>;
+
 type AssignmentBase = Pick<
   Assignment,
   | "classroom_id"
@@ -360,6 +365,43 @@ export async function listTeacherClassroomSummaries({
     classrooms: (data ?? []) as ClassroomBase[],
     supabase,
   });
+}
+
+export async function listTeacherClassroomChoices({
+  includeClassroomId,
+  supabase,
+}: {
+  includeClassroomId?: string;
+  supabase: SupabaseServerClient;
+}) {
+  const choiceQuery = supabase
+    .from("classrooms")
+    .select("id, name, subject, status, updated_at")
+    .eq("status", "active")
+    .order("updated_at", { ascending: false })
+    .limit(50);
+  const includedQuery = includeClassroomId
+    ? supabase
+        .from("classrooms")
+        .select("id, name, subject, status, updated_at")
+        .eq("id", includeClassroomId)
+        .eq("status", "active")
+        .maybeSingle()
+    : Promise.resolve({ data: null, error: null });
+  const [
+    { data: choices, error: choicesError },
+    { data: included, error: includedError },
+  ] = await Promise.all([choiceQuery, includedQuery]);
+
+  if (choicesError) throw new Error(choicesError.message);
+  if (includedError) throw new Error(includedError.message);
+
+  const result = (choices ?? []) as TeacherClassroomChoice[];
+  if (included && !result.some((classroom) => classroom.id === included.id)) {
+    return [included as TeacherClassroomChoice, ...result];
+  }
+
+  return result;
 }
 
 export async function getTeacherClassroomWorkspace({

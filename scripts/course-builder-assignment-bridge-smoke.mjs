@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -83,53 +84,47 @@ async function resolveOrganizationId(supabase, userId) {
   return memberships[0].organization_id;
 }
 
-async function createClassroom({ organizationId, studentUserId, suffix, teacher }) {
-  const { data: classroom, error: classroomError } = await teacher.client
-    .from("classrooms")
-    .insert({
-      created_by: teacher.user.id,
-      name: `Course Builder bridge smoke ${suffix}`,
-      organization_id: organizationId,
-      owner_id: teacher.user.id,
-      subject: "Course Builder bridge smoke",
-      updated_by: teacher.user.id,
-    })
-    .select("id")
-    .single();
+async function createClassroom({ organizationId, student, suffix, teacher }) {
+  const { data: classroomRows, error: classroomError } = await teacher.client.rpc(
+    "create_teacher_classroom",
+    {
+      p_description: "Course Builder bridge smoke classroom",
+      p_name: `Course Builder bridge smoke ${suffix}`,
+      p_organization_id: organizationId,
+      p_request_id: randomUUID(),
+      p_subject: "Course Builder bridge smoke",
+    },
+  );
+  const classroom = Array.isArray(classroomRows) ? classroomRows[0] : classroomRows;
   assert(
-    !classroomError && classroom,
-    `Course Builder bridge classroom insert failed: ${summarizeSupabaseError(classroomError)}`,
+    !classroomError && classroom?.classroom_id && classroom?.display_code,
+    `Course Builder bridge classroom RPC failed: ${summarizeSupabaseError(classroomError)}`,
   );
 
-  const { error: teacherMemberError } = await teacher.client
-    .from("classroom_members")
-    .insert({
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "teacher",
-      status: "active",
-      user_id: teacher.user.id,
-    });
+  const { data: joinRows, error: studentMemberError } = await student.client.rpc(
+    "join_classroom_by_code",
+    { join_code: classroom.display_code },
+  );
+  const membership = Array.isArray(joinRows) ? joinRows[0] : joinRows;
+  const joined =
+    !studentMemberError &&
+    membership?.classroom_id === classroom.classroom_id &&
+    membership?.membership_id;
+  if (!joined) {
+    await teacher.client
+      .from("classrooms")
+      .update({ status: "archived", updated_by: teacher.user.id })
+      .eq("id", classroom.classroom_id);
+  }
   assert(
-    !teacherMemberError,
-    `Course Builder bridge teacher member insert failed: ${summarizeSupabaseError(teacherMemberError)}`,
+    joined,
+    `Course Builder bridge student join failed: ${summarizeSupabaseError(studentMemberError)}`,
   );
 
-  const { error: studentMemberError } = await teacher.client
-    .from("classroom_members")
-    .insert({
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "student",
-      status: "active",
-      user_id: studentUserId,
-    });
-  assert(
-    !studentMemberError,
-    `Course Builder bridge student member insert failed: ${summarizeSupabaseError(studentMemberError)}`,
-  );
-
-  return classroom.id;
+  return {
+    classroomId: classroom.classroom_id,
+    studentMembershipId: membership.membership_id,
+  };
 }
 
 async function createQuestion({ organizationId, status, suffix, teacher }) {
@@ -186,13 +181,14 @@ async function main() {
   };
 
   try {
-    const classroomId = await createClassroom({
+    const classroom = await createClassroom({
       organizationId,
-      studentUserId: student.user.id,
+      student,
       suffix,
       teacher,
     });
-    cleanup.classrooms.push(classroomId);
+    const classroomId = classroom.classroomId;
+    cleanup.classrooms.push(classroom);
 
     const publishedQuestionId = await createQuestion({
       organizationId,
@@ -359,21 +355,34 @@ async function main() {
         .eq("id", questionId);
       if (error) cleanupErrors.push(`question ${questionId}: ${summarizeSupabaseError(error)}`);
     }
-    for (const classroomId of cleanup.classrooms) {
-      const { error: memberError } = await teacher.client
-        .from("classroom_members")
-        .update({ status: "removed" })
-        .eq("classroom_id", classroomId)
-        .neq("user_id", teacher.user.id);
+    for (const classroom of cleanup.classrooms) {
+      const { error: memberError } = await teacher.client.rpc(
+        "set_classroom_student_membership_status",
+        {
+          p_classroom_id: classroom.classroomId,
+          p_member_id: classroom.studentMembershipId,
+          p_status: "removed",
+        },
+      );
       if (memberError) {
-        cleanupErrors.push(`classroom member ${classroomId}: ${summarizeSupabaseError(memberError)}`);
+        cleanupErrors.push(
+          `classroom member ${classroom.classroomId}: ${summarizeSupabaseError(memberError)}`,
+        );
       }
 
+      await teacher.client
+        .from("classroom_join_codes")
+        .update({ status: "revoked" })
+        .eq("classroom_id", classroom.classroomId);
       const { error } = await teacher.client
         .from("classrooms")
         .update({ status: "archived" })
-        .eq("id", classroomId);
-      if (error) cleanupErrors.push(`classroom ${classroomId}: ${summarizeSupabaseError(error)}`);
+        .eq("id", classroom.classroomId);
+      if (error) {
+        cleanupErrors.push(
+          `classroom ${classroom.classroomId}: ${summarizeSupabaseError(error)}`,
+        );
+      }
     }
     if (cleanupErrors.length) {
       console.log(`WARN Course Builder bridge smoke cleanup: ${cleanupErrors.join("; ")}`);

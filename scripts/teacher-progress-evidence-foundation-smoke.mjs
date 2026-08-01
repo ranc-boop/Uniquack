@@ -25,14 +25,13 @@ const [page, helper, dashboardPanels, classroomAnalytics, smokeAll, migrations] 
   ]);
 
 assert(
-  page.includes("getTeacherProgressSummary") &&
+    page.includes("getTeacherProgressSummary") &&
     page.includes("Progress / Feedback") &&
-    page.includes("Active classes") &&
     page.includes("Active assignments") &&
     page.includes("Completion rate") &&
     page.includes("Students needing attention") &&
     page.includes("Recent evidence") &&
-    page.includes("Assignment progress") &&
+    page.includes("All Assignment progress") &&
     !page.includes("TeacherComingSoonPanel") &&
     !page.includes("Evidence and progress shell"),
   "/teacher/progress must render the real evidence dashboard instead of the old module shell",
@@ -68,10 +67,9 @@ assert(
 );
 
 assert(
-  page.includes("Assignment and classroom evidence only") &&
-    page.includes("Private student self-study is not included") &&
-    page.includes("Source Question Banks remain private") &&
-    page.includes("Open an assignment detail to save a private note") &&
+  page.includes("Evidence is limited to classroom Assignments") &&
+    page.includes("Private self-study") &&
+    page.includes("source Libraries stay outside") &&
     !page.includes("Teacher feedback notes are coming later") &&
     !page.includes("/teacher/banks/"),
   "teacher progress page must state assignment evidence privacy boundaries without source-bank links",

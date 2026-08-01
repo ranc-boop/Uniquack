@@ -105,9 +105,12 @@ assert(
 
 assert(
   bankReviewPage.includes("await requireTeacher()") &&
-    bankReviewPage.includes("canManageBankContent(currentUserRole)") &&
+    bankReviewPage.includes("const canApprove = detail.canManage") &&
+    bankReviewPage.includes('question.status === "draft"') &&
+    bankReviewPage.includes(
+      'question.reviewItemStatus === "pending_review"',
+    ) &&
     questionBanks.includes(".eq(\"owner_bank_id\", bankId)") &&
-    questionBanks.includes(".eq(\"status\", \"draft\")") &&
     questionBanks.includes("question_taxonomy_assignments") &&
     questionBanks.includes("review_status") &&
     questionBanks.includes("import_batch_items") &&

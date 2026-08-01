@@ -36,12 +36,13 @@ assert(
 
 assert(
   normalizedPage.includes("Private student self-study is not included") &&
-    normalizedPage.includes("Source Library access remains teacher-private") &&
-    normalizedPage.includes("Use feedback notes below to respond to evidence") &&
+    normalizedPage.includes("Optional evidence by assigned question") &&
+    normalizedPage.includes("Optional recent assignment-linked evidence") &&
+    normalizedPage.includes("The full Library stays private") &&
     !page.includes("lastPracticeSessionId") &&
     !page.includes("attempt.sessionId") &&
     !page.includes("@/components/student"),
-  "assignment drilldown must preserve privacy copy and avoid raw session IDs or student workspace imports",
+  "assignment drilldown must preserve privacy copy, progressively disclose secondary evidence, and avoid raw session IDs or student workspace imports",
 );
 
 assert(

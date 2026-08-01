@@ -70,6 +70,24 @@ await Promise.all(
   ),
 );
 
+const previewErrorRoutes = [
+  "src/app/teacher/banks/[bankId]/questions/preview/error.tsx",
+  "src/app/teacher/banks/[bankId]/questions/[bankQuestionId]/preview/error.tsx",
+  "src/app/teacher/banks/[bankId]/review/bulk/error.tsx",
+  "src/app/teacher/banks/[bankId]/review/[reviewItemId]/error.tsx",
+  "src/app/teacher/classrooms/[id]/assignments/[assignmentId]/student-preview/error.tsx",
+];
+const previewErrors = await Promise.all(previewErrorRoutes.map(read));
+assert(
+  previewErrors.every(
+    (source) =>
+      source.includes("TeacherRouteError") &&
+      source.includes("returnHref=") &&
+      source.includes("reset={reset}"),
+  ),
+  "each focused preview needs a task-specific retry and safe return boundary",
+);
+
 const overBroadLoadingRoutes = [
   "src/app/loading.tsx",
   "src/app/admin/loading.tsx",
@@ -93,6 +111,8 @@ const [
   jsonLoader,
   assetLoader,
   packageLoader,
+  teacherRouteError,
+  teacherRouteLoading,
 ] = await Promise.all([
   read("src/components/loading-indicator.tsx"),
   read("src/components/practice/practice-agent-client.tsx"),
@@ -102,6 +122,8 @@ const [
   read("src/components/batch-import-json-panel-loader.tsx"),
   read("src/components/bulk-asset-upload-panel-loader.tsx"),
   read("src/components/package-import-panel-loader.tsx"),
+  read("src/components/teacher/teacher-route-error.tsx"),
+  read("src/components/teacher/teacher-route-loading.tsx"),
 ]);
 
 assert(
@@ -109,6 +131,13 @@ assert(
     loadingIndicator.includes('aria-live="polite"') &&
     loadingIndicator.includes("motion-safe:animate-spin"),
   "small loading feedback must be accessible and respect reduced-motion preferences",
+);
+assert(
+    teacherRouteError.includes("alertRef.current?.focus") &&
+    teacherRouteError.includes("tabIndex={-1}") &&
+    teacherRouteLoading.includes('role="status"') &&
+    !teacherRouteLoading.includes("<main"),
+  "teacher loading and error boundaries must announce state and move keyboard focus into the error context",
 );
 assert(
   practiceClient.includes("useState(Boolean(assignmentId))") &&

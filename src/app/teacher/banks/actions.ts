@@ -1,6 +1,7 @@
 "use server";
 
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -38,6 +39,7 @@ import {
   optionsToJson,
 } from "@/lib/questions/answer-spec";
 import {
+  assertBankReviewQuestionsPublishable,
   canManageBankContent,
   getTeacherQuestionBankDetail,
 } from "@/lib/question-banks";
@@ -45,6 +47,7 @@ import { sanitizeContentHtml } from "@/lib/sanitize/html";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { questionCreateSchema } from "@/lib/validations/question";
 import { copyQuestionAssetsForIndependentUse } from "@/lib/questions/copy-assets";
+import type { TeacherBulkActionState } from "@/lib/teacher-bulk-actions";
 
 const bankCreateSchema = z.object({
   description: z.string().trim().max(2000).optional().default(""),
@@ -126,11 +129,17 @@ const bankReviewQuestionApproveSchema = z.object({
   questionId: z.string().uuid(),
 });
 
+const bankReviewQuestionsApproveSchema = z.object({
+  bankId: z.string().uuid(),
+  operation: z.literal("approve"),
+});
+
 const bankReviewQuestionEditSchema = z.object({
   bankId: z.string().uuid(),
   contentSource: z.string().trim().min(1).max(20000),
   difficultyRating: z.coerce.number().int().min(0).max(1000),
   questionId: z.string().uuid(),
+  question_type: z.enum(["mcq", "fill_blank", "frq", "mixed"]),
   solutionSource: z.string().trim().max(20000).optional().default(""),
   title: z.string().trim().min(1).max(240),
 });
@@ -155,9 +164,19 @@ const bankQuestionRevisionSchema = z.object({
   questionId: z.string().uuid(),
 });
 
+const bankQuestionDeleteSchema = z.object({
+  bankId: z.string().uuid(),
+  bankQuestionId: z.string().uuid(),
+});
+
 const bankPublicSubmissionSchema = z.object({
   bankId: z.string().uuid(),
   publicLicenseConfirmed: z.literal("confirmed"),
+});
+
+const bankQuestionBulkOperationSchema = z.object({
+  bankId: z.string().uuid(),
+  operation: z.enum(["archive", "delete", "public_review", "restore"]),
 });
 
 const publicSubmissionWithdrawSchema = z.object({
@@ -185,6 +204,66 @@ type ApproveBankReviewQuestionRpc = {
     error: { message: string } | null;
   }>;
 };
+
+type TeacherBulkReviewRpc = {
+  rpc(
+    functionName: "approve_bank_review_questions",
+    args: { p_target_bank_id: string; p_target_question_ids: string[] },
+  ): Promise<{
+    data: ApproveBankReviewQuestionResult[] | null;
+    error: { message: string } | null;
+  }>;
+};
+
+type TeacherBulkQuestionRpc = {
+  rpc(
+    functionName:
+      | "set_bank_question_statuses"
+      | "submit_bank_questions_to_public_review_for_bank",
+    args:
+      | {
+          p_selected_bank_question_ids: string[];
+          p_target_bank_id: string;
+          p_target_status: "active" | "archived" | "removed";
+        }
+      | {
+          p_public_license_confirmed: true;
+          p_source_bank_question_ids: string[];
+          p_target_bank_id: string;
+        },
+  ): Promise<{
+    data: Array<Record<string, unknown>> | null;
+    error: { message: string } | null;
+  }>;
+};
+
+function parseCurrentPageUuidSelection(formData: FormData, name: string) {
+  const values = formData.getAll(name).map(String);
+  const parsed = z.array(z.string().uuid()).min(1).max(25).parse(values);
+
+  if (new Set(parsed).size !== parsed.length) {
+    throw new Error("Current-page selection must contain unique items.");
+  }
+
+  return parsed;
+}
+
+function bulkActionResult({
+  message,
+  processedCount = 0,
+  status,
+}: {
+  message: string;
+  processedCount?: number;
+  status: TeacherBulkActionState["status"];
+}): TeacherBulkActionState {
+  return {
+    message,
+    processedCount,
+    receipt: randomUUID(),
+    status,
+  };
+}
 
 type BankReviewDraftQuestionRow = {
   deleted_at: string | null;
@@ -1106,6 +1185,11 @@ export async function approveBankReviewQuestion(formData: FormData) {
       Object.fromEntries(formData),
     );
     const supabase = await createClient();
+    await assertBankReviewQuestionsPublishable({
+      bankId: parsed.bankId,
+      questionIds: [parsed.questionId],
+      supabase,
+    });
     const { data, error } = await (
       supabase as unknown as ApproveBankReviewQuestionRpc
     ).rpc("approve_bank_review_question", {
@@ -1118,7 +1202,7 @@ export async function approveBankReviewQuestion(formData: FormData) {
     }
 
     if (!data?.[0]?.bank_question_id) {
-      throw new Error("Review Draft was not approved into this Library.");
+      throw new Error("The question was not approved into this Library.");
     }
 
     revalidatePath(`/teacher/banks/${parsed.bankId}`);
@@ -1126,94 +1210,221 @@ export async function approveBankReviewQuestion(formData: FormData) {
     revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
     redirectWithSaved(
       `/teacher/banks/${parsed.bankId}/review`,
-      "Review Draft approved into this Library. It was not published to the Public Library.",
+      "Question approved and ready for new Assignments.",
     );
   } catch (error) {
     redirectWithError(fallbackPath, formatActionError(error));
   }
 }
 
+export async function approveBankReviewQuestions(
+  _previousState: TeacherBulkActionState,
+  formData: FormData,
+): Promise<TeacherBulkActionState> {
+  try {
+    await requireTeacher();
+    const parsed = bankReviewQuestionsApproveSchema.parse(
+      Object.fromEntries(formData),
+    );
+    const questionIds = parseCurrentPageUuidSelection(formData, "questionIds");
+    const supabase = await createClient();
+    await assertBankReviewQuestionsPublishable({
+      bankId: parsed.bankId,
+      questionIds,
+      supabase,
+    });
+    const { data, error } = await (
+      supabase as unknown as TeacherBulkReviewRpc
+    ).rpc("approve_bank_review_questions", {
+      p_target_bank_id: parsed.bankId,
+      p_target_question_ids: questionIds,
+    });
+
+    if (error) throw new Error(error.message);
+    if ((data?.length ?? 0) !== questionIds.length) {
+      throw new Error(
+        "The complete selection was not approved. No partial result is accepted.",
+      );
+    }
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
+
+    return bulkActionResult({
+      message: `${data?.length ?? 0} question${data?.length === 1 ? "" : "s"} approved and ready for new Assignments.`,
+      processedCount: data?.length ?? 0,
+      status: "success",
+    });
+  } catch (error) {
+    return bulkActionResult({
+      message: `${formatActionError(error)} No selected question was changed.`,
+      status: "error",
+    });
+  }
+}
+
+export async function approveCurrentBankReviewPage(formData: FormData) {
+  const fallbackPath = `/teacher/banks/${formData.get("bankId")}/review`;
+
+  try {
+    await requireTeacher();
+    const parsed = bankReviewQuestionsApproveSchema.parse(
+      Object.fromEntries(formData),
+    );
+    const questionIds = parseCurrentPageUuidSelection(formData, "questionIds");
+    const supabase = await createClient();
+    await assertBankReviewQuestionsPublishable({
+      bankId: parsed.bankId,
+      questionIds,
+      supabase,
+    });
+    const { data, error } = await (
+      supabase as unknown as TeacherBulkReviewRpc
+    ).rpc("approve_bank_review_questions", {
+      p_target_bank_id: parsed.bankId,
+      p_target_question_ids: questionIds,
+    });
+
+    if (error) throw new Error(error.message);
+    if ((data?.length ?? 0) !== questionIds.length) {
+      throw new Error(
+        "The complete page was not approved. No partial result is accepted.",
+      );
+    }
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
+    redirectWithSaved(
+      fallbackPath,
+      `${data?.length ?? 0} question${data?.length === 1 ? "" : "s"} approved and ready for new Assignments.`,
+    );
+  } catch (error) {
+    redirectWithError(fallbackPath, formatActionError(error));
+  }
+}
+
+async function saveBankReviewDraftQuestion(formData: FormData) {
+  const profile = await requireTeacher();
+  const parsed = bankReviewQuestionEditSchema.parse(
+    Object.fromEntries(formData),
+  );
+  const answerData = answerSpecFromFormData(formData);
+  const supabase = await createClient();
+  const { question } = await loadManageableBankReviewDraft({
+    bankId: parsed.bankId,
+    profileId: profile.id,
+    questionId: parsed.questionId,
+    supabase,
+  });
+  const lineage = await resolveOrCreateBankReviewDraftLineage({
+    bankId: parsed.bankId,
+    profileId: profile.id,
+    question,
+    supabase,
+  });
+  const contentHtml = renderMarkdownDraftSource(parsed.contentSource);
+  const solutionHtml = parsed.solutionSource
+    ? renderMarkdownDraftSource(parsed.solutionSource)
+    : null;
+
+  const { error } = await supabase
+    .from("questions")
+    .update({
+      answer_spec: answerSpecToJson(answerData.answerSpec),
+      content_html: contentHtml,
+      content_source: parsed.contentSource,
+      content_source_format: "markdown_latex",
+      difficulty_rating: parsed.difficultyRating,
+      options: optionsToJson(answerData.options),
+      question_type: parsed.question_type,
+      solution_html: solutionHtml,
+      solution_source: parsed.solutionSource,
+      solution_source_format: "markdown_latex",
+      title: parsed.title,
+      updated_by: profile.id,
+    } as never)
+    .eq("id", parsed.questionId)
+    .eq("owner_bank_id", parsed.bankId)
+    .eq("status", "draft")
+    .is("published_at", null);
+
+  if (error) throw new Error(error.message);
+
+  const { error: reviewItemError } = await supabase
+    .from("review_draft_items")
+    .update({
+      status: "pending_review",
+      target_bank_id: parsed.bankId,
+    } as never)
+    .eq("id", lineage.reviewDraftItemId);
+
+  if (reviewItemError) throw new Error(reviewItemError.message);
+
+  await recordBankReviewAction({
+    actionKind: "edit",
+    evidence: [
+      {
+        draftOnly: true,
+        questionId: parsed.questionId,
+        targetBankId: parsed.bankId,
+      },
+    ],
+    profileId: profile.id,
+    reason: "Teacher saved Draft changes before Library approval.",
+    reviewBatchId: lineage.reviewBatchId,
+    reviewDraftItemId: lineage.reviewDraftItemId,
+    supabase,
+  });
+
+  return { parsed, supabase };
+}
+
 export async function editBankReviewDraftQuestion(formData: FormData) {
   const fallbackPath = `/teacher/banks/${formData.get("bankId")}/review`;
 
   try {
-    const profile = await requireTeacher();
-    const parsed = bankReviewQuestionEditSchema.parse(
-      Object.fromEntries(formData),
-    );
-    const supabase = await createClient();
-    const { question } = await loadManageableBankReviewDraft({
-      bankId: parsed.bankId,
-      profileId: profile.id,
-      questionId: parsed.questionId,
-      supabase,
-    });
-    const lineage = await resolveOrCreateBankReviewDraftLineage({
-      bankId: parsed.bankId,
-      profileId: profile.id,
-      question,
-      supabase,
-    });
-    const contentHtml = renderMarkdownDraftSource(parsed.contentSource);
-    const solutionHtml = parsed.solutionSource
-      ? renderMarkdownDraftSource(parsed.solutionSource)
-      : null;
-
-    const { error } = await supabase
-      .from("questions")
-      .update({
-        content_html: contentHtml,
-        content_source: parsed.contentSource,
-        content_source_format: "markdown_latex",
-        difficulty_rating: parsed.difficultyRating,
-        solution_html: solutionHtml,
-        solution_source: parsed.solutionSource,
-        solution_source_format: "markdown_latex",
-        title: parsed.title,
-        updated_by: profile.id,
-      } as never)
-      .eq("id", parsed.questionId)
-      .eq("owner_bank_id", parsed.bankId)
-      .eq("status", "draft")
-      .is("published_at", null);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const { error: reviewItemError } = await supabase
-      .from("review_draft_items")
-      .update({
-        status: "pending_review",
-        target_bank_id: parsed.bankId,
-      } as never)
-      .eq("id", lineage.reviewDraftItemId);
-
-    if (reviewItemError) {
-      throw new Error(reviewItemError.message);
-    }
-
-    await recordBankReviewAction({
-      actionKind: "edit",
-      evidence: [
-        {
-          draftOnly: true,
-          questionId: parsed.questionId,
-          targetBankId: parsed.bankId,
-        },
-      ],
-      profileId: profile.id,
-      reason: "Teacher edited Review Draft content before Library approval.",
-      reviewBatchId: lineage.reviewBatchId,
-      reviewDraftItemId: lineage.reviewDraftItemId,
-      supabase,
-    });
-
+    const { parsed } = await saveBankReviewDraftQuestion(formData);
     revalidatePath(`/teacher/banks/${parsed.bankId}`);
     revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
     redirectWithSaved(
       `/teacher/banks/${parsed.bankId}/review`,
-      "Review Draft saved. It remains private and still requires approval before assignment.",
+      "Draft changes saved.",
+    );
+  } catch (error) {
+    redirectWithError(fallbackPath, formatActionError(error));
+  }
+}
+
+export async function publishBankReviewDraftChanges(formData: FormData) {
+  const fallbackPath = `/teacher/banks/${formData.get("bankId")}/review`;
+
+  try {
+    const { parsed, supabase } = await saveBankReviewDraftQuestion(formData);
+    await assertBankReviewQuestionsPublishable({
+      bankId: parsed.bankId,
+      questionIds: [parsed.questionId],
+      supabase,
+    });
+    const { data, error } = await (
+      supabase as unknown as ApproveBankReviewQuestionRpc
+    ).rpc("approve_bank_review_question", {
+      p_target_bank_id: parsed.bankId,
+      p_target_question_id: parsed.questionId,
+    });
+
+    if (error) throw new Error(error.message);
+    if (!data?.[0]?.bank_question_id) {
+      throw new Error("The question changes were not published.");
+    }
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
+    redirectWithSaved(
+      `/teacher/banks/${parsed.bankId}/questions`,
+      "Changes published and ready for new Assignments.",
     );
   } catch (error) {
     redirectWithError(fallbackPath, formatActionError(error));
@@ -1444,6 +1655,22 @@ export async function createBankQuestionRevisionDraft(formData: FormData) {
       bankId: parsed.bankId,
       profileId: profile.id,
     });
+    const { data: existingDraft, error: existingDraftError } = await supabase
+      .from("questions")
+      .select("id, source_review_item_id")
+      .eq("owner_bank_id", parsed.bankId)
+      .eq("revision_of_question_id", parsed.questionId)
+      .eq("status", "draft")
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (existingDraftError) throw new Error(existingDraftError.message);
+    if (existingDraft?.source_review_item_id) {
+      redirectWithSaved(
+        `/teacher/banks/${parsed.bankId}/review/${existingDraft.source_review_item_id}/edit?returnTo=${encodeURIComponent(`/teacher/banks/${parsed.bankId}/questions`)}`,
+        "Draft changes restored.",
+      );
+    }
+
     const { data: assets, error: assetError } = await supabase
       .from("question_assets")
       .select(
@@ -1469,13 +1696,23 @@ export async function createBankQuestionRevisionDraft(formData: FormData) {
     );
 
     if (error) throw new Error(error.message);
-    if (!revisionId) throw new Error("The revision draft was not created.");
+    if (!revisionId) throw new Error("Draft changes could not be created.");
+    const { data: createdDraft, error: createdDraftError } = await supabase
+      .from("questions")
+      .select("source_review_item_id")
+      .eq("id", revisionId)
+      .eq("owner_bank_id", parsed.bankId)
+      .maybeSingle();
+    if (createdDraftError) throw new Error(createdDraftError.message);
+    if (!createdDraft?.source_review_item_id) {
+      throw new Error("Draft changes could not be opened.");
+    }
 
     revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
     revalidatePath(`/teacher/banks/${parsed.bankId}/review`);
     redirectWithSaved(
-      `/teacher/banks/${parsed.bankId}/review`,
-      "Revision draft created. The current assignment-ready question remains active until this revision is approved.",
+      `/teacher/banks/${parsed.bankId}/review/${createdDraft.source_review_item_id}/edit?returnTo=${encodeURIComponent(`/teacher/banks/${parsed.bankId}/questions`)}`,
+      "Draft changes ready.",
     );
   } catch (error) {
     const message = formatActionError(error);
@@ -1537,6 +1774,122 @@ export async function submitBankQuestionsToPublicReview(formData: FormData) {
       `/teacher/banks/${parsed.bankId}/submissions`,
       `${data?.length ?? 0} immutable snapshot${data?.length === 1 ? "" : "s"} submitted for independent Super Admin review.`,
     );
+  } catch (error) {
+    redirectWithError(fallbackPath, formatActionError(error));
+  }
+}
+
+export async function manageSelectedBankQuestions(
+  _previousState: TeacherBulkActionState,
+  formData: FormData,
+): Promise<TeacherBulkActionState> {
+  try {
+    const profile = await requireTeacher();
+    const parsed = bankQuestionBulkOperationSchema.parse(
+      Object.fromEntries(formData),
+    );
+    const bankQuestionIds = parseCurrentPageUuidSelection(
+      formData,
+      "bankQuestionIds",
+    );
+    const { supabase } = await requireManageableBankForAction({
+      bankId: parsed.bankId,
+      profileId: profile.id,
+    });
+    const bulkRpc = supabase as unknown as TeacherBulkQuestionRpc;
+    let data: Array<Record<string, unknown>> | null = null;
+    let error: { message: string } | null = null;
+    let successMessage: string;
+
+    if (parsed.operation === "public_review") {
+      if (formData.get("publicLicenseConfirmed") !== "confirmed") {
+        throw new Error(
+          "Public publication rights must be explicitly confirmed.",
+        );
+      }
+
+      ({ data, error } = await bulkRpc.rpc(
+        "submit_bank_questions_to_public_review_for_bank",
+        {
+          p_public_license_confirmed: true,
+          p_source_bank_question_ids: bankQuestionIds,
+          p_target_bank_id: parsed.bankId,
+        },
+      ));
+      successMessage = `${data?.length ?? 0} immutable snapshot${data?.length === 1 ? "" : "s"} submitted for independent Public Review. Library originals were not changed.`;
+      revalidatePath(`/teacher/banks/${parsed.bankId}/submissions`);
+    } else {
+      const targetStatus =
+        parsed.operation === "archive"
+          ? "archived"
+          : parsed.operation === "delete"
+            ? "removed"
+            : "active";
+      ({ data, error } = await bulkRpc.rpc("set_bank_question_statuses", {
+        p_selected_bank_question_ids: bankQuestionIds,
+        p_target_bank_id: parsed.bankId,
+        p_target_status: targetStatus,
+      }));
+      successMessage =
+        parsed.operation === "archive"
+          ? `${data?.length ?? 0} Library question${data?.length === 1 ? "" : "s"} archived. Existing Assignments and evidence were not changed.`
+          : parsed.operation === "delete"
+            ? `${data?.length ?? 0} question${data?.length === 1 ? "" : "s"} deleted from this Library.`
+          : `${data?.length ?? 0} Library question${data?.length === 1 ? "" : "s"} restored for new Assignment selection.`;
+    }
+
+    if (error) throw new Error(error.message);
+    if ((data?.length ?? 0) !== bankQuestionIds.length) {
+      throw new Error(
+        "The complete Library selection was not processed. No partial result is accepted.",
+      );
+    }
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/assignments/new`);
+
+    return bulkActionResult({
+      message: successMessage,
+      processedCount: data?.length ?? 0,
+      status: "success",
+    });
+  } catch (error) {
+    return bulkActionResult({
+      message: `${formatActionError(error)} No selected Library question was changed.`,
+      status: "error",
+    });
+  }
+}
+
+export async function deleteBankQuestion(formData: FormData) {
+  const bankId = String(formData.get("bankId") ?? "");
+  const fallbackPath = `/teacher/banks/${bankId}/questions`;
+
+  try {
+    const profile = await requireTeacher();
+    const parsed = bankQuestionDeleteSchema.parse(Object.fromEntries(formData));
+    const { supabase } = await requireManageableBankForAction({
+      bankId: parsed.bankId,
+      profileId: profile.id,
+    });
+    const { data, error } = await (
+      supabase as unknown as TeacherBulkQuestionRpc
+    ).rpc("set_bank_question_statuses", {
+      p_selected_bank_question_ids: [parsed.bankQuestionId],
+      p_target_bank_id: parsed.bankId,
+      p_target_status: "removed",
+    });
+
+    if (error) throw new Error(error.message);
+    if (data?.length !== 1) {
+      throw new Error("The question was not deleted.");
+    }
+
+    revalidatePath(`/teacher/banks/${parsed.bankId}`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/questions`);
+    revalidatePath(`/teacher/banks/${parsed.bankId}/assignments/new`);
+    redirectWithSaved(fallbackPath, "Question deleted from this Library.");
   } catch (error) {
     redirectWithError(fallbackPath, formatActionError(error));
   }

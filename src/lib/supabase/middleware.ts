@@ -28,9 +28,32 @@ function redirectToUnauthorized(request: NextRequest) {
   return NextResponse.redirect(url);
 }
 
+function isTeacherFocusRoute(pathname: string) {
+  return (
+    /^\/teacher\/banks\/[^/]+\/questions\/(?:preview|[^/]+\/preview)$/.test(
+      pathname,
+    ) ||
+    /^\/teacher\/banks\/[^/]+\/review\/[^/]+$/.test(pathname) ||
+    /^\/teacher\/classrooms\/[^/]+\/assignments\/[^/]+\/student-preview$/.test(
+      pathname,
+    )
+  );
+}
+
+function applyTeacherFocusHeaders(response: NextResponse, pathname: string) {
+  if (!isTeacherFocusRoute(pathname)) return response;
+
+  response.headers.set("Cache-Control", "private, no-store");
+  response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  return response;
+}
+
 export async function updateSessionAndProtectRoutes(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.delete(AUTH_CONTEXT_HEADER);
+  const pathname = request.nextUrl.pathname;
 
   let pendingCookies: Array<{
     name: string;
@@ -42,7 +65,7 @@ export async function updateSessionAndProtectRoutes(request: NextRequest) {
     pendingCookies.forEach(({ name, value, options }) => {
       response.cookies.set(name, value, options);
     });
-    return response;
+    return applyTeacherFocusHeaders(response, pathname);
   }
 
   function createPassThroughResponse() {
@@ -79,7 +102,6 @@ export async function updateSessionAndProtectRoutes(request: NextRequest) {
     },
   });
 
-  const pathname = request.nextUrl.pathname;
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
   const isTeacherRoute =
     pathname === "/teacher" || pathname.startsWith("/teacher/");

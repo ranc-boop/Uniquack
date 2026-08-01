@@ -160,7 +160,7 @@ includesAll(
     "sourceScopeLockedAt",
     "not attempted",
     '"practice_summary_delta"',
-    "Start with more Libraries",
+    "Choose sources before starting the first round.",
     "PracticeRoundNavigator",
     "questionCount",
   ],

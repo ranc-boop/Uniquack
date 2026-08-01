@@ -20,23 +20,17 @@ type TeacherModuleCardProps = {
 
 export function TeacherWorkspaceShell({
   children,
-  eyebrow = "Teacher workspace",
   title,
-  description,
   actions,
 }: TeacherWorkspaceShellProps) {
   return (
-    <div className="teacher-shell space-y-6">
-      <section className="teacher-hero flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="max-w-3xl space-y-3">
-          <p className="teacher-eyebrow">{eyebrow}</p>
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">{title}</h1>
-            {description ? <p className="teacher-muted text-base">{description}</p> : null}
-          </div>
-        </div>
+    <div className="teacher-shell space-y-8">
+      <header className="teacher-page-header">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+          {title}
+        </h1>
         {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
-      </section>
+      </header>
       {children}
     </div>
   );

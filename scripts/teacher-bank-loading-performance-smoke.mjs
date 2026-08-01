@@ -17,6 +17,8 @@ const [
   questionsPage,
   reviewPage,
   adminQuestionsPage,
+  appPrimaryNav,
+  teacherPendingLink,
 ] = await Promise.all([
   read("src/lib/teacher-dashboard.ts"),
   read("src/lib/question-banks.ts"),
@@ -24,13 +26,27 @@ const [
   read("src/app/teacher/banks/[bankId]/questions/page.tsx"),
   read("src/app/teacher/banks/[bankId]/review/page.tsx"),
   read("src/app/admin/questions/page.tsx"),
+  read("src/components/app-primary-nav.tsx"),
+  read("src/components/teacher/teacher-pending-link.tsx"),
 ]);
 
 assert(
-  dashboard.includes("const [bankResult, classrooms] = await Promise.all([") &&
+  appPrimaryNav.includes("prefetch={false}") &&
+    teacherPendingLink.includes("prefetch={false}") &&
+    teacherPendingLink.includes("onMouseEnter={prefetchTarget}") &&
+    teacherPendingLink.includes("onFocus={prefetchTarget}"),
+  "Teacher navigation must disable viewport prefetch and only warm routes on user intent.",
+);
+
+assert(
+  dashboard.includes("export async function getTeacherHomeSummary") &&
     dashboard.includes("listTeacherQuestionBanks({ profileId, supabase })") &&
-    dashboard.includes("listTeacherClassroomSummaries({ supabase })"),
-  "Teacher dashboard must load independent Library and classroom data in parallel.",
+    !dashboard.includes("listTeacherClassroomSummaries") &&
+    !dashboard.includes("assignment_practice_sessions") &&
+    !dashboard.includes("student_assignment_progress") &&
+    !dashboard.includes("practice_attempts") &&
+    !dashboard.includes("import_batches"),
+  "Teacher home must derive its next action from the lightweight Library summary only.",
 );
 
 const bankListStart = questionBanks.indexOf(

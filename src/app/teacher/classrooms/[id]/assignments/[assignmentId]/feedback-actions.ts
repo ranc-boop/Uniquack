@@ -25,6 +25,7 @@ const feedbackNoteSchema = z.object({
   assignmentId: z.string().uuid(),
   body: z.string().trim().min(1).max(4000),
   classroomId: z.string().uuid(),
+  feedbackId: z.string().uuid(),
   practiceAttemptId: optionalUuid,
   questionId: optionalUuid,
   studentId: z.string().uuid(),
@@ -139,7 +140,8 @@ async function createTeacherFeedbackNote(
     const parsed = feedbackNoteSchema.parse(Object.fromEntries(formData));
     const { assignment, supabase } = await assertFeedbackScope(parsed);
     const sent = visibility === "sent_to_student";
-    const { error } = await supabase.from("teacher_feedback_notes").insert({
+    const feedbackRow = {
+      id: parsed.feedbackId,
       assignment_id: parsed.assignmentId,
       author_id: profile.id,
       body: parsed.body,
@@ -148,13 +150,45 @@ async function createTeacherFeedbackNote(
       practice_attempt_id: parsed.practiceAttemptId,
       question_id: parsed.questionId,
       sent_at: sent ? new Date().toISOString() : null,
-      status: sent ? "sent" : "draft",
+      status: sent ? ("sent" as const) : ("draft" as const),
       student_id: parsed.studentId,
       visibility,
-    });
+    };
+    const { error } = await supabase
+      .from("teacher_feedback_notes")
+      .insert(feedbackRow);
 
     if (error) {
-      throw new Error(error.message);
+      if (error.code === "23505") {
+        const { data: existing, error: existingError } = await supabase
+          .from("teacher_feedback_notes")
+          .select(
+            "assignment_id, body, classroom_id, practice_attempt_id, question_id, status, student_id, visibility",
+          )
+          .eq("id", parsed.feedbackId)
+          .eq("author_id", profile.id)
+          .maybeSingle();
+
+        if (
+          !existingError &&
+          existing?.assignment_id === feedbackRow.assignment_id &&
+          existing.body === feedbackRow.body &&
+          existing.classroom_id === feedbackRow.classroom_id &&
+          existing.practice_attempt_id === feedbackRow.practice_attempt_id &&
+          existing.question_id === feedbackRow.question_id &&
+          existing.status === feedbackRow.status &&
+          existing.student_id === feedbackRow.student_id &&
+          existing.visibility === feedbackRow.visibility
+        ) {
+          // The first request committed. Continue to the same success receipt.
+        } else {
+          throw new Error(
+            "This feedback request was already used for different content. Refresh before sending again.",
+          );
+        }
+      } else {
+        throw new Error(error.message);
+      }
     }
 
     revalidatePath(fallbackPath);

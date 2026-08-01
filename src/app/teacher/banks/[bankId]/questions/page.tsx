@@ -3,36 +3,38 @@ import { notFound, redirect } from "next/navigation";
 
 import { Upload } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
+import { DeleteLibraryQuestionButton } from "@/components/teacher/delete-library-question-button";
+import {
+  BulkRowCheckbox,
+  BulkSelectAllCheckbox,
+  CurrentPageSelectionProvider,
+  QuestionBulkActionBar,
+  type TeacherBulkSelectionItem,
+} from "@/components/teacher/teacher-bulk-selection";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
-  canManageBankContent,
   getTeacherQuestionBankAccess,
   listBankQuestionsPage,
   QuestionBankSchemaMissingError,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import { sanitizeTeacherBankReturnTo } from "@/lib/teacher-focus-workspace";
+import { cn } from "@/lib/utils";
 import type { BankQuestion } from "@/types/database";
 
 import {
   createBankQuestionRevisionDraft,
+  deleteBankQuestion,
+  manageSelectedBankQuestions,
   pullPublicQuestionIntoBank,
-  submitBankQuestionsToPublicReview,
 } from "../../actions";
 
 import {
-  bankActionIcons,
   BankBadge,
   BankQuickAction,
   BankRouteTabs,
@@ -41,16 +43,6 @@ import {
 } from "../../bank-ui";
 
 export const dynamic = "force-dynamic";
-
-function formatDate(value: string | null) {
-  if (!value) return "Unknown";
-
-  return new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
-}
 
 function SetupNeededState() {
   return (
@@ -77,12 +69,14 @@ export default async function TeacherBankQuestionsPage({
 }: {
   params: Promise<{ bankId: string }>;
   searchParams: Promise<{
+    error?: string;
     page?: string;
     public?: string;
     publicPage?: string;
     publicQ?: string;
     q?: string;
     readiness?: string;
+    saved?: string;
     source?: string;
     taxonomy?: string;
   }>;
@@ -145,8 +139,8 @@ export default async function TeacherBankQuestionsPage({
   }
 
   const questions = questionPage?.items ?? [];
-  const { bank, currentUserRole } = access;
-  const canManage = canManageBankContent(currentUserRole);
+  const { bank } = access;
+  const canManage = access.canManage;
   // search_bank_question_rows is installed by the same forward migration as
   // revision/public governance. A successful page result is the capability
   // check, so avoid a separate schema-probe query on every filter/page change.
@@ -157,6 +151,7 @@ export default async function TeacherBankQuestionsPage({
     question_code: string;
     question_type: string;
     title: string;
+    updated_at: string;
   }> = [];
   const publicPageSize = 25;
   const publicPage = Math.max(
@@ -168,7 +163,7 @@ export default async function TeacherBankQuestionsPage({
   if (showPublicCatalog && canManage && governanceAvailable) {
     let publicQuestionQuery = supabase
       .from("questions")
-      .select("id, question_code, title, question_type, difficulty_rating", {
+      .select("id, question_code, title, question_type, difficulty_rating, updated_at", {
         count: "exact",
       })
       .is("owner_bank_id", null)
@@ -225,40 +220,104 @@ export default async function TeacherBankQuestionsPage({
   if (!showPublicCatalog && page > totalPages) {
     redirect(pageHref(totalPages));
   }
+  const questionPreviewReturnTo = sanitizeTeacherBankReturnTo({
+    bankId: bank.id,
+    rawReturnTo: `/teacher/banks/${bank.id}/questions${
+      page > 1 ||
+      readiness === "archived" ||
+      Boolean(sourceKind) ||
+      Boolean(query.taxonomy?.trim()) ||
+      Boolean(query.q?.trim())
+        ? `?${new URLSearchParams({
+            ...(page > 1 ? { page: String(page) } : {}),
+            ...(readiness === "archived" ? { readiness: "archived" } : {}),
+            ...(sourceKind ? { source: sourceKind } : {}),
+            ...(query.taxonomy?.trim()
+              ? { taxonomy: query.taxonomy.trim() }
+              : {}),
+            ...(query.q?.trim() ? { q: query.q.trim() } : {}),
+          }).toString()}`
+        : ""
+    }`,
+    surface: "questions",
+  });
   const hasQuestionFilters = Boolean(
     query.q?.trim() ||
       query.taxonomy?.trim() ||
       sourceKind ||
       readiness === "archived",
   );
+  const questionBulkItems: TeacherBulkSelectionItem[] = questions.map((row) => {
+    const question = row.question;
+    const metadata =
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : {};
+    const superseded =
+      readiness === "archived" &&
+      typeof metadata.replacedByQuestionId === "string";
+    const eligible = canManage && Boolean(question) && !superseded;
+
+    return {
+      disabledReason: eligible
+        ? undefined
+        : superseded
+          ? "This archived question was replaced by an approved revision and cannot be restored."
+          : question
+          ? "Viewer access cannot change Library questions."
+          : "This Library question is unavailable.",
+      eligible,
+      id: row.bank_question_id,
+      label: `${question?.question_code ?? "Code unavailable"} · ${question?.title ?? "Question unavailable"}`,
+    };
+  });
+  const questionBulkScopeKey = [
+    bank.id,
+    "questions",
+    page,
+    readiness,
+    sourceKind ?? "all",
+    query.taxonomy?.trim() ?? "",
+    query.q?.trim() ?? "",
+  ].join(":");
 
   return (
     <BankWorkbenchPage>
-      <section className="rounded-lg border bg-white shadow-sm">
-        <BankSectionHeader
-          action={
-          <>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
-            </Button>
-            {canManage ? (
-              <BankQuickAction
-                href={`/teacher/publish?sourceBankId=${bank.id}`}
-                icon={bankActionIcons.assignment}
-                variant={questionPage?.total ? "default" : "outline"}
-              >
-                Assign selected work
-              </BankQuickAction>
-            ) : null}
-          </>
-        }
-          description={`Role: ${currentUserRole ?? "viewer"}. These assignment-ready Library questions are not public/global questions.`}
-          eyebrow="Question database · Library / Questions"
-          title={`Reviewed content in ${bank.name}`}
-        />
-      </section>
+      <header className="teacher-page-header">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+            Questions
+          </h1>
+          <p className="mt-1 text-base font-medium text-slate-600">
+            {bank.name}
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href={`/teacher/banks/${bank.id}`}>Back</Link>
+        </Button>
+      </header>
 
-      <BankRouteTabs bankId={bank.id} />
+      <BankRouteTabs
+        bankId={bank.id}
+        currentUserRole={access.currentUserRole}
+      />
+
+      {query.saved ? (
+        <p
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
+          role="status"
+        >
+          {query.saved}
+        </p>
+      ) : null}
+      {query.error ? (
+        <p
+          className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900"
+          role="alert"
+        >
+          {query.error}
+        </p>
+      ) : null}
 
       {!governanceAvailable ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
@@ -269,7 +328,7 @@ export default async function TeacherBankQuestionsPage({
       ) : null}
 
       {showPublicCatalog && governanceAvailable ? (
-        <section className="overflow-hidden rounded-lg border border-sky-200 bg-white shadow-sm">
+        <section className="border-y border-slate-200 bg-white">
           <BankSectionHeader
             action={
               <Button asChild variant="outline">
@@ -278,7 +337,6 @@ export default async function TeacherBankQuestionsPage({
                 </Link>
               </Button>
             }
-            description="Each selection becomes an independent Library-owned copy. Later changes in the Central Public Library cannot change your copy or existing Assignments."
             eyebrow="Central Public Library"
             title="Add approved public questions"
           />
@@ -311,49 +369,43 @@ export default async function TeacherBankQuestionsPage({
             </p>
           ) : publicQuestions.length ? (
             <>
-              <div className="overflow-x-auto">
-                <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Difficulty</TableHead>
-                    <TableHead>Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {publicQuestions.map((question) => (
-                    <TableRow key={question.id}>
-                      <TableCell className="font-mono text-xs">
-                        {question.question_code}
-                      </TableCell>
-                      <TableCell className="font-semibold">
-                        {question.title}
-                      </TableCell>
-                      <TableCell>{question.question_type}</TableCell>
-                      <TableCell>{question.difficulty_rating}</TableCell>
-                      <TableCell>
-                        <form action={pullPublicQuestionIntoBank}>
-                          <input name="bankId" type="hidden" value={bank.id} />
-                          <input
-                            name="publicQuestionId"
-                            type="hidden"
-                            value={question.id}
-                          />
-                          <FormSubmitButton
-                            pendingLabel="Copying…"
-                            size="sm"
-                            variant="outline"
-                          >
-                            Add independent copy
-                          </FormSubmitButton>
-                        </form>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                </Table>
+              <div className="divide-y divide-slate-200">
+                {publicQuestions.map((question) => (
+                  <article className="px-4 py-4" key={question.id}>
+                    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-base font-semibold text-slate-950">
+                          {question.title}
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {question.question_code} · {question.question_type}
+                        </p>
+                      </div>
+                      <form action={pullPublicQuestionIntoBank}>
+                        <input name="bankId" type="hidden" value={bank.id} />
+                        <input
+                          name="publicQuestionId"
+                          type="hidden"
+                          value={question.id}
+                        />
+                        <FormSubmitButton
+                          pendingLabel="Adding…"
+                          size="sm"
+                        >
+                          Add
+                        </FormSubmitButton>
+                      </form>
+                    </div>
+                    <LazyTeacherQuestionPreview
+                      bankId={bank.id}
+                      className="mt-2 flex w-full flex-col items-start [&>div]:w-full lg:items-end"
+                      id={question.id}
+                      key={`${question.id}:${question.updated_at}`}
+                      kind="public-question"
+                      version={question.updated_at}
+                    />
+                  </article>
+                ))}
               </div>
               <div className="flex items-center justify-between border-t border-sky-100 p-4 text-sm">
                 <span>
@@ -397,32 +449,48 @@ export default async function TeacherBankQuestionsPage({
       ) : null}
 
       {!showPublicCatalog ? (
-        <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
+        <CurrentPageSelectionProvider
+          action={manageSelectedBankQuestions}
+          bankId={bank.id}
+          checkboxName="bankQuestionIds"
+          fallbackFocusId="library-question-results-focus"
+          formId="question-bulk-management-form"
+          items={questionBulkItems}
+          key={questionBulkScopeKey}
+          returnTo={questionPreviewReturnTo}
+          scopeKey={questionBulkScopeKey}
+          totalResults={questionPage?.total ?? 0}
+        >
+        <section className="border-y border-slate-200 bg-white">
           <BankSectionHeader
-            action={
-              <div className="flex flex-wrap gap-2">
-                {canManage && governanceAvailable ? (
-                  <Button asChild variant="outline">
-                    <Link href={`/teacher/banks/${bank.id}/questions?public=1`}>
-                      Add from Public Library
-                    </Link>
-                  </Button>
-                ) : null}
-                {canManage ? (
-                  <BankQuickAction
-                    href={`/teacher/banks/${bank.id}/imports`}
-                    icon={Upload}
-                  >
-                    Import material
-                  </BankQuickAction>
-                ) : null}
-              </div>
-            }
-            description="Source lineage, taxonomy status, and assignment readiness stay visible before classroom delivery."
-            title="Active Library questions"
+              action={
+                <div className="flex flex-wrap gap-2">
+                  {canManage && governanceAvailable ? (
+                    <Button asChild variant="outline">
+                      <Link href={`/teacher/banks/${bank.id}/questions?public=1`}>
+                        Add from Public Library
+                      </Link>
+                    </Button>
+                  ) : null}
+                  {canManage ? (
+                    <BankQuickAction
+                      href={`/teacher/banks/${bank.id}/imports`}
+                      icon={Upload}
+                    >
+                      Import material
+                    </BankQuickAction>
+                  ) : null}
+                </div>
+              }
+              focusId="library-question-results-focus"
+              title={
+                readiness === "active"
+                  ? "Ready"
+                  : "Archived"
+              }
           />
-        <form className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_12rem_12rem_auto]">
-          <div className="space-y-2">
+        <form className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1 space-y-2">
             <Label htmlFor="library-question-search">Search</Label>
             <Input
               defaultValue={query.q ?? ""}
@@ -431,171 +499,181 @@ export default async function TeacherBankQuestionsPage({
               placeholder="Question code or title"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="library-question-readiness">Readiness</Label>
-            <select
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              defaultValue={readiness}
-              id="library-question-readiness"
-              name="readiness"
+          <details className="group relative">
+            <summary
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "min-h-10 cursor-pointer list-none",
+              )}
             >
-              <option value="active">Ready for assignment</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="library-question-source">Source</Label>
-            <select
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              defaultValue={sourceKind ?? ""}
-              id="library-question-source"
-              name="source"
-            >
-              <option value="">All sources</option>
-              <option value="manual">Manual</option>
-              <option value="review_draft">Reviewed draft</option>
-              <option value="import">JSON / AI import</option>
-              <option value="public_pull">Public Library</option>
-              <option value="course_builder">Course Builder</option>
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="library-question-taxonomy">Taxonomy tag</Label>
-            <Input
-              defaultValue={query.taxonomy ?? ""}
-              id="library-question-taxonomy"
-              name="taxonomy"
-              placeholder="Exact tag ID"
-            />
-          </div>
-          <div className="flex items-end gap-2">
-            <Button type="submit">Filter</Button>
-            <Button asChild type="button" variant="outline">
-              <Link href={`/teacher/banks/${bank.id}/questions`}>Reset</Link>
-            </Button>
-          </div>
+              Filters
+            </summary>
+            <div className="mt-2 w-full space-y-4 rounded-md border border-slate-200 bg-white p-4 shadow-lg sm:absolute sm:right-0 sm:z-20 sm:w-80">
+              <div className="space-y-2">
+                <Label htmlFor="library-question-readiness">State</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  defaultValue={readiness}
+                  id="library-question-readiness"
+                  name="readiness"
+                >
+                  <option value="active">Ready</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="library-question-source">Source</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  defaultValue={sourceKind ?? ""}
+                  id="library-question-source"
+                  name="source"
+                >
+                  <option value="">All sources</option>
+                  <option value="manual">Manual</option>
+                  <option value="review_draft">Reviewed Draft</option>
+                  <option value="import">Import</option>
+                  <option value="public_pull">Public Library</option>
+                  <option value="course_builder">Course Builder</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="library-question-taxonomy">Taxonomy tag</Label>
+                <Input
+                  defaultValue={query.taxonomy ?? ""}
+                  id="library-question-taxonomy"
+                  name="taxonomy"
+                  placeholder="Exact tag ID"
+                />
+              </div>
+              <Button asChild type="button" variant="outline">
+                <Link href={`/teacher/banks/${bank.id}/questions`}>Reset</Link>
+              </Button>
+            </div>
+          </details>
+          <Button type="submit">Search</Button>
         </form>
         <div>
           {questionPage?.total ? (
             <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {canManage ? <TableHead className="w-12">Select</TableHead> : null}
-                      <TableHead>Code</TableHead>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Taxonomy</TableHead>
-                      <TableHead>Difficulty</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead className="w-40">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {questions.map((row) => {
-                      const question = row.question;
-                      return (
-                        <TableRow key={row.bank_question_id}>
-                          {canManage ? (
-                            <TableCell>
-                              <input
-                                aria-label={`Select ${question?.question_code ?? "question"} for public submission`}
-                                form="public-submission-form"
-                                name="bankQuestionId"
-                                type="checkbox"
-                                value={row.bank_question_id}
-                              />
-                            </TableCell>
-                          ) : null}
-                          <TableCell className="font-mono text-xs">
-                            {question?.question_code ?? "Unavailable"}
-                          </TableCell>
-                          <TableCell className="min-w-56 font-semibold">
+              {canManage ? (
+                <div className="flex min-h-12 items-center gap-3 border-b border-slate-200 px-4 text-sm font-semibold text-slate-700">
+                  <BulkSelectAllCheckbox
+                    label={`Select all ${questionBulkItems.filter((item) => item.eligible).length} eligible questions on this page`}
+                  />
+                  Select page
+                </div>
+              ) : null}
+              <div className="divide-y divide-slate-200">
+                {questions.map((row) => {
+                  const question = row.question;
+                  const rowMetadata =
+                    row.metadata &&
+                    typeof row.metadata === "object" &&
+                    !Array.isArray(row.metadata)
+                      ? (row.metadata as Record<string, unknown>)
+                      : {};
+                  const isSuperseded =
+                    readiness === "archived" &&
+                    typeof rowMetadata.replacedByQuestionId === "string";
+                  const focusHref = `/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview?returnTo=${encodeURIComponent(questionPreviewReturnTo)}`;
+
+                  return (
+                    <article className="px-4 py-4" key={row.bank_question_id}>
+                      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+                        {canManage ? (
+                          <BulkRowCheckbox itemId={row.bank_question_id} />
+                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <h2 className="truncate text-base font-semibold text-slate-950">
                             {question?.title ?? "Question unavailable"}
-                            <p className="mt-1 text-xs font-normal text-muted-foreground">
-                              Added {formatDate(row.added_at)}
+                          </h2>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {question?.question_code ?? "Code unavailable"} ·{" "}
+                            {question?.question_type ?? "Type unavailable"}
+                          </p>
+                          {isSuperseded ? (
+                            <p className="mt-2 text-sm font-medium text-amber-800">
+                              Replaced by a newer version
                             </p>
-                          </TableCell>
-                          <TableCell>{question?.question_type ?? "—"}</TableCell>
-                          <TableCell className="min-w-48">
-                            <div className="flex flex-wrap gap-1">
-                              {row.tagSummaries.length ? (
-                                row.tagSummaries.slice(0, 3).map((tag) => (
-                                  <BankBadge key={tag.tag_id} tone="sky">
-                                    {tag.label ?? tag.tag_id}
-                                  </BankBadge>
-                                ))
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  Not tagged
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {question?.difficulty_rating ?? "Not set"}
-                          </TableCell>
-                          <TableCell>
-                            <BankBadge tone={row.status === "active" ? "indigo" : "amber"}>
-                              {row.status === "active"
-                                ? "Ready for assignment"
-                                : "Archived"}
-                            </BankBadge>
-                          </TableCell>
-                          <TableCell>{row.source_kind}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-2">
-                              {canManage ? (
-                                <Button asChild size="sm" variant="outline">
-                                  <Link href={`/teacher/publish?sourceBankId=${bank.id}`}>
-                                    Assign
-                                  </Link>
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  Read-only
-                                </span>
-                              )}
-                              {canManage && governanceAvailable && question ? (
-                                <form action={createBankQuestionRevisionDraft}>
-                                  <input
-                                    name="bankId"
-                                    type="hidden"
-                                    value={bank.id}
-                                  />
-                                  <input
-                                    name="questionId"
-                                    type="hidden"
-                                    value={question.id}
-                                  />
-                                  <FormSubmitButton
-                                    pendingLabel="Creating…"
-                                    size="sm"
-                                    variant="outline"
-                                  >
-                                    Revise
-                                  </FormSubmitButton>
-                                </form>
-                              ) : null}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {!questions.length ? (
-                      <TableRow>
-                        <TableCell
-                          className="h-24 text-center"
-                          colSpan={canManage ? 9 : 8}
+                          ) : null}
+                        </div>
+                        <BankBadge
+                          tone={row.status === "active" ? "indigo" : "amber"}
                         >
-                              No questions match these filters.
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </TableBody>
-                </Table>
+                          {row.status === "active" ? "Ready" : "Archived"}
+                        </BankBadge>
+                        {canManage &&
+                        governanceAvailable &&
+                        question &&
+                        row.status === "active" ? (
+                          <form action={createBankQuestionRevisionDraft}>
+                            <input
+                              name="bankId"
+                              type="hidden"
+                              value={bank.id}
+                            />
+                            <input
+                              name="questionId"
+                              type="hidden"
+                              value={question.id}
+                            />
+                            <FormSubmitButton
+                              pendingLabel="Opening…"
+                              size="sm"
+                              variant="outline"
+                            >
+                              Edit
+                            </FormSubmitButton>
+                          </form>
+                        ) : null}
+                        <details className="group relative">
+                          <summary className="inline-flex min-h-10 cursor-pointer list-none items-center rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+                            More
+                          </summary>
+                          <div className="mt-1 w-52 rounded-md border border-slate-200 bg-white p-2 shadow-lg lg:absolute lg:right-0 lg:z-20">
+                            <a
+                              className="flex min-h-10 items-center rounded-md px-3 text-sm font-medium hover:bg-slate-50"
+                              href={focusHref}
+                              referrerPolicy="no-referrer"
+                              rel="noopener noreferrer"
+                              target="_blank"
+                            >
+                              Open in new tab
+                            </a>
+                            {!isSuperseded ? (
+                              <form action={deleteBankQuestion}>
+                                <input
+                                  name="bankId"
+                                  type="hidden"
+                                  value={bank.id}
+                                />
+                                <input
+                                  name="bankQuestionId"
+                                  type="hidden"
+                                  value={row.bank_question_id}
+                                />
+                                <DeleteLibraryQuestionButton
+                                  questionTitle={
+                                    question?.title ?? "this question"
+                                  }
+                                />
+                              </form>
+                            ) : null}
+                          </div>
+                        </details>
+                      </div>
+                      <LazyTeacherQuestionPreview
+                        bankId={bank.id}
+                        className="mt-2"
+                        id={row.bank_question_id}
+                        key={`${row.bank_question_id}:${row.question?.updated_at ?? row.added_at}`}
+                        kind="question"
+                        version={row.question?.updated_at ?? row.added_at}
+                      />
+                    </article>
+                  );
+                })}
               </div>
               <div className="flex items-center justify-between border-t border-slate-200 p-4 text-sm">
                 <span>
@@ -617,55 +695,20 @@ export default async function TeacherBankQuestionsPage({
                   </Button>
                 </div>
               </div>
-              {canManage && governanceAvailable ? (
-                <form
-                  action={submitBankQuestionsToPublicReview}
-                  className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-4"
-                  id="public-submission-form"
-                >
-                  <input name="bankId" type="hidden" value={bank.id} />
-                  <div className="max-w-2xl space-y-2 text-xs text-muted-foreground">
-                    <p>
-                      The selected rows above are the submission preview:
-                      question content, source Library, approved taxonomy, and
-                      reviewed images are frozen into an immutable snapshot.
-                      Private PDFs and source files are never submitted.
-                    </p>
-                    <label className="flex cursor-pointer items-start gap-2 text-foreground">
-                      <input
-                        className="mt-0.5"
-                        name="publicLicenseConfirmed"
-                        required
-                        type="checkbox"
-                        value="confirmed"
-                      />
-                      <span>
-                        I confirm that these questions and reviewed images may
-                        be submitted for public publication. Submission does not
-                        publish or change the Library originals.
-                      </span>
-                    </label>
-                  </div>
-                  <FormSubmitButton pendingLabel="Submitting…">
-                    Submit selected to Public Library
-                  </FormSubmitButton>
-                </form>
+              {canManage ? (
+                <QuestionBulkActionBar
+                  bankId={bank.id}
+                  readiness={readiness}
+                  returnTo={questionPreviewReturnTo}
+                />
               ) : null}
             </>
           ) : (
-            <div className="p-8 text-center">
-              <p className="teacher-eyebrow">
-                {hasQuestionFilters ? "No matching questions" : "Empty Library"}
-              </p>
-              <h3 className="mt-2 text-xl font-bold text-slate-950">
+            <div className="p-10 text-center">
+              <p className="font-semibold text-slate-900">
                 {hasQuestionFilters
-                  ? "No Library questions match these filters."
-                  : "No reviewed questions in this Library yet."}
-              </h3>
-              <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                {hasQuestionFilters
-                  ? "Change or reset the filters to see other Library questions."
-                  : "Import private material, review the drafts, then approve questions into this Library."}
+                  ? "No questions match these filters."
+                  : "This Library has no Ready questions."}
               </p>
               {canManage ? (
                 <Button asChild className="mt-5" variant="outline">
@@ -678,6 +721,7 @@ export default async function TeacherBankQuestionsPage({
           )}
         </div>
         </section>
+        </CurrentPageSelectionProvider>
       ) : null}
     </BankWorkbenchPage>
   );

@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { practiceAnswerKey } from "@/lib/practice/client-helpers";
 import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
@@ -65,6 +66,8 @@ function QuestionAnswerInput({
   answerCommitted,
   clientReady,
   disabled,
+  hasAnswerError,
+  index,
   onChange,
   question,
 }: {
@@ -72,12 +75,25 @@ function QuestionAnswerInput({
   answerCommitted: boolean;
   clientReady: boolean;
   disabled?: boolean;
+  hasAnswerError: boolean;
+  index: number;
   onChange: (value: string | string[]) => void;
   question: PracticeRecommendation;
 }) {
   const answerKey = practiceAnswerKey(question);
+  const answerControlId = `practice-question-${index + 1}-answer`;
+  const answerErrorId = `practice-question-${index + 1}-answer-error`;
+  const answerLabel = `Your answer for question ${index + 1}: ${question.title}`;
   const control = question.questionType === "mcq" && question.options.length ? (
-    <div className="space-y-2">
+    <fieldset
+      aria-describedby={hasAnswerError ? answerErrorId : undefined}
+      aria-invalid={hasAnswerError || undefined}
+      className="space-y-2"
+    >
+      <legend className="mb-2 text-sm font-semibold text-slate-900">
+        <span className="sr-only">{answerLabel}. </span>
+        Choose one answer
+      </legend>
       {question.options.map((option) => {
         const selected = Array.isArray(answer) ? answer.includes(option.id) : answer === option.id;
         return (
@@ -93,6 +109,7 @@ function QuestionAnswerInput({
               checked={selected}
               className="mt-1 size-5 accent-sky-600"
               disabled={disabled}
+              id={`${answerControlId}-${option.id}`}
               name={`answer-${answerKey}`}
               onChange={() => onChange(option.id)}
               type="radio"
@@ -106,16 +123,23 @@ function QuestionAnswerInput({
           </label>
         );
       })}
-    </div>
+    </fieldset>
   ) : (
-    <Textarea
-      className="min-h-32 text-base leading-7"
-      disabled={disabled}
-      maxLength={PRACTICE_INPUT_LIMITS.ANSWER_CHARS}
-      onChange={(event) => onChange(event.currentTarget.value)}
-      placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
-      value={answerValue(answer)}
-    />
+    <div className="space-y-2">
+      <Label htmlFor={answerControlId}>Your answer</Label>
+      <Textarea
+        aria-describedby={hasAnswerError ? answerErrorId : undefined}
+        aria-invalid={hasAnswerError || undefined}
+        aria-label={answerLabel}
+        className="min-h-32 text-base leading-7"
+        disabled={disabled}
+        id={answerControlId}
+        maxLength={PRACTICE_INPUT_LIMITS.ANSWER_CHARS}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
+        value={answerValue(answer)}
+      />
+    </div>
   );
 
   return (
@@ -125,6 +149,11 @@ function QuestionAnswerInput({
       data-testid="practice-answer-control"
     >
       {control}
+      {hasAnswerError ? (
+        <p className="mt-2 text-sm font-semibold text-destructive" id={answerErrorId}>
+          Answer required for question {index + 1}.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -170,6 +199,7 @@ export function PracticeQuestionCard({
   answerCommitted,
   clientReady,
   currentAnswer,
+  hasAnswerError,
   hints,
   index,
   isPending,
@@ -183,6 +213,7 @@ export function PracticeQuestionCard({
   answerCommitted: boolean;
   clientReady: boolean;
   currentAnswer: string | string[] | undefined;
+  hasAnswerError: boolean;
   hints: string[];
   index: number;
   isPending: boolean;
@@ -194,9 +225,18 @@ export function PracticeQuestionCard({
   review?: PracticeQuestionReview;
 }) {
   const answerKey = practiceAnswerKey(question);
+  const questionRegionId = `practice-question-${index + 1}`;
+  const questionTitleId = `${questionRegionId}-title`;
 
   return (
-    <Card className="student-card-hover border-slate-200 shadow-sm">
+    <Card
+      aria-labelledby={questionTitleId}
+      className={`student-card-hover border-slate-200 shadow-sm ${
+        hasAnswerError ? "border-destructive/50 ring-1 ring-destructive/20" : ""
+      }`}
+      data-practice-question-index={index + 1}
+      id={questionRegionId}
+    >
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 gap-3">
@@ -204,7 +244,14 @@ export function PracticeQuestionCard({
               {index + 1}
             </span>
             <div className="min-w-0">
-              <CardTitle className="text-xl leading-snug">{question.title}</CardTitle>
+              <CardTitle
+                aria-level={2}
+                className="text-xl leading-snug"
+                id={questionTitleId}
+                role="heading"
+              >
+                {question.title}
+              </CardTitle>
             </div>
           </div>
           {resultBadge(result) ?? (phase === "feedback" ? reviewingBadge() : null)}
@@ -217,6 +264,8 @@ export function PracticeQuestionCard({
           answerCommitted={answerCommitted}
           clientReady={clientReady}
           disabled={phase === "feedback"}
+          hasAnswerError={hasAnswerError}
+          index={index}
           onChange={onAnswerChange}
           question={question}
         />

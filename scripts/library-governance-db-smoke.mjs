@@ -844,6 +844,184 @@ try {
   await client.query(
     "select set_config('request.jwt.claim.role', 'service_role', false)",
   );
+  const bulkDraftOneResult = await client.query(
+    "select public.create_bank_manual_question_draft($1, 'BULK-001', 'First atomic bulk draft') as id",
+    [ids.bank],
+  );
+  const bulkDraftTwoResult = await client.query(
+    "select public.create_bank_manual_question_draft($1, 'BULK-002', 'Second atomic bulk draft') as id",
+    [ids.bank],
+  );
+  const bulkDraftOneId = bulkDraftOneResult.rows[0]?.id;
+  const bulkDraftTwoId = bulkDraftTwoResult.rows[0]?.id;
+  assert(
+    bulkDraftOneId && bulkDraftTwoId,
+    "Bulk Review fixtures must create two pending bank-scoped drafts.",
+  );
+
+  await client.query(
+    `update public.review_draft_items
+        set status = 'needs_more_evidence'
+      where created_question_id = $1`,
+    [bulkDraftTwoId],
+  );
+  let atomicBulkDenied = false;
+  try {
+    await client.query(
+      "select * from public.approve_bank_review_questions($1, array[$2, $3]::uuid[])",
+      [ids.bank, bulkDraftOneId, bulkDraftTwoId],
+    );
+  } catch {
+    atomicBulkDenied = true;
+  }
+  const unchangedBulkDrafts = await client.query(
+    `select count(*)::integer as count
+       from public.questions
+      where id = any(array[$1, $2]::uuid[])
+        and status = 'draft'
+        and not exists (
+          select 1 from public.bank_questions
+           where bank_questions.question_id = questions.id
+        )`,
+    [bulkDraftOneId, bulkDraftTwoId],
+  );
+  assert(
+    atomicBulkDenied && unchangedBulkDrafts.rows[0]?.count === 2,
+    "One stale Review Draft must roll the complete bulk approval back to zero writes.",
+  );
+
+  await client.query(
+    `update public.review_draft_items
+        set status = 'pending_review'
+      where created_question_id = $1`,
+    [bulkDraftTwoId],
+  );
+  await client.query(
+    `select set_config('request.jwt.claim.role', 'authenticated', false),
+            set_config('request.jwt.claim.sub', $1, false)`,
+    [ids.viewer],
+  );
+  let viewerBulkDenied = false;
+  try {
+    await client.query(
+      "select * from public.approve_bank_review_questions($1, array[$2]::uuid[])",
+      [ids.bank, bulkDraftOneId],
+    );
+  } catch {
+    viewerBulkDenied = true;
+  }
+  assert(
+    viewerBulkDenied,
+    "A Library viewer must not approve a Review Draft batch.",
+  );
+
+  await client.query(
+    "select set_config('request.jwt.claim.sub', $1, false)",
+    [ids.teacher],
+  );
+  let duplicateBulkDenied = false;
+  try {
+    await client.query(
+      "select * from public.approve_bank_review_questions($1, array[$2, $2]::uuid[])",
+      [ids.bank, bulkDraftOneId],
+    );
+  } catch {
+    duplicateBulkDenied = true;
+  }
+  let oversizedBulkDenied = false;
+  try {
+    await client.query(
+      "select * from public.approve_bank_review_questions($1, array_fill($2::uuid, array[26]))",
+      [ids.bank, bulkDraftOneId],
+    );
+  } catch {
+    oversizedBulkDenied = true;
+  }
+  assert(
+    duplicateBulkDenied && oversizedBulkDenied,
+    "Bulk Review must reject duplicate IDs and selections above the current-page limit.",
+  );
+
+  const bulkApproval = await client.query(
+    "select * from public.approve_bank_review_questions($1, array[$2, $3]::uuid[])",
+    [ids.bank, bulkDraftOneId, bulkDraftTwoId],
+  );
+  const bulkBankQuestionIds = bulkApproval.rows.map(
+    (row) => row.bank_question_id,
+  );
+  assert(
+    bulkApproval.rowCount === 2 &&
+      new Set(bulkApproval.rows.map((row) => row.question_id)).size === 2,
+    "A valid current-page Review selection must approve exactly two distinct drafts.",
+  );
+  const archivedBulkQuestions = await client.query(
+    "select * from public.set_bank_question_statuses($1, $2::uuid[], 'archived')",
+    [ids.bank, bulkBankQuestionIds],
+  );
+  const restoredBulkQuestions = await client.query(
+    "select * from public.set_bank_question_statuses($1, $2::uuid[], 'active')",
+    [ids.bank, bulkBankQuestionIds],
+  );
+  assert(
+    archivedBulkQuestions.rowCount === 2 &&
+      archivedBulkQuestions.rows.every((row) => row.status === "archived") &&
+      restoredBulkQuestions.rowCount === 2 &&
+      restoredBulkQuestions.rows.every((row) => row.status === "active"),
+    "Owner bulk question management must atomically archive and restore the complete selection.",
+  );
+  const focusReceiptResult = await client.query(
+    "select public.create_teacher_focus_selection_receipt($1, 'questions', $2::uuid[]) as id",
+    [ids.bank, bulkBankQuestionIds],
+  );
+  const focusReceiptId = focusReceiptResult.rows[0]?.id;
+  const focusReceiptRead = await client.query(
+    "select public.read_teacher_focus_selection_receipt($1, $2, 'questions') as ids",
+    [focusReceiptId, ids.bank],
+  );
+  assert(
+    focusReceiptId &&
+      focusReceiptRead.rows[0]?.ids?.length === 2 &&
+      new Set(focusReceiptRead.rows[0].ids).size === 2,
+    "A teacher must be able to exchange an exact current-page selection for an opaque receipt.",
+  );
+  await client.query(
+    "select set_config('request.jwt.claim.sub', $1, false)",
+    [ids.viewer],
+  );
+  let foreignReceiptDenied = false;
+  try {
+    await client.query(
+      "select public.read_teacher_focus_selection_receipt($1, $2, 'questions')",
+      [focusReceiptId, ids.bank],
+    );
+  } catch {
+    foreignReceiptDenied = true;
+  }
+  assert(
+    foreignReceiptDenied,
+    "A focus receipt must not disclose selected private IDs to another Library member.",
+  );
+  await client.query(
+    "select set_config('request.jwt.claim.sub', $1, false)",
+    [ids.teacher],
+  );
+  let crossSurfaceReceiptDenied = false;
+  try {
+    await client.query(
+      "select public.read_teacher_focus_selection_receipt($1, $2, 'review')",
+      [focusReceiptId, ids.bank],
+    );
+  } catch {
+    crossSurfaceReceiptDenied = true;
+  }
+  assert(
+    crossSurfaceReceiptDenied,
+    "A question receipt must not be replayable on the Review surface.",
+  );
+
+  await client.query(
+    "select set_config('request.jwt.claim.role', 'service_role', false)",
+  );
   const revisionResult = await client.query(
     "select public.create_bank_question_revision_draft($1, $2, '[]'::jsonb, $3) as id",
     [ids.bank, ids.sourceQuestion, ids.teacher],
@@ -892,8 +1070,10 @@ try {
   );
 
   const submissionResult = await client.query(
-    `select * from public.submit_bank_questions_to_public_review(array[$1]::uuid[], true)`,
-    [newBankQuestionId],
+    `select * from public.submit_bank_questions_to_public_review_for_bank(
+       $1, array[$2]::uuid[], true
+     )`,
+    [ids.bank, newBankQuestionId],
   );
   const submissionId = submissionResult.rows[0]?.submission_id;
   assert(submissionId, "Assignment-ready revision must create a public submission.");
@@ -1169,6 +1349,9 @@ try {
   console.log("PASS unreviewed quarantined Assignment cannot resume");
   console.log("PASS teacher resumes ready quarantine while preserving items and progress");
   console.log("PASS student and unrelated teacher cannot resume a quarantine");
+  console.log("PASS atomic bulk Review rejects stale, viewer, duplicate, and oversized selections");
+  console.log("PASS owner bulk Review and question archive/restore update the complete selection");
+  console.log("PASS opaque focus receipts are owner- and surface-bound");
   console.log("PASS revision FK lineage and atomic active-row swap");
   console.log("PASS immutable submission and independent Super Admin public copy");
   console.log("PASS viewer read-only Review blocks every question child and Storage mutation");

@@ -1,200 +1,114 @@
 import Link from "next/link";
-
-import { TeacherModuleCard, TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import {
-  TeacherDashboardActionBoard,
-  TeacherDashboardEvidencePanel,
-  TeacherDashboardOverviewCards,
-  TeacherDashboardWorkflowPanel,
-} from "@/components/teacher/teacher-dashboard-panels";
+  ArrowRight,
+  BookOpen,
+  ClipboardList,
+  TrendingUp,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
-import { getTeacherDashboardSummary, type TeacherDashboardSummary } from "@/lib/teacher-dashboard";
+import { getTeacherHomeSummary } from "@/lib/teacher-dashboard";
 
 export const dynamic = "force-dynamic";
-
-const workflowTitle = "Library-first teacher workflow";
-const workflowDescription =
-  "Teachers create or join Libraries, import and review questions, then deliver selected Library content through classrooms and assignments. No unreviewed draft can be assigned to students. Student visibility stays assignment-only unless content is intentionally published elsewhere.";
-
-function buildTeacherModules({
-  summary,
-  setupNeeded,
-}: {
-  summary: TeacherDashboardSummary;
-  setupNeeded: boolean;
-}) {
-  return [
-    {
-      title: "Dashboard",
-      description:
-        "See Review Drafts, assignment-ready Library content, classroom activity, and Practice evidence in one place.",
-      href: "/teacher",
-      eyebrow: "Workspace",
-      status: `${summary.overview.recentEvidenceCount} evidence links`,
-    },
-    {
-      title: "Library",
-      description:
-        "Create, join, share, and organize private or collaborative Libraries before delivery.",
-      href: "/teacher/banks",
-      eyebrow: "Content source",
-      status: setupNeeded ? "Setup needed" : `${summary.overview.totalBankCount} Libraries`,
-    },
-    {
-      title: "AI Parsing",
-      description:
-        "Choose a Library first, then import owned materials into Review Drafts for approval.",
-      href: "/teacher/banks?intent=import",
-      eyebrow: "Review gated",
-      status: `${summary.recentImports.length} recent imports`,
-    },
-    {
-      title: "Blueprint",
-      description:
-        "Review reusable question patterns extracted from source material before generation is used.",
-      href: "/teacher/blueprints",
-      eyebrow: "Planning layer",
-      status: "Library",
-    },
-    {
-      title: "Classroom",
-      description:
-        "Manage rosters and delivery spaces after Library content is reviewed and ready to assign.",
-      href: "/teacher/classrooms",
-      eyebrow: "Roster layer",
-      status: `${summary.overview.activeClassroomCount} active`,
-    },
-    {
-      title: "Publish",
-      description:
-        "Move reviewed Library content into classroom assignments without publishing private content globally.",
-      href: "/teacher/publish",
-      eyebrow: "Assignment flow",
-      status: `${summary.overview.assignmentReadyQuestionCount} ready`,
-    },
-    {
-      title: "Progress & Feedback",
-      description:
-        "Review assignment evidence, then add private notes or send feedback from assignment detail.",
-      href: "/teacher/progress",
-      eyebrow: "Evidence",
-      status: `${summary.overview.activeAssignmentCount} active assignments`,
-    },
-  ];
-}
-
-function buildPrimaryAction(summary: TeacherDashboardSummary) {
-  const firstReviewBank = summary.reviewQueue[0];
-  const firstReadyBank = summary.assignmentReadyBanks[0];
-
-  if (firstReviewBank) {
-    return {
-      href: `/teacher/banks/${firstReviewBank.bankId}/review`,
-      label: "Review Drafts",
-    };
-  }
-
-  if (firstReadyBank) {
-    return {
-      href: `/teacher/publish?sourceBankId=${firstReadyBank.bankId}`,
-      label: "Create Assignment",
-    };
-  }
-
-  if (!summary.overview.totalBankCount) {
-    return {
-      href: "/teacher/banks/new",
-      label: "Create Library",
-    };
-  }
-
-  return {
-    href: "/teacher/banks?intent=import",
-    label: "Import materials",
-  };
-}
 
 export default async function TeacherHomePage() {
   const profile = await requireTeacher();
   const supabase = await createClient();
-  const dashboardSummary = await getTeacherDashboardSummary({
+  const summary = await getTeacherHomeSummary({
     profileId: profile.id,
     supabase,
   });
-  const teacherModules = buildTeacherModules({
-    setupNeeded: dashboardSummary.setupNeeded,
-    summary: dashboardSummary,
-  });
-  const primaryAction = buildPrimaryAction(dashboardSummary);
+  const actionCountLabel =
+    summary.nextAction.count === null
+      ? null
+      : summary.nextAction.label === "Review"
+        ? `${summary.nextAction.count} drafts`
+        : `${summary.nextAction.count} ready questions`;
+  const shortcuts = [
+    {
+      count: summary.libraryCount,
+      href: "/teacher/banks",
+      icon: BookOpen,
+      label: "Libraries",
+    },
+    {
+      count: null,
+      href: "/teacher/publish",
+      icon: ClipboardList,
+      label: "Assignments",
+    },
+    {
+      count: null,
+      href: "/teacher/progress",
+      icon: TrendingUp,
+      label: "Progress",
+    },
+  ];
 
   return (
-    <TeacherWorkspaceShell
-      title="Teacher Workspace"
-      description="Start with a Library. Create or join one, review imported content, assign selected questions, then read student Practice evidence as it returns."
-      actions={
-        <>
-          <Button asChild>
-            <Link href={primaryAction.href}>{primaryAction.label}</Link>
+    <div className="teacher-shell min-h-dvh space-y-8">
+      <header className="flex items-center justify-between gap-4">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+          Teacher
+        </h1>
+      </header>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-col gap-8 px-6 py-8 md:px-8 md:py-10 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-slate-500">Next action</h2>
+            <p className="mt-3 break-words text-2xl font-bold tracking-tight text-slate-950 md:text-3xl">
+              {summary.nextAction.title}
+            </p>
+            {actionCountLabel ? (
+              <p className="mt-2 text-base font-medium text-slate-600">
+                {actionCountLabel}
+              </p>
+            ) : null}
+          </div>
+          <Button asChild className="min-h-11 shrink-0">
+            <Link href={summary.nextAction.href}>
+              {summary.nextAction.label}
+              <ArrowRight aria-hidden="true" className="h-4 w-4" />
+            </Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href="/teacher/banks">Open Library review</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/teacher/banks?intent=import">Import materials</Link>
-          </Button>
-        </>
-      }
-    >
-      <TeacherWorkspaceNav />
+        </div>
+      </section>
 
-      {dashboardSummary.setupNeeded ? (
-        <section className="teacher-panel p-5">
-          <p className="teacher-eyebrow">Setup needed</p>
-          <h2 className="mt-2 text-lg font-bold text-slate-950">
-            Library dashboard data is waiting on the clean Library schema.
-          </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Apply the clean Library migrations, then return here to see Review Drafts,
-            assignment-ready questions, classroom activity, and Practice evidence.
-          </p>
-        </section>
-      ) : null}
-
-      <TeacherDashboardOverviewCards summary={dashboardSummary} />
-
-      <TeacherDashboardActionBoard summary={dashboardSummary} />
-
-      <TeacherDashboardEvidencePanel summary={dashboardSummary} />
-
-      <TeacherDashboardWorkflowPanel
-        description={workflowDescription}
-        title={workflowTitle}
-      />
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        {teacherModules.map((module) => (
-          <TeacherModuleCard
-            actionLabel={module.href === "/teacher" ? "View workflow" : "Open module"}
-            description={module.description}
-            eyebrow={module.eyebrow}
-            href={module.href}
-            key={module.title}
-            status={module.status}
-            title={module.title}
-          />
+      <nav
+        aria-label="Teacher shortcuts"
+        className="grid overflow-hidden rounded-xl border border-slate-200 bg-white md:grid-cols-3 md:divide-x md:divide-slate-200"
+      >
+        {shortcuts.map(({ count, href, icon: Icon, label }) => (
+          <Link
+            className="group flex min-h-24 items-center gap-4 border-b border-slate-200 px-6 py-5 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500 md:border-b-0"
+            href={href}
+            key={href}
+          >
+            <Icon aria-hidden="true" className="h-5 w-5 text-slate-500" />
+            <span className="min-w-0 flex-1 text-base font-semibold text-slate-950">
+              {label}
+            </span>
+            {count !== null ? (
+              <span className="text-sm font-semibold tabular-nums text-slate-500">
+                {count}
+              </span>
+            ) : null}
+            <ArrowRight
+              aria-hidden="true"
+              className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5"
+            />
+          </Link>
         ))}
-      </section>
+      </nav>
 
-      <section className="teacher-panel p-5">
-        <h2 className="text-lg font-bold text-slate-950">Role boundary</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          {profile.username || profile.email || "Teacher"} is using the teacher workspace. Admins may
-          support this flow, but teacher validation remains separate from admin platform operations.
+      {summary.setupNeeded ? (
+        <p className="text-sm font-medium text-rose-700" role="alert">
+          Libraries are unavailable.
         </p>
-      </section>
-    </TeacherWorkspaceShell>
+      ) : null}
+    </div>
   );
 }
