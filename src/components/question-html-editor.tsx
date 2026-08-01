@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { AI_INPUT_LIMITS } from "@/lib/ai-input-limits";
 import {
   markdownLatexToHtml,
   type QuestionSourceFormat,
@@ -27,6 +28,7 @@ type QuestionHtmlEditorProps = {
   defaultValue?: string | null;
   id?: string;
   label: string;
+  maxLength?: number;
   minEditorHeight?: string;
   name: string;
   placeholder?: string;
@@ -89,6 +91,7 @@ export function QuestionHtmlEditor({
   defaultValue,
   id,
   label,
+  maxLength = AI_INPUT_LIMITS.QUESTION_SOURCE_CHARS,
   minEditorHeight = "min-h-48",
   name,
   placeholder,
@@ -206,6 +209,7 @@ export function QuestionHtmlEditor({
 
       {mode === "markdown" ? (
         <Textarea
+          maxLength={maxLength}
           value={markdownValue}
           onChange={(event) => updateMarkdownValue(event.target.value)}
           className={cn(
@@ -231,6 +235,7 @@ export function QuestionHtmlEditor({
             </p>
           </div>
           <Textarea
+            maxLength={maxLength}
             value={htmlSourceValue}
             onChange={(event) => updateHtmlSourceValue(event.target.value)}
             className={cn(

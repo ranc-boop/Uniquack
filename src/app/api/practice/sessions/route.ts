@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import {
+  PRACTICE_INPUT_LIMITS,
+  boundedPracticeText,
+  practiceValidationResponse,
+} from "@/lib/practice/request-validation";
+import {
   createPracticeSession,
   getPracticeSession,
   listPracticeSessions,
@@ -95,9 +100,17 @@ export async function POST(request: Request) {
   };
 
   try {
+    const goal = boundedPracticeText(body.goal, {
+      field: "goal",
+      maxLength: PRACTICE_INPUT_LIMITS.GOAL_CHARS,
+    });
+    const title = boundedPracticeText(body.title, {
+      field: "title",
+      maxLength: PRACTICE_INPUT_LIMITS.SESSION_TITLE_CHARS,
+    });
     const session = await createPracticeSession({
       courseFrameworkId: body.courseFrameworkId,
-      goal: body.goal ?? "",
+      goal,
       sourceSelection: body.sourceSelection
         ? {
             bankIds: Array.isArray(body.sourceSelection.bankIds)
@@ -107,7 +120,7 @@ export async function POST(request: Request) {
           }
         : undefined,
       supabase,
-      title: body.title,
+      title,
       userId: auth.user.id,
     });
 
@@ -118,6 +131,10 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    const validation = practiceValidationResponse(error);
+    if (validation) {
+      return NextResponse.json(validation.body, { status: validation.status });
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },
       { status: 500 },

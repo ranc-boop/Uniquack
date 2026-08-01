@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { requirePracticeAiAdmission } from "@/lib/practice/admission";
+import {
+  PRACTICE_INPUT_LIMITS,
+  boundedPracticeText,
+  practiceValidationResponse,
+} from "@/lib/practice/request-validation";
 import { loadPracticeAIProfile } from "@/lib/practice/ai";
 import {
   runPracticeRecommendationAgent,
@@ -200,7 +205,25 @@ function normalizeQuestionCount(value: unknown) {
 }
 
 function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequestContext | NextResponse {
-  const goal = (body.goal ?? "").trim().slice(0, 500);
+  let goal = "";
+  let userNextRoundNote = "";
+  try {
+    goal = boundedPracticeText(body.goal, {
+      field: "goal",
+      maxLength: PRACTICE_INPUT_LIMITS.GOAL_CHARS,
+      required: true,
+    });
+    userNextRoundNote = boundedPracticeText(body.userNextRoundNote, {
+      field: "userNextRoundNote",
+      maxLength: PRACTICE_INPUT_LIMITS.NEXT_ROUND_NOTE_CHARS,
+    });
+  } catch (error) {
+    const validation = practiceValidationResponse(error);
+    if (validation) {
+      return NextResponse.json(validation.body, { status: validation.status });
+    }
+    throw error;
+  }
   const sessionId = (body.sessionId ?? "").trim();
   const bankIds = Array.from(
     new Set((body.sourceSelection?.bankIds ?? []).map(String).filter(Boolean)),
@@ -227,7 +250,7 @@ function parseRequestBody(body: PracticeRecommendRequest): RecommendationRequest
       bankIds,
       includePublicCatalog: body.sourceSelection?.includePublicCatalog !== false,
     },
-    userNextRoundNote: String(body.userNextRoundNote ?? "").trim().slice(0, 1200),
+    userNextRoundNote,
     wrongQuestionIds: Array.from(new Set(body.wrongQuestionIds ?? [])),
   };
 }
