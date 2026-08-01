@@ -55,6 +55,14 @@ assert(
 );
 
 assert(
+  client.includes("roundAnswerDraftsRef") &&
+    client.includes("practiceRoundDraftKey") &&
+    client.includes("roundAnswerDraftsRef.current[draftKey]") &&
+    /round\.status === "completed"\s*\? persistedAnswers\s*:\s*roundAnswerDraftsRef\.current\[draftKey\] \?\? persistedAnswers/.test(client),
+  "Browsing completed rounds must preserve and restore the active round's unsubmitted answer draft",
+);
+
+assert(
   types.includes('status: "active" | "completed" | "skipped";') &&
     persistence.includes(
       '"id,next_round_goal,review_summary,round_goal,score_correct,score_total,status,trace"',

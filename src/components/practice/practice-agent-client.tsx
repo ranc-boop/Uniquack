@@ -449,6 +449,10 @@ function getServerClientReadySnapshot() {
   return false;
 }
 
+function practiceRoundDraftKey(sessionId?: string | null, roundId?: string | null) {
+  return sessionId && roundId ? `${sessionId}:${roundId}` : "";
+}
+
 export function PracticeAgentClient({
   assignmentId,
   testOnlyDelayedHydration = false,
@@ -533,6 +537,7 @@ export function PracticeAgentClient({
   const thinkingStartedAtRef = useRef<number | null>(null);
   const streamedReviewTextRef = useRef("");
   const streamedReviewFrameRef = useRef<number | null>(null);
+  const roundAnswerDraftsRef = useRef<Record<string, AnswersState>>({});
   const activePracticeOperationRef = useRef<{
     controller: AbortController;
     token: number;
@@ -569,6 +574,7 @@ export function PracticeAgentClient({
   function cancelPracticeOperation({ resetReviewState = true }: { resetReviewState?: boolean } = {}) {
     activePracticeOperationRef.current?.controller.abort();
     activePracticeOperationRef.current = null;
+    cancelPendingRoundReviewFrame();
     if (resetReviewState) {
       setIsReviewStreaming(false);
     }
@@ -598,6 +604,12 @@ export function PracticeAgentClient({
       reason === "COMPLETED_RESTORE";
     answersRef.current = committedAnswers;
     setAnswers(committedAnswers);
+    if (reason === "INPUT") {
+      const draftKey = practiceRoundDraftKey(activeSession?.id, recommendation?.roundId);
+      if (draftKey) {
+        roundAnswerDraftsRef.current[draftKey] = committedAnswers;
+      }
+    }
     answerWriteMetaRef.current = {
       hadInput: reason === "INPUT" ? true : clearsInputGeneration ? false : hadInput,
       lastWriteReason: reason,
@@ -779,10 +791,14 @@ export function PracticeAgentClient({
       trace: round.trace ?? [],
     };
     const restoredResults = resultsFromHistoryRound(round);
-    const restoredAnswers: AnswersState = buildRestoredPracticeAnswers(
+    const persistedAnswers: AnswersState = buildRestoredPracticeAnswers(
       round.attempts,
       round.questions,
     );
+    const draftKey = practiceRoundDraftKey(session.id, round.id);
+    const restoredAnswers = round.status === "completed"
+      ? persistedAnswers
+      : roundAnswerDraftsRef.current[draftKey] ?? persistedAnswers;
     const restoredHints: HintsState = {};
 
     for (const attempt of round.attempts) {
@@ -1087,9 +1103,11 @@ export function PracticeAgentClient({
   }, []);
 
   useEffect(() => () => {
-    cancelPracticeOperation({ resetReviewState: false });
+    activePracticeOperationRef.current?.controller.abort();
+    activePracticeOperationRef.current = null;
     if (streamedReviewFrameRef.current !== null) {
       window.cancelAnimationFrame(streamedReviewFrameRef.current);
+      streamedReviewFrameRef.current = null;
     }
   }, []);
 
@@ -1113,6 +1131,12 @@ export function PracticeAgentClient({
         summary,
       }));
     });
+  }
+
+  function cancelPendingRoundReviewFrame() {
+    if (streamedReviewFrameRef.current === null) return;
+    window.cancelAnimationFrame(streamedReviewFrameRef.current);
+    streamedReviewFrameRef.current = null;
   }
 
   function requestRecommendation(nextGoal?: string, wrongIds = selectedWrongQuestionIds) {
@@ -1356,9 +1380,7 @@ export function PracticeAgentClient({
     submitInFlightRef.current = true;
     setIsReviewStreaming(true);
     setError(null);
-    thinkingStartedAtRef.current = Date.now();
-    setThinkingElapsedMs(0);
-    setLastThinkingDurationMs(null);
+    beginThinking();
     setLiveTrace([]);
     setReviewTrace([]);
     setResults([]);
@@ -1424,6 +1446,8 @@ export function PracticeAgentClient({
           },
           onResult: (reviewResponse) => {
             if (!isPracticeOperationCurrent(operation.token)) return;
+            cancelPendingRoundReviewFrame();
+            streamedReviewTextRef.current = reviewResponse.summary;
             setResults(reviewResponse.results ?? []);
             setReview(reviewResponse);
             setReviewTrace(reviewResponse.trace);
@@ -1435,6 +1459,7 @@ export function PracticeAgentClient({
           },
           onRoundReviewStart: () => {
             if (!isPracticeOperationCurrent(operation.token)) return;
+            cancelPendingRoundReviewFrame();
             streamedReviewTextRef.current = "";
             setReview((current) => ({
               ...(current ?? {
@@ -1488,6 +1513,8 @@ export function PracticeAgentClient({
             grade,
             recommendation,
           });
+          cancelPendingRoundReviewFrame();
+          streamedReviewTextRef.current = fallbackReview.summary;
           setResults(grade.results);
           setReview(fallbackReview);
           setReviewTrace(fallbackReview.trace);
@@ -1692,6 +1719,7 @@ export function PracticeAgentClient({
           .map((question) => question.sourceQuestionId)
       : [];
     setActiveSession(null);
+    roundAnswerDraftsRef.current = {};
     setOutlineNotes("");
     setWrongQuestions([]);
     resetRoundState("SESSION_CHANGE");

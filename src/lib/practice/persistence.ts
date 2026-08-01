@@ -708,6 +708,26 @@ export async function listPracticeSessions({
   );
 }
 
+export async function getPracticeProgressResetAt({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseLike;
+  userId: string;
+}) {
+  const { data, error } = await supabase
+    .from("practice_progress_resets")
+    .select("reset_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return typeof data?.reset_at === "string" ? data.reset_at : null;
+}
+
 export async function getPracticeSession({
   sessionId,
   sessionSummary,

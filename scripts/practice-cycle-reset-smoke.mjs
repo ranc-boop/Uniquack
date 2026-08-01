@@ -7,9 +7,11 @@ import { resolve } from "node:path";
 const root = process.cwd();
 const read = (file) => readFile(resolve(root, file), "utf8");
 
-const [migration, route, client, manifest] = await Promise.all([
+const [migration, route, sessionsRoute, persistence, client, manifest] = await Promise.all([
   read("supabase/clean-migrations/0072_practice_cycle_reset.sql"),
   read("src/app/api/practice/progress/reset/route.ts"),
+  read("src/app/api/practice/sessions/route.ts"),
+  read("src/lib/practice/persistence.ts"),
   read("src/components/practice/practice-agent-client.tsx"),
   read("docs/security/live-schema-manifest.json"),
 ]);
@@ -35,6 +37,11 @@ assert.match(client, /resetPracticeProgress/);
 assert.match(client, /Practice all questions again/);
 assert.match(client, /Historical attempts and Assignment evidence stay intact/);
 assert.match(client, /prepareScopedNewSession/);
+assert.match(persistence, /getPracticeProgressResetAt/);
+assert.match(persistence, /from\("practice_progress_resets"\)/);
+assert.match(sessionsRoute, /getPracticeProgressResetAt/);
+assert.match(sessionsRoute, /sessionCreatedAfterReset/);
+assert.match(sessionsRoute, /sessions\.find/);
 assert.match(manifest, /0072_practice_cycle_reset\.sql/);
 
 console.log("PASS non-destructive Practice cycle reset contract");

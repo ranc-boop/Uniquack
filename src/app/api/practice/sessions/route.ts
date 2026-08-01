@@ -9,6 +9,7 @@ import {
 import {
   createPracticeSession,
   getPracticeSession,
+  getPracticeProgressResetAt,
   listPracticeSessions,
 } from "@/lib/practice/persistence";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -24,6 +25,15 @@ function boundedInteger(value: string | null, fallback: number, maximum: number)
   return Number.isFinite(parsed)
     ? Math.min(maximum, Math.max(0, parsed))
     : fallback;
+}
+
+function sessionCreatedAfterReset(createdAt: string, resetAt: string | null) {
+  if (!resetAt) return true;
+  const createdTimestamp = Date.parse(createdAt);
+  const resetTimestamp = Date.parse(resetAt);
+  return Number.isFinite(createdTimestamp) &&
+    Number.isFinite(resetTimestamp) &&
+    createdTimestamp > resetTimestamp;
 }
 
 export async function GET(request: Request) {
@@ -44,19 +54,27 @@ export async function GET(request: Request) {
       boundedInteger(searchParams.get("limit"), DEFAULT_SESSION_PAGE_SIZE, MAX_SESSION_PAGE_SIZE),
     );
     const offset = boundedInteger(searchParams.get("offset"), 0, Number.MAX_SAFE_INTEGER);
-    const sessionPage = await listPracticeSessions({
-      limit: limit + 1,
-      offset,
-      supabase,
-      userId: auth.user.id,
-    });
+    const includeActive = searchParams.get("includeActive") !== "0";
+    const [sessionPage, resetAt] = await Promise.all([
+      listPracticeSessions({
+        limit: limit + 1,
+        offset,
+        supabase,
+        userId: auth.user.id,
+      }),
+      includeActive && offset === 0
+        ? getPracticeProgressResetAt({ supabase, userId: auth.user.id })
+        : Promise.resolve(null),
+    ]);
     const hasMore = sessionPage.length > limit;
     const sessions = sessionPage.slice(0, limit);
-    const includeActive = searchParams.get("includeActive") !== "0";
-    const active = includeActive && offset === 0 && sessions[0]
+    const activeSummary = includeActive && offset === 0
+      ? sessions.find((session) => sessionCreatedAfterReset(session.createdAt, resetAt))
+      : undefined;
+    const active = activeSummary
       ? await getPracticeSession({
-          sessionId: sessions[0].id,
-          sessionSummary: sessions[0],
+          sessionId: activeSummary.id,
+          sessionSummary: activeSummary,
           supabase,
           userId: auth.user.id,
         })

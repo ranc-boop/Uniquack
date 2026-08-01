@@ -21,6 +21,10 @@ const mathContent = await readFile(
   resolve(root, "src/components/math-content.tsx"),
   "utf8",
 );
+const client = await readFile(
+  resolve(root, "src/components/practice/practice-agent-client.tsx"),
+  "utf8",
+);
 
 const transpiled = ts.transpileModule(markdownSource, {
   compilerOptions: {
@@ -67,6 +71,12 @@ assert(
       )
       .includes("compactText("),
   "Round Review normalization must preserve Markdown and newlines instead of compacting all whitespace",
+);
+assert(
+  client.includes("function cancelPendingRoundReviewFrame()") &&
+    /cancelPendingRoundReviewFrame\(\);\s*streamedReviewTextRef\.current = reviewResponse\.summary;\s*setResults\(reviewResponse\.results \?\? \[\]\);/.test(client) &&
+    client.includes("streamedReviewTextRef.current = reviewResponse.summary;"),
+  "The canonical review result must cancel any pending stream frame before replacing the summary",
 );
 
 console.log("PASS practice round review Markdown and soft-line-break rendering");
