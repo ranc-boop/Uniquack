@@ -7,8 +7,9 @@ import { resolve } from "node:path";
 const root = process.cwd();
 const read = (file) => readFile(resolve(root, file), "utf8");
 
-const [migration, helper, ...routes] = await Promise.all([
+const [migration, correction, helper, ...routes] = await Promise.all([
   read("supabase/clean-migrations/0073_practice_ai_request_admission.sql"),
+  read("supabase/clean-migrations/0074_practice_ai_request_admission_time_fix.sql"),
   read("src/lib/practice/admission.ts"),
   read("src/app/api/practice/recommend/route.ts"),
   read("src/app/api/practice/review/route.ts"),
@@ -25,6 +26,10 @@ assert.match(migration, /on conflict[\s\S]*request_count = public\.practice_ai_r
 assert.match(migration, /revoke execute[\s\S]*from public, anon/i);
 assert.match(migration, /grant execute[\s\S]*to authenticated/i);
 assert.doesNotMatch(migration, /grant (select|insert|update|delete|all)[^;]*authenticated/i);
+assert.match(correction, /request_time timestamptz := clock_timestamp\(\)/i);
+assert.match(correction, /date_trunc\('minute', request_time\)/i);
+assert.doesNotMatch(correction, /date_trunc\('minute', current_time\)/i);
+assert.match(correction, /revoke execute[\s\S]*from public, anon/i);
 
 assert.match(helper, /PRACTICE_RATE_LIMITED/);
 assert.match(helper, /Retry-After/);

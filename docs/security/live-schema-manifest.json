@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 73,
+  "latestActivePrefix": 74,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -87,7 +87,8 @@
     "0070_simplify_teacher_approval_and_question_delete.sql",
     "0071_repair_bank_import_review_lineage.sql",
     "0072_practice_cycle_reset.sql",
-    "0073_practice_ai_request_admission.sql"
+    "0073_practice_ai_request_admission.sql",
+    "0074_practice_ai_request_admission_time_fix.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -292,7 +293,8 @@
     { "filename": "0069_assignment_creation_idempotency_receipt_fix.sql", "migrationNumber": 69, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 69, "status": "SOURCE_COMPLETE_DISPOSABLE_VALIDATED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Forward-only migration validated on embedded fresh-chain Postgres and applied with 0068 in one transaction on the project-ref-matched hosted disposable database", "evidenceSource": "Embedded and hosted-disposable validation passed catalog checks; embedded runtime passed concurrent same-key reuse, mismatched-payload denial, distinct-key creation, and authenticated denial on the private receipt table; no production or migration-ledger application is claimed" },
     { "filename": "0070_simplify_teacher_approval_and_question_delete.sql", "migrationNumber": 70, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 70, "status": "DISPOSABLE_APPLIED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Pre/post function definition validation confirmed needs-more-evidence support; no production or migration-ledger application is claimed" },
     { "filename": "0071_repair_bank_import_review_lineage.sql", "migrationNumber": 71, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 71, "status": "DISPOSABLE_APPLIED_NOT_PRODUCTION_APPLIED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Strict-valid Draft lineage increased from 1 to 40 while incomplete lineage fell from 40 to 1; no content was approved and no production or migration-ledger application is claimed" },
-    { "filename": "0072_practice_cycle_reset.sql", "migrationNumber": 72, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 72, "status": "SOURCE_COMPLETE_NOT_APPLIED", "applicationMethod": "Forward-only apply requires the Practice cycle reset release gate", "evidenceSource": "Non-destructive reset contract, authenticated RPC boundary, canonical migration governance, and application smoke; no hosted or migration-ledger application is claimed" },
-    { "filename": "0073_practice_ai_request_admission.sql", "migrationNumber": 73, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 73, "status": "SOURCE_COMPLETE_NOT_APPLIED", "applicationMethod": "Forward-only apply requires the Practice Agent security release gate", "evidenceSource": "Authenticated fail-closed admission contract, atomic fixed-window source review, canonical migration governance, and route smoke; no hosted or migration-ledger application is claimed" }
+    { "filename": "0072_practice_cycle_reset.sql", "migrationNumber": 72, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 72, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Rollback preflight, hosted apply, and post-apply catalog/RLS/grant validation passed; no migration-ledger history is claimed" },
+    { "filename": "0073_practice_ai_request_admission.sql", "migrationNumber": 73, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 73, "status": "APPLIED_MANUALLY_NOT_LEDGERED_FORWARD_CORRECTED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Rollback preflight, hosted apply, and catalog/RLS/grant validation passed; runtime exposed a current_time type collision, making 0074 mandatory; no migration-ledger claim" },
+    { "filename": "0074_practice_ai_request_admission_time_fix.sql", "migrationNumber": 74, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 74, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Rollback preflight, hosted apply, post-apply catalog/RLS/grant validation, rollback-only authenticated/anonymous runtime matrix, and Data API schema-cache probes passed; no migration-ledger history is claimed" }
   ]
 }

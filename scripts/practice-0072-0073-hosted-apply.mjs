@@ -80,18 +80,21 @@ async function inTransaction(client, operation, { rollback = false } = {}) {
   }
 }
 
-async function assertObjectsAbsent(client) {
+async function hostedMigrationState(client) {
   const result = await client.query(`
     select
       to_regclass('public.practice_progress_resets') is not null as reset_table,
       to_regclass('public.practice_ai_request_windows') is not null as admission_table,
       to_regprocedure('public.reset_my_practice_progress()') is not null as reset_rpc,
-      to_regprocedure('public.claim_practice_ai_request(text)') is not null as admission_rpc
+      to_regprocedure('public.claim_practice_ai_request(text)') is not null as admission_rpc,
+      coalesce((
+        select pg_get_functiondef(p.oid) like '%request_time timestamptz%'
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = 'claim_practice_ai_request'
+      ), false) as admission_time_fixed
   `);
-  assert(
-    Object.values(result.rows[0]).every((value) => value === false),
-    "0072 or 0073 objects already exist; stop instead of replaying an applied migration.",
-  );
+  return result.rows[0];
 }
 
 async function assertCatalog(client) {
@@ -143,6 +146,12 @@ async function assertCatalog(client) {
     assert(row?.prosecdef, `${name} must remain SECURITY DEFINER.`);
     assert(row.proconfig?.includes("search_path=\"\"") || row.proconfig?.includes("search_path="), `${name} must fix search_path.`);
   }
+  const admissionFunction = functions.rows.find((candidate) => candidate.proname === "claim_practice_ai_request");
+  assert(
+    /request_time timestamptz/.test(admissionFunction?.definition ?? "") &&
+      !/date_trunc\('minute'[^\n]*current_time\)/.test(admissionFunction?.definition ?? ""),
+    "Admission RPC is missing the 0074 timestamp correction.",
+  );
   for (const name of ["list_selectable_practice_sources", "search_practice_questions_in_session"]) {
     const row = functions.rows.find((candidate) => candidate.proname === name);
     assert(!row?.prosecdef, `${name} must remain SECURITY INVOKER.`);
@@ -216,27 +225,45 @@ const apiUrl = new URL(requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL"));
 assert(apiUrl.hostname.split(".")[0] === projectRef, "Configured API URL and disposable project ref do not match.");
 assert(/^[a-z0-9]+$/.test(projectRef), "Project ref format is invalid.");
 
-const [migration72, migration73] = await Promise.all([
+const [migration72, migration73, migration74] = await Promise.all([
   readFile(resolve(root, "supabase/clean-migrations/0072_practice_cycle_reset.sql"), "utf8"),
   readFile(resolve(root, "supabase/clean-migrations/0073_practice_ai_request_admission.sql"), "utf8"),
+  readFile(resolve(root, "supabase/clean-migrations/0074_practice_ai_request_admission_time_fix.sql"), "utf8"),
 ]);
 const client = await connect(projectRef, databasePassword);
 try {
-  await assertObjectsAbsent(client);
-  await inTransaction(client, async () => {
-    await runStatements(client, migration72);
-    await assertCatalog(client).catch((error) => {
-      if (!/Expected both Practice security tables/.test(error.message)) throw error;
-    });
-  }, { rollback: true });
-  console.log("PASS 0072 rollback preflight");
-  await inTransaction(client, async () => runStatements(client, migration73), { rollback: true });
-  console.log("PASS 0073 rollback preflight");
+  const initialState = await hostedMigrationState(client);
+  const baseObjects = [
+    initialState.reset_table,
+    initialState.admission_table,
+    initialState.reset_rpc,
+    initialState.admission_rpc,
+  ];
+  assert(
+    baseObjects.every(Boolean) || baseObjects.every((value) => value === false),
+    "Hosted 0072/0073 state is partial; stop for manual reconciliation.",
+  );
+  if (baseObjects.every((value) => value === false)) {
+    await inTransaction(client, async () => runStatements(client, migration72), { rollback: true });
+    console.log("PASS 0072 rollback preflight");
+    await inTransaction(client, async () => runStatements(client, migration73), { rollback: true });
+    console.log("PASS 0073 rollback preflight");
+    await inTransaction(client, async () => runStatements(client, migration72));
+    console.log("PASS 0072 hosted apply");
+    await inTransaction(client, async () => runStatements(client, migration73));
+    console.log("PASS 0073 hosted apply");
+  } else {
+    console.log("PASS existing 0072/0073 hosted state detected without replay");
+  }
 
-  await inTransaction(client, async () => runStatements(client, migration72));
-  console.log("PASS 0072 hosted apply");
-  await inTransaction(client, async () => runStatements(client, migration73));
-  console.log("PASS 0073 hosted apply");
+  if (!initialState.admission_time_fixed) {
+    await inTransaction(client, async () => runStatements(client, migration74), { rollback: true });
+    console.log("PASS 0074 rollback preflight");
+    await inTransaction(client, async () => runStatements(client, migration74));
+    console.log("PASS 0074 hosted apply");
+  } else {
+    console.log("PASS existing 0074 hosted correction detected without replay");
+  }
 
   await assertCatalog(client);
   console.log("PASS post-apply catalog, RLS, and grants");
