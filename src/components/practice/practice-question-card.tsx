@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { practiceAnswerKey } from "@/lib/practice/client-helpers";
+import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
 import type {
   PracticeGradeResult,
   PracticeQuestionReview,
@@ -133,6 +134,7 @@ function QuestionAnswerInput({
         className="min-h-32 text-base leading-7"
         disabled={disabled}
         id={answerControlId}
+        maxLength={PRACTICE_INPUT_LIMITS.ANSWER_CHARS}
         onChange={(event) => onChange(event.currentTarget.value)}
         placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
         value={answerValue(answer)}
@@ -268,7 +270,7 @@ export function PracticeQuestionCard({
           question={question}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={isPending || phase === "feedback"} onClick={() => onHintRequest(question)} size="sm" type="button" variant="outline">
+          <Button disabled={isPending || phase === "feedback" || hints.length >= PRACTICE_INPUT_LIMITS.HINTS_PER_QUESTION} onClick={() => onHintRequest(question)} size="sm" type="button" variant="outline">
             Hint
           </Button>
         </div>

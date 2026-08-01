@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { AI_INPUT_LIMITS } from "@/lib/ai-input-limits";
 import {
   normalizeAnswerSpec,
   normalizeQuestionOptions,
@@ -60,6 +61,7 @@ export function QuestionAnswerFields({
               <textarea
                 className="min-h-28 w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
                 defaultValue={optionsText(normalizedOptions)}
+                maxLength={AI_INPUT_LIMITS.OPTION_TEXT_CHARS}
                 name="options_text"
                 placeholder={"A|First option\nB|Second option\nC|Third option"}
               />
@@ -74,6 +76,7 @@ export function QuestionAnswerFields({
                     : ""
                 }
                 name="correct_option_ids"
+                maxLength={AI_INPUT_LIMITS.ANSWER_TEXT_CHARS}
                 placeholder="A or A,B"
               />
             </div>
@@ -102,6 +105,7 @@ export function QuestionAnswerFields({
                     : ""
                 }
                 name="final_answers"
+                maxLength={AI_INPUT_LIMITS.ANSWER_TEXT_CHARS}
                 placeholder={"x=2\n2"}
               />
             </div>
@@ -115,6 +119,7 @@ export function QuestionAnswerFields({
                     : ""
                 }
                 name="accepted_answers"
+                maxLength={AI_INPUT_LIMITS.ANSWER_TEXT_CHARS}
                 placeholder={"2\nx=2\n\\frac{4}{2}"}
               />
             </div>

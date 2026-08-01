@@ -9,6 +9,9 @@ import type { PracticeTraceEvent } from "@/lib/practice/types";
 
 const LOG_ROOT = path.join(process.cwd(), "log", "llm", "practice_agent");
 const MAX_DIGEST_CHARS = 4500;
+const MAX_PRACTICE_STATS_FIELDS = 64;
+const MAX_PRACTICE_STATS_NUMBER = 1_000_000_000_000;
+const MAX_PRACTICE_STATS_STRING_CHARS = 160;
 const PRACTICE_FULL_CALL_LOG_RETENTION_DAYS = 2;
 const PRACTICE_FULL_CALL_LOG_RETENTION_MS =
   PRACTICE_FULL_CALL_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
@@ -24,6 +27,22 @@ const SAFE_LOG_STRING_KEYS = new Set([
   "provider",
   "providerName",
   "toolName",
+]);
+const PRACTICE_STATS_SAFE_NUMBER_KEYS = new Set([
+  "cache_hit_rate",
+  "cache_hit_tokens",
+  "cache_miss_tokens",
+  "completion_tokens",
+  "iteration",
+  "prompt_tokens",
+  "total_tokens",
+]);
+const PRACTICE_STATS_SAFE_STRING_KEYS = new Set([
+  "cache_prefix_version",
+  "phase",
+  "prefix_hash",
+  "provider_label",
+  "suffix_hash",
 ]);
 
 function enabled(value: string | undefined) {
@@ -102,6 +121,65 @@ export function sanitizePracticeLogValue(value: unknown, key = ""): unknown {
   }
 
   return "[omitted]";
+}
+
+export function sanitizePracticeStatsContext(context?: Record<string, unknown>) {
+  const sanitizedValue = sanitizePracticeLogValue(context ?? {}, "context");
+  const sanitized = sanitizedValue && typeof sanitizedValue === "object" && !Array.isArray(sanitizedValue)
+    ? { ...(sanitizedValue as Record<string, unknown>) }
+    : {};
+  delete sanitized.goal;
+
+  const rawGoal = context?.goal;
+  if (typeof rawGoal === "string") {
+    sanitized.goal_char_count = Math.min(rawGoal.length, MAX_PRACTICE_STATS_NUMBER);
+    sanitized.goal_length_capped = rawGoal.length > MAX_PRACTICE_STATS_NUMBER;
+  }
+  return sanitized;
+}
+
+export function sanitizePracticeStatsPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {
+      payload_field_count: 0,
+      payload_kind: Array.isArray(payload) ? "array" : typeof payload,
+    };
+  }
+
+  const record = payload as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = {
+    payload_field_count: Math.min(Object.keys(record).length, MAX_PRACTICE_STATS_FIELDS),
+  };
+
+  for (const key of PRACTICE_STATS_SAFE_NUMBER_KEYS) {
+    if (record[key] === null) {
+      sanitized[key] = null;
+      continue;
+    }
+    const numericValue = numberish(record[key]);
+    if (numericValue === undefined) continue;
+    sanitized[key] = key === "cache_hit_rate"
+      ? Math.max(0, Math.min(1, numericValue))
+      : Math.max(0, Math.min(MAX_PRACTICE_STATS_NUMBER, Math.trunc(numericValue)));
+  }
+
+  for (const key of PRACTICE_STATS_SAFE_STRING_KEYS) {
+    if (record[key] === null) {
+      sanitized[key] = null;
+      continue;
+    }
+    if (typeof record[key] !== "string") continue;
+    sanitized[key] = record[key]
+      .replace(/[\u0000-\u001f\u007f]+/g, " ")
+      .trim()
+      .slice(0, MAX_PRACTICE_STATS_STRING_CHARS);
+  }
+
+  const rawUsage = record.usage;
+  sanitized.usage_field_count = rawUsage && typeof rawUsage === "object" && !Array.isArray(rawUsage)
+    ? Math.min(Object.keys(rawUsage as Record<string, unknown>).length, MAX_PRACTICE_STATS_FIELDS)
+    : 0;
+  return sanitized;
 }
 
 async function prunePracticeFullCallLogs(now: Date) {
@@ -267,7 +345,12 @@ export async function writePracticeStatsLog({
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.writeFile(
       fullPath,
-      `${stableStringify({ context, event: "usage", payload, writtenAt: now.toISOString() }, 2)}\n`,
+      `${stableStringify({
+        context: sanitizePracticeStatsContext(context),
+        event: "usage",
+        payload: sanitizePracticeStatsPayload(payload),
+        writtenAt: now.toISOString(),
+      }, 2)}\n`,
       "utf8",
     );
     return true;

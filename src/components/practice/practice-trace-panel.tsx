@@ -68,7 +68,7 @@ function plainText(value: unknown, maxLength = 260): string {
 
 function readableProcessLabel(event: PracticeTraceEvent) {
   if (event.error) return "Needs attention";
-  if (event.toolName === "model_tool_choice") return "Model thought";
+  if (event.toolName === "model_tool_choice") return "Model step";
   if (event.toolName.includes("browse")) return "Finding the right topic";
   if (event.toolName.includes("search")) return "Looking through question candidates";
   if (event.toolName.includes("finalize")) return "Choosing the round";
@@ -305,26 +305,12 @@ export function TracePanel({
                 </summary>
                 {event.toolName === "model_tool_choice" ? (
                   <div className="mt-3 rounded-lg border border-sky-100 bg-white p-3">
-                    <p className="font-bold text-slate-900">Model-generated thought overview</p>
+                    <p className="font-bold text-slate-900">Model action overview</p>
                     <FeedbackText
                       className="mt-1 border-none bg-transparent p-0 leading-5 text-slate-600"
                       compact
-                      value={event.inputSummary || event.modelThought || "The model requested the next tool call."}
+                      value={event.inputSummary || "The model requested the next tool call."}
                     />
-                    {event.reasoningContent ? (
-                      <details className="mt-3 rounded-md border border-amber-200 bg-amber-50/70 p-3">
-                        <summary className="cursor-pointer font-semibold text-amber-800">Raw reasoning content</summary>
-                        <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-[11px] leading-5 text-slate-600 ring-1 ring-slate-200">
-                          {event.reasoningContent}
-                        </pre>
-                      </details>
-                    ) : null}
-                    {event.modelThought && event.modelThought !== event.inputSummary ? (
-                      <details className="mt-3 rounded-md border border-slate-200 bg-slate-50/70 p-3">
-                        <summary className="cursor-pointer font-semibold text-slate-700">Full original model text</summary>
-                        <FeedbackText className="mt-2 border-none bg-transparent p-0 leading-5 text-slate-600" compact value={event.modelThought} />
-                      </details>
-                    ) : null}
                     {event.outputSummary ? (
                       <p className="mt-2 text-xs leading-5 text-slate-500">{event.outputSummary}</p>
                     ) : null}

@@ -24,9 +24,15 @@ import {
   type AIProviderRoute,
 } from "@/lib/ai-providers/routing";
 import { writePracticeFullCallLog } from "@/lib/practice/context";
+import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import {
+  assertResponseContentLength,
+  readResponseTextWithLimit,
+} from "@/lib/ai-providers/response-limits";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 const PRACTICE_AGENT_TIMEOUT_MS = 45_000;
+const PRACTICE_PROVIDER_RESPONSE_MAX_BYTES = 1_048_576;
 
 export type PracticeChatMessage = {
   content?: string | null;
@@ -247,6 +253,7 @@ async function callPracticeChatModelOnce({
   let response: Response;
 
   try {
+    await assertSafeAIProviderBaseUrl(profile.base_url);
     response = await fetch(endpoint(profile.base_url), {
       body: JSON.stringify(body),
       headers: {
@@ -254,6 +261,7 @@ async function callPracticeChatModelOnce({
         "Content-Type": "application/json",
       },
       method: "POST",
+      redirect: "error",
       signal: AbortSignal.timeout(PRACTICE_AGENT_TIMEOUT_MS),
     });
   } catch (error) {
@@ -284,7 +292,10 @@ async function callPracticeChatModelOnce({
     throw failure;
   }
 
-  const text = await response.text();
+  const text = await readResponseTextWithLimit(
+    response,
+    PRACTICE_PROVIDER_RESPONSE_MAX_BYTES,
+  );
 
   await writePracticeFullCallLog({
     context: debugContext,
@@ -415,6 +426,7 @@ async function callPracticeChatModelStreamOnce({
 
   let response: Response;
   try {
+    await assertSafeAIProviderBaseUrl(profile.base_url);
     response = await fetch(endpoint(profile.base_url), {
       body: JSON.stringify(body),
       headers: {
@@ -422,6 +434,7 @@ async function callPracticeChatModelStreamOnce({
         "Content-Type": "application/json",
       },
       method: "POST",
+      redirect: "error",
       signal: AbortSignal.timeout(PRACTICE_AGENT_TIMEOUT_MS),
     });
   } catch (error) {
@@ -456,15 +469,23 @@ async function callPracticeChatModelStreamOnce({
     throw new Error("Practice AI provider stream body is not available.");
   }
 
+  assertResponseContentLength(response, PRACTICE_PROVIDER_RESPONSE_MAX_BYTES);
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let contentText = "";
   const rawEvents: unknown[] = [];
   let usage: Record<string, unknown> | null = null;
+  let responseBytes = 0;
 
   while (true) {
     const { done, value } = await reader.read();
+    responseBytes += value?.byteLength ?? 0;
+    if (responseBytes > PRACTICE_PROVIDER_RESPONSE_MAX_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("Practice AI provider response exceeded the safety limit.");
+    }
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
     const parsed = parseStreamEvents(buffer);
     buffer = parsed.rest;

@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { normalizeAnswerSpec } from "@/lib/questions/answer-spec";
+import { hasSubmittedPracticeAnswer } from "@/lib/practice/client-helpers";
+import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
 import type {
   PracticeGradeResult,
   PracticeHintResponse,
@@ -113,6 +114,7 @@ function AnswerInput({
     <Textarea
       disabled={disabled}
       id={inputId}
+      maxLength={PRACTICE_INPUT_LIMITS.ANSWER_CHARS}
       onChange={(event) => onChange(event.target.value)}
       placeholder={question.questionType === "fill_blank" ? "Enter your final answer" : "Write your response"}
       value={answerValue(value)}
@@ -120,7 +122,7 @@ function AnswerInput({
   );
 }
 
-export function QuestionPracticePanel({ answerSpec, question, solutionContent }: QuestionPracticePanelProps) {
+export function QuestionPracticePanel({ question, solutionContent }: QuestionPracticePanelProps) {
   const [recommendation, setRecommendation] = useState<PracticeRecommendResponse | null>(null);
   const [answer, setAnswer] = useState<AnswerState>("");
   const [hints, setHints] = useState<string[]>([]);
@@ -128,7 +130,7 @@ export function QuestionPracticePanel({ answerSpec, question, solutionContent }:
   const [showAnswer, setShowAnswer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const normalizedAnswerSpec = normalizeAnswerSpec(answerSpec);
+  const canSubmit = hasSubmittedPracticeAnswer(answer);
 
   async function ensureSession() {
     const sessionsPayload = await jsonRequest<{
@@ -151,11 +153,7 @@ export function QuestionPracticePanel({ answerSpec, question, solutionContent }:
     return created.session;
   }
 
-  async function ensureRound() {
-    if (recommendation?.roundId && recommendation.sessionId) {
-      return recommendation;
-    }
-
+  async function createRound() {
     const session = await ensureSession();
     const created = await jsonRequest<PracticeRecommendResponse>("/api/practice/rounds/custom", {
       body: JSON.stringify({
@@ -168,6 +166,13 @@ export function QuestionPracticePanel({ answerSpec, question, solutionContent }:
 
     setRecommendation(created);
     return created;
+  }
+
+  async function ensureRound() {
+    if (recommendation?.roundId && recommendation.sessionId) {
+      return recommendation;
+    }
+    return createRound();
   }
 
   useEffect(() => {
@@ -186,13 +191,15 @@ export function QuestionPracticePanel({ answerSpec, question, solutionContent }:
     setError(null);
     startTransition(async () => {
       try {
+        const activeRound = await ensureRound();
         const response = await jsonRequest<PracticeHintResponse>("/api/practice/hint", {
           body: JSON.stringify({
             currentAnswer: answer,
             hintLevel: hints.length + 1,
             previousHints: hints,
             questionId: question.id,
-            sessionId: recommendation?.sessionId,
+            roundId: activeRound.roundId,
+            sessionId: activeRound.sessionId,
           }),
           method: "POST",
         });
@@ -207,36 +214,18 @@ export function QuestionPracticePanel({ answerSpec, question, solutionContent }:
     setError(null);
     startTransition(async () => {
       try {
-        const correctOptionIds = normalizedAnswerSpec.correct_option_ids ?? [];
-        if (question.questionType === "mcq" && correctOptionIds.length) {
-          const selected = Array.isArray(answer) ? answer : [answer];
-          const normalizedSelected = selected.map((item) => item.trim()).filter(Boolean);
-          const correctSet = new Set(correctOptionIds);
-          const isCorrect =
-            normalizedSelected.length === correctSet.size &&
-            normalizedSelected.every((item) => correctSet.has(item));
-
-          setResult({
-            correctOptionIds,
-            explanation: isCorrect
-              ? "Correct option selected."
-              : `Correct option${correctOptionIds.length === 1 ? "" : "s"}: ${correctOptionIds.join(", ")}.`,
-            gradingMode: "auto",
-            isCorrect,
-            questionId: question.id,
-            score: isCorrect ? 1 : 0,
-            solutionHtml: solutionContent,
-          });
-        } else {
-          setResult({
-            explanation: "Compare your response with the answer and solution below.",
-            gradingMode: "manual",
-            isCorrect: null,
-            questionId: question.id,
-            score: null,
-            solutionHtml: solutionContent,
-          });
-        }
+        const activeRound = await ensureRound();
+        const grade = await jsonRequest<{ results: PracticeGradeResult[] }>("/api/practice/grade", {
+          body: JSON.stringify({
+            attempts: [{ answer, questionId: question.id }],
+            roundId: activeRound.roundId,
+            sessionId: activeRound.sessionId,
+          }),
+          method: "POST",
+        });
+        const submittedResult = grade.results.find((item) => item.questionId === question.id);
+        if (!submittedResult) throw new Error("The submitted answer could not be graded.");
+        setResult(submittedResult);
         setShowAnswer(true);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -250,6 +239,14 @@ export function QuestionPracticePanel({ answerSpec, question, solutionContent }:
     setResult(undefined);
     setShowAnswer(false);
     setError(null);
+    setRecommendation(null);
+    startTransition(async () => {
+      try {
+        await createRound();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
   }
 
   return (
@@ -259,7 +256,7 @@ export function QuestionPracticePanel({ answerSpec, question, solutionContent }:
           <div>
             <CardTitle className="text-base">Practice this question</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Practice starts automatically. Multiple choice is checked locally; other question types reveal the answer after submission.
+               Practice starts automatically. Your answer is checked in the current practice round, then the saved result is shown here.
             </p>
           </div>
           {resultBadge(result)}
@@ -293,7 +290,7 @@ export function QuestionPracticePanel({ answerSpec, question, solutionContent }:
               <Button disabled={isPending || showAnswer} onClick={requestHint} type="button" variant="outline">
                 Hint
               </Button>
-              <Button disabled={isPending || showAnswer} onClick={submitAnswer} type="button">
+               <Button disabled={isPending || showAnswer || !canSubmit} onClick={submitAnswer} type="button">
                 {isPending ? <LoaderCircle className="mr-2 size-4 animate-spin" aria-hidden="true" /> : null}
                 Submit
               </Button>

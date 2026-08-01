@@ -14,9 +14,7 @@ export type PracticeTraceEvent = {
   inputPayload?: unknown;
   iteration?: number;
   llmUsage?: Record<string, unknown> | null;
-  modelThought?: string;
   outputSummary?: string;
-  reasoningContent?: string | null;
   outputPayload?: unknown;
   phase: PracticePhase | "context";
   resultCount?: number;
@@ -168,6 +166,7 @@ export type PracticeHintRequest = {
   hintLevel?: number;
   previousHints?: string[];
   questionId: string;
+  roundId?: string;
   sessionId?: string;
 };
 
@@ -327,6 +326,7 @@ export type PracticeRoundHistory = {
     correct: number;
     total: number;
   };
+  status: "active" | "completed" | "skipped";
   trace: PracticeTraceEvent[];
 };
 

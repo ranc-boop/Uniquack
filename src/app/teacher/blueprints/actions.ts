@@ -28,6 +28,7 @@ import {
   mergeTeacherBlueprintMetadata,
   parseExpectedQuestionCount,
   sourceExampleFromBankQuestion,
+  TeacherBlueprintInputError,
   textListFromValue,
 } from "@/lib/teacher-blueprint-builder";
 import {
@@ -75,6 +76,16 @@ export async function createTeacherBlueprint(formData: FormData) {
   const sourceBankId = optionalFormString(formData, "sourceBankId") ?? optionalFormString(formData, "bankId");
   const selectedBankQuestionIds = formStringList(formData, "sourceBankQuestionIds").slice(0, 24);
   const visibility = normalizeVisibility(optionalFormString(formData, "visibility"));
+  let requiredElements: string[];
+  try {
+    requiredElements = textListFromValue(optionalFormString(formData, "requiredElements"), 16);
+  } catch (error) {
+    if (error instanceof TeacherBlueprintInputError) {
+      const bankQuery = sourceBankId ? `&bankId=${encodeURIComponent(sourceBankId)}` : "";
+      redirect(`/teacher/blueprints/new?error=required-element-too-long${bankQuery}`);
+    }
+    throw error;
+  }
   const builderInput = {
     answerPattern: boundedText(optionalFormString(formData, "answerPattern"), 1200),
     description,
@@ -83,7 +94,7 @@ export async function createTeacherBlueprint(formData: FormData) {
     expectedQuestionCount: parseExpectedQuestionCount(optionalFormString(formData, "expectedQuestionCount")),
     originalityConstraints: boundedText(optionalFormString(formData, "originalityConstraints"), 1200),
     questionTypeMix: boundedText(optionalFormString(formData, "questionTypeMix"), 800),
-    requiredElements: textListFromValue(optionalFormString(formData, "requiredElements"), 16),
+    requiredElements,
     teacherNotes: boundedText(optionalFormString(formData, "teacherNotes"), 1200),
     title,
   };
@@ -204,6 +215,16 @@ export async function updateTeacherBlueprintPlan(formData: FormData) {
     redirect(blueprintId ? `/teacher/blueprints/${blueprintId}?error=missing-title` : "/teacher/blueprints?error=missing-blueprint");
   }
 
+  let requiredElements: string[];
+  try {
+    requiredElements = textListFromValue(optionalFormString(formData, "requiredElements"), 16);
+  } catch (error) {
+    if (error instanceof TeacherBlueprintInputError) {
+      redirect(`/teacher/blueprints/${blueprintId}?error=required-element-too-long`);
+    }
+    throw error;
+  }
+
   const { data: blueprint, error: loadError } = await supabase
     .from("question_blueprints")
     .select("id, metadata, source_bank_id, source_refs, taxonomy_targets, version")
@@ -222,7 +243,7 @@ export async function updateTeacherBlueprintPlan(formData: FormData) {
     expectedQuestionCount: parseExpectedQuestionCount(optionalFormString(formData, "expectedQuestionCount")),
     originalityConstraints: boundedText(optionalFormString(formData, "originalityConstraints"), 1200),
     questionTypeMix: boundedText(optionalFormString(formData, "questionTypeMix"), 800),
-    requiredElements: textListFromValue(optionalFormString(formData, "requiredElements"), 16),
+    requiredElements,
     teacherNotes: boundedText(optionalFormString(formData, "teacherNotes"), 1200),
     title,
   };

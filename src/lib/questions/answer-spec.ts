@@ -1,4 +1,5 @@
 import type { Json } from "@/types/database";
+import { AI_INPUT_LIMITS } from "@/lib/ai-input-limits";
 
 export type QuestionOption = {
   content_html: string;
@@ -31,7 +32,18 @@ function splitLines(value: FormDataEntryValue | null) {
         .split(/[\n,]/)
         .map((item) => item.trim())
         .filter(Boolean)
+        .slice(0, AI_INPUT_LIMITS.ANSWER_LIST_ITEMS)
+        .map((item) => item.slice(0, AI_INPUT_LIMITS.ANSWER_ENTRY_CHARS))
     : [];
+}
+
+function boundedFormText(formData: FormData, key: string, maxLength: number) {
+  const value = formData.get(key);
+  if (typeof value !== "string") return value;
+  if (value.length > maxLength) {
+    throw new Error(`${key} must be ${maxLength} characters or fewer.`);
+  }
+  return value;
 }
 
 function normalizeOptionId(value: string, index: number) {
@@ -122,10 +134,18 @@ export function parseOptionsText(value: FormDataEntryValue | null) {
 
 export function answerSpecFromFormData(formData: FormData) {
   const questionType = String(formData.get("question_type") ?? "frq");
-  const options = parseOptionsText(formData.get("options_text"));
-  const correctOptionIds = splitLines(formData.get("correct_option_ids"));
-  const finalAnswers = splitLines(formData.get("final_answers"));
-  const acceptedAnswers = splitLines(formData.get("accepted_answers"));
+  const options = parseOptionsText(
+    boundedFormText(formData, "options_text", AI_INPUT_LIMITS.OPTION_TEXT_CHARS),
+  ).slice(0, AI_INPUT_LIMITS.OPTION_ITEMS);
+  const correctOptionIds = splitLines(
+    boundedFormText(formData, "correct_option_ids", AI_INPUT_LIMITS.ANSWER_TEXT_CHARS),
+  );
+  const finalAnswers = splitLines(
+    boundedFormText(formData, "final_answers", AI_INPUT_LIMITS.ANSWER_TEXT_CHARS),
+  );
+  const acceptedAnswers = splitLines(
+    boundedFormText(formData, "accepted_answers", AI_INPUT_LIMITS.ANSWER_TEXT_CHARS),
+  );
   const tolerance = Number(formData.get("numeric_tolerance") ?? "");
   const equivalence = String(formData.get("equivalence") ?? "math");
 

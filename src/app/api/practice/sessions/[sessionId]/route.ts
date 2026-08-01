@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 
 import { requirePracticeApiUser } from "@/lib/practice/auth";
 import { getPracticeSession } from "@/lib/practice/persistence";
+import {
+  PRACTICE_INPUT_LIMITS,
+  boundedPracticeText,
+  practiceValidationResponse,
+} from "@/lib/practice/request-validation";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -57,19 +62,36 @@ export async function PATCH(request: Request, { params }: Params) {
     title?: string;
   } = {};
 
-  if (typeof body.title === "string") {
-    const title = body.title.trim().slice(0, 160);
-    if (title) {
-      patch.title = title;
+  try {
+    if (typeof body.title === "string") {
+      const title = boundedPracticeText(body.title, {
+        field: "title",
+        maxLength: PRACTICE_INPUT_LIMITS.SESSION_TITLE_CHARS,
+      });
+      if (title) {
+        patch.title = title;
+      }
     }
-  }
-  if (typeof body.outlineUserNotes === "string") {
-    patch.outline_user_notes = body.outlineUserNotes.trim().slice(0, 4000);
-    patch.preference_dirty_at = new Date().toISOString();
-  }
-  if (typeof body.nextUserNotes === "string") {
-    patch.next_user_notes = body.nextUserNotes.trim().slice(0, 4000);
-    patch.preference_dirty_at = new Date().toISOString();
+    if (typeof body.outlineUserNotes === "string") {
+      patch.outline_user_notes = boundedPracticeText(body.outlineUserNotes, {
+        field: "outlineUserNotes",
+        maxLength: PRACTICE_INPUT_LIMITS.OUTLINE_NOTES_CHARS,
+      });
+      patch.preference_dirty_at = new Date().toISOString();
+    }
+    if (typeof body.nextUserNotes === "string") {
+      patch.next_user_notes = boundedPracticeText(body.nextUserNotes, {
+        field: "nextUserNotes",
+        maxLength: PRACTICE_INPUT_LIMITS.NEXT_ROUND_NOTE_CHARS,
+      });
+      patch.preference_dirty_at = new Date().toISOString();
+    }
+  } catch (error) {
+    const validation = practiceValidationResponse(error);
+    return NextResponse.json(
+      validation?.body ?? { code: "INVALID_SESSION_PATCH", error: "Invalid session update." },
+      { status: validation?.status ?? 400 },
+    );
   }
   if (body.status === "active" || body.status === "archived") {
     patch.status = body.status;
@@ -86,7 +108,10 @@ export async function PATCH(request: Request, { params }: Params) {
     .eq("id", sessionId);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { code: "SESSION_UPDATE_FAILED", error: "Unable to update this practice session." },
+      { status: 500 },
+    );
   }
 
   const session = await getPracticeSession({ sessionId, supabase, userId: auth.user.id });

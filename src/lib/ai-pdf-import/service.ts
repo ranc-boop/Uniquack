@@ -1,4 +1,5 @@
 import { callAIPdfExtractionProvider } from "@/lib/ai-providers/chat";
+import { AI_GENERATION_UNTRUSTED_DATA_BOUNDARY } from "@/lib/ai-providers/prompt-safety";
 import {
   generateWithGeminiNativePdf,
   type GeminiNativeUsage,
@@ -2617,6 +2618,7 @@ function buildPrompt({
 
   return [
     "You are importing a PDF question set into a question bank.",
+    AI_GENERATION_UNTRUSTED_DATA_BOUNDARY,
     "Read the entire document context in order. Questions, solutions, and figures may continue across page boundaries; do not split one question only because it crosses pages.",
     "Extract only actual questions that ask the student to answer, solve, prove, evaluate, choose, or fill in something.",
     "Do not create question records for section headings, page titles, unit titles, directions-only blocks, answer keys, or standalone labels. Use headings only as context for nearby real questions.",

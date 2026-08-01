@@ -16,6 +16,7 @@ import {
 import type { AIProviderJobSafeStatus } from "@/lib/ai-jobs/types";
 import { listBankImportBatches } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
+import { TEACHER_BLUEPRINT_INPUT_LIMITS } from "@/lib/teacher-blueprint-builder";
 import {
   buildTeacherBlueprintGenerationGate,
   listTeacherBlueprintGenerationProviderStatus,
@@ -208,7 +209,9 @@ export default async function TeacherBlueprintDetailPage({
       ) : null}
       {query.error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-          {query.error}
+          {query.error === "required-element-too-long"
+            ? `Use at most ${TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENT_ITEMS} required elements, with ${TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENT_CHARS} characters per element.`
+            : query.error}
         </div>
       ) : null}
 
@@ -345,6 +348,7 @@ export default async function TeacherBlueprintDetailPage({
                     <textarea
                       className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
                       defaultValue={textAreaList(blueprint.required_elements)}
+                      maxLength={TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENTS_INPUT_CHARS}
                       name="requiredElements"
                       placeholder="One required element per line"
                     />

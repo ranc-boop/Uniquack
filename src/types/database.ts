@@ -802,6 +802,7 @@ export type PracticeSessionSource = {
 
 export type PracticeRound = {
   id: string;
+  organization_id: string | null;
   user_id: string;
   session_id: string;
   round_index: number;
@@ -812,7 +813,12 @@ export type PracticeRound = {
   score_total: number;
   mode: string | null;
   provider_label: string | null;
+  target_taxonomy_node_ids: string[];
+  status: "active" | "completed" | "skipped";
   trace: Json;
+  summary: Json;
+  started_at: string;
+  completed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -857,6 +863,36 @@ export type PracticeAttempt = {
   solution_html: string | null;
   result: Json;
   created_at: string;
+  updated_at: string;
+};
+
+export type PracticeHintEvent = {
+  id: string;
+  organization_id: string | null;
+  user_id: string;
+  session_id: string;
+  round_id: string | null;
+  attempt_id: string | null;
+  hint_kind: "standard" | "scaffold" | "conceptual" | "worked_step";
+  hint_level: number;
+  prompt_context: Json;
+  response_summary: string | null;
+  created_at: string;
+};
+
+export type PracticeProgressReset = {
+  user_id: string;
+  reset_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PracticeAiRequestWindow = {
+  user_id: string;
+  operation: "hint" | "preference_merge" | "recommend" | "review" | "session_title";
+  window_seconds: 60 | 3600;
+  window_started_at: string;
+  request_count: number;
   updated_at: string;
 };
 
@@ -1018,6 +1054,9 @@ export type Database = {
       practice_rounds: TableDefinition<PracticeRound>;
       practice_round_questions: TableDefinition<PracticeRoundQuestion>;
       practice_attempts: TableDefinition<PracticeAttempt>;
+      practice_hint_events: TableDefinition<PracticeHintEvent>;
+      practice_ai_request_windows: TableDefinition<PracticeAiRequestWindow>;
+      practice_progress_resets: TableDefinition<PracticeProgressReset>;
       practice_wrong_questions: TableDefinition<PracticeWrongQuestion>;
       user_practice_preferences: TableDefinition<UserPracticePreference>;
       practice_preference_merge_jobs: TableDefinition<PracticePreferenceMergeJob>;
@@ -1329,6 +1368,35 @@ export type Database = {
           unseen_count: number;
           visibility: string;
         }>;
+      };
+      reset_my_practice_progress: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      claim_practice_ai_request: {
+        Args: { p_operation: string };
+        Returns: Array<{
+          allowed: boolean;
+          retry_after_seconds: number;
+          minute_count: number;
+          hour_count: number;
+        }>;
+      };
+      claim_practice_ai_inflight_lease: {
+        Args: {
+          p_operation: string;
+          p_scope_id: string;
+          p_ttl_seconds?: number;
+        };
+        Returns: Array<{
+          acquired: boolean;
+          lease_token: string | null;
+          retry_after_seconds: number;
+        }>;
+      };
+      release_practice_ai_inflight_lease: {
+        Args: { p_lease_token: string; p_operation: string };
+        Returns: boolean;
       };
       search_practice_questions_in_session: {
         Args: {

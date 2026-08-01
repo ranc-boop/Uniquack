@@ -38,6 +38,19 @@ export type BlueprintBuilderReadinessSummary = {
   ready: boolean;
 };
 
+export const TEACHER_BLUEPRINT_INPUT_LIMITS = {
+  REQUIRED_ELEMENT_CHARS: 240,
+  REQUIRED_ELEMENT_ITEMS: 16,
+  REQUIRED_ELEMENTS_INPUT_CHARS: 3_855,
+} as const;
+
+export class TeacherBlueprintInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TeacherBlueprintInputError";
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
@@ -52,12 +65,39 @@ function stringValue(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function textListFromValue(value: string | null | undefined, limit = 12) {
-  return (value ?? "")
+export function textListFromValue(
+  value: string | null | undefined,
+  limit = TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENT_ITEMS,
+) {
+  const rawValue = value ?? "";
+  const maxInputLength = Math.min(
+    TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENTS_INPUT_CHARS,
+    limit * (TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENT_CHARS + 1) - 1,
+  );
+  if (rawValue.length > maxInputLength) {
+    throw new TeacherBlueprintInputError(
+      `Required elements must contain at most ${maxInputLength} characters in total.`,
+    );
+  }
+
+  const items = rawValue
     .split(/\r?\n|,/)
     .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, limit);
+    .filter(Boolean);
+  if (items.length > limit) {
+    throw new TeacherBlueprintInputError(
+      `Required elements must contain at most ${limit} items.`,
+    );
+  }
+  const overlongIndex = items.findIndex(
+    (item) => item.length > TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENT_CHARS,
+  );
+  if (overlongIndex >= 0) {
+    throw new TeacherBlueprintInputError(
+      `Required element ${overlongIndex + 1} must be ${TEACHER_BLUEPRINT_INPUT_LIMITS.REQUIRED_ELEMENT_CHARS} characters or fewer.`,
+    );
+  }
+  return items;
 }
 
 export function boundedText(value: string | null | undefined, limit: number) {

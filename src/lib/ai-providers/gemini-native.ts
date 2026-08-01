@@ -1,6 +1,8 @@
 import "server-only";
 
 import { writeAIImportLLMDebugLog } from "@/lib/ai-providers/llm-debug-logs";
+import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import { readResponseTextWithLimit } from "@/lib/ai-providers/response-limits";
 
 type GeminiFetch = typeof fetch;
 
@@ -67,6 +69,7 @@ const GEMINI_GENERATE_TIMEOUT_MS = 180_000;
 const GEMINI_DELETE_TIMEOUT_MS = 15_000;
 const DEFAULT_POLL_DELAY_MS = 2_000;
 const DEFAULT_MAX_POLL_ATTEMPTS = 30;
+const GEMINI_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 
 function assertGeminiConfig({
   apiKey,
@@ -162,7 +165,7 @@ function fileFromPayload(payload: GeminiFileResponse | GeminiFile): GeminiFile {
 
 async function safeResponseText(response: Response) {
   try {
-    return await response.text();
+    return await readResponseTextWithLimit(response, GEMINI_RESPONSE_MAX_BYTES);
   } catch {
     return "";
   }
@@ -212,6 +215,7 @@ async function uploadGeminiFile({
         "X-Goog-Upload-Protocol": "resumable",
       },
       method: "POST",
+      redirect: "error",
       signal: AbortSignal.timeout(GEMINI_UPLOAD_TIMEOUT_MS),
     },
   );
@@ -226,6 +230,7 @@ async function uploadGeminiFile({
   if (!uploadUrl) {
     throw new Error("Gemini Native file upload did not return an upload URL.");
   }
+  if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(uploadUrl);
 
   const uploadResponse = await fetchImpl(uploadUrl, {
     body: pdfBytesToBlob(pdfBytes),
@@ -236,6 +241,7 @@ async function uploadGeminiFile({
       "X-Goog-Upload-Offset": "0",
     },
     method: "POST",
+    redirect: "error",
     signal: AbortSignal.timeout(GEMINI_UPLOAD_TIMEOUT_MS),
   });
   const payload = await readJson<GeminiFileResponse>(
@@ -294,6 +300,7 @@ async function waitForGeminiFile({
         "X-Goog-Api-Key": apiKey,
       },
       method: "GET",
+      redirect: "error",
       signal: AbortSignal.timeout(GEMINI_UPLOAD_TIMEOUT_MS),
     });
     const payload = await readJson<GeminiFileResponse | GeminiFile>(
@@ -327,6 +334,7 @@ async function deleteGeminiFile({
         "X-Goog-Api-Key": apiKey,
       },
       method: "DELETE",
+      redirect: "error",
       signal: AbortSignal.timeout(GEMINI_DELETE_TIMEOUT_MS),
     });
   } catch {
@@ -391,6 +399,7 @@ async function generateContent({
           "X-Goog-Api-Key": apiKey,
         },
         method: "POST",
+        redirect: "error",
         signal: AbortSignal.timeout(GEMINI_GENERATE_TIMEOUT_MS),
       },
     );
@@ -410,7 +419,7 @@ async function generateContent({
     throw error;
   }
   if (!response.ok) {
-    const text = await response.clone().text().catch(() => "");
+    const text = await safeResponseText(response.clone());
     await writeAIImportLLMDebugLog({
       context: {
         ...debugContext,
@@ -491,6 +500,7 @@ export async function generateWithGeminiNativePdf({
   prompt,
 }: GeminiNativePdfInput): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
   assertGeminiConfig({ apiKey, model, pdfBytes });
+  if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
 
   let uploadedFile: GeminiFile | null = null;
 
@@ -549,6 +559,7 @@ export async function testGeminiNativeTextConnection({
   prompt = "Return exactly: ok",
 }: GeminiNativeTextTestInput): Promise<{ message: string; ok: true }> {
   assertGeminiTextConfig({ apiKey, model });
+  if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
   const result = await generateContent({
     apiKey,
     baseUrl,
@@ -580,6 +591,7 @@ export async function generateWithGeminiNativeText({
   prompt: string;
 }): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
   assertGeminiTextConfig({ apiKey, model });
+  if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
 
   return generateContent({
       apiKey,

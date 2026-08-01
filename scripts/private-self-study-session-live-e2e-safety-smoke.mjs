@@ -152,13 +152,13 @@ const refreshFlow = clientSource.slice(
 );
 const createFlow = clientSource.slice(
   clientSource.indexOf("function createNewSession"),
-  clientSource.indexOf("function deleteSession"),
+  clientSource.indexOf("function resetPracticeProgress"),
 );
 assert(
   createFlow.includes("prepareScopedNewSession()") &&
     !createFlow.includes("jsonRequest") &&
     !createFlow.includes("refreshPracticeState(") &&
-    refreshFlow.includes("setSessions(sessionPayload.sessions)") &&
+    refreshFlow.includes("sessionPayload.sessions") &&
     refreshFlow.includes("setActiveSession(nextSession)"),
   "new-session UI must stay local until first generation while refresh restores canonical sessions",
 );

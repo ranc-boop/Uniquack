@@ -5,6 +5,7 @@ import {
   type PracticeChatMessage,
 } from "@/lib/practice/ai";
 import { stableStringify } from "@/lib/practice/context";
+import { PRACTICE_SUMMARY_PROMPT_SAFETY_BOUNDARY } from "@/lib/practice/prompt-safety";
 import type {
   PracticeCompletion,
   PracticeInventory,
@@ -320,6 +321,10 @@ export async function completePracticeSession({
           role: "system",
           content:
             "You are the O2I Practice main thread. Produce only a concise final learning report. Do not call tools or recommend another question in this session.",
+        },
+        {
+          role: "system",
+          content: PRACTICE_SUMMARY_PROMPT_SAFETY_BOUNDARY,
         },
         {
           role: "system",

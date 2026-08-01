@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { requireAdmin } from "@/lib/auth/guards";
+import { PRACTICE_FRAMEWORK_INPUT_LIMITS } from "@/lib/practice/framework-input-limits";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -42,20 +43,21 @@ export default async function PracticeFrameworksPage({
           <form action={createPracticeFramework} className="grid gap-4">
             <div className="grid gap-2">
               <Label htmlFor="title">Title</Label>
-              <Input id="title" name="title" required />
+              <Input id="title" maxLength={PRACTICE_FRAMEWORK_INPUT_LIMITS.TITLE_CHARS} name="title" required />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="description">Description</Label>
-              <Textarea id="description" name="description" rows={3} />
+              <Textarea id="description" maxLength={PRACTICE_FRAMEWORK_INPUT_LIMITS.DESCRIPTION_CHARS} name="description" rows={3} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="framework_prompt">Framework prompt</Label>
-              <Textarea id="framework_prompt" name="framework_prompt" required rows={8} />
+              <Textarea id="framework_prompt" maxLength={PRACTICE_FRAMEWORK_INPUT_LIMITS.FRAMEWORK_PROMPT_CHARS} name="framework_prompt" required rows={8} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="learning_path">Learning path</Label>
               <Textarea
                 id="learning_path"
+                maxLength={PRACTICE_FRAMEWORK_INPUT_LIMITS.LEARNING_PATH_CHARS}
                 name="learning_path"
                 placeholder="One node per line, or a JSON array."
                 rows={4}
@@ -65,6 +67,7 @@ export default async function PracticeFrameworksPage({
               <Label htmlFor="allowed_tag_ids">Allowed tag IDs</Label>
               <Textarea
                 id="allowed_tag_ids"
+                maxLength={PRACTICE_FRAMEWORK_INPUT_LIMITS.ALLOWED_TAG_IDS_CHARS}
                 name="allowed_tag_ids"
                 placeholder="Optional: comma or newline separated taxonomy tag IDs."
                 rows={3}
@@ -72,7 +75,7 @@ export default async function PracticeFrameworksPage({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="priority_rules">Priority rules</Label>
-              <Textarea id="priority_rules" name="priority_rules" rows={4} />
+              <Textarea id="priority_rules" maxLength={PRACTICE_FRAMEWORK_INPUT_LIMITS.PRIORITY_RULES_CHARS} name="priority_rules" rows={4} />
             </div>
             <Button className="w-fit" type="submit">Save framework</Button>
           </form>

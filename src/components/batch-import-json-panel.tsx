@@ -334,6 +334,7 @@ export function BatchImportJsonPanel({
       <div className="space-y-3">
         <Textarea
           disabled={isReadOnly}
+          maxLength={2_000_000}
           value={jsonText}
           onChange={(event) => updateJsonText(event.target.value)}
           className="min-h-[520px] font-mono text-sm"

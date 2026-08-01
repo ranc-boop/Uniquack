@@ -26,6 +26,7 @@ import {
 } from "@/lib/practice/answer-restore";
 import { initializePracticePreference } from "@/lib/practice/preference-initialization";
 import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-identity";
+import { sanitizePublicPracticeTrace } from "@/lib/practice/trace-safety";
 import type { Json, PracticeSession } from "@/types/database";
 
 type SupabaseLike = {
@@ -108,7 +109,7 @@ const PRACTICE_SESSION_DETAIL_SELECT =
 const PRACTICE_SESSION_SUMMARY_SELECT =
   `${PRACTICE_SESSION_FIELDS},practice_rounds(count),practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
 const PRACTICE_ROUND_HISTORY_SELECT =
-  "id,next_round_goal,review_summary,round_goal,score_correct,score_total,trace";
+  "id,next_round_goal,review_summary,round_goal,score_correct,score_total,status,trace";
 const PRACTICE_ROUND_QUESTION_HISTORY_SELECT =
   "expected_skill,id,position,question_id,question_snapshot,reason,round_id,source_question_id";
 const PRACTICE_ATTEMPT_HISTORY_SELECT =
@@ -385,13 +386,7 @@ function hintsFromJson(value: unknown) {
 }
 
 function traceEventsFromJson(value: unknown): PracticeTraceEvent[] {
-  return Array.isArray(value)
-    ? value.filter((event): event is PracticeTraceEvent => Boolean(
-      event &&
-      typeof event === "object" &&
-      "toolName" in event,
-    ))
-    : [];
+  return sanitizePublicPracticeTrace(value);
 }
 
 function isUniqueConstraintError(error: unknown) {
@@ -713,6 +708,26 @@ export async function listPracticeSessions({
   );
 }
 
+export async function getPracticeProgressResetAt({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseLike;
+  userId: string;
+}) {
+  const { data, error } = await supabase
+    .from("practice_progress_resets")
+    .select("reset_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return typeof data?.reset_at === "string" ? data.reset_at : null;
+}
+
 export async function getPracticeSession({
   sessionId,
   sessionSummary,
@@ -846,6 +861,12 @@ export async function getPracticeSession({
       correct: round.score_correct,
       total: round.score_total,
     },
+    status:
+      round.status === "completed"
+        ? "completed"
+        : round.status === "skipped"
+          ? "skipped"
+          : "active",
     trace: traceEventsFromJson(round.trace),
   }));
 
@@ -1163,7 +1184,7 @@ export async function persistRecommendationRound({
         round_goal: response.roundGoal,
         round_index: roundIndex,
         session_id: sessionId,
-        trace: trace as unknown as Json,
+        trace: sanitizePublicPracticeTrace(trace) as unknown as Json,
         user_id: userId,
       })
       .select("id")
@@ -1342,6 +1363,7 @@ async function upsertPracticeAgentEpisode({
 
 export async function persistQuestionReviewResults({
   attempts,
+  completeRound = true,
   hintsByQuestionId,
   llmUsage,
   providerLabel,
@@ -1355,6 +1377,7 @@ export async function persistQuestionReviewResults({
   userId,
 }: {
   attempts: PracticeAttemptInput[];
+  completeRound?: boolean;
   hintsByQuestionId?: Record<string, string[]>;
   llmUsage?: Record<string, unknown>[];
   providerLabel?: string;
@@ -1382,7 +1405,9 @@ export async function persistQuestionReviewResults({
       explanation: result?.explanation ?? review?.judgmentReason ?? null,
       grading_mode: result?.gradingMode ?? "manual",
       hint_count: attempt.hintCount ?? 0,
-      hints: (hintsByQuestionId?.[attempt.questionId] ?? []) as unknown as Json,
+      ...(hintsByQuestionId
+        ? { hints: (hintsByQuestionId[attempt.questionId] ?? []) as unknown as Json }
+        : {}),
       is_correct: result?.isCorrect ?? null,
       question_code: question?.questionCode ?? null,
       question_id: null,
@@ -1437,7 +1462,7 @@ export async function persistQuestionReviewResults({
   const existingTrace = traceEventsFromJson(existingRoundResult.data?.trace);
   const mergedTrace = [
     ...existingTrace,
-    ...trace.filter((event) => !existingTrace.some((existing) =>
+    ...sanitizePublicPracticeTrace(trace).filter((event) => !existingTrace.some((existing) =>
       existing.toolName === event.toolName &&
       existing.iteration === event.iteration &&
       existing.inputSummary === event.inputSummary &&
@@ -1447,6 +1472,12 @@ export async function persistQuestionReviewResults({
   const roundUpdate = await supabase
     .from("practice_rounds")
     .update({
+      ...(completeRound
+        ? {
+            completed_at: new Date().toISOString(),
+            status: "completed",
+          }
+        : {}),
       mode: "ai",
       provider_label: providerLabel ?? null,
       score_correct: correct,
@@ -1629,7 +1660,7 @@ export async function persistRoundReviewSummary({
   const existingTrace = traceEventsFromJson(existingRoundResult.data?.trace);
   const mergedTrace = [
     ...existingTrace,
-    ...trace.filter((event) => !existingTrace.some((existing) =>
+    ...sanitizePublicPracticeTrace(trace).filter((event) => !existingTrace.some((existing) =>
       existing.toolName === event.toolName &&
       existing.iteration === event.iteration &&
       existing.inputSummary === event.inputSummary &&
@@ -1639,9 +1670,11 @@ export async function persistRoundReviewSummary({
   const roundUpdate = await supabase
     .from("practice_rounds")
     .update({
+      completed_at: new Date().toISOString(),
       mode: "ai",
       provider_label: providerLabel ?? null,
       review_summary: summary,
+      status: "completed",
       trace: mergedTrace as unknown as Json,
     })
     .eq("user_id", userId)

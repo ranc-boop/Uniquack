@@ -1,5 +1,8 @@
 import "server-only";
 
+import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
+import { AI_GENERATION_UNTRUSTED_DATA_BOUNDARY } from "@/lib/ai-providers/prompt-safety";
+import { readResponseJsonWithLimit } from "@/lib/ai-providers/response-limits";
 import { parseQuestionBlueprintGenerationProviderText } from "@/lib/blueprints/question-blueprint-generation";
 import type {
   GeneratedBlueprintQuestionDraft,
@@ -37,6 +40,7 @@ export type QuestionBlueprintRepairResult = {
 };
 
 const QUESTION_BLUEPRINT_REPAIR_TIMEOUT_MS = 90_000;
+const QUESTION_BLUEPRINT_REPAIR_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 
 function boundedText(value: unknown, max = 800) {
   return typeof value === "string"
@@ -186,6 +190,7 @@ export function buildBlueprintRepairPrompt(repairRequest: QuestionBlueprintRepai
 
   return [
     "You are repairing one generated draft question that failed deterministic app validation.",
+    AI_GENERATION_UNTRUSTED_DATA_BOUNDARY,
     "You are not the final judge. The app will re-run local validators after this repair.",
     "Do not weaken, reinterpret, or bypass validation blockers.",
     "Do not change the blueprint question type, taxonomy targets, or source constraints.",
@@ -264,6 +269,7 @@ export async function runBlueprintDraftRepair({
   provider: QuestionBlueprintGenerationProvider;
   repairRequest: QuestionBlueprintRepairRequest;
 }): Promise<QuestionBlueprintRepairResult> {
+  await assertSafeAIProviderBaseUrl(provider.base_url);
   const response = await fetch(endpoint(provider.base_url), {
     body: JSON.stringify({
       messages: [
@@ -281,6 +287,7 @@ export async function runBlueprintDraftRepair({
       "Content-Type": "application/json",
     },
     method: "POST",
+    redirect: "error",
     signal: AbortSignal.timeout(QUESTION_BLUEPRINT_REPAIR_TIMEOUT_MS),
   });
 
@@ -290,9 +297,9 @@ export async function runBlueprintDraftRepair({
     );
   }
 
-  const payload = (await response.json()) as {
+  const payload = await readResponseJsonWithLimit<{
     choices?: { message?: { content?: string } }[];
-  };
+  }>(response, QUESTION_BLUEPRINT_REPAIR_RESPONSE_MAX_BYTES);
   const providerText = payload.choices?.[0]?.message?.content;
 
   if (!providerText) {
