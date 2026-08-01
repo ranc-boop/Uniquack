@@ -35,7 +35,8 @@ assert(
 assert(
   client.includes("function cancelPracticeOperation({ resetReviewState = true }") &&
     client.includes("setIsReviewStreaming(false)") &&
-    client.includes("cancelPracticeOperation({ resetReviewState: false })"),
+    client.includes("activePracticeOperationRef.current?.controller.abort();") &&
+    client.includes("window.cancelAnimationFrame(streamedReviewFrameRef.current);"),
   "Canceling a practice operation must clear review-streaming state while unmount cleanup avoids state updates",
 );
 
