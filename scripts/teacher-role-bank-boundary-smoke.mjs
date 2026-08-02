@@ -97,8 +97,10 @@ async function runStaticChecks() {
     !teacherNav.includes("/admin/imports/pdf") &&
       !teacherNav.includes("/admin/review") &&
       !teacherNav.includes("/practice") &&
-      teacherNav.includes("Dashboard") &&
-      teacherNav.includes("Libraries") &&
+      teacherNav.includes('label: "Home"') &&
+      teacherNav.includes("My Libraries") &&
+      teacherNav.includes("Public Library") &&
+      teacherNav.includes("/questions?workspace=teacher") &&
       !teacherNav.includes("AI Parsing") &&
       teacherNav.includes("Blueprints") &&
       teacherNav.includes("Classrooms") &&
@@ -117,10 +119,11 @@ async function runStaticChecks() {
     "teacher workspace navigation must stay bank-first instead of pointing to admin/global review",
   );
   assert(
-    rootLayout.includes("teacherWorkspaceNavItems") &&
-      rootLayout.includes("studentNavItems") &&
-      rootLayout.includes('["teacher", "admin", "super_admin"]'),
-    "root layout must keep separate student and teacher primary navigation",
+    rootLayout.includes("<AppChrome") &&
+      rootLayout.includes("role={identity.role}") &&
+      !rootLayout.includes("teacherWorkspaceNavItems") &&
+      !rootLayout.includes("studentNavItems"),
+    "root layout must delegate role-aware navigation to the unified workspace chrome",
   );
   assert(
     adminPage.includes("Provider") || adminPage.includes("Admin"),

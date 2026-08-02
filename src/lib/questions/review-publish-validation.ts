@@ -1,7 +1,6 @@
 import {
-  normalizeAnswerSpec,
-  normalizeQuestionOptions,
-} from "@/lib/questions/answer-spec";
+  getQuestionReadiness,
+} from "@/lib/questions/grading-capability";
 
 export type ReviewPublishQuestionInput = {
   answerSpec: unknown;
@@ -121,35 +120,14 @@ export function validateReviewQuestionForPublish(
     hardErrors.push("Question content is required.");
   }
 
-  const answerSpec = normalizeAnswerSpec(input.answerSpec);
-  const normalizedOptions = normalizeQuestionOptions(input.options);
-
-  if (input.questionType === "mcq") {
-    const optionIds = new Set(normalizedOptions.map((option) => option.id));
-    const correctIds = answerSpec.correct_option_ids ?? [];
-
-    if (normalizedOptions.length < 2) {
-      hardErrors.push("Multiple-choice questions require at least two options.");
-    }
-    if (
-      answerSpec.kind !== "mcq" ||
-      !correctIds.length ||
-      correctIds.some((id) => !optionIds.has(id))
-    ) {
-      hardErrors.push("The correct multiple-choice answer is invalid.");
-    }
-  }
-
-  if (
-    input.questionType === "fill_blank" &&
-    (!["fill_blank"].includes(answerSpec.kind ?? "") ||
-      ![
-        ...(answerSpec.final_answers ?? []),
-        ...(answerSpec.accepted_answers ?? []),
-      ].length)
-  ) {
-    hardErrors.push("Fill-in-the-blank questions require a valid answer.");
-  }
+  const readiness = getQuestionReadiness({
+    answerSpec: input.answerSpec,
+    options: input.options,
+    questionType: input.questionType,
+    solutionHtml: input.solutionHtml,
+    solutionSource: input.solutionSource,
+  });
+  hardErrors.push(...readiness.blockingReasons);
 
   const availableAssets = new Map(
     input.assetRows.map((asset) => [asset.id, asset]),

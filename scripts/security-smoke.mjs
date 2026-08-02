@@ -141,8 +141,12 @@ assert(questionSearchMigration.includes("to_tsvector"), "taxonomy search RPC doe
 console.log("PASS taxonomy search RPC includes paths, cursor, and full-text matching");
 
 const publicQuestions = await read("src/app/questions/page.tsx");
-assert(publicQuestions.includes("search_questions_by_taxonomy"), "public questions page does not use taxonomy RPC");
-console.log("PASS public questions page uses taxonomy search RPC");
+assert(
+  publicQuestions.includes("search_official_public_questions_v2") &&
+    !publicQuestions.includes("question_status: \"published\""),
+  "public questions page must use the official system Library RPC, not legacy status/visibility.",
+);
+console.log("PASS public questions page uses the official Public Library RPC");
 
 const adminTags = await read("src/app/admin/tags/page.tsx");
 assert(adminTags.includes("TaxonomyNodeCreateFields"), "taxonomy node form is missing parent tree picker");
@@ -540,8 +544,9 @@ assert(
     teacherHomePage.includes("Next action") &&
     teacherHomePage.includes("getTeacherHomeSummary") &&
     !teacherHomePage.includes("TeacherDashboardOverviewCards") &&
-    teacherWorkspaceNav.includes("Dashboard") &&
-    teacherWorkspaceNav.includes("Libraries") &&
+    teacherWorkspaceNav.includes("Home") &&
+    teacherWorkspaceNav.includes("My Libraries") &&
+    teacherWorkspaceNav.includes("Public Library") &&
     !teacherWorkspaceNav.includes("AI Parsing") &&
     teacherWorkspaceNav.includes("Blueprints") &&
     teacherWorkspaceNav.includes("Classrooms") &&
@@ -595,7 +600,7 @@ assert(
     teacherBankActions.includes('rpc("join_question_bank_by_code"') &&
     teacherBankActions.includes('rpc("update_bank_member_role"') &&
     teacherBankActions.includes('rpc("remove_bank_member"') &&
-    teacherBankActions.includes('rpc("approve_bank_review_question"') &&
+    teacherBankActions.includes('rpc("approve_library_questions_v2"') &&
     teacherBankActions.includes("create_assignment_from_bank") &&
     teacherBankActions.includes("createAssignmentFromBankQuestions") &&
     teacherPublishPage.includes("Choose one source Library") &&
@@ -866,12 +871,13 @@ assert(
 );
 assert(
   adminQuestionActions.includes("publishQuestionsWithReviewLineage") &&
-    adminQuestionActions.includes('rpc("publish_review_draft_questions"') &&
+    adminQuestionActions.includes('"approve_library_questions_v2"') &&
+    adminQuestionActions.includes('.eq("system_key", "official_public")') &&
     adminQuestionActions.includes("needsReviewPublish") &&
-    adminQuestionActions.indexOf("await publishQuestionsWithReviewLineage({") <
-      adminQuestionActions.lastIndexOf('if (parsed.status === "published" && returnTo.startsWith("/admin/review"))') &&
+    adminQuestionActions.includes("Approved questions are immutable") &&
+    !adminQuestionActions.includes('rpc("publish_review_draft_questions"') &&
     !adminQuestionActions.includes("approveQuestionTaxonomyAssignmentsForPublish"),
-  "admin publish actions must use transactional review-lineage RPC instead of pre-approving taxonomy",
+  "admin publish actions must use official v2 approval and keep approved content immutable",
 );
 console.log("PASS AI/batch import persistence carries organization context without auto-publish");
 
@@ -1920,17 +1926,17 @@ assert(
 );
 assert(
   adminLayout.includes("AdminShell") &&
-    adminSidebar.includes("Primary") &&
-    adminSidebar.includes("Advanced tools") &&
-    adminSidebar.includes("Settings") &&
-    adminSidebar.includes("Blueprint Library") &&
-    adminSidebar.includes("AI Parsing") &&
-    adminSidebar.includes("Review Drafts") &&
-    adminSidebar.includes("Manual JSON Import") &&
+    adminSidebar.includes("Content Governance") &&
+    adminSidebar.includes("Platform") &&
+    adminSidebar.includes("Public Library") &&
+    adminSidebar.includes("Approval Queue") &&
+    adminSidebar.includes("Library Support") &&
+    adminSidebar.includes("Practice Frameworks") &&
+    !adminSidebar.includes("Experience") &&
     adminSidebar.includes("/admin/blueprints") &&
-    adminSidebar.includes("/admin/imports/pdf") &&
+    adminSidebar.includes("/admin/imports") &&
     adminSidebar.includes("aria-current"),
-  "admin navigation must expose grouped primary, advanced, and settings links",
+  "admin navigation must expose the governance/platform information architecture without duplicate experience links",
 );
 console.log("PASS blueprint observation mode is explicit, summary-only, and draft-free");
 

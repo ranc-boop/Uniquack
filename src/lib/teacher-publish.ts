@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getQuestionReadiness } from "@/lib/questions/grading-capability";
 import { createClient } from "@/lib/supabase/server";
 import type {
   BankMemberRole,
@@ -33,13 +34,18 @@ export type PublishableBankQuestion = {
   isBlueprintApprovedContent: boolean;
   question: Pick<
     Question,
+    | "answer_spec"
+    | "approval_status"
     | "deleted_at"
     | "difficulty_rating"
     | "id"
     | "owner_bank_id"
+    | "options"
     | "published_at"
     | "question_code"
     | "question_type"
+    | "solution_html"
+    | "solution_source"
     | "source"
     | "source_kind"
     | "source_review_item_id"
@@ -166,8 +172,8 @@ function assignmentReadinessReasons({
     reasons.push("Question has been deleted.");
   }
 
-  if (question.status === "draft") {
-    reasons.push("Question is still a draft.");
+  if (question.approval_status !== "approved") {
+    reasons.push("Question is awaiting approval.");
   }
 
   if (question.status === "archived" || question.status === "deprecated") {
@@ -177,6 +183,14 @@ function assignmentReadinessReasons({
   if (question.owner_bank_id && question.owner_bank_id !== bankId) {
     reasons.push("Question belongs to a different source Library.");
   }
+
+  reasons.push(...getQuestionReadiness({
+    answerSpec: question.answer_spec,
+    options: question.options,
+    questionType: question.question_type,
+    solutionHtml: question.solution_html,
+    solutionSource: question.solution_source,
+  }).blockingReasons);
 
   return reasons;
 }
@@ -403,7 +417,7 @@ export async function listPublishableBankQuestions({
   const { data, error } = await supabase
     .from("bank_questions")
     .select(
-      "id, bank_id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, source, source_kind, source_review_item_id, owner_bank_id, visibility, published_at, deleted_at, updated_at)",
+      "id, bank_id, status, source_kind, added_at, metadata, question:questions(id, question_code, title, question_type, difficulty_rating, status, approval_status, source, source_kind, source_review_item_id, owner_bank_id, visibility, published_at, deleted_at, updated_at, answer_spec, options, solution_html, solution_source)",
     )
     .eq("bank_id", bankId)
     .eq("status", "active")

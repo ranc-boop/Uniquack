@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { requireStudent } from "@/lib/auth/guards";
+import { requireStudentWorkspace } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { listStudentSentAssignmentFeedbackNotes } from "@/lib/teacher-feedback-notes";
 import { getStudentAssignedWorkDetail } from "@/lib/student-work";
@@ -54,7 +54,7 @@ function stateCopy(status: "not_started" | "in_progress" | "completed") {
 export default async function StudentWorkDetailPage({
   params,
 }: StudentWorkDetailPageProps) {
-  const profile = await requireStudent();
+  const profile = await requireStudentWorkspace();
   const { id } = await params;
   const supabase = await createClient();
   const assignment = await getStudentAssignedWorkDetail({

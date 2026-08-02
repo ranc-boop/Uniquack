@@ -147,16 +147,17 @@ async function main() {
     "bank import review smoke requires the strict forward-only Review lineage gate",
   );
   assert(
-    detailPage.includes("Import Material") &&
+    detailPage.includes('label: "Import"') &&
       importsPage.includes("TeacherBankImportTransition") &&
       importsPage.includes("BankManualQuestionForm") &&
       importsPage.includes("BatchImportJsonPanelLoader") &&
       importsPage.includes("TeacherPdfBurstUpload") &&
       importUi.includes("Recent AI Parsing status") &&
-      importsPage.includes("Manual, JSON, and AI Parsing all create Review Drafts") &&
-      reviewPage.includes("Approve into Library") &&
-      questionsPage.includes("not public/global questions") &&
-      bankActions.includes('rpc("approve_bank_review_question"'),
+      importsPage.includes("Imported questions are private Review Drafts") &&
+      reviewPage.includes("Approve current page") &&
+      questionsPage.includes("QuestionManagementWorkbench") &&
+      questionsPage.includes("search_official_public_questions_v2") &&
+      bankActions.includes('rpc("approve_library_questions_v2"'),
     "bank import/review routes are missing expected workflow copy or action wiring",
   );
   console.log("PASS bank import/review route sources expose private bank workflow");

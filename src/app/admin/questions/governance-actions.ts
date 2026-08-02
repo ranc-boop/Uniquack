@@ -97,7 +97,7 @@ export async function reviewPublicQuestionSubmission(formData: FormData) {
     }
 
     const { data: publishedQuestionId, error } = await supabase.rpc(
-      "review_public_question_submission",
+      "review_public_question_submission_v2",
       {
         p_decision: parsed.decision,
         p_public_assets: publicAssets,
@@ -114,7 +114,7 @@ export async function reviewPublicQuestionSubmission(formData: FormData) {
     redirectWithSaved(
       "/admin/questions/submissions",
       parsed.decision === "approve"
-        ? `Approved and published as an independent global question${publishedQuestionId ? ` (${publishedQuestionId.slice(0, 8)})` : ""}.`
+        ? `Approved into the official Public Library as an independent copy${publishedQuestionId ? ` (${publishedQuestionId.slice(0, 8)})` : ""}.`
         : parsed.decision === "request_changes"
           ? "Changes requested. No public question was created."
           : parsed.decision === "reject"
@@ -148,6 +148,7 @@ export async function governLegacyPublicBank(formData: FormData) {
       .update({ ...patch, updated_by: profile.id })
       .eq("id", parsed.bankId)
       .eq("visibility", "public")
+      .is("system_key", null)
       .select("id")
       .maybeSingle();
 

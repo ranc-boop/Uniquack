@@ -190,9 +190,10 @@ async function main() {
     "question bank foundation migration is missing create RPC or RLS",
   );
   assert(
-    banksPage.includes("Question Bank Library") &&
-    banksPage.includes("Join Bank by Code") &&
-      bankDetailPage.includes("No reviewed questions in this bank yet"),
+    banksPage.includes("Libraries") &&
+    banksPage.includes("Join by code") &&
+      bankDetailPage.includes("Next action") &&
+      bankDetailPage.includes('label: "Ready"'),
     "question bank list/detail route sources are missing expected UI",
   );
   console.log("PASS question bank route sources expose list/detail surfaces");

@@ -25,6 +25,7 @@ const [
   bankGovernance,
   publicQuestions,
   publicBoundaryMigration,
+  officialPublicMigration,
   teacherMediaActions,
   manualForm,
   teacherAssignmentDetail,
@@ -48,6 +49,7 @@ const [
   read("src/app/admin/questions/banks/page.tsx"),
   read("src/app/questions/page.tsx"),
   read("supabase/clean-migrations/0029_teacher_role_bank_public_boundary.sql"),
+  read("supabase/clean-migrations/0076_official_public_library_two_state_approval.sql"),
   read("src/app/teacher/banks/bank-media-actions.ts"),
   read("src/app/teacher/banks/bank-manual-question-form.tsx"),
   read("src/app/teacher/classrooms/[id]/assignments/[assignmentId]/page.tsx"),
@@ -167,23 +169,24 @@ assert(
 );
 
 assert(
-  teacherQuestions.includes("Ready for assignment") &&
+  teacherQuestions.includes("QuestionManagementWorkbench") &&
     teacherQuestions.includes("createBankQuestionRevisionDraft") &&
     teacherActions.includes("manageSelectedBankQuestions") &&
     teacherActions.includes('"public_review"') &&
     teacherQuestions.includes("Add from Public Library") &&
-    teacherSubmissions.includes("immutable snapshot") &&
+    teacherSubmissions.includes("submitted_snapshot") &&
+    teacherSubmissions.includes("assignment-ready snapshot") &&
     teacherSubmissions.includes("Library owners and editors only") &&
     aiCompatibility.includes('redirect(`/teacher/banks/${bankId}/imports?mode=ai`)'),
   "Teacher UX must expose safe revision/submission/public pull and collapse the old AI route into the Library Import flow.",
 );
 
 assert(
-  adminQuestions.includes("Central Public Library") &&
-    adminQuestions.includes("focusedQuestionBundlePromise") &&
-    adminQuestions.includes("ADMIN_QUESTION_EDIT_SELECT") &&
-    adminQuestions.includes('.is("owner_bank_id", null)') &&
-    adminReview.includes('.is("owner_bank_id", null)') &&
+  adminQuestions.includes("Official Public Library") &&
+    adminQuestions.includes('"search_official_public_questions_v2"') &&
+    adminQuestions.includes("QuestionManagementWorkbench") &&
+    adminReview.includes('.eq("system_key", "official_public")') &&
+    adminReview.includes('.eq("approval_status", "pending")') &&
     adminReview.includes('.is("target_bank_id", null)') &&
     adminActions.includes("assertGlobalQuestionIds") &&
     adminAssets.includes("assertGlobalQuestion") &&
@@ -202,11 +205,12 @@ assert(
 );
 
 assert(
-  publicQuestions.includes("search_questions_by_taxonomy") &&
-    publicBoundaryMigration.includes("question.owner_bank_id is null") &&
-    publicBoundaryMigration.includes("question.visibility = 'public'") &&
-    publicBoundaryMigration.includes("question.status = question_status"),
-  "Student/public question search must remain limited to the global published public catalog.",
+  publicQuestions.includes("search_official_public_questions_v2") &&
+    officialPublicMigration.includes("bank.system_key = 'official_public'") &&
+    officialPublicMigration.includes("question.approval_status = 'approved'") &&
+    officialPublicMigration.includes("membership.status = 'active'") &&
+    publicBoundaryMigration.includes("question.owner_bank_id is null"),
+  "Student/public question search must remain limited to active approved official membership.",
 );
 
 console.log("PASS Library revision keeps old Assignment question lineage intact");

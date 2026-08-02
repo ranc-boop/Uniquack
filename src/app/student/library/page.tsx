@@ -5,12 +5,12 @@ import {
   StudentWorkspaceShell,
 } from "@/components/student/student-workspace-shell";
 import { Button } from "@/components/ui/button";
-import { requireStudent } from "@/lib/auth/guards";
+import { requireStudentWorkspace } from "@/lib/auth/guards";
 
 export const dynamic = "force-dynamic";
 
 export default async function StudentStudyLibraryPage() {
-  await requireStudent();
+  await requireStudentWorkspace();
 
   return (
     <StudentWorkspaceShell

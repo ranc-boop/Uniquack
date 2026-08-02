@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-const [pendingLink, sidebar, questionNav, questionPage, teacherLoading] =
+const [pendingLink, sidebar, questionNav, questionPage, questionWorkbench, teacherLoading] =
   await Promise.all([
     readFile(
       new URL(
@@ -22,6 +22,10 @@ const [pendingLink, sidebar, questionNav, questionPage, teacherLoading] =
     ),
     readFile(
       new URL("../src/app/admin/questions/page.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/components/questions/question-management-workbench.tsx", import.meta.url),
       "utf8",
     ),
     readFile(
@@ -53,8 +57,9 @@ assert(
 );
 
 assert(
-  questionPage.includes("<AdminPendingLink") &&
-    questionPage.includes("pendingLabel={`question ${question.question_code}`}"),
+  questionPage.includes("QuestionManagementWorkbench") &&
+    questionWorkbench.includes("prefetch={false}") &&
+    questionWorkbench.includes("selected: item.id"),
   "Question rows must not viewport-prefetch every detail payload.",
 );
 

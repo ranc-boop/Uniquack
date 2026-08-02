@@ -190,11 +190,10 @@ assert(
   "Library questions must overlap lightweight access with private pagination, skip that private page query in Public Catalog mode, and reuse the page RPC as the governance capability check.",
 );
 assert(
-  questionsPage.includes('.is("owner_bank_id", null)') &&
-    questionsPage.includes('.eq("status", "published")') &&
-    questionsPage.includes('.eq("visibility", "public")') &&
-    questionsPage.includes('.is("deleted_at", null)'),
-  "Teacher Public Catalog queries must remain restricted to live Central Public Library questions.",
+  questionsPage.includes('"search_official_public_questions_v2"') &&
+    questionsPage.includes("page_limit: publicPageSize") &&
+    questionsPage.includes("page_offset: (publicPage - 1) * publicPageSize"),
+  "Teacher Public Catalog queries must use the paged official Public Library read model.",
 );
 assert(
   reviewPage.includes("getTeacherQuestionBankAccess({") &&
@@ -203,15 +202,12 @@ assert(
   "Library Review Drafts must overlap lightweight access with draft loading instead of fetching unused detail metrics first.",
 );
 assert(
-  adminQuestionsPage.includes("const [params, profile, supabase] = await Promise.all([") &&
-    adminQuestionsPage.includes("const taxonomyCatalogPromise = loadTaxonomyCatalog(supabase)") &&
-    adminQuestionsPage.includes("const focusedQuestionBundlePromise = focusedQuestionId") &&
-    adminQuestionsPage.includes("ADMIN_QUESTION_EDIT_SELECT") &&
-    adminQuestionsPage.includes("question_assets(") &&
-    adminQuestionsPage.includes("question_source_files(") &&
-    adminQuestionsPage.includes("import_batch_items(") &&
-    adminQuestionsPage.includes("question_taxonomy_assignments("),
-  "Admin focused-question loading must overlap taxonomy with one root-scoped edit bundle.",
+  adminQuestionsPage.includes("const [profile, params, supabase] = await Promise.all([") &&
+    adminQuestionsPage.includes('"search_official_public_questions_v2"') &&
+    adminQuestionsPage.includes("page_limit: PAGE_SIZE") &&
+    adminQuestionsPage.includes('.select("id, solution_html")') &&
+    adminQuestionsPage.includes('.in("id", rows.map((row) => row.question_id))'),
+  "Admin Public Library loading must stay paged and bound detail hydration to the returned official IDs.",
 );
 
 console.log("PASS Teacher/Bank loading performance query-shape guard");

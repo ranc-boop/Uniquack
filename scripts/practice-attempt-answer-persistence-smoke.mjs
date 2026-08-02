@@ -50,8 +50,10 @@ assert(
   submitBlock.includes('const submittedAttempts: PracticeReviewRequest["attempts"]') &&
     (submitBlock.match(/attempts: submittedAttempts/g) ?? []).length === 3 &&
     submitBlock.includes("body: JSON.stringify({") &&
-    submitBlock.includes('"/api/practice/grade"'),
-  "review success and deterministic fallback must derive from the same submitted attempt snapshot",
+    submitBlock.includes('"/api/practice/grade"') &&
+    submitBlock.includes("const grade = deterministicGrade") &&
+    (submitBlock.match(/jsonRequest<PracticeGradeResponse>\("\/api\/practice\/grade"/g) ?? []).length === 1,
+  "deterministic-first grading and review must share one submitted snapshot without a downgrade write during fallback",
 );
 
 const reviewPersistence = sourceBlock(

@@ -131,7 +131,7 @@ assert(
 );
 
 assert(
-  approveBankReviewQuestion.includes('rpc("approve_bank_review_question"') &&
+  approveBankReviewQuestion.includes('rpc("approve_library_questions_v2"') &&
     approveBankReviewQuestion.includes("`/teacher/banks/${parsed.bankId}/review`,") &&
     !approveBankReviewQuestion.includes("`/teacher/banks/${parsed.bankId}/questions`,"),
   "approving a bank Review Draft must stay on the same Review Draft page",

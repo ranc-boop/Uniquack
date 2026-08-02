@@ -206,13 +206,21 @@ export type QuestionBankVisibility =
   | "organization"
   | "public";
 export type QuestionBankStatus = "active" | "archived" | "disabled";
+export type QuestionBankOwnerScope = "user" | "organization" | "system";
+export type QuestionApprovalStatus = "pending" | "approved";
+export type QuestionGradingCapability =
+  | "deterministic"
+  | "ai_review"
+  | "needs_configuration";
 export type BankMemberRole = "owner" | "editor" | "viewer";
 export type BankMemberStatus = "active" | "invited" | "removed";
 
 export type QuestionBank = {
   id: string;
-  organization_id: string;
-  owner_id: string;
+  organization_id: string | null;
+  owner_id: string | null;
+  owner_scope: QuestionBankOwnerScope;
+  system_key: "official_public" | null;
   name: string;
   description: string | null;
   visibility: QuestionBankVisibility;
@@ -222,6 +230,17 @@ export type QuestionBank = {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type OfficialQuestionBank = Omit<
+  QuestionBank,
+  "organization_id" | "owner_id" | "owner_scope" | "system_key" | "visibility"
+> & {
+  organization_id: null;
+  owner_id: null;
+  owner_scope: "system";
+  system_key: "official_public";
+  visibility: "public";
 };
 
 export type BankMember = {
@@ -541,6 +560,7 @@ export type Question = {
   question_type: QuestionType;
   difficulty_rating: number;
   status: ContentStatus;
+  approval_status: QuestionApprovalStatus;
   source: string | null;
   source_kind: string | null;
   source_review_item_id: string | null;
@@ -1300,6 +1320,65 @@ export type Database = {
           total_count: number;
         }>;
       };
+      search_official_public_questions_v2: {
+        Args: {
+          query_text?: string | null;
+          difficulty_min?: number | null;
+          difficulty_max?: number | null;
+          page_limit?: number | null;
+          page_offset?: number | null;
+        };
+        Returns: Array<{
+          question_id: string;
+          question_code: string;
+          title: string;
+          question_type: string;
+          content_html: string;
+          difficulty_rating: number;
+          approval_status: QuestionApprovalStatus;
+          total_count: number;
+        }>;
+      };
+      approve_library_questions_v2: {
+        Args: {
+          p_target_bank_id: string;
+          p_target_question_ids: string[];
+        };
+        Returns: Array<{
+          question_id: string;
+          bank_question_id: string;
+          approval_status: QuestionApprovalStatus;
+        }>;
+      };
+      attach_official_question_revision_assets_v2: {
+        Args: {
+          p_actor_id: string;
+          p_copied_assets: Json;
+          p_source_question_id: string;
+          p_target_question_id: string;
+        };
+        Returns: number;
+      };
+      archive_library_questions_v2: {
+        Args: {
+          p_target_bank_id: string;
+          p_target_bank_question_ids: string[];
+        };
+        Returns: Array<{
+          bank_question_id: string;
+          question_id: string;
+          bank_question_status: "archived";
+        }>;
+      };
+      review_public_question_submission_v2: {
+        Args: {
+          p_submission_id: string;
+          p_decision: string;
+          p_reason?: string | null;
+          p_public_assets?: Json;
+        };
+        Returns: string | null;
+      };
       get_active_taxonomy_catalog_v1: {
         Args: Record<string, never>;
         Returns: Json;
@@ -1581,6 +1660,49 @@ export type Database = {
           total_count: number;
           visibility: string;
         }>;
+      };
+      search_bank_question_rows_v2: {
+        Args: {
+          p_approval_status: QuestionApprovalStatus;
+          p_bank_id: string;
+          p_limit?: number;
+          p_offset?: number;
+          p_query?: string | null;
+          p_readiness?: string;
+          p_source_kind?: string | null;
+          p_taxonomy_tag_id?: string | null;
+        };
+        Returns: Array<{
+          added_at: string;
+          bank_question_id: string;
+          bank_question_status: string;
+          bank_source_kind: string;
+          difficulty_rating: number;
+          metadata: Json;
+          published_at: string | null;
+          question_code: string;
+          question_id: string;
+          question_source: string | null;
+          question_source_kind: string | null;
+          question_status: string;
+          question_type: string;
+          source_review_item_id: string | null;
+          tag_summaries: Json;
+          title: string;
+          total_count: number;
+          visibility: string;
+        }>;
+      };
+      count_bank_question_rows_v2: {
+        Args: {
+          p_approval_status: QuestionApprovalStatus;
+          p_bank_id: string;
+          p_query?: string | null;
+          p_readiness?: string;
+          p_source_kind?: string | null;
+          p_taxonomy_tag_id?: string | null;
+        };
+        Returns: number;
       };
       search_bank_review_question_ids: {
         Args: {

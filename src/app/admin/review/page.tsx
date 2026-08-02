@@ -179,6 +179,29 @@ export default async function AdminReviewPage({
     search: params.search,
   });
   const supabase = await createClient();
+  const [{ data: officialBank }, { count: pendingSubmissionCount }] =
+    await Promise.all([
+      supabase
+        .from("question_banks")
+        .select("id")
+        .eq("system_key", "official_public")
+        .eq("status", "active")
+        .maybeSingle(),
+      supabase
+        .from("public_question_submissions")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["pending", "in_review"]),
+    ]);
+  const { data: officialMemberships } = officialBank
+    ? await supabase
+        .from("bank_questions")
+        .select("question_id")
+        .eq("bank_id", officialBank.id)
+        .eq("status", "active")
+    : { data: [] };
+  const officialQuestionIds = (officialMemberships ?? []).map(
+    (membership) => membership.question_id,
+  );
   const { catalog: taxonomyCatalog } = await loadTaxonomyCatalog(supabase);
   let batchFilter:
     | {
@@ -241,15 +264,15 @@ export default async function AdminReviewPage({
   let questions: ReviewQuestion[] = [];
   let error: { message: string } | null = null;
 
-  if (!batchQuestionIds || batchQuestionIds.length) {
+  if (officialQuestionIds.length && (!batchQuestionIds || batchQuestionIds.length)) {
     let questionsQuery = supabase
       .from("questions")
       .select(
         "id, question_code, title, question_type, difficulty_rating, status, answer_spec, options, content_html, content_source, content_source_format, solution_html, solution_source, solution_source_format, created_at",
         { count: "exact" },
       )
-      .eq("status", "draft")
-      .is("owner_bank_id", null)
+      .eq("approval_status", "pending")
+      .in("id", officialQuestionIds)
       .order("created_at", { ascending: false });
 
     if (batchQuestionIds) {
@@ -470,6 +493,17 @@ export default async function AdminReviewPage({
         title="Global Review Drafts"
       />
       <AdminQuestionLibraryNav role={profile.role} />
+      <section className="flex flex-col gap-3 rounded-[14px] border border-[#D2D2D7] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-[#1D1D1F]">教师 Public 投稿</h2>
+          <p className="mt-1 text-sm text-[#6E6E73]">
+            {pendingSubmissionCount ?? 0} 个不可变投稿快照等待独立审核；管理员不能由此浏览教师私有题库。
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/admin/questions/submissions">打开投稿队列</Link>
+        </Button>
+      </section>
       <PageFeedback error={params.error} saved={params.saved} />
       <AdminCard
         compact

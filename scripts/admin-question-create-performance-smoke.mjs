@@ -20,7 +20,7 @@ function assert(condition, message) {
 }
 
 assert(
-  listPage.includes('href="/admin/questions/new"') &&
+  listPage.includes('createHref="/admin/questions/new"') &&
     !listPage.includes('id="create-question-form"') &&
     !listPage.includes("<QuestionHtmlEditor") &&
     !listPage.includes("<QuestionAssetsPanel") &&

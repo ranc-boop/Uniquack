@@ -2,12 +2,12 @@ import Link from "next/link";
 
 import { StudentWorkspaceShell } from "@/components/student/student-workspace-shell";
 import { Button } from "@/components/ui/button";
-import { requireStudent } from "@/lib/auth/guards";
+import { requireStudentWorkspace } from "@/lib/auth/guards";
 
 export const dynamic = "force-dynamic";
 
 export default async function StudentPublicLibraryPage() {
-  await requireStudent();
+  await requireStudentWorkspace();
 
   return (
     <StudentWorkspaceShell
@@ -16,7 +16,7 @@ export default async function StudentPublicLibraryPage() {
       description="Browse public study material while private teacher Libraries stay private."
       actions={
         <Button asChild>
-          <Link href="/questions">Browse public questions</Link>
+          <Link href="/questions?workspace=student">Browse public questions</Link>
         </Button>
       }
     >

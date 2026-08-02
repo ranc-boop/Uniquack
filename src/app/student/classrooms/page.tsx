@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { requireStudent } from "@/lib/auth/guards";
+import { requireStudentWorkspace } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ function formatDate(value: string | null | undefined) {
 export default async function StudentClassroomsPage({
   searchParams,
 }: StudentClassroomsPageProps) {
-  const profile = await requireStudent();
+  const profile = await requireStudentWorkspace();
   const params = await searchParams;
   const supabase = await createClient();
   const { data: memberships, error: membershipError } = await supabase

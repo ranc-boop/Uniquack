@@ -1630,6 +1630,7 @@ export function PracticeAgentClient({
         questionCode: recommended?.questionCode,
         result: {
           explanation: "Reviewer judgment pending.",
+          gradingCapability: "needs_configuration" as const,
           gradingMode: "manual" as const,
           isCorrect: null,
           questionId: attempt.questionId,
@@ -1700,7 +1701,21 @@ export function PracticeAgentClient({
     setPhase("feedback");
 
     startTransition(async () => {
+      let deterministicGrade: PracticeGradeResponse | null = null;
       try {
+        deterministicGrade = await jsonRequest<PracticeGradeResponse>("/api/practice/grade", {
+          body: JSON.stringify({
+            attempts: submittedAttempts,
+            deferCompletion: true,
+            roundId: recommendation.roundId,
+            sessionId: activeSession.id,
+          }),
+          method: "POST",
+          signal: operation.controller.signal,
+        });
+        if (!isPracticeOperationCurrent(operation.token)) return;
+        setResults(deterministicGrade.results);
+
         await postReviewStream({
           body: {
             attempts: submittedAttempts,
@@ -1798,15 +1813,10 @@ export function PracticeAgentClient({
           return;
         }
         try {
-          const grade = await jsonRequest<PracticeGradeResponse>("/api/practice/grade", {
-            body: JSON.stringify({
-              attempts: submittedAttempts,
-              roundId: recommendation.roundId,
-              sessionId: activeSession.id,
-            }),
-            method: "POST",
-            signal: operation.controller.signal,
-          });
+          if (!deterministicGrade) {
+            throw new Error("Deterministic grading did not complete before AI review failed.");
+          }
+          const grade = deterministicGrade;
           if (!isPracticeOperationCurrent(operation.token)) return;
           const fallbackReview = reviewFromGradeFallback({
             activeSession,

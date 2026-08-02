@@ -101,7 +101,7 @@ assert(
 );
 
 assert(
-  approveAction.includes('rpc("approve_bank_review_question"') &&
+  approveAction.includes('rpc("approve_library_questions_v2"') &&
     approveAction.includes("`/teacher/banks/${parsed.bankId}/review`,") &&
     !approveAction.includes("`/teacher/banks/${parsed.bankId}/questions`,"),
   "approval must keep using the existing bank-scoped RPC and return to the Review Draft page",

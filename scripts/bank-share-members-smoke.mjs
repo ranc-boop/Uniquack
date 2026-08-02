@@ -263,7 +263,7 @@ async function main() {
   );
   assert(
     membersPage.includes("Copy this code now") &&
-      joinPage.includes("Joining a bank is separate from") &&
+      joinPage.includes("Joining a Library is separate from") &&
       joinPage.includes("joining a classroom"),
     "bank share route sources are missing expected UI copy",
   );

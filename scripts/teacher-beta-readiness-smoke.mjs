@@ -103,14 +103,15 @@ const [
 assert(
   nav.includes('"use client"') &&
     nav.includes("usePathname") &&
-    nav.includes('aria-current={active ? "page" : undefined}') &&
+    nav.includes('aria-current={selected ? "page" : undefined}') &&
     nav.includes('pathname.startsWith(`${item.href}/`)'),
   "teacher navigation must expose a reliable active-route state",
 );
 assert(
   [
-    "Dashboard",
-    "Libraries",
+    "Home",
+    "My Libraries",
+    "Public Library",
     "Blueprints",
     "Classrooms",
     "Assignments",

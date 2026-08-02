@@ -211,8 +211,9 @@ assert(
     !teacherDashboardHelper.includes(".insert(") &&
     !teacherDashboardHelper.includes(".update(") &&
     !teacherDashboardHelper.includes(".delete(") &&
-    teacherWorkspaceNav.includes("Dashboard") &&
-    teacherWorkspaceNav.includes("Libraries") &&
+    teacherWorkspaceNav.includes("Home") &&
+    teacherWorkspaceNav.includes("My Libraries") &&
+    teacherWorkspaceNav.includes("Public Library") &&
     !teacherWorkspaceNav.includes("AI Parsing") &&
     teacherWorkspaceNav.includes("Blueprints") &&
     teacherWorkspaceNav.includes("Classrooms") &&
@@ -260,7 +261,7 @@ assert(
     teacherBankActions.includes('rpc("join_question_bank_by_code"') &&
     teacherBankActions.includes('rpc("update_bank_member_role"') &&
     teacherBankActions.includes('rpc("remove_bank_member"') &&
-    teacherBankActions.includes('rpc("approve_bank_review_question"') &&
+    teacherBankActions.includes('rpc("approve_library_questions_v2"') &&
     teacherBankActions.includes("create_assignment_from_bank") &&
     teacherPublishPage.includes("Choose one source Library") &&
     teacherPublishPage.includes("QuestionChecklist") &&
@@ -455,21 +456,19 @@ assert(
 );
 console.log("PASS route data loading stays paged on review, assets, and videos");
 assert(
-  adminQuestionsPage.includes("ADMIN_QUESTION_PAGE_SIZE = 50") &&
-    adminQuestionsPage.includes("ADMIN_QUESTION_SUMMARY_SELECT") &&
-    adminQuestionsPage.includes("ADMIN_QUESTION_DETAIL_SELECT") &&
-    adminQuestionsPage.includes("ADMIN_QUESTION_EDIT_SELECT") &&
-    adminQuestionsPage.includes("focusedQuestionBundlePromise") &&
-    adminQuestionsPage.includes('.is("owner_bank_id", null)') &&
+  adminQuestionsPage.includes("const PAGE_SIZE = 50") &&
+    adminQuestionsPage.includes("search_official_public_questions_v2") &&
+    adminQuestionsPage.includes("QuestionManagementWorkbench") &&
+    adminQuestionsPage.includes("page_limit: PAGE_SIZE") &&
     !adminQuestionsPage.includes('select("*"'),
-  "admin questions must use summary-first paging and one root-scoped focused edit bundle",
+  "admin questions must use the bounded official Public Library workbench",
 );
 assert(
   publicQuestionsPage.includes("const pageSize = 25") &&
-    publicQuestionsPage.includes("search_questions_by_taxonomy") &&
+    publicQuestionsPage.includes("search_official_public_questions_v2") &&
     publicQuestionsPage.includes("page_limit: pageSize") &&
-    publicQuestionsPage.includes("id, question_code, title, content_html, difficulty_rating, status"),
-  "public questions must keep bounded taxonomy RPC summary loading",
+    !publicQuestionsPage.includes('question_status: "published"'),
+  "public questions must keep bounded official Public Library loading",
 );
 assert(
   blueprintWorkspace.includes("BLUEPRINT_REVIEW_PAGE_SIZE = 50") &&
@@ -485,22 +484,19 @@ assert(
 console.log("PASS question and blueprint data loading stays summary-first and route-scoped");
 assert(
   adminLayout.includes("AdminShell") &&
-    adminSidebar.includes("Primary") &&
-    adminSidebar.includes("Advanced tools") &&
-    adminSidebar.includes("Settings") &&
-    adminSidebar.includes("Dashboard") &&
-    adminSidebar.includes("Central Public Library") &&
-    adminSidebar.includes("Review Drafts") &&
-    adminSidebar.includes("Blueprint Library") &&
-    adminSidebar.includes("AI Parsing") &&
-    adminSidebar.includes("Practice") &&
+    adminSidebar.includes("Content Governance") &&
+    adminSidebar.includes("Platform") &&
+    adminSidebar.includes("Overview") &&
+    adminSidebar.includes("Public Library") &&
+    adminSidebar.includes("Approval Queue") &&
+    adminSidebar.includes("Blueprints") &&
+    adminSidebar.includes("Practice Frameworks") &&
     adminSidebar.includes("Videos") &&
-    adminSidebar.includes("Manual JSON Import") &&
-    adminSidebar.includes("Bulk Assets") &&
-    adminSidebar.includes("Package Import") &&
+    adminSidebar.includes("Imports") &&
     adminSidebar.includes("Taxonomy") &&
+    adminSidebar.includes("Library Support") &&
     adminSidebar.includes("/admin/blueprints") &&
-    adminSidebar.includes("/admin/imports/pdf") &&
+    !adminSidebar.includes("Experience") &&
     adminSidebar.includes("aria-current") &&
     adminPageHeader.includes("title") &&
     adminPageHeader.includes("description"),
@@ -540,8 +536,8 @@ assert(
     adminImportsPage.includes("AdminStatusBadge") &&
     adminImportsPage.includes("AdminDebugDisclosure") &&
     adminImportsPage.includes("AdminEmptyState") &&
-    adminQuestionsPage.includes("AdminDangerZone") &&
-    adminQuestionsPage.includes("action={bulkUpdateQuestions}") &&
+    adminQuestionsPage.includes("QuestionManagementWorkbench") &&
+    adminQuestionsPage.includes("search_official_public_questions_v2") &&
     adminReviewPage.includes("AdminDangerZone") &&
     adminReviewPage.includes("action={bulkUpdateQuestions}") &&
     adminQuestionsLoading.includes("AdminLoadingState") &&
@@ -610,19 +606,15 @@ assert(
   "review drafts UI must use shared primitives, clear workflow copy, and collapsed source/import details",
 );
 assert(
-  adminQuestionsPage.includes("AdminCard") &&
-    adminQuestionsPage.includes("AdminStatusBadge") &&
-    adminQuestionsPage.includes("AdminActionGroup") &&
-    adminQuestionsPage.includes("AdminEmptyState") &&
-    adminQuestionsPage.includes("Content library filters") &&
-    adminQuestionsPage.includes("Question library") &&
-    adminQuestionsPage.includes("action={bulkUpdateQuestions}") &&
-    adminQuestionsPage.includes("action={deleteQuestion}") &&
+  adminQuestionsPage.includes("QuestionManagementWorkbench") &&
+    adminQuestionsPage.includes('libraryName="Public Library"') &&
+    adminQuestionsPage.includes('activeStatus="approved"') &&
+    adminQuestionsPage.includes('pendingHref="/admin/review"') &&
     publicQuestionsPage.includes("Published question filters") &&
     publicQuestionsPage.includes("official difficulty") &&
     publicQuestionsPage.includes("No published questions match these filters.") &&
     publicQuestionsLoading.includes("QuestionListSkeleton"),
-  "question bank UI must keep bounded list behavior while rendering polished filter, list, and empty states",
+  "question bank UI must keep bounded official Library behavior and polished list/empty states",
 );
 console.log("PASS review and question bank UI polish keeps server-action behavior intact");
 assert(
@@ -659,11 +651,11 @@ assert(
 );
 console.log("PASS progressive loading shells are present for questions, review, blueprints, and AI PDF import");
 assert(
-  adminSidebar.includes("Blueprint Library") &&
+  adminSidebar.includes("Blueprints") &&
     adminSidebar.includes("/admin/blueprints"),
-  "admin navigation must include Blueprint Library",
+  "admin navigation must include Blueprints",
 );
-console.log("PASS admin navigation includes Blueprint Library");
+console.log("PASS admin navigation includes Blueprints");
 assert(
   blueprintPage.includes("view=\"overview\"") &&
     blueprintWorkspace.includes("Question Blueprint Workspace") &&

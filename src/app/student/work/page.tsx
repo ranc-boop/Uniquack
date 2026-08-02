@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { requireStudent } from "@/lib/auth/guards";
+import { requireStudentWorkspace } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import {
   listStudentAssignedWork,
@@ -268,7 +268,7 @@ function CompletedSection({ assignments }: { assignments: StudentWorkSummary[] }
 }
 
 export default async function StudentWorkPage() {
-  const profile = await requireStudent();
+  const profile = await requireStudentWorkspace();
   const supabase = await createClient();
   const assignments = await listStudentAssignedWork({
     studentId: profile.id,

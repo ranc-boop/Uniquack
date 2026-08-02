@@ -135,9 +135,14 @@ const touchesStudentShellScope = changedLines.some((line) =>
 );
 
 if (touchesStudentShellScope) {
+  const migrationChanges = changedLines.filter((line) =>
+    line.includes("supabase/clean-migrations/") || line.includes("supabase/migrations/"),
+  );
   assert(
-    !changedLines.some((line) => line.includes("supabase/clean-migrations/") || line.includes("supabase/migrations/")),
-    "student workspace shell PR must not add or edit migrations",
+    migrationChanges.every((line) =>
+      line.includes("supabase/clean-migrations/0076_official_public_library_two_state_approval.sql"),
+    ),
+    "student workspace shell changes may only accompany the reviewed 0076 workspace/governance migration",
   );
 }
 

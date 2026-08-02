@@ -192,22 +192,12 @@ const publicQuestionPullSchema = z.object({
 type ApproveBankReviewQuestionResult = {
   bank_question_id: string;
   question_id: string;
-  source_review_item_id: string | null;
+  approval_status: string;
 };
 
 type ApproveBankReviewQuestionRpc = {
   rpc(
-    functionName: "approve_bank_review_question",
-    args: { p_target_bank_id: string; p_target_question_id: string },
-  ): Promise<{
-    data: ApproveBankReviewQuestionResult[] | null;
-    error: { message: string } | null;
-  }>;
-};
-
-type TeacherBulkReviewRpc = {
-  rpc(
-    functionName: "approve_bank_review_questions",
+    functionName: "approve_library_questions_v2",
     args: { p_target_bank_id: string; p_target_question_ids: string[] },
   ): Promise<{
     data: ApproveBankReviewQuestionResult[] | null;
@@ -1192,9 +1182,9 @@ export async function approveBankReviewQuestion(formData: FormData) {
     });
     const { data, error } = await (
       supabase as unknown as ApproveBankReviewQuestionRpc
-    ).rpc("approve_bank_review_question", {
+    ).rpc("approve_library_questions_v2", {
       p_target_bank_id: parsed.bankId,
-      p_target_question_id: parsed.questionId,
+      p_target_question_ids: [parsed.questionId],
     });
 
     if (error) {
@@ -1234,8 +1224,8 @@ export async function approveBankReviewQuestions(
       supabase,
     });
     const { data, error } = await (
-      supabase as unknown as TeacherBulkReviewRpc
-    ).rpc("approve_bank_review_questions", {
+      supabase as unknown as ApproveBankReviewQuestionRpc
+    ).rpc("approve_library_questions_v2", {
       p_target_bank_id: parsed.bankId,
       p_target_question_ids: questionIds,
     });
@@ -1280,8 +1270,8 @@ export async function approveCurrentBankReviewPage(formData: FormData) {
       supabase,
     });
     const { data, error } = await (
-      supabase as unknown as TeacherBulkReviewRpc
-    ).rpc("approve_bank_review_questions", {
+      supabase as unknown as ApproveBankReviewQuestionRpc
+    ).rpc("approve_library_questions_v2", {
       p_target_bank_id: parsed.bankId,
       p_target_question_ids: questionIds,
     });
@@ -1409,9 +1399,9 @@ export async function publishBankReviewDraftChanges(formData: FormData) {
     });
     const { data, error } = await (
       supabase as unknown as ApproveBankReviewQuestionRpc
-    ).rpc("approve_bank_review_question", {
+    ).rpc("approve_library_questions_v2", {
       p_target_bank_id: parsed.bankId,
-      p_target_question_id: parsed.questionId,
+      p_target_question_ids: [parsed.questionId],
     });
 
     if (error) throw new Error(error.message);
@@ -1939,16 +1929,26 @@ export async function pullPublicQuestionIntoBank(formData: FormData) {
     });
     const { data: publicQuestion, error: questionError } = await supabase
       .from("questions")
-      .select("id, owner_bank_id, status, visibility")
+      .select("id, approval_status")
       .eq("id", parsed.publicQuestionId)
-      .is("owner_bank_id", null)
-      .eq("status", "published")
-      .eq("visibility", "public")
+      .eq("approval_status", "approved")
       .maybeSingle();
 
     if (questionError) throw new Error(questionError.message);
     if (!publicQuestion) {
       throw new Error("The Central Public Library question is unavailable.");
+    }
+    const { data: officialMembership, error: membershipError } = await supabase
+      .from("bank_questions")
+      .select("id, question_banks!inner(system_key, status)")
+      .eq("question_id", parsed.publicQuestionId)
+      .eq("status", "active")
+      .eq("question_banks.system_key", "official_public")
+      .eq("question_banks.status", "active")
+      .maybeSingle();
+    if (membershipError) throw new Error(membershipError.message);
+    if (!officialMembership) {
+      throw new Error("The official Public Library question is unavailable.");
     }
 
     const { data: assets, error: assetError } = await supabase

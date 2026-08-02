@@ -4,6 +4,11 @@ import { notFound, redirect } from "next/navigation";
 import { Upload } from "lucide-react";
 
 import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
+import {
+  QuestionManagementWorkbench,
+  type QuestionWorkbenchItem,
+  type WorkbenchApprovalStatus,
+} from "@/components/questions/question-management-workbench";
 import { DeleteLibraryQuestionButton } from "@/components/teacher/delete-library-question-button";
 import {
   BulkRowCheckbox,
@@ -76,9 +81,12 @@ export default async function TeacherBankQuestionsPage({
     publicQ?: string;
     q?: string;
     readiness?: string;
+    selected?: string;
     saved?: string;
     source?: string;
+    status?: string;
     taxonomy?: string;
+    view?: string;
   }>;
 }) {
   const [profile, { bankId }, query, supabase] = await Promise.all([
@@ -91,6 +99,8 @@ export default async function TeacherBankQuestionsPage({
   const requestedPage = Math.max(1, Number.parseInt(query.page ?? "1", 10) || 1);
   const pageSize = 25;
   const readiness = query.readiness === "archived" ? "archived" : "active";
+  const workbenchApprovalStatus: WorkbenchApprovalStatus =
+    query.status === "approved" ? "approved" : "pending";
   const allowedSourceKinds: BankQuestion["source_kind"][] = [
     "manual",
     "review_draft",
@@ -115,7 +125,9 @@ export default async function TeacherBankQuestionsPage({
       }),
       showPublicCatalog
         ? Promise.resolve(null)
-        : listBankQuestionsPage({
+         : listBankQuestionsPage({
+            approvalStatus:
+              query.view === "classic" ? undefined : workbenchApprovalStatus,
             bankId,
             page: requestedPage,
             pageSize,
@@ -161,33 +173,28 @@ export default async function TeacherBankQuestionsPage({
   let publicTotal = 0;
 
   if (showPublicCatalog && canManage && governanceAvailable) {
-    let publicQuestionQuery = supabase
-      .from("questions")
-      .select("id, question_code, title, question_type, difficulty_rating, updated_at", {
-        count: "exact",
-      })
-      .is("owner_bank_id", null)
-      .eq("status", "published")
-      .eq("visibility", "public")
-      .is("deleted_at", null)
-      .order("updated_at", { ascending: false })
-      .range(
-        (publicPage - 1) * publicPageSize,
-        publicPage * publicPageSize - 1,
-      );
-
     const publicSearch = (query.publicQ ?? "").trim().replaceAll(",", " ");
-    if (publicSearch) {
-      publicQuestionQuery = publicQuestionQuery.or(
-        `question_code.ilike.*${publicSearch}*,title.ilike.*${publicSearch}*`,
-      );
-    }
-
-    const { count, data, error } = await publicQuestionQuery;
+    const { data, error } = await supabase.rpc(
+      "search_official_public_questions_v2",
+      {
+        difficulty_max: null,
+        difficulty_min: null,
+        page_limit: publicPageSize,
+        page_offset: (publicPage - 1) * publicPageSize,
+        query_text: publicSearch || null,
+      },
+    );
 
     if (error) throw new Error(error.message);
-    publicQuestions = data ?? [];
-    publicTotal = count ?? 0;
+    publicQuestions = (data ?? []).map((row) => ({
+      difficulty_rating: row.difficulty_rating,
+      id: row.question_id,
+      question_code: row.question_code,
+      question_type: row.question_type,
+      title: row.title,
+      updated_at: row.question_id,
+    }));
+    publicTotal = Number(data?.[0]?.total_count ?? 0);
   }
   const publicTotalPages = Math.max(
     1,
@@ -213,6 +220,8 @@ export default async function TeacherBankQuestionsPage({
     if (readiness === "archived") params.set("readiness", "archived");
     if (sourceKind) params.set("source", sourceKind);
     if (query.taxonomy?.trim()) params.set("taxonomy", query.taxonomy.trim());
+    if (query.view === "classic") params.set("view", "classic");
+    else params.set("status", workbenchApprovalStatus);
     if (nextPage > 1) params.set("page", String(nextPage));
     const suffix = params.toString();
     return `/teacher/banks/${bank.id}/questions${suffix ? `?${suffix}` : ""}`;
@@ -280,6 +289,97 @@ export default async function TeacherBankQuestionsPage({
     query.taxonomy?.trim() ?? "",
     query.q?.trim() ?? "",
   ].join(":");
+
+  if (!showPublicCatalog && query.view !== "classic") {
+    const questionIds = questions
+      .map((row) => row.question?.id)
+      .filter((id): id is string => Boolean(id));
+    const { data: questionDetails, error: detailError } = questionIds.length
+      ? await supabase
+          .from("questions")
+          .select(
+            "id, approval_status, answer_spec, content_html, solution_html",
+          )
+          .in("id", questionIds)
+      : { data: [], error: null };
+    if (detailError) throw new Error(detailError.message);
+    const detailById = new Map(
+      (questionDetails ?? []).map((detail) => [detail.id, detail]),
+    );
+    const workbenchItems: QuestionWorkbenchItem[] = questions.flatMap((row) => {
+      const question = row.question;
+      if (!question) return [];
+      const detail = detailById.get(question.id);
+      const itemStatus =
+        detail?.approval_status === "approved" ? "approved" : "pending";
+      if (itemStatus !== workbenchApprovalStatus) return [];
+      const deterministic =
+        question.question_type === "mcq" ||
+        question.question_type === "fill_blank";
+      return [{
+        actionHref: question.source_review_item_id
+          ? `/teacher/banks/${bank.id}/review/${question.source_review_item_id}`
+          : `/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview`,
+        actionLabel: itemStatus === "pending" ? "编辑与审批" : "查看与管理",
+        approvalStatus: itemStatus,
+        contentHtml: detail?.content_html ?? "",
+        gradingCapability: deterministic
+          ? "deterministic"
+          : detail?.solution_html
+            ? "ai_review"
+            : "needs_configuration",
+        id: question.id,
+        questionCode: question.question_code,
+        questionType: question.question_type,
+        solutionHtml: detail?.solution_html,
+        sourceLabel: row.source_kind,
+        taxonomyReady: row.tagSummaries.every(
+          (tag) => tag.review_status === "approved",
+        ),
+        title: question.title,
+      }];
+    });
+
+    return (
+      <BankWorkbenchPage>
+        <BankRouteTabs
+          bankId={bank.id}
+          currentUserRole={access.currentUserRole}
+        />
+        {query.saved ? (
+          <p className="rounded-[14px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+            {query.saved}
+          </p>
+        ) : null}
+        <QuestionManagementWorkbench
+          activeStatus={workbenchApprovalStatus}
+          baseHref={`/teacher/banks/${bank.id}/questions`}
+          canCreate={canManage}
+          createHref={`/teacher/banks/${bank.id}/imports#manual-question`}
+          currentPage={page}
+          emptyDescription={
+            workbenchApprovalStatus === "pending"
+              ? "导入或创建题目后，在这里完成答案、来源和 taxonomy 检查。"
+              : "审批完成的题目可用于新 Assignment。"
+          }
+          items={workbenchItems}
+          libraryName={bank.name}
+          mode="teacher"
+          pageSize={pageSize}
+          query={query.q}
+          selectedId={query.selected}
+          totalCount={questionPage?.total ?? 0}
+        />
+        <div className="flex justify-end">
+          <Button asChild size="sm" variant="ghost">
+            <Link href={`/teacher/banks/${bank.id}/questions?view=classic`}>
+              打开经典批量管理
+            </Link>
+          </Button>
+        </div>
+      </BankWorkbenchPage>
+    );
+  }
 
   return (
     <BankWorkbenchPage>

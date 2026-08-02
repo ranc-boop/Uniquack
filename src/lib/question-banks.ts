@@ -13,6 +13,7 @@ import type {
   QuestionTaxonomyAssignment,
   Profile,
   Question,
+  QuestionApprovalStatus,
   QuestionBank,
   QuestionBankStatus,
   QuestionBankVisibility,
@@ -288,9 +289,11 @@ export async function listTeacherQuestionBanks({
       name: row.name,
       organization_id: row.organization_id,
       owner_id: row.owner_id,
+      owner_scope: row.owner_id ? "user" : "organization",
       questionCount: Number(row.question_count ?? 0),
       reviewDraftCount: Number(row.review_draft_count ?? 0),
       status: row.status as QuestionBankStatus,
+      system_key: null,
       updated_at: row.updated_at,
       updated_by: row.updated_by,
       visibility: row.visibility as QuestionBankVisibility,
@@ -333,7 +336,7 @@ export async function listTeacherQuestionBanks({
     supabase
       .from("question_banks")
       .select(
-        "id, organization_id, owner_id, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
+        "id, organization_id, owner_id, owner_scope, system_key, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
       )
       .in("id", bankIds)
       .order("updated_at", { ascending: false }),
@@ -403,7 +406,7 @@ export async function getTeacherQuestionBankDetail({
   const { data: bank, error: bankError } = await supabase
     .from("question_banks")
     .select(
-      "id, organization_id, owner_id, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
+      "id, organization_id, owner_id, owner_scope, system_key, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
     )
     .eq("id", bankId)
     .maybeSingle();
@@ -513,7 +516,7 @@ export async function getTeacherQuestionBankAccess({
     supabase
       .from("question_banks")
       .select(
-        "id, organization_id, owner_id, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
+        "id, organization_id, owner_id, owner_scope, system_key, name, description, visibility, status, metadata, created_by, updated_by, created_at, updated_at",
       )
       .eq("id", bankId)
       .maybeSingle(),
@@ -561,13 +564,15 @@ export async function getTeacherQuestionBankAccess({
       .select("role")
       .eq("id", profileId)
       .maybeSingle(),
-    supabase
-      .from("organization_members")
-      .select("role, status")
-      .eq("organization_id", bank.organization_id)
-      .eq("user_id", profileId)
-      .eq("status", "active")
-      .maybeSingle(),
+    bank.organization_id
+      ? supabase
+          .from("organization_members")
+          .select("role, status")
+          .eq("organization_id", bank.organization_id)
+          .eq("user_id", profileId)
+          .eq("status", "active")
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   if (profileError) throw new Error(profileError.message);
@@ -1505,6 +1510,7 @@ export async function listBankApprovedQuestions({
 }
 
 export async function listBankQuestionsPage({
+  approvalStatus,
   bankId,
   page = 1,
   pageSize = 25,
@@ -1514,6 +1520,7 @@ export async function listBankQuestionsPage({
   supabase,
   taxonomyTagId,
 }: {
+  approvalStatus?: QuestionApprovalStatus;
   bankId: string;
   page?: number;
   pageSize?: number;
@@ -1532,11 +1539,19 @@ export async function listBankQuestionsPage({
     p_source_kind: sourceKind ?? null,
     p_taxonomy_tag_id: taxonomyTagId?.trim() || null,
   };
-  const { data, error } = await supabase.rpc("search_bank_question_rows", {
-    ...rpcFilters,
-    p_limit: safePageSize,
-    p_offset: (safePage - 1) * safePageSize,
-  });
+  const searchResult = approvalStatus
+    ? await supabase.rpc("search_bank_question_rows_v2", {
+        ...rpcFilters,
+        p_approval_status: approvalStatus,
+        p_limit: safePageSize,
+        p_offset: (safePage - 1) * safePageSize,
+      })
+    : await supabase.rpc("search_bank_question_rows", {
+        ...rpcFilters,
+        p_limit: safePageSize,
+        p_offset: (safePage - 1) * safePageSize,
+      });
+  const { data, error } = searchResult;
 
   assertQuestionBankSchema(error);
   if (error) throw new Error(error.message);
@@ -1547,10 +1562,13 @@ export async function listBankQuestionsPage({
   // should not repeat the same filtered scan through a second count RPC.
   // Preserve a count-only fallback for stale, out-of-range deep-page URLs.
   if (!rows.length && safePage > 1) {
-    const { data: totalCount, error: countError } = await supabase.rpc(
-      "count_bank_question_rows",
-      rpcFilters,
-    );
+    const countResult = approvalStatus
+      ? await supabase.rpc("count_bank_question_rows_v2", {
+          ...rpcFilters,
+          p_approval_status: approvalStatus,
+        })
+      : await supabase.rpc("count_bank_question_rows", rpcFilters);
+    const { data: totalCount, error: countError } = countResult;
     assertQuestionBankSchema(countError);
     if (countError) throw new Error(countError.message);
     total = Number(totalCount ?? 0);

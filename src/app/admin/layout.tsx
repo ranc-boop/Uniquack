@@ -1,4 +1,3 @@
-import { signOut } from "@/app/auth/actions";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { requireAdmin } from "@/lib/auth/guards";
 
@@ -14,7 +13,6 @@ export default async function AdminLayout({
   return (
     <AdminShell
       role={profile.role}
-      signOutAction={signOut}
       username={profile.username}
     >
       {children}

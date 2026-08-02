@@ -309,6 +309,7 @@ export function recommendationFromHistoryQuestion(
 export function resultsFromHistoryRound(round: PracticeRoundHistory): PracticeGradeResult[] {
   return round.attempts.map((attempt) => ({
     explanation: attempt.explanation ?? "No saved explanation.",
+    gradingCapability: attempt.isCorrect === null ? "ai_review" as const : "deterministic" as const,
     gradingMode: "manual" as const,
     isCorrect: attempt.isCorrect,
     questionId: restoredPracticeQuestionId(attempt, round.questions) ?? "",

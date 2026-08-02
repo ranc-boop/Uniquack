@@ -16,8 +16,9 @@ import {
   answerSpecToJson,
   optionsToJson,
 } from "@/lib/questions/answer-spec";
+import { copyQuestionAssetsForIndependentUse } from "@/lib/questions/copy-assets";
 import { sanitizeContentHtml } from "@/lib/sanitize/html";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validations/common";
 import {
   questionCreateSchema,
@@ -50,23 +51,8 @@ function globalVisibilityForStatus(status: string) {
 
 const taxonomyTagIdPattern = /^math\.[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
 
-type PublishReviewDraftQuestionResult = {
-  approved_taxonomy_assignment_count: number;
-  question_id: string;
-  source_review_item_id: string | null;
-};
-
-type PublishReviewDraftQuestionRpc = {
-  rpc(
-    functionName: "publish_review_draft_questions",
-    args: { question_ids: string[] },
-  ): Promise<{
-    data: PublishReviewDraftQuestionResult[] | null;
-    error: { message: string } | null;
-  }>;
-};
-
 type QuestionPublishMetadata = {
+  approval_status: "approved" | "pending";
   owner_bank_id: string | null;
   source_kind: string | null;
   source_review_item_id: string | null;
@@ -92,6 +78,27 @@ async function assertGlobalQuestionIds({
   ) {
     throw new Error(
       "Admin global actions can only mutate Central Public Library questions.",
+    );
+  }
+}
+
+async function assertQuestionsAreNotApproved({
+  questionIds,
+  supabase,
+}: {
+  questionIds: string[];
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const { data, error } = await supabase
+    .from("questions")
+    .select("id")
+    .in("id", questionIds)
+    .eq("approval_status", "approved")
+    .limit(1);
+  if (error) throw new Error(error.message);
+  if (data?.length) {
+    throw new Error(
+      "Approved questions cannot be deleted or moved back to a legacy status. Archive them through the official Library lifecycle instead.",
     );
   }
 }
@@ -192,11 +199,22 @@ async function publishQuestionsWithReviewLineage({
     return;
   }
 
-  const { data: publishedQuestions, error } = await (
-    supabase as unknown as PublishReviewDraftQuestionRpc
-  ).rpc("publish_review_draft_questions", {
-    question_ids: uniqueQuestionIds,
-  });
+  const { data: officialBank, error: bankError } = await supabase
+    .from("question_banks")
+    .select("id")
+    .eq("owner_scope", "system")
+    .eq("system_key", "official_public")
+    .eq("status", "active")
+    .single();
+  if (bankError) throw new Error(bankError.message);
+
+  const { data: publishedQuestions, error } = await supabase.rpc(
+    "approve_library_questions_v2",
+    {
+      p_target_bank_id: officialBank.id,
+      p_target_question_ids: uniqueQuestionIds,
+    },
+  );
 
   if (error) {
     throw new Error(error.message);
@@ -204,7 +222,7 @@ async function publishQuestionsWithReviewLineage({
 
   if ((publishedQuestions?.length ?? 0) !== uniqueQuestionIds.length) {
     throw new Error(
-      "Only published " +
+      "Only approved " +
         (publishedQuestions?.length ?? 0) +
         " of " +
         uniqueQuestionIds.length +
@@ -234,6 +252,11 @@ function questionSourceValues(values: {
 }
 
 export async function createQuestion(formData: FormData) {
+  let copiedRevisionAssets:
+    | Awaited<ReturnType<typeof copyQuestionAssetsForIndependentUse>>
+    | undefined;
+  let revisionSourceId: string | null = null;
+  let revisionAssetsFinalized = false;
   try {
     const profile = await requireAdmin();
     const parsedInput = questionCreateSchema.parse(Object.fromEntries(formData));
@@ -243,8 +266,26 @@ export async function createQuestion(formData: FormData) {
       typeof draftIdValue === "string" && draftIdValue
         ? uuidSchema.parse(draftIdValue)
         : null;
+    const revisionSourceValue = formData.get("revision_of_question_id");
+    const revisionOfQuestionId =
+      typeof revisionSourceValue === "string" && revisionSourceValue
+        ? uuidSchema.parse(revisionSourceValue)
+        : null;
+    revisionSourceId = revisionOfQuestionId;
     const answerData = answerSpecFromFormData(formData);
     const supabase = await createClient();
+
+    if (revisionOfQuestionId) {
+      const { data: sourceQuestion, error: sourceError } = await supabase
+        .from("questions")
+        .select("id, approval_status, owner_bank_id")
+        .eq("id", revisionOfQuestionId)
+        .is("owner_bank_id", null)
+        .single();
+      if (sourceError || sourceQuestion?.approval_status !== "approved") {
+        throw new Error("Only an approved official question can be revised.");
+      }
+    }
 
     const values = {
       ...parsed,
@@ -255,6 +296,7 @@ export async function createQuestion(formData: FormData) {
       updated_by: profile.id,
       published_at:
         null,
+      revision_of_question_id: revisionOfQuestionId,
       source_kind: "review_draft" as const,
       visibility: "private" as const,
     };
@@ -295,8 +337,44 @@ export async function createQuestion(formData: FormData) {
       supabase,
       tagIds: taxonomyTagIdsFromForm(formData),
     });
+    if (revisionOfQuestionId) {
+      const { data: sourceAssets, error: sourceAssetsError } = await supabase
+        .from("question_assets")
+        .select(
+          "id, asset_kind, storage_bucket, storage_path, label, alt_text, display_order",
+        )
+        .eq("question_id", revisionOfQuestionId)
+        .order("display_order");
+      if (sourceAssetsError) throw new Error(sourceAssetsError.message);
+
+      copiedRevisionAssets = await copyQuestionAssetsForIndependentUse({
+        assets: sourceAssets ?? [],
+        destinationPrefix: `official-revisions/${revisionOfQuestionId}/${question.id}`,
+      });
+      const finalizeClient = createServiceRoleClient();
+      const { data: attachedCount, error: attachError } = await finalizeClient.rpc(
+        "attach_official_question_revision_assets_v2",
+        {
+          p_actor_id: profile.id,
+          p_copied_assets: copiedRevisionAssets.assets,
+          p_source_question_id: revisionOfQuestionId,
+          p_target_question_id: question.id,
+        },
+      );
+      if (attachError) throw new Error(attachError.message);
+      revisionAssetsFinalized = true;
+      if (Number(attachedCount ?? -1) !== copiedRevisionAssets.assets.length) {
+        throw new Error("The official revision asset manifest was not fully attached.");
+      }
+    }
   } catch (error) {
-    redirectWithError("/admin/questions/new", formatActionError(error));
+    if (!revisionAssetsFinalized) await copiedRevisionAssets?.cleanup();
+    redirectWithError(
+      revisionSourceId
+        ? `/admin/questions/new?source=${encodeURIComponent(revisionSourceId)}`
+        : "/admin/questions/new",
+      formatActionError(error),
+    );
   }
 
   revalidatePath("/admin/questions");
@@ -325,7 +403,7 @@ export async function updateQuestion(formData: FormData) {
     const { data: existingQuestion, error: existingQuestionError } = await (
       supabase.from("questions") as unknown as QuestionPublishMetadataQuery
     )
-      .select("source_kind, source_review_item_id, status, owner_bank_id")
+      .select("approval_status, source_kind, source_review_item_id, status, owner_bank_id")
       .eq("id", id)
       .single();
 
@@ -339,6 +417,11 @@ export async function updateQuestion(formData: FormData) {
     if (existingQuestion.owner_bank_id !== null) {
       throw new Error(
         "Teacher-owned Library questions must be revised in the Teacher workspace.",
+      );
+    }
+    if (existingQuestion.approval_status === "approved") {
+      throw new Error(
+        "Approved questions are immutable. Create a pending revision instead.",
       );
     }
 
@@ -420,6 +503,7 @@ async function deleteQuestionById({
   supabase: Awaited<ReturnType<typeof createClient>>;
 }) {
   await assertGlobalQuestionIds({ questionIds: [questionId], supabase });
+  await assertQuestionsAreNotApproved({ questionIds: [questionId], supabase });
 
   const { data: assets, error: assetsError } = await supabase
     .from("question_assets")
@@ -516,11 +600,34 @@ export async function bulkUpdateQuestions(formData: FormData) {
       }
 
       if (parsed.status === "published") {
-        await publishQuestionsWithReviewLineage({
-          questionIds,
-          supabase,
-        });
+        if (returnTo.startsWith("/admin/review")) {
+          const { data: officialBank, error: officialBankError } = await supabase
+            .from("question_banks")
+            .select("id")
+            .eq("system_key", "official_public")
+            .eq("status", "active")
+            .maybeSingle();
+          if (officialBankError) throw new Error(officialBankError.message);
+          if (!officialBank) throw new Error("Official Public Library is unavailable.");
+          const { data: approved, error: approvalError } = await supabase.rpc(
+            "approve_library_questions_v2",
+            {
+              p_target_bank_id: officialBank.id,
+              p_target_question_ids: questionIds,
+            },
+          );
+          if (approvalError) throw new Error(approvalError.message);
+          if ((approved?.length ?? 0) !== questionIds.length) {
+            throw new Error("The complete approval selection was not processed.");
+          }
+        } else {
+          await publishQuestionsWithReviewLineage({
+            questionIds,
+            supabase,
+          });
+        }
       } else {
+        await assertQuestionsAreNotApproved({ questionIds, supabase });
         const { data: updatedQuestions, error } = await supabase
           .from("questions")
           .update({
@@ -548,7 +655,7 @@ export async function bulkUpdateQuestions(formData: FormData) {
       }
 
       if (parsed.status === "published" && returnTo.startsWith("/admin/review")) {
-        returnTo = "/admin/questions?status=published";
+        returnTo = "/admin/questions";
       }
     } else {
       for (const questionId of questionIds) {

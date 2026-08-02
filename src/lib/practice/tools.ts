@@ -860,7 +860,7 @@ export async function loadQuestionsForReview({
 
   const { data, error } = await supabase
     .from("questions")
-    .select("id, question_code, title, content_html, difficulty_rating, options, question_type, answer_spec, solution_html")
+    .select("id, question_code, title, content_html, difficulty_rating, options, question_type, answer_spec, solution_html, solution_source")
     .in("id", questionIds);
 
   if (error) {
@@ -878,5 +878,6 @@ export async function loadQuestionsForReview({
     | "question_type"
     | "answer_spec"
     | "solution_html"
+    | "solution_source"
   >[];
 }

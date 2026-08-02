@@ -42,10 +42,11 @@ export default async function AdminBankGovernancePage({
   let query = supabase
     .from("question_banks")
     .select(
-      "id, organization_id, owner_id, name, description, visibility, status, updated_at",
+      "id, organization_id, owner_id, owner_scope, system_key, name, description, visibility, status, updated_at",
       { count: "exact" },
     )
     .eq("visibility", "public")
+    .is("system_key", null)
     .order("updated_at", { ascending: false })
     .range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -54,9 +55,19 @@ export default async function AdminBankGovernancePage({
   if (error) throw new Error(error.message);
 
   const bankIds = (banks ?? []).map((bank) => bank.id);
-  const ownerIds = Array.from(new Set((banks ?? []).map((bank) => bank.owner_id)));
+  const ownerIds = Array.from(
+    new Set(
+      (banks ?? [])
+        .map((bank) => bank.owner_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
   const organizationIds = Array.from(
-    new Set((banks ?? []).map((bank) => bank.organization_id)),
+    new Set(
+      (banks ?? [])
+        .map((bank) => bank.organization_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
   );
   const [
     { data: members },
@@ -165,14 +176,18 @@ export default async function AdminBankGovernancePage({
                       <TableCell>
                         <p className="font-semibold">{bank.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {organizationById.get(bank.organization_id) ??
-                            bank.organization_id.slice(0, 8)}
+                          {bank.organization_id
+                            ? organizationById.get(bank.organization_id) ??
+                              bank.organization_id.slice(0, 8)
+                            : "No organization"}
                           {" · "}
                           {bank.status}
                         </p>
                       </TableCell>
                       <TableCell>
-                        {ownerById.get(bank.owner_id) ?? bank.owner_id.slice(0, 8)}
+                        {bank.owner_id
+                          ? ownerById.get(bank.owner_id) ?? bank.owner_id.slice(0, 8)
+                          : "System"}
                       </TableCell>
                       <TableCell>
                         <p>{questionCount.get(bank.id) ?? 0} active questions</p>

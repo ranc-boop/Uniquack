@@ -12,14 +12,17 @@ async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
 
-const [workPage, detailPage] = await Promise.all([
+const [workPage, detailPage, guards] = await Promise.all([
   read("src/app/student/work/page.tsx"),
   read("src/app/student/work/[id]/page.tsx"),
+  read("src/lib/auth/guards.ts"),
 ]);
 
 assert(
-  workPage.includes("requireStudent()") &&
-    detailPage.includes("requireStudent()") &&
+  workPage.includes("requireStudentWorkspace()") &&
+    detailPage.includes("requireStudentWorkspace()") &&
+    guards.includes("export async function requireStudent()") &&
+    guards.includes("if (!canAccessStudent(profile.role))") &&
     detailPage.includes("getStudentAssignedWorkDetail") &&
     detailPage.includes("listStudentSentAssignmentFeedbackNotes"),
   "Student My Work routes must preserve the Student guard and scoped data readers",

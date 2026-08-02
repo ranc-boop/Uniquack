@@ -19,9 +19,9 @@ const [questionsPage, questionDetailPage, videosPage, videoDetailPage] =
   ]);
 
 assert(
-  questionsPage.includes("const [taxonomyResult, taxonomySearchResult] = await Promise.all([") &&
+  questionsPage.includes("const [taxonomyResult, officialSearchResult] = await Promise.all([") &&
     questionsPage.includes("loadTaxonomyCatalog(supabase)") &&
-    questionsPage.includes('"search_questions_by_taxonomy"'),
+    questionsPage.includes('"search_official_public_questions_v2"'),
   "Public question Library must overlap taxonomy catalog and search RPC loading.",
 );
 

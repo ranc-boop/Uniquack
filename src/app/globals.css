@@ -4,13 +4,13 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 240 5% 96%;
+    --foreground: 240 3% 12%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --primary: 210 100% 45%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -20,10 +20,10 @@
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --border: 240 4% 83%;
+    --input: 240 4% 83%;
+    --ring: 210 100% 45%;
+    --radius: 0.625rem;
   }
 
   .dark {
@@ -55,14 +55,100 @@
   body {
     @apply text-foreground antialiased;
     background-color: hsl(var(--background));
-    background-image:
-      radial-gradient(circle at top left, hsl(var(--primary) / 0.08), transparent 30rem),
-      linear-gradient(180deg, hsl(210 40% 98%), hsl(var(--background)) 18rem);
-    background-repeat: no-repeat;
+    color: #1d1d1f;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 }
 
 @layer components {
+  .workspace-chrome {
+    min-height: 100dvh;
+    background: #f5f5f7;
+  }
+
+  .workspace-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: 3.5rem;
+    border-bottom: 1px solid rgb(210 210 215 / 0.8);
+    background: rgb(255 255 255 / 0.82);
+    backdrop-filter: saturate(180%) blur(18px);
+  }
+
+  .workspace-topbar-inner {
+    @apply mx-auto flex h-full w-full max-w-[110rem] items-center gap-3 px-4 sm:px-6 lg:px-8;
+  }
+
+  .workspace-brand {
+    @apply flex min-h-11 shrink-0 items-center gap-2 rounded-[10px] text-sm text-[#1D1D1F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3] focus-visible:ring-offset-2;
+  }
+
+  .workspace-brand-mark {
+    @apply inline-flex size-8 items-center justify-center rounded-[10px] bg-[#1D1D1F] text-[11px] font-bold tracking-tight text-white;
+  }
+
+  .workspace-control {
+    @apply flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-[10px] px-3 text-sm font-medium text-[#1D1D1F] transition-colors duration-200 hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3] focus-visible:ring-offset-2;
+  }
+
+  .workspace-preview-chip {
+    @apply rounded-full bg-[#E8F2FF] px-2 py-0.5 text-[11px] font-semibold text-[#0066CC];
+  }
+
+  .workspace-switcher-menu {
+    @apply absolute left-0 z-50 mt-2 w-56 rounded-[14px] border border-[#D2D2D7] bg-white p-2 shadow-[0_12px_34px_rgba(0,0,0,0.12)];
+  }
+
+  .workspace-menu-label,
+  .workspace-nav-label {
+    @apply px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6E6E73];
+  }
+
+  .workspace-menu-item {
+    @apply flex min-h-11 items-center justify-between rounded-[10px] px-3 text-sm font-medium text-[#1D1D1F] transition-colors duration-200 hover:bg-[#F5F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3];
+  }
+
+  .admin-preview-banner {
+    @apply flex min-h-11 flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-[#B9D9FF] bg-[#E8F2FF] px-4 py-2 text-center text-xs text-[#1D1D1F];
+  }
+
+  .admin-preview-banner a {
+    @apply font-semibold text-[#0066CC] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3];
+  }
+
+  .workspace-layout {
+    @apply mx-auto grid w-full max-w-[110rem] lg:grid-cols-[15rem_minmax(0,1fr)];
+  }
+
+  .workspace-sidebar {
+    @apply sticky top-14 h-[calc(100dvh-3.5rem)] overflow-y-auto border-r border-[#D2D2D7] px-4 py-6;
+  }
+
+  .workspace-mobile-nav {
+    @apply mx-4 mt-4 rounded-[14px] border border-[#D2D2D7] bg-white p-2 sm:mx-6;
+  }
+
+  .workspace-mobile-nav > summary {
+    @apply flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-[10px] px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3];
+  }
+
+  .workspace-nav {
+    @apply space-y-5;
+  }
+
+  .workspace-nav-group {
+    @apply grid gap-1;
+  }
+
+  .workspace-nav-item {
+    @apply flex min-h-11 items-center gap-3 rounded-[10px] px-3 text-sm font-medium text-[#6E6E73] transition-colors duration-200 hover:bg-black/[0.04] hover:text-[#1D1D1F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3] focus-visible:ring-offset-1;
+  }
+
+  .workspace-nav-item.is-active {
+    @apply bg-[#E8F2FF] text-[#0066CC];
+  }
+
   .student-shell {
     @apply mx-auto w-full max-w-[92rem] px-4 py-6 sm:px-6 lg:px-8;
   }
@@ -70,19 +156,18 @@
   .admin-route-main {
     min-height: 100vh;
     padding: 1.25rem;
-    background: #f8fafc;
+    background: #f5f5f7;
   }
 
   .focus-route-main {
     min-height: 100dvh;
-    background:
-      radial-gradient(circle at top left, rgb(224 242 254 / 0.7), transparent 30rem),
-      linear-gradient(180deg, #f8fafc, #ffffff 24rem);
+    background: #f5f5f7;
   }
 
   .teacher-route-main {
     min-height: 100dvh;
-    background: #f8fafc;
+    min-width: 0;
+    background: #f5f5f7;
   }
 
   .admin-shell {
@@ -91,15 +176,6 @@
 
   .admin-page-enter {
     animation: admin-page-in 260ms ease-out both;
-  }
-
-  .admin-topbar {
-    transition: box-shadow 180ms ease, border-color 180ms ease;
-  }
-
-  .admin-topbar:hover {
-    border-color: hsl(var(--primary) / 0.22);
-    box-shadow: 0 14px 35px -28px hsl(var(--primary) / 0.65);
   }
 
   @keyframes admin-shell-in {
@@ -193,7 +269,7 @@
   }
 
   .teacher-panel {
-    @apply rounded-lg border border-slate-200/80 bg-white/95 shadow-[0_16px_42px_-34px_rgba(15,23,42,0.55)] ring-1 ring-slate-950/5;
+    @apply rounded-[14px] border border-[#D2D2D7] bg-white shadow-none;
   }
 
   .teacher-soft-panel {
@@ -201,7 +277,7 @@
   }
 
   .teacher-card-hover {
-    @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-[0_18px_42px_-34px_rgba(15,23,42,0.65)];
+    @apply transition-colors duration-200 hover:border-[#B6B6BB] hover:bg-[#FBFBFD];
   }
 
   .teacher-eyebrow {
@@ -220,6 +296,62 @@
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2;
   }
 
+  .question-workbench {
+    @apply space-y-4 rounded-[18px] border border-[#D2D2D7] bg-white p-4 sm:p-5;
+  }
+
+  .question-workbench-toolbar {
+    @apply flex flex-col gap-3 border-b border-[#D2D2D7] pb-4 md:flex-row md:items-center md:justify-between;
+  }
+
+  .question-workbench-search {
+    @apply min-h-11 w-full rounded-[10px] border border-[#D2D2D7] bg-white px-3 text-sm outline-none transition-colors duration-200 placeholder:text-[#86868B] focus:border-[#0071E3] focus:ring-2 focus:ring-[#0071E3]/20 md:max-w-sm;
+  }
+
+  .question-workbench-grid {
+    display: grid;
+    grid-template-columns: 20rem minmax(0, 1fr) 17.5rem;
+    min-height: 34rem;
+  }
+
+  .question-workbench-list,
+  .question-workbench-preview,
+  .question-workbench-inspector {
+    min-width: 0;
+    background: #fff;
+  }
+
+  .question-workbench-list {
+    border-right: 1px solid #d2d2d7;
+  }
+
+  .question-workbench-inspector {
+    border-left: 1px solid #d2d2d7;
+  }
+
+  @media (max-width: 1024px) {
+    .question-workbench-grid {
+      grid-template-columns: 18rem minmax(0, 1fr);
+    }
+
+    .question-workbench-inspector {
+      grid-column: 1 / -1;
+      border-left: 0;
+      border-top: 1px solid #d2d2d7;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .question-workbench-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .question-workbench-list {
+      border-right: 0;
+      border-bottom: 1px solid #d2d2d7;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .student-card-hover,
     .student-enter,
@@ -227,6 +359,13 @@
     .teacher-enter {
       animation: none !important;
       transform: none !important;
+      transition-duration: 1ms !important;
+    }
+
+    .workspace-control,
+    .workspace-menu-item,
+    .workspace-nav-item,
+    .question-workbench-search {
       transition-duration: 1ms !important;
     }
   }

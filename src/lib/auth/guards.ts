@@ -154,6 +154,25 @@ export async function requireStudent() {
   return profile;
 }
 
+/**
+ * Read-only workspace entry guard. Admins may render the Student experience
+ * with their real identity, while student mutations continue to call the
+ * stricter requireStudent guard and RLS remains unchanged.
+ */
+export async function requireStudentWorkspace() {
+  const profile = await getCurrentProfile();
+
+  if (!profile) {
+    redirect("/auth/login?next=/student");
+  }
+
+  if (!canAccessStudent(profile.role) && !canAccessAdmin(profile.role)) {
+    redirect("/unauthorized");
+  }
+
+  return profile;
+}
+
 export async function requireSuperAdmin() {
   const profile = await getCurrentProfile();
 

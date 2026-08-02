@@ -94,74 +94,62 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
 
   const supabase = await createClient();
   const from = (page - 1) * pageSize;
-  const taxonomySearchArgs = {
-    assignment_review_status: "approved",
+  const officialSearchArgs = {
     difficulty_max: maxDifficulty,
     difficulty_min: minDifficulty,
-    exclude_tag_ids: [],
-    include_tag_ids: [],
     page_limit: pageSize,
     page_offset: from,
     query_text: search || null,
-    question_status: "published",
   };
-  const [taxonomyResult, taxonomySearchResult] = await Promise.all([
+  const [taxonomyResult, officialSearchResult] = await Promise.all([
     loadTaxonomyCatalog(supabase),
-    supabase.rpc("search_questions_by_taxonomy", taxonomySearchArgs),
+    supabase.rpc("search_official_public_questions_v2", officialSearchArgs),
   ]);
   const { catalog: taxonomyCatalog } = taxonomyResult;
-  const { data: taxonomySearchRows, error } = taxonomySearchResult;
+  const { data: officialSearchRows, error } = officialSearchResult;
   let fallbackTotalCount = 0;
-  if (!error && page > 1 && !taxonomySearchRows?.length) {
+  if (!error && page > 1 && !officialSearchRows?.length) {
     const { data: firstPageRows } = await supabase.rpc(
-      "search_questions_by_taxonomy",
+      "search_official_public_questions_v2",
       {
-        ...taxonomySearchArgs,
+        ...officialSearchArgs,
         page_limit: 1,
         page_offset: 0,
       },
     );
     fallbackTotalCount = Number(firstPageRows?.[0]?.total_count ?? 0);
   }
-  const orderedQuestionIds = (taxonomySearchRows ?? []).map(
+  const orderedQuestionIds = (officialSearchRows ?? []).map(
     (row) => row.question_id,
   );
-  const questionOrder = new Map(
-    orderedQuestionIds.map((questionId, index) => [questionId, index]),
-  );
-  const { data: questions, error: questionsError } = orderedQuestionIds.length
+  const { data: taxonomyAssignments, error: taxonomyError } = orderedQuestionIds.length
     ? await supabase
-        .from("questions")
-        .select("id, question_code, title, content_html, difficulty_rating, status")
-        .in("id", orderedQuestionIds)
+        .from("question_taxonomy_assignments")
+        .select("question_id, tag_id, review_status")
+        .in("question_id", orderedQuestionIds)
+        .eq("review_status", "approved")
     : { data: [], error: null };
-  const sortedQuestions = [...(questions ?? [])].sort(
-    (left, right) =>
-      (questionOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
-      (questionOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
-  );
-  const totalCount = Number(taxonomySearchRows?.[0]?.total_count ?? fallbackTotalCount);
+  const totalCount = Number(officialSearchRows?.[0]?.total_count ?? fallbackTotalCount);
   const taxonomyTagsByQuestionId = new Map<string, TaxonomyTagChipAssignment[]>();
 
-  for (const row of taxonomySearchRows ?? []) {
-    taxonomyTagsByQuestionId.set(
-      row.question_id,
-      (row.matched_tag_ids ?? []).map((tagId) => ({
-        review_status: "approved",
-        tag_id: tagId,
-      })),
-    );
+  for (const assignment of taxonomyAssignments ?? []) {
+    const current = taxonomyTagsByQuestionId.get(assignment.question_id) ?? [];
+    current.push({
+      review_status: assignment.review_status,
+      tag_id: assignment.tag_id,
+    });
+    taxonomyTagsByQuestionId.set(assignment.question_id, current);
   }
   const taxonomyTagsByQuestionIdObject = Object.fromEntries(
     taxonomyTagsByQuestionId.entries(),
   );
-  const questionRows = sortedQuestions.map((question) => ({
-    id: question.id,
+  const questionRows = (officialSearchRows ?? []).map((question) => ({
+    id: question.question_id,
     question_code: question.question_code,
     title: question.title,
     content_excerpt: htmlToPlainTextExcerpt(question.content_html),
     difficulty_rating: question.difficulty_rating,
-    status: question.status,
+    status: "published" as const,
   }));
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
@@ -241,9 +229,9 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
         </div>
         </div>
       </form>
-      {error || questionsError ? (
+      {error || taxonomyError ? (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error?.message ?? questionsError?.message}
+          {error?.message ?? taxonomyError?.message}
         </p>
       ) : null}
       {questionRows.length ? (

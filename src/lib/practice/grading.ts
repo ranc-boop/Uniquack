@@ -1,6 +1,7 @@
 import "server-only";
 
 import { normalizeAnswerSpec } from "@/lib/questions/answer-spec";
+import { getQuestionReadiness } from "@/lib/questions/grading-capability";
 import type { PracticeAttemptInput, PracticeGradeResult } from "@/lib/practice/types";
 import type { Question } from "@/types/database";
 
@@ -120,18 +121,38 @@ export function gradePracticeAttempt({
   attempt: PracticeAttemptInput;
   question: Pick<
     Question,
-    "answer_spec" | "id" | "question_type" | "solution_html"
+    "answer_spec" | "id" | "options" | "question_type" | "solution_html" | "solution_source"
   >;
 }): PracticeGradeResult {
   const spec = normalizeAnswerSpec(question.answer_spec);
+  const readiness = getQuestionReadiness({
+    answerSpec: question.answer_spec,
+    options: question.options,
+    questionType: question.question_type,
+    solutionHtml: question.solution_html,
+    solutionSource: question.solution_source,
+  });
 
-  if (question.question_type === "mcq" || spec.kind === "mcq") {
+  if (readiness.capability === "needs_configuration") {
+    return {
+      explanation: readiness.blockingReasons.join(" "),
+      gradingCapability: readiness.capability,
+      gradingMode: "manual",
+      isCorrect: null,
+      questionId: question.id,
+      score: null,
+      solutionHtml: question.solution_html,
+    };
+  }
+
+  if (question.question_type === "mcq") {
     const correctOptionIds = spec.correct_option_ids ?? [];
     const result = gradeMcq({ answer: attempt.answer, correctOptionIds });
 
     return {
       correctOptionIds,
       explanation: result.explanation,
+      gradingCapability: readiness.capability,
       gradingMode: "auto",
       isCorrect: result.isCorrect,
       questionId: question.id,
@@ -140,7 +161,7 @@ export function gradePracticeAttempt({
     };
   }
 
-  if (question.question_type === "fill_blank" || spec.kind === "fill_blank") {
+  if (question.question_type === "fill_blank") {
     const acceptedAnswers = [
       ...(spec.final_answers ?? []),
       ...(spec.accepted_answers ?? []),
@@ -156,6 +177,7 @@ export function gradePracticeAttempt({
     return {
       acceptedAnswers,
       explanation: result.explanation,
+      gradingCapability: readiness.capability,
       gradingMode: "auto",
       isCorrect: result.isCorrect,
       questionId: question.id,
@@ -165,7 +187,8 @@ export function gradePracticeAttempt({
   }
 
   return {
-    explanation: "Free-response grading is saved for review but not auto-scored in this MVP.",
+    explanation: "Free-response answer is queued for AI review.",
+    gradingCapability: readiness.capability,
     gradingMode: "manual",
     isCorrect: null,
     questionId: question.id,

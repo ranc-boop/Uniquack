@@ -163,6 +163,7 @@ export async function POST(request: Request) {
       if (!question) {
         return {
           explanation: "Question not found or unavailable.",
+          gradingCapability: "needs_configuration" as const,
           gradingMode: "manual" as const,
           isCorrect: null,
           questionId: attempt.questionId,
@@ -197,6 +198,7 @@ export async function POST(request: Request) {
     if (recommendations.length && questionReviews.length) {
       await persistQuestionReviewResults({
         attempts,
+        completeRound: body.deferCompletion !== true,
         llmUsage: [],
         providerLabel: "Deterministic fallback",
         questionReviews,
@@ -217,14 +219,16 @@ export async function POST(request: Request) {
       });
     }
 
-    const assignmentProgress = await updateLinkedAssignmentProgressAfterPractice({
-      attemptedQuestionIds: validatedRoundQuestionIds,
-      results,
-      roundId,
-      sessionId,
-      supabase,
-      userId: auth.user.id,
-    });
+    const assignmentProgress = body.deferCompletion === true
+      ? { completed: 0, updated: 0 }
+      : await updateLinkedAssignmentProgressAfterPractice({
+          attemptedQuestionIds: validatedRoundQuestionIds,
+          results,
+          roundId,
+          sessionId,
+          supabase,
+          userId: auth.user.id,
+        });
     const response: PracticeGradeResponse = { assignmentProgress, results, trace };
 
     return NextResponse.json(response);

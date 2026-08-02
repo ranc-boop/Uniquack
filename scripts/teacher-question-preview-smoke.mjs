@@ -115,10 +115,10 @@ assert(
 );
 
 assert(
-  validation.includes("hardErrors") &&
+    validation.includes("hardErrors") &&
     validation.includes("softWarnings") &&
     validation.includes("Question content is required") &&
-    validation.includes("The correct multiple-choice answer is invalid") &&
+    validation.includes("readiness.blockingReasons") &&
     reviewActions.includes("assertBankReviewQuestionsPublishable") &&
     reviewActions.includes("approveCurrentBankReviewPage") &&
     reviewPage.includes("Approve current page") &&

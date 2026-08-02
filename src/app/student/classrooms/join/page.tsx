@@ -5,7 +5,7 @@ import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { requireStudent } from "@/lib/auth/guards";
+import { requireStudentWorkspace } from "@/lib/auth/guards";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ type JoinClassroomPageProps = {
 export default async function JoinClassroomPage({
   searchParams,
 }: JoinClassroomPageProps) {
-  await requireStudent();
+  await requireStudentWorkspace();
   const params = await searchParams;
 
   return (

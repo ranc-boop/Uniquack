@@ -52,6 +52,8 @@ await import("./redundancy-cleanup-smoke.mjs");
 await import("./auth-context-handoff-performance-smoke.mjs");
 await import("./teacher-import-workspace-read-model-smoke.mjs");
 await import("./public-library-loading-performance-smoke.mjs");
+await import("./official-public-library-smoke.mjs");
+await import("./official-public-library-0076-hosted-apply-safety-smoke.mjs");
 await import("./practice-library-scope-finish-smoke.mjs");
 await import("./teacher-progress-ui-smoke.mjs");
 await import("./course-builder-assignment-bridge-smoke.mjs");

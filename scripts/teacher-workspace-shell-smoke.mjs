@@ -107,8 +107,9 @@ async function runSourceSmoke() {
   const migration = await read("supabase/clean-migrations/0043_classroom_creation_rls_hardening.sql");
 
   for (const label of [
-    "Dashboard",
-    "Libraries",
+    "Home",
+    "My Libraries",
+    "Public Library",
     "Blueprints",
     "Classrooms",
     "Assignments",
@@ -129,10 +130,10 @@ async function runSourceSmoke() {
     "teacher dashboard must stay bank-first without duplicating global navigation or explanatory copy",
   );
   assert(
-    rootLayout.includes("teacherWorkspaceNavItems") &&
-      rootLayout.includes("studentNavItems") &&
-      rootLayout.includes("<PrimaryNav />"),
-    "root layout must expose one role-aware primary navigation",
+    rootLayout.includes("<AppChrome") &&
+      rootLayout.includes("role={identity.role}") &&
+      rootLayout.includes("<Suspense"),
+    "root layout must expose one role-aware workspace chrome",
   );
   assert(
     classroomActions.includes("create_teacher_classroom"),

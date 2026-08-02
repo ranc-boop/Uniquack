@@ -29,21 +29,20 @@ const questionBankHelpers = await read("src/lib/question-banks.ts");
 const smokeAll = await read("scripts/smoke-all.mjs");
 
 assert(
-  banksPage.includes('title="Libraries"') &&
-    banksPage.includes("Libraries are your teacher content repositories") &&
-    banksPage.includes("deliver selected approved items") &&
+  banksPage.includes("<BankWorkbenchPage") &&
+    banksPage.includes("Libraries") &&
     banksPage.includes("Create Library") &&
-    banksPage.includes("Join Library by Code") &&
+    banksPage.includes("Join by code") &&
+    banksPage.includes("Search Libraries") &&
     banksPage.includes("Private") &&
     banksPage.includes("Shared") &&
     banksPage.includes("Organization") &&
     banksPage.includes("Public") &&
-    banksPage.includes("Needs Review") &&
-    banksPage.includes("Recently Updated") &&
-    banksPage.includes("Assignment Ready") &&
-    banksPage.includes("No Libraries yet. Create your first Library or join a shared") &&
-    banksPage.includes("Library by code."),
-  "/teacher/banks must render the library title, bank-first copy, CTAs, filters, and empty state",
+    banksPage.includes("Needs review") &&
+    banksPage.includes("Recently updated") &&
+    banksPage.includes("Assignment ready") &&
+    banksPage.includes("No Libraries yet"),
+  "/teacher/banks must render the restrained Library workbench, CTAs, filters, search, and empty state",
 );
 
 assert(
@@ -63,48 +62,47 @@ assert(
 );
 
 assert(
-  bankDetailPage.includes("Library workspace") &&
-    bankDetailPage.includes("Repository workflow") &&
-    bankDetailPage.includes("Open question database") &&
-    bankDetailPage.includes("Boundary notes") &&
-    bankDetailPage.includes("bankMemberProfileLabel") &&
-    bankDetailPage.includes("BankSafetyList"),
-  "/teacher/banks/[bankId] must render a bank operating surface with readable member labels and safety boundaries",
+  bankDetailPage.includes("Next action") &&
+    bankDetailPage.includes('aria-label="Library work"') &&
+    bankDetailPage.includes('label: "Draft"') &&
+    bankDetailPage.includes('label: "Ready"') &&
+    bankDetailPage.includes('label: "Members"') &&
+    bankDetailPage.includes("bankMemberRoleLabel") &&
+    bankDetailPage.includes("canManageBankContent"),
+  "/teacher/banks/[bankId] must render a focused next-action surface with readable membership and capability boundaries",
 );
 
 assert(
-  bankQuestionsPage.includes("Question database") &&
-    bankQuestionsPage.includes("Taxonomy") &&
-    bankQuestionsPage.includes("Not tagged") &&
-    bankQuestionsPage.includes("Not set") &&
-    bankQuestionsPage.includes("Source") &&
-    bankQuestionsPage.includes("Ready for assignment") &&
-    bankQuestionsPage.includes("Assign") &&
-    bankQuestionsPage.includes("Revise") &&
-    bankQuestionsPage.includes("Submit selected to Public Library") &&
+  bankQuestionsPage.includes("QuestionManagementWorkbench") &&
+    bankQuestionsPage.includes("workbenchApprovalStatus") &&
+    bankQuestionsPage.includes('query.status === "approved" ? "approved" : "pending"') &&
+    bankQuestionsPage.includes("search_official_public_questions_v2") &&
+    bankQuestionsPage.includes('mode="teacher"') &&
+    bankQuestionsPage.includes("打开经典批量管理") &&
     !bankQuestionsPage.includes("Start Practice"),
-  "/teacher/banks/[bankId]/questions must read as a question database, not a Practice entry point",
+  "/teacher/banks/[bankId]/questions must default to the shared two-state workbench and use the official Public Library query",
 );
 
 assert(
-  bankImportsPage.includes('aria-label="Library import modes"') &&
-    bankImportsPage.includes('["manual", "json", "ai"]') &&
+  bankImportsPage.includes('["manual", "json", "ai"].includes') &&
+    bankImportsPage.includes('query.mode as "manual" | "json" | "ai"') &&
     bankImportsPage.includes("BankManualQuestionForm") &&
     bankImportsPage.includes("BatchImportJsonPanelLoader") &&
     bankImportsPage.includes("TeacherPdfBurstUpload") &&
-    bankImportsPage.includes("private Review Drafts") &&
+    bankImportsPage.includes("private Review Drafts in") &&
     !bankImportsPage.includes("Advanced / Developer fixture"),
   "/teacher/banks/[bankId]/imports must expose Manual, JSON, and AI as equal bank-scoped entry points without a duplicate target selector",
 );
 
 assert(
-  bankReviewPage.includes("Teacher QA queue") &&
-    bankReviewPage.includes("Approve drafts into this Library. This does not publish them to the") &&
-    bankReviewPage.includes("Pending private drafts") &&
-    bankReviewPage.includes("Review required") &&
-    bankReviewPage.includes("private to this Library and is not globally published") &&
-    bankReviewPage.includes("Source lineage"),
-  "/teacher/banks/[bankId]/review must render bank/private teacher QA language",
+  bankReviewPage.includes("Review") &&
+    bankReviewPage.includes("All Drafts") &&
+    bankReviewPage.includes("Ready to review") &&
+    bankReviewPage.includes("Needs attention") &&
+    bankReviewPage.includes("Approve current page") &&
+    bankReviewPage.includes("Approval confirms these questions for this Library") &&
+    bankReviewPage.includes("approveBankReviewQuestions"),
+  "/teacher/banks/[bankId]/review must render the Library-scoped teacher QA queue and approval action",
 );
 
 assert(

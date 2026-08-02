@@ -2,14 +2,14 @@ import Link from "next/link";
 
 import { StudentWorkspaceShell } from "@/components/student/student-workspace-shell";
 import { Button } from "@/components/ui/button";
-import { requireStudent } from "@/lib/auth/guards";
+import { requireStudentWorkspace } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { listStudentAssignedWork } from "@/lib/student-work";
 
 export const dynamic = "force-dynamic";
 
 export default async function StudentProgressPage() {
-  const profile = await requireStudent();
+  const profile = await requireStudentWorkspace();
   const supabase = await createClient();
   const assignments = await listStudentAssignedWork({
     studentId: profile.id,

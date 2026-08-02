@@ -1,5 +1,6 @@
 import type { QuestionType } from "@/types/database";
 import type { QuestionOption } from "@/lib/questions/answer-spec";
+import type { QuestionGradingCapability } from "@/lib/questions/grading-capability";
 
 type PracticePhase =
   | "recommendation"
@@ -186,6 +187,7 @@ export type PracticeAttemptInput = {
 
 export type PracticeGradeRequest = {
   attempts: PracticeAttemptInput[];
+  deferCompletion?: boolean;
   roundId?: string;
   sessionId?: string;
 };
@@ -194,6 +196,7 @@ export type PracticeGradeResult = {
   acceptedAnswers?: string[];
   correctOptionIds?: string[];
   explanation: string;
+  gradingCapability: QuestionGradingCapability;
   gradingMode: "auto" | "manual";
   isCorrect: boolean | null;
   questionId: string;
