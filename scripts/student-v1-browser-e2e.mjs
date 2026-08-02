@@ -218,6 +218,11 @@ function safeFailureCategory(error) {
   return /^[A-Za-z0-9_:-]{1,120}$/.test(value) ? value : "unexpected_failure";
 }
 
+function safeFailureDetail(error) {
+  const value = String(error?.message ?? "");
+  return /^[A-Za-z0-9_:-]{1,160}$/.test(value) ? value : "UNAVAILABLE";
+}
+
 function boundedFailureCategory(error, phase = "initialization") {
   const category = safeFailureCategory(error);
   if (ALLOWED_FAILURE_CATEGORIES.has(category)) return category;
@@ -241,6 +246,7 @@ function createSanitizedDiagnostics() {
     assignmentStartHttpStatus: 0,
     cleanup: "FAIL",
     consoleErrorCount: 0,
+    failureDetail: "UNAVAILABLE",
     failedRequestCategories: [],
     finalRoute: "UNEXPECTED_ROUTE",
     navigationStatus: "NO_DOCUMENT_RESPONSE",
@@ -925,6 +931,7 @@ async function createFixtureUser({ anonKey, fixtures, organizationId, role, serv
   // calls Supabase Auth, so the disposable auth user must use that same form.
   const email = `${username}@local.app`;
   const password = randomPassword();
+  const displayName = `Student Browser ${label}`;
   const created = await service.auth.admin.createUser({
     email,
     email_confirm: true,
@@ -939,7 +946,7 @@ async function createFixtureUser({ anonKey, fixtures, organizationId, role, serv
     await service.from("profiles").upsert(
       {
         default_organization_id: organizationId,
-        display_name: `Student Browser ${label}`,
+        display_name: displayName,
         email,
         id: userId,
         role,
@@ -963,7 +970,7 @@ async function createFixtureUser({ anonKey, fixtures, organizationId, role, serv
 
   const session = await signInFixture({ anonKey, email, password, url });
   assert(session.id === userId, "fixture_session_identity_mismatch");
-  return { ...session, password, username };
+  return { ...session, displayName, password, username };
 }
 
 async function createFixtureOrganization(service, fixtures) {
@@ -1932,14 +1939,208 @@ async function browserFetch(page, path, options = {}) {
   );
 }
 
-async function signInThroughBrowser(page, origin, actor) {
-  await page.goto(`${origin}/auth/login?next=%2Fstudent`, { waitUntil: "networkidle" });
+async function signInThroughBrowser(page, origin, actor, next = "/student") {
+  await page.goto(
+    `${origin}/auth/login?next=${encodeURIComponent(next)}`,
+    { waitUntil: "networkidle" },
+  );
   await page.locator("#username").fill(actor.username);
   await page.locator("#password").fill(actor.password);
   await Promise.all([
-    page.waitForURL(/\/student(?:$|\?)/),
+    page.waitForURL((url) => !url.pathname.startsWith("/auth/login")),
     page.getByRole("button", { name: "Sign in" }).click(),
   ]);
+}
+
+async function assertNoHorizontalOverflow(page, label) {
+  const layout = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  assert(
+    layout.scrollWidth <= layout.clientWidth + 1,
+    `${label}_horizontal_overflow`,
+  );
+}
+
+async function assertTeacherAssignmentBrowserFlow(browser, fixtures) {
+  fixtures.phase = "browser_teacher_assignment_standard_flow";
+  console.log("PHASE=browser_teacher_assignment_standard_flow");
+  const context = await browser.newContext({
+    viewport: { height: 900, width: 1440 },
+  });
+  const page = await context.newPage();
+  const assignmentTitle = `Teacher browser Assignment ${fixtures.runId}`;
+  const feedbackBody = `Teacher browser feedback ${fixtures.runId}`;
+
+  try {
+    await signInThroughBrowser(
+      page,
+      fixtures.server.origin,
+      fixtures.teacher,
+      "/teacher",
+    );
+    await page.goto(
+      `${fixtures.server.origin}/teacher/publish?sourceBankId=${fixtures.bankId}`,
+      { waitUntil: "domcontentloaded" },
+    );
+    await page
+      .getByRole("heading", { level: 1, name: "Create Assignment" })
+      .waitFor({ timeout: 30_000 });
+    setHarnessPhase(fixtures, "browser_teacher_publish_ready");
+    await assertNoHorizontalOverflow(page, "teacher_publish_1440");
+
+    const question = page.locator(
+      `input[name="bankQuestionIds"][value="${fixtures.selectedBankQuestionId}"]`,
+    );
+    await question.focus();
+    await page.keyboard.press("Space");
+    assert(await question.isChecked(), "teacher_publish_question_keyboard_selection_failed");
+
+    const continueToClassroom = page.getByRole("button", {
+      exact: true,
+      name: "Continue to classroom",
+    });
+    await continueToClassroom.focus();
+    await page.keyboard.press("Enter");
+
+    const classroom = page.locator(
+      `input[name="classroomIds"][value="${fixtures.classroomId}"]`,
+    );
+    await classroom.waitFor({ state: "visible" });
+    await classroom.focus();
+    await page.keyboard.press("Space");
+    assert(await classroom.isChecked(), "teacher_publish_classroom_keyboard_selection_failed");
+    await page
+      .getByRole("button", { exact: true, name: "Continue to review" })
+      .click();
+    await page.locator("#title").fill(assignmentTitle);
+    await page.getByText("Add optional instructions", { exact: true }).click();
+    await page
+      .locator("#instructions")
+      .fill("Complete the reviewed question, then return to My Work.");
+
+    setHarnessPhase(fixtures, "browser_teacher_publish_submit");
+    await Promise.all([
+      page.waitForURL(/\/teacher\/classrooms\/[^/]+\/assignments\/[^/?]+/),
+      page.getByRole("button", { exact: true, name: "Assign now" }).click(),
+    ]);
+    const pathParts = new URL(page.url()).pathname.split("/").filter(Boolean);
+    const createdAssignmentId = pathParts.at(-1);
+    assert(
+      createdAssignmentId && /^[0-9a-f-]{36}$/i.test(createdAssignmentId),
+      "teacher_publish_assignment_redirect_invalid",
+    );
+    fixtures.assignmentIds.push(createdAssignmentId);
+    setHarnessPhase(fixtures, "browser_teacher_assignment_created");
+
+    await page
+      .getByRole("heading", { level: 1, name: assignmentTitle })
+      .waitFor({ timeout: 30_000 });
+    const previewLink = page.getByRole("link", {
+      name: /Preview as student/,
+    });
+    await previewLink.waitFor();
+    setHarnessPhase(fixtures, "browser_teacher_preview_open");
+    await Promise.all([
+      page.waitForURL(/\/assignments\/[^/]+\/student-preview/),
+      previewLink.click(),
+    ]);
+    assert(
+      new URL(page.url()).pathname.endsWith(
+        `/assignments/${createdAssignmentId}/student-preview`,
+      ),
+      "teacher_assignment_student_preview_route_invalid",
+    );
+    await page
+      .getByRole("heading", { level: 1, name: assignmentTitle })
+      .waitFor({ timeout: 30_000 });
+    const previewText = await page.locator("body").innerText();
+    assert(
+      previewText.includes(fixtures.selectedQuestionTitle) &&
+        !previewText.includes("Disposable browser solution") &&
+        !/answer_spec|source_review_item_id|practice_attempts/i.test(previewText),
+      "teacher_assignment_student_preview_data_boundary_failed",
+    );
+
+    for (const width of [375, 768, 1024, 1440]) {
+      await page.setViewportSize({ height: width === 375 ? 812 : 900, width });
+      await assertNoHorizontalOverflow(
+        page,
+        `teacher_assignment_preview_${width}`,
+      );
+    }
+
+    setHarnessPhase(fixtures, "browser_teacher_preview_return");
+    await Promise.all([
+      page.waitForURL(
+        new RegExp(`/assignments/${createdAssignmentId}(?:$|\\?)`),
+      ),
+      page
+        .getByRole("link", {
+          exact: true,
+          name: "Back to Assignment detail",
+        })
+        .click(),
+    ]);
+
+    for (const width of [375, 768, 1024, 1440]) {
+      setHarnessPhase(fixtures, `browser_teacher_responsive_${width}`);
+      await page.setViewportSize({ height: width === 375 ? 812 : 900, width });
+      await page.goto(
+        `${fixtures.server.origin}/teacher/classrooms/${fixtures.classroomId}/assignments/${createdAssignmentId}`,
+        { waitUntil: "domcontentloaded" },
+      );
+      await assertNoHorizontalOverflow(page, `teacher_assignment_detail_${width}`);
+      await page.goto(`${fixtures.server.origin}/teacher/progress`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page
+        .getByRole("heading", { level: 1, name: "Progress / Feedback" })
+        .waitFor({ timeout: 30_000 });
+      await assertNoHorizontalOverflow(page, `teacher_progress_${width}`);
+    }
+
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await page.goto(
+      `${fixtures.server.origin}/teacher/classrooms/${fixtures.classroomId}/assignments/${createdAssignmentId}`,
+      { waitUntil: "domcontentloaded" },
+    );
+    setHarnessPhase(fixtures, "browser_teacher_feedback_submit");
+    const feedbackDetails = page
+      .locator("details")
+      .filter({ hasText: fixtures.studentA.displayName })
+      .last();
+    await feedbackDetails.locator("summary").click();
+    await feedbackDetails.locator('textarea[name="body"]').fill(feedbackBody);
+    await Promise.all([
+      page.waitForURL((url) => url.searchParams.has("saved")),
+      feedbackDetails
+        .getByRole("button", { exact: true, name: "Send to student" })
+        .dblclick(),
+    ]);
+    const feedbackRows =
+      assertNoError(
+        await fixtures.service
+          .from("teacher_feedback_notes")
+          .select("id")
+          .eq("assignment_id", createdAssignmentId)
+          .eq("author_id", fixtures.teacher.id)
+          .eq("body", feedbackBody),
+        "teacher_feedback_idempotency_read_failed",
+      ) ?? [];
+    assert(
+      feedbackRows.length === 1,
+      "teacher_feedback_double_submit_created_duplicates",
+    );
+    fixtures.feedbackIds.push(feedbackRows[0].id);
+
+    console.log(
+      "PASS browser_teacher_assignment_create_preview_focus_feedback_and_responsive_gates",
+    );
+  } finally {
+    await context.close();
+  }
 }
 
 async function joinClassroomThroughBrowser(page, fixtures, fakeProvider) {
@@ -2053,7 +2254,9 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
 
   setHarnessPhase(fixtures, "browser_assignment_practice_click");
   await waitForPracticeStep(
-    page.getByRole("link", { name: /Practice for this assignment/ }).click(),
+    page
+      .getByRole("link", { name: /^(Start|Continue) Practice$/ })
+      .click(),
     "practice_navigation_timeout",
   );
 
@@ -2287,6 +2490,10 @@ async function startResumeAndCompleteAssignment(page, fixtures, fakeProvider) {
   );
   assert(
     await completedSection.count() === 1,
+    "practice_my_work_completed_section_not_found",
+  );
+  await waitForPracticeStep(
+    completedSection.locator("summary").click(),
     "practice_my_work_completed_section_not_found",
   );
 
@@ -2644,6 +2851,7 @@ async function validateBrowserJourneys(fixtures, fakeProvider) {
 
     await publishFixtureAssignmentsAfterStudentJoin(fixtures);
     await assertStudentAssignmentEntitlement(fixtures);
+    await assertTeacherAssignmentBrowserFlow(browser, fixtures);
 
     fixtures.phase = "browser_my_work_and_detail";
     console.log("PHASE=browser_my_work_and_detail");
@@ -2698,6 +2906,7 @@ function firstCategory(values) {
 function printSanitizedFailureSummary(diagnostics, failureCategory) {
   console.error("FAIL Student V1 browser E2E");
   console.error(`failure_category=${allowedOr(failureCategory, ALLOWED_FAILURE_CATEGORIES, "HARNESS_FAILURE")}`);
+  console.error(`failure_detail=${diagnostics.failureDetail}`);
   console.error(`navigation_status=${allowedOr(diagnostics.navigationStatus, NAVIGATION_STATUSES, "NO_DOCUMENT_RESPONSE")}`);
   console.error(`final_route=${allowedOr(diagnostics.finalRoute, FINAL_ROUTE_CATEGORIES, "UNEXPECTED_ROUTE")}`);
   console.error(
@@ -2924,6 +3133,7 @@ async function main() {
     await validateBrowserJourneys(fixtures, fakeProvider);
   } catch (error) {
     failure = error;
+    diagnostics.failureDetail = safeFailureDetail(error);
     failurePhase = fixtures?.phase ?? "initialization";
   } finally {
     let serversStopped = true;

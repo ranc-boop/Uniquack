@@ -86,7 +86,7 @@ assert(
   "Exactly one executable canonical 0032 is allowed; Google 0032 must stay excluded.",
 );
 
-for (let number = 44; number <= 65; number += 1) {
+for (let number = 44; number <= 75; number += 1) {
   const filename = activeMigrationNames[number - 1];
   const entry = manifest.migrationInventory.find((candidate) => candidate.filename === filename);
   assert(
@@ -97,19 +97,35 @@ for (let number = 44; number <= 65; number += 1) {
   );
 }
 assert(
-  manifest.latestActivePrefix === 65 &&
-    activeMigrationNames.at(-6) === "0060_question_management_read_models.sql" &&
-    activeMigrationNames.at(-5) ===
+  manifest.latestActivePrefix === 75 &&
+    activeMigrationNames.at(-16) === "0060_question_management_read_models.sql" &&
+    activeMigrationNames.at(-15) ===
       "0061_question_taxonomy_search_materialization.sql" &&
-    activeMigrationNames.at(-4) ===
+    activeMigrationNames.at(-14) ===
       "0062_teacher_bank_import_workspace_read_model.sql" &&
-    activeMigrationNames.at(-3) ===
+    activeMigrationNames.at(-13) ===
       "0063_admin_ai_pdf_workspace_read_model.sql" &&
-    activeMigrationNames.at(-2) ===
+    activeMigrationNames.at(-12) ===
       "0064_admin_ai_pdf_workspace_read_model_item_scan_fix.sql" &&
-    activeMigrationNames.at(-1) ===
-      "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql",
-  "Admin AI read-model disablement 0065 must be the canonical executable tail.",
+    activeMigrationNames.at(-11) ===
+      "0065_disable_slow_admin_ai_pdf_workspace_read_model.sql" &&
+    activeMigrationNames.at(-10) ===
+      "0066_strict_bank_review_lineage_gate.sql" &&
+    activeMigrationNames.at(-9) ===
+      "0067_teacher_bulk_review_and_question_management.sql" &&
+    activeMigrationNames.at(-8) ===
+      "0068_assignment_creation_idempotency.sql" &&
+    activeMigrationNames.at(-7) ===
+      "0069_assignment_creation_idempotency_receipt_fix.sql" &&
+    activeMigrationNames.at(-6) ===
+      "0070_simplify_teacher_approval_and_question_delete.sql" &&
+    activeMigrationNames.at(-5) ===
+      "0071_repair_bank_import_review_lineage.sql" &&
+    activeMigrationNames.at(-4) === "0072_practice_cycle_reset.sql" &&
+    activeMigrationNames.at(-3) === "0073_practice_ai_request_admission.sql" &&
+    activeMigrationNames.at(-2) === "0074_practice_ai_request_admission_time_fix.sql" &&
+    activeMigrationNames.at(-1) === "0075_practice_ai_inflight_leases.sql",
+  "Practice AI in-flight leases 0075 must be the canonical executable tail.",
 );
 
 for (const [filename, expectedHash] of Object.entries(manifest.frozenMigrationHashes)) {
@@ -222,8 +238,8 @@ if (process.argv.includes("--require-live-reconciliation")) {
 console.log(`PASS canonical migration inventory: ${migrationNames.length} files, ${activeMigrationNames.length} active`);
 console.log("PASS blocked Google 0032 is excluded from the active apply plan");
 console.log("PASS executable 0032 is teacher feedback notes only; raw duplicate is explicit");
-console.log("PASS canonical migrations 0044-0065 have explicit number/classification/order");
-console.log("PASS manifest-driven executable chain has canonical head 0065");
+console.log("PASS canonical migrations 0044-0069 have explicit number/classification/order");
+console.log("PASS manifest-driven executable chain has canonical head 0069");
 console.log(`PASS canonical RLS policy inventory: ${rlsTables.length} tables`);
 console.log("PASS historical 0039-0041 hashes remain unchanged");
 console.log(

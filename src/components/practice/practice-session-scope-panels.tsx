@@ -198,12 +198,14 @@ export function PracticeSourceSelector({
 
 export function PracticeRoundNavigator({
   completed,
+  disabled,
   onSelectCompletion,
   onSelectRound,
   rounds,
   selectedRoundId,
 }: {
   completed: boolean;
+  disabled: boolean;
   onSelectCompletion: () => void;
   onSelectRound: (roundId: string) => void;
   rounds: PracticeRoundHistory[];
@@ -221,6 +223,7 @@ export function PracticeRoundNavigator({
           <Button
             aria-current={selectedRoundId === round.id ? "page" : undefined}
             className="shrink-0"
+            disabled={disabled}
             key={round.id}
             onClick={() => onSelectRound(round.id)}
             size="sm"
@@ -235,6 +238,7 @@ export function PracticeRoundNavigator({
           <Button
             aria-current={selectedRoundId === null ? "page" : undefined}
             className="shrink-0"
+            disabled={disabled}
             onClick={onSelectCompletion}
             size="sm"
             type="button"

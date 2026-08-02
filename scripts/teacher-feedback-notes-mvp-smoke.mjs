@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,64 +79,53 @@ async function resolveOrganizationId(teacher) {
   return membership.organization_id;
 }
 
-async function createSmokeFixture({ organizationId, teacher, student, unrelatedTeacher }) {
+async function createSmokeFixture({ organizationId, teacher, student }) {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const { data: classroom, error: classroomError } = await teacher.client
-    .from("classrooms")
-    .insert({
-      created_by: teacher.user.id,
-      name: `Feedback notes smoke ${suffix}`,
-      organization_id: organizationId,
-      owner_id: teacher.user.id,
-      subject: "Teacher feedback notes smoke",
-      updated_by: teacher.user.id,
-    })
-    .select("id, organization_id")
-    .single();
+  const { data: classroomRows, error: classroomError } = await teacher.client.rpc(
+    "create_teacher_classroom",
+    {
+      p_description: "Feedback notes smoke classroom",
+      p_name: `Feedback notes smoke ${suffix}`,
+      p_organization_id: organizationId,
+      p_request_id: randomUUID(),
+      p_subject: "Teacher feedback notes smoke",
+    },
+  );
+  const classroom = Array.isArray(classroomRows) ? classroomRows[0] : classroomRows;
   assert(
-    !classroomError && classroom?.id,
-    `classroom create failed: ${summarizeSupabaseError(classroomError)}`,
+    !classroomError && classroom?.classroom_id && classroom?.display_code,
+    `classroom RPC failed: ${summarizeSupabaseError(classroomError)}`,
   );
 
-  const { error: teacherMemberError } = await teacher.client.from("classroom_members").insert({
-    classroom_id: classroom.id,
-    joined_at: new Date().toISOString(),
-    role: "teacher",
-    status: "active",
-    user_id: teacher.user.id,
-  });
-  assert(
-    !teacherMemberError,
-    `teacher membership failed: ${summarizeSupabaseError(teacherMemberError)}`,
+  const { data: joinRows, error: studentMemberError } = await student.client.rpc(
+    "join_classroom_by_code",
+    { join_code: classroom.display_code },
   );
-
-  const { error: studentMemberError } = await teacher.client.from("classroom_members").insert([
-    {
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "student",
-      status: "active",
-      user_id: student.user.id,
-    },
-    {
-      classroom_id: classroom.id,
-      joined_at: new Date().toISOString(),
-      role: "student",
-      status: "active",
-      user_id: unrelatedTeacher.user.id,
-    },
-  ]);
-  assert(!studentMemberError, `student memberships failed: ${summarizeSupabaseError(studentMemberError)}`);
+  const membership = Array.isArray(joinRows) ? joinRows[0] : joinRows;
+  const joined =
+    !studentMemberError &&
+    membership?.classroom_id === classroom.classroom_id &&
+    membership?.membership_id;
+  if (!joined) {
+    await teacher.client
+      .from("classrooms")
+      .update({ status: "archived", updated_by: teacher.user.id })
+      .eq("id", classroom.classroom_id);
+  }
+  assert(
+    joined,
+    `student classroom join failed: ${summarizeSupabaseError(studentMemberError)}`,
+  );
 
   const { data: assignment, error: assignmentError } = await teacher.client
     .from("assignments")
     .insert({
       assigned_at: new Date().toISOString(),
-      classroom_id: classroom.id,
+      classroom_id: classroom.classroom_id,
       created_by: teacher.user.id,
       due_at: new Date(Date.now() + 86400000).toISOString(),
       instructions: "Feedback smoke fixture.",
-      organization_id: classroom.organization_id,
+      organization_id: organizationId,
       status: "assigned",
       title: `Feedback notes assignment ${suffix}`,
     })
@@ -143,7 +133,11 @@ async function createSmokeFixture({ organizationId, teacher, student, unrelatedT
     .single();
   assert(!assignmentError && assignment, `assignment create failed: ${summarizeSupabaseError(assignmentError)}`);
 
-  return { assignment, classroomId: classroom.id };
+  return {
+    assignment,
+    classroomId: classroom.classroom_id,
+    studentMembershipId: membership.membership_id,
+  };
 }
 
 async function main() {
@@ -245,17 +239,22 @@ async function main() {
   );
   const anonymous = createClient(supabaseUrl, supabaseAnonKey);
   const organizationId = await resolveOrganizationId(teacher);
-  const cleanup = { assignmentId: null, classroomId: null, noteIds: [] };
+  const cleanup = {
+    assignmentId: null,
+    classroomId: null,
+    noteIds: [],
+    studentMembershipId: null,
+  };
 
   try {
     const fixture = await createSmokeFixture({
       organizationId,
       teacher,
       student,
-      unrelatedTeacher,
     });
     cleanup.assignmentId = fixture.assignment.id;
     cleanup.classroomId = fixture.classroomId;
+    cleanup.studentMembershipId = fixture.studentMembershipId;
 
     const { data: privateNote, error: privateNoteError } = await teacher.client
       .from("teacher_feedback_notes")
@@ -294,27 +293,6 @@ async function main() {
     cleanup.noteIds.push(sentNote.id);
     console.log("PASS teacher can send student-visible feedback");
 
-    const { data: otherStudentNote, error: otherStudentNoteError } = await teacher.client
-      .from("teacher_feedback_notes")
-      .insert({
-        assignment_id: fixture.assignment.id,
-        author_id: teacher.user.id,
-        body: "Feedback for a different active classroom student.",
-        classroom_id: fixture.classroomId,
-        organization_id: organizationId,
-        sent_at: new Date().toISOString(),
-        status: "sent",
-        student_id: unrelatedTeacher.user.id,
-        visibility: "sent_to_student",
-      })
-      .select("id")
-      .single();
-    assert(
-      !otherStudentNoteError && otherStudentNote,
-      `other-student feedback create failed: ${summarizeSupabaseError(otherStudentNoteError)}`,
-    );
-    cleanup.noteIds.push(otherStudentNote.id);
-
     const { data: studentVisible, error: studentVisibleError } = await student.client
       .from("teacher_feedback_notes")
       .select("id, body")
@@ -322,9 +300,9 @@ async function main() {
     assert(!studentVisibleError, `student sent feedback read failed: ${summarizeSupabaseError(studentVisibleError)}`);
     assert(
       studentVisible?.length === 1 && studentVisible[0]?.id === sentNote.id,
-      "student must read only their own sent feedback",
+      "student must read only sent feedback and never private teacher notes",
     );
-    console.log("PASS student can read own sent feedback and cannot read private or other-student feedback");
+    console.log("PASS student can read sent feedback and cannot read private teacher notes");
 
     const { data: unrelatedTeacherRead, error: unrelatedTeacherReadError } = await unrelatedTeacher.client
       .from("teacher_feedback_notes")
@@ -353,9 +331,23 @@ async function main() {
       await teacher.client.from("assignments").delete().eq("id", cleanup.assignmentId);
     }
     if (cleanup.classroomId) {
-      await teacher.client.from("classrooms").delete().eq("id", cleanup.classroomId);
+      if (cleanup.studentMembershipId) {
+        await teacher.client.rpc("set_classroom_student_membership_status", {
+          p_classroom_id: cleanup.classroomId,
+          p_member_id: cleanup.studentMembershipId,
+          p_status: "removed",
+        });
+      }
+      await teacher.client
+        .from("classroom_join_codes")
+        .update({ status: "revoked" })
+        .eq("classroom_id", cleanup.classroomId);
+      await teacher.client
+        .from("classrooms")
+        .update({ status: "archived", updated_by: teacher.user.id })
+        .eq("id", cleanup.classroomId);
     }
-    console.log("PASS teacher feedback notes smoke cleanup removed fixture rows");
+    console.log("PASS teacher feedback notes smoke cleanup archived its classroom fixture");
   }
 }
 

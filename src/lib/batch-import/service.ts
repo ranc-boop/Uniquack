@@ -55,6 +55,26 @@ async function loadImportBatchSummary({
   return asSummaryRecord(data?.summary);
 }
 
+async function ensureBankImportReviewLineage({
+  batchId,
+  supabase,
+  targetBankId,
+}: {
+  batchId: string;
+  supabase: SupabaseLike;
+  targetBankId: string | null;
+}) {
+  if (!targetBankId) return;
+  if (!supabase.rpc) {
+    throw new Error("Library Review lineage requires the trusted RPC client.");
+  }
+
+  const { error } = await supabase.rpc("ensure_bank_import_review_lineage", {
+    p_import_batch_id: batchId,
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function resolveImportOrganizationContext({
   batchId,
   existingOrganizationId,
@@ -579,6 +599,11 @@ export async function importBatchImportJson({
       );
       if (finalizeError) throw new Error(finalizeError.message);
     }
+    await ensureBankImportReviewLineage({
+      batchId: activeBatchId,
+      supabase,
+      targetBankId: targetBankContext?.bankId ?? null,
+    });
 
     return fencedSummary;
   }
@@ -819,6 +844,12 @@ export async function importBatchImportJson({
   if (batchUpdateError) {
     throw new Error(batchUpdateError.message);
   }
+
+  await ensureBankImportReviewLineage({
+    batchId: activeBatchId,
+    supabase,
+    targetBankId: targetBankContext?.bankId ?? null,
+  });
 
   return finalSummary;
 }

@@ -4,6 +4,7 @@ import {
   isMockAIProviderAllowed,
   isMockAIProviderUrl,
 } from "@/lib/ai-providers/mock";
+import { isSafeAIProviderBaseUrlSyntax } from "@/lib/ai-providers/network-safety";
 import { uuidSchema } from "@/lib/validations/common";
 
 const optionalUrlSchema = z
@@ -13,16 +14,8 @@ const optionalUrlSchema = z
   .refine(
     (value) =>
       (isMockAIProviderUrl(value) && isMockAIProviderAllowed()) ||
-      (() => {
-        try {
-          const url = new URL(value);
-
-          return url.protocol === "http:" || url.protocol === "https:";
-        } catch {
-          return false;
-        }
-      })(),
-    "Base URL must be http(s). mock://ai-pdf-import is allowed only outside production or when ENABLE_MOCK_AI_PROVIDER=true.",
+      isSafeAIProviderBaseUrlSyntax(value),
+    "Base URL must use HTTPS and a public network host without embedded credentials. Private-network and insecure HTTP providers require explicit non-production opt-in.",
   );
 
 export const aiProviderProfileFormSchema = z.object({

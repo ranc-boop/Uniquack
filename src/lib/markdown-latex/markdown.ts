@@ -19,7 +19,14 @@ export const questionSourceFormats = ["markdown_latex", "html", "plain_text"] as
  * This intentionally emits a small HTML subset that is sanitized again before
  * persistence/rendering. It is not a complete CommonMark implementation.
  */
-export function markdownLatexToHtml(markdown: string) {
+export type MarkdownRenderOptions = {
+  preserveSoftBreaks?: boolean;
+};
+
+export function markdownLatexToHtml(
+  markdown: string,
+  { preserveSoftBreaks = false }: MarkdownRenderOptions = {},
+) {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: string[] = [];
   let paragraph: string[] = [];
@@ -31,7 +38,10 @@ export function markdownLatexToHtml(markdown: string) {
       return;
     }
 
-    blocks.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+    const paragraphHtml = preserveSoftBreaks
+      ? paragraph.map(renderInlineMarkdown).join("<br />")
+      : renderInlineMarkdown(paragraph.join(" "));
+    blocks.push(`<p>${paragraphHtml}</p>`);
     paragraph = [];
   }
 
@@ -89,9 +99,10 @@ export function markdownLatexToHtml(markdown: string) {
         quoteLines.push(lines[index].trim().replace(/^>\s?/, ""));
       }
 
-      blocks.push(
-        `<blockquote><p>${renderInlineMarkdown(quoteLines.join(" "))}</p></blockquote>`,
-      );
+      const quoteHtml = preserveSoftBreaks
+        ? quoteLines.map(renderInlineMarkdown).join("<br />")
+        : renderInlineMarkdown(quoteLines.join(" "));
+      blocks.push(`<blockquote><p>${quoteHtml}</p></blockquote>`);
       continue;
     }
 

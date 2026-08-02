@@ -44,12 +44,7 @@ export function AIJobStatusPanel({
       <AIJobStatusPoller active={hasActiveJob} />
       <div className="flex items-start gap-3">
         <Sparkles aria-hidden="true" className="mt-0.5 h-5 w-5 text-sky-700" />
-        <div>
-          <h2 className="text-lg font-bold text-slate-950">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            Queued work continues on the server. You can leave this page and return later.
-          </p>
-        </div>
+        <h2 className="text-lg font-bold text-slate-950">{title}</h2>
       </div>
       <div className="mt-4 space-y-3">
         {jobs.map((job) => (

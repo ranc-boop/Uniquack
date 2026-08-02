@@ -16,7 +16,7 @@ function assertNotIncludes(text, needle, label) {
   }
 }
 
-const migration = read("supabase/migrations/0017_practice_thread_cache_snapshot.sql");
+const migration = read("supabase/clean-migrations/0008_practice_agent_evidence.sql");
 const agentLoop = read("src/lib/practice/agent-loop.ts");
 const persistence = read("src/lib/practice/persistence.ts");
 const recommendRoute = read("src/app/api/practice/recommend/route.ts");

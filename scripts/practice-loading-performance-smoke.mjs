@@ -123,7 +123,7 @@ assert(
   "Practice detail hydration must reuse the list summary and parallelize independent history reads",
 );
 assert(
-  sessionsRoute.includes("sessionSummary: sessions[0]") &&
+  sessionsRoute.includes("sessionSummary: activeSummary") &&
     sessionsRoute.includes("const hasMore = sessionPage.length > limit") &&
     sessionsRoute.includes("nextOffset: offset + sessions.length"),
   "Sessions API must not reload the active practice_sessions row already returned by its list query",
@@ -164,7 +164,7 @@ assert(
 const createNewSession = sourceBlock(
   client,
   "function createNewSession",
-  "function showHistoricalRound",
+  "function resetPracticeProgress",
 );
 assert(
   createNewSession.includes("prepareScopedNewSession()") &&

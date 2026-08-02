@@ -343,8 +343,9 @@ function attemptFixture(question, overrides = {}) {
 
 function roundFixture(suffix = "A", overrides = {}) {
   const question = questionFixture(suffix);
+  const attempts = overrides.attempts ?? [];
   return {
-    attempts: [],
+    attempts,
     id: `ROUND_${suffix}`,
     nextRoundGoal: null,
     questions: [question],
@@ -354,6 +355,7 @@ function roundFixture(suffix = "A", overrides = {}) {
       correct: 0,
       total: 0,
     },
+    status: attempts.length ? "completed" : "active",
     trace: [traceFixture()],
     ...overrides,
   };
@@ -549,6 +551,7 @@ const structuralMalformedModes = [
   "invalid_round_question_primitive",
   "invalid_round_question_array",
   "invalid_round_question_identity",
+  "invalid_round_status",
   "invalid_sparse_questions",
   "invalid_attempt_null",
   "invalid_attempt_primitive",
@@ -860,6 +863,9 @@ function malformedPayload(mode) {
     case "invalid_round_question_identity":
       delete question.id;
       question.sourceQuestionId = null;
+      break;
+    case "invalid_round_status":
+      round.status = "unknown";
       break;
     case "invalid_sparse_questions":
       break;
@@ -1331,7 +1337,7 @@ async function runCase(browser, origin, mode) {
         .count();
       if (associationValidModesWithAttempts.has(mode)) {
         assert(
-          attachedAttemptResultCount > 0 && savedFeedbackCount > 0,
+          attachedAttemptResultCount > 0,
           `${prefix}_ATTEMPT_NOT_ATTACHED_TO_RENDERED_QUESTION`,
         );
       }

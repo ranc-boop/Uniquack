@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { AI_INPUT_LIMITS } from "@/lib/ai-input-limits";
 import {
   normalizeAnswerSpec,
   normalizeQuestionOptions,
@@ -52,12 +53,7 @@ export function QuestionAnswerFields({
         </select>
       </div>
       <div className="space-y-3 rounded-md border bg-muted/20 p-3 lg:col-span-2">
-        <div>
-          <p className="text-sm font-medium">Answer data</p>
-          <p className="text-xs text-muted-foreground">
-            Stored for future grading. For MCQ, options and correct option IDs are both required for automatic grading.
-          </p>
-        </div>
+        <p className="text-sm font-medium">Answer</p>
         {questionType === "mcq" ? (
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1 md:col-span-2">
@@ -65,12 +61,10 @@ export function QuestionAnswerFields({
               <textarea
                 className="min-h-28 w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
                 defaultValue={optionsText(normalizedOptions)}
+                maxLength={AI_INPUT_LIMITS.OPTION_TEXT_CHARS}
                 name="options_text"
                 placeholder={"A|First option\nB|Second option\nC|Third option"}
               />
-              <p className="text-xs text-muted-foreground">
-                One option per line. Use ID|content, for example A|Choice text.
-              </p>
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium">Correct option IDs</label>
@@ -82,6 +76,7 @@ export function QuestionAnswerFields({
                     : ""
                 }
                 name="correct_option_ids"
+                maxLength={AI_INPUT_LIMITS.ANSWER_TEXT_CHARS}
                 placeholder="A or A,B"
               />
             </div>
@@ -110,6 +105,7 @@ export function QuestionAnswerFields({
                     : ""
                 }
                 name="final_answers"
+                maxLength={AI_INPUT_LIMITS.ANSWER_TEXT_CHARS}
                 placeholder={"x=2\n2"}
               />
             </div>
@@ -123,6 +119,7 @@ export function QuestionAnswerFields({
                     : ""
                 }
                 name="accepted_answers"
+                maxLength={AI_INPUT_LIMITS.ANSWER_TEXT_CHARS}
                 placeholder={"2\nx=2\n\\frac{4}{2}"}
               />
             </div>
@@ -169,11 +166,6 @@ export function QuestionAnswerFields({
               Case sensitive
             </label>
           </div>
-        ) : null}
-        {questionType === "frq" || questionType === "mixed" ? (
-          <p className="rounded-md border bg-background p-2 text-xs text-muted-foreground">
-            This type is stored for manual or AI-assisted grading. No deterministic answer is required.
-          </p>
         ) : null}
       </div>
     </>

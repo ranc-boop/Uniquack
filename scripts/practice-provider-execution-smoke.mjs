@@ -179,7 +179,8 @@ assert(
 );
 assert(
   sessionsRoute.includes('searchParams.get("includeActive")') &&
-    sessionsRoute.includes("includeActive && offset === 0 && sessions[0]") &&
+    sessionsRoute.includes("includeActive && offset === 0") &&
+    sessionsRoute.includes("sessionSummary: activeSummary") &&
     client.includes("/api/practice/sessions?includeActive=0"),
   "session refreshes must avoid duplicate active-session detail loads when a session is already selected",
 );

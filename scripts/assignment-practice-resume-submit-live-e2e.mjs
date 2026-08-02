@@ -1866,6 +1866,7 @@ async function runResumeSubmitJourney({ contract, diagnostics, fakeProvider, fix
   await runBounded("MY_WORK_COMPLETED_SECTION_NOT_FOUND", async () => {
     await completedHeading.waitFor({ timeout: 30_000 });
     assert(await completedSection.count() === 1, "MY_WORK_COMPLETED_SECTION_NOT_FOUND");
+    await completedSection.locator("summary").click();
   });
 
   phase(fixtures, "ASSIGNMENT_PRACTICE_MY_WORK_COMPLETED_ASSIGNMENT");

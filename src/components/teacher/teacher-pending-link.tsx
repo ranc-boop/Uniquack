@@ -73,6 +73,7 @@ export function TeacherPendingLink({
       onClick={navigate}
       onFocus={prefetchTarget}
       onMouseEnter={prefetchTarget}
+      prefetch={false}
     >
       {pending ? (
         <LoaderCircle

@@ -385,7 +385,15 @@ export function normalizeQuestionContent(item: z.infer<typeof importItemSchema>)
 }
 
 export function parseBatchImportJson(jsonText: string) {
-  return parseImportQuestionsJsonWithLatexRepair(jsonText);
+  const byteLength = new TextEncoder().encode(jsonText).byteLength;
+  if (byteLength > 2 * 1024 * 1024) {
+    throw new Error("Question import JSON must be 2 MiB or smaller.");
+  }
+  const items = parseImportQuestionsJsonWithLatexRepair(jsonText);
+  if (items.length > 1_000) {
+    throw new Error("Question import JSON must contain at most 1000 questions.");
+  }
+  return items;
 }
 
 export function evaluateBatchImportItems({

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import {
   PracticeFrameworkSelector,
@@ -12,6 +12,10 @@ import {
   PracticeSourceSelector,
   PracticeStarterGoals,
 } from "@/components/practice/practice-session-scope-panels";
+import {
+  focusStudyDetails,
+  PracticeAssignmentHandoff,
+} from "@/components/practice/practice-assignment-handoff";
 import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-workspace-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +48,11 @@ import {
   resolveRestoredPracticeQuestionAssociation,
   restoredPracticeQuestionId,
 } from "@/lib/practice/answer-restore";
+import {
+  PRACTICE_RECOMMENDATION_ERROR_CODES,
+  type PracticeRecommendationErrorCode,
+} from "@/lib/practice/recommendation-errors";
+import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
 import type {
   AssignmentPracticeStartPayload,
   PracticeAttemptInput,
@@ -150,7 +159,21 @@ type AnswerTransitionDiagnostics = {
   answerStateRefConsistency: "MATCH" | "MISMATCH" | "NOT_OBSERVED";
   lastWriteReason: AnswerWriteReason | "NOT_OBSERVED";
 };
-type ApiError = { error?: unknown };
+type ApiError = { code?: unknown; error?: unknown };
+
+class PracticeRecommendationRequestError extends Error {
+  code: PracticeRecommendationErrorCode | null;
+
+  constructor(code: unknown, message: string) {
+    super(message);
+    this.name = "PracticeRecommendationRequestError";
+    this.code = Object.values(PRACTICE_RECOMMENDATION_ERROR_CODES).includes(
+      code as PracticeRecommendationErrorCode,
+    )
+      ? code as PracticeRecommendationErrorCode
+      : null;
+  }
+}
 type PracticeAgentClientProps = {
   assignmentId?: string | null;
   testOnlyDelayedHydration?: boolean;
@@ -354,6 +377,7 @@ function isPracticeRound(value: unknown) {
     isRecord(value.score) &&
     isFiniteNumber(value.score.correct) &&
     isFiniteNumber(value.score.total) &&
+    ["active", "completed", "skipped"].includes(String(value.status)) &&
     isPracticeTrace(value.trace) &&
     hasValidRoundAttemptAssociations(value)
   );
@@ -467,18 +491,42 @@ function validateAssignmentPracticeStartPayload(
   }
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
+}
+
+function practiceRecommendationFailureMessage(error: unknown) {
+  if (error instanceof PracticeRecommendationRequestError) {
+    if (error.code === PRACTICE_RECOMMENDATION_ERROR_CODES.NO_CONTENT) {
+      return "This practice scope has no eligible reviewed questions. Start a new session with another Library or include the Public Library.";
+    }
+    if (error.code === PRACTICE_RECOMMENDATION_ERROR_CODES.SEARCH_FAILED) {
+      return "Practice could not search the selected sources. Try again; your current round has been kept.";
+    }
+    if (error.code === PRACTICE_RECOMMENDATION_ERROR_CODES.PROTOCOL_FAILED) {
+      return "The recommendation agent did not complete a valid search-and-select sequence. Try again; your current round has been kept.";
+    }
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return message;
+}
+
 async function postRecommendationStream({
   body,
   onEnding,
   onPolicyNotice,
   onSummaryDelta,
   onTrace,
+  signal,
 }: {
   body: PracticeRecommendRequest;
   onEnding: () => void;
   onPolicyNotice: (notice: Record<string, unknown>) => void;
   onSummaryDelta: (text: string) => void;
   onTrace: (event: PracticeTraceEvent) => void;
+  signal: AbortSignal;
 }): Promise<
   | { kind: "completed"; completion: PracticeCompletion }
   | { kind: "round"; recommendation: PracticeRecommendResponse }
@@ -490,11 +538,15 @@ async function postRecommendationStream({
       "Content-Type": "application/json",
     },
     method: "POST",
+    signal,
   });
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiError | null;
-    throw new Error(practiceApiErrorMessage(payload?.error, response.status));
+    throw new PracticeRecommendationRequestError(
+      payload?.code,
+      practiceApiErrorMessage(payload?.error, response.status),
+    );
   }
   if (!response.body) {
     throw new Error("Streaming response body is not available.");
@@ -529,7 +581,10 @@ async function postRecommendationStream({
       } else if (item.event === "error") {
         const errorPayload = payload as ApiError & { trace?: PracticeTraceEvent[] };
         errorPayload.trace?.forEach(onTrace);
-        throw new Error(practiceApiErrorMessage(errorPayload.error, 500, "Practice recommendation failed."));
+        throw new PracticeRecommendationRequestError(
+          errorPayload.code,
+          practiceApiErrorMessage(errorPayload.error, 500, "Practice recommendation failed."),
+        );
       }
     }
 
@@ -552,6 +607,7 @@ async function postReviewStream({
   onRoundReviewDelta,
   onRoundReviewStart,
   onTrace,
+  signal,
 }: {
   body: PracticeReviewRequest;
   onQuestionReview: (payload: { result: PracticeGradeResult; review: PracticeQuestionReview }) => void;
@@ -559,6 +615,7 @@ async function postReviewStream({
   onRoundReviewDelta: (text: string) => void;
   onRoundReviewStart: () => void;
   onTrace: (event: PracticeTraceEvent) => void;
+  signal: AbortSignal;
 }) {
   const response = await fetch("/api/practice/review", {
     body: JSON.stringify(body),
@@ -567,6 +624,7 @@ async function postReviewStream({
       "Content-Type": "application/json",
     },
     method: "POST",
+    signal,
   });
 
   if (!response.ok) {
@@ -685,10 +743,15 @@ function getServerClientReadySnapshot() {
   return false;
 }
 
+function practiceRoundDraftKey(sessionId?: string | null, roundId?: string | null) {
+  return sessionId && roundId ? `${sessionId}:${roundId}` : "";
+}
+
 export function PracticeAgentClient({
   assignmentId,
   testOnlyDelayedHydration = false,
 }: PracticeAgentClientProps) {
+  const isAssignmentMode = Boolean(assignmentId);
   const clientReady = useSyncExternalStore(
     subscribeToClientReady,
     getClientReadySnapshot,
@@ -745,6 +808,7 @@ export function PracticeAgentClient({
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [answerErrorQuestionIndexes, setAnswerErrorQuestionIndexes] = useState<number[]>([]);
   const [submissionGuardDiagnostics, setSubmissionGuardDiagnostics] = useState<ReturnType<
     typeof evaluatePracticeSubmittedAttempts
   > & { guard: "BLOCKED" | "PASSED" } | null>(null);
@@ -761,9 +825,18 @@ export function PracticeAgentClient({
   const [isReviewStreaming, setIsReviewStreaming] = useState(false);
   const [isPending, startTransition] = useTransition();
   const resultTopRef = useRef<HTMLDivElement | null>(null);
+  const answerErrorSummaryRef = useRef<HTMLDivElement | null>(null);
+  const rightSidebarRef = useRef<HTMLElement | null>(null);
+  const submitInFlightRef = useRef(false);
   const thinkingStartedAtRef = useRef<number | null>(null);
   const streamedReviewTextRef = useRef("");
   const streamedReviewFrameRef = useRef<number | null>(null);
+  const roundAnswerDraftsRef = useRef<Record<string, AnswersState>>({});
+  const activePracticeOperationRef = useRef<{
+    controller: AbortController;
+    token: number;
+  } | null>(null);
+  const practiceOperationSequenceRef = useRef(0);
   const initialHydrationStartedRef = useRef(false);
   const assignmentLaunchStartedRef = useRef(false);
   const testOnlyDelayedHydrationStartedRef = useRef(false);
@@ -771,6 +844,35 @@ export function PracticeAgentClient({
     useState<TestOnlyDelayedHydrationStatus>(
       testOnlyDelayedHydration ? "NOT_REQUESTED" : "NOT_ENABLED",
     );
+
+  function beginPracticeOperation() {
+    activePracticeOperationRef.current?.controller.abort();
+    const controller = new AbortController();
+    const token = practiceOperationSequenceRef.current + 1;
+    practiceOperationSequenceRef.current = token;
+    activePracticeOperationRef.current = { controller, token };
+    return { controller, token };
+  }
+
+  function isPracticeOperationCurrent(token: number) {
+    const active = activePracticeOperationRef.current;
+    return active?.token === token && !active.controller.signal.aborted;
+  }
+
+  function finishPracticeOperation(token: number) {
+    if (activePracticeOperationRef.current?.token === token) {
+      activePracticeOperationRef.current = null;
+    }
+  }
+
+  function cancelPracticeOperation({ resetReviewState = true }: { resetReviewState?: boolean } = {}) {
+    activePracticeOperationRef.current?.controller.abort();
+    activePracticeOperationRef.current = null;
+    cancelPendingRoundReviewFrame();
+    if (resetReviewState) {
+      setIsReviewStreaming(false);
+    }
+  }
 
   function commitAnswers(
     nextAnswers: AnswersState,
@@ -796,6 +898,12 @@ export function PracticeAgentClient({
       reason === "COMPLETED_RESTORE";
     answersRef.current = committedAnswers;
     setAnswers(committedAnswers);
+    if (reason === "INPUT") {
+      const draftKey = practiceRoundDraftKey(activeSession?.id, recommendation?.roundId);
+      if (draftKey) {
+        roundAnswerDraftsRef.current[draftKey] = committedAnswers;
+      }
+    }
     answerWriteMetaRef.current = {
       hadInput: reason === "INPUT" ? true : clearsInputGeneration ? false : hadInput,
       lastWriteReason: reason,
@@ -909,8 +1017,14 @@ export function PracticeAgentClient({
       wrongStatePromise,
     ]).then((errors) => ({ error: errors.find(Boolean) }));
 
-    setSessions(sessionPayload.sessions);
-    setSessionHistoryHasMore(Boolean(sessionPayload.pagination?.hasMore));
+    setSessions(
+      isAssignmentMode && nextSession
+        ? [nextSession]
+        : sessionPayload.sessions,
+    );
+    setSessionHistoryHasMore(
+      isAssignmentMode ? false : Boolean(sessionPayload.pagination?.hasMore),
+    );
     if (commitActiveSession) setActiveSession(nextSession);
     setOutlineNotes(nextSession?.outlineUserNotes ?? "");
     if (nextSession?.status === "active" && nextSession.sourceScope.length) {
@@ -950,7 +1064,7 @@ export function PracticeAgentClient({
   function restoreRoundFromHistory(
     round: PracticeRoundHistory,
     session = activeSession,
-    reason: AnswerWriteReason = round.reviewSummary || round.attempts.length
+    reason: AnswerWriteReason = round.status === "completed"
       ? "COMPLETED_RESTORE"
       : "SESSION_HYDRATION",
   ) {
@@ -973,10 +1087,14 @@ export function PracticeAgentClient({
       trace: round.trace ?? [],
     };
     const restoredResults = resultsFromHistoryRound(round);
-    const restoredAnswers: AnswersState = buildRestoredPracticeAnswers(
+    const persistedAnswers: AnswersState = buildRestoredPracticeAnswers(
       round.attempts,
       round.questions,
     );
+    const draftKey = practiceRoundDraftKey(session.id, round.id);
+    const restoredAnswers = round.status === "completed"
+      ? persistedAnswers
+      : roundAnswerDraftsRef.current[draftKey] ?? persistedAnswers;
     const restoredHints: HintsState = {};
 
     for (const attempt of round.attempts) {
@@ -995,7 +1113,7 @@ export function PracticeAgentClient({
     setReviewTrace([]);
     setGoal(round.nextRoundGoal ?? "");
 
-    if (round.reviewSummary || restoredResults.length) {
+    if (round.status === "completed") {
       setReview({
         mode: "heuristic",
         nextRoundGoal: round.nextRoundGoal ?? session.goal,
@@ -1064,6 +1182,12 @@ export function PracticeAgentClient({
     phase === "start" &&
     !recommendation &&
     !activeSession?.rounds.length;
+  const practiceNavigationLocked =
+    sessionAction !== null ||
+    isReviewStreaming ||
+    isPending ||
+    phase === "thinking" ||
+    phase === "ending";
   const practiceGridStyle = {
     "--practice-left": `${isLeftSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : leftSidebarWidth}px`,
     "--practice-right": `${isRightSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : rightSidebarWidth}px`,
@@ -1077,6 +1201,7 @@ export function PracticeAgentClient({
   );
   function resetRoundState(reason: AnswerWriteReason = "RESET") {
     setSubmissionGuardDiagnostics(null);
+    setAnswerErrorQuestionIndexes([]);
     commitAnswers({}, reason);
     setHints({});
     setResults([]);
@@ -1121,7 +1246,6 @@ export function PracticeAgentClient({
       );
       setLongTermMemory(mergePayload.longTermPreference);
     } catch {
-      // Preference merge is opportunistic and must not block the active round.
     }
   }
 
@@ -1156,6 +1280,11 @@ export function PracticeAgentClient({
 
   async function ensureSession(trimmedGoal: string) {
     if (activeSession) return activeSession;
+    if (isAssignmentMode) {
+      throw new Error(
+        "This assignment session is unavailable. Return to My Work and reopen this assignment.",
+      );
+    }
     const payload = await jsonRequest<{ session: PracticeSessionDetail }>("/api/practice/sessions", {
       body: JSON.stringify({
         courseFrameworkId: selectedCourseFrameworkId || null,
@@ -1206,9 +1335,7 @@ export function PracticeAgentClient({
 
     if (restoredSession && currentRound?.questions.length) {
       restoreRoundFromHistory(currentRound, restoredSession);
-      const restoredCompleted = Boolean(
-        currentRound.reviewSummary || resultsFromHistoryRound(currentRound).length,
-      );
+      const restoredCompleted = currentRound.status === "completed";
       finishThinking(restoredCompleted ? "feedback" : "recommended");
       if (!restoredCompleted) void runTestOnlyDelayedHydration();
       return;
@@ -1253,14 +1380,23 @@ export function PracticeAgentClient({
             });
           }
         } else {
-          await refreshPracticeState(undefined, {
+          const restoredSession = await refreshPracticeState(undefined, {
             deferAuxiliary: true,
             loadWorkspaceOptions: true,
-            restoreActive: false,
+            restoreActive: true,
           });
+          const latestRound =
+            restoredSession?.rounds[restoredSession.rounds.length - 1];
+          if (
+            restoredSession?.status !== "completed" &&
+            latestRound?.questions.length
+          ) {
+            restoreRoundFromHistory(latestRound, restoredSession);
+          }
         }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
+        finishThinking("start");
       } finally {
         setWorkspaceLoading(false);
       }
@@ -1269,8 +1405,11 @@ export function PracticeAgentClient({
   }, []);
 
   useEffect(() => () => {
+    activePracticeOperationRef.current?.controller.abort();
+    activePracticeOperationRef.current = null;
     if (streamedReviewFrameRef.current !== null) {
       window.cancelAnimationFrame(streamedReviewFrameRef.current);
+      streamedReviewFrameRef.current = null;
     }
   }, []);
 
@@ -1296,7 +1435,22 @@ export function PracticeAgentClient({
     });
   }
 
+  function cancelPendingRoundReviewFrame() {
+    if (streamedReviewFrameRef.current === null) return;
+    window.cancelAnimationFrame(streamedReviewFrameRef.current);
+    streamedReviewFrameRef.current = null;
+  }
+
   function requestRecommendation(nextGoal?: string, wrongIds = selectedWrongQuestionIds) {
+    if (
+      isPending ||
+      isReviewStreaming ||
+      phase === "thinking" ||
+      phase === "ending" ||
+      sessionAction !== null
+    ) {
+      return;
+    }
     const trimmedGoal = (nextGoal ?? goal).trim();
     if (!trimmedGoal) {
       setError("Enter a practice goal first.");
@@ -1312,15 +1466,17 @@ export function PracticeAgentClient({
       return;
     }
 
+    const phaseBeforeRecommendation = phase;
+    const operation = beginPracticeOperation();
     setError(null);
     beginThinking();
     setLiveTrace([]);
     setReviewTrace([]);
-    resetRoundState("ROUND_CHANGE");
 
     startTransition(async () => {
       try {
         const currentSession = await ensureSession(trimmedGoal);
+        if (!isPracticeOperationCurrent(operation.token)) return;
         const shouldAutoName =
           currentSession.title === "New practice session" &&
           !currentSession.rounds.length;
@@ -1340,27 +1496,38 @@ export function PracticeAgentClient({
             wrongQuestionIds: wrongIds,
           },
           onEnding: () => {
+            if (!isPracticeOperationCurrent(operation.token)) return;
             setStreamedCompletionReport("");
             finishThinking("ending");
           },
           onPolicyNotice: () => undefined,
-          onSummaryDelta: (text) =>
-            setStreamedCompletionReport((current) => current + text),
-          onTrace: (event) => setLiveTrace((current) => [...current, event]),
+          onSummaryDelta: (text) => {
+            if (!isPracticeOperationCurrent(operation.token)) return;
+            setStreamedCompletionReport((current) => current + text);
+          },
+          onTrace: (event) => {
+            if (!isPracticeOperationCurrent(operation.token)) return;
+            setLiveTrace((current) => [...current, event]);
+          },
+          signal: operation.controller.signal,
         });
         const response = await responsePromise;
+        if (!isPracticeOperationCurrent(operation.token)) return;
         void titlePromise;
         if (response.kind === "completed") {
+          resetRoundState("ROUND_CHANGE");
           setCompletion(response.completion);
           setStreamedCompletionReport(response.completion.report);
           setGoal(trimmedGoal);
           setSelectedWrongQuestionIds([]);
           setNextRoundNote("");
           finishThinking("completed");
-          void refreshPracticeState(currentSession.id).catch(() => undefined);
+          await refreshPracticeState(currentSession.id, { deferAuxiliary: true })
+            .catch(() => undefined);
           return;
         }
         const nextRecommendation = response.recommendation;
+        resetRoundState("ROUND_CHANGE");
         setRecommendation(nextRecommendation);
         setLiveTrace(nextRecommendation.trace);
         setGoal(trimmedGoal);
@@ -1376,10 +1543,20 @@ export function PracticeAgentClient({
           tagContext: nextRecommendation.tagContext,
         });
         finishThinking("recommended");
-        void refreshPracticeState(currentSession.id).catch(() => undefined);
+        await refreshPracticeState(currentSession.id, { deferAuxiliary: true })
+          .catch(() => undefined);
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-        finishThinking("start");
+        if (
+          operation.controller.signal.aborted ||
+          !isPracticeOperationCurrent(operation.token) ||
+          isAbortError(caught)
+        ) {
+          return;
+        }
+        setError(practiceRecommendationFailureMessage(caught));
+        finishThinking(phaseBeforeRecommendation);
+      } finally {
+        finishPracticeOperation(operation.token);
       }
     });
   }
@@ -1387,6 +1564,12 @@ export function PracticeAgentClient({
   function updateAnswer(questionId: string, value: string | string[]) {
     const nextAnswers = { ...answersRef.current, [questionId]: value };
     commitAnswers(nextAnswers, "INPUT");
+    setAnswerErrorQuestionIndexes((current) =>
+      current.filter((questionIndex) => {
+        const question = recommendation?.recommendations[questionIndex - 1];
+        return question ? practiceAnswerKey(question) !== questionId : false;
+      }),
+    );
   }
 
   function requestHint(question: PracticeRecommendation) {
@@ -1401,6 +1584,7 @@ export function PracticeAgentClient({
             hintLevel: previousHints.length + 1,
             previousHints,
             questionId,
+            roundId: recommendation?.roundId,
             sessionId: activeSession?.id,
           }),
           method: "POST",
@@ -1413,9 +1597,26 @@ export function PracticeAgentClient({
   }
 
   function submitRound() {
-    if (!recommendation || !activeSession || !recommendation.roundId) return;
+    if (
+      submitInFlightRef.current ||
+      isPending ||
+      isReviewStreaming ||
+      !recommendation ||
+      !activeSession ||
+      !recommendation.roundId
+    ) {
+      return;
+    }
 
     const submittedAnswerSnapshot = Object.freeze({ ...answersRef.current });
+    const missingAnswerIndexes = recommendation.recommendations.flatMap(
+      (question, index) =>
+        hasSubmittedPracticeAnswer(
+          submittedAnswerSnapshot[practiceAnswerKey(question)],
+        )
+          ? []
+          : [index + 1],
+    );
     const submittedAttempts: PracticeReviewRequest["attempts"] = buildPracticeSubmittedAttempts(
       recommendation.recommendations,
       submittedAnswerSnapshot,
@@ -1468,15 +1669,20 @@ export function PracticeAgentClient({
       guard: guardBlocked ? "BLOCKED" : "PASSED",
     });
     if (guardBlocked) {
+      setAnswerErrorQuestionIndexes(missingAnswerIndexes);
       setError("Your answer was not captured. Please review it and try again.");
+      window.requestAnimationFrame(() => {
+        answerErrorSummaryRef.current?.focus();
+      });
       return;
     }
 
+    const operation = beginPracticeOperation();
+    setAnswerErrorQuestionIndexes([]);
+    submitInFlightRef.current = true;
     setIsReviewStreaming(true);
     setError(null);
-    thinkingStartedAtRef.current = Date.now();
-    setThinkingElapsedMs(0);
-    setLastThinkingDurationMs(null);
+    beginThinking();
     setLiveTrace([]);
     setReviewTrace([]);
     setResults([]);
@@ -1515,6 +1721,7 @@ export function PracticeAgentClient({
             userNextRoundNote: nextRoundNote,
           },
           onQuestionReview: ({ result, review: questionReview }) => {
+            if (!isPracticeOperationCurrent(operation.token)) return;
             setResults((current) => [
               ...current.filter((item) => item.questionId !== result.questionId),
               result,
@@ -1540,13 +1747,21 @@ export function PracticeAgentClient({
             }));
           },
           onResult: (reviewResponse) => {
+            if (!isPracticeOperationCurrent(operation.token)) return;
+            cancelPendingRoundReviewFrame();
+            streamedReviewTextRef.current = reviewResponse.summary;
             setResults(reviewResponse.results ?? []);
             setReview(reviewResponse);
             setReviewTrace(reviewResponse.trace);
             setLiveTrace(reviewResponse.trace);
           },
-          onRoundReviewDelta: appendRoundReviewDelta,
+          onRoundReviewDelta: (text) => {
+            if (!isPracticeOperationCurrent(operation.token)) return;
+            appendRoundReviewDelta(text);
+          },
           onRoundReviewStart: () => {
+            if (!isPracticeOperationCurrent(operation.token)) return;
+            cancelPendingRoundReviewFrame();
             streamedReviewTextRef.current = "";
             setReview((current) => ({
               ...(current ?? {
@@ -1562,15 +1777,26 @@ export function PracticeAgentClient({
             }));
           },
           onTrace: (event) => {
+            if (!isPracticeOperationCurrent(operation.token)) return;
             setReviewTrace((current) => [...current, event]);
             setLiveTrace((current) => [...current, event]);
           },
+          signal: operation.controller.signal,
         });
+        if (!isPracticeOperationCurrent(operation.token)) return;
         setGoal("");
         finishThinking("feedback");
         setIsReviewStreaming(false);
-        void refreshPracticeState(activeSession.id).catch(() => undefined);
+        await refreshPracticeState(activeSession.id, { deferAuxiliary: true })
+          .catch(() => undefined);
       } catch (caught) {
+        if (
+          operation.controller.signal.aborted ||
+          !isPracticeOperationCurrent(operation.token) ||
+          isAbortError(caught)
+        ) {
+          return;
+        }
         try {
           const grade = await jsonRequest<PracticeGradeResponse>("/api/practice/grade", {
             body: JSON.stringify({
@@ -1579,7 +1805,9 @@ export function PracticeAgentClient({
               sessionId: activeSession.id,
             }),
             method: "POST",
+            signal: operation.controller.signal,
           });
+          if (!isPracticeOperationCurrent(operation.token)) return;
           const fallbackReview = reviewFromGradeFallback({
             activeSession,
             attempts: submittedAttempts,
@@ -1587,6 +1815,8 @@ export function PracticeAgentClient({
             grade,
             recommendation,
           });
+          cancelPendingRoundReviewFrame();
+          streamedReviewTextRef.current = fallbackReview.summary;
           setResults(grade.results);
           setReview(fallbackReview);
           setReviewTrace(fallbackReview.trace);
@@ -1594,15 +1824,26 @@ export function PracticeAgentClient({
           setGoal("");
           finishThinking("feedback");
           setIsReviewStreaming(false);
-          void refreshPracticeState(activeSession.id).catch(() => undefined);
+          await refreshPracticeState(activeSession.id, { deferAuxiliary: true })
+            .catch(() => undefined);
         } catch (fallbackError) {
+          if (
+            operation.controller.signal.aborted ||
+            !isPracticeOperationCurrent(operation.token) ||
+            isAbortError(fallbackError)
+          ) {
+            return;
+          }
           const primaryMessage = caught instanceof Error ? caught.message : String(caught);
           const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
           setError(`${primaryMessage} Deterministic grading fallback also failed: ${fallbackMessage}`);
           finishThinking("feedback");
           setIsReviewStreaming(false);
         }
-      }
+        } finally {
+          finishPracticeOperation(operation.token);
+          submitInFlightRef.current = false;
+        }
     });
   }
 
@@ -1638,6 +1879,11 @@ export function PracticeAgentClient({
   }
 
   function switchSession(sessionId: string) {
+    if (isAssignmentMode) {
+      setError("Assignment Practice is locked to this assignment.");
+      return;
+    }
+    cancelPracticeOperation();
     setSessionAction("switching");
     setError(null);
     startTransition(async () => {
@@ -1669,11 +1915,11 @@ export function PracticeAgentClient({
         } else if (payload.session.rounds.length) {
           const latestRound = payload.session.rounds[payload.session.rounds.length - 1];
           restoreRoundFromHistory(
-            latestRound,
-            payload.session,
-            latestRound.reviewSummary || latestRound.attempts.length
-              ? "COMPLETED_RESTORE"
-              : "SESSION_CHANGE",
+              latestRound,
+              payload.session,
+              latestRound.status === "completed"
+                ? "COMPLETED_RESTORE"
+                : "SESSION_CHANGE",
           );
         } else {
           setGoal("");
@@ -1688,6 +1934,7 @@ export function PracticeAgentClient({
   }
 
   async function loadMoreSessions() {
+    if (isAssignmentMode) return;
     setSessionHistoryLoadingMore(true);
     setError(null);
     try {
@@ -1708,11 +1955,37 @@ export function PracticeAgentClient({
   }
 
   function createNewSession() {
+    if (isAssignmentMode) {
+      setError("Finish or return to this assignment before starting other Practice.");
+      return;
+    }
+    cancelPracticeOperation();
     setError(null);
     prepareScopedNewSession();
   }
 
+  function resetPracticeProgress() {
+    if (isAssignmentMode) return;
+    cancelPracticeOperation();
+    setError(null);
+    startTransition(async () => {
+      try {
+        await jsonRequest<{ resetAt: string }>("/api/practice/progress/reset", {
+          method: "POST",
+        });
+        prepareScopedNewSession();
+        const payload = await jsonRequest<{ sources: PracticeSourceOption[] }>(
+          "/api/practice/sources",
+        );
+        setPracticeSources(payload.sources);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    });
+  }
+
   function showHistoricalRound(roundId: string) {
+    if (practiceNavigationLocked) return;
     const round = activeSession?.rounds.find((item) => item.id === roundId);
     if (round && activeSession) {
       restoreRoundFromHistory(round, activeSession, "COMPLETED_RESTORE");
@@ -1720,6 +1993,7 @@ export function PracticeAgentClient({
   }
 
   function showCompletionSummary() {
+    if (practiceNavigationLocked) return;
     if (!activeSession?.completion) return;
     setRecommendation(null);
     setReview(null);
@@ -1730,12 +2004,24 @@ export function PracticeAgentClient({
   }
 
   function prepareScopedNewSession({ retryMistakes = false } = {}) {
+    if (isAssignmentMode && assignmentId) {
+      startTransition(async () => {
+        try {
+          await startAssignmentPractice(assignmentId);
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : String(caught));
+        }
+      });
+      return;
+    }
+    cancelPracticeOperation();
     const retryQuestionIds = retryMistakes
       ? wrongQuestions
           .filter((question) => !question.masteredAt)
           .map((question) => question.sourceQuestionId)
       : [];
     setActiveSession(null);
+    roundAnswerDraftsRef.current = {};
     setOutlineNotes("");
     setWrongQuestions([]);
     resetRoundState("SESSION_CHANGE");
@@ -1748,6 +2034,10 @@ export function PracticeAgentClient({
   }
 
   function deleteSession(sessionId: string) {
+    if (isAssignmentMode) {
+      setError("Assignment Practice sessions cannot be deleted from this workspace.");
+      return;
+    }
     const deletedWasActive = activeSession?.id === sessionId;
     if (deletedWasActive) setSessionAction("switching");
     setError(null);
@@ -1872,11 +2162,20 @@ export function PracticeAgentClient({
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
+  function showStudyDetails() {
+    setIsRightSidebarCollapsed(false);
+    window.requestAnimationFrame(() => focusStudyDetails(rightSidebarRef.current));
+  }
+
   if (workspaceLoading) return <PracticeWorkspaceSkeleton />;
 
   return (
     <div
-      className="mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
+      className={`mx-[calc(50%-50vw)] grid min-h-[calc(100vh-7rem)] w-screen gap-4 px-3 transition-[grid-template-columns] duration-300 ease-out sm:px-4 ${
+        isAssignmentMode
+          ? "xl:grid-cols-[minmax(0,1fr)_var(--practice-right)]"
+          : "xl:grid-cols-[var(--practice-left)_minmax(0,1fr)_var(--practice-right)]"
+      }`}
       data-answer-last-write-reason={answerTransitionDiagnostics.lastWriteReason}
       data-answer-map-has-rendered-key={submissionGuardDiagnostics?.answerMapHasRenderedKey}
       data-answer-map-has-submit-lookup-key={submissionGuardDiagnostics?.answerMapHasSubmitLookupKey}
@@ -1902,7 +2201,8 @@ export function PracticeAgentClient({
       data-testid="practice-submission-state"
       style={practiceGridStyle}
     >
-      <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+      {!isAssignmentMode ? (
+        <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
         {!isLeftSidebarCollapsed ? (
           <button
             aria-label="Resize sessions sidebar"
@@ -2020,6 +2320,7 @@ export function PracticeAgentClient({
                         <Input
                           autoFocus
                           className="h-8 border-sky-200 bg-white text-sm font-bold"
+                          maxLength={PRACTICE_INPUT_LIMITS.SESSION_TITLE_CHARS}
                           onBlur={() => submitRenameSession(item.id)}
                           onChange={(event) => setRenameValue(event.target.value)}
                           onClick={(event) => event.stopPropagation()}
@@ -2107,6 +2408,23 @@ export function PracticeAgentClient({
         </section>
         <div className="mt-auto space-y-3">
           <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
+            <summary className="cursor-pointer text-sm font-bold text-slate-900">Practice cycle</summary>
+            <div className="mt-3 space-y-3">
+              <p>Historical attempts and Assignment evidence stay intact. Recommendations will treat every available question as unseen in a new self-study session.</p>
+              <Button
+                className="w-full justify-start"
+                disabled={isPending}
+                onClick={resetPracticeProgress}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <RotateCcw className="size-4" aria-hidden="true" />
+                Practice all questions again
+              </Button>
+            </div>
+          </details>
+          <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
             <summary className="cursor-pointer text-sm font-bold text-slate-900">Long-term memory</summary>
             <div className="mt-3 space-y-2">
               {preferenceLoading ? (
@@ -2114,6 +2432,7 @@ export function PracticeAgentClient({
               ) : memoryEditing ? (
                 <Textarea
                   className="min-h-28 bg-white text-xs"
+                  maxLength={PRACTICE_INPUT_LIMITS.SESSION_MEMORY_CHARS}
                   onChange={(event) => setLongTermMemoryDraft(event.target.value)}
                   value={longTermMemoryDraft}
                 />
@@ -2140,16 +2459,16 @@ export function PracticeAgentClient({
         </div>
         </div>
         )}
-      </aside>
-
-      {error ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive xl:col-span-2" role="alert">
-          <span>{error}</span>
-          <Button onClick={() => setError(null)} size="sm" type="button" variant="ghost">Dismiss</Button>
-        </div>
+        </aside>
       ) : null}
 
         <main className="relative min-w-0 space-y-4 px-0 xl:px-2">
+          {error ? (
+            <div className="flex items-start justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
+              <span className="min-w-0 flex-1">{error}</span>
+              <Button className="shrink-0" onClick={() => setError(null)} size="sm" type="button" variant="ghost">Dismiss</Button>
+            </div>
+          ) : null}
           {sessionAction ? (
             <section aria-busy="true" aria-live="polite" className="absolute inset-0 z-20 flex min-h-[60vh] flex-col justify-center gap-5 bg-white/95 px-4 backdrop-blur-sm" role="status">
               <span className="sr-only">Loading practice session…</span>
@@ -2203,6 +2522,7 @@ export function PracticeAgentClient({
                         aria-label="Practice goal"
                         className="h-14 border-0 bg-transparent px-0 text-base shadow-none ring-offset-0 placeholder:text-slate-400 focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-lg"
                         id="goal"
+                        maxLength={PRACTICE_INPUT_LIMITS.GOAL_CHARS}
                         onChange={(event) => setGoal(event.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
@@ -2214,25 +2534,29 @@ export function PracticeAgentClient({
                       />
                     </div>
                     <div className="flex items-center justify-between gap-2 px-2 sm:justify-end">
-                      <PracticeFrameworkSelector
-                        frameworks={courseFrameworks}
-                        loading={courseFrameworksLoading}
-                        onChange={setSelectedCourseFrameworkId}
-                        value={selectedCourseFrameworkId}
-                      />
-                      <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
-                        <SlidersHorizontal className="size-4" aria-hidden="true" />
-                        <span>Questions</span>
-                        <input
-                          aria-label="Question count"
-                          className="w-10 bg-transparent text-center font-mono text-slate-900 outline-none"
-                          max={8}
-                          min={1}
-                          onChange={(event) => setQuestionCount(Number(event.target.value))}
-                          type="number"
-                          value={questionCount}
-                        />
-                      </label>
+                      {!isAssignmentMode ? (
+                        <>
+                          <PracticeFrameworkSelector
+                            frameworks={courseFrameworks}
+                            loading={courseFrameworksLoading}
+                            onChange={setSelectedCourseFrameworkId}
+                            value={selectedCourseFrameworkId}
+                          />
+                          <label className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+                            <SlidersHorizontal className="size-4" aria-hidden="true" />
+                            <span>Questions</span>
+                            <input
+                              aria-label="Question count"
+                              className="w-10 bg-transparent text-center font-mono text-slate-900 outline-none"
+                              max={8}
+                              min={1}
+                              onChange={(event) => setQuestionCount(Number(event.target.value))}
+                              type="number"
+                              value={questionCount}
+                            />
+                          </label>
+                        </>
+                      ) : null}
                       <Button
                         aria-label="Generate round"
                         className="size-12 rounded-full p-0"
@@ -2263,7 +2587,7 @@ export function PracticeAgentClient({
                   <Button
                     aria-label="Show study details"
                     className="xl:hidden"
-                    onClick={() => setIsRightSidebarCollapsed(false)}
+                    onClick={showStudyDetails}
                     size="icon"
                     type="button"
                     variant="ghost"
@@ -2278,6 +2602,7 @@ export function PracticeAgentClient({
           {activeSession?.rounds.length ? (
             <PracticeRoundNavigator
               completed={Boolean(activeSession.completion)}
+              disabled={practiceNavigationLocked}
               onSelectCompletion={showCompletionSummary}
               onSelectRound={showHistoricalRound}
               rounds={activeSession.rounds}
@@ -2299,6 +2624,7 @@ export function PracticeAgentClient({
 
           {phase === "ending" || phase === "completed" ? (
             <PracticeCompletionPanel
+              assignmentId={assignmentId}
               completion={completion}
               isCompleted={phase === "completed"}
               onNewSession={() => prepareScopedNewSession()}
@@ -2318,7 +2644,10 @@ export function PracticeAgentClient({
                   trace={latestTrace}
                 />
               ) : null}
-              <Card className="student-panel student-enter">
+              <Card
+                aria-busy={isPending || isReviewStreaming}
+                className="student-panel student-enter"
+              >
                 <CardHeader>
                   <div>
                     <div>
@@ -2328,6 +2657,31 @@ export function PracticeAgentClient({
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {answerErrorQuestionIndexes.length ? (
+                    <div
+                      aria-labelledby="practice-answer-error-heading"
+                      className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
+                      ref={answerErrorSummaryRef}
+                      tabIndex={-1}
+                    >
+                      <p className="font-bold" id="practice-answer-error-heading">
+                        Answer the highlighted question
+                        {answerErrorQuestionIndexes.length === 1 ? "" : "s"} before submitting.
+                      </p>
+                      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                        {answerErrorQuestionIndexes.map((questionIndex) => (
+                          <li key={questionIndex}>
+                            <a
+                              className="font-semibold underline underline-offset-4"
+                              href={`#practice-question-${questionIndex}`}
+                            >
+                              Question {questionIndex}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {recommendation.recommendations.map((question, index) => {
                     const questionId = practiceAnswerKey(question);
                     const answerCommitted =
@@ -2338,6 +2692,7 @@ export function PracticeAgentClient({
                         answerCommitted={answerCommitted}
                         clientReady={clientReady}
                         currentAnswer={answers[questionId]}
+                        hasAnswerError={answerErrorQuestionIndexes.includes(index + 1)}
                         hints={hints[questionId] ?? []}
                         index={index}
                         isPending={isPending}
@@ -2353,8 +2708,13 @@ export function PracticeAgentClient({
                   })}
                   {phase !== "feedback" ? (
                     <div className="flex justify-end">
-                      <Button className="h-11 px-6" disabled={isPending || !recommendation.roundId} onClick={submitRound} type="button">
-                        Submit round
+                      <Button
+                        className="h-11 px-6"
+                        disabled={isPending || !recommendation.roundId}
+                        onClick={submitRound}
+                        type="button"
+                      >
+                        {isPending ? "Submitting round..." : "Submit round"}
                       </Button>
                     </div>
                   ) : null}
@@ -2363,7 +2723,7 @@ export function PracticeAgentClient({
             </div>
           ) : null}
 
-          {phase === "feedback" && review ? (
+          {!isAssignmentMode && phase === "feedback" && review ? (
             <PracticeRoundReviewPanel
               isPending={isPending}
               isStreaming={isReviewStreaming}
@@ -2376,9 +2736,18 @@ export function PracticeAgentClient({
             />
           ) : null}
 
+          <PracticeAssignmentHandoff
+            assignmentId={assignmentId}
+            visible={isAssignmentMode && phase === "feedback"}
+          />
+
         </main>
 
-        <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
+        <aside
+          className="relative scroll-mt-4 transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto"
+          ref={rightSidebarRef}
+          tabIndex={-1}
+        >
           {!isRightSidebarCollapsed ? (
             <button
               aria-label="Resize study sidebar"
@@ -2395,7 +2764,7 @@ export function PracticeAgentClient({
               <Button
                 aria-label="Expand study sidebar"
                 className="size-10 rounded-xl bg-slate-200/70 text-slate-900 hover:bg-slate-200"
-                onClick={() => setIsRightSidebarCollapsed(false)}
+                onClick={showStudyDetails}
                 size="icon"
                 type="button"
                 variant="ghost"
@@ -2406,7 +2775,7 @@ export function PracticeAgentClient({
                 <Button
                   aria-label="Show study state"
                   className="size-10"
-                  onClick={() => setIsRightSidebarCollapsed(false)}
+                  onClick={showStudyDetails}
                   size="icon"
                   type="button"
                   variant="ghost"
@@ -2427,7 +2796,7 @@ export function PracticeAgentClient({
             </p>
             <Button
               aria-label="Collapse study sidebar"
-              className="hidden size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 xl:inline-flex"
+              className="inline-flex size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200"
               onClick={() => setIsRightSidebarCollapsed(true)}
               size="icon"
               type="button"
@@ -2464,6 +2833,7 @@ export function PracticeAgentClient({
                     <Textarea
                       className="min-h-24 bg-white text-sm"
                       id="outline-notes"
+                      maxLength={PRACTICE_INPUT_LIMITS.OUTLINE_NOTES_CHARS}
                       onChange={(event) => setOutlineNotes(event.target.value)}
                       placeholder="Prioritize, skip, slow down, or change difficulty."
                       value={outlineNotes}

@@ -14,6 +14,7 @@ export type MathContentProps = {
   compact?: boolean;
   format?: MathContentFormat;
   inline?: boolean;
+  preserveSoftBreaks?: boolean;
   value: string | null | undefined;
 };
 
@@ -21,7 +22,11 @@ function looksLikeHtml(value: string) {
   return /<[a-z][\s\S]*>/i.test(value);
 }
 
-function htmlFromValue(value: string, format: MathContentFormat) {
+function htmlFromValue(
+  value: string,
+  format: MathContentFormat,
+  preserveSoftBreaks: boolean,
+) {
   if (!value.trim()) {
     return "";
   }
@@ -30,11 +35,18 @@ function htmlFromValue(value: string, format: MathContentFormat) {
     return value;
   }
 
-  return markdownLatexToHtml(value);
+  return markdownLatexToHtml(value, { preserveSoftBreaks });
 }
 
-function inlineHtmlFromValue(value: string, format: MathContentFormat) {
-  return htmlFromValue(value, format).replace(/^<p>([\s\S]*)<\/p>$/, "$1");
+function inlineHtmlFromValue(
+  value: string,
+  format: MathContentFormat,
+  preserveSoftBreaks: boolean,
+) {
+  return htmlFromValue(value, format, preserveSoftBreaks).replace(
+    /^<p>([\s\S]*)<\/p>$/,
+    "$1",
+  );
 }
 
 function hasHydratableMath(value: string) {
@@ -211,15 +223,16 @@ function MathContentComponent({
   compact = false,
   format = "auto",
   inline = false,
+  preserveSoftBreaks = false,
   value,
 }: MathContentProps) {
   const ref = useRef<HTMLElement>(null);
   const html = useMemo(
     () =>
       inline
-        ? inlineHtmlFromValue(String(value ?? ""), format)
-        : htmlFromValue(String(value ?? ""), format),
-    [format, inline, value],
+        ? inlineHtmlFromValue(String(value ?? ""), format, preserveSoftBreaks)
+        : htmlFromValue(String(value ?? ""), format, preserveSoftBreaks),
+    [format, inline, preserveSoftBreaks, value],
   );
   const shouldHydrateMath = useMemo(() => hasHydratableMath(html), [html]);
 

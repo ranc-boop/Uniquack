@@ -151,7 +151,7 @@ assert(
     manualForm.includes("QuestionAssetsPanel") &&
     manualForm.includes("QuestionSourceFilesPanel") &&
     manualForm.includes("draft_id") &&
-    teacherQuestions.includes("publicLicenseConfirmed"),
+    teacherActions.includes("publicLicenseConfirmed"),
   "Teacher Manual must reuse shared media workspaces, persist one bank-scoped Review Draft, and require explicit public-license confirmation.",
 );
 
@@ -169,7 +169,8 @@ assert(
 assert(
   teacherQuestions.includes("Ready for assignment") &&
     teacherQuestions.includes("createBankQuestionRevisionDraft") &&
-    teacherQuestions.includes("Submit selected to Public Library") &&
+    teacherActions.includes("manageSelectedBankQuestions") &&
+    teacherActions.includes('"public_review"') &&
     teacherQuestions.includes("Add from Public Library") &&
     teacherSubmissions.includes("immutable snapshot") &&
     teacherSubmissions.includes("Library owners and editors only") &&

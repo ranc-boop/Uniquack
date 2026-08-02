@@ -13,6 +13,11 @@ import {
   isCurrentPracticeQuestionSnapshot,
   PRACTICE_SESSION_EXPIRED_MESSAGE,
 } from "@/lib/practice/schema";
+import {
+  PRACTICE_INPUT_LIMITS,
+  boundedPracticeText,
+  practiceValidationResponse,
+} from "@/lib/practice/request-validation";
 import type {
   PracticeRecommendation,
   PracticeRecommendResponse,
@@ -34,7 +39,7 @@ type CustomRoundRequest = {
 
 function uniqueIds(value: unknown) {
   return Array.isArray(value)
-    ? Array.from(new Set(value.map(String).map((item) => item.trim()).filter(Boolean))).slice(0, MAX_CUSTOM_QUESTIONS)
+    ? Array.from(new Set(value.map(String).map((item) => item.trim()).filter(Boolean)))
     : [];
 }
 
@@ -110,11 +115,30 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as CustomRoundRequest;
   const questionIds = uniqueIds(body.questionIds);
-  const goal = (body.goal ?? "Question practice").trim().slice(0, 500) || "Question practice";
+  let goal = "Question practice";
+  try {
+    goal = boundedPracticeText(body.goal ?? goal, {
+      field: "goal",
+      maxLength: PRACTICE_INPUT_LIMITS.GOAL_CHARS,
+      required: true,
+    });
+  } catch (error) {
+    const validation = practiceValidationResponse(error);
+    return NextResponse.json(
+      validation?.body ?? { code: "INVALID_CUSTOM_ROUND", error: "Invalid custom round request." },
+      { status: validation?.status ?? 400 },
+    );
+  }
   let sessionId = (body.sessionId ?? "").trim();
 
   if (!questionIds.length) {
     return NextResponse.json({ error: "At least one questionId is required." }, { status: 400 });
+  }
+  if (questionIds.length > MAX_CUSTOM_QUESTIONS) {
+    return NextResponse.json(
+      { code: "TOO_MANY_QUESTIONS", error: `Choose at most ${MAX_CUSTOM_QUESTIONS} questions.` },
+      { status: 413 },
+    );
   }
 
   if (!sessionId) {
@@ -135,7 +159,10 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (sessionError) {
-    return NextResponse.json({ error: sessionError.message }, { status: 500 });
+    return NextResponse.json(
+      { code: "CUSTOM_ROUND_SESSION_FAILED", error: "Unable to load this practice session." },
+      { status: 500 },
+    );
   }
 
   if (!session) {
@@ -152,7 +179,10 @@ export async function POST(request: Request) {
     .eq("status", "published");
 
   if (questionsError) {
-    return NextResponse.json({ error: questionsError.message }, { status: 500 });
+    return NextResponse.json(
+      { code: "CUSTOM_ROUND_QUESTIONS_FAILED", error: "Unable to load the selected questions." },
+      { status: 500 },
+    );
   }
 
   const liveQuestionIds = new Set((questions ?? []).map((question) => question.id));

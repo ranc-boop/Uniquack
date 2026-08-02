@@ -108,22 +108,32 @@ async function runSourceSmoke() {
 
   for (const label of [
     "Dashboard",
-    "Question Bank",
-    "AI Parsing",
-    "Blueprint",
-    "Classroom",
-    "Publish",
+    "Libraries",
+    "Blueprints",
+    "Classrooms",
+    "Assignments",
     "Progress",
   ]) {
-    assert(teacherPage.includes(label), `teacher dashboard missing ${label}`);
     assert(teacherNav.includes(label), `teacher nav missing ${label}`);
-    assert(rootLayout.includes(label), `role-aware root nav missing ${label}`);
   }
 
   assert(!teacherNav.includes("/admin/imports/pdf"), "teacher nav must not route imports through admin");
   assert(!teacherNav.includes("/admin/review"), "teacher nav must not route review through admin");
-  assert(teacherPage.includes("Bank-first teacher workflow"), "teacher dashboard must be bank-first");
-  assert(rootLayout.includes("teacherNavItems"), "root layout must expose teacher primary nav");
+  assert(
+    teacherPage.includes("getTeacherHomeSummary") &&
+      teacherPage.includes("Next action") &&
+      teacherPage.includes('label: "Libraries"') &&
+      teacherPage.includes('label: "Assignments"') &&
+      teacherPage.includes('label: "Progress"') &&
+      !teacherPage.includes("Bank-first teacher workflow"),
+    "teacher dashboard must stay bank-first without duplicating global navigation or explanatory copy",
+  );
+  assert(
+    rootLayout.includes("teacherWorkspaceNavItems") &&
+      rootLayout.includes("studentNavItems") &&
+      rootLayout.includes("<PrimaryNav />"),
+    "root layout must expose one role-aware primary navigation",
+  );
   assert(
     classroomActions.includes("create_teacher_classroom"),
     "classroom creation must use the teacher classroom RPC",
