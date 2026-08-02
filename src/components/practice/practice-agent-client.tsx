@@ -45,6 +45,7 @@ import {
 } from "@/lib/practice/client-helpers";
 import {
   buildRestoredPracticeAnswers,
+  resolveRestoredPracticeQuestionAssociation,
   restoredPracticeQuestionId,
 } from "@/lib/practice/answer-restore";
 import {
@@ -196,6 +197,299 @@ type TestOnlyDelayedHydrationStatus =
 const COLLAPSED_SIDEBAR_WIDTH = 60;
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 304;
 const DEFAULT_RIGHT_SIDEBAR_WIDTH = 384;
+const ASSIGNMENT_PRACTICE_START_ERROR = "Unable to start assignment practice.";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && Boolean(value.trim());
+}
+
+function isCanonicalIdentity(value: unknown): value is string {
+  return isNonEmptyString(value) && value === value.trim();
+}
+
+function hasOwn(value: object, key: PropertyKey) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isDenseArray(
+  value: unknown,
+  isValidItem: (item: unknown) => boolean,
+): value is unknown[] {
+  if (!Array.isArray(value)) return false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (!hasOwn(value, index) || !isValidItem(value[index])) return false;
+  }
+
+  return true;
+}
+
+function isStringArray(
+  value: unknown,
+  requireNonEmptyItems = false,
+): value is string[] {
+  return isDenseArray(
+    value,
+    (item) =>
+      typeof item === "string" &&
+      (!requireNonEmptyItems || Boolean(item.trim())),
+  );
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isOptionalNullableString(value: unknown) {
+  return value === undefined || isNullableString(value);
+}
+
+function isNullableCanonicalIdentity(value: unknown) {
+  return value === null || isCanonicalIdentity(value);
+}
+
+function isOptionalNullableCanonicalIdentity(value: unknown) {
+  return value === undefined || isNullableCanonicalIdentity(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isPracticeTraceEvent(value: unknown) {
+  if (!isRecord(value)) return false;
+
+  const optionalStringFields = [
+    "error",
+    "inputSummary",
+    "modelThought",
+    "outputSummary",
+    "thoughtSummary",
+    "toolCallId",
+  ];
+  const optionalNumberFields = ["elapsedMs", "iteration", "resultCount"];
+
+  return (
+    ["recommendation", "hint", "grading", "review", "context"].includes(
+      String(value.phase),
+    ) &&
+    isNonEmptyString(value.toolName) &&
+    optionalStringFields.every(
+      (field) => value[field] === undefined || typeof value[field] === "string",
+    ) &&
+    optionalNumberFields.every(
+      (field) => value[field] === undefined || isFiniteNumber(value[field]),
+    ) &&
+    (value.reasoningContent === undefined ||
+      value.reasoningContent === null ||
+      typeof value.reasoningContent === "string") &&
+    (value.savedFullPayload === undefined ||
+      typeof value.savedFullPayload === "boolean")
+  );
+}
+
+function isPracticeTrace(value: unknown) {
+  return isDenseArray(value, isPracticeTraceEvent);
+}
+
+function isQuestionOption(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.content_html === "string" &&
+    (value.content_source === undefined ||
+      typeof value.content_source === "string") &&
+    isNonEmptyString(value.id) &&
+    typeof value.label === "string"
+  );
+}
+
+function isPracticeQuestion(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.contentExcerpt === "string" &&
+    typeof value.contentHtml === "string" &&
+    isFiniteNumber(value.difficulty) &&
+    typeof value.expectedSkill === "string" &&
+    isCanonicalIdentity(value.id) &&
+    isDenseArray(value.options, isQuestionOption) &&
+    typeof value.questionCode === "string" &&
+    isOptionalNullableCanonicalIdentity(value.questionId) &&
+    ["mcq", "fill_blank", "frq", "mixed"].includes(
+      String(value.questionType),
+    ) &&
+    typeof value.reason === "string" &&
+    isOptionalNullableString(value.source) &&
+    isOptionalNullableCanonicalIdentity(value.sourceQuestionId) &&
+    isStringArray(value.tagIds, true) &&
+    typeof value.title === "string"
+  );
+}
+
+function isPracticeAttempt(value: unknown) {
+  return (
+    isRecord(value) &&
+    hasOwn(value, "answer") &&
+    (typeof value.answer === "string" || isStringArray(value.answer)) &&
+    isNullableString(value.explanation) &&
+    isStringArray(value.hints) &&
+    (value.isCorrect === null || typeof value.isCorrect === "boolean") &&
+    isNullableCanonicalIdentity(value.questionId) &&
+    (value.score === null || isFiniteNumber(value.score)) &&
+    isNullableString(value.solutionHtml) &&
+    isNullableCanonicalIdentity(value.sourceQuestionId)
+  );
+}
+
+function hasValidRoundAttemptAssociations(value: Record<string, unknown>) {
+  if (!Array.isArray(value.attempts) || !Array.isArray(value.questions)) {
+    return false;
+  }
+
+  const attempts = value.attempts as Array<{
+    questionId: string | null;
+    sourceQuestionId: string | null;
+  }>;
+  const questions = value.questions as Array<{
+    id: string;
+    questionId?: string | null;
+    sourceQuestionId?: string | null;
+  }>;
+
+  return attempts.every(
+    (attempt) =>
+      resolveRestoredPracticeQuestionAssociation(attempt, questions) !== null,
+  );
+}
+
+function isPracticeRound(value: unknown) {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.id) &&
+    isDenseArray(value.attempts, isPracticeAttempt) &&
+    (value.nextRoundGoal === null || typeof value.nextRoundGoal === "string") &&
+    isDenseArray(value.questions, isPracticeQuestion) &&
+    isNullableString(value.reviewSummary) &&
+    typeof value.roundGoal === "string" &&
+    isRecord(value.score) &&
+    isFiniteNumber(value.score.correct) &&
+    isFiniteNumber(value.score.total) &&
+    ["active", "completed", "skipped"].includes(String(value.status)) &&
+    isPracticeTrace(value.trace) &&
+    hasValidRoundAttemptAssociations(value)
+  );
+}
+
+function isPracticeSourceSummary(value: unknown) {
+  return (
+    isRecord(value) &&
+    isOptionalNullableString(value.assignmentId) &&
+    isOptionalNullableString(value.bankId) &&
+    (value.membershipRole === undefined ||
+      value.membershipRole === null ||
+      ["owner", "editor", "viewer"].includes(String(value.membershipRole))) &&
+    typeof value.name === "string" &&
+    ["assignment", "public_catalog", "question_bank"].includes(
+      String(value.sourceKind),
+    ) &&
+    (value.visibility === undefined ||
+      value.visibility === null ||
+      ["private", "shared", "organization", "public"].includes(
+        String(value.visibility),
+      ))
+  );
+}
+
+function isPracticeTagContext(value: unknown) {
+  return (
+    isRecord(value) &&
+    isStringArray(value.confirmedTagIds, true) &&
+    (value.lastGoal === undefined || typeof value.lastGoal === "string") &&
+    isDenseArray(
+      value.usefulTags,
+      (tag) =>
+        isRecord(tag) &&
+        (tag.searchableQuestionCount === undefined ||
+          isFiniteNumber(tag.searchableQuestionCount)) &&
+        ["memory", "browse", "search"].includes(String(tag.source)) &&
+        isNonEmptyString(tag.tagId),
+    ) &&
+    value.version === 1
+  );
+}
+
+function isAssignmentPracticeStartPayload(
+  value: unknown,
+  expectedAssignmentId: string,
+): value is AssignmentPracticeStartPayload {
+  if (!isRecord(value)) return false;
+  const assignment = value.assignment;
+  const recommendation = value.recommendation;
+  const session = value.session;
+  if (!isRecord(assignment) || !isRecord(recommendation) || !isRecord(session)) {
+    return false;
+  }
+
+  const assignmentValid =
+    assignment.id === expectedAssignmentId &&
+    isNonEmptyString(assignment.id) &&
+    typeof assignment.title === "string" &&
+    Number.isSafeInteger(assignment.itemCount) &&
+    Number(assignment.itemCount) >= 0 &&
+    (assignment.dueAt === null || typeof assignment.dueAt === "string");
+  const recommendationValid =
+    (recommendation.mode === "ai" || recommendation.mode === "heuristic") &&
+    isFiniteNumber(recommendation.maxToolCalls) &&
+    isDenseArray(recommendation.recommendations, isPracticeQuestion) &&
+    (recommendation.roundId === undefined ||
+      isNonEmptyString(recommendation.roundId)) &&
+    typeof recommendation.roundGoal === "string" &&
+    typeof recommendation.sessionMemory === "string" &&
+    isPracticeTagContext(recommendation.tagContext) &&
+    isPracticeTrace(recommendation.trace);
+  const sessionValid =
+    isNonEmptyString(session.id) &&
+    isStringArray(session.completedQuestionIds, true) &&
+    typeof session.createdAt === "string" &&
+    typeof session.goal === "string" &&
+    typeof session.lastActivityAt === "string" &&
+    (session.outlineUserNotes === undefined ||
+      typeof session.outlineUserNotes === "string") &&
+    Number.isSafeInteger(session.roundCount) &&
+    Number(session.roundCount) >= 0 &&
+    isDenseArray(session.rounds, isPracticeRound) &&
+    typeof session.sessionMemory === "string" &&
+    isDenseArray(session.sourceScope, isPracticeSourceSummary) &&
+    isOptionalNullableString(session.sourceScopeLockedAt) &&
+    ["active", "archived", "completed"].includes(String(session.status)) &&
+    isPracticeTagContext(session.tagContext) &&
+    typeof session.title === "string";
+  const recommendationSessionValid =
+    recommendation.sessionId === undefined ||
+    recommendation.sessionId === session.id;
+
+  return (
+    assignmentValid &&
+    recommendationValid &&
+    sessionValid &&
+    recommendationSessionValid &&
+    ["completed", "in_progress", "not_started"].includes(
+      String(value.progressStatus),
+    )
+  );
+}
+
+function validateAssignmentPracticeStartPayload(
+  value: unknown,
+  expectedAssignmentId: string,
+): asserts value is AssignmentPracticeStartPayload {
+  if (!isAssignmentPracticeStartPayload(value, expectedAssignmentId)) {
+    throw new Error(ASSIGNMENT_PRACTICE_START_ERROR);
+  }
+}
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException
@@ -639,11 +933,13 @@ export function PracticeAgentClient({
     {
       deferAuxiliary = false,
       loadWorkspaceOptions = false,
+      commitActiveSession = true,
       restoreActive = true,
       sessionOverride,
     }: {
       deferAuxiliary?: boolean;
       loadWorkspaceOptions?: boolean;
+      commitActiveSession?: boolean;
       restoreActive?: boolean;
       sessionOverride?: PracticeSessionDetail;
     } = {},
@@ -729,7 +1025,7 @@ export function PracticeAgentClient({
     setSessionHistoryHasMore(
       isAssignmentMode ? false : Boolean(sessionPayload.pagination?.hasMore),
     );
-    setActiveSession(nextSession);
+    if (commitActiveSession) setActiveSession(nextSession);
     setOutlineNotes(nextSession?.outlineUserNotes ?? "");
     if (nextSession?.status === "active" && nextSession.sourceScope.length) {
       setIncludePublicCatalog(
@@ -1014,7 +1310,7 @@ export function PracticeAgentClient({
     resetRoundState("SESSION_CHANGE");
     resetSessionScopedDrafts();
 
-    const payload = await jsonRequest<AssignmentPracticeStartPayload>(
+    const payload = await jsonRequest<unknown>(
       "/api/practice/assignments/start",
       {
         body: JSON.stringify({ assignmentId: launchAssignmentId }),
@@ -1022,13 +1318,19 @@ export function PracticeAgentClient({
       },
     );
 
-    setAssignmentLaunch(payload.assignment);
-    setActiveSession(payload.session);
+    validateAssignmentPracticeStartPayload(payload, launchAssignmentId);
     const restoredSession = await refreshPracticeState(payload.session.id, {
-      deferAuxiliary: true,
+      commitActiveSession: false,
+      deferAuxiliary: false,
       loadWorkspaceOptions: true,
       sessionOverride: payload.session,
     });
+    if (restoredSession !== payload.session) {
+      throw new Error(ASSIGNMENT_PRACTICE_START_ERROR);
+    }
+
+    setAssignmentLaunch(payload.assignment);
+    setActiveSession(payload.session);
     const currentRound = restoredSession?.rounds[restoredSession.rounds.length - 1];
 
     if (restoredSession && currentRound?.questions.length) {

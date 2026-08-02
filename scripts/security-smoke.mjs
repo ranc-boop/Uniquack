@@ -575,7 +575,7 @@ assert(
     teacherBankImportsPage.includes("BankManualQuestionForm") &&
     teacherBankImportsPage.includes("BatchImportJsonPanelLoader") &&
     !teacherBankImportsPage.includes("/admin/imports/pdf") &&
-    teacherBankImportsPage.includes("Drafts stay") &&
+    teacherBankImportsPage.includes("private drafts in this Library until review.") &&
     teacherBankReviewPage.includes("Approve current page") &&
     teacherBankReviewPage.includes("LazyTeacherQuestionPreview") &&
     teacherBankReviewPage.includes("blockedCount") &&
