@@ -41,6 +41,7 @@ import {
 } from "@/lib/practice/client-helpers";
 import {
   buildRestoredPracticeAnswers,
+  resolveRestoredPracticeQuestionAssociation,
   restoredPracticeQuestionId,
 } from "@/lib/practice/answer-restore";
 import type {
@@ -183,6 +184,10 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && Boolean(value.trim());
 }
 
+function isCanonicalIdentity(value: unknown): value is string {
+  return isNonEmptyString(value) && value === value.trim();
+}
+
 function hasOwn(value: object, key: PropertyKey) {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
@@ -218,6 +223,14 @@ function isNullableString(value: unknown): value is string | null {
 
 function isOptionalNullableString(value: unknown) {
   return value === undefined || isNullableString(value);
+}
+
+function isNullableCanonicalIdentity(value: unknown) {
+  return value === null || isCanonicalIdentity(value);
+}
+
+function isOptionalNullableCanonicalIdentity(value: unknown) {
+  return value === undefined || isNullableCanonicalIdentity(value);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -278,16 +291,16 @@ function isPracticeQuestion(value: unknown) {
     typeof value.contentHtml === "string" &&
     isFiniteNumber(value.difficulty) &&
     typeof value.expectedSkill === "string" &&
-    isNonEmptyString(value.id) &&
+    isCanonicalIdentity(value.id) &&
     isDenseArray(value.options, isQuestionOption) &&
     typeof value.questionCode === "string" &&
-    isOptionalNullableString(value.questionId) &&
+    isOptionalNullableCanonicalIdentity(value.questionId) &&
     ["mcq", "fill_blank", "frq", "mixed"].includes(
       String(value.questionType),
     ) &&
     typeof value.reason === "string" &&
     isOptionalNullableString(value.source) &&
-    isOptionalNullableString(value.sourceQuestionId) &&
+    isOptionalNullableCanonicalIdentity(value.sourceQuestionId) &&
     isStringArray(value.tagIds, true) &&
     typeof value.title === "string"
   );
@@ -301,10 +314,31 @@ function isPracticeAttempt(value: unknown) {
     isNullableString(value.explanation) &&
     isStringArray(value.hints) &&
     (value.isCorrect === null || typeof value.isCorrect === "boolean") &&
-    isNullableString(value.questionId) &&
+    isNullableCanonicalIdentity(value.questionId) &&
     (value.score === null || isFiniteNumber(value.score)) &&
     isNullableString(value.solutionHtml) &&
-    isNullableString(value.sourceQuestionId)
+    isNullableCanonicalIdentity(value.sourceQuestionId)
+  );
+}
+
+function hasValidRoundAttemptAssociations(value: Record<string, unknown>) {
+  if (!Array.isArray(value.attempts) || !Array.isArray(value.questions)) {
+    return false;
+  }
+
+  const attempts = value.attempts as Array<{
+    questionId: string | null;
+    sourceQuestionId: string | null;
+  }>;
+  const questions = value.questions as Array<{
+    id: string;
+    questionId?: string | null;
+    sourceQuestionId?: string | null;
+  }>;
+
+  return attempts.every(
+    (attempt) =>
+      resolveRestoredPracticeQuestionAssociation(attempt, questions) !== null,
   );
 }
 
@@ -320,7 +354,8 @@ function isPracticeRound(value: unknown) {
     isRecord(value.score) &&
     isFiniteNumber(value.score.correct) &&
     isFiniteNumber(value.score.total) &&
-    isPracticeTrace(value.trace)
+    isPracticeTrace(value.trace) &&
+    hasValidRoundAttemptAssociations(value)
   );
 }
 

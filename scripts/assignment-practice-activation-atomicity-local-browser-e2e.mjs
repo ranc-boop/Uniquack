@@ -499,7 +499,49 @@ function payloadWithRound({
   });
 }
 
-const malformedModes = [
+function payloadWithRounds(rounds) {
+  return startPayload({
+    recommendation: recommendationFixture({
+      recommendations: [questionFixture("RECOMMENDATION")],
+    }),
+    session: sessionFixture({ rounds }),
+  });
+}
+
+const associationValidModes = [
+  "valid_attempt_primary_id",
+  "valid_attempt_persisted_question_id",
+  "valid_attempt_source_id",
+  "valid_attempt_consistent_ids",
+  "valid_multiple_distinct_attempts",
+  "valid_attempts_multiple_rounds",
+  "valid_multiple_attempts_same_question",
+  "valid_nullable_question_source_ids",
+  "valid_empty_attempts",
+];
+
+const associationValidModesWithAttempts = new Set(
+  associationValidModes.filter((mode) => mode !== "valid_empty_attempts"),
+);
+
+const associationInvalidModes = [
+  "invalid_association_unmatched_question_id",
+  "invalid_association_unmatched_source_question_id",
+  "invalid_association_both_unmatched",
+  "invalid_association_conflicting_ids",
+  "invalid_association_partial_match",
+  "invalid_association_cross_round_only",
+  "invalid_association_duplicate_primary_ids",
+  "invalid_association_duplicate_source_ids",
+  "invalid_association_empty_round_questions",
+  "invalid_association_mixed_valid_orphan",
+  "invalid_association_later_round_orphan",
+  "invalid_association_whitespace_identity",
+  "invalid_association_both_null",
+  "invalid_association_unrelated_field_spelling",
+];
+
+const structuralMalformedModes = [
   "invalid_round_question",
   "invalid_round_null",
   "invalid_round_primitive",
@@ -527,6 +569,11 @@ const malformedModes = [
   "invalid_sparse_rounds",
 ];
 
+const malformedModes = [
+  ...structuralMalformedModes,
+  ...associationInvalidModes,
+];
+
 const sparseModes = new Set([
   "invalid_sparse_attempts",
   "invalid_sparse_options",
@@ -535,7 +582,258 @@ const sparseModes = new Set([
   "invalid_sparse_rounds",
 ]);
 
+function associationPayload(mode) {
+  const questionA = questionFixture("ASSOCIATION_A");
+  const questionB = questionFixture("ASSOCIATION_B");
+
+  switch (mode) {
+    case "valid_attempt_primary_id":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: questionA.id,
+            sourceQuestionId: null,
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    case "valid_attempt_persisted_question_id":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: questionA.questionId,
+            sourceQuestionId: null,
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    case "valid_attempt_source_id":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: null,
+            sourceQuestionId: questionA.sourceQuestionId,
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    case "valid_attempt_consistent_ids":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA)],
+          questions: [questionA],
+        }),
+      ]);
+    case "valid_multiple_distinct_attempts":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA), attemptFixture(questionB)],
+          questions: [questionA, questionB],
+        }),
+      ]);
+    case "valid_attempts_multiple_rounds":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION_FIRST", {
+          attempts: [attemptFixture(questionA)],
+          questions: [questionA],
+        }),
+        roundFixture("ASSOCIATION_SECOND", {
+          attempts: [attemptFixture(questionB)],
+          questions: [questionB],
+        }),
+      ]);
+    case "valid_multiple_attempts_same_question":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [
+            attemptFixture(questionA, { id: "ATTEMPT_ASSOCIATION_FIRST" }),
+            attemptFixture(questionA, { id: "ATTEMPT_ASSOCIATION_SECOND" }),
+          ],
+          questions: [questionA],
+        }),
+      ]);
+    case "valid_nullable_question_source_ids": {
+      const question = questionFixture("NULLABLE", {
+        questionId: null,
+        sourceQuestionId: null,
+      });
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(question, {
+            questionId: question.id,
+            sourceQuestionId: null,
+          })],
+          questions: [question],
+        }),
+      ]);
+    }
+    case "valid_empty_attempts":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [],
+          questions: [questionA],
+        }),
+      ]);
+    case "invalid_association_unmatched_question_id":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: "QUESTION_OUTSIDE_CURRENT_ROUND",
+            sourceQuestionId: null,
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    case "invalid_association_unmatched_source_question_id":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: null,
+            sourceQuestionId: "SOURCE_OUTSIDE_CURRENT_ROUND",
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    case "invalid_association_both_unmatched":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: "QUESTION_OUTSIDE_CURRENT_ROUND",
+            sourceQuestionId: "SOURCE_OUTSIDE_CURRENT_ROUND",
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    case "invalid_association_conflicting_ids":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: questionA.id,
+            sourceQuestionId: questionB.sourceQuestionId,
+          })],
+          questions: [questionA, questionB],
+        }),
+      ]);
+    case "invalid_association_partial_match":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: questionA.id,
+            sourceQuestionId: "SOURCE_OUTSIDE_CURRENT_ROUND",
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    case "invalid_association_cross_round_only":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION_FIRST", { questions: [questionA] }),
+        roundFixture("ASSOCIATION_SECOND", {
+          attempts: [attemptFixture(questionA, { sourceQuestionId: null })],
+          questions: [questionB],
+        }),
+      ]);
+    case "invalid_association_duplicate_primary_ids": {
+      const duplicateQuestion = questionFixture("DUPLICATE_PRIMARY", {
+        id: questionA.id,
+      });
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: questionA.id,
+            sourceQuestionId: null,
+          })],
+          questions: [questionA, duplicateQuestion],
+        }),
+      ]);
+    }
+    case "invalid_association_duplicate_source_ids": {
+      const duplicateQuestion = questionFixture("DUPLICATE_SOURCE", {
+        sourceQuestionId: questionA.sourceQuestionId,
+      });
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: null,
+            sourceQuestionId: questionA.sourceQuestionId,
+          })],
+          questions: [questionA, duplicateQuestion],
+        }),
+      ]);
+    }
+    case "invalid_association_empty_round_questions":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA)],
+          questions: [],
+        }),
+      ]);
+    case "invalid_association_mixed_valid_orphan":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [
+            attemptFixture(questionA),
+            attemptFixture(questionA, {
+              id: "ATTEMPT_ORPHAN",
+              questionId: "QUESTION_OUTSIDE_CURRENT_ROUND",
+              sourceQuestionId: null,
+            }),
+          ],
+          questions: [questionA],
+        }),
+      ]);
+    case "invalid_association_later_round_orphan":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION_FIRST", {
+          attempts: [attemptFixture(questionA)],
+          questions: [questionA],
+        }),
+        roundFixture("ASSOCIATION_SECOND", {
+          attempts: [attemptFixture(questionB, {
+            questionId: "QUESTION_OUTSIDE_CURRENT_ROUND",
+            sourceQuestionId: null,
+          })],
+          questions: [questionB],
+        }),
+      ]);
+    case "invalid_association_whitespace_identity":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: "   ",
+            sourceQuestionId: null,
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    case "invalid_association_both_null":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: null,
+            sourceQuestionId: null,
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    case "invalid_association_unrelated_field_spelling":
+      return payloadWithRounds([
+        roundFixture("ASSOCIATION", {
+          attempts: [attemptFixture(questionA, {
+            questionId: questionA.sourceQuestionId,
+            sourceQuestionId: null,
+          })],
+          questions: [questionA],
+        }),
+      ]);
+    default:
+      throw new AssignmentAtomicityHarnessError("UNKNOWN_ASSOCIATION_MODE");
+  }
+}
+
 function malformedPayload(mode) {
+  if (associationInvalidModes.includes(mode)) {
+    return associationPayload(mode);
+  }
   const payload = payloadWithRound();
   const round = payload.session.rounds[0];
   const question = round.questions[0];
@@ -641,6 +939,7 @@ function malformedPayload(mode) {
 function startPayloadForMode(mode) {
   if (mode === "valid_nested") return validNestedPayload();
   if (mode === "valid_recommendations") return validRecommendationPayload();
+  if (associationValidModes.includes(mode)) return associationPayload(mode);
   if (malformedModes.includes(mode)) return malformedPayload(mode);
 
   const payload = startPayload();
@@ -793,7 +1092,9 @@ async function visibleActivation(page) {
 }
 
 async function waitForError(page) {
-  await page.locator('[role="alert"]').first().waitFor({ timeout: STEP_TIMEOUT_MS });
+  const alert = page.locator('[role="alert"]').filter({ hasText: /\S/ }).first();
+  await alert.waitFor({ state: "visible", timeout: STEP_TIMEOUT_MS });
+  return alert.innerText();
 }
 
 function jsonResponse(route, body, status = 200) {
@@ -808,6 +1109,12 @@ const successfulModes = new Set([
   "valid",
   "valid_nested",
   "valid_recommendations",
+  ...associationValidModes,
+]);
+
+const restoredSessionModes = new Set([
+  "valid_nested",
+  ...associationValidModes,
 ]);
 
 function casePrefix(mode) {
@@ -998,7 +1305,7 @@ async function runCase(browser, origin, mode) {
           completedReferences.sessionReferenceFound,
         `${prefix}_EXACT_STATE_IDENTITY_MISSING`,
       );
-      if (mode !== "valid_nested") {
+      if (!restoredSessionModes.has(mode)) {
         assert(
           completedReferences.recommendationReferenceFound,
           `${prefix}_EXACT_RECOMMENDATION_IDENTITY_MISSING`,
@@ -1016,8 +1323,29 @@ async function runCase(browser, origin, mode) {
       assert(counters.unexpectedApi === 0, `${prefix}_UNEXPECTED_API_REQUEST`);
       assert(counters.pageErrors === 0, `${prefix}_PAGE_ERROR`);
       assert(counters.external === 0, `${prefix}_EXTERNAL_REQUEST`);
+      const attachedAttemptResultCount = await page
+        .getByText("Saved local explanation.", { exact: false })
+        .count();
+      const savedFeedbackCount = await page
+        .getByText("This round has saved review results.", { exact: false })
+        .count();
+      if (associationValidModesWithAttempts.has(mode)) {
+        assert(
+          attachedAttemptResultCount > 0 && savedFeedbackCount > 0,
+          `${prefix}_ATTEMPT_NOT_ATTACHED_TO_RENDERED_QUESTION`,
+        );
+      }
+      if (mode === "valid_empty_attempts") {
+        assert(
+          attachedAttemptResultCount === 0 && savedFeedbackCount === 0,
+          `${prefix}_EMPTY_ATTEMPTS_CREATED_FEEDBACK`,
+        );
+      }
       return {
         activationAfterRefresh: true,
+        attachedAttempt: associationValidModesWithAttempts.has(mode)
+          ? attachedAttemptResultCount > 0
+          : true,
         exactReferences: true,
         oneInvocation: true,
         refreshOwnership: true,
@@ -1025,10 +1353,43 @@ async function runCase(browser, origin, mode) {
     }
 
     phase = "error_state";
+    if (mode === "invalid_association_unmatched_question_id") {
+      const outcome = await Promise.race([
+        waitForError(page).then(() => "error"),
+        page
+          .getByText("Atomic assignment marker", { exact: false })
+          .first()
+          .waitFor({ timeout: STEP_TIMEOUT_MS })
+          .then(() => "activation"),
+      ]);
+      if (outcome === "activation") {
+        const attachedAttemptResultCount = await page
+          .getByText("Saved local explanation.", { exact: false })
+          .count();
+        if (attachedAttemptResultCount === 0) {
+          throw new AssignmentAtomicityHarnessError(
+            "ORPHAN_ATTEMPT_VISIBLE_WITHOUT_RENDERED_QUESTION",
+          );
+        }
+      }
+    }
     await waitForError(page);
     phase = "failure_state";
     const visible = await visibleActivation(page);
     const references = await activationState(page);
+    if (
+      mode === "invalid_association_unmatched_question_id" &&
+      (visible.assignment > 0 || visible.session > 0)
+    ) {
+      const attachedAttemptResultCount = await page
+        .getByText("Saved local explanation.", { exact: false })
+        .count();
+      if (attachedAttemptResultCount === 0) {
+        throw new AssignmentAtomicityHarnessError(
+          "ORPHAN_ATTEMPT_VISIBLE_WITHOUT_RENDERED_QUESTION",
+        );
+      }
+    }
     assert(
       visible.assignment === 0 && visible.session === 0,
       `${prefix}_VISIBLE_PARTIAL_ACTIVATION`,
@@ -1038,6 +1399,10 @@ async function runCase(browser, origin, mode) {
         !references.recommendationReferenceFound &&
         !references.sessionReferenceFound,
       `${prefix}_STATE_PARTIAL_ACTIVATION`,
+    );
+    assert(
+      await page.getByText("Loading practice workspace", { exact: false }).count() === 0,
+      `${prefix}_LOADING_NOT_COMPLETED`,
     );
 
     if (
@@ -1114,6 +1479,7 @@ async function main() {
       "valid",
       "valid_nested",
       "valid_recommendations",
+      ...associationValidModes,
       "request_rejection",
       "non_ok_response",
       "parse_rejection",
@@ -1168,6 +1534,12 @@ async function main() {
       `${casePrefix(mode)}_EXACT_REFERENCE_CONTRACT_NOT_PROVEN`,
     );
   }
+  assert(
+    [...associationValidModesWithAttempts].every(
+      (mode) => results.get(mode)?.attachedAttempt,
+    ),
+    "VALID_ASSOCIATION_RESTORATION_NOT_PROVEN",
+  );
   const failureModes = [
     "request_rejection",
     "non_ok_response",
@@ -1221,8 +1593,12 @@ async function main() {
   console.log("missing_session=PASS");
   console.log("invalid_session_id=PASS");
   console.log("refresh_rejection=PASS");
-  console.log(`malformed_nested_cases=${malformedModes.length}`);
+  console.log(`malformed_nested_cases=${structuralMalformedModes.length}`);
   console.log("malformed_nested_validation_before_refresh=PASS");
+  console.log(`invalid_attempt_association_cases=${associationInvalidModes.length}`);
+  console.log(`valid_attempt_association_cases=${associationValidModes.length}`);
+  console.log("attempt_association_validation_before_refresh=PASS");
+  console.log("accepted_attempt_restoration=PASS");
   console.log("sparse_array_rejection=PASS");
   console.log("exact_assignment_reference=PASS");
   console.log("exact_session_reference=PASS");

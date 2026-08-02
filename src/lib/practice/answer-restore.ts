@@ -3,16 +3,24 @@ import { canonicalPracticeSourceQuestionId } from "@/lib/practice/question-ident
 
 export type RestoredPracticeAnswer = string | string[];
 
-type RestoredAttemptLike = {
-  answer: unknown;
+type RestoredAttemptIdentityLike = {
   questionId?: string | null;
   sourceQuestionId?: string | null;
+};
+
+type RestoredAttemptLike = RestoredAttemptIdentityLike & {
+  answer: unknown;
 };
 
 type RestoredQuestionLike = {
   id: string;
   questionId?: string | null;
   sourceQuestionId?: string | null;
+};
+
+export type RestoredPracticeQuestionAssociation = {
+  question: RestoredQuestionLike;
+  questionId: string;
 };
 
 export function submittedPracticeAnswerForPersistence(value: Json): Json {
@@ -53,20 +61,57 @@ export function restoredPracticeQuestionId(
   const sourceQuestionId = attempt.sourceQuestionId?.trim() || null;
   const persistedQuestionId = attempt.questionId?.trim() || null;
 
-  const matchedQuestion = questions.find((question) => {
-    const renderedQuestionId = canonicalPracticeSourceQuestionId(question);
-    return (
-      (sourceQuestionId && renderedQuestionId === sourceQuestionId) ||
-      (persistedQuestionId &&
-        (question.questionId === persistedQuestionId || question.id === persistedQuestionId))
-    );
-  });
-
-  if (matchedQuestion) {
-    return canonicalPracticeSourceQuestionId(matchedQuestion);
-  }
+  const association = resolveRestoredPracticeQuestionAssociation(
+    attempt,
+    questions,
+  );
+  if (association) return association.questionId;
 
   return sourceQuestionId ?? persistedQuestionId;
+}
+
+export function resolveRestoredPracticeQuestionAssociation(
+  attempt: RestoredAttemptIdentityLike,
+  questions: RestoredQuestionLike[],
+): RestoredPracticeQuestionAssociation | null {
+  const sourceQuestionId = attempt.sourceQuestionId?.trim() || null;
+  const persistedQuestionId = attempt.questionId?.trim() || null;
+  if (!sourceQuestionId && !persistedQuestionId) return null;
+
+  const sourceMatches = sourceQuestionId
+    ? questions.filter(
+        (question) =>
+          canonicalPracticeSourceQuestionId(question) === sourceQuestionId,
+      )
+    : [];
+  const persistedMatches = persistedQuestionId
+    ? questions.filter(
+        (question) =>
+          question.questionId === persistedQuestionId ||
+          question.id === persistedQuestionId,
+      )
+    : [];
+
+  if (
+    (sourceQuestionId && sourceMatches.length !== 1) ||
+    (persistedQuestionId && persistedMatches.length !== 1)
+  ) {
+    return null;
+  }
+
+  const sourceMatch = sourceMatches[0] ?? null;
+  const persistedMatch = persistedMatches[0] ?? null;
+  if (sourceMatch && persistedMatch && sourceMatch !== persistedMatch) {
+    return null;
+  }
+
+  const question = sourceMatch ?? persistedMatch;
+  return question
+    ? {
+        question,
+        questionId: canonicalPracticeSourceQuestionId(question),
+      }
+    : null;
 }
 
 export function buildRestoredPracticeAnswers(
