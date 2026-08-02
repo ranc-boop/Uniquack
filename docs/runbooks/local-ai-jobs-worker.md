@@ -25,6 +25,14 @@ worker route to configure.
 
 ## Start locally
 
+> **Single-runner requirement:** Only one `npm run worker:dev` process should be active at a time.
+> The in-flight guard belongs to one runner process/module instance; it is not an
+> operating-system-wide singleton. Two terminal windows can otherwise start two
+> independent wake-up loops. Stop the existing runner before starting another.
+> Multiple local runners are unsupported even though server-side claim and
+> fencing rules protect job ownership, because redundant wake-ups can create
+> unnecessary queue traffic and Provider pressure.
+
 Use two terminals. Supply the same strong, process-scoped
 `AI_JOBS_INTERNAL_TOKEN` value to both processes through the approved local
 secret-entry method. The value must be 32 to 512 visible ASCII characters and
@@ -67,7 +75,8 @@ rejected. The runner cannot target a remote deployment.
 Safety verdict: `LOCAL_WORKER_RUNNER_CANNOT_TARGET_REMOTE_DEPLOYMENTS`.
 
 The normal `npm run dev` command is unchanged and never starts the worker
-implicitly.
+implicitly. Starting another `npm run dev` process also does not start or replace
+the one permitted `worker:dev` process.
 
 ## Processing behavior
 

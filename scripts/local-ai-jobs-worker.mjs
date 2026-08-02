@@ -17,6 +17,11 @@ export const DEFAULT_LOCAL_AI_JOBS_ROUTE =
 const INTERNAL_TOKEN_HEADER = "x-ai-jobs-internal-token";
 const MAX_RESPONSE_BYTES = 8_192;
 const WORKER_ROUTE_PATH = "/api/internal/ai-jobs/run";
+const RAW_ROUTE_PATTERN =
+  /^(?<protocol>[A-Za-z][A-Za-z0-9+.-]*):\/\/(?<authority>[^/?#]+)(?<pathname>\/[^?#]*)?(?<search>\?[^#]*)?(?<hash>#.*)?$/;
+const RAW_VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
+const SUPPORTED_LOCAL_PROTOCOLS = new Set(["http", "https"]);
+const SUPPORTED_RAW_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const PLACEHOLDER_TOKEN_MARKERS = [
   "changeme",
   "exampletoken",
@@ -41,7 +46,53 @@ function normalizedHostname(hostname) {
   return hostname.toLowerCase().replace(/^\[|\]$/g, "");
 }
 
+function validateRawLocalAIJobsWorkerRoute(value) {
+  if (typeof value !== "string" || !RAW_VISIBLE_ASCII_PATTERN.test(value)) {
+    throw new LocalAIJobsWorkerConfigurationError("local_route_raw_contract_rejected");
+  }
+  if (value.includes("%") || value.includes("\\")) {
+    throw new LocalAIJobsWorkerConfigurationError("local_route_raw_contract_rejected");
+  }
+
+  const match = value.match(RAW_ROUTE_PATTERN);
+  if (!match?.groups) {
+    throw new LocalAIJobsWorkerConfigurationError("local_route_url_invalid");
+  }
+
+  const { authority, hash, pathname, protocol, search } = match.groups;
+  if (!SUPPORTED_LOCAL_PROTOCOLS.has(protocol)) {
+    throw new LocalAIJobsWorkerConfigurationError("local_route_protocol_rejected");
+  }
+  if (authority.includes("@")) {
+    throw new LocalAIJobsWorkerConfigurationError("credential_bearing_url_rejected");
+  }
+  if (pathname !== WORKER_ROUTE_PATH || search || hash) {
+    throw new LocalAIJobsWorkerConfigurationError("local_route_contract_rejected");
+  }
+
+  const authorityMatch = authority.startsWith("[")
+    ? authority.match(/^(?<hostname>\[[^\]]+\])(?::(?<port>[0-9]+))?$/)
+    : authority.match(/^(?<hostname>[^:]+)(?::(?<port>[0-9]+))?$/);
+  if (!authorityMatch?.groups) {
+    throw new LocalAIJobsWorkerConfigurationError("local_route_raw_contract_rejected");
+  }
+
+  const { hostname, port } = authorityMatch.groups;
+  if (!SUPPORTED_RAW_HOSTNAMES.has(hostname)) {
+    throw new LocalAIJobsWorkerConfigurationError("non_loopback_target_rejected");
+  }
+  if (
+    port !== undefined &&
+    ((port.length > 1 && port.startsWith("0")) || Number(port) > 65_535)
+  ) {
+    throw new LocalAIJobsWorkerConfigurationError("local_route_raw_contract_rejected");
+  }
+
+  return { hostname, port, protocol };
+}
+
 export function resolveLocalAIJobsWorkerRoute(value = DEFAULT_LOCAL_AI_JOBS_ROUTE) {
+  const raw = validateRawLocalAIJobsWorkerRoute(value);
   let target;
   try {
     target = new URL(value);
@@ -50,11 +101,17 @@ export function resolveLocalAIJobsWorkerRoute(value = DEFAULT_LOCAL_AI_JOBS_ROUT
   }
 
   const hostname = normalizedHostname(target.hostname);
-  if (!['http:', 'https:'].includes(target.protocol)) {
+  if (target.protocol !== `${raw.protocol}:`) {
     throw new LocalAIJobsWorkerConfigurationError("local_route_protocol_rejected");
   }
-  if (!["localhost", "127.0.0.1", "::1"].includes(hostname)) {
+  const expectedHostname = raw.hostname === "[::1]" ? "::1" : raw.hostname;
+  if (hostname !== expectedHostname) {
     throw new LocalAIJobsWorkerConfigurationError("non_loopback_target_rejected");
+  }
+  const defaultPort = raw.protocol === "http" ? "80" : "443";
+  const expectedParsedPort = raw.port === defaultPort ? "" : (raw.port ?? "");
+  if (target.port !== expectedParsedPort) {
+    throw new LocalAIJobsWorkerConfigurationError("local_route_raw_contract_rejected");
   }
   if (target.username || target.password) {
     throw new LocalAIJobsWorkerConfigurationError("credential_bearing_url_rejected");
