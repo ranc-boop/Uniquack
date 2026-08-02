@@ -25,6 +25,7 @@ export function StudentWorkspaceNav() {
         <StudentPendingLink
           className="student-focus-ring inline-flex min-h-11 items-center rounded-[10px] px-3 py-2 text-sm font-medium text-[#6E6E73] transition-colors duration-200 hover:bg-[#F5F5F7] hover:text-[#1D1D1F]"
           href={item.href}
+          feedback="page"
           key={`${item.href}-${item.label}`}
         >
           {item.label}

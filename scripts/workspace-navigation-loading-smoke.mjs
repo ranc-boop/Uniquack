@@ -15,7 +15,7 @@ async function readSourceTree(directory) {
   return files.join("\n");
 }
 
-const [pendingLink, sidebar, questionPage, questionWorkbench, teacherLoading, routeFeedback, appChrome, teacherPages, teacherNav, bankUi, bankSettings, blueprintPage] =
+const [pendingLink, sidebar, questionPage, questionWorkbench, teacherLoading, routeFeedback, appChrome, teacherPages, teacherNav, bankUi, bankSettings, blueprintPage, globalStyles] =
   await Promise.all([
     readFile(
       new URL(
@@ -56,6 +56,7 @@ const [pendingLink, sidebar, questionPage, questionWorkbench, teacherLoading, ro
     readFile(new URL("../src/app/teacher/banks/bank-ui.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/teacher/banks/[bankId]/settings/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/teacher/blueprints/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/globals.css", import.meta.url), "utf8"),
   ]);
 
 function assert(condition, message) {
@@ -94,11 +95,21 @@ assert(
 assert(
   appChrome.includes("<RouteTransitionFeedback") &&
     routeFeedback.includes('document.addEventListener("click", beginNavigation, true)') &&
+    routeFeedback.includes('anchor.dataset.routeProgress !== "page"') &&
+    routeFeedback.includes('setPhase("complete")') &&
     routeFeedback.includes('aria-live="polite"') &&
     routeFeedback.includes("Loading page") &&
     routeFeedback.includes('anchor.target !== "_self"') &&
     routeFeedback.includes('anchor.hasAttribute("download")'),
-  "Every ordinary internal link must expose immediate global route feedback without hijacking modified, download, or new-tab clicks.",
+  "Only explicitly marked page navigation may use the single-pass global progress bar.",
+);
+
+assert(
+  sidebar.includes('feedback="page"') &&
+    teacherNav.includes('feedback="page"') &&
+    pendingLink.includes('feedback?: "inline" | "page"') &&
+    pendingLink.includes('data-route-progress={feedback === "page" ? "page" : undefined}'),
+  "Workspace navigation must use page progress while local controls retain inline feedback.",
 );
 
 assert(
@@ -123,6 +134,17 @@ assert(
   !blueprintPage.includes("BlueprintSafetyStrip") &&
     !blueprintPage.includes("BlueprintWorkflowPanel"),
   "Blueprint Library must not repeat static workflow boundary cards.",
+);
+
+assert(
+  globalStyles.includes("grid-row: 1 / span 50") &&
+    globalStyles.includes("@media (min-width: 1280px)") &&
+    globalStyles.includes("@media (max-width: 1279px)") &&
+    globalStyles.includes("margin-top: 0") &&
+    globalStyles.includes("@keyframes route-progress-grow") &&
+    !globalStyles.includes("route-progress-move") &&
+    !globalStyles.includes("infinite"),
+  "Library navigation must align with the workbench and page progress must run once rather than loop.",
 );
 
 console.log("PASS workspace navigation uses intent prefetch and loading boundaries");

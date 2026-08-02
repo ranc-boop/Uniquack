@@ -40,7 +40,6 @@ type QuestionManagementWorkbenchProps = {
   baseHref: string;
   canCreate?: boolean;
   createHref?: string;
-  emptyDescription: string;
   items: QuestionWorkbenchItem[];
   libraryName: string;
   mode: "admin" | "teacher";
@@ -164,7 +163,6 @@ export function QuestionManagementWorkbench({
   baseHref,
   canCreate,
   createHref,
-  emptyDescription,
   items,
   libraryName,
   mode,
@@ -283,8 +281,7 @@ export function QuestionManagementWorkbench({
           ) : (
             <div className="p-8 text-center">
               <ClipboardCheck aria-hidden className="mx-auto size-7 text-[#AEAEB2]" />
-              <p className="mt-3 text-sm font-medium text-[#1D1D1F]">No questions here yet</p>
-              <p className="mt-1 text-xs leading-5 text-[#6E6E73]">{emptyDescription}</p>
+              <p className="mt-3 text-sm font-medium text-[#1D1D1F]">No questions yet</p>
             </div>
           )}
         </div>

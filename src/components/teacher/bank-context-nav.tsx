@@ -58,6 +58,7 @@ function BankContextNavLink({
           ? "bg-sky-100 text-sky-950"
           : "text-slate-600 hover:bg-sky-50 hover:text-sky-900",
       ].join(" ")}
+      feedback="page"
       href={href}
       pendingLabel={`${label} Library page`}
     >
@@ -95,12 +96,12 @@ export function BankContextNav(props: BankContextNavProps) {
     <div className="bank-context-nav">
       <aside
         aria-label="Library menu"
-        className="sticky top-24 hidden rounded-lg border border-slate-200 bg-white p-3 lg:block"
+        className="sticky top-24 hidden rounded-lg border border-slate-200 bg-white p-3 xl:block"
       >
         <BankContextNavItems {...props} />
       </aside>
 
-      <details className="group rounded-lg border border-slate-200 bg-white lg:hidden">
+      <details className="group rounded-lg border border-slate-200 bg-white xl:hidden">
         <summary className="teacher-focus-ring flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm font-semibold text-slate-900">
           Library menu
           <ChevronDown

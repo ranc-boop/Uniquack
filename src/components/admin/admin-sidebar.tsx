@@ -97,6 +97,7 @@ function AdminNavGroups({ role }: Pick<AdminSidebarProps, "role">) {
                         : "",
                     )}
                     href={item.href}
+                    feedback="page"
                     key={item.href}
                     pendingLabel={item.label}
                     title={item.label}

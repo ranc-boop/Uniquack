@@ -357,11 +357,6 @@ export default async function TeacherBankQuestionsPage({
           canCreate={canManage}
           createHref={`/teacher/banks/${bank.id}/imports#manual-question`}
           currentPage={page}
-          emptyDescription={
-            workbenchApprovalStatus === "pending"
-              ? "Imported and newly created questions wait here for readiness checks."
-              : "Approved questions are ready for new Assignments."
-          }
           items={workbenchItems}
           libraryName={bank.name}
           mode="teacher"
@@ -370,13 +365,6 @@ export default async function TeacherBankQuestionsPage({
           selectedId={query.selected}
           totalCount={questionPage?.total ?? 0}
         />
-        <div className="flex justify-end">
-          <Button asChild size="sm" variant="ghost">
-            <Link href={`/teacher/banks/${bank.id}/questions?view=classic`}>
-              Bulk manage
-            </Link>
-          </Button>
-        </div>
       </BankWorkbenchPage>
     );
   }

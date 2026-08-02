@@ -2483,7 +2483,7 @@ export function PracticeAgentClient({
         <main className="relative min-w-0 space-y-4 px-0 xl:px-2">
           <div className="sticky top-16 z-50 flex min-h-11 items-center border-b border-slate-200/80 bg-[#F5F5F7]/95 py-2 backdrop-blur-md">
             <Button asChild className="min-h-11" variant="outline">
-              <StudentPendingLink href={exitHref} pendingLabel="Leaving…">
+              <StudentPendingLink feedback="page" href={exitHref} pendingLabel="Leaving…">
                 <ArrowLeft aria-hidden="true" className="size-4" />
                 {exitLabel}
               </StudentPendingLink>

@@ -77,27 +77,34 @@
     transition: opacity 120ms ease;
   }
 
-  .route-progress.is-active {
+  .route-progress.is-loading,
+  .route-progress.is-complete {
     opacity: 1;
   }
 
   .route-progress-bar {
     display: block;
-    width: 42%;
+    width: 100%;
     height: 100%;
     border-radius: 999px;
     background: #0071e3;
-    transform: translateX(-110%);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 160ms ease-out;
   }
 
-  .route-progress.is-active .route-progress-bar {
-    animation: route-progress-move 900ms ease-in-out infinite;
+  .route-progress.is-loading .route-progress-bar {
+    animation: route-progress-grow 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
 
-  @keyframes route-progress-move {
-    0% { transform: translateX(-110%); }
-    70% { transform: translateX(180%); }
-    100% { transform: translateX(260%); }
+  .route-progress.is-complete .route-progress-bar {
+    transform: scaleX(1);
+  }
+
+  @keyframes route-progress-grow {
+    0% { transform: scaleX(0.04); }
+    55% { transform: scaleX(0.58); }
+    100% { transform: scaleX(0.82); }
   }
 
   .workspace-topbar {
@@ -279,7 +286,7 @@
     @apply space-y-8;
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 1280px) {
     .bank-workbench:has(> .bank-context-nav) {
       display: grid;
       grid-template-columns: 14.5rem minmax(0, 1fr);
@@ -290,11 +297,17 @@
 
     .bank-workbench:has(> .bank-context-nav) > .bank-context-nav {
       grid-column: 1;
-      grid-row: 2 / span 50;
+      grid-row: 1 / span 50;
     }
 
     .bank-workbench:has(> .bank-context-nav) > :not(.bank-context-nav) {
       grid-column: 2;
+      min-width: 0;
+      margin-top: 0;
+    }
+
+    .bank-workbench:has(> .bank-context-nav) > .bank-context-nav {
+      margin-top: 0;
     }
   }
 
@@ -363,7 +376,7 @@
     border-left: 1px solid #d2d2d7;
   }
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1279px) {
     .question-workbench-grid {
       grid-template-columns: 18rem minmax(0, 1fr);
     }
@@ -409,7 +422,8 @@
       transition-duration: 1ms !important;
     }
 
-    .route-progress.is-active .route-progress-bar {
+    .route-progress.is-loading .route-progress-bar,
+    .route-progress.is-complete .route-progress-bar {
       width: 100%;
       transform: none;
     }

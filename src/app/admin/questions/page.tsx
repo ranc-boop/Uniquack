@@ -114,7 +114,6 @@ export default async function AdminOfficialPublicLibraryPage({
         canCreate
         createHref="/admin/questions/new"
         currentPage={page}
-        emptyDescription="Approved official questions and accepted submissions appear here."
         items={items}
         libraryName="Public Library"
         mode="admin"

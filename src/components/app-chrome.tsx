@@ -75,7 +75,7 @@ export function AppChrome({ accountMenu, children, role }: AppChromeProps) {
       <RouteTransitionFeedback />
       <header className="workspace-topbar">
         <div className="workspace-topbar-inner">
-          <Link aria-label="EduStruct home" className="workspace-brand" href={workspaceLinks[workspace].href}>
+          <Link aria-label="EduStruct home" className="workspace-brand" data-route-progress="page" href={workspaceLinks[workspace].href}>
             <span aria-hidden="true" className="workspace-brand-mark">O2I</span>
             <span className="hidden font-semibold tracking-[-0.01em] sm:inline">EduStruct</span>
           </Link>
@@ -97,6 +97,7 @@ export function AppChrome({ accountMenu, children, role }: AppChromeProps) {
                 return (
                   <Link
                     className="workspace-menu-item"
+                    data-route-progress="page"
                     href={workspaceLinks[option].href}
                     key={option}
                     onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}
@@ -117,7 +118,7 @@ export function AppChrome({ accountMenu, children, role }: AppChromeProps) {
         <div className="admin-preview-banner" role="status">
           <span className="font-semibold">Admin Preview</span>
           <span>You are viewing the {workspaceLinks[workspace].label} experience. Actions remain attributed to your administrator account.</span>
-          <Link href="/admin">Return to Admin</Link>
+          <Link data-route-progress="page" href="/admin">Return to Admin</Link>
         </div>
       ) : null}
 

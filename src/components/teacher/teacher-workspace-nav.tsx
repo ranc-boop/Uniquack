@@ -46,7 +46,7 @@ export function TeacherWorkspaceNav() {
             const Icon = item.icon;
             const selected = active(item, pathname);
             return (
-              <TeacherPendingLink aria-current={selected ? "page" : undefined} className={cn("workspace-nav-item", selected && "is-active")} href={item.href} key={item.href} pendingLabel={item.label}>
+              <TeacherPendingLink aria-current={selected ? "page" : undefined} className={cn("workspace-nav-item", selected && "is-active")} feedback="page" href={item.href} key={item.href} pendingLabel={item.label}>
                 <Icon aria-hidden="true" className="size-4" />
                 <span>{item.label}</span>
               </TeacherPendingLink>

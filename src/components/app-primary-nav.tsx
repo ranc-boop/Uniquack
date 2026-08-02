@@ -29,6 +29,7 @@ export function AppPrimaryNav({ items }: { items: AppPrimaryNavItem[] }) {
                 ? "bg-sky-100 text-sky-950"
                 : "text-slate-600 hover:bg-sky-50 hover:text-sky-800",
             ].join(" ")}
+            feedback="page"
             href={item.href}
             key={item.href}
             pendingLabel={item.label}

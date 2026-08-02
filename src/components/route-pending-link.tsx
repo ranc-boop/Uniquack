@@ -15,6 +15,7 @@ export type RoutePendingLinkProps = Omit<
   ComponentPropsWithoutRef<typeof Link>,
   "href"
 > & {
+  feedback?: "inline" | "page";
   href: string;
   pendingLabel?: string;
 };
@@ -24,6 +25,7 @@ export const RoutePendingLink = forwardRef<
   RoutePendingLinkProps
 >(function RoutePendingLink({
   children,
+  feedback = "inline",
   href,
   onClick,
   onFocus,
@@ -36,6 +38,7 @@ export const RoutePendingLink = forwardRef<
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const waiting = isPending && pendingHref === href;
+  const showInlineFeedback = feedback === "inline" && waiting;
 
   function prefetchTarget() {
     router.prefetch(href);
@@ -74,6 +77,7 @@ export const RoutePendingLink = forwardRef<
     <Link
       {...props}
       aria-busy={waiting || undefined}
+      data-route-progress={feedback === "page" ? "page" : undefined}
       href={href}
       onClick={navigate}
       onFocus={(event) => {
@@ -88,14 +92,14 @@ export const RoutePendingLink = forwardRef<
       ref={ref}
       target={target}
     >
-      {waiting ? (
+      {showInlineFeedback ? (
         <LoaderCircle
           aria-hidden="true"
           className="size-4 shrink-0 motion-safe:animate-spin"
         />
       ) : null}
       {children}
-      {waiting ? <span aria-live="polite" className="sr-only" role="status">Loading {pendingLabel}</span> : null}
+      {showInlineFeedback ? <span aria-live="polite" className="sr-only" role="status">Loading {pendingLabel}</span> : null}
     </Link>
   );
 });
