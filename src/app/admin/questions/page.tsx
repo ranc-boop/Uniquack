@@ -3,6 +3,7 @@ import {
   QuestionManagementWorkbench,
   type QuestionWorkbenchItem,
 } from "@/components/questions/question-management-workbench";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 
@@ -98,7 +99,8 @@ export default async function AdminOfficialPublicLibraryPage({
   }));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      <AdminPageHeader title="Public Library" />
       {error ? (
         <div
           className="rounded-[14px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
@@ -121,6 +123,7 @@ export default async function AdminOfficialPublicLibraryPage({
         pendingHref="/admin/review"
         query={query}
         selectedId={selectedId}
+        showTitle={false}
         totalCount={Number(rows[0]?.total_count ?? 0)}
       />
     </div>

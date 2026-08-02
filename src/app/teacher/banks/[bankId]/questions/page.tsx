@@ -342,6 +342,14 @@ export default async function TeacherBankQuestionsPage({
 
     return (
       <BankWorkbenchPage>
+        <header className="teacher-page-header">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
+              Questions
+            </h1>
+            <p className="mt-1 text-sm font-medium text-[#6E6E73]">{bank.name}</p>
+          </div>
+        </header>
         <BankRouteTabs
           bankId={bank.id}
           currentUserRole={access.currentUserRole}
@@ -363,6 +371,7 @@ export default async function TeacherBankQuestionsPage({
           pageSize={pageSize}
           query={query.q}
           selectedId={query.selected}
+          showTitle={false}
           totalCount={questionPage?.total ?? 0}
         />
       </BankWorkbenchPage>
@@ -373,10 +382,10 @@ export default async function TeacherBankQuestionsPage({
     <BankWorkbenchPage>
       <header className="teacher-page-header">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+          <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
             Questions
           </h1>
-          <p className="mt-1 text-base font-medium text-slate-600">
+          <p className="mt-1 text-sm font-medium text-[#6E6E73]">
             {bank.name}
           </p>
         </div>

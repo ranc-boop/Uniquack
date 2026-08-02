@@ -13,7 +13,6 @@ import {
   getTeacherQuestionBankDetail,
   listBankShareCodes,
   QuestionBankSchemaMissingError,
-  questionBankVisibilityLabel,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 
@@ -111,33 +110,13 @@ export default async function TeacherBankMembersPage({
     <BankWorkbenchPage>
       <BankHeroPanel
         actions={
-          <>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
-            </Button>
-            <BankQuickAction href="/teacher/banks/join" icon={Share2}>
-              Join another Library
-            </BankQuickAction>
-          </>
+          <BankQuickAction href="/teacher/banks/join" icon={Share2}>
+            Join Library
+          </BankQuickAction>
         }
-        badges={
-          <>
-            <BankBadge tone="sky">
-              {questionBankVisibilityLabel(bank.visibility)}
-            </BankBadge>
-            <BankBadge tone="blue">
-              {bankMemberRoleLabel(currentUserRole ?? "viewer")}
-            </BankBadge>
-          </>
-        }
-        eyebrow="Members and share codes"
-        title={bank.name}
-      >
-        <p>
-          Manage explicit Library membership. Classroom membership does not grant
-          access to this Library.
-        </p>
-      </BankHeroPanel>
+        subtitle={bank.name}
+        title="Members"
+      />
 
       <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 

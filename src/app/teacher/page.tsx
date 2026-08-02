@@ -51,7 +51,7 @@ export default async function TeacherHomePage() {
   return (
     <div className="teacher-shell min-h-dvh space-y-8">
       <header className="flex items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+        <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
           Teacher
         </h1>
       </header>

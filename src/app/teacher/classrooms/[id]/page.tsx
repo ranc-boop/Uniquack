@@ -96,7 +96,7 @@ export default async function TeacherClassroomDetailPage({
                 ) : null}
               </div>
               <div className="space-y-2">
-                <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+                <h1 className="break-words text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
                   {classroom.name}
                 </h1>
                 <p className="max-w-3xl text-base leading-7 text-slate-600">

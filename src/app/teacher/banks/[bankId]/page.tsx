@@ -84,7 +84,7 @@ export default async function TeacherBankDetailPage({
     <BankWorkbenchPage>
       <header className="teacher-page-header">
         <div className="min-w-0">
-          <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+          <h1 className="break-words text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
             {bank.name}
           </h1>
           <div className="mt-3 flex flex-wrap gap-2">

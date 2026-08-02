@@ -6,10 +6,8 @@ import { Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
-  bankMemberRoleLabel,
   getTeacherQuestionBankDetail,
   QuestionBankSchemaMissingError,
-  questionBankVisibilityLabel,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -102,37 +100,16 @@ export default async function TeacherBankBlueprintsPage({
     <BankWorkbenchPage>
       <BankHeroPanel
         actions={
-          <>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
-            </Button>
-            <Button asChild>
-              <Link href={`/teacher/blueprints/new?bankId=${bank.id}`}>
-                <Plus aria-hidden="true" className="h-4 w-4" />
-                Build from Library questions
-              </Link>
-            </Button>
-          </>
+          <Button asChild>
+            <Link href={`/teacher/blueprints/new?bankId=${bank.id}`}>
+              <Plus aria-hidden="true" className="h-4 w-4" />
+              Create Blueprint
+            </Link>
+          </Button>
         }
-        badges={
-          <>
-            <BankBadge tone="sky">
-              {questionBankVisibilityLabel(bank.visibility)}
-            </BankBadge>
-            <BankBadge tone="blue">
-              {bankMemberRoleLabel(currentUserRole ?? "viewer")}
-            </BankBadge>
-          </>
-        }
-        eyebrow="Library Blueprints"
-        title={`Blueprint links for ${bank.name}`}
-      >
-        <p>
-          Blueprints linked to this Library are planning assets. They can organize
-          reusable question patterns, but they do not create student-visible
-          work without Review Draft and Library approval gates.
-        </p>
-      </BankHeroPanel>
+        subtitle={bank.name}
+        title="Blueprints"
+      />
 
       <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 

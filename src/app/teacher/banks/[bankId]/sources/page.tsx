@@ -6,11 +6,9 @@ import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
-  bankMemberRoleLabel,
   getTeacherQuestionBankDetail,
   listBankImportBatches,
   QuestionBankSchemaMissingError,
-  questionBankVisibilityLabel,
 } from "@/lib/question-banks";
 import { createClient } from "@/lib/supabase/server";
 
@@ -82,29 +80,9 @@ export default async function TeacherBankSourcesPage({
   return (
     <BankWorkbenchPage>
       <BankHeroPanel
-        actions={
-          <Button asChild variant="outline">
-            <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
-          </Button>
-        }
-        badges={
-          <>
-            <BankBadge tone="sky">
-              {questionBankVisibilityLabel(bank.visibility)}
-            </BankBadge>
-            <BankBadge tone="blue">
-              {bankMemberRoleLabel(currentUserRole ?? "viewer")}
-            </BankBadge>
-          </>
-        }
-        eyebrow="Source lineage"
-        title={`Sources for ${bank.name}`}
-      >
-        <p>
-          Source material and import lineage for this Library stay visible here so
-          teachers can trace reviewed questions back to their owned material.
-        </p>
-      </BankHeroPanel>
+        subtitle={bank.name}
+        title="Sources"
+      />
 
       <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 

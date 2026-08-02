@@ -28,6 +28,7 @@ import { withdrawPublicQuestionSubmission } from "../../actions";
 import {
   BankBadge,
   BankRouteTabs,
+  BankHeroPanel,
   BankSectionHeader,
   BankWorkbenchPage,
 } from "../../bank-ui";
@@ -157,19 +158,7 @@ export default async function TeacherPublicSubmissionsPage({
 
   return (
     <BankWorkbenchPage>
-      <section className="rounded-lg border bg-white shadow-sm">
-        <BankSectionHeader
-          action={
-          <Button asChild variant="outline">
-            <Link href={`/teacher/banks/${bankId}/questions`}>
-              Back to questions
-            </Link>
-          </Button>
-          }
-          eyebrow="Library / Public submissions"
-          title={`Public submissions from ${detail.bank.name}`}
-        />
-      </section>
+      <BankHeroPanel subtitle={detail.bank.name} title="Public Submissions" />
       <BankRouteTabs
         bankId={bankId}
         currentUserRole={detail.currentUserRole}

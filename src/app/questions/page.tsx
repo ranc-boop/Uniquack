@@ -154,7 +154,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
-    <div className="space-y-5">
+    <div className="teacher-shell space-y-5">
       <div className="student-hero">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Public Library</h1>

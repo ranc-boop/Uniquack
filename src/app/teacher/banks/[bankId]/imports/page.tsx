@@ -1,7 +1,6 @@
 ﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ClipboardCheck } from "lucide-react";
 
 import { AIJobStatusPanel } from "@/components/ai-jobs/ai-job-status-panel";
 import { BatchImportJsonPanelLoader } from "@/components/batch-import-json-panel-loader";
@@ -38,8 +37,8 @@ import {
   RecentBankImportsPanel,
 } from "../../bank-import-ui";
 import {
-  BankQuickAction,
   BankRouteTabs,
+  BankHeroPanel,
   BankSectionHeader,
   BankWorkbenchPage,
 } from "../../bank-ui";
@@ -200,25 +199,7 @@ export default async function TeacherBankImportsPage({
 
   return (
     <BankWorkbenchPage>
-      <section className="rounded-lg border bg-white shadow-sm">
-        <BankSectionHeader
-          action={
-          <>
-            <Button asChild variant="outline">
-              <Link href={`/teacher/banks/${bank.id}`}>Back to Library</Link>
-            </Button>
-            <BankQuickAction
-              href={`/teacher/banks/${bank.id}/review`}
-              icon={ClipboardCheck}
-            >
-              Review Drafts
-            </BankQuickAction>
-          </>
-        }
-          eyebrow="Library Import"
-          title={`Import material into ${bank.name}`}
-        />
-      </section>
+      <BankHeroPanel subtitle={bank.name} title="Import" />
 
       <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 

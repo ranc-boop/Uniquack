@@ -13,10 +13,8 @@ import {
   Settings2,
   Tags,
   Users,
-  UserRound,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { AdminPendingLink } from "@/components/admin/admin-pending-link";
 import { cn } from "@/lib/utils";
 
@@ -30,11 +28,6 @@ type AdminNavItem = {
 type AdminNavGroup = {
   items: AdminNavItem[];
   label: string;
-};
-
-type AdminSidebarProps = {
-  role: string;
-  username: string;
 };
 
 const adminNavGroups: AdminNavGroup[] = [
@@ -74,7 +67,7 @@ function isActiveItem(item: AdminNavItem, pathname: string) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function AdminNavGroups({ role }: Pick<AdminSidebarProps, "role">) {
+function AdminNavGroups() {
   const pathname = usePathname();
 
   return (
@@ -114,34 +107,20 @@ function AdminNavGroups({ role }: Pick<AdminSidebarProps, "role">) {
   );
 }
 
-export function AdminSidebar({ role, username }: AdminSidebarProps) {
+export function AdminSidebar() {
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-card p-3 shadow-sm">
-        <div className="flex items-center gap-2" title={username}>
-          <UserRound aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-          <p className="truncate text-sm font-semibold">
-            {username}
-          </p>
-          <div className="ml-auto flex items-center gap-2">
-            <Badge aria-label={role === "super_admin" ? "Super admin" : "Admin"} title={role} variant="secondary">
-              {role === "super_admin" ? "Super admin" : "Admin"}
-            </Badge>
-          </div>
-        </div>
-      </div>
-
+    <div>
       <details className="rounded-lg border bg-card p-3 shadow-sm lg:hidden">
         <summary className="cursor-pointer list-none text-sm font-semibold">
           Admin menu
         </summary>
         <div className="mt-4">
-          <AdminNavGroups role={role} />
+          <AdminNavGroups />
         </div>
       </details>
 
       <div className="hidden lg:block">
-        <AdminNavGroups role={role} />
+        <AdminNavGroups />
       </div>
     </div>
   );

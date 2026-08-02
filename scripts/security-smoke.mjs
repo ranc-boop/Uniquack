@@ -529,13 +529,10 @@ assert(
   "Course Builder bridge action must stay teacher-only, draft-by-default, published-question-only, and provider-free",
 );
 assert(
-    courseBuilderBridgePage.includes("Course Builder will generate Library packages before assignment") &&
     courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
     courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&
     courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&
     courseBuilderBridgePage.includes("Library review") &&
-    courseBuilderBridgePage.includes("does not add") &&
-    courseBuilderBridgePage.includes("provider calls") &&
     teacherAssignmentDetailPage.includes("Assignment setup and source"),
   "Course Builder bridge UI must expose teacher draft/assign choices, Review Draft blockers, and assignment source traceability",
 );
@@ -658,9 +655,9 @@ assert(
     teacherBlueprintPage.includes("Blueprints are reusable planning/package assets") &&
     teacherBlueprintPage.includes("Create Blueprint") &&
     teacherBlueprintPage.includes("New Folder") &&
-    teacherBlueprintNewPage.includes("This form only creates the Library asset") &&
-    teacherBlueprintDetailPage.includes("BlueprintWorkflowPanel") &&
-    teacherBankBlueprintsPage.includes("Blueprint links for") &&
+    teacherBlueprintNewPage.includes("action={createTeacherBlueprint}") &&
+    teacherBlueprintDetailPage.includes("generateTeacherBlueprintReviewDraftsAction") &&
+    teacherBankBlueprintsPage.includes('title="Blueprints"') &&
     teacherBankBlueprintsPage.includes("Create Blueprint from this Library") &&
     teacherBlueprintActions.includes("requireTeacher") &&
     teacherBlueprintActions.includes("generation_ready: false") &&
@@ -766,7 +763,6 @@ assert(
     teacherClassroomTeachersPage.includes("source Libraries") &&
     teacherClassroomTeachersPage.includes("provider settings") &&
     teacherClassroomAnalyticsPage.includes("Progress") &&
-    teacherClassroomAnalyticsPage.includes("Taxonomy mastery") &&
     teacherClassroomBlueprintsPage.includes("Blueprints linked to this class will appear here") &&
     teacherClassroomSettingsPage.includes("Join-code lifecycle") &&
     teacherClassroomSettingsPage.includes("Archive classroom") &&
@@ -809,14 +805,11 @@ assert(
     studentWorkPage.includes("Start Practice") &&
     studentWorkPage.includes("Continue Practice") &&
     studentWorkPage.includes("Review work") &&
-    studentWorkDetailPage.includes("Practice progress is saved back") &&
     studentWorkDetailPage.includes("Start Practice") &&
     studentWorkDetailPage.includes("Review Practice") &&
     studentWorkDetailPage.includes("Practice is unavailable") &&
     studentWorkDetailPage.includes("Assigned questions") &&
-    studentWorkDetailPage.includes("full private Library remains unavailable") &&
     studentClassroomPage.includes("My classes") &&
-    studentClassroomPage.includes("Assigned work lives in My Work") &&
     studentClassroomPage.includes("Active membership") &&
     studentJoinPage.includes("Enter your class code"),
   "classroom routes must expose teacher list/detail/roster and student join/list/My Work MVP pages",

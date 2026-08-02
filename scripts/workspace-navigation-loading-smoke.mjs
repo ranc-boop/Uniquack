@@ -137,10 +137,9 @@ assert(
 );
 
 assert(
-  globalStyles.includes("grid-row: 1 / span 50") &&
-    globalStyles.includes("@media (min-width: 1280px)") &&
-    globalStyles.includes("@media (max-width: 1279px)") &&
-    globalStyles.includes("margin-top: 0") &&
+  !globalStyles.includes("grid-row: 1 / span 50") &&
+    globalStyles.includes("@apply space-y-6") &&
+    bankUi.includes("BankContextNav") &&
     globalStyles.includes("@keyframes route-progress-grow") &&
     !globalStyles.includes("route-progress-move") &&
     !globalStyles.includes("infinite"),

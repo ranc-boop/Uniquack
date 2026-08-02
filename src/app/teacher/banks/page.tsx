@@ -198,7 +198,7 @@ export default async function TeacherBanksPage({
   return (
     <BankWorkbenchPage className="space-y-8">
       <header className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+        <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
           Libraries
         </h1>
         <div className="flex flex-wrap gap-2">

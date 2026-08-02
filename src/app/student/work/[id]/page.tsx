@@ -61,7 +61,7 @@ export default async function StudentWorkDetailPage({
 
   if (!assignment) {
     return (
-      <main className="student-shell space-y-6">
+      <main className="space-y-6">
         <section className="student-hero">
           <p className="student-eyebrow">Assigned work</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
@@ -93,7 +93,7 @@ export default async function StudentWorkDetailPage({
   const currentState = stateCopy(assignment.progressStatus);
 
   return (
-    <main className="student-shell space-y-6">
+    <main className="space-y-6">
       <section className="student-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">

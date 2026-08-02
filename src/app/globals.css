@@ -194,9 +194,15 @@
     @apply mx-auto w-full max-w-[92rem] px-4 py-6 sm:px-6 lg:px-8;
   }
 
+  .student-route-main {
+    min-height: 100dvh;
+    min-width: 0;
+    background: #f5f5f7;
+  }
+
   .admin-route-main {
     min-height: 100vh;
-    padding: 1.25rem;
+    padding: 1.5rem 1rem;
     background: #f5f5f7;
   }
 
@@ -238,7 +244,7 @@
 
   @media (min-width: 640px) {
     .admin-route-main {
-      padding: 1.75rem 2rem;
+      padding: 1.5rem 2rem;
     }
   }
 
@@ -275,7 +281,7 @@
   }
 
   .teacher-shell {
-    @apply mx-auto w-full max-w-[100rem] px-4 py-7 sm:px-6 lg:px-8;
+    @apply mx-auto w-full max-w-[100rem] px-4 py-6 sm:px-6 lg:px-8;
   }
 
   .teacher-page-header {
@@ -283,32 +289,7 @@
   }
 
   .bank-workbench {
-    @apply space-y-8;
-  }
-
-  @media (min-width: 1280px) {
-    .bank-workbench:has(> .bank-context-nav) {
-      display: grid;
-      grid-template-columns: 14.5rem minmax(0, 1fr);
-      align-items: start;
-      column-gap: 2rem;
-      row-gap: 2rem;
-    }
-
-    .bank-workbench:has(> .bank-context-nav) > .bank-context-nav {
-      grid-column: 1;
-      grid-row: 1 / span 50;
-    }
-
-    .bank-workbench:has(> .bank-context-nav) > :not(.bank-context-nav) {
-      grid-column: 2;
-      min-width: 0;
-      margin-top: 0;
-    }
-
-    .bank-workbench:has(> .bank-context-nav) > .bank-context-nav {
-      margin-top: 0;
-    }
+    @apply space-y-6;
   }
 
   .teacher-hero {

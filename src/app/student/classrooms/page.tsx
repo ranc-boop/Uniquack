@@ -43,11 +43,10 @@ export default async function StudentClassroomsPage({
   );
 
   return (
-    <main className="student-shell space-y-6">
+    <main className="space-y-6">
       <section className="student-hero">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Student workspace</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               My classes
             </h1>

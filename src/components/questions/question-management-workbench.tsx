@@ -47,6 +47,7 @@ type QuestionManagementWorkbenchProps = {
   pendingHref?: string;
   query?: string;
   selectedId?: string;
+  showTitle?: boolean;
   totalCount: number;
   archiveAction?: (formData: FormData) => Promise<void>;
   currentPage?: number;
@@ -169,6 +170,7 @@ export function QuestionManagementWorkbench({
   pendingHref,
   query,
   selectedId,
+  showTitle = true,
   totalCount,
   archiveAction,
   currentPage = 1,
@@ -180,12 +182,14 @@ export function QuestionManagementWorkbench({
   return (
     <section className="question-workbench" aria-label={`${libraryName} question workbench`}>
       <header className="question-workbench-toolbar">
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-[-0.02em] text-[#1D1D1F]">
-            {libraryName}
-          </h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {showTitle ? (
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-semibold tracking-[-0.02em] text-[#1D1D1F]">
+              {libraryName}
+            </h1>
+          </div>
+        ) : null}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {mode === "teacher" ? (
             <StatusControl
               activeStatus={activeStatus}

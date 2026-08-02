@@ -139,7 +139,7 @@ export function AppChrome({ accountMenu, children, role }: AppChromeProps) {
         </div>
       ) : null}
 
-      {!isFocus && workspace === "student" ? <main className="student-shell">{children}</main> : null}
+      {!isFocus && workspace === "student" ? <main className="student-route-main">{children}</main> : null}
     </div>
   );
 }

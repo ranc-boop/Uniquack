@@ -70,19 +70,21 @@ export function BankWorkbenchPage({
 
 export function BankHeroPanel({
   actions,
+  subtitle,
   title,
 }: {
   actions?: React.ReactNode;
-  badges?: React.ReactNode;
-  children: React.ReactNode;
-  eyebrow: string;
+  subtitle?: string;
   title: string;
 }) {
   return (
     <header className="teacher-page-header">
-      <h1 className="text-balance text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
-        {title}
-      </h1>
+      <div className="min-w-0">
+        <h1 className="text-balance text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
+          {title}
+        </h1>
+        {subtitle ? <p className="mt-1 text-sm font-medium text-[#6E6E73]">{subtitle}</p> : null}
+      </div>
       {actions ? (
         <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>
       ) : null}

@@ -52,7 +52,7 @@ export function StudentDashboardLoadingContent() {
 
 export function StudentWorkLoadingSkeleton() {
   return (
-    <main aria-busy="true" className="student-shell space-y-6">
+    <main aria-busy="true" className="space-y-6">
       <PageStatus label="Loading assigned work…" />
       <section className="student-hero">
         <Skeleton className="h-4 w-32" />
@@ -94,7 +94,7 @@ export function StudentWorkLoadingSkeleton() {
 
 export function StudentClassroomsLoadingSkeleton() {
   return (
-    <main aria-busy="true" className="student-shell space-y-6">
+    <main aria-busy="true" className="space-y-6">
       <PageStatus label="Loading joined classrooms…" />
       <section className="student-hero">
         <Skeleton className="h-4 w-32" />
@@ -122,7 +122,7 @@ export function StudentClassroomsLoadingSkeleton() {
 
 export function StudentAssignmentLoadingSkeleton() {
   return (
-    <main aria-busy="true" className="student-shell space-y-6">
+    <main aria-busy="true" className="space-y-6">
       <PageStatus label="Loading assignment…" />
       <section className="student-hero space-y-3">
         <Skeleton className="h-4 w-28" />
@@ -176,7 +176,7 @@ export function StudentProgressLoadingSkeleton() {
 
 export function StudentJoinClassroomLoadingSkeleton() {
   return (
-    <main aria-busy="true" className="student-shell space-y-6">
+    <main aria-busy="true" className="space-y-6">
       <PageStatus label="Loading join-classroom form…" />
       <section className="student-hero">
         <Skeleton className="h-4 w-28" />

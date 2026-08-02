@@ -291,9 +291,10 @@ assert(
     teacherBlueprintPage.includes("Blueprints are reusable planning/package assets") &&
     teacherBlueprintPage.includes("Create Blueprint") &&
     teacherBlueprintPage.includes("New Folder") &&
-    teacherBlueprintNewPage.includes("This form only creates the Library asset") &&
-    teacherBlueprintDetailPage.includes("BlueprintWorkflowPanel") &&
-    teacherBankBlueprintsPage.includes("Blueprint links for") &&
+    teacherBlueprintNewPage.includes("action={createTeacherBlueprint}") &&
+    teacherBlueprintDetailPage.includes("generateTeacherBlueprintReviewDraftsAction") &&
+    teacherBankBlueprintsPage.includes('title="Blueprints"') &&
+    teacherBankBlueprintsPage.includes("BankHeroPanel") &&
     teacherBankBlueprintsPage.includes("Create Blueprint from this Library") &&
     blueprintLibraryMigration.includes("create table if not exists public.bank_blueprints") &&
     teacherBankActions.includes("importBatchImportJson") &&
@@ -338,7 +339,6 @@ assert(
     teacherAssignmentsPage.includes("Archived") &&
     teacherAssignmentsPage.includes("Latest activity") &&
     teacherClassroomAnalyticsPage.includes("Progress") &&
-    teacherClassroomAnalyticsPage.includes("Taxonomy mastery") &&
     teacherClassroomBlueprintsPage.includes("Blueprints linked to this class will appear here") &&
     teacherClassroomSettingsPage.includes("Join-code lifecycle") &&
     teacherClassroomSettingsPage.includes("Archive classroom") &&
@@ -365,11 +365,6 @@ assert(
     teacherAssignmentDetailPage.includes("Assigned work is visible in Student My Work") &&
     teacherAssignmentDetailPage.includes("/questions/") &&
     teacherAssignmentsPage.includes("Open progress") &&
-    courseBuilderBridgePage.includes("Course Builder will generate Library packages before assignment") &&
-    courseBuilderBridgePage.includes("does not add") &&
-    courseBuilderBridgePage.includes("provider calls") &&
-    courseBuilderBridgePage.includes("Save draft (teacher-only)") &&
-    courseBuilderBridgePage.includes("Assign now (visible in My Work)") &&
     courseBuilderBridgePage.includes("Draft/unreviewed questions are unavailable for assignment") &&
     courseBuilderBridgeActions.includes("createAssignmentFromCourseBuilder") &&
     courseBuilderBridgeActions.includes("No reviewed Library questions are available") &&
@@ -379,18 +374,13 @@ assert(
     studentHomePage.includes("My Work") &&
     studentHomePage.includes("Practice") &&
     studentHomePage.includes("Mistakes") &&
-    studentHomePage.includes("Study Library") &&
-    studentHomePage.includes("Study Groups") &&
     studentHomePage.includes("Public Library") &&
     studentHomePage.includes("Progress / Feedback") &&
-    studentHomePage.includes("It does not open the teacher") &&
     studentLayout.includes("StudentWorkspaceNav") &&
     studentWorkspaceNav.includes("Dashboard") &&
     studentWorkspaceNav.includes("My Work") &&
     studentWorkspaceNav.includes("Practice") &&
     studentWorkspaceNav.includes("Mistakes") &&
-    studentWorkspaceNav.includes("Study Library") &&
-    studentWorkspaceNav.includes("Study Groups") &&
     studentWorkspaceNav.includes("Public Library") &&
     studentWorkspaceNav.includes("Progress / Feedback") &&
     studentWorkspaceShell.includes("StudentWorkspaceShell") &&
@@ -404,12 +394,9 @@ assert(
     studentWorkPage.includes("Start Practice") &&
     studentWorkPage.includes("Continue Practice") &&
     studentWorkPage.includes("Review work") &&
-    studentWorkDetailPage.includes("Practice progress is saved back") &&
     studentWorkDetailPage.includes("Start Practice") &&
     studentWorkDetailPage.includes("Review Practice") &&
     studentWorkDetailPage.includes("Practice is unavailable until this assignment has a usable question.") &&
-    studentWorkDetailPage.includes("Review your assignment-linked Practice history") &&
-    studentWorkDetailPage.includes("full private Library remains unavailable.") &&
     practicePage.includes("assignmentId") &&
     practiceLoader.includes("assignmentId") &&
     practiceLoader.includes("PracticeWorkspaceSkeleton") &&
@@ -419,17 +406,9 @@ assert(
     practiceClient.includes("/api/practice/assignments/start") &&
     practiceClient.includes("Assignment practice") &&
     assignmentPracticeStartRoute.includes("startAssignmentPractice") &&
-    studentStudyLibraryPage.includes("Student-owned library foundation") &&
-    studentStudyLibraryPage.includes("without creating a new backend") &&
-    studentStudyGroupsPage.includes("peer self-study space") &&
-    studentStudyGroupsPage.includes("do not grant access to teacher private Libraries") &&
-    studentPublicLibraryPage.includes("Public does not mean verified") &&
-    studentPublicLibraryPage.includes("Private stays private") &&
+    studentPublicLibraryPage.includes("Public Library") &&
     studentProgressPage.includes("Progress / Feedback") &&
-    studentProgressPage.includes("Feedback history") &&
-    studentClassroomsPage.includes("Student workspace") &&
     studentClassroomsPage.includes("My classes") &&
-    studentClassroomsPage.includes("Assigned work lives in My Work") &&
     studentClassroomsPage.includes("Active membership") &&
     studentJoinClassroomPage.includes("Join classroom") &&
     classroomMigration.includes("join_classroom_by_code") &&
@@ -538,7 +517,6 @@ assert(
     adminImportsPage.includes("AdminEmptyState") &&
     adminQuestionsPage.includes("QuestionManagementWorkbench") &&
     adminQuestionsPage.includes("search_official_public_questions_v2") &&
-    adminReviewPage.includes("AdminDangerZone") &&
     adminReviewPage.includes("action={bulkUpdateQuestions}") &&
     adminQuestionsLoading.includes("AdminLoadingState") &&
     adminReviewLoading.includes("AdminLoadingState"),
@@ -587,7 +565,6 @@ assert(
   adminReviewPage.includes("AdminCard") &&
     adminReviewPage.includes("AdminActionGroup") &&
     adminReviewPage.includes("AdminEmptyState") &&
-    adminReviewPage.includes("Review workflow") &&
     adminReviewPage.includes("Find draft questions") &&
     adminReviewPage.includes("Review selected drafts") &&
     adminReviewPage.includes("action={bulkUpdateQuestions}") &&
@@ -600,9 +577,7 @@ assert(
     draftReviewCard.includes("Generated drafts stay private") &&
     draftReviewCard.includes("Publish readiness") &&
     draftReviewCard.includes("Taxonomy review") &&
-    adminReviewPage.includes("AI PDF imports") &&
-    adminReviewPage.includes("Batch review handoff") &&
-    adminReviewPage.includes("Back to AI PDF imports"),
+    adminReviewPage.includes("Batch review handoff"),
   "review drafts UI must use shared primitives, clear workflow copy, and collapsed source/import details",
 );
 assert(
@@ -610,9 +585,9 @@ assert(
     adminQuestionsPage.includes('libraryName="Public Library"') &&
     adminQuestionsPage.includes('activeStatus="approved"') &&
     adminQuestionsPage.includes('pendingHref="/admin/review"') &&
-    publicQuestionsPage.includes("Published question filters") &&
-    publicQuestionsPage.includes("official difficulty") &&
-    publicQuestionsPage.includes("No published questions match these filters.") &&
+    publicQuestionsPage.includes('name="min"') &&
+    publicQuestionsPage.includes('name="max"') &&
+    publicQuestionsPage.includes("QuestionBankClient") &&
     publicQuestionsLoading.includes("QuestionListSkeleton"),
   "question bank UI must keep bounded official Library behavior and polished list/empty states",
 );

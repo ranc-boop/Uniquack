@@ -21,16 +21,16 @@ type StudentModuleCardProps = {
 
 export function StudentWorkspaceShell({
   children,
-  eyebrow = "Student workspace",
+  eyebrow,
   title,
   description,
   actions,
 }: StudentWorkspaceShellProps) {
   return (
-    <main className="student-shell space-y-6">
+    <main className="space-y-6">
       <section className="student-hero flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="max-w-3xl space-y-3">
-          <p className="student-eyebrow">{eyebrow}</p>
+          {eyebrow ? <p className="student-eyebrow">{eyebrow}</p> : null}
           <div className="space-y-2">
             <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
               {title}

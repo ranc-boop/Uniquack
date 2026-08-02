@@ -315,11 +315,10 @@ export default async function StudentWorkPage() {
     },
   ].filter((group) => group.items.length > 0);
   return (
-    <main className="student-shell space-y-6">
+    <main className="space-y-6">
       <section className="student-hero">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
-            <p className="student-eyebrow">Student workspace</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               My Work
             </h1>
@@ -357,10 +356,6 @@ export default async function StudentWorkPage() {
               <h2 className="text-lg font-bold text-slate-950">
                 No assigned work yet
               </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                When a teacher assigns classroom work, it will appear here with
-                due dates, progress, and a Practice entry point.
-              </p>
             </div>
             <div className="flex flex-wrap justify-center gap-2">
               <Button asChild>

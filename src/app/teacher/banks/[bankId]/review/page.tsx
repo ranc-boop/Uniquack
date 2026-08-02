@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { MoreHorizontal, Upload } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
@@ -36,7 +36,6 @@ import {
 } from "../../actions";
 import {
   BankBadge,
-  BankQuickAction,
   BankRouteTabs,
   BankWorkbenchPage,
 } from "../../bank-ui";
@@ -158,23 +157,10 @@ export default async function TeacherBankReviewPage({
     <BankWorkbenchPage>
       <header className="teacher-page-header">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+          <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">
             Review
           </h1>
-          <p className="mt-1 text-base font-medium text-slate-600">{bank.name}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href={`/teacher/banks/${bank.id}`}>Back</Link>
-          </Button>
-          {canApprove ? (
-            <BankQuickAction
-              href={`/teacher/banks/${bank.id}/imports`}
-              icon={Upload}
-            >
-              Import
-            </BankQuickAction>
-          ) : null}
+          <p className="mt-1 text-sm font-medium text-[#6E6E73]">{bank.name}</p>
         </div>
       </header>
 
@@ -213,14 +199,14 @@ export default async function TeacherBankReviewPage({
         totalResults={draftPage.total}
       >
         <section
-          className="min-w-0 border-y border-slate-200 bg-white"
+          className="min-w-0 overflow-visible rounded-[18px] border border-[#D2D2D7] bg-white"
           id="review-results"
           tabIndex={-1}
         >
-          <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-4 lg:flex-row lg:items-end lg:justify-between">
-            <form className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="min-w-0 flex-1 space-y-2">
-                <Label htmlFor="review-search">Search</Label>
+          <div className="flex flex-col gap-3 border-b border-[#D2D2D7] p-4 lg:flex-row lg:items-center lg:justify-between">
+            <form className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <Label className="sr-only" htmlFor="review-search">Search</Label>
                 <Input
                   defaultValue={query.q ?? ""}
                   id="review-search"
@@ -490,10 +476,8 @@ export default async function TeacherBankReviewPage({
               ) : null}
             </>
           ) : (
-            <div className="px-4 py-14 text-center">
-              <p className="font-semibold text-slate-900">
-                No Drafts match this view.
-              </p>
+            <div className="px-4 py-12 text-center">
+              <p className="font-semibold text-[#1D1D1F]">No drafts</p>
               {canApprove ? (
                 <Button asChild className="mt-5" variant="outline">
                   <Link href={`/teacher/banks/${bank.id}/imports`}>Import</Link>
