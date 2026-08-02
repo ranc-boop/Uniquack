@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "worker:dev": "node scripts/local-ai-jobs-worker.mjs",
     "build": "node ./node_modules/next/dist/bin/next build --webpack",
     "start": "next start",
     "analyze": "cross-env ANALYZE=true next build --webpack",
@@ -14,6 +15,7 @@
     "lint:math-content": "node scripts/check-math-content-usage.mjs",
     "lint:question-assets-public-url": "node scripts/check-question-assets-public-url.mjs",
     "smoke": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-all.mjs",
+    "smoke:local-ai-worker": "node scripts/local-ai-jobs-worker-smoke.mjs",
     "smoke:practice-thread-cache": "node scripts/practice-thread-cache-refactor-smoke.mjs",
     "smoke:practice-library-finish": "node scripts/practice-library-scope-finish-smoke.mjs",
     "smoke:import-json-latex": "node scripts/import-json-latex-repair-smoke.mjs",
