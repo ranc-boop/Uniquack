@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Button } from "@/components/ui/button";
 import { requireStudentWorkspace } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
@@ -12,7 +11,6 @@ export const dynamic = "force-dynamic";
 
 type WorkGroup = {
   title: string;
-  description: string;
   items: StudentWorkSummary[];
 };
 
@@ -133,7 +131,7 @@ function assignmentAction(assignment: StudentWorkSummary) {
   }
   if (assignment.itemCount > 0) {
     return {
-      href: `/practice?assignmentId=${assignment.id}`,
+      href: `/practice?assignmentId=${assignment.id}&returnTo=${encodeURIComponent("/student/work")}`,
       label: actionLabel(assignment.progressStatus),
     };
   }
@@ -181,7 +179,7 @@ function AssignmentCard({ assignment }: { assignment: StudentWorkSummary }) {
         </div>
 
         <Button asChild className="w-full lg:w-auto">
-          <Link href={action.href}>{action.label}</Link>
+          <StudentPendingLink href={action.href}>{action.label}</StudentPendingLink>
         </Button>
       </div>
     </article>
@@ -214,7 +212,7 @@ function NextAssignment({ assignment }: { assignment: StudentWorkSummary }) {
           ) : null}
         </div>
         <Button asChild className="w-full shrink-0 lg:w-auto">
-          <Link href={action.href}>{action.label}</Link>
+          <StudentPendingLink href={action.href}>{action.label}</StudentPendingLink>
         </Button>
       </div>
     </div>
@@ -228,7 +226,6 @@ function WorkSection({ group }: { group: WorkGroup }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-slate-950">{group.title}</h2>
-            <p className="student-muted">{group.description}</p>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
             {group.items.length}
@@ -251,7 +248,6 @@ function CompletedSection({ assignments }: { assignments: StudentWorkSummary[] }
         <summary className="student-focus-ring flex cursor-pointer list-none items-center justify-between gap-3 p-5 marker:content-none">
           <div>
             <h2 className="text-lg font-bold text-slate-950">Completed</h2>
-            <p className="student-muted">Open finished work when you need to review it.</p>
           </div>
           <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
             {assignments.length}
@@ -289,35 +285,30 @@ export default async function StudentWorkPage() {
   const groups: WorkGroup[] = [
     {
       title: "Overdue",
-      description: "Past-due work comes first.",
       items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "overdue",
       ),
     },
     {
       title: "Due today",
-      description: "Finish these before today ends.",
       items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "today",
       ),
     },
     {
       title: "Due soon",
-      description: "Assignments due within the next seven days.",
       items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "due_soon",
       ),
     },
     {
       title: "In progress",
-      description: "Continue active Practice that is not yet urgent.",
       items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "in_progress",
       ),
     },
     {
       title: "Ready later",
-      description: "Upcoming work without an urgent due date.",
       items: queuedIncomplete.filter(
         (assignment) => urgencyBucket(assignment, now) === "later",
       ),
@@ -332,12 +323,9 @@ export default async function StudentWorkPage() {
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               My Work
             </h1>
-            <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Focus on the next assignment, then review the rest by urgency.
-            </p>
           </div>
           <Button asChild variant="outline">
-            <Link href="/student/classrooms">My classes</Link>
+            <StudentPendingLink href="/student/classrooms">My classes</StudentPendingLink>
           </Button>
         </div>
 
@@ -376,10 +364,14 @@ export default async function StudentWorkPage() {
             </div>
             <div className="flex flex-wrap justify-center gap-2">
               <Button asChild>
-                <Link href="/student/classrooms">View my classes</Link>
+                <StudentPendingLink href="/student/classrooms">
+                  View my classes
+                </StudentPendingLink>
               </Button>
               <Button asChild variant="outline">
-                <Link href="/student/classrooms/join">Join a class</Link>
+                <StudentPendingLink href="/student/classrooms/join">
+                  Join a class
+                </StudentPendingLink>
               </Button>
             </div>
           </div>

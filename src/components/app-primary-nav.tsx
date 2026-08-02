@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { RoutePendingLink } from "@/components/route-pending-link";
 
 type AppPrimaryNavItem = {
   href: string;
@@ -20,7 +21,7 @@ export function AppPrimaryNav({ items }: { items: AppPrimaryNavItem[] }) {
             : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
         return (
-          <Link
+          <RoutePendingLink
             aria-current={active ? "page" : undefined}
             className={[
               "inline-flex min-h-10 shrink-0 items-center rounded-md px-3 py-2 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2",
@@ -30,10 +31,10 @@ export function AppPrimaryNav({ items }: { items: AppPrimaryNavItem[] }) {
             ].join(" ")}
             href={item.href}
             key={item.href}
-            prefetch={false}
+            pendingLabel={item.label}
           >
             {item.label}
-          </Link>
+          </RoutePendingLink>
         );
       })}
     </>

@@ -16,7 +16,6 @@ import { FocusTaskLink } from "@/components/teacher/focus-task-link";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -199,9 +198,6 @@ export default async function TeacherAssignmentDetailPage({
               Preview as student
             </FocusTaskLink>
           </div>
-        </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
         </div>
       </section>
 

@@ -65,7 +65,7 @@ assert(
   "Completed work must use a default-collapsed disclosure",
 );
 assert(
-  workPage.includes("`/practice?assignmentId=${assignment.id}`") &&
+  workPage.includes("`/practice?assignmentId=${assignment.id}&returnTo=") &&
     workPage.includes('label: "Open assignment"') &&
     workPage.includes('label: "Review work"'),
   "My Work CTA labels and destinations must match the action they perform",
@@ -75,7 +75,7 @@ const heroStart = detailPage.indexOf('<section className="student-hero">', 1);
 const feedbackStart = detailPage.indexOf("{feedbackNotes.length ? (");
 const itemsStart = detailPage.indexOf("Assigned questions");
 const practiceLink = detailPage.indexOf(
-  "`/practice?assignmentId=${assignment.id}`",
+  "`/practice?assignmentId=${assignment.id}&returnTo=",
 );
 assert(
   heroStart >= 0 &&
@@ -91,9 +91,9 @@ assert(
   "Empty feedback must not occupy the main line and feedback history must be disclosed progressively",
 );
 assert(
-  detailPage.includes("Your teacher&apos;s") &&
-    detailPage.includes("full private Library remains unavailable"),
-  "Student work detail must preserve the private Library boundary copy",
+  !detailPage.includes("full private Library remains unavailable") &&
+    !workPage.includes("Focus on the next assignment"),
+  "Student My Work must avoid repeated policy and focus helper copy",
 );
 
-console.log("PASS Student My Work urgency, CTA, disclosure, and privacy UX contracts");
+console.log("PASS Student My Work urgency, CTA, disclosure, and concise UX contracts");

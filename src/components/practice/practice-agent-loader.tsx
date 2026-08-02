@@ -18,12 +18,17 @@ const PracticeAgentClient = dynamic(
 
 export function PracticeAgentLoader({
   assignmentId,
+  exitHref,
 }: {
   assignmentId?: string | null;
+  exitHref: string;
 }) {
   return (
     <PracticeWorkspaceErrorBoundary>
-      <PracticeAgentClient assignmentId={assignmentId ?? null} />
+      <PracticeAgentClient
+        assignmentId={assignmentId ?? null}
+        exitHref={exitHref}
+      />
     </PracticeWorkspaceErrorBoundary>
   );
 }

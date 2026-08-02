@@ -1,18 +1,15 @@
-import Link from "next/link";
 import type React from "react";
 
 import {
   ArrowRight,
-  Boxes,
   FolderOpen,
   Library,
-  Lock,
-  Network,
   Sparkles,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { FormSubmitButton } from "@/components/form-submit-button";
+import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
 import {
   bankBlueprintRelationLabel,
   blueprintKindLabel,
@@ -24,6 +21,7 @@ import {
 } from "@/lib/teacher-blueprints";
 import { readinessWarnings, sourceExampleCount } from "@/lib/teacher-blueprint-builder";
 import type { QuestionBlueprintFolderTreeNode } from "@/lib/blueprints/question-blueprint-folders";
+import { cn } from "@/lib/utils";
 
 const visibilityTone: Record<string, string> = {
   organization: "border-indigo-200 bg-indigo-50 text-indigo-800",
@@ -76,29 +74,8 @@ export function SetupNeededState() {
         Blueprint Library fields are not available yet.
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-        Apply clean migration 0031 before using the teacher Blueprint Library.
-        The admin Blueprint Engine remains untouched; this teacher library adds
-        ownership, visibility, folders, and bank links.
+        Ask an administrator to finish the Blueprint Library setup.
       </p>
-    </section>
-  );
-}
-
-export function BlueprintSafetyStrip() {
-  return (
-    <section className="grid gap-2 md:grid-cols-3">
-      {[
-        "Blueprints organize reusable planning assets.",
-        "Blueprint output must pass through Review Drafts.",
-        "Nothing goes directly to students from this library.",
-      ].map((note) => (
-        <div
-          className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-2 text-sm font-semibold leading-6 text-sky-950"
-          key={note}
-        >
-          {note}
-        </div>
-      ))}
     </section>
   );
 }
@@ -134,7 +111,7 @@ export function BlueprintFilterTabs({
       className="flex gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-white/85 p-2 shadow-sm"
     >
       {filters.map((filter) => (
-        <Link
+        <TeacherPendingLink
           aria-current={filter.key === activeFilter ? "true" : undefined}
           className={[
             "inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition",
@@ -144,6 +121,7 @@ export function BlueprintFilterTabs({
           ].join(" ")}
           href={filter.href}
           key={filter.key}
+          pendingLabel={`${filter.label} Blueprints`}
         >
           {filter.label}
           <span
@@ -154,7 +132,7 @@ export function BlueprintFilterTabs({
           >
             {counts[filter.key]}
           </span>
-        </Link>
+        </TeacherPendingLink>
       ))}
     </nav>
   );
@@ -329,12 +307,14 @@ export function BlueprintCard({ blueprint }: { blueprint: TeacherBlueprintLibrar
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Updated {formatDate(blueprint.updated_at)}
         </p>
-        <Button asChild variant="outline">
-          <Link href={`/teacher/blueprints/${blueprint.id}`}>
-            Open
-            <ArrowRight aria-hidden="true" className="h-4 w-4" />
-          </Link>
-        </Button>
+        <TeacherPendingLink
+          className={buttonVariants({ variant: "outline" })}
+          href={`/teacher/blueprints/${blueprint.id}`}
+          pendingLabel={blueprint.title}
+        >
+          Open
+          <ArrowRight aria-hidden="true" className="h-4 w-4" />
+        </TeacherPendingLink>
       </div>
     </article>
   );
@@ -352,32 +332,13 @@ export function BlueprintEmptyState() {
         Start with a private Blueprint, or generate one from a Library in a later
         step.
       </p>
-      <Button asChild className="mt-5">
-        <Link href="/teacher/blueprints/new">Create Blueprint</Link>
-      </Button>
-    </section>
-  );
-}
-
-export function BlueprintWorkflowPanel() {
-  return (
-    <section className="teacher-soft-panel p-5">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h2 className="text-base font-bold text-sky-950">
-            Blueprint workflow boundary
-          </h2>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-sky-900">
-            Blueprints do not go directly to students. Blueprint output flows
-            through Review Drafts and banks before assignment.
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2 text-sky-700">
-          <Lock aria-hidden="true" className="h-5 w-5" />
-          <Network aria-hidden="true" className="h-5 w-5" />
-          <Boxes aria-hidden="true" className="h-5 w-5" />
-        </div>
-      </div>
+      <TeacherPendingLink
+        className={cn(buttonVariants(), "mt-5")}
+        href="/teacher/blueprints/new"
+        pendingLabel="Create Blueprint"
+      >
+        Create Blueprint
+      </TeacherPendingLink>
     </section>
   );
 }

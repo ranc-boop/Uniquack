@@ -14,12 +14,10 @@ import {
   ClassroomPublishCta,
   ClassroomQuickAction,
   ClassroomRouteTabs,
-  ClassroomSafetyStrip,
   classroomStatusLabel,
   formatClassroomDate,
   formatClassroomDateTime,
 } from "@/app/teacher/classrooms/classroom-ui";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
@@ -123,9 +121,6 @@ export default async function TeacherClassroomDetailPage({
             </div>
           </div>
 
-          <div className="mt-5">
-            <TeacherWorkspaceNav />
-          </div>
         </div>
 
         <div className="grid gap-3 border-t border-slate-200 bg-white/80 p-5 md:grid-cols-4">
@@ -157,8 +152,6 @@ export default async function TeacherClassroomDetailPage({
       </section>
 
       <ClassroomRouteTabs classroomId={classroom.id} />
-      <ClassroomSafetyStrip />
-
       {query.saved ? (
         <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
           {query.saved}
@@ -438,9 +431,7 @@ export default async function TeacherClassroomDetailPage({
                   Progress
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Completion summaries use real assignment evidence. Feedback is
-                  available from assignment detail; taxonomy mastery and mistake
-                  pattern aggregates are planned next-layer analytics.
+                  Completion summaries use Assignment evidence.
                 </p>
               </div>
             </div>
@@ -457,7 +448,7 @@ export default async function TeacherClassroomDetailPage({
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {classroom.linkedBlueprintCount === null
-                ? "Blueprints linked to this class will appear here. Use Blueprint Library to organize plans before publishing."
+                ? "No linked Blueprints."
                 : `${classroom.linkedBlueprintCount} blueprint(s) are connected through assigned Library content.`}
             </p>
             <Button asChild className="mt-4 w-full" variant="outline">

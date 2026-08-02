@@ -5,7 +5,6 @@ import { KeyRound, Share2, Users } from "lucide-react";
 
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   bankMemberProfileLabel,
@@ -140,7 +139,6 @@ export default async function TeacherBankMembersPage({
         </p>
       </BankHeroPanel>
 
-      <TeacherWorkspaceNav />
       <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 
       {query.saved ? (

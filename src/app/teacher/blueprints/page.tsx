@@ -3,7 +3,6 @@ import Link from "next/link";
 import { FolderPlus, Plus } from "lucide-react";
 
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
@@ -18,8 +17,6 @@ import {
   BlueprintEmptyState,
   BlueprintFilterTabs,
   BlueprintFolderPanel,
-  BlueprintSafetyStrip,
-  BlueprintWorkflowPanel,
   NewFolderPanel,
   SetupNeededState,
 } from "./blueprint-library-ui";
@@ -49,7 +46,6 @@ export default async function TeacherBlueprintsPage({
           title="Blueprint Library"
           description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and Library approval."
         >
-          <TeacherWorkspaceNav />
           <SetupNeededState />
         </TeacherWorkspaceShell>
       );
@@ -80,10 +76,6 @@ export default async function TeacherBlueprintsPage({
       eyebrow="Teacher Blueprint workspace"
       title="Blueprint Library"
     >
-      <TeacherWorkspaceNav />
-      <BlueprintSafetyStrip />
-      <BlueprintWorkflowPanel />
-
       {query.folderCreated ? (
         <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
           Folder created.

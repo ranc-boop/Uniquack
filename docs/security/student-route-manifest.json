@@ -380,6 +380,26 @@
       "remaining_issue": "The similarly named record is not a durable ai_provider_jobs worker job."
     },
     {
+      "route": "/api/practice/progress/reset",
+      "source_file": "src/app/api/practice/progress/reset/route.ts",
+      "methods": ["POST"],
+      "purpose": "Reset only the authenticated caller's Practice progress through the guarded database RPC.",
+      "authentication_guard": "requirePracticeApiUser",
+      "role_guard": "authenticated owner",
+      "server_surface": "reset_my_practice_progress",
+      "tables": ["practice_sessions", "practice_rounds", "practice_attempts", "practice_wrong_questions"],
+      "assignment_scope": "does not delete Assignment delivery records",
+      "classroom_scope": "none",
+      "bank_access": "none",
+      "evidence_scope": "caller-owned Practice progress only",
+      "asset_path": "none",
+      "source_static_tests": ["student-workspace-completion-smoke", "practice-library-scope-finish-smoke"],
+      "live_evidence": "owner-scoped reset RPC is covered by Practice RLS validation",
+      "browser_evidence": "NOT_RUN",
+      "completion_status": "FUNCTIONAL",
+      "remaining_issue": null
+    },
+    {
       "route": "/api/practice/recommend",
       "source_file": "src/app/api/practice/recommend/route.ts",
       "methods": ["POST"],
@@ -497,6 +517,26 @@
       "live_evidence": "post-0048 matrix validates owner and read-only manager boundaries",
       "browser_evidence": "PASS: created and assignment-linked sessions restore with requester scope",
       "completion_status": "COMPLETED / LIVE VALIDATED",
+      "remaining_issue": null
+    },
+    {
+      "route": "/api/practice/sources",
+      "source_file": "src/app/api/practice/sources/route.ts",
+      "methods": ["GET"],
+      "purpose": "List the official catalog and Libraries the authenticated caller may use for self-study.",
+      "authentication_guard": "requirePracticeApiUser",
+      "role_guard": "authenticated user with an active Library membership or official catalog access",
+      "server_surface": "list_selectable_practice_sources",
+      "tables": ["question_banks", "bank_members", "bank_questions", "questions"],
+      "assignment_scope": "none",
+      "classroom_scope": "none",
+      "bank_access": "read-only selectable source summary; creates no membership",
+      "evidence_scope": "aggregate caller-owned mastery counts only",
+      "asset_path": "none",
+      "source_static_tests": ["student-workspace-completion-smoke", "practice-library-scope-finish-smoke"],
+      "live_evidence": "Practice source RLS and official catalog equality are covered by hosted validation",
+      "browser_evidence": "NOT_RUN",
+      "completion_status": "FUNCTIONAL",
       "remaining_issue": null
     },
     {

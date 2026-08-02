@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { BookOpen, Boxes, ChartNoAxesColumnIncreasing, GraduationCap, Home, Library, Send } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
 
 type TeacherNavItem = { href: string; icon: LucideIcon; label: string; exact?: boolean };
 
@@ -30,7 +30,8 @@ const groups: Array<{ label: string; items: TeacherNavItem[] }> = [
 ];
 
 function active(item: TeacherNavItem, pathname: string) {
-  return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
+  const targetPath = item.href.split("?")[0];
+  return item.exact ? pathname === targetPath : pathname === targetPath || pathname.startsWith(`${targetPath}/`);
 }
 
 export function TeacherWorkspaceNav() {
@@ -45,10 +46,10 @@ export function TeacherWorkspaceNav() {
             const Icon = item.icon;
             const selected = active(item, pathname);
             return (
-              <Link aria-current={selected ? "page" : undefined} className={cn("workspace-nav-item", selected && "is-active")} href={item.href} key={item.href}>
+              <TeacherPendingLink aria-current={selected ? "page" : undefined} className={cn("workspace-nav-item", selected && "is-active")} href={item.href} key={item.href} pendingLabel={item.label}>
                 <Icon aria-hidden="true" className="size-4" />
                 <span>{item.label}</span>
-              </Link>
+              </TeacherPendingLink>
             );
           })}
         </div>

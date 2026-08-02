@@ -6,6 +6,7 @@ import { Check, ChevronDown, Menu } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
+import { RouteTransitionFeedback } from "@/components/route-transition-feedback";
 import { isTeacherFocusPathname } from "@/lib/teacher-focus-workspace";
 
 type WorkspaceRole = "student" | "teacher" | "admin" | "super_admin" | null;
@@ -71,6 +72,7 @@ export function AppChrome({ accountMenu, children, role }: AppChromeProps) {
 
   return (
     <div className="workspace-chrome">
+      <RouteTransitionFeedback />
       <header className="workspace-topbar">
         <div className="workspace-topbar-inner">
           <Link aria-label="EduStruct home" className="workspace-brand" href={workspaceLinks[workspace].href}>

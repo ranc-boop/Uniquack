@@ -10,11 +10,9 @@ import {
   ClassroomBadge,
   ClassroomMetricCard,
   ClassroomRouteTabs,
-  ClassroomSafetyStrip,
   formatClassroomDateTime,
 } from "@/app/teacher/classrooms/classroom-ui";
 import { FormSubmitButton } from "@/components/form-submit-button";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
@@ -174,14 +172,9 @@ export default async function ClassroomStudentsPage({
             <Link href={`/teacher/classrooms/${classroom.id}`}>Back to overview</Link>
           </Button>
         </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
-        </div>
       </section>
 
       <ClassroomRouteTabs classroomId={classroom.id} />
-      <ClassroomSafetyStrip />
-
       {query.saved ? (
         <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
           {query.saved}

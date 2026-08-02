@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Button } from "@/components/ui/button";
 import { requireStudentWorkspace } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
@@ -36,18 +35,15 @@ function stateCopy(status: "not_started" | "in_progress" | "completed") {
   if (status === "completed") {
     return {
       title: "Completed",
-      body: "Review your assignment-linked Practice history whenever you need it.",
     };
   }
   if (status === "in_progress") {
     return {
       title: "Continue where you stopped",
-      body: "Your next attempt stays linked to this assignment for teacher feedback.",
     };
   }
   return {
     title: "Ready to start",
-    body: "Practice progress is saved back to this assignment automatically.",
   };
 }
 
@@ -77,7 +73,7 @@ export default async function StudentWorkDetailPage({
           </p>
           <div className="mt-5">
             <Button asChild variant="outline">
-              <Link href="/student/work">Back to My Work</Link>
+              <StudentPendingLink href="/student/work">Back to My Work</StudentPendingLink>
             </Button>
           </div>
         </section>
@@ -111,7 +107,7 @@ export default async function StudentWorkDetailPage({
             </p>
           </div>
           <Button asChild variant="outline">
-            <Link href="/student/work">Back to My Work</Link>
+            <StudentPendingLink href="/student/work">Back to My Work</StudentPendingLink>
           </Button>
         </div>
 
@@ -141,9 +137,6 @@ export default async function StudentWorkDetailPage({
         <div className="mt-5 flex flex-col gap-4 rounded-xl border border-sky-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-950">{currentState.title}</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
-              {currentState.body}
-            </p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-500">
               {assignment.progress?.started_at ? (
                 <span>Started {formatDateTime(assignment.progress.started_at)}</span>
@@ -158,9 +151,11 @@ export default async function StudentWorkDetailPage({
           </div>
           {hasPracticeEntry ? (
             <Button asChild className="w-full shrink-0 sm:w-auto">
-              <Link href={`/practice?assignmentId=${assignment.id}`}>
+              <StudentPendingLink
+                href={`/practice?assignmentId=${assignment.id}&returnTo=${encodeURIComponent(`/student/work/${assignment.id}`)}`}
+              >
                 {actionLabel(assignment.progressStatus)}
-              </Link>
+              </StudentPendingLink>
             </Button>
           ) : (
             <div className="max-w-sm rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
@@ -169,12 +164,6 @@ export default async function StudentWorkDetailPage({
           )}
         </div>
 
-        {assignment.source_kind === "question_bank" ? (
-          <p className="mt-4 text-xs leading-5 text-slate-500">
-            You can access only the questions assigned here. Your teacher&apos;s
-            full private Library remains unavailable.
-          </p>
-        ) : null}
       </section>
 
       {feedbackNotes.length ? (
@@ -183,10 +172,6 @@ export default async function StudentWorkDetailPage({
             <summary className="student-focus-ring flex cursor-pointer list-none items-center justify-between gap-3 p-5 marker:content-none">
               <div>
                 <h2 className="text-lg font-bold text-slate-950">Teacher feedback</h2>
-                <p className="student-muted">
-                  Feedback your teacher explicitly sent for this assignment.
-                  Private teacher notes are not shown here.
-                </p>
               </div>
               <span className="rounded-full bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-700">
                 {feedbackNotes.length}
@@ -216,9 +201,6 @@ export default async function StudentWorkDetailPage({
           <summary className="student-focus-ring flex cursor-pointer list-none items-center justify-between gap-3 p-5 marker:content-none">
             <div>
               <h2 className="text-lg font-bold text-slate-950">Assigned questions</h2>
-              <p className="student-muted">
-                Preview item metadata without opening your teacher&apos;s Library.
-              </p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
               {assignment.items.length}

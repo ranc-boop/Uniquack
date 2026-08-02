@@ -6,9 +6,7 @@ import {
   ClassroomBadge,
   ClassroomMetricCard,
   ClassroomRouteTabs,
-  ClassroomSafetyStrip,
 } from "@/app/teacher/classrooms/classroom-ui";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
@@ -66,14 +64,9 @@ export default async function ClassroomBlueprintsPage({
             <Link href="/teacher/blueprints">Open Blueprint Library</Link>
           </Button>
         </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
-        </div>
       </section>
 
       <ClassroomRouteTabs classroomId={classroom.id} />
-      <ClassroomSafetyStrip />
-
       <section className="grid gap-3 md:grid-cols-3">
         <ClassroomMetricCard
           description="Blueprints connected through assigned Library content when available."

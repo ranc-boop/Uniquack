@@ -7,7 +7,6 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
@@ -301,8 +300,6 @@ export default async function TeacherProgressPage() {
         </Button>
       }
     >
-      <TeacherWorkspaceNav />
-
       <section className="grid gap-3 sm:grid-cols-3">
         <SummaryCard
           detail={`${formatNumber(summary.overview.draftAssignmentCount)} drafts saved`}

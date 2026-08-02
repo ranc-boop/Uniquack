@@ -6,7 +6,6 @@ import {
   ClipboardCheck,
   FolderOpen,
   Send,
-  Settings,
   Sparkles,
   Upload,
   Users,
@@ -24,7 +23,6 @@ export type BankContextNavItem = {
     | "public-submissions"
     | "questions"
     | "review"
-    | "settings"
     | "sources";
   label: string;
 };
@@ -48,7 +46,6 @@ function BankContextNavLink({
     "public-submissions": Send,
     questions: BookOpen,
     review: ClipboardCheck,
-    settings: Settings,
     sources: FolderOpen,
   }[icon];
 

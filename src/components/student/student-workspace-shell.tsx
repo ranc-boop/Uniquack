@@ -1,10 +1,9 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 
 type StudentWorkspaceShellProps = {
-  children: ReactNode;
+  children?: ReactNode;
   eyebrow?: string;
   title: string;
   description?: string;
@@ -13,7 +12,7 @@ type StudentWorkspaceShellProps = {
 
 type StudentModuleCardProps = {
   title: string;
-  description: string;
+  description?: string;
   href: string;
   eyebrow?: string;
   status?: string;
@@ -45,7 +44,6 @@ export function StudentWorkspaceShell({
     </main>
   );
 }
-
 export function StudentModuleCard({
   title,
   description,
@@ -55,7 +53,7 @@ export function StudentModuleCard({
   actionLabel = "Open",
 }: StudentModuleCardProps) {
   return (
-    <Link
+    <StudentPendingLink
       className="student-card-hover student-focus-ring student-panel flex h-full flex-col justify-between gap-5 p-5 text-left"
       href={href}
     >
@@ -70,35 +68,10 @@ export function StudentModuleCard({
         </div>
         <div className="space-y-2">
           <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
-          <p className="student-muted">{description}</p>
+          {description ? <p className="student-muted">{description}</p> : null}
         </div>
       </div>
       <span className="text-sm font-semibold text-sky-700">{actionLabel}</span>
-    </Link>
-  );
-}
-
-export function StudentComingSoonPanel({
-  title,
-  description,
-  href,
-  hrefLabel,
-}: {
-  title: string;
-  description: string;
-  href?: string;
-  hrefLabel?: string;
-}) {
-  return (
-    <section className="student-panel space-y-3 p-5">
-      <p className="student-eyebrow">Workspace module</p>
-      <h2 className="text-2xl font-semibold text-slate-950">{title}</h2>
-      <p className="student-muted max-w-3xl">{description}</p>
-      {href && hrefLabel ? (
-        <Button asChild>
-          <Link href={href}>{hrefLabel}</Link>
-        </Button>
-      ) : null}
-    </section>
+    </StudentPendingLink>
   );
 }

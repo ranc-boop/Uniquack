@@ -14,13 +14,11 @@ import {
   ClassroomBadge,
   ClassroomMetricCard,
   ClassroomRouteTabs,
-  ClassroomSafetyStrip,
   classroomStatusLabel,
   formatClassroomDateTime,
 } from "@/app/teacher/classrooms/classroom-ui";
 import { CopyJoinCodeButton } from "@/app/teacher/classrooms/copy-join-code-button";
 import { FormSubmitButton } from "@/components/form-submit-button";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,14 +73,9 @@ export default async function ClassroomSettingsPage({
             <Link href={`/teacher/classrooms/${classroom.id}`}>Back to overview</Link>
           </Button>
         </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
-        </div>
       </section>
 
       <ClassroomRouteTabs classroomId={classroom.id} />
-      <ClassroomSafetyStrip />
-
       {query.saved ? (
         <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
           {query.saved}

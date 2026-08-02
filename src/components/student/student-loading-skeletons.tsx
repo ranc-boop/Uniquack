@@ -156,7 +156,6 @@ export function StudentAssignmentLoadingSkeleton() {
 export function StudentProgressLoadingSkeleton() {
   return (
     <StudentWorkspaceShell
-      description="Assignment evidence and feedback status from your student workspace."
       eyebrow="Evidence"
       title="Progress / Feedback"
     >
@@ -169,10 +168,6 @@ export function StudentProgressLoadingSkeleton() {
               <Skeleton className="h-8 w-12" />
             </div>
           ))}
-        </section>
-        <section className="student-panel space-y-3 p-5">
-          <Skeleton className="h-6 w-36" />
-          <Skeleton className="h-4 w-4/5" />
         </section>
       </div>
     </StudentWorkspaceShell>
@@ -203,7 +198,7 @@ export function StudentModuleLoadingSkeleton({
   eyebrow,
   title,
 }: {
-  description: string;
+  description?: string;
   eyebrow: string;
   title: string;
 }) {

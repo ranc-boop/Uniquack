@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Button } from "@/components/ui/button";
 
 export function focusStudyDetails(element: HTMLElement | null) {
@@ -36,12 +35,12 @@ export function PracticeAssignmentHandoff({
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button asChild className="min-h-11">
-          <Link href={`/student/work/${assignmentId}`}>
+          <StudentPendingLink href={`/student/work/${assignmentId}`}>
             Review this Assignment
-          </Link>
+          </StudentPendingLink>
         </Button>
         <Button asChild className="min-h-11" variant="outline">
-          <Link href="/student/work">Back to My Work</Link>
+          <StudentPendingLink href="/student/work">Back to My Work</StudentPendingLink>
         </Button>
       </div>
     </section>

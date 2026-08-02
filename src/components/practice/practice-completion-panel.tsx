@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
-
 import { FeedbackText } from "@/components/math-content";
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,9 +59,9 @@ export function PracticeCompletionPanel({
           <div className="flex flex-wrap gap-2">
             {assignmentId ? (
               <Button asChild>
-                <Link href={`/student/work/${assignmentId}`}>
+                <StudentPendingLink href={`/student/work/${assignmentId}`}>
                   Review this Assignment
-                </Link>
+                </StudentPendingLink>
               </Button>
             ) : (
               <Button onClick={onNewSession} type="button">
@@ -78,9 +77,9 @@ export function PracticeCompletionPanel({
               {assignmentId ? "Retry this Assignment" : "Review remaining mistakes"}
             </Button>
             <Button asChild type="button" variant="ghost">
-              <Link href={assignmentId ? "/student/work" : "/student"}>
+              <StudentPendingLink href={assignmentId ? "/student/work" : "/student"}>
                 {assignmentId ? "Back to My Work" : "Back to student workspace"}
-              </Link>
+              </StudentPendingLink>
             </Button>
           </div>
         ) : null}

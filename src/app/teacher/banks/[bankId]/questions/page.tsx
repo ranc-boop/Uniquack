@@ -320,7 +320,7 @@ export default async function TeacherBankQuestionsPage({
         actionHref: question.source_review_item_id
           ? `/teacher/banks/${bank.id}/review/${question.source_review_item_id}`
           : `/teacher/banks/${bank.id}/questions/${row.bank_question_id}/preview`,
-        actionLabel: itemStatus === "pending" ? "编辑与审批" : "查看与管理",
+        actionLabel: itemStatus === "pending" ? "Edit and approve" : "View and manage",
         approvalStatus: itemStatus,
         contentHtml: detail?.content_html ?? "",
         gradingCapability: deterministic
@@ -359,8 +359,8 @@ export default async function TeacherBankQuestionsPage({
           currentPage={page}
           emptyDescription={
             workbenchApprovalStatus === "pending"
-              ? "导入或创建题目后，在这里完成答案、来源和 taxonomy 检查。"
-              : "审批完成的题目可用于新 Assignment。"
+              ? "Imported and newly created questions wait here for readiness checks."
+              : "Approved questions are ready for new Assignments."
           }
           items={workbenchItems}
           libraryName={bank.name}
@@ -373,7 +373,7 @@ export default async function TeacherBankQuestionsPage({
         <div className="flex justify-end">
           <Button asChild size="sm" variant="ghost">
             <Link href={`/teacher/banks/${bank.id}/questions?view=classic`}>
-              打开经典批量管理
+              Bulk manage
             </Link>
           </Button>
         </div>

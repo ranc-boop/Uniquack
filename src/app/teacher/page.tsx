@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   ArrowRight,
   BookOpen,
@@ -6,7 +5,9 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { getTeacherHomeSummary } from "@/lib/teacher-dashboard";
@@ -68,12 +69,14 @@ export default async function TeacherHomePage() {
               </p>
             ) : null}
           </div>
-          <Button asChild className="min-h-11 shrink-0">
-            <Link href={summary.nextAction.href}>
-              {summary.nextAction.label}
-              <ArrowRight aria-hidden="true" className="h-4 w-4" />
-            </Link>
-          </Button>
+          <TeacherPendingLink
+            className={cn(buttonVariants(), "min-h-11 shrink-0")}
+            href={summary.nextAction.href}
+            pendingLabel={summary.nextAction.label}
+          >
+            {summary.nextAction.label}
+            <ArrowRight aria-hidden="true" className="h-4 w-4" />
+          </TeacherPendingLink>
         </div>
       </section>
 
@@ -82,10 +85,11 @@ export default async function TeacherHomePage() {
         className="grid overflow-hidden rounded-xl border border-slate-200 bg-white md:grid-cols-3 md:divide-x md:divide-slate-200"
       >
         {shortcuts.map(({ count, href, icon: Icon, label }) => (
-          <Link
+          <TeacherPendingLink
             className="group flex min-h-24 items-center gap-4 border-b border-slate-200 px-6 py-5 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500 md:border-b-0"
             href={href}
             key={href}
+            pendingLabel={label}
           >
             <Icon aria-hidden="true" className="h-5 w-5 text-slate-500" />
             <span className="min-w-0 flex-1 text-base font-semibold text-slate-950">
@@ -100,7 +104,7 @@ export default async function TeacherHomePage() {
               aria-hidden="true"
               className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5"
             />
-          </Link>
+          </TeacherPendingLink>
         ))}
       </nav>
 

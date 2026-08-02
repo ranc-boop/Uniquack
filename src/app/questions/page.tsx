@@ -157,35 +157,13 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
     <div className="space-y-5">
       <div className="student-hero">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-2">
-            <p className="student-eyebrow">
-              Public Library
-            </p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Build your next practice round</h1>
-            <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Search published questions, add a focused basket, or open one question for detail-first practice.
-            </p>
-          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Public Library</h1>
           <Button asChild variant="outline">
             <Link href="/mistakes">Review mistakes</Link>
           </Button>
         </div>
       </div>
       <form className="student-panel space-y-4 p-4">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-base font-bold text-slate-950">
-              Published question filters
-            </h2>
-            <p className="text-sm leading-6 text-slate-600">
-              Search by title or code, then narrow by the official difficulty
-              range.
-            </p>
-          </div>
-          <p className="text-sm text-slate-500">
-            Showing {pageSize} questions per page
-          </p>
-        </div>
         <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_10rem_10rem_auto]">
         <div className="space-y-2">
           <Label className="font-bold text-slate-800" htmlFor="q">Search</Label>
@@ -246,12 +224,8 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           <div className="flex min-h-40 items-center justify-center p-6 text-center">
             <div className="max-w-md space-y-2">
               <h2 className="text-base font-bold text-slate-950">
-                No published questions match these filters.
+                No questions found
               </h2>
-              <p className="text-sm leading-6 text-slate-600">
-                Try a broader search term or widen the difficulty range to find
-                more practice options.
-              </p>
             </div>
           </div>
         </div>

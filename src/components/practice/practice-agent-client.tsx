@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import {
   PracticeFrameworkSelector,
@@ -17,6 +17,7 @@ import {
   PracticeAssignmentHandoff,
 } from "@/components/practice/practice-assignment-handoff";
 import { PracticeWorkspaceSkeleton } from "@/components/practice/practice-workspace-skeleton";
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -176,6 +177,7 @@ class PracticeRecommendationRequestError extends Error {
 }
 type PracticeAgentClientProps = {
   assignmentId?: string | null;
+  exitHref?: string;
   testOnlyDelayedHydration?: boolean;
 };
 type PracticeSessionsPayload = {
@@ -749,9 +751,15 @@ function practiceRoundDraftKey(sessionId?: string | null, roundId?: string | nul
 
 export function PracticeAgentClient({
   assignmentId,
+  exitHref = assignmentId ? `/student/work/${assignmentId}` : "/student",
   testOnlyDelayedHydration = false,
 }: PracticeAgentClientProps) {
   const isAssignmentMode = Boolean(assignmentId);
+  const exitLabel = isAssignmentMode
+    ? exitHref === "/student/work"
+      ? "Back to My Work"
+      : "Back to Assignment"
+    : "Back to Dashboard";
   const clientReady = useSyncExternalStore(
     subscribeToClientReady,
     getClientReadySnapshot,
@@ -2473,6 +2481,14 @@ export function PracticeAgentClient({
       ) : null}
 
         <main className="relative min-w-0 space-y-4 px-0 xl:px-2">
+          <div className="sticky top-16 z-50 flex min-h-11 items-center border-b border-slate-200/80 bg-[#F5F5F7]/95 py-2 backdrop-blur-md">
+            <Button asChild className="min-h-11" variant="outline">
+              <StudentPendingLink href={exitHref} pendingLabel="Leaving…">
+                <ArrowLeft aria-hidden="true" className="size-4" />
+                {exitLabel}
+              </StudentPendingLink>
+            </Button>
+          </div>
           {error ? (
             <div className="flex items-start justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
               <span className="min-w-0 flex-1">{error}</span>
@@ -2902,9 +2918,6 @@ export function PracticeAgentClient({
               )}
             </CardContent>
           </Card>
-          <div className="mt-4 rounded-lg bg-white/70 p-3 text-xs leading-5 text-slate-500 ring-1 ring-slate-200/70">
-            Misses and memory update as you submit rounds.
-          </div>
           </div>
           )}
         </aside>

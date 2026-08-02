@@ -18,12 +18,10 @@ import {
   ClassroomProgressRing,
   ClassroomPublishCta,
   ClassroomQuickAction,
-  ClassroomSafetyStrip,
   classroomStatusLabel,
   formatClassroomDate,
   formatClassroomDateTime,
 } from "@/app/teacher/classrooms/classroom-ui";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -91,12 +89,7 @@ export default async function TeacherClassroomsPage({
             <ClassroomPublishCta />
           </div>
         </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
-        </div>
       </section>
-
-      <ClassroomSafetyStrip />
 
       {params.saved ? (
         <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">

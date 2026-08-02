@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import {
@@ -7,12 +6,13 @@ import {
   Boxes,
   ClipboardCheck,
   FolderOpen,
-  Settings,
   Share2,
   Upload,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
+import { cn } from "@/lib/utils";
 import {
   BankContextNav,
   type BankContextNavItem,
@@ -181,7 +181,6 @@ export function BankRouteTabs({
     { href: `/teacher/banks/${bankId}/blueprints`, icon: "blueprints", label: "Blueprints" },
     { href: `/teacher/banks/${bankId}/members`, icon: "members", label: "Members" },
     { href: `/teacher/banks/${bankId}/sources`, icon: "sources", label: "Sources" },
-    { href: `/teacher/banks/${bankId}/settings`, icon: "settings", label: "Settings" },
   ];
 
   return (
@@ -189,27 +188,6 @@ export function BankRouteTabs({
       primaryItems={primaryTabs}
       secondaryItems={secondaryTabs}
     />
-  );
-}
-
-export function BankSafetyList() {
-  const notes = [
-    "AI drafts stay private until reviewed.",
-    "Assignments expose selected approved items, not the full Library.",
-    "Public movement requires a separate review gate.",
-  ];
-
-  return (
-    <div className="grid gap-2 md:grid-cols-3">
-      {notes.map((note) => (
-        <div
-          className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-sm font-medium leading-6 text-sky-950"
-          key={note}
-        >
-          {note}
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -225,12 +203,14 @@ export function BankQuickAction({
   variant?: "default" | "outline";
 }) {
   return (
-    <Button asChild variant={variant}>
-      <Link className="inline-flex items-center gap-2" href={href}>
-        <Icon aria-hidden="true" className="h-4 w-4" />
-        {children}
-      </Link>
-    </Button>
+    <TeacherPendingLink
+      className={cn(buttonVariants({ variant }), "inline-flex items-center gap-2")}
+      href={href}
+      pendingLabel={typeof children === "string" ? children : "Library page"}
+    >
+      <Icon aria-hidden="true" className="h-4 w-4" />
+      {children}
+    </TeacherPendingLink>
   );
 }
 
@@ -242,6 +222,5 @@ export const bankActionIcons = {
   members: Share2,
   questions: BookOpen,
   review: ClipboardCheck,
-  settings: Settings,
   sources: FolderOpen,
 };

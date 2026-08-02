@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Button } from "@/components/ui/button";
 import { requireStudentWorkspace } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
@@ -52,16 +51,13 @@ export default async function StudentClassroomsPage({
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
               My classes
             </h1>
-            <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Join teacher classrooms here. Assigned work lives in My Work.
-            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
-              <Link href="/student/work">My Work</Link>
+              <StudentPendingLink href="/student/work">My Work</StudentPendingLink>
             </Button>
             <Button asChild>
-              <Link href="/student/classrooms/join">Join a class</Link>
+              <StudentPendingLink href="/student/classrooms/join">Join a class</StudentPendingLink>
             </Button>
           </div>
         </div>
@@ -85,9 +81,6 @@ export default async function StudentClassroomsPage({
               <h2 className="text-lg font-bold text-slate-950">
                 Joined classrooms
               </h2>
-              <p className="student-muted">
-                Active memberships show which classrooms can assign work to you.
-              </p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
               {memberships?.length ?? 0}
@@ -124,9 +117,6 @@ export default async function StudentClassroomsPage({
                       {classroom.description}
                     </p>
                   ) : null}
-                  <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                    Open My Work to start, continue, or review assigned tasks.
-                  </div>
                 </article>
               );
             })}
@@ -146,10 +136,12 @@ export default async function StudentClassroomsPage({
               </div>
               <div className="flex flex-wrap justify-center gap-2">
                 <Button asChild>
-                  <Link href="/student/classrooms/join">Enter join code</Link>
+                  <StudentPendingLink href="/student/classrooms/join">
+                    Enter join code
+                  </StudentPendingLink>
                 </Button>
                 <Button asChild variant="outline">
-                  <Link href="/student/work">Open My Work</Link>
+                  <StudentPendingLink href="/student/work">Open My Work</StudentPendingLink>
                 </Button>
               </div>
             </div>

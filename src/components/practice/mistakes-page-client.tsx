@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { LoaderCircle, Play, RefreshCw } from "lucide-react";
 
 import { FeedbackText, QuestionText } from "@/components/math-content";
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -144,7 +144,7 @@ export function MistakesPageClient() {
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button asChild variant="outline">
-              <Link href="/questions">Question Bank</Link>
+              <StudentPendingLink href="/questions">Question Bank</StudentPendingLink>
             </Button>
             <Button
               disabled={isPending || refreshing}
@@ -254,7 +254,7 @@ export function MistakesPageClient() {
               Missed questions appear here after a practice review marks an answer incorrect.
             </p>
             <Button asChild>
-              <Link href="/practice">Start practice</Link>
+              <StudentPendingLink href="/practice">Start practice</StudentPendingLink>
             </Button>
           </CardContent>
         </Card>

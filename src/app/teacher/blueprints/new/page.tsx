@@ -6,7 +6,6 @@ import { FormSubmitButton } from "@/components/form-submit-button";
 import { AssignmentSelectionSummary } from "@/components/teacher/assignment-selection-summary";
 import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
@@ -23,7 +22,7 @@ import {
 import { TEACHER_BLUEPRINT_INPUT_LIMITS } from "@/lib/teacher-blueprint-builder";
 
 import { createTeacherBlueprint } from "../actions";
-import { BlueprintSafetyStrip, SetupNeededState } from "../blueprint-library-ui";
+import { SetupNeededState } from "../blueprint-library-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +56,6 @@ export default async function NewTeacherBlueprintPage({
           title="Create Blueprint"
           description="Create a private planning asset before any question generation or assignment."
         >
-          <TeacherWorkspaceNav />
           <SetupNeededState />
         </TeacherWorkspaceShell>
       );
@@ -92,9 +90,6 @@ export default async function NewTeacherBlueprintPage({
       eyebrow="Teacher Blueprint workspace"
       title="Create Blueprint"
     >
-      <TeacherWorkspaceNav />
-      <BlueprintSafetyStrip />
-
       {query.error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
           {query.error === "required-element-too-long"
@@ -362,11 +357,6 @@ export default async function NewTeacherBlueprintPage({
               </label>
             </div>
           </section>
-
-          <div className="rounded-lg border border-sky-100 bg-sky-50/80 p-4 text-sm leading-6 text-sky-950">
-            Blueprint output must flow through Review Drafts and Library approval
-            before assignment. This form only creates the Library asset.
-          </div>
 
           <div className="flex flex-wrap gap-2">
             <FormSubmitButton pendingLabel="Creating Blueprint...">

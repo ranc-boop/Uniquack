@@ -223,7 +223,6 @@ export function RecentBankImportsPanel({
   return (
     <aside className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">
       <BankSectionHeader
-        description="AI Parsing status history uses existing import batches only. Provider setup stays in Admin / AI Settings."
         title="Recent AI Parsing status"
       />
       <div className="space-y-3 p-5">

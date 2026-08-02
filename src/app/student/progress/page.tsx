@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { StudentWorkspaceShell } from "@/components/student/student-workspace-shell";
 import { Button } from "@/components/ui/button";
 import { requireStudentWorkspace } from "@/lib/auth/guards";
@@ -26,10 +25,9 @@ export default async function StudentProgressPage() {
     <StudentWorkspaceShell
       eyebrow="Evidence"
       title="Progress / Feedback"
-      description="Assignment evidence and feedback status from your student workspace."
       actions={
         <Button asChild variant="outline">
-          <Link href="/student/work">Open My Work</Link>
+          <StudentPendingLink href="/student/work">Open My Work</StudentPendingLink>
         </Button>
       }
     >
@@ -44,13 +42,6 @@ export default async function StudentProgressPage() {
             <p className="mt-2 text-2xl font-bold text-slate-950">{count}</p>
           </div>
         ))}
-      </section>
-
-      <section className="student-panel p-5">
-        <h2 className="text-lg font-bold text-slate-950">Feedback history</h2>
-        <p className="student-muted mt-2">
-          Detailed feedback cards will appear here as assigned Practice evidence grows.
-        </p>
       </section>
     </StudentWorkspaceShell>
   );

@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-
 import { AlertTriangle, RefreshCcw } from "lucide-react";
 
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Button } from "@/components/ui/button";
 
 export default function PracticeError({
@@ -28,7 +27,7 @@ export default function PracticeError({
             Retry Practice
           </Button>
           <Button asChild variant="outline">
-            <Link href="/practice">Return to Practice home</Link>
+            <StudentPendingLink href="/practice">Return to Practice home</StudentPendingLink>
           </Button>
         </div>
         {error.digest ? (

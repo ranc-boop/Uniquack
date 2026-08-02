@@ -7,10 +7,8 @@ import {
   ClassroomMetricCard,
   ClassroomProgressRing,
   ClassroomRouteTabs,
-  ClassroomSafetyStrip,
   formatClassroomDateTime,
 } from "@/app/teacher/classrooms/classroom-ui";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
@@ -60,9 +58,7 @@ export default async function ClassroomAnalyticsPage({
               {classroom.name}
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-600">
-              Completion summaries use real assignment and Practice evidence.
-              Deeper mastery is still planned; assignment detail already supports
-              private notes and explicitly sent student feedback.
+              Assignment and Practice evidence for this class.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -74,14 +70,9 @@ export default async function ClassroomAnalyticsPage({
             </Button>
           </div>
         </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
-        </div>
       </section>
 
       <ClassroomRouteTabs classroomId={classroom.id} />
-      <ClassroomSafetyStrip />
-
       <section className="grid gap-3 md:grid-cols-4">
         <ClassroomMetricCard
           description="Assigned delivery events for this class."
@@ -190,28 +181,6 @@ export default async function ClassroomAnalyticsPage({
           )}
         </section>
       </div>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        {[
-          [
-            "Taxonomy mastery",
-            "Planned analytics will summarize mastery by active taxonomy targets after enough assignment evidence exists.",
-          ],
-          [
-            "Mistake patterns",
-            "Mistake pattern grouping will use linked Practice evidence, not fake classroom data.",
-          ],
-          [
-            "Assignment feedback",
-            "Open an assignment detail to save a private note or send student-visible feedback. Notes remain scoped to the selected student and assignment.",
-          ],
-        ].map(([title, description]) => (
-          <article className="teacher-panel p-5" key={title}>
-            <h2 className="text-lg font-bold text-slate-950">{title}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
-          </article>
-        ))}
-      </section>
     </main>
   );
 }

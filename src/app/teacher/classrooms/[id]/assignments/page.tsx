@@ -4,10 +4,8 @@ import { notFound } from "next/navigation";
 import {
   ClassroomPublishCta,
   ClassroomRouteTabs,
-  ClassroomSafetyStrip,
 } from "@/app/teacher/classrooms/classroom-ui";
 import { Button } from "@/components/ui/button";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -315,14 +313,9 @@ export default async function TeacherAssignmentsPage({
             </Button>
           </div>
         </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
-        </div>
       </section>
 
       <ClassroomRouteTabs classroomId={classroom.id} />
-      <ClassroomSafetyStrip />
-
       <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
         <strong className="font-bold">Assignment visibility:</strong> these
         assignments expose selected question items to students. Assignment

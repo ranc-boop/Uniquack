@@ -54,11 +54,9 @@ assert(
     bankUi.includes("Blueprints") &&
     bankUi.includes("Members") &&
     bankUi.includes("Sources") &&
-    bankUi.includes("Settings") &&
-    bankUi.includes("AI drafts stay private until reviewed.") &&
-    bankUi.includes("Assignments expose selected approved items, not the full Library.") &&
-    bankUi.includes("Public movement requires a separate review gate."),
-  "bank UI helper must expose repository tabs and review/assignment/public safety copy",
+    !bankUi.includes('label: "Settings"') &&
+    !bankUi.includes("BankSafetyList"),
+  "bank UI helper must expose only working repository tabs without static boundary cards",
 );
 
 assert(
@@ -78,7 +76,7 @@ assert(
     bankQuestionsPage.includes('query.status === "approved" ? "approved" : "pending"') &&
     bankQuestionsPage.includes("search_official_public_questions_v2") &&
     bankQuestionsPage.includes('mode="teacher"') &&
-    bankQuestionsPage.includes("打开经典批量管理") &&
+    bankQuestionsPage.includes("Bulk manage") &&
     !bankQuestionsPage.includes("Start Practice"),
   "/teacher/banks/[bankId]/questions must default to the shared two-state workbench and use the official Public Library query",
 );
@@ -124,10 +122,8 @@ assert(
     !bankBlueprintsPage.includes("executeDeepSeek") &&
     !bankBlueprintsPage.includes("callAIPdfExtractionProvider") &&
     bankSourcesPage.includes("Source material and import lineage") &&
-    bankSourcesPage.includes("does not expose private files to students") &&
-    bankSettingsPage.includes("settings read-only") &&
-    bankSettingsPage.includes("No visibility or ownership mutation is added"),
-  "bank blueprints must show bank-linked Blueprint Library assets without generation/provider shortcuts, while sources/settings remain guarded",
+    bankSettingsPage.includes("redirect(`/teacher/banks/${bankId}`)"),
+  "bank blueprints must show bank-linked assets without generation shortcuts, while the removed Settings placeholder redirects safely",
 );
 
 assert(

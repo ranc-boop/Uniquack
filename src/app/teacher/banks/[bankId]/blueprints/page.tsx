@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import { Plus, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   bankMemberRoleLabel,
@@ -135,7 +134,6 @@ export default async function TeacherBankBlueprintsPage({
         </p>
       </BankHeroPanel>
 
-      <TeacherWorkspaceNav />
       <BankRouteTabs bankId={bank.id} currentUserRole={currentUserRole} />
 
       <section className="rounded-lg border border-slate-200/80 bg-white/85 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.7)] ring-1 ring-slate-950/5 backdrop-blur">

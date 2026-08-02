@@ -10,11 +10,9 @@ import {
   ClassroomBadge,
   ClassroomMetricCard,
   ClassroomRouteTabs,
-  ClassroomSafetyStrip,
   formatClassroomDateTime,
 } from "@/app/teacher/classrooms/classroom-ui";
 import { FormSubmitButton } from "@/components/form-submit-button";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -137,14 +135,9 @@ export default async function ClassroomTeachersPage({
             <Link href={`/teacher/classrooms/${classroom.id}`}>Back to overview</Link>
           </Button>
         </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
-        </div>
       </section>
 
       <ClassroomRouteTabs classroomId={classroom.id} />
-      <ClassroomSafetyStrip />
-
       {query.saved ? (
         <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
           {query.saved}
@@ -237,15 +230,6 @@ export default async function ClassroomTeachersPage({
                 Only the classroom owner can add or remove co-teachers.
               </p>
             )}
-          </section>
-
-          <section className="teacher-panel p-5">
-            <h2 className="text-lg font-bold text-slate-950">Boundary</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Classroom roles are operational. They do not expose provider
-              settings, public library controls, private student self-study, or
-              unrestricted source Library questions.
-            </p>
           </section>
         </aside>
       </div>

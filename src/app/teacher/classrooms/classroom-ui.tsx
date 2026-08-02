@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
 import type { LucideProps } from "lucide-react";
 import {
@@ -12,8 +11,9 @@ import {
   Users,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { TeacherPendingLink } from "@/components/teacher/teacher-pending-link";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type ClassroomBadgeTone = "amber" | "blue" | "cyan" | "slate" | "sky";
 
@@ -162,27 +162,6 @@ export function ClassroomProgressRing({
   );
 }
 
-export function ClassroomSafetyStrip() {
-  const notes = [
-    "Classes are roster and delivery spaces.",
-    "Students receive selected assignment items only.",
-    "Joining a class does not grant source Library access.",
-  ];
-
-  return (
-    <section className="grid gap-2 md:grid-cols-3">
-      {notes.map((note) => (
-        <div
-          className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-sm font-medium leading-6 text-sky-950"
-          key={note}
-        >
-          {note}
-        </div>
-      ))}
-    </section>
-  );
-}
-
 export function ClassroomPublishCta({
   classroomId,
   label = "Publish to classes",
@@ -195,12 +174,14 @@ export function ClassroomPublishCta({
     : "/teacher/publish";
 
   return (
-    <Button asChild>
-      <Link className="inline-flex items-center gap-2" href={href}>
-        <Megaphone aria-hidden="true" className="h-4 w-4" />
-        {label}
-      </Link>
-    </Button>
+    <TeacherPendingLink
+      className={cn(buttonVariants(), "inline-flex items-center gap-2")}
+      href={href}
+      pendingLabel={label}
+    >
+      <Megaphone aria-hidden="true" className="h-4 w-4" />
+      {label}
+    </TeacherPendingLink>
   );
 }
 
@@ -216,11 +197,13 @@ export function ClassroomQuickAction({
   variant?: "default" | "outline";
 }) {
   return (
-    <Button asChild variant={variant}>
-      <Link className="inline-flex items-center gap-2" href={href}>
-        <Icon aria-hidden="true" className="h-4 w-4" />
-        {children}
-      </Link>
-    </Button>
+    <TeacherPendingLink
+      className={cn(buttonVariants({ variant }), "inline-flex items-center gap-2")}
+      href={href}
+      pendingLabel={typeof children === "string" ? children : "Classroom page"}
+    >
+      <Icon aria-hidden="true" className="h-4 w-4" />
+      {children}
+    </TeacherPendingLink>
   );
 }

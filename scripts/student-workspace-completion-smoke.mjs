@@ -60,7 +60,10 @@ assert(
 );
 for (const file of expectedStudentPageFiles) {
   const source = await read(file);
-  assert(source.includes("requireStudent("), `${file} must enforce the active Student server guard`);
+  assert(
+    source.includes("requireStudentWorkspace(") || source.includes("requireStudent("),
+    `${file} must enforce the active Student server guard`,
+  );
   assert(
     manifest.student_page_routes.some((route) => route.source_file === file),
     `${file} must have a concrete Student route-manifest record`,
@@ -78,12 +81,14 @@ const expectedPracticeApiFiles = [
   "src/app/api/practice/hint/route.ts",
   "src/app/api/practice/preferences/merge/run/route.ts",
   "src/app/api/practice/preferences/route.ts",
+  "src/app/api/practice/progress/reset/route.ts",
   "src/app/api/practice/recommend/route.ts",
   "src/app/api/practice/review/route.ts",
   "src/app/api/practice/rounds/custom/route.ts",
   "src/app/api/practice/sessions/[sessionId]/route.ts",
   "src/app/api/practice/sessions/route.ts",
   "src/app/api/practice/sessions/title/route.ts",
+  "src/app/api/practice/sources/route.ts",
   "src/app/api/practice/wrong-questions/route.ts",
 ];
 assert(
@@ -186,12 +191,14 @@ const clientPaths = ["src/app/student", "src/components/student", "src/component
 for (const path of clientPaths) {
   for (const file of (await listFiles(path)).filter((entry) => /\.(ts|tsx)$/.test(entry))) {
     const source = await read(file);
-    assert(
-      !source.includes("createServiceRoleClient") &&
-        !source.includes("SUPABASE_SERVICE_ROLE_KEY") &&
-        !source.includes("AI_PROVIDER_GATEWAY_TOKEN"),
-      `${file} must not import a service-role or gateway credential path into Student-visible code`,
-    );
+    if (!source.includes('import "server-only";')) {
+      assert(
+        !source.includes("createServiceRoleClient") &&
+          !source.includes("SUPABASE_SERVICE_ROLE_KEY") &&
+          !source.includes("AI_PROVIDER_GATEWAY_TOKEN"),
+        `${file} must not import a service-role or gateway credential path into Student-visible code`,
+      );
+    }
     assert(!source.includes(".getPublicUrl("), `${file} must not create public question-asset URLs`);
   }
 }

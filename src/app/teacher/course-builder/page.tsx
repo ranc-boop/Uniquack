@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
   listCourseBuilderBridgeClassrooms,
@@ -254,41 +253,18 @@ export default async function TeacherCourseBuilderPage({
     <main className="teacher-shell space-y-6">
       <section className="teacher-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-2">
-            <p className="teacher-eyebrow">Course Builder bridge</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Course Builder will generate Library packages before assignment.
-            </h1>
-            <p className="max-w-3xl text-base leading-7 text-slate-600">
-              This direct assignment bridge remains for compatibility. The
-              Library-first Course Builder rebuild will create reviewed packages in
-              a teacher bank before they become class work.
-            </p>
-          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950">
+            Course Builder
+          </h1>
           <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link href="/teacher">Teacher Studio</Link>
-            </Button>
             <Button asChild variant="outline">
               <Link href="/teacher/banks">Libraries</Link>
             </Button>
             <Button asChild variant="outline">
               <Link href="/teacher/classrooms">Classrooms</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link href="/teacher/banks">Library review</Link>
-            </Button>
           </div>
         </div>
-        <div className="mt-5">
-          <TeacherWorkspaceNav />
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-        <strong className="font-bold">Rebuild planned:</strong> Course Builder
-        should generate Library packages before assignment. This page does not add
-        new generation behavior or provider calls.
       </section>
 
       {query.saved ? (
@@ -306,8 +282,7 @@ export default async function TeacherCourseBuilderPage({
         <section className="teacher-panel p-6">
           <h2 className="text-lg font-bold text-slate-950">Delivery classroom required.</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            The current bridge still needs a teacher-managed classroom before it
-            can save a delivery event. Bank-first package generation is next.
+            Create a classroom before assigning content.
           </p>
           <Button asChild className="mt-4">
             <Link href="/teacher/classrooms">Open classrooms</Link>
@@ -329,13 +304,8 @@ export default async function TeacherCourseBuilderPage({
       ) : (
         <section className="teacher-panel p-8 text-center">
           <h2 className="text-lg font-bold text-slate-950">
-            No Course Builder sources yet.
+            No sources available
           </h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-            Course Builder runs and practice frameworks will appear here after they
-            create reviewed source questions. Draft-only questions stay blocked until
-            they are approved through Library review.
-          </p>
           <Button asChild className="mt-4" variant="outline">
             <Link href="/teacher/banks">Open Library review</Link>
           </Button>

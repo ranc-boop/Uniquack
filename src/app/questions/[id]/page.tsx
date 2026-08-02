@@ -439,11 +439,6 @@ export default async function QuestionDetailPage({
             </SidebarCard>
           )}
 
-          <SidebarCard title="Recommended problems">
-            <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-              Recommended problems coming soon.
-            </div>
-          </SidebarCard>
         </div>
       </div>
     </div>

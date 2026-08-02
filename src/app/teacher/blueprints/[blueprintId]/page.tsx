@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, PencilLine, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, PencilLine, Sparkles } from "lucide-react";
 
 import { AIJobStatusPanel } from "@/components/ai-jobs/ai-job-status-panel";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { TeacherWorkspaceShell } from "@/components/teacher/teacher-workspace-shell";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { Button } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/auth/guards";
 import {
@@ -51,8 +50,6 @@ import {
   BlueprintBadge,
   BlueprintDetailMetric,
   BlueprintKindIcon,
-  BlueprintSafetyStrip,
-  BlueprintWorkflowPanel,
   SetupNeededState,
 } from "../blueprint-library-ui";
 
@@ -131,7 +128,6 @@ export default async function TeacherBlueprintDetailPage({
           title="Blueprint Library"
           description="Blueprints are reusable planning/package assets. They organize question patterns before Review Drafts and Library approval."
         >
-          <TeacherWorkspaceNav />
           <SetupNeededState />
         </TeacherWorkspaceShell>
       );
@@ -192,9 +188,6 @@ export default async function TeacherBlueprintDetailPage({
       eyebrow="Blueprint detail"
       title={blueprint.title}
     >
-      <TeacherWorkspaceNav />
-      <BlueprintSafetyStrip />
-
       {query.created ? (
         <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
           Blueprint created as a review-gated teacher library asset.
@@ -240,8 +233,6 @@ export default async function TeacherBlueprintDetailPage({
 
         <div className="grid gap-5 p-5 xl:grid-cols-[1fr_0.42fr]">
           <div className="space-y-5">
-            <BlueprintWorkflowPanel />
-
             <section className="grid gap-3 md:grid-cols-2">
               <BlueprintDetailMetric
                 label="Taxonomy summary"
@@ -281,11 +272,6 @@ export default async function TeacherBlueprintDetailPage({
                     <h3 className="text-lg font-bold text-slate-950">
                       Structured Blueprint editor
                     </h3>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">
-                      Edit the planning asset only. This does not call a
-                      provider, create Review Drafts, publish assignments, or
-                      mutate source questions.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -402,19 +388,7 @@ export default async function TeacherBlueprintDetailPage({
 
           <aside className="space-y-4">
             <section className="rounded-lg border border-slate-200 bg-white/80 p-5">
-              <div className="flex items-start gap-3">
-                <Eye aria-hidden="true" className="mt-1 h-5 w-5 text-sky-700" />
-                <div>
-                  <h3 className="text-lg font-bold text-slate-950">
-                    Blueprint preview
-                  </h3>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    Blueprints are planning assets. They do not go directly to
-                    students. Generation and assignment require Review Draft
-                    and Library approval.
-                  </p>
-                </div>
-              </div>
+              <h3 className="text-lg font-bold text-slate-950">Blueprint preview</h3>
               <div className="mt-4 grid gap-3">
                 <BlueprintDetailMetric
                   label="Source examples"

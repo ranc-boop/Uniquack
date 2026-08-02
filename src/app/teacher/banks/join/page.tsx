@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
-import { TeacherWorkspaceNav } from "@/components/teacher/teacher-workspace-nav";
 import { requireTeacher } from "@/lib/auth/guards";
 
 import { joinQuestionBankByCode } from "../actions";
@@ -26,7 +25,6 @@ export default async function JoinTeacherBankPage() {
               joining a classroom.
             </p>
           </div>
-          <TeacherWorkspaceNav />
         </div>
       </section>
 

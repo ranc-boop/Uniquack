@@ -1,7 +1,6 @@
-import Link from "next/link";
-
 import { joinClassroomByCode } from "@/app/student/classrooms/join/actions";
 import { FormSubmitButton } from "@/components/form-submit-button";
+import { StudentPendingLink } from "@/components/student/student-pending-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +36,7 @@ export default async function JoinClassroomPage({
             </p>
           </div>
           <Button asChild variant="outline">
-            <Link href="/student/classrooms">My classes</Link>
+            <StudentPendingLink href="/student/classrooms">My classes</StudentPendingLink>
           </Button>
         </div>
       </section>
