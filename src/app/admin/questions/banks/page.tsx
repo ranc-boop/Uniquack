@@ -1,7 +1,6 @@
-import Link from "next/link";
+import { AdminPendingLink } from "@/components/admin/admin-pending-link";
 
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
-import { AdminQuestionLibraryNav } from "@/components/admin/admin-question-library-nav";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import { Button } from "@/components/ui/button";
@@ -31,7 +30,7 @@ export default async function AdminBankGovernancePage({
     saved?: string;
   }>;
 }) {
-  const [profile, params, supabase] = await Promise.all([
+  const [, params, supabase] = await Promise.all([
     requireSuperAdmin(),
     searchParams,
     createClient(),
@@ -139,12 +138,8 @@ export default async function AdminBankGovernancePage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        eyebrow="Super Admin inventory"
-        help="These rows are historical Libraries flagged public. The flag is not publication and never exposes Library-owned questions to students."
-        helpLabel="Legacy public-review scope"
-        title="Bank Governance"
+        title="Library Support"
       />
-      <AdminQuestionLibraryNav role={profile.role} />
       <PageFeedback error={params.error} saved={params.saved} />
 
       <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
@@ -257,16 +252,16 @@ export default async function AdminBankGovernancePage({
                 {total} results · Page {page} of {totalPages}
               </span>
               <div className="flex gap-2">
-                <Button asChild disabled={page <= 1} size="sm" variant="outline">
-                  <Link href={href(page - 1)}>Previous</Link>
+                <Button asChild={page > 1} disabled={page <= 1} size="sm" variant="outline">
+                  {page > 1 ? <AdminPendingLink href={href(page - 1)} pendingLabel="Previous page">Previous</AdminPendingLink> : <span>Previous</span>}
                 </Button>
                 <Button
-                  asChild
+                  asChild={page < totalPages}
                   disabled={page >= totalPages}
                   size="sm"
                   variant="outline"
                 >
-                  <Link href={href(page + 1)}>Next</Link>
+                  {page < totalPages ? <AdminPendingLink href={href(page + 1)} pendingLabel="Next page">Next</AdminPendingLink> : <span>Next</span>}
                 </Button>
               </div>
             </div>

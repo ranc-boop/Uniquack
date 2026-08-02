@@ -676,3 +676,38 @@ export async function bulkUpdateQuestions(formData: FormData) {
   }
   redirectWithSaved(returnTo, `Updated ${questionIds.length} question(s).`);
 }
+
+export async function archiveOfficialQuestion(formData: FormData) {
+  const returnTo = "/admin/questions";
+
+  try {
+    await requireAdmin();
+    const bankQuestionId = uuidSchema.parse(formData.get("bank_question_id"));
+    const supabase = await createClient();
+    const { data: officialBank, error: bankError } = await supabase
+      .from("question_banks")
+      .select("id")
+      .eq("system_key", "official_public")
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (bankError) throw new Error(bankError.message);
+    if (!officialBank) throw new Error("Official Public Library is unavailable.");
+
+    const { data, error } = await supabase.rpc("archive_library_questions_v2", {
+      p_target_bank_id: officialBank.id,
+      p_target_bank_question_ids: [bankQuestionId],
+    });
+
+    if (error) throw new Error(error.message);
+    if ((data?.length ?? 0) !== 1) {
+      throw new Error("The question was not archived.");
+    }
+  } catch (error) {
+    redirectWithError(returnTo, formatActionError(error));
+  }
+
+  revalidatePath("/admin/questions");
+  revalidatePath("/questions");
+  redirectWithSaved(returnTo, "Question archived.");
+}

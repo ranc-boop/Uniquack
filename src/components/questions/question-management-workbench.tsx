@@ -1,15 +1,17 @@
-import Link from "next/link";
 import {
   Archive,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
+  FilePlus2,
   FileQuestion,
   Search,
   ShieldCheck,
 } from "lucide-react";
 
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { MathContent } from "@/components/math-content";
+import { RoutePendingLink } from "@/components/route-pending-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +22,7 @@ export type WorkbenchApprovalStatus = "pending" | "approved";
 export type QuestionWorkbenchItem = {
   actionHref?: string;
   actionLabel?: string;
+  archiveId?: string;
   approvalStatus: WorkbenchApprovalStatus;
   contentHtml: string;
   gradingCapability: "deterministic" | "ai_review" | "needs_configuration";
@@ -46,6 +49,7 @@ type QuestionManagementWorkbenchProps = {
   query?: string;
   selectedId?: string;
   totalCount: number;
+  archiveAction?: (formData: FormData) => Promise<void>;
   currentPage?: number;
   pageSize?: number;
 };
@@ -75,10 +79,10 @@ function StatusControl({
       className="inline-flex rounded-[10px] bg-[#E8E8ED] p-1"
     >
       {([
-        ["pending", "待审批"],
-        ["approved", "已审批"],
+        ["pending", "Pending"],
+        ["approved", "Approved"],
       ] as const).map(([status, label]) => (
-        <Link
+        <RoutePendingLink
           aria-current={activeStatus === status ? "page" : undefined}
           className={cn(
             "flex min-h-9 items-center rounded-lg px-4 text-sm font-medium transition-colors duration-200",
@@ -94,9 +98,10 @@ function StatusControl({
                 : withParams(baseHref, { q: query, status })
           }
           key={status}
+          pendingLabel={label}
         >
           {label}
-        </Link>
+        </RoutePendingLink>
       ))}
     </nav>
   );
@@ -105,32 +110,32 @@ function StatusControl({
 function Inspector({ item }: { item: QuestionWorkbenchItem }) {
   const checks = [
     {
-      label: "答案与批改",
+      label: "Answer & grading",
       ok: item.gradingCapability !== "needs_configuration",
       value:
         item.gradingCapability === "deterministic"
-          ? "确定性批改"
+          ? "Deterministic"
           : item.gradingCapability === "ai_review"
-            ? "AI 复核"
-            : "需要配置",
+            ? "AI review"
+            : "Configuration required",
     },
     {
       label: "Taxonomy",
       ok: item.taxonomyReady,
-      value: item.taxonomyReady ? "已审批" : "需要审批",
+      value: item.taxonomyReady ? "Approved" : "Approval required",
     },
     {
-      label: "来源",
+      label: "Source",
       ok: Boolean(item.sourceLabel),
-      value: item.sourceLabel || "未记录",
+      value: item.sourceLabel || "Not recorded",
     },
   ];
 
   return (
-    <aside className="question-workbench-inspector" aria-label="审批检查器">
+    <aside className="question-workbench-inspector" aria-label="Approval inspector">
       <div className="flex items-center gap-2">
         <ShieldCheck aria-hidden className="size-4 text-[#0071E3]" />
-        <h2 className="text-sm font-semibold text-[#1D1D1F]">审批检查器</h2>
+        <h2 className="text-sm font-semibold text-[#1D1D1F]">Approval checks</h2>
       </div>
       <div className="mt-4 divide-y divide-[#E5E5EA]">
         {checks.map((check) => (
@@ -148,9 +153,6 @@ function Inspector({ item }: { item: QuestionWorkbenchItem }) {
             />
           </div>
         ))}
-      </div>
-      <div className="mt-5 rounded-xl bg-[#F5F5F7] p-3 text-xs leading-5 text-[#6E6E73]">
-        审批状态只回答“能否使用”。归档和删除属于 Library 生命周期，不再作为审批状态。
       </div>
     </aside>
   );
@@ -170,6 +172,7 @@ export function QuestionManagementWorkbench({
   query,
   selectedId,
   totalCount,
+  archiveAction,
   currentPage = 1,
   pageSize = 25,
 }: QuestionManagementWorkbenchProps) {
@@ -180,24 +183,25 @@ export function QuestionManagementWorkbench({
     <section className="question-workbench" aria-label={`${libraryName} question workbench`}>
       <header className="question-workbench-toolbar">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6E6E73]">
-            {mode === "admin" ? "Content Governance" : "Library"}
-          </p>
           <h1 className="truncate text-2xl font-semibold tracking-[-0.02em] text-[#1D1D1F]">
             {libraryName}
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <StatusControl
-            activeStatus={activeStatus}
-            approvedHref={approvedHref}
-            baseHref={baseHref}
-            pendingHref={pendingHref}
-            query={query}
-          />
+          {mode === "teacher" ? (
+            <StatusControl
+              activeStatus={activeStatus}
+              approvedHref={approvedHref}
+              baseHref={baseHref}
+              pendingHref={pendingHref}
+              query={query}
+            />
+          ) : null}
           {canCreate && createHref ? (
             <Button asChild className="min-h-11 bg-[#0071E3] hover:bg-[#0077ED]">
-              <Link href={createHref}>创建题目</Link>
+              <RoutePendingLink href={createHref} pendingLabel="Create question">
+                Create
+              </RoutePendingLink>
             </Button>
           ) : null}
         </div>
@@ -206,22 +210,22 @@ export function QuestionManagementWorkbench({
       <form className="question-workbench-search" role="search">
         <Search aria-hidden className="size-4 text-[#6E6E73]" />
         <Input
-          aria-label="搜索题目"
+          aria-label="Search questions"
           className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
           defaultValue={query}
           name="q"
-          placeholder="搜索题目编号或标题"
+          placeholder="Search by code or title"
         />
         <input name="status" type="hidden" value={activeStatus} />
       </form>
 
       <div className="question-workbench-grid">
-        <div className="question-workbench-list" aria-label="题目列表">
+        <div className="question-workbench-list" aria-label="Question list">
           <div className="flex items-center justify-between border-b border-[#E5E5EA] px-4 py-3">
             <span className="text-sm font-medium text-[#1D1D1F]">
-              {activeStatus === "approved" ? "已审批" : "待审批"}
+              {activeStatus === "approved" ? "Approved" : "Pending"}
             </span>
-            <span className="text-xs text-[#6E6E73]">{totalCount} 道</span>
+            <span className="text-xs text-[#6E6E73]">{totalCount}</span>
           </div>
           {items.length ? (
             <>
@@ -229,7 +233,7 @@ export function QuestionManagementWorkbench({
                 {items.map((item) => {
                 const active = item.id === selected?.id;
                 return (
-                  <Link
+                  <RoutePendingLink
                     aria-current={active ? "true" : undefined}
                     className={cn(
                       "group flex min-h-[76px] items-center gap-3 px-4 py-3 transition-colors duration-200",
@@ -241,7 +245,7 @@ export function QuestionManagementWorkbench({
                       status: activeStatus,
                     })}
                     key={item.id}
-                    prefetch={false}
+                    pendingLabel={item.title}
                   >
                     <FileQuestion aria-hidden className="size-4 shrink-0 text-[#6E6E73]" />
                     <span className="min-w-0 flex-1">
@@ -253,25 +257,25 @@ export function QuestionManagementWorkbench({
                       </span>
                     </span>
                     <ChevronRight aria-hidden className="size-4 shrink-0 text-[#AEAEB2]" />
-                  </Link>
+                  </RoutePendingLink>
                 );
                 })}
               </div>
               {totalPages > 1 ? (
                 <nav
-                  aria-label="题目分页"
+                  aria-label="Question pages"
                   className="flex items-center justify-between border-t border-[#E5E5EA] px-4 py-3 text-xs text-[#6E6E73]"
                 >
                   {currentPage > 1 ? (
-                    <Link href={withParams(baseHref, { q: query, status: activeStatus, page: String(currentPage - 1) })}>
-                      上一页
-                    </Link>
+                    <RoutePendingLink href={withParams(baseHref, { q: query, status: activeStatus, page: String(currentPage - 1) })} pendingLabel="Previous page">
+                      Previous
+                    </RoutePendingLink>
                   ) : <span />}
                   <span>{currentPage} / {totalPages}</span>
                   {currentPage < totalPages ? (
-                    <Link href={withParams(baseHref, { q: query, status: activeStatus, page: String(currentPage + 1) })}>
-                      下一页
-                    </Link>
+                    <RoutePendingLink href={withParams(baseHref, { q: query, status: activeStatus, page: String(currentPage + 1) })} pendingLabel="Next page">
+                      Next
+                    </RoutePendingLink>
                   ) : <span />}
                 </nav>
               ) : null}
@@ -279,7 +283,7 @@ export function QuestionManagementWorkbench({
           ) : (
             <div className="p-8 text-center">
               <ClipboardCheck aria-hidden className="mx-auto size-7 text-[#AEAEB2]" />
-              <p className="mt-3 text-sm font-medium text-[#1D1D1F]">这里暂时没有题目</p>
+              <p className="mt-3 text-sm font-medium text-[#1D1D1F]">No questions here yet</p>
               <p className="mt-1 text-xs leading-5 text-[#6E6E73]">{emptyDescription}</p>
             </div>
           )}
@@ -299,7 +303,7 @@ export function QuestionManagementWorkbench({
                           : "bg-amber-50 text-amber-700",
                       )}
                     >
-                      {selected.approvalStatus === "approved" ? "已审批" : "待审批"}
+                      {selected.approvalStatus === "approved" ? "Approved" : "Pending"}
                     </Badge>
                     <span className="text-xs text-[#6E6E73]">{selected.questionCode}</span>
                   </div>
@@ -315,15 +319,28 @@ export function QuestionManagementWorkbench({
                       variant={selected.approvalStatus === "approved" ? "outline" : "default"}
                       className={selected.approvalStatus === "pending" ? "bg-[#0071E3] hover:bg-[#0077ED]" : undefined}
                     >
-                      <Link href={selected.actionHref}>
+                      <RoutePendingLink href={selected.actionHref} pendingLabel={selected.actionLabel ?? "Question action"}>
                         {selected.approvalStatus === "approved" ? (
-                          <Archive aria-hidden className="mr-2 size-4" />
+                          <FilePlus2 aria-hidden className="mr-2 size-4" />
                         ) : (
                           <CheckCircle2 aria-hidden className="mr-2 size-4" />
                         )}
-                        {selected.actionLabel ?? (selected.approvalStatus === "approved" ? "管理" : "审批")}
-                      </Link>
+                        {selected.actionLabel ?? (selected.approvalStatus === "approved" ? "Create revision" : "Approve")}
+                      </RoutePendingLink>
                     </Button>
+                  ) : null}
+                  {archiveAction && selected.archiveId ? (
+                    <form action={archiveAction}>
+                      <input name="bank_question_id" type="hidden" value={selected.archiveId} />
+                      <FormSubmitButton
+                        pendingLabel="Archiving..."
+                        size="sm"
+                        variant="outline"
+                      >
+                        <Archive aria-hidden className="mr-2 size-4" />
+                        Archive
+                      </FormSubmitButton>
+                    </form>
                   ) : null}
                 </div>
               </div>
@@ -331,7 +348,7 @@ export function QuestionManagementWorkbench({
                 <MathContent className="border-0 p-0 text-base leading-7" value={String(selected.contentHtml)} />
                 {selected.solutionHtml ? (
                   <section className="rounded-[14px] bg-[#F5F5F7] p-4">
-                    <h3 className="mb-2 text-sm font-semibold text-[#1D1D1F]">答案与解析</h3>
+                    <h3 className="mb-2 text-sm font-semibold text-[#1D1D1F]">Answer & explanation</h3>
                     <MathContent className="border-0 bg-transparent p-0" value={String(selected.solutionHtml)} />
                   </section>
                 ) : null}
@@ -339,7 +356,7 @@ export function QuestionManagementWorkbench({
             </>
           ) : (
             <div className="flex min-h-72 items-center justify-center text-sm text-[#6E6E73]">
-              选择一道题查看完整内容。
+              Select a question to inspect its full content.
             </div>
           )}
         </main>

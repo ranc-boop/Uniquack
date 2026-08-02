@@ -1,7 +1,6 @@
-import Link from "next/link";
+import { AdminPendingLink } from "@/components/admin/admin-pending-link";
 
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
-import { AdminQuestionLibraryNav } from "@/components/admin/admin-question-library-nav";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { MathContent } from "@/components/math-content";
@@ -171,12 +170,8 @@ export default async function AdminPublicSubmissionsPage({
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        eyebrow="Super Admin governance"
-        help="Review immutable teacher snapshots. Approval creates a separate global public question; request changes and rejection never publish."
-        helpLabel="Public submission boundary"
-        title="Public Submissions"
+        title="Teacher Submissions"
       />
-      <AdminQuestionLibraryNav role={profile.role} />
       <PageFeedback error={params.error} saved={params.saved} />
 
       {setupNeeded ? (
@@ -407,11 +402,12 @@ export default async function AdminPublicSubmissionsPage({
                                     size="sm"
                                     variant="outline"
                                   >
-                                    <Link
+                                    <AdminPendingLink
                                       href={`/questions/${submission.published_question_id}`}
+                                      pendingLabel="Public copy"
                                     >
                                       View public copy
-                                    </Link>
+                                    </AdminPendingLink>
                                   </Button>
                                 ) : null}
                               </div>
@@ -428,20 +424,20 @@ export default async function AdminPublicSubmissionsPage({
                   {total} results · Page {page} of {totalPages}
                 </span>
                 <div className="flex gap-2">
-                  <Button asChild disabled={page <= 1} size="sm" variant="outline">
-                    <Link href={pageHref({ page: page - 1, q, status })}>
+                  <Button asChild={page > 1} disabled={page <= 1} size="sm" variant="outline">
+                    {page > 1 ? <AdminPendingLink href={pageHref({ page: page - 1, q, status })} pendingLabel="Previous page">
                       Previous
-                    </Link>
+                    </AdminPendingLink> : <span>Previous</span>}
                   </Button>
                   <Button
-                    asChild
+                    asChild={page < totalPages}
                     disabled={page >= totalPages}
                     size="sm"
                     variant="outline"
                   >
-                    <Link href={pageHref({ page: page + 1, q, status })}>
+                    {page < totalPages ? <AdminPendingLink href={pageHref({ page: page + 1, q, status })} pendingLabel="Next page">
                       Next
-                    </Link>
+                    </AdminPendingLink> : <span>Next</span>}
                   </Button>
                 </div>
               </div>

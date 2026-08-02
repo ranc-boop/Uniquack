@@ -1,9 +1,6 @@
-import Link from "next/link";
-
 import { bulkUpdateQuestions, updateQuestion } from "@/app/admin/questions/actions";
 import { AdminActionGroup } from "@/components/admin/admin-action-group";
 import { AdminCard } from "@/components/admin/admin-card";
-import { AdminDangerZone } from "@/components/admin/admin-danger-zone";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
@@ -16,7 +13,7 @@ import { PageFeedback } from "@/components/page-feedback";
 import type { EditableQuestion } from "@/components/question-editor";
 import { Button } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/auth/guards";
-import { AdminQuestionLibraryNav } from "@/components/admin/admin-question-library-nav";
+import { AdminPendingLink } from "@/components/admin/admin-pending-link";
 import {
   countImportAssetReferences,
   extractImportAssetReferences,
@@ -484,43 +481,25 @@ export default async function AdminReviewPage({
       <AdminPageHeader
         actions={
           <Button asChild variant="outline">
-            <Link href="/admin/imports/pdf">AI PDF imports</Link>
+            <AdminPendingLink href="/admin/imports/pdf" pendingLabel="Imports">Imports</AdminPendingLink>
           </Button>
         }
-        eyebrow="Review queue"
-        help="Review draft questions, fix readiness blockers, then publish only when an admin explicitly approves the draft."
-        helpLabel="Review Drafts details"
-        title="Global Review Drafts"
+        title="Approval Queue"
       />
-      <AdminQuestionLibraryNav role={profile.role} />
       <section className="flex flex-col gap-3 rounded-[14px] border border-[#D2D2D7] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[#1D1D1F]">教师 Public 投稿</h2>
+          <h2 className="text-sm font-semibold text-[#1D1D1F]">Teacher submissions</h2>
           <p className="mt-1 text-sm text-[#6E6E73]">
-            {pendingSubmissionCount ?? 0} 个不可变投稿快照等待独立审核；管理员不能由此浏览教师私有题库。
+            {pendingSubmissionCount ?? 0} awaiting review
           </p>
         </div>
         <Button asChild variant="outline">
-          <Link href="/admin/questions/submissions">打开投稿队列</Link>
+          <AdminPendingLink href="/admin/questions/submissions" pendingLabel="Teacher submissions">
+            Review submissions
+          </AdminPendingLink>
         </Button>
       </section>
       <PageFeedback error={params.error} saved={params.saved} />
-      <AdminCard
-        compact
-        title="Review workflow"
-      >
-        <ol className="grid gap-2 text-sm md:grid-cols-3">
-          {[
-            "Import draft",
-            "Review",
-            "Publish or reject",
-          ].map((label) => (
-            <li className="rounded-md border bg-background px-3 py-2 font-medium" key={label}>
-              {label}
-            </li>
-          ))}
-        </ol>
-      </AdminCard>
       <AdminCard
         compact
         title="Find draft questions"
@@ -540,7 +519,7 @@ export default async function AdminReviewPage({
           </div>
           <Button type="submit">Filter</Button>
           <Button asChild type="button" variant="outline">
-            <Link href="/admin/review">Reset</Link>
+            <AdminPendingLink href="/admin/review" pendingLabel="Approval Queue">Reset</AdminPendingLink>
           </Button>
           {batchFilter ? (
             <input type="hidden" name="batch" value={batchFilter.id} />
@@ -569,10 +548,10 @@ export default async function AdminReviewPage({
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant="outline">
-              <Link href="/admin/imports/pdf">Back to AI PDF imports</Link>
+              <AdminPendingLink href="/admin/imports/pdf" pendingLabel="Imports">Back to imports</AdminPendingLink>
             </Button>
             <Button asChild size="sm" variant="outline">
-              <Link href="/admin/review">Clear batch filter</Link>
+              <AdminPendingLink href="/admin/review" pendingLabel="Approval Queue">Clear batch filter</AdminPendingLink>
             </Button>
           </div>
         </div>
@@ -596,16 +575,16 @@ export default async function AdminReviewPage({
           </p>
           <div className="flex items-center gap-2">
             <Button asChild size="sm" variant="outline" disabled={page <= 1}>
-              <Link
-                aria-disabled={page <= 1}
+              <AdminPendingLink
                 href={reviewPath({
                   batch: params.batch,
                   page: Math.max(1, page - 1),
                   search: params.search,
                 })}
+                pendingLabel="Previous page"
               >
                 Previous
-              </Link>
+              </AdminPendingLink>
             </Button>
             <span>
               Page {Math.min(page, totalPages)} of {totalPages}
@@ -616,16 +595,16 @@ export default async function AdminReviewPage({
               variant="outline"
               disabled={page >= totalPages}
             >
-              <Link
-                aria-disabled={page >= totalPages}
+              <AdminPendingLink
                 href={reviewPath({
                   batch: params.batch,
                   page: Math.min(totalPages, page + 1),
                   search: params.search,
                 })}
+                pendingLabel="Next page"
               >
                 Next
-              </Link>
+              </AdminPendingLink>
             </Button>
           </div>
         </div>
@@ -643,15 +622,7 @@ export default async function AdminReviewPage({
           secondary={
             <>
               <AdminReviewBulkSelection formId="admin-review-bulk-form" />
-              <select
-                name="status"
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-                defaultValue="published"
-              >
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
-                <option value="archived">Archived</option>
-              </select>
+              <input name="status" type="hidden" value="published" />
             </>
           }
           primary={
@@ -660,23 +631,10 @@ export default async function AdminReviewPage({
               value="status"
               size="sm"
               variant="outline"
-              pendingLabel="Updating..."
+              pendingLabel="Approving..."
             >
-              Update selected status
+              Approve selected
             </FormSubmitButton>
-          }
-          destructive={
-            <AdminDangerZone compact title="Delete selected drafts">
-              <FormSubmitButton
-                name="bulk_action"
-                value="delete"
-                size="sm"
-                variant="destructive"
-                pendingLabel="Deleting..."
-              >
-                Delete selected
-              </FormSubmitButton>
-            </AdminDangerZone>
           }
         />
       </form>
@@ -794,7 +752,7 @@ export default async function AdminReviewPage({
             actions={
               batchFilter ? (
                 <Button asChild size="sm" variant="outline">
-                  <Link href="/admin/review">Clear filter</Link>
+                  <AdminPendingLink href="/admin/review" pendingLabel="Approval Queue">Clear filter</AdminPendingLink>
                 </Button>
               ) : null
             }

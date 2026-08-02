@@ -1,4 +1,4 @@
-import { AdminQuestionLibraryNav } from "@/components/admin/admin-question-library-nav";
+import { archiveOfficialQuestion } from "@/app/admin/questions/actions";
 import {
   QuestionManagementWorkbench,
   type QuestionWorkbenchItem,
@@ -30,7 +30,7 @@ export default async function AdminOfficialPublicLibraryPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [profile, params, supabase] = await Promise.all([
+  const [, params, supabase] = await Promise.all([
     requireAdmin(),
     searchParams,
     createClient(),
@@ -49,16 +49,38 @@ export default async function AdminOfficialPublicLibraryPage({
     },
   );
   const rows = (data ?? []) as OfficialQuestionSearchRow[];
-  const { data: details } = rows.length
-    ? await supabase
-        .from("questions")
-        .select("id, solution_html")
-        .in("id", rows.map((row) => row.question_id))
-    : { data: [] };
+  const { data: officialBank } = await supabase
+    .from("question_banks")
+    .select("id")
+    .eq("system_key", "official_public")
+    .eq("status", "active")
+    .maybeSingle();
+  const [detailResult, membershipResult] = rows.length
+    ? await Promise.all([
+        supabase
+          .from("questions")
+          .select("id, solution_html")
+          .in("id", rows.map((row) => row.question_id)),
+        officialBank
+          ? supabase
+              .from("bank_questions")
+              .select("id, question_id")
+              .eq("bank_id", officialBank.id)
+              .eq("status", "active")
+              .in("question_id", rows.map((row) => row.question_id))
+          : Promise.resolve({ data: [] }),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const details = detailResult.data ?? [];
+  const memberships = membershipResult.data ?? [];
   const detailById = new Map((details ?? []).map((row) => [row.id, row]));
+  const membershipByQuestionId = new Map(
+    memberships.map((row) => [row.question_id, row.id]),
+  );
   const items: QuestionWorkbenchItem[] = rows.map((row) => ({
+    archiveId: membershipByQuestionId.get(row.question_id),
     actionHref: `/admin/questions/new?source=${row.question_id}`,
-    actionLabel: "创建修订",
+    actionLabel: "Create revision",
     approvalStatus: "approved",
     contentHtml: row.content_html,
     gradingCapability:
@@ -77,7 +99,6 @@ export default async function AdminOfficialPublicLibraryPage({
 
   return (
     <div className="space-y-4">
-      <AdminQuestionLibraryNav role={profile.role} />
       {error ? (
         <div
           className="rounded-[14px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
@@ -88,11 +109,12 @@ export default async function AdminOfficialPublicLibraryPage({
       ) : null}
       <QuestionManagementWorkbench
         activeStatus="approved"
+        archiveAction={archiveOfficialQuestion}
         baseHref="/admin/questions"
         canCreate
         createHref="/admin/questions/new"
         currentPage={page}
-        emptyDescription="批准投稿或完成官方题目审批后，它们会出现在这里。"
+        emptyDescription="Approved official questions and accepted submissions appear here."
         items={items}
         libraryName="Public Library"
         mode="admin"

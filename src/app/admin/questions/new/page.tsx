@@ -1,8 +1,6 @@
-import Link from "next/link";
-
 import { createQuestion } from "@/app/admin/questions/actions";
+import { AdminPendingLink } from "@/components/admin/admin-pending-link";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
-import { AdminQuestionLibraryNav } from "@/components/admin/admin-question-library-nav";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageFeedback } from "@/components/page-feedback";
 import { QuestionAnswerFields } from "@/components/question-answer-fields";
@@ -25,7 +23,7 @@ export default async function AdminQuestionCreatePage({
 }: {
   searchParams: Promise<{ error?: string; source?: string }>;
 }) {
-  const [params, profile, supabase] = await Promise.all([
+  const [params, , supabase] = await Promise.all([
     searchParams,
     requireAdmin(),
     createClient(),
@@ -52,15 +50,11 @@ export default async function AdminQuestionCreatePage({
       <AdminPageHeader
         actions={
           <Button asChild variant="outline">
-            <Link href="/admin/questions">Back to questions</Link>
+            <AdminPendingLink href="/admin/questions" pendingLabel="Public Library">Back to questions</AdminPendingLink>
           </Button>
         }
-        eyebrow="Content management"
-        help="Create one private Global Review Draft. It remains unavailable to learners until Global Review approval."
-        helpLabel="Manual question creation details"
-        title="Create question"
+        title={revisionSource ? "Create revision" : "Create question"}
       />
-      <AdminQuestionLibraryNav role={profile.role} />
       <PageFeedback error={params.error} />
 
       <section className="rounded-lg border bg-card p-5 shadow-sm">
