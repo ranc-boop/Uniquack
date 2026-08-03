@@ -2,11 +2,34 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowLeft, ArrowUp, ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, ChevronsLeft, ChevronsRight, SlidersHorizontal } from "lucide-react";
 
 import {
+  FeedbackText,
+  PracticeCompletionPanel,
+  PracticeQuestionCard,
+  PracticeRoundReviewPanel,
+  QuestionText,
+  ReadableDataCard,
+  TracePanel,
+} from "@/components/practice/practice-agent-dynamic";
+import { PracticeSessionLoadingOverlay } from "@/components/practice/practice-loading";
+import {
+  COLLAPSED_SIDEBAR_WIDTH,
+  DEFAULT_LEFT_SIDEBAR_WIDTH,
+  DEFAULT_RIGHT_SIDEBAR_WIDTH,
+  SESSION_DETAIL_CACHE_LIMIT,
+  type AnswerTransitionDiagnostics,
+  type AnswerWriteReason,
+  type AnswersState,
+  type HintsState,
+  type Phase,
+  type PracticeAgentClientProps,
+  type PracticeSessionsPayload,
+  type TestOnlyDelayedHydrationStatus,
+} from "@/components/practice/practice-agent-types";
+import {
   PracticeFrameworkSelector,
-  PracticeInlineLoading,
   PracticeRoundNavigator,
   PracticeSessionListLoading,
   PracticeSourceSelector,
@@ -23,7 +46,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
   buildPracticeSubmittedAttempts,
@@ -34,26 +56,22 @@ import {
   practiceAnswerMapsMatch,
   practiceAnswerMapStatus,
   practiceJsonRequest as jsonRequest,
-  parsePracticeSseEvents as parseSseEvents,
-  parsePracticeSsePayload,
-  practiceApiErrorMessage,
   practiceAnswerKey,
   practiceSubmittedAttemptQuestionId,
   readPendingPracticeRound,
-  recommendationFromHistoryQuestion,
-  resultsFromHistoryRound,
   settlePracticeRequest,
 } from "@/lib/practice/client-helpers";
 import {
-  buildRestoredPracticeAnswers,
-  resolveRestoredPracticeQuestionAssociation,
-  restoredPracticeQuestionId,
-} from "@/lib/practice/answer-restore";
-import {
-  PRACTICE_RECOMMENDATION_ERROR_CODES,
-  type PracticeRecommendationErrorCode,
-} from "@/lib/practice/recommendation-errors";
+  ASSIGNMENT_PRACTICE_START_ERROR,
+  isAbortError,
+  postRecommendationStream,
+  postReviewStream,
+  practiceRecommendationFailureMessage,
+  reviewFromGradeFallback,
+  validateAssignmentPracticeStartPayload,
+} from "@/lib/practice/agent-client-runtime";
 import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
+import { restorePracticeRoundState } from "@/lib/practice/round-restoration";
 import type {
   AssignmentPracticeStartPayload,
   PracticeAttemptInput,
@@ -77,666 +95,22 @@ import type {
 } from "@/lib/practice/types";
 import { threadStudyContext } from "@/lib/practice/thread-study-context";
 
-const FeedbackText = dynamic(
-  () => import("@/components/math-content").then((module) => module.FeedbackText),
-  { loading: () => null, ssr: false },
-);
-
-const QuestionText = dynamic(
-  () => import("@/components/math-content").then((module) => module.QuestionText),
-  { loading: () => null, ssr: false },
-);
-
-const PracticeCompletionPanel = dynamic(
+const PracticeSessionSidebar = dynamic(
   () =>
-    import("@/components/practice/practice-completion-panel").then(
-      (module) => module.PracticeCompletionPanel,
+    import("@/components/practice/practice-session-sidebar").then(
+      (module) => module.PracticeSessionSidebar,
     ),
   {
-    loading: () => <PracticeInlineLoading label="Loading completion report..." />,
+    loading: () => <PracticeSessionListLoading />,
     ssr: false,
   },
 );
-
-const PracticeQuestionCard = dynamic(
-  () =>
-    import("@/components/practice/practice-question-card").then(
-      (module) => module.PracticeQuestionCard,
-    ),
-  {
-    loading: () => <PracticeInlineLoading label="Loading question..." />,
-    ssr: false,
-  },
-);
-
-const PracticeRoundReviewPanel = dynamic(
-  () =>
-    import("@/components/practice/practice-round-review-panel").then(
-      (module) => module.PracticeRoundReviewPanel,
-    ),
-  {
-    loading: () => <PracticeInlineLoading label="Loading round review..." />,
-    ssr: false,
-  },
-);
-
-const ReadableDataCard = dynamic(
-  () =>
-    import("@/components/practice/practice-readable-data-card").then(
-      (module) => module.ReadableDataCard,
-    ),
-  {
-    loading: () => <PracticeInlineLoading label="Loading study state..." />,
-    ssr: false,
-  },
-);
-
-const TracePanel = dynamic(
-  () => import("@/components/practice/practice-trace-panel").then((module) => module.TracePanel),
-  {
-    loading: () => <PracticeInlineLoading label="Loading trace..." />,
-    ssr: false,
-  },
-);
-
-type Phase = "start" | "thinking" | "recommended" | "practicing" | "feedback" | "ending" | "completed";
-type AnswersState = Record<string, string | string[]>;
-type HintsState = Record<string, string[]>;
-type AnswerWriteReason =
-  | "INPUT"
-  | "SESSION_HYDRATION"
-  | "ROUND_CHANGE"
-  | "SESSION_CHANGE"
-  | "RESET"
-  | "RETRY"
-  | "COMPLETED_RESTORE"
-  | "OTHER";
-type AnswerTransitionDiagnostics = {
-  answerRefCurrent: "PRESENT" | "EMPTY" | "NOT_OBSERVED";
-  answerRefAfterInput: "PRESENT" | "EMPTY" | "NOT_OBSERVED";
-  answerResetAfterInput: "YES" | "NO" | "NOT_OBSERVED";
-  answerStateCurrent: "PRESENT" | "EMPTY" | "NOT_OBSERVED";
-  answerStateAfterInput: "PRESENT" | "EMPTY" | "NOT_OBSERVED";
-  answerStateRefConsistency: "MATCH" | "MISMATCH" | "NOT_OBSERVED";
-  lastWriteReason: AnswerWriteReason | "NOT_OBSERVED";
-};
-type ApiError = { code?: unknown; error?: unknown };
-
-class PracticeRecommendationRequestError extends Error {
-  code: PracticeRecommendationErrorCode | null;
-
-  constructor(code: unknown, message: string) {
-    super(message);
-    this.name = "PracticeRecommendationRequestError";
-    this.code = Object.values(PRACTICE_RECOMMENDATION_ERROR_CODES).includes(
-      code as PracticeRecommendationErrorCode,
-    )
-      ? code as PracticeRecommendationErrorCode
-      : null;
-  }
-}
-type PracticeAgentClientProps = {
-  assignmentId?: string | null;
-  exitHref?: string;
-  testOnlyDelayedHydration?: boolean;
-};
-type PracticeSessionsPayload = {
-  activeSession: PracticeSessionDetail | null;
-  pagination?: {
-    hasMore: boolean;
-    nextOffset: number;
-  };
-  sessions: PracticeSessionSummary[];
-};
-
-type TestOnlyDelayedHydrationStatus =
-  | "NOT_ENABLED"
-  | "NOT_REQUESTED"
-  | "REQUESTED"
-  | "REJECTED_AS_STALE"
-  | "APPLIED"
-  | "FAILED";
-const COLLAPSED_SIDEBAR_WIDTH = 60;
-const DEFAULT_LEFT_SIDEBAR_WIDTH = 304;
-const DEFAULT_RIGHT_SIDEBAR_WIDTH = 384;
-const SESSION_DETAIL_CACHE_LIMIT = 8;
-const ASSIGNMENT_PRACTICE_START_ERROR = "Unable to start assignment practice.";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && Boolean(value.trim());
-}
-
-function isCanonicalIdentity(value: unknown): value is string {
-  return isNonEmptyString(value) && value === value.trim();
-}
-
-function hasOwn(value: object, key: PropertyKey) {
-  return Object.prototype.hasOwnProperty.call(value, key);
-}
-
-function isDenseArray(
-  value: unknown,
-  isValidItem: (item: unknown) => boolean,
-): value is unknown[] {
-  if (!Array.isArray(value)) return false;
-
-  for (let index = 0; index < value.length; index += 1) {
-    if (!hasOwn(value, index) || !isValidItem(value[index])) return false;
-  }
-
-  return true;
-}
-
-function isStringArray(
-  value: unknown,
-  requireNonEmptyItems = false,
-): value is string[] {
-  return isDenseArray(
-    value,
-    (item) =>
-      typeof item === "string" &&
-      (!requireNonEmptyItems || Boolean(item.trim())),
-  );
-}
-
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === "string";
-}
-
-function isOptionalNullableString(value: unknown) {
-  return value === undefined || isNullableString(value);
-}
-
-function isNullableCanonicalIdentity(value: unknown) {
-  return value === null || isCanonicalIdentity(value);
-}
-
-function isOptionalNullableCanonicalIdentity(value: unknown) {
-  return value === undefined || isNullableCanonicalIdentity(value);
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function isPracticeTraceEvent(value: unknown) {
-  if (!isRecord(value)) return false;
-
-  const optionalStringFields = [
-    "error",
-    "inputSummary",
-    "modelThought",
-    "outputSummary",
-    "thoughtSummary",
-    "toolCallId",
-  ];
-  const optionalNumberFields = ["elapsedMs", "iteration", "resultCount"];
-
-  return (
-    ["recommendation", "hint", "grading", "review", "context"].includes(
-      String(value.phase),
-    ) &&
-    isNonEmptyString(value.toolName) &&
-    optionalStringFields.every(
-      (field) => value[field] === undefined || typeof value[field] === "string",
-    ) &&
-    optionalNumberFields.every(
-      (field) => value[field] === undefined || isFiniteNumber(value[field]),
-    ) &&
-    (value.reasoningContent === undefined ||
-      value.reasoningContent === null ||
-      typeof value.reasoningContent === "string") &&
-    (value.savedFullPayload === undefined ||
-      typeof value.savedFullPayload === "boolean")
-  );
-}
-
-function isPracticeTrace(value: unknown) {
-  return isDenseArray(value, isPracticeTraceEvent);
-}
-
-function isQuestionOption(value: unknown) {
-  return (
-    isRecord(value) &&
-    typeof value.content_html === "string" &&
-    (value.content_source === undefined ||
-      typeof value.content_source === "string") &&
-    isNonEmptyString(value.id) &&
-    typeof value.label === "string"
-  );
-}
-
-function isPracticeQuestion(value: unknown) {
-  return (
-    isRecord(value) &&
-    typeof value.contentExcerpt === "string" &&
-    typeof value.contentHtml === "string" &&
-    isFiniteNumber(value.difficulty) &&
-    typeof value.expectedSkill === "string" &&
-    isCanonicalIdentity(value.id) &&
-    isDenseArray(value.options, isQuestionOption) &&
-    typeof value.questionCode === "string" &&
-    isOptionalNullableCanonicalIdentity(value.questionId) &&
-    ["mcq", "fill_blank", "frq", "mixed"].includes(
-      String(value.questionType),
-    ) &&
-    typeof value.reason === "string" &&
-    isOptionalNullableString(value.source) &&
-    isOptionalNullableCanonicalIdentity(value.sourceQuestionId) &&
-    isStringArray(value.tagIds, true) &&
-    typeof value.title === "string"
-  );
-}
-
-function isPracticeAttempt(value: unknown) {
-  return (
-    isRecord(value) &&
-    hasOwn(value, "answer") &&
-    (typeof value.answer === "string" || isStringArray(value.answer)) &&
-    isNullableString(value.explanation) &&
-    isStringArray(value.hints) &&
-    (value.isCorrect === null || typeof value.isCorrect === "boolean") &&
-    isNullableCanonicalIdentity(value.questionId) &&
-    (value.score === null || isFiniteNumber(value.score)) &&
-    isNullableString(value.solutionHtml) &&
-    isNullableCanonicalIdentity(value.sourceQuestionId)
-  );
-}
-
-function hasValidRoundAttemptAssociations(value: Record<string, unknown>) {
-  if (!Array.isArray(value.attempts) || !Array.isArray(value.questions)) {
-    return false;
-  }
-
-  const attempts = value.attempts as Array<{
-    questionId: string | null;
-    sourceQuestionId: string | null;
-  }>;
-  const questions = value.questions as Array<{
-    id: string;
-    questionId?: string | null;
-    sourceQuestionId?: string | null;
-  }>;
-
-  return attempts.every(
-    (attempt) =>
-      resolveRestoredPracticeQuestionAssociation(attempt, questions) !== null,
-  );
-}
-
-function isPracticeRound(value: unknown) {
-  return (
-    isRecord(value) &&
-    isNonEmptyString(value.id) &&
-    isDenseArray(value.attempts, isPracticeAttempt) &&
-    (value.nextRoundGoal === null || typeof value.nextRoundGoal === "string") &&
-    isDenseArray(value.questions, isPracticeQuestion) &&
-    isNullableString(value.reviewSummary) &&
-    typeof value.roundGoal === "string" &&
-    isRecord(value.score) &&
-    isFiniteNumber(value.score.correct) &&
-    isFiniteNumber(value.score.total) &&
-    ["active", "completed", "skipped"].includes(String(value.status)) &&
-    isPracticeTrace(value.trace) &&
-    hasValidRoundAttemptAssociations(value)
-  );
-}
-
-function isPracticeSourceSummary(value: unknown) {
-  return (
-    isRecord(value) &&
-    isOptionalNullableString(value.assignmentId) &&
-    isOptionalNullableString(value.bankId) &&
-    (value.membershipRole === undefined ||
-      value.membershipRole === null ||
-      ["owner", "editor", "viewer"].includes(String(value.membershipRole))) &&
-    typeof value.name === "string" &&
-    ["assignment", "public_catalog", "question_bank"].includes(
-      String(value.sourceKind),
-    ) &&
-    (value.visibility === undefined ||
-      value.visibility === null ||
-      ["private", "shared", "organization", "public"].includes(
-        String(value.visibility),
-      ))
-  );
-}
-
-function isPracticeTagContext(value: unknown) {
-  return (
-    isRecord(value) &&
-    isStringArray(value.confirmedTagIds, true) &&
-    (value.lastGoal === undefined || typeof value.lastGoal === "string") &&
-    isDenseArray(
-      value.usefulTags,
-      (tag) =>
-        isRecord(tag) &&
-        (tag.searchableQuestionCount === undefined ||
-          isFiniteNumber(tag.searchableQuestionCount)) &&
-        ["memory", "browse", "search"].includes(String(tag.source)) &&
-        isNonEmptyString(tag.tagId),
-    ) &&
-    value.version === 1
-  );
-}
-
-function isAssignmentPracticeStartPayload(
-  value: unknown,
-  expectedAssignmentId: string,
-): value is AssignmentPracticeStartPayload {
-  if (!isRecord(value)) return false;
-  const assignment = value.assignment;
-  const recommendation = value.recommendation;
-  const session = value.session;
-  if (!isRecord(assignment) || !isRecord(recommendation) || !isRecord(session)) {
-    return false;
-  }
-
-  const assignmentValid =
-    assignment.id === expectedAssignmentId &&
-    isNonEmptyString(assignment.id) &&
-    typeof assignment.title === "string" &&
-    Number.isSafeInteger(assignment.itemCount) &&
-    Number(assignment.itemCount) >= 0 &&
-    (assignment.dueAt === null || typeof assignment.dueAt === "string");
-  const recommendationValid =
-    (recommendation.mode === "ai" || recommendation.mode === "heuristic") &&
-    isFiniteNumber(recommendation.maxToolCalls) &&
-    isDenseArray(recommendation.recommendations, isPracticeQuestion) &&
-    (recommendation.roundId === undefined ||
-      isNonEmptyString(recommendation.roundId)) &&
-    typeof recommendation.roundGoal === "string" &&
-    typeof recommendation.sessionMemory === "string" &&
-    isPracticeTagContext(recommendation.tagContext) &&
-    isPracticeTrace(recommendation.trace);
-  const sessionValid =
-    isNonEmptyString(session.id) &&
-    isStringArray(session.completedQuestionIds, true) &&
-    typeof session.createdAt === "string" &&
-    typeof session.goal === "string" &&
-    typeof session.lastActivityAt === "string" &&
-    (session.outlineUserNotes === undefined ||
-      typeof session.outlineUserNotes === "string") &&
-    Number.isSafeInteger(session.roundCount) &&
-    Number(session.roundCount) >= 0 &&
-    isDenseArray(session.rounds, isPracticeRound) &&
-    typeof session.sessionMemory === "string" &&
-    isDenseArray(session.sourceScope, isPracticeSourceSummary) &&
-    isOptionalNullableString(session.sourceScopeLockedAt) &&
-    ["active", "archived", "completed"].includes(String(session.status)) &&
-    isPracticeTagContext(session.tagContext) &&
-    typeof session.title === "string";
-  const recommendationSessionValid =
-    recommendation.sessionId === undefined ||
-    recommendation.sessionId === session.id;
-
-  return (
-    assignmentValid &&
-    recommendationValid &&
-    sessionValid &&
-    recommendationSessionValid &&
-    ["completed", "in_progress", "not_started"].includes(
-      String(value.progressStatus),
-    )
-  );
-}
-
-function validateAssignmentPracticeStartPayload(
-  value: unknown,
-  expectedAssignmentId: string,
-): asserts value is AssignmentPracticeStartPayload {
-  if (!isAssignmentPracticeStartPayload(value, expectedAssignmentId)) {
-    throw new Error(ASSIGNMENT_PRACTICE_START_ERROR);
-  }
-}
-
-function isAbortError(error: unknown) {
-  return error instanceof DOMException
-    ? error.name === "AbortError"
-    : error instanceof Error && error.name === "AbortError";
-}
 
 function readPracticeClock() {
   return Date.now();
 }
 
-function practiceRecommendationFailureMessage(error: unknown) {
-  if (error instanceof PracticeRecommendationRequestError) {
-    if (error.code === PRACTICE_RECOMMENDATION_ERROR_CODES.NO_CONTENT) {
-      return "This practice scope has no eligible reviewed questions. Start a new session with another Library or include the Public Library.";
-    }
-    if (error.code === PRACTICE_RECOMMENDATION_ERROR_CODES.SEARCH_FAILED) {
-      return "Practice could not search the selected sources. Try again; your current round has been kept.";
-    }
-    if (error.code === PRACTICE_RECOMMENDATION_ERROR_CODES.PROTOCOL_FAILED) {
-      return "The recommendation agent did not complete a valid search-and-select sequence. Try again; your current round has been kept.";
-    }
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  return message;
-}
 
-async function postRecommendationStream({
-  body,
-  onEnding,
-  onPolicyNotice,
-  onSummaryDelta,
-  onTrace,
-  signal,
-}: {
-  body: PracticeRecommendRequest;
-  onEnding: () => void;
-  onPolicyNotice: (notice: Record<string, unknown>) => void;
-  onSummaryDelta: (text: string) => void;
-  onTrace: (event: PracticeTraceEvent) => void;
-  signal: AbortSignal;
-}): Promise<
-  | { kind: "completed"; completion: PracticeCompletion }
-  | { kind: "round"; recommendation: PracticeRecommendResponse }
-> {
-  const response = await fetch("/api/practice/recommend", {
-    body: JSON.stringify(body),
-    headers: {
-      Accept: "text/event-stream",
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-    signal,
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as ApiError | null;
-    throw new PracticeRecommendationRequestError(
-      payload?.code,
-      practiceApiErrorMessage(payload?.error, response.status),
-    );
-  }
-  if (!response.body) {
-    throw new Error("Streaming response body is not available.");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let result: PracticeRecommendResponse | null = null;
-  let completion: PracticeCompletion | null = null;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-    const parsed = parseSseEvents(done ? `${buffer}\n\n` : buffer);
-    buffer = parsed.rest;
-
-    for (const item of parsed.events) {
-      const payload = parsePracticeSsePayload(item.data);
-      if (item.event === "trace") {
-        onTrace(payload as PracticeTraceEvent);
-      } else if (item.event === "policy_notice") {
-        onPolicyNotice(payload as Record<string, unknown>);
-      } else if (item.event === "practice_ending") {
-        onEnding();
-      } else if (item.event === "practice_summary_delta") {
-        onSummaryDelta(String((payload as { text?: string }).text ?? ""));
-      } else if (item.event === "practice_completed") {
-        completion = payload as PracticeCompletion;
-      } else if (item.event === "result") {
-        result = payload as PracticeRecommendResponse;
-      } else if (item.event === "error") {
-        const errorPayload = payload as ApiError & { trace?: PracticeTraceEvent[] };
-        errorPayload.trace?.forEach(onTrace);
-        throw new PracticeRecommendationRequestError(
-          errorPayload.code,
-          practiceApiErrorMessage(errorPayload.error, 500, "Practice recommendation failed."),
-        );
-      }
-    }
-
-    if (done) break;
-  }
-
-  if (completion) {
-    return { completion, kind: "completed" };
-  }
-  if (!result) {
-    throw new Error("Practice recommendation stream ended before a result was returned.");
-  }
-  return { kind: "round", recommendation: result };
-}
-
-async function postReviewStream({
-  body,
-  onQuestionReview,
-  onResult,
-  onRoundReviewDelta,
-  onRoundReviewStart,
-  onTrace,
-  signal,
-}: {
-  body: PracticeReviewRequest;
-  onQuestionReview: (payload: { result: PracticeGradeResult; review: PracticeQuestionReview }) => void;
-  onResult: (response: PracticeReviewResponse) => void;
-  onRoundReviewDelta: (text: string) => void;
-  onRoundReviewStart: () => void;
-  onTrace: (event: PracticeTraceEvent) => void;
-  signal: AbortSignal;
-}) {
-  const response = await fetch("/api/practice/review", {
-    body: JSON.stringify(body),
-    headers: {
-      Accept: "text/event-stream",
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-    signal,
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as ApiError | null;
-    throw new Error(practiceApiErrorMessage(payload?.error, response.status));
-  }
-  if (!response.body) {
-    throw new Error("Streaming response body is not available.");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let result: PracticeReviewResponse | null = null;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-    const parsed = parseSseEvents(done ? `${buffer}\n\n` : buffer);
-    buffer = parsed.rest;
-
-    for (const item of parsed.events) {
-      const payload = parsePracticeSsePayload(item.data);
-      if (item.event === "trace") {
-        onTrace(payload as PracticeTraceEvent);
-      } else if (item.event === "question_review") {
-        onQuestionReview(payload as { result: PracticeGradeResult; review: PracticeQuestionReview });
-      } else if (item.event === "round_review_start") {
-        onRoundReviewStart();
-      } else if (item.event === "round_review_delta") {
-        onRoundReviewDelta(String((payload as { text?: string }).text ?? ""));
-      } else if (item.event === "result") {
-        result = payload as PracticeReviewResponse;
-        onResult(result);
-      } else if (item.event === "error") {
-        const errorPayload = payload as ApiError & { trace?: PracticeTraceEvent[] };
-        errorPayload.trace?.forEach(onTrace);
-        throw new Error(practiceApiErrorMessage(errorPayload.error, 500, "Practice review failed."));
-      }
-    }
-
-    if (done) break;
-  }
-
-  if (!result) {
-    throw new Error("Practice review stream ended before a result was returned.");
-  }
-  return result;
-}
-
-function reviewFromGradeFallback({
-  activeSession,
-  attempts,
-  error,
-  grade,
-  recommendation,
-}: {
-  activeSession: PracticeSessionDetail;
-  attempts: PracticeAttemptInput[];
-  error: unknown;
-  grade: PracticeGradeResponse;
-  recommendation: PracticeRecommendResponse;
-}): PracticeReviewResponse {
-  const attemptedAnswerByQuestionId = new Map(attempts.map((attempt) => [attempt.questionId, attempt.answer]));
-  const scored = grade.results.filter((result) => result.isCorrect !== null);
-  const correct = grade.results.filter((result) => result.isCorrect === true).length;
-  const manual = grade.results.length - scored.length;
-  const providerNote = error instanceof Error ? error.message : String(error || "AI review unavailable");
-  const progressNote = grade.assignmentProgress?.updated
-    ? "Assignment progress was saved."
-    : "Answers were graded where possible.";
-
-  return {
-    mode: "heuristic",
-    nextRoundGoal: activeSession.goal || recommendation.roundGoal,
-    questionReviews: grade.results.map((result) => ({
-      isCorrect: result.isCorrect,
-      judgmentReason: result.explanation,
-      questionId: result.questionId,
-      score: result.score,
-      solutionKeyPoints: result.solutionHtml,
-      studentAnswer: attemptedAnswerByQuestionId.get(result.questionId) ?? "",
-      verdict: result.isCorrect === true ? "correct" : result.isCorrect === false ? "incorrect" : "needs_review",
-    })),
-    results: grade.results,
-    roundPatterns: [
-      `Auto-scored ${scored.length} of ${grade.results.length} question${grade.results.length === 1 ? "" : "s"}${scored.length ? ` (${correct} correct)` : ""}.`,
-      ...(manual ? [`${manual} response${manual === 1 ? "" : "s"} need teacher or AI review for final scoring.`] : []),
-    ],
-    sessionId: activeSession.id,
-    summary: `AI review was unavailable, so EduStruct used deterministic grading for this round. ${progressNote}`,
-    trace: [
-      ...grade.trace,
-      {
-        error: providerNote,
-        inputSummary: "AI review stream failed; deterministic grade fallback used.",
-        outputSummary: progressNote,
-        phase: "review",
-        resultCount: grade.results.length,
-        toolName: "deterministic_grade_fallback",
-      },
-    ],
-    updatedSessionMemory: activeSession.sessionMemory,
-  };
-}
 
 function subscribeToClientReady() {
   return () => {};
@@ -1046,21 +420,28 @@ export function PracticeAgentClient({
       loadWorkspaceOptions = false,
       commitActiveSession = true,
       restoreActive = true,
+      skipSessionRequest = false,
       sessionOverride,
     }: {
       deferAuxiliary?: boolean;
       loadWorkspaceOptions?: boolean;
       commitActiveSession?: boolean;
       restoreActive?: boolean;
+      skipSessionRequest?: boolean;
       sessionOverride?: PracticeSessionDetail;
     } = {},
   ) {
     const shouldRestoreSession = restoreActive || Boolean(preferredSessionId);
-    const sessionPayloadPromise = jsonRequest<PracticeSessionsPayload>(
-      shouldRestoreSession && !preferredSessionId
-        ? "/api/practice/sessions"
-        : "/api/practice/sessions?includeActive=0",
-    );
+    const sessionPayloadPromise = skipSessionRequest
+      ? Promise.resolve<PracticeSessionsPayload>({
+          activeSession: null,
+          sessions: [],
+        })
+      : jsonRequest<PracticeSessionsPayload>(
+          shouldRestoreSession && !preferredSessionId
+            ? "/api/practice/sessions"
+            : "/api/practice/sessions?includeActive=0",
+        );
     const preferenceStatePromise = loadWorkspaceOptions
       ? settlePracticeRequest(
           jsonRequest<{ longTermPreference: string }>("/api/practice/preferences"),
@@ -1186,67 +567,25 @@ export function PracticeAgentClient({
       ? "COMPLETED_RESTORE"
       : "SESSION_HYDRATION",
   ) {
-    if (!session || !round.questions.length) return;
-
-    const restoredRecommendations = round.questions
-      .map(recommendationFromHistoryQuestion)
-      .filter((question) => question.id);
-    if (!restoredRecommendations.length) return;
-
-    const restoredRecommendation: PracticeRecommendResponse = {
-      maxToolCalls: 0,
-      mode: "heuristic",
-      recommendations: restoredRecommendations,
-      roundId: round.id,
-      roundGoal: round.roundGoal || session.goal,
-      sessionId: session.id,
-      sessionMemory: session.sessionMemory,
-      tagContext: session.tagContext,
-      trace: round.trace ?? [],
-    };
-    const restoredResults = resultsFromHistoryRound(round);
-    const persistedAnswers: AnswersState = buildRestoredPracticeAnswers(
-      round.attempts,
-      round.questions,
+    if (!session) return;
+    const restored = restorePracticeRoundState(
+      round,
+      session,
+      roundAnswerDraftsRef.current[practiceRoundDraftKey(session.id, round.id)],
     );
-    const draftKey = practiceRoundDraftKey(session.id, round.id);
-    const restoredAnswers = round.status === "completed"
-      ? persistedAnswers
-      : roundAnswerDraftsRef.current[draftKey] ?? persistedAnswers;
-    const restoredHints: HintsState = {};
+    if (!restored) return;
 
-    for (const attempt of round.attempts) {
-      const questionId = restoredPracticeQuestionId(attempt, round.questions);
-      if (!questionId) continue;
-      restoredHints[questionId] = attempt.hints;
-    }
-
-    setRecommendation(restoredRecommendation);
-    commitAnswers(restoredAnswers, reason, {
+    setRecommendation(restored.recommendation);
+    commitAnswers(restored.answers, reason, {
       protectNewerInput: reason === "SESSION_HYDRATION",
     });
-    setHints(restoredHints);
-    setResults(restoredResults);
-    setLiveTrace(round.trace ?? []);
-    setReviewTrace([]);
-    setGoal(round.nextRoundGoal ?? "");
-
-    if (round.status === "completed") {
-      setReview({
-        mode: "heuristic",
-        nextRoundGoal: round.nextRoundGoal ?? session.goal,
-        results: restoredResults,
-        sessionId: session.id,
-        summary: round.reviewSummary ?? "This round has saved review results.",
-        trace: round.trace ?? [],
-        updatedSessionMemory: session.sessionMemory,
-      });
-      setReviewTrace(round.trace ?? []);
-      setPhase("feedback");
-    } else {
-      setReview(null);
-      setPhase("recommended");
-    }
+    setHints(restored.hints);
+    setResults(restored.results);
+    setLiveTrace(restored.liveTrace);
+    setReviewTrace(restored.reviewTrace);
+    setGoal(restored.goal);
+    setReview(restored.review);
+    setPhase(restored.phase);
   }
 
   async function runTestOnlyDelayedHydration() {
@@ -1442,8 +781,10 @@ export function PracticeAgentClient({
     cacheSessionDetail(payload.session);
     const restoredSession = await refreshPracticeState(payload.session.id, {
       commitActiveSession: false,
-      deferAuxiliary: false,
+      deferAuxiliary: true,
       loadWorkspaceOptions: true,
+      restoreActive: false,
+      skipSessionRequest: true,
       sessionOverride: payload.session,
     });
     if (restoredSession !== payload.session) {
@@ -2381,266 +1722,41 @@ export function PracticeAgentClient({
       style={practiceGridStyle}
     >
       {!isAssignmentMode ? (
-        <aside className="relative transition-all duration-300 xl:sticky xl:top-20 xl:h-[calc(100vh-5rem)] xl:overflow-y-auto">
-        {!isLeftSidebarCollapsed ? (
-          <button
-            aria-label="Resize sessions sidebar"
-            className="student-focus-ring group absolute -right-2 top-0 z-40 hidden h-full w-4 cursor-col-resize rounded-full bg-transparent xl:block"
-            onPointerDown={(event) => beginSidebarResize("left", event)}
-            type="button"
-          >
-            <span className="absolute left-1/2 top-4 h-[calc(100%-2rem)] w-px -translate-x-1/2 rounded-full bg-slate-200 transition-all duration-200 group-hover:w-1 group-hover:bg-sky-400 group-active:w-1 group-active:bg-sky-600" />
-            <span className="absolute left-1/2 top-1/2 h-12 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100" />
-          </button>
-        ) : null}
-        {isLeftSidebarCollapsed ? (
-          <div className="hidden h-full min-h-64 flex-col items-center border-r border-slate-200 bg-slate-50/80 px-2 py-5 xl:flex">
-            <Button
-              aria-label="Expand sessions sidebar"
-              className="size-10 rounded-xl bg-slate-200/70 text-slate-900 hover:bg-slate-200"
-              onClick={() => setIsLeftSidebarCollapsed(false)}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <ChevronsRight className="size-4" aria-hidden="true" />
-            </Button>
-            <div className="mt-8 flex flex-col items-center gap-4">
-              <Button
-                aria-label="New practice session"
-                className="size-10"
-                disabled={isPending || sessionHistoryLoading}
-                onClick={createNewSession}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <Plus className="size-5" aria-hidden="true" />
-              </Button>
-              <Button
-                aria-label="Show sessions"
-                className="size-10"
-                onClick={() => setIsLeftSidebarCollapsed(false)}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <MoreHorizontal className="size-5" aria-hidden="true" />
-              </Button>
-            </div>
-            <div className="mt-auto flex size-9 items-center justify-center rounded-full bg-slate-400 text-xs font-bold text-white">
-              O2
-            </div>
-          </div>
-        ) : (
-        <div className="flex min-h-full flex-col border-r border-slate-200 bg-slate-50/80 px-4 py-6">
-        <section>
-          <div className="sticky top-3 z-30 mb-9 bg-slate-50/95 pb-2">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-lg font-semibold tracking-tight text-slate-950">Sessions</h2>
-              <Button
-                aria-label="Collapse sessions sidebar"
-                className="hidden size-9 shrink-0 rounded-xl bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 xl:inline-flex"
-                onClick={() => setIsLeftSidebarCollapsed(true)}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <ChevronsLeft className="size-4" aria-hidden="true" />
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-8">
-            <button
-              className="student-focus-ring group flex w-full cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-3 text-left ring-1 ring-slate-200/80 transition-all duration-200 hover:bg-sky-50 hover:ring-sky-200"
-              disabled={isPending || sessionHistoryLoading}
-              onClick={createNewSession}
-              type="button"
-            >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-sky-600 text-white shadow-sm shadow-sky-950/10 transition-colors group-hover:bg-sky-700">
-                <Plus className="size-4" aria-hidden="true" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-bold text-slate-900">New practice session</span>
-              </span>
-            </button>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <p className="text-sm font-bold text-slate-950">Recent</p>
-                <span className="h-px flex-1 bg-slate-100 ml-3" />
-              </div>
-              <div className="space-y-1" data-testid="practice-session-list">
-              {sessionHistoryLoading ? (
-                <PracticeSessionListLoading />
-              ) : sessions.length ? sessions.map((item) => (
-                <div
-                  key={item.id}
-                  className={`group flex items-center gap-1 rounded-xl pr-1 transition-all duration-200 ${
-                    activeSession?.id === item.id
-                      ? "bg-white shadow-sm ring-1 ring-slate-200"
-                      : "bg-transparent hover:bg-slate-50"
-                  }`}
-                >
-                  <button
-                    aria-current={activeSession?.id === item.id ? "true" : undefined}
-                    className="student-focus-ring flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left"
-                    data-session-active={activeSession?.id === item.id ? "yes" : "no"}
-                    data-testid="practice-session-item"
-                    onFocus={() => prefetchPracticeSession(item.id)}
-                    onMouseEnter={() => prefetchPracticeSession(item.id)}
-                    onClick={() => switchSession(item.id)}
-                    type="button"
-                  >
-                    <span
-                      className={`h-7 w-1 shrink-0 rounded-full ${
-                        activeSession?.id === item.id ? "bg-sky-600" : "bg-slate-200 group-hover:bg-sky-300"
-                      }`}
-                    />
-                    <span className="min-w-0 flex-1">
-                      {renamingSessionId === item.id ? (
-                        <Input
-                          autoFocus
-                          className="h-8 border-sky-200 bg-white text-sm font-bold"
-                          maxLength={PRACTICE_INPUT_LIMITS.SESSION_TITLE_CHARS}
-                          onBlur={() => submitRenameSession(item.id)}
-                          onChange={(event) => setRenameValue(event.target.value)}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              submitRenameSession(item.id);
-                            }
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              setRenamingSessionId(null);
-                              setRenameValue("");
-                            }
-                          }}
-                          value={renameValue}
-                        />
-                      ) : (
-                        <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
-                      )}
-                    </span>
-                  </button>
-                  {activeSession?.id === item.id ? (
-                    <span className="size-2 rounded-full bg-sky-600" aria-label="Current session" />
-                  ) : null}
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        aria-label={`Session actions for ${item.title}`}
-                        className="size-8 shrink-0 text-slate-500 opacity-70 hover:text-slate-900 group-hover:opacity-100"
-                        disabled={isPending}
-                        onClick={(event) => event.stopPropagation()}
-                        size="icon"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <MoreHorizontal className="size-4" aria-hidden="true" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="end" className="w-44 p-1">
-                    <Button
-                      className="h-9 w-full justify-start px-2 text-slate-700"
-                      disabled={isPending}
-                      onClick={() => beginRenameSession(item)}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Pencil className="size-4" aria-hidden="true" />
-                      Rename session
-                    </Button>
-                    <Button
-                      className="h-9 w-full justify-start px-2 text-destructive hover:text-destructive"
-                        disabled={isPending}
-                        onClick={() => deleteSession(item.id)}
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Trash2 className="size-4" aria-hidden="true" />
-                        Delete
-                      </Button>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              )) : (
-                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm leading-6 text-slate-600">
-                  No saved sessions yet. Generate your first round to start a reusable study thread.
-                </div>
-              )}
-              </div>
-              {sessionHistoryHasMore ? (
-                <Button
-                  className="mt-2 w-full"
-                  disabled={isPending || sessionHistoryLoadingMore}
-                  onClick={() => void loadMoreSessions()}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  {sessionHistoryLoadingMore ? "Loading more..." : "Load more sessions"}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </section>
-        <div className="mt-auto space-y-3">
-          <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
-            <summary className="cursor-pointer text-sm font-bold text-slate-900">Practice cycle</summary>
-            <div className="mt-3 space-y-3">
-              <p>Historical attempts and Assignment evidence stay intact. Recommendations will treat every available question as unseen in a new self-study session.</p>
-              <Button
-                className="w-full justify-start"
-                disabled={isPending}
-                onClick={resetPracticeProgress}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <RotateCcw className="size-4" aria-hidden="true" />
-                Practice all questions again
-              </Button>
-            </div>
-          </details>
-          <details className="rounded-lg bg-white/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
-            <summary className="cursor-pointer text-sm font-bold text-slate-900">Long-term memory</summary>
-            <div className="mt-3 space-y-2">
-              {preferenceLoading ? (
-                <PracticeInlineLoading label="Loading learning memory..." />
-              ) : memoryEditing ? (
-                <Textarea
-                  className="min-h-28 bg-white text-xs"
-                  maxLength={PRACTICE_INPUT_LIMITS.SESSION_MEMORY_CHARS}
-                  onChange={(event) => setLongTermMemoryDraft(event.target.value)}
-                  value={longTermMemoryDraft}
-                />
-              ) : longTermMemory.trim() ? (
-                <FeedbackText className="border-none bg-transparent p-0 text-xs leading-5 text-slate-600" compact value={longTermMemory} />
-              ) : (
-                <p className="text-slate-500">
-                  No durable learning pattern has been saved yet. It will update when a new session starts and old session evidence needs merging.
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {memoryEditing ? (
-                  <>
-                    <Button disabled={isPending} onClick={saveLongTermMemory} size="sm" type="button" variant="secondary">Save</Button>
-                    <Button disabled={isPending} onClick={() => { setMemoryEditing(false); setLongTermMemoryDraft(longTermMemory); }} size="sm" type="button" variant="outline">Cancel</Button>
-                  </>
-                ) : (
-                  <Button disabled={isPending} onClick={() => setMemoryEditing(true)} size="sm" type="button" variant="outline">Edit</Button>
-                )}
-                <Button disabled={isPending || !longTermMemory.trim()} onClick={clearLongTermMemory} size="sm" type="button" variant="ghost">Clear</Button>
-              </div>
-            </div>
-          </details>
-        </div>
-        </div>
-        )}
-        </aside>
+        <PracticeSessionSidebar
+          activeSessionId={activeSession?.id}
+          isCollapsed={isLeftSidebarCollapsed}
+          isPending={isPending}
+          longTermMemory={longTermMemory}
+          longTermMemoryDraft={longTermMemoryDraft}
+          memoryEditing={memoryEditing}
+          onBeginRename={beginRenameSession}
+          onCancelRename={() => {
+            setRenamingSessionId(null);
+            setRenameValue("");
+          }}
+          onClearLongTermMemory={clearLongTermMemory}
+          onCollapse={() => setIsLeftSidebarCollapsed(true)}
+          onCreateNewSession={createNewSession}
+          onDeleteSession={deleteSession}
+          onExpand={() => setIsLeftSidebarCollapsed(false)}
+          onLoadMore={() => void loadMoreSessions()}
+          onPrefetchSession={prefetchPracticeSession}
+          onResetPracticeProgress={resetPracticeProgress}
+          onRenameValueChange={setRenameValue}
+          onResize={(event) => beginSidebarResize("left", event)}
+          onSaveLongTermMemory={saveLongTermMemory}
+          onSetLongTermMemoryDraft={setLongTermMemoryDraft}
+          onSetMemoryEditing={setMemoryEditing}
+          onSubmitRename={submitRenameSession}
+          onSwitchSession={switchSession}
+          preferenceLoading={preferenceLoading}
+          renameValue={renameValue}
+          renamingSessionId={renamingSessionId}
+          sessionHistoryHasMore={sessionHistoryHasMore}
+          sessionHistoryLoading={sessionHistoryLoading}
+          sessionHistoryLoadingMore={sessionHistoryLoadingMore}
+          sessions={sessions}
+        />
       ) : null}
 
         <main className="relative min-w-0 space-y-4 px-0 xl:px-2">
@@ -2659,15 +1775,7 @@ export function PracticeAgentClient({
             </div>
           ) : null}
           {sessionAction ? (
-            <section aria-busy="true" aria-live="polite" className="absolute inset-0 z-20 flex min-h-[60vh] flex-col justify-center gap-5 bg-white/95 px-4 backdrop-blur-sm" role="status">
-              <span className="sr-only">Loading practice session…</span>
-              <div className="h-7 w-40 animate-pulse rounded-lg bg-slate-100" />
-              <div className="h-5 w-3/5 animate-pulse rounded bg-slate-100" />
-              <div className="mt-4 space-y-3">
-                <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
-                <div className="h-16 animate-pulse rounded-2xl bg-slate-50" />
-              </div>
-            </section>
+            <PracticeSessionLoadingOverlay action={sessionAction} />
           ) : null}
           {assignmentLaunch ? (
             <section className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">

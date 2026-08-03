@@ -23,6 +23,8 @@ const [
   rawPracticeLoading,
   rawPracticeLoader,
   rawPracticePage,
+  rawPracticeDynamic,
+  rawPracticeSessionSidebar,
   rawPracticeScopePanels,
   rawPracticeSkeleton,
   rawClientHelpers,
@@ -35,6 +37,8 @@ const [
   readFile(resolve(root, "src/app/practice/loading.tsx"), "utf8"),
   readFile(resolve(root, "src/components/practice/practice-agent-loader.tsx"), "utf8"),
   readFile(resolve(root, "src/app/practice/page.tsx"), "utf8"),
+  readFile(resolve(root, "src/components/practice/practice-agent-dynamic.tsx"), "utf8"),
+  readFile(resolve(root, "src/components/practice/practice-session-sidebar.tsx"), "utf8"),
   readFile(resolve(root, "src/components/practice/practice-session-scope-panels.tsx"), "utf8"),
   readFile(resolve(root, "src/components/practice/practice-workspace-skeleton.tsx"), "utf8"),
   readFile(resolve(root, "src/lib/practice/client-helpers.ts"), "utf8"),
@@ -47,6 +51,8 @@ const sessionsRoute = rawSessionsRoute.replaceAll("\r\n", "\n");
 const practiceLoading = rawPracticeLoading.replaceAll("\r\n", "\n");
 const practiceLoader = rawPracticeLoader.replaceAll("\r\n", "\n");
 const practicePage = rawPracticePage.replaceAll("\r\n", "\n");
+const practiceDynamic = rawPracticeDynamic.replaceAll("\r\n", "\n");
+const practiceSessionSidebar = rawPracticeSessionSidebar.replaceAll("\r\n", "\n");
 const practiceScopePanels = rawPracticeScopePanels.replaceAll("\r\n", "\n");
 const practiceSkeleton = rawPracticeSkeleton.replaceAll("\r\n", "\n");
 const clientHelpers = rawClientHelpers.replaceAll("\r\n", "\n");
@@ -66,11 +72,11 @@ assert(
     !client.includes('import { PracticeRoundReviewPanel }') &&
     !client.includes('import { ReadableDataCard') &&
     !practiceScopePanels.includes("@/components/math-content") &&
-    client.includes('import("@/components/math-content")') &&
-    client.includes('import("@/components/practice/practice-question-card")') &&
-    client.includes('import("@/components/practice/practice-round-review-panel")') &&
-    client.includes('import("@/components/practice/practice-completion-panel")') &&
-    client.includes('import("@/components/practice/practice-readable-data-card")'),
+    practiceDynamic.includes('import("@/components/math-content")') &&
+    practiceDynamic.includes('import("@/components/practice/practice-question-card")') &&
+    practiceDynamic.includes('import("@/components/practice/practice-round-review-panel")') &&
+    practiceDynamic.includes('import("@/components/practice/practice-completion-panel")') &&
+    practiceDynamic.includes('import("@/components/practice/practice-readable-data-card")'),
   "Practice starter must defer math rendering and round-only panels until their UI is visible.",
 );
 
@@ -110,9 +116,11 @@ assert(
 );
 assert(
   persistence.includes("PRACTICE_SESSION_LIST_FIELDS") &&
-    persistence.includes('"created_at,goal,id,last_activity_at,source_scope_locked_at,status,summary,title"') &&
+    persistence.includes('"created_at,id,last_activity_at,status,title"') &&
     listSessions.includes("compact: true") &&
-    !listSessions.includes("PRACTICE_SESSION_FIELDS"),
+    !listSessions.includes("PRACTICE_SESSION_FIELDS") &&
+    persistence.includes("`${PRACTICE_SESSION_LIST_FIELDS},practice_rounds(count)`") &&
+    !persistence.includes("`${PRACTICE_SESSION_LIST_FIELDS},practice_rounds(count),practice_session_sources"),
   "Practice session history must select and serialize compact rows without thread payloads",
 );
 
@@ -143,7 +151,7 @@ const loadMoreSessions = sourceBlock(
 assert(
   loadMoreSessions.includes("includeActive=0&limit=25&offset=${sessions.length}") &&
     loadMoreSessions.includes("setSessionHistoryHasMore") &&
-    client.includes("Load more sessions"),
+    practiceSessionSidebar.includes("Load more sessions"),
   "Bounded Practice session history must retain access to older sessions through incremental loading",
 );
 const sessionsPost = sourceBlock(
@@ -185,9 +193,9 @@ const switchSession = sourceBlock(
   "async function loadMoreSessions",
 );
 assert(
-  client.includes("SESSION_DETAIL_CACHE_LIMIT") &&
+    client.includes("SESSION_DETAIL_CACHE_LIMIT") &&
     client.includes("prefetchPracticeSession") &&
-    client.includes('onMouseEnter={() => prefetchPracticeSession(item.id)}') &&
+    practiceSessionSidebar.includes('onMouseEnter={() => onPrefetchSession(item.id)}') &&
     client.includes("practiceSourcesRequestRef") &&
     switchSession.includes("const sessionPromise") &&
     switchSession.includes("const wrongQuestionsPromise") &&

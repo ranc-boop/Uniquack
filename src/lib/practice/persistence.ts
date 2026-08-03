@@ -100,6 +100,7 @@ const DEFAULT_TAG_CONTEXT: PracticeTagContext = {
 
 const PRACTICE_COURSE_FRAMEWORK_SELECT =
   "allowed_tag_ids,description,framework_prompt,id,learning_path,priority_rules,status,title";
+const PRACTICE_COURSE_FRAMEWORK_LIST_SELECT = "id,status,title";
 const PRACTICE_SESSION_FIELDS =
   "cache_prefix_version,completed_question_ids,course_framework_id,course_framework_snapshot,created_at,goal,id,last_activity_at,long_term_memory_snapshot,outline_user_notes,session_memory,session_plan,session_state,session_thread_messages,source_scope_locked_at,status,summary,tag_context,title";
 const PRACTICE_SESSION_SOURCE_FIELDS =
@@ -107,9 +108,9 @@ const PRACTICE_SESSION_SOURCE_FIELDS =
 const PRACTICE_SESSION_DETAIL_SELECT =
   `${PRACTICE_SESSION_FIELDS},practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
 const PRACTICE_SESSION_LIST_FIELDS =
-  "created_at,goal,id,last_activity_at,source_scope_locked_at,status,summary,title";
+  "created_at,id,last_activity_at,status,title";
 const PRACTICE_SESSION_SUMMARY_SELECT =
-  `${PRACTICE_SESSION_LIST_FIELDS},practice_rounds(count),practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
+  `${PRACTICE_SESSION_LIST_FIELDS},practice_rounds(count)`;
 const PRACTICE_ROUND_HISTORY_SELECT =
   "id,next_round_goal,review_summary,round_goal,score_correct,score_total,status,trace";
 const PRACTICE_ROUND_QUESTION_HISTORY_SELECT =
@@ -554,7 +555,7 @@ export async function listActivePracticeCourseFrameworks({
 }) {
   const { data, error } = await supabase
     .from("practice_course_frameworks")
-    .select(PRACTICE_COURSE_FRAMEWORK_SELECT)
+    .select(PRACTICE_COURSE_FRAMEWORK_LIST_SELECT)
     .eq("status", "active")
     .order("updated_at", { ascending: false });
 
