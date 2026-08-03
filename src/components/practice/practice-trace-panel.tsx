@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, LoaderCircle, Search, Sparkles, Wrench } from "lucide-react";
+import { ChevronDown, Search, Sparkles, Wrench } from "lucide-react";
 
 import { FeedbackText } from "@/components/math-content";
 import { Button } from "@/components/ui/button";
@@ -280,7 +280,7 @@ export function TracePanel({
           variant="ghost"
         >
           {active ? (
-            <LoaderCircle className="size-4 shrink-0 animate-spin text-sky-600" aria-hidden="true" />
+            <span aria-hidden="true" className="loading-indicator-spinner size-4 shrink-0" />
           ) : (
             <Sparkles className="size-4 shrink-0 text-slate-500" aria-hidden="true" />
           )}

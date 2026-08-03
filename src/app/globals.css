@@ -107,6 +107,39 @@
     100% { transform: scaleX(0.82); }
   }
 
+  .loading-indicator-spinner {
+    display: inline-block;
+    border: 1.5px solid rgb(29 29 31 / 0.16);
+    border-top-color: #0071e3;
+    border-radius: 999px;
+    animation: loading-indicator-spin 700ms linear infinite;
+  }
+
+  @keyframes loading-indicator-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .practice-loading-block {
+    background: linear-gradient(
+      110deg,
+      #ececf0 8%,
+      #fafafa 18%,
+      #ececf0 33%
+    );
+    background-size: 220% 100%;
+    animation: practice-loading-shimmer 1600ms ease-in-out infinite;
+  }
+
+  .practice-loading-overlay {
+    background: rgb(245 245 247 / 0.96);
+    backdrop-filter: saturate(150%) blur(18px);
+  }
+
+  @keyframes practice-loading-shimmer {
+    from { background-position: 120% 0; }
+    to { background-position: -40% 0; }
+  }
+
   .workspace-topbar {
     position: sticky;
     top: 0;
@@ -273,7 +306,18 @@
   }
 
   .student-enter {
-    @apply animate-in fade-in slide-in-from-bottom-2 duration-300;
+    animation: practice-content-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes practice-content-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .student-focus-ring {
@@ -381,6 +425,11 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .loading-indicator-spinner,
+    .practice-loading-block {
+      animation: none !important;
+    }
+
     .student-card-hover,
     .student-enter,
     .teacher-card-hover,

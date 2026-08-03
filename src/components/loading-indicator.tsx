@@ -1,5 +1,3 @@
-import { LoaderCircle } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 
 type LoadingIndicatorProps = {
@@ -17,15 +15,15 @@ export function LoadingIndicator({
     <span
       aria-live="polite"
       className={cn(
-        "inline-flex items-center gap-2 text-sm text-muted-foreground",
+        "loading-indicator inline-flex items-center gap-2 text-sm text-muted-foreground",
         className,
       )}
       role="status"
     >
-      <LoaderCircle
+      <span
         aria-hidden="true"
         className={cn(
-          "shrink-0 motion-safe:animate-spin",
+          "loading-indicator-spinner shrink-0",
           size === "sm" ? "size-4" : "size-5",
         )}
       />
