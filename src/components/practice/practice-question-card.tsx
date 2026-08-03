@@ -1,7 +1,5 @@
 "use client";
 
-import { LoaderCircle } from "lucide-react";
-
 import {
   FeedbackText,
   OptionText,
@@ -55,7 +53,7 @@ function resultBadge(result: PracticeGradeResult | undefined) {
 function reviewingBadge() {
   return (
     <Badge className="gap-1.5 border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-50" variant="outline">
-      <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
+      <span aria-hidden="true" className="loading-indicator-spinner size-3.5" />
       Reviewing
     </Badge>
   );

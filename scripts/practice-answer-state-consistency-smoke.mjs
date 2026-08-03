@@ -17,10 +17,11 @@ function sourceBlock(content, startMarker, endMarker) {
 }
 
 const root = process.cwd();
-const [cardSource, clientSource, helperSource, narrowHarness, fullHarness] = await Promise.all([
+const [cardSource, clientSource, helperSource, roundRestorationSource, narrowHarness, fullHarness] = await Promise.all([
   readFile(resolve(root, "src/components/practice/practice-question-card.tsx"), "utf8"),
   readFile(resolve(root, "src/components/practice/practice-agent-client.tsx"), "utf8"),
   readFile(resolve(root, "src/lib/practice/client-helpers.ts"), "utf8"),
+  readFile(resolve(root, "src/lib/practice/round-restoration.ts"), "utf8"),
   readFile(resolve(root, "scripts/assignment-practice-resume-submit-live-e2e.mjs"), "utf8"),
   readFile(resolve(root, "scripts/student-v1-browser-e2e.mjs"), "utf8"),
 ]);
@@ -46,9 +47,10 @@ assert(
 const restoreBlock = sourceBlock(clientSource, "function restoreRoundFromHistory", "useEffect(() =>");
 const updateBlock = sourceBlock(clientSource, "function updateAnswer", "function requestHint");
 assert(
-  restoreBlock.includes("commitAnswers(restoredAnswers, reason") &&
+    restoreBlock.includes("commitAnswers(restored.answers, reason") &&
     restoreBlock.includes('protectNewerInput: reason === "SESSION_HYDRATION"') &&
     updateBlock.includes('commitAnswers(nextAnswers, "INPUT")') &&
+    roundRestorationSource.includes("round.status === \"completed\" ? persistedAnswers : draftAnswers ?? persistedAnswers") &&
     clientSource.includes('resetRoundState("ROUND_CHANGE")') &&
     clientSource.includes('resetRoundState("SESSION_CHANGE")'),
   "input, hydration, round changes, and session changes must use the authoritative commit boundary",

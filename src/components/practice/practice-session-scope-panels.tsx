@@ -3,6 +3,7 @@
 import { BookOpen } from "lucide-react";
 
 import { LoadingIndicator } from "@/components/loading-indicator";
+import { PracticeLoadingBlock } from "@/components/practice/practice-loading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type {
@@ -28,8 +29,8 @@ export function PracticeSessionListLoading() {
       <LoadingIndicator label="Loading recent sessions..." />
       {Array.from({ length: 3 }).map((_, index) => (
         <div className="flex items-center gap-3 py-1.5" key={index}>
-          <div className="h-7 w-1 rounded-full bg-slate-100 motion-safe:animate-pulse" />
-          <div className="h-4 flex-1 rounded bg-slate-100 motion-safe:animate-pulse" />
+          <PracticeLoadingBlock className="h-7 w-1 rounded-full" />
+          <PracticeLoadingBlock className="h-4 flex-1 rounded" />
         </div>
       ))}
     </div>
@@ -138,10 +139,7 @@ export function PracticeSourceSelector({
               <LoadingIndicator label="Loading available question sources..." />
             </div>
             {Array.from({ length: 3 }).map((_, index) => (
-              <div
-                className="h-16 rounded-xl bg-slate-100 motion-safe:animate-pulse"
-                key={index}
-              />
+              <PracticeLoadingBlock className="h-16 rounded-xl" key={index} />
             ))}
           </>
         ) : practiceSources.map((source) => {

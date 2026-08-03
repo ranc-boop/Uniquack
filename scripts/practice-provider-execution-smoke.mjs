@@ -73,6 +73,7 @@ const [
   auth,
   contextSource,
   client,
+  clientRuntime,
   clientHelpers,
   adminPage,
   adminActions,
@@ -91,6 +92,7 @@ const [
   read("src/lib/practice/auth.ts"),
   read("src/lib/practice/context.ts"),
   read("src/components/practice/practice-agent-client.tsx"),
+  read("src/lib/practice/agent-client-runtime.ts"),
   read("src/lib/practice/client-helpers.ts"),
   read("src/app/admin/ai-settings/page.tsx"),
   read("src/app/admin/ai-settings/actions.ts"),
@@ -104,6 +106,8 @@ const [
   read("src/components/practice/practice-agent-loader.tsx"),
   read("src/components/practice/practice-workspace-error-boundary.tsx"),
 ]);
+
+const sseClient = `${client}\n${clientRuntime}`;
 
 assert(
   ai.includes("listEnabledAIProviderProfilesForServerUse") &&
@@ -171,18 +175,19 @@ assert(
 assert(
   clientHelpers.includes("function parsePracticeSsePayload") &&
     clientHelpers.includes("A live practice update could not be read") &&
-    client.includes("parseSseEvents(done ? `${buffer}\\n\\n` : buffer)") &&
-    client.includes("appendRoundReviewDelta") &&
-    client.includes("requestAnimationFrame") &&
-    !client.includes("JSON.parse(item.data)"),
+    sseClient.includes("parseSseEvents(done ? `${buffer}\\n\\n` : buffer)") &&
+    sseClient.includes("appendRoundReviewDelta") &&
+    sseClient.includes("requestAnimationFrame") &&
+    !sseClient.includes("JSON.parse(item.data)"),
   "browser SSE updates must flush final events and batch safe retryable rendering",
 );
 assert(
   sessionsRoute.includes('searchParams.get("includeActive")') &&
     sessionsRoute.includes("includeActive && offset === 0") &&
-    sessionsRoute.includes("sessionSummary: activeSummary") &&
+    sessionsRoute.includes("const active = activeSummary") &&
+    !sessionsRoute.includes("sessionSummary: activeSummary") &&
     client.includes("/api/practice/sessions?includeActive=0"),
-  "session refreshes must avoid duplicate active-session detail loads when a session is already selected",
+  "session bootstrap must upgrade compact active rows to full detail without reusing incomplete list payloads",
 );
 assert(
   client.includes("useState(Boolean(assignmentId))") &&
