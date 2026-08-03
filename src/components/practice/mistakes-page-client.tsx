@@ -13,7 +13,7 @@ import { CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY } from "@/lib/practice/schem
 import type {
   PracticeRecommendResponse,
   PracticeSessionDetail,
-  PracticeSessionSummary,
+  PracticeSessionListItem,
   PracticeWrongQuestionView,
 } from "@/lib/practice/types";
 
@@ -84,7 +84,7 @@ export function MistakesPageClient() {
   async function ensureSession() {
     const sessionsPayload = await jsonRequest<{
       activeSession: PracticeSessionDetail | null;
-      sessions: PracticeSessionSummary[];
+      sessions: PracticeSessionListItem[];
     }>("/api/practice/sessions");
 
     if (sessionsPayload.activeSession) {

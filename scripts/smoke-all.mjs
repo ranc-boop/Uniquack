@@ -40,6 +40,7 @@ await import("./student-my-work-ux-smoke.mjs");
 await import("./teacher-assignment-standard-flow-smoke.mjs");
 await import("./assignment-practice-loading-performance-smoke.mjs");
 await import("./practice-provider-execution-smoke.mjs");
+await import("./practice-thinking-trace-smoke.mjs");
 await import("./practice-review-concurrency-smoke.mjs");
 await import("./loading-feedback-smoke.mjs");
 await import("./workspace-upload-performance-smoke.mjs");

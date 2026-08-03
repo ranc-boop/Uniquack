@@ -267,19 +267,24 @@ export type PracticeCourseFrameworkSummary = {
   title: string;
 };
 
-export type PracticeSessionSummary = {
+export type PracticeSessionListItem = {
+  createdAt: string;
+  id: string;
+  lastActivityAt: string;
+  roundCount: number;
+  status: "active" | "completed" | "archived";
+  title: string;
+};
+
+export type PracticeSessionSummary = PracticeSessionListItem & {
   cachePrefixVersion?: string;
   completion?: PracticeCompletion;
   completedQuestionIds: string[];
   courseFrameworkId?: string | null;
   courseFrameworkSnapshot?: unknown;
-  createdAt: string;
   goal: string;
-  id: string;
-  lastActivityAt: string;
   longTermMemorySnapshot?: string;
   outlineUserNotes?: string;
-  roundCount: number;
   sessionMemory: string;
   sessionPlan?: unknown;
   sessionState?: unknown;

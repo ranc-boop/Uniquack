@@ -74,7 +74,6 @@ export async function GET(request: Request) {
     const active = activeSummary
       ? await getPracticeSession({
           sessionId: activeSummary.id,
-          sessionSummary: activeSummary,
           supabase,
           userId: auth.user.id,
         })

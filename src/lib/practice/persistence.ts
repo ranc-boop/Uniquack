@@ -10,6 +10,7 @@ import type {
   PracticeSessionDetail,
   PracticeSourceSelection,
   PracticeSourceSummary,
+  PracticeSessionListItem,
   PracticeSessionSummary,
   PracticeTagContext,
   PracticeTraceEvent,
@@ -100,14 +101,17 @@ const DEFAULT_TAG_CONTEXT: PracticeTagContext = {
 
 const PRACTICE_COURSE_FRAMEWORK_SELECT =
   "allowed_tag_ids,description,framework_prompt,id,learning_path,priority_rules,status,title";
+const PRACTICE_COURSE_FRAMEWORK_LIST_SELECT = "id,status,title";
 const PRACTICE_SESSION_FIELDS =
   "cache_prefix_version,completed_question_ids,course_framework_id,course_framework_snapshot,created_at,goal,id,last_activity_at,long_term_memory_snapshot,outline_user_notes,session_memory,session_plan,session_state,session_thread_messages,source_scope_locked_at,status,summary,tag_context,title";
 const PRACTICE_SESSION_SOURCE_FIELDS =
   "assignment_id,bank_id,source_kind,source_snapshot";
 const PRACTICE_SESSION_DETAIL_SELECT =
   `${PRACTICE_SESSION_FIELDS},practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
+const PRACTICE_SESSION_LIST_FIELDS =
+  "created_at,id,last_activity_at,status,title";
 const PRACTICE_SESSION_SUMMARY_SELECT =
-  `${PRACTICE_SESSION_FIELDS},practice_rounds(count),practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
+  `${PRACTICE_SESSION_LIST_FIELDS},practice_rounds(count)`;
 const PRACTICE_ROUND_HISTORY_SELECT =
   "id,next_round_goal,review_summary,round_goal,score_correct,score_total,status,trace";
 const PRACTICE_ROUND_QUESTION_HISTORY_SELECT =
@@ -500,7 +504,7 @@ function sessionSummaryFromRow(
     longTermMemorySnapshot: String(record.long_term_memory_snapshot ?? ""),
     outlineUserNotes: String(record.outline_user_notes ?? ""),
     roundCount: Number(row.round_count ?? 0),
-    sessionMemory: row.session_memory,
+    sessionMemory: String(row.session_memory ?? ""),
     sessionPlan,
     sessionState,
     sessionThreadMessages: asArray(record.session_thread_messages),
@@ -517,6 +521,24 @@ function sessionSummaryFromRow(
           ? "archived"
           : "active",
     tagContext: normalizePracticeTagContext(row.tag_context, row.goal),
+    title: row.title,
+  };
+}
+
+function sessionListItemFromRow(
+  row: PracticeSession & { round_count?: number },
+): PracticeSessionListItem {
+  return {
+    createdAt: row.created_at,
+    id: row.id,
+    lastActivityAt: row.last_activity_at,
+    roundCount: Number(row.round_count ?? 0),
+    status:
+      row.status === "completed"
+        ? "completed"
+        : row.status === "archived"
+          ? "archived"
+          : "active",
     title: row.title,
   };
 }
@@ -541,7 +563,7 @@ export async function listActivePracticeCourseFrameworks({
 }) {
   const { data, error } = await supabase
     .from("practice_course_frameworks")
-    .select(PRACTICE_COURSE_FRAMEWORK_SELECT)
+    .select(PRACTICE_COURSE_FRAMEWORK_LIST_SELECT)
     .eq("status", "active")
     .order("updated_at", { ascending: false });
 
@@ -696,12 +718,9 @@ export async function listPracticeSessions({
   }
 
   return ((data ?? []) as Array<
-    PracticeSession & {
-      practice_rounds?: unknown[];
-      practice_session_sources?: unknown[];
-    }
+    PracticeSession & { practice_rounds?: unknown[] }
   >).map((row) =>
-    sessionSummaryFromRow({
+    sessionListItemFromRow({
       ...row,
       round_count: embeddedRelationCount(row.practice_rounds),
     }),
@@ -903,20 +922,24 @@ export async function createPracticeSession({
   const trimmedGoal = goal.trim().slice(0, 500);
   const sessionTitle =
     (title?.trim() || trimmedGoal || "New practice session").slice(0, 160);
-  const preference = await getOrCreatePracticePreference({
+  const preferencePromise = getOrCreatePracticePreference({
     onInitializationFailure,
     supabase,
     userId,
   });
+  const courseFrameworkPromise = courseFrameworkId
+    ? loadPracticeCourseFramework({ frameworkId: courseFrameworkId, supabase })
+    : Promise.resolve(null);
+  const [preference, courseFramework] = await Promise.all([
+    preferencePromise,
+    courseFrameworkPromise,
+  ]);
   await maybeQueuePreferenceMergeJob({
     onInitializationFailure,
     preference,
     supabase,
     userId,
   });
-  const courseFramework = courseFrameworkId
-    ? await loadPracticeCourseFramework({ frameworkId: courseFrameworkId, supabase })
-    : null;
   const sessionPlan = trimmedGoal || courseFramework
     ? buildDefaultSessionPlan({ courseFramework, goal: trimmedGoal })
     : {};

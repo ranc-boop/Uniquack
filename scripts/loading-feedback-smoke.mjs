@@ -104,6 +104,7 @@ assert(
 
 const [
   loadingIndicator,
+  globals,
   practiceClient,
   practicePanels,
   importTransition,
@@ -115,6 +116,7 @@ const [
   teacherRouteLoading,
 ] = await Promise.all([
   read("src/components/loading-indicator.tsx"),
+  read("src/app/globals.css"),
   read("src/components/practice/practice-agent-client.tsx"),
   read("src/components/practice/practice-session-scope-panels.tsx"),
   read("src/components/teacher/teacher-bank-import-transition.tsx"),
@@ -129,7 +131,9 @@ const [
 assert(
   loadingIndicator.includes('role="status"') &&
     loadingIndicator.includes('aria-live="polite"') &&
-    loadingIndicator.includes("motion-safe:animate-spin"),
+    loadingIndicator.includes("loading-indicator-spinner") &&
+    globals.includes(".loading-indicator-spinner") &&
+    globals.includes("prefers-reduced-motion: reduce"),
   "small loading feedback must be accessible and respect reduced-motion preferences",
 );
 assert(

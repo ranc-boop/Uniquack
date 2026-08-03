@@ -63,6 +63,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+const routeProgressStart = globalStyles.indexOf(".route-progress");
+const routeProgressEnd = globalStyles.indexOf(".loading-indicator-spinner", routeProgressStart);
+const routeProgressStyles = globalStyles.slice(routeProgressStart, routeProgressEnd);
+
 assert(
   pendingLink.includes("router.prefetch(href)") &&
     pendingLink.includes("onMouseEnter={(event) =>") &&
@@ -137,12 +141,12 @@ assert(
 );
 
 assert(
-  !globalStyles.includes("grid-row: 1 / span 50") &&
+    !globalStyles.includes("grid-row: 1 / span 50") &&
     globalStyles.includes("@apply space-y-6") &&
     bankUi.includes("BankContextNav") &&
     globalStyles.includes("@keyframes route-progress-grow") &&
     !globalStyles.includes("route-progress-move") &&
-    !globalStyles.includes("infinite"),
+    !routeProgressStyles.includes("infinite"),
   "Library navigation must align with the workbench and page progress must run once rather than loop.",
 );
 

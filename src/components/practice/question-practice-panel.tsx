@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { LoaderCircle, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 
 import {
   FeedbackText,
@@ -21,7 +21,7 @@ import type {
   PracticeRecommendResponse,
   PracticeRecommendation,
   PracticeSessionDetail,
-  PracticeSessionSummary,
+  PracticeSessionListItem,
 } from "@/lib/practice/types";
 import type { Json } from "@/types/database";
 
@@ -135,7 +135,7 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
   async function ensureSession() {
     const sessionsPayload = await jsonRequest<{
       activeSession: PracticeSessionDetail | null;
-      sessions: PracticeSessionSummary[];
+      sessions: PracticeSessionListItem[];
     }>("/api/practice/sessions");
 
     if (sessionsPayload.activeSession) {
@@ -271,7 +271,7 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
 
         {!recommendation ? (
           <div className="flex items-center gap-2 rounded-md border bg-background p-4 text-sm text-muted-foreground">
-            <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+            <span aria-hidden="true" className="loading-indicator-spinner size-4" />
             Preparing this question in your current practice session...
           </div>
         ) : (
@@ -291,7 +291,7 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
                 Hint
               </Button>
                <Button disabled={isPending || showAnswer || !canSubmit} onClick={submitAnswer} type="button">
-                {isPending ? <LoaderCircle className="mr-2 size-4 animate-spin" aria-hidden="true" /> : null}
+                {isPending ? <span aria-hidden="true" className="loading-indicator-spinner mr-2 size-4" /> : null}
                 Submit
               </Button>
               {showAnswer ? (

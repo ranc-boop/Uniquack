@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFile(resolve(root, path), "utf8");
 
-const [migration, ambiguityFix, firstRoundLock, agent, recommend, reviewRoute, tools, sessions, sources, client, panels, completion] =
+const [migration, ambiguityFix, firstRoundLock, agent, recommend, reviewRoute, tools, sessions, sources, client, clientRuntime, panels, completion] =
   await Promise.all([
     read("supabase/clean-migrations/0052_practice_library_scope_and_inventory.sql"),
     read("supabase/clean-migrations/0053_practice_session_source_rpc_ambiguity_fix.sql"),
@@ -18,10 +18,11 @@ const [migration, ambiguityFix, firstRoundLock, agent, recommend, reviewRoute, t
     read("src/app/api/practice/sessions/route.ts"),
     read("src/app/api/practice/sources/route.ts"),
     read("src/components/practice/practice-agent-client.tsx"),
+    read("src/lib/practice/agent-client-runtime.ts"),
     read("src/components/practice/practice-session-scope-panels.tsx"),
     read("src/lib/practice/completion.ts"),
   ]);
-const clientUi = `${client}\n${panels}`;
+const clientUi = `${client}\n${clientRuntime}\n${panels}`;
 
 function includesAll(source, values, message) {
   for (const value of values) {

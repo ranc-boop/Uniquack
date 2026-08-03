@@ -11,12 +11,14 @@ const [
   persistence,
   scopePanels,
   types,
+  roundRestoration,
 ] = await Promise.all([
   read("src/components/practice/practice-agent-client.tsx"),
   read("src/components/question-bank-client.tsx"),
   read("src/lib/practice/persistence.ts"),
   read("src/components/practice/practice-session-scope-panels.tsx"),
   read("src/lib/practice/types.ts"),
+  read("src/lib/practice/round-restoration.ts"),
 ]);
 
 const recommendationStart = client.indexOf("function requestRecommendation(");
@@ -58,8 +60,8 @@ assert(
 assert(
   client.includes("roundAnswerDraftsRef") &&
     client.includes("practiceRoundDraftKey") &&
-    client.includes("roundAnswerDraftsRef.current[draftKey]") &&
-    /round\.status === "completed"\s*\? persistedAnswers\s*:\s*roundAnswerDraftsRef\.current\[draftKey\] \?\? persistedAnswers/.test(client),
+    client.includes("roundAnswerDraftsRef.current[practiceRoundDraftKey(session.id, round.id)]") &&
+    roundRestoration.includes("round.status === \"completed\" ? persistedAnswers : draftAnswers ?? persistedAnswers"),
   "Browsing completed rounds must preserve and restore the active round's unsubmitted answer draft",
 );
 

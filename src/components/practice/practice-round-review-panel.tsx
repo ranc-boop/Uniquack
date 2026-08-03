@@ -35,7 +35,7 @@ export function PracticeRoundReviewPanel({
             <CardTitle className="text-xl">Round review</CardTitle>
             {isStreaming ? (
               <p aria-live="polite" className="mt-2 flex items-center gap-2 text-sm text-slate-500" role="status">
-                <span aria-hidden="true" className="size-2 animate-pulse rounded-full bg-sky-500" />
+                <span aria-hidden="true" className="loading-indicator-spinner size-3" />
                 Reviewing your answers…
               </p>
             ) : null}
