@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
 import { writeAIImportLLMDebugLog } from "@/lib/ai-providers/llm-debug-logs";
 import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
 import { readResponseTextWithLimit } from "@/lib/ai-providers/response-limits";
@@ -45,6 +46,7 @@ type GeminiNativePdfInput = {
   apiKey: string;
   baseUrl?: string;
   debugContext?: Record<string, unknown>;
+  executionObserver?: AIProviderExecutionObserver;
   fetchImpl?: GeminiFetch;
   fileName: string;
   maxPollAttempts?: number;
@@ -57,6 +59,7 @@ type GeminiNativePdfInput = {
 type GeminiNativeTextTestInput = {
   apiKey: string;
   baseUrl?: string;
+  executionObserver?: AIProviderExecutionObserver;
   fetchImpl?: GeminiFetch;
   model: string;
   prompt?: string;
@@ -189,15 +192,18 @@ async function uploadGeminiFile({
   apiKey,
   baseUrl,
   displayName,
+  executionObserver,
   fetchImpl,
   pdfBytes,
 }: {
   apiKey: string;
   baseUrl: string;
   displayName: string;
+  executionObserver?: AIProviderExecutionObserver;
   fetchImpl: GeminiFetch;
   pdfBytes: Uint8Array | Buffer;
 }) {
+  executionObserver?.recordNetworkRequest("file_upload_start");
   const startResponse = await fetchImpl(
     `${geminiApiBaseUrl(baseUrl)}/upload/v1beta/files`,
     {
@@ -232,6 +238,7 @@ async function uploadGeminiFile({
   }
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(uploadUrl);
 
+  executionObserver?.recordNetworkRequest("file_upload_finalize");
   const uploadResponse = await fetchImpl(uploadUrl, {
     body: pdfBytesToBlob(pdfBytes),
     headers: {
@@ -260,6 +267,7 @@ async function uploadGeminiFile({
 async function waitForGeminiFile({
   apiKey,
   baseUrl,
+  executionObserver,
   fetchImpl,
   file,
   maxPollAttempts,
@@ -267,6 +275,7 @@ async function waitForGeminiFile({
 }: {
   apiKey: string;
   baseUrl: string;
+  executionObserver?: AIProviderExecutionObserver;
   fetchImpl: GeminiFetch;
   file: GeminiFile;
   maxPollAttempts: number;
@@ -295,6 +304,7 @@ async function waitForGeminiFile({
 
     await new Promise((resolve) => setTimeout(resolve, pollDelayMs));
 
+    executionObserver?.recordNetworkRequest("file_status_poll");
     const response = await fetchImpl(fileResourceUrl(current.name, baseUrl), {
       headers: {
         "X-Goog-Api-Key": apiKey,
@@ -316,11 +326,13 @@ async function waitForGeminiFile({
 async function deleteGeminiFile({
   apiKey,
   baseUrl,
+  executionObserver,
   fetchImpl,
   file,
 }: {
   apiKey: string;
   baseUrl: string;
+  executionObserver?: AIProviderExecutionObserver;
   fetchImpl: GeminiFetch;
   file: GeminiFile | null;
 }) {
@@ -328,8 +340,10 @@ async function deleteGeminiFile({
     return;
   }
 
+  let cleanupSucceeded = false;
   try {
-    await fetchImpl(fileResourceUrl(file.name, baseUrl), {
+    executionObserver?.recordNetworkRequest("file_cleanup");
+    const response = await fetchImpl(fileResourceUrl(file.name, baseUrl), {
       headers: {
         "X-Goog-Api-Key": apiKey,
       },
@@ -337,9 +351,12 @@ async function deleteGeminiFile({
       redirect: "error",
       signal: AbortSignal.timeout(GEMINI_DELETE_TIMEOUT_MS),
     });
+    cleanupSucceeded = response.ok;
   } catch {
     // Gemini Files API entries expire automatically, so cleanup failure should
     // not mask the import result or leak provider implementation details.
+  } finally {
+    executionObserver?.recordCleanupResult?.(cleanupSucceeded);
   }
 }
 
@@ -347,6 +364,7 @@ async function generateContent({
   apiKey,
   baseUrl,
   debugContext,
+  executionObserver,
   fetchImpl,
   parts,
   model,
@@ -354,6 +372,7 @@ async function generateContent({
   apiKey: string;
   baseUrl: string;
   debugContext?: Record<string, unknown>;
+  executionObserver?: AIProviderExecutionObserver;
   fetchImpl: GeminiFetch;
   parts: Record<string, unknown>[];
   model: string;
@@ -365,6 +384,9 @@ async function generateContent({
       },
     ],
     generationConfig: {
+      ...(executionObserver?.maxOutputTokens
+        ? { maxOutputTokens: executionObserver.maxOutputTokens }
+        : {}),
       responseMimeType: "application/json",
       temperature: 0.1,
     },
@@ -390,6 +412,7 @@ async function generateContent({
 
   let response: Response;
   try {
+    executionObserver?.recordNetworkRequest("inference");
     response = await fetchImpl(
       generateContentUrl(model, baseUrl),
       {
@@ -491,6 +514,7 @@ export async function generateWithGeminiNativePdf({
   apiKey,
   baseUrl = DEFAULT_GEMINI_API_BASE_URL,
   debugContext,
+  executionObserver,
   fetchImpl = fetch,
   fileName,
   maxPollAttempts = DEFAULT_MAX_POLL_ATTEMPTS,
@@ -501,6 +525,7 @@ export async function generateWithGeminiNativePdf({
 }: GeminiNativePdfInput): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
   assertGeminiConfig({ apiKey, model, pdfBytes });
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
+  executionObserver?.beforeInference("ai_pdf_extraction");
 
   let uploadedFile: GeminiFile | null = null;
 
@@ -509,12 +534,14 @@ export async function generateWithGeminiNativePdf({
       apiKey,
       baseUrl,
       displayName: safeDisplayName(fileName),
+      executionObserver,
       fetchImpl,
       pdfBytes,
     });
     const activeFile = await waitForGeminiFile({
       apiKey,
       baseUrl,
+      executionObserver,
       fetchImpl,
       file: uploadedFile,
       maxPollAttempts,
@@ -525,10 +552,11 @@ export async function generateWithGeminiNativePdf({
       throw new Error("Gemini Native file reference is missing a URI.");
     }
 
-    return generateContent({
+    return await generateContent({
         apiKey,
         baseUrl,
         debugContext,
+        executionObserver,
         fetchImpl,
         model,
         parts: [
@@ -545,6 +573,7 @@ export async function generateWithGeminiNativePdf({
     await deleteGeminiFile({
       apiKey,
       baseUrl,
+      executionObserver,
       fetchImpl,
       file: uploadedFile,
     });
@@ -560,7 +589,7 @@ export async function testGeminiNativeTextConnection({
 }: GeminiNativeTextTestInput): Promise<{ message: string; ok: true }> {
   assertGeminiTextConfig({ apiKey, model });
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
-  const result = await generateContent({
+  await generateContent({
     apiKey,
     baseUrl,
     fetchImpl,
@@ -569,12 +598,7 @@ export async function testGeminiNativeTextConnection({
   });
 
   return {
-    message: result.text.toLowerCase().includes("ok")
-      ? "Gemini Native connection test passed."
-      : `Gemini Native connection test passed. Provider replied: ${result.text.slice(
-          0,
-          80,
-        )}`,
+    message: "Gemini Native connection test passed.",
     ok: true as const,
   };
 }
@@ -583,6 +607,7 @@ export async function generateWithGeminiNativeText({
   apiKey,
   baseUrl = DEFAULT_GEMINI_API_BASE_URL,
   debugContext,
+  executionObserver,
   fetchImpl = fetch,
   model,
   prompt,
@@ -592,11 +617,13 @@ export async function generateWithGeminiNativeText({
 }): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
   assertGeminiTextConfig({ apiKey, model });
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
+  executionObserver?.beforeInference("blueprint_generation");
 
   return generateContent({
       apiKey,
       baseUrl,
       debugContext,
+      executionObserver,
       fetchImpl,
       model,
       parts: [{ text: prompt }],

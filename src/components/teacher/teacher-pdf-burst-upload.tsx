@@ -29,6 +29,7 @@ import {
 import type { TeacherAIPdfParsingProfile } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import { runWithConcurrency } from "@/lib/async-concurrency";
 import { createClient } from "@/lib/supabase/client";
+import { AIJobStatusPoller } from "@/components/ai-jobs/ai-job-status-poller";
 import { Button } from "@/components/ui/button";
 
 type LocalStatus =
@@ -52,13 +53,13 @@ type SelectedPdf = {
 };
 
 const statusLabel: Record<LocalStatus, string> = {
-  admission_ready: "Waiting for queue space",
+  admission_ready: "Awaiting trusted worker capacity",
   cancelled: "Cancelled",
   completed: "Completed",
   failed: "Needs attention",
   finalizing: "Validating",
   processing: "Processing",
-  queued: "Queued",
+  queued: "Queued for trusted worker",
   reserved: "Reserved",
   reserving: "Reserving private upload",
   selected: "Ready to upload",
@@ -73,6 +74,20 @@ const safeErrorCopy: Record<string, string> = {
   size_mismatch: "The uploaded file size did not match the reservation.",
   upload_failed: "The private upload did not complete.",
   upload_missing: "The uploaded PDF could not be found.",
+};
+
+const statusProgress: Record<LocalStatus, number> = {
+  selected: 0,
+  reserving: 1,
+  reserved: 2,
+  uploading: 3,
+  finalizing: 4,
+  admission_ready: 5,
+  queued: 6,
+  processing: 7,
+  completed: 8,
+  failed: 9,
+  cancelled: 9,
 };
 
 function isPdf(file: File) {
@@ -111,9 +126,52 @@ export function TeacherPdfBurstUpload({
   const [running, setRunning] = useState(false);
   const [selected, setSelected] = useState<SelectedPdf[]>([]);
 
+  const serverItemsByClientKey = useMemo(() => {
+    const activeBurst = initialBursts.find((burst) => burst.id === activeBurstId);
+    return new Map(
+      (activeBurst?.items ?? []).map((item) => [item.clientItemKey, item]),
+    );
+  }, [activeBurstId, initialBursts]);
+
+  const displayedSelected = useMemo(
+    () =>
+      selected.map((item) => {
+        const serverItem = serverItemsByClientKey.get(item.clientItemKey);
+        if (
+          !serverItem ||
+          statusProgress[serverItem.status] < statusProgress[item.status]
+        ) {
+          return item;
+        }
+        return {
+          ...item,
+          safeErrorCode: serverItem.safeErrorCode,
+          status: serverItem.status,
+        };
+      }),
+    [selected, serverItemsByClientKey],
+  );
+
+  const hasActiveBurst =
+    initialBursts.some((burst) =>
+      ["reserved", "uploading", "admission_wait", "queued", "processing"].includes(
+        burst.status,
+      ),
+    ) ||
+    displayedSelected.some((item) =>
+      [
+        "reserving",
+        "uploading",
+        "finalizing",
+        "admission_ready",
+        "queued",
+        "processing",
+      ].includes(item.status),
+    );
+
   const counts = useMemo(() => {
     const count = (statuses: LocalStatus[]) =>
-      selected.filter((item) => statuses.includes(item.status)).length;
+      displayedSelected.filter((item) => statuses.includes(item.status)).length;
     return {
       completed: count(["completed"]),
       failed: count(["failed"]),
@@ -122,7 +180,7 @@ export function TeacherPdfBurstUpload({
       queued: count(["admission_ready", "queued"]),
       uploading: count(["reserving", "uploading", "finalizing"]),
     };
-  }, [selected]);
+  }, [displayedSelected]);
 
   function updateItem(clientItemKey: string, patch: Partial<SelectedPdf>) {
     setSelected((current) =>
@@ -288,6 +346,7 @@ export function TeacherPdfBurstUpload({
 
   return (
     <section className="border-t border-slate-200 bg-white p-5">
+      <AIJobStatusPoller active={hasActiveBurst} />
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -331,7 +390,7 @@ export function TeacherPdfBurstUpload({
           <>
             <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
               {[
-                ["Selected", selected.length],
+                ["Selected", displayedSelected.length],
                 ["Uploading", counts.uploading],
                 ["Finalized", counts.finalized],
                 ["Queued", counts.queued],
@@ -347,7 +406,7 @@ export function TeacherPdfBurstUpload({
             </div>
 
             <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-              {selected.map((item) => (
+              {displayedSelected.map((item) => (
                 <div
                   className="flex min-w-0 items-start justify-between gap-3 rounded-md border border-slate-200 p-3"
                   key={item.clientItemKey}

@@ -26,12 +26,11 @@ worker route to configure.
 ## Start locally
 
 > **Single-runner requirement:** Only one `npm run worker:dev` process should be active at a time.
-> The in-flight guard belongs to one runner process/module instance; it is not an
-> operating-system-wide singleton. Two terminal windows can otherwise start two
-> independent wake-up loops. Stop the existing runner before starting another.
-> Multiple local runners are unsupported even though server-side claim and
-> fencing rules protect job ownership, because redundant wake-ups can create
-> unnecessary queue traffic and Provider pressure.
+> The command acquires an atomic operating-system-wide lock scoped to the local
+> worker route. A second terminal fails closed instead of starting another
+> wake-up loop. Stale locks are recovered only when their recorded process is no
+> longer active. Server-side claim and fencing rules remain the final job-ownership
+> boundary.
 
 Use two terminals. Supply the same strong, process-scoped
 `AI_JOBS_INTERNAL_TOKEN` value to both processes through the approved local
@@ -82,7 +81,8 @@ the one permitted `worker:dev` process.
 
 - One route invocation can be in flight at a time.
 - A new invocation is not scheduled until the previous one completes.
-- The server route keeps its fixed limit of two considered jobs per invocation.
+- The server route keeps its normal limit of two considered jobs per invocation.
+- The explicit bounded real-Provider proof mode lowers that limit to one job.
 - Existing queue claim policy keeps AI PDF extraction at one active slot; this
   runner does not alter Provider, PDF, recovery, or Blueprint concurrency.
 - Active work uses a short bounded delay before the next wake-up.
@@ -94,7 +94,7 @@ the one permitted `worker:dev` process.
   without starting another invocation.
 
 Console output contains only timestamps, invocation numbers, safe aggregate
-counts, status classifications, delays, and shutdown state. It does not print
+job and Provider request counts, status classifications, delays, and shutdown state. It does not print
 tokens, source IDs, filenames, prompts, object paths, Provider responses, or
 Review Draft content.
 
@@ -113,6 +113,93 @@ specific jobs allowed to run.
 Closing either the local Next server or the worker runner stops queue
 processing. Jobs remain durable in Supabase and can be resumed by a later
 authorized worker session.
+
+## Bounded one-file Provider proof
+
+`scripts/run-pdf50-end-to-end-live-e2e.ps1` is the operator entry point for the
+real one-file validation. It loads allowlisted Current Clean, Teacher, and
+Provider-decryption values from a Windows DPAPI credential vault, verifies the
+expected project reference, starts an isolated local server, uploads one
+synthetic one-page PDF through the real Teacher UI, and invokes the local worker
+exactly once.
+
+Create the vault once from a visible Windows PowerShell console:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File scripts\setup-pdf50-e2e-credential-vault.ps1
+```
+
+Every value is collected with a hidden prompt. The resulting CLIXML file is at
+`%LOCALAPPDATA%\EduStruct\CredentialVaults\pdf50-e2e-secrets.clixml`, outside
+the repository. On Windows, its `SecureString` values are protected by DPAPI
+for the current Windows user on the current computer. Another Windows account
+or another computer cannot decrypt the file. Access to the same Windows account
+must therefore remain protected.
+
+The vault contains only the seven allowlisted values required by this proof.
+The one-job limit, cleanup acknowledgement, Provider mode, request ceilings,
+and USD 5 total budget are fixed by the launcher and are not persisted as
+operator input. Rerun the setup script and type
+`REPLACE_PDF50_E2E_CREDENTIAL_VAULT` to rotate the vault atomically.
+
+Validate the vault structure without decrypting a value to plaintext or
+placing anything in the process environment:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File scripts\validate-pdf50-e2e-credential-vault.ps1
+```
+
+Run the proof without entering the credentials again:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File scripts\run-pdf50-end-to-end-live-e2e.ps1
+```
+
+The launcher fails closed when the vault is absent, malformed, from another
+Windows identity, or cannot be decrypted. It converts one `SecureString` at a
+time, places the plaintext only in the launcher process for the child proof,
+zeros the temporary BSTR, and clears every process environment value in
+`finally`. It never reads or creates `.env.local` and never prints a credential.
+
+To remove the exact encrypted vault file:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File scripts\remove-pdf50-e2e-credential-vault.ps1
+```
+
+Deletion requires the exact acknowledgement
+`DELETE_PDF50_E2E_CREDENTIAL_VAULT` and does not recursively remove any
+directory.
+
+The proof mode is server-owned and fail-closed:
+
+- one route invocation and one claimed job;
+- at most four inference attempts;
+- at most 8,192 output tokens per inference;
+- at most 136 Provider HTTP requests across the job;
+- a total test-budget acknowledgement of USD 5;
+- known-cost Gemini Native PDF with `gemini-2.5-flash-lite` only;
+- exact hosted fixture and Storage cleanup.
+
+The trusted server gate also computes a conservative token-cost ceiling before
+the worker starts. Four attempts at the known model's 1,048,576-token input
+window plus 8,192 output tokens produce a maximum catalog estimate of 432,540
+micro-USD (about USD 0.433), below the approved USD 5 total. Actual usage is
+recorded after the run and must also remain below USD 5.
+
+The 136-request ceiling reserves four complete worst-case Gemini file
+lifecycles: two upload requests, up to 30 status polls, one inference request,
+and one cleanup request per attempt. Failed requests count before network I/O.
+Cleanup success is recorded separately, and the proof does not pass when the
+Provider file cleanup request fails. Attempt counters and actual inference HTTP
+request counters remain separate, so upload failures cannot fabricate an
+inference request. Normal worker operation does not inherit the proof-only
+one-job, 136-request, 8,192-output-token, or USD 5 controls; its existing admin
+operations control still applies.
+
+Do not run the launcher against a production project or while unrelated queue
+work exists. A passing one-file proof establishes the first operational gate
+only; 4/10/50-file qualification remains a separate progression.
 
 ## Safe source-only verification
 

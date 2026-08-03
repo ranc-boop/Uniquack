@@ -1,4 +1,5 @@
 import { callAIPdfExtractionProvider } from "@/lib/ai-providers/chat";
+import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
 import { AI_GENERATION_UNTRUSTED_DATA_BOUNDARY } from "@/lib/ai-providers/prompt-safety";
 import {
   generateWithGeminiNativePdf,
@@ -347,6 +348,7 @@ export type AIPdfProcessInput = {
   pdfBuffer: Buffer;
   profileId: string;
   providerProfileId: string;
+  providerExecutionObserver?: AIProviderExecutionObserver;
   providerRetryMaxAttempts?: number;
   routingLeaseOwner?: string;
   routingOrganizationId?: string;
@@ -3511,6 +3513,8 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
                 },
                 knownTaxonomyTagIds,
                 observationPlan: clusterAnalyzerPlan.observationPlan,
+                executionObserver: input.providerExecutionObserver,
+                onProviderUsage: input.onProviderUsage,
                 provider,
                 taxonomyCandidatesByFacet: buildQuestionBlueprintTaxonomyCandidateList({
                   candidates: taxonomyCandidates,
@@ -3717,6 +3721,7 @@ async function processAIPdfBlueprintObservation({
                       sourceAssetId: input.sourceAssetId,
                       sourceObjectPath: input.sourceObjectPath,
                     },
+                    executionObserver: input.providerExecutionObserver,
                     fileName: input.fileName,
                     model: provider.model,
                     pdfBytes: input.pdfBuffer,
@@ -3928,6 +3933,9 @@ async function processAIPdfSinglePass({
             sourceInput: providerInput.strategy,
           }),
         operation: "ai_pdf_extraction",
+        policy: input.providerRetryMaxAttempts
+          ? { maxAttempts: input.providerRetryMaxAttempts }
+          : undefined,
         run: async () =>
           normalizeAIPdfExtractionResponse(
             await callAIPdfExtractionProvider({
@@ -3944,6 +3952,7 @@ async function processAIPdfSinglePass({
                 sourceObjectPath: input.sourceObjectPath,
               },
               fileName: selectiveInput?.fileName ?? input.fileName,
+              executionObserver: input.providerExecutionObserver,
               inputStrategy: providerInput.strategy,
               pageImageDataUrls: [],
               pdfBase64: (selectiveInput?.pdfBytes ?? input.pdfBuffer).toString("base64"),
@@ -4463,6 +4472,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
                     chunk.chunkIndex + 1
                   }.pdf`
                 : input.fileName,
+              executionObserver: input.providerExecutionObserver,
               inputStrategy: providerInput.strategy,
               pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
               pdfBase64: (segmentedPdf?.pdfBytes ?? input.pdfBuffer).toString(
@@ -4985,6 +4995,7 @@ export async function processAIPdfCoverageRecovery(
             sourceAssetId: input.sourceAssetId,
           },
           fileName: `${input.fileName.replace(/\.pdf$/i, "")}-recovery.pdf`,
+          executionObserver: input.providerExecutionObserver,
           inputStrategy: providerInput.strategy,
           pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
           pdfBase64: subset.pdfBytes.toString("base64"),

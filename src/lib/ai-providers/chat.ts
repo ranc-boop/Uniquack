@@ -4,6 +4,7 @@ import {
   normalizeAIPdfExtractionResponse,
   type AIPdfExtraction,
 } from "@/lib/ai-pdf-import/schema";
+import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
 import {
   assertMockAIProviderAllowed,
   isMockAIProviderUrl,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/ai-providers/adapters";
 import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
 import {
+  AIProviderResponseTooLargeError,
   readResponseJsonWithLimit,
   readResponseTextWithLimit,
 } from "@/lib/ai-providers/response-limits";
@@ -38,6 +40,7 @@ type ProviderProfileForUse = {
 
 type ProviderInput = {
   debugContext?: Record<string, unknown>;
+  executionObserver?: AIProviderExecutionObserver;
   fileName: string;
   inputStrategy: AiPdfInputStrategy;
   pageImageDataUrls: string[];
@@ -108,31 +111,14 @@ function providerHttpErrorMessage({
   const providerLabel = `${profile.name} / ${profile.model}`;
 
   if (isCloudflareTimeout(status, preview)) {
-    return [
-      `AI provider ${operation} timed out at the provider gateway (524) for ${providerLabel}.`,
-      "The request reached the configured base URL, but the upstream model/proxy did not finish before the gateway timeout.",
-      "Retry later, switch provider/base URL, or import a smaller PDF if this keeps happening.",
-      preview ? `Provider response: ${preview}` : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    return `AI provider ${operation} timed out at the provider gateway (524) for ${providerLabel}. Retry later, switch provider, or import a smaller PDF if this keeps happening.`;
   }
 
   if (status >= 500) {
-    return [
-      `AI provider ${operation} failed with upstream server error (${status}) for ${providerLabel}.`,
-      preview ? `Provider response: ${preview}` : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    return `AI provider ${operation} failed with upstream server error (${status}) for ${providerLabel}.`;
   }
 
-  return [
-    `AI provider ${operation} failed (${status}) for ${providerLabel}.`,
-    preview ? `Provider response: ${preview}` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  return `AI provider ${operation} failed (${status}) for ${providerLabel}.`;
 }
 
 function providerNetworkErrorMessage({
@@ -147,7 +133,6 @@ function providerNetworkErrorMessage({
   timeoutMs: number;
 }) {
   const providerLabel = `${profile.name} / ${profile.model}`;
-  const message = error instanceof Error ? error.message : "Unknown network error.";
 
   if (
     error instanceof DOMException &&
@@ -158,7 +143,7 @@ function providerNetworkErrorMessage({
     )}s for ${providerLabel}. Retry later, switch provider/base URL, or reduce the PDF size.`;
   }
 
-  return `AI provider ${operation} could not reach ${profile.base_url} for ${providerLabel}: ${message}`;
+  return `AI provider ${operation} failed because of a network error for ${providerLabel}.`;
 }
 
 function repairContext(value: string) {
@@ -180,12 +165,8 @@ function parseExtractionContent(contentText: string) {
 
   try {
     parsed = parsePossiblyMalformedJson(contentText);
-  } catch (error) {
-    throw new Error(
-      `AI provider returned non-JSON content: ${
-        error instanceof Error ? error.message : "Unknown parse error"
-      }. Response preview: ${responsePreview(contentText)}`,
-    );
+  } catch {
+    throw new Error("AI provider returned non-JSON content.");
   }
 
   try {
@@ -194,22 +175,39 @@ function parseExtractionContent(contentText: string) {
     throw new Error(
       `AI provider JSON did not match the expected import schema: ${
         error instanceof Error ? error.message : "Unknown schema validation error."
-      }. Response preview: ${responsePreview(contentText)}`,
+      }`,
     );
+  }
+}
+
+async function readProviderJsonWithLimit<T>(response: Response, maxBytes: number) {
+  try {
+    return await readResponseJsonWithLimit<T>(response, maxBytes);
+  } catch (error) {
+    if (error instanceof AIProviderResponseTooLargeError) {
+      throw error;
+    }
+
+    throw new Error("AI provider returned invalid JSON.");
   }
 }
 
 async function requestChatCompletion({
   debugContext,
+  executionObserver,
   messages,
   profile,
 }: {
   debugContext?: Record<string, unknown>;
+  executionObserver?: AIProviderExecutionObserver;
   messages: ChatMessage[];
   profile: ProviderProfileForUse;
 }) {
   let response: Response;
   const requestBody = {
+    ...(executionObserver?.maxOutputTokens
+      ? { max_tokens: executionObserver.maxOutputTokens }
+      : {}),
     messages,
     model: profile.model,
     response_format: { type: "json_object" },
@@ -238,6 +236,8 @@ async function requestChatCompletion({
 
   try {
     await assertSafeAIProviderBaseUrl(profile.base_url);
+    executionObserver?.beforeInference("ai_pdf_extraction");
+    executionObserver?.recordNetworkRequest("inference");
     response = await fetch(endpoint(profile.base_url), {
       body: JSON.stringify(requestBody),
       headers: {
@@ -300,8 +300,13 @@ async function requestChatCompletion({
     );
   }
 
-  const payload = await readResponseJsonWithLimit<{
+  const payload = await readProviderJsonWithLimit<{
     choices?: { message?: { content?: string } }[];
+    usage?: {
+      completion_tokens?: number;
+      prompt_tokens?: number;
+      total_tokens?: number;
+    };
   }>(response, EXTRACTION_RESPONSE_MAX_BYTES);
   await writeAIImportLLMDebugLog({
     context: {
@@ -324,20 +329,35 @@ async function requestChatCompletion({
     throw new Error("AI provider response did not include message content.");
   }
 
-  return contentText;
+  return {
+    text: contentText,
+    usage: payload.usage
+      ? {
+          cachedInputTokens: null,
+          inputTokens: payload.usage.prompt_tokens ?? null,
+          outputTokens: payload.usage.completion_tokens ?? null,
+          totalTokens: payload.usage.total_tokens ?? null,
+        }
+      : null,
+  };
 }
 
 function buildRepairPrompt({
   error,
+  originalPrompt,
   previousResponse,
 }: {
   error: unknown;
+  originalPrompt?: string;
   previousResponse: string;
 }) {
   return [
+    originalPrompt ? "Original extraction instructions:" : "",
+    originalPrompt ?? "",
+    "",
     "Your previous answer could not be imported because it did not match the required JSON schema.",
     "Keep the same extracted questions, tags, page references, solutions, and asset placeholder intent from your previous answer.",
-    "Only repair the JSON structure and field values. Do not drop questions unless the previous answer was clearly empty.",
+    "Repair the JSON structure and field values. If the previous answer contained zero importable questions but the PDF contains an actual question, extract that question now using the original instructions.",
     "",
     "Required output shape:",
     '{"questions":[{"title":"...","question_code":"...","question_type":"mcq|fill_blank|frq|mixed","difficulty_rating":500,"content_html":"...","content_source":"...","solution_html":"...","solution_source":"...","options":[],"answer_spec":{},"tag_ids":[],"page_refs":[1],"asset_placeholders":[]}],"warnings":[]}',
@@ -445,21 +465,19 @@ export async function testAIProviderConnection(
     );
   }
 
-  const payload = await readResponseJsonWithLimit<{
+  await readProviderJsonWithLimit<{
     choices?: { message?: { content?: string } }[];
   }>(response, CONNECTION_RESPONSE_MAX_BYTES);
-  const contentText = payload.choices?.[0]?.message?.content?.trim();
 
   return {
-    message: contentText
-      ? `Connection test succeeded. Provider replied: ${contentText.slice(0, 80)}`
-      : "Connection test succeeded.",
+    message: "Connection test succeeded.",
     ok: true as const,
   };
 }
 
 export async function callAIPdfExtractionProvider({
   debugContext,
+  executionObserver,
   fileName,
   inputStrategy,
   pageImageDataUrls,
@@ -505,6 +523,7 @@ export async function callAIPdfExtractionProvider({
       const nativeResponse = await generateWithGeminiNativePdf({
           apiKey: profile.apiKey,
           baseUrl: profile.base_url,
+          executionObserver,
           fileName,
           model: profile.model,
           pdfBytes,
@@ -513,6 +532,7 @@ export async function callAIPdfExtractionProvider({
               ? prompt
               : buildRepairPrompt({
                   error: lastError,
+                  originalPrompt: prompt,
                   previousResponse,
                 }),
           debugContext: {
@@ -609,7 +629,7 @@ export async function callAIPdfExtractionProvider({
   let usedRepair = false;
 
   for (let attempt = 1; attempt <= MAX_EXTRACTION_ATTEMPTS; attempt += 1) {
-    const contentText = await requestChatCompletion({
+    const response = await requestChatCompletion({
       debugContext: {
         ...debugContext,
         attempt,
@@ -617,9 +637,12 @@ export async function callAIPdfExtractionProvider({
         inputStrategy,
         repairAttempt: attempt > 1,
       },
+      executionObserver,
       messages,
       profile,
     });
+    onProviderUsage?.(response.usage);
+    const contentText = response.text;
     await writeAIImportLLMDebugLog({
       context: {
         ...debugContext,

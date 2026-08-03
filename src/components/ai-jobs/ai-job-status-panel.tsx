@@ -20,6 +20,10 @@ function statusTone(status: AIProviderJobSafeStatus["status"]) {
   return "border-sky-200 bg-sky-50 text-sky-950";
 }
 
+function safeCount(value: unknown) {
+  return Number.isInteger(value) && Number(value) >= 0 ? Number(value) : null;
+}
+
 export function AIJobStatusPanel({
   cancelAction,
   jobs,
@@ -47,7 +51,16 @@ export function AIJobStatusPanel({
         <h2 className="text-lg font-bold text-slate-950">{title}</h2>
       </div>
       <div className="mt-4 space-y-3">
-        {jobs.map((job) => (
+        {jobs.map((job) => {
+          const createdDraftCount = safeCount(job.safe_result.createdDraftCount);
+          const providerInferenceAttempts = safeCount(
+            job.safe_result.providerInferenceAttempts,
+          );
+          const providerNetworkRequests = safeCount(
+            job.safe_result.providerNetworkRequests,
+          );
+
+          return (
           <div className={`rounded-lg border p-3 ${statusTone(job.status)}`} key={job.id}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-bold">{jobKindLabel(job.job_kind)}</p>
@@ -56,6 +69,19 @@ export function AIJobStatusPanel({
               </span>
             </div>
             <p className="mt-2 text-sm leading-6">{jobStatusCopy(job)}</p>
+            {job.status === "completed" && createdDraftCount !== null ? (
+              <p className="mt-2 text-xs font-semibold">
+                {createdDraftCount} Review Draft{createdDraftCount === 1 ? "" : "s"} created
+                {providerInferenceAttempts !== null && providerNetworkRequests !== null
+                  ? ` / ${providerInferenceAttempts} inference attempt${providerInferenceAttempts === 1 ? "" : "s"} / ${providerNetworkRequests} Provider request${providerNetworkRequests === 1 ? "" : "s"}`
+                  : ""}
+              </p>
+            ) : null}
+            {isActiveAIProviderJob(job) || job.status === "retry_wait" ? (
+              <p className="mt-2 text-xs font-semibold">
+                Durable run {job.execution_attempt_count} of {job.max_execution_attempts}
+              </p>
+            ) : null}
             {job.status === "retry_wait" ? (
               <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold">
                 <Clock3 aria-hidden="true" className="h-3.5 w-3.5" />
@@ -93,7 +119,8 @@ export function AIJobStatusPanel({
               </form>
             ) : null}
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
