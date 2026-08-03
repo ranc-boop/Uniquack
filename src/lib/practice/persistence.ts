@@ -106,8 +106,10 @@ const PRACTICE_SESSION_SOURCE_FIELDS =
   "assignment_id,bank_id,source_kind,source_snapshot";
 const PRACTICE_SESSION_DETAIL_SELECT =
   `${PRACTICE_SESSION_FIELDS},practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
+const PRACTICE_SESSION_LIST_FIELDS =
+  "created_at,goal,id,last_activity_at,source_scope_locked_at,status,summary,title";
 const PRACTICE_SESSION_SUMMARY_SELECT =
-  `${PRACTICE_SESSION_FIELDS},practice_rounds(count),practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
+  `${PRACTICE_SESSION_LIST_FIELDS},practice_rounds(count),practice_session_sources(${PRACTICE_SESSION_SOURCE_FIELDS})`;
 const PRACTICE_ROUND_HISTORY_SELECT =
   "id,next_round_goal,review_summary,round_goal,score_correct,score_total,status,trace";
 const PRACTICE_ROUND_QUESTION_HISTORY_SELECT =
@@ -470,12 +472,15 @@ function sessionSummaryFromRow(
     practice_session_sources?: unknown[];
     round_count?: number;
   },
+  { compact = false }: { compact?: boolean } = {},
 ): PracticeSessionSummary {
   const record = row as PracticeSession & Record<string, unknown>;
-  const courseFrameworkSnapshot = hasObjectKeys(row.course_framework_snapshot)
+  const courseFrameworkSnapshot = !compact && hasObjectKeys(row.course_framework_snapshot)
     ? asObject(row.course_framework_snapshot) as PracticeCourseFrameworkSummary
     : null;
-  const sessionPlan = hasObjectKeys(record.session_plan)
+  const sessionPlan = compact
+    ? undefined
+    : hasObjectKeys(record.session_plan)
     ? asObject(record.session_plan)
     : row.goal || courseFrameworkSnapshot
       ? buildDefaultSessionPlan({
@@ -483,7 +488,9 @@ function sessionSummaryFromRow(
         goal: row.goal,
       })
       : {};
-  const sessionState = hasObjectKeys(record.session_state)
+  const sessionState = compact
+    ? undefined
+    : hasObjectKeys(record.session_state)
     ? asObject(record.session_state)
     : buildInitialSessionState(row.goal);
 
@@ -492,18 +499,24 @@ function sessionSummaryFromRow(
     completion: completionFromSummary(row),
     completedQuestionIds: asStringArray(row.completed_question_ids),
     courseFrameworkId: row.course_framework_id,
-    courseFrameworkSnapshot: row.course_framework_snapshot,
+    courseFrameworkSnapshot: compact ? undefined : row.course_framework_snapshot,
     createdAt: row.created_at,
     goal: row.goal,
     id: row.id,
     lastActivityAt: row.last_activity_at,
-    longTermMemorySnapshot: String(record.long_term_memory_snapshot ?? ""),
-    outlineUserNotes: String(record.outline_user_notes ?? ""),
+    longTermMemorySnapshot: compact
+      ? undefined
+      : String(record.long_term_memory_snapshot ?? ""),
+    outlineUserNotes: compact
+      ? undefined
+      : String(record.outline_user_notes ?? ""),
     roundCount: Number(row.round_count ?? 0),
-    sessionMemory: row.session_memory,
+    sessionMemory: compact ? "" : String(row.session_memory ?? ""),
     sessionPlan,
     sessionState,
-    sessionThreadMessages: asArray(record.session_thread_messages),
+    sessionThreadMessages: compact
+      ? undefined
+      : asArray(record.session_thread_messages),
     sourceScope: asArray(row.practice_session_sources)
       .map(sourceSummaryFromRow)
       .filter((source): source is PracticeSourceSummary => Boolean(source)),
@@ -704,7 +717,7 @@ export async function listPracticeSessions({
     sessionSummaryFromRow({
       ...row,
       round_count: embeddedRelationCount(row.practice_rounds),
-    }),
+    }, { compact: true }),
   );
 }
 

@@ -108,6 +108,13 @@ assert(
     listSessions.includes(".range(boundedOffset, boundedOffset + boundedLimit - 1)"),
   "Practice session lists must use a bounded summary page and aggregate round counts",
 );
+assert(
+  persistence.includes("PRACTICE_SESSION_LIST_FIELDS") &&
+    persistence.includes('"created_at,goal,id,last_activity_at,source_scope_locked_at,status,summary,title"') &&
+    listSessions.includes("compact: true") &&
+    !listSessions.includes("PRACTICE_SESSION_FIELDS"),
+  "Practice session history must select and serialize compact rows without thread payloads",
+);
 
 const getSession = sourceBlock(
   persistence,
@@ -123,10 +130,10 @@ assert(
   "Practice detail hydration must reuse the list summary and parallelize independent history reads",
 );
 assert(
-  sessionsRoute.includes("sessionSummary: activeSummary") &&
+  !sessionsRoute.includes("sessionSummary: activeSummary") &&
     sessionsRoute.includes("const hasMore = sessionPage.length > limit") &&
     sessionsRoute.includes("nextOffset: offset + sessions.length"),
-  "Sessions API must not reload the active practice_sessions row already returned by its list query",
+  "Sessions API must use the compact list for history and hydrate the active session as detail",
 );
 const loadMoreSessions = sourceBlock(
   client,
