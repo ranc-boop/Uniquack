@@ -87,7 +87,7 @@ assert(
 );
 assert(
   client.includes("deferAuxiliary: true") &&
-    client.includes("nextSession?.sourceScopeLockedAt") &&
+    client.includes("sourceOptionsPromise") &&
     client.includes("void auxiliaryStatePromise.then") &&
     client.includes("settlePracticeRequest(") &&
     clientHelpers.includes("(error: unknown) => error") &&
@@ -176,9 +176,24 @@ const createNewSession = sourceBlock(
 assert(
   createNewSession.includes("prepareScopedNewSession()") &&
     !createNewSession.includes("jsonRequest") &&
-    !createNewSession.includes("startTransition") &&
-    !createNewSession.includes("setSessionAction"),
+    !createNewSession.includes("startTransition"),
   "New Practice session clicks must switch to a local draft without waiting on persistence",
+);
+const switchSession = sourceBlock(
+  client,
+  "function switchSession",
+  "async function loadMoreSessions",
+);
+assert(
+  client.includes("SESSION_DETAIL_CACHE_LIMIT") &&
+    client.includes("practiceSourcesRequestRef") &&
+    switchSession.includes("const sessionPromise") &&
+    switchSession.includes("const wrongQuestionsPromise") &&
+    switchSession.includes("const sourcesPromise") &&
+    switchSession.includes("beginPracticeOperation()") &&
+    switchSession.includes("operation.controller.signal") &&
+    switchSession.includes("Promise.allSettled([wrongQuestionsPromise, sourcesPromise])"),
+  "Practice session switching must reuse loaded data, cancel stale work, and overlap auxiliary requests",
 );
 const preferenceMerge = sourceBlock(
   client,
