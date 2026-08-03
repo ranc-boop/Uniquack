@@ -186,6 +186,8 @@ const switchSession = sourceBlock(
 );
 assert(
   client.includes("SESSION_DETAIL_CACHE_LIMIT") &&
+    client.includes("prefetchPracticeSession") &&
+    client.includes('onMouseEnter={() => prefetchPracticeSession(item.id)}') &&
     client.includes("practiceSourcesRequestRef") &&
     switchSession.includes("const sessionPromise") &&
     switchSession.includes("const wrongQuestionsPromise") &&
@@ -194,6 +196,18 @@ assert(
     switchSession.includes("operation.controller.signal") &&
     switchSession.includes("Promise.allSettled([wrongQuestionsPromise, sourcesPromise])"),
   "Practice session switching must reuse loaded data, cancel stale work, and overlap auxiliary requests",
+);
+const createSession = sourceBlock(
+  persistence,
+  "export async function createPracticeSession",
+  "async function maybeQueuePreferenceMergeJob",
+);
+assert(
+  createSession.includes("preferencePromise") &&
+    createSession.includes("courseFrameworkPromise") &&
+    createSession.includes("const [preference, courseFramework] = await Promise.all([") &&
+    createSession.includes("await maybeQueuePreferenceMergeJob"),
+  "Creating a Practice session must overlap independent preference and framework reads while preserving merge queuing",
 );
 const preferenceMerge = sourceBlock(
   client,

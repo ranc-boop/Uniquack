@@ -846,6 +846,9 @@ export function PracticeAgentClient({
   const streamedReviewFrameRef = useRef<number | null>(null);
   const roundAnswerDraftsRef = useRef<Record<string, AnswersState>>({});
   const sessionDetailCacheRef = useRef(new Map<string, PracticeSessionDetail>());
+  const sessionDetailRequestRef = useRef(
+    new Map<string, Promise<PracticeSessionDetail>>(),
+  );
   const sessionWrongQuestionsCacheRef = useRef(
     new Map<string, PracticeWrongQuestionView[]>(),
   );
@@ -922,13 +925,35 @@ export function PracticeAgentClient({
   ) {
     const cached = sessionDetailCacheRef.current.get(sessionId);
     if (cached) return cached;
+    const inFlight = sessionDetailRequestRef.current.get(sessionId);
+    if (inFlight) return inFlight;
 
-    const payload = await jsonRequest<{ session: PracticeSessionDetail }>(
+    let request: Promise<PracticeSessionDetail>;
+    request = jsonRequest<{ session: PracticeSessionDetail }>(
       `/api/practice/sessions/${sessionId}`,
       { signal },
-    );
-    cacheSessionDetail(payload.session);
-    return payload.session;
+    )
+      .then((payload) => {
+        cacheSessionDetail(payload.session);
+        return payload.session;
+      })
+      .finally(() => {
+        if (sessionDetailRequestRef.current.get(sessionId) === request) {
+          sessionDetailRequestRef.current.delete(sessionId);
+        }
+      });
+    sessionDetailRequestRef.current.set(sessionId, request);
+    return request;
+  }
+
+  function prefetchPracticeSession(sessionId: string) {
+    if (
+      sessionDetailCacheRef.current.has(sessionId) ||
+      sessionDetailRequestRef.current.has(sessionId)
+    ) {
+      return;
+    }
+    void loadPracticeSessionDetail(sessionId).catch(() => undefined);
   }
 
   function beginPracticeOperation() {
@@ -2461,6 +2486,8 @@ export function PracticeAgentClient({
                     className="student-focus-ring flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left"
                     data-session-active={activeSession?.id === item.id ? "yes" : "no"}
                     data-testid="practice-session-item"
+                    onFocus={() => prefetchPracticeSession(item.id)}
+                    onMouseEnter={() => prefetchPracticeSession(item.id)}
                     onClick={() => switchSession(item.id)}
                     type="button"
                   >

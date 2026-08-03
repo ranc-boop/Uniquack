@@ -916,20 +916,24 @@ export async function createPracticeSession({
   const trimmedGoal = goal.trim().slice(0, 500);
   const sessionTitle =
     (title?.trim() || trimmedGoal || "New practice session").slice(0, 160);
-  const preference = await getOrCreatePracticePreference({
+  const preferencePromise = getOrCreatePracticePreference({
     onInitializationFailure,
     supabase,
     userId,
   });
+  const courseFrameworkPromise = courseFrameworkId
+    ? loadPracticeCourseFramework({ frameworkId: courseFrameworkId, supabase })
+    : Promise.resolve(null);
+  const [preference, courseFramework] = await Promise.all([
+    preferencePromise,
+    courseFrameworkPromise,
+  ]);
   await maybeQueuePreferenceMergeJob({
     onInitializationFailure,
     preference,
     supabase,
     userId,
   });
-  const courseFramework = courseFrameworkId
-    ? await loadPracticeCourseFramework({ frameworkId: courseFrameworkId, supabase })
-    : null;
   const sessionPlan = trimmedGoal || courseFramework
     ? buildDefaultSessionPlan({ courseFramework, goal: trimmedGoal })
     : {};
