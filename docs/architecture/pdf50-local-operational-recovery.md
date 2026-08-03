@@ -178,6 +178,12 @@ loaded through Windows DPAPI for the current Windows user and computer. The
 launcher reported only presence classifications and cleared every process-only
 value after each run.
 
+Before review, authoritative main advanced to
+`26694e14953ae71a6c0e3a4571443e59bb8acc6f` with an independent Practice
+loading optimization. It was integrated through normal merge commit
+`57e3f453d15125bbd567a8a21aee64efb90cc9a5`; the shared aggregate smoke file
+retains both the new Practice check and all three PDF50 recovery checks.
+
 The final one-file run established the following path:
 
 | Stage | Result |
@@ -275,6 +281,7 @@ The final source state passed:
 - `npm.cmd ls --depth=0`;
 - `npm.cmd run lint`;
 - `npm.cmd run build` twice;
+- `npm.cmd run perf:budget` on the final integrated branch;
 - `npm.cmd run perf:audit`;
 - `npm.cmd run analyze`;
 - local worker singleton, stale-lock, and local-target smoke;
@@ -289,10 +296,11 @@ The final source state passed:
 - route smoke across Admin, Teacher, Student, public, and internal worker
   boundaries.
 
-`npm.cmd run perf:budget` reported one unrelated existing baseline failure:
-`src/components/practice/practice-agent-client.tsx` is 116.5 KB against its
-96.0 KB source budget. This branch does not modify that file or Student Practice
-behavior. Route chunk budgets and all other performance-budget checks passed.
+Before latest main was integrated, `npm.cmd run perf:budget` reported an
+unrelated existing Practice source-size failure. The independently merged main
+optimization reduced `src/components/practice/practice-agent-client.tsx` to
+87.2 KB against its 96.0 KB budget. The final integrated branch passes the full
+performance budget without any PDF50-side exception.
 
 The aggregate smoke was not represented as passing. Its existing RLS and
 database harnesses load `.env.local` and may connect to Supabase. One direct
