@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PracticeTraceEvent } from "@/lib/practice/types";
 
+const MAX_DISPLAY_TRACE_EVENTS = 8;
+
 function formatTrace(event: PracticeTraceEvent) {
   return [
     event.outputSummary,
@@ -17,11 +19,27 @@ function formatTrace(event: PracticeTraceEvent) {
 function isTraceNoise(event: PracticeTraceEvent) {
   return event.toolName === "model_usage" ||
     event.toolName === "model_tool_choice_start" ||
-    event.toolName === "compact_agent_context";
+    event.toolName === "compact_agent_context" ||
+    event.toolName === "practice_progress_step";
 }
 
 function displayTraceEvents(trace: PracticeTraceEvent[]) {
-  return trace.filter((event) => !isTraceNoise(event));
+  const compacted: PracticeTraceEvent[] = [];
+  const indexesByKey = new Map<string, number>();
+
+  for (const event of trace) {
+    if (isTraceNoise(event)) continue;
+    const key = traceEventKey(event);
+    const previousIndex = indexesByKey.get(key);
+    if (previousIndex !== undefined) {
+      compacted[previousIndex] = event;
+      continue;
+    }
+    indexesByKey.set(key, compacted.length);
+    compacted.push(event);
+  }
+
+  return compacted.slice(-MAX_DISPLAY_TRACE_EVENTS);
 }
 
 function latestDisplayTrace(trace: PracticeTraceEvent[]) {
@@ -68,7 +86,7 @@ function plainText(value: unknown, maxLength = 260): string {
 
 function readableProcessLabel(event: PracticeTraceEvent) {
   if (event.error) return "Needs attention";
-  if (event.toolName === "model_tool_choice") return "Model step";
+  if (event.toolName === "model_tool_choice" || event.toolName === "practice_model_step") return "Model step";
   if (event.toolName.includes("browse")) return "Finding the right topic";
   if (event.toolName.includes("search")) return "Looking through question candidates";
   if (event.toolName.includes("finalize")) return "Choosing the round";
@@ -210,10 +228,10 @@ function traceEventKey(event: PracticeTraceEvent | undefined) {
   if (!event) return "empty";
   return [
     event.toolName,
-    event.iteration ?? "n",
-    event.toolCallId ?? "call",
+    event.phase,
     event.inputSummary ?? "",
     event.outputSummary ?? "",
+    event.error ?? "",
   ].join(":");
 }
 
@@ -268,6 +286,7 @@ export function TracePanel({
   if (!trace.length && !active) return null;
   const displayTrace = displayTraceEvents(trace);
   const latestEvent = latestDisplayTrace(trace);
+  const condensedTraceCount = Math.max(0, trace.length - displayTrace.length);
 
   return (
     <Card className={active ? "animate-in fade-in slide-in-from-bottom-2 border-sky-100 bg-white duration-300" : "border-slate-200/80 bg-white"}>
@@ -349,6 +368,11 @@ export function TracePanel({
                 )}
               </details>
             ))}
+            {condensedTraceCount > 0 ? (
+              <p className="px-1 text-xs leading-5 text-slate-400">
+                Condensed {condensedTraceCount} background updates.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </CardContent>
