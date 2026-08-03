@@ -117,7 +117,8 @@ assert(
 assert(
   persistence.includes("PRACTICE_SESSION_LIST_FIELDS") &&
     persistence.includes('"created_at,id,last_activity_at,status,title"') &&
-    listSessions.includes("compact: true") &&
+    persistence.includes("function sessionListItemFromRow") &&
+    listSessions.includes("sessionListItemFromRow") &&
     !listSessions.includes("PRACTICE_SESSION_FIELDS") &&
     persistence.includes("`${PRACTICE_SESSION_LIST_FIELDS},practice_rounds(count)`") &&
     !persistence.includes("`${PRACTICE_SESSION_LIST_FIELDS},practice_rounds(count),practice_session_sources"),
@@ -204,6 +205,33 @@ assert(
     switchSession.includes("operation.controller.signal") &&
     switchSession.includes("Promise.allSettled([wrongQuestionsPromise, sourcesPromise])"),
   "Practice session switching must reuse loaded data, cancel stale work, and overlap auxiliary requests",
+);
+assert(
+  client.includes("!nextSession?.sourceScopeLockedAt") &&
+    switchSession.includes("if (session.sourceScopeLockedAt) return null") &&
+    switchSession.includes("if (!sourcePayload) return") &&
+    client.includes("loadPracticeSources({ force: true })"),
+  "Locked Practice sessions must skip source inventory work while new-session flows can refresh it",
+);
+const saveOutlineNotes = sourceBlock(
+  client,
+  "function saveOutlineNotes()",
+  "function saveLongTermMemory",
+);
+assert(
+  saveOutlineNotes.includes("cacheSessionDetail(payload.session)") &&
+    saveOutlineNotes.includes("setActiveSession(payload.session)"),
+  "Session detail cache must stay consistent after outline notes are saved",
+);
+const resetPracticeProgress = sourceBlock(
+  client,
+  "function resetPracticeProgress()",
+  "function showHistoricalRound",
+);
+assert(
+  resetPracticeProgress.includes("await loadPracticeSources({ force: true });") &&
+    !resetPracticeProgress.includes('"/api/practice/sources"'),
+  "Resetting Practice progress must reuse the shared source loader instead of issuing a duplicate request",
 );
 const createSession = sourceBlock(
   persistence,

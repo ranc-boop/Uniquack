@@ -1,6 +1,6 @@
 import type {
   PracticeSessionDetail,
-  PracticeSessionSummary,
+  PracticeSessionListItem,
 } from "@/lib/practice/types";
 
 export type Phase =
@@ -42,7 +42,7 @@ export type PracticeSessionsPayload = {
     hasMore: boolean;
     nextOffset: number;
   };
-  sessions: PracticeSessionSummary[];
+  sessions: PracticeSessionListItem[];
 };
 export type TestOnlyDelayedHydrationStatus =
   | "NOT_ENABLED"

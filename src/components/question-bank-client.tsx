@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type {
   PracticeRecommendResponse,
   PracticeSessionDetail,
-  PracticeSessionSummary,
+  PracticeSessionListItem,
 } from "@/lib/practice/types";
 import { CURRENT_PRACTICE_PENDING_ROUND_STORAGE_KEY } from "@/lib/practice/schema";
 
@@ -91,7 +91,7 @@ export function QuestionBankClient({
   async function ensureSession() {
     const sessionsPayload = await jsonRequest<{
       activeSession: PracticeSessionDetail | null;
-      sessions: PracticeSessionSummary[];
+      sessions: PracticeSessionListItem[];
     }>("/api/practice/sessions");
 
     if (sessionsPayload.activeSession) {

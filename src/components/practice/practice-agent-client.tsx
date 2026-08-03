@@ -88,7 +88,7 @@ import type {
   PracticeReviewRequest,
   PracticeReviewResponse,
   PracticeSessionDetail,
-  PracticeSessionSummary,
+  PracticeSessionListItem,
   PracticeSourceOption,
   PracticeTraceEvent,
   PracticeWrongQuestionView,
@@ -145,7 +145,7 @@ export function PracticeAgentClient({
     getServerClientReadySnapshot,
   );
   const [phase, setPhase] = useState<Phase>("start");
-  const [sessions, setSessions] = useState<PracticeSessionSummary[]>([]);
+  const [sessions, setSessions] = useState<PracticeSessionListItem[]>([]);
   const [activeSession, setActiveSession] = useState<PracticeSessionDetail | null>(null);
   const [assignmentLaunch, setAssignmentLaunch] = useState<AssignmentPracticeStartPayload["assignment"] | null>(null);
   const [goal, setGoal] = useState("");
@@ -264,16 +264,16 @@ export function PracticeAgentClient({
     practiceSourcesCacheRef.current = sources;
   }
 
-  function loadPracticeSources() {
+  function loadPracticeSources({ force = false }: { force?: boolean } = {}) {
     const cached = practiceSourcesCacheRef.current;
-    if (cached) {
+    if (cached && !force) {
       setPracticeSources(cached);
       setPracticeSourcesLoading(false);
       return Promise.resolve(cached);
     }
     if (practiceSourcesRequestRef.current) return practiceSourcesRequestRef.current;
 
-    setPracticeSourcesLoading(true);
+    if (!cached) setPracticeSourcesLoading(true);
     let request: Promise<PracticeSourceOption[]>;
     request = jsonRequest<{ sources: PracticeSourceOption[] }>(
       "/api/practice/sources",
@@ -486,9 +486,10 @@ export function PracticeAgentClient({
     }
     cacheSessionDetail(nextSession);
 
-    const sourceOptionsPromise: Promise<PracticeSourceOption[]> = assignmentId
-      ? Promise.resolve([])
-      : loadPracticeSources();
+    const sourceOptionsPromise: Promise<PracticeSourceOption[]> =
+      !assignmentId && !nextSession?.sourceScopeLockedAt
+        ? loadPracticeSources()
+        : Promise.resolve([]);
     const sourceStatePromise = eagerSourceStatePromise ??
       settlePracticeRequest(
         sourceOptionsPromise,
@@ -1330,7 +1331,7 @@ export function PracticeAgentClient({
     requestRecommendation(review.nextRoundGoal || activeSession?.goal || recommendation?.roundGoal || "");
   }
 
-  function beginRenameSession(session: PracticeSessionSummary) {
+  function beginRenameSession(session: PracticeSessionListItem) {
     setRenamingSessionId(session.id);
     setRenameValue(session.title);
   }
@@ -1377,7 +1378,10 @@ export function PracticeAgentClient({
           );
       const sourcesPromise = cachedSources
         ? Promise.resolve({ sources: cachedSources })
-        : loadPracticeSources().then((sources) => ({ sources }));
+        : sessionPromise.then((session) => {
+            if (session.sourceScopeLockedAt) return null;
+            return loadPracticeSources().then((sources) => ({ sources }));
+          });
       void wrongQuestionsPromise.catch(() => undefined);
       void sourcesPromise.catch(() => undefined);
 
@@ -1422,6 +1426,7 @@ export function PracticeAgentClient({
         void sourcesPromise
           .then((sourcePayload) => {
             if (!isPracticeOperationCurrent(operation.token)) return;
+            if (!sourcePayload) return;
             cachePracticeSources(sourcePayload.sources);
             setPracticeSources(sourcePayload.sources);
           })
@@ -1489,11 +1494,7 @@ export function PracticeAgentClient({
           method: "POST",
         });
         prepareScopedNewSession();
-        const payload = await jsonRequest<{ sources: PracticeSourceOption[] }>(
-          "/api/practice/sources",
-        );
-        cachePracticeSources(payload.sources);
-        setPracticeSources(payload.sources);
+        await loadPracticeSources({ force: true });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -1548,8 +1549,8 @@ export function PracticeAgentClient({
       setSelectedWrongQuestionIds(retryQuestionIds);
     }
     setPhase("start");
-    if (!isAssignmentMode && !practiceSourcesCacheRef.current) {
-      void loadPracticeSources().catch(() => undefined);
+    if (!isAssignmentMode) {
+      void loadPracticeSources({ force: true }).catch(() => undefined);
     }
   }
 
@@ -1600,6 +1601,7 @@ export function PracticeAgentClient({
             method: "PATCH",
           },
         );
+        cacheSessionDetail(payload.session);
         setActiveSession(payload.session);
         setOutlineNotes(payload.session.outlineUserNotes ?? "");
       } catch (caught) {

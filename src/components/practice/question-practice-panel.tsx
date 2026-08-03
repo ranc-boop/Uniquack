@@ -21,7 +21,7 @@ import type {
   PracticeRecommendResponse,
   PracticeRecommendation,
   PracticeSessionDetail,
-  PracticeSessionSummary,
+  PracticeSessionListItem,
 } from "@/lib/practice/types";
 import type { Json } from "@/types/database";
 
@@ -135,7 +135,7 @@ export function QuestionPracticePanel({ question, solutionContent }: QuestionPra
   async function ensureSession() {
     const sessionsPayload = await jsonRequest<{
       activeSession: PracticeSessionDetail | null;
-      sessions: PracticeSessionSummary[];
+      sessions: PracticeSessionListItem[];
     }>("/api/practice/sessions");
 
     if (sessionsPayload.activeSession) {

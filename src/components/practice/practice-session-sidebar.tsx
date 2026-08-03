@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { PRACTICE_INPUT_LIMITS } from "@/lib/practice/request-validation";
-import type { PracticeSessionSummary } from "@/lib/practice/types";
+import type { PracticeSessionListItem } from "@/lib/practice/types";
 
 type PracticeSessionSidebarProps = {
   activeSessionId?: string | null;
@@ -33,14 +33,14 @@ type PracticeSessionSidebarProps = {
   sessionHistoryHasMore: boolean;
   sessionHistoryLoading: boolean;
   sessionHistoryLoadingMore: boolean;
-  sessions: PracticeSessionSummary[];
+  sessions: PracticeSessionListItem[];
   renamingSessionId: string | null;
   renameValue: string;
   preferenceLoading: boolean;
   memoryEditing: boolean;
   longTermMemory: string;
   longTermMemoryDraft: string;
-  onBeginRename: (session: PracticeSessionSummary) => void;
+  onBeginRename: (session: PracticeSessionListItem) => void;
   onCancelRename: () => void;
   onClearLongTermMemory: () => void;
   onCollapse: () => void;
