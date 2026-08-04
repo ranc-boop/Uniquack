@@ -29,6 +29,7 @@ const [
   workerRoute,
   providerTestControl,
   burstUpload,
+  burstStatusReconciliation,
 ] = await Promise.all([
   read("src/lib/ai-providers/execution-budget.ts"),
   read("src/lib/ai-providers/gemini-native.ts"),
@@ -40,12 +41,16 @@ const [
   read("src/app/api/internal/ai-jobs/run/route.ts"),
   read("src/lib/ai-jobs/provider-test-control.ts"),
   read("src/components/teacher/teacher-pdf-burst-upload.tsx"),
+  read("src/lib/ai-pdf-import/burst-status-reconciliation.ts"),
 ]);
 
 const providerExtractionSchema = JSON.parse(
   await read("src/lib/ai-providers/gemini-ai-pdf-extraction.schema.json"),
 );
 const applicationExtractionSchema = await read("src/lib/ai-pdf-import/schema.ts");
+const providerProofControl = JSON.parse(
+  await read("src/lib/ai-jobs/pdf50-provider-proof-control.json"),
+);
 
 assert(
   budget.includes("createAIProviderExecutionBudget") &&
@@ -59,11 +64,10 @@ assert(
 );
 
 assert(
-  providerTestControl.includes('maxNetworkRequests: 68') &&
-    providerTestControl.includes(
-      'requireExactEnvironmentValue("PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS", "68")',
-    ),
-  "trusted proof must reserve two complete Gemini upload/poll/inference/cleanup lifecycles",
+  providerTestControl.includes("pdf50-provider-proof-control.json") &&
+    providerTestControl.includes("providerMaxNetworkRequests") &&
+    providerProofControl.providerMaxNetworkRequests > 0,
+  "trusted proof network budget must come from the canonical proof-control contract",
 );
 
 for (const operation of [
@@ -148,7 +152,7 @@ assert(
 
 assert(
     workerRoute.includes("readTrustedAIProviderTestLimits") &&
-    workerRoute.includes("limit: providerTestLimits ? 1 : 2") &&
+    workerRoute.includes("limit: providerTestLimits?.maxClaimedJobs ?? 2") &&
     workerRoute.includes("PDF50_PROVIDER_TEST_JOB_HEADER") &&
     workerRoute.includes("parseTrustedAIProviderTestJobId") &&
     workerRoute.includes("safeWorkerFailureReasons") &&
@@ -157,14 +161,11 @@ assert(
 );
 
 assert(
-  providerTestControl.includes('PDF50_PROVIDER_TEST_MODE = "BOUNDED_ONE_JOB_REAL_PROVIDER"') &&
+  providerTestControl.includes("PDF50_PROVIDER_PROOF_CONTROL") &&
     providerTestControl.includes("PDF50_PROVIDER_TEST_MAX_COST_MICROS") &&
-    providerTestControl.includes("TRUSTED_PROVIDER_MAX_INPUT_TOKENS_PER_ATTEMPT = 1_048_576") &&
-    providerTestControl.includes("TRUSTED_PROVIDER_MAX_BILLABLE_OUTPUT_TOKENS_PER_ATTEMPT = 65_536") &&
-    providerTestControl.includes("TRUSTED_PROVIDER_TOTAL_BUDGET_MICROS = 1_000_000") &&
-    providerTestControl.includes(
-      "PDF50_PROVIDER_TEST_MAX_COST_MICROS > TRUSTED_PROVIDER_TOTAL_BUDGET_MICROS",
-    ) &&
+    providerTestControl.includes("maxInputTokensPerAttempt") &&
+    providerTestControl.includes("maxBillableOutputTokensPerAttempt") &&
+    providerTestControl.includes("approvedBudgetUsd") &&
     providerTestControl.includes('"PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS"') &&
     providerTestControl.includes('"PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS"') &&
     providerTestControl.includes('"PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS"') &&
@@ -183,8 +184,12 @@ assert(
   burstUpload.includes("AIJobStatusPoller") &&
     burstUpload.includes("serverItemsByClientKey") &&
     burstUpload.includes("displayedSelected") &&
-    burstUpload.includes("statusProgress"),
-  "PDF50 upload status must poll and reconcile local rows with durable server state",
+    burstUpload.includes("reconcilePdfBurstDisplayState") &&
+    burstUpload.includes("localWarningCode") &&
+    !burstUpload.includes("statusProgress") &&
+    burstStatusReconciliation.includes("mergePdfBurstDurableSnapshot") &&
+    burstStatusReconciliation.includes("durableTerminalStatuses"),
+  "PDF50 upload status must separate local transport state from authoritative durable state",
 );
 
 console.log("PASS PDF50 Provider lifecycle budget and truthful status smoke");

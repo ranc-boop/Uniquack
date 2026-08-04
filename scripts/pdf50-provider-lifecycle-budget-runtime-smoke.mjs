@@ -9,6 +9,11 @@ import {
   classifyPDF50ProviderCounterContract,
   formatPDF50ProviderCounters,
 } from "./lib/pdf50-provider-counter-contract.mjs";
+import {
+  estimatePDF50ProviderProofCostMicros,
+  loadPDF50ProviderProofControl,
+  pdf50ProviderProofEnvironment,
+} from "./lib/pdf50-provider-proof-control.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -62,6 +67,14 @@ const extractionSchema = JSON.parse(
     "utf8",
   ),
 );
+const proofControlSource = JSON.parse(
+  await readFile(
+    resolve(root, "src/lib/ai-jobs/pdf50-provider-proof-control.json"),
+    "utf8",
+  ),
+);
+const proofControl = await loadPDF50ProviderProofControl();
+const proofEnvironment = pdf50ProviderProofEnvironment(proofControl);
 const structuredOutput = await loadTypeScriptModule(
   "src/lib/ai-providers/gemini-structured-output.ts",
   {
@@ -110,6 +123,9 @@ assert.equal(
 
 const providerTestControl = await loadTypeScriptModule(
   "src/lib/ai-jobs/provider-test-control.ts",
+  {
+    "./pdf50-provider-proof-control.json": proofControlSource,
+  },
 );
 const proofEnvironmentNames = [
   "AI_JOBS_LOCAL_MAX_INVOCATIONS",
@@ -130,24 +146,19 @@ try {
     () => providerTestControl.readTrustedAIProviderTestLimits(),
     /trusted_provider_test_mode_rejected/,
   );
-  Object.assign(process.env, {
-    AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
-    PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "1",
-    PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
-    PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
-    PDF50_PROVIDER_TEST_MODE: "BOUNDED_ONE_JOB_REAL_PROVIDER",
-    PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "1",
-  });
+  Object.assign(process.env, proofEnvironment);
   assert.deepEqual(providerTestControl.readTrustedAIProviderTestLimits(), {
-    maxInferenceAttempts: 1,
-    maxEstimatedCostMicros: 131_073,
-    maxNetworkRequests: 68,
-    maxOutputTokens: 4096,
-    providerBudgetMicros: 1_000_000,
+    maxClaimedJobs: proofControl.claimedJobs,
+    maxInferenceAttempts: proofControl.providerInferenceAttempts,
+    maxEstimatedCostMicros: estimatePDF50ProviderProofCostMicros(proofControl),
+    maxNetworkRequests: proofControl.providerMaxNetworkRequests,
+    maxOutputTokens: proofControl.providerMaxOutputTokens,
+    providerBudgetMicros: proofControl.approvedBudgetUsd * 1_000_000,
   });
   assert(
-    providerTestControl.PDF50_PROVIDER_TEST_MAX_COST_MICROS < 1_000_000,
-    "trusted proof worst-case token envelope must remain below the total USD 1 budget",
+    providerTestControl.PDF50_PROVIDER_TEST_MAX_COST_MICROS <
+      proofControl.approvedBudgetUsd * 1_000_000,
+    "trusted proof worst-case token envelope must remain below its canonical budget",
   );
 } finally {
   for (const name of proofEnvironmentNames) {

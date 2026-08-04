@@ -138,9 +138,19 @@ must therefore remain protected.
 
 The vault contains only the seven allowlisted values required by this proof.
 The one-job limit, cleanup acknowledgement, Provider mode, request ceilings,
-and USD 5 total budget are fixed by the launcher and are not persisted as
-operator input. Rerun the setup script and type
+and total budget are fixed by the launcher and are not persisted as operator
+input. Rerun the setup script and type
 `REPLACE_PDF50_E2E_CREDENTIAL_VAULT` to rotate the vault atomically.
+
+The authoritative proof limits live in
+`src/lib/ai-jobs/pdf50-provider-proof-control.json`. The server runtime,
+launcher, live harness, and smoke tests consume or validate that contract.
+This runbook intentionally does not duplicate its numeric values. Inspect the
+active sanitized limits and conservative cost ceiling with:
+
+```powershell
+node scripts\pdf50-provider-proof-control-report.mjs
+```
 
 Validate the vault structure without decrypting a value to plaintext or
 placing anything in the process environment:
@@ -173,29 +183,22 @@ directory.
 
 The proof mode is server-owned and fail-closed:
 
-- one route invocation and one claimed job;
-- at most four inference attempts;
-- at most 8,192 output tokens per inference;
-- at most 136 Provider HTTP requests across the job;
-- a total test-budget acknowledgement of USD 5;
+- the contract bounds route invocations and claimed jobs;
+- the contract bounds Provider attempts, output tokens, and all Provider HTTP
+  requests;
+- the contract supplies the approved total budget and conservative token-cost
+  inputs;
 - known-cost Gemini Native PDF with `gemini-2.5-flash-lite` only;
 - exact hosted fixture and Storage cleanup.
 
-The trusted server gate also computes a conservative token-cost ceiling before
-the worker starts. Four attempts at the known model's 1,048,576-token input
-window plus 8,192 output tokens produce a maximum catalog estimate of 432,540
-micro-USD (about USD 0.433), below the approved USD 5 total. Actual usage is
-recorded after the run and must also remain below USD 5.
-
-The 136-request ceiling reserves four complete worst-case Gemini file
-lifecycles: two upload requests, up to 30 status polls, one inference request,
-and one cleanup request per attempt. Failed requests count before network I/O.
-Cleanup success is recorded separately, and the proof does not pass when the
-Provider file cleanup request fails. Attempt counters and actual inference HTTP
-request counters remain separate, so upload failures cannot fabricate an
-inference request. Normal worker operation does not inherit the proof-only
-one-job, 136-request, 8,192-output-token, or USD 5 controls; its existing admin
-operations control still applies.
+The trusted server gate computes the conservative token-cost ceiling from the
+same contract before the worker starts. Actual usage is recorded after the run
+and must remain below the contract budget. Provider requests count before
+network I/O. Cleanup success is recorded separately, and the proof does not
+pass when Provider file cleanup fails. Attempt counters and actual inference
+HTTP request counters remain separate, so upload failures cannot fabricate an
+inference request. Normal worker operation does not inherit any proof-only
+control; its existing admin operations control remains unchanged.
 
 Do not run the launcher against a production project or while unrelated queue
 work exists. A passing one-file proof establishes the first operational gate

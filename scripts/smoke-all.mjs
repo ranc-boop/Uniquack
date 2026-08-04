@@ -91,6 +91,8 @@ await import("./pdf50-e2e-credential-vault-safety-smoke.mjs");
 await import("./pdf50-gemini-structured-compatibility-probe-safety-smoke.mjs");
 await import("./pdf50-provider-lifecycle-budget-smoke.mjs");
 await import("./pdf50-provider-lifecycle-budget-runtime-smoke.mjs");
+await import("./pdf50-provider-proof-control-smoke.mjs");
+await import("./pdf50-burst-status-reconciliation-smoke.mjs");
 await import("./ai-parsing-boundary-duplicate-guard-smoke.mjs");
 await import("./ai-parsing-selective-packet-execution-smoke.mjs");
 await import("./ai-parsing-selective-execution-smoke.mjs");

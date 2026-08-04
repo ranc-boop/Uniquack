@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  loadPDF50ProviderProofControl,
+  pdf50ProviderProofEnvironment,
+} from "./lib/pdf50-provider-proof-control.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const harness = readFileSync(
   resolve(root, "scripts", "pdf50-end-to-end-live-e2e.mjs"),
@@ -15,6 +20,8 @@ const launcher = readFileSync(
   resolve(root, "scripts", "run-pdf50-end-to-end-live-e2e.ps1"),
   "utf8",
 );
+const proofControl = await loadPDF50ProviderProofControl();
+const proofEnvironment = pdf50ProviderProofEnvironment(proofControl);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -56,21 +63,32 @@ for (const name of [
 for (const literal of [
   "DISPOSABLE_PDF50_PROVIDER_E2E",
   "DELETE_PDF50_PROVIDER_E2E_FIXTURES",
-  "BOUNDED_ONE_JOB_REAL_PROVIDER",
-  'AI_JOBS_LOCAL_MAX_INVOCATIONS: "1"',
-  'PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "1"',
-  'PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68"',
-  'PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096"',
-  'PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "1"',
+  "loadPDF50ProviderProofControl",
+  "pdf50ProviderProofEnvironment",
 ]) {
   assert(harness.includes(literal), `missing trusted one-job control ${literal}`);
 }
 
+for (const [name, expected] of Object.entries(proofEnvironment)) {
+  assert(expected.length > 0, `canonical proof control ${name} must be nonempty`);
+  assert(harness.includes(`"${name}"`), `harness must validate ${name}`);
+}
+
+assert(
+  launcher.includes("pdf50-provider-proof-control-report.mjs") &&
+    launcher.includes("$ProofControl.workerRouteInvocations") &&
+    launcher.includes("$ProofControl.providerInferenceAttempts") &&
+    launcher.includes("$ProofControl.providerMaxNetworkRequests") &&
+    launcher.includes("$ProofControl.providerMaxOutputTokens") &&
+    launcher.includes("$ProofControl.approvedBudgetUsd"),
+  "launcher must derive every proof limit from the validated canonical contract",
+);
+
 assert(
   harness.includes('providerStrategy(profile) === "gemini_native_pdf"') &&
-    harness.includes('knownProviderModel = "gemini-2.5-flash-lite"') &&
+    harness.includes("knownProviderModel = proofControl.model") &&
     harness.includes("providerCostUpperBoundMicros > providerBudgetMicros") &&
-    harness.includes("maxProviderInputTokensPerAttempt = 1_048_576"),
+    proofControl.model === "gemini-2.5-flash-lite",
   "real proof must fail closed to the known-cost Gemini Native route",
 );
 assert(

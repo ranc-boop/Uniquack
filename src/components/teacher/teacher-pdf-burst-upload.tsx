@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -26,33 +26,29 @@ import {
   AI_IMPORT_SOURCES_BUCKET,
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
+import {
+  mergePdfBurstDurableSnapshot,
+  mergePdfBurstDurableSnapshotsByClientKey,
+  reconcilePdfBurstDisplayState,
+  type PdfBurstDisplayStatus,
+  type PdfBurstDurableSnapshot,
+  type PdfBurstLocalPhase,
+} from "@/lib/ai-pdf-import/burst-status-reconciliation";
 import type { TeacherAIPdfParsingProfile } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import { runWithConcurrency } from "@/lib/async-concurrency";
 import { createClient } from "@/lib/supabase/client";
 import { AIJobStatusPoller } from "@/components/ai-jobs/ai-job-status-poller";
 import { Button } from "@/components/ui/button";
 
-type LocalStatus =
-  | "reserved"
-  | "selected"
-  | "reserving"
-  | "uploading"
-  | "finalizing"
-  | "admission_ready"
-  | "queued"
-  | "processing"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
 type SelectedPdf = {
   clientItemKey: string;
+  durableSnapshot: PdfBurstDurableSnapshot | null;
   file: File;
-  safeErrorCode: string | null;
-  status: LocalStatus;
+  localPhase: PdfBurstLocalPhase;
+  localWarningCode: string | null;
 };
 
-const statusLabel: Record<LocalStatus, string> = {
+const statusLabel: Record<PdfBurstDisplayStatus, string> = {
   admission_ready: "Awaiting trusted worker capacity",
   cancelled: "Cancelled",
   completed: "Completed",
@@ -76,25 +72,18 @@ const safeErrorCopy: Record<string, string> = {
   upload_missing: "The uploaded PDF could not be found.",
 };
 
-const statusProgress: Record<LocalStatus, number> = {
-  selected: 0,
-  reserving: 1,
-  reserved: 2,
-  uploading: 3,
-  finalizing: 4,
-  admission_ready: 5,
-  queued: 6,
-  processing: 7,
-  completed: 8,
-  failed: 9,
-  cancelled: 9,
+const localWarningCopy: Record<string, string> = {
+  finalize_response_interrupted:
+    "The finalization response was interrupted. Durable status will continue to refresh.",
+  reservation_failed: "The private upload reservation did not complete.",
+  upload_failed: "The private upload did not complete.",
 };
 
 function isPdf(file: File) {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 }
 
-function statusTone(status: LocalStatus) {
+function statusTone(status: PdfBurstDisplayStatus) {
   if (status === "failed") return "border-rose-200 bg-rose-50 text-rose-800";
   if (status === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (status === "cancelled") return "border-slate-200 bg-slate-100 text-slate-600";
@@ -133,20 +122,34 @@ export function TeacherPdfBurstUpload({
     );
   }, [activeBurstId, initialBursts]);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSelected((current) =>
+        mergePdfBurstDurableSnapshotsByClientKey(
+          current,
+          serverItemsByClientKey,
+        ),
+      );
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [serverItemsByClientKey]);
+
   const displayedSelected = useMemo(
     () =>
       selected.map((item) => {
-        const serverItem = serverItemsByClientKey.get(item.clientItemKey);
-        if (
-          !serverItem ||
-          statusProgress[serverItem.status] < statusProgress[item.status]
-        ) {
-          return item;
-        }
+        const durableSnapshot = mergePdfBurstDurableSnapshot(
+          item.durableSnapshot,
+          serverItemsByClientKey.get(item.clientItemKey),
+        );
+        const display = reconcilePdfBurstDisplayState({
+          durable: durableSnapshot,
+          localPhase: item.localPhase,
+          localWarningCode: item.localWarningCode,
+        });
         return {
           ...item,
-          safeErrorCode: serverItem.safeErrorCode,
-          status: serverItem.status,
+          ...display,
+          durableSnapshot,
         };
       }),
     [selected, serverItemsByClientKey],
@@ -158,19 +161,10 @@ export function TeacherPdfBurstUpload({
         burst.status,
       ),
     ) ||
-    displayedSelected.some((item) =>
-      [
-        "reserving",
-        "uploading",
-        "finalizing",
-        "admission_ready",
-        "queued",
-        "processing",
-      ].includes(item.status),
-    );
+    displayedSelected.some((item) => item.shouldPoll);
 
   const counts = useMemo(() => {
-    const count = (statuses: LocalStatus[]) =>
+    const count = (statuses: PdfBurstDisplayStatus[]) =>
       displayedSelected.filter((item) => statuses.includes(item.status)).length;
     return {
       completed: count(["completed"]),
@@ -214,9 +208,10 @@ export function TeacherPdfBurstUpload({
     setSelected(
       files.map((file) => ({
         clientItemKey: crypto.randomUUID(),
+        durableSnapshot: null,
         file,
-        safeErrorCode: null,
-        status: "selected",
+        localPhase: "selected",
+        localWarningCode: null,
       })),
     );
   }
@@ -226,7 +221,11 @@ export function TeacherPdfBurstUpload({
     setError(null);
     setRunning(true);
     setSelected((current) =>
-      current.map((item) => ({ ...item, safeErrorCode: null, status: "reserving" })),
+      current.map((item) => ({
+        ...item,
+        localPhase: "reserving",
+        localWarningCode: null,
+      })),
     );
 
     try {
@@ -256,28 +255,42 @@ export function TeacherPdfBurstUpload({
           const item = reservations.get(selectedItem.clientItemKey);
           if (!item) {
             updateItem(selectedItem.clientItemKey, {
-              safeErrorCode: "upload_failed",
-              status: "failed",
+              localPhase: "failed",
+              localWarningCode: "reservation_failed",
             });
             return;
           }
 
           if (item.status !== "reserved") {
             updateItem(selectedItem.clientItemKey, {
-              status: item.status as LocalStatus,
+              durableSnapshot: {
+                safeErrorCode: null,
+                status: item.status,
+              },
+              localPhase: "reserved",
             });
             return;
           }
           if (!item.token) {
             updateItem(selectedItem.clientItemKey, {
-              safeErrorCode: "upload_failed",
-              status: "failed",
+              durableSnapshot: {
+                safeErrorCode: null,
+                status: "reserved",
+              },
+              localPhase: "failed",
+              localWarningCode: "upload_failed",
             });
             return;
           }
 
+          updateItem(selectedItem.clientItemKey, {
+            durableSnapshot: {
+              safeErrorCode: null,
+              status: "reserved",
+            },
+            localPhase: "uploading",
+          });
           try {
-            updateItem(selectedItem.clientItemKey, { status: "uploading" });
             const { error: uploadError } = await supabase.storage
               .from(AI_IMPORT_SOURCES_BUCKET)
               .uploadToSignedUrl(item.objectPath, item.token, selectedItem.file, {
@@ -285,21 +298,35 @@ export function TeacherPdfBurstUpload({
                 upsert: false,
               });
             if (uploadError) throw new Error("upload_failed");
+          } catch {
+            updateItem(selectedItem.clientItemKey, {
+              localPhase: "failed",
+              localWarningCode: "upload_failed",
+            });
+            return;
+          }
 
-            updateItem(selectedItem.clientItemKey, { status: "finalizing" });
+          updateItem(selectedItem.clientItemKey, {
+            localPhase: "finalizing",
+            localWarningCode: null,
+          });
+          try {
             const finalized = await finalizeTeacherAIPdfBurstItem({
               burstId: reservation.burstId,
               itemId: item.itemId,
               uploadAttemptId: item.uploadAttemptId,
             });
             updateItem(selectedItem.clientItemKey, {
-              safeErrorCode: finalized.safeErrorCode,
-              status: finalized.status as LocalStatus,
+              durableSnapshot: {
+                safeErrorCode: finalized.safeErrorCode,
+                status: finalized.status,
+              },
+              localWarningCode: null,
             });
           } catch {
             updateItem(selectedItem.clientItemKey, {
-              safeErrorCode: "upload_failed",
-              status: "failed",
+              localPhase: "finalizing",
+              localWarningCode: "finalize_response_interrupted",
             });
           }
         },
@@ -313,8 +340,12 @@ export function TeacherPdfBurstUpload({
       );
       setSelected((current) =>
         current.map((item) =>
-          item.status === "reserving"
-            ? { ...item, safeErrorCode: "upload_failed", status: "failed" }
+          item.localPhase === "reserving"
+            ? {
+                ...item,
+                localPhase: "failed",
+                localWarningCode: "reservation_failed",
+              }
             : item,
         ),
       );
@@ -330,11 +361,28 @@ export function TeacherPdfBurstUpload({
     try {
       await cancelTeacherAIPdfBurst({ burstId: activeBurstId });
       setSelected((current) =>
-        current.map((item) =>
-          ["selected", "reserving", "admission_ready", "queued"].includes(item.status)
-            ? { ...item, status: "cancelled" }
-            : item,
-        ),
+        current.map((item) => {
+          const durableSnapshot = mergePdfBurstDurableSnapshot(
+            item.durableSnapshot,
+            serverItemsByClientKey.get(item.clientItemKey),
+          );
+          if (
+            !durableSnapshot ||
+            !["reserved", "admission_ready", "queued"].includes(
+              durableSnapshot.status,
+            )
+          ) {
+            return item;
+          }
+          return {
+            ...item,
+            durableSnapshot: {
+              safeErrorCode: null,
+              status: "cancelled" as const,
+            },
+            localWarningCode: null,
+          };
+        }),
       );
       router.refresh();
     } catch {
@@ -417,6 +465,12 @@ export function TeacherPdfBurstUpload({
                       <p className="break-words text-sm font-semibold text-slate-900">
                         {item.file.name}
                       </p>
+                      {item.localWarningCode ? (
+                        <p className="mt-1 text-xs text-amber-700">
+                          {localWarningCopy[item.localWarningCode] ??
+                            "The local response was interrupted; durable status remains authoritative."}
+                        </p>
+                      ) : null}
                       {item.safeErrorCode ? (
                         <p className="mt-1 text-xs text-rose-700">
                           {safeErrorCopy[item.safeErrorCode] ?? "This file needs attention."}

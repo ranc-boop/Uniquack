@@ -82,26 +82,13 @@ raw Provider responses.
 ### Bounded real-Provider proof
 
 The explicit `BOUNDED_ONE_JOB_REAL_PROVIDER` mode is accepted only when all
-server-owned process controls exactly match the reviewed contract:
-
-| Control | Bound |
-| --- | ---: |
-| Claimed jobs | 1 |
-| Worker route invocations | 1 |
-| Provider attempts | 1 |
-| Output tokens per inference | 4,096 |
-| Provider HTTP requests | 68 |
-| Approved total test budget | USD 1 |
-
-The request ceiling remains a fail-closed transport cap. The one-attempt proof
-can execute only one Gemini file lifecycle and one inference request.
-
-The known `gemini-2.5-flash-lite` catalog rates, a 1,048,576-token input
-window, and a conservative 65,536-token billable output window yield a maximum
-of 131,073 micro-USD (about USD 0.131) for the one-attempt proof. The route
-refuses the proof if this upper bound exceeds
-the approved USD 1 budget. Actual Provider telemetry must also be present and
-remain below USD 1 after completion.
+server-owned process controls exactly match
+`src/lib/ai-jobs/pdf50-provider-proof-control.json`. The runtime, launcher,
+live harness, and smoke tests consume or validate that contract rather than
+copying its values. `node scripts/pdf50-provider-proof-control-report.mjs`
+prints the active sanitized limits and conservative cost ceiling. The request
+ceiling remains fail-closed, and actual Provider telemetry must be present and
+remain below the contract budget after completion.
 
 ### Gemini structured output
 
@@ -150,9 +137,15 @@ mask a successful import. The bounded proof does not pass when cleanup fails.
 
 ### Truthful Teacher status
 
-The Teacher burst component polls while any durable item is active and
-reconciles browser-local state with the server state by client item key. Status
-copy distinguishes admission readiness, trusted-worker queueing, processing,
+The Teacher burst component keeps three separate values: local upload phase,
+an optional local transport warning, and the latest authoritative durable item
+snapshot. Once a durable lifecycle outcome is known, it controls the displayed
+status. Durable completion, failure, and cancellation override stale local
+states; a delayed local failure cannot downgrade completion. An interrupted
+finalize response remains a non-authoritative warning while polling continues.
+Durable snapshots are monotonic and retained across delayed responses, while a
+refresh or remount restores status directly from the server. Status copy still
+distinguishes admission readiness, trusted-worker queueing, processing,
 completion, and safe failure. The job panel can show draft, attempt, and
 Provider-request counts from safe result metadata.
 

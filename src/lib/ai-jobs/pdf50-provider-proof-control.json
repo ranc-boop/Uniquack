@@ -1,0 +1,15 @@
+{
+  "schema": "edustruct.pdf50-provider-proof-control.v1",
+  "mode": "BOUNDED_ONE_JOB_REAL_PROVIDER",
+  "model": "gemini-2.5-flash-lite",
+  "claimedJobs": 1,
+  "workerRouteInvocations": 1,
+  "providerInferenceAttempts": 1,
+  "providerMaxOutputTokens": 4096,
+  "providerMaxNetworkRequests": 68,
+  "approvedBudgetUsd": 1,
+  "maxInputTokensPerAttempt": 1048576,
+  "maxBillableOutputTokensPerAttempt": 65536,
+  "inputMicrosPerMillion": 100000,
+  "outputMicrosPerMillion": 400000
+}

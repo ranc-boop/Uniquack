@@ -619,7 +619,7 @@ async function sourceBoundaryCases() {
 
   assert(
     route.includes("runDurableAIProviderJobs({") &&
-      route.includes("limit: providerTestLimits ? 1 : 2") &&
+      route.includes("limit: providerTestLimits?.maxClaimedJobs ?? 2") &&
       route.includes("providerTestLimits") &&
       route.includes("PDF50_PROVIDER_TEST_JOB_HEADER") &&
       route.includes("targetJobId"),

@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       ? parseTrustedAIProviderTestJobId(requestedTestJobId)
       : null;
     const result = await runDurableAIProviderJobs({
-      limit: providerTestLimits ? 1 : 2,
+      limit: providerTestLimits?.maxClaimedJobs ?? 2,
       providerTestLimits,
       targetJobId,
     });

@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
+$ProofControlReporter = Join-Path $PSScriptRoot "pdf50-provider-proof-control-report.mjs"
 $VaultSchema = "edustruct.pdf50-e2e.dpapi.v1"
 $VaultDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EduStruct\CredentialVaults"
 $VaultPath = Join-Path $VaultDirectory "pdf50-e2e-secrets.clixml"
@@ -40,6 +41,7 @@ function Set-ProcessValueFromSecureString([string]$Name, [Security.SecureString]
 
 $ExitCode = 1
 $FailureCategory = "launcher_failed"
+$ProofControl = $null
 $Vault = $null
 try {
   if ($env:OS -ne "Windows_NT") {
@@ -48,6 +50,18 @@ try {
   }
   if ($env:NODE_ENV -eq "production") {
     $FailureCategory = "production_environment_refused"
+    throw "blocked"
+  }
+
+  try {
+    $ProofControlJson = & node $ProofControlReporter --json
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ProofControlJson)) {
+      throw "invalid"
+    }
+    $ProofControl = $ProofControlJson | ConvertFrom-Json
+  }
+  catch {
+    $FailureCategory = "provider_proof_control_invalid"
     throw "blocked"
   }
   if (-not (Test-Path -LiteralPath $VaultPath)) {
@@ -84,12 +98,12 @@ try {
 
   $env:PDF50_E2E_ENVIRONMENT = "DISPOSABLE_PDF50_PROVIDER_E2E"
   $env:PDF50_E2E_CONFIRM_CLEANUP = "DELETE_PDF50_PROVIDER_E2E_FIXTURES"
-  $env:PDF50_PROVIDER_TEST_MODE = "BOUNDED_ONE_JOB_REAL_PROVIDER"
-  $env:AI_JOBS_LOCAL_MAX_INVOCATIONS = "1"
-  $env:PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS = "1"
-  $env:PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS = "68"
-  $env:PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS = "4096"
-  $env:PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD = "1"
+  $env:PDF50_PROVIDER_TEST_MODE = [string]$ProofControl.mode
+  $env:AI_JOBS_LOCAL_MAX_INVOCATIONS = [string]$ProofControl.workerRouteInvocations
+  $env:PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS = [string]$ProofControl.providerInferenceAttempts
+  $env:PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS = [string]$ProofControl.providerMaxNetworkRequests
+  $env:PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS = [string]$ProofControl.providerMaxOutputTokens
+  $env:PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD = [string]$ProofControl.approvedBudgetUsd
   $env:NODE_ENV = "development"
 
   Write-Host "PDF50_E2E_CREDENTIAL_VAULT=LOADED"
@@ -115,6 +129,7 @@ finally {
   }
   Remove-Item "Env:NODE_ENV" -ErrorAction SilentlyContinue
   $Vault = $null
+  $ProofControl = $null
   Write-Host "PDF50 E2E launcher finished. Process-only variables cleared."
 }
 

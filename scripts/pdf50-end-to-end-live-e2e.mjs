@@ -18,6 +18,11 @@ import {
   classifyPDF50ProviderCounterContract,
   formatPDF50ProviderCounters,
 } from "./lib/pdf50-provider-counter-contract.mjs";
+import {
+  estimatePDF50ProviderProofCostMicros,
+  loadPDF50ProviderProofControl,
+  pdf50ProviderProofEnvironment,
+} from "./lib/pdf50-provider-proof-control.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const edgeCandidates = [
@@ -29,26 +34,12 @@ const workerRoutePath = "/api/internal/ai-jobs/run";
 const syntheticBankPrefix = "!pdf50-provider-e2e-";
 const disposableEnvironment = "DISPOSABLE_PDF50_PROVIDER_E2E";
 const cleanupConfirmation = "DELETE_PDF50_PROVIDER_E2E_FIXTURES";
-const trustedProviderMode = "BOUNDED_ONE_JOB_REAL_PROVIDER";
-const knownProviderModel = "gemini-2.5-flash-lite";
-const knownProviderInputMicrosPerMillion = 100_000;
-const knownProviderOutputMicrosPerMillion = 400_000;
-const maxProviderInferenceAttempts = 1;
-const maxProviderInputTokensPerAttempt = 1_048_576;
-const maxProviderBillableOutputTokensPerAttempt = 65_536;
-const maxProviderOutputTokensPerAttempt = 4_096;
-const providerBudgetMicros = 1_000_000;
+const proofControl = await loadPDF50ProviderProofControl();
+const proofControlEnvironment = pdf50ProviderProofEnvironment(proofControl);
+const knownProviderModel = proofControl.model;
+const providerBudgetMicros = proofControl.approvedBudgetUsd * 1_000_000;
 const providerCostUpperBoundMicros =
-  maxProviderInferenceAttempts *
-  (Math.ceil(
-    (maxProviderInputTokensPerAttempt * knownProviderInputMicrosPerMillion) /
-      1_000_000,
-    ) +
-    Math.ceil(
-      (maxProviderBillableOutputTokensPerAttempt *
-        knownProviderOutputMicrosPerMillion) /
-        1_000_000,
-    ));
+  estimatePDF50ProviderProofCostMicros(proofControl);
 
 const requiredEnvironment = [
   "NEXT_PUBLIC_SUPABASE_URL",
@@ -69,14 +60,9 @@ const requiredEnvironment = [
 ];
 
 const exactControlValues = Object.freeze({
-  AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
+  ...proofControlEnvironment,
   PDF50_E2E_CONFIRM_CLEANUP: cleanupConfirmation,
   PDF50_E2E_ENVIRONMENT: disposableEnvironment,
-  PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "1",
-  PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
-  PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
-  PDF50_PROVIDER_TEST_MODE: trustedProviderMode,
-  PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "1",
 });
 
 const safeProviderErrorCodes = new Set([
@@ -494,17 +480,12 @@ async function startNextServer({ config, internalToken }) {
   const environment = {
     ...minimalChildEnvironment(),
     AI_JOBS_INTERNAL_TOKEN: internalToken,
-    AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
+    ...proofControlEnvironment,
     AI_PROVIDER_ENCRYPTION_KEY: config.encryptionKey,
     CLEAN_SUPABASE_SERVICE_ROLE_KEY: config.serviceRoleKey,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: config.anonKey,
     NEXT_PUBLIC_SUPABASE_URL: config.url,
     NODE_ENV: "development",
-    PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "1",
-    PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
-    PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
-    PDF50_PROVIDER_TEST_MODE: trustedProviderMode,
-    PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "1",
     PRACTICE_AGENT_FULL_CALL_LOGS: "false",
     PRACTICE_AGENT_TOKEN_STATS_LOGS: "false",
   };
@@ -622,7 +603,8 @@ async function runLocalWorkerOnce({ internalToken, jobId, origin }) {
     env: {
       ...minimalChildEnvironment(),
       AI_JOBS_INTERNAL_TOKEN: internalToken,
-      AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
+      AI_JOBS_LOCAL_MAX_INVOCATIONS:
+        proofControlEnvironment.AI_JOBS_LOCAL_MAX_INVOCATIONS,
       AI_JOBS_LOCAL_ROUTE_URL: `${origin}${workerRoutePath}`,
       AI_JOBS_LOCAL_TARGET_JOB_ID: jobId,
     },
@@ -728,8 +710,8 @@ function assertProviderCounters(counters, { completed }) {
   console.log(`PROVIDER_COUNTERS=${formatPDF50ProviderCounters(counters)}`);
   const failureCategory = classifyPDF50ProviderCounterContract(counters, {
     completed,
-    maxInferenceAttempts: maxProviderInferenceAttempts,
-    maxNetworkRequests: 68,
+    maxInferenceAttempts: proofControl.providerInferenceAttempts,
+    maxNetworkRequests: proofControl.providerMaxNetworkRequests,
   });
   if (failureCategory) throw new HarnessError(failureCategory);
 }
@@ -1008,7 +990,9 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
         row.final_status === "completed" &&
         String(row.provider).toLowerCase() === "gemini_native" &&
         String(row.model).toLowerCase() === knownProviderModel &&
-        Number(row.actual_output_tokens) <= 4 * 8192,
+        Number(row.actual_output_tokens) <=
+          proofControl.providerInferenceAttempts *
+            proofControl.providerMaxOutputTokens,
     ),
     "worker_evidence_failed",
   );
