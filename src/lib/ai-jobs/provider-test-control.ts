@@ -3,12 +3,13 @@ import "server-only";
 export const PDF50_PROVIDER_TEST_MODE = "BOUNDED_ONE_JOB_REAL_PROVIDER";
 export const PDF50_PROVIDER_TEST_JOB_HEADER = "x-pdf50-provider-test-job-id";
 
-const TRUSTED_PROVIDER_MAX_INFERENCE_ATTEMPTS = 4;
+const TRUSTED_PROVIDER_MAX_INFERENCE_ATTEMPTS = 1;
 const TRUSTED_PROVIDER_MAX_INPUT_TOKENS_PER_ATTEMPT = 1_048_576;
-const TRUSTED_PROVIDER_MAX_OUTPUT_TOKENS = 8_192;
+const TRUSTED_PROVIDER_MAX_BILLABLE_OUTPUT_TOKENS_PER_ATTEMPT = 65_536;
+const TRUSTED_PROVIDER_MAX_OUTPUT_TOKENS = 4_096;
 const TRUSTED_PROVIDER_INPUT_MICROS_PER_MILLION = 100_000;
 const TRUSTED_PROVIDER_OUTPUT_MICROS_PER_MILLION = 400_000;
-const TRUSTED_PROVIDER_TOTAL_BUDGET_MICROS = 5_000_000;
+const TRUSTED_PROVIDER_TOTAL_BUDGET_MICROS = 1_000_000;
 
 function costForTokens(tokens: number, microsPerMillion: number) {
   return Math.ceil((tokens * microsPerMillion) / 1_000_000);
@@ -21,16 +22,16 @@ export const PDF50_PROVIDER_TEST_MAX_COST_MICROS =
     TRUSTED_PROVIDER_INPUT_MICROS_PER_MILLION,
   ) +
     costForTokens(
-      TRUSTED_PROVIDER_MAX_OUTPUT_TOKENS,
+      TRUSTED_PROVIDER_MAX_BILLABLE_OUTPUT_TOKENS_PER_ATTEMPT,
       TRUSTED_PROVIDER_OUTPUT_MICROS_PER_MILLION,
     ));
 
 export type TrustedAIProviderTestLimits = {
-  maxInferenceAttempts: 4;
+  maxInferenceAttempts: 1;
   maxEstimatedCostMicros: number;
-  maxNetworkRequests: 136;
-  maxOutputTokens: 8_192;
-  providerBudgetMicros: 5_000_000;
+  maxNetworkRequests: 68;
+  maxOutputTokens: 4_096;
+  providerBudgetMicros: 1_000_000;
 };
 
 function requireExactEnvironmentValue(name: string, expected: string) {
@@ -61,21 +62,21 @@ export function readTrustedAIProviderTestLimits(): TrustedAIProviderTestLimits |
   requireExactEnvironmentValue("AI_JOBS_LOCAL_MAX_INVOCATIONS", "1");
   requireExactEnvironmentValue(
     "PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS",
-    "4",
+    "1",
   );
-  requireExactEnvironmentValue("PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS", "136");
-  requireExactEnvironmentValue("PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS", "8192");
-  requireExactEnvironmentValue("PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD", "5");
+  requireExactEnvironmentValue("PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS", "68");
+  requireExactEnvironmentValue("PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS", "4096");
+  requireExactEnvironmentValue("PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD", "1");
 
   if (PDF50_PROVIDER_TEST_MAX_COST_MICROS > TRUSTED_PROVIDER_TOTAL_BUDGET_MICROS) {
     throw new Error("trusted_provider_test_cost_budget_rejected");
   }
 
   return {
-    maxInferenceAttempts: 4,
+    maxInferenceAttempts: 1,
     maxEstimatedCostMicros: PDF50_PROVIDER_TEST_MAX_COST_MICROS,
-    maxNetworkRequests: 136,
-    maxOutputTokens: 8_192,
+    maxNetworkRequests: 68,
+    maxOutputTokens: 4_096,
     providerBudgetMicros: TRUSTED_PROVIDER_TOTAL_BUDGET_MICROS,
   };
 }

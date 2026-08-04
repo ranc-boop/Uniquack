@@ -21,6 +21,7 @@ function functionBody(source, name) {
 const [
   budget,
   gemini,
+  structuredOutput,
   chat,
   debugLogs,
   service,
@@ -31,6 +32,7 @@ const [
 ] = await Promise.all([
   read("src/lib/ai-providers/execution-budget.ts"),
   read("src/lib/ai-providers/gemini-native.ts"),
+  read("src/lib/ai-providers/gemini-structured-output.ts"),
   read("src/lib/ai-providers/chat.ts"),
   read("src/lib/ai-providers/llm-debug-logs.ts"),
   read("src/lib/ai-pdf-import/service.ts"),
@@ -39,6 +41,11 @@ const [
   read("src/lib/ai-jobs/provider-test-control.ts"),
   read("src/components/teacher/teacher-pdf-burst-upload.tsx"),
 ]);
+
+const providerExtractionSchema = JSON.parse(
+  await read("src/lib/ai-providers/gemini-ai-pdf-extraction.schema.json"),
+);
+const applicationExtractionSchema = await read("src/lib/ai-pdf-import/schema.ts");
 
 assert(
   budget.includes("createAIProviderExecutionBudget") &&
@@ -52,11 +59,11 @@ assert(
 );
 
 assert(
-  providerTestControl.includes('maxNetworkRequests: 136') &&
+  providerTestControl.includes('maxNetworkRequests: 68') &&
     providerTestControl.includes(
-      'requireExactEnvironmentValue("PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS", "136")',
+      'requireExactEnvironmentValue("PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS", "68")',
     ),
-  "trusted proof must reserve the four complete Gemini upload/poll/inference/cleanup lifecycles",
+  "trusted proof must reserve two complete Gemini upload/poll/inference/cleanup lifecycles",
 );
 
 for (const operation of [
@@ -94,10 +101,22 @@ assert(
 assert(
   !gemini.includes("Provider replied:") &&
     gemini.includes('message: "Gemini Native connection test passed."') &&
-    !gemini.includes("responseJsonSchema") &&
-    !gemini.includes("responseFormat") &&
-    gemini.includes('responseMimeType: "application/json"'),
-  "Gemini PDF extraction must retain JSON mode while connection tests avoid echoing model output",
+    gemini.includes("buildGeminiGenerationConfig") &&
+    gemini.includes('outputContract = { mode: "text" }') &&
+    structuredOutput.includes('mode: "json"') &&
+    structuredOutput.includes("responseJsonSchema") &&
+    structuredOutput.includes("responseFormat") &&
+    chat.includes("GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT") &&
+    chat.includes("normalizeAIPdfExtractionResponse"),
+  "Gemini must separate text, JSON, and schema output while retaining semantic extraction validation",
+);
+
+assert(
+  providerExtractionSchema.properties.questions.maxItems === undefined &&
+    applicationExtractionSchema.includes(
+      "questions: z.array(aiPdfQuestionSchema).min(1).max(200)",
+    ),
+  "Provider schema must omit the rejected maxItems hint while application validation retains the 200-question cap",
 );
 
 assert(
@@ -141,7 +160,8 @@ assert(
   providerTestControl.includes('PDF50_PROVIDER_TEST_MODE = "BOUNDED_ONE_JOB_REAL_PROVIDER"') &&
     providerTestControl.includes("PDF50_PROVIDER_TEST_MAX_COST_MICROS") &&
     providerTestControl.includes("TRUSTED_PROVIDER_MAX_INPUT_TOKENS_PER_ATTEMPT = 1_048_576") &&
-    providerTestControl.includes("TRUSTED_PROVIDER_TOTAL_BUDGET_MICROS = 5_000_000") &&
+    providerTestControl.includes("TRUSTED_PROVIDER_MAX_BILLABLE_OUTPUT_TOKENS_PER_ATTEMPT = 65_536") &&
+    providerTestControl.includes("TRUSTED_PROVIDER_TOTAL_BUDGET_MICROS = 1_000_000") &&
     providerTestControl.includes(
       "PDF50_PROVIDER_TEST_MAX_COST_MICROS > TRUSTED_PROVIDER_TOTAL_BUDGET_MICROS",
     ) &&
@@ -150,6 +170,13 @@ assert(
     providerTestControl.includes('"PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS"') &&
     providerTestControl.includes('"PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD"'),
   "real Provider proof limits must come only from exact server-owned process controls",
+);
+
+assert(
+  gemini.includes("thoughtsTokenCount") &&
+    gemini.includes("candidateOutputTokens") &&
+    gemini.includes("(candidateOutputTokens ?? 0) + (thoughtTokens ?? 0)"),
+  "Gemini usage accounting must include billable thinking tokens",
 );
 
 assert(

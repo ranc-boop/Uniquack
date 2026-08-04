@@ -88,6 +88,7 @@ await import("./durable-ai-job-queue-smoke.mjs");
 await import("./durable-ai-job-queue-load-smoke.mjs");
 await import("./local-ai-jobs-worker-smoke.mjs");
 await import("./pdf50-e2e-credential-vault-safety-smoke.mjs");
+await import("./pdf50-gemini-structured-compatibility-probe-safety-smoke.mjs");
 await import("./pdf50-provider-lifecycle-budget-smoke.mjs");
 await import("./pdf50-provider-lifecycle-budget-runtime-smoke.mjs");
 await import("./ai-parsing-boundary-duplicate-guard-smoke.mjs");

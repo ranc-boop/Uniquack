@@ -27,6 +27,7 @@ import {
   testGeminiNativeTextConnection,
   type GeminiNativeUsage,
 } from "@/lib/ai-providers/gemini-native";
+import { GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT } from "@/lib/ai-providers/gemini-structured-output";
 
 type ProviderProfileForUse = {
   apiKey: string;
@@ -360,7 +361,7 @@ function buildRepairPrompt({
     "Repair the JSON structure and field values. If the previous answer contained zero importable questions but the PDF contains an actual question, extract that question now using the original instructions.",
     "",
     "Required output shape:",
-    '{"questions":[{"title":"...","question_code":"...","question_type":"mcq|fill_blank|frq|mixed","difficulty_rating":500,"content_html":"...","content_source":"...","solution_html":"...","solution_source":"...","options":[],"answer_spec":{},"tag_ids":[],"page_refs":[1],"asset_placeholders":[]}],"warnings":[]}',
+    '{"questions":[{"title":"...","question_number":"...","question_type":"mcq|fill_blank|frq|mixed","difficulty_rating":500,"content_html":"...","content_source":"...","solution_html":"...","solution_source":"...","options":[],"answer_spec":{},"tag_ids":[],"page_refs":[1],"asset_placeholders":[]}],"warnings":[]}',
     "",
     "Validation error:",
     schemaIssueSummary(error),
@@ -526,6 +527,7 @@ export async function callAIPdfExtractionProvider({
           executionObserver,
           fileName,
           model: profile.model,
+          outputContract: GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
           pdfBytes,
           prompt:
             attempt === 1

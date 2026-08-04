@@ -1,6 +1,10 @@
 import "server-only";
 
 import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
+import {
+  buildGeminiGenerationConfig,
+  type GeminiOutputContract,
+} from "@/lib/ai-providers/gemini-structured-output";
 import { writeAIImportLLMDebugLog } from "@/lib/ai-providers/llm-debug-logs";
 import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
 import { readResponseTextWithLimit } from "@/lib/ai-providers/response-limits";
@@ -31,14 +35,17 @@ type GeminiGenerateResponse = {
     cachedContentTokenCount?: number;
     candidatesTokenCount?: number;
     promptTokenCount?: number;
+    thoughtsTokenCount?: number;
     totalTokenCount?: number;
   };
 };
 
 export type GeminiNativeUsage = {
   cachedInputTokens: number | null;
+  candidateOutputTokens?: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  thoughtTokens?: number | null;
   totalTokens: number | null;
 };
 
@@ -51,6 +58,7 @@ type GeminiNativePdfInput = {
   fileName: string;
   maxPollAttempts?: number;
   model: string;
+  outputContract?: GeminiOutputContract;
   pdfBytes: Uint8Array | Buffer;
   pollDelayMs?: number;
   prompt: string;
@@ -62,6 +70,7 @@ type GeminiNativeTextTestInput = {
   executionObserver?: AIProviderExecutionObserver;
   fetchImpl?: GeminiFetch;
   model: string;
+  outputContract?: GeminiOutputContract;
   prompt?: string;
 };
 
@@ -73,6 +82,108 @@ const GEMINI_DELETE_TIMEOUT_MS = 15_000;
 const DEFAULT_POLL_DELAY_MS = 2_000;
 const DEFAULT_MAX_POLL_ATTEMPTS = 30;
 const GEMINI_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
+const SAFE_PROVIDER_STATUS_PATTERN = /^[A-Z][A-Z0-9_]{1,63}$/;
+const SAFE_FIELD_PATH_PATTERN = /^[A-Za-z0-9_$.[\]-]{1,240}$/;
+
+export type GeminiNativeSafeErrorDetails = {
+  detailTypes: string[];
+  fieldViolationPaths: string[];
+  providerStatus: string | null;
+  statusCode: number;
+};
+
+export class GeminiNativeRequestError extends Error {
+  readonly detailTypes: string[];
+  readonly fieldViolationPaths: string[];
+  readonly providerStatus: string | null;
+  readonly statusCode: number;
+
+  constructor({
+    details,
+    operation,
+  }: {
+    details: GeminiNativeSafeErrorDetails;
+    operation: string;
+  }) {
+    super(
+      `Gemini Native ${operation} failed (${details.statusCode}${
+        details.providerStatus ? `; ${details.providerStatus}` : ""
+      }).`,
+    );
+    this.name = "GeminiNativeRequestError";
+    this.detailTypes = details.detailTypes;
+    this.fieldViolationPaths = details.fieldViolationPaths;
+    this.providerStatus = details.providerStatus;
+    this.statusCode = details.statusCode;
+  }
+}
+
+function asRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function safeProviderStatus(value: unknown) {
+  return typeof value === "string" && SAFE_PROVIDER_STATUS_PATTERN.test(value)
+    ? value
+    : null;
+}
+
+function safeFieldPath(value: unknown) {
+  return typeof value === "string" && SAFE_FIELD_PATH_PATTERN.test(value)
+    ? value
+    : null;
+}
+
+function safeDetailType(value: unknown) {
+  if (typeof value !== "string") return null;
+  const candidate = value.split("/").at(-1)?.split(".").at(-1) ?? "";
+  return /^[A-Za-z][A-Za-z0-9_]{1,79}$/.test(candidate) ? candidate : null;
+}
+
+export function parseGeminiNativeSafeErrorDetails({
+  responseText,
+  statusCode,
+}: {
+  responseText: string;
+  statusCode: number;
+}): GeminiNativeSafeErrorDetails {
+  let payload: unknown = null;
+  try {
+    payload = JSON.parse(responseText);
+  } catch {
+    // The status code remains sufficient for safe classification.
+  }
+
+  const providerError = asRecord(asRecord(payload).error);
+  const details = Array.isArray(providerError.details)
+    ? providerError.details
+    : [];
+  const detailTypes = new Set<string>();
+  const fieldViolationPaths = new Set<string>();
+
+  for (const detail of details.slice(0, 10)) {
+    const detailRecord = asRecord(detail);
+    const detailType = safeDetailType(detailRecord["@type"]);
+    if (detailType) detailTypes.add(detailType);
+
+    const violations = Array.isArray(detailRecord.fieldViolations)
+      ? detailRecord.fieldViolations
+      : [];
+    for (const violation of violations.slice(0, 20)) {
+      const fieldPath = safeFieldPath(asRecord(violation).field);
+      if (fieldPath) fieldViolationPaths.add(fieldPath);
+    }
+  }
+
+  return {
+    detailTypes: Array.from(detailTypes).sort(),
+    fieldViolationPaths: Array.from(fieldViolationPaths).sort(),
+    providerStatus: safeProviderStatus(providerError.status),
+    statusCode,
+  };
+}
 
 function assertGeminiConfig({
   apiKey,
@@ -178,7 +289,13 @@ async function readJson<T>(response: Response, operation: string): Promise<T> {
   const text = await safeResponseText(response);
 
   if (!response.ok) {
-    throw new Error(`Gemini Native ${operation} failed (${response.status}).`);
+    throw new GeminiNativeRequestError({
+      details: parseGeminiNativeSafeErrorDetails({
+        responseText: text,
+        statusCode: response.status,
+      }),
+      operation,
+    });
   }
 
   try {
@@ -368,6 +485,7 @@ async function generateContent({
   fetchImpl,
   parts,
   model,
+  outputContract,
 }: {
   apiKey: string;
   baseUrl: string;
@@ -376,6 +494,7 @@ async function generateContent({
   fetchImpl: GeminiFetch;
   parts: Record<string, unknown>[];
   model: string;
+  outputContract?: GeminiOutputContract;
 }) {
   const requestBody = {
     contents: [
@@ -383,13 +502,10 @@ async function generateContent({
         parts,
       },
     ],
-    generationConfig: {
-      ...(executionObserver?.maxOutputTokens
-        ? { maxOutputTokens: executionObserver.maxOutputTokens }
-        : {}),
-      responseMimeType: "application/json",
-      temperature: 0.1,
-    },
+    generationConfig: buildGeminiGenerationConfig({
+      maxOutputTokens: executionObserver?.maxOutputTokens ?? undefined,
+      outputContract,
+    }),
   };
 
   await writeAIImportLLMDebugLog({
@@ -435,14 +551,16 @@ async function generateContent({
       },
       event: "error",
       payload: {
-        message: error instanceof Error ? error.message : String(error),
         name: error instanceof Error ? error.name : "UnknownError",
       },
     });
     throw error;
   }
   if (!response.ok) {
-    const text = await safeResponseText(response.clone());
+    const safeDetails = parseGeminiNativeSafeErrorDetails({
+      responseText: await safeResponseText(response.clone()),
+      statusCode: response.status,
+    });
     await writeAIImportLLMDebugLog({
       context: {
         ...debugContext,
@@ -451,9 +569,10 @@ async function generateContent({
       },
       event: "error",
       payload: {
-        responseBodyBytes: Buffer.byteLength(text, "utf8"),
+        detailTypes: safeDetails.detailTypes,
+        fieldViolationPaths: safeDetails.fieldViolationPaths,
+        providerStatus: safeDetails.providerStatus,
         status: response.status,
-        statusText: response.statusText,
       },
     });
   }
@@ -471,7 +590,6 @@ async function generateContent({
     payload: {
       body: payload,
       status: response.status,
-      statusText: response.statusText,
     },
   });
   const text = payload.candidates
@@ -486,6 +604,14 @@ async function generateContent({
   }
 
   const usageMetadata = payload.usageMetadata;
+  const candidateOutputTokens =
+    typeof usageMetadata?.candidatesTokenCount === "number"
+      ? usageMetadata.candidatesTokenCount
+      : null;
+  const thoughtTokens =
+    typeof usageMetadata?.thoughtsTokenCount === "number"
+      ? usageMetadata.thoughtsTokenCount
+      : null;
   const usage: GeminiNativeUsage | null = usageMetadata
     ? {
         cachedInputTokens:
@@ -496,10 +622,12 @@ async function generateContent({
           typeof usageMetadata.promptTokenCount === "number"
             ? usageMetadata.promptTokenCount
             : null,
+        candidateOutputTokens,
         outputTokens:
-          typeof usageMetadata.candidatesTokenCount === "number"
-            ? usageMetadata.candidatesTokenCount
+          candidateOutputTokens !== null || thoughtTokens !== null
+            ? (candidateOutputTokens ?? 0) + (thoughtTokens ?? 0)
             : null,
+        thoughtTokens,
         totalTokens:
           typeof usageMetadata.totalTokenCount === "number"
             ? usageMetadata.totalTokenCount
@@ -519,6 +647,7 @@ export async function generateWithGeminiNativePdf({
   fileName,
   maxPollAttempts = DEFAULT_MAX_POLL_ATTEMPTS,
   model,
+  outputContract,
   pdfBytes,
   pollDelayMs = DEFAULT_POLL_DELAY_MS,
   prompt,
@@ -553,22 +682,23 @@ export async function generateWithGeminiNativePdf({
     }
 
     return await generateContent({
-        apiKey,
-        baseUrl,
-        debugContext,
-        executionObserver,
-        fetchImpl,
-        model,
-        parts: [
-          { text: prompt },
-          {
-            file_data: {
-              file_uri: activeFile.uri,
-              mime_type: fileMimeType(activeFile),
-            },
+      apiKey,
+      baseUrl,
+      debugContext,
+      executionObserver,
+      fetchImpl,
+      model,
+      outputContract,
+      parts: [
+        { text: prompt },
+        {
+          file_data: {
+            file_uri: activeFile.uri,
+            mime_type: fileMimeType(activeFile),
           },
-        ],
-      });
+        },
+      ],
+    });
   } finally {
     await deleteGeminiFile({
       apiKey,
@@ -585,6 +715,7 @@ export async function testGeminiNativeTextConnection({
   baseUrl = DEFAULT_GEMINI_API_BASE_URL,
   fetchImpl = fetch,
   model,
+  outputContract = { mode: "text" },
   prompt = "Return exactly: ok",
 }: GeminiNativeTextTestInput): Promise<{ message: string; ok: true }> {
   assertGeminiTextConfig({ apiKey, model });
@@ -594,6 +725,7 @@ export async function testGeminiNativeTextConnection({
     baseUrl,
     fetchImpl,
     model,
+    outputContract,
     parts: [{ text: prompt }],
   });
 
@@ -610,6 +742,7 @@ export async function generateWithGeminiNativeText({
   executionObserver,
   fetchImpl = fetch,
   model,
+  outputContract,
   prompt,
 }: GeminiNativeTextTestInput & {
   debugContext?: Record<string, unknown>;
@@ -620,12 +753,13 @@ export async function generateWithGeminiNativeText({
   executionObserver?.beforeInference("blueprint_generation");
 
   return generateContent({
-      apiKey,
-      baseUrl,
-      debugContext,
-      executionObserver,
-      fetchImpl,
-      model,
-      parts: [{ text: prompt }],
-    });
+    apiKey,
+    baseUrl,
+    debugContext,
+    executionObserver,
+    fetchImpl,
+    model,
+    outputContract,
+    parts: [{ text: prompt }],
+  });
 }

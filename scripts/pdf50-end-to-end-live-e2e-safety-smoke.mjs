@@ -58,10 +58,10 @@ for (const literal of [
   "DELETE_PDF50_PROVIDER_E2E_FIXTURES",
   "BOUNDED_ONE_JOB_REAL_PROVIDER",
   'AI_JOBS_LOCAL_MAX_INVOCATIONS: "1"',
-  'PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "4"',
-  'PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "136"',
-  'PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "8192"',
-  'PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "5"',
+  'PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "1"',
+  'PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68"',
+  'PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096"',
+  'PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "1"',
 ]) {
   assert(harness.includes(literal), `missing trusted one-job control ${literal}`);
 }
@@ -131,6 +131,20 @@ assert(
     harness.includes('"provider_invalid_response"') &&
     harness.includes("throw new HarnessError(safeErrorCode)"),
   "real proof must expose only an allowlisted Provider failure code for diagnosis",
+);
+assert(
+  harness.includes("safeWorkerCheckpointStages") &&
+    harness.includes("WORKER_FAILURE_CHECKPOINT_STAGE=") &&
+    harness.includes("safeWorkerCheckpointStage(job.checkpoint_stage)"),
+  "failed worker diagnostics must expose only an allowlisted checkpoint stage",
+);
+assert(
+  harness.includes("safeImportFailurePhases") &&
+    harness.includes('"provider_retry_exhausted"') &&
+    harness.includes("IMPORT_FAILURE_PHASE=") &&
+    harness.includes("FAILED_EXECUTION_DRAFT_COUNT=") &&
+    harness.includes("safeImportFailurePhase(importPhase)"),
+  "failed worker diagnostics must expose only an allowlisted import phase and bounded draft count",
 );
 assert(
   harness.includes('"Question 1"') &&

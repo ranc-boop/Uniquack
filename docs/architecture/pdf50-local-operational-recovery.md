@@ -40,6 +40,12 @@ question, publication, or Assignment without the existing review workflow.
    text, filenames, identifiers, or Provider output.
 8. The Teacher burst UI could remain on browser-local queue state after the
    durable job had advanced.
+9. The configured Gemini Developer API `generateContent` surface rejects the
+   `responseFormat.text` representation and rejects the otherwise-compatible
+   extraction schema when `questions.maxItems` is present.
+10. A failure while recording a successful Provider route outcome could
+    retroactively turn already-persisted Review Draft work into an
+    `unknown_provider_error` terminal result.
 
 ## Runtime Decisions
 
@@ -82,20 +88,47 @@ server-owned process controls exactly match the reviewed contract:
 | --- | ---: |
 | Claimed jobs | 1 |
 | Worker route invocations | 1 |
-| Provider attempts | 4 |
-| Output tokens per inference | 8,192 |
-| Provider HTTP requests | 136 |
-| Approved total test budget | USD 5 |
+| Provider attempts | 1 |
+| Output tokens per inference | 4,096 |
+| Provider HTTP requests | 68 |
+| Approved total test budget | USD 1 |
 
-The 136-request ceiling covers four complete worst-case Gemini file lifecycles:
-two upload requests, 30 polls, one inference request, and one cleanup request
-per attempt.
+The request ceiling remains a fail-closed transport cap. The one-attempt proof
+can execute only one Gemini file lifecycle and one inference request.
 
-The known `gemini-2.5-flash-lite` catalog rates and a 1,048,576-token input
-window yield a conservative maximum of 432,540 micro-USD (about USD 0.433) for
-the four-attempt proof. The route refuses the proof if this upper bound exceeds
-the approved USD 5 budget. Actual Provider telemetry must also be present and
-remain below USD 5 after completion.
+The known `gemini-2.5-flash-lite` catalog rates, a 1,048,576-token input
+window, and a conservative 65,536-token billable output window yield a maximum
+of 131,073 micro-USD (about USD 0.131) for the one-attempt proof. The route
+refuses the proof if this upper bound exceeds
+the approved USD 1 budget. Actual Provider telemetry must also be present and
+remain below USD 1 after completion.
+
+### Gemini structured output
+
+The configured production surface is the Gemini Developer API raw REST
+`v1beta` `models.generateContent` endpoint with model
+`gemini-2.5-flash-lite`. No Google Gen AI SDK is installed. The accepted
+structured-output representation is:
+
+```json
+{
+  "generationConfig": {
+    "responseMimeType": "application/json",
+    "responseJsonSchema": {}
+  }
+}
+```
+
+The Provider-facing schema intentionally omits `questions.maxItems`, which the
+configured endpoint rejected. The application Zod contract still enforces one
+through 200 importable questions after JSON parsing, so removing that Provider
+keyword does not weaken semantic validation or the Review Draft gate.
+
+Successful route-outcome telemetry is best-effort. A telemetry write failure
+may leave the circuit state conservative until a later request, but it cannot
+invalidate Provider output and Review Drafts that have already passed their
+transactional persistence boundary. Failure outcome telemetry remains
+best-effort as before.
 
 ### Provider lifecycle ordering
 
@@ -184,7 +217,40 @@ loading optimization. It was integrated through normal merge commit
 `57e3f453d15125bbd567a8a21aee64efb90cc9a5`; the shared aggregate smoke file
 retains both the new Practice check and all three PDF50 recovery checks.
 
-The final one-file run established the following path:
+### Synthetic compatibility probe
+
+The synthetic probe established the exact configured surface and transport:
+
+| Contract | Result |
+| --- | --- |
+| Provider surface | Gemini Developer API raw REST `v1beta` `models.generateContent` |
+| Model | `gemini-2.5-flash-lite` |
+| Google Gen AI SDK | Not installed or used |
+| Plain text | PASS |
+| `application/json` without schema | PASS |
+| `responseFormat.text`, tiny object | REJECTED, HTTP 400 `INVALID_ARGUMENT` |
+| `responseFormat.text`, tiny array | REJECTED, HTTP 400 `INVALID_ARGUMENT` |
+| `responseMimeType` plus `responseJsonSchema`, tiny object | PASS |
+| `responseMimeType` plus `responseJsonSchema`, tiny array | PASS |
+| Progressive extraction fields | PASS through every individual field |
+| Full extraction schema with `questions.maxItems` | REJECTED |
+| Production schema without Provider `maxItems` | ACCEPTED in the one-file E2E |
+
+The allowlisted rejection path for `responseFormat.text` was
+`generation_config.response_format.text.mime_type`. No raw Provider response,
+request content, key, URL, profile identifier, or credential was printed. The
+probe made 18 inference requests and 18 Provider network requests. Every
+accepted response included usage metadata. Its observed estimated cost was 701
+micro-USD; its fail-closed conservative ceiling was 589,842 micro-USD.
+
+The application did not remove its semantic question bound. The Provider
+schema omits the incompatible keyword, while the existing Zod validator still
+requires between one and 200 importable questions before persistence.
+
+### One-file Teacher PDF evidence
+
+After selecting the accepted transport and omitting the incompatible Provider
+keyword, the bounded one-file run established:
 
 | Stage | Result |
 | --- | --- |
@@ -193,45 +259,58 @@ The final one-file run established the following path:
 | Private, bank-scoped durable job creation | PASS |
 | Exact one-job local worker invocation | PASS |
 | Provider upload lifecycle | PASS |
-| Provider inference request | PASS at transport level |
+| Structured Provider inference | PASS |
+| Application extraction validation | PASS |
+| Private Bank Review Draft persistence | PASS, exactly one draft |
+| Review state | `pending_review`, private and bank-scoped |
+| Bank approval, publication, or Assignment creation | NONE |
+| Worker terminal completion | BLOCKED after `drafts_persisted` |
 | Provider remote-file cleanup | PASS |
-| Importable validated extraction | BLOCKED |
-| Bank-scoped Review Draft persistence | NOT REACHED |
-| Teacher-visible completed import | NOT REACHED |
-| Publication or Assignment creation | NONE |
 | Exact-ID fixture cleanup | PASS |
 | Process-environment cleanup | PASS |
 
-The final counted lifecycle was one inference attempt, one inference request,
-two upload requests, one cleanup request, zero cleanup failures, and four total
-Provider network requests. The configured Gemini Native PDF endpoint rejected
-the generation request with HTTP 400, represented only by the allowlisted safe
-code `request_invalid`. No raw response body was returned to the Teacher,
-written to the report, or emitted by the harness.
+The counted lifecycle was one inference attempt, one inference request, two
+upload requests, one cleanup request, zero cleanup failures, and four total
+Provider network requests. The failed terminal record retained the
+`drafts_persisted` checkpoint and the harness independently confirmed one
+private, bank-owned Review Draft with no active Bank question and no Assignment.
+The safe terminal code was `unknown_provider_error`; no raw Provider response
+or credential-bearing value was returned to the browser, persisted in evidence,
+or emitted by the harness.
 
-Earlier bounded runs proved the plain JSON request could reach generation, but
-the returned text did not yield an importable validated question within the
-bounded repair budget. Compatibility experiments using `responseJsonSchema`,
-the deprecated `responseSchema`, and the current `responseFormat` request form
-were each rejected with the same safe `request_invalid` classification. Those
-known-rejected request forms are not retained in the production adapter. The
-adapter remains on `application/json` response mode while the exact configured
-endpoint and schema compatibility is unresolved.
+### Post-persistence terminal defect
 
-Eight Provider-active launcher runs were recorded during this recovery. Each
-passed a conservative preflight upper bound of 432,540 micro-USD. Summing those
-launch-level ceilings gives a conservative total upper bound of 3,460,320
-micro-USD, or USD 3.46032, below the approved USD 5 total. This is deliberately
-more conservative than actual usage. The first two diagnostic runs stopped
-before trustworthy per-job counters were available, so the report does not
-invent exact billed usage for them.
+The route wrapper awaited success-outcome telemetry after the Provider work had
+returned. If `record_ai_provider_route_outcome` failed, that non-authoritative
+telemetry exception could replace the successful result even though the Review
+Draft transaction had already completed. A focused regression reproduced that
+exact sequence: the synthetic `execute` callback returned persisted work, the
+success telemetry RPC failed, and the wrapper threw. The production wrapper now
+treats success-outcome telemetry as best-effort, matching its existing failure
+telemetry behavior. The regression proves persisted work survives the same
+telemetry failure.
+
+No additional real-Provider E2E was run after this patch. The fresh task's
+conservative authorized sequence was already bounded at 983,061 micro-USD:
+
+| Authorized step | Conservative ceiling |
+| --- | ---: |
+| Compatibility matrix | 589,842 micro-USD |
+| Earlier bounded one-file attempt | 262,146 micro-USD |
+| Final one-attempt one-file run | 131,073 micro-USD |
+| Total | 983,061 micro-USD |
+
+This is below the USD 1 hard ceiling, but leaves no safe conservative allowance
+for another run. The report therefore does not claim that the source-level
+terminal fix has been live-confirmed.
 
 ## Progression Result
 
 The one-file gate is partial, not complete. Upload, durable queueing, exact
-worker execution, Provider lifecycle cleanup, private bank scope, no automatic
-publication, no Assignment creation, and exact cleanup are proven. Validated
-question extraction and Review Draft persistence are not proven.
+worker execution, Gemini structured extraction, application validation, one
+private Review Draft, Provider cleanup, Bank scope, no automatic publication,
+no Assignment creation, and exact cleanup are proven. Teacher-visible terminal
+completion after the telemetry fix is not proven by a real-Provider rerun.
 
 The 4-file, 10-file, and 50-file runs were not started because progression is
 strictly gated on a complete one-file result. Therefore this work does not
@@ -245,27 +324,16 @@ its existing Review Draft boundary remains unchanged.
 
 ## Remaining Blocker
 
-The configured Gemini Native PDF `generateContent` request is not yet producing
-an importable extraction under the bounded adapter contract. In plain JSON mode
-the response failed import validation; the reviewed structured-output request
-forms were rejected as invalid requests. Because raw Provider payloads are
-intentionally suppressed, the evidence supports this narrow classification but
-does not justify guessing which schema keyword, endpoint profile, or model
-capability caused the rejection.
+Gemini structured extraction compatibility is no longer the remaining blocker.
+The accepted Developer API request representation and the incompatible schema
+keyword are proven, and the one-file E2E produced a validated private Review
+Draft.
 
-The next approved change should be a separate, synthetic capability probe that:
-
-1. sends no user material and uses a tiny fixed schema;
-2. records only an allowlisted rejection category and catalog usage metadata;
-3. determines the exact structured-output contract accepted by the configured
-   endpoint and model;
-4. progressively adds the extraction schema until the incompatibility is
-   isolated; and
-5. requires a fresh Provider-test budget authorization before another real PDF
-   run.
-
-Only after the one-file extraction and private Review Draft complete should the
-4, 10, and 50-file progression resume.
+The remaining gate is narrower: a separately authorized bounded one-file rerun
+must prove that the repaired route wrapper reaches a completed durable job and a
+Teacher-visible completed import without changing the already-proven privacy,
+review, cleanup, and no-publication boundaries. No 4-, 10-, or 50-file run may
+start before that terminal proof passes.
 
 ## Rollback
 
@@ -286,6 +354,9 @@ The final source state passed:
 - `npm.cmd run analyze`;
 - local worker singleton, stale-lock, and local-target smoke;
 - Provider lifecycle source and fake-runtime budget smokes;
+- Provider routing regression proving telemetry failure cannot invalidate
+  successful persisted work;
+- Gemini structured-output compatibility probe safety and fail-closed smokes;
 - DPAPI vault and real-E2E safety contract smokes;
 - PDF50 admission, direct-upload, private-asset, 0050 adoption, and 50-item
   load simulations;
@@ -302,12 +373,12 @@ optimization reduced `src/components/practice/practice-agent-client.tsx` to
 87.2 KB against its 96.0 KB budget. The final integrated branch passes the full
 performance budget without any PDF50-side exception.
 
-The aggregate smoke was not represented as passing. Its existing RLS and
-database harnesses load `.env.local` and may connect to Supabase. One direct
-attempt to run the existing internal-route database smoke loaded zero values
-and stopped on its missing-environment gate before any hosted connection. It
-was not rerun. No Provider-backed, database-mutating, 4-file, 10-file, or
-50-file test was run after the final one-file blocker.
+The aggregate smoke is not represented as passing. Its static and source-only
+checks passed until the local embedded-Postgres profile-role harness reached
+Windows `initdb`; restricted-token initialization failed before the database
+test started. No environment file was loaded and no hosted connection was made.
+No Provider-backed, database-mutating, 4-file, 10-file, or 50-file test was run
+after the final one-file blocker.
 
 ## Operations And Residue
 
@@ -324,4 +395,4 @@ was not rerun. No Provider-backed, database-mutating, 4-file, 10-file, or
 
 ## Classification
 
-`PDF50_PARTIALLY_OPERATIONAL_WITH_IDENTIFIED_BLOCKERS`
+`PDF50_GEMINI_COMPATIBILITY_PARTIALLY_RESOLVED`

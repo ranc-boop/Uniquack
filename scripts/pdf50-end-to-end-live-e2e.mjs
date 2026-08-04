@@ -33,18 +33,20 @@ const trustedProviderMode = "BOUNDED_ONE_JOB_REAL_PROVIDER";
 const knownProviderModel = "gemini-2.5-flash-lite";
 const knownProviderInputMicrosPerMillion = 100_000;
 const knownProviderOutputMicrosPerMillion = 400_000;
-const maxProviderInferenceAttempts = 4;
+const maxProviderInferenceAttempts = 1;
 const maxProviderInputTokensPerAttempt = 1_048_576;
-const maxProviderOutputTokensPerAttempt = 8_192;
-const providerBudgetMicros = 5_000_000;
+const maxProviderBillableOutputTokensPerAttempt = 65_536;
+const maxProviderOutputTokensPerAttempt = 4_096;
+const providerBudgetMicros = 1_000_000;
 const providerCostUpperBoundMicros =
   maxProviderInferenceAttempts *
   (Math.ceil(
     (maxProviderInputTokensPerAttempt * knownProviderInputMicrosPerMillion) /
       1_000_000,
-  ) +
+    ) +
     Math.ceil(
-      (maxProviderOutputTokensPerAttempt * knownProviderOutputMicrosPerMillion) /
+      (maxProviderBillableOutputTokensPerAttempt *
+        knownProviderOutputMicrosPerMillion) /
         1_000_000,
     ));
 
@@ -70,11 +72,11 @@ const exactControlValues = Object.freeze({
   AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
   PDF50_E2E_CONFIRM_CLEANUP: cleanupConfirmation,
   PDF50_E2E_ENVIRONMENT: disposableEnvironment,
-  PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "4",
-  PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "136",
-  PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "8192",
+  PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "1",
+  PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
+  PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
   PDF50_PROVIDER_TEST_MODE: trustedProviderMode,
-  PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "5",
+  PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "1",
 });
 
 const safeProviderErrorCodes = new Set([
@@ -89,6 +91,29 @@ const safeProviderErrorCodes = new Set([
   "provider_timeout",
   "request_invalid",
   "unknown_provider_error",
+]);
+
+const safeWorkerCheckpointStages = new Set([
+  "queued",
+  "claimed",
+  "source_validated",
+  "provider_request_started",
+  "provider_result_checkpointed",
+  "normalized",
+  "drafts_persisted",
+  "completed",
+]);
+
+const safeImportFailurePhases = new Set([
+  "queued",
+  "preparing_native_pdf_input",
+  "calling_provider",
+  "provider_response_validated",
+  "importing_questions",
+  "cropping_assets",
+  "provider_retry_exhausted",
+  "completed",
+  "failed",
 ]);
 
 const allowedFailureCategories = new Set([
@@ -475,11 +500,11 @@ async function startNextServer({ config, internalToken }) {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: config.anonKey,
     NEXT_PUBLIC_SUPABASE_URL: config.url,
     NODE_ENV: "development",
-    PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "4",
-    PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "136",
-    PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "8192",
+    PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "1",
+    PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
+    PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
     PDF50_PROVIDER_TEST_MODE: trustedProviderMode,
-    PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "5",
+    PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "1",
     PRACTICE_AGENT_FULL_CALL_LOGS: "false",
     PRACTICE_AGENT_TOKEN_STATS_LOGS: "false",
   };
@@ -654,6 +679,16 @@ function safeProviderErrorCode(value) {
     : "unknown_provider_error";
 }
 
+function safeWorkerCheckpointStage(value) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return safeWorkerCheckpointStages.has(normalized) ? normalized : "unknown";
+}
+
+function safeImportFailurePhase(value) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return safeImportFailurePhases.has(normalized) ? normalized : "unknown";
+}
+
 async function loadFinishedJob({ jobId, service }) {
   const job = requireData(
     await service
@@ -694,7 +729,7 @@ function assertProviderCounters(counters, { completed }) {
   const failureCategory = classifyPDF50ProviderCounterContract(counters, {
     completed,
     maxInferenceAttempts: maxProviderInferenceAttempts,
-    maxNetworkRequests: 136,
+    maxNetworkRequests: 68,
   });
   if (failureCategory) throw new HarnessError(failureCategory);
 }
@@ -710,7 +745,7 @@ async function verifyFailedEvidence({ bankId, fixture, job, service }) {
   const batch = requireData(
     await service
       .from("import_batches")
-      .select("id, target_bank_id, source_type")
+      .select("id, status, summary, target_bank_id, source_type")
       .eq("id", fixture.item.import_batch_id)
       .maybeSingle(),
     "worker_evidence_failed",
@@ -729,6 +764,9 @@ async function verifyFailedEvidence({ bankId, fixture, job, service }) {
       "worker_evidence_failed",
     ) ?? [];
   const questionIds = importItems.map((item) => item.created_question_id).filter(Boolean);
+  const importPhase = asRecord(asRecord(batch.summary).aiPdfImport).phase;
+  console.log(`IMPORT_FAILURE_PHASE=${safeImportFailurePhase(importPhase)}`);
+  console.log(`FAILED_EXECUTION_DRAFT_COUNT=${Math.min(questionIds.length, 999)}`);
   if (questionIds.length) {
     const questions =
       requireData(
@@ -789,6 +827,9 @@ async function verifyFailedEvidence({ bankId, fixture, job, service }) {
 async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   if (job.status === "retry_wait" || job.status === "failed") {
     await verifyFailedEvidence({ bankId, fixture, job, service });
+    console.log(
+      `WORKER_FAILURE_CHECKPOINT_STAGE=${safeWorkerCheckpointStage(job.checkpoint_stage)}`,
+    );
     const safeErrorCode = safeProviderErrorCode(job.safe_error_code);
     console.log(`PROVIDER_SAFE_ERROR_CODE=${safeErrorCode}`);
     throw new HarnessError(safeErrorCode);

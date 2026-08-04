@@ -56,6 +56,58 @@ const budgetModule = await loadTypeScriptModule(
   { "@/lib/ai-providers/errors": errors },
 );
 
+const extractionSchema = JSON.parse(
+  await readFile(
+    resolve(root, "src/lib/ai-providers/gemini-ai-pdf-extraction.schema.json"),
+    "utf8",
+  ),
+);
+const structuredOutput = await loadTypeScriptModule(
+  "src/lib/ai-providers/gemini-structured-output.ts",
+  {
+    "./gemini-ai-pdf-extraction.schema.json": extractionSchema,
+  },
+);
+
+assert.deepEqual(structuredOutput.buildGeminiGenerationConfig({
+  outputContract: { mode: "text" },
+}), { temperature: 0.1 });
+assert.deepEqual(structuredOutput.buildGeminiGenerationConfig({
+  outputContract: { mode: "json" },
+}), { responseMimeType: "application/json", temperature: 0.1 });
+assert.deepEqual(structuredOutput.buildGeminiGenerationConfig({
+  outputContract: {
+    mode: "json_schema",
+    schema: { type: "object" },
+    transport: "response_json_schema",
+  },
+}), {
+  responseJsonSchema: { type: "object" },
+  responseMimeType: "application/json",
+  temperature: 0.1,
+});
+assert.deepEqual(structuredOutput.buildGeminiGenerationConfig({
+  maxOutputTokens: 64,
+  outputContract: {
+    mode: "json_schema",
+    schema: { type: "array", items: { type: "string" } },
+    transport: "response_format",
+  },
+}), {
+  maxOutputTokens: 64,
+  responseFormat: {
+    text: {
+      mimeType: "application/json",
+      schema: { type: "array", items: { type: "string" } },
+    },
+  },
+  temperature: 0.1,
+});
+assert.equal(
+  structuredOutput.GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT.transport,
+  "response_json_schema",
+);
+
 const providerTestControl = await loadTypeScriptModule(
   "src/lib/ai-jobs/provider-test-control.ts",
 );
@@ -80,22 +132,22 @@ try {
   );
   Object.assign(process.env, {
     AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
-    PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "4",
-    PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "136",
-    PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "8192",
+    PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "1",
+    PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
+    PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
     PDF50_PROVIDER_TEST_MODE: "BOUNDED_ONE_JOB_REAL_PROVIDER",
-    PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "5",
+    PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "1",
   });
   assert.deepEqual(providerTestControl.readTrustedAIProviderTestLimits(), {
-    maxInferenceAttempts: 4,
-    maxEstimatedCostMicros: 432_540,
-    maxNetworkRequests: 136,
-    maxOutputTokens: 8192,
-    providerBudgetMicros: 5_000_000,
+    maxInferenceAttempts: 1,
+    maxEstimatedCostMicros: 131_073,
+    maxNetworkRequests: 68,
+    maxOutputTokens: 4096,
+    providerBudgetMicros: 1_000_000,
   });
   assert(
-    providerTestControl.PDF50_PROVIDER_TEST_MAX_COST_MICROS < 5_000_000,
-    "trusted proof worst-case token envelope must remain below the total USD 5 budget",
+    providerTestControl.PDF50_PROVIDER_TEST_MAX_COST_MICROS < 1_000_000,
+    "trusted proof worst-case token envelope must remain below the total USD 1 budget",
   );
 } finally {
   for (const name of proofEnvironmentNames) {
@@ -153,6 +205,7 @@ assert.throws(
 );
 
 const gemini = await loadTypeScriptModule("src/lib/ai-providers/gemini-native.ts", {
+  "@/lib/ai-providers/gemini-structured-output": structuredOutput,
   "@/lib/ai-providers/llm-debug-logs": {
     writeAIImportLLMDebugLog: async () => undefined,
   },
@@ -168,6 +221,98 @@ const gemini = await loadTypeScriptModule("src/lib/ai-providers/gemini-native.ts
       return text;
     },
   },
+});
+
+const safeProviderError = gemini.parseGeminiNativeSafeErrorDetails({
+  responseText: JSON.stringify({
+    error: {
+      details: [
+        {
+          "@type": "type.googleapis.com/google.rpc.BadRequest",
+          fieldViolations: [
+            {
+              description: "secret-bearing raw Provider detail",
+              field: "generationConfig.responseFormat.text.schema",
+            },
+            { field: "unsafe field path with spaces" },
+          ],
+        },
+      ],
+      message: "secret-bearing raw Provider message",
+      status: "INVALID_ARGUMENT",
+    },
+  }),
+  statusCode: 400,
+});
+assert.deepEqual(safeProviderError, {
+  detailTypes: ["BadRequest"],
+  fieldViolationPaths: ["generationConfig.responseFormat.text.schema"],
+  providerStatus: "INVALID_ARGUMENT",
+  statusCode: 400,
+});
+assert(!JSON.stringify(safeProviderError).includes("secret-bearing"));
+
+const providerRejectionBudget = budgetModule.createAIProviderExecutionBudget({
+  maxInferenceAttempts: 1,
+  maxNetworkRequests: 1,
+});
+await assert.rejects(
+  gemini.generateWithGeminiNativeText({
+    apiKey: "synthetic-test-key",
+    baseUrl: "https://provider.invalid",
+    executionObserver: providerRejectionBudget,
+    fetchImpl: async () =>
+      Response.json(
+        {
+          error: {
+            details: [
+              {
+                "@type": "type.googleapis.com/google.rpc.BadRequest",
+                fieldViolations: [
+                  {
+                    description: "PRIVATE_PROVIDER_DETAIL_MUST_NOT_ESCAPE",
+                    field: "generationConfig.responseFormat.text.schema",
+                  },
+                ],
+              },
+            ],
+            message: "PRIVATE_PROVIDER_MESSAGE_MUST_NOT_ESCAPE",
+            status: "INVALID_ARGUMENT",
+          },
+        },
+        { status: 400 },
+      ),
+    model: "synthetic-model",
+    outputContract: {
+      mode: "json_schema",
+      schema: { type: "object" },
+      transport: "response_format",
+    },
+    prompt: "Return one synthetic object.",
+  }),
+  (error) => {
+    assert(error instanceof gemini.GeminiNativeRequestError);
+    assert.equal(error.statusCode, 400);
+    assert.deepEqual(error.detailTypes, ["BadRequest"]);
+    assert.deepEqual(error.fieldViolationPaths, [
+      "generationConfig.responseFormat.text.schema",
+    ]);
+    assert.equal(error.providerStatus, "INVALID_ARGUMENT");
+    assert(!error.message.includes("PRIVATE_PROVIDER"));
+    return true;
+  },
+);
+assert.deepEqual(providerRejectionBudget.snapshot(), {
+  maxInferenceAttempts: 1,
+  maxNetworkRequests: 1,
+  maxOutputTokens: null,
+  providerCleanupFailures: 0,
+  providerCleanupRequests: 0,
+  providerInferenceAttempts: 1,
+  providerInferenceRequests: 1,
+  providerNetworkRequests: 1,
+  providerPollRequests: 0,
+  providerUploadRequests: 0,
 });
 
 const requests = [];
@@ -212,7 +357,8 @@ const fakeFetch = async (url, init = {}) => {
       usageMetadata: {
         candidatesTokenCount: 5,
         promptTokenCount: 11,
-        totalTokenCount: 16,
+        thoughtsTokenCount: 3,
+        totalTokenCount: 19,
       },
     });
   }
@@ -241,9 +387,11 @@ const generated = await gemini.generateWithGeminiNativePdf({
 assert.equal(generated.text, '{"questions":[]}');
 assert.deepEqual(generated.usage, {
   cachedInputTokens: null,
+  candidateOutputTokens: 5,
   inputTokens: 11,
-  outputTokens: 5,
-  totalTokens: 16,
+  outputTokens: 8,
+  thoughtTokens: 3,
+  totalTokens: 19,
 });
 assert.deepEqual(
   requests.map((request) => request.method),
@@ -497,6 +645,7 @@ assert.equal(exhaustedFetchCount, 0);
 
 let extractionResponses = [];
 const extractionPrompts = [];
+const extractionOutputContracts = [];
 const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
   "@/lib/ai-pdf-import/schema": {
     normalizeAIPdfExtractionResponse(value) {
@@ -511,14 +660,16 @@ const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
     inferAiProviderMode: () => "gemini_native",
   },
   "@/lib/ai-providers/gemini-native": {
-    async generateWithGeminiNativePdf({ prompt }) {
+    async generateWithGeminiNativePdf({ outputContract, prompt }) {
       extractionPrompts.push(prompt);
+      extractionOutputContracts.push(outputContract);
       const response = extractionResponses.shift();
       if (!response) throw new Error("Missing fake Provider response.");
       return { text: response, usage: null };
     },
     testGeminiNativeTextConnection: async () => ({ message: "ok", ok: true }),
   },
+  "@/lib/ai-providers/gemini-structured-output": structuredOutput,
   "@/lib/ai-providers/json-repair": {
     parsePossiblyMalformedJson: (value) => JSON.parse(value),
   },
@@ -559,11 +710,17 @@ const repairedExtraction = await chat.callAIPdfExtractionProvider({
 });
 assert.equal(repairedExtraction.questions.length, 1);
 assert.equal(extractionPrompts.length, 2);
+assert.deepEqual(extractionOutputContracts, [
+  structuredOutput.GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
+  structuredOutput.GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
+]);
 assert.equal(extractionPrompts[0], originalExtractionPrompt);
 assert(extractionPrompts[1].includes("Original extraction instructions:"));
 assert(extractionPrompts[1].includes(originalExtractionPrompt));
 assert(extractionPrompts[1].includes("zero importable questions"));
 assert(extractionPrompts[1].includes('{"questions":[],"warnings":[]}'));
+assert(extractionPrompts[1].includes('"question_number"'));
+assert(!extractionPrompts[1].includes('"question_code"'));
 
 const rawResponseMarker = "PRIVATE_PROVIDER_OUTPUT_MUST_NOT_ESCAPE";
 extractionResponses = [rawResponseMarker, rawResponseMarker];
