@@ -200,6 +200,15 @@ HTTP request counters remain separate, so upload failures cannot fabricate an
 inference request. Normal worker operation does not inherit any proof-only
 control; its existing admin operations control remains unchanged.
 
+Successful AI PDF imports compact execution-only planning payloads before the
+0051 fenced finalization call. The compact archive retains a deterministic
+SHA-256 digest and bounded contract metadata; final review findings, source and
+Bank lineage, selective page mapping, recovery requests, and created-question
+evidence remain in the terminal summary. A Provider omission of `page_refs` is
+inferred as page 1 only when the extraction request supplied exactly one page.
+Missing lineage for multi-page input is never guessed and remains subject to
+coverage review.
+
 Do not run the launcher against a production project or while unrelated queue
 work exists. A passing one-file proof establishes the first operational gate
 only; 4/10/50-file qualification remains a separate progression.

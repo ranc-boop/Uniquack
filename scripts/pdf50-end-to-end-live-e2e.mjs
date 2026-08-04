@@ -90,6 +90,40 @@ const safeWorkerCheckpointStages = new Set([
   "completed",
 ]);
 
+const safePostPersistenceFailureStages = new Set([
+  "asset_attachment",
+  "summary_preparation",
+  "batch_finalization",
+  "review_plans",
+]);
+
+const safeBatchFinalizationFailureReasons = new Set([
+  "summary_too_large",
+  "rpc_rejected",
+  "stale_fence",
+  "unexpected_outcome",
+]);
+
+const safeFinalSummaryFields = [
+  "adaptiveRereadPlan",
+  "chunking",
+  "coverageRecoveryMergePlan",
+  "coverageRecoveryPlan",
+  "coverageRecoveryRunPlan",
+  "extractionBatchPlan",
+  "extractionCoverageAuditPlan",
+  "packetPlan",
+  "preanalysis",
+  "providerRequestPlan",
+  "providerRunPlan",
+  "questionBoundaryGuardPlan",
+  "selectiveExecutionPlan",
+  "taggingV2Plan",
+  "taxonomyBootstrapPlan",
+  "taxonomyPersistencePlan",
+  "taxonomyReviewPlan",
+];
+
 const safeImportFailurePhases = new Set([
   "queued",
   "preparing_native_pdf_input",
@@ -154,6 +188,24 @@ function safeFailureCategory(error) {
 function requireData(result, category) {
   if (result?.error) throw new HarnessError(category);
   return result?.data;
+}
+
+async function readEvidenceWithRetry({ label, operation }) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const result = await operation();
+    if (!result?.error) {
+      console.log(`EVIDENCE_READ=${label};RESULT=PASS;ATTEMPTS=${attempt}`);
+      return result?.data;
+    }
+    if (attempt < 3) await sleep(attempt * 250);
+  }
+  console.log(`EVIDENCE_READ=${label};RESULT=FAIL;ATTEMPTS=3`);
+  throw new HarnessError("worker_evidence_failed");
+}
+
+function assertEvidence(condition, label) {
+  console.log(`EVIDENCE_PREDICATE=${label};RESULT=${condition ? "PASS" : "FAIL"}`);
+  assert(condition, "worker_evidence_failed");
 }
 
 function asRecord(value) {
@@ -671,6 +723,45 @@ function safeImportFailurePhase(value) {
   return safeImportFailurePhases.has(normalized) ? normalized : "unknown";
 }
 
+function safePostPersistenceFailureStage(value) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return safePostPersistenceFailureStages.has(normalized) ? normalized : "none";
+}
+
+function safeBatchFinalizationFailureReason(value) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return safeBatchFinalizationFailureReasons.has(normalized)
+    ? normalized
+    : "none";
+}
+
+function safeSummaryBytes(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 999_999
+    ? parsed
+    : 0;
+}
+
+function jsonBytes(value) {
+  return Buffer.byteLength(JSON.stringify(value ?? null), "utf8");
+}
+
+function formatFinalSummaryFieldBytes(summary) {
+  const record = asRecord(summary);
+  const aiPdfImport = asRecord(record.aiPdfImport);
+  const values = [
+    ...safeFinalSummaryFields.map((field) => [field, jsonBytes(aiPdfImport[field])]),
+    ["createdQuestions", jsonBytes(record.createdQuestions)],
+    ["validationErrorReasons", jsonBytes(record.validationErrorReasons)],
+  ];
+  return values
+    .filter(([, bytes]) => bytes > 4)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 12)
+    .map(([field, bytes]) => `${field}:${Math.min(bytes, 999_999)}`)
+    .join(",");
+}
+
 async function loadFinishedJob({ jobId, service }) {
   const job = requireData(
     await service
@@ -723,6 +814,21 @@ async function verifyFailedEvidence({ bankId, fixture, job, service }) {
   assert(numeric(job.lease_generation) >= 1, "worker_evidence_failed");
   console.log("PHASE=worker_provider_counters");
   assertProviderCounters(providerCountersFromJob(job), { completed: false });
+  console.log(
+    `POST_PERSISTENCE_FAILURE_STAGE=${safePostPersistenceFailureStage(
+      asRecord(job.safe_result).postPersistenceFailureStage,
+    )}`,
+  );
+  console.log(
+    `BATCH_FINALIZATION_FAILURE_REASON=${safeBatchFinalizationFailureReason(
+      asRecord(job.safe_result).batchFinalizationFailureReason,
+    )}`,
+  );
+  console.log(
+    `BATCH_FINALIZATION_SUMMARY_BYTES=${safeSummaryBytes(
+      asRecord(job.safe_result).batchFinalizationSummaryBytes,
+    )}`,
+  );
 
   const batch = requireData(
     await service
@@ -747,6 +853,9 @@ async function verifyFailedEvidence({ bankId, fixture, job, service }) {
     ) ?? [];
   const questionIds = importItems.map((item) => item.created_question_id).filter(Boolean);
   const importPhase = asRecord(asRecord(batch.summary).aiPdfImport).phase;
+  console.log(
+    `FINALIZATION_SUMMARY_FIELD_BYTES=${formatFinalSummaryFieldBytes(batch.summary)}`,
+  );
   console.log(`IMPORT_FAILURE_PHASE=${safeImportFailurePhase(importPhase)}`);
   console.log(`FAILED_EXECUTION_DRAFT_COUNT=${Math.min(questionIds.length, 999)}`);
   if (questionIds.length) {
@@ -831,53 +940,67 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   assertProviderCounters(counters, { completed: true });
 
   console.log("PHASE=worker_batch_lineage");
-  const batch = requireData(
-    await service
-      .from("import_batches")
-      .select("id, status, target_bank_id, source_type, summary")
-      .eq("id", fixture.item.import_batch_id)
-      .maybeSingle(),
-    "worker_evidence_failed",
+  const batch = await readEvidenceWithRetry({
+    label: "import_batch",
+    operation: () =>
+      service
+        .from("import_batches")
+        .select("id, status, target_bank_id, source_type, summary")
+        .eq("id", fixture.item.import_batch_id)
+        .maybeSingle(),
+  });
+  assertEvidence(batch?.status === "imported", "batch_status_imported");
+  assertEvidence(
+    batch.target_bank_id === bankId && batch.source_type === "ai_pdf",
+    "batch_bank_and_source_scope",
   );
-  assert(batch?.status === "imported", "worker_evidence_failed");
-  assert(batch.target_bank_id === bankId && batch.source_type === "ai_pdf", "worker_evidence_failed");
   const aiPdfSummary = asRecord(asRecord(batch.summary).aiPdfImport);
-  assert(aiPdfSummary.sourceAssetId === fixture.item.source_asset_id, "worker_evidence_failed");
+  assertEvidence(
+    aiPdfSummary.sourceAssetId === fixture.item.source_asset_id,
+    "batch_source_asset_lineage",
+  );
 
-  const importItems = requireData(
-    await service
-      .from("import_batch_items")
-      .select(
-        "id, item_index, status, created_question_id, normalized_question_json, persistence_lineage_key, validation_errors",
-      )
-      .eq("batch_id", batch.id)
-      .order("item_index"),
-    "worker_evidence_failed",
-  ) ?? [];
+  const importItems =
+    (await readEvidenceWithRetry({
+      label: "import_items",
+      operation: () =>
+        service
+          .from("import_batch_items")
+          .select(
+            "id, item_index, status, created_question_id, normalized_question_json, persistence_lineage_key, validation_errors",
+          )
+          .eq("batch_id", batch.id)
+          .order("item_index"),
+    })) ?? [];
   const importedItems = importItems.filter((item) => item.status === "imported" && item.created_question_id);
-  assert(importedItems.length > 0, "worker_evidence_failed");
+  assertEvidence(importedItems.length > 0, "imported_items_present");
   const lineageKeys = importedItems.map((item) => item.persistence_lineage_key);
-  assert(lineageKeys.every(Boolean), "worker_evidence_failed");
-  assert(new Set(lineageKeys).size === lineageKeys.length, "worker_evidence_failed");
-  assert(
+  assertEvidence(lineageKeys.every(Boolean), "lineage_keys_present");
+  assertEvidence(
+    new Set(lineageKeys).size === lineageKeys.length,
+    "lineage_keys_unique",
+  );
+  assertEvidence(
     importedItems.every((item) => {
       const metadata = asRecord(asRecord(item.normalized_question_json).ai_metadata);
       return Array.isArray(metadata.page_refs) && metadata.page_refs.length > 0;
     }),
-    "worker_evidence_failed",
+    "page_lineage_present",
   );
 
   const questionIds = importedItems.map((item) => item.created_question_id);
   console.log("PHASE=worker_private_drafts");
-  const questions = requireData(
-    await service
-      .from("questions")
-      .select(
-        "id, question_code, title, owner_bank_id, status, published_at, visibility, source, source_kind, source_review_item_id, deleted_at",
-      )
-      .in("id", questionIds),
-    "worker_evidence_failed",
-  ) ?? [];
+  const questions =
+    (await readEvidenceWithRetry({
+      label: "private_questions",
+      operation: () =>
+        service
+          .from("questions")
+          .select(
+            "id, question_code, title, owner_bank_id, status, published_at, visibility, source, source_kind, source_review_item_id, deleted_at",
+          )
+          .in("id", questionIds),
+    })) ?? [];
   assert(questions.length === questionIds.length, "worker_evidence_failed");
   assert(new Set(questions.map((question) => question.question_code)).size === questions.length, "worker_evidence_failed");
   assert(
@@ -895,13 +1018,15 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   );
 
   console.log("PHASE=worker_review_gate");
-  const reviewItems = requireData(
-    await service
-      .from("review_draft_items")
-      .select("id, review_batch_id, target_bank_id, created_question_id, status")
-      .in("created_question_id", questionIds),
-    "worker_evidence_failed",
-  ) ?? [];
+  const reviewItems =
+    (await readEvidenceWithRetry({
+      label: "review_items",
+      operation: () =>
+        service
+          .from("review_draft_items")
+          .select("id, review_batch_id, target_bank_id, created_question_id, status")
+          .in("created_question_id", questionIds),
+    })) ?? [];
   assert(reviewItems.length === questionIds.length, "worker_evidence_failed");
   assert(
     reviewItems.every(
@@ -918,13 +1043,15 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   );
 
   const reviewBatchIds = [...new Set(reviewItems.map((item) => item.review_batch_id))];
-  const reviewBatches = requireData(
-    await service
-      .from("review_batches")
-      .select("id, source_record_id, target_bank_id, status")
-      .in("id", reviewBatchIds),
-    "worker_evidence_failed",
-  ) ?? [];
+  const reviewBatches =
+    (await readEvidenceWithRetry({
+      label: "review_batches",
+      operation: () =>
+        service
+          .from("review_batches")
+          .select("id, source_record_id, target_bank_id, status")
+          .in("id", reviewBatchIds),
+    })) ?? [];
   assert(
     reviewBatches.length === reviewBatchIds.length &&
       reviewBatches.every(
@@ -937,13 +1064,15 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   );
 
   console.log("PHASE=worker_taxonomy_gate");
-  const taxonomy = requireData(
-    await service
-      .from("question_taxonomy_assignments")
-      .select("question_id, review_status")
-      .in("question_id", questionIds),
-    "worker_evidence_failed",
-  ) ?? [];
+  const taxonomy =
+    (await readEvidenceWithRetry({
+      label: "taxonomy_assignments",
+      operation: () =>
+        service
+          .from("question_taxonomy_assignments")
+          .select("question_id, review_status")
+          .in("question_id", questionIds),
+    })) ?? [];
   assert(taxonomy.every((row) => row.review_status === "pending_review"), "worker_evidence_failed");
 
   console.log("PHASE=worker_publication_gate");
@@ -964,16 +1093,18 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   assert(bankQuestionCount === 0 && assignmentCount === 0, "worker_evidence_failed");
 
   console.log("PHASE=worker_provider_telemetry");
-  const telemetry = requireData(
-    await service
-      .from("ai_operation_telemetry")
-      .select(
-        "final_status, provider, model, actual_input_tokens, actual_output_tokens, actual_total_tokens, estimated_total_cost_micros, provider_call_count, provider_retry_attempts",
-      )
-      .eq("queue_job_id", job.id)
-      .order("created_at", { ascending: false }),
-    "worker_evidence_failed",
-  ) ?? [];
+  const telemetry =
+    (await readEvidenceWithRetry({
+      label: "provider_telemetry",
+      operation: () =>
+        service
+          .from("ai_operation_telemetry")
+          .select(
+            "final_status, provider, model, actual_input_tokens, actual_output_tokens, actual_total_tokens, estimated_total_cost_micros, provider_call_count, provider_retry_attempts",
+          )
+          .eq("queue_job_id", job.id)
+          .order("created_at", { ascending: false }),
+    })) ?? [];
   if (!telemetry.length || telemetry.some((row) => row.estimated_total_cost_micros === null)) {
     throw new HarnessError("provider_cost_telemetry_missing");
   }

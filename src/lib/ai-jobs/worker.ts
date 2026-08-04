@@ -46,6 +46,10 @@ import {
 } from "@/lib/ai-pdf-import/service";
 import { AI_IMPORT_SOURCES_BUCKET } from "@/lib/ai-pdf-import/constants";
 import { releaseAIPdfBurstAdmissionJobs } from "@/lib/ai-pdf-import/burst-admission";
+import {
+  getAIPdfBatchFinalizationFailure,
+  getAIPdfPostPersistenceFailureStage,
+} from "@/lib/ai-pdf-import/post-persistence";
 import { generateTeacherBlueprintReviewDrafts } from "@/lib/teacher-blueprint-generation";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -976,6 +980,9 @@ async function executeClaimedJob({
     return { providerExecution: providerExecutionSummary, status: "completed" };
   } catch (error) {
     const providerExecutionSummary = providerExecution.snapshot();
+    const postPersistenceFailureStage =
+      getAIPdfPostPersistenceFailureStage(error);
+    const batchFinalizationFailure = getAIPdfBatchFinalizationFailure(error);
     const classified = classifyAIProviderError({
       error,
       operation:
@@ -998,6 +1005,10 @@ async function executeClaimedJob({
         ? "The AI service is temporarily busy. Your work is safe and will retry automatically."
         : safeWorkerFailureMessage(),
       safeResult: {
+        batchFinalizationFailureReason: batchFinalizationFailure?.reason ?? null,
+        batchFinalizationSummaryBytes:
+          batchFinalizationFailure?.summaryBytes ?? null,
+        postPersistenceFailureStage,
         providerCleanupFailures: providerExecutionSummary.providerCleanupFailures,
         providerCleanupRequests: providerExecutionSummary.providerCleanupRequests,
         providerInferenceAttempts: providerExecutionSummary.providerInferenceAttempts,

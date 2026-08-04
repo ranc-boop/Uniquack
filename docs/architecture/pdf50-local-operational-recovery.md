@@ -297,13 +297,54 @@ This is below the USD 1 hard ceiling, but leaves no safe conservative allowance
 for another run. The report therefore does not claim that the source-level
 terminal fix has been live-confirmed.
 
+### Autonomous completion loop from `994d198`
+
+The later autonomous completion task began at reviewed head
+`994d1980bc41bfde4c0d707ae6b694dbb5e5848e`. Seven additional one-file runs
+used only run-scoped synthetic Teacher, organization, Bank, PDF, queue job, and
+Review Draft fixtures. Every run claimed exactly one job, performed one Gemini
+inference request, issued four counted Provider HTTP requests, completed
+Provider-file cleanup, removed database and Storage fixtures by exact
+identifier, and cleared process-only values.
+
+The iterations narrowed the remaining failure without repeating an unchanged
+run:
+
+| Iteration | Authoritative result | Narrow correction before the next run |
+| ---: | --- | --- |
+| 1 | Draft persisted, then non-authoritative success telemetry failed after `drafts_persisted` | Made successful route-outcome telemetry best-effort after persisted output |
+| 2 | Post-persistence review annotation still replaced a successful extraction outcome | Made coverage and boundary annotations advisory |
+| 3 | Safe diagnostics localized the failure to fenced batch finalization | Added bounded finalization-stage and reason diagnostics |
+| 4 | Final summary exceeded the fenced RPC payload contract | Added safe summary-byte and field-size evidence |
+| 5 | Execution-only plans accounted for the oversized summary | Deterministically compacted transient plans into bounded hash metadata while retaining final review and lineage evidence |
+| 6 | Durable job reached `completed`; the harness stopped while reading batch lineage | Added bounded, labeled, read-only evidence retries and predicate labels |
+| 7 | Durable job and imported batch passed; lineage keys were present and unique, but a one-page extraction had empty `page_refs` | Inferred page 1 only when the Provider was supplied exactly one page; multi-page omissions remain unchanged and review-gated |
+
+The seventh run proved the durable job terminal state, imported batch status,
+Bank/source scope, source-asset lineage, imported items, and unique persistence
+lineage keys. It stopped at the page-lineage predicate before the later Review
+Draft and Teacher UI predicates. Earlier runs independently proved that
+persisted output remained private, bank-scoped, `pending_review`, unapproved,
+unpublished, and unassigned.
+
+The single-page correction is source- and fake-Provider-tested across direct,
+segmented, and coverage-recovery extraction paths. It preserves Provider page
+references when present and refuses to infer a page for multi-page inputs. It
+was not followed by another paid run: seven runs consumed a cumulative
+conservative ceiling of 917,511 micro-USD (USD 0.917511), leaving less than the
+131,073-micro-USD ceiling required for one additional bounded run. Actual
+input, output, and thinking token totals and actual cumulative estimated cost
+were not retained safely before exact cleanup and are therefore not claimed.
+
 ## Progression Result
 
-The one-file gate is partial, not complete. Upload, durable queueing, exact
-worker execution, Gemini structured extraction, application validation, one
-private Review Draft, Provider cleanup, Bank scope, no automatic publication,
-no Assignment creation, and exact cleanup are proven. Teacher-visible terminal
-completion after the telemetry fix is not proven by a real-Provider rerun.
+The one-file gate remains partial. Upload, private Storage, durable queueing,
+exact one-job worker execution, Gemini structured extraction, application
+validation, private Review Draft persistence, durable job completion, Provider
+cleanup, Bank scope, no automatic publication, no Assignment creation, and
+exact cleanup are proven across the bounded iterations. The final single-page
+lineage correction, Teacher-visible completed state, and refresh/remount
+continuity are not proven by a later real-Provider run.
 
 The 4-file, 10-file, and 50-file runs were not started because progression is
 strictly gated on a complete one-file result. Therefore this work does not
@@ -317,16 +358,13 @@ its existing Review Draft boundary remains unchanged.
 
 ## Remaining Blocker
 
-Gemini structured extraction compatibility is no longer the remaining blocker.
-The accepted Developer API request representation and the incompatible schema
-keyword are proven, and the one-file E2E produced a validated private Review
-Draft.
-
-The remaining gate is narrower: a separately authorized bounded one-file rerun
-must prove that the repaired route wrapper reaches a completed durable job and a
-Teacher-visible completed import without changing the already-proven privacy,
-review, cleanup, and no-publication boundaries. No 4-, 10-, or 50-file run may
-start before that terminal proof passes.
+Gemini structured extraction and durable terminal completion are no longer the
+remaining blockers. The remaining gate is a new bounded one-file run that must
+prove the single-page lineage correction, continue through private Review Draft
+and publication-gate checks, show the Teacher-visible completed import, and
+retain that state after refresh/remount. This task stopped before that run
+because its remaining conservative authorization budget was insufficient. No
+4-, 10-, or 50-file run may start before the complete one-file gate passes.
 
 ## Rollback
 
@@ -345,6 +383,8 @@ The final source state passed:
 - `npm.cmd run perf:budget` on the final integrated branch;
 - `npm.cmd run perf:audit`;
 - `npm.cmd run analyze`;
+- single-page lineage inference and multi-page fail-closed regression smoke;
+- terminal-summary compaction and post-persistence diagnostic smokes;
 - local worker singleton, stale-lock, and local-target smoke;
 - Provider lifecycle source and fake-runtime budget smokes;
 - Provider routing regression proving telemetry failure cannot invalidate
@@ -366,6 +406,13 @@ optimization reduced `src/components/practice/practice-agent-client.tsx` to
 87.2 KB against its 96.0 KB budget. The final integrated branch passes the full
 performance budget without any PDF50-side exception.
 
+Several source-string smokes retain pre-existing failures reproduced on the
+exact clean starting head `994d198`: Bank-scoped import bridge UI copy,
+boundary/duplicate Review-list copy, AI Parsing recent-import copy, Review
+Draft action source shape, and the route smoke's `/videos` title literal. The
+PDF50 branch does not change the corresponding product surfaces and does not
+weaken or rewrite those unrelated assertions.
+
 The aggregate smoke is not represented as passing. Its static and source-only
 checks passed until the local embedded-Postgres profile-role harness reached
 Windows `initdb`; restricted-token initialization failed before the database
@@ -379,8 +426,9 @@ after the final one-file blocker.
 - Deployments: 0.
 - Provider settings changed: 0.
 - Existing non-synthetic queue jobs mutated: 0.
-- Synthetic fixture cleanup: PASS by exact identifier on every reported run.
-- Provider-side file cleanup: PASS in the final counted run.
+- Synthetic fixture cleanup: PASS by exact identifier on all seven autonomous
+  runs.
+- Provider-side file cleanup: PASS on all seven autonomous runs.
 - Process-only environment cleanup: PASS.
 - Vault plaintext files created: 0.
 - Provider raw responses emitted or persisted: 0.
@@ -388,4 +436,4 @@ after the final one-file blocker.
 
 ## Classification
 
-`PDF50_GEMINI_COMPATIBILITY_PARTIALLY_RESOLVED`
+`PDF50_AUTONOMOUS_RECOVERY_PARTIALLY_COMPLETE`

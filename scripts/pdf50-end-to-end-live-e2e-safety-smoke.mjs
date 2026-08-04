@@ -165,6 +165,12 @@ assert(
   "failed worker diagnostics must expose only an allowlisted import phase and bounded draft count",
 );
 assert(
+  harness.includes("safeFinalSummaryFields") &&
+    harness.includes("FINALIZATION_SUMMARY_FIELD_BYTES=") &&
+    !harness.includes("JSON.stringify(batch.summary)"),
+  "failed finalization diagnostics may report only allowlisted summary field sizes",
+);
+assert(
   harness.includes('"Question 1"') &&
     harness.includes('"What is 2 + 3?"') &&
     harness.includes('"Explanation: 2 + 3 = 5."') &&

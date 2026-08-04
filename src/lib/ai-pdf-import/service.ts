@@ -33,6 +33,14 @@ import {
   AI_PDF_IMPORT_MAX_PAGES,
 } from "@/lib/ai-pdf-import/constants";
 import {
+  AIPdfBatchFinalizationContractError,
+  runAIPdfPostPersistenceStage,
+} from "@/lib/ai-pdf-import/post-persistence";
+import {
+  AI_PDF_FENCED_SUMMARY_MAX_BYTES,
+  compactAIPdfTerminalSummary,
+} from "@/lib/ai-pdf-import/terminal-summary";
+import {
   formatAIPdfChunkPageRange,
   mergeAIPdfImportChunkingSummary,
   normalizeAIPdfChunkingSummary,
@@ -51,6 +59,7 @@ import {
   type AIPdfExtraction,
   type AIPdfQuestion,
 } from "@/lib/ai-pdf-import/schema";
+import { ensureSinglePageExtractionLineage } from "@/lib/ai-pdf-import/source-lineage";
 import {
   failedPdfPreanalysis,
   generatePdfPreanalysis,
@@ -649,8 +658,18 @@ async function finalizeAIPdfImportBatch({
   summary: Record<string, unknown>;
 }) {
   if (input.persistenceFence) {
+    const summaryBytes = Buffer.byteLength(JSON.stringify(summary), "utf8");
+    if (summaryBytes > AI_PDF_FENCED_SUMMARY_MAX_BYTES) {
+      throw new AIPdfBatchFinalizationContractError({
+        reason: "summary_too_large",
+        summaryBytes,
+      });
+    }
     if (!input.supabase.rpc) {
-      throw new Error("Fenced import finalization requires the trusted RPC client.");
+      throw new AIPdfBatchFinalizationContractError({
+        reason: "rpc_rejected",
+        summaryBytes,
+      });
     }
     const { data, error } = await input.supabase.rpc(
       "finalize_ai_provider_job_import_batch_fenced",
@@ -667,9 +686,24 @@ async function finalizeAIPdfImportBatch({
         p_summary: summary,
       },
     );
-    if (error) throw new Error(error.message);
+    if (error) {
+      throw new AIPdfBatchFinalizationContractError({
+        cause: error,
+        reason: "rpc_rejected",
+        summaryBytes,
+      });
+    }
     if (data === "STALE_FENCE_REJECTED") {
-      throw new Error("STALE_FENCE_REJECTED");
+      throw new AIPdfBatchFinalizationContractError({
+        reason: "stale_fence",
+        summaryBytes,
+      });
+    }
+    if (data !== "APPLIED" && data !== "NOOP_ALREADY_CHECKPOINTED") {
+      throw new AIPdfBatchFinalizationContractError({
+        reason: "unexpected_outcome",
+        summaryBytes,
+      });
     }
     return;
   }
@@ -2045,6 +2079,19 @@ async function generateAndStoreExtractionCoverageAuditPlan({
     });
     await generateAndStoreCoverageRecoveryPlan({ input });
   }
+}
+
+async function generateAndStorePostPersistenceReviewPlans({
+  input,
+}: {
+  input: ProcessInput;
+}) {
+  // These plans annotate already-persisted, review-gated drafts. Their
+  // availability must not turn successful extraction into a Provider failure.
+  await generateAndStoreExtractionCoverageAuditPlan({ input }).catch(
+    () => undefined,
+  );
+  await generateAndStoreQuestionBoundaryGuardPlan({ input });
 }
 
 async function generateAndStoreTaxonomyReviewPlan({
@@ -3966,12 +4013,16 @@ async function processAIPdfSinglePass({
             }),
           ),
       });
+  const providerExtraction = ensureSinglePageExtractionLineage({
+    extraction: providerResult.value,
+    suppliedPageCount: selectiveInput?.pageMapping.length ?? pageCount,
+  });
   const extraction = selectiveInput
     ? remapSegmentExtractionPages({
-        extraction: providerResult.value,
+        extraction: providerExtraction,
         pageMapping: selectiveInput.pageMapping,
       })
-    : providerResult.value;
+    : providerExtraction;
 
   if (!recoveredExtraction && input.onProviderResultCheckpoint) {
     input.providerResultCheckpoint = appendAIPdfProviderResultCheckpoint({
@@ -4056,29 +4107,40 @@ async function processAIPdfSinglePass({
     persistenceLineageKey: input.persistenceLineageKey ?? null,
   });
 
-  await updateAIPdfBatchProgress(input, {
-    detail: "Attaching AI crop placeholders to created draft questions.",
-    pageCount,
-    phase: "cropping_assets",
-    provider: providerSummary,
-    questionCount: extraction.questions.length,
-    sourceInput: providerInput.strategy,
-    warnings: extraction.warnings,
+  const cropSummary = await runAIPdfPostPersistenceStage({
+    operation: async () => {
+      await updateAIPdfBatchProgress(input, {
+        detail: "Attaching AI crop placeholders to created draft questions.",
+        pageCount,
+        phase: "cropping_assets",
+        provider: providerSummary,
+        questionCount: extraction.questions.length,
+        sourceInput: providerInput.strategy,
+        warnings: extraction.warnings,
+      });
+      return importSummary.createdCount > 0
+        ? attachCroppedAssets({
+            createdQuestions: importSummary.createdQuestions,
+            extraction,
+            pdfBuffer: input.pdfBuffer,
+            profileId: input.profileId,
+            supabase: input.supabase,
+          })
+        : {
+            uploadedCount: 0,
+            warnings: ["No draft questions were created; skipped crop attachment."],
+          };
+    },
+    stage: "asset_attachment",
   });
-  const cropSummary =
-    importSummary.createdCount > 0
-      ? await attachCroppedAssets({
-          createdQuestions: importSummary.createdQuestions,
-          extraction,
-          pdfBuffer: input.pdfBuffer,
-          profileId: input.profileId,
-          supabase: input.supabase,
-        })
-      : {
-          uploadedCount: 0,
-          warnings: ["No draft questions were created; skipped crop attachment."],
-        };
-  const currentBeforeFinal = await loadCurrentAIPdfSummary(input);
+  await runAIPdfPostPersistenceStage({
+    operation: () => generateAndStorePostPersistenceReviewPlans({ input }),
+    stage: "review_plans",
+  });
+  const currentBeforeFinal = await runAIPdfPostPersistenceStage({
+    operation: () => loadCurrentAIPdfSummary(input),
+    stage: "summary_preparation",
+  });
   const finalAiPdfImport = mergeAIPdfImportChunkingSummary(
     currentBeforeFinal.aiPdfImport,
     {
@@ -4106,18 +4168,20 @@ async function processAIPdfSinglePass({
     delete finalAiPdfImport.staleLeaseDetectedAt;
   }
 
-  const finalSummary = {
+  const finalSummary = compactAIPdfTerminalSummary({
+    ...currentBeforeFinal.summary,
     ...importSummary,
     aiPdfImport: finalAiPdfImport,
-  };
-  await finalizeAIPdfImportBatch({
-    input,
-    status: importSummary.createdCount > 0 ? "imported" : "failed",
-    summary: finalSummary,
   });
-
-  await generateAndStoreExtractionCoverageAuditPlan({ input });
-  await generateAndStoreQuestionBoundaryGuardPlan({ input });
+  await runAIPdfPostPersistenceStage({
+    operation: () =>
+      finalizeAIPdfImportBatch({
+        input,
+        status: importSummary.createdCount > 0 ? "imported" : "failed",
+        summary: finalSummary,
+      }),
+    stage: "batch_finalization",
+  });
 
   return finalSummary;
 }
@@ -4485,7 +4549,11 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
                 }),
               ),
           });
-      const rawExtraction = providerResult.value;
+      const rawExtraction = ensureSinglePageExtractionLineage({
+        extraction: providerResult.value,
+        suppliedPageCount:
+          segmentChunk?.pageMapping.length ?? chunk.pageEnd - chunk.pageStart + 1,
+      });
       const extraction = segmentChunk
         ? remapSegmentExtractionPages({
             extraction: rawExtraction,
@@ -4680,6 +4748,10 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
     }
   }
 
+  await runAIPdfPostPersistenceStage({
+    operation: () => generateAndStorePostPersistenceReviewPlans({ input }),
+    stage: "review_plans",
+  });
   const currentBeforeFinal = await loadCurrentAIPdfSummary(input);
   const finalChunking = normalizeAIPdfChunkingSummary(
     currentBeforeFinal.aiPdfImport.chunking,
@@ -4692,7 +4764,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
       : "completed"
     : "failed";
   const finalStatus = hasCreatedQuestions ? "imported" : "failed";
-  const finalSummary = {
+  const finalSummary = compactAIPdfTerminalSummary({
     ...currentBeforeFinal.summary,
     batchId: input.batchId,
     createdCount: aggregate.createdCount,
@@ -4716,20 +4788,21 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
       uploadedCropCount: aggregate.uploadedCropCount,
       warnings: uniqueStrings(allWarnings),
     }),
-  };
-  await finalizeAIPdfImportBatch({
-    input,
-    status: finalStatus,
-    summary: finalSummary,
+  });
+  await runAIPdfPostPersistenceStage({
+    operation: () =>
+      finalizeAIPdfImportBatch({
+        input,
+        status: finalStatus,
+        summary: finalSummary,
+      }),
+    stage: "batch_finalization",
   });
 
   await input.onCheckpointStage?.("drafts_persisted", {
     createdDraftCount: aggregate.createdCount,
     persistenceLineageKey: input.persistenceLineageKey ?? null,
   });
-
-  await generateAndStoreExtractionCoverageAuditPlan({ input });
-  await generateAndStoreQuestionBoundaryGuardPlan({ input });
 
   return finalSummary;
 }
@@ -5007,7 +5080,10 @@ export async function processAIPdfCoverageRecovery(
       ),
   });
   const extraction = remapSegmentExtractionPages({
-    extraction: providerResult.value,
+    extraction: ensureSinglePageExtractionLineage({
+      extraction: providerResult.value,
+      suppliedPageCount: subset.pageMapping.length,
+    }),
     pageMapping: subset.pageMapping,
   });
 

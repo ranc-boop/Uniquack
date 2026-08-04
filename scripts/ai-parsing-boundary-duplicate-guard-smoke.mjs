@@ -253,9 +253,13 @@ assert(
     service.includes("coverageRecoveryMergePlan") &&
     service.includes('from("questions")') &&
     service.includes('from("question_assets")') &&
-    /await generateAndStoreExtractionCoverageAuditPlan\(\{ input \}\);\r?\n\s+await generateAndStoreQuestionBoundaryGuardPlan\(\{ input \}\);/.test(
+    service.includes("generateAndStorePostPersistenceReviewPlans") &&
+    /async function generateAndStorePostPersistenceReviewPlans[\s\S]*?generateAndStoreExtractionCoverageAuditPlan\(\{ input \}\)\.catch\([\s\S]*?\(\) => undefined[\s\S]*?generateAndStoreQuestionBoundaryGuardPlan\(\{ input \}\)/.test(
       service,
-    ),
+    ) &&
+    (service.match(/generateAndStorePostPersistenceReviewPlans\(\{ input \}\)/g) ?? [])
+      .length === 2 &&
+    service.includes("compactAIPdfTerminalSummary"),
   "AI PDF service must load the latest summary, reuse safe reread/recovery evidence, analyze created drafts, and persist the advisory guard after coverage planning",
 );
 assert(
