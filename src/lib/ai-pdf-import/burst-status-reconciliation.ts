@@ -9,8 +9,9 @@ export type PdfBurstLocalPhase =
   | "reserved"
   | "uploading"
   | "finalizing"
-  | "failed"
-  | "cancelled";
+  | "failed";
+
+export type PdfBurstLocalRequestState = "cancellation_requested" | null;
 
 export type PdfBurstDisplayStatus =
   | PdfBurstLocalPhase
@@ -37,6 +38,18 @@ const durableTerminalStatuses = new Set<AIPdfBurstItemSafeStatus>([
   "failed",
   "cancelled",
 ]);
+
+const cancellableDurableStatuses = new Set<AIPdfBurstItemSafeStatus>([
+  "reserved",
+  "admission_ready",
+  "queued",
+]);
+
+type PdfBurstCancellationRequestItem = {
+  durableSnapshot: PdfBurstDurableSnapshot | null;
+  localRequestState: PdfBurstLocalRequestState;
+  localWarningCode: string | null;
+};
 
 function sameDurableSnapshot(
   left: PdfBurstDurableSnapshot,
@@ -88,33 +101,84 @@ export function mergePdfBurstDurableSnapshotsByClientKey<
   return changed ? next : items;
 }
 
+export function markPdfBurstCancellationRequested<
+  Item extends PdfBurstCancellationRequestItem,
+>(items: Item[]): Item[] {
+  let changed = false;
+  const next = items.map((item) => {
+    if (
+      !item.durableSnapshot ||
+      !cancellableDurableStatuses.has(item.durableSnapshot.status) ||
+      (item.localRequestState === "cancellation_requested" &&
+        item.localWarningCode === null)
+    ) {
+      return item;
+    }
+    changed = true;
+    return {
+      ...item,
+      localRequestState: "cancellation_requested" as const,
+      localWarningCode: null,
+    };
+  });
+  return changed ? next : items;
+}
+
+export function markPdfBurstCancellationRequestFailed<
+  Item extends PdfBurstCancellationRequestItem,
+>(items: Item[]): Item[] {
+  let changed = false;
+  const next = items.map((item) => {
+    if (item.localRequestState !== "cancellation_requested") return item;
+    changed = true;
+    return {
+      ...item,
+      localRequestState: null,
+      localWarningCode: "cancellation_request_failed",
+    };
+  });
+  return changed ? next : items;
+}
+
 export function reconcilePdfBurstDisplayState({
   durable,
   localPhase,
+  localRequestState,
   localWarningCode,
 }: {
   durable: PdfBurstDurableSnapshot | null;
   localPhase: PdfBurstLocalPhase;
+  localRequestState: PdfBurstLocalRequestState;
   localWarningCode: string | null;
 }) {
+  const visibleLocalRequestState =
+    localRequestState === "cancellation_requested" &&
+    (!durable || cancellableDurableStatuses.has(durable.status))
+      ? localRequestState
+      : null;
+
   if (!durable) {
     return {
       durableStatusKnown: false,
+      localRequestState: visibleLocalRequestState,
       localWarningCode,
       safeErrorCode: null,
-      shouldPoll: ["reserving", "uploading", "finalizing"].includes(localPhase),
+      shouldPoll:
+        visibleLocalRequestState !== null ||
+        ["reserving", "uploading", "finalizing"].includes(localPhase),
       status: localPhase as PdfBurstDisplayStatus,
     };
   }
 
   if (durable.status === "reserved") {
-    const status = ["uploading", "finalizing", "failed", "cancelled"].includes(
+    const status = ["uploading", "finalizing", "failed"].includes(
       localPhase,
     )
       ? localPhase
       : "reserved";
     return {
       durableStatusKnown: true,
+      localRequestState: visibleLocalRequestState,
       localWarningCode,
       safeErrorCode: durable.safeErrorCode,
       shouldPoll: localPhase !== "failed",
@@ -124,6 +188,7 @@ export function reconcilePdfBurstDisplayState({
 
   return {
     durableStatusKnown: true,
+    localRequestState: visibleLocalRequestState,
     localWarningCode,
     safeErrorCode: durable.safeErrorCode,
     shouldPoll: !durableTerminalStatuses.has(durable.status),

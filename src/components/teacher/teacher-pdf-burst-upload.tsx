@@ -27,12 +27,15 @@ import {
   AI_PDF_IMPORT_MAX_BYTES,
 } from "@/lib/ai-pdf-import/constants";
 import {
+  markPdfBurstCancellationRequestFailed,
+  markPdfBurstCancellationRequested,
   mergePdfBurstDurableSnapshot,
   mergePdfBurstDurableSnapshotsByClientKey,
   reconcilePdfBurstDisplayState,
   type PdfBurstDisplayStatus,
   type PdfBurstDurableSnapshot,
   type PdfBurstLocalPhase,
+  type PdfBurstLocalRequestState,
 } from "@/lib/ai-pdf-import/burst-status-reconciliation";
 import type { TeacherAIPdfParsingProfile } from "@/lib/ai-pdf-import/teacher-parsing-profiles";
 import { runWithConcurrency } from "@/lib/async-concurrency";
@@ -45,6 +48,7 @@ type SelectedPdf = {
   durableSnapshot: PdfBurstDurableSnapshot | null;
   file: File;
   localPhase: PdfBurstLocalPhase;
+  localRequestState: PdfBurstLocalRequestState;
   localWarningCode: string | null;
 };
 
@@ -73,6 +77,8 @@ const safeErrorCopy: Record<string, string> = {
 };
 
 const localWarningCopy: Record<string, string> = {
+  cancellation_request_failed:
+    "The cancellation response was interrupted. Durable status will continue to refresh.",
   finalize_response_interrupted:
     "The finalization response was interrupted. Durable status will continue to refresh.",
   reservation_failed: "The private upload reservation did not complete.",
@@ -144,6 +150,7 @@ export function TeacherPdfBurstUpload({
         const display = reconcilePdfBurstDisplayState({
           durable: durableSnapshot,
           localPhase: item.localPhase,
+          localRequestState: item.localRequestState,
           localWarningCode: item.localWarningCode,
         });
         return {
@@ -211,6 +218,7 @@ export function TeacherPdfBurstUpload({
         durableSnapshot: null,
         file,
         localPhase: "selected",
+        localRequestState: null,
         localWarningCode: null,
       })),
     );
@@ -358,34 +366,14 @@ export function TeacherPdfBurstUpload({
     if (!activeBurstId || running) return;
     setRunning(true);
     setError(null);
+    setSelected((current) => markPdfBurstCancellationRequested(current));
     try {
       await cancelTeacherAIPdfBurst({ burstId: activeBurstId });
-      setSelected((current) =>
-        current.map((item) => {
-          const durableSnapshot = mergePdfBurstDurableSnapshot(
-            item.durableSnapshot,
-            serverItemsByClientKey.get(item.clientItemKey),
-          );
-          if (
-            !durableSnapshot ||
-            !["reserved", "admission_ready", "queued"].includes(
-              durableSnapshot.status,
-            )
-          ) {
-            return item;
-          }
-          return {
-            ...item,
-            durableSnapshot: {
-              safeErrorCode: null,
-              status: "cancelled" as const,
-            },
-            localWarningCode: null,
-          };
-        }),
-      );
       router.refresh();
     } catch {
+      setSelected((current) =>
+        markPdfBurstCancellationRequestFailed(current),
+      );
       setError("Could not cancel the remaining unstarted PDFs.");
     } finally {
       setRunning(false);
@@ -469,6 +457,11 @@ export function TeacherPdfBurstUpload({
                         <p className="mt-1 text-xs text-amber-700">
                           {localWarningCopy[item.localWarningCode] ??
                             "The local response was interrupted; durable status remains authoritative."}
+                        </p>
+                      ) : null}
+                      {item.localRequestState === "cancellation_requested" ? (
+                        <p className="mt-1 text-xs text-sky-700">
+                          Cancellation requested. Waiting for authoritative server status.
                         </p>
                       ) : null}
                       {item.safeErrorCode ? (
