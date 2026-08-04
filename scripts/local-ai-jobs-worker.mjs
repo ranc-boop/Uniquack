@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -15,7 +18,18 @@ export const DEFAULT_LOCAL_AI_JOBS_ROUTE =
   "http://127.0.0.1:3000/api/internal/ai-jobs/run";
 
 const INTERNAL_TOKEN_HEADER = "x-ai-jobs-internal-token";
+const TARGET_JOB_HEADER = "x-pdf50-provider-test-job-id";
 const MAX_RESPONSE_BYTES = 8_192;
+const MAX_SAFE_PROVIDER_NETWORK_REQUESTS = 512;
+const SAFE_ROUTE_FAILURE_REASONS = new Set([
+  "trusted_provider_test_claim_capacity_failed",
+  "trusted_provider_test_claim_fence_missing",
+  "trusted_provider_test_claim_read_failed",
+  "trusted_provider_test_claim_update_failed",
+  "trusted_provider_test_job_id_rejected",
+  "trusted_provider_test_target_required",
+  "worker_execution_failed",
+]);
 const WORKER_ROUTE_PATH = "/api/internal/ai-jobs/run";
 const RAW_ROUTE_PATTERN =
   /^(?<protocol>[A-Za-z][A-Za-z0-9+.-]*):\/\/(?<authority>[^/?#]+)(?<pathname>\/[^?#]*)?(?<search>\?[^#]*)?(?<hash>#.*)?$/;
@@ -146,6 +160,29 @@ export function validateLocalAIJobsInternalToken(value) {
   return value;
 }
 
+export function resolveLocalAIJobsWorkerMaxInvocations(value) {
+  if (value === undefined) return Number.POSITIVE_INFINITY;
+  if (value !== "1") {
+    throw new LocalAIJobsWorkerConfigurationError(
+      "max_invocations_contract_rejected",
+    );
+  }
+  return 1;
+}
+
+export function validateLocalAIJobsTargetJobId(value) {
+  if (value === undefined) return null;
+  if (
+    typeof value !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      value,
+    )
+  ) {
+    throw new LocalAIJobsWorkerConfigurationError("target_job_id_rejected");
+  }
+  return value;
+}
+
 function safeAggregatePayload(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
@@ -154,6 +191,13 @@ function safeAggregatePayload(value) {
     "claimed",
     "completed",
     "failed",
+    "providerCleanupFailures",
+    "providerCleanupRequests",
+    "providerInferenceAttempts",
+    "providerInferenceRequests",
+    "providerNetworkRequests",
+    "providerPollRequests",
+    "providerUploadRequests",
     "retryWaiting",
   ]);
   if (Object.keys(value).some((key) => !allowedKeys.has(key))) return null;
@@ -172,12 +216,139 @@ function safeAggregatePayload(value) {
     return null;
   }
 
+  const providerCounts = [
+    value.providerCleanupFailures,
+    value.providerCleanupRequests,
+    value.providerInferenceAttempts,
+    value.providerInferenceRequests,
+    value.providerNetworkRequests,
+    value.providerPollRequests,
+    value.providerUploadRequests,
+  ];
+  if (
+    providerCounts.some(
+      (count) =>
+        !Number.isInteger(count) ||
+        count < 0 ||
+        count > MAX_SAFE_PROVIDER_NETWORK_REQUESTS,
+    ) ||
+    value.providerInferenceAttempts > 8 ||
+    value.providerInferenceRequests > value.providerInferenceAttempts ||
+    value.providerCleanupFailures > value.providerCleanupRequests + 1 ||
+    value.providerNetworkRequests !==
+      value.providerCleanupRequests +
+        value.providerInferenceRequests +
+        value.providerPollRequests +
+        value.providerUploadRequests
+  ) {
+    return null;
+  }
+
   return {
     claimed: value.claimed,
     completed: value.completed,
     failed: value.failed,
+    providerCleanupFailures: value.providerCleanupFailures,
+    providerCleanupRequests: value.providerCleanupRequests,
+    providerInferenceAttempts: value.providerInferenceAttempts,
+    providerInferenceRequests: value.providerInferenceRequests,
+    providerNetworkRequests: value.providerNetworkRequests,
+    providerPollRequests: value.providerPollRequests,
+    providerUploadRequests: value.providerUploadRequests,
     retryWaiting: value.retryWaiting,
   };
+}
+
+function defaultProcessAlive(processId) {
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+function localWorkerLockPath({ lockDirectory, target }) {
+  const targetHash = createHash("sha256").update(target.href).digest("hex").slice(0, 24);
+  return resolve(lockDirectory, `edustruct-ai-worker-${targetHash}.lock`);
+}
+
+export async function acquireLocalAIJobsWorkerLock({
+  isProcessAlive = defaultProcessAlive,
+  lockDirectory = tmpdir(),
+  processId = process.pid,
+  targetUrl = DEFAULT_LOCAL_AI_JOBS_ROUTE,
+} = {}) {
+  const target = resolveLocalAIJobsWorkerRoute(targetUrl);
+  const lockPath = localWorkerLockPath({ lockDirectory, target });
+  const ownerPath = resolve(lockPath, "owner");
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let created = false;
+    let handle;
+    try {
+      await mkdir(lockPath, { mode: 0o700 });
+      created = true;
+      handle = await open(ownerPath, "wx", 0o600);
+      await handle.writeFile(`${processId}\n`, { encoding: "utf8" });
+      await handle.sync();
+      await handle.close();
+      handle = null;
+
+      let released = false;
+      return {
+        async release() {
+          if (released) return;
+          released = true;
+          try {
+            const owner = (await readFile(ownerPath, "utf8")).trim();
+            if (owner === String(processId)) {
+              const releasePath = `${lockPath}.release-${processId}-${Date.now()}`;
+              await rename(lockPath, releasePath);
+              await rm(releasePath, { force: true, recursive: true });
+            }
+          } catch (error) {
+            if (error?.code !== "ENOENT") throw error;
+          }
+        },
+      };
+    } catch (error) {
+      await handle?.close().catch(() => undefined);
+      if (created) {
+        await rm(lockPath, { force: true, recursive: true }).catch(() => undefined);
+        throw error;
+      }
+      if (error?.code !== "EEXIST") throw error;
+
+      let stale = false;
+      try {
+        const metadata = await lstat(lockPath);
+        const ownerMetadata = await lstat(ownerPath);
+        if (!metadata.isDirectory() || !ownerMetadata.isFile() || ownerMetadata.size > 64) {
+          throw new LocalAIJobsWorkerConfigurationError("worker_lock_contract_rejected");
+        }
+        const owner = Number((await readFile(ownerPath, "utf8")).trim());
+        stale = Number.isInteger(owner) && owner > 0 && !isProcessAlive(owner);
+      } catch (readError) {
+        if (readError instanceof LocalAIJobsWorkerConfigurationError) throw readError;
+        throw new LocalAIJobsWorkerConfigurationError("worker_lock_contract_rejected");
+      }
+
+      if (!stale) {
+        throw new LocalAIJobsWorkerConfigurationError("worker_instance_already_running");
+      }
+      const stalePath = `${lockPath}.stale-${processId}-${attempt}`;
+      try {
+        await rename(lockPath, stalePath);
+      } catch (renameError) {
+        if (renameError?.code === "ENOENT" || renameError?.code === "EEXIST") continue;
+        throw renameError;
+      }
+      await rm(stalePath, { force: true, recursive: true });
+    }
+  }
+
+  throw new LocalAIJobsWorkerConfigurationError("worker_lock_unavailable");
 }
 
 function safeLogLine(now, fields) {
@@ -198,6 +369,26 @@ async function discardResponse(response) {
   }
 }
 
+async function readSafeRouteFailure(response) {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
+    await discardResponse(response);
+    return "worker_execution_failed";
+  }
+  try {
+    const responseText = await response.text();
+    if (Buffer.byteLength(responseText, "utf8") > MAX_RESPONSE_BYTES) {
+      return "worker_execution_failed";
+    }
+    const parsed = JSON.parse(responseText);
+    return parsed?.accepted === false && SAFE_ROUTE_FAILURE_REASONS.has(parsed.reason)
+      ? parsed.reason
+      : "worker_execution_failed";
+  } catch {
+    return "worker_execution_failed";
+  }
+}
+
 export function createLocalAIJobsWorker({
   activeDelayMs = LOCAL_AI_JOBS_WORKER_DEFAULTS.activeDelayMs,
   fatalFailureDelayMs = LOCAL_AI_JOBS_WORKER_DEFAULTS.fatalFailureDelayMs,
@@ -209,6 +400,7 @@ export function createLocalAIJobsWorker({
   now = () => new Date(),
   requestTimeoutMs = LOCAL_AI_JOBS_WORKER_DEFAULTS.requestTimeoutMs,
   targetUrl = DEFAULT_LOCAL_AI_JOBS_ROUTE,
+  targetJobId,
   token,
   unavailableBackoffBaseMs =
     LOCAL_AI_JOBS_WORKER_DEFAULTS.unavailableBackoffBaseMs,
@@ -217,6 +409,7 @@ export function createLocalAIJobsWorker({
 } = {}) {
   const target = resolveLocalAIJobsWorkerRoute(targetUrl);
   const validatedToken = validateLocalAIJobsInternalToken(token);
+  const validatedTargetJobId = validateLocalAIJobsTargetJobId(targetJobId);
   if (typeof fetchImpl !== "function") {
     throw new LocalAIJobsWorkerConfigurationError("fetch_implementation_missing");
   }
@@ -272,13 +465,17 @@ export function createLocalAIJobsWorker({
     maxObservedInFlight = Math.max(maxObservedInFlight, inFlight);
 
     try {
+      const headers = {
+        accept: "application/json",
+        connection: "close",
+        [INTERNAL_TOKEN_HEADER]: validatedToken,
+      };
+      if (validatedTargetJobId) {
+        headers[TARGET_JOB_HEADER] = validatedTargetJobId;
+      }
       const response = await fetchImpl(target, {
         body: undefined,
-        headers: {
-          accept: "application/json",
-          connection: "close",
-          [INTERNAL_TOKEN_HEADER]: validatedToken,
-        },
+        headers,
         method: "POST",
         redirect: "manual",
         signal: controller.signal,
@@ -293,8 +490,10 @@ export function createLocalAIJobsWorker({
         return { classification: "authentication_rejected", stopImmediately: true };
       }
       if (!response.ok) {
-        await discardResponse(response);
-        return { classification: "bounded_worker_failure" };
+        return {
+          classification: "bounded_worker_failure",
+          safeReason: await readSafeRouteFailure(response),
+        };
       }
 
       const declaredLength = Number(response.headers.get("content-length"));
@@ -345,6 +544,7 @@ export function createLocalAIJobsWorker({
     let consecutiveFatalFailures = 0;
     let consecutiveUnavailable = 0;
     let invocationCount = 0;
+    let lastClassification = null;
     let reason = "shutdown_requested";
 
     emit({ status: "local_worker_started" });
@@ -353,6 +553,7 @@ export function createLocalAIJobsWorker({
       while (!stopRequested && invocationCount < maxInvocations) {
         invocationCount += 1;
         const result = await invoke();
+        lastClassification = result.classification;
 
         if (result.classification === "shutdown") break;
 
@@ -378,6 +579,11 @@ export function createLocalAIJobsWorker({
             failed: result.aggregate.failed,
             invocation: invocationCount,
             nextWakeMs,
+            providerInferenceAttempts:
+              result.aggregate.providerInferenceAttempts,
+            providerInferenceRequests:
+              result.aggregate.providerInferenceRequests,
+            providerNetworkRequests: result.aggregate.providerNetworkRequests,
             retryWaiting: result.aggregate.retryWaiting,
             status: result.classification,
           });
@@ -424,6 +630,7 @@ export function createLocalAIJobsWorker({
             failures: consecutiveFatalFailures,
             invocation: invocationCount,
             nextWakeMs,
+            safeReason: result.safeReason ?? "worker_execution_failed",
             status: result.classification,
           });
         }
@@ -434,7 +641,11 @@ export function createLocalAIJobsWorker({
       }
 
       if (!stopRequested && invocationCount >= maxInvocations) {
-        reason = "max_invocations_reached";
+        reason = ["bounded_worker_failure", "local_server_unavailable"].includes(
+          lastClassification,
+        )
+          ? lastClassification
+          : "max_invocations_reached";
       }
     } finally {
       activeAbortController?.abort();
@@ -475,12 +686,20 @@ async function runFromCommandLine() {
   }
 
   let worker;
+  let workerLock;
+  let maxInvocations;
+  const targetUrl =
+    process.env.AI_JOBS_LOCAL_ROUTE_URL ?? DEFAULT_LOCAL_AI_JOBS_ROUTE;
   try {
+    maxInvocations = resolveLocalAIJobsWorkerMaxInvocations(
+      process.env.AI_JOBS_LOCAL_MAX_INVOCATIONS,
+    );
     worker = createLocalAIJobsWorker({
-      targetUrl:
-        process.env.AI_JOBS_LOCAL_ROUTE_URL ?? DEFAULT_LOCAL_AI_JOBS_ROUTE,
+      targetUrl,
+      targetJobId: process.env.AI_JOBS_LOCAL_TARGET_JOB_ID,
       token: process.env.AI_JOBS_INTERNAL_TOKEN,
     });
+    workerLock = await acquireLocalAIJobsWorkerLock({ targetUrl });
   } catch (error) {
     const code =
       error instanceof LocalAIJobsWorkerConfigurationError
@@ -496,11 +715,13 @@ async function runFromCommandLine() {
   process.once("SIGTERM", shutdown);
 
   try {
-    const result = await worker.run();
+    const result = await worker.run({ maxInvocations });
     if (
       [
         "authentication_rejected",
+        "bounded_worker_failure",
         "bounded_worker_failure_limit_reached",
+        "local_server_unavailable",
         "redirect_rejected",
       ].includes(result.reason)
     ) {
@@ -509,6 +730,7 @@ async function runFromCommandLine() {
   } finally {
     process.removeListener("SIGINT", shutdown);
     process.removeListener("SIGTERM", shutdown);
+    await workerLock?.release();
   }
 }
 

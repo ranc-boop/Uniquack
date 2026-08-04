@@ -6,6 +6,7 @@ export type AIProviderErrorCode =
   | "provider_timeout"
   | "provider_network_error"
   | "provider_invalid_response"
+  | "provider_execution_budget_exhausted"
   | "provider_configuration_error"
   | "provider_permission_error"
   | "request_invalid"
@@ -57,6 +58,8 @@ const SAFE_MESSAGE_BY_CODE: Record<AIProviderErrorCode, string> = {
     "The AI service is not currently available for this action. Contact an administrator.",
   provider_invalid_response:
     "The AI service returned an unusable response. Nothing was published or assigned, and you can retry later.",
+  provider_execution_budget_exhausted:
+    "This AI run reached its configured Provider request limit. Nothing was published or assigned.",
   provider_network_error:
     "The AI service could not be reached. Your work is safe, and the system is retrying.",
   provider_permission_error:

@@ -141,6 +141,33 @@ async function halfOpenCase() {
   assert(probes === 1, "a recovering provider must acquire exactly one half-open lease before execution");
 }
 
+async function successfulWorkSurvivesOutcomeTelemetryFailure() {
+  const primary = profile("primary", { defaultProfile: true });
+  globalThis.__profiles = [primary];
+
+  const result = await routing.runWithAIProviderRoute({
+    execute: async () => "persisted-review-draft",
+    leaseOwner: "worker",
+    route: {
+      candidates: [{ mode: "normal", profile: primary, routeOrder: 0 }],
+      operationKind: "ai_pdf_extract",
+      policy: null,
+      source: "default_profile",
+    },
+    supabase: fakeSupabase({
+      rpc: async (name) =>
+        name === "record_ai_provider_route_outcome"
+          ? { data: null, error: { message: "synthetic telemetry write failure" } }
+          : { data: true, error: null },
+    }),
+  });
+
+  assert(
+    result.value === "persisted-review-draft",
+    "a route-outcome telemetry failure must not retroactively fail persisted Review Draft work",
+  );
+}
+
 async function assertRejects(run, message) {
   let rejected = false;
   try { await run(); } catch { rejected = true; }
@@ -158,6 +185,7 @@ function sourceChecks({ migration, routingSource, workerSource, blueprintSource 
 await capabilityAndExplicitRouteCases();
 await circuitAndFallbackCases();
 await halfOpenCase();
+await successfulWorkSurvivesOutcomeTelemetryFailure();
 sourceChecks({
   blueprintSource: await read("src/lib/teacher-blueprint-generation.ts"),
   migration: await read("supabase/clean-migrations/0035_ai_provider_routing_circuit_breaker.sql"),

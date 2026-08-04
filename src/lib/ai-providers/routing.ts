@@ -643,7 +643,7 @@ export async function runWithAIProviderRoute<T>({
         operationKind: route.operationKind,
         success: true,
         supabase,
-      });
+      }).catch(() => undefined);
       return {
         fallbackUsed: candidate.routeOrder > 0,
         profile,

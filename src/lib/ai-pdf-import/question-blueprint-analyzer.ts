@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { AIProviderUsage } from "@/lib/ai-operations/cost-catalog";
+import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
 import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
 import { AI_GENERATION_UNTRUSTED_DATA_BOUNDARY } from "@/lib/ai-providers/prompt-safety";
@@ -1011,20 +1013,29 @@ function endpoint(baseUrl: string) {
 
 export async function executeDeepSeekQuestionBlueprintAnalyzer({
   debugContext: _debugContext,
+  executionObserver,
   knownTaxonomyTagIds,
   observationPlan,
+  onProviderUsage,
   provider,
   taxonomyCandidatesByFacet,
 }: {
   debugContext?: AnalyzerDebugContext;
+  executionObserver?: AIProviderExecutionObserver;
   knownTaxonomyTagIds?: ReadonlySet<string>;
   observationPlan: AIBlueprintObservationPlan;
+  onProviderUsage?: (usage: AIProviderUsage | null) => void;
   provider: QuestionBlueprintAnalyzerProvider;
   taxonomyCandidatesByFacet?: AIQuestionBlueprintTaxonomyCandidatesByFacet;
 }) {
   await assertSafeAIProviderBaseUrl(provider.base_url);
+  executionObserver?.beforeInference("blueprint_generation");
+  executionObserver?.recordNetworkRequest("inference");
   const response = await fetch(endpoint(provider.base_url), {
     body: JSON.stringify({
+      ...(executionObserver?.maxOutputTokens
+        ? { max_tokens: executionObserver.maxOutputTokens }
+        : {}),
       messages: [
         {
           content: buildQuestionBlueprintAnalyzerPrompt({
@@ -1055,8 +1066,24 @@ export async function executeDeepSeekQuestionBlueprintAnalyzer({
 
   const payload = await readResponseJsonWithLimit<{
     choices?: { message?: { content?: string } }[];
+    usage?: {
+      completion_tokens?: number;
+      prompt_tokens?: number;
+      total_tokens?: number;
+    };
   }>(response, QUESTION_BLUEPRINT_ANALYZER_RESPONSE_MAX_BYTES);
   const providerText = payload.choices?.[0]?.message?.content;
+
+  onProviderUsage?.(
+    payload.usage
+      ? {
+          cachedInputTokens: null,
+          inputTokens: payload.usage.prompt_tokens ?? null,
+          outputTokens: payload.usage.completion_tokens ?? null,
+          totalTokens: payload.usage.total_tokens ?? null,
+        }
+      : null,
+  );
 
   if (!providerText) {
     throw new Error("DeepSeek blueprint analyzer returned no message content.");

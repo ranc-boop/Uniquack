@@ -1,6 +1,9 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import ts from "typescript";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -20,6 +23,10 @@ const telemetry = await readFile(resolve(root, "src/lib/ai-operations/telemetry.
 const routing = await readFile(resolve(root, "src/lib/ai-providers/routing.ts"), "utf8");
 const worker = await readFile(resolve(root, "src/lib/ai-jobs/worker.ts"), "utf8");
 const geminiNative = await readFile(resolve(root, "src/lib/ai-providers/gemini-native.ts"), "utf8");
+const debugLogs = await readFile(
+  resolve(root, "src/lib/ai-providers/llm-debug-logs.ts"),
+  "utf8",
+);
 
 assert(migration.includes("ai_operation_telemetry"), "launch readiness requires durable safe telemetry");
 assert(migration.includes("ai_operations_controls"), "launch readiness requires durable operations controls");
@@ -32,7 +39,48 @@ assert(routing.includes("AI_PROVIDER_ROUTE_TOTAL_ATTEMPT_BUDGET = 4"), "route at
 assert(worker.includes("recordAIOperationTelemetry"), "worker must record safe telemetry");
 assert(telemetry.includes("estimateAIProviderCost"), "telemetry must calculate a bounded catalog estimate");
 assert(!geminiNative.includes("Response preview:"), "provider failures must not expose raw Gemini response previews");
-assert(geminiNative.includes("responseBodyBytes"), "debug-only provider failures must retain only response size metadata");
+
+const debugModuleSource = `${debugLogs}\nexport const __smokeSanitize = sanitize;\n`;
+const debugModuleOutput = ts.transpileModule(debugModuleSource, {
+  compilerOptions: {
+    esModuleInterop: true,
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2022,
+  },
+  fileName: "llm-debug-logs.ts",
+}).outputText;
+const debugModule = { exports: {} };
+const nodeRequire = createRequire(import.meta.url);
+const smokeRequire = (specifier) =>
+  specifier === "server-only" ? {} : nodeRequire(specifier);
+new Function("require", "exports", "module", debugModuleOutput)(
+  smokeRequire,
+  debugModule.exports,
+  debugModule,
+);
+const sensitiveResponse = "private-provider-response-body";
+const sensitiveCredential = "private-authorization-value";
+const sanitizedDebugPayload = debugModule.exports.__smokeSanitize({
+  authorization: sensitiveCredential,
+  response: [sensitiveResponse, { detail: sensitiveResponse }],
+  status: 400,
+});
+const serializedDebugPayload = JSON.stringify(sanitizedDebugPayload);
+assert(
+  sanitizedDebugPayload.authorization === "[redacted]",
+  "debug-only provider logs must redact credential-bearing keys",
+);
+assert(
+  sanitizedDebugPayload.response.items[0].byteLength ===
+    Buffer.byteLength(sensitiveResponse, "utf8") &&
+    /^[a-f0-9]{64}$/.test(sanitizedDebugPayload.response.items[0].sha256),
+  "debug-only provider response strings must be reduced to bounded fingerprints",
+);
+assert(
+  !serializedDebugPayload.includes(sensitiveResponse) &&
+    !serializedDebugPayload.includes(sensitiveCredential),
+  "debug-only provider logs must contain no raw response or credential value",
+);
 
 const organizations = Array.from({ length: 8 }, (_, index) => `org-${index + 1}`);
 const jobs = [];

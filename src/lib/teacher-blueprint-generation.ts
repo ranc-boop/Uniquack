@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
+import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
 import {
   getAiProviderCapabilities,
   inferAiProviderMode,
@@ -637,10 +638,12 @@ function mockBlueprintProviderText(request: BlueprintGenerationRequest) {
 }
 
 async function callTeacherBlueprintGenerationProvider({
+  executionObserver,
   profile,
   prompt,
   request,
 }: {
+  executionObserver?: AIProviderExecutionObserver;
   profile: ProviderForUse;
   prompt: string;
   request: BlueprintGenerationRequest;
@@ -662,6 +665,7 @@ async function callTeacherBlueprintGenerationProvider({
           blueprintId: request.blueprintId,
           operation: "teacher_blueprint_generation",
         },
+        executionObserver,
         model: profile.model,
         prompt,
       });
@@ -671,8 +675,13 @@ async function callTeacherBlueprintGenerationProvider({
 
   try {
     await assertSafeAIProviderBaseUrl(profile.base_url);
+    executionObserver?.beforeInference("blueprint_generation");
+    executionObserver?.recordNetworkRequest("inference");
     response = await fetch(chatEndpoint(profile.base_url), {
       body: JSON.stringify({
+        ...(executionObserver?.maxOutputTokens
+          ? { max_tokens: executionObserver.maxOutputTokens }
+          : {}),
         messages: [{ content: prompt, role: "user" }],
         model: profile.model,
         response_format: { type: "json_object" },
@@ -1224,6 +1233,7 @@ export function isTransientTeacherBlueprintProviderFailure(error: unknown) {
 
 export async function generateTeacherBlueprintReviewDrafts({
   blueprint,
+  executionObserver,
   profileId,
   queueJobId,
   onProviderUsage,
@@ -1233,6 +1243,7 @@ export async function generateTeacherBlueprintReviewDrafts({
   supabase,
 }: {
   blueprint: QuestionBlueprint;
+  executionObserver?: AIProviderExecutionObserver;
   profileId: string;
   queueJobId?: string;
   onProviderUsage?: (usage: GeminiNativeUsage | null) => void;
@@ -1300,6 +1311,7 @@ export async function generateTeacherBlueprintReviewDrafts({
                 policy: { maxAttempts: attemptBudget.maxAttempts },
                 run: async () => {
                   const response = await callTeacherBlueprintGenerationProvider({
+                    executionObserver,
                     profile: provider,
                     prompt,
                     request,
@@ -1323,6 +1335,7 @@ export async function generateTeacherBlueprintReviewDrafts({
               operation: "blueprint_generation",
               run: async () => {
                 const response = await callTeacherBlueprintGenerationProvider({
+                  executionObserver,
                   profile: directProvider!,
                   prompt,
                   request,

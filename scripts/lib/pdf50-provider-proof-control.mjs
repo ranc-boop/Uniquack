@@ -1,0 +1,117 @@
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const contractPath = resolve(
+  root,
+  "src",
+  "lib",
+  "ai-jobs",
+  "pdf50-provider-proof-control.json",
+);
+
+function positiveInteger(value, name) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`invalid_pdf50_provider_proof_control:${name}`);
+  }
+  return value;
+}
+
+export function estimatePDF50ProviderProofCostMicros(control) {
+  const inputCost = Math.ceil(
+    (control.maxInputTokensPerAttempt * control.inputMicrosPerMillion) /
+      1_000_000,
+  );
+  const outputCost = Math.ceil(
+    (control.maxBillableOutputTokensPerAttempt *
+      control.outputMicrosPerMillion) /
+      1_000_000,
+  );
+  return control.providerInferenceAttempts * (inputCost + outputCost);
+}
+
+export async function loadPDF50ProviderProofControl() {
+  const parsed = JSON.parse(await readFile(contractPath, "utf8"));
+  const control = Object.freeze({
+    schema: parsed.schema,
+    mode: parsed.mode,
+    model: parsed.model,
+    claimedJobs: positiveInteger(parsed.claimedJobs, "claimedJobs"),
+    workerRouteInvocations: positiveInteger(
+      parsed.workerRouteInvocations,
+      "workerRouteInvocations",
+    ),
+    providerInferenceAttempts: positiveInteger(
+      parsed.providerInferenceAttempts,
+      "providerInferenceAttempts",
+    ),
+    providerMaxOutputTokens: positiveInteger(
+      parsed.providerMaxOutputTokens,
+      "providerMaxOutputTokens",
+    ),
+    providerMaxNetworkRequests: positiveInteger(
+      parsed.providerMaxNetworkRequests,
+      "providerMaxNetworkRequests",
+    ),
+    approvedBudgetUsd: positiveInteger(
+      parsed.approvedBudgetUsd,
+      "approvedBudgetUsd",
+    ),
+    maxInputTokensPerAttempt: positiveInteger(
+      parsed.maxInputTokensPerAttempt,
+      "maxInputTokensPerAttempt",
+    ),
+    maxBillableOutputTokensPerAttempt: positiveInteger(
+      parsed.maxBillableOutputTokensPerAttempt,
+      "maxBillableOutputTokensPerAttempt",
+    ),
+    inputMicrosPerMillion: positiveInteger(
+      parsed.inputMicrosPerMillion,
+      "inputMicrosPerMillion",
+    ),
+    outputMicrosPerMillion: positiveInteger(
+      parsed.outputMicrosPerMillion,
+      "outputMicrosPerMillion",
+    ),
+  });
+
+  if (
+    control.schema !== "edustruct.pdf50-provider-proof-control.v1" ||
+    control.mode !== "BOUNDED_ONE_JOB_REAL_PROVIDER" ||
+    control.model !== "gemini-2.5-flash-lite" ||
+    control.claimedJobs !== 1 ||
+    control.workerRouteInvocations !== 1 ||
+    control.providerInferenceAttempts !== 1 ||
+    control.providerMaxOutputTokens > 8_192 ||
+    control.providerMaxNetworkRequests > 256 ||
+    control.approvedBudgetUsd > 5
+  ) {
+    throw new Error("invalid_pdf50_provider_proof_control:safety_boundary");
+  }
+
+  if (
+    estimatePDF50ProviderProofCostMicros(control) >
+    control.approvedBudgetUsd * 1_000_000
+  ) {
+    throw new Error("invalid_pdf50_provider_proof_control:cost_boundary");
+  }
+  return control;
+}
+
+export function pdf50ProviderProofEnvironment(control) {
+  return Object.freeze({
+    AI_JOBS_LOCAL_MAX_INVOCATIONS: String(control.workerRouteInvocations),
+    PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: String(
+      control.providerInferenceAttempts,
+    ),
+    PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: String(
+      control.providerMaxNetworkRequests,
+    ),
+    PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: String(
+      control.providerMaxOutputTokens,
+    ),
+    PDF50_PROVIDER_TEST_MODE: control.mode,
+    PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: String(control.approvedBudgetUsd),
+  });
+}

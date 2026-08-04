@@ -19,7 +19,7 @@ assert(policy.includes("maxOrganizationActiveJobs: 1"), "organization active exe
 assert(policy.includes("maxOrganizationQueuedJobs: 12"), "organization outstanding limit must remain 12");
 assert(policy.includes("maxUserActiveOrQueuedJobs: 5"), "user outstanding limit must remain 5");
 assert(policy.includes("ai_pdf_extract: 1"), "PDF active execution must remain 1");
-assert(worker.includes("Math.min(limit, 2, control.maxJobsPerInvocation)"), "worker invocation must remain at most 2");
+assert(worker.includes("Math.min(limit, 2, control.maxJobsPerInvocation)"), "normal worker invocation must remain at most 2");
 assert(worker.includes("releaseAIPdfBurstAdmissionJobs"), "worker must pump durable admission around its existing claim cycle");
 assert(migration.includes("skip locked"), "concurrent admission pumps must not claim the same item");
 assert(migration.includes("safe_error_code = 'admission_temporarily_blocked'"), "one admission failure must remain item-scoped");
@@ -68,4 +68,4 @@ const actionable = partialItems.filter((item) =>
 assert(actionable.length === 3, "partial upload failure must not block other items");
 assert(partialItems[1].status === "failed", "invalid input must fail only its own item");
 
-console.log(`PASS PDF50 burst load smoke (50 durable items released through unchanged five-job user window in ${rounds} rounds)`);
+console.log(`PASS PDF50 burst load smoke (50 durable items released through the unchanged five-job user window in ${rounds} rounds)`);

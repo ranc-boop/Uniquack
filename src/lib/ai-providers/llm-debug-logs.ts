@@ -29,6 +29,14 @@ function safeFilePart(value: unknown) {
     .slice(0, 80);
 }
 
+function stringFingerprint(value: string) {
+  return {
+    byteLength: Buffer.byteLength(value, "utf8"),
+    sha256: crypto.createHash("sha256").update(value).digest("hex"),
+    type: "string",
+  };
+}
+
 function shouldRedactKey(key: string) {
   return /^(authorization|x-goog-api-key|api[_-]?key|access[_-]?token|secret|password)$/i.test(
     key,
@@ -36,6 +44,10 @@ function shouldRedactKey(key: string) {
 }
 
 function sanitize(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") {
+    return stringFingerprint(value);
+  }
+
   if (value === null || typeof value !== "object") {
     return value;
   }
@@ -60,14 +72,21 @@ function sanitize(value: unknown, seen = new WeakSet<object>()): unknown {
   seen.add(value);
 
   if (Array.isArray(value)) {
-    return value.map((item) => sanitize(item, seen));
+    return {
+      itemCount: value.length,
+      items: value.slice(0, 20).map((item) => sanitize(item, seen)),
+      truncated: value.length > 20,
+      type: "array",
+    };
   }
 
   return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, item]) => [
-      key,
-      shouldRedactKey(key) ? REDACTED : sanitize(item, seen),
-    ]),
+    Object.entries(value as Record<string, unknown>)
+      .slice(0, 50)
+      .map(([key, item]) => [
+        key,
+        shouldRedactKey(key) ? REDACTED : sanitize(item, seen),
+      ]),
   );
 }
 
@@ -82,15 +101,10 @@ export async function writeAIImportLLMDebugLog({
 
   const now = new Date();
   const dateDir = now.toISOString().slice(0, 10);
-  const batch = safeFilePart(context.batchId) || "batch";
-  const chunk =
-    context.chunkIndex === undefined
-      ? "full"
-      : `chunk-${safeFilePart(Number(context.chunkIndex) + 1)}`;
   const suffix = crypto.randomUUID().slice(0, 8);
   const fileName = `${now
     .toISOString()
-    .replace(/[:.]/g, "-")}_${batch}_${chunk}_${safeFilePart(event)}_${suffix}.json`;
+    .replace(/[:.]/g, "-")}_${safeFilePart(event)}_${suffix}.json`;
   const fullPath = path.join(LOG_ROOT, dateDir, fileName);
 
   try {
@@ -109,10 +123,7 @@ export async function writeAIImportLLMDebugLog({
       )}\n`,
       "utf8",
     );
-  } catch (error) {
-    console.warn(
-      "AI import LLM debug log write failed:",
-      error instanceof Error ? error.message : error,
-    );
+  } catch {
+    console.warn("AI import LLM debug log write failed.");
   }
 }

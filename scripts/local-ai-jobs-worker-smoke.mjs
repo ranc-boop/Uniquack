@@ -1,19 +1,24 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   LocalAIJobsWorkerConfigurationError,
+  acquireLocalAIJobsWorkerLock,
   createLocalAIJobsWorker,
+  resolveLocalAIJobsWorkerMaxInvocations,
   resolveLocalAIJobsWorkerRoute,
   validateLocalAIJobsInternalToken,
+  validateLocalAIJobsTargetJobId,
 } from "./local-ai-jobs-worker.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const token = "local-worker-smoke-0123456789-abcdef-XYZ";
+const targetJobId = "123e4567-e89b-42d3-a456-426614174000";
 const workerRoutePath = "/api/internal/ai-jobs/run";
 
 function expectConfigurationError(callback, code) {
@@ -54,6 +59,38 @@ function createResponse(payload, init = {}) {
   });
 }
 
+function safeAggregate({
+  claimed = 0,
+  completed = 0,
+  failed = 0,
+  providerCleanupFailures = 0,
+  providerCleanupRequests = 0,
+  providerInferenceAttempts = 0,
+  providerInferenceRequests = providerInferenceAttempts,
+  providerPollRequests = 0,
+  providerUploadRequests = 0,
+  retryWaiting = 0,
+} = {}) {
+  return {
+    accepted: true,
+    claimed,
+    completed,
+    failed,
+    providerCleanupFailures,
+    providerCleanupRequests,
+    providerInferenceAttempts,
+    providerInferenceRequests,
+    providerNetworkRequests:
+      providerCleanupRequests +
+      providerInferenceRequests +
+      providerPollRequests +
+      providerUploadRequests,
+    providerPollRequests,
+    providerUploadRequests,
+    retryWaiting,
+  };
+}
+
 function fastWorker(options) {
   return createLocalAIJobsWorker({
     activeDelayMs: 1,
@@ -69,6 +106,18 @@ function fastWorker(options) {
 }
 
 function configurationCases() {
+  assert.equal(
+    resolveLocalAIJobsWorkerMaxInvocations(undefined),
+    Number.POSITIVE_INFINITY,
+  );
+  assert.equal(resolveLocalAIJobsWorkerMaxInvocations("1"), 1);
+  for (const value of ["", "0", "2", "01", "1 "]) {
+    expectConfigurationError(
+      () => resolveLocalAIJobsWorkerMaxInvocations(value),
+      "max_invocations_contract_rejected",
+    );
+  }
+
   for (const target of [
     "http://localhost:3000/api/internal/ai-jobs/run",
     "http://127.0.0.1:3000/api/internal/ai-jobs/run",
@@ -170,16 +219,26 @@ function configurationCases() {
     "internal_token_placeholder_rejected",
   );
   assert.equal(validateLocalAIJobsInternalToken(token), token);
+  assert.equal(validateLocalAIJobsTargetJobId(undefined), null);
+  assert.equal(validateLocalAIJobsTargetJobId(targetJobId), targetJobId);
+  for (const value of ["", "not-a-uuid", targetJobId.toUpperCase(), `${targetJobId} `]) {
+    expectConfigurationError(
+      () => validateLocalAIJobsTargetJobId(value),
+      "target_job_id_rejected",
+    );
+  }
 }
 
 async function requestContractCase() {
   const logs = [];
   let body = "";
+  let receivedTargetJobId = null;
   let receivedToken = null;
   let requestCount = 0;
   const local = await startServer((request, response) => {
     requestCount += 1;
     receivedToken = request.headers["x-ai-jobs-internal-token"];
+    receivedTargetJobId = request.headers["x-pdf50-provider-test-job-id"];
     request.setEncoding("utf8");
     request.on("data", (chunk) => {
       body += chunk;
@@ -190,26 +249,34 @@ async function requestContractCase() {
         "content-type": "application/json",
       });
       response.end(
-        JSON.stringify({
-          accepted: true,
+        JSON.stringify(safeAggregate({
           claimed: 1,
           completed: 1,
-          failed: 0,
-          retryWaiting: 0,
-        }),
+          providerCleanupRequests: 1,
+          providerInferenceAttempts: 1,
+          providerUploadRequests: 2,
+        })),
       );
     });
   });
 
   try {
-    const worker = fastWorker({ logger: (line) => logs.push(line), targetUrl: local.url });
+    const worker = fastWorker({
+      logger: (line) => logs.push(line),
+      targetJobId,
+      targetUrl: local.url,
+    });
     const result = await worker.run({ maxInvocations: 1 });
     assert.equal(result.reason, "max_invocations_reached");
     assert.equal(result.maxObservedInFlight, 1);
     assert.equal(requestCount, 1);
     assert.equal(receivedToken, token);
+    assert.equal(receivedTargetJobId, targetJobId);
     assert.equal(body, "");
     assert(logs.some((line) => line.includes("status=worker_accepted")));
+    assert(logs.some((line) => line.includes("providerInferenceAttempts=1")));
+    assert(logs.some((line) => line.includes("providerInferenceRequests=1")));
+    assert(logs.some((line) => line.includes("providerNetworkRequests=4")));
     assert(logs.every((line) => !line.includes(token)));
     assert.deepEqual(worker.getState(), {
       activeRequest: false,
@@ -241,13 +308,10 @@ async function serialAndPollingCases() {
     const claimed = requestCount === 1 ? 1 : 0;
     response.writeHead(200, { "content-type": "application/json" });
     response.end(
-      JSON.stringify({
-        accepted: true,
+      JSON.stringify(safeAggregate({
         claimed,
         completed: claimed,
-        failed: 0,
-        retryWaiting: 0,
-      }),
+      })),
     );
     activeRequests -= 1;
   });
@@ -317,6 +381,26 @@ async function redirectAndAuthenticationCases() {
 }
 
 async function backoffAndFatalFailureCases() {
+  const oneShotLogs = [];
+  const oneShotWorker = fastWorker({
+    fetchImpl: async () =>
+      new Response(
+        JSON.stringify({
+          accepted: false,
+          reason: "trusted_provider_test_claim_update_failed",
+        }),
+        { status: 503 },
+      ),
+    logger: (line) => oneShotLogs.push(line),
+  });
+  const oneShotResult = await oneShotWorker.run({ maxInvocations: 1 });
+  assert.equal(oneShotResult.reason, "bounded_worker_failure");
+  assert(
+    oneShotLogs.some((line) =>
+      line.includes("safeReason=trusted_provider_test_claim_update_failed"),
+    ),
+  );
+
   const unavailableDelays = [];
   let unavailableRequests = 0;
   const unavailableWorker = fastWorker({
@@ -331,7 +415,7 @@ async function backoffAndFatalFailureCases() {
     },
   });
   const unavailableResult = await unavailableWorker.run({ maxInvocations: 4 });
-  assert.equal(unavailableResult.reason, "max_invocations_reached");
+  assert.equal(unavailableResult.reason, "local_server_unavailable");
   assert.equal(unavailableRequests, 4);
   assert.deepEqual(unavailableDelays, [1, 2, 4, 4]);
 
@@ -367,7 +451,7 @@ async function timeoutAndEchoLeakCases() {
     requestTimeoutMs: 10,
   });
   const timeoutResult = await timeoutWorker.run({ maxInvocations: 1 });
-  assert.equal(timeoutResult.reason, "max_invocations_reached");
+  assert.equal(timeoutResult.reason, "local_server_unavailable");
   assert(observedAbort);
   assert(timeoutLogs.some((line) => line.includes("status=local_server_unavailable")));
   assert.equal(timeoutWorker.getState().inFlight, 0);
@@ -401,13 +485,7 @@ async function independentRunnerInstanceLimitationCase() {
     maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
     await requestGate;
     activeRequests -= 1;
-    return createResponse({
-      accepted: true,
-      claimed: 0,
-      completed: 0,
-      failed: 0,
-      retryWaiting: 0,
-    });
+    return createResponse(safeAggregate());
   };
 
   const firstWorker = fastWorker({ fetchImpl, logger: () => undefined });
@@ -457,6 +535,74 @@ async function gracefulShutdownCase() {
   assert.equal(worker.getState().inFlight, 0);
 }
 
+async function operatingSystemSingletonCase() {
+  const lockDirectory = await mkdtemp(resolve(tmpdir(), "edustruct-worker-lock-"));
+  try {
+    const first = await acquireLocalAIJobsWorkerLock({
+      isProcessAlive: (processId) => processId === 10_001,
+      lockDirectory,
+      processId: 10_001,
+    });
+    await assert.rejects(
+      acquireLocalAIJobsWorkerLock({
+        isProcessAlive: (processId) => processId === 10_001,
+        lockDirectory,
+        processId: 10_002,
+      }),
+      (error) => {
+        assert(error instanceof LocalAIJobsWorkerConfigurationError);
+        assert.equal(error.code, "worker_instance_already_running");
+        return true;
+      },
+    );
+    await first.release();
+
+    const stale = await acquireLocalAIJobsWorkerLock({
+      isProcessAlive: () => false,
+      lockDirectory,
+      processId: 10_003,
+    });
+    const recovered = await acquireLocalAIJobsWorkerLock({
+      isProcessAlive: () => false,
+      lockDirectory,
+      processId: 10_004,
+    });
+    await stale.release();
+    await recovered.release();
+
+    const reacquired = await acquireLocalAIJobsWorkerLock({
+      isProcessAlive: () => false,
+      lockDirectory,
+      processId: 10_005,
+    });
+    await reacquired.release();
+
+    const staleSeed = await acquireLocalAIJobsWorkerLock({
+      isProcessAlive: () => true,
+      lockDirectory,
+      processId: 11_000,
+    });
+    const contenders = await Promise.allSettled([
+      acquireLocalAIJobsWorkerLock({
+        isProcessAlive: (processId) => processId !== 11_000,
+        lockDirectory,
+        processId: 11_001,
+      }),
+      acquireLocalAIJobsWorkerLock({
+        isProcessAlive: (processId) => processId !== 11_000,
+        lockDirectory,
+        processId: 11_002,
+      }),
+    ]);
+    const winners = contenders.filter((result) => result.status === "fulfilled");
+    assert.equal(winners.length, 1, "stale-lock takeover must have one winner");
+    await staleSeed.release();
+    await winners[0].value.release();
+  } finally {
+    await rm(lockDirectory, { force: true, recursive: true });
+  }
+}
+
 async function sourceBoundaryCases() {
   const [runner, route, worker, policy, claimMigration, packageJson, runbook] = await Promise.all([
     readFile(resolve(root, "scripts/local-ai-jobs-worker.mjs"), "utf8"),
@@ -471,22 +617,40 @@ async function sourceBoundaryCases() {
     readFile(resolve(root, "docs/runbooks/local-ai-jobs-worker.md"), "utf8"),
   ]);
 
-  assert(route.includes("runDurableAIProviderJobs({ limit: 2 })"));
+  assert(
+    route.includes("runDurableAIProviderJobs({") &&
+      route.includes("limit: providerTestLimits?.maxClaimedJobs ?? 2") &&
+      route.includes("providerTestLimits") &&
+      route.includes("PDF50_PROVIDER_TEST_JOB_HEADER") &&
+      route.includes("targetJobId"),
+  );
   assert(!route.includes("request.json("));
   assert(worker.includes("Math.min(limit, 2, control.maxJobsPerInvocation)"));
+  assert(worker.includes("claimTrustedProviderTestJob"));
+  assert(worker.includes("trusted_provider_test_target_required"));
+  assert(worker.includes("if (!providerTestLimits)"));
   assert(policy.includes("ai_pdf_extract: 1"));
   assert(
     claimMigration.includes("claimed_job.job_kind = 'ai_pdf_extract' and active_pdf >= 1"),
   );
   assert(runner.includes('redirect: "manual"'));
   assert(runner.includes('process.once("SIGINT", shutdown)'));
+  assert(runner.includes('mkdir(lockPath, { mode: 0o700 })'));
+  assert(runner.includes("await rename(lockPath, stalePath)"));
+  assert(runner.includes("worker_instance_already_running"));
   assert(runner.includes("AI_JOBS_INTERNAL_TOKEN"));
+  assert(runner.includes("AI_JOBS_LOCAL_MAX_INVOCATIONS"));
+  assert(runner.includes("AI_JOBS_LOCAL_TARGET_JOB_ID"));
+  assert(runner.includes("x-pdf50-provider-test-job-id"));
+  assert(runner.includes("readSafeRouteFailure"));
+  assert(runner.includes('"bounded_worker_failure"'));
+  assert(runner.includes("resolveLocalAIJobsWorkerMaxInvocations"));
   assert(!runner.includes("dotenv"));
   assert(!runner.includes("request.json"));
   assert.equal(JSON.parse(packageJson).scripts["worker:dev"], "node scripts/local-ai-jobs-worker.mjs");
   assert(runbook.includes("Only one `npm run worker:dev` process should be active at a time"));
-  assert(runbook.includes("operating-system-wide singleton"));
-  assert(runbook.includes("Multiple local runners are unsupported"));
+  assert(runbook.includes("operating-system-wide lock"));
+  assert(runbook.includes("A second terminal fails closed"));
 }
 
 configurationCases();
@@ -497,6 +661,7 @@ await backoffAndFatalFailureCases();
 await timeoutAndEchoLeakCases();
 await gracefulShutdownCase();
 await independentRunnerInstanceLimitationCase();
+await operatingSystemSingletonCase();
 await sourceBoundaryCases();
 
 console.log(

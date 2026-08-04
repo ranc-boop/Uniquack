@@ -55,10 +55,11 @@ assert(migration.includes("if p_bucket_id <> 'question-assets' then"), "question
 assert(!/on storage\.objects for (?:insert|select|delete)\s+to\s+(?:anon|public)/i.test(migration), "Storage policies must not grant anonymous or public access");
 assert(!/organization_members member/i.test(migration), "organization membership must not bypass Bank owner/editor authorization");
 assert(
-  plan.executableMigrationNames.length === 50 &&
-    plan.executableMigrationNames.at(-2) === "0049_practice_agent_provider_routing.sql" &&
-    plan.executableMigrationNames.at(-1) === "0050_pdf50_burst_upload_admission.sql",
-  "Practice routing 0049 and PDF50 0050 must be the canonical active tail.",
+  plan.executableMigrationNames.includes("0049_practice_agent_provider_routing.sql") &&
+    plan.executableMigrationNames.includes("0050_pdf50_burst_upload_admission.sql") &&
+    plan.executableMigrationNames.indexOf("0049_practice_agent_provider_routing.sql") + 1 ===
+      plan.executableMigrationNames.indexOf("0050_pdf50_burst_upload_admission.sql"),
+  "Practice routing 0049 and PDF50 0050 must remain consecutive canonical migrations even when newer migrations exist.",
 );
 
 console.log("PASS PDF50 0050 bucket-adoption source contract (absent/create, compatible/adopt, incompatible/fail-closed)");

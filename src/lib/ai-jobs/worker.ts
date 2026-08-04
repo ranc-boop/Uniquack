@@ -7,11 +7,17 @@ import {
   safeAIProviderErrorState,
 } from "@/lib/ai-providers/errors";
 import {
+  createAIProviderExecutionBudget,
+  type AIProviderExecutionBudget,
+  type AIProviderExecutionSummary,
+} from "@/lib/ai-providers/execution-budget";
+import {
   resolveAIProviderRoute,
   runWithAIProviderRoute,
   type AIProviderRoutingOperationKind,
 } from "@/lib/ai-providers/routing";
 import { queueRetryDelayMs } from "@/lib/ai-jobs/policy";
+import type { TrustedAIProviderTestLimits } from "@/lib/ai-jobs/provider-test-control";
 import type { AIProviderJob } from "@/lib/ai-jobs/types";
 import {
   AIProviderJobFenceLostError,
@@ -40,6 +46,10 @@ import {
 } from "@/lib/ai-pdf-import/service";
 import { AI_IMPORT_SOURCES_BUCKET } from "@/lib/ai-pdf-import/constants";
 import { releaseAIPdfBurstAdmissionJobs } from "@/lib/ai-pdf-import/burst-admission";
+import {
+  getAIPdfBatchFinalizationFailure,
+  getAIPdfPostPersistenceFailureStage,
+} from "@/lib/ai-pdf-import/post-persistence";
 import { generateTeacherBlueprintReviewDrafts } from "@/lib/teacher-blueprint-generation";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -51,7 +61,19 @@ type WorkerSummary = {
   claimed: number;
   completed: number;
   failed: number;
+  providerCleanupFailures: number;
+  providerCleanupRequests: number;
+  providerInferenceAttempts: number;
+  providerInferenceRequests: number;
+  providerNetworkRequests: number;
+  providerPollRequests: number;
+  providerUploadRequests: number;
   retryWaiting: number;
+};
+
+type WorkerJobState = {
+  providerExecution: AIProviderExecutionSummary;
+  status: "completed" | "failed" | "retry_wait";
 };
 
 type WorkerExecutionResult = {
@@ -66,6 +88,99 @@ type WorkerExecutionResult = {
   telemetry?: AIOperationExecutionMetadata;
   warningCount?: number;
 };
+
+async function countActiveJobs(
+  supabase: SupabaseWorkerClient,
+  configure: (query: any) => any = (query) => query,
+) {
+  const result = await configure(
+    supabase
+      .from("ai_provider_jobs")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["leased", "processing"]),
+  );
+  if (result.error) {
+    throw new Error("trusted_provider_test_claim_capacity_failed");
+  }
+  return Number(result.count ?? 0);
+}
+
+async function claimTrustedProviderTestJob({
+  jobId,
+  leaseOwner,
+  supabase,
+}: {
+  jobId: string;
+  leaseOwner: string;
+  supabase: SupabaseWorkerClient;
+}) {
+  const { data: candidateValue, error: candidateError } = await supabase
+    .from("ai_provider_jobs")
+    .select("*")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (candidateError) {
+    throw new Error("trusted_provider_test_claim_read_failed");
+  }
+  if (!candidateValue) return [];
+
+  const candidate = normalizeJob(candidateValue);
+  const now = new Date();
+  if (
+    candidate.job_kind !== "ai_pdf_extract" ||
+    !["queued", "retry_wait"].includes(candidate.status) ||
+    new Date(candidate.available_at).getTime() > now.getTime() ||
+    candidate.execution_attempt_count >= candidate.max_execution_attempts
+  ) {
+    return [];
+  }
+
+  const [activeGlobal, activePdf, activeOrganization] = await Promise.all([
+    countActiveJobs(supabase),
+    countActiveJobs(supabase, (query) => query.eq("job_kind", "ai_pdf_extract")),
+    countActiveJobs(supabase, (query) =>
+      query.eq("organization_id", candidate.organization_id),
+    ),
+  ]);
+  if (activeGlobal > 0 || activePdf > 0 || activeOrganization > 0) return [];
+
+  const leasedAt = now.toISOString();
+  const { data: claimedValue, error: claimError } = await supabase
+    .from("ai_provider_jobs")
+    .update({
+      available_at: candidate.available_at,
+      execution_attempt_count: candidate.execution_attempt_count + 1,
+      last_heartbeat_at: leasedAt,
+      lease_acquired_at: leasedAt,
+      lease_expires_at: new Date(now.getTime() + 900_000).toISOString(),
+      lease_owner: leaseOwner,
+      retryable: false,
+      safe_error_code: null,
+      safe_message: null,
+      started_at: candidate.started_at ?? leasedAt,
+      status: "leased",
+    })
+    .eq("id", candidate.id)
+    .eq("status", candidate.status)
+    .eq("execution_attempt_count", candidate.execution_attempt_count)
+    .eq("available_at", candidate.available_at)
+    .select("*")
+    .maybeSingle();
+  if (claimError) {
+    throw new Error("trusted_provider_test_claim_update_failed");
+  }
+  if (!claimedValue) return [];
+
+  const claimed = normalizeJob(claimedValue);
+  if (
+    claimed.lease_owner !== leaseOwner ||
+    !claimed.execution_fence_token ||
+    claimed.lease_generation <= candidate.lease_generation
+  ) {
+    throw new Error("trusted_provider_test_claim_fence_missing");
+  }
+  return [claimed];
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -243,12 +358,14 @@ async function runAIPdfExtractJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
+  providerExecution,
   selectiveExecutionEnabled = false,
   supabase,
 }: {
   job: AIProviderJob;
   leaseOwner: string;
   maxProviderCalls?: number;
+  providerExecution: AIProviderExecutionBudget;
   selectiveExecutionEnabled?: boolean;
   supabase: SupabaseWorkerClient;
 }): Promise<WorkerExecutionResult> {
@@ -385,6 +502,7 @@ async function runAIPdfExtractJob({
     providerResultCheckpoint: providerResultCheckpoint ?? undefined,
     persistenceFence: persistenceFenceForJob(fencedJob),
     persistenceLineageKey: buildPdfPersistenceLineageKey({ job, sourceAssetId }),
+    providerExecutionObserver: providerExecution,
     onProviderResultCheckpoint: async (checkpoint) => {
       const payload = checkpoint as unknown as Record<string, unknown>;
       await checkpointAIProviderJobProviderResult({
@@ -431,6 +549,7 @@ async function runAIPdfExtractJob({
     const routeCandidate = route.candidates.find(
       (candidate) => candidate.profile.id === routed.profile.id,
     );
+    const providerExecutionSummary = providerExecution.snapshot();
     return {
       createdCount,
       fallbackUsed: routed.fallbackUsed,
@@ -448,10 +567,13 @@ async function runAIPdfExtractJob({
         fallbackUsed: routed.fallbackUsed,
         model: routed.profile.model,
         provider: routed.profile.provider,
-        providerCallCount: Math.max(1, usageSamples.length),
+        providerCallCount: providerExecutionSummary.providerInferenceRequests,
         providerLatencyMs: Date.now() - providerStartedAt,
         providerProfileId: routed.profile.id,
-        providerRetryAttempts: Math.max(0, usageSamples.length - 1),
+        providerRetryAttempts: Math.max(
+          0,
+          providerExecutionSummary.providerInferenceAttempts - 1,
+        ),
         routePolicyVersion: route.policy?.policyVersion ?? null,
         routePosition: routeCandidate?.routeOrder ?? null,
         usageSamples,
@@ -474,11 +596,13 @@ async function runAIPdfCoverageRecoveryJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
+  providerExecution,
   supabase,
 }: {
   job: AIProviderJob;
   leaseOwner: string;
   maxProviderCalls?: number;
+  providerExecution: AIProviderExecutionBudget;
   supabase: SupabaseWorkerClient;
 }): Promise<WorkerExecutionResult> {
   const { data: batch, error: batchError } = await supabase
@@ -556,6 +680,7 @@ async function runAIPdfCoverageRecoveryJob({
     pdfBuffer: Buffer.from(await sourceBlob.arrayBuffer()),
     profileId: job.created_by,
     providerProfileId,
+    providerExecutionObserver: providerExecution,
     recoveryPlanHash,
     recoveryWindowIds,
     routingLeaseOwner: `${leaseOwner}:${job.id}`,
@@ -583,6 +708,7 @@ async function runAIPdfCoverageRecoveryJob({
     const routeCandidate = route.candidates.find(
       (candidate) => candidate.profile.id === routed.profile.id,
     );
+    const providerExecutionSummary = providerExecution.snapshot();
     await checkpointAIProviderJobStage({
       job: fencedJob,
       metadata: {
@@ -611,10 +737,13 @@ async function runAIPdfCoverageRecoveryJob({
         fallbackUsed: routed.fallbackUsed,
         model: routed.profile.model,
         provider: routed.profile.provider,
-        providerCallCount: Math.max(1, usageSamples.length),
+        providerCallCount: providerExecutionSummary.providerInferenceRequests,
         providerLatencyMs: Date.now() - providerStartedAt,
         providerProfileId: routed.profile.id,
-        providerRetryAttempts: Math.max(0, usageSamples.length - 1),
+        providerRetryAttempts: Math.max(
+          0,
+          providerExecutionSummary.providerInferenceAttempts - 1,
+        ),
         routePolicyVersion: route.policy?.policyVersion ?? null,
         routePosition: routeCandidate?.routeOrder ?? null,
         usageSamples,
@@ -630,11 +759,13 @@ async function runBlueprintGenerateQuestionsJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
+  providerExecution,
   supabase,
 }: {
   job: AIProviderJob;
   leaseOwner: string;
   maxProviderCalls?: number;
+  providerExecution: AIProviderExecutionBudget;
   supabase: SupabaseWorkerClient;
 }): Promise<WorkerExecutionResult> {
   const fencedJob = { ...job, lease_owner: leaseOwner };
@@ -705,6 +836,7 @@ async function runBlueprintGenerateQuestionsJob({
   const providerStartedAt = Date.now();
   const result = await generateTeacherBlueprintReviewDrafts({
     blueprint,
+    executionObserver: providerExecution,
     profileId: job.created_by,
     queueJobId: job.id,
     routingLeaseOwner: `${leaseOwner}:${job.id}`,
@@ -721,6 +853,8 @@ async function runBlueprintGenerateQuestionsJob({
     supabase,
   });
 
+  const providerExecutionSummary = providerExecution.snapshot();
+
   return {
     createdCount: result.createdDraftCount,
     fallbackUsed: result.fallbackUsed,
@@ -731,10 +865,13 @@ async function runBlueprintGenerateQuestionsJob({
       fallbackUsed: result.fallbackUsed,
       model: result.safeProviderModel ?? null,
       provider: result.providerSafeName ?? null,
-      providerCallCount: Math.max(1, usageSamples.length),
+      providerCallCount: providerExecutionSummary.providerInferenceRequests,
       providerLatencyMs: Date.now() - providerStartedAt,
       providerProfileId: result.safeProviderId ?? null,
-      providerRetryAttempts: Math.max(0, usageSamples.length - 1),
+      providerRetryAttempts: Math.max(
+        0,
+        providerExecutionSummary.providerInferenceAttempts - 1,
+      ),
       routePolicyVersion: result.providerRoutePolicyVersion ?? null,
       routePosition: result.providerRoutePosition ?? null,
       usageSamples,
@@ -746,16 +883,26 @@ async function executeClaimedJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
+  providerTestLimits,
   selectiveExecutionEnabled = false,
   supabase,
 }: {
   job: AIProviderJob;
   leaseOwner: string;
   maxProviderCalls?: number;
+  providerTestLimits?: TrustedAIProviderTestLimits | null;
   selectiveExecutionEnabled?: boolean;
   supabase: SupabaseWorkerClient;
-}): Promise<"completed" | "failed" | "retry_wait"> {
+}): Promise<WorkerJobState> {
   const executionStartedAt = Date.now();
+  const providerExecution = createAIProviderExecutionBudget({
+    maxInferenceAttempts: Math.min(
+      maxProviderCalls,
+      providerTestLimits?.maxInferenceAttempts ?? maxProviderCalls,
+    ),
+    maxNetworkRequests: providerTestLimits?.maxNetworkRequests,
+    maxOutputTokens: providerTestLimits?.maxOutputTokens,
+  });
   await markProcessing({ job, leaseOwner, supabase });
   const heartbeat = setInterval(() => {
     void markProcessing({ job, leaseOwner, supabase }).catch(() => undefined);
@@ -769,16 +916,32 @@ async function executeClaimedJob({
             job,
             leaseOwner,
             maxProviderCalls,
+            providerExecution,
             selectiveExecutionEnabled,
             supabase,
           })
         : job.job_kind === "ai_pdf_coverage_recovery"
-          ? await runAIPdfCoverageRecoveryJob({ job, leaseOwner, maxProviderCalls, supabase })
-          : await runBlueprintGenerateQuestionsJob({ job, leaseOwner, maxProviderCalls, supabase });
+          ? await runAIPdfCoverageRecoveryJob({
+              job,
+              leaseOwner,
+              maxProviderCalls,
+              providerExecution,
+              supabase,
+            })
+          : await runBlueprintGenerateQuestionsJob({
+              job,
+              leaseOwner,
+              maxProviderCalls,
+              providerExecution,
+              supabase,
+            });
+
+    const providerExecutionSummary = providerExecution.snapshot();
 
     const finished = await finishJob({
       job,
       leaseOwner,
+      providerAttemptCount: providerExecutionSummary.providerInferenceAttempts,
       safeResult: {
         createdDraftCount: result.createdCount,
         fallbackUsed: result.fallbackUsed ?? false,
@@ -790,13 +953,22 @@ async function executeClaimedJob({
         zeroNewDrafts:
           job.job_kind === "ai_pdf_coverage_recovery" && result.createdCount === 0,
         reviewRoute: result.reviewRoute,
+        providerCleanupFailures: providerExecutionSummary.providerCleanupFailures,
+        providerCleanupRequests: providerExecutionSummary.providerCleanupRequests,
+        providerInferenceAttempts: providerExecutionSummary.providerInferenceAttempts,
+        providerInferenceRequests: providerExecutionSummary.providerInferenceRequests,
+        providerNetworkRequests: providerExecutionSummary.providerNetworkRequests,
+        providerPollRequests: providerExecutionSummary.providerPollRequests,
+        providerUploadRequests: providerExecutionSummary.providerUploadRequests,
         warningCount: result.warningCount,
       },
       status: "completed",
       supabase,
     });
 
-    if (!finished) return "failed";
+    if (!finished) {
+      return { providerExecution: providerExecutionSummary, status: "failed" };
+    }
     await recordAIOperationTelemetry({
       draftsCreated: result.createdCount,
       executionStartedAt,
@@ -805,8 +977,12 @@ async function executeClaimedJob({
       metadata: result.telemetry,
       supabase,
     }).catch(() => undefined);
-    return "completed";
+    return { providerExecution: providerExecutionSummary, status: "completed" };
   } catch (error) {
+    const providerExecutionSummary = providerExecution.snapshot();
+    const postPersistenceFailureStage =
+      getAIPdfPostPersistenceFailureStage(error);
+    const batchFinalizationFailure = getAIPdfBatchFinalizationFailure(error);
     const classified = classifyAIProviderError({
       error,
       operation:
@@ -823,11 +999,24 @@ async function executeClaimedJob({
     const finished = await finishJob({
       job,
       leaseOwner,
-      providerAttemptCount: classified.attemptCount,
+      providerAttemptCount: providerExecutionSummary.providerInferenceAttempts,
       safeErrorCode: safe.safeErrorCode,
       safeMessage: canRetry
         ? "The AI service is temporarily busy. Your work is safe and will retry automatically."
         : safeWorkerFailureMessage(),
+      safeResult: {
+        batchFinalizationFailureReason: batchFinalizationFailure?.reason ?? null,
+        batchFinalizationSummaryBytes:
+          batchFinalizationFailure?.summaryBytes ?? null,
+        postPersistenceFailureStage,
+        providerCleanupFailures: providerExecutionSummary.providerCleanupFailures,
+        providerCleanupRequests: providerExecutionSummary.providerCleanupRequests,
+        providerInferenceAttempts: providerExecutionSummary.providerInferenceAttempts,
+        providerInferenceRequests: providerExecutionSummary.providerInferenceRequests,
+        providerNetworkRequests: providerExecutionSummary.providerNetworkRequests,
+        providerPollRequests: providerExecutionSummary.providerPollRequests,
+        providerUploadRequests: providerExecutionSummary.providerUploadRequests,
+      },
       status: canRetry ? "retry_wait" : "failed",
       supabase,
     });
@@ -846,14 +1035,20 @@ async function executeClaimedJob({
         ].includes(classified.code)
           ? "unavailable"
           : "closed",
-        providerCallCount: classified.attemptCount ?? 0,
-        providerRetryAttempts: Math.max(0, (classified.attemptCount ?? 0) - 1),
+        providerCallCount: providerExecutionSummary.providerInferenceRequests,
+        providerRetryAttempts: Math.max(
+          0,
+          providerExecutionSummary.providerInferenceAttempts - 1,
+        ),
       },
       safeErrorCode: safe.safeErrorCode,
       supabase,
     }).catch(() => undefined);
 
-    return finished ? (canRetry ? "retry_wait" : "failed") : "failed";
+    return {
+      providerExecution: providerExecutionSummary,
+      status: finished ? (canRetry ? "retry_wait" : "failed") : "failed",
+    };
   } finally {
     clearInterval(heartbeat);
   }
@@ -861,11 +1056,15 @@ async function executeClaimedJob({
 
 export async function runDurableAIProviderJobs({
   limit = 1,
+  providerTestLimits = null,
   supabase = createServiceRoleClient(),
+  targetJobId = null,
   workerId = `ai-worker-${randomUUID()}`,
 }: {
   limit?: number;
+  providerTestLimits?: TrustedAIProviderTestLimits | null;
   supabase?: SupabaseWorkerClient;
+  targetJobId?: string | null;
   workerId?: string;
 } = {}): Promise<WorkerSummary> {
   const control = await getAIWorkerOperationsControl(supabase);
@@ -873,24 +1072,48 @@ export async function runDurableAIProviderJobs({
     claimed: 0,
     completed: 0,
     failed: 0,
+    providerCleanupFailures: 0,
+    providerCleanupRequests: 0,
+    providerInferenceAttempts: 0,
+    providerInferenceRequests: 0,
+    providerNetworkRequests: 0,
+    providerPollRequests: 0,
+    providerUploadRequests: 0,
     retryWaiting: 0,
   };
   if (control.pauseWorkerClaims) return summary;
 
-  await releaseAIPdfBurstAdmissionJobs({ limit: 4, supabase });
+  if (providerTestLimits && !targetJobId) {
+    throw new Error("trusted_provider_test_target_required");
+  }
+  if (!providerTestLimits && targetJobId) {
+    throw new Error("trusted_provider_test_target_without_limits");
+  }
+
+  if (!providerTestLimits) {
+    await releaseAIPdfBurstAdmissionJobs({ limit: 4, supabase });
+  }
 
   const boundedLimit = Math.max(
     1,
     Math.min(limit, 2, control.maxJobsPerInvocation),
   );
-  const { data, error } = await supabase.rpc("claim_ai_provider_jobs", {
-    p_lease_owner: workerId,
-    p_lease_seconds: 900,
-    p_limit: boundedLimit,
-  });
-  if (error) throw new Error(error.message);
-
-  const jobs = (Array.isArray(data) ? data : []).map(normalizeJob);
+  let jobs: AIProviderJob[];
+  if (providerTestLimits && targetJobId) {
+    jobs = await claimTrustedProviderTestJob({
+      jobId: targetJobId,
+      leaseOwner: workerId,
+      supabase,
+    });
+  } else {
+    const { data, error } = await supabase.rpc("claim_ai_provider_jobs", {
+      p_lease_owner: workerId,
+      p_lease_seconds: 900,
+      p_limit: boundedLimit,
+    });
+    if (error) throw new Error(error.message);
+    jobs = (Array.isArray(data) ? data : []).map(normalizeJob);
+  }
   summary.claimed = jobs.length;
   const states = await Promise.all(
     jobs.map((job) =>
@@ -898,6 +1121,7 @@ export async function runDurableAIProviderJobs({
         job,
         leaseOwner: workerId,
         maxProviderCalls: control.maxProviderCallsPerExecution,
+        providerTestLimits,
         selectiveExecutionEnabled: control.selectiveExecutionEnabled,
         supabase,
       }),
@@ -905,12 +1129,21 @@ export async function runDurableAIProviderJobs({
   );
 
   for (const state of states) {
-    if (state === "completed") summary.completed += 1;
-    if (state === "retry_wait") summary.retryWaiting += 1;
-    if (state === "failed") summary.failed += 1;
+    if (state.status === "completed") summary.completed += 1;
+    if (state.status === "retry_wait") summary.retryWaiting += 1;
+    if (state.status === "failed") summary.failed += 1;
+    summary.providerCleanupFailures += state.providerExecution.providerCleanupFailures;
+    summary.providerCleanupRequests += state.providerExecution.providerCleanupRequests;
+    summary.providerInferenceAttempts += state.providerExecution.providerInferenceAttempts;
+    summary.providerInferenceRequests += state.providerExecution.providerInferenceRequests;
+    summary.providerNetworkRequests += state.providerExecution.providerNetworkRequests;
+    summary.providerPollRequests += state.providerExecution.providerPollRequests;
+    summary.providerUploadRequests += state.providerExecution.providerUploadRequests;
   }
 
-  await releaseAIPdfBurstAdmissionJobs({ limit: 4, supabase });
+  if (!providerTestLimits) {
+    await releaseAIPdfBurstAdmissionJobs({ limit: 4, supabase });
+  }
 
   return summary;
 }
