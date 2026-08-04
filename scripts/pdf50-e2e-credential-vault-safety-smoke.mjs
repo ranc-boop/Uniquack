@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  loadPDF50ProviderProofControl,
+  pdf50ProviderProofEnvironment,
+} from "./lib/pdf50-provider-proof-control.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const setup = readFileSync(
   resolve(root, "scripts", "setup-pdf50-e2e-credential-vault.ps1"),
@@ -19,6 +24,8 @@ const removal = readFileSync(
   resolve(root, "scripts", "remove-pdf50-e2e-credential-vault.ps1"),
   "utf8",
 );
+const proofControl = await loadPDF50ProviderProofControl();
+const proofEnvironment = pdf50ProviderProofEnvironment(proofControl);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -72,12 +79,17 @@ for (const name of [
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "CLEAN_SUPABASE_SERVICE_ROLE_KEY",
   "AI_PROVIDER_ENCRYPTION_KEY",
-  "TEST_TEACHER_USERNAME",
-  "TEST_TEACHER_PASSWORD",
   "PDF50_E2E_EXPECTED_PROJECT_REF",
 ]) {
   assert(setup.includes(`"${name}"`), `setup is missing allowlisted value ${name}`);
   assert(launcher.includes(`"${name}"`), `launcher is missing allowlisted value ${name}`);
+}
+for (const source of [setup, launcher, validator]) {
+  assert(
+    !source.includes('"TEST_TEACHER_USERNAME"') &&
+      !source.includes('"TEST_TEACHER_PASSWORD"'),
+    "vault tooling must not collect, decrypt, or require standing Teacher credentials",
+  );
 }
 
 assert(
@@ -108,14 +120,29 @@ assert(
 for (const literal of [
   '$env:PDF50_E2E_ENVIRONMENT = "DISPOSABLE_PDF50_PROVIDER_E2E"',
   '$env:PDF50_E2E_CONFIRM_CLEANUP = "DELETE_PDF50_PROVIDER_E2E_FIXTURES"',
-  '$env:PDF50_PROVIDER_TEST_MODE = "BOUNDED_ONE_JOB_REAL_PROVIDER"',
-  '$env:AI_JOBS_LOCAL_MAX_INVOCATIONS = "1"',
-  '$env:PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS = "1"',
-  '$env:PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS = "68"',
-  '$env:PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS = "4096"',
-  '$env:PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD = "1"',
 ]) {
   assert(launcher.includes(literal), `launcher is missing fixed safety control ${literal}`);
+}
+
+assert(
+  launcher.includes('"pdf50-provider-proof-control-report.mjs"') &&
+    launcher.includes("$ProofControlJson | ConvertFrom-Json") &&
+    launcher.includes('"provider_proof_control_invalid"'),
+  "launcher must fail closed to the canonical proof-control reporter",
+);
+for (const [name, field] of [
+  ["PDF50_PROVIDER_TEST_MODE", "mode"],
+  ["AI_JOBS_LOCAL_MAX_INVOCATIONS", "workerRouteInvocations"],
+  ["PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS", "providerInferenceAttempts"],
+  ["PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS", "providerMaxNetworkRequests"],
+  ["PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS", "providerMaxOutputTokens"],
+  ["PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD", "approvedBudgetUsd"],
+]) {
+  assert(
+    proofEnvironment[name]?.length > 0 &&
+      launcher.includes(`$env:${name} = [string]$ProofControl.${field}`),
+    `launcher must derive ${name} from the canonical proof contract`,
+  );
 }
 
 assert(

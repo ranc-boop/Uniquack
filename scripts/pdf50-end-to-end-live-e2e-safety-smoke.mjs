@@ -45,8 +45,6 @@ for (const name of [
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "CLEAN_SUPABASE_SERVICE_ROLE_KEY",
   "AI_PROVIDER_ENCRYPTION_KEY",
-  "TEST_TEACHER_USERNAME",
-  "TEST_TEACHER_PASSWORD",
   "PDF50_E2E_ENVIRONMENT",
   "PDF50_E2E_EXPECTED_PROJECT_REF",
   "PDF50_E2E_CONFIRM_CLEANUP",
@@ -59,6 +57,13 @@ for (const name of [
 ]) {
   assert(harness.includes(`"${name}"`), `missing process-only variable ${name}`);
 }
+assert(
+  harness.includes("unusedStandingTeacherEnvironment") &&
+    harness.includes('for (const name of unusedStandingTeacherEnvironment) delete process.env[name]') &&
+    !harness.includes("config.teacherUsername") &&
+    !harness.includes("config.teacherPassword"),
+  "real proof must scrub and never use standing Teacher credentials",
+);
 
 for (const literal of [
   "DISPOSABLE_PDF50_PROVIDER_E2E",
@@ -87,6 +92,7 @@ assert(
 assert(
   harness.includes('providerStrategy(profile) === "gemini_native_pdf"') &&
     harness.includes("knownProviderModel = proofControl.model") &&
+    harness.includes('profile.organization_id === null') &&
     harness.includes("providerCostUpperBoundMicros > providerBudgetMicros") &&
     proofControl.model === "gemini-2.5-flash-lite",
   "real proof must fail closed to the known-cost Gemini Native route",
@@ -120,8 +126,19 @@ assert(
 );
 assert(
   !harness.includes("._options") &&
-    harness.includes("uploadThroughBrowser({ bankId, config, origin, page, service, teacher })"),
+    harness.includes("uploadThroughBrowser({ bankId, origin, page, service, teacher })"),
   "browser proof must use an explicit trusted local origin",
+);
+assert(
+  harness.includes("createSyntheticOrganization") &&
+    harness.includes("createSyntheticTeacher") &&
+    harness.includes("auth.admin.createUser") &&
+    harness.includes("auth.admin.deleteUser") &&
+    harness.includes('role: "teacher"') &&
+    harness.includes('status: "active"') &&
+    harness.includes("organization_members") &&
+    harness.includes("staleOrganizations !== 0"),
+  "every real run must use fresh exact-ID Teacher and organization fixtures",
 );
 assert(
   harness.includes('question.status === "draft"') &&
@@ -140,8 +157,49 @@ assert(
     counterContract.includes("counters.uploads > counters.inference * 2") &&
     counterContract.includes("counters.cleanup > counters.inference") &&
     harness.includes("EXACT_ID_CLEANUP") &&
-    harness.includes("PROCESS_ENVIRONMENT_CLEARED"),
+    harness.includes("PROCESS_ENVIRONMENT_CLEARED") &&
+    harness.includes('remaining.push("auth_user")') &&
+    harness.includes('["organizations", "id", fixtures?.organizationIds ?? []]'),
   "real proof must perform exact cleanup and clear process values",
+);
+assert(
+  harness.includes("verifyCrossOrganizationIsolation") &&
+    harness.includes("cross_org_bank_hidden") &&
+    harness.includes("cross_org_review_items_hidden") &&
+    harness.includes("cross_org_review_batches_hidden") &&
+    harness.includes("outsiderDownload") &&
+    harness.includes("verifyAnonymousSourcePrivacy") &&
+    harness.includes("CROSS_ORGANIZATION_VISIBILITY_COUNT=0"),
+  "real proof must establish anonymous source privacy and cross-organization denial",
+);
+assert(
+  harness.includes("burst_item_completed") &&
+    harness.includes("burst_completed") &&
+    harness.includes("exactly_one_bank_scoped_job") &&
+    harness.includes("DURABLE_STATES=job:") &&
+    harness.includes("batch_status_imported"),
+  "real proof must read the job, burst, item, and batch terminal contracts",
+);
+assert(
+  harness.includes("page.reload") &&
+    harness.includes("page.context().newPage()") &&
+    harness.includes("Teacher UI refresh/remount retained durable completion") &&
+    harness.includes("verifyProductionReconciliationContracts") &&
+    harness.includes("mergePdfBurstDurableSnapshot") &&
+    harness.includes("ensureSinglePageExtractionLineage") &&
+    harness.includes("canonical_page_1_lineage"),
+  "real proof must cover refresh/remount, terminal authority, and non-fabricated lineage",
+);
+assert(
+  harness.includes("DUPLICATE_REVIEW_DRAFT_COUNT=") &&
+    harness.includes("BANK_APPROVAL_COUNT=") &&
+    harness.includes("PUBLICATION_COUNT=") &&
+    harness.includes("ASSIGNMENT_COUNT=") &&
+    harness.includes("INPUT_TOKENS=") &&
+    harness.includes("OUTPUT_TOKENS=") &&
+    harness.includes("THINKING_TOKENS=UNKNOWN") &&
+    harness.includes("SECRET_OR_RAW_CONTENT_EMISSION_COUNT=0"),
+  "real proof must emit bounded completion, usage, and no-side-effect counters",
 );
 assert(
   harness.includes("safeProviderErrorCodes") &&
@@ -171,6 +229,16 @@ assert(
   "failed finalization diagnostics may report only allowlisted summary field sizes",
 );
 assert(
+  harness.includes("stopOwnedTemporaryServer") &&
+    harness.includes("terminateWindowsProcessTree") &&
+    harness.includes('spawn("taskkill", ["/PID", String(childPid), "/T", "/F"]') &&
+    harness.includes("waitForPortClosed") &&
+    harness.includes("LOCAL_SERVER_CLEANUP=") &&
+    !harness.includes("Get-Process") &&
+    !harness.includes("Stop-Process"),
+  "the live proof must stop only its recorded local server tree and verify its port closes",
+);
+assert(
   harness.includes('"Question 1"') &&
     harness.includes('"What is 2 + 3?"') &&
     harness.includes('"Explanation: 2 + 3 = 5."') &&
@@ -178,7 +246,7 @@ assert(
   "real proof PDF must render one legible multi-line synthetic question",
 );
 assert(
-  !/console\.(?:log|error)\([^\n]*(?:serviceRoleKey|teacherPassword|encryptionKey|internalToken|projectRef)/.test(
+  !/console\.(?:log|error)\([^\n]*(?:serviceRoleKey|password|encryptionKey|internalToken|projectRef|\.email)/.test(
     harness,
   ),
   "live proof must not print credential or project identity values",

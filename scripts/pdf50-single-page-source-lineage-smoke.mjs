@@ -94,7 +94,9 @@ assert(
   "single-pass, segmented, and recovery extraction paths must apply the same lineage rule",
 );
 assert(
-  harness.includes("page_lineage_present") && harness.includes("metadata.page_refs"),
+  harness.includes("canonical_page_1_lineage") &&
+    harness.includes("metadata.page_refs.length === 1") &&
+    harness.includes("metadata.page_refs[0] === 1"),
   "the live proof must verify persisted page lineage",
 );
 

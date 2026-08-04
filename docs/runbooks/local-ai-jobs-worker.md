@@ -117,11 +117,12 @@ authorized worker session.
 ## Bounded one-file Provider proof
 
 `scripts/run-pdf50-end-to-end-live-e2e.ps1` is the operator entry point for the
-real one-file validation. It loads allowlisted Current Clean, Teacher, and
+real one-file validation. It loads only allowlisted Current Clean and
 Provider-decryption values from a Windows DPAPI credential vault, verifies the
-expected project reference, starts an isolated local server, uploads one
-synthetic one-page PDF through the real Teacher UI, and invokes the local worker
-exactly once.
+expected project reference, creates fresh primary and unrelated synthetic
+Teacher/organization fixtures, starts an isolated local server, uploads one
+synthetic one-page PDF through the primary Teacher UI, and invokes the local
+worker exactly once.
 
 Create the vault once from a visible Windows PowerShell console:
 
@@ -136,7 +137,11 @@ for the current Windows user on the current computer. Another Windows account
 or another computer cannot decrypt the file. Access to the same Windows account
 must therefore remain protected.
 
-The vault contains only the seven allowlisted values required by this proof.
+The vault contract requires only five allowlisted values: Supabase URL, anon
+key, service-role key, Provider encryption key, and expected project reference.
+Standing Teacher credentials are neither collected nor decrypted. Existing
+vault files with those older encrypted fields remain a safe superset; the
+launcher ignores the extra fields.
 The one-job limit, cleanup acknowledgement, Provider mode, request ceilings,
 and total budget are fixed by the launcher and are not persisted as operator
 input. Rerun the setup script and type
@@ -189,7 +194,8 @@ The proof mode is server-owned and fail-closed:
 - the contract supplies the approved total budget and conservative token-cost
   inputs;
 - known-cost Gemini Native PDF with `gemini-2.5-flash-lite` only;
-- exact hosted fixture and Storage cleanup.
+- exact hosted Auth, profile, membership, organization, Bank, queue, Review
+  Draft, import, telemetry, and Storage cleanup.
 
 The trusted server gate computes the conservative token-cost ceiling from the
 same contract before the worker starts. Actual usage is recorded after the run
@@ -212,6 +218,12 @@ coverage review.
 Do not run the launcher against a production project or while unrelated queue
 work exists. A passing one-file proof establishes the first operational gate
 only; 4/10/50-file qualification remains a separate progression.
+
+The final bounded closure run passed the one-file gate with a completed job,
+burst, and item, an imported batch, one private `pending_review` Draft,
+canonical page-1 lineage, reload/remount continuity, zero cross-organization
+visibility, and complete exact-ID cleanup. That result authorizes final source
+review only; it does not authorize merge, deployment, or 4/10/50 execution.
 
 ## Safe source-only verification
 

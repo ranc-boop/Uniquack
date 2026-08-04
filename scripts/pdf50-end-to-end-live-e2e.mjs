@@ -7,12 +7,14 @@
 import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
+import ts from "typescript";
 
 import {
   classifyPDF50ProviderCounterContract,
@@ -32,6 +34,8 @@ const edgeCandidates = [
 const sourceBucket = "ai-import-sources";
 const workerRoutePath = "/api/internal/ai-jobs/run";
 const syntheticBankPrefix = "!pdf50-provider-e2e-";
+const syntheticOrganizationSlugPrefix = "pdf50-provider-e2e-";
+const fixtureKind = "pdf50_provider_e2e";
 const disposableEnvironment = "DISPOSABLE_PDF50_PROVIDER_E2E";
 const cleanupConfirmation = "DELETE_PDF50_PROVIDER_E2E_FIXTURES";
 const proofControl = await loadPDF50ProviderProofControl();
@@ -40,14 +44,15 @@ const knownProviderModel = proofControl.model;
 const providerBudgetMicros = proofControl.approvedBudgetUsd * 1_000_000;
 const providerCostUpperBoundMicros =
   estimatePDF50ProviderProofCostMicros(proofControl);
+const serverGracefulStopTimeoutMs = 4_000;
+const serverForcedStopTimeoutMs = 8_000;
+const serverPortCloseTimeoutMs = 5_000;
 
 const requiredEnvironment = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "CLEAN_SUPABASE_SERVICE_ROLE_KEY",
   "AI_PROVIDER_ENCRYPTION_KEY",
-  "TEST_TEACHER_USERNAME",
-  "TEST_TEACHER_PASSWORD",
   "PDF50_E2E_ENVIRONMENT",
   "PDF50_E2E_EXPECTED_PROJECT_REF",
   "PDF50_E2E_CONFIRM_CLEANUP",
@@ -57,6 +62,10 @@ const requiredEnvironment = [
   "PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS",
   "PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS",
   "PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD",
+];
+const unusedStandingTeacherEnvironment = [
+  "TEST_TEACHER_USERNAME",
+  "TEST_TEACHER_PASSWORD",
 ];
 
 const exactControlValues = Object.freeze({
@@ -155,7 +164,9 @@ const allowedFailureCategories = new Set([
   "provider_cost_telemetry_missing",
   "provider_permanent_failure",
   "provider_transient_failure",
+  "source_privacy_failed",
   "stale_synthetic_fixture_refused",
+  "synthetic_fixture_failed",
   "teacher_not_eligible",
   "trusted_provider_test_control_rejected",
   "unexpected_failure",
@@ -231,11 +242,6 @@ function projectRefFromSupabaseUrl(value) {
   }
 }
 
-function usernameToEmail(username) {
-  const normalized = username.trim().toLowerCase();
-  return normalized.includes("@") ? normalized : `${normalized}@local.app`;
-}
-
 function printEnvironmentPresence() {
   for (const name of requiredEnvironment) {
     console.log(`${name}=${process.env[name]?.trim() ? "PRESENT" : "MISSING"}`);
@@ -243,6 +249,7 @@ function printEnvironmentPresence() {
 }
 
 function requireProcessEnvironment() {
+  for (const name of unusedStandingTeacherEnvironment) delete process.env[name];
   printEnvironmentPresence();
   if (requiredEnvironment.some((name) => !process.env[name]?.trim())) {
     throw new HarnessError("missing_process_environment");
@@ -278,14 +285,14 @@ function requireProcessEnvironment() {
     encryptionKey: process.env.AI_PROVIDER_ENCRYPTION_KEY,
     projectRef,
     serviceRoleKey: process.env.CLEAN_SUPABASE_SERVICE_ROLE_KEY,
-    teacherPassword: process.env.TEST_TEACHER_PASSWORD,
-    teacherUsername: process.env.TEST_TEACHER_USERNAME,
     url: process.env.NEXT_PUBLIC_SUPABASE_URL,
   };
 }
 
 function clearProcessEnvironment() {
-  for (const name of requiredEnvironment) delete process.env[name];
+  for (const name of [...requiredEnvironment, ...unusedStandingTeacherEnvironment]) {
+    delete process.env[name];
+  }
 }
 
 function minimalChildEnvironment() {
@@ -309,6 +316,98 @@ function minimalChildEnvironment() {
     if (process.env[name]) environment[name] = process.env[name];
   }
   return environment;
+}
+
+function randomFixturePassword() {
+  return `PDF50!${randomBytes(24).toString("base64url")}aA1`;
+}
+
+function createFixtureState(service) {
+  return {
+    authUserIds: [],
+    organizationIds: [],
+    organizationMemberIds: [],
+    profileIds: [],
+    service,
+  };
+}
+
+async function insertFixtureId(query) {
+  const row = requireData(
+    await query.select("id").single(),
+    "synthetic_fixture_failed",
+  );
+  if (!row?.id) throw new HarnessError("synthetic_fixture_failed");
+  return row.id;
+}
+
+async function createSyntheticOrganization(fixtures, runId, label) {
+  const id = await insertFixtureId(
+    fixtures.service.from("organizations").insert({
+      name: `PDF50 provider proof ${label}`,
+      slug: `${syntheticOrganizationSlugPrefix}${runId}-${label}`,
+      status: "active",
+    }),
+  );
+  fixtures.organizationIds.push(id);
+  return id;
+}
+
+async function createSyntheticTeacher({ fixtures, label, organizationId, runId }) {
+  const username = `pdf50-${runId}-${label}`;
+  const email = `${username}@local.app`;
+  const password = randomFixturePassword();
+  const authResult = await fixtures.service.auth.admin.createUser({
+    email,
+    email_confirm: true,
+    password,
+    user_metadata: { fixture_kind: fixtureKind, fixture_run: runId },
+  });
+  if (authResult.error || !authResult.data.user?.id) {
+    throw new HarnessError("synthetic_fixture_failed");
+  }
+  const id = authResult.data.user.id;
+  fixtures.authUserIds.push(id);
+  fixtures.profileIds.push(id);
+
+  requireData(
+    await fixtures.service.from("profiles").upsert(
+      {
+        default_organization_id: organizationId,
+        display_name: "PDF50 synthetic teacher",
+        email,
+        id,
+        role: "teacher",
+        status: "active",
+        username,
+      },
+      { onConflict: "id" },
+    ),
+    "synthetic_fixture_failed",
+  );
+
+  const organizationMemberId = await insertFixtureId(
+    fixtures.service.from("organization_members").insert({
+      organization_id: organizationId,
+      role: "teacher",
+      status: "active",
+      user_id: id,
+    }),
+  );
+  fixtures.organizationMemberIds.push(organizationMemberId);
+  return { email, id, organizationId, password };
+}
+
+async function importTranspiledTypescriptModule(relativePath) {
+  const source = await readFile(resolve(root, relativePath), "utf8");
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: relativePath,
+  }).outputText;
+  return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 }
 
 function buildSyntheticPdf() {
@@ -379,20 +478,20 @@ function isKnownCostGemini(profile) {
   );
 }
 
-async function signInTeacher(config) {
+async function signInTeacher(config, actor) {
   const client = createClient(config.url, config.anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const auth = await client.auth.signInWithPassword({
-    email: usernameToEmail(config.teacherUsername),
-    password: config.teacherPassword,
+    email: actor.email,
+    password: actor.password,
   });
   if (auth.error || !auth.data.user) throw new HarnessError("teacher_not_eligible");
   const profile = requireData(
     await client
       .from("profiles")
       .select("id, role, status, default_organization_id")
-      .eq("id", auth.data.user.id)
+      .eq("id", actor.id)
       .maybeSingle(),
     "teacher_not_eligible",
   );
@@ -400,11 +499,11 @@ async function signInTeacher(config) {
     !profile ||
     profile.role !== "teacher" ||
     profile.status !== "active" ||
-    !profile.default_organization_id
+    profile.default_organization_id !== actor.organizationId
   ) {
     throw new HarnessError("teacher_not_eligible");
   }
-  return { client, profile, user: auth.data.user };
+  return { actor, client, profile, user: auth.data.user };
 }
 
 async function countRows(query, category) {
@@ -413,7 +512,7 @@ async function countRows(query, category) {
   return Number(result.count ?? 0);
 }
 
-async function runReadinessPreflight({ service, teacher }) {
+async function runReadinessPreflight({ service }) {
   const schemaProbe = await service
     .from("ai_pdf_upload_bursts")
     .select("id, status, target_bank_id", { head: true, count: "exact" })
@@ -464,6 +563,16 @@ async function runReadinessPreflight({ service, teacher }) {
   if (staleBanks !== 0) {
     throw new HarnessError("stale_synthetic_fixture_refused");
   }
+  const staleOrganizations = await countRows(
+    service
+      .from("organizations")
+      .select("id", { count: "exact", head: true })
+      .like("slug", `${syntheticOrganizationSlugPrefix}%`),
+    "hosted_readiness_failed",
+  );
+  if (staleOrganizations !== 0) {
+    throw new HarnessError("stale_synthetic_fixture_refused");
+  }
 
   const profiles = requireData(
     await service
@@ -478,10 +587,7 @@ async function runReadinessPreflight({ service, teacher }) {
   ) ?? [];
   const compatible = profiles.filter((profile) => {
     const strategy = providerStrategy(profile);
-    const organizationMatches =
-      profile.organization_id === null ||
-      profile.organization_id === teacher.profile.default_organization_id;
-    return strategy !== "unsupported" && organizationMatches;
+    return strategy !== "unsupported" && profile.organization_id === null;
   });
   if (!compatible.length || compatible.some((profile) => !isKnownCostGemini(profile))) {
     throw new HarnessError("known_cost_provider_required");
@@ -516,14 +622,132 @@ async function findFreePort() {
   return port;
 }
 
-async function stopChild(child) {
-  if (!child || child.exitCode !== null) return true;
-  child.kill();
-  await Promise.race([
-    new Promise((resolveExit) => child.once("exit", resolveExit)),
-    sleep(8_000),
-  ]);
-  return child.exitCode !== null;
+function childExitObserved(child) {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+function waitForChildExit(child, timeoutMs) {
+  if (childExitObserved(child)) return Promise.resolve(true);
+
+  return new Promise((resolveExit) => {
+    let settled = false;
+    let timer = null;
+    const finish = (exited) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      child.off("exit", onExit);
+      resolveExit(exited);
+    };
+    const onExit = () => finish(true);
+    child.once("exit", onExit);
+    timer = setTimeout(
+      () => finish(childExitObserved(child)),
+      timeoutMs,
+    );
+    if (childExitObserved(child)) finish(true);
+  });
+}
+
+function portIsListening(port) {
+  return new Promise((resolveListening) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    let settled = false;
+    const finish = (listening) => {
+      if (settled) return;
+      settled = true;
+      socket.removeAllListeners();
+      socket.destroy();
+      resolveListening(listening);
+    };
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+    socket.setTimeout(500, () => finish(false));
+  });
+}
+
+async function waitForPortClosed(port, timeoutMs) {
+  if (!Number.isInteger(port) || port <= 0) return false;
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (!(await portIsListening(port))) return true;
+    await sleep(100);
+  } while (Date.now() < deadline);
+  return !(await portIsListening(port));
+}
+
+function terminateWindowsProcessTree(childPid) {
+  if (!Number.isInteger(childPid) || childPid <= 0) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolveTermination) => {
+    let settled = false;
+    const killer = spawn("taskkill", ["/PID", String(childPid), "/T", "/F"], {
+      shell: false,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    const finish = (terminated) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolveTermination(terminated);
+    };
+    const timer = setTimeout(() => {
+      killer.kill();
+      finish(false);
+    }, serverGracefulStopTimeoutMs);
+    killer.once("error", () => finish(false));
+    killer.once("exit", (code) => finish(code === 0));
+  });
+}
+
+async function stopOwnedTemporaryServer(server) {
+  const child = server?.child;
+  const port = server?.port;
+  if (!child) return true;
+
+  const childPid = child.pid;
+  if (!Number.isInteger(childPid) || childPid <= 0) return false;
+
+  if (process.platform === "win32" && !childExitObserved(child)) {
+    await terminateWindowsProcessTree(childPid);
+    const treeExit = await waitForChildExit(child, serverForcedStopTimeoutMs);
+    const treePortClosed = await waitForPortClosed(
+      port,
+      serverPortCloseTimeoutMs,
+    );
+    return treeExit && treePortClosed;
+  }
+
+  if (!childExitObserved(child)) {
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // The bounded exit and port checks below determine the actual outcome.
+    }
+  }
+
+  const gracefulExit = await waitForChildExit(
+    child,
+    serverGracefulStopTimeoutMs,
+  );
+  if (gracefulExit && (await waitForPortClosed(port, serverPortCloseTimeoutMs))) {
+    return true;
+  }
+
+  if (!childExitObserved(child)) {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      return false;
+    }
+  }
+
+  const forcedExit = await waitForChildExit(child, serverForcedStopTimeoutMs);
+  const portClosed = await waitForPortClosed(port, serverPortCloseTimeoutMs);
+  return forcedExit && portClosed;
 }
 
 async function startNextServer({ config, internalToken }) {
@@ -551,22 +775,22 @@ async function startNextServer({ config, internalToken }) {
     if (child.exitCode !== null) break;
     try {
       const response = await fetch(`${origin}/auth/login`, { redirect: "manual" });
-      if (response.status < 500) return { child, origin };
+      if (response.status < 500) return { child, origin, port };
     } catch {
       // Bounded startup polling; no server output is relayed.
     }
     await sleep(250);
   }
-  await stopChild(child);
+  await stopOwnedTemporaryServer({ child, port });
   throw new HarnessError("browser_server_failed");
 }
 
-async function signInThroughBrowser(page, origin, config, nextPath) {
+async function signInThroughBrowser(page, origin, actor, nextPath) {
   await page.goto(`${origin}/auth/login?next=${encodeURIComponent(nextPath)}`, {
     waitUntil: "networkidle",
   });
-  await page.locator("#username").fill(config.teacherUsername);
-  await page.locator("#password").fill(config.teacherPassword);
+  await page.locator("#username").fill(actor.email);
+  await page.locator("#password").fill(actor.password);
   await Promise.all([
     page.waitForURL((url) => !url.pathname.startsWith("/auth/login"), {
       timeout: 30_000,
@@ -622,9 +846,9 @@ async function waitForBurstFixture({ bankId, service, teacherId }) {
   throw new HarnessError("browser_upload_failed");
 }
 
-async function uploadThroughBrowser({ bankId, config, origin, page, service, teacher }) {
+async function uploadThroughBrowser({ bankId, origin, page, service, teacher }) {
   const importPath = `/teacher/banks/${bankId}/imports?mode=ai`;
-  await signInThroughBrowser(page, origin, config, importPath);
+  await signInThroughBrowser(page, origin, teacher.actor, importPath);
   if (!page.url().includes(`/teacher/banks/${bankId}/imports`)) {
     await page.goto(`${origin}${importPath}`, { waitUntil: "networkidle" });
   }
@@ -939,6 +1163,53 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   console.log("PHASE=worker_provider_counters");
   assertProviderCounters(counters, { completed: true });
 
+  console.log("PHASE=worker_burst_item_terminal_contract");
+  const terminalItem = await readEvidenceWithRetry({
+    label: "burst_item_terminal",
+    operation: () =>
+      service
+        .from("ai_pdf_upload_burst_items")
+        .select("id, burst_id, ai_provider_job_id, status, completed_at")
+        .eq("id", fixture.item.id)
+        .maybeSingle(),
+  });
+  const terminalBurst = await readEvidenceWithRetry({
+    label: "burst_terminal",
+    operation: () =>
+      service
+        .from("ai_pdf_upload_bursts")
+        .select(
+          "id, status, item_count, completed_count, failed_count, cancelled_count, completed_at",
+        )
+        .eq("id", fixture.burst.id)
+        .maybeSingle(),
+  });
+  assertEvidence(
+    terminalItem?.status === "completed" &&
+      terminalItem.burst_id === fixture.burst.id &&
+      terminalItem.ai_provider_job_id === job.id &&
+      Boolean(terminalItem.completed_at),
+    "burst_item_completed",
+  );
+  assertEvidence(
+    terminalBurst?.status === "completed" &&
+      terminalBurst.item_count === 1 &&
+      terminalBurst.completed_count === 1 &&
+      terminalBurst.failed_count === 0 &&
+      terminalBurst.cancelled_count === 0 &&
+      Boolean(terminalBurst.completed_at),
+    "burst_completed",
+  );
+  const scopedJobCount = await countRows(
+    service
+      .from("ai_provider_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("resource_id", fixture.item.import_batch_id)
+      .eq("target_bank_id", bankId),
+    "worker_evidence_failed",
+  );
+  assertEvidence(scopedJobCount === 1, "exactly_one_bank_scoped_job");
+
   console.log("PHASE=worker_batch_lineage");
   const batch = await readEvidenceWithRetry({
     label: "import_batch",
@@ -983,9 +1254,13 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   assertEvidence(
     importedItems.every((item) => {
       const metadata = asRecord(asRecord(item.normalized_question_json).ai_metadata);
-      return Array.isArray(metadata.page_refs) && metadata.page_refs.length > 0;
+      return (
+        Array.isArray(metadata.page_refs) &&
+        metadata.page_refs.length === 1 &&
+        metadata.page_refs[0] === 1
+      );
     }),
-    "page_lineage_present",
+    "canonical_page_1_lineage",
   );
 
   const questionIds = importedItems.map((item) => item.created_question_id);
@@ -1028,6 +1303,9 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
           .in("created_question_id", questionIds),
     })) ?? [];
   assert(reviewItems.length === questionIds.length, "worker_evidence_failed");
+  const duplicateReviewDraftCount =
+    reviewItems.length - new Set(reviewItems.map((item) => item.created_question_id)).size;
+  assert(duplicateReviewDraftCount === 0, "worker_evidence_failed");
   assert(
     reviewItems.every(
       (item) => item.target_bank_id === bankId && item.status === "pending_review",
@@ -1108,6 +1386,16 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   if (!telemetry.length || telemetry.some((row) => row.estimated_total_cost_micros === null)) {
     throw new HarnessError("provider_cost_telemetry_missing");
   }
+  if (
+    telemetry.some(
+      (row) =>
+        numeric(row.actual_input_tokens) === null ||
+        numeric(row.actual_output_tokens) === null ||
+        numeric(row.actual_total_tokens) === null,
+    )
+  ) {
+    throw new HarnessError("provider_cost_telemetry_missing");
+  }
   const estimatedCostMicros = telemetry.reduce(
     (total, row) => total + Math.max(0, Number(row.estimated_total_cost_micros) || 0),
     0,
@@ -1115,12 +1403,26 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   if (estimatedCostMicros > providerBudgetMicros) {
     throw new HarnessError("provider_cost_budget_exceeded");
   }
+  const inputTokens = telemetry.reduce(
+    (total, row) => total + Number(row.actual_input_tokens),
+    0,
+  );
+  const outputTokens = telemetry.reduce(
+    (total, row) => total + Number(row.actual_output_tokens),
+    0,
+  );
+  const totalTokens = telemetry.reduce(
+    (total, row) => total + Number(row.actual_total_tokens),
+    0,
+  );
   assert(
     telemetry.every(
       (row) =>
         row.final_status === "completed" &&
         String(row.provider).toLowerCase() === "gemini_native" &&
         String(row.model).toLowerCase() === knownProviderModel &&
+        Number(row.provider_call_count) === 1 &&
+        Number(row.provider_retry_attempts) === 0 &&
         Number(row.actual_output_tokens) <=
           proofControl.providerInferenceAttempts *
             proofControl.providerMaxOutputTokens,
@@ -1129,23 +1431,195 @@ async function verifyCompletedEvidence({ bankId, fixture, job, service }) {
   );
 
   return {
+    approvalCount: bankQuestionCount,
+    assignmentCount,
+    batchStatus: batch.status,
+    burstStatus: terminalBurst.status,
     draftCount: questions.length,
+    duplicateReviewDraftCount,
     estimatedCostMicros,
     firstQuestionTitle: questions[0].title,
+    inputTokens,
+    itemStatus: terminalItem.status,
+    jobStatus: job.status,
+    outputTokens,
     providerCounters: counters,
+    publicationCount: questions.filter(
+      (question) => question.published_at !== null || question.status === "published",
+    ).length,
     questionIds,
     reviewBatchIds,
     reviewItemIds: reviewItems.map((item) => item.id),
+    totalTokens,
   };
 }
 
-async function verifyTeacherVisibleCompletion({ bankId, evidence, origin, page, secrets }) {
-  await page.goto(`${origin}/teacher/banks/${bankId}/imports?mode=ai`, {
-    waitUntil: "networkidle",
+async function assertRequesterSeesNoRows(label, operation) {
+  const result = await operation();
+  assert(!result.error, "worker_evidence_failed");
+  assertEvidence((result.data ?? []).length === 0, label);
+}
+
+async function verifyCrossOrganizationIsolation({
+  bankId,
+  evidence,
+  fixture,
+  outsider,
+}) {
+  const ownProfile = requireData(
+    await outsider.client
+      .from("profiles")
+      .select("id")
+      .eq("id", outsider.user.id)
+      .maybeSingle(),
+    "worker_evidence_failed",
+  );
+  assert(ownProfile?.id === outsider.user.id, "worker_evidence_failed");
+
+  await assertRequesterSeesNoRows("cross_org_bank_hidden", () =>
+    outsider.client.from("question_banks").select("id").eq("id", bankId),
+  );
+  await assertRequesterSeesNoRows("cross_org_burst_hidden", () =>
+    outsider.client
+      .from("ai_pdf_upload_bursts")
+      .select("id")
+      .eq("id", fixture.burst.id),
+  );
+  await assertRequesterSeesNoRows("cross_org_burst_item_hidden", () =>
+    outsider.client
+      .from("ai_pdf_upload_burst_items")
+      .select("id")
+      .eq("id", fixture.item.id),
+  );
+  await assertRequesterSeesNoRows("cross_org_job_hidden", () =>
+    outsider.client
+      .from("ai_provider_jobs")
+      .select("id")
+      .eq("id", fixture.item.ai_provider_job_id),
+  );
+  await assertRequesterSeesNoRows("cross_org_import_batch_hidden", () =>
+    outsider.client
+      .from("import_batches")
+      .select("id")
+      .eq("id", fixture.item.import_batch_id),
+  );
+  await assertRequesterSeesNoRows("cross_org_questions_hidden", () =>
+    outsider.client.from("questions").select("id").in("id", evidence.questionIds),
+  );
+  await assertRequesterSeesNoRows("cross_org_review_items_hidden", () =>
+    outsider.client
+      .from("review_draft_items")
+      .select("id")
+      .in("id", evidence.reviewItemIds),
+  );
+  await assertRequesterSeesNoRows("cross_org_review_batches_hidden", () =>
+    outsider.client
+      .from("review_batches")
+      .select("id")
+      .in("id", evidence.reviewBatchIds),
+  );
+
+  const outsiderDownload = await outsider.client.storage
+    .from(sourceBucket)
+    .download(fixture.item.object_path);
+  assert(!outsiderDownload.data, "source_privacy_failed");
+  console.log("PASS unrelated organization could not read source or derived evidence");
+}
+
+async function verifyAnonymousSourcePrivacy({ config, objectPath }) {
+  const anonymous = createClient(config.url, config.anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
   });
-  const importText = await page.locator("body").innerText();
-  assertSafeBrowserText(importText, secrets);
-  if (!/Completed\s+1/i.test(importText)) throw new HarnessError("worker_evidence_failed");
+  const directDownload = await anonymous.storage.from(sourceBucket).download(objectPath);
+  assert(!directDownload.data, "source_privacy_failed");
+  console.log("PASS source object remained private to anonymous requesters");
+}
+
+async function verifyProductionReconciliationContracts() {
+  const reconciliation = await importTranspiledTypescriptModule(
+    "src/lib/ai-pdf-import/burst-status-reconciliation.ts",
+  );
+  const completed = { safeErrorCode: null, status: "completed" };
+  const visible = reconciliation.reconcilePdfBurstDisplayState({
+    durable: completed,
+    localPhase: "failed",
+    localRequestState: "cancellation_requested",
+    localWarningCode: "finalize_transport_interrupted",
+  });
+  assert(
+    visible.status === "completed" &&
+      visible.localRequestState === null &&
+      visible.localWarningCode === "finalize_transport_interrupted" &&
+      visible.shouldPoll === false,
+    "worker_evidence_failed",
+  );
+  for (const delayedStatus of ["processing", "failed", "cancelled"]) {
+    const merged = reconciliation.mergePdfBurstDurableSnapshot(completed, {
+      safeErrorCode: delayedStatus === "failed" ? "provider_network_error" : null,
+      status: delayedStatus,
+    });
+    assert(
+      merged.status === "completed" && merged.safeErrorCode === null,
+      "worker_evidence_failed",
+    );
+  }
+
+  const lineage = await importTranspiledTypescriptModule(
+    "src/lib/ai-pdf-import/source-lineage.ts",
+  );
+  const extraction = () => ({
+    questions: [{ page_refs: [] }],
+    warnings: [],
+  });
+  const onePage = lineage.ensureSinglePageExtractionLineage({
+    extraction: extraction(),
+    suppliedPageCount: 1,
+  });
+  const multiPageInput = extraction();
+  const multiPage = lineage.ensureSinglePageExtractionLineage({
+    extraction: multiPageInput,
+    suppliedPageCount: 2,
+  });
+  const unknownPageInput = extraction();
+  const unknownPage = lineage.ensureSinglePageExtractionLineage({
+    extraction: unknownPageInput,
+    suppliedPageCount: 0,
+  });
+  assert(
+    onePage.questions[0].page_refs.length === 1 &&
+      onePage.questions[0].page_refs[0] === 1 &&
+      multiPage === multiPageInput &&
+      multiPage.questions[0].page_refs.length === 0 &&
+      unknownPage === unknownPageInput &&
+      unknownPage.questions[0].page_refs.length === 0,
+    "worker_evidence_failed",
+  );
+  console.log("PASS completion authority and non-fabricated lineage contracts");
+}
+
+async function verifyTeacherVisibleCompletion({ bankId, evidence, origin, page, secrets }) {
+  const importsUrl = `${origin}/teacher/banks/${bankId}/imports?mode=ai`;
+  const assertCompletedSurface = async (activePage) => {
+    const importText = await activePage.locator("body").innerText();
+    assertSafeBrowserText(importText, secrets);
+    if (!/Completed\s+1/i.test(importText)) {
+      throw new HarnessError("worker_evidence_failed");
+    }
+  };
+
+  await page.goto(importsUrl, { waitUntil: "networkidle" });
+  await assertCompletedSurface(page);
+  await page.reload({ waitUntil: "networkidle" });
+  await assertCompletedSurface(page);
+
+  const remountedPage = await page.context().newPage();
+  try {
+    await remountedPage.goto(importsUrl, { waitUntil: "networkidle" });
+    await assertCompletedSurface(remountedPage);
+  } finally {
+    await remountedPage.close();
+  }
+  console.log("PASS Teacher UI refresh/remount retained durable completion");
 
   await page.goto(`${origin}/teacher/banks/${bankId}/review`, {
     waitUntil: "networkidle",
@@ -1171,7 +1645,7 @@ async function safeDelete(action, failures, label) {
   }
 }
 
-async function cleanupFixture({ bankId, fixture, service }) {
+async function cleanupFixture({ bankId, fixture, fixtures, service }) {
   const failures = [];
   const batchId = fixture?.item?.import_batch_id ?? null;
   const jobId = fixture?.item?.ai_provider_job_id ?? null;
@@ -1279,6 +1753,38 @@ async function cleanupFixture({ bankId, fixture, service }) {
       "question_bank",
     );
   }
+  if (fixtures?.organizationMemberIds.length) {
+    await safeDelete(
+      () =>
+        service
+          .from("organization_members")
+          .delete()
+          .in("id", fixtures.organizationMemberIds),
+      failures,
+      "organization_members",
+    );
+  }
+  if (fixtures?.profileIds.length) {
+    await safeDelete(
+      () => service.from("profiles").delete().in("id", fixtures.profileIds),
+      failures,
+      "profiles",
+    );
+  }
+  for (const userId of fixtures?.authUserIds ?? []) {
+    await safeDelete(
+      () => service.auth.admin.deleteUser(userId),
+      failures,
+      "auth_user",
+    );
+  }
+  if (fixtures?.organizationIds.length) {
+    await safeDelete(
+      () => service.from("organizations").delete().in("id", fixtures.organizationIds),
+      failures,
+      "organizations",
+    );
+  }
 
   const remaining = [];
   for (const [table, column, values] of [
@@ -1288,6 +1794,9 @@ async function cleanupFixture({ bankId, fixture, service }) {
     ["import_batches", "id", batchId ? [batchId] : []],
     ["questions", "id", questionIds],
     ["review_batches", "id", reviewBatchIds],
+    ["organization_members", "id", fixtures?.organizationMemberIds ?? []],
+    ["profiles", "id", fixtures?.profileIds ?? []],
+    ["organizations", "id", fixtures?.organizationIds ?? []],
   ]) {
     if (!values.length) continue;
     const result = await service
@@ -1304,31 +1813,67 @@ async function cleanupFixture({ bankId, fixture, service }) {
       remaining.push("storage_object");
     }
   }
+  for (const userId of fixtures?.authUserIds ?? []) {
+    const result = await service.auth.admin.getUserById(userId);
+    if (!result.error && result.data.user) remaining.push("auth_user");
+  }
 
   return { ok: failures.length === 0 && remaining.length === 0 };
 }
 
 async function main() {
   let browser = null;
+  let config = null;
   let page = null;
   let server = null;
   let service = null;
+  let fixtures = null;
   let teacher = null;
+  let outsider = null;
   let bankId = null;
   let fixture = null;
   let failure = null;
   let cleanup = { ok: true };
   const internalToken = randomBytes(48).toString("base64url");
+  const runId = randomBytes(8).toString("hex");
 
   try {
-    const config = requireProcessEnvironment();
+    config = requireProcessEnvironment();
     service = createClient(config.url, config.serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    teacher = await signInTeacher(config);
 
     console.log("PHASE=hosted_readiness_preflight");
-    await runReadinessPreflight({ service, teacher });
+    await runReadinessPreflight({ service });
+
+    console.log("PHASE=synthetic_actor_fixtures");
+    fixtures = createFixtureState(service);
+    const primaryOrganizationId = await createSyntheticOrganization(
+      fixtures,
+      runId,
+      "primary",
+    );
+    const outsiderOrganizationId = await createSyntheticOrganization(
+      fixtures,
+      runId,
+      "outsider",
+    );
+    const teacherActor = await createSyntheticTeacher({
+      fixtures,
+      label: "primary",
+      organizationId: primaryOrganizationId,
+      runId,
+    });
+    const outsiderActor = await createSyntheticTeacher({
+      fixtures,
+      label: "outsider",
+      organizationId: outsiderOrganizationId,
+      runId,
+    });
+    teacher = await signInTeacher(config, teacherActor);
+    outsider = await signInTeacher(config, outsiderActor);
+    console.log("PASS run-scoped synthetic Teacher and organization fixtures ready");
+
     bankId = await createSyntheticBank(teacher);
 
     console.log("PHASE=local_next_server");
@@ -1340,7 +1885,6 @@ async function main() {
     console.log("PHASE=browser_private_pdf_upload");
     fixture = await uploadThroughBrowser({
       bankId,
-      config,
       origin: server.origin,
       page,
       service,
@@ -1351,6 +1895,10 @@ async function main() {
       "browser_upload_failed",
     );
     console.log("PASS browser upload created one bank-scoped durable job");
+    await verifyAnonymousSourcePrivacy({
+      config,
+      objectPath: fixture.item.object_path,
+    });
 
     console.log("PHASE=local_worker_one_job");
     await runLocalWorkerOnce({
@@ -1370,11 +1918,23 @@ async function main() {
     });
     console.log("PASS fenced Provider execution and private draft persistence");
 
+    await verifyCrossOrganizationIsolation({
+      bankId,
+      evidence,
+      fixture,
+      outsider,
+    });
+    await verifyProductionReconciliationContracts();
+
     const secrets = [
       config.anonKey,
       config.encryptionKey,
       config.serviceRoleKey,
-      config.teacherPassword,
+      config.url,
+      teacher.actor.email,
+      teacher.actor.password,
+      outsider.actor.email,
+      outsider.actor.password,
       internalToken,
     ];
     await verifyTeacherVisibleCompletion({
@@ -1386,23 +1946,47 @@ async function main() {
     });
 
     console.log(`DRAFT_COUNT=${Math.min(evidence.draftCount, 999)}`);
+    console.log("REVIEW_DRAFT_STATE=pending_review");
+    console.log(`DUPLICATE_REVIEW_DRAFT_COUNT=${evidence.duplicateReviewDraftCount}`);
+    console.log(`BANK_APPROVAL_COUNT=${evidence.approvalCount}`);
+    console.log(`PUBLICATION_COUNT=${evidence.publicationCount}`);
+    console.log(`ASSIGNMENT_COUNT=${evidence.assignmentCount}`);
+    console.log(
+      `DURABLE_STATES=job:${evidence.jobStatus},burst:${evidence.burstStatus},item:${evidence.itemStatus},batch:${evidence.batchStatus}`,
+    );
     console.log(`PROVIDER_INFERENCE_ATTEMPTS=${evidence.providerCounters.inference}`);
     console.log(`PROVIDER_INFERENCE_REQUESTS=${evidence.providerCounters.inferenceRequests}`);
+    console.log(`PROVIDER_UPLOAD_REQUESTS=${evidence.providerCounters.uploads}`);
+    console.log(`PROVIDER_POLL_REQUESTS=${evidence.providerCounters.polls}`);
+    console.log(`PROVIDER_CLEANUP_REQUESTS=${evidence.providerCounters.cleanup}`);
     console.log(`PROVIDER_NETWORK_REQUESTS=${evidence.providerCounters.network}`);
+    console.log(`INPUT_TOKENS=${evidence.inputTokens}`);
+    console.log(`OUTPUT_TOKENS=${evidence.outputTokens}`);
+    console.log("THINKING_TOKENS=UNKNOWN");
+    console.log(`TOTAL_TOKENS=${evidence.totalTokens}`);
     console.log(`ESTIMATED_PROVIDER_COST_MICROS=${evidence.estimatedCostMicros}`);
+    console.log("CROSS_ORGANIZATION_VISIBILITY_COUNT=0");
+    console.log("SECRET_OR_RAW_CONTENT_EMISSION_COUNT=0");
     console.log("PDF50_ONE_FILE_E2E=PASS");
   } catch (error) {
     failure = error;
   } finally {
     if (browser) await browser.close().catch(() => undefined);
-    const serverStopped = await stopChild(server?.child);
+    const serverStopped = await stopOwnedTemporaryServer(server);
+    console.log(`LOCAL_SERVER_CLEANUP=${serverStopped ? "PASS" : "FAIL"}`);
     if (!serverStopped && !failure) failure = new HarnessError("cleanup_failed");
-    if (service) cleanup = await cleanupFixture({ bankId, fixture, service });
+    await teacher?.client?.auth?.signOut().catch(() => undefined);
+    await outsider?.client?.auth?.signOut().catch(() => undefined);
+    if (service) {
+      cleanup = await cleanupFixture({ bankId, fixture, fixtures, service });
+    }
     console.log(`EXACT_ID_CLEANUP=${cleanup.ok ? "PASS" : "FAIL"}`);
     if (!cleanup.ok && !failure) failure = new HarnessError("cleanup_failed");
-    await teacher?.client?.auth?.signOut().catch(() => undefined);
     clearProcessEnvironment();
-    const environmentCleared = requiredEnvironment.every((name) => !process.env[name]);
+    const environmentCleared = [
+      ...requiredEnvironment,
+      ...unusedStandingTeacherEnvironment,
+    ].every((name) => !process.env[name]);
     console.log(`PROCESS_ENVIRONMENT_CLEARED=${environmentCleared ? "PASS" : "FAIL"}`);
     if (!environmentCleared && !failure) failure = new HarnessError("cleanup_failed");
   }

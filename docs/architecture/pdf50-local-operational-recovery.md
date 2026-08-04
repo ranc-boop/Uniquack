@@ -336,20 +336,73 @@ conservative ceiling of 917,511 micro-USD (USD 0.917511), leaving less than the
 input, output, and thinking token totals and actual cumulative estimated cost
 were not retained safely before exact cleanup and are therefore not claimed.
 
+### Final closure task from `d75fe96`
+
+A later, separately authorized task started at
+`d75fe96d608fb3d74041fa28190235c528e04301` with a fresh USD 1 ceiling and a
+maximum of ten one-file runs. It stopped immediately after the third run, the
+first run to satisfy the complete closure gate:
+
+| Run | Result | Correction before the next run |
+| ---: | --- | --- |
+| 1 | Provider, persistence, Teacher UI, database cleanup, and Storage cleanup passed; the outer result failed at local-server teardown | Replaced process-local kill timing with exact recorded-PID tree shutdown plus bounded port-close verification |
+| 2 | Product execution and cleanup passed, but the harness had not proven fresh actor scope, burst/item terminal rows, cross-organization denial, or refresh/remount together | Added fresh primary and unrelated Teacher/organization fixtures, requester-backed isolation, direct terminal reads, and browser refresh/remount checks |
+| 3 | Complete one-file gate passed | Stopped; no fourth Provider run was made |
+
+The first two runs used the previously approved disposable Teacher credential
+only as an operator fixture, so they were not accepted as final evidence for
+the new run-scoped-Teacher requirement. The third run created a fresh primary
+Teacher and organization plus a fresh unrelated Teacher and organization. It
+used service role only for exact setup, evidence, and cleanup; browser upload
+and all isolation reads used requester sessions. Vault tooling no longer
+collects or decrypts standing Teacher credentials. Older vault files may retain
+extra encrypted fields, but the launcher ignores them.
+
+The terminal run proved all of the following together:
+
+- one private one-page PDF and exactly one bank-scoped job;
+- one Provider attempt and inference request, two upload requests, zero polls,
+  one cleanup request, four total Provider requests, and zero cleanup failures;
+- `completed` job, burst, and item rows, plus an `imported` batch;
+- exactly one private, bank-scoped `pending_review` Review Draft;
+- canonical persisted `page_refs: [1]`, while the production helper retained
+  fail-closed behavior for unknown and multi-page omissions;
+- completed state after browser reload and a new-page component remount;
+- delayed local failure, cancellation-requested state, and transport warning
+  could not downgrade or conceal durable completion;
+- zero duplicate drafts, approvals, publications, or Assignments;
+- zero cross-organization visibility, including direct private Storage access;
+- Provider-file, database, Storage, Auth, profile, membership, organization,
+  local-server, and process-environment cleanup; and
+- zero emitted credentials, raw Provider bodies, prompts, source text, or
+  private identifiers.
+
+The terminal run recorded 7,775 input tokens, 398 output tokens, 8,173 total
+tokens, and 937 micro-USD estimated cost. Separate thinking-token usage is not
+persisted in operation telemetry and remains `UNKNOWN`. The first two final
+closure runs recorded 937 and 928 micro-USD respectively, for a trustworthy
+three-run total of 2,802 micro-USD (USD 0.002802). Their token totals were not
+retained after exact cleanup and are not reconstructed. Three conservative
+per-run ceilings total 393,219 micro-USD (USD 0.393219), leaving USD 0.606781
+of that task's authorization unused.
+
+Across the final closure task the totals were three worker invocations, three
+claimed jobs, three Provider attempts, three inference requests, six upload
+requests, zero polls, three cleanup requests, twelve Provider HTTP requests,
+and zero cleanup failures.
+
 ## Progression Result
 
-The one-file gate remains partial. Upload, private Storage, durable queueing,
-exact one-job worker execution, Gemini structured extraction, application
-validation, private Review Draft persistence, durable job completion, Provider
-cleanup, Bank scope, no automatic publication, no Assignment creation, and
-exact cleanup are proven across the bounded iterations. The final single-page
-lineage correction, Teacher-visible completed state, and refresh/remount
-continuity are not proven by a later real-Provider run.
+The one-file operational gate is complete and ready for final Host review.
+Upload, private Storage, durable queueing, exact one-job execution, Gemini
+structured extraction, application validation, private Review Draft
+persistence, terminal state, lineage, UI continuity, isolation, and exact
+cleanup passed in one run.
 
-The 4-file, 10-file, and 50-file runs were not started because progression is
-strictly gated on a complete one-file result. Therefore this work does not
-establish queue-drain throughput, 50-file completion time, or production
-capacity.
+The 4-file, 10-file, and 50-file runs were not started. They require separate
+authorization and qualification, so this result does not establish queue-drain
+throughput, 50-file completion time, production capacity, deployment readiness,
+or permission to merge.
 
 Admin AI parsing was not paid-tested. Teacher AI PDF upload was exercised
 through the real browser path. Blueprint execution received the same source
@@ -358,13 +411,9 @@ its existing Review Draft boundary remains unchanged.
 
 ## Remaining Blocker
 
-Gemini structured extraction and durable terminal completion are no longer the
-remaining blockers. The remaining gate is a new bounded one-file run that must
-prove the single-page lineage correction, continue through private Review Draft
-and publication-gate checks, show the Teacher-visible completed import, and
-retain that state after refresh/remount. This task stopped before that run
-because its remaining conservative authorization budget was insufficient. No
-4-, 10-, or 50-file run may start before the complete one-file gate passes.
+There is no remaining Gemini one-file operational blocker. PR #227 still needs
+independent final Host review before merge, and the 4-, 10-, and 50-file
+qualification gates remain separate future work.
 
 ## Rollback
 
@@ -413,12 +462,15 @@ Draft action source shape, and the route smoke's `/videos` title literal. The
 PDF50 branch does not change the corresponding product surfaces and does not
 weaken or rewrite those unrelated assertions.
 
-The aggregate smoke is not represented as passing. Its static and source-only
-checks passed until the local embedded-Postgres profile-role harness reached
-Windows `initdb`; restricted-token initialization failed before the database
-test started. No environment file was loaded and no hosted connection was made.
-No Provider-backed, database-mutating, 4-file, 10-file, or 50-file test was run
-after the final one-file blocker.
+The aggregate smoke is not represented as passing. Its previously recorded
+Windows embedded-Postgres `initdb` restriction remains an infrastructure
+boundary, not a PDF50 regression. Final source validation also reproduced the
+documented stale Review/UI string assertions and the `/videos` title assertion;
+the runtime route smoke passed `/questions` and stopped at that same `/videos`
+baseline. Live queue/chaos harnesses without their dedicated process-only
+configuration stopped before a hosted connection. No additional Provider run,
+database mutation, or 4-, 10-, or 50-file test followed the successful terminal
+run.
 
 ## Operations And Residue
 
@@ -426,9 +478,14 @@ after the final one-file blocker.
 - Deployments: 0.
 - Provider settings changed: 0.
 - Existing non-synthetic queue jobs mutated: 0.
-- Synthetic fixture cleanup: PASS by exact identifier on all seven autonomous
-  runs.
-- Provider-side file cleanup: PASS on all seven autonomous runs.
+- Synthetic database and Storage fixture cleanup: PASS by exact identifier on
+  all seven historical autonomous runs and all three final-closure runs.
+- Fresh Auth/profile/organization cleanup: PASS on the terminal final-closure
+  run that introduced those fixtures.
+- Provider-side file cleanup: PASS on all ten historical and final-closure
+  autonomous runs.
+- Exact local-server cleanup: PASS after the first final-closure run exposed and
+  corrected the teardown defect.
 - Process-only environment cleanup: PASS.
 - Vault plaintext files created: 0.
 - Provider raw responses emitted or persisted: 0.
