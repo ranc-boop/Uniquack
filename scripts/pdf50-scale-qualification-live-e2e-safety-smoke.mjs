@@ -107,6 +107,8 @@ assert(harness.includes('const burstCard = summary.locator("..")'));
 assert(harness.includes('const details = burstCard.locator("details")'));
 assert(!harness.includes('activePage.locator("details").first()'));
 assert(harness.includes("SAFE_LOCAL_WORKER_FAILURE="));
+assert(harness.includes("SAFE_JOB_STATE="));
+assert(harness.includes('label: "unexpected_terminal"'));
 assert(harness.includes("PARTIAL_PROVIDER_NETWORK_REQUESTS="));
 assert(!harness.includes("console.log(output)"));
 assert(harness.includes('getByRole("button", { name: "Cancel unstarted" })'));

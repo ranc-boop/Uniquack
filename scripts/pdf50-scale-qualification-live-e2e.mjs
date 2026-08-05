@@ -372,6 +372,25 @@ async function reportSafeWorkerFailure({ jobId, outcome, output, service }) {
   );
 }
 
+function reportSafeJobState({ job, label }) {
+  const counters = providerCounters(job);
+  console.log(
+    `SAFE_JOB_STATE=label:${label},status:${safeWorkerValue(
+      job?.status,
+    )},checkpoint:${safeWorkerValue(
+      job?.checkpoint_stage,
+    )},safeError:${safeWorkerValue(job?.safe_error_code)},executionAttempts:${
+      numeric(job?.execution_attempt_count) ?? 0
+    },providerAttempts:${numeric(job?.provider_attempt_count) ?? 0},inference:${
+      counters.inference
+    },inferenceRequests:${counters.inferenceRequests},uploads:${
+      counters.uploads
+    },polls:${counters.polls},cleanup:${counters.cleanup},cleanupFailures:${
+      counters.cleanupFailures
+    },network:${counters.network}`,
+  );
+}
+
 async function runExactWorker({
   captureFence = false,
   internalToken,
@@ -448,14 +467,21 @@ async function runExactWorker({
 }
 
 async function waitForJobStatus({ expected, jobId, service }) {
-  return waitForCondition(
-    async () => {
-      const job = await loadJob({ jobId, service });
-      return expected.includes(job?.status) ? job : null;
-    },
-    "scale_worker_failed",
-    360,
-  );
+  let lastJob = null;
+  for (let attempt = 1; attempt <= 360; attempt += 1) {
+    lastJob = await loadJob({ jobId, service });
+    if (expected.includes(lastJob?.status)) return lastJob;
+    if (
+      ["cancelled", "failed", "retry_wait"].includes(lastJob?.status) &&
+      !expected.includes(lastJob.status)
+    ) {
+      reportSafeJobState({ job: lastJob, label: "unexpected_terminal" });
+      throw new HarnessError("scale_provider_execution_failed");
+    }
+    await sleep(250);
+  }
+  reportSafeJobState({ job: lastJob, label: "status_wait_timeout" });
+  throw new HarnessError("scale_worker_failed");
 }
 
 async function waitForBurstItemStatus({ expected, itemId, service }) {
