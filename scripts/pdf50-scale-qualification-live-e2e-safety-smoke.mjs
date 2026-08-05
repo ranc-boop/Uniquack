@@ -103,6 +103,9 @@ assert(harness.includes("waitForTerminalBurst"));
 assert(harness.includes("SAFE_TERMINAL_AGGREGATE"));
 assert(harness.includes("processedJobIds.length < control.stages[stage].completed"));
 assert(!harness.includes("processedJobIds.length < control.completed"));
+assert(harness.includes('const burstCard = summary.locator("..")'));
+assert(harness.includes('const details = burstCard.locator("details")'));
+assert(!harness.includes('activePage.locator("details").first()'));
 assert(harness.includes('getByRole("button", { name: "Cancel unstarted" })'));
 
 assert(launcher.includes("Import-Clixml -LiteralPath $VaultPath"));

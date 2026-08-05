@@ -1082,14 +1082,23 @@ async function verifyTeacherUI({
   const expectedSummary =
     `Reserved 0 / Waiting 0 / Queued 0 / Processing 0 / ` +
     `Completed ${expected.completed} / Failed 0 / Cancelled ${expected.cancelled}`;
-  const verifySurface = async (activePage) => {
+  const verifySurface = async (activePage, label) => {
+    console.log(`BROWSER_CHECK=${label}`);
     const text = await activePage.locator("body").innerText();
     assertSafeBrowserText(text, secrets);
+    const summary = activePage.getByText(expectedSummary, { exact: true });
+    await summary.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {
+      throw new HarnessError("browser_scale_state_failed");
+    });
+    const burstCard = summary.locator("..");
     scaleAssert(
-      text.includes(`${expected.files} PDFs`) && text.includes(expectedSummary),
+      (await burstCard
+        .getByText(`${expected.files} PDFs`, { exact: true })
+        .count()) === 1,
       "browser_scale_state_failed",
     );
-    const details = activePage.locator("details").first();
+    const details = burstCard.locator("details");
+    scaleAssert((await details.count()) === 1, "browser_scale_state_failed");
     await details.evaluate((element) => {
       element.open = true;
     });
@@ -1098,19 +1107,21 @@ async function verifyTeacherUI({
       files.every((file) => detailText.includes(file.name)),
       "browser_scale_state_failed",
     );
+    console.log(`BROWSER_CHECK_RESULT=${label}:PASS`);
   };
 
   await page.goto(importsUrl, { waitUntil: "networkidle" });
-  await verifySurface(page);
+  await verifySurface(page, "imports_initial");
   await page.reload({ waitUntil: "networkidle" });
-  await verifySurface(page);
+  await verifySurface(page, "imports_reload");
   const remounted = await page.context().newPage();
   try {
     await remounted.goto(importsUrl, { waitUntil: "networkidle" });
-    await verifySurface(remounted);
+    await verifySurface(remounted, "imports_remount");
   } finally {
     await remounted.close();
   }
+  console.log("BROWSER_CHECK=review_pending_drafts");
   await page.goto(`${origin}/teacher/banks/${bankId}/review`, {
     waitUntil: "networkidle",
   });
@@ -1121,6 +1132,7 @@ async function verifyTeacherUI({
       reviewText.includes(evidence.questions[0].title),
     "browser_scale_state_failed",
   );
+  console.log("BROWSER_CHECK_RESULT=review_pending_drafts:PASS");
   console.log("PASS Teacher UI, reload, and fresh remount retained durable state");
 }
 
