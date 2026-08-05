@@ -9,8 +9,8 @@
       },
       "path": "src/lib/ai-pdf-import/service.ts",
       "treatment": {
-        "blob": "ccdec4eb89e9d1260591cca9f80a504e51a1a43c",
-        "sha256": "c1522c0e2c4740d547fc28a473041f0f274817ff74187054fb1f0f55b2060c51"
+        "blob": "705aede33d84087fc02e569251b5d8c4bf1b6030",
+        "sha256": "af8975a73e25143c18268f8101c7712565d89ef5535bd9f5505912dec9c9590e"
       }
     },
     {
@@ -83,8 +83,8 @@
       "baseline": null,
       "path": "src/lib/ai-pdf-import/quality-observatory.ts",
       "treatment": {
-        "blob": "a3f31c24940b1db31300ae9454dacce8da3c4f1c",
-        "sha256": "2ae22ba5edeaedae9cc692ce61f0bbb517a381bb5558f409e8c7fb61d266a14a"
+        "blob": "24f67bf4634d5b7c89fcca8119516d91f15cc387",
+        "sha256": "62bb17a4bb48350591cf40fa43d93d5468f2b24492d4610f8d703fc5e3f97e33"
       }
     },
     {
@@ -96,14 +96,22 @@
       }
     },
     {
+      "baseline": null,
+      "path": "src/lib/ai-providers/ai-pdf-attempt-state.ts",
+      "treatment": {
+        "blob": "3dd9f81be3637db3c302c297f4d06282bf4f31bf",
+        "sha256": "830fc547f5a312f0d665f9a7c4d84aee70de7e820d791756e5114fff519398fa"
+      }
+    },
+    {
       "baseline": {
         "blob": "376ab73fa687ce811baf0818fd313541aedaf981",
         "sha256": "111cd358079cd8fefebd474f489c66bc71f1dee948a3297fb00200d82e02bf64"
       },
       "path": "src/lib/ai-providers/chat.ts",
       "treatment": {
-        "blob": "cdf626bb2e294db656fd7ebcf4e88172da9b4e1d",
-        "sha256": "c661e0bb278b773f0e84d9eef51d30dda32737e8b9ca4c455b005cf5d607755f"
+        "blob": "ad6a0ca3d1739e05dc15edd756cf8e861af9281b",
+        "sha256": "a5be343393306a90a5c56161306780c82961f3578fc4e03f756f32aafa39635d"
       }
     },
     {
@@ -124,8 +132,8 @@
       },
       "path": "src/lib/ai-providers/gemini-native.ts",
       "treatment": {
-        "blob": "9a38d7ce6541130de9799e6d503770d19ed252c6",
-        "sha256": "2eee0c1dae54b9b04d6f9736a6c3c1e6ecc463ccb3b5d40d45793ed77515eee8"
+        "blob": "3a94b8916f31005d2b25b5de4cf625ad571aff3c",
+        "sha256": "4ac6e969378af919a1a5efcaead023dfad476fcc2f6b985dc2210ea3abddc00a"
       }
     },
     {
@@ -146,8 +154,27 @@
       },
       "path": "src/lib/ai-jobs/worker.ts",
       "treatment": {
-        "blob": "fc6c3263dd256d60d556fada95e40c62f4a404e2",
-        "sha256": "5561e067a8949a1fcfccff5974f8a136aec6f90fb417c4795dd2151e75eaf1b7"
+        "blob": "a5c1d1e10c5fe363236a933eb0f543eaf9601be3",
+        "sha256": "fbeeade99bfc222646045f38bbd8f8d0d545654cac30360745f9d441479d6ce0"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "28c056eb80e7971eeb3e586ac45328205291f43e",
+        "sha256": "9b665b0b32579a2c3c34eb945b1f2fa1ead79004ffc079f2f6a0fe90cf79f2ef"
+      },
+      "path": "src/lib/tags/taxonomy-db.ts",
+      "treatment": {
+        "blob": "5a52b0d1d3771a73143286de7b175c7f2a1f4376",
+        "sha256": "60ae229a6ca5a25e689eeb390cdb63e8330748a8d3d9fe618dfc48eb71e89c42"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "src/lib/tags/runtime-taxonomy-snapshot.ts",
+      "treatment": {
+        "blob": "177f3ea5278e8598e3ecb13d1e7a277fc2ff32d4",
+        "sha256": "e819882d432a50864c33729656c0aac5a5b88459b453b3d42c826f8d1dce4f9b"
       }
     },
     {
@@ -163,5 +190,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "59ac19df53f5ef4c02528b25aac7bbdf9a3472e0"
+  "treatmentAnchor": "53375a928185ffc9f5d16907ff4e7f499ddb28d9"
 }
