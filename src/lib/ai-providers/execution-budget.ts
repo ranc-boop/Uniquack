@@ -22,6 +22,7 @@ export type AIProviderExecutionSummary = {
   maxOutputTokens: number | null;
   providerCleanupFailures: number;
   providerCleanupRequests: number;
+  providerInputBytesMax: number;
   providerInferenceAttempts: number;
   providerInferenceRequests: number;
   providerNetworkRequests: number;
@@ -83,6 +84,7 @@ export function createAIProviderExecutionBudget({
   const maximumOutputTokens = boundedOutputTokens(maxOutputTokens);
   let providerCleanupFailures = 0;
   let providerCleanupRequests = 0;
+  let providerInputBytesMax = 0;
   let providerInferenceAttempts = 0;
   let providerInferenceRequests = 0;
   let providerNetworkRequests = 0;
@@ -113,6 +115,12 @@ export function createAIProviderExecutionBudget({
           operation,
           retryable: false,
         });
+      }
+      if (Number.isSafeInteger(inputBytes) && Number(inputBytes) > 0) {
+        providerInputBytesMax = Math.max(
+          providerInputBytesMax,
+          Number(inputBytes),
+        );
       }
       providerInferenceAttempts += 1;
     },
@@ -145,6 +153,7 @@ export function createAIProviderExecutionBudget({
         maxOutputTokens: maximumOutputTokens,
         providerCleanupFailures,
         providerCleanupRequests,
+        providerInputBytesMax,
         providerInferenceAttempts,
         providerInferenceRequests,
         providerNetworkRequests,

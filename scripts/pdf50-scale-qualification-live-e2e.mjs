@@ -54,6 +54,12 @@ import {
 
 const workerRoutePath = "/api/internal/ai-jobs/run";
 const providerInterruption = "after_provider_checkpoint";
+const retryableScaleProviderCodes = new Set([
+  "provider_busy",
+  "provider_network_error",
+  "provider_rate_limited",
+  "provider_timeout",
+]);
 const scaleProviderControl = await loadPDF50ScaleProviderProofControl();
 const scaleProviderEnvironment =
   pdf50ScaleProviderProofEnvironment(scaleProviderControl);
@@ -99,6 +105,7 @@ function providerCounters(job) {
   return {
     cleanup: numeric(result.providerCleanupRequests) ?? 0,
     cleanupFailures: numeric(result.providerCleanupFailures) ?? 0,
+    inputBytesMax: numeric(result.providerInputBytesMax) ?? 0,
     inference: numeric(result.providerInferenceAttempts) ?? 0,
     inferenceRequests: numeric(result.providerInferenceRequests) ?? 0,
     network: numeric(result.providerNetworkRequests) ?? 0,
@@ -108,7 +115,13 @@ function providerCounters(job) {
 }
 
 function addCounters(target, value) {
-  for (const key of Object.keys(target)) target[key] += value[key] ?? 0;
+  for (const key of Object.keys(target)) {
+    if (key === "inputBytesMax") {
+      target[key] = Math.max(target[key], value[key] ?? 0);
+    } else {
+      target[key] += value[key] ?? 0;
+    }
+  }
 }
 
 function requireScaleEnvironment(control) {
@@ -318,7 +331,7 @@ async function loadJob({ jobId, service }) {
     await service
       .from("ai_provider_jobs")
       .select(
-        "id, job_kind, status, target_bank_id, resource_id, lease_owner, lease_generation, execution_fence_token, checkpoint_stage, checkpoint_version, checkpointed_at, persisted_output_lineage, safe_result, safe_error_code, safe_message, retryable, execution_attempt_count, provider_attempt_count, available_at, completed_at, cancelled_at",
+        "id, job_kind, status, target_bank_id, resource_id, lease_owner, lease_generation, execution_fence_token, checkpoint_stage, checkpoint_version, checkpointed_at, persisted_output_lineage, safe_result, safe_error_code, safe_message, retryable, execution_attempt_count, max_execution_attempts, provider_attempt_count, available_at, completed_at, cancelled_at",
       )
       .eq("id", jobId)
       .maybeSingle(),
@@ -388,7 +401,9 @@ function reportSafeJobState({ job, label }) {
       numeric(job?.execution_attempt_count) ?? 0
     },providerAttempts:${numeric(job?.provider_attempt_count) ?? 0},inference:${
       counters.inference
-    },inferenceRequests:${counters.inferenceRequests},uploads:${
+    },inferenceRequests:${counters.inferenceRequests},inputBytesMax:${
+      counters.inputBytesMax
+    },uploads:${
       counters.uploads
     },polls:${counters.polls},cleanup:${counters.cleanup},cleanupFailures:${
       counters.cleanupFailures
@@ -563,6 +578,125 @@ async function waitForJobAvailable({ jobId, service }) {
   );
 }
 
+function assertScaleWorkerBudget({
+  counters,
+  maxProviderAttempts,
+  remainingJobsAfterCurrent,
+}) {
+  scaleAssert(
+    counters.inference +
+      scaleProviderControl.providerInferenceAttempts +
+      remainingJobsAfterCurrent <=
+      maxProviderAttempts,
+    "provider_budget_exceeded",
+  );
+}
+
+function validateProviderCounters({ counters, requireInference }) {
+  scaleAssert(
+    Object.values(counters).every(
+      (value) => Number.isSafeInteger(value) && value >= 0,
+    ) &&
+      counters.inference <= scaleProviderControl.providerInferenceAttempts &&
+      counters.inferenceRequests === counters.inference &&
+      counters.network <= scaleProviderControl.providerMaxNetworkRequests &&
+      counters.inputBytesMax <=
+        scaleProviderControl.maxInputBytesPerAttempt &&
+      counters.cleanupFailures === 0 &&
+      (!requireInference ||
+        (counters.inference >= 1 && counters.inputBytesMax >= 1)),
+    "scale_provider_execution_failed",
+  );
+}
+
+async function runExactWorkerToTerminal({
+  counters,
+  internalToken,
+  jobId,
+  maxProviderAttempts,
+  onRetryWaitReplay,
+  onRouteInvocation,
+  origin,
+  remainingJobsAfterCurrent,
+  service,
+}) {
+  let routeInvocations = 0;
+  let retryWaitReplays = 0;
+
+  while (true) {
+    const before = await loadJob({ jobId, service });
+    const executionAttempts = numeric(before?.execution_attempt_count);
+    const maxExecutionAttempts = numeric(before?.max_execution_attempts);
+    scaleAssert(
+      before?.job_kind === "ai_pdf_extract" &&
+        ["queued", "retry_wait"].includes(before.status) &&
+        Number.isSafeInteger(executionAttempts) &&
+        Number.isSafeInteger(maxExecutionAttempts) &&
+        executionAttempts >= 0 &&
+        maxExecutionAttempts >= 1 &&
+        executionAttempts < maxExecutionAttempts,
+      "scale_provider_execution_failed",
+    );
+    if (before.status === "retry_wait") {
+      await waitForJobAvailable({ jobId, service });
+    }
+    assertScaleWorkerBudget({
+      counters,
+      maxProviderAttempts,
+      remainingJobsAfterCurrent,
+    });
+
+    await runExactWorker({ internalToken, jobId, origin, service });
+    routeInvocations += 1;
+    onRouteInvocation();
+    const outcomeJob = await waitForJobStatus({
+      expected: ["completed", "failed", "retry_wait"],
+      jobId,
+      service,
+    });
+    const executionCounters = providerCounters(outcomeJob);
+    validateProviderCounters({
+      counters: executionCounters,
+      requireInference: outcomeJob.status !== "failed",
+    });
+    addCounters(counters, executionCounters);
+    scaleAssert(
+      counters.inference <= maxProviderAttempts,
+      "provider_budget_exceeded",
+    );
+
+    if (outcomeJob.status === "completed") {
+      scaleAssert(
+        executionCounters.cleanup >= 1,
+        "scale_provider_execution_failed",
+      );
+      return { completedJob: outcomeJob, retryWaitReplays, routeInvocations };
+    }
+    if (outcomeJob.status === "failed") {
+      reportSafeJobState({ job: outcomeJob, label: "failed_terminal" });
+      throw new HarnessError("scale_provider_execution_failed");
+    }
+
+    const completedExecutionAttempts = numeric(
+      outcomeJob.execution_attempt_count,
+    );
+    const allowedExecutionAttempts = numeric(outcomeJob.max_execution_attempts);
+    scaleAssert(
+      outcomeJob.retryable === true &&
+        retryableScaleProviderCodes.has(outcomeJob.safe_error_code) &&
+        Number.isSafeInteger(completedExecutionAttempts) &&
+        Number.isSafeInteger(allowedExecutionAttempts) &&
+        completedExecutionAttempts < allowedExecutionAttempts,
+      "scale_provider_execution_failed",
+    );
+    retryWaitReplays += 1;
+    onRetryWaitReplay();
+    console.log(
+      "PASS retryable Provider wait remained durable and exact-job scoped",
+    );
+  }
+}
+
 async function proveStaleFenceRejected({ fence, jobId, service }) {
   scaleAssert(fence?.leaseOwner && fence?.executionFenceToken, "stale_fence_proof_failed");
   const result = await service.rpc("checkpoint_ai_provider_job_stage", {
@@ -637,6 +771,7 @@ async function drainBurst({
   const counters = {
     cleanup: 0,
     cleanupFailures: 0,
+    inputBytesMax: 0,
     inference: 0,
     inferenceRequests: 0,
     network: 0,
@@ -648,6 +783,7 @@ async function drainBurst({
   let interruptionComplete = false;
   let maxAdmissionWaiting = 0;
   let maxQueueDepth = 0;
+  let providerRetryWaitReplays = 0;
   let readDelayComplete = false;
   const startedAt = Date.now();
 
@@ -709,6 +845,13 @@ async function drainBurst({
       processedJobIds.length === 1;
 
     if (useInterruption) {
+      const remainingJobsAfterCurrent =
+        control.stages[stage].completed - processedJobIds.length - 1;
+      assertScaleWorkerBudget({
+        counters,
+        maxProviderAttempts: control.stages[stage].maxProviderAttempts,
+        remainingJobsAfterCurrent,
+      });
       const first = await runExactWorker({
         captureFence: true,
         internalToken,
@@ -724,18 +867,23 @@ async function drainBurst({
         service,
       });
       const firstCounters = providerCounters(retryJob);
+      validateProviderCounters({
+        counters: firstCounters,
+        requireInference: true,
+      });
       scaleAssert(
         retryJob.checkpoint_stage === "provider_result_checkpointed" &&
-          firstCounters.inference >= 1 &&
-          firstCounters.inference <=
-            scaleProviderControl.providerInferenceAttempts &&
-          firstCounters.inferenceRequests === firstCounters.inference &&
-          firstCounters.cleanupFailures === 0,
+          firstCounters.cleanup >= 1,
         "scale_recovery_failed",
       );
       addCounters(counters, firstCounters);
       await proveStaleFenceRejected({ fence: first.fence, jobId, service });
       await waitForJobAvailable({ jobId, service });
+      assertScaleWorkerBudget({
+        counters,
+        maxProviderAttempts: control.stages[stage].maxProviderAttempts,
+        remainingJobsAfterCurrent,
+      });
       await runExactWorker({
         internalToken,
         jobId,
@@ -754,9 +902,14 @@ async function drainBurst({
         service,
       });
       const replayCounters = providerCounters(completedJob);
+      validateProviderCounters({
+        counters: replayCounters,
+        requireInference: false,
+      });
       scaleAssert(
         replayCounters.inference === 0 &&
           replayCounters.inferenceRequests === 0 &&
+          replayCounters.inputBytesMax === 0 &&
           completedJob.execution_attempt_count >= 2 &&
           completedJob.provider_attempt_count === firstCounters.inference,
         "scale_recovery_failed",
@@ -765,11 +918,20 @@ async function drainBurst({
       interruptionComplete = true;
       console.log("PASS protected Provider checkpoint replay used zero duplicate inference");
     } else {
-      await runExactWorker({ internalToken, jobId, origin, service });
-      claims += 1;
-      const completedJob = await waitForJobStatus({
-        expected: ["completed"],
+      await runExactWorkerToTerminal({
+        counters,
+        internalToken,
         jobId,
+        maxProviderAttempts: control.stages[stage].maxProviderAttempts,
+        onRetryWaitReplay: () => {
+          providerRetryWaitReplays += 1;
+        },
+        onRouteInvocation: () => {
+          claims += 1;
+        },
+        origin,
+        remainingJobsAfterCurrent:
+          control.stages[stage].completed - processedJobIds.length - 1,
         service,
       });
       await waitForBurstItemStatus({
@@ -777,17 +939,6 @@ async function drainBurst({
         itemId: item.id,
         service,
       });
-      const completedCounters = providerCounters(completedJob);
-      scaleAssert(
-        completedCounters.inference >= 1 &&
-          completedCounters.inference <=
-            scaleProviderControl.providerInferenceAttempts &&
-          completedCounters.inferenceRequests === completedCounters.inference &&
-          completedCounters.cleanup >= 1 &&
-          completedCounters.cleanupFailures === 0,
-        "scale_provider_execution_failed",
-      );
-      addCounters(counters, completedCounters);
     }
 
     processedJobIds.push(jobId);
@@ -803,6 +954,7 @@ async function drainBurst({
       console.log(
         `PARTIAL_PROVIDER_INFERENCE_REQUESTS=${counters.inferenceRequests}`,
       );
+      console.log(`PARTIAL_PROVIDER_INPUT_BYTES_MAX=${counters.inputBytesMax}`);
       console.log(`PARTIAL_PROVIDER_UPLOAD_REQUESTS=${counters.uploads}`);
       console.log(`PARTIAL_PROVIDER_POLL_REQUESTS=${counters.polls}`);
       console.log(`PARTIAL_PROVIDER_CLEANUP_REQUESTS=${counters.cleanup}`);
@@ -837,6 +989,7 @@ async function drainBurst({
     maxAdmissionWaiting,
     maxQueueDepth,
     processedJobIds,
+    providerRetryWaitReplays,
     terminal,
   };
 }
@@ -1598,10 +1751,12 @@ async function main() {
     console.log(`DRAIN_ELAPSED_MS=${drain.drainElapsedMs}`);
     console.log(`PROVIDER_INFERENCE_ATTEMPTS=${drain.counters.inference}`);
     console.log(`PROVIDER_INFERENCE_REQUESTS=${drain.counters.inferenceRequests}`);
+    console.log(`PROVIDER_INPUT_BYTES_MAX=${drain.counters.inputBytesMax}`);
     console.log(`PROVIDER_UPLOAD_REQUESTS=${drain.counters.uploads}`);
     console.log(`PROVIDER_POLL_REQUESTS=${drain.counters.polls}`);
     console.log(`PROVIDER_CLEANUP_REQUESTS=${drain.counters.cleanup}`);
     console.log(`PROVIDER_NETWORK_REQUESTS=${drain.counters.network}`);
+    console.log(`PROVIDER_RETRY_WAIT_REPLAYS=${drain.providerRetryWaitReplays}`);
     console.log(`INPUT_TOKENS=${evidence.inputTokens}`);
     console.log(`OUTPUT_TOKENS=${evidence.outputTokens}`);
     console.log("THINKING_TOKENS=UNKNOWN");

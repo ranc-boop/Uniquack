@@ -55,6 +55,7 @@ const providerProofControl = JSON.parse(
 assert(
   budget.includes("createAIProviderExecutionBudget") &&
     budget.includes("beforeInference") &&
+    budget.includes("providerInputBytesMax") &&
     budget.includes("recordNetworkRequest") &&
     budget.includes("recordCleanupResult") &&
     budget.includes("maxNetworkRequests") &&
@@ -152,6 +153,7 @@ assert(
   worker.includes("createAIProviderExecutionBudget") &&
     worker.includes("providerTestLimits") &&
   worker.includes("providerInferenceAttempts") &&
+    worker.includes("providerInputBytesMax") &&
     worker.includes("providerInferenceRequests") &&
     worker.includes("providerNetworkRequests") &&
     worker.includes("claimTrustedProviderTestJob") &&

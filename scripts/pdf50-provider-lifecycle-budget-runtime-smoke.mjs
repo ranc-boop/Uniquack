@@ -17,6 +17,15 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+function expectedPdfInputBytes({ outputContract, pdfBytes, prompt }) {
+  return (
+    Buffer.byteLength(prompt, "utf8") +
+    Buffer.byteLength(JSON.stringify(outputContract ?? {}), "utf8") +
+    pdfBytes.byteLength +
+    4_096
+  );
+}
+
 async function loadTypeScriptModule(relativePath, mocks = {}) {
   const filePath = resolve(root, relativePath);
   const source = await readFile(filePath, "utf8");
@@ -238,6 +247,7 @@ assert.deepEqual(budget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 0,
   providerCleanupRequests: 1,
+  providerInputBytesMax: 0,
   providerInferenceAttempts: 4,
   providerInferenceRequests: 4,
   providerNetworkRequests: 5,
@@ -258,6 +268,15 @@ assert.throws(
   },
 );
 assert.equal(inputBoundBudget.snapshot().providerInferenceAttempts, 0);
+assert.equal(inputBoundBudget.snapshot().providerInputBytesMax, 0);
+
+const inputTelemetryBudget = budgetModule.createAIProviderExecutionBudget({
+  maxInferenceAttempts: 2,
+  maxInputBytes: 100,
+});
+inputTelemetryBudget.beforeInference("ai_pdf_extraction", 25);
+inputTelemetryBudget.beforeInference("ai_pdf_extraction", 40);
+assert.equal(inputTelemetryBudget.snapshot().providerInputBytesMax, 40);
 
 const networkBudget = budgetModule.createAIProviderExecutionBudget({
   maxInferenceAttempts: 4,
@@ -380,6 +399,7 @@ assert.deepEqual(providerRejectionBudget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 0,
   providerCleanupRequests: 0,
+  providerInputBytesMax: 0,
   providerInferenceAttempts: 1,
   providerInferenceRequests: 1,
   providerNetworkRequests: 1,
@@ -475,6 +495,10 @@ assert.deepEqual(lifecycleBudget.snapshot(), {
   maxOutputTokens: 8192,
   providerCleanupFailures: 0,
   providerCleanupRequests: 1,
+  providerInputBytesMax: expectedPdfInputBytes({
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "Return an empty question array.",
+  }),
   providerInferenceAttempts: 1,
   providerInferenceRequests: 1,
   providerNetworkRequests: 5,
@@ -579,6 +603,10 @@ assert.deepEqual(cleanupBudget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 1,
   providerCleanupRequests: 0,
+  providerInputBytesMax: expectedPdfInputBytes({
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "Return JSON.",
+  }),
   providerInferenceAttempts: 1,
   providerInferenceRequests: 1,
   providerNetworkRequests: 3,
@@ -647,6 +675,10 @@ assert.deepEqual(malformedBudget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 0,
   providerCleanupRequests: 1,
+  providerInputBytesMax: expectedPdfInputBytes({
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "Return JSON.",
+  }),
   providerInferenceAttempts: 1,
   providerInferenceRequests: 1,
   providerNetworkRequests: 4,
@@ -681,6 +713,10 @@ assert.deepEqual(uploadFailureBudget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 0,
   providerCleanupRequests: 0,
+  providerInputBytesMax: expectedPdfInputBytes({
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "No inference request should be sent.",
+  }),
   providerInferenceAttempts: 1,
   providerInferenceRequests: 0,
   providerNetworkRequests: 1,
@@ -743,6 +779,7 @@ await assert.rejects(
 );
 assert.equal(oversizedInputFetchCount, 0);
 assert.equal(smallInputBudget.snapshot().providerInferenceAttempts, 0);
+assert.equal(smallInputBudget.snapshot().providerInputBytesMax, 0);
 
 let extractionResponses = [];
 const extractionPrompts = [];

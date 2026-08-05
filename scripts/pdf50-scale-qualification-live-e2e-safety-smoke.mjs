@@ -184,6 +184,13 @@ assert(
 assert(harness.includes("RUN_CONSERVATIVE_CEILING_CONSUMED_MICROS"));
 assert(harness.includes("cleanupFailures === 0"));
 assert(harness.includes("replayCounters.inference === 0"));
+assert(harness.includes("retryableScaleProviderCodes.has"));
+assert(
+  harness.includes('expected: ["completed", "failed", "retry_wait"]'),
+);
+assert(harness.includes("await waitForJobAvailable"));
+assert(harness.includes("counters.inputBytesMax <="));
+assert(harness.includes("PROVIDER_INPUT_BYTES_MAX="));
 assert(
   harness.includes(
     "completedJob.provider_attempt_count === firstCounters.inference",
@@ -242,6 +249,11 @@ assert(route.includes("parseTrustedAIProviderTestInterruption"));
 assert(worker.includes("TrustedProviderCheckpointInterruptionError"));
 assert(worker.includes("checkpointAIProviderJobProviderResult"));
 assert(
+  worker.includes(
+    "providerInputBytesMax: providerExecutionSummary.providerInputBytesMax",
+  ),
+);
+assert(
   worker.indexOf("checkpointAIProviderJobProviderResult") <
     worker.indexOf("throw new TrustedProviderCheckpointInterruptionError()"),
 );
@@ -254,7 +266,12 @@ function satisfiesScaleSafetyContract(source) {
     source.includes("beforeCount === 0 && afterCount === 0") &&
     source.includes('result.data === "STALE_FENCE_REJECTED"') &&
     source.includes("replayCounters.inference === 0") &&
-    source.includes("completedCounters.cleanupFailures === 0") &&
+    source.includes("retryableScaleProviderCodes.has") &&
+    source.includes('expected: ["completed", "failed", "retry_wait"]') &&
+    source.includes("counters.inputBytesMax <=") &&
+    source.includes(
+      "counters.cleanupFailures === 0 &&\n      (!requireInference",
+    ) &&
     source.includes(
       "drain.counters.inference >= config.stageControl.providerJobs",
     ) &&
@@ -269,8 +286,20 @@ const mutationCases = [
   harness.replace('result.data === "STALE_FENCE_REJECTED"', "true"),
   harness.replace("replayCounters.inference === 0", "replayCounters.inference >= 0"),
   harness.replace(
-    "completedCounters.cleanupFailures === 0",
-    "completedCounters.cleanupFailures >= 0",
+    "retryableScaleProviderCodes.has(outcomeJob.safe_error_code)",
+    "true",
+  ),
+  harness.replace(
+    'expected: ["completed", "failed", "retry_wait"]',
+    'expected: ["completed"]',
+  ),
+  harness.replace(
+    "counters.inputBytesMax <=",
+    "counters.inputBytesMax >=",
+  ),
+  harness.replace(
+    "counters.cleanupFailures === 0 &&\n      (!requireInference",
+    "counters.cleanupFailures >= 0 &&\n      (!requireInference",
   ),
   harness.replace(
     "drain.counters.inference >= config.stageControl.providerJobs",

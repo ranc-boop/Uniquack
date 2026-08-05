@@ -69,12 +69,12 @@ exact burst, and invokes the trusted worker one exact job at a time.
 
 - Authorized fresh cumulative ceiling: USD 2.00.
 - Explicit reassessment threshold: USD 1.60 conservative cumulative spend.
-- Known live scale iterations: 9.
+- Known live scale iterations: 10.
 - Trustworthy actual estimate for the passing terminal iteration: 3,794 micros.
 - Cumulative actual spend: `UNKNOWN` because failed iterations did not all
   reach complete usage telemetry.
-- Conservative cumulative ceiling consumed: 651,784 micros (USD 0.651784).
-- Remaining authorized budget: 1,348,216 micros (USD 1.348216).
+- Conservative cumulative ceiling consumed: 831,037 micros (USD 0.831037).
+- Remaining authorized budget: 1,168,963 micros (USD 1.168963).
 
 Future scale runs use a 50,000-byte upper envelope covering the prompt,
 structured-output schema, synthetic PDF bytes, and fixed request overhead. The
@@ -87,8 +87,15 @@ current source-defined Gemini rates this bounds a fresh stage as follows:
 - Four files: 79,668 micros (12-attempt ceiling; already passed and not rerun).
 - Ten files: 179,253 micros (27-attempt ceiling for nine Provider jobs).
 - Fifty files: 995,850 micros (150-attempt ceiling).
-- Projected ceiling after one new ten-file run and one fifty-file run:
-  1,826,887 micros (USD 1.826887).
+- Projected ceiling after one new ten-file run: 1,010,290 micros (USD
+  1.010290).
+- A subsequent fifty-file run at the unchanged 50,000-byte envelope would
+  project to 2,006,140 micros, 6,140 micros beyond authorization, and therefore
+  must not start under that envelope. Sanitized maximum Provider-input-byte
+  telemetry is now captured from authorized attempts. The envelope may be
+  reduced only after a passing ten-file run proves a lower exact maximum with
+  conservative headroom; otherwise fifty-file execution is an external budget
+  gate.
 
 Unknown usage remains `UNKNOWN`; it is never converted into a zero-cost claim.
 Before each paid run, the harness must calculate a credible maximum and stop if
@@ -99,7 +106,7 @@ that maximum would exceed the remaining authorized budget.
 | Stage | Status | Live iterations | Provider attempts | Result |
 | --- | --- | ---: | ---: | --- |
 | Four files | `PASS` | 5 | At least 11; exact failed-run total `UNKNOWN` | 4/4 terminal, UI, isolation, invariants, and cleanup passed |
-| Ten files | `BLOCKED_BEFORE_CORRECTION` | 4 | At least 6; first failed-run total `UNKNOWN` | Recovery proofs advanced through three completions; a later pre-worker environment validation rejected the new input-bound field with zero Provider calls |
+| Ten files | `BLOCKED_RETRY_WAIT_HARNESS_CORRECTED` | 5 | At least 17; earlier failed-run total `UNKNOWN` | Eight completed; the ninth correctly entered durable `retry_wait` after a bounded transient `provider_busy`, but the harness treated that nonterminal state as failure |
 | Fifty files | `NOT_RUN` | 0 | 0 | Must not begin before the ten-file gate passes |
 
 Passing admission alone is insufficient. Each stage must verify durable item
@@ -149,9 +156,10 @@ Observed passing iteration:
 
 ### Ten-file pre-correction evidence
 
-Four fresh ten-file iterations stopped before mixed-state completion. Every
-run completed exact-ID cleanup with zero residue. The first three admitted ten
-synthetic items; the fourth stopped before burst admission and Provider work.
+Five fresh ten-file iterations stopped before mixed-state completion. Every
+run completed exact-ID cleanup with zero residue. The first three and fifth
+admitted ten synthetic items; the fourth stopped before burst admission and
+Provider work.
 
 1. The first run made one exact claim, then stopped at the worker boundary.
    Early diagnostics did not preserve a trustworthy Provider counter total, so
@@ -195,6 +203,29 @@ or network-request budget failures still fail as budget errors.
    that explicit optional field and continues to reject arbitrary extra fields.
    The cost ledger charges the full stage ceiling once worker drain begins, but
    records zero for failures that provably occur before that boundary.
+
+5. The corrected environment gate admitted ten files and completed eight exact
+   jobs. The ninth job used three bounded Gemini upload/inference/cleanup
+   lifecycles, received the retryable safe code `provider_busy`, and correctly
+   entered durable `retry_wait` at `provider_request_started`. The harness
+   incorrectly treated `retry_wait` as an unexpected terminal state instead of
+   waiting for `available_at` and invoking the same exact job again. The run
+   made 10 exact worker-route invocations and, including the waiting job, 11
+   inference requests, 22 upload requests, 0 polls, 11 cleanup requests, and 44
+   Provider HTTP requests. Eight Review Drafts completed before the stop. All
+   synthetic database, Storage, Auth, Provider-file, process, and environment
+   cleanup passed with zero residue. Because worker drain had begun, the full
+   179,253-micros stage ceiling was charged, bringing the conservative ledger
+   to 831,037 micros; incomplete aggregate usage remains `UNKNOWN`.
+
+The harness now follows only the four explicitly retryable safe Provider codes
+through the same durable job. It requires the database retry flag and remaining
+execution-attempt allowance, waits for `available_at`, preserves exact-job
+targeting, and reserves one minimum inference for every unprocessed job before
+allowing another bounded worker invocation. A final `failed` state still fails
+truthfully. Safe numeric maximum-input-byte telemetry is persisted with the
+worker result; prompts, source content, filenames, Provider responses, and
+credentials remain excluded.
 
 ## Pre-live source validation
 
