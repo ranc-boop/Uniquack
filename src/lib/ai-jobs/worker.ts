@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  AIProviderError,
   classifyAIProviderError,
   safeAIProviderErrorState,
 } from "@/lib/ai-providers/errors";
@@ -17,7 +18,11 @@ import {
   type AIProviderRoutingOperationKind,
 } from "@/lib/ai-providers/routing";
 import { queueRetryDelayMs } from "@/lib/ai-jobs/policy";
-import type { TrustedAIProviderTestLimits } from "@/lib/ai-jobs/provider-test-control";
+import {
+  PDF50_PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT,
+  type TrustedAIProviderTestInterruption,
+  type TrustedAIProviderTestLimits,
+} from "@/lib/ai-jobs/provider-test-control";
 import type { AIProviderJob } from "@/lib/ai-jobs/types";
 import {
   AIProviderJobFenceLostError,
@@ -354,11 +359,25 @@ function checkpointPayloadSha256(payload: Record<string, unknown>) {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
+class TrustedProviderCheckpointInterruptionError extends AIProviderError {
+  constructor() {
+    super({
+      code: "provider_network_error",
+      operation: "ai_pdf_extraction",
+      retryable: true,
+      safeMessage:
+        "The trusted qualification runner interrupted after preserving the Provider result.",
+    });
+    this.name = "TrustedProviderCheckpointInterruptionError";
+  }
+}
+
 async function runAIPdfExtractJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
   providerExecution,
+  providerTestInterruption = null,
   selectiveExecutionEnabled = false,
   supabase,
 }: {
@@ -366,6 +385,7 @@ async function runAIPdfExtractJob({
   leaseOwner: string;
   maxProviderCalls?: number;
   providerExecution: AIProviderExecutionBudget;
+  providerTestInterruption?: TrustedAIProviderTestInterruption | null;
   selectiveExecutionEnabled?: boolean;
   supabase: SupabaseWorkerClient;
 }): Promise<WorkerExecutionResult> {
@@ -512,6 +532,12 @@ async function runAIPdfExtractJob({
         payloadSha256: checkpointPayloadSha256(payload),
         supabase,
       });
+      if (
+        providerTestInterruption ===
+        PDF50_PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT
+      ) {
+        throw new TrustedProviderCheckpointInterruptionError();
+      }
     },
     onCheckpointStage: async (stage, metadata) => {
       await checkpointAIProviderJobStage({
@@ -584,6 +610,7 @@ async function runAIPdfExtractJob({
     // started under a newer fence.
     if (
       !(error instanceof AIProviderJobFenceLostError) &&
+      !(error instanceof TrustedProviderCheckpointInterruptionError) &&
       !(error instanceof Error && error.message === STALE_FENCE_REJECTED)
     ) {
       await recordAIPdfProviderFailure({ error, input });
@@ -883,6 +910,7 @@ async function executeClaimedJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
+  providerTestInterruption = null,
   providerTestLimits,
   selectiveExecutionEnabled = false,
   supabase,
@@ -890,6 +918,7 @@ async function executeClaimedJob({
   job: AIProviderJob;
   leaseOwner: string;
   maxProviderCalls?: number;
+  providerTestInterruption?: TrustedAIProviderTestInterruption | null;
   providerTestLimits?: TrustedAIProviderTestLimits | null;
   selectiveExecutionEnabled?: boolean;
   supabase: SupabaseWorkerClient;
@@ -917,6 +946,7 @@ async function executeClaimedJob({
             leaseOwner,
             maxProviderCalls,
             providerExecution,
+            providerTestInterruption,
             selectiveExecutionEnabled,
             supabase,
           })
@@ -1056,12 +1086,14 @@ async function executeClaimedJob({
 
 export async function runDurableAIProviderJobs({
   limit = 1,
+  providerTestInterruption = null,
   providerTestLimits = null,
   supabase = createServiceRoleClient(),
   targetJobId = null,
   workerId = `ai-worker-${randomUUID()}`,
 }: {
   limit?: number;
+  providerTestInterruption?: TrustedAIProviderTestInterruption | null;
   providerTestLimits?: TrustedAIProviderTestLimits | null;
   supabase?: SupabaseWorkerClient;
   targetJobId?: string | null;
@@ -1088,6 +1120,9 @@ export async function runDurableAIProviderJobs({
   }
   if (!providerTestLimits && targetJobId) {
     throw new Error("trusted_provider_test_target_without_limits");
+  }
+  if (providerTestInterruption && (!providerTestLimits || !targetJobId)) {
+    throw new Error("trusted_provider_test_interruption_without_test_mode");
   }
 
   if (!providerTestLimits) {
@@ -1121,6 +1156,7 @@ export async function runDurableAIProviderJobs({
         job,
         leaseOwner: workerId,
         maxProviderCalls: control.maxProviderCallsPerExecution,
+        providerTestInterruption,
         providerTestLimits,
         selectiveExecutionEnabled: control.selectiveExecutionEnabled,
         supabase,

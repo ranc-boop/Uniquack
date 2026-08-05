@@ -89,6 +89,13 @@ function readProofControl(): Readonly<PDF50ProviderProofControl> {
 export const PDF50_PROVIDER_PROOF_CONTROL = readProofControl();
 export const PDF50_PROVIDER_TEST_MODE = PDF50_PROVIDER_PROOF_CONTROL.mode;
 export const PDF50_PROVIDER_TEST_JOB_HEADER = "x-pdf50-provider-test-job-id";
+export const PDF50_PROVIDER_TEST_INTERRUPTION_HEADER =
+  "x-pdf50-provider-test-interruption";
+export const PDF50_PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT =
+  "after_provider_checkpoint";
+
+export type TrustedAIProviderTestInterruption =
+  typeof PDF50_PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT;
 
 function costForTokens(tokens: number, microsPerMillion: number) {
   return Math.ceil((tokens * microsPerMillion) / 1_000_000);
@@ -128,6 +135,16 @@ export function parseTrustedAIProviderTestJobId(value: string | null) {
     )
   ) {
     throw new Error("trusted_provider_test_job_id_rejected");
+  }
+  return value;
+}
+
+export function parseTrustedAIProviderTestInterruption(
+  value: string | null,
+): TrustedAIProviderTestInterruption | null {
+  if (value === null) return null;
+  if (value !== PDF50_PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT) {
+    throw new Error("trusted_provider_test_interruption_rejected");
   }
   return value;
 }

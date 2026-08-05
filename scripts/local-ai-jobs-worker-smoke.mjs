@@ -13,12 +13,14 @@ import {
   resolveLocalAIJobsWorkerMaxInvocations,
   resolveLocalAIJobsWorkerRoute,
   validateLocalAIJobsInternalToken,
+  validateLocalAIJobsProviderTestInterruption,
   validateLocalAIJobsTargetJobId,
 } from "./local-ai-jobs-worker.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const token = "local-worker-smoke-0123456789-abcdef-XYZ";
 const targetJobId = "123e4567-e89b-42d3-a456-426614174000";
+const providerTestInterruption = "after_provider_checkpoint";
 const workerRoutePath = "/api/internal/ai-jobs/run";
 
 function expectConfigurationError(callback, code) {
@@ -227,11 +229,31 @@ function configurationCases() {
       "target_job_id_rejected",
     );
   }
+  assert.equal(validateLocalAIJobsProviderTestInterruption(undefined), null);
+  assert.equal(
+    validateLocalAIJobsProviderTestInterruption(providerTestInterruption),
+    providerTestInterruption,
+  );
+  for (const value of ["", "before_provider", "after_provider_checkpoint "]) {
+    expectConfigurationError(
+      () => validateLocalAIJobsProviderTestInterruption(value),
+      "provider_test_interruption_rejected",
+    );
+  }
+  expectConfigurationError(
+    () =>
+      fastWorker({
+        providerTestInterruption,
+        targetUrl: `http://localhost:3000${workerRoutePath}`,
+      }),
+    "provider_test_interruption_target_required",
+  );
 }
 
 async function requestContractCase() {
   const logs = [];
   let body = "";
+  let receivedProviderTestInterruption = null;
   let receivedTargetJobId = null;
   let receivedToken = null;
   let requestCount = 0;
@@ -239,6 +261,8 @@ async function requestContractCase() {
     requestCount += 1;
     receivedToken = request.headers["x-ai-jobs-internal-token"];
     receivedTargetJobId = request.headers["x-pdf50-provider-test-job-id"];
+    receivedProviderTestInterruption =
+      request.headers["x-pdf50-provider-test-interruption"];
     request.setEncoding("utf8");
     request.on("data", (chunk) => {
       body += chunk;
@@ -263,6 +287,7 @@ async function requestContractCase() {
   try {
     const worker = fastWorker({
       logger: (line) => logs.push(line),
+      providerTestInterruption,
       targetJobId,
       targetUrl: local.url,
     });
@@ -272,6 +297,7 @@ async function requestContractCase() {
     assert.equal(requestCount, 1);
     assert.equal(receivedToken, token);
     assert.equal(receivedTargetJobId, targetJobId);
+    assert.equal(receivedProviderTestInterruption, providerTestInterruption);
     assert.equal(body, "");
     assert(logs.some((line) => line.includes("status=worker_accepted")));
     assert(logs.some((line) => line.includes("providerInferenceAttempts=1")));
@@ -621,13 +647,17 @@ async function sourceBoundaryCases() {
     route.includes("runDurableAIProviderJobs({") &&
       route.includes("limit: providerTestLimits?.maxClaimedJobs ?? 2") &&
       route.includes("providerTestLimits") &&
+      route.includes("PDF50_PROVIDER_TEST_INTERRUPTION_HEADER") &&
       route.includes("PDF50_PROVIDER_TEST_JOB_HEADER") &&
+      route.includes("providerTestInterruption") &&
       route.includes("targetJobId"),
   );
   assert(!route.includes("request.json("));
   assert(worker.includes("Math.min(limit, 2, control.maxJobsPerInvocation)"));
   assert(worker.includes("claimTrustedProviderTestJob"));
   assert(worker.includes("trusted_provider_test_target_required"));
+  assert(worker.includes("TrustedProviderCheckpointInterruptionError"));
+  assert(worker.includes("providerTestInterruption"));
   assert(worker.includes("if (!providerTestLimits)"));
   assert(policy.includes("ai_pdf_extract: 1"));
   assert(
@@ -641,6 +671,8 @@ async function sourceBoundaryCases() {
   assert(runner.includes("AI_JOBS_INTERNAL_TOKEN"));
   assert(runner.includes("AI_JOBS_LOCAL_MAX_INVOCATIONS"));
   assert(runner.includes("AI_JOBS_LOCAL_TARGET_JOB_ID"));
+  assert(runner.includes("AI_JOBS_LOCAL_PROVIDER_TEST_INTERRUPTION"));
+  assert(runner.includes("x-pdf50-provider-test-interruption"));
   assert(runner.includes("x-pdf50-provider-test-job-id"));
   assert(runner.includes("readSafeRouteFailure"));
   assert(runner.includes('"bounded_worker_failure"'));

@@ -410,17 +410,32 @@ async function importTranspiledTypescriptModule(relativePath) {
   return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 }
 
-function buildSyntheticPdf() {
-  const lines = [
-    "Question 1",
-    "What is 2 + 3?",
-    "A) 4",
-    "B) 5",
-    "C) 6",
-    "D) 7",
-    "Answer: B",
-    "Explanation: 2 + 3 = 5.",
-  ];
+function buildSyntheticPdf({ variant = 1 } = {}) {
+  const normalizedVariant = Number.isSafeInteger(variant) && variant > 0 ? variant : 1;
+  const left = normalizedVariant === 1 ? 2 : normalizedVariant + 2;
+  const right = normalizedVariant === 1 ? 3 : (normalizedVariant % 7) + 1;
+  const answer = left + right;
+  const lines = normalizedVariant === 1
+    ? [
+        "Question 1",
+        "What is 2 + 3?",
+        "A) 4",
+        "B) 5",
+        "C) 6",
+        "D) 7",
+        "Answer: B",
+        "Explanation: 2 + 3 = 5.",
+      ]
+    : [
+        `Question ${normalizedVariant}`,
+        `What is ${left} + ${right}?`,
+        `A) ${answer - 2}`,
+        `B) ${answer - 1}`,
+        `C) ${answer}`,
+        `D) ${answer + 1}`,
+        "Answer: C",
+        `Explanation: ${left} + ${right} = ${answer}.`,
+      ];
   const escapedLines = lines.map((line) =>
     line.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)"),
   );
@@ -1998,11 +2013,52 @@ async function main() {
   }
 }
 
-try {
-  await main();
-} catch {
-  clearProcessEnvironment();
-  console.error("PDF50_ONE_FILE_E2E=BLOCKED");
-  console.error("FAILURE_CATEGORY=unexpected_failure");
-  process.exitCode = 1;
+const isDirectInvocation =
+  typeof process.argv[1] === "string" &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectInvocation) {
+  try {
+    await main();
+  } catch {
+    clearProcessEnvironment();
+    console.error("PDF50_ONE_FILE_E2E=BLOCKED");
+    console.error("FAILURE_CATEGORY=unexpected_failure");
+    process.exitCode = 1;
+  }
 }
+
+export {
+  HarnessError,
+  assert,
+  assertEvidence,
+  assertRequesterSeesNoRows,
+  assertSafeBrowserText,
+  asRecord,
+  buildSyntheticPdf,
+  clearProcessEnvironment,
+  countRows,
+  createFixtureState,
+  createSyntheticBank,
+  createSyntheticOrganization,
+  createSyntheticTeacher,
+  knownProviderModel,
+  minimalChildEnvironment,
+  numeric,
+  proofControl,
+  proofControlEnvironment,
+  readEvidenceWithRetry,
+  requireData,
+  requireProcessEnvironment,
+  root,
+  runReadinessPreflight,
+  safeDelete,
+  signInTeacher,
+  signInThroughBrowser,
+  sleep,
+  sourceBucket,
+  startNextServer,
+  stopOwnedTemporaryServer,
+  verifyAnonymousSourcePrivacy,
+  verifyProductionReconciliationContracts,
+};
