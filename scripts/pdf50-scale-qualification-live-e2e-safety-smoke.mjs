@@ -65,7 +65,7 @@ assert.deepEqual(
   {
     4: [4, 4, 0, 4, 12],
     10: [10, 9, 1, 9, 27],
-    50: [50, 50, 0, 50, 150],
+    50: [50, 50, 0, 50, 75],
   },
 );
 assert.equal(scaleProviderControl.mode, "BOUNDED_SCALE_REAL_PROVIDER");
@@ -121,6 +121,7 @@ assert.throws(
 );
 assert.equal(control.maxExpectedQueueDepth, 5);
 assert.equal(control.releaseLimit, 4);
+assert.equal(control.stages[50].maxProviderAttempts, 50 + 25);
 assert.equal(parsePriorConservativeMicros("0"), 0);
 assert.equal(parsePriorConservativeMicros("733257"), 733257);
 for (const value of ["", "-1", "01", "1.5", "200000000"]) {
@@ -139,7 +140,7 @@ const stageCosts = Object.fromEntries(
     }),
   ]),
 );
-assert.deepEqual(stageCosts, { 4: 79668, 10: 179253, 50: 995850 });
+assert.deepEqual(stageCosts, { 4: 79668, 10: 179253, 50: 497925 });
 assert(
   Object.values(stageCosts).reduce((total, value) => total + value, 0) <
     control.approvedBudgetUsd * 1_000_000,
@@ -186,14 +187,20 @@ assert(harness.includes("cleanupFailures === 0"));
 assert(harness.includes("replayCounters.inference === 0"));
 assert(harness.includes("retryableScaleProviderCodes.has"));
 assert(
-  harness.includes('expected: ["completed", "failed", "retry_wait"]'),
+  harness.includes('expected: ["completed", "retry_wait", "failed"]'),
 );
 assert(harness.includes("await waitForJobAvailable"));
 assert(harness.includes("counters.inputBytesMax <="));
 assert(harness.includes("PROVIDER_INPUT_BYTES_MAX="));
+assert(harness.includes('label: "checkpoint_attempt"'));
 assert(
   harness.includes(
-    "completedJob.provider_attempt_count === firstCounters.inference",
+    'retryJob.checkpoint_stage === "provider_result_checkpointed"',
+  ),
+);
+assert(
+  harness.includes(
+    "completedJob.provider_attempt_count === interruptedJobProviderAttempts",
   ),
 );
 assert(harness.includes("providerTestEnvironment: scaleProviderEnvironment"));
@@ -266,8 +273,19 @@ function satisfiesScaleSafetyContract(source) {
     source.includes("beforeCount === 0 && afterCount === 0") &&
     source.includes('result.data === "STALE_FENCE_REJECTED"') &&
     source.includes("replayCounters.inference === 0") &&
-    source.includes("retryableScaleProviderCodes.has") &&
-    source.includes('expected: ["completed", "failed", "retry_wait"]') &&
+    source.includes(
+      "retryableScaleProviderCodes.has(outcomeJob.safe_error_code)",
+    ) &&
+    source.includes(
+      'retryJob.checkpoint_stage === "provider_result_checkpointed"',
+    ) &&
+    source.includes(
+      "completedJob.provider_attempt_count === interruptedJobProviderAttempts",
+    ) &&
+    source.includes(
+      "remainingJobsAfterCurrent <=\n      maxProviderAttempts",
+    ) &&
+    source.includes('expected: ["completed", "retry_wait", "failed"]') &&
     source.includes("counters.inputBytesMax <=") &&
     source.includes(
       "counters.cleanupFailures === 0 &&\n      (!requireInference",
@@ -290,7 +308,19 @@ const mutationCases = [
     "true",
   ),
   harness.replace(
-    'expected: ["completed", "failed", "retry_wait"]',
+    'retryJob.checkpoint_stage === "provider_result_checkpointed"',
+    "true",
+  ),
+  harness.replace(
+    "completedJob.provider_attempt_count === interruptedJobProviderAttempts",
+    "true",
+  ),
+  harness.replace(
+    "remainingJobsAfterCurrent <=\n      maxProviderAttempts",
+    "remainingJobsAfterCurrent <=\n      Number.MAX_VALUE",
+  ),
+  harness.replace(
+    'expected: ["completed", "retry_wait", "failed"]',
     'expected: ["completed"]',
   ),
   harness.replace(

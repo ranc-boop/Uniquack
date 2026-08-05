@@ -69,12 +69,12 @@ exact burst, and invokes the trusted worker one exact job at a time.
 
 - Authorized fresh cumulative ceiling: USD 2.00.
 - Explicit reassessment threshold: USD 1.60 conservative cumulative spend.
-- Known live scale iterations: 10.
+- Known live scale iterations: 11.
 - Trustworthy actual estimate for the passing terminal iteration: 3,794 micros.
 - Cumulative actual spend: `UNKNOWN` because failed iterations did not all
   reach complete usage telemetry.
-- Conservative cumulative ceiling consumed: 831,037 micros (USD 0.831037).
-- Remaining authorized budget: 1,168,963 micros (USD 1.168963).
+- Conservative cumulative ceiling consumed: 1,010,290 micros (USD 1.010290).
+- Remaining authorized budget: 989,710 micros (USD 0.989710).
 
 Future scale runs use a 50,000-byte upper envelope covering the prompt,
 structured-output schema, synthetic PDF bytes, and fixed request overhead. The
@@ -86,16 +86,22 @@ current source-defined Gemini rates this bounds a fresh stage as follows:
 
 - Four files: 79,668 micros (12-attempt ceiling; already passed and not rerun).
 - Ten files: 179,253 micros (27-attempt ceiling for nine Provider jobs).
-- Fifty files: 995,850 micros (150-attempt ceiling).
-- Projected ceiling after one new ten-file run: 1,010,290 micros (USD
-  1.010290).
-- A subsequent fifty-file run at the unchanged 50,000-byte envelope would
-  project to 2,006,140 micros, 6,140 micros beyond authorization, and therefore
-  must not start under that envelope. Sanitized maximum Provider-input-byte
-  telemetry is now captured from authorized attempts. The envelope may be
-  reduced only after a passing ten-file run proves a lower exact maximum with
-  conservative headroom; otherwise fifty-file execution is an external budget
-  gate.
+- Fifty files: 497,925 micros (75-attempt aggregate ceiling: one attempt for
+  every job plus 25 bounded repair/retry attempts).
+- Projected ceiling after one new ten-file run: 1,189,543 micros (USD
+  1.189543).
+- Projected ceiling after that run and one fifty-file run: 1,687,468 micros
+  (USD 1.687468).
+
+The fifty-file aggregate allowance is intentionally lower than the sum of 50
+independent three-attempt maxima. The server still enforces at most three
+attempts for every exact job. Before each worker invocation, the harness
+reserves one attempt for every unprocessed job and refuses the invocation if
+the 75-attempt stage ceiling could be crossed. This permits 25 total
+repair/retry attempts while establishing a credible hard maximum below the USD
+2 authorization. Crossing USD 1.60 remains an explicit reassessment point; the
+first fifty-file run is still useful because it is the only remaining required
+file-count gate, but no unchanged rerun is pre-authorized by this projection.
 
 Unknown usage remains `UNKNOWN`; it is never converted into a zero-cost claim.
 Before each paid run, the harness must calculate a credible maximum and stop if
@@ -106,7 +112,7 @@ that maximum would exceed the remaining authorized budget.
 | Stage | Status | Live iterations | Provider attempts | Result |
 | --- | --- | ---: | ---: | --- |
 | Four files | `PASS` | 5 | At least 11; exact failed-run total `UNKNOWN` | 4/4 terminal, UI, isolation, invariants, and cleanup passed |
-| Ten files | `BLOCKED_RETRY_WAIT_HARNESS_CORRECTED` | 5 | At least 17; earlier failed-run total `UNKNOWN` | Eight completed; the ninth correctly entered durable `retry_wait` after a bounded transient `provider_busy`, but the harness treated that nonterminal state as failure |
+| Ten files | `BLOCKED_CHECKPOINT_RETRY_CLASSIFICATION_CORRECTED` | 6 | At least 18; earlier failed-run total `UNKNOWN` | The latest run completed one item, then the controlled-interruption item entered `retry_wait` before the harness proved which retry boundary fired |
 | Fifty files | `NOT_RUN` | 0 | 0 | Must not begin before the ten-file gate passes |
 
 Passing admission alone is insufficient. Each stage must verify durable item
@@ -156,8 +162,8 @@ Observed passing iteration:
 
 ### Ten-file pre-correction evidence
 
-Five fresh ten-file iterations stopped before mixed-state completion. Every
-run completed exact-ID cleanup with zero residue. The first three and fifth
+Six fresh ten-file iterations stopped before mixed-state completion. Every run
+completed exact-ID cleanup with zero residue. The first three, fifth, and sixth
 admitted ten synthetic items; the fourth stopped before burst admission and
 Provider work.
 
@@ -226,6 +232,26 @@ allowing another bounded worker invocation. A final `failed` state still fails
 truthfully. Safe numeric maximum-input-byte telemetry is persisted with the
 worker result; prompts, source content, filenames, Provider responses, and
 credentials remain excluded.
+
+6. The first run with durable natural-retry handling admitted ten files and
+   completed the first exact job. The next worker invocation was the deliberate
+   checkpoint-interruption candidate and entered `retry_wait`, but the harness
+   required that every such wait already be the post-checkpoint interruption.
+   A real transient Provider wait can occur before the controlled checkpoint,
+   so the assertion stopped before adding that invocation's counters. The safe
+   partial evidence recorded one completed item, two exact worker-route
+   invocations, one aggregated inference, a 35,742-byte maximum observed input,
+   two upload requests, one cleanup request, four Provider HTTP requests, and
+   zero polls. Exact-ID cleanup, Provider-file cleanup, process shutdown,
+   environment clearing, and zero residue passed. The full 179,253-micros
+   ceiling was charged, bringing the conservative ledger to 1,010,290 micros.
+
+The controlled-interruption state machine now distinguishes a pre-checkpoint
+transient wait from the intended `provider_result_checkpointed` interruption.
+It keeps the interruption armed while retrying only the same exact job, checks
+the durable execution-attempt allowance, and counts every invocation against
+the stage ceiling. Only after the protected checkpoint is observed does it run
+the stale-fence assertion and zero-inference replay.
 
 ## Pre-live source validation
 

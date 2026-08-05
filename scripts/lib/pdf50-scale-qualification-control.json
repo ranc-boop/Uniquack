@@ -28,7 +28,7 @@
       "completed": 50,
       "cancelled": 0,
       "providerJobs": 50,
-      "maxProviderAttempts": 150,
+      "maxProviderAttempts": 75,
       "checkpointInterruption": false
     }
   }
