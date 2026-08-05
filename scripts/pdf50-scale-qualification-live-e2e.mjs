@@ -574,7 +574,7 @@ async function drainBurst({
   let readDelayComplete = false;
   const startedAt = Date.now();
 
-  while (processedJobIds.length < control.completed) {
+  while (processedJobIds.length < control.stages[stage].completed) {
     let snapshot = await loadBurst({ burstId, service });
     maxAdmissionWaiting = Math.max(
       maxAdmissionWaiting,

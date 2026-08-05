@@ -101,6 +101,8 @@ assert(harness.includes("controlled_read_after_write_delay"));
 assert(harness.includes("waitForBurstItemStatus"));
 assert(harness.includes("waitForTerminalBurst"));
 assert(harness.includes("SAFE_TERMINAL_AGGREGATE"));
+assert(harness.includes("processedJobIds.length < control.stages[stage].completed"));
+assert(!harness.includes("processedJobIds.length < control.completed"));
 assert(harness.includes('getByRole("button", { name: "Cancel unstarted" })'));
 
 assert(launcher.includes("Import-Clixml -LiteralPath $VaultPath"));
