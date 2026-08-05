@@ -64,10 +64,12 @@ exact burst, and invokes the trusted worker one exact job at a time.
 
 - Authorized fresh cumulative ceiling: USD 2.00.
 - Explicit reassessment threshold: USD 1.60 conservative cumulative spend.
-- Known live scale attempts: 0.
-- Known actual estimated spend: USD 0.00.
-- Conservative cumulative spend: USD 0.00.
-- Remaining authorized budget: USD 2.00.
+- Known live scale iterations: 5.
+- Trustworthy actual estimate for the passing terminal iteration: 3,794 micros.
+- Cumulative actual spend: `UNKNOWN` because failed iterations did not all
+  reach complete usage telemetry.
+- Conservative cumulative ceiling consumed: 232,780 micros (USD 0.232780).
+- Remaining authorized budget: 1,767,220 micros (USD 1.767220).
 
 The pre-run conservative bound uses 100,000 input tokens plus the server-owned
 4,096 output-token limit per actual Provider attempt. At current source-defined
@@ -86,7 +88,7 @@ that maximum would exceed the remaining authorized budget.
 
 | Stage | Status | Live iterations | Provider attempts | Result |
 | --- | --- | ---: | ---: | --- |
-| Four files | `NOT_RUN` | 0 | 0 | Pending source and safety-gate preparation |
+| Four files | `PASS` | 5 | At least 11; exact failed-run total `UNKNOWN` | 4/4 terminal, UI, isolation, invariants, and cleanup passed |
 | Ten files | `NOT_RUN` | 0 | 0 | Must not begin before the four-file gate passes |
 | Fifty files | `NOT_RUN` | 0 | 0 | Must not begin before the ten-file gate passes |
 
@@ -94,6 +96,46 @@ Passing admission alone is insufficient. Each stage must verify durable item
 states, batch aggregation, Review Draft identity, UI reload/remount behavior,
 fencing and idempotency, isolation, Provider cleanup, exact fixture cleanup,
 and zero residue.
+
+### Four-file live evidence
+
+Five fresh synthetic iterations were required. Every iteration completed
+exact-ID database, Storage, Auth, Provider-file, local-process, and environment
+cleanup with zero synthetic residue.
+
+1. The first iteration stopped at batch terminal evidence. The harness was
+   corrected to coerce PostgREST counters numerically and require both the
+   durable burst aggregate and all item terminal states.
+2. The second iteration proved all four items remained queued and that no
+   worker had run. The drain loop was reading the nonexistent
+   `control.completed` field instead of the stage-specific completion bound;
+   a safety assertion now rejects that regression.
+3. The third iteration completed all four Provider-backed jobs and passed
+   aggregate, lineage, and cross-organization evidence, then failed a browser
+   locator. The locator had opened the first page-level `<details>` element,
+   which belongs to Bank navigation, instead of the batch card. It is now
+   anchored to the exact durable summary card.
+4. The fourth iteration completed three items before the bounded worker request
+   failed. The 240-second route and 245-second local-runner boundary was not
+   weakened. Safe runner/job/checkpoint and partial Provider-count diagnostics
+   were added; raw child output remains forbidden.
+5. The fifth iteration passed the complete four-file gate.
+
+Observed passing iteration:
+
+- 4 admitted items, 4 durable jobs, 4 exact claims, and 4 completions.
+- Maximum queued-or-processing depth 4; admission-waiting depth 0.
+- Drain elapsed 138,717 ms.
+- Provider requests: 4 inference, 8 upload, 0 poll, 4 cleanup, 16 total.
+- Usage: 31,104 input tokens, 1,704 output tokens, 32,808 total tokens;
+  thinking tokens `UNKNOWN`.
+- Actual estimated cost: 3,794 micros for this iteration.
+- 4 private `pending_review` Review Drafts; 0 duplicates, approvals,
+  publications, Assignments, or cross-organization visibility.
+- Initial Teacher UI, reload, fresh-page remount, and Review Draft visibility
+  all passed.
+- Provider cleanup, exact fixture cleanup, process shutdown, environment
+  clearing, and zero-residue verification all passed.
 
 ## Pre-live source validation
 
@@ -119,6 +161,7 @@ product regressions.
 
 `PDF50_SCALE_QUALIFICATION_PARTIALLY_COMPLETE`
 
-The recovery path is merged and the isolated qualification branch is
-established. No scale stage has run yet, so this document does not claim
-operational readiness.
+The recovery path is merged, the isolated qualification branch is established,
+and the four-file baseline is live validated. Ten-file recovery/mixed-state and
+fifty-file maximum-count qualification remain, so this document does not yet
+claim operational readiness.
