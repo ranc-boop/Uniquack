@@ -412,6 +412,66 @@ async function waitForJobStatus({ expected, jobId, service }) {
   );
 }
 
+async function waitForBurstItemStatus({ expected, itemId, service }) {
+  return waitForCondition(
+    async () => {
+      const result = await service
+        .from("ai_pdf_upload_burst_items")
+        .select("id, status")
+        .eq("id", itemId)
+        .maybeSingle();
+      if (result.error) return null;
+      return expected.includes(result.data?.status) ? result.data : null;
+    },
+    "scale_batch_evidence_failed",
+    60,
+  );
+}
+
+async function waitForTerminalBurst({ burstId, expectedFiles, service }) {
+  let lastSnapshot = null;
+  for (let attempt = 1; attempt <= 60; attempt += 1) {
+    lastSnapshot = await loadBurst({ burstId, service });
+    const aggregateTerminalCount = sum([
+      lastSnapshot.burst.completed_count,
+      lastSnapshot.burst.failed_count,
+      lastSnapshot.burst.cancelled_count,
+    ]);
+    const itemTerminalCount = lastSnapshot.items.filter((item) =>
+      ["completed", "failed", "cancelled"].includes(item.status),
+    ).length;
+    if (
+      aggregateTerminalCount === expectedFiles &&
+      itemTerminalCount === expectedFiles
+    ) {
+      return lastSnapshot;
+    }
+    await sleep(250);
+  }
+  const safeStatusCounts = {
+    admissionReady: sum([lastSnapshot?.burst?.admission_ready_count]),
+    cancelled: sum([lastSnapshot?.burst?.cancelled_count]),
+    completed: sum([lastSnapshot?.burst?.completed_count]),
+    failed: sum([lastSnapshot?.burst?.failed_count]),
+    processing: sum([lastSnapshot?.burst?.processing_count]),
+    queued: sum([lastSnapshot?.burst?.queued_count]),
+    reserved: sum([lastSnapshot?.burst?.reserved_count]),
+  };
+  console.log(
+    `SAFE_TERMINAL_AGGREGATE=${Object.entries(safeStatusCounts)
+      .map(([key, value]) => `${key}:${value}`)
+      .join(",")}`,
+  );
+  console.log(
+    `SAFE_TERMINAL_ITEM_COUNT=${
+      lastSnapshot?.items.filter((item) =>
+        ["completed", "failed", "cancelled"].includes(item.status),
+      ).length ?? 0
+    }`,
+  );
+  throw new HarnessError("scale_batch_evidence_failed");
+}
+
 async function waitForJobAvailable({ jobId, service }) {
   await waitForCondition(
     async () => {
@@ -608,6 +668,11 @@ async function drainBurst({
         jobId,
         service,
       });
+      await waitForBurstItemStatus({
+        expected: ["completed"],
+        itemId: item.id,
+        service,
+      });
       const replayCounters = providerCounters(completedJob);
       scaleAssert(
         replayCounters.inference === 0 &&
@@ -627,6 +692,11 @@ async function drainBurst({
         jobId,
         service,
       });
+      await waitForBurstItemStatus({
+        expected: ["completed"],
+        itemId: item.id,
+        service,
+      });
       const completedCounters = providerCounters(completedJob);
       scaleAssert(
         completedCounters.inference === 1 &&
@@ -639,6 +709,7 @@ async function drainBurst({
     }
 
     processedJobIds.push(jobId);
+    console.log(`WORKER_ITEMS_COMPLETED=${processedJobIds.length}`);
     if (stage === "10" && !readDelayComplete) {
       await controlledReadAfterWriteProof({ jobId, service });
       readDelayComplete = true;
@@ -658,17 +729,11 @@ async function drainBurst({
     await cancelRemainingThroughBrowser({ burstId, page, service });
   }
 
-  const terminal = await waitForCondition(
-    async () => {
-      const snapshot = await loadBurst({ burstId, service });
-      const terminalCount =
-        snapshot.burst.completed_count +
-        snapshot.burst.failed_count +
-        snapshot.burst.cancelled_count;
-      return terminalCount === control.stages[stage].files ? snapshot : null;
-    },
-    "scale_batch_evidence_failed",
-  );
+  const terminal = await waitForTerminalBurst({
+    burstId,
+    expectedFiles: control.stages[stage].files,
+    service,
+  });
   return {
     claims,
     counters,

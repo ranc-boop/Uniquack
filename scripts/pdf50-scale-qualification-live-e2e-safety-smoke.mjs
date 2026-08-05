@@ -98,6 +98,9 @@ assert(harness.includes("cleanupFailures === 0"));
 assert(harness.includes("replayCounters.inference === 0"));
 assert(harness.includes("completedJob.provider_attempt_count === 1"));
 assert(harness.includes("controlled_read_after_write_delay"));
+assert(harness.includes("waitForBurstItemStatus"));
+assert(harness.includes("waitForTerminalBurst"));
+assert(harness.includes("SAFE_TERMINAL_AGGREGATE"));
 assert(harness.includes('getByRole("button", { name: "Cancel unstarted" })'));
 
 assert(launcher.includes("Import-Clixml -LiteralPath $VaultPath"));
