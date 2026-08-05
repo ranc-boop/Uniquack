@@ -28,9 +28,13 @@ function stageControl(value, stage) {
     checkpointInterruption: parsed.checkpointInterruption === true,
     completed: positiveInteger(parsed.completed, `${stage}.completed`),
     files: positiveInteger(parsed.files, `${stage}.files`),
-    providerAttempts: positiveInteger(
-      parsed.providerAttempts,
-      `${stage}.providerAttempts`,
+    maxProviderAttempts: positiveInteger(
+      parsed.maxProviderAttempts,
+      `${stage}.maxProviderAttempts`,
+    ),
+    providerJobs: positiveInteger(
+      parsed.providerJobs,
+      `${stage}.providerJobs`,
     ),
   });
 }
@@ -73,6 +77,11 @@ export async function loadPDF50ScaleQualificationControl() {
     control.stages[10].files !== 10 ||
     control.stages[50].files !== 50 ||
     control.stages[10].completed + control.stages[10].cancelled !== 10 ||
+    Object.values(control.stages).some(
+      (stage) =>
+        stage.providerJobs !== stage.completed ||
+        stage.maxProviderAttempts !== stage.providerJobs * 2,
+    ) ||
     control.stages[4].cancelled !== 0 ||
     control.stages[50].cancelled !== 0
   ) {
@@ -101,7 +110,7 @@ export function estimatePDF50ScaleStageCostMicros({
   const outputCost = Math.ceil(
     (outputTokensPerAttempt * outputMicrosPerMillion) / 1_000_000,
   );
-  return stageControlValue.providerAttempts * (inputCost + outputCost);
+  return stageControlValue.maxProviderAttempts * (inputCost + outputCost);
 }
 
 export function parsePriorConservativeMicros(value) {

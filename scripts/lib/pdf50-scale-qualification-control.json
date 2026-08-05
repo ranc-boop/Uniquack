@@ -11,21 +11,24 @@
       "files": 4,
       "completed": 4,
       "cancelled": 0,
-      "providerAttempts": 4,
+      "providerJobs": 4,
+      "maxProviderAttempts": 8,
       "checkpointInterruption": false
     },
     "10": {
       "files": 10,
       "completed": 9,
       "cancelled": 1,
-      "providerAttempts": 9,
+      "providerJobs": 9,
+      "maxProviderAttempts": 18,
       "checkpointInterruption": true
     },
     "50": {
       "files": 50,
       "completed": 50,
       "cancelled": 0,
-      "providerAttempts": 50,
+      "providerJobs": 50,
+      "maxProviderAttempts": 100,
       "checkpointInterruption": false
     }
   }

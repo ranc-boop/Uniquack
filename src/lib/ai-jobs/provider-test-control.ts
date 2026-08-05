@@ -1,6 +1,7 @@
 import "server-only";
 
 import proofControlSource from "./pdf50-provider-proof-control.json";
+import scaleProofControlSource from "./pdf50-scale-provider-proof-control.json";
 
 type PDF50ProviderProofControl = {
   schema: string;
@@ -25,8 +26,13 @@ function positiveInteger(value: unknown, name: string) {
   return Number(value);
 }
 
-function readProofControl(): Readonly<PDF50ProviderProofControl> {
-  const source = proofControlSource as PDF50ProviderProofControl;
+function readProofControl({
+  expected,
+  source,
+}: {
+  expected: Readonly<PDF50ProviderProofControl>;
+  source: PDF50ProviderProofControl;
+}): Readonly<PDF50ProviderProofControl> {
   const control = Object.freeze({
     schema: source.schema,
     mode: source.mode,
@@ -70,24 +76,58 @@ function readProofControl(): Readonly<PDF50ProviderProofControl> {
     ),
   });
 
-  if (
-    control.schema !== "edustruct.pdf50-provider-proof-control.v1" ||
-    control.mode !== "BOUNDED_ONE_JOB_REAL_PROVIDER" ||
-    control.model !== "gemini-2.5-flash-lite" ||
-    control.claimedJobs !== 1 ||
-    control.workerRouteInvocations !== 1 ||
-    control.providerInferenceAttempts !== 1 ||
-    control.providerMaxOutputTokens > 8_192 ||
-    control.providerMaxNetworkRequests > 256 ||
-    control.approvedBudgetUsd > 5
-  ) {
+  if (Object.keys(expected).some((key) => {
+    const typedKey = key as keyof PDF50ProviderProofControl;
+    return control[typedKey] !== expected[typedKey];
+  })) {
     throw new Error("trusted_provider_test_contract_rejected:safety_boundary");
   }
   return control;
 }
 
-export const PDF50_PROVIDER_PROOF_CONTROL = readProofControl();
+const oneFileExpectedControl = Object.freeze({
+  schema: "edustruct.pdf50-provider-proof-control.v1",
+  mode: "BOUNDED_ONE_JOB_REAL_PROVIDER",
+  model: "gemini-2.5-flash-lite",
+  claimedJobs: 1,
+  workerRouteInvocations: 1,
+  providerInferenceAttempts: 1,
+  providerMaxOutputTokens: 4_096,
+  providerMaxNetworkRequests: 68,
+  approvedBudgetUsd: 1,
+  maxInputTokensPerAttempt: 1_048_576,
+  maxBillableOutputTokensPerAttempt: 65_536,
+  inputMicrosPerMillion: 100_000,
+  outputMicrosPerMillion: 400_000,
+});
+
+const scaleExpectedControl = Object.freeze({
+  schema: "edustruct.pdf50-scale-provider-proof-control.v1",
+  mode: "BOUNDED_SCALE_REAL_PROVIDER",
+  model: "gemini-2.5-flash-lite",
+  claimedJobs: 1,
+  workerRouteInvocations: 1,
+  providerInferenceAttempts: 2,
+  providerMaxOutputTokens: 4_096,
+  providerMaxNetworkRequests: 68,
+  approvedBudgetUsd: 2,
+  maxInputTokensPerAttempt: 100_000,
+  maxBillableOutputTokensPerAttempt: 4_096,
+  inputMicrosPerMillion: 100_000,
+  outputMicrosPerMillion: 400_000,
+});
+
+export const PDF50_PROVIDER_PROOF_CONTROL = readProofControl({
+  expected: oneFileExpectedControl,
+  source: proofControlSource as PDF50ProviderProofControl,
+});
+export const PDF50_SCALE_PROVIDER_PROOF_CONTROL = readProofControl({
+  expected: scaleExpectedControl,
+  source: scaleProofControlSource as PDF50ProviderProofControl,
+});
 export const PDF50_PROVIDER_TEST_MODE = PDF50_PROVIDER_PROOF_CONTROL.mode;
+export const PDF50_SCALE_PROVIDER_TEST_MODE =
+  PDF50_SCALE_PROVIDER_PROOF_CONTROL.mode;
 export const PDF50_PROVIDER_TEST_JOB_HEADER = "x-pdf50-provider-test-job-id";
 export const PDF50_PROVIDER_TEST_INTERRUPTION_HEADER =
   "x-pdf50-provider-test-interruption";
@@ -101,16 +141,24 @@ function costForTokens(tokens: number, microsPerMillion: number) {
   return Math.ceil((tokens * microsPerMillion) / 1_000_000);
 }
 
-export const PDF50_PROVIDER_TEST_MAX_COST_MICROS =
-  PDF50_PROVIDER_PROOF_CONTROL.providerInferenceAttempts *
-  (costForTokens(
-    PDF50_PROVIDER_PROOF_CONTROL.maxInputTokensPerAttempt,
-    PDF50_PROVIDER_PROOF_CONTROL.inputMicrosPerMillion,
-  ) +
-    costForTokens(
-      PDF50_PROVIDER_PROOF_CONTROL.maxBillableOutputTokensPerAttempt,
-      PDF50_PROVIDER_PROOF_CONTROL.outputMicrosPerMillion,
-    ));
+function maximumCostMicros(control: Readonly<PDF50ProviderProofControl>) {
+  return control.providerInferenceAttempts *
+    (costForTokens(
+      control.maxInputTokensPerAttempt,
+      control.inputMicrosPerMillion,
+    ) +
+      costForTokens(
+        control.maxBillableOutputTokensPerAttempt,
+        control.outputMicrosPerMillion,
+      ));
+}
+
+export const PDF50_PROVIDER_TEST_MAX_COST_MICROS = maximumCostMicros(
+  PDF50_PROVIDER_PROOF_CONTROL,
+);
+export const PDF50_SCALE_PROVIDER_TEST_MAX_COST_MICROS = maximumCostMicros(
+  PDF50_SCALE_PROVIDER_PROOF_CONTROL,
+);
 
 export type TrustedAIProviderTestLimits = {
   maxClaimedJobs: number;
@@ -152,45 +200,49 @@ export function parseTrustedAIProviderTestInterruption(
 export function readTrustedAIProviderTestLimits(): TrustedAIProviderTestLimits | null {
   const mode = process.env.PDF50_PROVIDER_TEST_MODE;
   if (mode === undefined) return null;
-  if (mode !== PDF50_PROVIDER_TEST_MODE) {
+  const control =
+    mode === PDF50_PROVIDER_TEST_MODE
+      ? PDF50_PROVIDER_PROOF_CONTROL
+      : mode === PDF50_SCALE_PROVIDER_TEST_MODE
+        ? PDF50_SCALE_PROVIDER_PROOF_CONTROL
+        : null;
+  if (!control) {
     throw new Error("trusted_provider_test_mode_rejected");
   }
 
   requireExactEnvironmentValue(
     "AI_JOBS_LOCAL_MAX_INVOCATIONS",
-    String(PDF50_PROVIDER_PROOF_CONTROL.workerRouteInvocations),
+    String(control.workerRouteInvocations),
   );
   requireExactEnvironmentValue(
     "PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS",
-    String(PDF50_PROVIDER_PROOF_CONTROL.providerInferenceAttempts),
+    String(control.providerInferenceAttempts),
   );
   requireExactEnvironmentValue(
     "PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS",
-    String(PDF50_PROVIDER_PROOF_CONTROL.providerMaxNetworkRequests),
+    String(control.providerMaxNetworkRequests),
   );
   requireExactEnvironmentValue(
     "PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS",
-    String(PDF50_PROVIDER_PROOF_CONTROL.providerMaxOutputTokens),
+    String(control.providerMaxOutputTokens),
   );
   requireExactEnvironmentValue(
     "PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD",
-    String(PDF50_PROVIDER_PROOF_CONTROL.approvedBudgetUsd),
+    String(control.approvedBudgetUsd),
   );
 
-  const providerBudgetMicros =
-    PDF50_PROVIDER_PROOF_CONTROL.approvedBudgetUsd * 1_000_000;
-  if (PDF50_PROVIDER_TEST_MAX_COST_MICROS > providerBudgetMicros) {
+  const providerBudgetMicros = control.approvedBudgetUsd * 1_000_000;
+  const maxEstimatedCostMicros = maximumCostMicros(control);
+  if (maxEstimatedCostMicros > providerBudgetMicros) {
     throw new Error("trusted_provider_test_cost_budget_rejected");
   }
 
   return {
-    maxClaimedJobs: PDF50_PROVIDER_PROOF_CONTROL.claimedJobs,
-    maxInferenceAttempts:
-      PDF50_PROVIDER_PROOF_CONTROL.providerInferenceAttempts,
-    maxEstimatedCostMicros: PDF50_PROVIDER_TEST_MAX_COST_MICROS,
-    maxNetworkRequests:
-      PDF50_PROVIDER_PROOF_CONTROL.providerMaxNetworkRequests,
-    maxOutputTokens: PDF50_PROVIDER_PROOF_CONTROL.providerMaxOutputTokens,
+    maxClaimedJobs: control.claimedJobs,
+    maxInferenceAttempts: control.providerInferenceAttempts,
+    maxEstimatedCostMicros,
+    maxNetworkRequests: control.providerMaxNetworkRequests,
+    maxOutputTokens: control.providerMaxOutputTokens,
     providerBudgetMicros,
   };
 }

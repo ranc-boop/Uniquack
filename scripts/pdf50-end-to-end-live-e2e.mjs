@@ -765,13 +765,32 @@ async function stopOwnedTemporaryServer(server) {
   return forcedExit && portClosed;
 }
 
-async function startNextServer({ config, internalToken }) {
+function validatedProviderTestEnvironment(environment) {
+  const expectedNames = Object.keys(proofControlEnvironment).sort();
+  const receivedNames = Object.keys(environment ?? {}).sort();
+  assert(
+    expectedNames.length === receivedNames.length &&
+      expectedNames.every((name, index) => name === receivedNames[index]) &&
+      receivedNames.every(
+        (name) =>
+          typeof environment[name] === "string" && environment[name].length > 0,
+      ),
+    "worker_evidence_failed",
+  );
+  return environment;
+}
+
+async function startNextServer({
+  config,
+  internalToken,
+  providerTestEnvironment = proofControlEnvironment,
+}) {
   const port = await findFreePort();
   const nextBin = resolve(root, "node_modules", "next", "dist", "bin", "next");
   const environment = {
     ...minimalChildEnvironment(),
     AI_JOBS_INTERNAL_TOKEN: internalToken,
-    ...proofControlEnvironment,
+    ...validatedProviderTestEnvironment(providerTestEnvironment),
     AI_PROVIDER_ENCRYPTION_KEY: config.encryptionKey,
     CLEAN_SUPABASE_SERVICE_ROLE_KEY: config.serviceRoleKey,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: config.anonKey,

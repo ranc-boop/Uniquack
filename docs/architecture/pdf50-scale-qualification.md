@@ -30,9 +30,12 @@ residue without inspecting or mutating unrelated queue work.
 
 The qualification harness uses the existing Windows-user DPAPI credential
 vault and process-only values. It never reads an environment file. Each local
-worker invocation carries one exact synthetic job identifier; the route refuses
-the qualification-only interruption control unless the canonical Provider proof
-mode and exact target are both present.
+worker invocation carries one exact synthetic job identifier. The server owns
+two immutable test contracts: the frozen one-file terminal contract permits one
+inference, while the scale contract permits at most two inferences so the
+normal extraction repair path can run. Both permit exactly one claimed job and
+one worker-route invocation per process, cap output at 4,096 tokens, cap
+Provider HTTP requests at 68, and require an exact target job identifier.
 
 The ten-file stage deliberately interrupts one synthetic job only after its
 normalized Provider output has been protected by the durable checkpoint. A
@@ -64,21 +67,24 @@ exact burst, and invokes the trusted worker one exact job at a time.
 
 - Authorized fresh cumulative ceiling: USD 2.00.
 - Explicit reassessment threshold: USD 1.60 conservative cumulative spend.
-- Known live scale iterations: 5.
+- Known live scale iterations: 7.
 - Trustworthy actual estimate for the passing terminal iteration: 3,794 micros.
 - Cumulative actual spend: `UNKNOWN` because failed iterations did not all
   reach complete usage telemetry.
-- Conservative cumulative ceiling consumed: 232,780 micros (USD 0.232780).
-- Remaining authorized budget: 1,767,220 micros (USD 1.767220).
+- Conservative cumulative ceiling consumed: 442,282 micros (USD 0.442282).
+- Remaining authorized budget: 1,557,718 micros (USD 1.557718).
 
 The pre-run conservative bound uses 100,000 input tokens plus the server-owned
-4,096 output-token limit per actual Provider attempt. At current source-defined
-Gemini rates this bounds the planned stages as follows:
+4,096 output-token limit per possible Provider attempt. Scale execution permits
+at most two attempts per completed job, matching the existing one-repair
+application path while keeping each exact job fail-closed. At current
+source-defined Gemini rates this bounds a fresh stage as follows:
 
-- Four files: 46,556 micros.
-- Ten files (nine Provider attempts): 104,751 micros.
-- Fifty files: 581,950 micros.
-- Planned cumulative ceiling: 733,257 micros (USD 0.733257).
+- Four files: 93,112 micros (eight-attempt ceiling).
+- Ten files: 209,502 micros (18-attempt ceiling for nine Provider jobs).
+- Fifty files: 1,163,900 micros (100-attempt ceiling).
+- Projected ceiling after one new ten-file run and one fifty-file run:
+  1,815,684 micros (USD 1.815684).
 
 Unknown usage remains `UNKNOWN`; it is never converted into a zero-cost claim.
 Before each paid run, the harness must calculate a credible maximum and stop if
@@ -89,7 +95,7 @@ that maximum would exceed the remaining authorized budget.
 | Stage | Status | Live iterations | Provider attempts | Result |
 | --- | --- | ---: | ---: | --- |
 | Four files | `PASS` | 5 | At least 11; exact failed-run total `UNKNOWN` | 4/4 terminal, UI, isolation, invariants, and cleanup passed |
-| Ten files | `NOT_RUN` | 0 | 0 | Must not begin before the four-file gate passes |
+| Ten files | `BLOCKED_BEFORE_CORRECTION` | 2 | At least 1; first failed-run total `UNKNOWN` | Exact cleanup passed; the scale proof inherited an unrepresentative one-inference cap |
 | Fifty files | `NOT_RUN` | 0 | 0 | Must not begin before the ten-file gate passes |
 
 Passing admission alone is insufficient. Each stage must verify durable item
@@ -137,6 +143,31 @@ Observed passing iteration:
 - Provider cleanup, exact fixture cleanup, process shutdown, environment
   clearing, and zero-residue verification all passed.
 
+### Ten-file pre-correction evidence
+
+Two fresh ten-file iterations stopped before mixed-state completion. Both runs
+admitted exactly ten synthetic items and completed exact-ID cleanup with zero
+residue.
+
+1. The first run made one exact claim, then stopped at the worker boundary.
+   Early diagnostics did not preserve a trustworthy Provider counter total, so
+   that run's exact attempts and usage remain `UNKNOWN`.
+2. The second run made one exact claim and one Gemini inference request. The
+   first structured response passed Provider JSON formatting but did not pass
+   application extraction validation. The existing repair loop attempted its
+   second call, but the scale harness had inherited the frozen one-file proof's
+   one-inference ceiling. The second call was rejected before any Provider
+   network request, and the budget error masked the original validation error.
+
+This was a qualification-control defect, not a reason to weaken the extraction
+schema or application validation. The correction adds a separate server-owned
+scale contract with a two-attempt maximum and updates scale accounting to
+accept one or two truthful attempts per completed job. The frozen one-file
+contract remains exactly one attempt. If a repair cannot start because its
+inference budget is exhausted, the original application validation error is
+now preserved; a genuine first-attempt or network-request budget failure still
+fails as a budget error.
+
 ## Pre-live source validation
 
 Passed before any scale Provider call:
@@ -151,11 +182,13 @@ Passed before any scale Provider call:
 - Provider network safety, resilience, and fallback/circuit-breaker smokes.
 - Canonical migration governance/reconciliation and security smoke.
 
-The environment-backed durable queue E2E scripts stopped at their independent
-missing-environment gate and were not supplied from `.env` files. The current
-main `route-smoke` retains an unrelated `/videos` copy assertion failure. These
-are recorded as baseline/fixture gates, not as passing tests and not as PDF50
-product regressions.
+The environment-backed durable queue E2E stopped at its independent
+missing-environment gate; zero values were injected and no hosted operation
+ran. The current main `route-smoke` retains an unrelated `/videos` copy
+assertion failure. The AI Parsing status QA smoke also retains a stale literal
+copy assertion against an unchanged Teacher import UI. These are recorded as
+baseline/fixture gates, not as passing tests and not as PDF50 product
+regressions.
 
 ## Current classification
 

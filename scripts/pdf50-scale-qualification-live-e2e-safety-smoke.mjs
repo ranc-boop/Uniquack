@@ -9,36 +9,92 @@ import {
   parsePriorConservativeMicros,
 } from "./lib/pdf50-scale-qualification-control.mjs";
 import { loadPDF50ProviderProofControl } from "./lib/pdf50-provider-proof-control.mjs";
+import {
+  estimatePDF50ScaleProviderAttemptCostMicros,
+  loadPDF50ScaleProviderProofControl,
+  pdf50ScaleProviderProofEnvironment,
+} from "./lib/pdf50-scale-provider-proof-control.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const [control, providerControl, harness, launcher, oneFileHarness, route, worker] =
-  await Promise.all([
+const [
+  control,
+  providerControl,
+  scaleProviderControl,
+  harness,
+  launcher,
+  oneFileHarness,
+  providerTestControl,
+  route,
+  worker,
+] = await Promise.all([
     loadPDF50ScaleQualificationControl(),
     loadPDF50ProviderProofControl(),
+    loadPDF50ScaleProviderProofControl(),
     readFile(resolve(root, "scripts/pdf50-scale-qualification-live-e2e.mjs"), "utf8"),
     readFile(
       resolve(root, "scripts/run-pdf50-scale-qualification-live-e2e.ps1"),
       "utf8",
     ),
     readFile(resolve(root, "scripts/pdf50-end-to-end-live-e2e.mjs"), "utf8"),
+    readFile(resolve(root, "src/lib/ai-jobs/provider-test-control.ts"), "utf8"),
     readFile(resolve(root, "src/app/api/internal/ai-jobs/run/route.ts"), "utf8"),
     readFile(resolve(root, "src/lib/ai-jobs/worker.ts"), "utf8"),
   ]);
 
 assert.equal(control.approvedBudgetUsd, 2);
+assert.equal(providerControl.mode, "BOUNDED_ONE_JOB_REAL_PROVIDER");
+assert.equal(providerControl.providerInferenceAttempts, 1);
+assert.equal(providerControl.approvedBudgetUsd, 1);
 assert.deepEqual(
   Object.fromEntries(
     Object.entries(control.stages).map(([stage, value]) => [
       stage,
-      [value.files, value.completed, value.cancelled, value.providerAttempts],
+      [
+        value.files,
+        value.completed,
+        value.cancelled,
+        value.providerJobs,
+        value.maxProviderAttempts,
+      ],
     ]),
   ),
   {
-    4: [4, 4, 0, 4],
-    10: [10, 9, 1, 9],
-    50: [50, 50, 0, 50],
+    4: [4, 4, 0, 4, 8],
+    10: [10, 9, 1, 9, 18],
+    50: [50, 50, 0, 50, 100],
   },
 );
+assert.equal(scaleProviderControl.mode, "BOUNDED_SCALE_REAL_PROVIDER");
+assert.equal(scaleProviderControl.claimedJobs, 1);
+assert.equal(scaleProviderControl.workerRouteInvocations, 1);
+assert.equal(scaleProviderControl.providerInferenceAttempts, 2);
+assert.equal(scaleProviderControl.providerMaxOutputTokens, 4_096);
+assert.equal(scaleProviderControl.providerMaxNetworkRequests, 68);
+assert.equal(scaleProviderControl.approvedBudgetUsd, 2);
+assert.equal(
+  control.conservativeInputTokensPerProviderAttempt,
+  scaleProviderControl.maxInputTokensPerAttempt,
+);
+assert.equal(
+  scaleProviderControl.inputMicrosPerMillion,
+  providerControl.inputMicrosPerMillion,
+);
+assert.equal(
+  scaleProviderControl.outputMicrosPerMillion,
+  providerControl.outputMicrosPerMillion,
+);
+assert.equal(
+  estimatePDF50ScaleProviderAttemptCostMicros(scaleProviderControl),
+  11_639,
+);
+assert.deepEqual(pdf50ScaleProviderProofEnvironment(scaleProviderControl), {
+  AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
+  PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "2",
+  PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
+  PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
+  PDF50_PROVIDER_TEST_MODE: "BOUNDED_SCALE_REAL_PROVIDER",
+  PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "2",
+});
 assert.equal(control.maxExpectedQueueDepth, 5);
 assert.equal(control.releaseLimit, 4);
 assert.equal(parsePriorConservativeMicros("0"), 0);
@@ -52,14 +108,14 @@ const stageCosts = Object.fromEntries(
     stage,
     estimatePDF50ScaleStageCostMicros({
       control,
-      inputMicrosPerMillion: providerControl.inputMicrosPerMillion,
-      outputMicrosPerMillion: providerControl.outputMicrosPerMillion,
-      outputTokensPerAttempt: providerControl.providerMaxOutputTokens,
+      inputMicrosPerMillion: scaleProviderControl.inputMicrosPerMillion,
+      outputMicrosPerMillion: scaleProviderControl.outputMicrosPerMillion,
+      outputTokensPerAttempt: scaleProviderControl.providerMaxOutputTokens,
       stage,
     }),
   ]),
 );
-assert.deepEqual(stageCosts, { 4: 46556, 10: 104751, 50: 581950 });
+assert.deepEqual(stageCosts, { 4: 93112, 10: 209502, 50: 1163900 });
 assert(
   Object.values(stageCosts).reduce((total, value) => total + value, 0) <
     control.approvedBudgetUsd * 1_000_000,
@@ -96,7 +152,23 @@ assert(harness.includes("usageUnknown"));
 assert(harness.includes("provider_budget_exceeded"));
 assert(harness.includes("cleanupFailures === 0"));
 assert(harness.includes("replayCounters.inference === 0"));
-assert(harness.includes("completedJob.provider_attempt_count === 1"));
+assert(
+  harness.includes(
+    "completedJob.provider_attempt_count === firstCounters.inference",
+  ),
+);
+assert(harness.includes("providerTestEnvironment: scaleProviderEnvironment"));
+assert(
+  harness.includes(
+    "drain.counters.inference >= config.stageControl.providerJobs",
+  ),
+);
+assert(harness.includes("config.stageControl.maxProviderAttempts"));
+assert(
+  !harness.includes(
+    "drain.counters.inference === config.stageControl.providerAttempts",
+  ),
+);
 assert(harness.includes("controlled_read_after_write_delay"));
 assert(harness.includes("waitForBurstItemStatus"));
 assert(harness.includes("waitForTerminalBurst"));
@@ -124,6 +196,15 @@ assert(!launcher.includes("ConvertFrom-SecureString -AsPlainText"));
 
 assert(oneFileHarness.includes("const isDirectInvocation"));
 assert(oneFileHarness.includes("export {"));
+assert(
+  oneFileHarness.includes(
+    "providerTestEnvironment = proofControlEnvironment",
+  ),
+);
+assert(oneFileHarness.includes("validatedProviderTestEnvironment"));
+assert(providerTestControl.includes("pdf50-scale-provider-proof-control.json"));
+assert(providerTestControl.includes("PDF50_SCALE_PROVIDER_PROOF_CONTROL"));
+assert(providerTestControl.includes("PDF50_SCALE_PROVIDER_TEST_MODE"));
 assert(route.includes("PDF50_PROVIDER_TEST_INTERRUPTION_HEADER"));
 assert(route.includes("parseTrustedAIProviderTestInterruption"));
 assert(worker.includes("TrustedProviderCheckpointInterruptionError"));
@@ -141,7 +222,12 @@ function satisfiesScaleSafetyContract(source) {
     source.includes("beforeCount === 0 && afterCount === 0") &&
     source.includes('result.data === "STALE_FENCE_REJECTED"') &&
     source.includes("replayCounters.inference === 0") &&
-    source.includes("completedCounters.cleanupFailures === 0")
+    source.includes("completedCounters.cleanupFailures === 0") &&
+    source.includes(
+      "drain.counters.inference >= config.stageControl.providerJobs",
+    ) &&
+    source.includes("config.stageControl.maxProviderAttempts") &&
+    source.includes("providerTestEnvironment: scaleProviderEnvironment")
   );
 }
 
@@ -153,6 +239,15 @@ const mutationCases = [
   harness.replace(
     "completedCounters.cleanupFailures === 0",
     "completedCounters.cleanupFailures >= 0",
+  ),
+  harness.replace(
+    "drain.counters.inference >= config.stageControl.providerJobs",
+    "drain.counters.inference >= 0",
+  ),
+  harness.replace("config.stageControl.maxProviderAttempts", "Number.MAX_VALUE"),
+  harness.replace(
+    "providerTestEnvironment: scaleProviderEnvironment",
+    "providerTestEnvironment: proofControlEnvironment",
   ),
 ];
 assert(mutationCases.every((mutated) => !satisfiesScaleSafetyContract(mutated)));

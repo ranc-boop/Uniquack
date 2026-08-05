@@ -27,8 +27,6 @@ import {
   knownProviderModel,
   minimalChildEnvironment,
   numeric,
-  proofControl,
-  proofControlEnvironment,
   readEvidenceWithRetry,
   requireData,
   requireProcessEnvironment,
@@ -49,9 +47,16 @@ import {
   loadPDF50ScaleQualificationControl,
   parsePriorConservativeMicros,
 } from "./lib/pdf50-scale-qualification-control.mjs";
+import {
+  loadPDF50ScaleProviderProofControl,
+  pdf50ScaleProviderProofEnvironment,
+} from "./lib/pdf50-scale-provider-proof-control.mjs";
 
 const workerRoutePath = "/api/internal/ai-jobs/run";
 const providerInterruption = "after_provider_checkpoint";
+const scaleProviderControl = await loadPDF50ScaleProviderProofControl();
+const scaleProviderEnvironment =
+  pdf50ScaleProviderProofEnvironment(scaleProviderControl);
 const scaleEnvironmentNames = [
   "PDF50_SCALE_E2E_CONFIRM_CLEANUP",
   "PDF50_SCALE_E2E_ENVIRONMENT",
@@ -135,9 +140,9 @@ function requireScaleEnvironment(control) {
   }
   const stageConservativeMicros = estimatePDF50ScaleStageCostMicros({
     control,
-    inputMicrosPerMillion: proofControl.inputMicrosPerMillion,
-    outputMicrosPerMillion: proofControl.outputMicrosPerMillion,
-    outputTokensPerAttempt: proofControl.providerMaxOutputTokens,
+    inputMicrosPerMillion: scaleProviderControl.inputMicrosPerMillion,
+    outputMicrosPerMillion: scaleProviderControl.outputMicrosPerMillion,
+    outputTokensPerAttempt: scaleProviderControl.providerMaxOutputTokens,
     stage,
   });
   const approvedBudgetMicros = control.approvedBudgetUsd * 1_000_000;
@@ -411,7 +416,7 @@ async function runExactWorker({
     ...minimalChildEnvironment(),
     AI_JOBS_INTERNAL_TOKEN: internalToken,
     AI_JOBS_LOCAL_MAX_INVOCATIONS:
-      proofControlEnvironment.AI_JOBS_LOCAL_MAX_INVOCATIONS,
+      scaleProviderEnvironment.AI_JOBS_LOCAL_MAX_INVOCATIONS,
     AI_JOBS_LOCAL_ROUTE_URL: `${origin}${workerRoutePath}`,
     AI_JOBS_LOCAL_TARGET_JOB_ID: jobId,
   };
@@ -721,8 +726,10 @@ async function drainBurst({
       const firstCounters = providerCounters(retryJob);
       scaleAssert(
         retryJob.checkpoint_stage === "provider_result_checkpointed" &&
-          firstCounters.inference === 1 &&
-          firstCounters.inferenceRequests === 1 &&
+          firstCounters.inference >= 1 &&
+          firstCounters.inference <=
+            scaleProviderControl.providerInferenceAttempts &&
+          firstCounters.inferenceRequests === firstCounters.inference &&
           firstCounters.cleanupFailures === 0,
         "scale_recovery_failed",
       );
@@ -751,7 +758,7 @@ async function drainBurst({
         replayCounters.inference === 0 &&
           replayCounters.inferenceRequests === 0 &&
           completedJob.execution_attempt_count >= 2 &&
-          completedJob.provider_attempt_count === 1,
+          completedJob.provider_attempt_count === firstCounters.inference,
         "scale_recovery_failed",
       );
       addCounters(counters, replayCounters);
@@ -772,8 +779,10 @@ async function drainBurst({
       });
       const completedCounters = providerCounters(completedJob);
       scaleAssert(
-        completedCounters.inference === 1 &&
-          completedCounters.inferenceRequests === 1 &&
+        completedCounters.inference >= 1 &&
+          completedCounters.inference <=
+            scaleProviderControl.providerInferenceAttempts &&
+          completedCounters.inferenceRequests === completedCounters.inference &&
           completedCounters.cleanup >= 1 &&
           completedCounters.cleanupFailures === 0,
         "scale_provider_execution_failed",
@@ -883,6 +892,11 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
           job.checkpoint_stage === "completed" &&
           job.persisted_output_lineage,
       ),
+    "scale_batch_evidence_failed",
+  );
+  scaleAssert(
+    sum(jobs.map((job) => job.provider_attempt_count)) ===
+      drain.counters.inference,
     "scale_batch_evidence_failed",
   );
 
@@ -1479,7 +1493,11 @@ async function main() {
     bankId = await createSyntheticBank(teacher);
     console.log("PASS exact-run synthetic organizations, Teachers, and private Bank ready");
 
-    server = await startNextServer({ config, internalToken });
+    server = await startNextServer({
+      config,
+      internalToken,
+      providerTestEnvironment: scaleProviderEnvironment,
+    });
     browser = await chromium.launch({
       executablePath: config.edgePath,
       headless: true,
@@ -1523,8 +1541,10 @@ async function main() {
       stage: config.stage,
     });
     scaleAssert(
-      drain.counters.inference === config.stageControl.providerAttempts &&
-        drain.counters.inferenceRequests === config.stageControl.providerAttempts &&
+      drain.counters.inference >= config.stageControl.providerJobs &&
+        drain.counters.inference <=
+          config.stageControl.maxProviderAttempts &&
+        drain.counters.inferenceRequests === drain.counters.inference &&
         drain.counters.cleanupFailures === 0,
       "scale_provider_execution_failed",
     );

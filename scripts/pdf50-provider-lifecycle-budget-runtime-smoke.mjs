@@ -73,6 +73,15 @@ const proofControlSource = JSON.parse(
     "utf8",
   ),
 );
+const scaleProofControlSource = JSON.parse(
+  await readFile(
+    resolve(
+      root,
+      "src/lib/ai-jobs/pdf50-scale-provider-proof-control.json",
+    ),
+    "utf8",
+  ),
+);
 const proofControl = await loadPDF50ProviderProofControl();
 const proofEnvironment = pdf50ProviderProofEnvironment(proofControl);
 const structuredOutput = await loadTypeScriptModule(
@@ -125,6 +134,7 @@ const providerTestControl = await loadTypeScriptModule(
   "src/lib/ai-jobs/provider-test-control.ts",
   {
     "./pdf50-provider-proof-control.json": proofControlSource,
+    "./pdf50-scale-provider-proof-control.json": scaleProofControlSource,
   },
 );
 const proofEnvironmentNames = [
@@ -159,6 +169,37 @@ try {
     providerTestControl.PDF50_PROVIDER_TEST_MAX_COST_MICROS <
       proofControl.approvedBudgetUsd * 1_000_000,
     "trusted proof worst-case token envelope must remain below its canonical budget",
+  );
+  Object.assign(process.env, {
+    AI_JOBS_LOCAL_MAX_INVOCATIONS: String(
+      scaleProofControlSource.workerRouteInvocations,
+    ),
+    PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: String(
+      scaleProofControlSource.providerInferenceAttempts,
+    ),
+    PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: String(
+      scaleProofControlSource.providerMaxNetworkRequests,
+    ),
+    PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: String(
+      scaleProofControlSource.providerMaxOutputTokens,
+    ),
+    PDF50_PROVIDER_TEST_MODE: scaleProofControlSource.mode,
+    PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: String(
+      scaleProofControlSource.approvedBudgetUsd,
+    ),
+  });
+  assert.deepEqual(providerTestControl.readTrustedAIProviderTestLimits(), {
+    maxClaimedJobs: 1,
+    maxInferenceAttempts: 2,
+    maxEstimatedCostMicros: 23_278,
+    maxNetworkRequests: 68,
+    maxOutputTokens: 4_096,
+    providerBudgetMicros: 2_000_000,
+  });
+  process.env.PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS = "1";
+  assert.throws(
+    () => providerTestControl.readTrustedAIProviderTestLimits(),
+    /trusted_provider_test_control_rejected/,
   );
 } finally {
   for (const name of proofEnvironmentNames) {
@@ -671,7 +712,12 @@ const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
     inferAiProviderMode: () => "gemini_native",
   },
   "@/lib/ai-providers/gemini-native": {
-    async generateWithGeminiNativePdf({ outputContract, prompt }) {
+    async generateWithGeminiNativePdf({
+      executionObserver,
+      outputContract,
+      prompt,
+    }) {
+      executionObserver?.beforeInference("ai_pdf_extraction");
       extractionPrompts.push(prompt);
       extractionOutputContracts.push(outputContract);
       const response = extractionResponses.shift();
@@ -680,6 +726,7 @@ const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
     },
     testGeminiNativeTextConnection: async () => ({ message: "ok", ok: true }),
   },
+  "@/lib/ai-providers/errors": errors,
   "@/lib/ai-providers/gemini-structured-output": structuredOutput,
   "@/lib/ai-providers/json-repair": {
     parsePossiblyMalformedJson: (value) => JSON.parse(value),
@@ -732,6 +779,40 @@ assert(extractionPrompts[1].includes("zero importable questions"));
 assert(extractionPrompts[1].includes('{"questions":[],"warnings":[]}'));
 assert(extractionPrompts[1].includes('"question_number"'));
 assert(!extractionPrompts[1].includes('"question_code"'));
+
+const priorPromptCount = extractionPrompts.length;
+extractionResponses = ['{"questions":[],"warnings":[]}'];
+const oneAttemptBudget = budgetModule.createAIProviderExecutionBudget({
+  maxInferenceAttempts: 1,
+});
+await assert.rejects(
+  chat.callAIPdfExtractionProvider({
+    executionObserver: oneAttemptBudget,
+    fileName: "synthetic.pdf",
+    inputStrategy: "gemini_native_pdf",
+    pageImageDataUrls: [],
+    pdfBase64: "",
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    profile: {
+      apiKey: "synthetic-test-key",
+      base_url: "https://provider.invalid",
+      model: "synthetic-model",
+      name: "Synthetic Provider",
+      provider: "gemini_native",
+      supports_pdf_input: true,
+      supports_vision_images: false,
+    },
+    prompt: originalExtractionPrompt,
+  }),
+  (error) => {
+    assert(!(error instanceof errors.AIProviderError));
+    assert.match(error.message, /at least one item|zero importable questions/);
+    assert(!error.message.includes("provider_execution_budget_exhausted"));
+    return true;
+  },
+);
+assert.equal(extractionPrompts.length, priorPromptCount + 1);
+assert.equal(oneAttemptBudget.snapshot().providerInferenceAttempts, 1);
 
 const rawResponseMarker = "PRIVATE_PROVIDER_OUTPUT_MUST_NOT_ESCAPE";
 extractionResponses = [rawResponseMarker, rawResponseMarker];

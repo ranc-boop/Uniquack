@@ -5,6 +5,7 @@ import {
   type AIPdfExtraction,
 } from "@/lib/ai-pdf-import/schema";
 import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
+import { isAIProviderError } from "@/lib/ai-providers/errors";
 import {
   assertMockAIProviderAllowed,
   isMockAIProviderUrl,
@@ -63,6 +64,24 @@ const CHAT_COMPLETION_TIMEOUT_MS = 180_000;
 const CONNECTION_TEST_TIMEOUT_MS = 15_000;
 const EXTRACTION_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 const CONNECTION_RESPONSE_MAX_BYTES = 64 * 1024;
+
+function preservePriorValidationError({
+  error,
+  lastError,
+}: {
+  error: unknown;
+  lastError: unknown;
+}): never {
+  if (
+    lastError &&
+    isAIProviderError(error) &&
+    error.code === "provider_execution_budget_exhausted" &&
+    error.operation === "ai_pdf_extraction"
+  ) {
+    throw lastError;
+  }
+  throw error;
+}
 
 function endpoint(baseUrl: string) {
   return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -521,7 +540,9 @@ export async function callAIPdfExtractionProvider({
     let usedRepair = false;
 
     for (let attempt = 1; attempt <= MAX_EXTRACTION_ATTEMPTS; attempt += 1) {
-      const nativeResponse = await generateWithGeminiNativePdf({
+      let nativeResponse: Awaited<ReturnType<typeof generateWithGeminiNativePdf>>;
+      try {
+        nativeResponse = await generateWithGeminiNativePdf({
           apiKey: profile.apiKey,
           baseUrl: profile.base_url,
           executionObserver,
@@ -545,6 +566,9 @@ export async function callAIPdfExtractionProvider({
             repairAttempt: attempt > 1,
           },
         });
+      } catch (error) {
+        preservePriorValidationError({ error, lastError });
+      }
       onProviderUsage?.(nativeResponse.usage);
       const contentText = nativeResponse.text;
       await writeAIImportLLMDebugLog({
