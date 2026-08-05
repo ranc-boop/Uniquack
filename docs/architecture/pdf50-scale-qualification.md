@@ -69,12 +69,12 @@ exact burst, and invokes the trusted worker one exact job at a time.
 
 - Authorized fresh cumulative ceiling: USD 2.00.
 - Explicit reassessment threshold: USD 1.60 conservative cumulative spend.
-- Known live scale iterations: 11.
+- Known live scale iterations: 12.
 - Trustworthy actual estimate for the passing terminal iteration: 3,794 micros.
 - Cumulative actual spend: `UNKNOWN` because failed iterations did not all
   reach complete usage telemetry.
-- Conservative cumulative ceiling consumed: 1,010,290 micros (USD 1.010290).
-- Remaining authorized budget: 989,710 micros (USD 0.989710).
+- Conservative cumulative ceiling consumed: 1,189,543 micros (USD 1.189543).
+- Remaining authorized budget: 810,457 micros (USD 0.810457).
 
 Future scale runs use a 50,000-byte upper envelope covering the prompt,
 structured-output schema, synthetic PDF bytes, and fixed request overhead. The
@@ -88,10 +88,10 @@ current source-defined Gemini rates this bounds a fresh stage as follows:
 - Ten files: 179,253 micros (27-attempt ceiling for nine Provider jobs).
 - Fifty files: 497,925 micros (75-attempt aggregate ceiling: one attempt for
   every job plus 25 bounded repair/retry attempts).
-- Projected ceiling after one new ten-file run: 1,189,543 micros (USD
-  1.189543).
-- Projected ceiling after that run and one fifty-file run: 1,687,468 micros
-  (USD 1.687468).
+- Projected ceiling after one new ten-file run: 1,368,796 micros (USD
+  1.368796).
+- Projected ceiling after that run and one fifty-file run: 1,866,721 micros
+  (USD 1.866721).
 
 The fifty-file aggregate allowance is intentionally lower than the sum of 50
 independent three-attempt maxima. The server still enforces at most three
@@ -112,7 +112,7 @@ that maximum would exceed the remaining authorized budget.
 | Stage | Status | Live iterations | Provider attempts | Result |
 | --- | --- | ---: | ---: | --- |
 | Four files | `PASS` | 5 | At least 11; exact failed-run total `UNKNOWN` | 4/4 terminal, UI, isolation, invariants, and cleanup passed |
-| Ten files | `BLOCKED_CHECKPOINT_RETRY_CLASSIFICATION_CORRECTED` | 6 | At least 18; earlier failed-run total `UNKNOWN` | The latest run completed one item, then the controlled-interruption item entered `retry_wait` before the harness proved which retry boundary fired |
+| Ten files | `BLOCKED_NEWLY_RELEASED_JOB_AVAILABILITY_CORRECTED` | 7 | At least 23; earlier failed-run total `UNKNOWN` | The latest run passed checkpoint recovery and completed 5 items, then the first newly admission-released job was not yet claimable by the local proof clock |
 | Fifty files | `NOT_RUN` | 0 | 0 | Must not begin before the ten-file gate passes |
 
 Passing admission alone is insufficient. Each stage must verify durable item
@@ -252,6 +252,30 @@ It keeps the interruption armed while retrying only the same exact job, checks
 the durable execution-attempt allowance, and counts every invocation against
 the stage ceiling. Only after the protected checkpoint is observed does it run
 the stale-fence assertion and zero-inference replay.
+
+7. The next run proved that correction: the controlled Provider checkpoint,
+   stale-fence rejection, zero-inference replay, and controlled read-after-write
+   delay all passed. Five items completed with five aggregated inference
+   requests, ten uploads, five cleanups, zero polls, and twenty Provider HTTP
+   requests. The sixth worker process exited successfully but reported no exact
+   claim. This occurred at the transition from the initial five-job per-user
+   outstanding window to the first job newly released by the admission pump.
+   Source tracing showed that the harness accepted a newly queued item and
+   invoked the local worker immediately, while the exact claim path rejects an
+   item until its database-authored `available_at` is no later than the local
+   process clock. The harness waited for this boundary only on `retry_wait`, not
+   on a newly released `queued` job. Exact-ID cleanup, Provider-file cleanup,
+   process shutdown, environment clearing, and zero residue all passed. The
+   full 179,253-micros ceiling was charged, bringing the conservative ledger to
+   1,189,543 micros.
+
+The exact worker preflight now waits, with a bounded loop, for both `queued` and
+`retry_wait` targets to reach their database-authored availability time before
+spawning the one-invocation worker. A successful process that still claims no
+job emits only sanitized runner/job/checkpoint state and fails closed. The
+adversarial safety smoke rejects the previous retry-only wait contract. No
+claim limit, Provider allowance, product authorization, migration, or live
+configuration changed.
 
 ## Pre-live source validation
 

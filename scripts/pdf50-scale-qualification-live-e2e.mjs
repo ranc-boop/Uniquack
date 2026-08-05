@@ -419,7 +419,7 @@ async function runExactWorker({
   origin,
   service,
 }) {
-  const before = await loadJob({ jobId, service });
+  const before = await waitForExactJobAvailable({ jobId, service });
   scaleAssert(
     before?.job_kind === "ai_pdf_extract" &&
       ["queued", "retry_wait"].includes(before.status),
@@ -478,10 +478,18 @@ async function runExactWorker({
     });
     throw new HarnessError("scale_worker_failed");
   }
-  scaleAssert(
-    output.includes("status=worker_accepted") && output.includes("claimed=1"),
-    "exact_worker_target_failed",
-  );
+  if (
+    !output.includes("status=worker_accepted") ||
+    !output.includes("claimed=1")
+  ) {
+    await reportSafeWorkerFailure({
+      jobId,
+      outcome: "unclaimed_exit",
+      output,
+      service,
+    });
+    throw new HarnessError("exact_worker_target_failed");
+  }
   scaleAssert(!output.includes(internalToken), "scale_worker_failed");
   return { fence, output };
 }
@@ -564,14 +572,18 @@ async function waitForTerminalBurst({ burstId, expectedFiles, service }) {
   throw new HarnessError("scale_batch_evidence_failed");
 }
 
-async function waitForJobAvailable({ jobId, service }) {
-  await waitForCondition(
+async function waitForExactJobAvailable({ jobId, service }) {
+  return waitForCondition(
     async () => {
       const job = await loadJob({ jobId, service });
+      const availableAt = Date.parse(job?.available_at ?? "");
       return (
-        job?.status === "retry_wait" &&
-        Date.parse(job.available_at ?? "") <= Date.now()
-      );
+        ["queued", "retry_wait"].includes(job?.status) &&
+        Number.isFinite(availableAt) &&
+        availableAt <= Date.now()
+      )
+        ? job
+        : null;
     },
     "scale_recovery_failed",
     360,
@@ -642,7 +654,7 @@ async function runExactWorkerToTerminal({
     const before = await loadJob({ jobId, service });
     assertExactWorkerJobCanRun(before);
     if (before.status === "retry_wait") {
-      await waitForJobAvailable({ jobId, service });
+      await waitForExactJobAvailable({ jobId, service });
     }
     assertScaleWorkerBudget({
       counters,
@@ -858,7 +870,7 @@ async function drainBurst({
         const before = await loadJob({ jobId, service });
         assertExactWorkerJobCanRun(before);
         if (before.status === "retry_wait") {
-          await waitForJobAvailable({ jobId, service });
+          await waitForExactJobAvailable({ jobId, service });
         }
         assertScaleWorkerBudget({
           counters,
@@ -925,7 +937,7 @@ async function drainBurst({
       }
 
       await proveStaleFenceRejected({ fence: checkpointFence, jobId, service });
-      await waitForJobAvailable({ jobId, service });
+      await waitForExactJobAvailable({ jobId, service });
       assertScaleWorkerBudget({
         counters,
         maxProviderAttempts: control.stages[stage].maxProviderAttempts,

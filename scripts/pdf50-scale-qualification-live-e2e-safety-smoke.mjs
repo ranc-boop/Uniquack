@@ -189,7 +189,16 @@ assert(harness.includes("retryableScaleProviderCodes.has"));
 assert(
   harness.includes('expected: ["completed", "retry_wait", "failed"]'),
 );
-assert(harness.includes("await waitForJobAvailable"));
+assert(harness.includes("await waitForExactJobAvailable"));
+assert(
+  harness.includes(
+    "const before = await waitForExactJobAvailable({ jobId, service })",
+  ) &&
+    harness.includes('["queued", "retry_wait"].includes(job?.status)') &&
+    harness.includes("Number.isFinite(availableAt)") &&
+    harness.includes("availableAt <= Date.now()"),
+);
+assert(harness.includes('outcome: "unclaimed_exit"'));
 assert(harness.includes("counters.inputBytesMax <="));
 assert(harness.includes("PROVIDER_INPUT_BYTES_MAX="));
 assert(harness.includes('label: "checkpoint_attempt"'));
@@ -294,7 +303,12 @@ function satisfiesScaleSafetyContract(source) {
       "drain.counters.inference >= config.stageControl.providerJobs",
     ) &&
     source.includes("config.stageControl.maxProviderAttempts") &&
-    source.includes("providerTestEnvironment: scaleProviderEnvironment")
+    source.includes("providerTestEnvironment: scaleProviderEnvironment") &&
+    source.includes(
+      "const before = await waitForExactJobAvailable({ jobId, service })",
+    ) &&
+    source.includes('["queued", "retry_wait"].includes(job?.status)') &&
+    source.includes("availableAt <= Date.now()")
   );
 }
 
@@ -339,6 +353,14 @@ const mutationCases = [
   harness.replace(
     "providerTestEnvironment: scaleProviderEnvironment",
     "providerTestEnvironment: proofControlEnvironment",
+  ),
+  harness.replace(
+    '["queued", "retry_wait"].includes(job?.status)',
+    'job?.status === "retry_wait"',
+  ),
+  harness.replace(
+    "const before = await waitForExactJobAvailable({ jobId, service })",
+    "const before = await loadJob({ jobId, service })",
   ),
 ];
 assert(mutationCases.every((mutated) => !satisfiesScaleSafetyContract(mutated)));
