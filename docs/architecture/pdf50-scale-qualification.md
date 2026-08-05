@@ -69,12 +69,12 @@ exact burst, and invokes the trusted worker one exact job at a time.
 
 - Authorized fresh cumulative ceiling: USD 2.00.
 - Explicit reassessment threshold: USD 1.60 conservative cumulative spend.
-- Known live scale iterations: 13.
+- Known live scale iterations: 14.
 - Trustworthy actual estimate for the passing terminal iteration: 3,794 micros.
 - Cumulative actual spend: `UNKNOWN` because failed iterations did not all
   reach complete usage telemetry.
-- Conservative cumulative ceiling consumed: 1,368,796 micros (USD 1.368796).
-- Remaining authorized budget: 631,204 micros (USD 0.631204).
+- Conservative cumulative ceiling consumed: 1,866,721 micros (USD 1.866721).
+- Remaining authorized budget: 133,279 micros (USD 0.133279).
 
 Future scale runs use a 50,000-byte upper envelope covering the prompt,
 structured-output schema, synthetic PDF bytes, and fixed request overhead. The
@@ -88,8 +88,9 @@ current source-defined Gemini rates this bounds a fresh stage as follows:
 - Ten files: 179,253 micros (27-attempt ceiling for nine Provider jobs).
 - Fifty files: 497,925 micros (75-attempt aggregate ceiling: one attempt for
   every job plus 25 bounded repair/retry attempts).
-- Projected ceiling after the remaining fifty-file run: 1,866,721 micros (USD
-  1.866721), leaving 133,279 micros of the authorization.
+- The attempted fifty-file run consumed its 497,925-micros ceiling, leaving
+  133,279 micros of the authorization. That remainder is below even the
+  331,950-micros one-attempt-per-file minimum for a fresh 50-file run.
 
 The fifty-file aggregate allowance is intentionally lower than the sum of 50
 independent three-attempt maxima. The server still enforces at most three
@@ -97,9 +98,10 @@ attempts for every exact job. Before each worker invocation, the harness
 reserves one attempt for every unprocessed job and refuses the invocation if
 the 75-attempt stage ceiling could be crossed. This permits 25 total
 repair/retry attempts while establishing a credible hard maximum below the USD
-2 authorization. Crossing USD 1.60 remains an explicit reassessment point; the
-first fifty-file run is still useful because it is the only remaining required
-file-count gate, but no unchanged rerun is pre-authorized by this projection.
+2 authorization. Crossing USD 1.60 was explicitly reassessed before the first
+fifty-file run. That run remained useful because it was the only remaining
+required file-count gate. It has now run once; no further paid run is authorized
+by the remaining conservative budget.
 
 Unknown usage remains `UNKNOWN`; it is never converted into a zero-cost claim.
 Before each paid run, the harness must calculate a credible maximum and stop if
@@ -111,7 +113,7 @@ that maximum would exceed the remaining authorized budget.
 | --- | --- | ---: | ---: | --- |
 | Four files | `PASS` | 5 | At least 11; exact failed-run total `UNKNOWN` | 4/4 terminal, UI, isolation, invariants, and cleanup passed |
 | Ten files | `PASS` | 8 | At least 38; earlier failed-run total `UNKNOWN` | 10 admitted, 9 completed, 1 deliberately cancelled; recovery, mixed state, UI, isolation, invariants, and cleanup passed |
-| Fifty files | `NOT_RUN` | 0 | 0 | Must not begin before the ten-file gate passes |
+| Fifty files | `PARTIAL_PROVIDER_ATTEMPT_CEILING_REACHED` | 1 | 48 | 50 admitted and 51st rejected; 23 completed before the aggregate attempt reservation failed closed |
 
 Passing admission alone is insufficient. Each stage must verify durable item
 states, batch aggregation, Review Draft identity, UI reload/remount behavior,
@@ -304,6 +306,42 @@ remain below USD 2.00 at 1,866,721 micros. The run remains useful because no
 smaller or previously completed stage can prove the required 50-file terminal
 behavior. No unchanged paid rerun after that stage is budgeted.
 
+### Fifty-file live evidence
+
+One fresh synthetic iteration ran after the explicit USD 1.60 usefulness
+reassessment. It proved the browser rejects a 51-file selection before creating
+any durable row, then admitted exactly 50 private synthetic PDF items. Anonymous
+source access remained denied. The drain respected the five-job per-user
+outstanding window, burst-scoped admission release, and one exact targeted job
+per worker process.
+
+Twenty-three items reached durable completion. Six retryable Provider waits
+remained durable and exact-job scoped. The 29 accepted worker-route invocations
+made 48 inference requests, 96 uploads, zero polls, 48 cleanups, and 192 total
+Provider HTTP requests. The maximum observed Provider input was 35,742 bytes.
+This consumed all 25 aggregate repair/retry attempts above the 23 base attempts
+for the completed jobs. Before invoking the next job, the harness reserved one
+minimum attempt for each of the 27 remaining items. The resulting
+`48 + 3 + 26 > 75` pre-invocation check failed closed with
+`provider_budget_exceeded`; no over-budget Provider request was sent.
+
+The run did not reach terminal batch aggregation, Teacher UI reconciliation,
+or an independently counted final Review Draft set. The 23 completed jobs are
+bound by the unchanged persistence-before-completion contract, but final draft,
+duplicate, cross-organization, approval, publication, and Assignment aggregate
+counts for this interrupted run are `NOT_REACHED`, not fabricated as passing
+evidence. Input, output, thinking, total-token, and trustworthy actual-cost
+totals are `UNKNOWN` because aggregate evidence was not reached.
+
+Provider-file cleanup, exact database/Storage/Auth fixture cleanup, local server
+shutdown, process-only environment clearing, and zero synthetic residue all
+passed. The full 497,925-micros stage ceiling was charged, bringing the
+cumulative conservative ledger to 1,866,721 micros and leaving 133,279 micros.
+A fresh 50-file run requires at least 331,950 conservative micros before any
+repair allowance, so another paid qualification is blocked by the existing USD
+2 authorization. The result establishes maximum-count admission but not
+50-file operational completion.
+
 ## Pre-live source validation
 
 Passed before any scale Provider call:
@@ -318,13 +356,30 @@ Passed before any scale Provider call:
 - Provider network safety, resilience, and fallback/circuit-breaker smokes.
 - Canonical migration governance/reconciliation and security smoke.
 
-The environment-backed durable queue E2E stopped at its independent
-missing-environment gate; zero values were injected and no hosted operation
-ran. The current main `route-smoke` retains an unrelated `/videos` copy
-assertion failure. The AI Parsing status QA smoke also retains a stale literal
-copy assertion against an unchanged Teacher import UI. These are recorded as
-baseline/fixture gates, not as passing tests and not as PDF50 product
-regressions.
+Final non-paid validation passed syntax checks, the PowerShell launcher parser,
+PDF50 admission/upload/security/load/status contracts, Provider lifecycle and
+budget controls, proof-control parity, scale-harness adversarial checks, the
+durable queue and load contracts, exact local-worker behavior, checkpoint and
+fencing checks, 20 deterministic crash cases, terminal-summary compaction,
+single-page lineage, resilience/fallback checks, canonical migration
+governance/reconciliation, security, source-only route validation, lint, two
+sequential production builds, performance budget/audit, and bundle analysis.
+
+The aggregate smoke passed its preceding static and governance checks, then
+stopped at the known Windows embedded-Postgres `initdb` restricted-token
+infrastructure failure. It is neither a passing aggregate smoke nor a PDF50
+product regression. The environment-backed internal-route smoke separately
+stopped at its missing clean-Supabase environment gate after injecting zero
+values and performing no hosted operation. A default route smoke attempted a
+local server connection and stopped because no server was running; the
+credential-free source-only route mode passed.
+
+Two unchanged source smokes retain unrelated stale assertions:
+`review-draft-actions-mvp-smoke.mjs` expects an older safe-content update source
+shape, and `ai-parsing-boundary-duplicate-guard-smoke.mjs` expects older
+structural-guidance UI literals. They are recorded as baseline test-maintenance
+failures, not as passing checks and not as PDF50 regressions. No production
+source was changed to satisfy them.
 
 ## Current classification
 
@@ -332,5 +387,12 @@ regressions.
 
 The recovery path is merged, the isolated qualification branch is established,
 and both the four-file baseline and ten-file recovery/mixed-state gate are live
-validated. Fifty-file maximum-count qualification remains, so this document
-does not yet claim operational readiness.
+validated. Fifty-file admission and fail-closed attempt accounting are live
+validated, but only 23 of 50 items completed before the stage attempt ceiling.
+Terminal drain, aggregate UI, and final invariant evidence remain unproven, and
+the remaining authorization cannot fund a valid fresh run. This document does
+not claim operational readiness. The next useful step is a source-only review
+of the observed repair/retry frequency and safe aggregate diagnostics, followed
+by a new explicit Provider budget large enough for a fresh 50-file run after
+any reviewed correction. An unchanged paid rerun is not justified or
+authorized.
