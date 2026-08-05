@@ -1441,6 +1441,7 @@ async function main() {
   let fixtures = null;
   let outsider = null;
   let page = null;
+  let providerWorkStarted = false;
   let server = null;
   let service = null;
   let snapshot = null;
@@ -1531,6 +1532,7 @@ async function main() {
     console.log("PASS exact file-count burst admitted to private Storage and durable items");
 
     console.log("PHASE=bounded_exact_job_drain");
+    providerWorkStarted = true;
     drain = await drainBurst({
       burstId: snapshot.burst.id,
       control,
@@ -1655,8 +1657,12 @@ async function main() {
     if (!cleanup.ok && !failure) failure = new HarnessError("cleanup_failed");
     const prior = config?.priorConservativeMicros ?? 0;
     const stageCost = config?.stageConservativeMicros ?? 0;
-    const cumulative = prior + stageCost;
+    const consumedStageCost = providerWorkStarted ? stageCost : 0;
+    const cumulative = prior + consumedStageCost;
     const budget = config?.approvedBudgetMicros ?? control.approvedBudgetUsd * 1_000_000;
+    console.log(
+      `RUN_CONSERVATIVE_CEILING_CONSUMED_MICROS=${consumedStageCost}`,
+    );
     console.log(`CUMULATIVE_CONSERVATIVE_CEILING_MICROS=${cumulative}`);
     console.log(`REMAINING_AUTHORIZED_BUDGET_MICROS=${Math.max(0, budget - cumulative)}`);
     clearScaleEnvironment();

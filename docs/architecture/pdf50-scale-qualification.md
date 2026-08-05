@@ -69,7 +69,7 @@ exact burst, and invokes the trusted worker one exact job at a time.
 
 - Authorized fresh cumulative ceiling: USD 2.00.
 - Explicit reassessment threshold: USD 1.60 conservative cumulative spend.
-- Known live scale iterations: 8.
+- Known live scale iterations: 9.
 - Trustworthy actual estimate for the passing terminal iteration: 3,794 micros.
 - Cumulative actual spend: `UNKNOWN` because failed iterations did not all
   reach complete usage telemetry.
@@ -99,7 +99,7 @@ that maximum would exceed the remaining authorized budget.
 | Stage | Status | Live iterations | Provider attempts | Result |
 | --- | --- | ---: | ---: | --- |
 | Four files | `PASS` | 5 | At least 11; exact failed-run total `UNKNOWN` | 4/4 terminal, UI, isolation, invariants, and cleanup passed |
-| Ten files | `BLOCKED_BEFORE_CORRECTION` | 3 | At least 6; first failed-run total `UNKNOWN` | Recovery proofs advanced through three completions; a nested retry then reached the two-attempt proof cap |
+| Ten files | `BLOCKED_BEFORE_CORRECTION` | 4 | At least 6; first failed-run total `UNKNOWN` | Recovery proofs advanced through three completions; a later pre-worker environment validation rejected the new input-bound field with zero Provider calls |
 | Fifty files | `NOT_RUN` | 0 | 0 | Must not begin before the ten-file gate passes |
 
 Passing admission alone is insufficient. Each stage must verify durable item
@@ -149,9 +149,9 @@ Observed passing iteration:
 
 ### Ten-file pre-correction evidence
 
-Three fresh ten-file iterations stopped before mixed-state completion. Every
-run admitted exactly ten synthetic items and completed exact-ID cleanup with
-zero residue.
+Four fresh ten-file iterations stopped before mixed-state completion. Every
+run completed exact-ID cleanup with zero residue. The first three admitted ten
+synthetic items; the fourth stopped before burst admission and Provider work.
 
 1. The first run made one exact claim, then stopped at the worker boundary.
    Early diagnostics did not preserve a trustworthy Provider counter total, so
@@ -185,6 +185,16 @@ before Provider transport. A retry that cannot start because the execution
 budget is exhausted now preserves the preceding real Provider failure instead
 of replacing it with a budget symptom. Genuine first-attempt, oversized-input,
 or network-request budget failures still fail as budget errors.
+
+4. The first run after that correction stopped before the local server spawned.
+   The shared one-file environment validator rejected the scale-only
+   `PDF50_PROVIDER_TEST_MAX_INPUT_BYTES` field before browser admission or
+   worker drain. Exact fixture cleanup and zero residue passed. Source control
+   flow proves that no Provider call was reachable, so this pre-worker run
+   consumed zero of the Provider-spend ceiling. The validator now permits only
+   that explicit optional field and continues to reject arbitrary extra fields.
+   The cost ledger charges the full stage ceiling once worker drain begins, but
+   records zero for failures that provably occur before that boundary.
 
 ## Pre-live source validation
 

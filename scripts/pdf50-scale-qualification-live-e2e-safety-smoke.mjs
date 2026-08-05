@@ -14,6 +14,10 @@ import {
   loadPDF50ScaleProviderProofControl,
   pdf50ScaleProviderProofEnvironment,
 } from "./lib/pdf50-scale-provider-proof-control.mjs";
+import {
+  proofControlEnvironment,
+  validatedProviderTestEnvironment,
+} from "./pdf50-end-to-end-live-e2e.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const [
@@ -97,6 +101,24 @@ assert.deepEqual(pdf50ScaleProviderProofEnvironment(scaleProviderControl), {
   PDF50_PROVIDER_TEST_MODE: "BOUNDED_SCALE_REAL_PROVIDER",
   PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: "2",
 });
+const scaleProofEnvironment =
+  pdf50ScaleProviderProofEnvironment(scaleProviderControl);
+assert.deepEqual(
+  validatedProviderTestEnvironment(proofControlEnvironment),
+  proofControlEnvironment,
+);
+assert.deepEqual(
+  validatedProviderTestEnvironment(scaleProofEnvironment),
+  scaleProofEnvironment,
+);
+assert.throws(
+  () =>
+    validatedProviderTestEnvironment({
+      ...scaleProofEnvironment,
+      PDF50_PROVIDER_TEST_UNAPPROVED: "1",
+    }),
+  /worker_evidence_failed/,
+);
 assert.equal(control.maxExpectedQueueDepth, 5);
 assert.equal(control.releaseLimit, 4);
 assert.equal(parsePriorConservativeMicros("0"), 0);
@@ -152,6 +174,14 @@ assert(harness.includes("newPage"));
 assert(harness.includes("actualCostMicros"));
 assert(harness.includes("usageUnknown"));
 assert(harness.includes("provider_budget_exceeded"));
+assert(harness.includes("let providerWorkStarted = false"));
+assert(harness.includes("providerWorkStarted = true"));
+assert(
+  harness.includes(
+    "const consumedStageCost = providerWorkStarted ? stageCost : 0",
+  ),
+);
+assert(harness.includes("RUN_CONSERVATIVE_CEILING_CONSUMED_MICROS"));
 assert(harness.includes("cleanupFailures === 0"));
 assert(harness.includes("replayCounters.inference === 0"));
 assert(

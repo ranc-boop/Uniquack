@@ -766,7 +766,13 @@ async function stopOwnedTemporaryServer(server) {
 }
 
 function validatedProviderTestEnvironment(environment) {
-  const expectedNames = Object.keys(proofControlEnvironment).sort();
+  const optionalScaleName = "PDF50_PROVIDER_TEST_MAX_INPUT_BYTES";
+  const expectedNames = [
+    ...Object.keys(proofControlEnvironment),
+    ...(Object.hasOwn(environment ?? {}, optionalScaleName)
+      ? [optionalScaleName]
+      : []),
+  ].sort();
   const receivedNames = Object.keys(environment ?? {}).sort();
   assert(
     expectedNames.length === receivedNames.length &&
@@ -2078,6 +2084,7 @@ export {
   sourceBucket,
   startNextServer,
   stopOwnedTemporaryServer,
+  validatedProviderTestEnvironment,
   verifyAnonymousSourcePrivacy,
   verifyProductionReconciliationContracts,
 };
