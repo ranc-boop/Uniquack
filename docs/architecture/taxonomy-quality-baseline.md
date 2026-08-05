@@ -10,9 +10,11 @@ authoritative `origin/main`, the stacked PDF50 and AI Parsing branches, 229
 fetched pull-request refs, 293 non-PR remote refs, Git history, migrations,
 seeds, import/export paths, and Admin taxonomy mutation source.
 
-No authoritative taxonomy data file changed in that window. The only related
-change was the synthetic Golden taxonomy fixture, which is not a production
-taxonomy source. Migration `0056_add_math_taxonomy_v2_catalog.sql` entered Git
+No authoritative taxonomy data file changed in that window. Taxonomy-related
+implementation and test paths include the synthetic Golden fixture and this
+runtime-snapshot correction, but none is a production catalog, seed, import,
+export, or migration carrying the reported additions. Migration
+`0056_add_math_taxonomy_v2_catalog.sql` entered Git
 at commit `bfb789c58780a885a9bcf6fba54e96741fe710f9` on
 `2026-07-27T21:57:22+08:00`, before the reported 100-plus additions. Its Git
 blob is identical on the reviewed branch and `origin/main`.
