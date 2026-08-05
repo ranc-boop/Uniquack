@@ -340,6 +340,38 @@ async function captureProcessingFence({ child, jobId, service }) {
   return null;
 }
 
+function safeWorkerClassification(output) {
+  const supported = [
+    "authentication_rejected",
+    "bounded_worker_failure",
+    "bounded_worker_failure_limit_reached",
+    "local_server_unavailable",
+    "no_claimable_jobs",
+    "redirect_rejected",
+    "worker_accepted",
+  ];
+  return supported.find((value) => output.includes(`status=${value}`)) ?? "unknown";
+}
+
+function safeWorkerValue(value) {
+  return typeof value === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(value)
+    ? value
+    : "unknown";
+}
+
+async function reportSafeWorkerFailure({ jobId, outcome, output, service }) {
+  const job = await loadJob({ jobId, service }).catch(() => null);
+  console.log(
+    `SAFE_LOCAL_WORKER_FAILURE=outcome:${outcome},runner:${safeWorkerClassification(
+      output,
+    )},job:${safeWorkerValue(job?.status)},checkpoint:${safeWorkerValue(
+      job?.checkpoint_stage,
+    )},safeError:${safeWorkerValue(job?.safe_error_code)},executionAttempts:${
+      numeric(job?.execution_attempt_count) ?? 0
+    },providerAttempts:${numeric(job?.provider_attempt_count) ?? 0}`,
+  );
+}
+
 async function runExactWorker({
   captureFence = false,
   internalToken,
@@ -390,9 +422,23 @@ async function runExactWorker({
   const fence = await fencePromise;
   if (outcome.timeout) {
     child.kill("SIGKILL");
+    await reportSafeWorkerFailure({
+      jobId,
+      outcome: "harness_timeout",
+      output,
+      service,
+    });
     throw new HarnessError("scale_worker_failed");
   }
-  scaleAssert(outcome.code === 0, "scale_worker_failed");
+  if (outcome.code !== 0) {
+    await reportSafeWorkerFailure({
+      jobId,
+      outcome: "nonzero_exit",
+      output,
+      service,
+    });
+    throw new HarnessError("scale_worker_failed");
+  }
   scaleAssert(
     output.includes("status=worker_accepted") && output.includes("claimed=1"),
     "exact_worker_target_failed",
@@ -575,6 +621,7 @@ async function drainBurst({
   const startedAt = Date.now();
 
   while (processedJobIds.length < control.stages[stage].completed) {
+    try {
     let snapshot = await loadBurst({ burstId, service });
     maxAdmissionWaiting = Math.max(
       maxAdmissionWaiting,
@@ -713,6 +760,19 @@ async function drainBurst({
     if (stage === "10" && !readDelayComplete) {
       await controlledReadAfterWriteProof({ jobId, service });
       readDelayComplete = true;
+    }
+    } catch (error) {
+      console.log(`PARTIAL_WORKER_ROUTE_INVOCATIONS=${claims}`);
+      console.log(`PARTIAL_COMPLETED_ITEMS=${processedJobIds.length}`);
+      console.log(`PARTIAL_PROVIDER_INFERENCE_ATTEMPTS=${counters.inference}`);
+      console.log(
+        `PARTIAL_PROVIDER_INFERENCE_REQUESTS=${counters.inferenceRequests}`,
+      );
+      console.log(`PARTIAL_PROVIDER_UPLOAD_REQUESTS=${counters.uploads}`);
+      console.log(`PARTIAL_PROVIDER_POLL_REQUESTS=${counters.polls}`);
+      console.log(`PARTIAL_PROVIDER_CLEANUP_REQUESTS=${counters.cleanup}`);
+      console.log(`PARTIAL_PROVIDER_NETWORK_REQUESTS=${counters.network}`);
+      throw error;
     }
   }
 

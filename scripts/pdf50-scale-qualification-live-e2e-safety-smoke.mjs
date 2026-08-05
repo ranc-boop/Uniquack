@@ -106,6 +106,9 @@ assert(!harness.includes("processedJobIds.length < control.completed"));
 assert(harness.includes('const burstCard = summary.locator("..")'));
 assert(harness.includes('const details = burstCard.locator("details")'));
 assert(!harness.includes('activePage.locator("details").first()'));
+assert(harness.includes("SAFE_LOCAL_WORKER_FAILURE="));
+assert(harness.includes("PARTIAL_PROVIDER_NETWORK_REQUESTS="));
+assert(!harness.includes("console.log(output)"));
 assert(harness.includes('getByRole("button", { name: "Cancel unstarted" })'));
 
 assert(launcher.includes("Import-Clixml -LiteralPath $VaultPath"));
