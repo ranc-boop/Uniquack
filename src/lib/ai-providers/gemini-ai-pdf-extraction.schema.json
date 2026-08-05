@@ -4,6 +4,7 @@
   "properties": {
     "questions": {
       "type": "array",
+      "description": "Actual questions visible in the source. Return at least one when the source contains a question; required text fields must not be blank.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -11,7 +12,7 @@
         "properties": {
           "title": {
             "type": "string",
-            "description": "Short plain-text question title."
+            "description": "Non-empty short plain-text title for the actual question, never a heading or placeholder."
           },
           "question_number": {
             "type": "string",
@@ -28,7 +29,7 @@
           },
           "content_html": {
             "type": "string",
-            "description": "Sanitization-friendly HTML containing the complete question."
+            "description": "Non-empty sanitization-friendly HTML containing the complete visible question prompt."
           },
           "content_source": {
             "type": "string",

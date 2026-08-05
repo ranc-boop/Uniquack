@@ -654,7 +654,12 @@ export async function generateWithGeminiNativePdf({
 }: GeminiNativePdfInput): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
   assertGeminiConfig({ apiKey, model, pdfBytes });
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
-  executionObserver?.beforeInference("ai_pdf_extraction");
+  const inputBytes =
+    new TextEncoder().encode(prompt).byteLength +
+    new TextEncoder().encode(JSON.stringify(outputContract ?? {})).byteLength +
+    pdfBytes.byteLength +
+    4_096;
+  executionObserver?.beforeInference("ai_pdf_extraction", inputBytes);
 
   let uploadedFile: GeminiFile | null = null;
 

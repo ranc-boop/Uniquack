@@ -140,6 +140,7 @@ const providerTestControl = await loadTypeScriptModule(
 const proofEnvironmentNames = [
   "AI_JOBS_LOCAL_MAX_INVOCATIONS",
   "PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS",
+  "PDF50_PROVIDER_TEST_MAX_INPUT_BYTES",
   "PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS",
   "PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS",
   "PDF50_PROVIDER_TEST_MODE",
@@ -160,6 +161,7 @@ try {
   assert.deepEqual(providerTestControl.readTrustedAIProviderTestLimits(), {
     maxClaimedJobs: proofControl.claimedJobs,
     maxInferenceAttempts: proofControl.providerInferenceAttempts,
+    maxInputBytes: null,
     maxEstimatedCostMicros: estimatePDF50ProviderProofCostMicros(proofControl),
     maxNetworkRequests: proofControl.providerMaxNetworkRequests,
     maxOutputTokens: proofControl.providerMaxOutputTokens,
@@ -177,6 +179,9 @@ try {
     PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: String(
       scaleProofControlSource.providerInferenceAttempts,
     ),
+    PDF50_PROVIDER_TEST_MAX_INPUT_BYTES: String(
+      scaleProofControlSource.maxInputBytesPerAttempt,
+    ),
     PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: String(
       scaleProofControlSource.providerMaxNetworkRequests,
     ),
@@ -190,8 +195,9 @@ try {
   });
   assert.deepEqual(providerTestControl.readTrustedAIProviderTestLimits(), {
     maxClaimedJobs: 1,
-    maxInferenceAttempts: 2,
-    maxEstimatedCostMicros: 23_278,
+    maxInferenceAttempts: 3,
+    maxInputBytes: 50_000,
+    maxEstimatedCostMicros: 19_917,
     maxNetworkRequests: 68,
     maxOutputTokens: 4_096,
     providerBudgetMicros: 2_000_000,
@@ -238,6 +244,20 @@ assert.deepEqual(budget.snapshot(), {
   providerPollRequests: 0,
   providerUploadRequests: 0,
 });
+
+const inputBoundBudget = budgetModule.createAIProviderExecutionBudget({
+  maxInferenceAttempts: 1,
+  maxInputBytes: 10,
+});
+assert.throws(
+  () => inputBoundBudget.beforeInference("ai_pdf_extraction", 11),
+  (error) => {
+    assert(error instanceof errors.AIProviderError);
+    assert.equal(error.code, "provider_execution_budget_exhausted");
+    return true;
+  },
+);
+assert.equal(inputBoundBudget.snapshot().providerInferenceAttempts, 0);
 
 const networkBudget = budgetModule.createAIProviderExecutionBudget({
   maxInferenceAttempts: 4,
@@ -695,6 +715,35 @@ await assert.rejects(
 );
 assert.equal(exhaustedFetchCount, 0);
 
+const smallInputBudget = budgetModule.createAIProviderExecutionBudget({
+  maxInferenceAttempts: 1,
+  maxInputBytes: 16,
+});
+let oversizedInputFetchCount = 0;
+await assert.rejects(
+  gemini.generateWithGeminiNativePdf({
+    apiKey: "synthetic-test-key",
+    baseUrl: "https://provider.invalid",
+    executionObserver: smallInputBudget,
+    fetchImpl: async () => {
+      oversizedInputFetchCount += 1;
+      throw new Error("The transport must not run for oversized proof input.");
+    },
+    fileName: "synthetic.pdf",
+    model: "synthetic-model",
+    outputContract: structuredOutput.GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "Synthetic prompt",
+  }),
+  (error) => {
+    assert(error instanceof errors.AIProviderError);
+    assert.equal(error.code, "provider_execution_budget_exhausted");
+    return true;
+  },
+);
+assert.equal(oversizedInputFetchCount, 0);
+assert.equal(smallInputBudget.snapshot().providerInferenceAttempts, 0);
+
 let extractionResponses = [];
 const extractionPrompts = [];
 const extractionOutputContracts = [];
@@ -776,6 +825,9 @@ assert.equal(extractionPrompts[0], originalExtractionPrompt);
 assert(extractionPrompts[1].includes("Original extraction instructions:"));
 assert(extractionPrompts[1].includes(originalExtractionPrompt));
 assert(extractionPrompts[1].includes("zero importable questions"));
+assert(extractionPrompts[1].includes("non-empty title"));
+assert(extractionPrompts[1].includes("non-empty content_html"));
+assert(extractionPrompts[1].includes("Do not return blank strings"));
 assert(extractionPrompts[1].includes('{"questions":[],"warnings":[]}'));
 assert(extractionPrompts[1].includes('"question_number"'));
 assert(!extractionPrompts[1].includes('"question_code"'));

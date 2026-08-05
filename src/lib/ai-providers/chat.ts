@@ -378,6 +378,8 @@ function buildRepairPrompt({
     "Your previous answer could not be imported because it did not match the required JSON schema.",
     "Keep the same extracted questions, tags, page references, solutions, and asset placeholder intent from your previous answer.",
     "Repair the JSON structure and field values. If the previous answer contained zero importable questions but the PDF contains an actual question, extract that question now using the original instructions.",
+    "When the PDF contains an actual question, return at least one question with a non-empty title and a non-empty content_html value containing the complete visible prompt.",
+    "Do not return blank strings for required fields. Do not replace a visible source question with a heading, warning, or empty placeholder.",
     "",
     "Required output shape:",
     '{"questions":[{"title":"...","question_number":"...","question_type":"mcq|fill_blank|frq|mixed","difficulty_rating":500,"content_html":"...","content_source":"...","solution_html":"...","solution_source":"...","options":[],"answer_spec":{},"tag_ids":[],"page_refs":[1],"asset_placeholders":[]}],"warnings":[]}',

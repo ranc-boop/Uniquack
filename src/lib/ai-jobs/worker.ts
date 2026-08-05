@@ -929,6 +929,7 @@ async function executeClaimedJob({
       maxProviderCalls,
       providerTestLimits?.maxInferenceAttempts ?? maxProviderCalls,
     ),
+    maxInputBytes: providerTestLimits?.maxInputBytes,
     maxNetworkRequests: providerTestLimits?.maxNetworkRequests,
     maxOutputTokens: providerTestLimits?.maxOutputTokens,
   });

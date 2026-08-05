@@ -52,10 +52,77 @@ async function loadResilienceModules() {
 }
 
 const {
+  AIProviderError,
   redactAIProviderDiagnostic,
   safeAIProviderErrorState,
   runWithAIProviderRetry,
 } = await loadResilienceModules();
+
+async function retryBudgetPreservesPriorProviderFailure() {
+  let calls = 0;
+  let failure = null;
+  try {
+    await runWithAIProviderRetry({
+      operation: "ai_pdf_extraction",
+      policy: { maxAttempts: 3 },
+      run: async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw Object.assign(new Error("UNAVAILABLE"), { status: 503 });
+        }
+        throw new AIProviderError({
+          attemptCount: 3,
+          code: "provider_execution_budget_exhausted",
+          maxAttempts: 3,
+          operation: "ai_pdf_extraction",
+          retryable: false,
+        });
+      },
+      sleep: async () => undefined,
+    });
+  } catch (error) {
+    failure = error;
+  }
+
+  assert(calls === 2, "a pre-transport budget stop must not start another retry");
+  assert(
+    failure?.code === "provider_busy",
+    "a pre-transport budget stop must preserve the preceding real Provider failure",
+  );
+}
+
+async function independentBudgetFailureIsNotMasked() {
+  let calls = 0;
+  let failure = null;
+  try {
+    await runWithAIProviderRetry({
+      operation: "ai_pdf_extraction",
+      policy: { maxAttempts: 3 },
+      run: async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw Object.assign(new Error("UNAVAILABLE"), { status: 503 });
+        }
+        throw new AIProviderError({
+          attemptCount: 1,
+          code: "provider_execution_budget_exhausted",
+          maxAttempts: 3,
+          operation: "ai_pdf_extraction",
+          retryable: false,
+        });
+      },
+      sleep: async () => undefined,
+    });
+  } catch (error) {
+    failure = error;
+  }
+
+  assert(calls === 2, "an independent budget failure must stop retries");
+  assert(
+    failure?.code === "provider_execution_budget_exhausted",
+    "an independent budget failure must not be masked by an earlier Provider failure",
+  );
+}
 
 async function retry503ThenSuccess() {
   let calls = 0;
@@ -275,6 +342,8 @@ function sourceIntegrationChecks({
 }
 
 await retry503ThenSuccess();
+await retryBudgetPreservesPriorProviderFailure();
+await independentBudgetFailureIsNotMasked();
 await retryAfterIsBounded();
 await repeatedProviderFailureStops();
 await permanentAndNetworkCases();

@@ -80,7 +80,7 @@ export async function loadPDF50ScaleQualificationControl() {
     Object.values(control.stages).some(
       (stage) =>
         stage.providerJobs !== stage.completed ||
-        stage.maxProviderAttempts !== stage.providerJobs * 2,
+        stage.maxProviderAttempts !== stage.providerJobs * 3,
     ) ||
     control.stages[4].cancelled !== 0 ||
     control.stages[50].cancelled !== 0

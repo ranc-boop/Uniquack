@@ -58,6 +58,7 @@ assert(
     budget.includes("recordNetworkRequest") &&
     budget.includes("recordCleanupResult") &&
     budget.includes("maxNetworkRequests") &&
+    budget.includes("maxInputBytes") &&
     budget.includes("maxOutputTokens") &&
     budget.includes("provider_execution_budget_exhausted"),
   "PDF50 needs one shared per-job inference budget and transport-request ledger",
@@ -117,6 +118,15 @@ assert(
 
 assert(
   providerExtractionSchema.properties.questions.maxItems === undefined &&
+    providerExtractionSchema.properties.questions.description.includes(
+      "required text fields must not be blank",
+    ) &&
+    providerExtractionSchema.properties.questions.items.properties.title.description.includes(
+      "Non-empty",
+    ) &&
+    providerExtractionSchema.properties.questions.items.properties.content_html.description.includes(
+      "Non-empty",
+    ) &&
     applicationExtractionSchema.includes(
       "questions: z.array(aiPdfQuestionSchema).min(1).max(200)",
     ),
@@ -164,6 +174,8 @@ assert(
   providerTestControl.includes("PDF50_PROVIDER_PROOF_CONTROL") &&
     providerTestControl.includes("PDF50_PROVIDER_TEST_MAX_COST_MICROS") &&
     providerTestControl.includes("maxInputTokensPerAttempt") &&
+    providerTestControl.includes("maxInputBytesPerAttempt") &&
+    providerTestControl.includes('"PDF50_PROVIDER_TEST_MAX_INPUT_BYTES"') &&
     providerTestControl.includes("maxBillableOutputTokensPerAttempt") &&
     providerTestControl.includes("approvedBudgetUsd") &&
     providerTestControl.includes('"PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS"') &&

@@ -30,7 +30,10 @@ export type AIProviderExecutionSummary = {
 };
 
 export type AIProviderExecutionObserver = {
-  beforeInference: (operation?: AIProviderErrorOperation) => void;
+  beforeInference: (
+    operation?: AIProviderErrorOperation,
+    inputBytes?: number,
+  ) => void;
   maxOutputTokens: number | null;
   recordCleanupResult?: (succeeded: boolean) => void;
   recordNetworkRequest: (kind: AIProviderNetworkRequestKind) => void;
@@ -57,16 +60,25 @@ function boundedOutputTokens(value: number | null | undefined) {
   return Math.max(1, Math.min(65_536, Math.trunc(value)));
 }
 
+function boundedInputBytes(value: number | null | undefined) {
+  if (value == null) return null;
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(1, Math.min(16 * 1024 * 1024, Math.trunc(value)));
+}
+
 export function createAIProviderExecutionBudget({
   maxInferenceAttempts,
+  maxInputBytes,
   maxNetworkRequests,
   maxOutputTokens,
 }: {
   maxInferenceAttempts: number;
+  maxInputBytes?: number | null;
   maxNetworkRequests?: number;
   maxOutputTokens?: number | null;
 }): AIProviderExecutionBudget {
   const maximumInferenceAttempts = boundedInferenceAttempts(maxInferenceAttempts);
+  const maximumInputBytes = boundedInputBytes(maxInputBytes);
   const maximumNetworkRequests = boundedNetworkRequests(maxNetworkRequests);
   const maximumOutputTokens = boundedOutputTokens(maxOutputTokens);
   let providerCleanupFailures = 0;
@@ -78,7 +90,21 @@ export function createAIProviderExecutionBudget({
   let providerUploadRequests = 0;
 
   return {
-    beforeInference(operation = "unknown") {
+    beforeInference(operation = "unknown", inputBytes) {
+      if (
+        maximumInputBytes !== null &&
+        (!Number.isSafeInteger(inputBytes) ||
+          Number(inputBytes) < 1 ||
+          Number(inputBytes) > maximumInputBytes)
+      ) {
+        throw new AIProviderError({
+          attemptCount: providerInferenceAttempts,
+          code: "provider_execution_budget_exhausted",
+          maxAttempts: maximumInferenceAttempts,
+          operation,
+          retryable: false,
+        });
+      }
       if (providerInferenceAttempts >= maximumInferenceAttempts) {
         throw new AIProviderError({
           attemptCount: providerInferenceAttempts,

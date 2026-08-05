@@ -58,6 +58,10 @@ export async function loadPDF50ScaleProviderProofControl() {
       parsed.approvedBudgetUsd,
       "approvedBudgetUsd",
     ),
+    maxInputBytesPerAttempt: positiveInteger(
+      parsed.maxInputBytesPerAttempt,
+      "maxInputBytesPerAttempt",
+    ),
     maxInputTokensPerAttempt: positiveInteger(
       parsed.maxInputTokensPerAttempt,
       "maxInputTokensPerAttempt",
@@ -82,11 +86,12 @@ export async function loadPDF50ScaleProviderProofControl() {
     control.model !== "gemini-2.5-flash-lite" ||
     control.claimedJobs !== 1 ||
     control.workerRouteInvocations !== 1 ||
-    control.providerInferenceAttempts !== 2 ||
+    control.providerInferenceAttempts !== 3 ||
     control.providerMaxOutputTokens !== 4_096 ||
     control.providerMaxNetworkRequests !== 68 ||
     control.approvedBudgetUsd !== 2 ||
-    control.maxInputTokensPerAttempt !== 100_000 ||
+    control.maxInputBytesPerAttempt !== 50_000 ||
+    control.maxInputTokensPerAttempt !== 50_000 ||
     control.maxBillableOutputTokensPerAttempt !== 4_096
   ) {
     throw new Error("invalid_pdf50_scale_provider_control:safety_boundary");
@@ -106,6 +111,9 @@ export function pdf50ScaleProviderProofEnvironment(control) {
     AI_JOBS_LOCAL_MAX_INVOCATIONS: String(control.workerRouteInvocations),
     PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: String(
       control.providerInferenceAttempts,
+    ),
+    PDF50_PROVIDER_TEST_MAX_INPUT_BYTES: String(
+      control.maxInputBytesPerAttempt,
     ),
     PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: String(
       control.providerMaxNetworkRequests,

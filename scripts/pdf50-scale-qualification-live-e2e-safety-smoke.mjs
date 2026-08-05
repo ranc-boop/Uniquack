@@ -59,17 +59,18 @@ assert.deepEqual(
     ]),
   ),
   {
-    4: [4, 4, 0, 4, 8],
-    10: [10, 9, 1, 9, 18],
-    50: [50, 50, 0, 50, 100],
+    4: [4, 4, 0, 4, 12],
+    10: [10, 9, 1, 9, 27],
+    50: [50, 50, 0, 50, 150],
   },
 );
 assert.equal(scaleProviderControl.mode, "BOUNDED_SCALE_REAL_PROVIDER");
 assert.equal(scaleProviderControl.claimedJobs, 1);
 assert.equal(scaleProviderControl.workerRouteInvocations, 1);
-assert.equal(scaleProviderControl.providerInferenceAttempts, 2);
+assert.equal(scaleProviderControl.providerInferenceAttempts, 3);
 assert.equal(scaleProviderControl.providerMaxOutputTokens, 4_096);
 assert.equal(scaleProviderControl.providerMaxNetworkRequests, 68);
+assert.equal(scaleProviderControl.maxInputBytesPerAttempt, 50_000);
 assert.equal(scaleProviderControl.approvedBudgetUsd, 2);
 assert.equal(
   control.conservativeInputTokensPerProviderAttempt,
@@ -85,11 +86,12 @@ assert.equal(
 );
 assert.equal(
   estimatePDF50ScaleProviderAttemptCostMicros(scaleProviderControl),
-  11_639,
+  6_639,
 );
 assert.deepEqual(pdf50ScaleProviderProofEnvironment(scaleProviderControl), {
   AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
-  PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "2",
+  PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "3",
+  PDF50_PROVIDER_TEST_MAX_INPUT_BYTES: "50000",
   PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
   PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
   PDF50_PROVIDER_TEST_MODE: "BOUNDED_SCALE_REAL_PROVIDER",
@@ -115,7 +117,7 @@ const stageCosts = Object.fromEntries(
     }),
   ]),
 );
-assert.deepEqual(stageCosts, { 4: 93112, 10: 209502, 50: 1163900 });
+assert.deepEqual(stageCosts, { 4: 79668, 10: 179253, 50: 995850 });
 assert(
   Object.values(stageCosts).reduce((total, value) => total + value, 0) <
     control.approvedBudgetUsd * 1_000_000,

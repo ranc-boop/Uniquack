@@ -32,10 +32,12 @@ The qualification harness uses the existing Windows-user DPAPI credential
 vault and process-only values. It never reads an environment file. Each local
 worker invocation carries one exact synthetic job identifier. The server owns
 two immutable test contracts: the frozen one-file terminal contract permits one
-inference, while the scale contract permits at most two inferences so the
-normal extraction repair path can run. Both permit exactly one claimed job and
-one worker-route invocation per process, cap output at 4,096 tokens, cap
-Provider HTTP requests at 68, and require an exact target job identifier.
+inference, while the scale contract permits at most three inferences so one
+schema-repair attempt and one bounded transient retry can run. Both permit
+exactly one claimed job and one worker-route invocation per process, cap output
+at 4,096 tokens, cap Provider HTTP requests at 68, and require an exact target
+job identifier. Scale mode also enforces a 50,000-byte Provider-input envelope
+before any upload or inference request.
 
 The ten-file stage deliberately interrupts one synthetic job only after its
 normalized Provider output has been protected by the durable checkpoint. A
@@ -67,24 +69,26 @@ exact burst, and invokes the trusted worker one exact job at a time.
 
 - Authorized fresh cumulative ceiling: USD 2.00.
 - Explicit reassessment threshold: USD 1.60 conservative cumulative spend.
-- Known live scale iterations: 7.
+- Known live scale iterations: 8.
 - Trustworthy actual estimate for the passing terminal iteration: 3,794 micros.
 - Cumulative actual spend: `UNKNOWN` because failed iterations did not all
   reach complete usage telemetry.
-- Conservative cumulative ceiling consumed: 442,282 micros (USD 0.442282).
-- Remaining authorized budget: 1,557,718 micros (USD 1.557718).
+- Conservative cumulative ceiling consumed: 651,784 micros (USD 0.651784).
+- Remaining authorized budget: 1,348,216 micros (USD 1.348216).
 
-The pre-run conservative bound uses 100,000 input tokens plus the server-owned
-4,096 output-token limit per possible Provider attempt. Scale execution permits
-at most two attempts per completed job, matching the existing one-repair
-application path while keeping each exact job fail-closed. At current
-source-defined Gemini rates this bounds a fresh stage as follows:
+Future scale runs use a 50,000-byte upper envelope covering the prompt,
+structured-output schema, synthetic PDF bytes, and fixed request overhead. The
+server rejects an oversized proof input before upload or inference. Treating
+that byte envelope as the input-token ceiling, plus the server-owned 4,096
+output-token limit, remains conservative for these exact small synthetic
+sources. Scale execution permits at most three attempts per completed job. At
+current source-defined Gemini rates this bounds a fresh stage as follows:
 
-- Four files: 93,112 micros (eight-attempt ceiling).
-- Ten files: 209,502 micros (18-attempt ceiling for nine Provider jobs).
-- Fifty files: 1,163,900 micros (100-attempt ceiling).
+- Four files: 79,668 micros (12-attempt ceiling; already passed and not rerun).
+- Ten files: 179,253 micros (27-attempt ceiling for nine Provider jobs).
+- Fifty files: 995,850 micros (150-attempt ceiling).
 - Projected ceiling after one new ten-file run and one fifty-file run:
-  1,815,684 micros (USD 1.815684).
+  1,826,887 micros (USD 1.826887).
 
 Unknown usage remains `UNKNOWN`; it is never converted into a zero-cost claim.
 Before each paid run, the harness must calculate a credible maximum and stop if
@@ -95,7 +99,7 @@ that maximum would exceed the remaining authorized budget.
 | Stage | Status | Live iterations | Provider attempts | Result |
 | --- | --- | ---: | ---: | --- |
 | Four files | `PASS` | 5 | At least 11; exact failed-run total `UNKNOWN` | 4/4 terminal, UI, isolation, invariants, and cleanup passed |
-| Ten files | `BLOCKED_BEFORE_CORRECTION` | 2 | At least 1; first failed-run total `UNKNOWN` | Exact cleanup passed; the scale proof inherited an unrepresentative one-inference cap |
+| Ten files | `BLOCKED_BEFORE_CORRECTION` | 3 | At least 6; first failed-run total `UNKNOWN` | Recovery proofs advanced through three completions; a nested retry then reached the two-attempt proof cap |
 | Fifty files | `NOT_RUN` | 0 | 0 | Must not begin before the ten-file gate passes |
 
 Passing admission alone is insufficient. Each stage must verify durable item
@@ -145,9 +149,9 @@ Observed passing iteration:
 
 ### Ten-file pre-correction evidence
 
-Two fresh ten-file iterations stopped before mixed-state completion. Both runs
-admitted exactly ten synthetic items and completed exact-ID cleanup with zero
-residue.
+Three fresh ten-file iterations stopped before mixed-state completion. Every
+run admitted exactly ten synthetic items and completed exact-ID cleanup with
+zero residue.
 
 1. The first run made one exact claim, then stopped at the worker boundary.
    Early diagnostics did not preserve a trustworthy Provider counter total, so
@@ -160,13 +164,27 @@ residue.
    network request, and the budget error masked the original validation error.
 
 This was a qualification-control defect, not a reason to weaken the extraction
-schema or application validation. The correction adds a separate server-owned
-scale contract with a two-attempt maximum and updates scale accounting to
-accept one or two truthful attempts per completed job. The frozen one-file
-contract remains exactly one attempt. If a repair cannot start because its
-inference budget is exhausted, the original application validation error is
-now preserved; a genuine first-attempt or network-request budget failure still
-fails as a budget error.
+schema or application validation. The first correction added a separate
+server-owned scale contract with a two-attempt maximum. The frozen one-file
+contract remained exactly one attempt.
+
+3. With that contract active, the controlled checkpoint interruption, zero-
+   inference replay, stale-fence rejection, read-after-write delay, and three
+   completed imports all passed. The fourth Provider job completed two full
+   upload/inference/cleanup lifecycles, then a nested retry attempted to start
+   after the two-attempt execution envelope was exhausted. It was rejected
+   before a third network request, leaving the safe terminal code as
+   `provider_execution_budget_exhausted`. Exact cleanup and zero residue still
+   passed.
+
+The follow-up correction keeps all validation strict and does not increase the
+USD 2 authorization. It strengthens structured-output descriptions and the
+repair prompt so required question text cannot be blank, permits at most three
+scale inferences per exact job, and enforces the 50,000-byte input envelope
+before Provider transport. A retry that cannot start because the execution
+budget is exhausted now preserves the preceding real Provider failure instead
+of replacing it with a budget symptom. Genuine first-attempt, oversized-input,
+or network-request budget failures still fail as budget errors.
 
 ## Pre-live source validation
 

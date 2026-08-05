@@ -13,6 +13,7 @@ type PDF50ProviderProofControl = {
   providerMaxOutputTokens: number;
   providerMaxNetworkRequests: number;
   approvedBudgetUsd: number;
+  maxInputBytesPerAttempt: number | null;
   maxInputTokensPerAttempt: number;
   maxBillableOutputTokensPerAttempt: number;
   inputMicrosPerMillion: number;
@@ -58,6 +59,13 @@ function readProofControl({
       source.approvedBudgetUsd,
       "approvedBudgetUsd",
     ),
+    maxInputBytesPerAttempt:
+      source.maxInputBytesPerAttempt == null
+        ? null
+        : positiveInteger(
+            source.maxInputBytesPerAttempt,
+            "maxInputBytesPerAttempt",
+          ),
     maxInputTokensPerAttempt: positiveInteger(
       source.maxInputTokensPerAttempt,
       "maxInputTokensPerAttempt",
@@ -95,6 +103,7 @@ const oneFileExpectedControl = Object.freeze({
   providerMaxOutputTokens: 4_096,
   providerMaxNetworkRequests: 68,
   approvedBudgetUsd: 1,
+  maxInputBytesPerAttempt: null,
   maxInputTokensPerAttempt: 1_048_576,
   maxBillableOutputTokensPerAttempt: 65_536,
   inputMicrosPerMillion: 100_000,
@@ -107,11 +116,12 @@ const scaleExpectedControl = Object.freeze({
   model: "gemini-2.5-flash-lite",
   claimedJobs: 1,
   workerRouteInvocations: 1,
-  providerInferenceAttempts: 2,
+  providerInferenceAttempts: 3,
   providerMaxOutputTokens: 4_096,
   providerMaxNetworkRequests: 68,
   approvedBudgetUsd: 2,
-  maxInputTokensPerAttempt: 100_000,
+  maxInputBytesPerAttempt: 50_000,
+  maxInputTokensPerAttempt: 50_000,
   maxBillableOutputTokensPerAttempt: 4_096,
   inputMicrosPerMillion: 100_000,
   outputMicrosPerMillion: 400_000,
@@ -163,6 +173,7 @@ export const PDF50_SCALE_PROVIDER_TEST_MAX_COST_MICROS = maximumCostMicros(
 export type TrustedAIProviderTestLimits = {
   maxClaimedJobs: number;
   maxInferenceAttempts: number;
+  maxInputBytes: number | null;
   maxEstimatedCostMicros: number;
   maxNetworkRequests: number;
   maxOutputTokens: number;
@@ -218,6 +229,16 @@ export function readTrustedAIProviderTestLimits(): TrustedAIProviderTestLimits |
     "PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS",
     String(control.providerInferenceAttempts),
   );
+  if (control.maxInputBytesPerAttempt === null) {
+    if (process.env.PDF50_PROVIDER_TEST_MAX_INPUT_BYTES !== undefined) {
+      throw new Error("trusted_provider_test_control_rejected");
+    }
+  } else {
+    requireExactEnvironmentValue(
+      "PDF50_PROVIDER_TEST_MAX_INPUT_BYTES",
+      String(control.maxInputBytesPerAttempt),
+    );
+  }
   requireExactEnvironmentValue(
     "PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS",
     String(control.providerMaxNetworkRequests),
@@ -240,6 +261,7 @@ export function readTrustedAIProviderTestLimits(): TrustedAIProviderTestLimits |
   return {
     maxClaimedJobs: control.claimedJobs,
     maxInferenceAttempts: control.providerInferenceAttempts,
+    maxInputBytes: control.maxInputBytesPerAttempt,
     maxEstimatedCostMicros,
     maxNetworkRequests: control.providerMaxNetworkRequests,
     maxOutputTokens: control.providerMaxOutputTokens,
