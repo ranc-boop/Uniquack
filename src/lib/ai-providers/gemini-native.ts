@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
+import type { AIProviderErrorOperation } from "@/lib/ai-providers/errors";
 import {
   buildGeminiGenerationConfig,
   type GeminiOutputContract,
@@ -70,6 +71,7 @@ type GeminiNativeTextTestInput = {
   executionObserver?: AIProviderExecutionObserver;
   fetchImpl?: GeminiFetch;
   model: string;
+  operation?: AIProviderErrorOperation;
   outputContract?: GeminiOutputContract;
   prompt?: string;
 };
@@ -747,6 +749,7 @@ export async function generateWithGeminiNativeText({
   executionObserver,
   fetchImpl = fetch,
   model,
+  operation = "blueprint_generation",
   outputContract,
   prompt,
 }: GeminiNativeTextTestInput & {
@@ -755,7 +758,7 @@ export async function generateWithGeminiNativeText({
 }): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
   assertGeminiTextConfig({ apiKey, model });
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
-  executionObserver?.beforeInference("blueprint_generation");
+  executionObserver?.beforeInference(operation);
 
   return generateContent({
     apiKey,

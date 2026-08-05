@@ -107,6 +107,22 @@ Unknown usage remains `UNKNOWN`; it is never converted into a zero-cost claim.
 Before each paid run, the harness must calculate a credible maximum and stop if
 that maximum would exceed the remaining authorized budget.
 
+## Parsing-quality reconciliation
+
+The partial fifty-file evidence predates versioned attempt-reason
+observability. Its 48 inference requests for 23 completed jobs prove 25 extra
+attempts occurred, but do not prove whether they were structural repairs,
+semantic recovery, transient transport retries, fallback attempts, or durable
+retry waits. Those attempts are now recorded as `LEGACY_REASON_UNKNOWN`; no
+retroactive attribution is permitted.
+
+The stacked parsing-quality treatment adds a Provider-neutral, enum/numeric-
+only observatory, deterministic Golden Corpus, exact taxonomy abstention,
+reason-specific source reuse, and deterministic visual attachment safety. It
+does not rerun or alter this paid scale result. The remaining USD 0.133279 is
+still below the minimum credible ceiling for a new 50-file run, and the prior
+text-heavy fixtures do not qualify as visual-attachment evidence.
+
 ## Evidence status
 
 | Stage | Status | Live iterations | Provider attempts | Result |
@@ -380,6 +396,24 @@ shape, and `ai-parsing-boundary-duplicate-guard-smoke.mjs` expects older
 structural-guidance UI literals. They are recorded as baseline test-maintenance
 failures, not as passing checks and not as PDF50 regressions. No production
 source was changed to satisfy them.
+
+## Provider-neutral quality treatment
+
+The stacked quality branch freezes this evidence at baseline
+`f1ce7bcb791604468693ea945401cfb157e64d97` and introduces treatment
+`ai-pdf-parsing/provider-neutral-v2`. It adds explicit attempt reasons, exact
+safe Provider error categories, deterministic Golden evaluation, exact
+five-facet taxonomy abstention, text-only structural repair, and a hardened
+private visual-evidence boundary. Fourteen parsing, six taxonomy, and thirteen
+visual fixtures pass with zero hard-gate failures; ten independent mutations
+are rejected.
+
+This is source and local deterministic evidence only. No additional paid
+Provider run, hosted write, or Storage operation was performed. The historical
+25 excess attempts remain `LEGACY_REASON_UNKNOWN`, and the remaining USD
+0.133279 authorization still cannot fund the USD 0.331950 minimum fresh
+50-file gate. Embedded-question figures are source-ready but require a separate
+rights-safe image-rich live proof.
 
 ## Current classification
 

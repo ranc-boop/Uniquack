@@ -20,6 +20,7 @@ import {
 import {
   cropPdfPlaceholderImage,
   getPdfPageCount,
+  inspectQuestionVisualCrop,
   renderPdfPages,
   type RenderedPage,
 } from "@/lib/ai-pdf-import/pdf";
@@ -59,6 +60,22 @@ import {
   type AIPdfExtraction,
   type AIPdfQuestion,
 } from "@/lib/ai-pdf-import/schema";
+import {
+  AI_PDF_PARSING_TREATMENT_VERSION,
+  createAIPdfQualityObservatory,
+  type AIPdfQualityObservatory,
+} from "@/lib/ai-pdf-import/quality-observatory";
+import {
+  AI_PDF_VISUAL_EVIDENCE_CONTRACT_VERSION,
+  AI_PDF_VISUAL_MISSING_WARNING,
+  contentSha256,
+  deterministicQuestionAssetId,
+  questionRequiresVisualEvidence,
+  safeQuestionVisualAlt,
+  validateAIPdfVisualProposal,
+  visualEvidenceRecord,
+  visualProposalKey,
+} from "@/lib/ai-pdf-import/visual-evidence";
 import { ensureSinglePageExtractionLineage } from "@/lib/ai-pdf-import/source-lineage";
 import {
   failedPdfPreanalysis,
@@ -283,6 +300,14 @@ type ActiveTag = {
   aliases?: string[];
 };
 
+const AI_PDF_RUNTIME_TAXONOMY_FACETS = new Set([
+  "curriculum",
+  "concept",
+  "method",
+  "task",
+  "form",
+]);
+
 export const AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION = 1;
 
 export type AIPdfProviderResultCheckpoint = {
@@ -358,7 +383,9 @@ export type AIPdfProcessInput = {
   profileId: string;
   providerProfileId: string;
   providerExecutionObserver?: AIProviderExecutionObserver;
+  providerRouteCandidateIndex?: number;
   providerRetryMaxAttempts?: number;
+  qualityObserver?: AIPdfQualityObservatory;
   routingLeaseOwner?: string;
   routingOrganizationId?: string;
   // Only the trusted durable worker may opt into the closed-beta subset path.
@@ -560,11 +587,15 @@ function questionBoundaryCandidatesFromRows({
 
       return {
         assetPageNumbers: questionBoundaryNumberList(
-          placeholders.map((placeholder) => placeholder.pageNumber),
+          placeholders.map(
+            (placeholder) => placeholder.page ?? placeholder.pageNumber,
+          ),
         ),
         assetPlaceholders: placeholders.map((placeholder) => ({
-          pageNumber: Number.isFinite(Number(placeholder.pageNumber))
-            ? Number(placeholder.pageNumber)
+          pageNumber: Number.isFinite(
+            Number(placeholder.page ?? placeholder.pageNumber),
+          )
+            ? Number(placeholder.page ?? placeholder.pageNumber)
             : null,
           placeholder:
             typeof placeholder.placeholder === "string"
@@ -747,6 +778,7 @@ export async function recordAIPdfProviderFailure({
     nextAction: safeError.nextAction,
     phase: "provider_retry_exhausted",
     phaseFailedAt: failedAt,
+    qualityObservatory: input.qualityObserver?.snapshot(),
     retryAttemptHistory: resolvedRetryHistory,
     retryable: safeError.retryable,
     retryRecommendation:
@@ -1917,7 +1949,7 @@ async function generateAndStoreQuestionBoundaryGuardPlan({
       const { data: questionData, error: questionError } = await input.supabase
         .from("questions")
         .select(
-          "id, question_code, title, content_html, content_source, solution_html, solution_source, options, ai_metadata",
+          "id, question_code, title, content_html, content_source, solution_html, solution_source, options",
         )
         .in("id", questionIds);
 
@@ -1925,7 +1957,26 @@ async function generateAndStoreQuestionBoundaryGuardPlan({
         throw new Error("Question candidates could not be loaded for structural review.");
       }
 
-      questionRows = (questionData ?? []) as Array<Record<string, unknown>>;
+      const { data: importItemData, error: importItemError } = await input.supabase
+        .from("import_batch_items")
+        .select("created_question_id, normalized_question_json")
+        .eq("batch_id", input.batchId)
+        .in("created_question_id", questionIds);
+      if (importItemError) {
+        throw new Error("Question source metadata could not be loaded for structural review.");
+      }
+      const metadataByQuestionId = new Map(
+        (importItemData ?? []).map((item: Record<string, unknown>) => [
+          String(item.created_question_id ?? ""),
+          plainObject(plainObject(item.normalized_question_json).ai_metadata),
+        ]),
+      );
+      questionRows = ((questionData ?? []) as Array<Record<string, unknown>>).map(
+        (row) => ({
+          ...row,
+          ai_metadata: metadataByQuestionId.get(String(row.id ?? "")) ?? {},
+        }),
+      );
 
       const { data: assetData, error: assetError } = await input.supabase
         .from("question_assets")
@@ -2716,73 +2767,15 @@ function buildPrompt({
     "Allowed active assignable tag_ids by facet. Every listed candidate below is a full tag_id. Output full tag_ids exactly as written, never abbreviate or shorten them. Use only these exact IDs; do not create, rename, or suggest tags:",
     compactTags || "(none)",
     "",
-    "Taxonomy tagging goal:",
-    "- For every question, try to cover at least 4 of the 5 official taxonomy facets when matching tags exist in the list above.",
-    "- The five facets are normally curriculum, concept, method, task, and difficulty/form. Use the facet groups above as the source of truth.",
-    "- Curriculum coverage should be generous: if a question accurately belongs to multiple systems, include all matching full curriculum tag_ids, such as AP, SAT, BC, Common Core, IB, or A-Level. Do not choose only one curriculum tag when several listed curriculum IDs are accurate.",
-    "- Do not force a weak or false tag. If fewer than 4 facets have an accurate existing tag, use the accurate tags only and add a warning explaining which facet was missing.",
-    "- Prefer the most specific available leaf-like tag_id in each facet. Avoid broad course or parent-level IDs when a more specific child tag is listed.",
-    "- Reuse tag_ids freely. Many questions can share the same curriculum, concept, method, task, or form tags.",
-    "",
-    "Taxonomy tagging thought process to follow silently before writing JSON:",
-    "1. Identify the math topic and every relevant course/unit system from the question stem and solution.",
-    "2. Choose one or more concept tags for the core idea being tested.",
-    "3. Choose method tags for the technique required to solve it, such as factoring, differentiation, substitution, graph interpretation, or equation solving.",
-    "4. Choose task/form tags for the student action and item format, such as evaluate, solve, prove, multiple choice, free response, or fill blank, when such tags exist.",
-    "5. Choose all accurate full curriculum tag_ids across multiple systems when the listed tag_ids support them.",
-    "6. Choose difficulty/form tags when the listed tag_ids support them.",
-    "7. Check that selected tag_ids are full exact IDs from the allowed list and cover at least 4 facets when possible.",
-    "",
-    "Complete tagging examples. These examples show how to tag a typical question. In real output, use exact tag_ids from the allowed list above; if an example id is not present, choose the closest accurate allowed leaf tag_id and do not invent it:",
-    JSON.stringify(
-      [
-        {
-          extracted_question: {
-            content_source:
-              "If $f'(x)=1+2x-x^3$, then $f$ has a local minimum at $x=\\ ?$",
-            question_type: "frq",
-            solution_summary:
-              "Find critical points from f'(x)=0, then use sign change or first derivative test to identify a local minimum.",
-          },
-          selected_tag_ids: [
-            "math.curriculum.ap.ap_calculus_ab.analytical_applications_derivatives",
-            "math.curriculum.ap.ap_calculus_ab.contextual_applications_derivatives",
-            "math.curriculum.bc.calculus_12.derivatives",
-            "math.curriculum.bc.calculus_12.applications_derivatives",
-            "math.concept.calculus.derivatives.local_extrema",
-            "math.concept.calculus.derivatives.critical_points",
-            "math.method.calculus.first_derivative_test",
-            "math.task.find_local_minimum",
-            "math.form.fill_blank",
-          ],
-          why:
-            "This includes multiple full curriculum IDs because the same derivative-extrema question can fit AP Calculus AB and BC Calculus 12. It also covers concept, method, task, and form.",
-        },
-        {
-          extracted_question: {
-            content_source:
-              "A gym charges a $25 sign-up fee and $12 per class. If a student paid $109 total, how many classes did the student take?",
-            question_type: "mcq",
-            solution_summary:
-              "Model the situation as 25+12x=109 and solve the resulting linear equation.",
-          },
-          selected_tag_ids: [
-            "math.curriculum.sat.algebra",
-            "math.curriculum.common_core.algebra",
-            "math.curriculum.bc.precalculus_11.functions_relations",
-            "math.concept.algebra.linear_equations",
-            "math.concept.algebra.linear_models",
-            "math.method.algebra.equation_solving",
-            "math.task.solve",
-            "math.form.multiple_choice",
-          ],
-          why:
-            "This includes all accurate full curriculum IDs from multiple systems, then adds concept, method, task, and item form tags.",
-        },
-      ],
-      null,
-      2,
-    ),
+    `Parsing contract version: ${AI_PDF_PARSING_TREATMENT_VERSION}.`,
+    "Taxonomy tagging contract:",
+    "- The five canonical facets are curriculum, concept, method, task, and form.",
+    "- Select a tag only when the visible source directly supports that exact active assignable tag_id.",
+    "- Prefer a specific supported tag over a broad parent, but never infer a narrower tag from the label alone.",
+    "- Do not fill a facet merely for coverage. An empty facet is safer than an inaccurate assignment.",
+    "- Use multiple curriculum tags only when the source itself establishes each curriculum alignment.",
+    "- If no listed exact ID is adequately supported, leave that facet untagged and add a concise warning.",
+    "- Never output labels, aliases, shortened IDs, parent guesses, or planning-only taxonomy identifiers as tag_ids.",
     "",
     "JSON schema:",
     JSON.stringify({
@@ -2792,8 +2785,13 @@ function buildPrompt({
             {
               alt: "short figure alt text",
               bbox: { height: 0.2, width: 0.4, x: 0.1, y: 0.2 },
+              confidence: 0.9,
               page: 1,
               placeholder: "{{asset:figure_1}}",
+              required: true,
+              shared_group_key: "question_1_shared_figure",
+              subquestion_ref: "a",
+              visual_role: "diagram",
             },
           ],
           content_html: "<p>Find the derivative of $y=x^2\\sin(x)$ with {{asset:figure_1}} where the image belongs.</p>",
@@ -2835,7 +2833,10 @@ function buildPrompt({
     "- Examples: write <p>Find the derivative of $y=x^2\\sin(x)$.</p>, not <p>Find the derivative of y = x^2 sin(x).</p>. Write <p>The derivative is $f'(x)$.</p>, not plain f'(x).",
     "- Never leave unmatched dollar signs. For blanks such as x =, write $x =$ with a closing dollar.",
     "- Convert common math text to LaTeX in source fields: sqrt(x) -> \\sqrt{x}, pi -> \\pi when mathematical, fractions -> \\frac{...}{...}.",
-    "- If a figure, chart, graph, table image, or diagram is important to the question, create one asset_placeholders entry so the system can crop it and display it in the question image gallery.",
+    "- If a figure, chart, graph, table image, or diagram is important to the question, create one asset_placeholders entry so the system can crop it from the authoritative PDF and display it in the question image gallery.",
+    "- For each visual proposal, identify visual_role, whether it is required, the owning subquestion when present, and a shared_group_key when the same figure supports multiple subquestions.",
+    "- Use confidence only for the visual association. Put any crop or ownership ambiguity in ambiguity; never invent a page or bounding region.",
+    "- Decorative logos, headers, watermarks, and page furniture must not be attached as question evidence.",
     "- If the image must appear at an exact inline position, also put the exact placeholder string inside content_html or solution_html at that location.",
     "- Inline placeholders are optional because cropped images are also attached as question_assets and shown below the question detail.",
     "- Use placeholder strings exactly like {{asset:figure_1}}. Do not alter braces, spacing, or capitalization.",
@@ -2848,6 +2849,35 @@ function buildPrompt({
     "- Only output tag_ids listed above. If no existing tag fits, leave tag_ids empty and add a warning. Do not output any alternate tag identifier fields.",
     "- Keep questions as draft-quality records for human review; do not invent answers when unsure.",
   ].join("\n");
+}
+
+function taxonomyCatalogByteLength(activeTags: ActiveTag[]) {
+  return Buffer.byteLength(
+    activeTags
+      .map((tag) => `${tag.facet_key ?? "none"}:${tag.id}`)
+      .sort()
+      .join("\n"),
+    "utf8",
+  );
+}
+
+function unknownTaxonomyIdCount({
+  activeTags,
+  extraction,
+}: {
+  activeTags: ActiveTag[];
+  extraction: AIPdfExtraction;
+}) {
+  const activeTagIds = new Set(activeTags.map((tag) => tag.id));
+
+  return extraction.questions.reduce(
+    (count, question) =>
+      count +
+      question.tag_ids.filter(
+        (tagId) => tagId.trim() && !activeTagIds.has(tagId.trim()),
+      ).length,
+    0,
+  );
 }
 
 function remapSegmentExtractionPages({
@@ -2893,10 +2923,16 @@ async function loadActiveTags(supabase: SupabaseLike) {
   return ((data ?? []) as {
     facet_key: string | null;
     tag_id: string;
-  }[]).map((tag) => ({
-    facet_key: tag.facet_key,
-    id: tag.tag_id,
-  }));
+  }[])
+    .filter(
+      (tag): tag is { facet_key: string; tag_id: string } =>
+        typeof tag.facet_key === "string" &&
+        AI_PDF_RUNTIME_TAXONOMY_FACETS.has(tag.facet_key),
+    )
+    .map((tag) => ({
+      facet_key: tag.facet_key,
+      id: tag.tag_id,
+    }));
 }
 
 async function loadActiveLeafTaxonomyCandidates(supabase: SupabaseLike) {
@@ -3026,6 +3062,15 @@ async function buildImportJson({
     const solutionHtml = solutionFields.html || question.solution_html || "";
     const solutionSource =
       solutionFields.source || stripHtml(question.solution_html) || "";
+    const visualRequired = questionRequiresVisualEvidence({
+      contentHtml,
+      contentSource,
+    }) || question.visual_evidence_required;
+    if (visualRequired && !question.asset_placeholders.length) {
+      extraction.warnings.push(
+        `Question ${globalQuestionIndex + 1}: ${AI_PDF_VISUAL_MISSING_WARNING}`,
+      );
+    }
     if (!solutionHtml.trim() && !solutionSource.trim()) {
       extraction.warnings.push(
         `Question ${globalQuestionIndex + 1}: missing solution/explanation; reviewer must add solution guidance before approval.`,
@@ -3060,6 +3105,11 @@ async function buildImportJson({
           tag_ids: question.tag_ids,
         },
         visible_question_number: visibleQuestionNumber || null,
+        visual_evidence: {
+          contract_version: AI_PDF_VISUAL_EVIDENCE_CONTRACT_VERSION,
+          proposal_count: question.asset_placeholders.length,
+          required: visualRequired,
+        },
       },
       content_html: contentHtml,
       content_source: contentSource,
@@ -3088,42 +3138,83 @@ async function buildImportJson({
   return JSON.stringify({ questions });
 }
 
+class QuestionAssetPersistenceError extends Error {
+  readonly cleanupTarget?: { assetId: string; objectPath: string };
+
+  constructor(
+    message: string,
+    cleanupTarget?: { assetId: string; objectPath: string },
+  ) {
+    super(message);
+    this.name = "QuestionAssetPersistenceError";
+    this.cleanupTarget = cleanupTarget;
+  }
+}
+
 async function uploadQuestionAsset({
   alt,
+  contentHash,
+  displayOrder,
   image,
-  placeholder,
   profileId,
   questionId,
+  sourceAssetId,
   supabase,
 }: {
   alt: string;
+  contentHash: string;
+  displayOrder: number;
   image: Buffer;
-  placeholder: string;
   profileId: string;
   questionId: string;
+  sourceAssetId: string;
   supabase: SupabaseLike;
 }) {
   if (image.length > QUESTION_ASSET_MAX_BYTES) {
-    throw new Error(`Cropped image ${placeholder} exceeds image size limit.`);
+    throw new Error("Cropped question image exceeds the image size limit.");
   }
 
-  const assetId = crypto.randomUUID();
-  const objectPath = `questions/${questionId}/${assetId}.png`;
-  const label = `${placeholder.replace(/[{}:]/g, "")}.png`;
-  const { error: insertError } = await supabase.from("question_assets").insert({
-    alt_text: alt || "AI imported figure",
-    asset_kind: "image",
-    created_by: profileId,
-    display_order: 0,
-    id: assetId,
-    label,
-    question_id: questionId,
-    storage_bucket: QUESTION_ASSETS_BUCKET,
-    storage_path: objectPath,
+  const assetId = deterministicQuestionAssetId({
+    contentHash,
+    questionId,
+    sourceAssetId,
   });
+  const objectPath = `questions/${questionId}/ai-pdf/${assetId}.png`;
+  const label = `AI imported figure ${displayOrder + 1}`;
+  const { data: existingAsset, error: existingError } = await supabase
+    .from("question_assets")
+    .select("id, question_id, storage_bucket, storage_path")
+    .eq("id", assetId)
+    .maybeSingle();
 
-  if (insertError) {
-    throw new Error(insertError.message);
+  if (existingError) {
+    throw new QuestionAssetPersistenceError(
+      "Question image metadata lookup failed.",
+    );
+  }
+  if (
+    existingAsset &&
+    (existingAsset.question_id !== questionId ||
+      existingAsset.storage_bucket !== QUESTION_ASSETS_BUCKET ||
+      existingAsset.storage_path !== objectPath)
+  ) {
+    throw new QuestionAssetPersistenceError(
+      "Deterministic question image identity is already in use.",
+    );
+  }
+
+  const publicUrl = getQuestionAssetUrl(assetId);
+  const result = {
+    assetId,
+    html: `<img src="${escapeAttribute(publicUrl)}" alt="${escapeAttribute(
+      alt,
+    )}" data-ai-visual-contract="${AI_PDF_VISUAL_EVIDENCE_CONTRACT_VERSION}" />`,
+    objectPath,
+    publicUrl,
+  };
+
+  if (existingAsset) {
+    return { ...result, created: false };
   }
 
   const { error: uploadError } = await supabase.storage
@@ -3134,19 +3225,68 @@ async function uploadQuestionAsset({
     });
 
   if (uploadError) {
-    await supabase.from("question_assets").delete().eq("id", assetId);
-    throw new Error(uploadError.message);
+    throw new QuestionAssetPersistenceError("Question image upload failed.");
   }
 
-  const publicUrl = getQuestionAssetUrl(assetId);
+  const { error: insertError } = await supabase.from("question_assets").insert({
+    alt_text: alt,
+    asset_kind: "image",
+    created_by: profileId,
+    display_order: displayOrder,
+    id: assetId,
+    label,
+    question_id: questionId,
+    storage_bucket: QUESTION_ASSETS_BUCKET,
+    storage_path: objectPath,
+  });
 
-  return {
-    assetId,
-    html: `<img src="${escapeAttribute(publicUrl)}" alt="${escapeAttribute(
-      alt || "AI imported figure",
-    )}" data-ai-placeholder="${escapeAttribute(placeholder)}" />`,
-    publicUrl,
-  };
+  if (insertError) {
+    let storageCleaned = false;
+    for (let cleanupAttempt = 1; cleanupAttempt <= 2; cleanupAttempt += 1) {
+      const { error: cleanupError } = await supabase.storage
+        .from(QUESTION_ASSETS_BUCKET)
+        .remove([objectPath]);
+      if (!cleanupError) {
+        storageCleaned = true;
+        break;
+      }
+    }
+
+    throw new QuestionAssetPersistenceError(
+      storageCleaned
+        ? "Question image metadata persistence failed."
+        : "Question image metadata persistence and exact cleanup failed.",
+      storageCleaned ? undefined : { assetId, objectPath },
+    );
+  }
+
+  return { ...result, created: true };
+}
+
+async function cleanupCreatedQuestionAsset({
+  assetId,
+  objectPath,
+  supabase,
+}: {
+  assetId: string;
+  objectPath: string;
+  supabase: SupabaseLike;
+}) {
+  const { error: storageError } = await supabase.storage
+    .from(QUESTION_ASSETS_BUCKET)
+    .remove([objectPath]);
+  if (storageError) {
+    throw new Error("Exact question image Storage cleanup failed.");
+  }
+
+  const { error: rowError } = await supabase
+    .from("question_assets")
+    .delete()
+    .eq("id", assetId);
+
+  if (rowError) {
+    throw new Error("Exact question image row cleanup failed.");
+  }
 }
 
 function replacePlaceholder(value: string | null, placeholder: string, html: string) {
@@ -3154,115 +3294,345 @@ function replacePlaceholder(value: string | null, placeholder: string, html: str
 }
 
 async function attachCroppedAssets({
+  batchId,
   createdQuestions,
   extraction,
   pdfBuffer,
   profileId,
+  qualityObserver,
   renderedPages,
+  sourceAssetId,
+  sourceBatchId,
   supabase,
+  targetBankId,
 }: {
+  batchId: string;
   createdQuestions: { id: string; questionCode: string }[];
   extraction: AIPdfExtraction;
   pdfBuffer: Buffer;
   profileId: string;
+  qualityObserver?: AIPdfQualityObservatory;
   renderedPages?: RenderedPage[];
+  sourceAssetId: string;
+  sourceBatchId: string;
   supabase: SupabaseLike;
+  targetBankId: string | null;
 }) {
   const byCode = new Map(
     createdQuestions.map((question) => [question.questionCode.toLowerCase(), question]),
   );
-  const placeholders = extraction.questions.flatMap((question) =>
-    question.asset_placeholders.map((placeholder) => ({
-      placeholder,
-      question,
-    })),
-  );
   const warnings: string[] = [];
   let uploadedCount = 0;
+  const visualEvidence = {
+    attachedAssets: 0,
+    blockingMissingRequired: 0,
+    decorativeSkipped: 0,
+    duplicateProposals: 0,
+    invalidProposals: 0,
+    proposedAssets: extraction.questions.reduce(
+      (total, question) => total + question.asset_placeholders.length,
+      0,
+    ),
+    requiredQuestions: 0,
+    reusedAssets: 0,
+    validCrops: 0,
+  };
+  let pages: RenderedPage[] = [];
+  let renderFailure = false;
+  const hasLineageBoundVisualWork = extraction.questions.some(
+    (question) =>
+      question.visual_evidence_required ||
+      questionRequiresVisualEvidence({
+        contentHtml: question.content_html,
+        contentSource: question.content_source,
+      }) ||
+      question.asset_placeholders.some(
+        (placeholder) =>
+          placeholder.visual_role !== "decorative" || placeholder.required,
+      ),
+  );
 
-  if (!placeholders.length) {
-    return { uploadedCount, warnings };
+  if (!hasLineageBoundVisualWork) {
+    visualEvidence.decorativeSkipped = visualEvidence.proposedAssets;
+    qualityObserver?.recordVisualEvidence(visualEvidence);
+    return { uploadedCount, visualEvidence, warnings };
+  }
+  if (!sourceAssetId || !sourceBatchId) {
+    throw new Error("Question visual source lineage is missing.");
   }
 
-  let pages;
-
-  try {
-    pages = renderedPages?.length ? renderedPages : await renderPdfPages(pdfBuffer);
-  } catch (error) {
-    return {
-      uploadedCount,
-      warnings: [
-        `PDF page rendering for image crops failed: ${
-          error instanceof Error ? error.message : "Unknown render error"
-        }`,
-      ],
-    };
+  const { data: sourceAsset, error: sourceAssetError } = await supabase
+    .from("import_batch_assets")
+    .select("id")
+    .eq("id", sourceAssetId)
+    .eq("batch_id", sourceBatchId)
+    .eq("asset_role", "source_pdf")
+    .eq("status", "ready")
+    .maybeSingle();
+  if (sourceAssetError || !sourceAsset) {
+    throw new Error("Question visual source lineage could not be validated.");
   }
 
-  for (const { placeholder, question } of placeholders) {
+  if (visualEvidence.proposedAssets > 0) {
+    try {
+      pages = renderedPages?.length ? renderedPages : await renderPdfPages(pdfBuffer);
+    } catch (error) {
+      renderFailure = true;
+      warnings.push("PDF page rendering for visual evidence failed.");
+    }
+  }
+
+  for (const question of extraction.questions) {
+    const requiresVisual =
+      questionRequiresVisualEvidence({
+        contentHtml: question.content_html,
+        contentSource: question.content_source,
+      }) || question.visual_evidence_required;
+    if (requiresVisual) visualEvidence.requiredQuestions += 1;
+
+    if (!requiresVisual && question.asset_placeholders.length === 0) {
+      continue;
+    }
+    if (
+      !requiresVisual &&
+      question.asset_placeholders.every(
+        (placeholder) =>
+          placeholder.visual_role === "decorative" && !placeholder.required,
+      )
+    ) {
+      visualEvidence.decorativeSkipped += question.asset_placeholders.length;
+      continue;
+    }
+
     const questionCode =
       question.question_code?.trim() ||
       createdQuestions.find((created) => !byCode.has(created.questionCode))?.questionCode;
     const created = questionCode ? byCode.get(questionCode.toLowerCase()) : null;
 
     if (!created) {
-      warnings.push(`Could not find created question for ${placeholder.placeholder}.`);
+      warnings.push("A visual proposal could not be matched to its created Draft.");
       continue;
     }
 
-    try {
-      const cropped = await cropPdfPlaceholderImage({
-        pages,
+    const { data: questionRow, error: questionError } = await supabase
+      .from("questions")
+      .select(
+        "content_html, content_source, owner_bank_id, solution_html, solution_source, source, source_review_item_id, updated_by",
+      )
+      .eq("id", created.id)
+      .single();
+
+    if (questionError) throw new Error(questionError.message);
+    if (
+      questionRow.source !== `ai_pdf_import:${batchId}` ||
+      (targetBankId && questionRow.owner_bank_id !== targetBankId)
+    ) {
+      throw new Error("Question visual source or Library lineage did not match.");
+    }
+    if (!questionRow.source_review_item_id) {
+      throw new Error("Question visual Review lineage is missing.");
+    }
+    const { data: reviewItem, error: reviewError } = await supabase
+      .from("review_draft_items")
+      .select("id, draft_payload, status, validation_warnings")
+      .eq("id", questionRow.source_review_item_id)
+      .eq("created_question_id", created.id)
+      .maybeSingle();
+    if (reviewError) throw new Error(reviewError.message);
+    if (!reviewItem) {
+      throw new Error("Question visual Review lineage is missing.");
+    }
+    if (
+      reviewItem.status !== "pending_review" &&
+      reviewItem.status !== "needs_more_evidence"
+    ) {
+      throw new Error("Question visual Review Draft is no longer editable.");
+    }
+
+    const existingWarnings: string[] = Array.isArray(
+      reviewItem.validation_warnings,
+    )
+      ? reviewItem.validation_warnings.filter(
+          (value: unknown): value is string => typeof value === "string",
+        )
+      : [];
+    const persistenceLockWarning =
+      "Visual evidence persistence is incomplete; approval remains blocked.";
+    const finalExistingWarnings = existingWarnings.filter(
+      (warning: string) =>
+        warning !== persistenceLockWarning &&
+        warning !== AI_PDF_VISUAL_MISSING_WARNING,
+    );
+    const canClearExistingVisualBlock =
+      reviewItem.status === "needs_more_evidence" &&
+      existingWarnings.some(
+        (warning: string) =>
+          warning === persistenceLockWarning ||
+          warning === AI_PDF_VISUAL_MISSING_WARNING,
+      ) &&
+      finalExistingWarnings.length === 0;
+    const { error: reviewLockError } = await supabase
+      .from("review_draft_items")
+      .update({
+        status: "needs_more_evidence",
+        validation_warnings: uniqueStrings([
+          ...existingWarnings,
+          persistenceLockWarning,
+        ]),
+      })
+      .eq("id", reviewItem.id);
+    if (reviewLockError) {
+      throw new Error("Question visual Review lock could not be established.");
+    }
+
+    const proposalKeys = new Set<string>();
+    const evidenceRecords: Array<Record<string, unknown>> = [];
+    const createdAssets: Array<{ assetId: string; objectPath: string }> = [];
+    const questionWarnings: string[] = [];
+    let nextContentHtml = questionRow.content_html;
+    let nextContentSource = questionRow.content_source;
+    let nextSolutionHtml = questionRow.solution_html;
+    let nextSolutionSource = questionRow.solution_source;
+    let attachedForQuestion = 0;
+    let persistenceFailure: unknown = null;
+    let requiredProposalFailed = false;
+
+    for (const [proposalIndex, placeholder] of question.asset_placeholders.entries()) {
+      const proposalKey = visualProposalKey(placeholder);
+      if (proposalKeys.has(proposalKey)) {
+        visualEvidence.duplicateProposals += 1;
+        continue;
+      }
+      proposalKeys.add(proposalKey);
+
+      if (placeholder.visual_role === "decorative") {
+        if (placeholder.required) {
+          visualEvidence.invalidProposals += 1;
+          requiredProposalFailed = true;
+          questionWarnings.push(
+            "A visual proposal was both decorative and required; approval remains blocked.",
+          );
+        } else {
+          visualEvidence.decorativeSkipped += 1;
+        }
+        continue;
+      }
+
+      const proposalValidation = validateAIPdfVisualProposal({
+        availablePageNumbers: pages.map((page) => page.page),
+        pageCount: pages.length,
         placeholder,
       });
-      const uploaded = await uploadQuestionAsset({
-        alt: placeholder.alt ?? "AI imported figure",
-        image: cropped,
-        placeholder: placeholder.placeholder,
-        profileId,
-        questionId: created.id,
-        supabase,
-      });
-
-      const { data: questionRow, error: questionError } = await supabase
-        .from("questions")
-        .select("content_html, content_source, solution_html, solution_source")
-        .eq("id", created.id)
-        .single();
-
-      if (questionError) {
-        throw new Error(questionError.message);
+      if (renderFailure || !proposalValidation.valid) {
+        visualEvidence.invalidProposals += 1;
+        requiredProposalFailed ||= placeholder.required;
+        questionWarnings.push("A visual crop proposal could not be validated.");
+        continue;
       }
 
-      const nextContentHtml = replacePlaceholder(
-        questionRow.content_html,
-        placeholder.placeholder,
-        uploaded.html,
-      );
-      const nextContentSource = replacePlaceholder(
-        questionRow.content_source,
-        placeholder.placeholder,
-        uploaded.html,
-      );
-      const nextSolutionHtml = replacePlaceholder(
-        questionRow.solution_html,
-        placeholder.placeholder,
-        uploaded.html,
-      );
-      const nextSolutionSource = replacePlaceholder(
-        questionRow.solution_source,
-        placeholder.placeholder,
-        uploaded.html,
-      );
-      const wasEmbedded =
-        nextContentHtml !== questionRow.content_html ||
-        nextSolutionHtml !== questionRow.solution_html;
+      let cropped: Buffer;
+      try {
+        cropped = await cropPdfPlaceholderImage({
+          pages,
+          placeholder,
+        });
+        await inspectQuestionVisualCrop(cropped);
+      } catch {
+        visualEvidence.invalidProposals += 1;
+        requiredProposalFailed ||= placeholder.required;
+        questionWarnings.push("A visual crop proposal could not be validated.");
+        continue;
+      }
 
-      if (!wasEmbedded) {
-        warnings.push(
-          `Placeholder ${placeholder.placeholder} was not found in content_html or solution_html; crop was attached as a question asset only.`,
+      try {
+        const contentHash = contentSha256(cropped);
+        const uploaded = await uploadQuestionAsset({
+          alt: safeQuestionVisualAlt(placeholder),
+          contentHash,
+          displayOrder: proposalIndex,
+          image: cropped,
+          profileId,
+          questionId: created.id,
+          sourceAssetId,
+          supabase,
+        });
+        if (uploaded.created) {
+          createdAssets.push({
+            assetId: uploaded.assetId,
+            objectPath: uploaded.objectPath,
+          });
+        } else {
+          visualEvidence.reusedAssets += 1;
+        }
+
+        const replacedContentHtml = replacePlaceholder(
+          nextContentHtml,
+          placeholder.placeholder,
+          uploaded.html,
         );
+        const replacedContentSource = replacePlaceholder(
+          nextContentSource,
+          placeholder.placeholder,
+          uploaded.html,
+        );
+        const replacedSolutionHtml = replacePlaceholder(
+          nextSolutionHtml,
+          placeholder.placeholder,
+          uploaded.html,
+        );
+        const replacedSolutionSource = replacePlaceholder(
+          nextSolutionSource,
+          placeholder.placeholder,
+          uploaded.html,
+        );
+        const wasEmbedded =
+          replacedContentHtml !== nextContentHtml ||
+          replacedSolutionHtml !== nextSolutionHtml;
+
+        nextContentHtml = replacedContentHtml;
+        nextContentSource = replacedContentSource;
+        nextSolutionHtml = replacedSolutionHtml;
+        nextSolutionSource = replacedSolutionSource;
+
+        if (!wasEmbedded) {
+          questionWarnings.push(
+            "A validated crop was attached in the question image gallery.",
+          );
+        }
+        evidenceRecords.push(
+          visualEvidenceRecord({
+            assetId: uploaded.assetId,
+            contentHash,
+            placeholder,
+            sourceAssetId,
+          }),
+        );
+        attachedForQuestion += 1;
+        uploadedCount += 1;
+        visualEvidence.attachedAssets += 1;
+        visualEvidence.validCrops += 1;
+      } catch (error) {
+        if (
+          error instanceof QuestionAssetPersistenceError &&
+          error.cleanupTarget
+        ) {
+          createdAssets.push(error.cleanupTarget);
+        }
+        persistenceFailure = error;
+        break;
       }
+    }
+
+    const missingRequiredVisual =
+      requiresVisual && (attachedForQuestion === 0 || requiredProposalFailed);
+    if (missingRequiredVisual) {
+      visualEvidence.blockingMissingRequired += 1;
+      questionWarnings.push(AI_PDF_VISUAL_MISSING_WARNING);
+    }
+
+    let questionUpdated = false;
+    try {
+      if (persistenceFailure) throw persistenceFailure;
 
       const { error: updateError } = await supabase
         .from("questions")
@@ -3278,22 +3648,126 @@ async function attachCroppedAssets({
           updated_by: profileId,
         })
         .eq("id", created.id);
+      if (updateError) throw new Error(updateError.message);
+      questionUpdated = true;
 
-      if (updateError) {
-        throw new Error(updateError.message);
+      const { error: reviewUpdateError } = await supabase
+        .from("review_draft_items")
+        .update({
+          draft_payload: {
+            ...plainObject(reviewItem.draft_payload),
+            visualEvidence: {
+              contractVersion: AI_PDF_VISUAL_EVIDENCE_CONTRACT_VERSION,
+              records: evidenceRecords,
+              required: requiresVisual,
+              sourceAssetId,
+              status: missingRequiredVisual ? "needs_more_evidence" : "validated",
+            },
+          },
+          status: missingRequiredVisual
+            ? "needs_more_evidence"
+            : canClearExistingVisualBlock
+              ? "pending_review"
+              : reviewItem.status,
+          validation_warnings: uniqueStrings([
+            ...finalExistingWarnings,
+            ...questionWarnings,
+          ]),
+        })
+        .eq("id", reviewItem.id);
+      if (reviewUpdateError) throw new Error(reviewUpdateError.message);
+    } catch (error) {
+      const compensationFailures: string[] = [];
+      let canRemoveAssets = !questionUpdated;
+      const { data: currentQuestion, error: currentQuestionError } = await supabase
+        .from("questions")
+        .select("content_html, content_source, solution_html, solution_source")
+        .eq("id", created.id)
+        .maybeSingle();
+      if (currentQuestionError || !currentQuestion) {
+        canRemoveAssets = false;
+        compensationFailures.push("question_state_check");
+      } else {
+        const currentQuestionText = [
+          currentQuestion.content_html,
+          currentQuestion.content_source,
+          currentQuestion.solution_html,
+          currentQuestion.solution_source,
+        ].join(" ");
+        const referencesCreatedAsset = createdAssets.some((asset) =>
+          currentQuestionText.includes(asset.assetId),
+        );
+        canRemoveAssets = !questionUpdated && !referencesCreatedAsset;
       }
 
-      uploadedCount += 1;
-    } catch (error) {
-      warnings.push(
-        `Crop ${placeholder.placeholder} failed: ${
-          error instanceof Error ? error.message : "Unknown crop error"
-        }`,
-      );
+      if (!canRemoveAssets) {
+        const { error: questionRestoreError } = await supabase
+          .from("questions")
+          .update({
+            content_html: questionRow.content_html,
+            content_source: questionRow.content_source,
+            solution_html: questionRow.solution_html,
+            solution_source: questionRow.solution_source,
+            updated_by: questionRow.updated_by,
+          })
+          .eq("id", created.id);
+        if (questionRestoreError) {
+          compensationFailures.push("question_restore");
+        } else {
+          const { data: restoredQuestion, error: restoredQuestionError } =
+            await supabase
+              .from("questions")
+              .select("content_html, content_source, solution_html, solution_source")
+              .eq("id", created.id)
+              .maybeSingle();
+          canRemoveAssets =
+            !restoredQuestionError &&
+            restoredQuestion?.content_html === questionRow.content_html &&
+            restoredQuestion?.content_source === questionRow.content_source &&
+            restoredQuestion?.solution_html === questionRow.solution_html &&
+            restoredQuestion?.solution_source === questionRow.solution_source;
+          if (!canRemoveAssets) compensationFailures.push("question_restore_verify");
+        }
+      }
+
+      if (canRemoveAssets) {
+        for (const asset of createdAssets) {
+          let cleaned = false;
+          for (let cleanupAttempt = 1; cleanupAttempt <= 2; cleanupAttempt += 1) {
+            try {
+              await cleanupCreatedQuestionAsset({
+                assetId: asset.assetId,
+                objectPath: asset.objectPath,
+                supabase,
+              });
+              cleaned = true;
+              break;
+            } catch {
+              // The retry remains bound to this exact deterministic asset.
+            }
+          }
+          if (!cleaned) compensationFailures.push("asset_cleanup");
+        }
+      }
+
+      if (compensationFailures.length > 0) {
+        throw new Error(
+          `Question visual persistence compensation failed: ${uniqueStrings(compensationFailures).join(", ")}.`,
+        );
+      }
+      throw error;
     }
+
+    warnings.push(...questionWarnings);
   }
 
-  return { uploadedCount, warnings };
+  qualityObserver?.recordVisualEvidence(visualEvidence);
+
+  return {
+    uploadedCount,
+    visualEvidence,
+    warnings: uniqueStrings(warnings),
+  };
 }
 
 function providerPreparationCopy(strategy: AiPdfInputStrategy) {
@@ -3983,7 +4457,7 @@ async function processAIPdfSinglePass({
         policy: input.providerRetryMaxAttempts
           ? { maxAttempts: input.providerRetryMaxAttempts }
           : undefined,
-        run: async () =>
+        run: async ({ attemptCount }) =>
           normalizeAIPdfExtractionResponse(
             await callAIPdfExtractionProvider({
               debugContext: {
@@ -4010,6 +4484,10 @@ async function processAIPdfSinglePass({
               },
               profile: provider,
               prompt,
+              qualityObserver: input.qualityObserver,
+              routeCandidateIndex: input.providerRouteCandidateIndex,
+              taxonomyCatalogBytes: taxonomyCatalogByteLength(activeTags),
+              transportAttempt: attemptCount,
             }),
           ),
       });
@@ -4031,6 +4509,8 @@ async function processAIPdfSinglePass({
       key: "single",
     });
     await input.onProviderResultCheckpoint(input.providerResultCheckpoint);
+  } else if (recoveredExtraction) {
+    input.qualityObserver?.recordCheckpointReplay();
   }
 
   if (selectiveInput) {
@@ -4102,9 +4582,18 @@ async function processAIPdfSinglePass({
     persistenceFence: input.persistenceFence,
     persistenceLineageKey: input.persistenceLineageKey,
   });
+  input.qualityObserver?.recordPersistence({
+    duplicateCount: importSummary.duplicateCount,
+    importableReviewDrafts: importSummary.createdCount,
+    unknownTaxonomyIdCount: unknownTaxonomyIdCount({
+      activeTags,
+      extraction,
+    }),
+  });
   await input.onCheckpointStage?.("drafts_persisted", {
     createdDraftCount: importSummary.createdCount,
     persistenceLineageKey: input.persistenceLineageKey ?? null,
+    qualityObservatory: input.qualityObserver?.snapshot(),
   });
 
   const cropSummary = await runAIPdfPostPersistenceStage({
@@ -4120,14 +4609,30 @@ async function processAIPdfSinglePass({
       });
       return importSummary.createdCount > 0
         ? attachCroppedAssets({
+            batchId: input.batchId,
             createdQuestions: importSummary.createdQuestions,
             extraction,
             pdfBuffer: input.pdfBuffer,
             profileId: input.profileId,
+            qualityObserver: input.qualityObserver,
+            sourceAssetId: input.sourceAssetId ?? "",
+            sourceBatchId: input.batchId,
             supabase: input.supabase,
+            targetBankId: input.targetBankId ?? null,
           })
         : {
             uploadedCount: 0,
+            visualEvidence: {
+              attachedAssets: 0,
+              blockingMissingRequired: 0,
+              decorativeSkipped: 0,
+              duplicateProposals: 0,
+              invalidProposals: 0,
+              proposedAssets: 0,
+              requiredQuestions: 0,
+              reusedAssets: 0,
+              validCrops: 0,
+            },
             warnings: ["No draft questions were created; skipped crop attachment."],
           };
     },
@@ -4158,6 +4663,8 @@ async function processAIPdfSinglePass({
       sourceInput: providerInput.strategy,
       sourceObjectPath: input.sourceObjectPath,
       uploadedCropCount: cropSummary.uploadedCount,
+      qualityObservatory: input.qualityObserver?.snapshot(),
+      visualEvidence: cropSummary.visualEvidence,
       warnings: uniqueStrings([...extraction.warnings, ...cropSummary.warnings]),
     },
   );
@@ -4187,6 +4694,8 @@ async function processAIPdfSinglePass({
 }
 
 export async function processAIPdfImport(input: AIPdfProcessInput) {
+  input.qualityObserver ??= createAIPdfQualityObservatory();
+
   if (input.pdfBuffer.length > AI_PDF_IMPORT_MAX_BYTES) {
     throw new Error("PDF is larger than 50MB.");
   }
@@ -4515,7 +5024,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
             policy: input.providerRetryMaxAttempts
               ? { maxAttempts: input.providerRetryMaxAttempts }
               : undefined,
-            run: async () =>
+            run: async ({ attemptCount }) =>
               normalizeAIPdfExtractionResponse(
                 await callAIPdfExtractionProvider({
               debugContext: {
@@ -4546,6 +5055,10 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
               onProviderUsage: input.onProviderUsage,
               profile: provider,
                   prompt: chunkPrompt,
+                  qualityObserver: input.qualityObserver,
+                  routeCandidateIndex: input.providerRouteCandidateIndex,
+                  taxonomyCatalogBytes: taxonomyCatalogByteLength(activeTags),
+                  transportAttempt: attemptCount,
                 }),
               ),
           });
@@ -4568,6 +5081,8 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
           key: checkpointKey,
         });
         await input.onProviderResultCheckpoint(input.providerResultCheckpoint);
+      } else if (checkpointedExtraction) {
+        input.qualityObserver?.recordCheckpointReplay();
       }
 
       await updateAIPdfChunkProgress({
@@ -4638,18 +5153,41 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
           ? `${input.persistenceLineageKey}:chunk:${chunk.chunkIndex}`
           : undefined,
       });
+      input.qualityObserver?.recordPersistence({
+        duplicateCount: aggregate.duplicateCount + importSummary.duplicateCount,
+        importableReviewDrafts: aggregate.createdCount + importSummary.createdCount,
+        unknownTaxonomyIdCount:
+          aggregate.unknownTagCount +
+          unknownTaxonomyIdCount({ activeTags, extraction }),
+      });
       const cropSummary =
         importSummary.createdCount > 0
           ? await attachCroppedAssets({
+              batchId: input.batchId,
               createdQuestions: importSummary.createdQuestions,
               extraction,
               pdfBuffer: input.pdfBuffer,
               profileId: input.profileId,
+              qualityObserver: input.qualityObserver,
               renderedPages: renderedPagesCache,
+              sourceAssetId: input.sourceAssetId ?? "",
+              sourceBatchId: input.batchId,
               supabase: input.supabase,
+              targetBankId: input.targetBankId ?? null,
             })
           : {
               uploadedCount: 0,
+              visualEvidence: {
+                attachedAssets: 0,
+                blockingMissingRequired: 0,
+                decorativeSkipped: 0,
+                duplicateProposals: 0,
+                invalidProposals: 0,
+                proposedAssets: 0,
+                requiredQuestions: 0,
+                reusedAssets: 0,
+                validCrops: 0,
+              },
               warnings: [
                 `No draft questions were created for ${formatAIPdfChunkPageRange(
                   chunk,
@@ -4786,6 +5324,8 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
       sourceInput: providerInput.strategy,
       sourceObjectPath: input.sourceObjectPath,
       uploadedCropCount: aggregate.uploadedCropCount,
+      qualityObservatory: input.qualityObserver?.snapshot(),
+      visualEvidence: input.qualityObserver?.snapshot().visualEvidence,
       warnings: uniqueStrings(allWarnings),
     }),
   });
@@ -4802,6 +5342,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
   await input.onCheckpointStage?.("drafts_persisted", {
     createdDraftCount: aggregate.createdCount,
     persistenceLineageKey: input.persistenceLineageKey ?? null,
+    qualityObservatory: input.qualityObserver?.snapshot(),
   });
 
   return finalSummary;
@@ -4907,6 +5448,7 @@ export async function recordAIPdfCoverageRecoveryFailure({
         : "Targeted recovery could not be completed. Your file was not published or assigned.",
       retryable: classified.retryable,
       safeErrorCode: safe.safeErrorCode,
+      qualityObservatory: input.qualityObserver?.snapshot(),
       status: classified.retryable ? "retry_wait" : "failed",
     },
   }).catch(() => undefined);
@@ -4920,6 +5462,8 @@ export async function recordAIPdfCoverageRecoveryFailure({
 export async function processAIPdfCoverageRecovery(
   input: AIPdfCoverageRecoveryProcessInput,
 ) {
+  input.qualityObserver ??= createAIPdfQualityObservatory();
+
   const { data: originalBatch, error: originalBatchError } = await input.supabase
     .from("import_batches")
     .select("id, organization_id, status, summary, target_bank_id")
@@ -5054,7 +5598,7 @@ export async function processAIPdfCoverageRecovery(
     policy: input.providerRetryMaxAttempts
       ? { maxAttempts: input.providerRetryMaxAttempts }
       : undefined,
-    run: async () =>
+    run: async ({ attemptCount }) =>
       normalizeAIPdfExtractionResponse(
         await callAIPdfExtractionProvider({
           debugContext: {
@@ -5076,6 +5620,10 @@ export async function processAIPdfCoverageRecovery(
           onProviderUsage: input.onProviderUsage,
           profile: provider,
           prompt,
+          qualityObserver: input.qualityObserver,
+          routeCandidateIndex: input.providerRouteCandidateIndex,
+          taxonomyCatalogBytes: taxonomyCatalogByteLength(activeTags),
+          transportAttempt: attemptCount,
         }),
       ),
   });
@@ -5090,13 +5638,36 @@ export async function processAIPdfCoverageRecovery(
   const { data: originalQuestions, error: originalQuestionsError } = await input.supabase
     .from("questions")
     .select(
-      "id, question_code, title, content_html, content_source, solution_html, solution_source, options, ai_metadata",
+      "id, question_code, title, content_html, content_source, solution_html, solution_source, options",
     )
     .eq("source", `ai_pdf_import:${input.originalBatchId}`);
   if (originalQuestionsError) throw new Error(originalQuestionsError.message);
+  const originalQuestionIds = (originalQuestions ?? []).map(
+    (question: Record<string, unknown>) => String(question.id ?? ""),
+  );
+  const { data: originalItems, error: originalItemsError } = originalQuestionIds.length
+    ? await input.supabase
+        .from("import_batch_items")
+        .select("created_question_id, normalized_question_json")
+        .eq("batch_id", input.originalBatchId)
+        .in("created_question_id", originalQuestionIds)
+    : { data: [], error: null };
+  if (originalItemsError) throw new Error(originalItemsError.message);
+  const originalMetadataByQuestionId = new Map(
+    (originalItems ?? []).map((item: Record<string, unknown>) => [
+      String(item.created_question_id ?? ""),
+      plainObject(plainObject(item.normalized_question_json).ai_metadata),
+    ]),
+  );
   const originalCandidates = questionBoundaryCandidatesFromRows({
     assetRefsByQuestionId: new Map(),
-    rows: (originalQuestions ?? []) as Array<Record<string, unknown>>,
+    rows: ((originalQuestions ?? []) as Array<Record<string, unknown>>).map(
+      (row) => ({
+        ...row,
+        ai_metadata:
+          originalMetadataByQuestionId.get(String(row.id ?? "")) ?? {},
+      }),
+    ),
     sourceAssetId: input.sourceAssetId ?? "",
   });
   const recoveryCandidates = extraction.questions.map((question, index) =>
@@ -5126,6 +5697,13 @@ export async function processAIPdfCoverageRecovery(
   );
 
   if (!newQuestions.length) {
+    input.qualityObserver?.recordPersistence({
+      importableReviewDrafts: 0,
+      unknownTaxonomyIdCount: unknownTaxonomyIdCount({
+        activeTags,
+        extraction,
+      }),
+    });
     await updateCoverageRecoveryExecution({
       input,
       patch: {
@@ -5134,6 +5712,7 @@ export async function processAIPdfCoverageRecovery(
         reconciliation: counts,
         recoveredDraftCount: 0,
         recheckedSourcePages: sourcePages,
+        qualityObservatory: input.qualityObserver?.snapshot(),
         status: "completed_no_new_drafts",
       },
     });
@@ -5184,10 +5763,11 @@ export async function processAIPdfCoverageRecovery(
     } as never);
   if (childInsertError) throw new Error(childInsertError.message);
 
+  const recoveryExtraction = { ...extraction, questions: newQuestions };
   const importJson = await buildImportJson({
     activeTags,
     batchId: childBatchId,
-    extraction: { ...extraction, questions: newQuestions },
+    extraction: recoveryExtraction,
     profileId: input.profileId,
     provider: providerSummary,
     recovery: {
@@ -5207,6 +5787,45 @@ export async function processAIPdfCoverageRecovery(
     supabase: input.supabase,
     targetBankId: input.targetBankId,
   });
+  input.qualityObserver?.recordPersistence({
+    duplicateCount: imported.duplicateCount,
+    importableReviewDrafts: imported.createdCount,
+    unknownTaxonomyIdCount: unknownTaxonomyIdCount({
+      activeTags,
+      extraction: recoveryExtraction,
+    }),
+  });
+  const recoveryRenderedPages = recoveryExtraction.questions.some(
+    (question) => question.asset_placeholders.length > 0,
+  )
+    ? (pagesForVision.length
+        ? pagesForVision
+        : await renderPdfPages(subset.pdfBytes)
+      ).map((page) => ({
+        ...page,
+        page:
+          subset.pageMapping.find((item) => item.chunkPage === page.page)
+            ?.sourcePage ?? page.page,
+      }))
+    : [];
+  const cropSummary = imported.createdCount > 0
+    ? await attachCroppedAssets({
+        batchId: childBatchId,
+        createdQuestions: imported.createdQuestions,
+        extraction: recoveryExtraction,
+        pdfBuffer: subset.pdfBytes,
+        profileId: input.profileId,
+        qualityObserver: input.qualityObserver,
+        renderedPages: recoveryRenderedPages,
+        sourceAssetId: input.sourceAssetId ?? "",
+        sourceBatchId: input.batchId,
+        supabase: input.supabase,
+        targetBankId: input.targetBankId ?? null,
+      })
+    : {
+        uploadedCount: 0,
+        warnings: [] as string[],
+      };
   await updateCoverageRecoveryExecution({
     input,
     patch: {
@@ -5216,7 +5835,9 @@ export async function processAIPdfCoverageRecovery(
       reconciliation: counts,
       recoveredDraftCount: imported.createdCount,
       recoveredSourcePages: sourcePages,
+      qualityObservatory: input.qualityObserver?.snapshot(),
       status: "completed",
+      visualWarningCount: cropSummary.warnings.length,
     },
   });
   await generateAndStoreExtractionCoverageAuditPlan({

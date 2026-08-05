@@ -50,6 +50,7 @@ import {
   type AIPdfProcessInput,
 } from "@/lib/ai-pdf-import/service";
 import { AI_IMPORT_SOURCES_BUCKET } from "@/lib/ai-pdf-import/constants";
+import { createAIPdfQualityObservatory } from "@/lib/ai-pdf-import/quality-observatory";
 import { releaseAIPdfBurstAdmissionJobs } from "@/lib/ai-pdf-import/burst-admission";
 import {
   getAIPdfBatchFinalizationFailure,
@@ -504,6 +505,7 @@ async function runAIPdfExtractJob({
     .from(AI_IMPORT_SOURCES_BUCKET)
     .download(sourceAsset.object_path);
   if (downloadError) throw new Error(downloadError.message);
+  const qualityObserver = createAIPdfQualityObservatory();
 
   const input: AIPdfProcessInput = {
     batchId: job.resource_id,
@@ -523,6 +525,7 @@ async function runAIPdfExtractJob({
     persistenceFence: persistenceFenceForJob(fencedJob),
     persistenceLineageKey: buildPdfPersistenceLineageKey({ job, sourceAssetId }),
     providerExecutionObserver: providerExecution,
+    qualityObserver,
     onProviderResultCheckpoint: async (checkpoint) => {
       const payload = checkpoint as unknown as Record<string, unknown>;
       await checkpointAIProviderJobProviderResult({
@@ -562,6 +565,7 @@ async function runAIPdfExtractJob({
         processAIPdfImport({
           ...input,
           providerProfileId: provider.id,
+          providerRouteCandidateIndex: attemptBudget.candidateIndex,
           providerRetryMaxAttempts: attemptBudget.maxAttempts,
         }),
       leaseOwner: `${leaseOwner}:${job.id}`,
@@ -699,6 +703,7 @@ async function runAIPdfCoverageRecoveryJob({
 
   const usageSamples: NonNullable<AIOperationExecutionMetadata["usageSamples"]> = [];
   const providerStartedAt = Date.now();
+  const qualityObserver = createAIPdfQualityObservatory();
   const input = {
     batchId: job.resource_id,
     fileName: sourceAsset.original_filename,
@@ -708,6 +713,7 @@ async function runAIPdfCoverageRecoveryJob({
     profileId: job.created_by,
     providerProfileId,
     providerExecutionObserver: providerExecution,
+    qualityObserver,
     recoveryPlanHash,
     recoveryWindowIds,
     routingLeaseOwner: `${leaseOwner}:${job.id}`,
@@ -725,6 +731,7 @@ async function runAIPdfCoverageRecoveryJob({
         processAIPdfCoverageRecovery({
           ...input,
           providerProfileId: provider.id,
+          providerRouteCandidateIndex: attemptBudget.candidateIndex,
           providerRetryMaxAttempts: attemptBudget.maxAttempts,
         }),
       leaseOwner: `${leaseOwner}:${job.id}`,

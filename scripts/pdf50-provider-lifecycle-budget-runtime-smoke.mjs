@@ -784,11 +784,12 @@ assert.equal(smallInputBudget.snapshot().providerInputBytesMax, 0);
 let extractionResponses = [];
 const extractionPrompts = [];
 const extractionOutputContracts = [];
+const extractionSourceModes = [];
 const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
   "@/lib/ai-pdf-import/schema": {
     normalizeAIPdfExtractionResponse(value) {
       if (!Array.isArray(value?.questions) || value.questions.length === 0) {
-        throw new Error("questions: array must contain at least one item");
+        throw new Error("AI provider response contained zero importable questions.");
       }
       return value;
     },
@@ -806,6 +807,20 @@ const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
       executionObserver?.beforeInference("ai_pdf_extraction");
       extractionPrompts.push(prompt);
       extractionOutputContracts.push(outputContract);
+      extractionSourceModes.push("pdf");
+      const response = extractionResponses.shift();
+      if (!response) throw new Error("Missing fake Provider response.");
+      return { text: response, usage: null };
+    },
+    async generateWithGeminiNativeText({
+      executionObserver,
+      outputContract,
+      prompt,
+    }) {
+      executionObserver?.beforeInference("ai_pdf_extraction");
+      extractionPrompts.push(prompt);
+      extractionOutputContracts.push(outputContract);
+      extractionSourceModes.push("text");
       const response = extractionResponses.shift();
       if (!response) throw new Error("Missing fake Provider response.");
       return { text: response, usage: null };
@@ -858,6 +873,7 @@ assert.deepEqual(extractionOutputContracts, [
   structuredOutput.GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
   structuredOutput.GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
 ]);
+assert.deepEqual(extractionSourceModes, ["pdf", "pdf"]);
 assert.equal(extractionPrompts[0], originalExtractionPrompt);
 assert(extractionPrompts[1].includes("Original extraction instructions:"));
 assert(extractionPrompts[1].includes(originalExtractionPrompt));
@@ -904,6 +920,7 @@ assert.equal(extractionPrompts.length, priorPromptCount + 1);
 assert.equal(oneAttemptBudget.snapshot().providerInferenceAttempts, 1);
 
 const rawResponseMarker = "PRIVATE_PROVIDER_OUTPUT_MUST_NOT_ESCAPE";
+const sourceModeCountBeforeMalformedResponse = extractionSourceModes.length;
 extractionResponses = [rawResponseMarker, rawResponseMarker];
 await assert.rejects(
   chat.callAIPdfExtractionProvider({
@@ -932,6 +949,11 @@ await assert.rejects(
     );
     return true;
   },
+);
+assert.deepEqual(
+  extractionSourceModes.slice(sourceModeCountBeforeMalformedResponse),
+  ["pdf", "text"],
+  "structural repair must not re-upload the source PDF",
 );
 
 console.log(

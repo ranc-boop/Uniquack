@@ -95,13 +95,15 @@ assert(
 
 assert(
   chat.includes('originalPrompt ? "Original extraction instructions:"') &&
-    chat.includes("originalPrompt: prompt") &&
+    chat.includes('lastError.kind === "zero_importable"') &&
+    chat.includes("generateWithGeminiNativeText") &&
+    chat.includes("sourceIncluded") &&
     chat.includes("zero importable questions") &&
     !chat.includes("Response preview:") &&
     !chat.includes("Provider response:") &&
     !chat.includes("could not reach ${profile.base_url}") &&
     !chat.includes("Provider replied:"),
-  "Provider repair must retain original extraction instructions without exposing raw output or configured URLs",
+  "Provider repair must retain source context only for zero-importable recovery, use text-only structural repair, and never expose raw output or configured URLs",
 );
 
 assert(
