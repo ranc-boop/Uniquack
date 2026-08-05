@@ -69,12 +69,12 @@ exact burst, and invokes the trusted worker one exact job at a time.
 
 - Authorized fresh cumulative ceiling: USD 2.00.
 - Explicit reassessment threshold: USD 1.60 conservative cumulative spend.
-- Known live scale iterations: 12.
+- Known live scale iterations: 13.
 - Trustworthy actual estimate for the passing terminal iteration: 3,794 micros.
 - Cumulative actual spend: `UNKNOWN` because failed iterations did not all
   reach complete usage telemetry.
-- Conservative cumulative ceiling consumed: 1,189,543 micros (USD 1.189543).
-- Remaining authorized budget: 810,457 micros (USD 0.810457).
+- Conservative cumulative ceiling consumed: 1,368,796 micros (USD 1.368796).
+- Remaining authorized budget: 631,204 micros (USD 0.631204).
 
 Future scale runs use a 50,000-byte upper envelope covering the prompt,
 structured-output schema, synthetic PDF bytes, and fixed request overhead. The
@@ -88,10 +88,8 @@ current source-defined Gemini rates this bounds a fresh stage as follows:
 - Ten files: 179,253 micros (27-attempt ceiling for nine Provider jobs).
 - Fifty files: 497,925 micros (75-attempt aggregate ceiling: one attempt for
   every job plus 25 bounded repair/retry attempts).
-- Projected ceiling after one new ten-file run: 1,368,796 micros (USD
-  1.368796).
-- Projected ceiling after that run and one fifty-file run: 1,866,721 micros
-  (USD 1.866721).
+- Projected ceiling after the remaining fifty-file run: 1,866,721 micros (USD
+  1.866721), leaving 133,279 micros of the authorization.
 
 The fifty-file aggregate allowance is intentionally lower than the sum of 50
 independent three-attempt maxima. The server still enforces at most three
@@ -112,7 +110,7 @@ that maximum would exceed the remaining authorized budget.
 | Stage | Status | Live iterations | Provider attempts | Result |
 | --- | --- | ---: | ---: | --- |
 | Four files | `PASS` | 5 | At least 11; exact failed-run total `UNKNOWN` | 4/4 terminal, UI, isolation, invariants, and cleanup passed |
-| Ten files | `BLOCKED_NEWLY_RELEASED_JOB_AVAILABILITY_CORRECTED` | 7 | At least 23; earlier failed-run total `UNKNOWN` | The latest run passed checkpoint recovery and completed 5 items, then the first newly admission-released job was not yet claimable by the local proof clock |
+| Ten files | `PASS` | 8 | At least 38; earlier failed-run total `UNKNOWN` | 10 admitted, 9 completed, 1 deliberately cancelled; recovery, mixed state, UI, isolation, invariants, and cleanup passed |
 | Fifty files | `NOT_RUN` | 0 | 0 | Must not begin before the ten-file gate passes |
 
 Passing admission alone is insufficient. Each stage must verify durable item
@@ -277,6 +275,35 @@ adversarial safety smoke rejects the previous retry-only wait contract. No
 claim limit, Provider allowance, product authorization, migration, or live
 configuration changed.
 
+8. The corrected run passed the complete ten-file recovery and mixed-state
+   gate. Ten items were admitted; nine exact durable jobs completed and the one
+   predefined unstarted item was cancelled through the Teacher browser. The
+   first five-job window and the newly released second window both drained.
+   The controlled post-checkpoint interruption, stale-fence rejection,
+   zero-inference checkpoint replay, and read-after-write retry all passed.
+   The run made 10 claimed worker-route invocations: nine productive job
+   executions plus the zero-inference checkpoint replay. Provider evidence
+   recorded 15 inference requests, 30 uploads, zero polls, 15 cleanups, and 60
+   total HTTP requests, with a 35,742-byte maximum Provider input. Usage
+   metadata recorded 62,216 input tokens, 3,375 output tokens, and 65,591 total
+   tokens; thinking tokens and a complete trustworthy actual-cost total remain
+   `UNKNOWN`. The durable batch was `partial` with 9 completed, 0 failed, and 1
+   cancelled item. Nine private Bank-scoped Review Drafts remained
+   `pending_review`; duplicates, approvals, publications, Assignments, and
+   cross-organization visibility were all zero. Teacher UI initial render,
+   reload, fresh-page remount, and Review Draft visibility passed. Provider
+   files, database rows, Storage objects, Auth fixtures, local processes, and
+   process-only environment values were cleaned, with zero synthetic residue.
+   The full 179,253-micros ceiling was charged, bringing the cumulative
+   conservative ledger to 1,368,796 micros.
+
+At this point the ten-file gate is closed. The only remaining live gate is the
+fifty-file maximum-count admission/drain/UI/cleanup qualification. Its 497,925-
+micros conservative ceiling would cross the USD 1.60 reassessment threshold but
+remain below USD 2.00 at 1,866,721 micros. The run remains useful because no
+smaller or previously completed stage can prove the required 50-file terminal
+behavior. No unchanged paid rerun after that stage is budgeted.
+
 ## Pre-live source validation
 
 Passed before any scale Provider call:
@@ -304,6 +331,6 @@ regressions.
 `PDF50_SCALE_QUALIFICATION_PARTIALLY_COMPLETE`
 
 The recovery path is merged, the isolated qualification branch is established,
-and the four-file baseline is live validated. Ten-file recovery/mixed-state and
-fifty-file maximum-count qualification remain, so this document does not yet
-claim operational readiness.
+and both the four-file baseline and ten-file recovery/mixed-state gate are live
+validated. Fifty-file maximum-count qualification remains, so this document
+does not yet claim operational readiness.
