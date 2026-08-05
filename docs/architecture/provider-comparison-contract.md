@@ -13,15 +13,21 @@ Each candidate receives the same:
 
 - rights-safe source bytes and page selection;
 - parsing contract version and JSON schema;
-- exact active assignable taxonomy catalog;
+- exact runtime taxonomy snapshot SHA, candidate serialization, and parsing
+  contract SHA;
 - output-token, attempt, HTTP-request, and cost envelope;
-- repair-reason policy;
+- one durable attempt ledger and repair-reason policy;
 - Review Draft, Bank, lineage, visual, and cleanup gates;
 - deterministic evaluator and blind review packet.
 
 The Provider adapter may translate transport syntax only. It may not alter
 question bounds, taxonomy pressure, visual requirements, Review Gate behavior,
 or persistence semantics.
+
+The experiment must stop before its first paid request if either arm reports a
+different runtime taxonomy snapshot SHA. The checked-in 0056 reconstruction is
+not a substitute for that runtime check. Recent taxonomy provenance is
+currently unresolved, so no comparison is authorized.
 
 ## Measurements
 
@@ -30,6 +36,8 @@ Report per document and aggregate:
 - first-attempt success and attempts per job by reason;
 - input/output/thought/cached tokens when supplied;
 - source, prompt, schema, taxonomy, and repair-context bytes;
+- actual serialized request bytes, fixed overhead, repeated source, and
+  repeated previous-response bytes;
 - latency and estimated cost;
 - schema-valid and application-valid candidates;
 - importable Drafts and useful output per input token;
@@ -39,6 +47,10 @@ Report per document and aggregate:
   missing required visual evidence, and cleanup failures.
 
 Missing usage metadata is `UNKNOWN`, never zero.
+
+Each inference must have one of the versioned primary reasons. At most one
+source-backed semantic recovery is allowed per logical job; structural repair
+is source-free; checkpoint replay is reported separately as zero inference.
 
 ## Blind review
 
@@ -54,4 +66,6 @@ candidates, adopt only when quality is non-inferior and the efficiency change
 is material under the same fixture and budget. A lower cost cannot compensate
 for weaker review safety, lineage, answer validity, or visual fidelity.
 
-No comparison Provider call was made in this work.
+No comparison Provider call was made in this work. The current deterministic
+result is `SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY`, not Provider-performance
+evidence.

@@ -4,7 +4,6 @@ import type {
   TaxonomyCatalogView,
   TaxonomyNodeView,
 } from "@/components/tags/taxonomy-tag-tree-picker";
-import { taxonomyDisplayLabelFromId } from "@/lib/tags/taxonomy-display";
 
 type TaxonomySupabaseLike = {
   from: (table: string) => any;
@@ -107,7 +106,10 @@ function catalogFromRpcValue(value: unknown): TaxonomyCatalogView | null {
         typeof node.description === "string" ? node.description : null,
       facet_key: node.facet_key,
       is_assignable: node.is_assignable === true,
-      label: taxonomyDisplayLabelFromId(node.tag_id),
+      label:
+        typeof node.label === "string" && node.label.trim()
+          ? node.label.trim()
+          : node.tag_id,
       parent_tag_ids: stringList(node.parent_tag_ids),
       tag_id: node.tag_id,
     }];
@@ -201,7 +203,10 @@ export async function loadTaxonomyCatalog(
       description: node.description,
       facet_key: node.facet_key,
       is_assignable: node.is_assignable,
-      label: taxonomyDisplayLabelFromId(node.tag_id),
+      label:
+        typeof node.label === "string" && node.label.trim()
+          ? node.label.trim()
+          : node.tag_id,
       parent_tag_ids: parentsByTagId.get(node.tag_id) ?? [],
       tag_id: node.tag_id,
     }));

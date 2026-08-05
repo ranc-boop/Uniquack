@@ -50,6 +50,11 @@ export type GeminiNativeUsage = {
   totalTokens: number | null;
 };
 
+export type GeminiNativeSerializedRequest = {
+  serializedRequestBytes: number;
+  sourceInputBytes: number;
+};
+
 type GeminiNativePdfInput = {
   apiKey: string;
   baseUrl?: string;
@@ -59,6 +64,9 @@ type GeminiNativePdfInput = {
   fileName: string;
   maxPollAttempts?: number;
   model: string;
+  onSerializedRequest?: (
+    request: GeminiNativeSerializedRequest,
+  ) => Promise<void> | void;
   outputContract?: GeminiOutputContract;
   pdfBytes: Uint8Array | Buffer;
   pollDelayMs?: number;
@@ -71,6 +79,9 @@ type GeminiNativeTextTestInput = {
   executionObserver?: AIProviderExecutionObserver;
   fetchImpl?: GeminiFetch;
   model: string;
+  onSerializedRequest?: (
+    request: GeminiNativeSerializedRequest,
+  ) => Promise<void> | void;
   operation?: AIProviderErrorOperation;
   outputContract?: GeminiOutputContract;
   prompt?: string;
@@ -322,15 +333,16 @@ async function uploadGeminiFile({
   fetchImpl: GeminiFetch;
   pdfBytes: Uint8Array | Buffer;
 }) {
+  const startBody = JSON.stringify({
+    file: {
+      display_name: displayName,
+    },
+  });
   executionObserver?.recordNetworkRequest("file_upload_start");
   const startResponse = await fetchImpl(
     `${geminiApiBaseUrl(baseUrl)}/upload/v1beta/files`,
     {
-      body: JSON.stringify({
-        file: {
-          display_name: displayName,
-        },
-      }),
+      body: startBody,
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
@@ -380,7 +392,11 @@ async function uploadGeminiFile({
     throw new Error("Gemini Native file upload response did not include a file reference.");
   }
 
-  return file;
+  return {
+    file,
+    serializedRequestBytes:
+      Buffer.byteLength(startBody, "utf8") + pdfBytes.byteLength,
+  };
 }
 
 async function waitForGeminiFile({
@@ -487,6 +503,7 @@ async function generateContent({
   fetchImpl,
   parts,
   model,
+  onSerializedRequest,
   outputContract,
 }: {
   apiKey: string;
@@ -496,6 +513,7 @@ async function generateContent({
   fetchImpl: GeminiFetch;
   parts: Record<string, unknown>[];
   model: string;
+  onSerializedRequest?: (serializedRequestBytes: number) => Promise<void> | void;
   outputContract?: GeminiOutputContract;
 }) {
   const requestBody = {
@@ -509,6 +527,10 @@ async function generateContent({
       outputContract,
     }),
   };
+  const serializedRequestBody = JSON.stringify(requestBody);
+  await onSerializedRequest?.(
+    Buffer.byteLength(serializedRequestBody, "utf8"),
+  );
 
   await writeAIImportLLMDebugLog({
     context: {
@@ -534,7 +556,7 @@ async function generateContent({
     response = await fetchImpl(
       generateContentUrl(model, baseUrl),
       {
-        body: JSON.stringify(requestBody),
+        body: serializedRequestBody,
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": apiKey,
@@ -637,7 +659,11 @@ async function generateContent({
       }
     : null;
 
-  return { text, usage };
+  return {
+    serializedRequestBytes: Buffer.byteLength(serializedRequestBody, "utf8"),
+    text,
+    usage,
+  };
 }
 
 export async function generateWithGeminiNativePdf({
@@ -649,11 +675,16 @@ export async function generateWithGeminiNativePdf({
   fileName,
   maxPollAttempts = DEFAULT_MAX_POLL_ATTEMPTS,
   model,
+  onSerializedRequest,
   outputContract,
   pdfBytes,
   pollDelayMs = DEFAULT_POLL_DELAY_MS,
   prompt,
-}: GeminiNativePdfInput): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
+}: GeminiNativePdfInput): Promise<{
+  serializedRequestBytes: number;
+  text: string;
+  usage: GeminiNativeUsage | null;
+}> {
   assertGeminiConfig({ apiKey, model, pdfBytes });
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
   const inputBytes =
@@ -666,7 +697,7 @@ export async function generateWithGeminiNativePdf({
   let uploadedFile: GeminiFile | null = null;
 
   try {
-    uploadedFile = await uploadGeminiFile({
+    const upload = await uploadGeminiFile({
       apiKey,
       baseUrl,
       displayName: safeDisplayName(fileName),
@@ -674,6 +705,7 @@ export async function generateWithGeminiNativePdf({
       fetchImpl,
       pdfBytes,
     });
+    uploadedFile = upload.file;
     const activeFile = await waitForGeminiFile({
       apiKey,
       baseUrl,
@@ -695,6 +727,13 @@ export async function generateWithGeminiNativePdf({
       executionObserver,
       fetchImpl,
       model,
+      onSerializedRequest: async (generateRequestBytes) => {
+        await onSerializedRequest?.({
+          serializedRequestBytes:
+            upload.serializedRequestBytes + generateRequestBytes,
+          sourceInputBytes: pdfBytes.byteLength,
+        });
+      },
       outputContract,
       parts: [
         { text: prompt },
@@ -750,12 +789,17 @@ export async function generateWithGeminiNativeText({
   fetchImpl = fetch,
   model,
   operation = "blueprint_generation",
+  onSerializedRequest,
   outputContract,
   prompt,
 }: GeminiNativeTextTestInput & {
   debugContext?: Record<string, unknown>;
   prompt: string;
-}): Promise<{ text: string; usage: GeminiNativeUsage | null }> {
+}): Promise<{
+  serializedRequestBytes: number;
+  text: string;
+  usage: GeminiNativeUsage | null;
+}> {
   assertGeminiTextConfig({ apiKey, model });
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
   executionObserver?.beforeInference(operation);
@@ -767,6 +811,12 @@ export async function generateWithGeminiNativeText({
     executionObserver,
     fetchImpl,
     model,
+    onSerializedRequest: async (serializedRequestBytes) => {
+      await onSerializedRequest?.({
+        serializedRequestBytes,
+        sourceInputBytes: 0,
+      });
+    },
     outputContract,
     parts: [{ text: prompt }],
   });

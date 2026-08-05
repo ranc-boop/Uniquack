@@ -94,10 +94,14 @@ assert(
 );
 
 assert(
-  chat.includes('originalPrompt ? "Original extraction instructions:"') &&
+  chat.includes("function semanticAttemptReason") &&
+    chat.includes("reserveAIPdfSourceRecovery") &&
+    chat.includes("reserveAIPdfStructuralRepair") &&
     chat.includes('lastError.kind === "zero_importable"') &&
+    chat.includes("buildGeminiRepairPrompt") &&
     chat.includes("generateWithGeminiNativeText") &&
     chat.includes("sourceIncluded") &&
+    chat.includes('semanticReason !== "STRUCTURAL_REPAIR_SOURCE_FREE"') &&
     chat.includes("zero importable questions") &&
     !chat.includes("Response preview:") &&
     !chat.includes("Provider response:") &&
@@ -147,7 +151,9 @@ assert(
 const singlePass = functionBody(service, "processAIPdfSinglePass");
 assert(
   singlePass.includes("providerRetryMaxAttempts") &&
-    singlePass.includes("policy:"),
+    singlePass.includes("callAIPdfExtractionProvider") &&
+    chat.includes("async function runAIPdfProviderTransport") &&
+    chat.includes("policy: providerRetryMaxAttempts"),
   "single-pass PDF extraction must honor the worker-provided retry ceiling",
 );
 

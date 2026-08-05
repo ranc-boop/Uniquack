@@ -2,9 +2,10 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import type { GeminiNativeUsage } from "@/lib/ai-providers/gemini-native";
 import type { AiPdfInputStrategy } from "@/lib/ai-providers/adapters";
 import type { AIProviderErrorCode } from "@/lib/ai-providers/errors";
+import type { GeminiNativeUsage } from "@/lib/ai-providers/gemini-native";
+import type { AIPdfProviderAttemptReason } from "@/lib/ai-providers/ai-pdf-attempt-state";
 
 export const AI_PDF_PARSING_BASELINE_ANCHOR =
   "f1ce7bcb791604468693ea945401cfb157e64d97";
@@ -12,17 +13,13 @@ export const AI_PDF_PARSING_BASELINE_VERSION =
   "ai-pdf-parsing/f1ce7bc-baseline-v1";
 export const AI_PDF_PARSING_TREATMENT_VERSION =
   "ai-pdf-parsing/provider-neutral-v2";
-export const AI_PDF_QUALITY_OBSERVATORY_VERSION = 1;
-export const AI_PDF_ATTEMPT_REASON_VERSION = 1;
+export const AI_PDF_QUALITY_OBSERVATORY_VERSION = 2;
+export const AI_PDF_ATTEMPT_REASON_VERSION = 2;
+export const AI_PDF_CONTEXT_ACCOUNTING_VERSION = 2;
 
 export type AIPdfAttemptReason =
-  | "initial_extraction"
-  | "transport_retry"
-  | "fallback_initial"
-  | "fallback_transport_retry"
-  | "schema_repair"
-  | "application_repair"
-  | "source_recovery";
+  | AIPdfProviderAttemptReason
+  | "CHECKPOINT_REPLAY_ZERO_INFERENCE";
 
 export type AIPdfAttemptFailureCategory =
   | "application_schema"
@@ -39,17 +36,28 @@ export type AIPdfCandidateMetrics = {
   warningCount: number;
 };
 
-type AIPdfAttemptInput = {
+export type AIPdfSerializedRequestContext = {
+  extractionInstructionBytes: number;
+  previousResponseBytes: number;
+  semanticRecoveryInstructionBytes: number;
+  serializedRequestBytes: number;
+  sourceInputBytes: number;
+  structuralRepairInstructionBytes: number;
+  structuredSchemaBytes: number;
+  systemInstructionBytes: number;
+  taxonomyCandidateBytes: number;
+};
+
+export type AIPdfAttemptInput = {
+  context: AIPdfSerializedRequestContext;
   extractionAttempt: number;
+  inferenceOrdinal: number;
   inputStrategy: AiPdfInputStrategy;
-  promptBytes: number;
-  reason: AIPdfAttemptReason;
-  repairContextBytes: number;
+  reason: Exclude<AIPdfAttemptReason, "CHECKPOINT_REPLAY_ZERO_INFERENCE">;
   routeCandidateIndex: number;
-  schemaBytes: number;
-  sourceBytes: number;
+  scope: string;
   sourceIncluded: boolean;
-  taxonomyCatalogBytes: number;
+  sourceRepeated: boolean;
   transportAttempt: number;
 };
 
@@ -61,9 +69,10 @@ type AIPdfAttemptCompletion = {
 };
 
 type AIPdfAttemptRecord = AIPdfAttemptInput & {
+  componentOverflowBytes: number;
   durationMs: number;
   failureCategory: AIPdfAttemptFailureCategory | null;
-  inputBytesEstimated: number;
+  fixedTransportOverheadBytes: number;
   outcome: "failed" | "success";
   output: AIPdfCandidateMetrics | null;
   usage: GeminiNativeUsage | null;
@@ -81,39 +90,72 @@ export type AIPdfVisualQualityMetrics = {
   validCrops: number;
 };
 
+export type AIPdfContractEvidence = {
+  candidateCount: number;
+  parsingContractSha256: string;
+  taxonomySnapshotSha256: string;
+  taxonomySnapshotVersion: number;
+};
+
 export type AIPdfQualitySnapshot = {
   attemptHistogram: Record<AIPdfAttemptReason, number>;
   attemptReasonVersion: typeof AI_PDF_ATTEMPT_REASON_VERSION;
   attempts: AIPdfAttemptRecord[];
   attemptsPerJob: number;
   checkpointReplayCount: number;
+  contextAccountingVersion: typeof AI_PDF_CONTEXT_ACCOUNTING_VERSION;
   contextComposition: {
-    contextOverheadRatio: number | null;
-    estimatedInputBytes: number;
-    estimatedInputTokens: number;
-    promptBytes: number;
-    repairContextBytes: number;
+    componentBytes: {
+      extractionInstructions: number;
+      fixedTransportOverhead: number;
+      previousResponse: number;
+      semanticRecoveryInstructions: number;
+      sourceInput: number;
+      structuralRepairInstructions: number;
+      structuredSchema: number;
+      systemInstructions: number;
+      taxonomyCandidates: number;
+    };
+    componentOverflowBytes: number;
+    nonSourceOverheadBytes: number;
+    providerReportedInputTokens: number | null;
+    providerReportedOutputTokens: number | null;
+    repairShare: number | null;
     repeatedContextRatio: number | null;
+    repeatedPreviousResponseBytes: number;
     repeatedSourceBytes: number;
-    schemaBytes: number;
+    schemaShare: number | null;
     sourceBytes: number;
-    taxonomyCatalogBytes: number;
+    sourceShare: number | null;
+    taxonomyShare: number | null;
+    totalSerializedRequestBytes: number;
   };
+  contractEvidence: AIPdfContractEvidence | null;
   firstAttemptSuccess: boolean | null;
   observatoryVersion: typeof AI_PDF_QUALITY_OBSERVATORY_VERSION;
   output: AIPdfCandidateMetrics & {
     duplicateCount: number;
     importableReviewDrafts: number;
-    unknownTaxonomyIdCount: number;
-    usefulOutputPerEstimatedInputToken: number | null;
     outputTokensPerValidDraft: number | null;
+    unknownTaxonomyIdCount: number;
+    usefulOutputPerProviderInputToken: number | null;
   };
   parsingContractVersion: typeof AI_PDF_PARSING_TREATMENT_VERSION;
   usage: GeminiNativeUsage;
   visualEvidence: AIPdfVisualQualityMetrics;
 };
 
-const MAX_ATTEMPT_RECORDS = 64;
+const MAX_ATTEMPT_RECORDS = 128;
+const ATTEMPT_REASONS: AIPdfAttemptReason[] = [
+  "FIRST_ATTEMPT",
+  "STRUCTURAL_REPAIR_SOURCE_FREE",
+  "SOURCE_BACKED_SEMANTIC_RECOVERY",
+  "PROVIDER_BUSY_RETRY",
+  "RATE_LIMIT_RETRY",
+  "NETWORK_RETRY",
+  "TIMEOUT_RETRY",
+  "CHECKPOINT_REPLAY_ZERO_INFERENCE",
+];
 
 function nonNegativeInteger(value: number | null | undefined) {
   return Number.isFinite(value)
@@ -134,6 +176,17 @@ function safeRatio(numerator: number, denominator: number) {
   return denominator > 0
     ? Number((numerator / denominator).toFixed(6))
     : null;
+}
+
+function contextComponentTotal(context: AIPdfSerializedRequestContext) {
+  return nonNegativeInteger(context.extractionInstructionBytes) +
+    nonNegativeInteger(context.previousResponseBytes) +
+    nonNegativeInteger(context.semanticRecoveryInstructionBytes) +
+    nonNegativeInteger(context.sourceInputBytes) +
+    nonNegativeInteger(context.structuralRepairInstructionBytes) +
+    nonNegativeInteger(context.structuredSchemaBytes) +
+    nonNegativeInteger(context.systemInstructionBytes) +
+    nonNegativeInteger(context.taxonomyCandidateBytes);
 }
 
 export function fingerprintAIPdfContractComponent(value: string | Buffer) {
@@ -170,6 +223,7 @@ export function createAIPdfQualityObservatory() {
   const attempts: AIPdfAttemptRecord[] = [];
   const histogram = new Map<AIPdfAttemptReason, number>();
   let checkpointReplayCount = 0;
+  let contractEvidence: AIPdfContractEvidence | null = null;
   let persistence = {
     duplicateCount: 0,
     importableReviewDrafts: 0,
@@ -197,15 +251,20 @@ export function createAIPdfQualityObservatory() {
         if (completed) return;
         completed = true;
         if (attempts.length >= MAX_ATTEMPT_RECORDS) return;
+        const serializedRequestBytes = nonNegativeInteger(
+          input.context.serializedRequestBytes,
+        );
+        const componentTotal = contextComponentTotal(input.context);
 
         attempts.push({
           ...input,
+          componentOverflowBytes: Math.max(0, componentTotal - serializedRequestBytes),
           durationMs: Math.max(0, Date.now() - startedAt),
           failureCategory: completion.failureCategory ?? null,
-          inputBytesEstimated:
-            nonNegativeInteger(input.sourceBytes) +
-            nonNegativeInteger(input.promptBytes) +
-            nonNegativeInteger(input.schemaBytes),
+          fixedTransportOverheadBytes: Math.max(
+            0,
+            serializedRequestBytes - componentTotal,
+          ),
           outcome: completion.outcome,
           output: completion.output ?? null,
           usage: completion.usage ?? null,
@@ -215,30 +274,54 @@ export function createAIPdfQualityObservatory() {
   }
 
   function snapshot(): AIPdfQualitySnapshot {
-    const promptBytes = attempts.reduce(
-      (total, attempt) => total + attempt.promptBytes,
+    const component = {
+      extractionInstructions: attempts.reduce(
+        (total, attempt) => total + attempt.context.extractionInstructionBytes,
+        0,
+      ),
+      fixedTransportOverhead: attempts.reduce(
+        (total, attempt) => total + attempt.fixedTransportOverheadBytes,
+        0,
+      ),
+      previousResponse: attempts.reduce(
+        (total, attempt) => total + attempt.context.previousResponseBytes,
+        0,
+      ),
+      semanticRecoveryInstructions: attempts.reduce(
+        (total, attempt) => total + attempt.context.semanticRecoveryInstructionBytes,
+        0,
+      ),
+      sourceInput: attempts.reduce(
+        (total, attempt) => total + attempt.context.sourceInputBytes,
+        0,
+      ),
+      structuralRepairInstructions: attempts.reduce(
+        (total, attempt) => total + attempt.context.structuralRepairInstructionBytes,
+        0,
+      ),
+      structuredSchema: attempts.reduce(
+        (total, attempt) => total + attempt.context.structuredSchemaBytes,
+        0,
+      ),
+      systemInstructions: attempts.reduce(
+        (total, attempt) => total + attempt.context.systemInstructionBytes,
+        0,
+      ),
+      taxonomyCandidates: attempts.reduce(
+        (total, attempt) => total + attempt.context.taxonomyCandidateBytes,
+        0,
+      ),
+    };
+    const totalSerializedRequestBytes = attempts.reduce(
+      (total, attempt) => total + attempt.context.serializedRequestBytes,
       0,
     );
-    const repairContextBytes = attempts.reduce(
-      (total, attempt) => total + attempt.repairContextBytes,
+    const repeatedSourceBytes = attempts.reduce(
+      (total, attempt) =>
+        total + (attempt.sourceRepeated ? attempt.context.sourceInputBytes : 0),
       0,
     );
-    const schemaBytes = attempts.reduce(
-      (total, attempt) => total + attempt.schemaBytes,
-      0,
-    );
-    const sourceBytes = attempts.reduce(
-      (total, attempt) => total + attempt.sourceBytes,
-      0,
-    );
-    const repeatedSourceBytes = attempts
-      .slice(1)
-      .reduce((total, attempt) => total + attempt.sourceBytes, 0);
-    const taxonomyCatalogBytes = attempts.reduce(
-      (total, attempt) => total + attempt.taxonomyCatalogBytes,
-      0,
-    );
-    const estimatedInputBytes = sourceBytes + promptBytes + schemaBytes;
+    const repeatedPreviousResponseBytes = component.previousResponse;
     const outputMetrics = attempts.reduce<AIPdfCandidateMetrics>(
       (total, attempt) => ({
         applicationValidCandidates:
@@ -280,42 +363,51 @@ export function createAIPdfQualityObservatory() {
         attempts.map((attempt) => attempt.usage?.totalTokens),
       ),
     };
-    const estimatedInputTokens = Math.ceil(estimatedInputBytes / 4);
+    const repairBytes = component.previousResponse +
+      component.structuralRepairInstructions +
+      component.semanticRecoveryInstructions;
 
     return {
       attemptHistogram: Object.fromEntries(
-        [
-          "initial_extraction",
-          "transport_retry",
-          "fallback_initial",
-          "fallback_transport_retry",
-          "schema_repair",
-          "application_repair",
-          "source_recovery",
-        ].map((reason) => [reason, histogram.get(reason as AIPdfAttemptReason) ?? 0]),
+        ATTEMPT_REASONS.map((reason) => [reason, histogram.get(reason) ?? 0]),
       ) as Record<AIPdfAttemptReason, number>,
       attemptReasonVersion: AI_PDF_ATTEMPT_REASON_VERSION,
       attempts: attempts.slice(),
       attemptsPerJob: attempts.length,
       checkpointReplayCount,
+      contextAccountingVersion: AI_PDF_CONTEXT_ACCOUNTING_VERSION,
       contextComposition: {
-        contextOverheadRatio: safeRatio(
-          promptBytes + schemaBytes,
-          estimatedInputBytes,
+        componentBytes: component,
+        componentOverflowBytes: attempts.reduce(
+          (total, attempt) => total + attempt.componentOverflowBytes,
+          0,
         ),
-        estimatedInputBytes,
-        estimatedInputTokens,
-        promptBytes,
-        repairContextBytes,
+        nonSourceOverheadBytes: Math.max(
+          0,
+          totalSerializedRequestBytes - component.sourceInput,
+        ),
+        providerReportedInputTokens: usage.inputTokens,
+        providerReportedOutputTokens: usage.outputTokens,
+        repairShare: safeRatio(repairBytes, totalSerializedRequestBytes),
         repeatedContextRatio: safeRatio(
-          repeatedSourceBytes + repairContextBytes,
-          estimatedInputBytes,
+          repeatedSourceBytes + repeatedPreviousResponseBytes,
+          totalSerializedRequestBytes,
         ),
+        repeatedPreviousResponseBytes,
         repeatedSourceBytes,
-        schemaBytes,
-        sourceBytes,
-        taxonomyCatalogBytes,
+        schemaShare: safeRatio(
+          component.structuredSchema,
+          totalSerializedRequestBytes,
+        ),
+        sourceBytes: component.sourceInput,
+        sourceShare: safeRatio(component.sourceInput, totalSerializedRequestBytes),
+        taxonomyShare: safeRatio(
+          component.taxonomyCandidates,
+          totalSerializedRequestBytes,
+        ),
+        totalSerializedRequestBytes,
       },
+      contractEvidence,
       firstAttemptSuccess: attempts.length
         ? attempts[0]?.outcome === "success"
         : null,
@@ -327,10 +419,13 @@ export function createAIPdfQualityObservatory() {
           usage.outputTokens ?? 0,
           persistence.importableReviewDrafts,
         ),
-        usefulOutputPerEstimatedInputToken: safeRatio(
-          persistence.importableReviewDrafts,
-          estimatedInputTokens,
-        ),
+        usefulOutputPerProviderInputToken:
+          usage.inputTokens == null
+            ? null
+            : safeRatio(
+                persistence.importableReviewDrafts,
+                usage.inputTokens,
+              ),
       },
       parsingContractVersion: AI_PDF_PARSING_TREATMENT_VERSION,
       usage,
@@ -342,6 +437,13 @@ export function createAIPdfQualityObservatory() {
     beginAttempt,
     recordCheckpointReplay() {
       checkpointReplayCount += 1;
+      histogram.set(
+        "CHECKPOINT_REPLAY_ZERO_INFERENCE",
+        (histogram.get("CHECKPOINT_REPLAY_ZERO_INFERENCE") ?? 0) + 1,
+      );
+    },
+    recordContractEvidence(next: AIPdfContractEvidence) {
+      contractEvidence = { ...next };
     },
     recordPersistence(next: Partial<typeof persistence>) {
       persistence = {

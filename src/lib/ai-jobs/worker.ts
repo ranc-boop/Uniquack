@@ -17,6 +17,7 @@ import {
   runWithAIProviderRoute,
   type AIProviderRoutingOperationKind,
 } from "@/lib/ai-providers/routing";
+import { createAIPdfProviderAttemptLedger } from "@/lib/ai-providers/ai-pdf-attempt-state";
 import { queueRetryDelayMs } from "@/lib/ai-jobs/policy";
 import {
   PDF50_PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT,
@@ -47,6 +48,7 @@ import {
   AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
   recordAIPdfCoverageRecoveryFailure,
   recordAIPdfProviderFailure,
+  type AIPdfCoverageRecoveryProcessInput,
   type AIPdfProcessInput,
 } from "@/lib/ai-pdf-import/service";
 import { AI_IMPORT_SOURCES_BUCKET } from "@/lib/ai-pdf-import/constants";
@@ -506,6 +508,9 @@ async function runAIPdfExtractJob({
     .download(sourceAsset.object_path);
   if (downloadError) throw new Error(downloadError.message);
   const qualityObserver = createAIPdfQualityObservatory();
+  const providerAttemptLedger =
+    providerResultCheckpoint?.attemptLedger ??
+    createAIPdfProviderAttemptLedger();
 
   const input: AIPdfProcessInput = {
     batchId: job.resource_id,
@@ -525,7 +530,18 @@ async function runAIPdfExtractJob({
     persistenceFence: persistenceFenceForJob(fencedJob),
     persistenceLineageKey: buildPdfPersistenceLineageKey({ job, sourceAssetId }),
     providerExecutionObserver: providerExecution,
+    providerAttemptLedger,
     qualityObserver,
+    onProviderAttemptCheckpoint: async (checkpoint) => {
+      const payload = checkpoint as unknown as Record<string, unknown>;
+      await checkpointAIProviderJobProviderResult({
+        job: fencedJob,
+        outputContractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
+        payload,
+        payloadSha256: checkpointPayloadSha256(payload),
+        supabase,
+      });
+    },
     onProviderResultCheckpoint: async (checkpoint) => {
       const payload = checkpoint as unknown as Record<string, unknown>;
       await checkpointAIProviderJobProviderResult({
@@ -696,6 +712,16 @@ async function runAIPdfCoverageRecoveryJob({
     stage: "provider_request_started",
     supabase,
   });
+  const storedProviderCheckpoint = await loadAIProviderJobProviderResult({
+    job: fencedJob,
+    supabase,
+  });
+  const providerResultCheckpoint = storedProviderCheckpoint
+    ? parseAIPdfProviderResultCheckpoint(storedProviderCheckpoint.payload)
+    : undefined;
+  if (storedProviderCheckpoint && !providerResultCheckpoint) {
+    throw new Error("The protected recovery attempt checkpoint is incompatible and cannot be replayed.");
+  }
   const { data: sourceBlob, error: downloadError } = await supabase.storage
     .from(AI_IMPORT_SOURCES_BUCKET)
     .download(sourceAsset.object_path);
@@ -704,7 +730,10 @@ async function runAIPdfCoverageRecoveryJob({
   const usageSamples: NonNullable<AIOperationExecutionMetadata["usageSamples"]> = [];
   const providerStartedAt = Date.now();
   const qualityObserver = createAIPdfQualityObservatory();
-  const input = {
+  const providerAttemptLedger =
+    providerResultCheckpoint?.attemptLedger ??
+    createAIPdfProviderAttemptLedger();
+  const input: AIPdfCoverageRecoveryProcessInput = {
     batchId: job.resource_id,
     fileName: sourceAsset.original_filename,
     jobId: job.id,
@@ -713,6 +742,8 @@ async function runAIPdfCoverageRecoveryJob({
     profileId: job.created_by,
     providerProfileId,
     providerExecutionObserver: providerExecution,
+    providerAttemptLedger,
+    providerResultCheckpoint: providerResultCheckpoint ?? undefined,
     qualityObserver,
     recoveryPlanHash,
     recoveryWindowIds,
@@ -723,6 +754,16 @@ async function runAIPdfCoverageRecoveryJob({
     supabase,
     targetBankId: job.target_bank_id,
     onProviderUsage: (usage: any) => usageSamples.push(usage),
+  };
+  input.onProviderAttemptCheckpoint = async (checkpoint) => {
+    const payload = checkpoint as unknown as Record<string, unknown>;
+    await checkpointAIProviderJobProviderResult({
+      job: fencedJob,
+      outputContractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
+      payload,
+      payloadSha256: checkpointPayloadSha256(payload),
+      supabase,
+    });
   };
 
   try {

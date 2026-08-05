@@ -1,58 +1,78 @@
 {
   "catalog": [
-    {"tagId": "math.curriculum.ap.ap_calculus_ab.differentiation_rules", "facet": "curriculum", "activeAssignable": true},
-    {"tagId": "math.concept.calculus.derivatives.chain_rule", "facet": "concept", "activeAssignable": true},
-    {"tagId": "math.concept.calculus.derivatives", "facet": "concept", "activeAssignable": true},
-    {"tagId": "math.concept.functions.linear.slope", "facet": "concept", "activeAssignable": true},
-    {"tagId": "math.method.calculus_procedure.use_chain_rule", "facet": "method", "activeAssignable": true},
-    {"tagId": "math.method.graph_reasoning.use_slope", "facet": "method", "activeAssignable": true},
-    {"tagId": "math.task.explain.explain_reasoning", "facet": "task", "activeAssignable": true},
-    {"tagId": "math.task.explain.interpret_result", "facet": "task", "activeAssignable": true},
-    {"tagId": "math.form.symbolic.composite_expression", "facet": "form", "activeAssignable": true},
-    {"tagId": "math.form.visual.coordinate_graph", "facet": "form", "activeAssignable": true},
-    {"tagId": "math.form.table.data_table", "facet": "form", "activeAssignable": true},
-    {"tagId": "math.form.verbal.word_problem", "facet": "form", "activeAssignable": true},
-    {"tagId": "math.concept.retired", "facet": "concept", "activeAssignable": false}
+    {"tagId":"math.curriculum.ap.ap_calculus_ab.differentiation_rules","facet":"curriculum","active":true,"assignable":true,"effectiveLeaf":true,"aliases":["AP Calc AB differentiation"]},
+    {"tagId":"math.curriculum.ap.ap_calculus_ab.integration","facet":"curriculum","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.concept.calculus.derivatives","facet":"concept","active":true,"assignable":true,"effectiveLeaf":false,"aliases":[]},
+    {"tagId":"math.concept.calculus.derivatives.chain_rule","facet":"concept","active":true,"assignable":true,"effectiveLeaf":true,"aliases":["chain rule"]},
+    {"tagId":"math.concept.functions.linear.slope","facet":"concept","active":true,"assignable":true,"effectiveLeaf":true,"aliases":["rate of change"]},
+    {"tagId":"math.concept.retired","facet":"concept","active":false,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.method.calculus_procedure.use_chain_rule","facet":"method","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.method.graph_reasoning.use_slope","facet":"method","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.task.explain.explain_reasoning","facet":"task","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.task.explain.interpret_result","facet":"task","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.task.compute.evaluate_expression","facet":"task","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.form.symbolic.composite_expression","facet":"form","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.form.visual.coordinate_graph","facet":"form","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.form.table.data_table","facet":"form","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]},
+    {"tagId":"math.form.verbal.word_problem","facet":"form","active":true,"assignable":true,"effectiveLeaf":true,"aliases":[]}
   ],
   "broadParents": {
     "math.concept.calculus.derivatives.chain_rule": ["math.concept.calculus.derivatives"]
   },
   "cases": [
     {
-      "id": "clear-chain-rule",
-      "categories": ["all_facets", "exact_leaf"],
-      "expected": ["math.curriculum.ap.ap_calculus_ab.differentiation_rules", "math.concept.calculus.derivatives.chain_rule", "math.method.calculus_procedure.use_chain_rule", "math.task.explain.explain_reasoning", "math.form.symbolic.composite_expression"],
-      "candidate": ["math.curriculum.ap.ap_calculus_ab.differentiation_rules", "math.concept.calculus.derivatives.chain_rule", "math.method.calculus_procedure.use_chain_rule", "math.task.explain.explain_reasoning", "math.form.symbolic.composite_expression"]
+      "id":"clear-chain-rule",
+      "categories":["all_facets","exact_leaf","alias"],
+      "candidatePool":["math.curriculum.ap.ap_calculus_ab.differentiation_rules","math.curriculum.ap.ap_calculus_ab.integration","math.concept.calculus.derivatives","math.concept.calculus.derivatives.chain_rule","math.concept.functions.linear.slope","math.concept.retired","math.method.calculus_procedure.use_chain_rule","math.task.explain.explain_reasoning","math.task.compute.evaluate_expression","math.form.symbolic.composite_expression","math.form.visual.coordinate_graph","math.unknown.invented"],
+      "goldExpectedIds":["math.curriculum.ap.ap_calculus_ab.differentiation_rules","math.concept.calculus.derivatives.chain_rule","math.method.calculus_procedure.use_chain_rule","math.task.explain.explain_reasoning","math.form.symbolic.composite_expression"],
+      "prediction":["math.curriculum.ap.ap_calculus_ab.differentiation_rules","math.concept.calculus.derivatives.chain_rule","math.method.calculus_procedure.use_chain_rule","math.task.explain.explain_reasoning","math.form.symbolic.composite_expression"],
+      "distractorIds":["math.curriculum.ap.ap_calculus_ab.integration","math.concept.calculus.derivatives","math.concept.functions.linear.slope","math.concept.retired","math.task.compute.evaluate_expression","math.form.visual.coordinate_graph","math.unknown.invented"],
+      "acceptableAbstention":false
     },
     {
-      "id": "ambiguous-curriculum-abstains",
-      "categories": ["ambiguous", "abstention"],
-      "expected": ["math.concept.calculus.derivatives.chain_rule", "math.method.calculus_procedure.use_chain_rule", "math.form.symbolic.composite_expression"],
-      "candidate": ["math.concept.calculus.derivatives.chain_rule", "math.method.calculus_procedure.use_chain_rule", "math.form.symbolic.composite_expression"]
+      "id":"ambiguous-curriculum-abstains",
+      "categories":["ambiguous","partial_abstention"],
+      "candidatePool":["math.curriculum.ap.ap_calculus_ab.differentiation_rules","math.curriculum.ap.ap_calculus_ab.integration","math.concept.calculus.derivatives","math.concept.calculus.derivatives.chain_rule","math.method.calculus_procedure.use_chain_rule","math.form.symbolic.composite_expression","math.concept.retired","math.unknown.invented"],
+      "goldExpectedIds":["math.concept.calculus.derivatives.chain_rule","math.method.calculus_procedure.use_chain_rule","math.form.symbolic.composite_expression"],
+      "prediction":["math.concept.calculus.derivatives.chain_rule","math.method.calculus_procedure.use_chain_rule","math.form.symbolic.composite_expression"],
+      "distractorIds":["math.curriculum.ap.ap_calculus_ab.differentiation_rules","math.curriculum.ap.ap_calculus_ab.integration","math.concept.calculus.derivatives","math.concept.retired","math.unknown.invented"],
+      "acceptableAbstention":false
     },
     {
-      "id": "graph-slope-reasoning",
-      "categories": ["visual", "four_facets"],
-      "expected": ["math.concept.functions.linear.slope", "math.method.graph_reasoning.use_slope", "math.task.explain.interpret_result", "math.form.visual.coordinate_graph"],
-      "candidate": ["math.concept.functions.linear.slope", "math.method.graph_reasoning.use_slope", "math.task.explain.interpret_result", "math.form.visual.coordinate_graph"]
+      "id":"graph-slope-reasoning",
+      "categories":["visual","four_facets"],
+      "candidatePool":["math.concept.functions.linear.slope","math.concept.calculus.derivatives.chain_rule","math.method.graph_reasoning.use_slope","math.method.calculus_procedure.use_chain_rule","math.task.explain.interpret_result","math.task.compute.evaluate_expression","math.form.visual.coordinate_graph","math.form.table.data_table","math.concept.retired","math.unknown.invented"],
+      "goldExpectedIds":["math.concept.functions.linear.slope","math.method.graph_reasoning.use_slope","math.task.explain.interpret_result","math.form.visual.coordinate_graph"],
+      "prediction":["math.concept.functions.linear.slope","math.method.graph_reasoning.use_slope","math.task.explain.interpret_result","math.form.visual.coordinate_graph"],
+      "distractorIds":["math.concept.calculus.derivatives.chain_rule","math.method.calculus_procedure.use_chain_rule","math.task.compute.evaluate_expression","math.form.table.data_table","math.concept.retired","math.unknown.invented"],
+      "acceptableAbstention":false
     },
     {
-      "id": "insufficient-taxonomy-evidence",
-      "categories": ["unknown", "full_abstention"],
-      "expected": [],
-      "candidate": []
+      "id":"insufficient-taxonomy-evidence",
+      "categories":["unknown","full_abstention"],
+      "candidatePool":["math.concept.calculus.derivatives.chain_rule","math.concept.functions.linear.slope","math.method.calculus_procedure.use_chain_rule","math.form.verbal.word_problem","math.concept.retired","math.unknown.invented"],
+      "goldExpectedIds":[],
+      "prediction":[],
+      "distractorIds":["math.concept.calculus.derivatives.chain_rule","math.concept.functions.linear.slope","math.method.calculus_procedure.use_chain_rule","math.form.verbal.word_problem","math.concept.retired","math.unknown.invented"],
+      "acceptableAbstention":true
     },
     {
-      "id": "data-table-form-only",
-      "categories": ["partial_evidence", "form_only"],
-      "expected": ["math.form.table.data_table"],
-      "candidate": ["math.form.table.data_table"]
+      "id":"data-table-form-only",
+      "categories":["partial_evidence","form_only"],
+      "candidatePool":["math.form.table.data_table","math.form.visual.coordinate_graph","math.form.verbal.word_problem","math.concept.functions.linear.slope","math.task.compute.evaluate_expression","math.concept.retired","math.unknown.invented"],
+      "goldExpectedIds":["math.form.table.data_table"],
+      "prediction":["math.form.table.data_table"],
+      "distractorIds":["math.form.visual.coordinate_graph","math.form.verbal.word_problem","math.concept.functions.linear.slope","math.task.compute.evaluate_expression","math.concept.retired","math.unknown.invented"],
+      "acceptableAbstention":false
     },
     {
-      "id": "word-problem-form-only",
-      "categories": ["partial_evidence", "form_only"],
-      "expected": ["math.form.verbal.word_problem"],
-      "candidate": ["math.form.verbal.word_problem"]
+      "id":"word-problem-form-only",
+      "categories":["partial_evidence","form_only"],
+      "candidatePool":["math.form.verbal.word_problem","math.form.table.data_table","math.form.visual.coordinate_graph","math.concept.functions.linear.slope","math.task.explain.interpret_result","math.concept.retired","math.unknown.invented"],
+      "goldExpectedIds":["math.form.verbal.word_problem"],
+      "prediction":["math.form.verbal.word_problem"],
+      "distractorIds":["math.form.table.data_table","math.form.visual.coordinate_graph","math.concept.functions.linear.slope","math.task.explain.interpret_result","math.concept.retired","math.unknown.invented"],
+      "acceptableAbstention":false
     }
   ]
 }

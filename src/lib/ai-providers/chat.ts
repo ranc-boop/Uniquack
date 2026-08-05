@@ -9,6 +9,7 @@ import type {
   AIPdfAttemptReason,
   AIPdfCandidateMetrics,
   AIPdfQualityObservatory,
+  AIPdfSerializedRequestContext,
 } from "@/lib/ai-pdf-import/quality-observatory";
 import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
 import {
@@ -39,6 +40,19 @@ import {
   type GeminiNativeUsage,
 } from "@/lib/ai-providers/gemini-native";
 import { GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT } from "@/lib/ai-providers/gemini-structured-output";
+import {
+  aiPdfProviderRetryReason,
+  createAIPdfProviderAttemptLedger,
+  recordAIPdfProviderInference,
+  reserveAIPdfSourceRecovery,
+  reserveAIPdfStructuralRepair,
+  type AIPdfProviderAttemptLedger,
+  type AIPdfProviderAttemptReason,
+} from "@/lib/ai-providers/ai-pdf-attempt-state";
+import {
+  runWithAIProviderRetry,
+  type AIProviderRetryEvent,
+} from "@/lib/ai-providers/resilience";
 
 type ProviderProfileForUse = {
   apiKey: string;
@@ -51,6 +65,8 @@ type ProviderProfileForUse = {
 };
 
 type ProviderInput = {
+  attemptLedger?: AIPdfProviderAttemptLedger;
+  attemptScope?: string;
   debugContext?: Record<string, unknown>;
   executionObserver?: AIProviderExecutionObserver;
   fileName: string;
@@ -59,11 +75,20 @@ type ProviderInput = {
   pdfBase64: string;
   pdfBytes: Buffer;
   prompt: string;
+  promptContext: Pick<
+    AIPdfSerializedRequestContext,
+    | "extractionInstructionBytes"
+    | "structuredSchemaBytes"
+    | "taxonomyCandidateBytes"
+  >;
   profile: ProviderProfileForUse;
+  providerRetryMaxAttempts?: number;
   qualityObserver?: AIPdfQualityObservatory;
   routeCandidateIndex?: number;
-  taxonomyCatalogBytes?: number;
-  transportAttempt?: number;
+  onAttemptLedgerCheckpoint?: (
+    ledger: AIPdfProviderAttemptLedger,
+  ) => Promise<void>;
+  onProviderRetry?: (event: AIProviderRetryEvent) => Promise<void> | void;
   onProviderUsage?: (usage: GeminiNativeUsage | null) => void;
 };
 
@@ -252,40 +277,30 @@ function parseExtractionContent(contentText: string) {
   }
 }
 
-function attemptReason({
-  extractionAttempt,
+function semanticAttemptReason({
+  attempt,
+  attemptLedger,
+  attemptScope,
   lastError,
-  routeCandidateIndex,
-  transportAttempt,
 }: {
-  extractionAttempt: number;
+  attempt: number;
+  attemptLedger: AIPdfProviderAttemptLedger;
+  attemptScope: string;
   lastError: unknown;
-  routeCandidateIndex: number;
-  transportAttempt: number;
-}): AIPdfAttemptReason {
-  if (extractionAttempt > 1) {
-    if (
-      lastError instanceof AIPdfExtractionValidationError &&
-      lastError.kind === "non_json"
-    ) {
-      return "schema_repair";
-    }
-    if (
-      lastError instanceof AIPdfExtractionValidationError &&
-      lastError.kind === "zero_importable"
-    ) {
-      return "source_recovery";
-    }
-    return "application_repair";
+}): AIPdfProviderAttemptReason | null {
+  if (attempt === 1) return "FIRST_ATTEMPT";
+  if (!(lastError instanceof AIPdfExtractionValidationError)) return null;
+  if (lastError.kind === "zero_importable") {
+    return reserveAIPdfSourceRecovery(attemptLedger, attemptScope)
+      ? "SOURCE_BACKED_SEMANTIC_RECOVERY"
+      : null;
   }
-
-  if (routeCandidateIndex > 0) {
-    return transportAttempt > 1
-      ? "fallback_transport_retry"
-      : "fallback_initial";
+  if (lastError.kind === "non_json" || lastError.kind === "application_schema") {
+    return reserveAIPdfStructuralRepair(attemptLedger, attemptScope)
+      ? "STRUCTURAL_REPAIR_SOURCE_FREE"
+      : null;
   }
-
-  return transportAttempt > 1 ? "transport_retry" : "initial_extraction";
+  return null;
 }
 
 function attemptFailureCategory(error: unknown): AIPdfAttemptFailureCategory {
@@ -297,6 +312,115 @@ function attemptFailureCategory(error: unknown): AIPdfAttemptFailureCategory {
     error,
     operation: "ai_pdf_extraction",
   }).code;
+}
+
+async function runAIPdfProviderTransport<T>({
+  attemptLedger,
+  attemptScope,
+  context,
+  extractionAttempt,
+  inputStrategy,
+  onAttemptLedgerCheckpoint,
+  onProviderRetry,
+  providerRetryMaxAttempts,
+  qualityObserver,
+  routeCandidateIndex,
+  run,
+  semanticReason,
+  sourceIncluded,
+}: {
+  attemptLedger: AIPdfProviderAttemptLedger;
+  attemptScope: string;
+  context: Omit<
+    AIPdfSerializedRequestContext,
+    "serializedRequestBytes" | "sourceInputBytes"
+  >;
+  extractionAttempt: number;
+  inputStrategy: AiPdfInputStrategy;
+  onAttemptLedgerCheckpoint?: (
+    ledger: AIPdfProviderAttemptLedger,
+  ) => Promise<void>;
+  onProviderRetry?: (event: AIProviderRetryEvent) => Promise<void> | void;
+  providerRetryMaxAttempts?: number;
+  qualityObserver?: AIPdfQualityObservatory;
+  routeCandidateIndex: number;
+  run: (callbacks: {
+    onSerializedRequest: (
+      serializedRequestBytes: number,
+      sourceInputBytes: number,
+    ) => Promise<void>;
+  }) => Promise<T>;
+  semanticReason: AIPdfProviderAttemptReason;
+  sourceIncluded: boolean;
+}) {
+  let nextRetryReason: AIPdfProviderAttemptReason = semanticReason;
+  const result = await runWithAIProviderRetry({
+    onRetry: async (event) => {
+      nextRetryReason = aiPdfProviderRetryReason(event.error.safeErrorCode);
+      await onProviderRetry?.(event);
+    },
+    operation: "ai_pdf_extraction",
+    policy: providerRetryMaxAttempts
+      ? { maxAttempts: providerRetryMaxAttempts }
+      : undefined,
+    run: async ({ attemptCount }) => {
+      let recorder: ReturnType<NonNullable<typeof qualityObserver>["beginAttempt"]> | undefined;
+      const primaryReason = attemptCount === 1
+        ? semanticReason
+        : nextRetryReason;
+
+      try {
+        const value = await run({
+          onSerializedRequest: async (
+            serializedRequestBytes,
+            sourceInputBytes,
+          ) => {
+            if (recorder) {
+              throw new Error("AI PDF Provider transport serialized more than one inference request.");
+            }
+            const sourceRepeated =
+              sourceIncluded && attemptLedger.sourceInferenceCount > 0;
+            const inferenceOrdinal = recordAIPdfProviderInference(
+              attemptLedger,
+              {
+                primaryReason,
+                routeCandidateIndex,
+                scope: attemptScope,
+                sourceIncluded,
+                transportAttempt: attemptCount,
+              },
+            );
+            await onAttemptLedgerCheckpoint?.(attemptLedger);
+            recorder = qualityObserver?.beginAttempt({
+              context: {
+                ...context,
+                serializedRequestBytes,
+                sourceInputBytes,
+              },
+              extractionAttempt,
+              inferenceOrdinal,
+              inputStrategy,
+              reason: primaryReason,
+              routeCandidateIndex,
+              scope: attemptScope,
+              sourceIncluded,
+              sourceRepeated,
+              transportAttempt: attemptCount,
+            });
+          },
+        });
+        return { recorder, value };
+      } catch (error) {
+        recorder?.complete({
+          failureCategory: attemptFailureCategory(error),
+          outcome: "failed",
+        });
+        throw error;
+      }
+    },
+  });
+
+  return result.value;
 }
 
 async function readProviderJsonWithLimit<T>(response: Response, maxBytes: number) {
@@ -315,11 +439,13 @@ async function requestChatCompletion({
   debugContext,
   executionObserver,
   messages,
+  onSerializedRequest,
   profile,
 }: {
   debugContext?: Record<string, unknown>;
   executionObserver?: AIProviderExecutionObserver;
   messages: ChatMessage[];
+  onSerializedRequest?: (serializedRequestBytes: number) => Promise<void> | void;
   profile: ProviderProfileForUse;
 }) {
   let response: Response;
@@ -332,6 +458,10 @@ async function requestChatCompletion({
     response_format: { type: "json_object" },
     temperature: 0.1,
   };
+  const serializedRequestBody = JSON.stringify(requestBody);
+  await onSerializedRequest?.(
+    Buffer.byteLength(serializedRequestBody, "utf8"),
+  );
 
   await writeAIImportLLMDebugLog({
     context: {
@@ -358,7 +488,7 @@ async function requestChatCompletion({
     executionObserver?.beforeInference("ai_pdf_extraction");
     executionObserver?.recordNetworkRequest("inference");
     response = await fetch(endpoint(profile.base_url), {
-      body: JSON.stringify(requestBody),
+      body: serializedRequestBody,
       headers: {
         Authorization: `Bearer ${profile.apiKey}`,
         "Content-Type": "application/json",
@@ -449,6 +579,7 @@ async function requestChatCompletion({
   }
 
   return {
+    serializedRequestBytes: Buffer.byteLength(serializedRequestBody, "utf8"),
     text: contentText,
     usage: payload.usage
       ? {
@@ -461,22 +592,19 @@ async function requestChatCompletion({
   };
 }
 
-function buildRepairPrompt({
+function buildRepairInstruction({
   error,
-  originalPrompt,
-  previousResponse,
+  sourceBacked,
 }: {
   error: unknown;
-  originalPrompt?: string;
-  previousResponse: string;
+  sourceBacked: boolean;
 }) {
   return [
-    originalPrompt ? "Original extraction instructions:" : "",
-    originalPrompt ?? "",
-    "",
     "Your previous answer could not be imported because it did not match the required JSON schema.",
     "Keep the same extracted questions, tags, page references, solutions, and asset placeholder intent from your previous answer.",
-    "Repair the JSON structure and field values. If the previous answer contained zero importable questions but the PDF contains an actual question, extract that question now using the original instructions.",
+    sourceBacked
+      ? "The authoritative source is attached again for one bounded semantic recovery. Re-read it using the original extraction instructions and return only genuinely supported questions."
+      : "Repair only the JSON structure and field values. The source is intentionally not resent for this structural repair.",
     "When the PDF contains an actual question, return at least one question with a non-empty title and a non-empty content_html value containing the complete visible prompt.",
     "Do not return blank strings for required fields. Do not replace a visible source question with a heading, warning, or empty placeholder.",
     "",
@@ -486,11 +614,28 @@ function buildRepairPrompt({
     "Validation error:",
     schemaIssueSummary(error),
     "",
-    "Previous answer:",
-    repairContext(previousResponse),
-    "",
     "Return ONLY corrected JSON. Do not wrap in markdown.",
   ].join("\n");
+}
+
+function buildGeminiRepairPrompt({
+  originalPrompt,
+  previousResponse,
+  repairInstruction,
+  sourceBacked,
+}: {
+  originalPrompt: string;
+  previousResponse: string;
+  repairInstruction: string;
+  sourceBacked: boolean;
+}) {
+  return [
+    sourceBacked ? originalPrompt : "",
+    repairInstruction,
+    "",
+    "Previous answer:",
+    repairContext(previousResponse),
+  ].filter(Boolean).join("\n");
 }
 
 function mockExtraction(): AIPdfExtraction {
@@ -598,6 +743,8 @@ export async function testAIProviderConnection(
 }
 
 export async function callAIPdfExtractionProvider({
+  attemptLedger = createAIPdfProviderAttemptLedger(),
+  attemptScope = "single",
   debugContext,
   executionObserver,
   fileName,
@@ -607,10 +754,12 @@ export async function callAIPdfExtractionProvider({
   pdfBytes,
   profile,
   prompt,
+  promptContext,
+  providerRetryMaxAttempts,
   qualityObserver,
   routeCandidateIndex = 0,
-  taxonomyCatalogBytes = 0,
-  transportAttempt = 1,
+  onAttemptLedgerCheckpoint,
+  onProviderRetry,
   onProviderUsage,
 }: ProviderInput) {
   if (isMockAIProviderUrl(profile.base_url)) {
@@ -650,55 +799,73 @@ export async function callAIPdfExtractionProvider({
     );
 
     for (let attempt = 1; attempt <= MAX_EXTRACTION_ATTEMPTS; attempt += 1) {
-      const repairPrompt =
-        attempt === 1
-          ? prompt
-          : buildRepairPrompt({
-              error: lastError,
-              originalPrompt:
-                lastError instanceof AIPdfExtractionValidationError &&
-                lastError.kind === "zero_importable"
-                  ? prompt
-                  : undefined,
-              previousResponse,
-            });
-      const sourceIncluded =
-        attempt === 1 ||
-        (lastError instanceof AIPdfExtractionValidationError &&
-          lastError.kind === "zero_importable");
-      const recorder = qualityObserver?.beginAttempt({
-        extractionAttempt: attempt,
-        inputStrategy,
-        promptBytes: Buffer.byteLength(repairPrompt, "utf8"),
-        reason: attemptReason({
-          extractionAttempt: attempt,
-          lastError,
-          routeCandidateIndex,
-          transportAttempt,
-        }),
-        repairContextBytes:
-          attempt > 1
-            ? Buffer.byteLength(repairContext(previousResponse), "utf8")
-            : 0,
-        routeCandidateIndex,
-        schemaBytes,
-        sourceBytes: sourceIncluded ? pdfBytes.byteLength : 0,
-        sourceIncluded,
-        taxonomyCatalogBytes: attempt === 1 ? taxonomyCatalogBytes : 0,
-        transportAttempt,
+      const semanticReason = semanticAttemptReason({
+        attempt,
+        attemptLedger,
+        attemptScope,
+        lastError,
       });
-      let nativeResponse: Awaited<ReturnType<typeof generateWithGeminiNativePdf>>;
+      if (!semanticReason) break;
+      const sourceIncluded =
+        semanticReason !== "STRUCTURAL_REPAIR_SOURCE_FREE";
+      const repairInstruction = attempt === 1
+        ? ""
+        : buildRepairInstruction({
+            error: lastError,
+            sourceBacked:
+              semanticReason === "SOURCE_BACKED_SEMANTIC_RECOVERY",
+          });
+      const repairPrompt = attempt === 1
+        ? prompt
+        : buildGeminiRepairPrompt({
+            originalPrompt: prompt,
+            previousResponse,
+            repairInstruction,
+            sourceBacked:
+              semanticReason === "SOURCE_BACKED_SEMANTIC_RECOVERY",
+          });
+      let transport: {
+        recorder: ReturnType<NonNullable<typeof qualityObserver>["beginAttempt"]> | undefined;
+        value: Awaited<ReturnType<typeof generateWithGeminiNativePdf>>;
+      };
       try {
-        nativeResponse = sourceIncluded
-          ? await generateWithGeminiNativePdf({
+        transport = await runAIPdfProviderTransport({
+          attemptLedger,
+          attemptScope,
+          context: {
+            extractionInstructionBytes: sourceIncluded
+              ? promptContext.extractionInstructionBytes
+              : 0,
+            previousResponseBytes: attempt > 1
+              ? Buffer.byteLength(repairContext(previousResponse), "utf8")
+              : 0,
+            semanticRecoveryInstructionBytes:
+              semanticReason === "SOURCE_BACKED_SEMANTIC_RECOVERY"
+                ? Buffer.byteLength(repairInstruction, "utf8")
+                : 0,
+            structuralRepairInstructionBytes:
+              semanticReason === "STRUCTURAL_REPAIR_SOURCE_FREE"
+                ? Buffer.byteLength(repairInstruction, "utf8")
+                : 0,
+            structuredSchemaBytes:
+              (sourceIncluded ? promptContext.structuredSchemaBytes : 0) +
+              schemaBytes,
+            systemInstructionBytes: 0,
+            taxonomyCandidateBytes: sourceIncluded
+              ? promptContext.taxonomyCandidateBytes
+              : 0,
+          },
+          extractionAttempt: attempt,
+          inputStrategy,
+          onAttemptLedgerCheckpoint,
+          onProviderRetry,
+          providerRetryMaxAttempts,
+          qualityObserver,
+          routeCandidateIndex,
+          run: async ({ onSerializedRequest }) => {
+            const common = {
               apiKey: profile.apiKey,
               baseUrl: profile.base_url,
-              executionObserver,
-              fileName,
-              model: profile.model,
-              outputContract: GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
-              pdfBytes,
-              prompt: repairPrompt,
               debugContext: {
                 ...debugContext,
                 attempt,
@@ -707,30 +874,36 @@ export async function callAIPdfExtractionProvider({
                 repairAttempt: attempt > 1,
                 sourceIncluded,
               },
-            })
-          : await generateWithGeminiNativeText({
-              apiKey: profile.apiKey,
-              baseUrl: profile.base_url,
               executionObserver,
               model: profile.model,
-              operation: "ai_pdf_extraction",
+              onSerializedRequest: (request: {
+                serializedRequestBytes: number;
+                sourceInputBytes: number;
+              }) => onSerializedRequest(
+                request.serializedRequestBytes,
+                request.sourceInputBytes,
+              ),
               outputContract: GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
               prompt: repairPrompt,
-              debugContext: {
-                ...debugContext,
-                attempt,
-                inputStrategy,
-                repairAttempt: true,
-                sourceIncluded,
-              },
-            });
-      } catch (error) {
-        recorder?.complete({
-          failureCategory: attemptFailureCategory(error),
-          outcome: "failed",
+            };
+            return sourceIncluded
+              ? generateWithGeminiNativePdf({
+                  ...common,
+                  fileName,
+                  pdfBytes,
+                })
+              : generateWithGeminiNativeText({
+                  ...common,
+                  operation: "ai_pdf_extraction",
+                });
+          },
+          semanticReason,
+          sourceIncluded,
         });
+      } catch (error) {
         preservePriorValidationError({ error, lastError });
       }
+      const nativeResponse = transport.value;
       onProviderUsage?.(nativeResponse.usage);
       const contentText = nativeResponse.text;
       await writeAIImportLLMDebugLog({
@@ -754,7 +927,7 @@ export async function callAIPdfExtractionProvider({
 
       try {
         const { extraction, output } = parseExtractionContent(contentText);
-        recorder?.complete({
+        transport.recorder?.complete({
           outcome: "success",
           output,
           usage: nativeResponse.usage,
@@ -769,7 +942,7 @@ export async function callAIPdfExtractionProvider({
 
         return extraction;
       } catch (error) {
-        recorder?.complete({
+        transport.recorder?.complete({
           failureCategory: attemptFailureCategory(error),
           outcome: "failed",
           usage: nativeResponse.usage,
@@ -828,18 +1001,22 @@ export async function callAIPdfExtractionProvider({
   let usedRepair = false;
 
   for (let attempt = 1; attempt <= MAX_EXTRACTION_ATTEMPTS; attempt += 1) {
+    const semanticReason = semanticAttemptReason({
+      attempt,
+      attemptLedger,
+      attemptScope,
+      lastError,
+    });
+    if (!semanticReason) break;
     const sourceIncluded =
-      attempt === 1 ||
-      (lastError instanceof AIPdfExtractionValidationError &&
-        lastError.kind === "zero_importable");
-    const repairPrompt =
-      attempt === 1
-        ? prompt
-        : buildRepairPrompt({
-            error: lastError,
-            originalPrompt: sourceIncluded ? prompt : undefined,
-            previousResponse,
-          });
+      semanticReason !== "STRUCTURAL_REPAIR_SOURCE_FREE";
+    const repairInstruction = attempt === 1
+      ? ""
+      : buildRepairInstruction({
+          error: lastError,
+          sourceBacked:
+            semanticReason === "SOURCE_BACKED_SEMANTIC_RECOVERY",
+        });
     const messages: ChatMessage[] =
       attempt === 1
         ? initialMessages
@@ -850,53 +1027,74 @@ export async function callAIPdfExtractionProvider({
               role: "assistant" as const,
             },
             {
-              content: repairPrompt,
+              content: repairInstruction,
               role: "user" as const,
             },
           ];
-    const recorder = qualityObserver?.beginAttempt({
-      extractionAttempt: attempt,
-      inputStrategy,
-      promptBytes: Buffer.byteLength(repairPrompt, "utf8"),
-      reason: attemptReason({
-        extractionAttempt: attempt,
-        lastError,
-        routeCandidateIndex,
-        transportAttempt,
-      }),
-      repairContextBytes:
-        attempt > 1
-          ? Buffer.byteLength(repairContext(previousResponse), "utf8")
-          : 0,
-      routeCandidateIndex,
-      schemaBytes: 0,
-      sourceBytes: sourceIncluded ? pdfBytes.byteLength : 0,
-      sourceIncluded,
-      taxonomyCatalogBytes: attempt === 1 ? taxonomyCatalogBytes : 0,
-      transportAttempt,
-    });
-    let response: Awaited<ReturnType<typeof requestChatCompletion>>;
+    let transport: {
+      recorder: ReturnType<NonNullable<typeof qualityObserver>["beginAttempt"]> | undefined;
+      value: Awaited<ReturnType<typeof requestChatCompletion>>;
+    };
     try {
-      response = await requestChatCompletion({
-        debugContext: {
-          ...debugContext,
-          attempt,
-          fileName,
-          inputStrategy,
-          repairAttempt: attempt > 1,
-          sourceIncluded,
+      transport = await runAIPdfProviderTransport({
+        attemptLedger,
+        attemptScope,
+        context: {
+          extractionInstructionBytes: sourceIncluded
+            ? promptContext.extractionInstructionBytes
+            : 0,
+          previousResponseBytes: attempt > 1
+            ? Buffer.byteLength(repairContext(previousResponse), "utf8")
+            : 0,
+          semanticRecoveryInstructionBytes:
+            semanticReason === "SOURCE_BACKED_SEMANTIC_RECOVERY"
+              ? Buffer.byteLength(repairInstruction, "utf8")
+              : 0,
+          structuralRepairInstructionBytes:
+            semanticReason === "STRUCTURAL_REPAIR_SOURCE_FREE"
+              ? Buffer.byteLength(repairInstruction, "utf8")
+              : 0,
+          structuredSchemaBytes: sourceIncluded
+            ? promptContext.structuredSchemaBytes
+            : 0,
+          systemInstructionBytes: 0,
+          taxonomyCandidateBytes: sourceIncluded
+            ? promptContext.taxonomyCandidateBytes
+            : 0,
         },
-        executionObserver,
-        messages,
-        profile,
+        extractionAttempt: attempt,
+        inputStrategy,
+        onAttemptLedgerCheckpoint,
+        onProviderRetry,
+        providerRetryMaxAttempts,
+        qualityObserver,
+        routeCandidateIndex,
+        run: ({ onSerializedRequest }) =>
+          requestChatCompletion({
+            debugContext: {
+              ...debugContext,
+              attempt,
+              fileName,
+              inputStrategy,
+              repairAttempt: attempt > 1,
+              sourceIncluded,
+            },
+            executionObserver,
+            messages,
+            onSerializedRequest: (serializedRequestBytes) =>
+              onSerializedRequest(
+                serializedRequestBytes,
+                sourceIncluded ? pdfBytes.byteLength : 0,
+              ),
+            profile,
+          }),
+        semanticReason,
+        sourceIncluded,
       });
     } catch (error) {
-      recorder?.complete({
-        failureCategory: attemptFailureCategory(error),
-        outcome: "failed",
-      });
       preservePriorValidationError({ error, lastError });
     }
+    const response = transport.value;
     onProviderUsage?.(response.usage);
     const contentText = response.text;
     previousResponse = contentText;
@@ -920,7 +1118,7 @@ export async function callAIPdfExtractionProvider({
 
     try {
       const { extraction, output } = parseExtractionContent(contentText);
-      recorder?.complete({
+      transport.recorder?.complete({
         outcome: "success",
         output,
         usage: response.usage,
@@ -935,7 +1133,7 @@ export async function callAIPdfExtractionProvider({
 
       return extraction;
     } catch (error) {
-      recorder?.complete({
+      transport.recorder?.complete({
         failureCategory: attemptFailureCategory(error),
         outcome: "failed",
         usage: response.usage,

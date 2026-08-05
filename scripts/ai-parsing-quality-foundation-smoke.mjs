@@ -10,19 +10,23 @@ async function read(relativePath) {
 }
 
 const [
+  attemptState,
   chat,
   previewComponent,
   previewData,
   previewRoute,
   reviewValidation,
+  runtimeTaxonomy,
   schema,
   service,
 ] = await Promise.all([
+  read("src/lib/ai-providers/ai-pdf-attempt-state.ts"),
   read("src/lib/ai-providers/chat.ts"),
   read("src/components/teacher/teacher-question-preview.tsx"),
   read("src/lib/teacher-focus-preview.ts"),
   read("src/app/api/teacher/banks/[bankId]/previews/route.ts"),
   read("src/lib/questions/review-publish-validation.ts"),
+  read("src/lib/tags/runtime-taxonomy-snapshot.ts"),
   read("src/lib/ai-pdf-import/schema.ts"),
   read("src/lib/ai-pdf-import/service.ts"),
 ]);
@@ -60,6 +64,30 @@ assert(
     chat.includes("sourceIncluded") &&
     chat.includes("qualityObserver"),
   "reason-specific structural repair must avoid repeating the full PDF and emit safe attempt evidence",
+);
+assert(
+  attemptState.includes('"SOURCE_BACKED_SEMANTIC_RECOVERY"') &&
+    attemptState.includes('"CHECKPOINT_REPLAY_ZERO_INFERENCE"') &&
+    attemptState.includes("sourceRecoveryUsed") &&
+    attemptState.includes("sourceInferenceCount"),
+  "one durable attempt ledger must distinguish recovery, transport retry, and zero-inference replay",
+);
+assert(
+  runtimeTaxonomy.includes("buildRuntimeTaxonomySnapshot") &&
+    runtimeTaxonomy.includes("effectiveLeaf") &&
+    runtimeTaxonomy.includes("cycleNodeIds") &&
+    runtimeTaxonomy.includes("orphanNodeIds") &&
+    runtimeTaxonomy.includes("crossFacetNodeIds") &&
+    runtimeTaxonomy.includes("canonicalJson") &&
+    runtimeTaxonomy.includes('createHash("sha256")'),
+  "runtime taxonomy eligibility must be graph-derived, fail closed, and fingerprinted",
+);
+assert(
+  service.includes("buildRuntimeTaxonomySnapshot") &&
+    service.includes("serializeRuntimeTaxonomyCandidates(snapshot.candidates)") &&
+    service.includes("taxonomySnapshotSha256") &&
+    service.includes("parsingContractSha256"),
+  "reachable parsing must bind runtime candidates and their snapshot fingerprint",
 );
 assert(
   service.includes("qualityObservatory") &&

@@ -405,8 +405,9 @@ The stacked quality branch freezes this evidence at baseline
 safe Provider error categories, deterministic Golden evaluation, exact
 five-facet taxonomy abstention, text-only structural repair, and a hardened
 private visual-evidence boundary. Fourteen parsing, six taxonomy, and thirteen
-visual fixtures pass with zero hard-gate failures; ten independent mutations
-are rejected.
+visual fixtures pass with zero hard-gate failures; fifteen independent
+mutations, including a real-route cross-organization asset denial, are
+rejected.
 
 This is source and local deterministic evidence only. No additional paid
 Provider run, hosted write, or Storage operation was performed. The historical

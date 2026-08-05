@@ -785,6 +785,13 @@ let extractionResponses = [];
 const extractionPrompts = [];
 const extractionOutputContracts = [];
 const extractionSourceModes = [];
+const attemptState = await loadTypeScriptModule(
+  "src/lib/ai-providers/ai-pdf-attempt-state.ts",
+);
+const resilience = await loadTypeScriptModule(
+  "src/lib/ai-providers/resilience.ts",
+  { "@/lib/ai-providers/errors": errors },
+);
 const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
   "@/lib/ai-pdf-import/schema": {
     normalizeAIPdfExtractionResponse(value) {
@@ -798,31 +805,45 @@ const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
     AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE: "unsupported",
     inferAiProviderMode: () => "gemini_native",
   },
+  "@/lib/ai-providers/ai-pdf-attempt-state": attemptState,
   "@/lib/ai-providers/gemini-native": {
     async generateWithGeminiNativePdf({
       executionObserver,
+      onSerializedRequest,
       outputContract,
+      pdfBytes,
       prompt,
     }) {
+      await onSerializedRequest?.({
+        serializedRequestBytes: Buffer.byteLength(prompt, "utf8") + pdfBytes.byteLength + 64,
+        sourceInputBytes: pdfBytes.byteLength,
+      });
       executionObserver?.beforeInference("ai_pdf_extraction");
       extractionPrompts.push(prompt);
       extractionOutputContracts.push(outputContract);
       extractionSourceModes.push("pdf");
       const response = extractionResponses.shift();
       if (!response) throw new Error("Missing fake Provider response.");
+      if (response instanceof Error) throw response;
       return { text: response, usage: null };
     },
     async generateWithGeminiNativeText({
       executionObserver,
+      onSerializedRequest,
       outputContract,
       prompt,
     }) {
+      await onSerializedRequest?.({
+        serializedRequestBytes: Buffer.byteLength(prompt, "utf8") + 64,
+        sourceInputBytes: 0,
+      });
       executionObserver?.beforeInference("ai_pdf_extraction");
       extractionPrompts.push(prompt);
       extractionOutputContracts.push(outputContract);
       extractionSourceModes.push("text");
       const response = extractionResponses.shift();
       if (!response) throw new Error("Missing fake Provider response.");
+      if (response instanceof Error) throw response;
       return { text: response, usage: null };
     },
     testGeminiNativeTextConnection: async () => ({ message: "ok", ok: true }),
@@ -843,14 +864,22 @@ const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
     assertSafeAIProviderBaseUrl: async () => undefined,
   },
   "@/lib/ai-providers/response-limits": responseLimits,
+  "@/lib/ai-providers/resilience": resilience,
 });
 
 const originalExtractionPrompt = "ORIGINAL PDF EXTRACTION CONTRACT";
+const extractionPromptContext = {
+  extractionInstructionBytes: Buffer.byteLength(originalExtractionPrompt, "utf8"),
+  structuredSchemaBytes: 0,
+  taxonomyCandidateBytes: 0,
+};
+const sourceRecoveryLedger = attemptState.createAIPdfProviderAttemptLedger();
 extractionResponses = [
   '{"questions":[],"warnings":[]}',
   '{"questions":[{"title":"Synthetic question","content_html":"<p>What is 2 + 3?</p>"}],"warnings":[]}',
 ];
 const repairedExtraction = await chat.callAIPdfExtractionProvider({
+  attemptLedger: sourceRecoveryLedger,
   fileName: "synthetic.pdf",
   inputStrategy: "gemini_native_pdf",
   pageImageDataUrls: [],
@@ -866,6 +895,7 @@ const repairedExtraction = await chat.callAIPdfExtractionProvider({
     supports_vision_images: false,
   },
   prompt: originalExtractionPrompt,
+  promptContext: extractionPromptContext,
 });
 assert.equal(repairedExtraction.questions.length, 1);
 assert.equal(extractionPrompts.length, 2);
@@ -875,15 +905,60 @@ assert.deepEqual(extractionOutputContracts, [
 ]);
 assert.deepEqual(extractionSourceModes, ["pdf", "pdf"]);
 assert.equal(extractionPrompts[0], originalExtractionPrompt);
-assert(extractionPrompts[1].includes("Original extraction instructions:"));
 assert(extractionPrompts[1].includes(originalExtractionPrompt));
 assert(extractionPrompts[1].includes("zero importable questions"));
 assert(extractionPrompts[1].includes("non-empty title"));
 assert(extractionPrompts[1].includes("non-empty content_html"));
 assert(extractionPrompts[1].includes("Do not return blank strings"));
 assert(extractionPrompts[1].includes('{"questions":[],"warnings":[]}'));
+assert.equal(
+  extractionPrompts[1].split('{"questions":[],"warnings":[]}').length - 1,
+  1,
+  "the previous Provider response must appear exactly once in semantic recovery",
+);
 assert(extractionPrompts[1].includes('"question_number"'));
 assert(!extractionPrompts[1].includes('"question_code"'));
+assert.deepEqual(
+  sourceRecoveryLedger.attempts.map((entry) => entry.primaryReason),
+  ["FIRST_ATTEMPT", "SOURCE_BACKED_SEMANTIC_RECOVERY"],
+);
+assert.equal(sourceRecoveryLedger.sourceRecoveryUsed, true);
+assert.equal(sourceRecoveryLedger.sourceInferenceCount, 2);
+
+const reenteredRecoveryLedger = attemptState.parseAIPdfProviderAttemptLedger(
+  JSON.parse(JSON.stringify(sourceRecoveryLedger)),
+);
+assert(reenteredRecoveryLedger);
+extractionResponses = ['{"questions":[],"warnings":[]}'];
+await assert.rejects(
+  chat.callAIPdfExtractionProvider({
+    attemptLedger: reenteredRecoveryLedger,
+    fileName: "synthetic.pdf",
+    inputStrategy: "gemini_native_pdf",
+    pageImageDataUrls: [],
+    pdfBase64: "",
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    profile: {
+      apiKey: "synthetic-test-key",
+      base_url: "https://provider.invalid",
+      model: "synthetic-model",
+      name: "Synthetic Provider",
+      provider: "gemini_native",
+      supports_pdf_input: true,
+      supports_vision_images: false,
+    },
+    prompt: originalExtractionPrompt,
+    promptContext: extractionPromptContext,
+  }),
+  /at least one item|zero importable questions/,
+);
+assert.equal(
+  reenteredRecoveryLedger.attempts.filter(
+    (entry) => entry.primaryReason === "SOURCE_BACKED_SEMANTIC_RECOVERY",
+  ).length,
+  1,
+  "durable re-entry must not reset the one-per-job source recovery reservation",
+);
 
 const priorPromptCount = extractionPrompts.length;
 extractionResponses = ['{"questions":[],"warnings":[]}'];
@@ -908,6 +983,7 @@ await assert.rejects(
       supports_vision_images: false,
     },
     prompt: originalExtractionPrompt,
+    promptContext: extractionPromptContext,
   }),
   (error) => {
     assert(!(error instanceof errors.AIProviderError));
@@ -921,9 +997,11 @@ assert.equal(oneAttemptBudget.snapshot().providerInferenceAttempts, 1);
 
 const rawResponseMarker = "PRIVATE_PROVIDER_OUTPUT_MUST_NOT_ESCAPE";
 const sourceModeCountBeforeMalformedResponse = extractionSourceModes.length;
+const structuralRepairLedger = attemptState.createAIPdfProviderAttemptLedger();
 extractionResponses = [rawResponseMarker, rawResponseMarker];
 await assert.rejects(
   chat.callAIPdfExtractionProvider({
+    attemptLedger: structuralRepairLedger,
     fileName: "synthetic.pdf",
     inputStrategy: "gemini_native_pdf",
     pageImageDataUrls: [],
@@ -939,6 +1017,7 @@ await assert.rejects(
       supports_vision_images: false,
     },
     prompt: originalExtractionPrompt,
+    promptContext: extractionPromptContext,
   }),
   (error) => {
     assert.equal(error.message, "AI provider returned non-JSON content.");
@@ -955,6 +1034,49 @@ assert.deepEqual(
   ["pdf", "text"],
   "structural repair must not re-upload the source PDF",
 );
+assert.deepEqual(
+  structuralRepairLedger.attempts.map((entry) => entry.primaryReason),
+  ["FIRST_ATTEMPT", "STRUCTURAL_REPAIR_SOURCE_FREE"],
+);
+assert.equal(structuralRepairLedger.sourceInferenceCount, 1);
+assert.equal(structuralRepairLedger.sourceRecoveryUsed, false);
+
+const transportRetryLedger = attemptState.createAIPdfProviderAttemptLedger();
+extractionResponses = [
+  new errors.AIProviderError({
+    code: "provider_busy",
+    operation: "ai_pdf_extraction",
+    retryAfterMs: 0,
+    retryable: true,
+  }),
+  '{"questions":[{"title":"Synthetic question","content_html":"<p>What is 2 + 3?</p>"}],"warnings":[]}',
+];
+const transportRetriedExtraction = await chat.callAIPdfExtractionProvider({
+  attemptLedger: transportRetryLedger,
+  fileName: "synthetic.pdf",
+  inputStrategy: "gemini_native_pdf",
+  pageImageDataUrls: [],
+  pdfBase64: "",
+  pdfBytes: Buffer.from("synthetic-pdf"),
+  profile: {
+    apiKey: "synthetic-test-key",
+    base_url: "https://provider.invalid",
+    model: "synthetic-model",
+    name: "Synthetic Provider",
+    provider: "gemini_native",
+    supports_pdf_input: true,
+    supports_vision_images: false,
+  },
+  prompt: originalExtractionPrompt,
+  promptContext: extractionPromptContext,
+  providerRetryMaxAttempts: 2,
+});
+assert.equal(transportRetriedExtraction.questions.length, 1);
+assert.deepEqual(
+  transportRetryLedger.attempts.map((entry) => entry.primaryReason),
+  ["FIRST_ATTEMPT", "PROVIDER_BUSY_RETRY"],
+);
+assert.equal(transportRetryLedger.sourceInferenceCount, 2);
 
 console.log(
   "PASS PDF50 Provider lifecycle runtime smoke: bounded inference / JSON PDF output / counted upload-poll-inference-cleanup / pre-inference upload failure / cleanup-failure evidence / concurrent denial / malformed-response cleanup / pre-transport exhaustion / stateless repair continuity / raw-output containment",

@@ -268,6 +268,7 @@ function functionSlice(source, startMarker, endMarker) {
 
 function sourceIntegrationChecks({
   blueprintGeneration,
+  chat,
   chunking,
   pdfService,
   teacherActions,
@@ -304,15 +305,27 @@ function sourceIntegrationChecks({
     "AI PDF failures must preserve safe retry state and target Bank lineage",
   );
   assert(
-    singlePass.includes("runWithAIProviderRetry") &&
-      singlePass.indexOf("runWithAIProviderRetry") < singlePass.indexOf("importBatchImportJson"),
-    "full-PDF provider retries must finish before durable import writes",
+    !singlePass.includes("runWithAIProviderRetry") &&
+      singlePass.includes("callAIPdfExtractionProvider") &&
+      singlePass.includes("onAttemptLedgerCheckpoint") &&
+      singlePass.indexOf("callAIPdfExtractionProvider") <
+        singlePass.indexOf("importBatchImportJson"),
+    "full-PDF extraction must use the shared attempt ledger and finish before durable import writes",
   );
   assert(
-    sequential.includes("runWithAIProviderRetry") &&
+    !sequential.includes("runWithAIProviderRetry") &&
+      sequential.includes("callAIPdfExtractionProvider") &&
+      sequential.includes("attemptScope: checkpointKey") &&
       sequential.includes("chunk,") &&
       pdfService.includes('status: "retrying"'),
-    "sequential extraction must retry only the active chunk",
+    "sequential extraction must bind the active chunk to the shared Provider attempt coordinator",
+  );
+  assert(
+    chat.includes("async function runAIPdfProviderTransport") &&
+      (chat.match(/runWithAIProviderRetry\(\{/g) ?? []).length === 1 &&
+      chat.includes("recordAIPdfProviderInference") &&
+      chat.includes("onAttemptLedgerCheckpoint"),
+    "AI PDF Provider transport must have one retry owner and checkpoint every counted inference",
   );
   assert(
     chunking.includes('"retrying"') && chunking.includes("safeErrorCode"),
@@ -350,6 +363,7 @@ await permanentAndNetworkCases();
 redactionCase();
 sourceIntegrationChecks({
   blueprintGeneration: await read("src/lib/teacher-blueprint-generation.ts"),
+  chat: await read("src/lib/ai-providers/chat.ts"),
   chunking: await read("src/lib/ai-pdf-import/chunking.ts"),
   pdfService: await read("src/lib/ai-pdf-import/service.ts"),
   teacherActions: await read("src/app/teacher/banks/actions.ts"),

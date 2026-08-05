@@ -1,11 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
+  "evidenceClass": "SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY",
   "rights": "Repository-authored synthetic educational fixtures; no private or third-party source material.",
   "baselineAnchor": "f1ce7bcb791604468693ea945401cfb157e64d97",
   "treatmentVersion": "ai-pdf-parsing/provider-neutral-v2",
   "taxonomyContract": {
     "facets": ["curriculum", "concept", "method", "task", "form"],
-    "candidateFormat": "active assignable exact tag_id values grouped by facet",
+    "candidateFormat": "candidate pool is independent from gold IDs and predictions; runtime accepts effective active assignable leaves only",
     "approvedFormat": "exact active assignable tag_id values; an empty facet is a valid abstention",
     "unknownBehavior": "reject",
     "ambiguousBehavior": "abstain"
@@ -13,6 +14,7 @@
   "files": {
     "parsing": "parsing-cases.json",
     "taxonomy": "taxonomy-cases.json",
+    "runState": "run-state-cases.json",
     "visual": "visual-cases.json"
   }
 }

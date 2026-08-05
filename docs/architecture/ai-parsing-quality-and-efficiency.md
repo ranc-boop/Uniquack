@@ -6,155 +6,195 @@ The canonical workflow remains:
 
 `private source -> AI Parsing -> Review Draft -> Bank -> Assignment -> Practice evidence`
 
-This change hardens the Parsing-to-Review boundary without changing the
-Provider setting, model, publication rules, or Assignment behavior. The
-immutable comparison baseline is commit
-`f1ce7bcb791604468693ea945401cfb157e64d97`. The treatment contract is
+This treatment hardens Parsing-to-Review without changing Provider settings,
+models, publication rules, Assignment behavior, migrations, dependencies, or
+environment contracts. The immutable baseline is
+`f1ce7bcb791604468693ea945401cfb157e64d97`; the treatment contract is
 `ai-pdf-parsing/provider-neutral-v2`.
 
-The source and local-evaluation foundation is ready. PDF50 remains partially
-qualified because the prior authorized scale run completed 23 of 50 jobs and
-the remaining paid budget cannot fund a fresh controlled 50-file run. Question
-visual attachment is source-ready, but a representative real image-rich PDF
-proof is still pending.
+No real Provider call or hosted mutation was performed. PDF50 remains only
+partially scale-qualified because the prior authorized run completed 23 of 50
+jobs. Real image-rich visual evidence and recent taxonomy provenance remain
+external gates.
 
 ## Immutable contract fingerprints
 
-`docs/architecture/ai-parsing-contract-fingerprints.json` binds 15 runtime and
-catalog files to Git blobs and canonical SHA-256 values at both baseline
-`f1ce7bcb791604468693ea945401cfb157e64d97` and treatment
-`59ac19df53f5ef4c02528b25aac7bbdf9a3472e0`. The set covers Provider prompt and
-repair policy, extraction/application schemas, preanalysis, boundary checks,
-taxonomy runtime and migration catalog, visual crop/persistence, Review Gate,
-observability, Gemini transport, and worker integration.
+`docs/architecture/ai-parsing-contract-fingerprints.json` binds the Provider
+prompt/repair path, application schema, runtime taxonomy snapshot and attempt
+ledger, preanalysis, boundary checks, taxonomy persistence, visual evidence,
+Review Gate, observatory, Gemini transport, worker integration, and the 0056
+source catalog to immutable Git blobs and SHA-256 values.
 
-The verifier requires baseline to be an ancestor of treatment, treatment to be
-an ancestor of the current head, each Git blob and hash to match, and current
-runtime bytes to remain identical to the treatment anchor. New files are
-explicitly recorded as absent at baseline; no rule trusts uncommitted current
-tree bytes.
+The verifier requires baseline ancestry, treatment ancestry, exact file order,
+exact anchor blobs, and current-byte equality. New treatment modules are
+explicitly absent at baseline. Uncommitted worktree bytes are never accepted as
+an anchor.
 
-## Current call graph
+## Runtime taxonomy path
 
-1. A Teacher submits a private Bank-scoped PDF.
-2. Durable `ai_provider_jobs` admission records the source and exact job.
-3. The worker resolves a server-owned Provider route and one bounded execution
-   budget.
-4. `processAIPdfImport` performs preanalysis, selective/full source selection,
-   Provider extraction, application validation, boundary/duplicate checks, and
-   Review Draft persistence.
-5. Visual proposals are validated against source pages, cropped
-   deterministically, stored in the private `question-assets` system, and
-   associated with the Draft.
-6. Approval remains blocked for missing required evidence or unresolved image
-   placeholders. AI never approves, publishes, or assigns.
+The production call graph is:
 
-Coverage Recovery uses the same Provider-neutral quality observer and visual
-attachment boundary on server-selected source windows. Blueprint behavior is
-unchanged.
+`loadTaxonomyCatalog -> buildRuntimeTaxonomySnapshot -> effective candidates`
+`-> serializeRuntimeTaxonomyCandidates -> fingerprintAIPdfParsingContract`
+`-> buildPrompt -> Provider serialization -> exact-ID validation`
+`-> pending_review persistence -> Teacher label resolution`
 
-## Versioned observability
+The runtime snapshot identity is therefore not a disconnected helper. Candidate
+retrieval, prompt construction, parsing contract evidence, quality output, and
+safe job evidence all carry the same snapshot SHA. The checked-in 0056 source
+reconstructs to
+`e557cdb3519f29601b74bc6551a207d19b3ba81ab439029e526fecad9d20211e`,
+but a future experiment must use the hash produced from its exact runtime
+catalog.
 
-`qualityObservatory` records bounded numeric and enum-only evidence:
+Effective candidate eligibility requires an active policy-assignable leaf,
+valid root reachability, an exact canonical facet, and no cycle, orphan,
+cross-facet edge, duplicate ID, or active child. The loader no longer trusts a
+stale `is_assignable=true` parent flag by itself.
 
-- parsing contract, observatory, and attempt-reason versions;
-- attempts per job and reason histogram;
-- initial, transport retry, fallback, structural/application repair, and
-  source-recovery reasons;
-- exact safe Provider error categories (for example rate limit, busy, timeout,
-  network, invalid request, and budget exhaustion) instead of one generic
-  Provider/network bucket;
-- source, prompt, schema, repair-context, and taxonomy byte composition;
-- repeated-source and context-overhead ratios;
-- raw/schema-valid/application-valid/rejected candidate counts;
-- persisted Drafts, duplicate count, unknown taxonomy IDs, and warnings;
-- available Provider token usage and output-per-valid-Draft ratios;
-- checkpoint replay count and visual proposal/crop/attachment/block/decorative-
-  suppression counts.
+## One attempt owner
 
-It does not record prompts, source text, filenames, private identifiers,
-credentials, raw Provider output, or question content. Existing aggregate
-`providerRetryAttempts` remains for compatibility but is explicitly legacy and
-must not be used to infer why an attempt occurred.
+Before this correction, extraction-level repair and outer Provider retry could
+re-enter one another. A source-backed semantic recovery could be multiplied by
+another retry layer, and durable re-entry could reconstruct fresh local state.
 
-## Retry treatment
+Now one versioned, serializable `AIPdfProviderAttemptLedger` follows the logical
+job through worker checkpoints and retry-wait re-entry. The only Provider retry
+owner is `runAIPdfProviderTransport`. Every inference gets exactly one primary
+reason:
 
-The baseline nested extraction, transport, route-fallback, and durable retry
-layers made an inference-count delta observable but not its cause. Therefore,
-the 25 extra attempts in the partial 50-file run are classified as
-`LEGACY_REASON_UNKNOWN`; they are not retrospectively assigned to schema,
-network, fallback, or semantic recovery.
+- `FIRST_ATTEMPT`
+- `STRUCTURAL_REPAIR_SOURCE_FREE`
+- `SOURCE_BACKED_SEMANTIC_RECOVERY`
+- `PROVIDER_BUSY_RETRY`
+- `RATE_LIMIT_RETRY`
+- `NETWORK_RETRY`
+- `TIMEOUT_RETRY`
 
-The treatment keeps validation strict and changes only context selection:
+Checkpoint reuse records `CHECKPOINT_REPLAY_ZERO_INFERENCE` separately and does
+not call a Provider. Structural repair is reserved once per extraction scope
+and sends no source. Source-backed semantic recovery is reserved once for the
+entire logical job, not once per chunk or worker invocation. A successful
+normalized output exits immediately. If the execution envelope is exhausted
+after a truthful validation failure, that preceding failure is preserved
+instead of being replaced by a budget symptom.
 
-- first extraction: source + prompt + schema + taxonomy;
-- non-JSON or structural/application repair: previous bounded response and
-  safe validation feedback, without uploading the PDF again;
-- zero-importable semantic recovery: source is included once because the
-  model may need source evidence;
-- transport retry and fallback: explicit reason and route position;
-- checkpoint replay: zero Provider inference and a separate replay counter.
+The ledger records bounded safe enums, ordinals, scope names, route position,
+source inclusion, and counters. It does not record prompts, source text,
+filenames, Provider responses, credentials, or private identifiers.
 
-The full taxonomy catalog remains in the first attempt. Candidate-subset
-retrieval is held until recall evidence exists. A separate taxonomy inference
-pass was rejected because it adds cost and another failure boundary.
+## Serialized context accounting
 
-## Deterministic evaluation
+The previous observatory mixed overlapping estimates and could produce a false
+total. Version 2 starts from the actual serialized request body byte count
+reported by the transport. It records non-overlapping attributed components:
 
-The repository-authored Golden Corpus contains 14 parsing, 6 taxonomy, and 13
-visual cases. It covers plain and multiple questions, MCQ/FRQ, equations,
-tables, OCR noise, columns, duplicate pages, cross-page questions and answer
-keys, taxonomy ambiguity, no-question/insufficient-evidence rejection, shared
-figures, graphs, geometry/mechanics diagrams, answer figures, required tables,
-decorative images, low-resolution crops, and missing visual evidence.
+- system instructions;
+- extraction instructions;
+- taxonomy candidates;
+- structured schema;
+- source/file input;
+- previous response;
+- structural-repair instructions;
+- semantic-recovery instructions; and
+- remaining fixed transport overhead.
 
-The evaluator reports precision/recall/F1 for question boundaries, answer
-pairing, page attribution, exact taxonomy assignment, facet assignment, and
-visual association. Hard-zero gates cover:
+If attributed components exceed the measured request, the overflow is exposed
+rather than hidden. Derived views include source bytes, non-source overhead,
+repeated source bytes, repeated previous-response bytes, taxonomy/schema/repair
+shares, and total serialized request bytes. Provider-reported input, output,
+thought, cached, and total tokens remain separate and nullable.
 
-- duplicate questions or assets;
-- fabricated page references;
-- unvalidated answers;
-- unknown taxonomy IDs;
-- missing required visual evidence left approvable;
-- automatic approval/publication and cross-organization visibility.
+The OpenAI-compatible repair path now sends the bounded previous response once
+as the assistant message. The user repair instruction no longer embeds a second
+copy. Gemini text repair also includes one bounded previous-response copy.
+Bytes are never described as tokens, and no token-savings claim is made without
+same-fixture Provider usage evidence.
 
-Ten independent mutations prove those gates fail on meaningful regressions,
-including a decorative-image attachment regression.
-Fixture ordering does not change results. This is deterministic local evidence,
-not a substitute for a blind human review or a paid Provider benchmark.
+## Independent deterministic evaluator
 
-## Controlled findings
+The Golden Corpus has 14 parsing, 6 taxonomy, 13 visual, and deterministic
+run-state/authorization cases. Taxonomy fixtures separate candidate pool, gold
+expected IDs, prediction, distractors, aliases, and acceptable abstention.
+Candidate pools include siblings, broad parents, wrong-facet labels, aliases,
+inactive IDs, and unknown IDs.
 
-| Treatment | Decision | Reason |
-| --- | --- | --- |
-| Exact five-facet taxonomy with abstention | Adopt | Removes forced over-tagging pressure |
-| Text-only structural repair | Adopt | Avoids repeating source bytes when source understanding already exists |
-| One source-backed zero-importable recovery | Preserve | Semantic recovery can require source evidence |
-| Candidate taxonomy subset | Hold | Recall loss is not yet bounded |
-| Separate taxonomy model pass | Reject | Adds inference cost and failure surface |
-| Deterministic visual identity and crop validation | Adopt | Prevents duplicate/random asset creation |
-| Review lock during cross-system visual persistence | Adopt | Failure remains review-blocked |
+Reported taxonomy metrics are independent:
 
-The controlled local context model measures 169,514 baseline bytes and 194,865
-treatment bytes for its synthetic matrix. The treatment is intentionally not a
-raw byte-minimization claim: it adds versioned metrics, visual integrity, and
-taxonomy safety while removing repeated source bytes from structural repair.
-Only a same-fixture paid comparison can establish token, latency, or cost
-improvement.
+- candidate retrieval recall;
+- exact-ID precision, recall, and F1;
+- abstention accuracy;
+- broad-parent overuse;
+- wrong-facet rate; and
+- inactive/unknown-ID rejection.
+
+Publication, Assignment, approval, and pending-review counts are computed from
+the resulting deterministic run state. Cross-organization asset denial executes
+the real `/api/question-assets/[assetId]` route with deterministic auth/storage
+mocks: a denied requester receives the generic 404 boundary, no service-role
+metadata read, and no signed URL. An authorized owner receives the redirect.
+
+Fifteen independent mutations challenge invalid/unknown taxonomy IDs,
+broad-parent and wrong-facet substitution, fabricated pages, invalid crop
+bounds, wrong-question visual attachment, cross-organization asset requests,
+missing required visuals, inconsistent answers, duplicate questions, and
+publication/Assignment side effects. All mutations are rejected and fixture
+ordering remains invariant.
+
+The evaluator result is labeled exactly
+`SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY`. It validates the evaluator and
+source gates, not current production taxonomy accuracy or Provider quality.
+Recent-label Golden cases remain intentionally absent because authoritative
+recent provenance was not established.
+
+## Visual and Review boundaries
+
+Visual crops come only from the authoritative source and require finite,
+positive, in-page coordinates plus exact question/source ownership. Asset
+identities are deterministic and private. Decorative proposals are suppressed.
+Missing required evidence sets `needs_more_evidence`; partial failures restore
+the Review lock, verify cleanup, and never auto-approve, publish, or assign.
+
+Provider output still passes application schema, answer, page lineage,
+taxonomy, duplicate, visual, Bank-scope, and `pending_review` gates. Neither the
+attempt ledger nor context observer can bypass validation.
+
+## Existing validation limitations
+
+Three unchanged stacked-base source smokes remain red because they require UI
+source literals that are already absent at baseline `f1ce7bc`:
+
+- `ai-parsing-boundary-duplicate-guard-smoke.mjs` expects Review-page
+  `boundaryFindings` and `Possible duplicate` literals;
+- `ai-parsing-status-review-qa-smoke.mjs` expects obsolete status-panel copy;
+  and
+- `teacher-ai-parsing-bank-targeting-smoke.mjs` expects obsolete viewer/status
+  copy.
+
+The exact baseline files fail those same predicates. This treatment did not
+change the referenced UI files and does not mark those checks as passing. They
+belong to the separate stale-source smoke cleanup. Live/chaos scripts requiring
+Supabase credentials were not run because hosted access is outside this task.
+The known Windows embedded-Postgres `initdb` restriction remains an
+infrastructure limitation, not passing aggregate evidence or a product
+regression.
 
 ## Rollout gates
 
-Before enabling the treatment for broad Provider-backed qualification:
+Before any Gemini/Luna or other paid comparison:
 
-1. Verify immutable baseline and treatment fingerprints.
-2. Keep the same source fixture, Provider profile, model, output-token cap, and
-   execution budget for A/B comparison.
-3. Require all hard-zero gates to remain zero.
-4. Require no regression in boundary, answer, page, taxonomy, or visual F1.
-5. Compare input tokens, attempts per job, repeated-context ratio, valid Drafts
-   per input token, latency, and estimated cost per valid Draft.
-6. Run a blind human packet review for correctness and missing evidence.
-7. Stop on any privacy, Bank-scope, Review Gate, cleanup, or lineage failure.
+1. Resolve the recent taxonomy provenance or capture an authorized hosted
+   runtime snapshot and canonicalize it through a reviewed source process.
+2. Require both arms to carry the exact same runtime taxonomy snapshot SHA and
+   parsing-contract SHA.
+3. Verify immutable contract fingerprints and identical fixtures, source,
+   model limits, output cap, and budget.
+4. Require all hard-zero gates and fifteen mutations to pass.
+5. Compare Provider-reported tokens, attempts by reason, repeated context,
+   valid Drafts, latency, and cost under the same input.
+6. Run blind human review for correctness, source fidelity, taxonomy precision,
+   visual evidence, and edit burden.
+7. Stop on any privacy, Bank-scope, Review Gate, cleanup, lineage, or
+   authorization failure.
 
-No additional paid run was performed by this change.
+Paid experiments remain unauthorized by this correction.

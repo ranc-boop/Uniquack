@@ -134,14 +134,23 @@ const observer = observerModule.createAIPdfQualityObservatory();
 observer.beginAttempt({
   extractionAttempt: 1,
   inputStrategy: "native_pdf",
-  promptBytes: 100,
-  reason: "initial_extraction",
-  repairContextBytes: 0,
+  context: {
+    extractionInstructionBytes: 60,
+    previousResponseBytes: 0,
+    semanticRecoveryInstructionBytes: 0,
+    serializedRequestBytes: 1_180,
+    sourceInputBytes: 1_000,
+    structuralRepairInstructionBytes: 0,
+    structuredSchemaBytes: 80,
+    systemInstructionBytes: 0,
+    taxonomyCandidateBytes: 40,
+  },
+  inferenceOrdinal: 1,
+  reason: "FIRST_ATTEMPT",
   routeCandidateIndex: 0,
-  schemaBytes: 20,
-  sourceBytes: 1_000,
   sourceIncluded: true,
-  taxonomyCatalogBytes: 40,
+  sourceRepeated: false,
+  scope: "single",
   transportAttempt: 1,
 }).complete({
   failureCategory: "application_schema",
@@ -150,14 +159,23 @@ observer.beginAttempt({
 observer.beginAttempt({
   extractionAttempt: 2,
   inputStrategy: "native_pdf",
-  promptBytes: 70,
-  reason: "application_repair",
-  repairContextBytes: 50,
+  context: {
+    extractionInstructionBytes: 0,
+    previousResponseBytes: 50,
+    semanticRecoveryInstructionBytes: 0,
+    serializedRequestBytes: 150,
+    sourceInputBytes: 0,
+    structuralRepairInstructionBytes: 70,
+    structuredSchemaBytes: 0,
+    systemInstructionBytes: 0,
+    taxonomyCandidateBytes: 0,
+  },
+  inferenceOrdinal: 2,
+  reason: "STRUCTURAL_REPAIR_SOURCE_FREE",
   routeCandidateIndex: 0,
-  schemaBytes: 20,
-  sourceBytes: 0,
   sourceIncluded: false,
-  taxonomyCatalogBytes: 0,
+  sourceRepeated: false,
+  scope: "single",
   transportAttempt: 1,
 }).complete({
   outcome: "success",
@@ -178,11 +196,25 @@ observer.beginAttempt({
   },
 });
 observer.recordPersistence({ importableReviewDrafts: 1 });
+observer.recordContractEvidence({
+  candidateCount: 10,
+  parsingContractSha256: "a".repeat(64),
+  taxonomySnapshotSha256: "b".repeat(64),
+  taxonomySnapshotVersion: 1,
+});
 const snapshot = observer.snapshot();
 assert.equal(snapshot.attemptsPerJob, 2);
-assert.equal(snapshot.attemptHistogram.application_repair, 1);
+assert.equal(snapshot.attemptHistogram.STRUCTURAL_REPAIR_SOURCE_FREE, 1);
 assert.equal(snapshot.contextComposition.repeatedSourceBytes, 0);
+assert.equal(snapshot.contextComposition.repeatedPreviousResponseBytes, 50);
+assert.equal(snapshot.contextComposition.totalSerializedRequestBytes, 1_330);
+assert.equal(snapshot.contextComposition.componentBytes.sourceInput, 1_000);
+assert.equal(snapshot.contextComposition.componentBytes.fixedTransportOverhead, 30);
+assert.equal(snapshot.contextComposition.providerReportedInputTokens, 100);
+assert.equal(snapshot.contextComposition.providerReportedOutputTokens, 80);
 assert.equal(snapshot.attempts[1].sourceIncluded, false);
 assert.equal(snapshot.output.importableReviewDrafts, 1);
+assert.equal(snapshot.output.usefulOutputPerProviderInputToken, 0.01);
+assert.equal(snapshot.contractEvidence.taxonomySnapshotSha256, "b".repeat(64));
 
 console.log("AI_PARSING_RUNTIME_CONTRACT=PASS");

@@ -13,6 +13,12 @@ import {
 } from "@/lib/ai-providers/adapters";
 import { isMockAIProviderUrl } from "@/lib/ai-providers/mock";
 import {
+  createAIPdfProviderAttemptLedger,
+  parseAIPdfProviderAttemptLedger,
+  recordAIPdfCheckpointReplay,
+  type AIPdfProviderAttemptLedger,
+} from "@/lib/ai-providers/ai-pdf-attempt-state";
+import {
   listEnabledAIProviderProfilesForServerUse,
   loadAIProviderProfileForServerUse,
   loadSafeAIProviderProfileForServerUse,
@@ -63,8 +69,16 @@ import {
 import {
   AI_PDF_PARSING_TREATMENT_VERSION,
   createAIPdfQualityObservatory,
+  fingerprintAIPdfParsingContract,
   type AIPdfQualityObservatory,
 } from "@/lib/ai-pdf-import/quality-observatory";
+import {
+  buildRuntimeTaxonomySnapshot,
+  RUNTIME_TAXONOMY_FACETS,
+  serializeRuntimeTaxonomyCandidates,
+  type RuntimeTaxonomySnapshot,
+} from "@/lib/tags/runtime-taxonomy-snapshot";
+import { GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT } from "@/lib/ai-providers/gemini-structured-output";
 import {
   AI_PDF_VISUAL_EVIDENCE_CONTRACT_VERSION,
   AI_PDF_VISUAL_MISSING_WARNING,
@@ -300,17 +314,21 @@ type ActiveTag = {
   aliases?: string[];
 };
 
-const AI_PDF_RUNTIME_TAXONOMY_FACETS = new Set([
-  "curriculum",
-  "concept",
-  "method",
-  "task",
-  "form",
-]);
+const AI_PDF_RUNTIME_TAXONOMY_FACETS = new Set<string>(RUNTIME_TAXONOMY_FACETS);
+
+const AI_PDF_PROMPT_CONTRACT_VERSION = "ai-pdf-extraction-prompt-v3";
+
+type AIPdfRuntimeTaxonomyContext = {
+  activeTags: ActiveTag[];
+  candidatePayload: string;
+  parsingContractSha256: string;
+  snapshot: RuntimeTaxonomySnapshot;
+};
 
 export const AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION = 1;
 
 export type AIPdfProviderResultCheckpoint = {
+  attemptLedger?: AIPdfProviderAttemptLedger;
   contractVersion: typeof AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION;
   extractions: Record<string, AIPdfExtraction>;
 };
@@ -347,9 +365,14 @@ export function parseAIPdfProviderResultCheckpoint(
     result[key] = extraction;
     return result;
   }, {});
+  const attemptLedger = record.attemptLedger == null
+    ? undefined
+    : parseAIPdfProviderAttemptLedger(record.attemptLedger);
+  if (record.attemptLedger != null && !attemptLedger) return null;
 
   return Object.keys(extractions).length || Object.keys(record.extractions).length === 0
     ? {
+        ...(attemptLedger ? { attemptLedger } : {}),
         contractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
         extractions,
       }
@@ -366,6 +389,9 @@ function appendAIPdfProviderResultCheckpoint({
   key: string;
 }): AIPdfProviderResultCheckpoint {
   return {
+    ...(checkpoint?.attemptLedger
+      ? { attemptLedger: checkpoint.attemptLedger }
+      : {}),
     contractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
     extractions: {
       ...(checkpoint?.extractions ?? {}),
@@ -383,6 +409,7 @@ export type AIPdfProcessInput = {
   profileId: string;
   providerProfileId: string;
   providerExecutionObserver?: AIProviderExecutionObserver;
+  providerAttemptLedger?: AIPdfProviderAttemptLedger;
   providerRouteCandidateIndex?: number;
   providerRetryMaxAttempts?: number;
   qualityObserver?: AIPdfQualityObservatory;
@@ -400,6 +427,9 @@ export type AIPdfProcessInput = {
   // result. Direct/admin imports never set these hooks.
   providerResultCheckpoint?: AIPdfProviderResultCheckpoint;
   onProviderResultCheckpoint?: (
+    checkpoint: AIPdfProviderResultCheckpoint,
+  ) => Promise<void>;
+  onProviderAttemptCheckpoint?: (
     checkpoint: AIPdfProviderResultCheckpoint,
   ) => Promise<void>;
   onCheckpointStage?: (
@@ -2690,33 +2720,24 @@ async function loadExistingQuestionCodeKeys(supabase: SupabaseLike) {
 }
 
 function buildPrompt({
-  activeTags,
   chunk,
   fileName,
   pageMapping,
   pageCount,
   recoveryOnly = false,
+  runtimeTaxonomy,
   selectiveExecution = false,
 }: {
-  activeTags: ActiveTag[];
   chunk?: Pick<AIPdfImportChunkSummary, "pageEnd" | "pageStart">;
   fileName: string;
   pageMapping?: { chunkPage: number; sourcePage: number }[];
   pageCount: number;
   recoveryOnly?: boolean;
+  runtimeTaxonomy: AIPdfRuntimeTaxonomyContext;
   selectiveExecution?: boolean;
 }) {
-  const tagIdsByFacet = activeTags.reduce<Record<string, string[]>>((groups, tag) => {
-    const facet = tag.facet_key ?? "none";
-    groups[facet] = [...(groups[facet] ?? []), tag.id];
-    return groups;
-  }, {});
-  const compactTags = Object.entries(tagIdsByFacet)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([facet, tagIds]) => `${facet}: ${tagIds.join(", ")}`)
-    .join("; ");
-
-  return [
+  const taxonomyCandidates = runtimeTaxonomy.candidatePayload || "(none)";
+  const prompt = [
     "You are importing a PDF question set into a question bank.",
     AI_GENERATION_UNTRUSTED_DATA_BOUNDARY,
     "Read the entire document context in order. Questions, solutions, and figures may continue across page boundaries; do not split one question only because it crosses pages.",
@@ -2765,9 +2786,11 @@ function buildPrompt({
       : "",
     "",
     "Allowed active assignable tag_ids by facet. Every listed candidate below is a full tag_id. Output full tag_ids exactly as written, never abbreviate or shorten them. Use only these exact IDs; do not create, rename, or suggest tags:",
-    compactTags || "(none)",
+    taxonomyCandidates,
     "",
     `Parsing contract version: ${AI_PDF_PARSING_TREATMENT_VERSION}.`,
+    `Parsing contract SHA-256: ${runtimeTaxonomy.parsingContractSha256}.`,
+    `Runtime taxonomy snapshot SHA-256: ${runtimeTaxonomy.snapshot.sha256}.`,
     "Taxonomy tagging contract:",
     "- The five canonical facets are curriculum, concept, method, task, and form.",
     "- Select a tag only when the visible source directly supports that exact active assignable tag_id.",
@@ -2849,16 +2872,42 @@ function buildPrompt({
     "- Only output tag_ids listed above. If no existing tag fits, leave tag_ids empty and add a warning. Do not output any alternate tag identifier fields.",
     "- Keep questions as draft-quality records for human review; do not invent answers when unsure.",
   ].join("\n");
+  const schemaPrefix = "JSON schema:\n";
+  const schemaStart = prompt.indexOf(schemaPrefix) + schemaPrefix.length;
+  const schemaEnd = prompt.indexOf("\n\nRules:", schemaStart);
+  const schemaText = schemaStart >= schemaPrefix.length && schemaEnd > schemaStart
+    ? prompt.slice(schemaStart, schemaEnd)
+    : "";
+  const promptBytes = Buffer.byteLength(prompt, "utf8");
+  const taxonomyCandidateBytes = Buffer.byteLength(taxonomyCandidates, "utf8");
+  const structuredSchemaBytes = Buffer.byteLength(schemaText, "utf8");
+
+  return {
+    context: {
+      extractionInstructionBytes: Math.max(
+        0,
+        promptBytes - taxonomyCandidateBytes - structuredSchemaBytes,
+      ),
+      structuredSchemaBytes,
+      taxonomyCandidateBytes,
+    },
+    parsingContractSha256: runtimeTaxonomy.parsingContractSha256,
+    taxonomySnapshotSha256: runtimeTaxonomy.snapshot.sha256,
+    text: prompt,
+  };
 }
 
-function taxonomyCatalogByteLength(activeTags: ActiveTag[]) {
-  return Buffer.byteLength(
-    activeTags
-      .map((tag) => `${tag.facet_key ?? "none"}:${tag.id}`)
-      .sort()
-      .join("\n"),
-    "utf8",
-  );
+async function persistAIPdfProviderAttemptLedger(
+  input: AIPdfProcessInput,
+  ledger: AIPdfProviderAttemptLedger,
+) {
+  input.providerAttemptLedger = ledger;
+  input.providerResultCheckpoint = {
+    attemptLedger: ledger,
+    contractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
+    extractions: input.providerResultCheckpoint?.extractions ?? {},
+  };
+  await input.onProviderAttemptCheckpoint?.(input.providerResultCheckpoint);
 }
 
 function unknownTaxonomyIdCount({
@@ -2905,66 +2954,59 @@ function remapSegmentExtractionPages({
   return extraction;
 }
 
-async function loadActiveTags(supabase: SupabaseLike) {
-  const { data, error } = await supabase
-    .from("taxonomy_nodes")
-    .select("tag_id, facet_key")
-    .eq("is_assignable", true)
-    .eq("status", "active")
-    .order("facet_key", { ascending: true })
-    .order("tag_id", { ascending: true })
-    // perf-budget-allow-large-query: AI PDF normalization validates against the bounded active leaf taxonomy catalog.
-    .limit(1000);
+async function loadActiveTags(
+  supabase: SupabaseLike,
+): Promise<AIPdfRuntimeTaxonomyContext> {
+  const loaded = await loadTaxonomyCatalog(supabase);
+  if (loaded.errorMessage) throw new Error(loaded.errorMessage);
 
-  if (error) {
-    throw new Error(error.message);
+  const snapshot = buildRuntimeTaxonomySnapshot(loaded.catalog);
+  const candidatePayload = serializeRuntimeTaxonomyCandidates(snapshot.candidates);
+  const parsingContract = fingerprintAIPdfParsingContract({
+    outputContract: JSON.stringify(GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT),
+    promptContractVersion: AI_PDF_PROMPT_CONTRACT_VERSION,
+    taxonomyCandidates: candidatePayload,
+    taxonomySnapshot: snapshot.canonicalJson,
+    treatmentVersion: AI_PDF_PARSING_TREATMENT_VERSION,
+  });
+  const activeTags = snapshot.candidates
+    .filter((tag) => AI_PDF_RUNTIME_TAXONOMY_FACETS.has(tag.facet))
+    .map((tag) => ({
+      aliases: tag.aliases,
+      facet_key: tag.facet,
+      id: tag.tagId,
+      label: tag.label,
+    }));
+
+  if (
+    snapshot.facetKeys.length !== RUNTIME_TAXONOMY_FACETS.length ||
+    !RUNTIME_TAXONOMY_FACETS.every(
+      (facet, index) => snapshot.facetKeys[index] === facet,
+    )
+  ) {
+    throw new Error("The runtime taxonomy does not contain the exact five-facet contract.");
   }
 
-  return ((data ?? []) as {
-    facet_key: string | null;
-    tag_id: string;
-  }[])
-    .filter(
-      (tag): tag is { facet_key: string; tag_id: string } =>
-        typeof tag.facet_key === "string" &&
-        AI_PDF_RUNTIME_TAXONOMY_FACETS.has(tag.facet_key),
-    )
-    .map((tag) => ({
-      facet_key: tag.facet_key,
-      id: tag.tag_id,
-    }));
+  return {
+    activeTags,
+    candidatePayload,
+    parsingContractSha256: parsingContract.contractSha256,
+    snapshot,
+  };
 }
 
 async function loadActiveLeafTaxonomyCandidates(supabase: SupabaseLike) {
-  const { catalog, errorMessage } = await loadTaxonomyCatalog(supabase);
+  const runtimeTaxonomy = await loadActiveTags(supabase);
 
-  if (errorMessage) {
-    throw new Error(errorMessage);
-  }
-
-  const parentTagIds = new Set(
-    catalog.nodes.flatMap((node) => node.parent_tag_ids ?? []),
+  return runtimeTaxonomy.snapshot.candidates.map(
+    (node): AIQuestionBlueprintTaxonomyCandidate => ({
+      aliases: node.aliases,
+      description: null,
+      facetKey: node.facet,
+      label: node.label,
+      tagId: node.tagId,
+    }),
   );
-
-  return catalog.nodes
-    .filter(
-      (node) =>
-        node.facet_key &&
-        ["curriculum", "concept", "method", "task", "form"].includes(
-          node.facet_key,
-        ) &&
-        node.is_assignable &&
-        !parentTagIds.has(node.tag_id),
-    )
-    .map(
-      (node): AIQuestionBlueprintTaxonomyCandidate => ({
-        aliases: node.aliases ?? [],
-        description: node.description ?? null,
-        facetKey: node.facet_key as AIQuestionBlueprintTaxonomyCandidate["facetKey"],
-        label: node.label,
-        tagId: node.tag_id,
-      }),
-    );
 }
 
 async function buildImportJson({
@@ -3931,7 +3973,7 @@ async function buildAndStoreQuestionBlueprintDraftPlan({
   let taxonomyCandidates: AIQuestionBlueprintTaxonomyCandidate[] = [];
 
   try {
-    activeTags = await loadActiveTags(input.supabase);
+    activeTags = (await loadActiveTags(input.supabase)).activeTags;
   } catch {
     warnings.push("Question blueprint analyzer could not validate taxonomy IDs.");
   }
@@ -4402,6 +4444,7 @@ async function processAIPdfSinglePass({
   provider,
   providerInput,
   providerSummary,
+  runtimeTaxonomy,
   selectiveInput,
 }: {
   activeTags: ActiveTag[];
@@ -4410,6 +4453,7 @@ async function processAIPdfSinglePass({
   provider: Awaited<ReturnType<typeof loadAIProviderProfileForServerUse>>;
   providerInput: ReturnType<typeof describeAiPdfProviderInput>;
   providerSummary: { id: string; model: string; name: string; provider: string };
+  runtimeTaxonomy: AIPdfRuntimeTaxonomyContext;
   selectiveInput?: {
     fileName: string;
     pageMapping: { chunkPage: number; sourcePage: number }[];
@@ -4424,10 +4468,10 @@ async function processAIPdfSinglePass({
   }
 
   const prompt = buildPrompt({
-    activeTags,
     fileName: input.fileName,
     pageMapping: selectiveInput?.pageMapping,
     pageCount,
+    runtimeTaxonomy,
     selectiveExecution: Boolean(selectiveInput),
   });
 
@@ -4444,53 +4488,54 @@ async function processAIPdfSinglePass({
   const recoveredExtraction = input.providerResultCheckpoint?.extractions.single;
   const providerResult = recoveredExtraction
     ? { value: recoveredExtraction }
-    : await runWithAIProviderRetry({
-        onRetry: (retry) =>
-          updateAIPdfProviderRetryProgress({
-            input,
-            pageCount,
-            provider: providerSummary,
-            retry,
-            sourceInput: providerInput.strategy,
-          }),
-        operation: "ai_pdf_extraction",
-        policy: input.providerRetryMaxAttempts
-          ? { maxAttempts: input.providerRetryMaxAttempts }
-          : undefined,
-        run: async ({ attemptCount }) =>
-          normalizeAIPdfExtractionResponse(
-            await callAIPdfExtractionProvider({
-              debugContext: {
-                batchId: input.batchId,
-                chunkIndex: null,
-                fileName: input.fileName,
-                jobId: input.jobId,
+    : {
+        value: normalizeAIPdfExtractionResponse(
+          await callAIPdfExtractionProvider({
+            attemptLedger: input.providerAttemptLedger,
+            attemptScope: "single",
+            debugContext: {
+              batchId: input.batchId,
+              chunkIndex: null,
+              fileName: input.fileName,
+              jobId: input.jobId,
+              pageCount,
+              providerProfileId: input.providerProfileId,
+              selectedPageCount: selectiveInput?.plan.sentPageCount ?? null,
+              selectiveExecution: Boolean(selectiveInput),
+              sourceAssetId: input.sourceAssetId,
+              sourceObjectPath: input.sourceObjectPath,
+            },
+            fileName: selectiveInput?.fileName ?? input.fileName,
+            executionObserver: input.providerExecutionObserver,
+            inputStrategy: providerInput.strategy,
+            pageImageDataUrls: [],
+            pdfBase64: (selectiveInput?.pdfBytes ?? input.pdfBuffer).toString(
+              "base64",
+            ),
+            pdfBytes: selectiveInput?.pdfBytes ?? input.pdfBuffer,
+            onProviderUsage: (usage) => {
+              if (usage) usageSamples.push(usage);
+              input.onProviderUsage?.(usage);
+            },
+            onAttemptLedgerCheckpoint: (ledger) =>
+              persistAIPdfProviderAttemptLedger(input, ledger),
+            onProviderRetry: (retry) =>
+              updateAIPdfProviderRetryProgress({
+                input,
                 pageCount,
-                providerProfileId: input.providerProfileId,
-                selectedPageCount: selectiveInput?.plan.sentPageCount ?? null,
-                selectiveExecution: Boolean(selectiveInput),
-                sourceAssetId: input.sourceAssetId,
-                sourceObjectPath: input.sourceObjectPath,
-              },
-              fileName: selectiveInput?.fileName ?? input.fileName,
-              executionObserver: input.providerExecutionObserver,
-              inputStrategy: providerInput.strategy,
-              pageImageDataUrls: [],
-              pdfBase64: (selectiveInput?.pdfBytes ?? input.pdfBuffer).toString("base64"),
-              pdfBytes: selectiveInput?.pdfBytes ?? input.pdfBuffer,
-              onProviderUsage: (usage) => {
-                if (usage) usageSamples.push(usage);
-                input.onProviderUsage?.(usage);
-              },
-              profile: provider,
-              prompt,
-              qualityObserver: input.qualityObserver,
-              routeCandidateIndex: input.providerRouteCandidateIndex,
-              taxonomyCatalogBytes: taxonomyCatalogByteLength(activeTags),
-              transportAttempt: attemptCount,
-            }),
-          ),
-      });
+                provider: providerSummary,
+                retry,
+                sourceInput: providerInput.strategy,
+              }),
+            profile: provider,
+            prompt: prompt.text,
+            promptContext: prompt.context,
+            providerRetryMaxAttempts: input.providerRetryMaxAttempts,
+            qualityObserver: input.qualityObserver,
+            routeCandidateIndex: input.providerRouteCandidateIndex,
+          }),
+        ),
+      };
   const providerExtraction = ensureSinglePageExtractionLineage({
     extraction: providerResult.value,
     suppliedPageCount: selectiveInput?.pageMapping.length ?? pageCount,
@@ -4511,6 +4556,13 @@ async function processAIPdfSinglePass({
     await input.onProviderResultCheckpoint(input.providerResultCheckpoint);
   } else if (recoveredExtraction) {
     input.qualityObserver?.recordCheckpointReplay();
+    if (input.providerAttemptLedger) {
+      recordAIPdfCheckpointReplay(input.providerAttemptLedger, "single");
+      await persistAIPdfProviderAttemptLedger(
+        input,
+        input.providerAttemptLedger,
+      );
+    }
   }
 
   if (selectiveInput) {
@@ -4695,6 +4747,9 @@ async function processAIPdfSinglePass({
 
 export async function processAIPdfImport(input: AIPdfProcessInput) {
   input.qualityObserver ??= createAIPdfQualityObservatory();
+  input.providerAttemptLedger ??=
+    input.providerResultCheckpoint?.attemptLedger ??
+    createAIPdfProviderAttemptLedger();
 
   if (input.pdfBuffer.length > AI_PDF_IMPORT_MAX_BYTES) {
     throw new Error("PDF is larger than 50MB.");
@@ -4781,7 +4836,14 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
     phase: "loading_tags",
     provider: providerSummary,
   });
-  const activeTags = await loadActiveTags(input.supabase);
+  const runtimeTaxonomy = await loadActiveTags(input.supabase);
+  const activeTags = runtimeTaxonomy.activeTags;
+  input.qualityObserver?.recordContractEvidence({
+    candidateCount: runtimeTaxonomy.snapshot.candidates.length,
+    parsingContractSha256: runtimeTaxonomy.parsingContractSha256,
+    taxonomySnapshotSha256: runtimeTaxonomy.snapshot.sha256,
+    taxonomySnapshotVersion: runtimeTaxonomy.snapshot.version,
+  });
   const currentAfterTags = await loadCurrentAIPdfSummary(input);
   const segmentationPlan = normalizeManualSegmentationPlan(
     currentAfterTags.aiPdfImport.manualSegmentation,
@@ -4920,6 +4982,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
       provider,
       providerInput,
       providerSummary,
+      runtimeTaxonomy,
       selectiveInput,
     });
   }
@@ -4985,11 +5048,11 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
         ? segmentChunkForIndex(segmentationPlan!, chunk.chunkIndex)
         : null;
       const chunkPrompt = buildPrompt({
-        activeTags,
         chunk,
         fileName: input.fileName,
         pageMapping: segmentChunk?.pageMapping,
         pageCount,
+        runtimeTaxonomy,
       });
       const pagesForVision =
         providerInput.strategy !== "page_images"
@@ -5010,58 +5073,57 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
       const checkpointedExtraction = input.providerResultCheckpoint?.extractions[checkpointKey];
       const providerResult = checkpointedExtraction
         ? { value: checkpointedExtraction }
-        : await runWithAIProviderRetry({
-            onRetry: (retry) =>
-              updateAIPdfProviderRetryProgress({
-                chunk,
-                input,
-                pageCount,
-                provider: providerSummary,
-                retry,
-                sourceInput: providerInput.strategy,
+        : {
+            value: normalizeAIPdfExtractionResponse(
+              await callAIPdfExtractionProvider({
+                attemptLedger: input.providerAttemptLedger,
+                attemptScope: checkpointKey,
+                debugContext: {
+                  batchId: input.batchId,
+                  chunkIndex: chunk.chunkIndex,
+                  fileName: input.fileName,
+                  jobId: input.jobId,
+                  pageEnd: chunk.pageEnd,
+                  pageStart: chunk.pageStart,
+                  pageCount,
+                  providerProfileId: input.providerProfileId,
+                  retryCount,
+                  sourceAssetId: input.sourceAssetId,
+                  sourceObjectPath: input.sourceObjectPath,
+                },
+                fileName: segmentChunk
+                  ? `${input.fileName.replace(/\.pdf$/i, "")}-chunk-${
+                      chunk.chunkIndex + 1
+                    }.pdf`
+                  : input.fileName,
+                executionObserver: input.providerExecutionObserver,
+                inputStrategy: providerInput.strategy,
+                pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
+                pdfBase64: (segmentedPdf?.pdfBytes ?? input.pdfBuffer).toString(
+                  "base64",
+                ),
+                pdfBytes: segmentedPdf?.pdfBytes ?? input.pdfBuffer,
+                onProviderUsage: input.onProviderUsage,
+                onAttemptLedgerCheckpoint: (ledger) =>
+                  persistAIPdfProviderAttemptLedger(input, ledger),
+                onProviderRetry: (retry) =>
+                  updateAIPdfProviderRetryProgress({
+                    chunk,
+                    input,
+                    pageCount,
+                    provider: providerSummary,
+                    retry,
+                    sourceInput: providerInput.strategy,
+                  }),
+                profile: provider,
+                prompt: chunkPrompt.text,
+                promptContext: chunkPrompt.context,
+                providerRetryMaxAttempts: input.providerRetryMaxAttempts,
+                qualityObserver: input.qualityObserver,
+                routeCandidateIndex: input.providerRouteCandidateIndex,
               }),
-            operation: "ai_pdf_extraction",
-            policy: input.providerRetryMaxAttempts
-              ? { maxAttempts: input.providerRetryMaxAttempts }
-              : undefined,
-            run: async ({ attemptCount }) =>
-              normalizeAIPdfExtractionResponse(
-                await callAIPdfExtractionProvider({
-              debugContext: {
-                batchId: input.batchId,
-                chunkIndex: chunk.chunkIndex,
-                fileName: input.fileName,
-                jobId: input.jobId,
-                pageEnd: chunk.pageEnd,
-                pageStart: chunk.pageStart,
-                pageCount,
-                providerProfileId: input.providerProfileId,
-                retryCount,
-                sourceAssetId: input.sourceAssetId,
-                sourceObjectPath: input.sourceObjectPath,
-              },
-              fileName: segmentChunk
-                ? `${input.fileName.replace(/\.pdf$/i, "")}-chunk-${
-                    chunk.chunkIndex + 1
-                  }.pdf`
-                : input.fileName,
-              executionObserver: input.providerExecutionObserver,
-              inputStrategy: providerInput.strategy,
-              pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
-              pdfBase64: (segmentedPdf?.pdfBytes ?? input.pdfBuffer).toString(
-                "base64",
-              ),
-              pdfBytes: segmentedPdf?.pdfBytes ?? input.pdfBuffer,
-              onProviderUsage: input.onProviderUsage,
-              profile: provider,
-                  prompt: chunkPrompt,
-                  qualityObserver: input.qualityObserver,
-                  routeCandidateIndex: input.providerRouteCandidateIndex,
-                  taxonomyCatalogBytes: taxonomyCatalogByteLength(activeTags),
-                  transportAttempt: attemptCount,
-                }),
-              ),
-          });
+            ),
+          };
       const rawExtraction = ensureSinglePageExtractionLineage({
         extraction: providerResult.value,
         suppliedPageCount:
@@ -5083,6 +5145,13 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
         await input.onProviderResultCheckpoint(input.providerResultCheckpoint);
       } else if (checkpointedExtraction) {
         input.qualityObserver?.recordCheckpointReplay();
+        if (input.providerAttemptLedger) {
+          recordAIPdfCheckpointReplay(input.providerAttemptLedger, checkpointKey);
+          await persistAIPdfProviderAttemptLedger(
+            input,
+            input.providerAttemptLedger,
+          );
+        }
       }
 
       await updateAIPdfChunkProgress({
@@ -5463,6 +5532,9 @@ export async function processAIPdfCoverageRecovery(
   input: AIPdfCoverageRecoveryProcessInput,
 ) {
   input.qualityObserver ??= createAIPdfQualityObservatory();
+  input.providerAttemptLedger ??=
+    input.providerResultCheckpoint?.attemptLedger ??
+    createAIPdfProviderAttemptLedger();
 
   const { data: originalBatch, error: originalBatchError } = await input.supabase
     .from("import_batches")
@@ -5566,14 +5638,21 @@ export async function processAIPdfCoverageRecovery(
     chunk: recoveryChunk,
     pdfBuffer: input.pdfBuffer,
   });
-  const activeTags = await loadActiveTags(input.supabase);
+  const runtimeTaxonomy = await loadActiveTags(input.supabase);
+  const activeTags = runtimeTaxonomy.activeTags;
+  input.qualityObserver?.recordContractEvidence({
+    candidateCount: runtimeTaxonomy.snapshot.candidates.length,
+    parsingContractSha256: runtimeTaxonomy.parsingContractSha256,
+    taxonomySnapshotSha256: runtimeTaxonomy.snapshot.sha256,
+    taxonomySnapshotVersion: runtimeTaxonomy.snapshot.version,
+  });
   const prompt = buildPrompt({
-    activeTags,
     chunk: recoveryChunk,
     fileName: input.fileName,
     pageCount,
     pageMapping: subset.pageMapping,
     recoveryOnly: true,
+    runtimeTaxonomy,
     selectiveExecution: true,
   });
   const pagesForVision =
@@ -5593,40 +5672,47 @@ export async function processAIPdfCoverageRecovery(
     },
   });
 
-  const providerResult = await runWithAIProviderRetry({
-    operation: "ai_pdf_extraction",
-    policy: input.providerRetryMaxAttempts
-      ? { maxAttempts: input.providerRetryMaxAttempts }
-      : undefined,
-    run: async ({ attemptCount }) =>
-      normalizeAIPdfExtractionResponse(
-        await callAIPdfExtractionProvider({
-          debugContext: {
-            batchId: input.originalBatchId,
-            fileName: input.fileName,
-            jobId: input.jobId,
+  const providerResult = {
+    value: normalizeAIPdfExtractionResponse(
+      await callAIPdfExtractionProvider({
+        attemptLedger: input.providerAttemptLedger,
+        attemptScope: `recovery:${input.recoveryPlanHash}`,
+        debugContext: {
+          batchId: input.originalBatchId,
+          fileName: input.fileName,
+          jobId: input.jobId,
+          pageCount,
+          providerProfileId: input.providerProfileId,
+          recoveryPlanHash: input.recoveryPlanHash,
+          selectedPageCount: sourcePages.length,
+          sourceAssetId: input.sourceAssetId,
+        },
+        fileName: `${input.fileName.replace(/\.pdf$/i, "")}-recovery.pdf`,
+        executionObserver: input.providerExecutionObserver,
+        inputStrategy: providerInput.strategy,
+        pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
+        pdfBase64: subset.pdfBytes.toString("base64"),
+        pdfBytes: subset.pdfBytes,
+        onProviderUsage: input.onProviderUsage,
+        onAttemptLedgerCheckpoint: (ledger) =>
+          persistAIPdfProviderAttemptLedger(input, ledger),
+        onProviderRetry: (retry) =>
+          updateAIPdfProviderRetryProgress({
+            input,
             pageCount,
-            providerProfileId: input.providerProfileId,
-            recoveryPlanHash: input.recoveryPlanHash,
-            selectedPageCount: sourcePages.length,
-            sourceAssetId: input.sourceAssetId,
-          },
-          fileName: `${input.fileName.replace(/\.pdf$/i, "")}-recovery.pdf`,
-          executionObserver: input.providerExecutionObserver,
-          inputStrategy: providerInput.strategy,
-          pageImageDataUrls: pagesForVision.map((page) => page.dataUrl),
-          pdfBase64: subset.pdfBytes.toString("base64"),
-          pdfBytes: subset.pdfBytes,
-          onProviderUsage: input.onProviderUsage,
-          profile: provider,
-          prompt,
-          qualityObserver: input.qualityObserver,
-          routeCandidateIndex: input.providerRouteCandidateIndex,
-          taxonomyCatalogBytes: taxonomyCatalogByteLength(activeTags),
-          transportAttempt: attemptCount,
-        }),
-      ),
-  });
+            provider: providerSummary,
+            retry,
+            sourceInput: providerInput.strategy,
+          }),
+        profile: provider,
+        prompt: prompt.text,
+        promptContext: prompt.context,
+        providerRetryMaxAttempts: input.providerRetryMaxAttempts,
+        qualityObserver: input.qualityObserver,
+        routeCandidateIndex: input.providerRouteCandidateIndex,
+      }),
+    ),
+  };
   const extraction = remapSegmentExtractionPages({
     extraction: ensureSinglePageExtractionLineage({
       extraction: providerResult.value,

@@ -86,52 +86,97 @@ export function evaluateParsingCases(cases) {
 }
 
 export function evaluateTaxonomyCases(payload) {
-  const activeCatalog = new Map(
-    payload.catalog
-      .filter((entry) => entry.activeAssignable)
-      .map((entry) => [entry.tagId, entry.facet]),
-  );
+  const catalog = new Map(payload.catalog.map((entry) => [entry.tagId, entry]));
+  const eligible = (tagId) => {
+    const entry = catalog.get(tagId);
+    return Boolean(entry?.active && entry?.assignable && entry?.effectiveLeaf);
+  };
   const expected = payload.cases.flatMap((entry) =>
-    entry.expected.map((tagId) => `${entry.id}:${tagId}`),
+    entry.goldExpectedIds.map((tagId) => `${entry.id}:${tagId}`),
   );
-  const candidate = payload.cases.flatMap((entry) =>
-    entry.candidate.map((tagId) => `${entry.id}:${tagId}`),
+  const predictions = payload.cases.flatMap((entry) =>
+    entry.prediction.map((tagId) => `${entry.id}:${tagId}`),
   );
-  const unknownTagIds = payload.cases.reduce(
-    (total, entry) => total + entry.candidate.filter(
-      (tagId) => !activeCatalog.has(tagId),
-    ).length,
-    0,
+  const expectedRetrieved = payload.cases.flatMap((entry) => {
+    const pool = new Set(entry.candidatePool);
+    return entry.goldExpectedIds
+      .filter((tagId) => pool.has(tagId))
+      .map((tagId) => `${entry.id}:${tagId}`);
+  });
+  const invalidPredictions = payload.cases.flatMap((entry) =>
+    entry.prediction.filter((tagId) => !eligible(tagId)),
   );
+  const challengeIds = payload.cases.flatMap((entry) =>
+    entry.distractorIds.filter((tagId) => !eligible(tagId)),
+  );
+  const predictedInvalidChallenges = payload.cases.flatMap((entry) => {
+    const prediction = new Set(entry.prediction);
+    return entry.distractorIds
+      .filter((tagId) => !eligible(tagId) && prediction.has(tagId));
+  });
   const duplicateTagIds = payload.cases.reduce(
-    (total, entry) => total + duplicateCount(entry.candidate),
+    (total, entry) => total + duplicateCount(entry.prediction),
     0,
   );
   const broadParentOvertags = payload.cases.reduce((total, entry) => {
-    const candidateSet = new Set(entry.candidate);
-    return total + entry.expected.reduce(
+    const prediction = new Set(entry.prediction);
+    return total + entry.goldExpectedIds.reduce(
       (count, expectedTag) => count + (payload.broadParents[expectedTag] ?? [])
-        .filter((parent) => candidateSet.has(parent))
-        .length,
+        .filter((parent) => prediction.has(parent)).length,
       0,
     );
   }, 0);
+  const wrongFacetPredictions = payload.cases.reduce((total, entry) => {
+    const expectedFacets = new Set(entry.goldExpectedIds
+      .map((tagId) => catalog.get(tagId)?.facet)
+      .filter(Boolean));
+    return total + entry.prediction.filter((tagId) => {
+      const facet = catalog.get(tagId)?.facet;
+      return eligible(tagId) && facet && !expectedFacets.has(facet);
+    }).length;
+  }, 0);
+  const eligiblePredictionCount = payload.cases.reduce(
+    (total, entry) => total + entry.prediction.filter(eligible).length,
+    0,
+  );
+  const abstentionCases = payload.cases.filter((entry) => entry.acceptableAbstention);
+  const correctAbstentions = abstentionCases.filter(
+    (entry) => entry.prediction.length === 0,
+  ).length;
   const facetMetrics = Object.fromEntries(FACETS.map((facet) => {
-    const expectedFacet = payload.cases.flatMap((entry) => entry.expected
-      .filter((tagId) => activeCatalog.get(tagId) === facet)
+    const expectedFacet = payload.cases.flatMap((entry) => entry.goldExpectedIds
+      .filter((tagId) => catalog.get(tagId)?.facet === facet)
       .map((tagId) => `${entry.id}:${tagId}`));
-    const candidateFacet = payload.cases.flatMap((entry) => entry.candidate
-      .filter((tagId) => activeCatalog.get(tagId) === facet)
+    const predictedFacet = payload.cases.flatMap((entry) => entry.prediction
+      .filter((tagId) => catalog.get(tagId)?.facet === facet)
       .map((tagId) => `${entry.id}:${tagId}`));
-    return [facet, prf(expectedFacet, candidateFacet)];
+    return [facet, prf(expectedFacet, predictedFacet)];
   }));
 
   return {
+    abstentionAccuracy: {
+      correct: correctAbstentions,
+      total: abstentionCases.length,
+      value: ratio(correctAbstentions, abstentionCases.length),
+    },
     broadParentOvertags,
+    candidateRetrievalRecall: ratio(expectedRetrieved.length, expected.length),
     duplicateTagIds,
-    exactTagging: prf(expected, candidate),
+    exactIdClassification: prf(expected, predictions),
     facetMetrics,
-    unknownTagIds,
+    inactiveUnknownIdRejection: {
+      challenged: challengeIds.length,
+      rejected: challengeIds.length - predictedInvalidChallenges.length,
+      value: ratio(
+        challengeIds.length - predictedInvalidChallenges.length,
+        challengeIds.length,
+      ),
+    },
+    invalidPredictions: invalidPredictions.length,
+    wrongFacet: {
+      rate: ratio(wrongFacetPredictions, eligiblePredictionCount),
+      violations: wrongFacetPredictions,
+    },
   };
 }
 
@@ -163,8 +208,7 @@ export function evaluateVisualCases(cases) {
   );
   const invalidBboxes = cases.reduce(
     (total, entry) => total + entry.candidate.visuals
-      .filter((visual) => !validBbox(visual.bbox))
-      .length,
+      .filter((visual) => !validBbox(visual.bbox)).length,
     0,
   );
   const fabricatedPageRefs = cases.reduce(
@@ -198,33 +242,61 @@ export function evaluateVisualCases(cases) {
   };
 }
 
-export function evaluateGoldenCorpus({ parsing, taxonomy, visual }) {
+export function evaluateRunState(runState) {
+  const crossOrganizationVisibility = runState.assetAuthorizationResults.filter(
+    (result) => result.requesterOrganization !== result.ownerOrganization && result.allowed,
+  ).length;
+  const nonReviewDrafts = runState.reviewDrafts.filter(
+    (draft) => draft.status !== "pending_review" || draft.published === true,
+  ).length;
+
+  return {
+    authorizationEvidenceCount: runState.assetAuthorizationResults.filter(
+      (result) => result.authorizationEvidence === "question_asset_route_runtime_negative",
+    ).length,
+    assignmentsCreated: runState.assignments.length,
+    autoApprovedOrPublished: nonReviewDrafts + runState.publications.length,
+    crossOrganizationVisibility,
+    pendingReviewDrafts: runState.reviewDrafts.filter(
+      (draft) => draft.status === "pending_review" && draft.published === false,
+    ).length,
+    publicationsCreated: runState.publications.length,
+  };
+}
+
+export function evaluateGoldenCorpus({ parsing, runState, taxonomy, visual }) {
   const result = {
     parsing: evaluateParsingCases(parsing),
+    runState: evaluateRunState(runState),
     taxonomy: evaluateTaxonomyCases(taxonomy),
     visual: evaluateVisualCases(visual),
   };
   const hardZeroFailures = {
-    autoApprovalOrPublication: 0,
-    crossOrganizationVisibility: 0,
+    assignmentSideEffects: result.runState.assignmentsCreated,
+    autoApprovalOrPublication: result.runState.autoApprovedOrPublished,
+    crossOrganizationVisibility: result.runState.crossOrganizationVisibility,
     duplicateAssets: result.visual.duplicateAssets,
     duplicateQuestions: result.parsing.duplicateQuestions,
     fabricatedPageRefs:
       result.parsing.fabricatedPageRefs + result.visual.fabricatedPageRefs,
+    invalidTaxonomyPredictions: result.taxonomy.invalidPredictions,
     missingRequiredVisualUnblocked: result.visual.missingRequiredUnblocked,
-    unknownTaxonomyIds: result.taxonomy.unknownTagIds,
     unvalidatedAnswers: result.parsing.unvalidatedAnswers,
   };
   const softGateFailures = [
     result.parsing.questionBoundary,
     result.parsing.answerPairing,
     result.parsing.pageAttribution,
-    result.taxonomy.exactTagging,
+    result.taxonomy.exactIdClassification,
     result.visual.attachmentAssociation,
   ].filter((metric) => metric.precision < 1 || metric.recall < 1).length +
+    (result.taxonomy.candidateRetrievalRecall < 1 ? 1 : 0) +
+    (result.taxonomy.abstentionAccuracy.value < 1 ? 1 : 0) +
+    (result.taxonomy.inactiveUnknownIdRejection.value < 1 ? 1 : 0) +
     result.parsing.mustRejectViolations +
     result.taxonomy.broadParentOvertags +
     result.taxonomy.duplicateTagIds +
+    result.taxonomy.wrongFacet.violations +
     result.visual.invalidBboxes +
     result.visual.approvalBoundaryViolations;
 
@@ -233,6 +305,7 @@ export function evaluateGoldenCorpus({ parsing, taxonomy, visual }) {
     classification: Object.values(hardZeroFailures).every((value) => value === 0) && softGateFailures === 0
       ? "PASS"
       : "FAIL",
+    evidenceClass: "SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY",
     hardZeroFailures,
     softGateFailures,
   };

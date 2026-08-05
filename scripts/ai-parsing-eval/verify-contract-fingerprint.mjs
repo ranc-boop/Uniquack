@@ -21,11 +21,14 @@ const fingerprintedPaths = [
   "src/lib/ai-pdf-import/tagging-v2.ts",
   "src/lib/ai-pdf-import/quality-observatory.ts",
   "src/lib/ai-pdf-import/visual-evidence.ts",
+  "src/lib/ai-providers/ai-pdf-attempt-state.ts",
   "src/lib/ai-providers/chat.ts",
   "src/lib/ai-providers/gemini-ai-pdf-extraction.schema.json",
   "src/lib/ai-providers/gemini-native.ts",
   "src/lib/questions/review-publish-validation.ts",
   "src/lib/ai-jobs/worker.ts",
+  "src/lib/tags/taxonomy-db.ts",
+  "src/lib/tags/runtime-taxonomy-snapshot.ts",
   "supabase/clean-migrations/0056_add_math_taxonomy_v2_catalog.sql",
 ];
 

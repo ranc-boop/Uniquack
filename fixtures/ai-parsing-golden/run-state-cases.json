@@ -1,0 +1,12 @@
+{
+  "assetAuthorizationScenarios": [
+    {"caseId":"owner_asset_read","requesterOrganization":"org-a","ownerOrganization":"org-a","rpcCanRead":true,"expectedAllowed":true},
+    {"caseId":"cross_org_asset_denied","requesterOrganization":"org-b","ownerOrganization":"org-a","rpcCanRead":false,"expectedAllowed":false},
+    {"caseId":"anonymous_private_asset_denied","requesterOrganization":"anonymous","ownerOrganization":"org-a","rpcCanRead":false,"expectedAllowed":false}
+  ],
+  "reviewDrafts": [
+    {"caseId":"synthetic_import_draft","status":"pending_review","published":false}
+  ],
+  "publications": [],
+  "assignments": []
+}
