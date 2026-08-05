@@ -1,0 +1,167 @@
+{
+  "baselineAnchor": "f1ce7bcb791604468693ea945401cfb157e64d97",
+  "contractVersion": "ai-pdf-parsing/provider-neutral-v2",
+  "files": [
+    {
+      "baseline": {
+        "blob": "3122ae1b1243e903ced210c61473caaadde21da3",
+        "sha256": "cbce802b06b994862adb3ce1342039d2f2476cc491b7c98f2e9d071f76a63ac8"
+      },
+      "path": "src/lib/ai-pdf-import/service.ts",
+      "treatment": {
+        "blob": "ccdec4eb89e9d1260591cca9f80a504e51a1a43c",
+        "sha256": "c1522c0e2c4740d547fc28a473041f0f274817ff74187054fb1f0f55b2060c51"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "98ef9695874a79d87683c7378f5752ee8a1d6b4e",
+        "sha256": "0d8d01016c1545266413f1dcea01ff88d104e1ae75c7b0946d69b3bed6b2223a"
+      },
+      "path": "src/lib/ai-pdf-import/schema.ts",
+      "treatment": {
+        "blob": "30380c8b0218a25f784972482a7ad84c2ea8e814",
+        "sha256": "a8b2408c989927b382739b849c549b827b19bfa3f0774382fb001be6dd7c706a"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "a58ba84a73c99e0c3884ff1b7c1d67e362bb0118",
+        "sha256": "bcf7d61d268925100f7505eb53068024e7e051f39f5c1f6db9e456336deeec1b"
+      },
+      "path": "src/lib/ai-pdf-import/pdf.ts",
+      "treatment": {
+        "blob": "95e6b8fde078c312e6e4bf747c319551f515ef7a",
+        "sha256": "eccfcb9ff4d0208d73a138aef6b9b6cedd4d09f7541901cf144281c9aba8d89d"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "239ac39c5d7ae1c6892f724fd482f44c98df987b",
+        "sha256": "a1ccf0afc298a80f01123c252f6c8acac78fa220261fa4050684497fc04ac46c"
+      },
+      "path": "src/lib/ai-pdf-import/preanalysis-core.ts",
+      "treatment": {
+        "blob": "239ac39c5d7ae1c6892f724fd482f44c98df987b",
+        "sha256": "a1ccf0afc298a80f01123c252f6c8acac78fa220261fa4050684497fc04ac46c"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "11f538c7f0150a9d2ca3bad490809706087b5634",
+        "sha256": "e590db8941596af19c1b8e5023108c13d90b900fd3b11f6d2331c79f24c7d22c"
+      },
+      "path": "src/lib/ai-pdf-import/question-boundary-guard.ts",
+      "treatment": {
+        "blob": "11f538c7f0150a9d2ca3bad490809706087b5634",
+        "sha256": "e590db8941596af19c1b8e5023108c13d90b900fd3b11f6d2331c79f24c7d22c"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "ce05b74c1fd70a436c12085e6f77b76964d65ecf",
+        "sha256": "f1c3d5fe8835cef7a3d9c5231b50452985371a55be7f7ee6083201513f8a37d0"
+      },
+      "path": "src/lib/ai-pdf-import/taxonomy-persistence.ts",
+      "treatment": {
+        "blob": "ce05b74c1fd70a436c12085e6f77b76964d65ecf",
+        "sha256": "f1c3d5fe8835cef7a3d9c5231b50452985371a55be7f7ee6083201513f8a37d0"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "6bd5301d3552eea6a8c41f75e87cd33bff437c64",
+        "sha256": "2eecb55583c988c8a2ed33467335ebce07addebbc3d5cc956ced4c79100260ae"
+      },
+      "path": "src/lib/ai-pdf-import/tagging-v2.ts",
+      "treatment": {
+        "blob": "6bd5301d3552eea6a8c41f75e87cd33bff437c64",
+        "sha256": "2eecb55583c988c8a2ed33467335ebce07addebbc3d5cc956ced4c79100260ae"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "src/lib/ai-pdf-import/quality-observatory.ts",
+      "treatment": {
+        "blob": "a3f31c24940b1db31300ae9454dacce8da3c4f1c",
+        "sha256": "2ae22ba5edeaedae9cc692ce61f0bbb517a381bb5558f409e8c7fb61d266a14a"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "src/lib/ai-pdf-import/visual-evidence.ts",
+      "treatment": {
+        "blob": "cee5e449a9130558ef60e16e1754f587b676ebec",
+        "sha256": "f2f797e84642b1fc7e2de5a8329870ec824c49d218a476f749ca9da992b7f161"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "376ab73fa687ce811baf0818fd313541aedaf981",
+        "sha256": "111cd358079cd8fefebd474f489c66bc71f1dee948a3297fb00200d82e02bf64"
+      },
+      "path": "src/lib/ai-providers/chat.ts",
+      "treatment": {
+        "blob": "cdf626bb2e294db656fd7ebcf4e88172da9b4e1d",
+        "sha256": "c661e0bb278b773f0e84d9eef51d30dda32737e8b9ca4c455b005cf5d607755f"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "3e4334191855173a655d59d1a9d0ef66fe204e83",
+        "sha256": "10e9568cb4522ac17c086bc996c1d95170fbb0f4144b560181765687fd885228"
+      },
+      "path": "src/lib/ai-providers/gemini-ai-pdf-extraction.schema.json",
+      "treatment": {
+        "blob": "68c6a66bca8c61eb89d6be6f00ddedaab6e40bbc",
+        "sha256": "ff2d884440846031c0c09ac7d7126ccf015e53b75ba6a7cab885925d30f0d3c9"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "828df9c0c02c79e60050a2afd95a16d9dadf9b89",
+        "sha256": "9a59a1f6ffa1ce80e3b1ed9be3f8e062ec338918084760e02ef32c105f25aa3c"
+      },
+      "path": "src/lib/ai-providers/gemini-native.ts",
+      "treatment": {
+        "blob": "9a38d7ce6541130de9799e6d503770d19ed252c6",
+        "sha256": "2eee0c1dae54b9b04d6f9736a6c3c1e6ecc463ccb3b5d40d45793ed77515eee8"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "a9d5cc6ad847a30ef302958d265a5fbbfd3249cc",
+        "sha256": "f9061dee3b7c7f77e64c26fe76ce9f2fe38bb9d1c51147fc8b4eff50cff55f7b"
+      },
+      "path": "src/lib/questions/review-publish-validation.ts",
+      "treatment": {
+        "blob": "eba3c46f8615d60b656b310687a4d10f088de6ab",
+        "sha256": "849e7ecea2bacdaa711033cac7632412db75f0cb3af25413e06014846884970c"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "b791b6db1ce0deeccc0c4245076d15cef97cbcf2",
+        "sha256": "e695339d692f551c24f34d567ee8be47d62ec3a876662ffa02c2dff6cd4056e6"
+      },
+      "path": "src/lib/ai-jobs/worker.ts",
+      "treatment": {
+        "blob": "fc6c3263dd256d60d556fada95e40c62f4a404e2",
+        "sha256": "5561e067a8949a1fcfccff5974f8a136aec6f90fb417c4795dd2151e75eaf1b7"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "242aad83ccdcbe07ce40a325bd6d15a31e1005b5",
+        "sha256": "7d5158b62294392035d81f9e36a3da7873090db5bd38272412f44733c4cd22e6"
+      },
+      "path": "supabase/clean-migrations/0056_add_math_taxonomy_v2_catalog.sql",
+      "treatment": {
+        "blob": "242aad83ccdcbe07ce40a325bd6d15a31e1005b5",
+        "sha256": "7d5158b62294392035d81f9e36a3da7873090db5bd38272412f44733c4cd22e6"
+      }
+    }
+  ],
+  "schemaVersion": 1,
+  "treatmentAnchor": "59ac19df53f5ef4c02528b25aac7bbdf9a3472e0"
+}

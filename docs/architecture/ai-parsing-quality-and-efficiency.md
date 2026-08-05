@@ -18,6 +18,22 @@ the remaining paid budget cannot fund a fresh controlled 50-file run. Question
 visual attachment is source-ready, but a representative real image-rich PDF
 proof is still pending.
 
+## Immutable contract fingerprints
+
+`docs/architecture/ai-parsing-contract-fingerprints.json` binds 15 runtime and
+catalog files to Git blobs and canonical SHA-256 values at both baseline
+`f1ce7bcb791604468693ea945401cfb157e64d97` and treatment
+`59ac19df53f5ef4c02528b25aac7bbdf9a3472e0`. The set covers Provider prompt and
+repair policy, extraction/application schemas, preanalysis, boundary checks,
+taxonomy runtime and migration catalog, visual crop/persistence, Review Gate,
+observability, Gemini transport, and worker integration.
+
+The verifier requires baseline to be an ancestor of treatment, treatment to be
+an ancestor of the current head, each Git blob and hash to match, and current
+runtime bytes to remain identical to the treatment anchor. New files are
+explicitly recorded as absent at baseline; no rule trusts uncommitted current
+tree bytes.
+
 ## Current call graph
 
 1. A Teacher submits a private Bank-scoped PDF.

@@ -102,6 +102,7 @@ await import("./ai-parsing-eval/evaluate-golden.mjs");
 await import("./ai-parsing-eval/mutation-proof.mjs");
 await import("./ai-parsing-eval/runtime-contract-smoke.mjs");
 await import("./ai-parsing-eval/controlled-ablations.mjs");
+await import("./ai-parsing-eval/verify-contract-fingerprint.mjs");
 await import("./ai-parsing-selective-packet-execution-smoke.mjs");
 await import("./ai-parsing-selective-execution-smoke.mjs");
 await import("./ai-parsing-coverage-recovery-executor-smoke.mjs");
