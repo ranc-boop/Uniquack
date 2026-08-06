@@ -113,10 +113,11 @@ function functionBody(sourceFile, name) {
   return match;
 }
 
-const [service, chat, observatory] = await Promise.all([
+const [service, chat, observatory, worker] = await Promise.all([
   parse("src/lib/ai-pdf-import/service.ts"),
   parse("src/lib/ai-providers/chat.ts"),
   parse("src/lib/ai-pdf-import/quality-observatory.ts"),
+  parse("src/lib/ai-jobs/worker.ts"),
 ]);
 
 const extractionCalls = callsNamed(service, "callAIPdfExtractionProvider");
@@ -196,6 +197,14 @@ assert(serviceText.includes("taxonomySnapshotSha256"));
 assert(serviceText.includes("candidateSubsetSha256"));
 assert(serviceText.includes("fullTaxonomySnapshotSha256"));
 assert(serviceText.includes("parsingContractSha256"));
+assert(serviceText.includes("parseAIPdfQualityCheckpoint"));
+assert(serviceText.includes("qualityCheckpoint: input.qualityObserver.checkpoint()"));
+assert.equal(
+  serviceText.match(/qualityCheckpoint: input\.qualityObserver\?\.checkpoint\(\)/g)
+    ?.length,
+  2,
+  "single and chunk checkpoints must preserve completed quality evidence",
+);
 assert(!serviceText.includes("taxonomyCatalogByteLength"));
 
 const chatText = chat.getFullText();
@@ -208,6 +217,15 @@ assert(observatoryText.includes("repeatedSourceBytes"));
 assert(observatoryText.includes("repeatedPreviousResponseBytes"));
 assert(observatoryText.includes("providerReportedInputTokens"));
 assert(observatoryText.includes("providerReportedOutputTokens"));
+assert(observatoryText.includes("parseAIPdfQualityCheckpoint"));
+assert(observatoryText.includes("checkpoint(): AIPdfQualityCheckpoint"));
+
+const workerText = worker.getFullText();
+assert.equal(
+  workerText.match(/providerResultCheckpoint\?\.qualityCheckpoint/g)?.length,
+  2,
+  "PDF extraction and recovery workers must restore checkpointed quality evidence",
+);
 
 console.log(
   "PASS AI Parsing Provider attempt architecture: one retry owner, durable shared ledger, runtime taxonomy fingerprint, and serialized context evidence",

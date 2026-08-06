@@ -507,7 +507,9 @@ async function runAIPdfExtractJob({
     .from(AI_IMPORT_SOURCES_BUCKET)
     .download(sourceAsset.object_path);
   if (downloadError) throw new Error(downloadError.message);
-  const qualityObserver = createAIPdfQualityObservatory();
+  const qualityObserver = createAIPdfQualityObservatory(
+    providerResultCheckpoint?.qualityCheckpoint,
+  );
   const providerAttemptLedger =
     providerResultCheckpoint?.attemptLedger ??
     createAIPdfProviderAttemptLedger();
@@ -729,7 +731,9 @@ async function runAIPdfCoverageRecoveryJob({
 
   const usageSamples: NonNullable<AIOperationExecutionMetadata["usageSamples"]> = [];
   const providerStartedAt = Date.now();
-  const qualityObserver = createAIPdfQualityObservatory();
+  const qualityObserver = createAIPdfQualityObservatory(
+    providerResultCheckpoint?.qualityCheckpoint,
+  );
   const providerAttemptLedger =
     providerResultCheckpoint?.attemptLedger ??
     createAIPdfProviderAttemptLedger();

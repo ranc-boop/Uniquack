@@ -70,6 +70,8 @@ import {
   AI_PDF_PARSING_TREATMENT_VERSION,
   createAIPdfQualityObservatory,
   fingerprintAIPdfParsingContract,
+  parseAIPdfQualityCheckpoint,
+  type AIPdfQualityCheckpoint,
   type AIPdfQualityObservatory,
 } from "@/lib/ai-pdf-import/quality-observatory";
 import {
@@ -336,6 +338,7 @@ export type AIPdfProviderResultCheckpoint = {
   attemptLedger?: AIPdfProviderAttemptLedger;
   contractVersion: typeof AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION;
   extractions: Record<string, AIPdfExtraction>;
+  qualityCheckpoint?: AIPdfQualityCheckpoint;
 };
 
 type AIPdfCheckpointStage = "normalized" | "drafts_persisted";
@@ -374,12 +377,17 @@ export function parseAIPdfProviderResultCheckpoint(
     ? undefined
     : parseAIPdfProviderAttemptLedger(record.attemptLedger);
   if (record.attemptLedger != null && !attemptLedger) return null;
+  const qualityCheckpoint = record.qualityCheckpoint == null
+    ? undefined
+    : parseAIPdfQualityCheckpoint(record.qualityCheckpoint);
+  if (record.qualityCheckpoint != null && !qualityCheckpoint) return null;
 
   return Object.keys(extractions).length || Object.keys(record.extractions).length === 0
     ? {
         ...(attemptLedger ? { attemptLedger } : {}),
         contractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
         extractions,
+        ...(qualityCheckpoint ? { qualityCheckpoint } : {}),
       }
     : null;
 }
@@ -388,10 +396,12 @@ function appendAIPdfProviderResultCheckpoint({
   checkpoint,
   extraction,
   key,
+  qualityCheckpoint,
 }: {
   checkpoint: AIPdfProviderResultCheckpoint | undefined;
   extraction: AIPdfExtraction;
   key: string;
+  qualityCheckpoint?: AIPdfQualityCheckpoint;
 }): AIPdfProviderResultCheckpoint {
   return {
     ...(checkpoint?.attemptLedger
@@ -402,6 +412,12 @@ function appendAIPdfProviderResultCheckpoint({
       ...(checkpoint?.extractions ?? {}),
       [key]: extraction,
     },
+    ...((qualityCheckpoint ?? checkpoint?.qualityCheckpoint)
+      ? {
+          qualityCheckpoint:
+            qualityCheckpoint ?? checkpoint?.qualityCheckpoint,
+        }
+      : {}),
   };
 }
 
@@ -2927,6 +2943,11 @@ async function persistAIPdfProviderAttemptLedger(
     attemptLedger: ledger,
     contractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
     extractions: input.providerResultCheckpoint?.extractions ?? {},
+    ...(input.qualityObserver
+      ? { qualityCheckpoint: input.qualityObserver.checkpoint() }
+      : input.providerResultCheckpoint?.qualityCheckpoint
+        ? { qualityCheckpoint: input.providerResultCheckpoint.qualityCheckpoint }
+        : {}),
   };
   await input.onProviderAttemptCheckpoint?.(input.providerResultCheckpoint);
 }
@@ -4587,6 +4608,7 @@ async function processAIPdfSinglePass({
       checkpoint: input.providerResultCheckpoint,
       extraction,
       key: "single",
+      qualityCheckpoint: input.qualityObserver?.checkpoint(),
     });
     await input.onProviderResultCheckpoint(input.providerResultCheckpoint);
   } else if (recoveredExtraction) {
@@ -5200,6 +5222,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
           checkpoint: input.providerResultCheckpoint,
           extraction,
           key: checkpointKey,
+          qualityCheckpoint: input.qualityObserver?.checkpoint(),
         });
         await input.onProviderResultCheckpoint(input.providerResultCheckpoint);
       } else if (checkpointedExtraction) {

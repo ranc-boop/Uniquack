@@ -7,6 +7,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
@@ -54,6 +55,43 @@ import {
 
 const workerRoutePath = "/api/internal/ai-jobs/run";
 const providerInterruption = "after_provider_checkpoint";
+const authoritativeTaxonomySnapshotSha256 =
+  "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe";
+const authoritativeCandidateSubsetSha256 =
+  "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262";
+const authoritativeParsingTreatmentVersion =
+  "ai-pdf-parsing/provider-neutral-v4";
+const providerInferenceReasons = [
+  "FIRST_ATTEMPT",
+  "STRUCTURAL_SCHEMA_REPAIR",
+  "APPLICATION_VALIDATION_REPAIR",
+  "BLANK_REQUIRED_FIELD_REPAIR",
+  "ANSWER_CONSISTENCY_REPAIR",
+  "SOURCE_LINEAGE_REPAIR",
+  "VISUAL_ASSOCIATION_REPAIR",
+  "TAXONOMY_REPAIR",
+  "PROVIDER_BUSY_RETRY",
+  "RATE_LIMIT_RETRY",
+  "NETWORK_RETRY",
+  "TIMEOUT_RETRY",
+  "SOURCE_BACKED_SEMANTIC_RECOVERY",
+];
+const repairReasons = new Set([
+  "STRUCTURAL_SCHEMA_REPAIR",
+  "APPLICATION_VALIDATION_REPAIR",
+  "BLANK_REQUIRED_FIELD_REPAIR",
+  "ANSWER_CONSISTENCY_REPAIR",
+  "SOURCE_LINEAGE_REPAIR",
+  "VISUAL_ASSOCIATION_REPAIR",
+  "TAXONOMY_REPAIR",
+  "SOURCE_BACKED_SEMANTIC_RECOVERY",
+]);
+const transientRetryReasons = new Set([
+  "PROVIDER_BUSY_RETRY",
+  "RATE_LIMIT_RETRY",
+  "NETWORK_RETRY",
+  "TIMEOUT_RETRY",
+]);
 const retryableScaleProviderCodes = new Set([
   "provider_busy",
   "provider_network_error",
@@ -98,6 +136,274 @@ function scaleAssert(condition, category) {
 
 function sum(values) {
   return values.reduce((total, value) => total + (numeric(value) ?? 0), 0);
+}
+
+function safeRatio(numerator, denominator) {
+  return denominator > 0 ? Number((numerator / denominator).toFixed(6)) : null;
+}
+
+function conservativeUsageCostMicros(inputTokens, outputTokens) {
+  return (
+    Math.ceil(
+      (inputTokens * scaleProviderControl.inputMicrosPerMillion) / 1_000_000,
+    ) +
+    Math.ceil(
+      (outputTokens * scaleProviderControl.outputMicrosPerMillion) / 1_000_000,
+    )
+  );
+}
+
+function percentile(values, ratio) {
+  if (!values.length) return 0;
+  const ordered = [...values].sort((left, right) => left - right);
+  return ordered[Math.max(0, Math.ceil(ordered.length * ratio) - 1)];
+}
+
+function aggregateQualityObservatories({ batches, completedBatchSet }) {
+  const snapshots = batches
+    .filter((batch) => completedBatchSet.has(batch.id))
+    .map((batch) =>
+      asRecord(asRecord(asRecord(batch.summary).aiPdfImport).qualityObservatory),
+    );
+  scaleAssert(
+    snapshots.length === completedBatchSet.size &&
+      snapshots.every((snapshot) => Object.keys(snapshot).length > 0),
+    "scale_batch_evidence_failed",
+  );
+
+  const attemptHistogram = Object.fromEntries(
+    providerInferenceReasons.map((reason) => [reason, 0]),
+  );
+  const attemptsPerJob = [];
+  const attempts = [];
+  const componentBytes = {
+    extractionInstructions: 0,
+    fixedTransportOverhead: 0,
+    previousResponse: 0,
+    semanticRecoveryInstructions: 0,
+    sourceInput: 0,
+    structuralRepairInstructions: 0,
+    structuredSchema: 0,
+    systemInstructions: 0,
+    taxonomyCandidates: 0,
+  };
+  const contracts = [];
+  let checkpointReplays = 0;
+  let firstAttemptSuccesses = 0;
+  let providerReportedCachedInputTokens = 0;
+  let providerReportedCandidateOutputTokens = 0;
+  let providerReportedInputTokens = 0;
+  let providerReportedOutputTokens = 0;
+  let providerReportedThoughtTokens = 0;
+  let providerReportedTotalTokens = 0;
+  let providerUsageComplete = true;
+  let cachedInputUsageComplete = true;
+  let candidateOutputUsageComplete = true;
+  let thoughtUsageComplete = true;
+  let repeatedPreviousResponseBytes = 0;
+  let repeatedSourceBytes = 0;
+  let totalSerializedRequestBytes = 0;
+
+  for (const snapshot of snapshots) {
+    const contract = asRecord(snapshot.contractEvidence);
+    const histogram = asRecord(snapshot.attemptHistogram);
+    const context = asRecord(snapshot.contextComposition);
+    const components = asRecord(context.componentBytes);
+    const records = Array.isArray(snapshot.attempts) ? snapshot.attempts : [];
+    scaleAssert(
+      snapshot.attemptReasonVersion === 3 &&
+        snapshot.contextAccountingVersion === 2 &&
+        snapshot.observatoryVersion === 4 &&
+        snapshot.parsingContractVersion ===
+          authoritativeParsingTreatmentVersion &&
+        records.length > 0 &&
+        numeric(snapshot.attemptsPerJob) === records.length &&
+        Object.keys(histogram).every(
+        (reason) =>
+          providerInferenceReasons.includes(reason) ||
+          reason === "CHECKPOINT_REPLAY_ZERO_INFERENCE",
+      ) &&
+        records.every(
+          (record) =>
+            providerInferenceReasons.includes(record?.reason) &&
+            ["failed", "success"].includes(record?.outcome),
+        ),
+      "scale_batch_evidence_failed",
+    );
+    for (const reason of providerInferenceReasons) {
+      const observed = numeric(histogram[reason]);
+      const recorded = records.filter((record) => record?.reason === reason).length;
+      scaleAssert(
+        Number.isInteger(observed) && observed === recorded,
+        "scale_batch_evidence_failed",
+      );
+      attemptHistogram[reason] += observed;
+    }
+    const snapshotCheckpointReplays = numeric(snapshot.checkpointReplayCount);
+    scaleAssert(
+      Number.isInteger(snapshotCheckpointReplays) &&
+        numeric(histogram.CHECKPOINT_REPLAY_ZERO_INFERENCE) ===
+          snapshotCheckpointReplays,
+      "scale_batch_evidence_failed",
+    );
+    checkpointReplays += snapshotCheckpointReplays;
+    attemptsPerJob.push(records.length);
+    attempts.push(...records);
+    scaleAssert(
+      snapshot.firstAttemptSuccess === (records[0]?.outcome === "success"),
+      "scale_batch_evidence_failed",
+    );
+    if (snapshot.firstAttemptSuccess) firstAttemptSuccesses += 1;
+    for (const key of Object.keys(componentBytes)) {
+      componentBytes[key] += numeric(components[key]) ?? 0;
+    }
+    repeatedPreviousResponseBytes +=
+      numeric(context.repeatedPreviousResponseBytes) ?? 0;
+    repeatedSourceBytes += numeric(context.repeatedSourceBytes) ?? 0;
+    totalSerializedRequestBytes +=
+      numeric(context.totalSerializedRequestBytes) ?? 0;
+    const usageValues = records.map((record) => {
+      const usage = asRecord(record?.usage);
+      return {
+        cachedInputTokens: numeric(usage.cachedInputTokens),
+        candidateOutputTokens: numeric(usage.candidateOutputTokens),
+        inputTokens: numeric(usage.inputTokens),
+        outputTokens: numeric(usage.outputTokens),
+        thoughtTokens: numeric(usage.thoughtTokens),
+        totalTokens: numeric(usage.totalTokens),
+      };
+    });
+    if (
+      usageValues.some(
+        (usage) =>
+          usage.inputTokens === null ||
+          usage.outputTokens === null ||
+          usage.totalTokens === null,
+      )
+    ) {
+      providerUsageComplete = false;
+    } else {
+      providerReportedInputTokens += sum(
+        usageValues.map((usage) => usage.inputTokens),
+      );
+      providerReportedOutputTokens += sum(
+        usageValues.map((usage) => usage.outputTokens),
+      );
+      providerReportedTotalTokens += sum(
+        usageValues.map((usage) => usage.totalTokens),
+      );
+      scaleAssert(
+        numeric(context.providerReportedInputTokens) ===
+          sum(usageValues.map((usage) => usage.inputTokens)) &&
+          numeric(context.providerReportedOutputTokens) ===
+            sum(usageValues.map((usage) => usage.outputTokens)),
+        "scale_batch_evidence_failed",
+      );
+    }
+    if (usageValues.some((usage) => usage.cachedInputTokens === null)) {
+      cachedInputUsageComplete = false;
+    } else {
+      providerReportedCachedInputTokens += sum(
+        usageValues.map((usage) => usage.cachedInputTokens),
+      );
+    }
+    if (usageValues.some((usage) => usage.candidateOutputTokens === null)) {
+      candidateOutputUsageComplete = false;
+    } else {
+      providerReportedCandidateOutputTokens += sum(
+        usageValues.map((usage) => usage.candidateOutputTokens),
+      );
+    }
+    if (usageValues.some((usage) => usage.thoughtTokens === null)) {
+      thoughtUsageComplete = false;
+    } else {
+      providerReportedThoughtTokens += sum(
+        usageValues.map((usage) => usage.thoughtTokens),
+      );
+    }
+    contracts.push(contract);
+  }
+
+  scaleAssert(
+    contracts.every(
+      (contract) =>
+        contract.taxonomySnapshotSha256 === authoritativeTaxonomySnapshotSha256 &&
+        contract.fullTaxonomySnapshotSha256 ===
+          authoritativeTaxonomySnapshotSha256 &&
+        contract.candidateSubsetSha256 === authoritativeCandidateSubsetSha256 &&
+        typeof contract.parsingContractSha256 === "string" &&
+        /^[a-f0-9]{64}$/.test(contract.parsingContractSha256) &&
+        typeof contract.retrievalAlgorithmVersion === "string" &&
+        typeof contract.promptContractVersion === "string" &&
+        typeof contract.schemaContractVersion === "string" &&
+        typeof contract.repairPolicyVersion === "string",
+    ),
+    "scale_batch_evidence_failed",
+  );
+  for (const key of [
+    "parsingContractSha256",
+    "retrievalAlgorithmVersion",
+    "promptContractVersion",
+    "schemaContractVersion",
+    "repairPolicyVersion",
+  ]) {
+    scaleAssert(
+      new Set(contracts.map((contract) => contract[key])).size === 1,
+      "scale_batch_evidence_failed",
+    );
+  }
+
+  const repairAttempts = attempts.filter((attempt) =>
+    repairReasons.has(attempt.reason),
+  );
+  const transientRetries = attempts.filter((attempt) =>
+    transientRetryReasons.has(attempt.reason),
+  );
+  return {
+    attemptHistogram,
+    attemptsPerJobHistogram: Object.fromEntries(
+      [...new Set(attemptsPerJob)]
+        .sort((left, right) => left - right)
+        .map((value) => [value, attemptsPerJob.filter((item) => item === value).length]),
+    ),
+    candidateSubsetBytes: numeric(contracts[0].candidateSubsetBytes) ?? 0,
+    cachedInputUsageComplete,
+    candidateOutputUsageComplete,
+    checkpointReplays,
+    componentBytes,
+    firstAttemptSuccessRate: safeRatio(firstAttemptSuccesses, snapshots.length),
+    fullTaxonomySnapshotBytes:
+      numeric(contracts[0].fullTaxonomySnapshotBytes) ?? 0,
+    parsingContractSha256: contracts[0].parsingContractSha256,
+    p50AttemptsPerJob: percentile(attemptsPerJob, 0.5),
+    p95AttemptsPerJob: percentile(attemptsPerJob, 0.95),
+    promptContractVersion: contracts[0].promptContractVersion,
+    providerInferenceAttemptCount: attempts.length,
+    providerReportedCachedInputTokens,
+    providerReportedCandidateOutputTokens,
+    providerReportedInputTokens,
+    providerReportedOutputTokens,
+    providerReportedThoughtTokens,
+    providerReportedTotalTokens,
+    providerUsageComplete,
+    repairPolicyVersion: contracts[0].repairPolicyVersion,
+    repairRate: safeRatio(repairAttempts.length, attempts.length),
+    repairSuccessRate: safeRatio(
+      repairAttempts.filter((attempt) => attempt.outcome === "success").length,
+      repairAttempts.length,
+    ),
+    repeatedPreviousResponseBytes,
+    repeatedSourceBytes,
+    retrievalAlgorithmVersion: contracts[0].retrievalAlgorithmVersion,
+    schemaContractVersion: contracts[0].schemaContractVersion,
+    taxonomyInputShare: safeRatio(
+      componentBytes.taxonomyCandidates,
+      totalSerializedRequestBytes,
+    ),
+    totalSerializedRequestBytes,
+    thoughtUsageComplete,
+    transientRetryRate: safeRatio(transientRetries.length, attempts.length),
+  };
 }
 
 function providerCounters(job) {
@@ -1143,6 +1449,14 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
         ),
     "scale_batch_evidence_failed",
   );
+  const quality = aggregateQualityObservatories({
+    batches,
+    completedBatchSet,
+  });
+  scaleAssert(
+    quality.providerInferenceAttemptCount === drain.counters.inference,
+    "scale_batch_evidence_failed",
+  );
 
   const importItems =
     requireData(
@@ -1291,7 +1605,7 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
       await service
         .from("ai_operation_telemetry")
         .select(
-          "queue_job_id, final_status, provider, model, actual_input_tokens, actual_output_tokens, actual_total_tokens, estimated_total_cost_micros, provider_call_count, provider_retry_attempts",
+          "queue_job_id, final_status, provider, model, actual_input_tokens, actual_output_tokens, actual_total_tokens, estimated_total_cost_micros, provider_call_count, provider_retry_attempts, provider_latency_ms, execution_latency_ms",
         )
         .in("queue_job_id", jobIds),
       "scale_batch_evidence_failed",
@@ -1314,7 +1628,24 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
       numeric(row.actual_total_tokens) !== null &&
       numeric(row.estimated_total_cost_micros) !== null,
   );
-  const usageUnknown = usageRows.length !== stageControl.completed;
+  const telemetryProviderCalls = sum(
+    telemetry.map((row) => row.provider_call_count),
+  );
+  const usageAccountedProviderCalls = sum(
+    usageRows.map((row) => row.provider_call_count),
+  );
+  const usageUnknown =
+    telemetryProviderCalls !== drain.counters.inference ||
+    usageAccountedProviderCalls !== telemetryProviderCalls;
+  const providerLatencyRows = telemetry.filter(
+    (row) =>
+      (numeric(row.provider_call_count) ?? 0) > 0 &&
+      (numeric(row.provider_latency_ms) !== null ||
+        numeric(row.execution_latency_ms) !== null),
+  );
+  const providerLatencyComplete =
+    sum(providerLatencyRows.map((row) => row.provider_call_count)) ===
+    telemetryProviderCalls;
 
   return {
     actualCostMicros: sum(usageRows.map((row) => row.estimated_total_cost_micros)),
@@ -1328,11 +1659,24 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
     outputTokens: sum(usageRows.map((row) => row.actual_output_tokens)),
     questionIds,
     questions,
+    quality,
+    qualityConservativeCostMicros: quality.providerUsageComplete
+      ? conservativeUsageCostMicros(
+          quality.providerReportedInputTokens,
+          quality.providerReportedOutputTokens,
+        )
+      : null,
     reviewBatchIds,
     reviewItemIds: reviewItems.map((item) => item.id),
     telemetry,
     totalTokens: sum(usageRows.map((row) => row.actual_total_tokens)),
     usageUnknown,
+    providerLatencyComplete,
+    providerLatencyMs: sum(
+      providerLatencyRows.map(
+        (row) => row.provider_latency_ms ?? row.execution_latency_ms,
+      ),
+    ),
   };
 }
 
@@ -1823,16 +2167,159 @@ async function main() {
     console.log(`PROVIDER_CLEANUP_REQUESTS=${drain.counters.cleanup}`);
     console.log(`PROVIDER_NETWORK_REQUESTS=${drain.counters.network}`);
     console.log(`PROVIDER_RETRY_WAIT_REPLAYS=${drain.providerRetryWaitReplays}`);
-    console.log(`INPUT_TOKENS=${evidence.inputTokens}`);
-    console.log(`OUTPUT_TOKENS=${evidence.outputTokens}`);
-    console.log("THINKING_TOKENS=UNKNOWN");
-    console.log(`TOTAL_TOKENS=${evidence.totalTokens}`);
+    console.log(
+      `ATTEMPT_REASON_HISTOGRAM=${Object.entries(evidence.quality.attemptHistogram)
+        .map(([reason, count]) => `${reason}:${count}`)
+        .join(",")}`,
+    );
+    console.log(
+      `ATTEMPTS_PER_JOB_HISTOGRAM=${Object.entries(
+        evidence.quality.attemptsPerJobHistogram,
+      )
+        .map(([attempts, count]) => `${attempts}:${count}`)
+        .join(",")}`,
+    );
+    console.log(
+      `FIRST_ATTEMPT_SUCCESS_RATE=${evidence.quality.firstAttemptSuccessRate}`,
+    );
+    console.log(`REPAIR_RATE=${evidence.quality.repairRate}`);
+    console.log(`REPAIR_SUCCESS_RATE=${evidence.quality.repairSuccessRate}`);
+    console.log(`TRANSIENT_RETRY_RATE=${evidence.quality.transientRetryRate}`);
+    console.log(`P50_ATTEMPTS_PER_JOB=${evidence.quality.p50AttemptsPerJob}`);
+    console.log(`P95_ATTEMPTS_PER_JOB=${evidence.quality.p95AttemptsPerJob}`);
+    console.log(`CHECKPOINT_REPLAY_ZERO_INFERENCE=${evidence.quality.checkpointReplays}`);
+    console.log(
+      `TAXONOMY_SNAPSHOT_SHA256=${authoritativeTaxonomySnapshotSha256}`,
+    );
+    console.log(
+      `CANDIDATE_SUBSET_SHA256=${authoritativeCandidateSubsetSha256}`,
+    );
+    console.log(
+      `PARSING_CONTRACT_SHA256=${evidence.quality.parsingContractSha256}`,
+    );
+    console.log(
+      `RETRIEVAL_ALGORITHM_VERSION=${evidence.quality.retrievalAlgorithmVersion}`,
+    );
+    console.log(`PROMPT_CONTRACT_VERSION=${evidence.quality.promptContractVersion}`);
+    console.log(`SCHEMA_CONTRACT_VERSION=${evidence.quality.schemaContractVersion}`);
+    console.log(`REPAIR_POLICY_VERSION=${evidence.quality.repairPolicyVersion}`);
+    console.log(
+      `FULL_TAXONOMY_SERIALIZED_BYTES=${evidence.quality.fullTaxonomySnapshotBytes}`,
+    );
+    console.log(
+      `CANDIDATE_TAXONOMY_SERIALIZED_BYTES=${evidence.quality.candidateSubsetBytes}`,
+    );
+    console.log(`TAXONOMY_INPUT_BYTE_SHARE=${evidence.quality.taxonomyInputShare}`);
+    console.log(`SOURCE_CONTEXT_BYTES=${evidence.quality.componentBytes.sourceInput}`);
+    console.log(
+      `INSTRUCTION_CONTEXT_BYTES=${
+        evidence.quality.componentBytes.extractionInstructions +
+        evidence.quality.componentBytes.systemInstructions
+      }`,
+    );
+    console.log(
+      `SCHEMA_CONTEXT_BYTES=${evidence.quality.componentBytes.structuredSchema}`,
+    );
+    console.log(
+      `REPAIR_CONTEXT_BYTES=${
+        evidence.quality.componentBytes.structuralRepairInstructions +
+        evidence.quality.componentBytes.semanticRecoveryInstructions
+      }`,
+    );
+    console.log(
+      `PREVIOUS_RESPONSE_CONTEXT_BYTES=${evidence.quality.componentBytes.previousResponse}`,
+    );
+    console.log(`REPEATED_SOURCE_BYTES=${evidence.quality.repeatedSourceBytes}`);
+    console.log(
+      `REPEATED_PREVIOUS_RESPONSE_BYTES=${evidence.quality.repeatedPreviousResponseBytes}`,
+    );
+    console.log(
+      `TOTAL_SERIALIZED_REQUEST_BYTES=${evidence.quality.totalSerializedRequestBytes}`,
+    );
+    console.log(
+      `PROVIDER_USAGE_METADATA_COMPLETE=${
+        evidence.quality.providerUsageComplete ? "PASS" : "FAIL"
+      }`,
+    );
+    console.log(
+      `INPUT_TOKENS=${
+        evidence.quality.providerUsageComplete
+          ? evidence.quality.providerReportedInputTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `CACHED_INPUT_TOKENS=${
+        evidence.quality.cachedInputUsageComplete
+          ? evidence.quality.providerReportedCachedInputTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `CANDIDATE_OUTPUT_TOKENS=${
+        evidence.quality.candidateOutputUsageComplete
+          ? evidence.quality.providerReportedCandidateOutputTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `THINKING_TOKENS=${
+        evidence.quality.thoughtUsageComplete
+          ? evidence.quality.providerReportedThoughtTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `OUTPUT_TOKENS=${
+        evidence.quality.providerUsageComplete
+          ? evidence.quality.providerReportedOutputTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `TOTAL_TOKENS=${
+        evidence.quality.providerUsageComplete
+          ? evidence.quality.providerReportedTotalTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `TELEMETRY_USAGE_COMPLETE=${evidence.usageUnknown ? "FAIL" : "PASS"}`,
+    );
     console.log(
       `ACTUAL_ESTIMATED_COST_MICROS=${
         evidence.usageUnknown ? "UNKNOWN" : evidence.actualCostMicros
       }`,
     );
+    console.log(
+      `USAGE_DERIVED_CONSERVATIVE_COST_MICROS=${
+        evidence.qualityConservativeCostMicros ?? "UNKNOWN"
+      }`,
+    );
     console.log(`REVIEW_DRAFT_COUNT=${evidence.questions.length}`);
+    console.log(
+      `VALID_REVIEW_DRAFT_YIELD=${safeRatio(
+        evidence.questions.length,
+        drain.counters.inference,
+      )}`,
+    );
+    console.log(
+      `COST_MICROS_PER_VALID_REVIEW_DRAFT=${
+        evidence.qualityConservativeCostMicros === null
+          ? "UNKNOWN"
+          : Math.ceil(
+              evidence.qualityConservativeCostMicros /
+                evidence.questions.length,
+            )
+      }`,
+    );
+    console.log(
+      `LATENCY_MS_PER_VALID_REVIEW_DRAFT=${
+        evidence.providerLatencyComplete
+          ? Math.ceil(evidence.providerLatencyMs / evidence.questions.length)
+          : "UNKNOWN"
+      }`,
+    );
     console.log("REVIEW_DRAFT_STATE=pending_review");
     console.log(`DUPLICATE_COUNT=${evidence.duplicateCount}`);
     console.log(`BANK_APPROVAL_COUNT=${evidence.bankQuestionCount}`);
@@ -1901,11 +2388,22 @@ async function main() {
   }
 }
 
-try {
-  await main();
-} catch {
-  clearScaleEnvironment();
-  console.error("PDF50_SCALE_UNKNOWN=BLOCKED");
-  console.error("FAILURE_CATEGORY=unexpected_failure");
-  process.exitCode = 1;
+const isDirectInvocation =
+  typeof process.argv[1] === "string" &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectInvocation) {
+  try {
+    await main();
+  } catch {
+    clearScaleEnvironment();
+    console.error("PDF50_SCALE_UNKNOWN=BLOCKED");
+    console.error("FAILURE_CATEGORY=unexpected_failure");
+    process.exitCode = 1;
+  }
 }
+
+export {
+  aggregateQualityObservatories,
+  conservativeUsageCostMicros,
+};

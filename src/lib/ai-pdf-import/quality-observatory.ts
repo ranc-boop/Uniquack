@@ -68,7 +68,7 @@ type AIPdfAttemptCompletion = {
   usage?: GeminiNativeUsage | null;
 };
 
-type AIPdfAttemptRecord = AIPdfAttemptInput & {
+export type AIPdfAttemptRecord = AIPdfAttemptInput & {
   componentOverflowBytes: number;
   durationMs: number;
   failureCategory: AIPdfAttemptFailureCategory | null;
@@ -154,6 +154,19 @@ export type AIPdfQualitySnapshot = {
   visualEvidence: AIPdfVisualQualityMetrics;
 };
 
+export const AI_PDF_QUALITY_CHECKPOINT_VERSION = 1;
+
+export type AIPdfQualityCheckpoint = {
+  attemptReasonVersion: typeof AI_PDF_ATTEMPT_REASON_VERSION;
+  attempts: AIPdfAttemptRecord[];
+  checkpointReplayCount: number;
+  contextAccountingVersion: typeof AI_PDF_CONTEXT_ACCOUNTING_VERSION;
+  contractEvidence: AIPdfContractEvidence | null;
+  contractVersion: typeof AI_PDF_QUALITY_CHECKPOINT_VERSION;
+  observatoryVersion: typeof AI_PDF_QUALITY_OBSERVATORY_VERSION;
+  parsingContractVersion: typeof AI_PDF_PARSING_TREATMENT_VERSION;
+};
+
 const MAX_ATTEMPT_RECORDS = 128;
 const ATTEMPT_REASONS: AIPdfAttemptReason[] = [
   "FIRST_ATTEMPT",
@@ -171,6 +184,256 @@ const ATTEMPT_REASONS: AIPdfAttemptReason[] = [
   "TIMEOUT_RETRY",
   "CHECKPOINT_REPLAY_ZERO_INFERENCE",
 ];
+const PROVIDER_ATTEMPT_REASONS = new Set(
+  ATTEMPT_REASONS.filter(
+    (reason): reason is AIPdfProviderAttemptReason =>
+      reason !== "CHECKPOINT_REPLAY_ZERO_INFERENCE",
+  ),
+);
+const INPUT_STRATEGIES = new Set<AiPdfInputStrategy>([
+  "gemini_native_pdf",
+  "mock",
+  "openai_file",
+  "page_images",
+  "unsupported",
+]);
+const FAILURE_CATEGORIES = new Set<AIPdfAttemptFailureCategory>([
+  "application_schema",
+  "non_json",
+  "operation_cancelled",
+  "provider_busy",
+  "provider_configuration_error",
+  "provider_execution_budget_exhausted",
+  "provider_invalid_response",
+  "provider_network_error",
+  "provider_permission_error",
+  "provider_rate_limited",
+  "provider_timeout",
+  "request_invalid",
+  "response_missing",
+  "unknown_provider_error",
+  "zero_importable",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isNullableNonNegativeInteger(value: unknown) {
+  return value === null || isNonNegativeInteger(value);
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+function isCandidateMetrics(value: unknown): value is AIPdfCandidateMetrics {
+  if (!isRecord(value)) return false;
+  return [
+    "applicationValidCandidates",
+    "rawCandidates",
+    "rejectedCandidates",
+    "schemaValidCandidates",
+    "warningCount",
+  ].every((key) => isNonNegativeInteger(value[key]));
+}
+
+function isUsage(value: unknown): value is GeminiNativeUsage {
+  if (!isRecord(value)) return false;
+  return [
+    "cachedInputTokens",
+    "candidateOutputTokens",
+    "inputTokens",
+    "outputTokens",
+    "thoughtTokens",
+    "totalTokens",
+  ].every((key) => isNullableNonNegativeInteger(value[key]));
+}
+
+function isSerializedContext(
+  value: unknown,
+): value is AIPdfSerializedRequestContext {
+  if (!isRecord(value)) return false;
+  return [
+    "extractionInstructionBytes",
+    "previousResponseBytes",
+    "semanticRecoveryInstructionBytes",
+    "serializedRequestBytes",
+    "sourceInputBytes",
+    "structuralRepairInstructionBytes",
+    "structuredSchemaBytes",
+    "systemInstructionBytes",
+    "taxonomyCandidateBytes",
+  ].every((key) => isNonNegativeInteger(value[key]));
+}
+
+function isAttemptRecord(value: unknown): value is AIPdfAttemptRecord {
+  if (!isRecord(value)) return false;
+  return (
+    isSerializedContext(value.context) &&
+    isNonNegativeInteger(value.extractionAttempt) &&
+    isNonNegativeInteger(value.inferenceOrdinal) &&
+    typeof value.inputStrategy === "string" &&
+    INPUT_STRATEGIES.has(value.inputStrategy as AiPdfInputStrategy) &&
+    typeof value.reason === "string" &&
+    PROVIDER_ATTEMPT_REASONS.has(value.reason as AIPdfProviderAttemptReason) &&
+    isNonNegativeInteger(value.routeCandidateIndex) &&
+    typeof value.scope === "string" &&
+    value.scope.length > 0 &&
+    value.scope.length <= 256 &&
+    typeof value.sourceIncluded === "boolean" &&
+    typeof value.sourceRepeated === "boolean" &&
+    isNonNegativeInteger(value.transportAttempt) &&
+    isNonNegativeInteger(value.componentOverflowBytes) &&
+    isNonNegativeInteger(value.durationMs) &&
+    (value.failureCategory === null ||
+      (typeof value.failureCategory === "string" &&
+        FAILURE_CATEGORIES.has(
+          value.failureCategory as AIPdfAttemptFailureCategory,
+        ))) &&
+    isNonNegativeInteger(value.fixedTransportOverheadBytes) &&
+    (value.outcome === "failed" || value.outcome === "success") &&
+    (value.output === null || isCandidateMetrics(value.output)) &&
+    (value.usage === null || isUsage(value.usage))
+  );
+}
+
+function isContractEvidence(value: unknown): value is AIPdfContractEvidence {
+  if (!isRecord(value)) return false;
+  return (
+    isNonNegativeInteger(value.candidateCount) &&
+    isNonNegativeInteger(value.candidateSubsetBytes) &&
+    isSha256(value.candidateSubsetSha256) &&
+    isNonNegativeInteger(value.fullTaxonomySnapshotBytes) &&
+    isSha256(value.fullTaxonomySnapshotSha256) &&
+    isSha256(value.parsingContractSha256) &&
+    typeof value.promptContractVersion === "string" &&
+    value.promptContractVersion.length > 0 &&
+    typeof value.repairPolicyVersion === "string" &&
+    value.repairPolicyVersion.length > 0 &&
+    typeof value.retrievalAlgorithmVersion === "string" &&
+    value.retrievalAlgorithmVersion.length > 0 &&
+    typeof value.schemaContractVersion === "string" &&
+    value.schemaContractVersion.length > 0 &&
+    (value.subsetToFullCatalogByteRatio === null ||
+      (typeof value.subsetToFullCatalogByteRatio === "number" &&
+        Number.isFinite(value.subsetToFullCatalogByteRatio) &&
+        value.subsetToFullCatalogByteRatio >= 0 &&
+        value.subsetToFullCatalogByteRatio <= 1)) &&
+    isSha256(value.taxonomySnapshotSha256) &&
+    isNonNegativeInteger(value.taxonomySnapshotVersion)
+  );
+}
+
+function cloneAttempt(attempt: AIPdfAttemptRecord): AIPdfAttemptRecord {
+  return {
+    componentOverflowBytes: attempt.componentOverflowBytes,
+    context: {
+      extractionInstructionBytes: attempt.context.extractionInstructionBytes,
+      previousResponseBytes: attempt.context.previousResponseBytes,
+      semanticRecoveryInstructionBytes:
+        attempt.context.semanticRecoveryInstructionBytes,
+      serializedRequestBytes: attempt.context.serializedRequestBytes,
+      sourceInputBytes: attempt.context.sourceInputBytes,
+      structuralRepairInstructionBytes:
+        attempt.context.structuralRepairInstructionBytes,
+      structuredSchemaBytes: attempt.context.structuredSchemaBytes,
+      systemInstructionBytes: attempt.context.systemInstructionBytes,
+      taxonomyCandidateBytes: attempt.context.taxonomyCandidateBytes,
+    },
+    durationMs: attempt.durationMs,
+    extractionAttempt: attempt.extractionAttempt,
+    failureCategory: attempt.failureCategory,
+    fixedTransportOverheadBytes: attempt.fixedTransportOverheadBytes,
+    inferenceOrdinal: attempt.inferenceOrdinal,
+    inputStrategy: attempt.inputStrategy,
+    outcome: attempt.outcome,
+    output: attempt.output
+      ? {
+          applicationValidCandidates:
+            attempt.output.applicationValidCandidates,
+          rawCandidates: attempt.output.rawCandidates,
+          rejectedCandidates: attempt.output.rejectedCandidates,
+          schemaValidCandidates: attempt.output.schemaValidCandidates,
+          warningCount: attempt.output.warningCount,
+        }
+      : null,
+    reason: attempt.reason,
+    routeCandidateIndex: attempt.routeCandidateIndex,
+    scope: attempt.scope,
+    sourceIncluded: attempt.sourceIncluded,
+    sourceRepeated: attempt.sourceRepeated,
+    transportAttempt: attempt.transportAttempt,
+    usage: attempt.usage
+      ? {
+          cachedInputTokens: attempt.usage.cachedInputTokens,
+          candidateOutputTokens: attempt.usage.candidateOutputTokens,
+          inputTokens: attempt.usage.inputTokens,
+          outputTokens: attempt.usage.outputTokens,
+          thoughtTokens: attempt.usage.thoughtTokens,
+          totalTokens: attempt.usage.totalTokens,
+        }
+      : null,
+  };
+}
+
+function cloneContractEvidence(
+  evidence: AIPdfContractEvidence,
+): AIPdfContractEvidence {
+  return {
+    candidateCount: evidence.candidateCount,
+    candidateSubsetBytes: evidence.candidateSubsetBytes,
+    candidateSubsetSha256: evidence.candidateSubsetSha256,
+    fullTaxonomySnapshotBytes: evidence.fullTaxonomySnapshotBytes,
+    fullTaxonomySnapshotSha256: evidence.fullTaxonomySnapshotSha256,
+    parsingContractSha256: evidence.parsingContractSha256,
+    promptContractVersion: evidence.promptContractVersion,
+    repairPolicyVersion: evidence.repairPolicyVersion,
+    retrievalAlgorithmVersion: evidence.retrievalAlgorithmVersion,
+    schemaContractVersion: evidence.schemaContractVersion,
+    subsetToFullCatalogByteRatio: evidence.subsetToFullCatalogByteRatio,
+    taxonomySnapshotSha256: evidence.taxonomySnapshotSha256,
+    taxonomySnapshotVersion: evidence.taxonomySnapshotVersion,
+  };
+}
+
+export function parseAIPdfQualityCheckpoint(
+  value: unknown,
+): AIPdfQualityCheckpoint | null {
+  if (!isRecord(value)) return null;
+  if (
+    value.contractVersion !== AI_PDF_QUALITY_CHECKPOINT_VERSION ||
+    value.attemptReasonVersion !== AI_PDF_ATTEMPT_REASON_VERSION ||
+    value.contextAccountingVersion !== AI_PDF_CONTEXT_ACCOUNTING_VERSION ||
+    value.observatoryVersion !== AI_PDF_QUALITY_OBSERVATORY_VERSION ||
+    value.parsingContractVersion !== AI_PDF_PARSING_TREATMENT_VERSION ||
+    !Array.isArray(value.attempts) ||
+    value.attempts.length > MAX_ATTEMPT_RECORDS ||
+    !value.attempts.every(isAttemptRecord) ||
+    !isNonNegativeInteger(value.checkpointReplayCount) ||
+    (value.contractEvidence !== null &&
+      !isContractEvidence(value.contractEvidence))
+  ) {
+    return null;
+  }
+
+  return {
+    attemptReasonVersion: AI_PDF_ATTEMPT_REASON_VERSION,
+    attempts: value.attempts.map(cloneAttempt),
+    checkpointReplayCount: value.checkpointReplayCount,
+    contextAccountingVersion: AI_PDF_CONTEXT_ACCOUNTING_VERSION,
+    contractEvidence: value.contractEvidence
+      ? cloneContractEvidence(value.contractEvidence)
+      : null,
+    contractVersion: AI_PDF_QUALITY_CHECKPOINT_VERSION,
+    observatoryVersion: AI_PDF_QUALITY_OBSERVATORY_VERSION,
+    parsingContractVersion: AI_PDF_PARSING_TREATMENT_VERSION,
+  };
+}
 
 function nonNegativeInteger(value: number | null | undefined) {
   return Number.isFinite(value)
@@ -234,11 +497,28 @@ export type AIPdfQualityObservatory = ReturnType<
   typeof createAIPdfQualityObservatory
 >;
 
-export function createAIPdfQualityObservatory() {
-  const attempts: AIPdfAttemptRecord[] = [];
+export function createAIPdfQualityObservatory(
+  checkpoint?: AIPdfQualityCheckpoint | null,
+) {
+  const restored = checkpoint == null
+    ? null
+    : parseAIPdfQualityCheckpoint(checkpoint);
+  if (checkpoint != null && !restored) {
+    throw new Error("AI PDF quality checkpoint is incompatible.");
+  }
+  const attempts: AIPdfAttemptRecord[] =
+    restored?.attempts.map(cloneAttempt) ?? [];
   const histogram = new Map<AIPdfAttemptReason, number>();
-  let checkpointReplayCount = 0;
-  let contractEvidence: AIPdfContractEvidence | null = null;
+  for (const attempt of attempts) {
+    histogram.set(attempt.reason, (histogram.get(attempt.reason) ?? 0) + 1);
+  }
+  let checkpointReplayCount = restored?.checkpointReplayCount ?? 0;
+  if (checkpointReplayCount > 0) {
+    histogram.set("CHECKPOINT_REPLAY_ZERO_INFERENCE", checkpointReplayCount);
+  }
+  let contractEvidence: AIPdfContractEvidence | null = restored?.contractEvidence
+    ? cloneContractEvidence(restored.contractEvidence)
+    : null;
   let persistence = {
     duplicateCount: 0,
     importableReviewDrafts: 0,
@@ -450,6 +730,20 @@ export function createAIPdfQualityObservatory() {
 
   return {
     beginAttempt,
+    checkpoint(): AIPdfQualityCheckpoint {
+      return {
+        attemptReasonVersion: AI_PDF_ATTEMPT_REASON_VERSION,
+        attempts: attempts.map(cloneAttempt),
+        checkpointReplayCount,
+        contextAccountingVersion: AI_PDF_CONTEXT_ACCOUNTING_VERSION,
+        contractEvidence: contractEvidence
+          ? cloneContractEvidence(contractEvidence)
+          : null,
+        contractVersion: AI_PDF_QUALITY_CHECKPOINT_VERSION,
+        observatoryVersion: AI_PDF_QUALITY_OBSERVATORY_VERSION,
+        parsingContractVersion: AI_PDF_PARSING_TREATMENT_VERSION,
+      };
+    },
     recordCheckpointReplay() {
       checkpointReplayCount += 1;
       histogram.set(
@@ -458,7 +752,7 @@ export function createAIPdfQualityObservatory() {
       );
     },
     recordContractEvidence(next: AIPdfContractEvidence) {
-      contractEvidence = { ...next };
+      contractEvidence = cloneContractEvidence(next);
     },
     recordPersistence(next: Partial<typeof persistence>) {
       persistence = {

@@ -215,7 +215,7 @@ assert.equal(normalizedVisuals.questions[1].visual_evidence_required, true);
 const observer = observerModule.createAIPdfQualityObservatory();
 observer.beginAttempt({
   extractionAttempt: 1,
-  inputStrategy: "native_pdf",
+  inputStrategy: "gemini_native_pdf",
   context: {
     extractionInstructionBytes: 60,
     previousResponseBytes: 0,
@@ -240,7 +240,7 @@ observer.beginAttempt({
 });
 observer.beginAttempt({
   extractionAttempt: 2,
-  inputStrategy: "native_pdf",
+  inputStrategy: "gemini_native_pdf",
   context: {
     extractionInstructionBytes: 0,
     previousResponseBytes: 50,
@@ -309,5 +309,61 @@ assert.equal(snapshot.output.usefulOutputPerProviderInputToken, 0.01);
 assert.equal(snapshot.contractEvidence.taxonomySnapshotSha256, "b".repeat(64));
 assert.equal(snapshot.contractEvidence.candidateSubsetSha256, "c".repeat(64));
 assert.equal(snapshot.contractEvidence.subsetToFullCatalogByteRatio, 0.5);
+
+const checkpoint = observer.checkpoint();
+assert.deepEqual(
+  observerModule.parseAIPdfQualityCheckpoint(checkpoint),
+  checkpoint,
+);
+const resumedObserver = observerModule.createAIPdfQualityObservatory(checkpoint);
+resumedObserver.recordCheckpointReplay();
+const resumedSnapshot = resumedObserver.snapshot();
+assert.equal(resumedSnapshot.attemptsPerJob, 2);
+assert.equal(resumedSnapshot.attemptHistogram.FIRST_ATTEMPT, 1);
+assert.equal(resumedSnapshot.attemptHistogram.STRUCTURAL_SCHEMA_REPAIR, 1);
+assert.equal(
+  resumedSnapshot.attemptHistogram.CHECKPOINT_REPLAY_ZERO_INFERENCE,
+  1,
+);
+assert.equal(resumedSnapshot.checkpointReplayCount, 1);
+assert.equal(resumedSnapshot.contextComposition.totalSerializedRequestBytes, 1_330);
+assert.equal(resumedSnapshot.contextComposition.providerReportedInputTokens, 100);
+assert.equal(resumedSnapshot.contextComposition.providerReportedOutputTokens, 80);
+assert.equal(
+  resumedSnapshot.contractEvidence.taxonomySnapshotSha256,
+  "b".repeat(64),
+);
+assert.equal(
+  observerModule.parseAIPdfQualityCheckpoint({
+    ...checkpoint,
+    contractVersion: 99,
+  }),
+  null,
+);
+assert.equal(
+  observerModule.parseAIPdfQualityCheckpoint({
+    ...checkpoint,
+    attempts: [
+      {
+        ...checkpoint.attempts[0],
+        context: {
+          ...checkpoint.attempts[0].context,
+          sourceInputBytes: -1,
+        },
+      },
+    ],
+  }),
+  null,
+);
+const canonicalCheckpoint = observerModule.parseAIPdfQualityCheckpoint({
+  ...checkpoint,
+  rawSource: "must-not-survive",
+  attempts: checkpoint.attempts.map((attempt) => ({
+    ...attempt,
+    rawPrompt: "must-not-survive",
+  })),
+});
+assert(canonicalCheckpoint);
+assert.equal(JSON.stringify(canonicalCheckpoint).includes("must-not-survive"), false);
 
 console.log("AI_PARSING_RUNTIME_CONTRACT=PASS");

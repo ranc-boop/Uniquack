@@ -15,11 +15,136 @@ import {
   pdf50ScaleProviderProofEnvironment,
 } from "./lib/pdf50-scale-provider-proof-control.mjs";
 import {
+  numeric,
   proofControlEnvironment,
   validatedProviderTestEnvironment,
 } from "./pdf50-end-to-end-live-e2e.mjs";
+import {
+  aggregateQualityObservatories,
+  conservativeUsageCostMicros,
+} from "./pdf50-scale-qualification-live-e2e.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+assert.equal(numeric(null), null);
+assert.equal(numeric(undefined), null);
+assert.equal(numeric(""), null);
+assert.equal(numeric("12"), 12);
+assert.equal(conservativeUsageCostMicros(100, 20), 18);
+
+const attemptHistogram = {
+  ANSWER_CONSISTENCY_REPAIR: 0,
+  APPLICATION_VALIDATION_REPAIR: 0,
+  BLANK_REQUIRED_FIELD_REPAIR: 0,
+  CHECKPOINT_REPLAY_ZERO_INFERENCE: 1,
+  FIRST_ATTEMPT: 1,
+  NETWORK_RETRY: 0,
+  PROVIDER_BUSY_RETRY: 0,
+  RATE_LIMIT_RETRY: 0,
+  SOURCE_BACKED_SEMANTIC_RECOVERY: 0,
+  SOURCE_LINEAGE_REPAIR: 0,
+  STRUCTURAL_SCHEMA_REPAIR: 0,
+  TAXONOMY_REPAIR: 0,
+  TIMEOUT_RETRY: 0,
+  VISUAL_ASSOCIATION_REPAIR: 0,
+};
+const qualitySnapshot = {
+  attemptHistogram,
+  attemptReasonVersion: 3,
+  attempts: [
+    {
+      outcome: "success",
+      reason: "FIRST_ATTEMPT",
+      usage: {
+        cachedInputTokens: null,
+        candidateOutputTokens: 20,
+        inputTokens: 100,
+        outputTokens: 20,
+        thoughtTokens: null,
+        totalTokens: 120,
+      },
+    },
+  ],
+  attemptsPerJob: 1,
+  checkpointReplayCount: 1,
+  contextAccountingVersion: 2,
+  contextComposition: {
+    componentBytes: {
+      extractionInstructions: 10,
+      fixedTransportOverhead: 5,
+      previousResponse: 0,
+      semanticRecoveryInstructions: 0,
+      sourceInput: 100,
+      structuralRepairInstructions: 0,
+      structuredSchema: 20,
+      systemInstructions: 5,
+      taxonomyCandidates: 30,
+    },
+    providerReportedInputTokens: 100,
+    providerReportedOutputTokens: 20,
+    repeatedPreviousResponseBytes: 0,
+    repeatedSourceBytes: 0,
+    totalSerializedRequestBytes: 170,
+  },
+  contractEvidence: {
+    candidateSubsetBytes: 30,
+    candidateSubsetSha256:
+      "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262",
+    fullTaxonomySnapshotBytes: 40,
+    fullTaxonomySnapshotSha256:
+      "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+    parsingContractSha256: "a".repeat(64),
+    promptContractVersion: "prompt-v1",
+    repairPolicyVersion: "repair-v1",
+    retrievalAlgorithmVersion: "retrieval-v1",
+    schemaContractVersion: "schema-v1",
+    taxonomySnapshotSha256:
+      "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+  },
+  firstAttemptSuccess: true,
+  observatoryVersion: 4,
+  parsingContractVersion: "ai-pdf-parsing/provider-neutral-v4",
+};
+const qualityBatch = (snapshot) => ({
+  id: "batch-1",
+  summary: { aiPdfImport: { qualityObservatory: snapshot } },
+});
+const aggregate = aggregateQualityObservatories({
+  batches: [qualityBatch(qualitySnapshot)],
+  completedBatchSet: new Set(["batch-1"]),
+});
+assert.equal(aggregate.providerInferenceAttemptCount, 1);
+assert.equal(aggregate.checkpointReplays, 1);
+assert.equal(aggregate.providerUsageComplete, true);
+assert.equal(aggregate.cachedInputUsageComplete, false);
+assert.equal(aggregate.thoughtUsageComplete, false);
+assert.equal(aggregate.providerReportedInputTokens, 100);
+assert.equal(aggregate.providerReportedOutputTokens, 20);
+assert.equal(aggregate.attemptHistogram.FIRST_ATTEMPT, 1);
+assert.throws(() =>
+  aggregateQualityObservatories({
+    batches: [
+      qualityBatch({
+        ...qualitySnapshot,
+        attemptsPerJob: 0,
+      }),
+    ],
+    completedBatchSet: new Set(["batch-1"]),
+  }),
+);
+assert.throws(() =>
+  aggregateQualityObservatories({
+    batches: [
+      qualityBatch({
+        ...qualitySnapshot,
+        contractEvidence: {
+          ...qualitySnapshot.contractEvidence,
+          taxonomySnapshotSha256: "b".repeat(64),
+        },
+      }),
+    ],
+    completedBatchSet: new Set(["batch-1"]),
+  }),
+);
 const [
   control,
   providerControl,
@@ -244,6 +369,19 @@ assert(harness.includes('label: "unexpected_terminal"'));
 assert(harness.includes("PARTIAL_PROVIDER_NETWORK_REQUESTS="));
 assert(!harness.includes("console.log(output)"));
 assert(harness.includes('getByRole("button", { name: "Cancel unstarted" })'));
+assert(
+  harness.includes(
+    '"05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe"',
+  ),
+);
+assert(
+  harness.includes(
+    '"fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262"',
+  ),
+);
+assert(harness.includes("PROVIDER_USAGE_METADATA_COMPLETE="));
+assert(harness.includes("USAGE_DERIVED_CONSERVATIVE_COST_MICROS="));
+assert(harness.includes("row.provider_latency_ms ?? row.execution_latency_ms"));
 
 assert(launcher.includes("Import-Clixml -LiteralPath $VaultPath"));
 assert(launcher.includes("Set-ProcessValueFromSecureString"));
@@ -317,7 +455,29 @@ function satisfiesScaleSafetyContract(source) {
   );
 }
 
+function satisfiesQualityEvidenceContract(source) {
+  return (
+    source.includes(
+      "numeric(snapshot.attemptsPerJob) === records.length",
+    ) &&
+    source.includes(
+      "quality.providerInferenceAttemptCount === drain.counters.inference",
+    ) &&
+    source.includes(
+      "snapshot.firstAttemptSuccess === (records[0]?.outcome === \"success\")",
+    ) &&
+    source.includes(
+      "numeric(histogram.CHECKPOINT_REPLAY_ZERO_INFERENCE) ===",
+    ) &&
+    source.includes("providerUsageComplete = false") &&
+    source.includes(
+      "telemetryProviderCalls !== drain.counters.inference",
+    )
+  );
+}
+
 assert(satisfiesScaleSafetyContract(harness));
+assert(satisfiesQualityEvidenceContract(harness));
 const mutationCases = [
   harness.replace("beforeCount === 0 && afterCount === 0", "true"),
   harness.replace('result.data === "STALE_FENCE_REJECTED"', "true"),
@@ -369,6 +529,35 @@ const mutationCases = [
   ),
 ];
 assert(mutationCases.every((mutated) => !satisfiesScaleSafetyContract(mutated)));
+
+const qualityMutationCases = [
+  harness.replace(
+    "numeric(snapshot.attemptsPerJob) === records.length",
+    "true",
+  ),
+  harness.replace(
+    "quality.providerInferenceAttemptCount === drain.counters.inference",
+    "true",
+  ),
+  harness.replace(
+    'snapshot.firstAttemptSuccess === (records[0]?.outcome === "success")',
+    "true",
+  ),
+  harness.replace(
+    "numeric(histogram.CHECKPOINT_REPLAY_ZERO_INFERENCE) ===",
+    "0 ===",
+  ),
+  harness.replace("providerUsageComplete = false", "providerUsageComplete = true"),
+  harness.replace(
+    "telemetryProviderCalls !== drain.counters.inference",
+    "false",
+  ),
+];
+assert(
+  qualityMutationCases.every(
+    (mutated) => !satisfiesQualityEvidenceContract(mutated),
+  ),
+);
 
 console.log(
   "PASS PDF50 4/10/50 scale qualification safety and conservative budget contract",
