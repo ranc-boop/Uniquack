@@ -21,6 +21,7 @@ const fingerprintedPaths = [
   "scripts/ai-parsing-eval/lib/taxonomy-golden-fixture.mjs",
   "scripts/ai-parsing-eval/lib/taxonomy-source-inventory.mjs",
   "scripts/ai-parsing-eval/mutation-proof.mjs",
+  "scripts/ai-parsing-eval/runtime-contract-smoke.mjs",
   "scripts/ai-parsing-eval/synthetic-visual-pdf.mjs",
   "scripts/ai-parsing-eval/taxonomy-context-efficiency.mjs",
   "scripts/ai-parsing-eval/taxonomy-provenance-audit.mjs",
@@ -28,6 +29,8 @@ const fingerprintedPaths = [
   "scripts/ai-parsing-eval/visual-evidence-live-contract.mjs",
   "scripts/ai-parsing-visual-evidence-live-e2e-safety-smoke.mjs",
   "scripts/ai-parsing-visual-evidence-live-e2e.mjs",
+  "scripts/ai-parsing-quality-foundation-smoke.mjs",
+  "scripts/ai-provider-resilience-smoke.mjs",
   "scripts/gemini-live-resume-preflight-safety-smoke.mjs",
   "scripts/gemini-live-resume-preflight.mjs",
   "scripts/lib/pdf50-scale-provider-proof-control.mjs",
@@ -44,6 +47,7 @@ const fingerprintedPaths = [
   "scripts/run-gemini-live-resume-preflight.ps1",
   "scripts/run-pdf50-scale-qualification-live-e2e.ps1",
   "src/app/api/internal/ai-jobs/run/route.ts",
+  "src/lib/ai-jobs/checkpoint.ts",
   "src/lib/batch-import/fenced-persistence.ts",
   "src/lib/batch-import/service.ts",
   "src/lib/ai-pdf-import/post-persistence.ts",
@@ -58,6 +62,7 @@ const fingerprintedPaths = [
   "src/lib/ai-pdf-import/visual-evidence.ts",
   "src/lib/ai-providers/ai-pdf-attempt-state.ts",
   "src/lib/ai-providers/chat.ts",
+  "src/lib/ai-providers/errors.ts",
   "src/lib/ai-providers/gemini-ai-pdf-extraction.schema.json",
   "src/lib/ai-providers/gemini-native.ts",
   "src/lib/ai-jobs/pdf50-scale-provider-proof-control.json",
@@ -128,7 +133,7 @@ if (process.argv[2] === "--emit") {
     JSON.stringify(
       {
         baselineAnchor: baseline,
-        contractVersion: "ai-pdf-parsing/provider-neutral-v4",
+        contractVersion: "ai-pdf-parsing/provider-neutral-v5",
         files: fingerprintedPaths.map((path) => ({
           baseline: anchorRecord(baseline, path),
           path,
@@ -152,7 +157,7 @@ const head = resolveCommit("HEAD");
 assert.equal(manifest.schemaVersion, 1);
 assert.equal(
   manifest.contractVersion,
-  "ai-pdf-parsing/provider-neutral-v4",
+  "ai-pdf-parsing/provider-neutral-v5",
 );
 assert.equal(baseline, manifest.baselineAnchor);
 assert.equal(treatment, manifest.treatmentAnchor);

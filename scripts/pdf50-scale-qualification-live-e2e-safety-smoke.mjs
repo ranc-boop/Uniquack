@@ -536,6 +536,12 @@ function satisfiesCombinedVisualScaleContract(source) {
     source.includes(
       'scaleAssert(!requireVisual, "visual_evidence_contract_failed")',
     ) &&
+    source.includes(
+      "reviewText.includes(`${evidence.expectedQuestionCount} results`)",
+    ) &&
+    source.includes("reviewText.includes(`Page 1 of ${expectedReviewPages}`)") &&
+    source.includes('activePage.locator("#review-results article").count()') &&
+    !source.includes("reviewText.includes(evidence.questions[0].title)") &&
     source.includes("QUESTION_VISUAL_ATTACHMENT_RESTORED_AND_LIVE_VALIDATED") &&
     source.includes('["question_assets", "id", questionAssetRows.map((row) => row.id)]') &&
     source.includes('"question_asset_storage"') &&
@@ -645,6 +651,14 @@ const combinedVisualMutationCases = [
     'item.created_question_id === missingVisualQuestionId\n            ? item.status === "pending_review"',
   ),
   harness.replace('requireVisual: config.stage === "50"', "requireVisual: false"),
+  harness.replace(
+    "reviewText.includes(`${evidence.expectedQuestionCount} results`)",
+    "true",
+  ),
+  harness.replace(
+    "reviewText.includes(`Page 1 of ${expectedReviewPages}`)",
+    "true",
+  ),
   harness.replace(
     '["question_assets", "id", questionAssetRows.map((row) => row.id)]',
     '["question_assets", "id", []]',

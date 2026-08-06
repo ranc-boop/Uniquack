@@ -1904,16 +1904,36 @@ async function verifyTeacherUI({
     await remounted.close();
   }
   console.log("BROWSER_CHECK=review_pending_drafts");
-  await page.goto(`${origin}/teacher/banks/${bankId}/review`, {
-    waitUntil: "networkidle",
-  });
-  const reviewText = await page.locator("body").innerText();
-  assertSafeBrowserText(reviewText, secrets);
-  scaleAssert(
-    evidence.questions.length === evidence.expectedQuestionCount &&
-      reviewText.includes(evidence.questions[0].title),
-    "browser_scale_state_failed",
+  const reviewUrl = `${origin}/teacher/banks/${bankId}/review`;
+  const reviewPageSize = 25;
+  const expectedReviewPages = Math.max(
+    1,
+    Math.ceil(evidence.expectedQuestionCount / reviewPageSize),
   );
+  const verifyReviewSummary = async (activePage, label) => {
+    const reviewText = await activePage.locator("body").innerText();
+    assertSafeBrowserText(reviewText, secrets);
+    scaleAssert(
+      evidence.questions.length === evidence.expectedQuestionCount &&
+        reviewText.includes(`${evidence.expectedQuestionCount} results`) &&
+        reviewText.includes(`Page 1 of ${expectedReviewPages}`) &&
+        (await activePage.locator("#review-results article").count()) ===
+          Math.min(reviewPageSize, evidence.expectedQuestionCount),
+      "browser_scale_state_failed",
+    );
+    console.log(`BROWSER_CHECK_RESULT=${label}:PASS`);
+  };
+  await page.goto(reviewUrl, { waitUntil: "networkidle" });
+  await verifyReviewSummary(page, "review_initial");
+  await page.reload({ waitUntil: "networkidle" });
+  await verifyReviewSummary(page, "review_reload");
+  const reviewRemounted = await page.context().newPage();
+  try {
+    await reviewRemounted.goto(reviewUrl, { waitUntil: "networkidle" });
+    await verifyReviewSummary(reviewRemounted, "review_remount");
+  } finally {
+    await reviewRemounted.close();
+  }
   console.log("BROWSER_CHECK_RESULT=review_pending_drafts:PASS");
   console.log("PASS Teacher UI, reload, and fresh remount retained durable state");
 }
