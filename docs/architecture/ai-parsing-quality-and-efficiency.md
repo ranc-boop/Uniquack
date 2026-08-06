@@ -10,15 +10,15 @@ This treatment hardens Parsing-to-Review without changing Provider settings,
 models, publication rules, Assignment behavior, migrations, dependencies, or
 environment contracts. The immutable baseline is
 `f1ce7bcb791604468693ea945401cfb157e64d97`; the treatment contract is
-`ai-pdf-parsing/provider-neutral-v4`.
+`ai-pdf-parsing/provider-neutral-v5`.
 
 No real Provider call or hosted mutation was performed during the source phase.
 Current Clean taxonomy parity subsequently passed read-only with the exact
-source snapshot. The later bounded Gemini authorization completed all ten paid
-run slots. It validated the authoritative-taxonomy ten-file path, produced
-partial live visual evidence, and reached 11 of 50 terminal completions in the
-final scale run. The paired Provider comparison, complete visual contract, and
-terminal 50-file gate remain open.
+source snapshot. The final bounded Gemini authorization completed all ten paid
+run slots. It validated the exact visual attachment set and completed all 50
+durable qualification jobs. The launcher's final status remained blocked only
+by a post-gate, pagination-sensitive Review-page assertion; the superseding
+evidence and its limitation are recorded below.
 
 ## Immutable contract fingerprints
 
@@ -31,8 +31,8 @@ source catalog to immutable Git blobs and SHA-256 values.
 The verifier requires baseline ancestry, treatment ancestry, exact file order,
 exact anchor blobs, and current-byte equality. New treatment modules are
 explicitly absent at baseline. Uncommitted worktree bytes are never accepted as
-an anchor. The current manifest binds 56 files to treatment anchor
-`720ca230438587e18d65dd23dcc142d8e89efb1d`; the manifest-only evidence commit
+an anchor. The current manifest binds 61 files to treatment anchor
+`857a486636a8836344a25080a1673024379b2e64`; the manifest-only evidence commit
 is a descendant and does not redefine treatment bytes.
 
 ## Runtime taxonomy path
@@ -398,3 +398,109 @@ Final classification: `GEMINI_LIVE_EXPERIMENTS_COMPLETE_PDF50_PARTIAL`. PR #229
 must remain Draft. Source Host review can evaluate the corrections, but merge
 is not recommended as live closure while the exact visual question set and
 50/50 terminal proof remain unresolved.
+
+## Fresh visual and PDF50 closure authorization
+
+This section supersedes the preceding partial classification for the fresh
+authorization that started at
+`c9fede4b91e66c80846ecd19215d5931d213f287`. It does not rewrite the earlier
+run history and does not claim that the final launcher printed a passing
+terminal line.
+
+### Visual gate
+
+The `exact_visual_question_set` failure was a proof-harness defect. The fourth
+fixture page visibly labels a single question as `Question 4 (parts a and b)`;
+the old harness compared that full label with the literal `4`. Safe run-scoped
+indices now come from the unique one-page lineage, while the visible source
+label is validated separately. A question-level `shared_group_key` is also
+optional when one imported question contains internal parts rather than
+multiple question rows. Empty shared-group values still fail.
+
+The source-backed expected and observed sets were identical:
+
+| Set | Safe indices |
+| --- | --- |
+| Imported questions | `Q1`, `Q2`, `Q3`, `Q4` |
+| Questions requiring persisted assets | `Q1`, `Q4` |
+| Questions with observed persisted assets | `Q1`, `Q4` |
+| Decorative-only question | `Q2` |
+| Missing-required-figure question | `Q3` |
+
+The useful live run had already passed two deterministic crops, private asset
+persistence, exact source/question/Bank lineage, owner rendering, browser
+reload, fresh-page remount, owner route authorization, anonymous denial,
+unrelated-organization denial, and exact cleanup before the stale helper
+assertion ran. `Q2` received no attachment. `Q3` received no fabricated asset
+and remained `needs_more_evidence`. Fabricated, wrong-question, decorative,
+invalid-bounds, public, cross-organization, orphan, and silent-missing counts
+were zero. The superseding visual classification is
+`QUESTION_VISUAL_ATTACHMENT_RESTORED_AND_LIVE_VALIDATED`.
+
+### Provider and checkpoint diagnosis
+
+The earlier `unknown_provider_error` was not an extraction failure. Provider
+output and Review Draft persistence had succeeded; the full quality snapshot
+then exceeded migration 0051's 4096-byte checkpoint metadata contract. The
+correction removes that full snapshot from checkpoint metadata, records only
+typed bounded diagnostics, and permits one fenced replay only for ambiguous
+transient checkpoint or persistence outcomes. Known safe codes are now
+`ai_job_checkpoint_failed`, `ai_job_checkpoint_transient`,
+`ai_pdf_post_persistence_failed`, and
+`ai_pdf_post_persistence_transient`. Genuine Provider, extraction, validation,
+and persistence failures still fail closed. No raw SQL, prompt, source,
+Provider response, identifier, or credential enters diagnostics.
+
+### Fifty-file gate
+
+The final paid run rejected a 51-file selection before durable-row creation,
+admitted exactly 50 private rights-safe PDFs, and completed all 50 intended
+durable items/jobs. Every completed job retained its target Bank, completed
+checkpoint, persisted-output lineage, and imported batch. The first PDF was
+the four-question visual fixture; the other 49 produced one question each, for
+53 private draft questions and 53 Review Draft rows: 52 `pending_review` and
+one `needs_more_evidence`. Duplicate drafts, Bank approval, publication,
+Assignment creation, and cross-organization visibility were all zero.
+
+The Imports UI displayed the completed burst on initial load, reload, and a
+fresh-page remount. The later Review-page check failed because the harness
+queried questions without ordering, selected an arbitrary title, and expected
+that title on page 1 of a 25-row paginated result. That check ran after the
+durable aggregate and Imports UI gates. It is now deterministic: it verifies
+`53 results`, `Page 1 of 3`, and exactly 25 rendered Review articles on initial
+load, reload, and remount. This source-only correction passed mutation-backed
+safety validation, but no eleventh paid run was authorized. Therefore the
+historical launcher line remains `PDF50_SCALE_50=BLOCKED`; it is not rewritten
+as `PASS`.
+
+The run completed exact database, Storage, Auth/profile/membership/
+organization cleanup, stopped the local server, cleared process-only values,
+and reported zero synthetic residue. No unrelated job or non-synthetic record
+was claimed or mutated.
+
+### Fresh authorization ledger and limits
+
+All 10 of 10 paid-run slots were consumed. Conservative spent-or-held exposure
+was 1,677,582 micros of USD 2, leaving 322,418 micros but no remaining run.
+Provider-reported usage for every incomplete/final observation was not emitted,
+so actual usage remains `UNKNOWN`; dashboard-observed spend is also `UNKNOWN`.
+The final post-gate stop prevented emission of exact Provider HTTP totals,
+input/output tokens, queue-depth maxima, drain timing, attempt-reason
+histogram, and attempts-per-job histogram. Those values remain `UNKNOWN`; the
+absence of visible repair/retry diagnostics is not promoted into a fabricated
+histogram.
+
+The authoritative identities are:
+
+- taxonomy snapshot:
+  `05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe`;
+- candidate subset:
+  `fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262`;
+- v5 parsing contract:
+  `5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95`;
+- immutable treatment anchor:
+  `857a486636a8836344a25080a1673024379b2e64`.
+
+Final superseding classification:
+`GEMINI_VISUAL_VALIDATED_PDF50_OPERATIONALLY_READY_FOR_FINAL_HOST_REVIEW`.
+PR #229 remains Draft and requires independent Host review before any merge.

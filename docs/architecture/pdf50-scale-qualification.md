@@ -532,3 +532,59 @@ Final PR #229 live classification:
 `GEMINI_LIVE_EXPERIMENTS_COMPLETE_PDF50_PARTIAL`. A new terminal proof requires
 separate authorization after a causal review of the normalized-stage Provider
 failure. This record does not claim PDF50 operational readiness.
+
+## Superseding fifty-file closure evidence
+
+The fresh closure authorization started from
+`c9fede4b91e66c80846ecd19215d5931d213f287` and used all 10 paid-run slots. The
+earlier `unknown_provider_error` was traced beyond successful Provider output
+and Review persistence to oversized checkpoint metadata. The full quality
+snapshot exceeded migration 0051's 4096-byte limit. Bounded typed checkpoint
+metadata, fenced post-persistence diagnostics, and transient-only replay now
+preserve the successful output while real failures remain terminal.
+
+The final Stage 50 run proved the following before a non-authoritative UI
+assertion stopped the launcher:
+
+- file 51 was rejected before durable rows;
+- exactly 50 private synthetic PDFs, burst items, and durable jobs were
+  admitted;
+- all 50 intended jobs and items reached `completed`;
+- the durable burst aggregate reached `completed` with zero queued,
+  processing, admission-ready, failed, or cancelled items;
+- all 50 import batches reached `imported` and retained exact Bank scope;
+- 53 unique private draft questions and 53 unique Review Drafts were created;
+- Review status was 52 `pending_review` and one `needs_more_evidence`;
+- page lineage was one page per standard item and pages 1 through 4 for the
+  visual fixture;
+- deterministic persistence lineage was unique for every imported question;
+- taxonomy rows remained review-gated;
+- duplicate drafts, Bank approvals, publications, Assignments, and
+  cross-organization visibility were zero;
+- no unrelated job was claimed or mutated; and
+- exact database, Storage, Auth/profile/membership/organization, local-process,
+  and process-environment cleanup passed with zero synthetic residue.
+
+The Imports surface passed initial load, reload, and fresh remount. The later
+Review-page assertion selected an unordered arbitrary question title and
+expected it on page 1, even though the page size is 25 and the run created 53
+rows. This is a pagination-sensitive harness defect, not a durable-state or UI
+data failure. The assertion now checks the deterministic result count, page
+count, and rendered first-page article count on initial load, reload, and
+remount, with mutation coverage. It was not rerun against Gemini because the
+authorization had no eleventh paid slot.
+
+Accordingly, the literal launcher result remains `PDF50_SCALE_50=BLOCKED`; no
+terminal `PASS` is fabricated. The completed durable and aggregate gates are
+accepted as operational evidence, while exact final Provider HTTP counts,
+tokens, queue-depth maxima, drain timing, attempt histogram, and
+attempts-per-job remain `UNKNOWN` because the post-gate stop occurred before
+summary emission.
+
+The fresh conservative ledger is 1,677,582 micros spent or held, with 322,418
+micros remaining and zero paid runs remaining. Actual usage for incomplete or
+unreported calls and dashboard-observed spend remain `UNKNOWN`.
+
+Final superseding classification:
+`GEMINI_VISUAL_VALIDATED_PDF50_OPERATIONALLY_READY_FOR_FINAL_HOST_REVIEW`.
+This is a recommendation for independent Host review, not merge authorization.

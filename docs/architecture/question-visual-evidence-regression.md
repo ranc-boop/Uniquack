@@ -174,3 +174,38 @@ The superseding classification is:
 
 This is stronger than source-only readiness, but it is not complete visual live
 validation and must not be described as such.
+
+## Superseding exact-set closure
+
+The final source review reconstructed the prior `exact_visual_question_set`
+failure without changing the fixture expectation. Page 4 represents one
+question with internal parts and visibly says `Question 4 (parts a and b)`.
+The old harness incorrectly required that full visible label to equal `4`.
+Question indices are now derived from unique one-page lineage, and the visible
+label is validated separately. A `shared_group_key` remains required only when
+multiple question rows actually share a visual; an empty value is never
+accepted.
+
+The exact safe sets are:
+
+- imported: `Q1`, `Q2`, `Q3`, `Q4`;
+- expected persisted visual assets: `Q1`, `Q4`;
+- observed persisted visual assets: `Q1`, `Q4`;
+- decorative-only and correctly unattached: `Q2`;
+- missing required figure, unattached and blocking: `Q3`.
+
+Before the stale final helper assertion, the bounded live run had already
+proved two finite source-backed crops, two private question assets, exact Bank
+and Review lineage, owner rendering, reload, fresh-page remount, owner access,
+anonymous denial, unrelated-organization denial, and exact cleanup. It
+persisted four questions and four Review Drafts: three `pending_review` and one
+`needs_more_evidence`. Fabricated, wrong-question, decorative, invalid-bounds,
+public, cross-organization, orphan, and silent-missing counts were zero.
+
+Twenty mutation cases now protect the exact-set, page-lineage, shared-group,
+authorization, render, cleanup, and hard-zero contracts. No additional paid
+run was used after the source-backed expectation correction.
+
+Superseding classification:
+
+`QUESTION_VISUAL_ATTACHMENT_RESTORED_AND_LIVE_VALIDATED`
