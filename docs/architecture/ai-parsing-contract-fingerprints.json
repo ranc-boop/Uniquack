@@ -110,24 +110,24 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/visual-evidence-live-contract.mjs",
       "treatment": {
-        "blob": "2b83a766bdf187340bea3845ea5127b03012d308",
-        "sha256": "7e9b8f5a82cdf404b393b2f7b576eea60233481ef9cb3487e9d1cb2ab0b6ab6f"
+        "blob": "02ea956149d542214b3bba551c7cd4e5acda9346",
+        "sha256": "c19e5d514436276b67cdadffa12a559c5881f15ec1db03eebdb0efc663829139"
       }
     },
     {
       "baseline": null,
       "path": "scripts/ai-parsing-visual-evidence-live-e2e-safety-smoke.mjs",
       "treatment": {
-        "blob": "f79b5b859f48628b1d4d5a323920c5e997a8eaa2",
-        "sha256": "ae604135aa65867f247bc9b4bbd7f8c2b72fb85568b4b9a5330303cf173aff3b"
+        "blob": "5d236970c4f8987070ea24d130d5e12c69fc49da",
+        "sha256": "006495c0785ac2009e4ae2d2e426a7e948f855ab6e3c94bc3bc84106f0071329"
       }
     },
     {
       "baseline": null,
       "path": "scripts/ai-parsing-visual-evidence-live-e2e.mjs",
       "treatment": {
-        "blob": "b36b135c10f6444fb13eec27a07362fbd378b81f",
-        "sha256": "2708ac9d4d2c7041f800460f5a684555622cdd79e7ccc9502d9862ba3a6beb06"
+        "blob": "f6557986edae48e4d84023e4e974b793acd4f5b5",
+        "sha256": "604e95d62a8bbeec53ecae6d07aa14624c1c93bf84f389a76c9c372199ef71ab"
       }
     },
     {
@@ -257,8 +257,8 @@
       "baseline": null,
       "path": "scripts/run-ai-parsing-visual-evidence-live-e2e.ps1",
       "treatment": {
-        "blob": "89bded3cbdf74da1887a8c63ce655e41ad1ac059",
-        "sha256": "a72b9cb99d6d9cc07ee68b3bbc6f55a59a84aba937908b80a193497a71a2d076"
+        "blob": "e4b8c472a9ed778f29479df4522e63d2e64f30fd",
+        "sha256": "51da28007ec99b8ec236d12dcd495954ff5d8f03f1aa8dce1e3dd3fed22e848b"
       }
     },
     {
@@ -542,5 +542,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "d0275479b8aad3e4aaac45f658632f5f31fd70ed"
+  "treatmentAnchor": "39cf4efcabb0a878da0e6d846f0a4daf7ad4c4af"
 }
