@@ -1,9 +1,21 @@
 {
-  "version": 2,
+  "version": 3,
   "evidenceClass": "SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY",
   "rights": "Repository-authored synthetic educational fixtures; no private or third-party source material.",
   "baselineAnchor": "f1ce7bcb791604468693ea945401cfb157e64d97",
-  "treatmentVersion": "ai-pdf-parsing/provider-neutral-v2",
+  "treatmentVersion": "ai-pdf-parsing/provider-neutral-v3",
+  "legacyTaxonomySanityBaseline": {
+    "anchor": "659654e81e56b0891f786adfa3a003faec8783d5",
+    "caseCount": 6,
+    "classification": "SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY"
+  },
+  "taxonomyEvidenceClass": "PR214_STRATIFIED_PROVIDER_NEUTRAL_GOLDEN",
+  "taxonomySourceContract": {
+    "seed": "supabase/clean-seeds/0002_local_taxonomy_seed.sql",
+    "forwardMigration": "supabase/clean-migrations/0056_add_math_taxonomy_v2_catalog.sql",
+    "semantics": "seed first; 0056 INSERT ON CONFLICT DO NOTHING; 0056 assignability reconciliation",
+    "fixtureDoesNotDefineCatalog": true
+  },
   "taxonomyContract": {
     "facets": ["curriculum", "concept", "method", "task", "form"],
     "candidateFormat": "candidate pool is independent from gold IDs and predictions; runtime accepts effective active assignable leaves only",

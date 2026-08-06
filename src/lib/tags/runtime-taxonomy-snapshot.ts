@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
-export const RUNTIME_TAXONOMY_SNAPSHOT_VERSION = 1;
+export const RUNTIME_TAXONOMY_SNAPSHOT_VERSION = 2;
+export const RUNTIME_TAXONOMY_RETRIEVAL_VERSION =
+  "full-effective-leaves-v1";
 export const RUNTIME_TAXONOMY_FACETS = [
   "curriculum",
   "concept",
@@ -23,6 +25,13 @@ type RuntimeTaxonomyNode = {
   label: string;
   parent_tag_ids?: string[];
   tag_id: string;
+};
+
+export type RuntimeTaxonomyEdge = {
+  edge_kind: string;
+  from_tag_id: string;
+  is_primary?: boolean;
+  to_tag_id: string;
 };
 
 type NormalizedRuntimeTaxonomyNode = Omit<
@@ -88,10 +97,36 @@ export function serializeRuntimeTaxonomyCandidates(
   }).join("\n");
 }
 
+export function buildRuntimeTaxonomyCandidateSubset(
+  candidates: RuntimeTaxonomyCandidate[],
+) {
+  const selected = candidates
+    .slice()
+    .sort((left, right) => left.tagId.localeCompare(right.tagId));
+  const canonicalJson = JSON.stringify({
+    candidates: selected.map((candidate) => ({
+      aliases: normalizedAliases(candidate.aliases),
+      facet: candidate.facet,
+      label: normalizedText(candidate.label),
+      tagId: normalizedText(candidate.tagId),
+    })),
+    retrievalVersion: RUNTIME_TAXONOMY_RETRIEVAL_VERSION,
+  });
+
+  return {
+    candidates: selected,
+    canonicalJson,
+    sha256: createHash("sha256").update(canonicalJson).digest("hex"),
+    version: RUNTIME_TAXONOMY_RETRIEVAL_VERSION,
+  };
+}
+
 export function buildRuntimeTaxonomySnapshot({
+  edges,
   facets,
   nodes,
 }: {
+  edges?: RuntimeTaxonomyEdge[];
   facets: RuntimeTaxonomyFacet[];
   nodes: RuntimeTaxonomyNode[];
 }) {
@@ -143,13 +178,69 @@ export function buildRuntimeTaxonomySnapshot({
     }),
   );
 
+  const duplicateEdgeKeys = new Set<string>();
+  const edgeEndpointMissingKeys = new Set<string>();
+  const canonicalEdgesByKey = new Map<string, {
+    edgeKind: string;
+    fromTagId: string;
+    isPrimary: boolean;
+    toTagId: string;
+  }>();
+  const suppliedEdges = edges ?? nodes.flatMap((node) =>
+    sortedUnique(node.parent_tag_ids).map((parentTagId) => ({
+      edge_kind: "parent_child",
+      from_tag_id: parentTagId,
+      is_primary: true,
+      to_tag_id: node.tag_id,
+    }))
+  );
+  for (const edge of suppliedEdges) {
+    const normalized = {
+      edgeKind: normalizedText(String(edge.edge_kind ?? "")),
+      fromTagId: normalizedText(String(edge.from_tag_id ?? "")),
+      isPrimary: edge.is_primary !== false,
+      toTagId: normalizedText(String(edge.to_tag_id ?? "")),
+    };
+    if (!normalized.edgeKind || !normalized.fromTagId || !normalized.toTagId) {
+      continue;
+    }
+    const key = `${normalized.fromTagId}>${normalized.toTagId}:${normalized.edgeKind}`;
+    if (canonicalEdgesByKey.has(key)) duplicateEdgeKeys.add(key);
+    canonicalEdgesByKey.set(key, normalized);
+    if (
+      !nodesById.has(normalized.fromTagId) ||
+      !nodesById.has(normalized.toTagId)
+    ) {
+      edgeEndpointMissingKeys.add(key);
+    }
+  }
+  const canonicalEdges = Array.from(canonicalEdgesByKey.values()).sort(
+    (left, right) =>
+      left.fromTagId.localeCompare(right.fromTagId) ||
+      left.toTagId.localeCompare(right.toTagId) ||
+      left.edgeKind.localeCompare(right.edgeKind),
+  );
+  const parentIdsByTagId = new Map<string, string[]>();
   const childrenById = new Map<string, Set<string>>();
-  for (const node of nodesById.values()) {
-    for (const parentId of sortedUnique(node.parent_tag_ids)) {
-      if (!nodesById.has(parentId)) continue;
-      const children = childrenById.get(parentId) ?? new Set<string>();
-      children.add(node.tag_id);
-      childrenById.set(parentId, children);
+  for (const edge of canonicalEdges) {
+    if (edge.edgeKind !== "parent_child") continue;
+    parentIdsByTagId.set(edge.toTagId, [
+      ...(parentIdsByTagId.get(edge.toTagId) ?? []),
+      edge.fromTagId,
+    ]);
+    if (!nodesById.has(edge.fromTagId) || !nodesById.has(edge.toTagId)) continue;
+    const children = childrenById.get(edge.fromTagId) ?? new Set<string>();
+    children.add(edge.toTagId);
+    childrenById.set(edge.fromTagId, children);
+  }
+  const parentRelationshipMismatchNodeIds = new Set<string>();
+  if (edges) {
+    for (const node of nodesById.values()) {
+      const suppliedParentIds = sortedUnique(node.parent_tag_ids);
+      const edgeParentIds = sortedUnique(parentIdsByTagId.get(node.tag_id));
+      if (JSON.stringify(suppliedParentIds) !== JSON.stringify(edgeParentIds)) {
+        parentRelationshipMismatchNodeIds.add(node.tag_id);
+      }
     }
   }
 
@@ -190,7 +281,7 @@ export function buildRuntimeTaxonomySnapshot({
       return true;
     }
 
-    const parents = sortedUnique(node.parent_tag_ids);
+    const parents = sortedUnique(parentIdsByTagId.get(node.tag_id));
     if (parents.length === 0) {
       orphanNodeIds.add(tagId);
       reachability.set(tagId, false);
@@ -238,7 +329,7 @@ export function buildRuntimeTaxonomySnapshot({
         effectiveLeaf,
         facet: node.facet_key,
         label: normalizedText(node.label),
-        parentTagIds: sortedUnique(node.parent_tag_ids),
+        parentTagIds: sortedUnique(parentIdsByTagId.get(node.tag_id)),
         reachable,
         tagId: node.tag_id,
       };
@@ -257,6 +348,7 @@ export function buildRuntimeTaxonomySnapshot({
       tagId: node.tagId,
     }));
   const canonicalJson = JSON.stringify({
+    edges: canonicalEdges,
     facets: canonicalFacets,
     nodes: canonicalNodes.map((node) => ({
       active: node.active,
@@ -287,10 +379,12 @@ export function buildRuntimeTaxonomySnapshot({
     counts: {
       activeNodes: canonicalNodes.length,
       aliases: canonicalNodes.reduce((total, node) => total + node.aliases.length, 0),
+      allEdges: canonicalEdges.length,
       assignablePolicyNodes: canonicalNodes.filter((node) => node.assignablePolicy).length,
-      edges: canonicalNodes.reduce((total, node) => total + node.parentTagIds.length, 0),
+      edges: canonicalEdges.length,
       effectiveAssignableLeaves: candidates.length,
       groupingNodes: canonicalNodes.filter((node) => node.activeChildTagIds.length > 0).length,
+      hierarchyEdges: canonicalEdges.filter((edge) => edge.edgeKind === "parent_child").length,
       labels: canonicalNodes.filter((node) => node.label.length > 0).length,
       leaves: canonicalNodes.filter((node) => node.activeChildTagIds.length === 0).length,
       nodes: canonicalNodes.length,
@@ -299,9 +393,14 @@ export function buildRuntimeTaxonomySnapshot({
     diagnostics: {
       crossFacetNodeIds: Array.from(crossFacetNodeIds).sort(),
       cycleNodeIds: Array.from(cycleNodeIds).sort(),
+      duplicateEdgeKeys: Array.from(duplicateEdgeKeys).sort(),
       duplicateNodeIds: Array.from(duplicateNodeIds).sort(),
+      edgeEndpointMissingKeys: Array.from(edgeEndpointMissingKeys).sort(),
       invalidFacetNodeIds: Array.from(invalidFacetNodeIds).sort(),
       orphanNodeIds: Array.from(orphanNodeIds).sort(),
+      parentRelationshipMismatchNodeIds: Array.from(
+        parentRelationshipMismatchNodeIds,
+      ).sort(),
     },
     facetKeys: canonicalFacets.map((facet) => facet.facet),
     perFacet,
@@ -309,10 +408,13 @@ export function buildRuntimeTaxonomySnapshot({
     valid:
       exactFacetContract &&
       duplicateNodeIds.size === 0 &&
+      duplicateEdgeKeys.size === 0 &&
+      edgeEndpointMissingKeys.size === 0 &&
       cycleNodeIds.size === 0 &&
       crossFacetNodeIds.size === 0 &&
       invalidFacetNodeIds.size === 0 &&
-      orphanNodeIds.size === 0,
+      orphanNodeIds.size === 0 &&
+      parentRelationshipMismatchNodeIds.size === 0,
     version: RUNTIME_TAXONOMY_SNAPSHOT_VERSION,
   };
 }

@@ -170,6 +170,7 @@ const taxonomyLoader = functionBody(service, "loadActiveTags").getText(service);
 for (const requiredCall of [
   "loadTaxonomyCatalog",
   "buildRuntimeTaxonomySnapshot",
+  "buildRuntimeTaxonomyCandidateSubset",
   "serializeRuntimeTaxonomyCandidates",
   "fingerprintAIPdfParsingContract",
 ]) {
@@ -180,15 +181,20 @@ for (const requiredCall of [
 }
 assert(taxonomyLoader.includes("snapshot.canonicalJson"));
 assert(taxonomyLoader.includes("snapshot.candidates"));
+assert(taxonomyLoader.includes("candidateSubset.canonicalJson"));
+assert(taxonomyLoader.includes("includeAllEdges: true"));
 
 const promptBuilder = functionBody(service, "buildPrompt").getText(service);
 assert(promptBuilder.includes("runtimeTaxonomy.candidatePayload"));
 assert(promptBuilder.includes("runtimeTaxonomy.snapshot.sha256"));
+assert(promptBuilder.includes("runtimeTaxonomy.candidateSubset.sha256"));
 assert(promptBuilder.includes("runtimeTaxonomy.parsingContractSha256"));
 
 const serviceText = service.getFullText();
 assert(serviceText.includes(".recordContractEvidence({"));
 assert(serviceText.includes("taxonomySnapshotSha256"));
+assert(serviceText.includes("candidateSubsetSha256"));
+assert(serviceText.includes("fullTaxonomySnapshotSha256"));
 assert(serviceText.includes("parsingContractSha256"));
 assert(!serviceText.includes("taxonomyCatalogByteLength"));
 

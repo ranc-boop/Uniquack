@@ -10,12 +10,13 @@ This treatment hardens Parsing-to-Review without changing Provider settings,
 models, publication rules, Assignment behavior, migrations, dependencies, or
 environment contracts. The immutable baseline is
 `f1ce7bcb791604468693ea945401cfb157e64d97`; the treatment contract is
-`ai-pdf-parsing/provider-neutral-v2`.
+`ai-pdf-parsing/provider-neutral-v3`.
 
-No real Provider call or hosted mutation was performed. PDF50 remains only
-partially scale-qualified because the prior authorized run completed 23 of 50
-jobs. Real image-rich visual evidence and recent taxonomy provenance remain
-external gates.
+No real Provider call or hosted mutation was performed during the source phase.
+PDF50 remains only partially scale-qualified because the prior authorized run
+completed 23 of 50 jobs. Real image-rich visual evidence remains a later live
+gate; taxonomy source provenance is resolved, while Current Clean parity is the
+remaining pre-paid gate.
 
 ## Immutable contract fingerprints
 
@@ -41,11 +42,12 @@ The production call graph is:
 
 The runtime snapshot identity is therefore not a disconnected helper. Candidate
 retrieval, prompt construction, parsing contract evidence, quality output, and
-safe job evidence all carry the same snapshot SHA. The checked-in 0056 source
-reconstructs to
-`e557cdb3519f29601b74bc6551a207d19b3ba81ab439029e526fecad9d20211e`,
-but a future experiment must use the hash produced from its exact runtime
-catalog.
+safe job evidence all carry the same snapshot SHA. Faithful seed-plus-0056
+replay produces 439 nodes, 460 edges, 20 aliases, 372 effective leaves, and the
+complete snapshot SHA
+`05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe`.
+The old `e557cdb...` value is retained only as
+`STATIC_0056_PAYLOAD_ONLY_NONAUTHORITATIVE`.
 
 Effective candidate eligibility requires an active policy-assignable leaf,
 valid root reachability, an exact canonical facet, and no cycle, orphan,
@@ -86,7 +88,7 @@ filenames, Provider responses, credentials, or private identifiers.
 ## Serialized context accounting
 
 The previous observatory mixed overlapping estimates and could produce a false
-total. Version 2 starts from the actual serialized request body byte count
+total. Version 3 starts from the actual serialized request body byte count
 reported by the transport. It records non-overlapping attributed components:
 
 - system instructions;
@@ -113,11 +115,13 @@ same-fixture Provider usage evidence.
 
 ## Independent deterministic evaluator
 
-The Golden Corpus has 14 parsing, 6 taxonomy, 13 visual, and deterministic
+The Golden Corpus has 14 parsing, 14 taxonomy, 13 visual, and deterministic
 run-state/authorization cases. Taxonomy fixtures separate candidate pool, gold
 expected IDs, prediction, distractors, aliases, and acceptable abstention.
 Candidate pools include siblings, broad parents, wrong-facet labels, aliases,
-inactive IDs, and unknown IDs.
+invalid IDs, seed-only IDs, and PR #214 expansion IDs. The evaluator rebuilds
+the complete source catalog from the seed and 0056 for every run; fixture JSON
+cannot define a replacement catalog.
 
 Reported taxonomy metrics are independent:
 
@@ -126,7 +130,10 @@ Reported taxonomy metrics are independent:
 - abstention accuracy;
 - broad-parent overuse;
 - wrong-facet rate; and
-- inactive/unknown-ID rejection.
+- inactive/unknown-ID rejection;
+- alias resolution;
+- seed-only candidate and exact-ID coverage; and
+- PR #214 expansion candidate and exact-ID coverage.
 
 Publication, Assignment, approval, and pending-review counts are computed from
 the resulting deterministic run state. Cross-organization asset denial executes
@@ -134,18 +141,26 @@ the real `/api/question-assets/[assetId]` route with deterministic auth/storage
 mocks: a denied requester receives the generic 404 boundary, no service-role
 metadata read, and no signed URL. An authorized owner receives the redirect.
 
-Fifteen independent mutations challenge invalid/unknown taxonomy IDs,
+Eighteen independent mutations challenge invalid/unknown taxonomy IDs,
 broad-parent and wrong-facet substitution, fabricated pages, invalid crop
 bounds, wrong-question visual attachment, cross-organization asset requests,
 missing required visuals, inconsistent answers, duplicate questions, and
-publication/Assignment side effects. All mutations are rejected and fixture
-ordering remains invariant.
+publication/Assignment side effects. They also remove correct seed-only and
+0056 candidates and corrupt a source alias. All mutations are rejected and
+fixture ordering remains invariant.
 
-The evaluator result is labeled exactly
-`SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY`. It validates the evaluator and
-source gates, not current production taxonomy accuracy or Provider quality.
-Recent-label Golden cases remain intentionally absent because authoritative
-recent provenance was not established.
+The original six-case result remains labeled exactly
+`SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY` at anchor `659654e`. The new
+source-bound result covers six unique seed-only expected IDs and 22 unique
+0056-introduced expected IDs with 1.0 candidate recall and exact-ID F1. It is
+still Provider-neutral evaluator evidence, not current Provider quality.
+
+The complete runtime graph serializes to 160,720 bytes. The conservative
+production effective-leaf subset is 43,530 canonical bytes (0.270844 of the
+full graph), 372 candidates, and 35,865 prompt bytes. Controlled Golden pools
+average 7.5 eligible candidates with 1.0 gold recall. That result does not
+activate a narrow or coarse-to-fine runtime retriever; actual Provider token
+share remains unknown until matched live evidence exists.
 
 ## Visual and Review boundaries
 
@@ -181,15 +196,15 @@ regression.
 
 ## Rollout gates
 
-Before any Gemini/Luna or other paid comparison:
+Before any paid Gemini comparison:
 
-1. Resolve the recent taxonomy provenance or capture an authorized hosted
-   runtime snapshot and canonicalize it through a reviewed source process.
+1. Run the authorized read-only Current Clean taxonomy parity check and require
+   `AUTHORITATIVE_RECENT_TAXONOMY_CONFIRMED`.
 2. Require both arms to carry the exact same runtime taxonomy snapshot SHA and
    parsing-contract SHA.
 3. Verify immutable contract fingerprints and identical fixtures, source,
    model limits, output cap, and budget.
-4. Require all hard-zero gates and fifteen mutations to pass.
+4. Require all hard-zero gates and eighteen mutations to pass.
 5. Compare Provider-reported tokens, attempts by reason, repeated context,
    valid Drafts, latency, and cost under the same input.
 6. Run blind human review for correctness, source fidelity, taxonomy precision,
@@ -197,4 +212,6 @@ Before any Gemini/Luna or other paid comparison:
 7. Stop on any privacy, Bank-scope, Review Gate, cleanup, lineage, or
    authorization failure.
 
-Paid experiments remain unauthorized by this correction.
+The task authorization permits bounded paid Gemini work only after the exact
+source/hosted parity gate passes. It does not authorize GPT/Luna, deployment,
+migrations, Provider-setting changes, or hosted taxonomy mutation.

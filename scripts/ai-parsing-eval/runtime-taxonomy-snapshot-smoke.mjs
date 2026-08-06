@@ -11,6 +11,7 @@ const jiti = require("jiti")(import.meta.url, {
 });
 
 const {
+  buildRuntimeTaxonomyCandidateSubset,
   buildRuntimeTaxonomySnapshot,
 } = jiti("../../src/lib/tags/runtime-taxonomy-snapshot.ts");
 
@@ -112,6 +113,47 @@ assert.match(snapshot.sha256, /^[a-f0-9]{64}$/);
 assert.equal(
   buildRuntimeTaxonomySnapshot({ facets: [...facets].reverse(), nodes: [...baseNodes].reverse() }).sha256,
   snapshot.sha256,
+);
+const subset = buildRuntimeTaxonomyCandidateSubset(snapshot.candidates);
+assert.equal(subset.candidates.length, snapshot.candidates.length);
+assert.match(subset.sha256, /^[a-f0-9]{64}$/);
+
+const explicitEdges = baseNodes.flatMap((entry) =>
+  (entry.parent_tag_ids ?? []).map((parentTagId) => ({
+    edge_kind: "parent_child",
+    from_tag_id: parentTagId,
+    is_primary: true,
+    to_tag_id: entry.tag_id,
+  })),
+);
+explicitEdges.push({
+  edge_kind: "maps_to",
+  from_tag_id: "math.curriculum.ap",
+  is_primary: false,
+  to_tag_id: "math.concept.algebra.linear_equations",
+});
+const completeGraphSnapshot = buildRuntimeTaxonomySnapshot({
+  edges: explicitEdges,
+  facets,
+  nodes: baseNodes,
+});
+assert.equal(completeGraphSnapshot.valid, true);
+assert.equal(completeGraphSnapshot.counts.allEdges, explicitEdges.length);
+assert.equal(completeGraphSnapshot.counts.hierarchyEdges, explicitEdges.length - 1);
+assert.notEqual(completeGraphSnapshot.sha256, snapshot.sha256);
+
+const mismatchedParents = buildRuntimeTaxonomySnapshot({
+  edges: explicitEdges.filter(
+    (edge) => edge.to_tag_id !== "math.concept.algebra.linear_equations",
+  ),
+  facets,
+  nodes: baseNodes,
+});
+assert.equal(mismatchedParents.valid, false);
+assert(
+  mismatchedParents.diagnostics.parentRelationshipMismatchNodeIds.includes(
+    "math.concept.algebra.linear_equations",
+  ),
 );
 
 const parentWithoutActiveChild = buildRuntimeTaxonomySnapshot({

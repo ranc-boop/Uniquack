@@ -23,6 +23,39 @@ function duplicateCount(values) {
   return values.length - new Set(values).size;
 }
 
+function normalizedAlias(value) {
+  return String(value).trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
+}
+
+function sourceCoverage(payload, catalog, provenance) {
+  const expected = payload.cases.flatMap((entry) =>
+    entry.goldExpectedIds
+      .filter((tagId) => catalog.get(tagId)?.provenance === provenance)
+      .map((tagId) => `${entry.id}:${tagId}`),
+  );
+  const retrieved = payload.cases.flatMap((entry) => {
+    const pool = new Set(entry.candidatePool);
+    return entry.goldExpectedIds
+      .filter(
+        (tagId) =>
+          catalog.get(tagId)?.provenance === provenance && pool.has(tagId),
+      )
+      .map((tagId) => `${entry.id}:${tagId}`);
+  });
+  const predicted = payload.cases.flatMap((entry) =>
+    entry.prediction
+      .filter((tagId) => catalog.get(tagId)?.provenance === provenance)
+      .map((tagId) => `${entry.id}:${tagId}`),
+  );
+
+  return {
+    candidateRecall: ratio(retrieved.length, expected.length),
+    exactIdClassification: prf(expected, predicted),
+    expected: expected.length,
+    uniqueExpectedIds: new Set(expected.map((value) => value.slice(value.indexOf(":") + 1))).size,
+  };
+}
+
 function pagePairs(value) {
   return Object.entries(value).flatMap(([questionId, pages]) =>
     pages.map((page) => `${questionId}:${page}`),
@@ -152,8 +185,30 @@ export function evaluateTaxonomyCases(payload) {
       .map((tagId) => `${entry.id}:${tagId}`));
     return [facet, prf(expectedFacet, predictedFacet)];
   }));
+  const aliasExpectations = payload.cases.flatMap((entry) =>
+    (entry.aliasExpectations ?? []).map((expectation) => ({
+      ...expectation,
+      caseId: entry.id,
+      candidatePool: new Set(entry.candidatePool),
+      prediction: new Set(entry.prediction),
+    })),
+  );
+  const correctAliasResolutions = aliasExpectations.filter((expectation) => {
+    const target = catalog.get(expectation.tagId);
+    return Boolean(
+      target &&
+      target.aliases.map(normalizedAlias).includes(normalizedAlias(expectation.input)) &&
+      expectation.candidatePool.has(expectation.tagId) &&
+      expectation.prediction.has(expectation.tagId),
+    );
+  }).length;
 
   return {
+    aliasResolution: {
+      correct: correctAliasResolutions,
+      total: aliasExpectations.length,
+      value: ratio(correctAliasResolutions, aliasExpectations.length),
+    },
     abstentionAccuracy: {
       correct: correctAbstentions,
       total: abstentionCases.length,
@@ -173,6 +228,12 @@ export function evaluateTaxonomyCases(payload) {
       ),
     },
     invalidPredictions: invalidPredictions.length,
+    pr214ExpansionCoverage: sourceCoverage(
+      payload,
+      catalog,
+      "migration_0056",
+    ),
+    seedOnlyCoverage: sourceCoverage(payload, catalog, "seed_only"),
     wrongFacet: {
       rate: ratio(wrongFacetPredictions, eligiblePredictionCount),
       violations: wrongFacetPredictions,
@@ -291,8 +352,13 @@ export function evaluateGoldenCorpus({ parsing, runState, taxonomy, visual }) {
     result.visual.attachmentAssociation,
   ].filter((metric) => metric.precision < 1 || metric.recall < 1).length +
     (result.taxonomy.candidateRetrievalRecall < 1 ? 1 : 0) +
+    (result.taxonomy.aliasResolution.value < 1 ? 1 : 0) +
     (result.taxonomy.abstentionAccuracy.value < 1 ? 1 : 0) +
     (result.taxonomy.inactiveUnknownIdRejection.value < 1 ? 1 : 0) +
+    (result.taxonomy.seedOnlyCoverage.candidateRecall < 1 ? 1 : 0) +
+    (result.taxonomy.seedOnlyCoverage.exactIdClassification.f1 < 1 ? 1 : 0) +
+    (result.taxonomy.pr214ExpansionCoverage.candidateRecall < 1 ? 1 : 0) +
+    (result.taxonomy.pr214ExpansionCoverage.exactIdClassification.f1 < 1 ? 1 : 0) +
     result.parsing.mustRejectViolations +
     result.taxonomy.broadParentOvertags +
     result.taxonomy.duplicateTagIds +

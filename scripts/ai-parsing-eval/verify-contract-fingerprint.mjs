@@ -12,6 +12,18 @@ const manifestPath = resolve(
 );
 
 const fingerprintedPaths = [
+  "fixtures/ai-parsing-golden/manifest.json",
+  "fixtures/ai-parsing-golden/taxonomy-cases.json",
+  "scripts/ai-parsing-eval/evaluate-golden.mjs",
+  "scripts/ai-parsing-eval/hosted-taxonomy-readonly-parity-safety-smoke.mjs",
+  "scripts/ai-parsing-eval/hosted-taxonomy-readonly-parity.mjs",
+  "scripts/ai-parsing-eval/lib/golden-evaluator.mjs",
+  "scripts/ai-parsing-eval/lib/taxonomy-golden-fixture.mjs",
+  "scripts/ai-parsing-eval/lib/taxonomy-source-inventory.mjs",
+  "scripts/ai-parsing-eval/mutation-proof.mjs",
+  "scripts/ai-parsing-eval/taxonomy-context-efficiency.mjs",
+  "scripts/ai-parsing-eval/taxonomy-provenance-audit.mjs",
+  "scripts/run-ai-parsing-taxonomy-readonly-parity.ps1",
   "src/lib/ai-pdf-import/service.ts",
   "src/lib/ai-pdf-import/schema.ts",
   "src/lib/ai-pdf-import/pdf.ts",
@@ -29,6 +41,7 @@ const fingerprintedPaths = [
   "src/lib/ai-jobs/worker.ts",
   "src/lib/tags/taxonomy-db.ts",
   "src/lib/tags/runtime-taxonomy-snapshot.ts",
+  "supabase/clean-seeds/0002_local_taxonomy_seed.sql",
   "supabase/clean-migrations/0056_add_math_taxonomy_v2_catalog.sql",
 ];
 
@@ -90,7 +103,7 @@ if (process.argv[2] === "--emit") {
     JSON.stringify(
       {
         baselineAnchor: baseline,
-        contractVersion: "ai-pdf-parsing/provider-neutral-v2",
+        contractVersion: "ai-pdf-parsing/provider-neutral-v3",
         files: fingerprintedPaths.map((path) => ({
           baseline: anchorRecord(baseline, path),
           path,
@@ -114,7 +127,7 @@ const head = resolveCommit("HEAD");
 assert.equal(manifest.schemaVersion, 1);
 assert.equal(
   manifest.contractVersion,
-  "ai-pdf-parsing/provider-neutral-v2",
+  "ai-pdf-parsing/provider-neutral-v3",
 );
 assert.equal(baseline, manifest.baselineAnchor);
 assert.equal(treatment, manifest.treatmentAnchor);

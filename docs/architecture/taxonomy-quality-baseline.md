@@ -2,131 +2,131 @@
 
 ## Provenance verdict
 
-`RECENT_TAXONOMY_PROVENANCE_NOT_FOUND`
+`AUTHORITATIVE_RECENT_TAXONOMY_SOURCE_RECONCILED`
 
-The audited Pacific window `2026-07-29` through `2026-08-05` resolves to
-`2026-07-29T07:00:00Z..2026-08-06T07:00:00Z`. The audit covered current
-authoritative `origin/main`, the stacked PDF50 and AI Parsing branches, 229
-fetched pull-request refs, 293 non-PR remote refs, Git history, migrations,
-seeds, import/export paths, and Admin taxonomy mutation source.
+PR #214 (`feat: unify Library workflows and public governance`) is the
+authoritative source. Its decisive taxonomy commit is
+`bfb789c58780a885a9bcf6fba54e96741fe710f9`, and that commit is already an
+ancestor of main, PR #228, and PR #229. The relevant immutable inputs are:
 
-No authoritative taxonomy data file changed in that window. Taxonomy-related
-implementation and test paths include the synthetic Golden fixture and this
-runtime-snapshot correction, but none is a production catalog, seed, import,
-export, or migration carrying the reported additions. Migration
-`0056_add_math_taxonomy_v2_catalog.sql` entered Git
-at commit `bfb789c58780a885a9bcf6fba54e96741fe710f9` on
-`2026-07-27T21:57:22+08:00`, before the reported 100-plus additions. Its Git
-blob is identical on the reviewed branch and `origin/main`.
+- `supabase/clean-seeds/0002_local_taxonomy_seed.sql`
+- `supabase/clean-migrations/0056_add_math_taxonomy_v2_catalog.sql`
 
-The hosted Current Clean taxonomy was not read because this task did not grant
-hosted access. Recent created/modified record counts and any Admin/direct-DB
-mutation provenance therefore remain `NOT_SAFELY_DETERMINABLE`. A future paid
-Provider comparison is blocked until the exact runtime snapshot is captured
-and matched; no paid experiment is authorized by this source result.
+The source replay applies the seed first, then faithfully applies 0056
+`INSERT ... ON CONFLICT DO NOTHING` behavior and its post-insert assignability
+reconciliation. It does not concatenate SQL text or count raw tuples as live
+rows.
 
-## Reproducible source inventory
+## Reconciled source catalog
 
-The checked-in 0056 catalog has the following exact source-derived inventory:
+The source-derived post-apply catalog is:
 
 | Measure | Count |
 | --- | ---: |
-| Canonical nodes / labels / active nodes | 430 / 430 / 430 |
-| Normalized aliases | 16 |
-| Declared assignable nodes before graph derivation | 424 |
-| Effective assignable leaves | 364 |
-| Grouping nodes / roots / leaves | 66 / 1 / 364 |
-| Active parent-child edges / all active edges | 429 / 449 |
+| Active canonical nodes | 439 |
+| Declared assignable / effective leaves | 372 / 372 |
+| Active edges / hierarchy edges | 460 / 438 |
+| Normalized aliases | 20 |
 | Facets | 5 |
 
-The earlier planning value of 14 aliases was stale; the migration contains 16.
+The 439-node result is independently reconciled as `430 + 18 - 9`. The
+460-edge result is `449 + 19 - 8`; aliases are `16 + 4`. Nine nodes are
+seed-only, nine preserve compatible seed rows also named by 0056, and 421 are
+introduced by 0056. Eleven edges are seed-only, eight preserve compatible
+overlaps, and 441 are introduced by 0056.
 
-| Facet | Active nodes | Effective assignable leaves |
+| Facet | Active nodes | Effective leaves |
 | --- | ---: | ---: |
-| `curriculum` | 65 | 51 |
-| `concept` | 183 | 157 |
-| `method` | 89 | 79 |
+| `curriculum` | 67 | 53 |
+| `concept` | 186 | 159 |
+| `method` | 91 | 81 |
 | `task` | 45 | 37 |
-| `form` | 47 | 40 |
+| `form` | 49 | 42 |
 
-The migration byte SHA-256 is
-`7d5158b62294392035d81f9e36a3da7873090db5bd38272412f44733c4cd22e6`.
-The deterministic runtime snapshot reconstructed from those source rows is
-`e557cdb3519f29601b74bc6551a207d19b3ba81ab439029e526fecad9d20211e`.
-That hash describes the checked-in catalog only; it is not a claim about an
-unaudited hosted catalog.
+The complete runtime-canonical snapshot SHA-256 is
+`05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe`.
+The separate source-reconciliation SHA-256, which also binds the seed and 0056
+source hashes plus every row's provenance category, is
+`9b757425ac04dedfec7a35069639fde570181fb1301c59c17ec9f68d83c3ef75`.
+The old
+`e557cdb3519f29601b74bc6551a207d19b3ba81ab439029e526fecad9d20211e`
+value is retained only as
+`STATIC_0056_PAYLOAD_ONLY_NONAUTHORITATIVE`; it omitted seed-only runtime
+records and cannot gate Provider experiments.
 
-## Runtime contract
+## Runtime binding
 
-The exact five facets remain:
+The reachable parsing call graph is:
 
-1. `curriculum`
-2. `concept`
-3. `method`
-4. `task`
-5. `form`
+`loadTaxonomyCatalog(includeAllEdges)`
+`-> buildRuntimeTaxonomySnapshot`
+`-> buildRuntimeTaxonomyCandidateSubset`
+`-> Provider serialization`
+`-> parsing contract fingerprint`
+`-> quality observatory`
+`-> exact-ID validation`
+`-> pending_review persistence`
+`-> Teacher label resolution`
 
-The parsing call graph is now:
+The observatory distinguishes the full catalog hash, per-job candidate-subset
+hash, retrieval version, prompt version, schema version, repair-policy version,
+and overall parsing-contract hash. All active edge kinds are included in the
+full snapshot; only active, assignable, rooted, cycle-free effective leaves can
+enter Provider candidates.
 
-`loadTaxonomyCatalog -> buildRuntimeTaxonomySnapshot -> effective candidates`
-`-> serializeRuntimeTaxonomyCandidates -> fingerprintAIPdfParsingContract`
-`-> buildPrompt -> Provider transport -> exact-ID validation -> pending_review`
+The current conservative production subset is all 372 effective leaves. Its
+canonical bytes are 43,530 versus 160,720 bytes for the full graph snapshot, a
+0.270844 ratio. The Provider prompt serialization is 35,865 bytes, including
+347 bytes of alias representation. A narrower coarse-to-fine runtime retriever
+is not activated because it lacks independent live recall evidence.
 
-The canonical snapshot sorts stable node IDs, facets, catalog labels,
-normalized aliases, exact parent IDs, active state, assignable policy, and
-derived effective-leaf state. It excludes audit timestamps and private
-identifiers. The snapshot SHA and parsing-contract SHA are recorded together
-with candidate count in the quality observatory and safe job evidence.
+## Provider-neutral Golden evidence
 
-Parsing fails closed unless the catalog has exactly five facets and no
-duplicate IDs, orphan ambiguity, cycles, cross-facet parent edge, or invalid
-facet. A candidate must be active, policy-assignable, reachable from its valid
-facet root, not be a root, and have no active child. Consequently, adding an
-active assignable child excludes an old assignable parent even if the stored
-parent flag is stale. Inactive children do not turn a valid parent into a
-grouping candidate, and aliases are normalized for evidence without becoming
-assignable IDs.
+The historical six taxonomy cases remain identified at commit
+`659654e81e56b0891f786adfa3a003faec8783d5` as
+`SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY`.
 
-Provider output remains untrusted. Only exact active effective-leaf IDs from
-the same runtime snapshot may survive application validation. Labels, aliases,
-broad parents, inactive IDs, wrong-facet IDs, and invented IDs cannot be
-persisted as accepted assignments. AI output remains `pending_review`.
+The current source-bound corpus has 14 stratified cases. Its catalog is rebuilt
+from the seed and 0056 on every run; the JSON fixture cannot invent catalog
+entries. It covers all five facets, shallow/deep leaves, close siblings, broad
+parents, cross-facet similar labels, abstention, invalid IDs, aliases,
+seed-only nodes, and 0056-introduced nodes. Results are:
 
-## Admin consistency gate
+- candidate retrieval recall: 1.0
+- exact-ID precision / recall / F1: 1.0 / 1.0 / 1.0
+- alias resolution: 9 / 9
+- seed-only unique expected IDs: 6, candidate recall and exact-ID F1 1.0
+- PR #214 expansion unique expected IDs: 22, candidate recall and exact-ID F1 1.0
+- abstention accuracy: 1.0
+- broad-parent overtags: 0
+- wrong-facet violations: 0
+- inactive/unknown rejection: 1.0
 
-The current Admin create action requires an active Admin, validates the parent,
-inserts the child node, then inserts its edge. It performs compensating child
-deletion if the edge insert fails. It does not atomically demote an old
-assignable parent. Runtime candidate derivation closes the parsing exposure,
-but the stored invariant is not atomic.
+Eighteen independent mutations are rejected, including removal of a correct
+seed-only candidate, removal of a correct 0056 candidate, alias drift, broad
+parent substitution, wrong-facet substitution, and the existing parsing,
+visual, authorization, publication, and Assignment mutations.
 
-A later forward-only migration should introduce a narrow postgres-owned
-`SECURITY DEFINER` RPC such as `public.create_taxonomy_child_v2(...)` with a
-fixed `search_path = public, private`. The RPC should:
+Controlled Golden candidate pools average 7.5 eligible candidates and preserve
+1.0 gold, seed-only, and 0056-expansion recall. This is evaluator evidence, not
+permission to replace the conservative 372-leaf production subset.
 
-- require the caller to be an active `super_admin`;
-- lock the exact parent for the transaction;
-- validate canonical ID, parent existence, active status, facet, and cycle
-  constraints;
-- insert the child and parent-child edge atomically;
-- set the parent `is_assignable = false` when the active child is created;
-- refresh any closure data in the same transaction;
-- expose only safe created-node metadata; and
-- grant execute only to the authenticated Admin path needed by the product.
+## Hosted parity gate
 
-No migration or hosted change was made here. Until that RPC is reviewed and
-applied, `ADMIN_TAXONOMY_ATOMIC_CONSISTENCY` remains an external source/schema
-gate while parsing itself remains fail closed.
+Source reconciliation does not prove Current Clean runtime parity. The
+credential-safe read-only launcher compares exact nodes, labels, aliases,
+facets, parent relationships, all edges, flags, effective leaves, counts, and
+the deterministic snapshot SHA with no service-role key, writes, or Provider
+call.
 
-## Evaluation status
+Paid work remains inactive until that audit returns exactly
+`AUTHORITATIVE_RECENT_TAXONOMY_CONFIRMED`. A newer hosted catalog or any exact
+source/hosted drift stops the mission for review; hosted rows are never exported
+or changed automatically.
 
-The six deterministic taxonomy cases are labeled
-`SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY`. Candidate pools, gold IDs,
-predictions, distractors, aliases, and acceptable abstention are separate.
-Metrics report candidate retrieval recall, exact-ID precision/recall/F1,
-abstention accuracy, broad-parent overuse, wrong-facet rate, and
-inactive/unknown rejection.
+## Remaining schema gate
 
-Representative recent-label cases were not added because recent authoritative
-provenance was not established. Adding guessed labels would turn the evaluator
-into a new, unaudited taxonomy source.
+Admin child creation still uses separate node and edge writes and does not
+atomically demote a now-broad parent. Runtime candidate derivation fails closed,
+but the stored invariant remains a separate forward-only schema design gate.
+No migration or hosted mutation is made in this treatment.

@@ -25,9 +25,12 @@ question bounds, taxonomy pressure, visual requirements, Review Gate behavior,
 or persistence semantics.
 
 The experiment must stop before its first paid request if either arm reports a
-different runtime taxonomy snapshot SHA. The checked-in 0056 reconstruction is
-not a substitute for that runtime check. Recent taxonomy provenance is
-currently unresolved, so no comparison is authorized.
+different runtime taxonomy snapshot SHA. The authoritative source replay is the
+seed plus 0056 under their real conflict and assignability semantics, not the
+0056 payload alone. It produces the complete source snapshot
+`05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe`.
+Paid work remains inactive until Current Clean independently produces the exact
+same snapshot through the credential-safe read-only parity gate.
 
 ## Measurements
 

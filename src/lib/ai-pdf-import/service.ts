@@ -73,6 +73,7 @@ import {
   type AIPdfQualityObservatory,
 } from "@/lib/ai-pdf-import/quality-observatory";
 import {
+  buildRuntimeTaxonomyCandidateSubset,
   buildRuntimeTaxonomySnapshot,
   RUNTIME_TAXONOMY_FACETS,
   serializeRuntimeTaxonomyCandidates,
@@ -317,10 +318,14 @@ type ActiveTag = {
 const AI_PDF_RUNTIME_TAXONOMY_FACETS = new Set<string>(RUNTIME_TAXONOMY_FACETS);
 
 const AI_PDF_PROMPT_CONTRACT_VERSION = "ai-pdf-extraction-prompt-v3";
+const AI_PDF_SCHEMA_CONTRACT_VERSION = "gemini-ai-pdf-extraction-schema-v2";
+const AI_PDF_REPAIR_POLICY_VERSION =
+  "source-free-structural-single-source-semantic-v2";
 
 type AIPdfRuntimeTaxonomyContext = {
   activeTags: ActiveTag[];
   candidatePayload: string;
+  candidateSubset: ReturnType<typeof buildRuntimeTaxonomyCandidateSubset>;
   parsingContractSha256: string;
   snapshot: RuntimeTaxonomySnapshot;
 };
@@ -2790,7 +2795,12 @@ function buildPrompt({
     "",
     `Parsing contract version: ${AI_PDF_PARSING_TREATMENT_VERSION}.`,
     `Parsing contract SHA-256: ${runtimeTaxonomy.parsingContractSha256}.`,
-    `Runtime taxonomy snapshot SHA-256: ${runtimeTaxonomy.snapshot.sha256}.`,
+    `Full authoritative taxonomy snapshot SHA-256: ${runtimeTaxonomy.snapshot.sha256}.`,
+    `Taxonomy candidate-subset SHA-256: ${runtimeTaxonomy.candidateSubset.sha256}.`,
+    `Taxonomy retrieval algorithm: ${runtimeTaxonomy.candidateSubset.version}.`,
+    `Prompt contract: ${AI_PDF_PROMPT_CONTRACT_VERSION}.`,
+    `Schema contract: ${AI_PDF_SCHEMA_CONTRACT_VERSION}.`,
+    `Repair policy: ${AI_PDF_REPAIR_POLICY_VERSION}.`,
     "Taxonomy tagging contract:",
     "- The five canonical facets are curriculum, concept, method, task, and form.",
     "- Select a tag only when the visible source directly supports that exact active assignable tag_id.",
@@ -2957,19 +2967,32 @@ function remapSegmentExtractionPages({
 async function loadActiveTags(
   supabase: SupabaseLike,
 ): Promise<AIPdfRuntimeTaxonomyContext> {
-  const loaded = await loadTaxonomyCatalog(supabase);
+  const loaded = await loadTaxonomyCatalog(supabase, { includeAllEdges: true });
   if (loaded.errorMessage) throw new Error(loaded.errorMessage);
 
-  const snapshot = buildRuntimeTaxonomySnapshot(loaded.catalog);
-  const candidatePayload = serializeRuntimeTaxonomyCandidates(snapshot.candidates);
+  const snapshot = buildRuntimeTaxonomySnapshot({
+    ...loaded.catalog,
+    edges: loaded.edges,
+  });
+  if (!snapshot.valid) {
+    throw new Error("The runtime taxonomy graph failed canonical validation.");
+  }
+  const candidateSubset = buildRuntimeTaxonomyCandidateSubset(snapshot.candidates);
+  const candidatePayload = serializeRuntimeTaxonomyCandidates(
+    candidateSubset.candidates,
+  );
   const parsingContract = fingerprintAIPdfParsingContract({
+    candidateSubset: candidateSubset.canonicalJson,
     outputContract: JSON.stringify(GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT),
     promptContractVersion: AI_PDF_PROMPT_CONTRACT_VERSION,
+    repairPolicyVersion: AI_PDF_REPAIR_POLICY_VERSION,
+    retrievalAlgorithmVersion: candidateSubset.version,
+    schemaContractVersion: AI_PDF_SCHEMA_CONTRACT_VERSION,
     taxonomyCandidates: candidatePayload,
-    taxonomySnapshot: snapshot.canonicalJson,
+    fullTaxonomySnapshot: snapshot.canonicalJson,
     treatmentVersion: AI_PDF_PARSING_TREATMENT_VERSION,
   });
-  const activeTags = snapshot.candidates
+  const activeTags = candidateSubset.candidates
     .filter((tag) => AI_PDF_RUNTIME_TAXONOMY_FACETS.has(tag.facet))
     .map((tag) => ({
       aliases: tag.aliases,
@@ -2990,6 +3013,7 @@ async function loadActiveTags(
   return {
     activeTags,
     candidatePayload,
+    candidateSubset,
     parsingContractSha256: parsingContract.contractSha256,
     snapshot,
   };
@@ -4839,8 +4863,29 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
   const runtimeTaxonomy = await loadActiveTags(input.supabase);
   const activeTags = runtimeTaxonomy.activeTags;
   input.qualityObserver?.recordContractEvidence({
-    candidateCount: runtimeTaxonomy.snapshot.candidates.length,
+    candidateCount: runtimeTaxonomy.candidateSubset.candidates.length,
+    candidateSubsetBytes: Buffer.byteLength(
+      runtimeTaxonomy.candidateSubset.canonicalJson,
+      "utf8",
+    ),
+    candidateSubsetSha256: runtimeTaxonomy.candidateSubset.sha256,
+    fullTaxonomySnapshotBytes: Buffer.byteLength(
+      runtimeTaxonomy.snapshot.canonicalJson,
+      "utf8",
+    ),
+    fullTaxonomySnapshotSha256: runtimeTaxonomy.snapshot.sha256,
     parsingContractSha256: runtimeTaxonomy.parsingContractSha256,
+    promptContractVersion: AI_PDF_PROMPT_CONTRACT_VERSION,
+    repairPolicyVersion: AI_PDF_REPAIR_POLICY_VERSION,
+    retrievalAlgorithmVersion: runtimeTaxonomy.candidateSubset.version,
+    schemaContractVersion: AI_PDF_SCHEMA_CONTRACT_VERSION,
+    subsetToFullCatalogByteRatio:
+      runtimeTaxonomy.snapshot.canonicalJson.length > 0
+        ? Number((
+          Buffer.byteLength(runtimeTaxonomy.candidateSubset.canonicalJson, "utf8") /
+          Buffer.byteLength(runtimeTaxonomy.snapshot.canonicalJson, "utf8")
+        ).toFixed(6))
+        : null,
     taxonomySnapshotSha256: runtimeTaxonomy.snapshot.sha256,
     taxonomySnapshotVersion: runtimeTaxonomy.snapshot.version,
   });
@@ -5641,8 +5686,29 @@ export async function processAIPdfCoverageRecovery(
   const runtimeTaxonomy = await loadActiveTags(input.supabase);
   const activeTags = runtimeTaxonomy.activeTags;
   input.qualityObserver?.recordContractEvidence({
-    candidateCount: runtimeTaxonomy.snapshot.candidates.length,
+    candidateCount: runtimeTaxonomy.candidateSubset.candidates.length,
+    candidateSubsetBytes: Buffer.byteLength(
+      runtimeTaxonomy.candidateSubset.canonicalJson,
+      "utf8",
+    ),
+    candidateSubsetSha256: runtimeTaxonomy.candidateSubset.sha256,
+    fullTaxonomySnapshotBytes: Buffer.byteLength(
+      runtimeTaxonomy.snapshot.canonicalJson,
+      "utf8",
+    ),
+    fullTaxonomySnapshotSha256: runtimeTaxonomy.snapshot.sha256,
     parsingContractSha256: runtimeTaxonomy.parsingContractSha256,
+    promptContractVersion: AI_PDF_PROMPT_CONTRACT_VERSION,
+    repairPolicyVersion: AI_PDF_REPAIR_POLICY_VERSION,
+    retrievalAlgorithmVersion: runtimeTaxonomy.candidateSubset.version,
+    schemaContractVersion: AI_PDF_SCHEMA_CONTRACT_VERSION,
+    subsetToFullCatalogByteRatio:
+      runtimeTaxonomy.snapshot.canonicalJson.length > 0
+        ? Number((
+          Buffer.byteLength(runtimeTaxonomy.candidateSubset.canonicalJson, "utf8") /
+          Buffer.byteLength(runtimeTaxonomy.snapshot.canonicalJson, "utf8")
+        ).toFixed(6))
+        : null,
     taxonomySnapshotSha256: runtimeTaxonomy.snapshot.sha256,
     taxonomySnapshotVersion: runtimeTaxonomy.snapshot.version,
   });

@@ -12,8 +12,8 @@ export const AI_PDF_PARSING_BASELINE_ANCHOR =
 export const AI_PDF_PARSING_BASELINE_VERSION =
   "ai-pdf-parsing/f1ce7bc-baseline-v1";
 export const AI_PDF_PARSING_TREATMENT_VERSION =
-  "ai-pdf-parsing/provider-neutral-v2";
-export const AI_PDF_QUALITY_OBSERVATORY_VERSION = 2;
+  "ai-pdf-parsing/provider-neutral-v3";
+export const AI_PDF_QUALITY_OBSERVATORY_VERSION = 3;
 export const AI_PDF_ATTEMPT_REASON_VERSION = 2;
 export const AI_PDF_CONTEXT_ACCOUNTING_VERSION = 2;
 
@@ -92,7 +92,16 @@ export type AIPdfVisualQualityMetrics = {
 
 export type AIPdfContractEvidence = {
   candidateCount: number;
+  candidateSubsetBytes: number;
+  candidateSubsetSha256: string;
+  fullTaxonomySnapshotBytes: number;
+  fullTaxonomySnapshotSha256: string;
   parsingContractSha256: string;
+  promptContractVersion: string;
+  repairPolicyVersion: string;
+  retrievalAlgorithmVersion: string;
+  schemaContractVersion: string;
+  subsetToFullCatalogByteRatio: number | null;
   taxonomySnapshotSha256: string;
   taxonomySnapshotVersion: number;
 };

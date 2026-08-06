@@ -1,16 +1,30 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  loadAuthoritativeTaxonomySourceInventory,
+  provenanceCounts,
+  TAXONOMY_EXPANSION_PATH,
+  TAXONOMY_SEED_PATH,
+} from "./lib/taxonomy-source-inventory.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const migrationPath = "supabase/clean-migrations/0056_add_math_taxonomy_v2_catalog.sql";
-const windowStart = "2026-07-29T07:00:00Z";
-const windowEnd = "2026-08-06T07:00:00Z";
-const exactFacets = ["curriculum", "concept", "method", "task", "form"];
+const authoritativePr = 214;
+const decisiveCommit = "bfb789c58780a885a9bcf6fba54e96741fe710f9";
+const historicalIncompleteHash =
+  "e557cdb3519f29601b74bc6551a207d19b3ba81ab439029e526fecad9d20211e";
+const historicalExpectation = {
+  activeNodes: 439,
+  aliases: 20,
+  allEdges: 460,
+  declaredAssignable: 372,
+  effectiveLeaves: 372,
+  facets: 5,
+};
 const require = createRequire(import.meta.url);
 const jiti = require("jiti")(import.meta.url, {
   alias: { "@": resolve(root, "src") },
@@ -20,249 +34,123 @@ const { buildRuntimeTaxonomySnapshot } = jiti(
   "../../src/lib/tags/runtime-taxonomy-snapshot.ts",
 );
 
-function git(args) {
+function git(args, encoding = "utf8") {
   return execFileSync("git", args, {
     cwd: root,
-    encoding: "utf8",
+    encoding,
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
 }
 
-function gitBytes(args) {
-  return execFileSync("git", args, {
+function gitBytes(revision, path) {
+  return execFileSync("git", ["show", `${revision}:${path}`], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
   });
 }
 
-function valuesLines(sql, tableName) {
-  const marker = `insert into ${tableName} (`;
-  const start = sql.indexOf(marker);
-  assert.notEqual(start, -1, `missing ${tableName} insert`);
-  const valuesStart = sql.indexOf(") values", start);
-  assert.notEqual(valuesStart, -1, `missing ${tableName} values`);
-  const end = sql.indexOf(";", valuesStart);
-  assert.notEqual(end, -1, `unterminated ${tableName} values`);
-  return sql.slice(valuesStart + ") values".length, end)
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function commitContainsPath(commit, path) {
+  return git(["diff-tree", "--no-commit-id", "--name-only", "-r", commit])
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("("));
+    .includes(path);
 }
 
-function parseTuple(line) {
-  const source = line.replace(/^\(/, "").replace(/[;,]?$/, "").replace(/\)$/, "");
-  const fields = [];
-  let current = "";
-  let quoted = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    if (character === "'") {
-      if (quoted && source[index + 1] === "'") {
-        current += "''";
-        index += 1;
-        continue;
-      }
-      quoted = !quoted;
-      current += character;
-      continue;
-    }
-    if (character === "," && !quoted) {
-      fields.push(current.trim());
-      current = "";
-      continue;
-    }
-    current += character;
-  }
-  fields.push(current.trim());
-  return fields.map((field) => {
-    const castIndex = field.lastIndexOf("::");
-    const withoutCast = castIndex > 0 ? field.slice(0, castIndex) : field;
-    if (withoutCast === "null") return null;
-    if (withoutCast === "true") return true;
-    if (withoutCast === "false") return false;
-    if (/^-?\d+$/.test(withoutCast)) return Number(withoutCast);
-    if (withoutCast.startsWith("'") && withoutCast.endsWith("'")) {
-      return withoutCast.slice(1, -1).replaceAll("''", "'");
-    }
-    return withoutCast;
-  });
-}
-
-function sourceCounts(sql) {
-  const nodes = valuesLines(sql, "_math_taxonomy_v2_nodes").map(parseTuple)
-    .map(([tagId, nodeKind, , facet, label, description, declaredAssignable, , status]) => ({
-      declaredAssignable,
-      description,
-      facet,
-      label,
-      nodeKind,
-      status,
-      tagId,
-    }));
-  const facets = valuesLines(sql, "_math_taxonomy_v2_facets").map(parseTuple)
-    .map(([facetKey, , rootTagId, label, , sortOrder, status]) => ({
-      facetKey,
-      label,
-      rootTagId,
-      sortOrder,
-      status,
-    }));
-  const edges = valuesLines(sql, "_math_taxonomy_v2_edges").map(parseTuple)
-    .map(([from, to, kind, , , status]) => ({ from, kind, status, to }));
-  const aliases = valuesLines(sql, "_math_taxonomy_v2_aliases").map(parseTuple)
-    .map(([alias, normalized, tagId, status]) => ({ alias, normalized, status, tagId }));
-  const activeNodes = nodes.filter((node) => node.status === "active");
-  const hierarchyEdges = edges.filter(
-    (edge) => edge.kind === "parent_child" && edge.status === "active",
+function canonicalProvenance(provenance) {
+  return Object.fromEntries(
+    Object.entries(provenance).map(([kind, entries]) => [
+      kind,
+      [...entries.entries()].sort(([left], [right]) => left.localeCompare(right)),
+    ]),
   );
-  const parentIds = new Set(hierarchyEdges.map((edge) => edge.from));
-  const childIds = new Set(hierarchyEdges.map((edge) => edge.to));
-  const effectiveLeaves = activeNodes.filter(
-    (node) => node.nodeKind === "tag" && !parentIds.has(node.tagId),
-  );
-  const perFacet = Object.fromEntries(exactFacets.map((facet) => [
-    facet,
-    {
-      activeNodes: activeNodes.filter((node) => node.facet === facet).length,
-      effectiveAssignableLeaves: effectiveLeaves.filter((node) => node.facet === facet).length,
-    },
-  ]));
-  const activeAliases = aliases.filter((alias) => alias.status === "active");
-  const aliasesByTagId = new Map();
-  for (const alias of activeAliases) {
-    aliasesByTagId.set(alias.tagId, [
-      ...(aliasesByTagId.get(alias.tagId) ?? []),
-      alias.alias,
-    ]);
-  }
-  const parentsByTagId = new Map();
-  for (const edge of hierarchyEdges) {
-    parentsByTagId.set(edge.to, [
-      ...(parentsByTagId.get(edge.to) ?? []),
-      edge.from,
-    ]);
-  }
-  const catalog = {
-    facets: facets
-      .filter((facet) => facet.status === "active")
-      .map((facet) => ({
-        facet_key: facet.facetKey,
-        label: facet.label,
-        root_tag_id: facet.rootTagId,
-        sort_order: facet.sortOrder,
-      })),
-    nodes: activeNodes.map((node) => ({
-      aliases: aliasesByTagId.get(node.tagId) ?? [],
-      description: node.description,
-      facet_key: node.facet,
-      is_assignable: node.declaredAssignable === true,
-      label: node.label,
-      parent_tag_ids: parentsByTagId.get(node.tagId) ?? [],
-      tag_id: node.tagId,
-    })),
-  };
-
-  return { catalog, counts: {
-    activeNodes: activeNodes.length,
-    aliases: activeAliases.length,
-    allEdges: edges.filter((edge) => edge.status === "active").length,
-    assignableNodes: effectiveLeaves.length,
-    declaredAssignableBeforeGraphDerivation: activeNodes.filter(
-      (node) => node.declaredAssignable === true,
-    ).length,
-    effectiveAssignableLeaves: effectiveLeaves.length,
-    facetRows: facets.filter((facet) => facet.status === "active").length,
-    groupingNodes: activeNodes.filter((node) => parentIds.has(node.tagId)).length,
-    hierarchyEdges: hierarchyEdges.length,
-    labels: activeNodes.filter((node) => String(node.label ?? "").trim()).length,
-    leaves: activeNodes.filter((node) => !parentIds.has(node.tagId)).length,
-    nodes: nodes.length,
-    perFacet,
-    roots: activeNodes.filter((node) => !childIds.has(node.tagId)).length,
-  } };
 }
 
-const sql = await readFile(resolve(root, migrationPath), "utf8");
-const source = sourceCounts(sql);
-const counts = source.counts;
-const sourceRuntimeSnapshot = buildRuntimeTaxonomySnapshot(source.catalog);
-assert.equal(counts.nodes, 430);
-assert.equal(counts.activeNodes, 430);
-assert.equal(counts.hierarchyEdges, 429);
-assert.equal(counts.effectiveAssignableLeaves, 364);
-assert.equal(counts.facetRows, 5);
-assert.equal(counts.labels, 430);
-assert.equal(sourceRuntimeSnapshot.valid, true);
-assert.equal(sourceRuntimeSnapshot.counts.effectiveAssignableLeaves, 364);
+const inventory = await loadAuthoritativeTaxonomySourceInventory(root);
+const snapshot = buildRuntimeTaxonomySnapshot({
+  ...inventory.catalog,
+  edges: inventory.edges,
+});
+assert.equal(snapshot.valid, true, JSON.stringify(snapshot.diagnostics));
 
-const introduction = git([
-  "log",
-  "--all",
-  "--diff-filter=A",
-  "--format=%H|%aI|%s",
-  "--",
-  migrationPath,
-]).split(/\r?\n/).filter(Boolean)[0];
-assert.ok(introduction, "0056 introduction commit is missing");
-const [introductionCommit, introductionDate] = introduction.split("|");
-const recentChangedPaths = git([
-  "log",
-  "--all",
-  `--since=${windowStart}`,
-  `--until=${windowEnd}`,
-  "--name-only",
-  "--pretty=format:",
-  "--",
-  "supabase",
-  "fixtures",
-  "scripts",
-  "src/app/admin/tags",
-  "src/lib/tags",
-]).split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
-const recentTaxonomyDataPaths = Array.from(new Set(recentChangedPaths.filter((path) =>
-  /taxonomy|(?:^|[/_.-])tags?(?:[/_.-]|$)/i.test(path) &&
-    !path.startsWith("fixtures/ai-parsing-golden/") &&
-    /\.(sql|json|csv|tsv)$/i.test(path) &&
-    !path.startsWith("docs/"),
-))).sort();
-const recentTaxonomyRelatedPaths = Array.from(new Set(recentChangedPaths.filter((path) =>
-  /taxonomy|src\/app\/admin\/tags|src\/lib\/tags/i.test(path),
-))).sort();
-const currentGitBytes = gitBytes(["show", `HEAD:${migrationPath}`]);
-const mainGitBytes = gitBytes(["show", `origin/main:${migrationPath}`]);
-const refs = {
-  currentHead: git(["rev-parse", "HEAD"]),
-  originMain: git(["rev-parse", "origin/main"]),
-  stackedBase: "f1ce7bcb791604468693ea945401cfb157e64d97",
+const sourceCounts = {
+  activeNodes: inventory.rows.nodes.length,
+  aliases: inventory.rows.aliases.length,
+  allEdges: inventory.rows.edges.length,
+  declaredAssignable: inventory.rows.nodes.filter(
+    (node) => node.is_assignable === true,
+  ).length,
+  effectiveLeaves: snapshot.counts.effectiveAssignableLeaves,
+  facets: inventory.rows.facets.length,
+  hierarchyEdges: snapshot.counts.hierarchyEdges,
+  perFacet: snapshot.perFacet,
 };
-const pullRequestRefs = git([
-  "for-each-ref",
-  "--format=%(refname)",
-  "refs/remotes/origin/pr",
-]).split(/\r?\n/).filter(Boolean);
-const remoteBranchRefs = git([
-  "for-each-ref",
-  "--format=%(refname)",
-  "refs/remotes/origin",
-]).split(/\r?\n/).filter((ref) => ref && !ref.startsWith("refs/remotes/origin/pr/"));
-const sourceSha256 = createHash("sha256").update(currentGitBytes).digest("hex");
-const mainSha256 = createHash("sha256").update(mainGitBytes).digest("hex");
+assert.deepEqual(
+  {
+    activeNodes: sourceCounts.activeNodes,
+    aliases: sourceCounts.aliases,
+    allEdges: sourceCounts.allEdges,
+    declaredAssignable: sourceCounts.declaredAssignable,
+    effectiveLeaves: sourceCounts.effectiveLeaves,
+    facets: sourceCounts.facets,
+  },
+  historicalExpectation,
+  "replayed source catalog differs from the independently recorded PR #214 expectation",
+);
+
+const sourceContribution = provenanceCounts(inventory.provenance);
+assert.equal(sourceContribution.nodes.seed_only, 9);
+assert.equal(sourceContribution.nodes.seed_preserved_0056_compatible, 9);
+assert.equal(sourceContribution.nodes.migration_0056, 421);
+assert.equal(sourceContribution.edges.seed_only, 11);
+assert.equal(sourceContribution.edges.seed_preserved_0056_compatible, 8);
+assert.equal(sourceContribution.edges.migration_0056, 441);
+assert.equal(sourceContribution.aliases.seed_only, 4);
+assert.equal(sourceContribution.aliases.migration_0056, 16);
+
+const resolvedDecisiveCommit = git(["rev-parse", `${decisiveCommit}^{commit}`]);
+assert.equal(resolvedDecisiveCommit, decisiveCommit);
+assert.equal(
+  git(["merge-base", "--is-ancestor", decisiveCommit, "HEAD"]) === "",
+  true,
+  "PR #214 decisive commit is not in the current branch history",
+);
+assert.equal(commitContainsPath(decisiveCommit, TAXONOMY_EXPANSION_PATH), true);
+assert.ok(gitBytes(decisiveCommit, TAXONOMY_EXPANSION_PATH).byteLength > 0);
+assert.ok(gitBytes("HEAD", TAXONOMY_SEED_PATH).byteLength > 0);
+
+const migrationHeadSha = sha256(gitBytes("HEAD", TAXONOMY_EXPANSION_PATH));
+const migrationMainSha = sha256(gitBytes("origin/main", TAXONOMY_EXPANSION_PATH));
+const seedHeadSha = sha256(gitBytes("HEAD", TAXONOMY_SEED_PATH));
+const sourceReconciliationSha = sha256(Buffer.from(JSON.stringify({
+  migrationSourceSha256: migrationHeadSha,
+  provenance: canonicalProvenance(inventory.provenance),
+  runtimeSnapshotSha256: snapshot.sha256,
+  seedSourceSha256: seedHeadSha,
+}), "utf8"));
+assert.equal(migrationHeadSha, migrationMainSha);
+assert.notEqual(
+  snapshot.sha256,
+  historicalIncompleteHash,
+  "the complete catalog must not retain the 0056-only snapshot hash",
+);
 
 console.log("TAXONOMY_PROVENANCE_AUDIT=PASS");
-console.log("VERDICT=RECENT_TAXONOMY_PROVENANCE_NOT_FOUND");
-console.log(`WINDOW_UTC=${windowStart}..${windowEnd}`);
-console.log(`MIGRATION_INTRODUCTION=${introductionCommit};DATE=${introductionDate}`);
-console.log(`SOURCE_COUNTS=${JSON.stringify(counts)}`);
-console.log("KNOWN_ALIAS_COUNT_CORRECTION=14_TO_16");
-console.log(`RECENT_TAXONOMY_DATA_PATHS=${recentTaxonomyDataPaths.length}`);
-console.log(`RECENT_TAXONOMY_RELATED_PATHS=${recentTaxonomyRelatedPaths.length}`);
-console.log(`SOURCE_SHA256=${sourceSha256}`);
-console.log(`SOURCE_DERIVED_RUNTIME_SNAPSHOT_SHA256=${sourceRuntimeSnapshot.sha256}`);
-console.log(`SOURCE_DERIVED_RUNTIME_CANDIDATES=${sourceRuntimeSnapshot.candidates.length}`);
-console.log(`ORIGIN_MAIN_SOURCE_MATCH=${sourceSha256 === mainSha256 ? "PASS" : "FAIL"}`);
-console.log(`PULL_REQUEST_REFS_AUDITED=${pullRequestRefs.length}`);
-console.log(`REMOTE_BRANCH_REFS_AUDITED=${remoteBranchRefs.length}`);
-console.log(`REFS_AUDITED=${Object.keys(refs).length + pullRequestRefs.length + remoteBranchRefs.length}`);
-console.log("HOSTED_TAXONOMY_AUDIT=NOT_RUN_NOT_AUTHORIZED");
-console.log("RECENT_CREATED_OR_MODIFIED_RECORDS=NOT_SAFELY_DETERMINABLE");
-console.log("PAID_EXPERIMENTS=UNAUTHORIZED");
+console.log("VERDICT=AUTHORITATIVE_RECENT_TAXONOMY_SOURCE_RECONCILED");
+console.log(`AUTHORITATIVE_PR=${authoritativePr}`);
+console.log(`DECISIVE_COMMIT=${decisiveCommit}`);
+console.log(`SOURCE_FULL_COUNTS=${JSON.stringify(sourceCounts)}`);
+console.log(`SOURCE_PROVENANCE_COUNTS=${JSON.stringify(sourceContribution)}`);
+console.log(`SOURCE_FULL_SNAPSHOT_SHA256=${snapshot.sha256}`);
+console.log(`SOURCE_RECONCILIATION_SHA256=${sourceReconciliationSha}`);
+console.log(`SOURCE_FULL_CANDIDATES=${snapshot.candidates.length}`);
+console.log(`MIGRATION_SOURCE_SHA256=${migrationHeadSha}`);
+console.log(`SEED_SOURCE_SHA256=${seedHeadSha}`);
+console.log("ORIGIN_MAIN_MIGRATION_SOURCE_MATCH=PASS");
+console.log(
+  `PREVIOUS_INCOMPLETE_HASH=${historicalIncompleteHash};DISPOSITION=STATIC_0056_PAYLOAD_ONLY_NONAUTHORITATIVE`,
+);
+console.log("HOSTED_TAXONOMY_AUDIT=NOT_RUN_PREPAID_GATE");
+console.log("PAID_EXPERIMENTS=INACTIVE_UNTIL_HOSTED_PARITY");

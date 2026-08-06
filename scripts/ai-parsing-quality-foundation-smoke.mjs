@@ -19,6 +19,8 @@ const [
   runtimeTaxonomy,
   schema,
   service,
+  taxonomyGoldenFixture,
+  taxonomySourceInventory,
 ] = await Promise.all([
   read("src/lib/ai-providers/ai-pdf-attempt-state.ts"),
   read("src/lib/ai-providers/chat.ts"),
@@ -29,6 +31,8 @@ const [
   read("src/lib/tags/runtime-taxonomy-snapshot.ts"),
   read("src/lib/ai-pdf-import/schema.ts"),
   read("src/lib/ai-pdf-import/service.ts"),
+  read("scripts/ai-parsing-eval/lib/taxonomy-golden-fixture.mjs"),
+  read("scripts/ai-parsing-eval/lib/taxonomy-source-inventory.mjs"),
 ]);
 
 assert(
@@ -84,10 +88,28 @@ assert(
 );
 assert(
   service.includes("buildRuntimeTaxonomySnapshot") &&
-    service.includes("serializeRuntimeTaxonomyCandidates(snapshot.candidates)") &&
+    service.includes("buildRuntimeTaxonomyCandidateSubset") &&
+    service.includes("includeAllEdges: true") &&
+    service.includes("candidateSubsetSha256") &&
+    service.includes("fullTaxonomySnapshotSha256") &&
     service.includes("taxonomySnapshotSha256") &&
     service.includes("parsingContractSha256"),
   "reachable parsing must bind runtime candidates and their snapshot fingerprint",
+);
+assert(
+  service.includes('AI_PDF_PROMPT_CONTRACT_VERSION = "ai-pdf-extraction-prompt-v3"') &&
+    service.includes('AI_PDF_SCHEMA_CONTRACT_VERSION = "gemini-ai-pdf-extraction-schema-v2"') &&
+    service.includes("AI_PDF_REPAIR_POLICY_VERSION") &&
+    service.includes('"source-free-structural-single-source-semantic-v2"'),
+  "reachable parsing must expose explicit prompt, schema, and repair-policy versions",
+);
+assert(
+  taxonomySourceInventory.includes("loadAuthoritativeTaxonomySourceInventory") &&
+    taxonomySourceInventory.includes("seed_preserved_0056_compatible") &&
+    taxonomySourceInventory.includes("stage.nodes") &&
+    taxonomyGoldenFixture.includes("loadAuthoritativeTaxonomySourceInventory") &&
+    taxonomyGoldenFixture.includes("taxonomy Golden fixture references an unbound ID"),
+  "taxonomy evidence must replay seed-plus-0056 semantics and reject fixture-defined catalog IDs",
 );
 assert(
   service.includes("qualityObservatory") &&

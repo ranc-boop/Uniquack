@@ -47,9 +47,91 @@ const visual = await loadTypeScriptModule(
 const observerModule = await loadTypeScriptModule(
   "src/lib/ai-pdf-import/quality-observatory.ts",
 );
+const taxonomyDb = await loadTypeScriptModule(
+  "src/lib/tags/taxonomy-db.ts",
+);
 const { normalizeAIPdfExtractionResponse } = jiti(
   "../../src/lib/ai-pdf-import/schema.ts",
 );
+
+const taxonomyEdges = [
+  {
+    edge_kind: "parent_child",
+    from_tag_id: "math",
+    is_primary: true,
+    to_tag_id: "math.concept",
+  },
+  {
+    edge_kind: "maps_to",
+    from_tag_id: "math.curriculum.ap",
+    is_primary: false,
+    to_tag_id: "math.concept.algebra",
+  },
+];
+const taxonomyCatalog = await taxonomyDb.loadTaxonomyCatalog(
+  {
+    from(table) {
+      assert.equal(table, "taxonomy_edges");
+      return {
+        select() {
+          return this;
+        },
+        eq(column, value) {
+          assert.equal(column, "status");
+          assert.equal(value, "active");
+          return this;
+        },
+        async order(column, options) {
+          assert.equal(column, "sort_order");
+          assert.deepEqual(options, { ascending: true });
+          return { data: taxonomyEdges, error: null };
+        },
+      };
+    },
+    async rpc(name) {
+      assert.equal(name, "get_active_taxonomy_catalog_v1");
+      return {
+        data: {
+          facets: [{
+            facet_key: "concept",
+            label: "Concept",
+            root_tag_id: "math.concept",
+            sort_order: 1,
+          }],
+          nodes: [
+            {
+              aliases: [],
+              description: null,
+              facet_key: null,
+              is_assignable: false,
+              label: "Math",
+              parent_tag_ids: [],
+              tag_id: "math",
+            },
+            {
+              aliases: [],
+              description: null,
+              facet_key: "concept",
+              is_assignable: false,
+              label: "Concept",
+              parent_tag_ids: ["math"],
+              tag_id: "math.concept",
+            },
+          ],
+        },
+        error: null,
+      };
+    },
+  },
+  { includeAllEdges: true },
+);
+assert.equal(taxonomyCatalog.errorMessage, null);
+assert.equal(taxonomyCatalog.catalog.nodes.length, 2);
+assert.equal(
+  taxonomyCatalog.catalog.nodes.find((node) => node.tag_id === "math")?.facet_key,
+  null,
+);
+assert.deepEqual(taxonomyCatalog.edges, taxonomyEdges);
 
 const placeholder = {
   bbox: { height: 0.3, width: 0.4, x: 0.1, y: 0.2 },
@@ -198,9 +280,18 @@ observer.beginAttempt({
 observer.recordPersistence({ importableReviewDrafts: 1 });
 observer.recordContractEvidence({
   candidateCount: 10,
+  candidateSubsetBytes: 400,
+  candidateSubsetSha256: "c".repeat(64),
+  fullTaxonomySnapshotBytes: 800,
+  fullTaxonomySnapshotSha256: "b".repeat(64),
   parsingContractSha256: "a".repeat(64),
+  promptContractVersion: "prompt-v1",
+  repairPolicyVersion: "repair-v1",
+  retrievalAlgorithmVersion: "retrieval-v1",
+  schemaContractVersion: "schema-v1",
+  subsetToFullCatalogByteRatio: 0.5,
   taxonomySnapshotSha256: "b".repeat(64),
-  taxonomySnapshotVersion: 1,
+  taxonomySnapshotVersion: 2,
 });
 const snapshot = observer.snapshot();
 assert.equal(snapshot.attemptsPerJob, 2);
@@ -216,5 +307,7 @@ assert.equal(snapshot.attempts[1].sourceIncluded, false);
 assert.equal(snapshot.output.importableReviewDrafts, 1);
 assert.equal(snapshot.output.usefulOutputPerProviderInputToken, 0.01);
 assert.equal(snapshot.contractEvidence.taxonomySnapshotSha256, "b".repeat(64));
+assert.equal(snapshot.contractEvidence.candidateSubsetSha256, "c".repeat(64));
+assert.equal(snapshot.contractEvidence.subsetToFullCatalogByteRatio, 0.5);
 
 console.log("AI_PARSING_RUNTIME_CONTRACT=PASS");

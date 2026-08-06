@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { evaluateGoldenCorpus } from "./lib/golden-evaluator.mjs";
+import { loadAuthoritativeTaxonomyGoldenPayload } from "./lib/taxonomy-golden-fixture.mjs";
 import { buildQuestionAssetAuthorizationEvidence } from "./question-asset-authorization-evidence.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -18,7 +19,7 @@ async function load(name) {
 const original = {
   parsing: await load("parsing-cases.json"),
   runState: await load("run-state-cases.json"),
-  taxonomy: await load("taxonomy-cases.json"),
+  taxonomy: await loadAuthoritativeTaxonomyGoldenPayload(root),
   visual: await load("visual-cases.json"),
 };
 original.runState.assetAuthorizationResults =
@@ -41,6 +42,18 @@ const mutations = [
     prediction.splice(prediction.indexOf("math.concept.calculus.derivatives.chain_rule"), 1, "math.concept.calculus.derivatives");
   }],
   ["wrong_facet_substitution", (value) => value.taxonomy.cases.find((entry) => entry.id === "data-table-form-only").prediction.push("math.concept.functions.linear.slope")],
+  ["seed_only_candidate_removed", (value) => {
+    const entry = value.taxonomy.cases.find((caseEntry) => caseEntry.id === "seed-frq-format-only");
+    entry.candidatePool.splice(entry.candidatePool.indexOf("math.form.free_response"), 1);
+  }],
+  ["pr214_expansion_candidate_removed", (value) => {
+    const entry = value.taxonomy.cases.find((caseEntry) => caseEntry.id === "quadratic-vertex-form-sibling");
+    entry.candidatePool.splice(entry.candidatePool.indexOf("math.concept.functions.quadratic.vertex_form"), 1);
+  }],
+  ["alias_resolution_unbound", (value) => {
+    const entry = value.taxonomy.cases.find((caseEntry) => caseEntry.id === "seed-frq-format-only");
+    entry.aliasExpectations[0].input = "not a source alias";
+  }],
   ["missing_required_visual", (value) => value.visual.find((entry) => entry.id === "missing-required-figure").candidate.approvalBlocked = false],
   ["wrong_question_asset_attachment", (value) => value.visual[0].candidate.visuals[0].questionId = "q2"],
   ["invalid_crop_coordinates", (value) => value.visual[0].candidate.visuals[0].bbox = [0.8, 0.2, 0.4, 0.4]],
