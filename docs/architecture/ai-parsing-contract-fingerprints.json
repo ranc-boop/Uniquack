@@ -1,13 +1,13 @@
 {
   "baselineAnchor": "f1ce7bcb791604468693ea945401cfb157e64d97",
-  "contractVersion": "ai-pdf-parsing/provider-neutral-v3",
+  "contractVersion": "ai-pdf-parsing/provider-neutral-v4",
   "files": [
     {
       "baseline": null,
       "path": "fixtures/ai-parsing-golden/manifest.json",
       "treatment": {
-        "blob": "7df7d068e5f1ec6514700165addb029ba9032e7a",
-        "sha256": "c5bc16d2be582dc7e59b16237fe307af73db9aa3c693b9004b9ea33ad638d08b"
+        "blob": "db4ffaceb334fd3c33285f3cf9ef9592a46b3b1e",
+        "sha256": "d7ab3baa3ac2d51d936dcd48a5cbecbbeccab730dbe0144c121ee8096ae636e3"
       }
     },
     {
@@ -94,8 +94,8 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/verify-contract-fingerprint.mjs",
       "treatment": {
-        "blob": "558e9b8a5fc7a5a04d035b404071227c2e13551c",
-        "sha256": "05c1da21b41bd4071bac30c3814d6a06842d8316b80760905295886392feae28"
+        "blob": "3d0de95fea2aedeb2103214e3ec388611ea9bfc3",
+        "sha256": "fce064e1ecfb269eb9b55d518fe87e2488c6cbdc46a0292abbf38dbb0b615129"
       }
     },
     {
@@ -160,8 +160,8 @@
       },
       "path": "scripts/pdf50-provider-lifecycle-budget-runtime-smoke.mjs",
       "treatment": {
-        "blob": "99170cee3064e5489555b91ee51b7974ce9c7fdd",
-        "sha256": "52ba7007c30431d91b9c3f71c1acdab7fde67d5707db7d0e9eda6cd546187867"
+        "blob": "31c0be83bced5a236e4a0750be9eb2319d6d84d0",
+        "sha256": "fa6949e04ef1ceab98ceae16a03423c2d34cdcf9155ffdf38f9e43d0f20f4c4f"
       }
     },
     {
@@ -327,8 +327,8 @@
       "baseline": null,
       "path": "src/lib/ai-pdf-import/quality-observatory.ts",
       "treatment": {
-        "blob": "6ee66be2ffba379b8c759539a137e6acd3b19ab8",
-        "sha256": "6f385a5f1d4d12008bf7940459eef97b584ef6804e8caeb5c3b8174160cebaea"
+        "blob": "b847258eac16128e9d91407ff57d4108a7568caf",
+        "sha256": "af795cf615da9548f2333e9578b59795253032aa78ce5eda101e886ed844ad48"
       }
     },
     {
@@ -343,8 +343,8 @@
       "baseline": null,
       "path": "src/lib/ai-providers/ai-pdf-attempt-state.ts",
       "treatment": {
-        "blob": "3dd9f81be3637db3c302c297f4d06282bf4f31bf",
-        "sha256": "830fc547f5a312f0d665f9a7c4d84aee70de7e820d791756e5114fff519398fa"
+        "blob": "28e3e0f545dd055fd3e47451546d7124ea9dbcf1",
+        "sha256": "3d6cabef6926f1e5db393b882ab3ccb02c3e90f522b2e9cf834e90f8f4c430df"
       }
     },
     {
@@ -354,8 +354,8 @@
       },
       "path": "src/lib/ai-providers/chat.ts",
       "treatment": {
-        "blob": "ad6a0ca3d1739e05dc15edd756cf8e861af9281b",
-        "sha256": "a5be343393306a90a5c56161306780c82961f3578fc4e03f756f32aafa39635d"
+        "blob": "91ee5fd1701e3a205e86855ab94d55bb08d30cd2",
+        "sha256": "4c9c4d5503fd98283413e848992bf27c8c61ab3a1e08761ed9d0b52429dd2a45"
       }
     },
     {
@@ -467,5 +467,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "a71b858752100673cac52c0f9ae4ce522dc4fc89"
+  "treatmentAnchor": "5cc2416ef73f1c8b557657558878e732a363de8f"
 }
