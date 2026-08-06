@@ -171,8 +171,8 @@
       },
       "path": "scripts/pdf50-scale-qualification-live-e2e-safety-smoke.mjs",
       "treatment": {
-        "blob": "6d9f87a7527d42b440026b44939179281fca5ca0",
-        "sha256": "709930380c1a53f9ecfd359515886c9507dc7ff821425d62fbf97ddbd358ed36"
+        "blob": "e8277cd224ada678b7d3aeccf7c4372e6f48334f",
+        "sha256": "ed394c944719752e1196fcddfbeb94ecb6683b11080b43e0beb7e825d5e2ebf2"
       }
     },
     {
@@ -182,8 +182,8 @@
       },
       "path": "scripts/pdf50-scale-qualification-live-e2e.mjs",
       "treatment": {
-        "blob": "dc72fb47cb3cc1b53afe22b4e74e32d7c7d4d024",
-        "sha256": "ac210ee3061ce3de34524ca5909f42f160c55fce93db6b72f8500bc605372b1a"
+        "blob": "b59acda2692359bb8a979635d5c8a14958912660",
+        "sha256": "af2f9b02b4ce1237b7f0f48da4f4ef52f3ae13d14091bd5d76560f2cdb517c31"
       }
     },
     {
@@ -467,5 +467,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "91ec3ae6c14c773d4a59295693a26efb402abddc"
+  "treatmentAnchor": "db93a885fbe4896b24d1ada13ded69493a67499f"
 }
