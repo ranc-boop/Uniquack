@@ -14,10 +14,11 @@ environment contracts. The immutable baseline is
 
 No real Provider call or hosted mutation was performed during the source phase.
 Current Clean taxonomy parity subsequently passed read-only with the exact
-source snapshot. Three bounded Gemini scale attempts then ran under the separate
-USD 2 authorization. They materially narrowed two defects, but neither the
-paired parsing experiment, image-rich visual proof, nor terminal 50-file gate is
-complete.
+source snapshot. The later bounded Gemini authorization completed all ten paid
+run slots. It validated the authoritative-taxonomy ten-file path, produced
+partial live visual evidence, and reached 11 of 50 terminal completions in the
+final scale run. The paired Provider comparison, complete visual contract, and
+terminal 50-file gate remain open.
 
 ## Immutable contract fingerprints
 
@@ -30,8 +31,8 @@ source catalog to immutable Git blobs and SHA-256 values.
 The verifier requires baseline ancestry, treatment ancestry, exact file order,
 exact anchor blobs, and current-byte equality. New treatment modules are
 explicitly absent at baseline. Uncommitted worktree bytes are never accepted as
-an anchor. The current manifest binds 47 files to treatment anchor
-`a71b858752100673cac52c0f9ae4ce522dc4fc89`; the manifest-only evidence commit
+an anchor. The current manifest binds 56 files to treatment anchor
+`720ca230438587e18d65dd23dcc142d8e89efb1d`; the manifest-only evidence commit
 is a descendant and does not redefine treatment bytes.
 
 ## Runtime taxonomy path
@@ -265,3 +266,135 @@ No automatic retry was made after the observed connectivity failure. Any later
 run must first re-establish the same fingerprints and budget ledger. The
 authorization still does not cover GPT/Luna, deployment, migrations,
 Provider-setting changes, or hosted taxonomy mutation.
+
+## Authoritative Gemini live resume evidence
+
+The bounded resume ran on 2026-08-05 after the credential-safe preflight found
+zero run-scoped residue, zero queued/processing synthetic jobs or leases, no
+leftover local server, cleared process-only values, and a reachable Gemini HTTPS
+endpoint. The earlier Stage 10 timeout remained a zero-inference, zero-spend
+event and was not retried blindly.
+
+### Authoritative-taxonomy Stage 10
+
+The successful ten-item mixed-state run admitted ten exact synthetic items,
+completed nine, and intentionally cancelled one. It made ten exact worker-route
+invocations and ten claims. Nine Provider jobs completed on their first attempt;
+one checkpoint replay consumed zero inference, and stale-fence mutation was
+rejected. The durable drain took 231,457 ms.
+
+The immutable bindings were:
+
+- runtime taxonomy snapshot SHA-256:
+  `05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe`;
+- effective candidate-subset SHA-256:
+  `fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262`;
+- parsing-contract SHA-256:
+  `579f6e308de89b77f681906ec40dc65cd7ba9043351e59894ebfa4c1c65687a1`;
+- retrieval/prompt/schema/repair versions:
+  `full-effective-leaves-v1`, `ai-pdf-extraction-prompt-v3`,
+  `gemini-ai-pdf-extraction-schema-v2`, and
+  `source-free-structural-single-source-semantic-v2`.
+
+The full taxonomy serialized to 160,720 bytes and the effective candidate set
+to 43,530 bytes. Provider usage was 101,547 input tokens, 3,015 output tokens,
+and 104,562 total tokens. The actual estimated cost was 11,361 micros, or about
+1,262.33 micros per valid pending Review Draft. Source, instruction, schema, and
+repair-context byte subtotals were not retained in the final sanitized output
+and remain `UNKNOWN`; they are not reconstructed. Repeated-source context was
+zero because every inference-bearing job succeeded on its first attempt.
+
+The attempt histogram was `FIRST_ATTEMPT=9`; every repair and transient-retry
+reason was zero. Attempts per Provider job were `{1: 9}`, p50/p95 were both 1,
+first-attempt success was 100%, and repair/transient retry rates were zero. Nine
+private `pending_review` Drafts persisted. Approval, publication, Assignment
+creation, cross-organization exposure, and duplicate claims were zero. Reload,
+remount, checkpoint replay, exact cleanup, and process-environment clearing
+passed.
+
+The deterministic 14-case taxonomy evaluator remains the only gold-labeled
+precision/recall evidence: candidate recall and exact-ID precision/recall/F1
+were 1.0, alias resolution was 9/9, abstention accuracy was 1.0, broad-parent
+overuse and wrong-facet violations were zero, seed-only coverage was six unique
+expected IDs at F1 1.0, and PR #214 expansion coverage was 22 unique expected
+IDs at F1 1.0. The live Provider output had exact valid IDs and no unknown-ID
+failure, but it was not independently gold-labeled; no live precision/recall
+score is claimed.
+
+### Embedded visual evidence
+
+Five bounded image-rich runs produced repeated Provider, persistence, and crop
+evidence. Successful pre-terminal observations consistently recorded four
+imported questions with unique source lineage, four Review rows, two private
+assets, two placeholders, two visual-evidence records, two valid deterministic
+crops, three `pending_review` items, and one `needs_more_evidence` item. The
+missing required visual stayed blocking. Invalid proposals, fabricated crops,
+wrong-question attachments, decorative attachments, invalid persisted bounds,
+public visibility, cross-organization visibility, and observed orphan residue
+were zero.
+
+Two harness-only defects were corrected from direct evidence: a decorative
+image may be omitted by the model rather than emitted and then suppressed, and
+lazy Review images must be scrolled into view and awaited before checking
+decode dimensions. Sanitized terminal diagnostics were added without exposing
+source text, prompts, filenames, IDs, Provider responses, or credentials.
+
+The final visual run stopped at `exact_visual_question_set`. Exact values were
+intentionally not logged and fixtures were already cleaned, so the cause cannot
+be reconstructed or silently relaxed. Consequently, the exact four-question
+identity set plus complete Review reload/fresh-remount contract remains open.
+The live visual classification is `PARTIAL_LIVE_EVIDENCE_FULL_CONTRACT_OPEN`,
+not complete validation.
+
+### Final fifty-file attempt
+
+The final bounded scale run rejected file 51 before durable-row creation and
+admitted exactly 50 private synthetic files/items. Eleven items completed. The
+twelfth failed at the durable `normalized` checkpoint after two Provider
+attempts with the safe category `unknown_provider_error`. The harness failed
+closed and did not start the remaining 38 items.
+
+Partial counters were 12 route invocations, 11 completed items, 13 inference
+attempts/requests, 26 uploads, 13 cleanups, 52 Provider network requests, zero
+poll requests, and zero cleanup failures. The run created no approval,
+publication, or Assignment side effect. Local-server shutdown, exact-ID
+cleanup, zero synthetic residue, and environment clearing passed. It did not
+prove 50/50 terminal drain, complete batch aggregation, final Teacher UI
+reload/remount, or the full invariant matrix.
+
+### Final authorization ledger
+
+The sequence consumed all 10 of 10 paid-run slots. Recorded Provider inference
+attempts were 37: ten in the earlier partial scale run, nine in the successful
+authoritative-taxonomy run, one in each of five visual runs, and thirteen in the
+final scale run. The two pre-Provider failures contributed zero inference.
+
+The final conservative ledger is 1,830,468 micros of the existing USD 2
+authorization, leaving 169,532 micros. No paid-run slot remains, and that dollar
+remainder is also below the 331,950-micros one-attempt-per-file minimum for a
+fresh 50-file run. The only complete usage-derived total retained for the live
+resume is the 11,361-micros Stage 10 estimate. Usage for incomplete runs remains
+`UNKNOWN`; their full ceilings remain uncertainty reserve and are not reported
+as actual spend.
+
+### Non-paid closure validation
+
+The immutable-fingerprint verifier, 14-case Golden evaluator, 18 mutation
+proofs, runtime contract, Provider attempt state/architecture, visual live
+safety, quality foundation, PDF50 scale safety, proof-control parity, Provider
+lifecycle budget, post-persistence diagnostics, checkpoint, fencing, security,
+migration reconciliation, and canonical migration governance checks passed.
+Lint, production build, performance budget, performance audit, and analyze
+build passed. The analyzer emitted non-fatal cache-snapshot warnings and exited
+zero.
+
+Route smoke reached the local production server and passed `/questions`, then
+stopped on the unchanged `/videos` expected-text assertion. The source-only
+stale route contract predates and is outside this treatment; no product source
+was modified to satisfy it. The temporary local server was stopped. These
+closure checks made zero Provider calls and zero hosted mutations.
+
+Final classification: `GEMINI_LIVE_EXPERIMENTS_COMPLETE_PDF50_PARTIAL`. PR #229
+must remain Draft. Source Host review can evaluate the corrections, but merge
+is not recommended as live closure while the exact visual question set and
+50/50 terminal proof remain unresolved.

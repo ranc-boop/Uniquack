@@ -129,3 +129,48 @@ crop, Storage object, question-asset row, Teacher render, or remount evidence
 was created. The classification therefore remains unchanged:
 
 `QUESTION_VISUAL_ATTACHMENT_SOURCE_READY_LIVE_PROOF_PENDING`
+
+## PR #229 image-rich live-resume result
+
+The resumed authorization did execute five rights-safe synthetic image-rich
+runs. Across the useful pre-terminal observations, Gemini returned four
+questions with unique source lineage, the application persisted four Review
+rows, two placeholders, two private question assets, and two visual-evidence
+records, and the crop pipeline produced two deterministic source-backed crops.
+Three Review items remained `pending_review`; the deliberately missing required
+figure remained `needs_more_evidence` rather than approval-ready.
+
+Observed hard-zero results were:
+
+| Gate | Observed count |
+| --- | ---: |
+| Fabricated crop | 0 |
+| Wrong-question attachment | 0 |
+| Decorative attachment | 0 |
+| Invalid bounds persisted | 0 |
+| Public visibility | 0 |
+| Cross-organization visibility | 0 |
+| Orphan residue after cleanup | 0 |
+| Silent missing-required-figure | 0 |
+
+Two directly demonstrated proof-harness defects were corrected without
+weakening the product boundary. A decorative image may be omitted by the model
+instead of explicitly proposed and suppressed, while a decorative proposal
+marked required still fails. Teacher Review now scrolls a `loading=lazy`
+protected image into view and waits boundedly for load/decode before asserting
+dimensions. Safe diagnostics expose only allowlisted stages, states, codes, and
+counters.
+
+The final run reached Provider extraction, private asset persistence, valid
+crops, and Review-state checks, then stopped at `exact_visual_question_set`.
+Exact question values were intentionally not logged, and exact-ID cleanup had
+already removed the fixtures before causal inspection. Therefore the expected
+four-question identity set, full Teacher Review reload, fresh-page remount, and
+requester-render completion are still open.
+
+The superseding classification is:
+
+`QUESTION_VISUAL_ATTACHMENT_PARTIAL_LIVE_EVIDENCE_FULL_CONTRACT_OPEN`
+
+This is stronger than source-only readiness, but it is not complete visual live
+validation and must not be described as such.

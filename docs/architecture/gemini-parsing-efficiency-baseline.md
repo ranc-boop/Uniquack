@@ -82,3 +82,46 @@ tokens, first-attempt success, quality, latency, and cost-per-valid-Draft remain
 unavailable for a valid pair. Under the new authorization, conservative
 exposure consumed is USD 1.175103 of USD 2, with USD 0.824897 remaining;
 usage-derived spend for the second run remains unknown.
+
+## Final authoritative-taxonomy resume record
+
+The later resume supersedes only the open operational status above; it does not
+rewrite historical runs or create a paired baseline/treatment comparison.
+
+The successful authoritative-taxonomy Stage 10 bound the complete runtime
+snapshot, candidate set, and parsing contract to:
+
+- taxonomy SHA-256
+  `05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe`;
+- candidate SHA-256
+  `fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262`;
+- parsing-contract SHA-256
+  `579f6e308de89b77f681906ec40dc65cd7ba9043351e59894ebfa4c1c65687a1`.
+
+Nine inference-bearing jobs all succeeded on `FIRST_ATTEMPT`; the tenth item was
+intentionally cancelled and one checkpoint replay used zero inference. The
+attempts-per-job histogram was `{1: 9}`, p50/p95 were 1, first-attempt success
+was 100%, and all repair and transient-retry reasons were zero. Nine valid
+private `pending_review` Drafts persisted.
+
+The runtime taxonomy and effective candidate set serialized to 160,720 and
+43,530 bytes respectively. Provider usage was 101,547 input, 3,015 output, and
+104,562 total tokens. Estimated actual cost was 11,361 micros, approximately
+1,262.33 micros per valid Draft. The final sanitized record did not retain
+non-overlapping source, instruction, schema, and repair byte subtotals, so those
+values remain `UNKNOWN`. Repeated-source context was zero because no inference
+repair or retry occurred.
+
+Five later visual runs and the final scale run reached Provider transport but
+did not all reach complete usage aggregation. Their usage-derived cost remains
+`UNKNOWN`; the conservative ceiling is retained rather than converted to a
+false actual figure. Across the full authorization, 37 inference attempts were
+recorded and all 10 paid-run slots were consumed. The final conservative ledger
+is 1,830,468 micros, leaving 169,532 micros of the USD 2 envelope but no paid-run
+slot. A fresh 50-file run needs at least 331,950 conservative micros before any
+repair allowance and is not authorized.
+
+The credible observed Gemini result is therefore one successful, unpaired
+authoritative-taxonomy treatment run plus partial visual and scale evidence.
+It does not establish relative Provider quality, treatment uplift, or a valid
+baseline-versus-treatment cost comparison.

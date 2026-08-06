@@ -132,3 +132,39 @@ Admin child creation still uses separate node and edge writes and does not
 atomically demote a now-broad parent. Runtime candidate derivation fails closed,
 but the stored invariant remains a separate forward-only schema design gate.
 No migration or hosted mutation is made in this treatment.
+
+## Gemini authoritative-taxonomy live binding
+
+The successful resumed Stage 10 used the same source/hosted snapshot SHA-256:
+
+`05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe`
+
+Its full effective-leaf candidate serialization SHA-256 was:
+
+`fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262`
+
+The complete parsing-contract SHA-256 was:
+
+`579f6e308de89b77f681906ec40dc65cd7ba9043351e59894ebfa4c1c65687a1`
+
+The live binding used snapshot version 2, retrieval
+`full-effective-leaves-v1`, prompt `ai-pdf-extraction-prompt-v3`, schema
+`gemini-ai-pdf-extraction-schema-v2`, and repair policy
+`source-free-structural-single-source-semantic-v2`. The full graph and
+candidate set were 160,720 and 43,530 serialized bytes. Nine inference-bearing
+jobs all passed application exact-ID validation on their first attempt and
+persisted nine private pending Review Drafts. Unknown/inactive ID rejection,
+Bank scope, Review Gate, and cross-organization boundaries remained intact.
+
+The gold-labeled quality values remain those of the independent source-bound
+14-case evaluator: candidate recall 1.0; exact-ID precision/recall/F1
+1.0/1.0/1.0; alias resolution 9/9; abstention accuracy 1.0; broad-parent
+overuse 0; wrong-facet violations 0; six seed-only expected IDs and 22 PR #214
+expansion expected IDs both at candidate recall and exact-ID F1 1.0. The live
+Gemini items were not independently gold-labeled, so those deterministic
+metrics are not relabeled as live Provider precision or recall.
+
+The runtime subset occupied 43,530 serialized bytes and contributed to a run
+with 101,547 input tokens, 3,015 output tokens, and 104,562 total tokens. A
+taxonomy-only token share cannot be derived safely from byte counts and is
+recorded as `UNKNOWN`, not estimated by silently equating bytes with tokens.

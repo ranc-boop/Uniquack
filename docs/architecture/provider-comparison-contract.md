@@ -74,3 +74,24 @@ The scale mission made bounded Gemini calls, but those runs were not a frozen
 paired comparison and cannot be repurposed as one. The current comparison
 result remains `NOT_RUN`; deterministic Golden output is Provider-neutral
 system evidence, not Provider-performance evidence.
+
+## Gemini-only live observation
+
+The later authoritative-taxonomy Stage 10 is admissible as a Gemini treatment
+observation, not as a Provider comparison. It bound the exact runtime snapshot,
+candidate set, and parsing contract; completed nine inference-bearing jobs on
+their first attempt; persisted nine private pending Review Drafts; and reported
+101,547 input tokens, 3,015 output tokens, and 11,361 micros estimated actual
+cost. All repair and transient-retry reasons were zero.
+
+Image-rich runs separately proved repeated Gemini proposal, deterministic crop,
+private persistence, and blocking missing-evidence behavior, but the final
+exact question-set assertion did not pass. The final 50-file run admitted 50,
+completed 11, then stopped fail closed when item 12 reported
+`unknown_provider_error` at `normalized`. These are useful Gemini operational
+observations; they do not establish a winner, non-inferiority, or relative cost.
+
+No GPT/Luna call was authorized or made. `NOT_RUN` remains the only valid
+comparison result until both arms use the same immutable fixtures and bindings,
+complete every hard-zero gate, retain complete usage metadata, and undergo the
+blind review defined above.

@@ -473,3 +473,62 @@ Latest status: `PDF50_SCALE_REQUALIFICATION_PARTIAL`. Maximum-count admission
 is reconfirmed, but a fresh 50-file run has not reached 50/50 terminal items,
 final batch aggregation, Teacher UI reload/remount, or the complete invariant
 matrix. No automatic paid retry is recorded.
+
+## Final PR #229 live-resume evidence
+
+The resume began from a clean exact branch head after a read-only preflight
+found zero run-scoped residue, zero synthetic queued/processing jobs or leases,
+no leftover local server, cleared process-only values, and restored bounded
+Gemini HTTPS reachability. The earlier HTTPS timeout remained a zero-inference,
+zero-spend event.
+
+The resumed Stage 10 admitted ten exact items, completed nine, intentionally
+cancelled one, replayed one normalized checkpoint with zero inference, and
+rejected a stale fence. All nine Provider jobs succeeded on their first attempt.
+It persisted nine private pending Review Drafts with no approval, publication,
+Assignment, duplicate claim, or cross-organization effect. Exact cleanup,
+reload/remount, and environment clearing passed.
+
+The final Stage 50 run then proved:
+
+- file 51 was rejected before durable-row creation;
+- exactly 50 private synthetic files/items were admitted;
+- no unrelated job was selected;
+- 11 items reached completed;
+- item 12 failed at the durable `normalized` checkpoint after two Provider
+  attempts with safe code `unknown_provider_error`;
+- the harness stopped fail closed and did not start the remaining 38 items;
+- approval, publication, and Assignment creation remained zero; and
+- local-server shutdown, exact-ID cleanup, zero residue, and environment
+  clearing passed.
+
+The bounded partial counters were:
+
+| Measure | Final Stage 50 observation |
+| --- | ---: |
+| Worker-route invocations | 12 |
+| Completed items | 11 |
+| Inference attempts / requests | 13 / 13 |
+| Maximum serialized input bytes | 52,343 |
+| Upload / cleanup requests | 26 / 13 |
+| Poll requests | 0 |
+| Provider network requests | 52 |
+| Cleanup failures | 0 |
+
+Batch aggregation, complete Teacher UI reload/remount, and the full 50-item
+lineage/taxonomy/visual invariant matrix were not reached and are not inferred
+from admission. The correct classification remains
+`PDF50_SCALE_REQUALIFICATION_PARTIAL`.
+
+The separate PR #229 authorization used all 10 paid-run slots. Its final
+conservative ledger is 1,830,468 micros, leaving 169,532 micros of USD 2 but no
+run slot. Recorded inference attempts total 37. The successful resumed Stage 10
+retained an estimated actual cost of 11,361 micros; incomplete-run usage remains
+`UNKNOWN` and is covered by the conservative reserve. No further paid run is
+authorized, and the remaining amount is below the 331,950-micros minimum for a
+fresh one-attempt-per-file Stage 50.
+
+Final PR #229 live classification:
+`GEMINI_LIVE_EXPERIMENTS_COMPLETE_PDF50_PARTIAL`. A new terminal proof requires
+separate authorization after a causal review of the normalized-stage Provider
+failure. This record does not claim PDF50 operational readiness.
