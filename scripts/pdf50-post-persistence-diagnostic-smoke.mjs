@@ -10,6 +10,15 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function normalizeSourceEol(value) {
+  return value.replace(/\r\n?/g, "\n");
+}
+
+function buildSourceEolVariants(value) {
+  const lf = normalizeSourceEol(value);
+  return [lf, lf.replace(/\n/g, "\r\n"), lf.replace(/\n/g, "\r")];
+}
+
 const source = await readFile(
   resolve(root, "src/lib/ai-pdf-import/post-persistence.ts"),
   "utf8",
@@ -322,10 +331,10 @@ assert(
 );
 
 const worker = await readFile(resolve(root, "src/lib/ai-jobs/worker.ts"), "utf8");
-const aiPdfService = await readFile(
-  resolve(root, "src/lib/ai-pdf-import/service.ts"),
-  "utf8",
+const aiPdfService = normalizeSourceEol(
+  await readFile(resolve(root, "src/lib/ai-pdf-import/service.ts"), "utf8"),
 );
+const aiPdfServiceEolVariants = buildSourceEolVariants(aiPdfService);
 const harness = await readFile(
   resolve(root, "scripts/pdf50-end-to-end-live-e2e.mjs"),
   "utf8",
@@ -360,7 +369,7 @@ function hasChunkPersistenceGuard(value) {
   );
 }
 assert(
-  hasChunkPersistenceGuard(aiPdfService),
+  aiPdfServiceEolVariants.every((value) => hasChunkPersistenceGuard(value)),
   "sequential chunk handling must rethrow persistence failures before provider classification",
 );
 assert(
@@ -372,27 +381,45 @@ assert(
   ),
   "the persistence-identity regression mutation must be detected",
 );
+const durableLineageSkipContract =
+  "const existingQuestionCodes = persistenceLineageKey\n    ? new Set<string>()\n    : await loadExistingQuestionCodeKeys(supabase);";
 function durableLineageSkipsGlobalQuestionCodeScan(value) {
-  return value.includes(
-    "const existingQuestionCodes = persistenceLineageKey\n    ? new Set<string>()\n    : await loadExistingQuestionCodeKeys(supabase);",
-  );
+  return normalizeSourceEol(value).includes(durableLineageSkipContract);
 }
 assert(
-  durableLineageSkipsGlobalQuestionCodeScan(aiPdfService),
+  aiPdfServiceEolVariants.every((value) =>
+    durableLineageSkipsGlobalQuestionCodeScan(value),
+  ),
   "durable deterministic imports must not depend on a global question-code read after Provider checkpointing",
 );
-assert(
-  !durableLineageSkipsGlobalQuestionCodeScan(
-    aiPdfService.replace(
+const durableLineageMutationCases = aiPdfServiceEolVariants.flatMap((value) => {
+  const source = normalizeSourceEol(value);
+  return [
+    source.replace(durableLineageSkipContract, ""),
+    source.replace(
+      durableLineageSkipContract,
+      "const existingQuestionCodes = persistenceLineageKey\n    ? await loadExistingQuestionCodeKeys(supabase)\n    : new Set<string>();",
+    ),
+    source.replace(
       "const existingQuestionCodes = persistenceLineageKey",
       "const existingQuestionCodes = undefined && persistenceLineageKey",
     ),
+  ];
+});
+assert(
+  durableLineageMutationCases.length === 9,
+  "three line-ending variants must each exercise three lineage mutations",
+);
+assert(
+  durableLineageMutationCases.every(
+    (value) => !durableLineageSkipsGlobalQuestionCodeScan(value),
   ),
-  "the redundant post-Provider global-read regression mutation must be detected",
+  "missing, reordered, and weakened post-Provider lineage mutations must be detected across line endings",
 );
 function draftsPersistedMetadataIsBounded(value) {
+  const source = normalizeSourceEol(value);
   const blocks = Array.from(
-    value.matchAll(
+    source.matchAll(
       /onCheckpointStage\?\.\("drafts_persisted", \{([\s\S]*?)\n\s*\}\);/g,
     ),
   );
@@ -402,7 +429,9 @@ function draftsPersistedMetadataIsBounded(value) {
   );
 }
 assert(
-  draftsPersistedMetadataIsBounded(aiPdfService),
+  aiPdfServiceEolVariants.every((value) =>
+    draftsPersistedMetadataIsBounded(value),
+  ),
   "draft-persistence stage metadata must not duplicate the full quality observatory into the 4096-byte checkpoint",
 );
 assert(

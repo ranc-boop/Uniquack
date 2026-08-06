@@ -27,6 +27,16 @@ import {
 } from "./pdf50-scale-qualification-live-e2e.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+function normalizeSourceEol(value) {
+  return value.replace(/\r\n?/g, "\n");
+}
+
+function buildSourceEolVariants(value) {
+  const lf = normalizeSourceEol(value);
+  return [lf, lf.replace(/\n/g, "\r\n"), lf.replace(/\n/g, "\r")];
+}
+
 assert.equal(numeric(null), null);
 assert.equal(numeric(undefined), null);
 assert.equal(numeric(""), null);
@@ -171,7 +181,7 @@ const [
   control,
   providerControl,
   scaleProviderControl,
-  harness,
+  harnessSource,
   launcher,
   oneFileHarness,
   providerTestControl,
@@ -201,6 +211,7 @@ const [
     ),
     readFile(resolve(root, "src/lib/ai-jobs/worker.ts"), "utf8"),
   ]);
+const harness = normalizeSourceEol(harnessSource);
 
 assert.equal(control.approvedBudgetUsd, 2);
 assert.equal(providerControl.mode, "BOUNDED_ONE_JOB_REAL_PROVIDER");
@@ -461,42 +472,48 @@ assert(
   worker.includes("!(error instanceof TrustedProviderCheckpointInterruptionError)"),
 );
 
-function satisfiesScaleSafetyContract(source) {
-  return (
-    source.includes("beforeCount === 0 && afterCount === 0") &&
-    source.includes('result.data === "STALE_FENCE_REJECTED"') &&
-    source.includes("replayCounters.inference === 0") &&
+function scaleSafetyPredicates(value) {
+  const source = normalizeSourceEol(value);
+  return [
+    source.includes("beforeCount === 0 && afterCount === 0"),
+    source.includes('result.data === "STALE_FENCE_REJECTED"'),
+    source.includes("replayCounters.inference === 0"),
     source.includes(
       "retryableScaleProviderCodes.has(outcomeJob.safe_error_code)",
-    ) &&
+    ),
     source.includes(
       'retryJob.checkpoint_stage === "provider_result_checkpointed"',
-    ) &&
+    ),
     source.includes(
       "completedJob.provider_attempt_count === interruptedJobProviderAttempts",
-    ) &&
+    ),
     source.includes(
       "remainingJobsAfterCurrent <=\n      maxProviderAttempts",
-    ) &&
-    source.includes('expected: ["completed", "retry_wait", "failed"]') &&
-    source.includes("counters.inputBytesMax <=") &&
+    ),
+    source.includes('expected: ["completed", "retry_wait", "failed"]'),
+    source.includes("counters.inputBytesMax <="),
     source.includes(
       "counters.cleanupFailures === 0 &&\n      (!requireInference",
-    ) &&
+    ),
     source.includes(
       "drain.counters.inference >= config.stageControl.providerJobs",
-    ) &&
-    source.includes("config.stageControl.maxProviderAttempts") &&
-    source.includes("providerTestEnvironment: scaleProviderEnvironment") &&
+    ),
+    source.includes("config.stageControl.maxProviderAttempts"),
+    source.includes("providerTestEnvironment: scaleProviderEnvironment"),
     source.includes(
       "const before = await waitForExactJobAvailable({ jobId, service })",
-    ) &&
-    source.includes('["queued", "retry_wait"].includes(job?.status)') &&
-    source.includes("availableAt <= Date.now()")
-  );
+    ),
+    source.includes('["queued", "retry_wait"].includes(job?.status)'),
+    source.includes("availableAt <= Date.now()"),
+  ];
 }
 
-function satisfiesQualityEvidenceContract(source) {
+function satisfiesScaleSafetyContract(source) {
+  return scaleSafetyPredicates(source).every(Boolean);
+}
+
+function satisfiesQualityEvidenceContract(value) {
+  const source = normalizeSourceEol(value);
   return (
     source.includes(
       "numeric(snapshot.attemptsPerJob) === records.length",
@@ -517,7 +534,8 @@ function satisfiesQualityEvidenceContract(source) {
   );
 }
 
-function satisfiesCombinedVisualScaleContract(source) {
+function satisfiesCombinedVisualScaleContract(value) {
+  const source = normalizeSourceEol(value);
   return (
     source.includes('const visualFixture = stage === "50" && index === 0') &&
     source.includes("buildSyntheticVisualEvidencePdf()") &&
@@ -549,59 +567,87 @@ function satisfiesCombinedVisualScaleContract(source) {
   );
 }
 
-assert(satisfiesScaleSafetyContract(harness));
-assert(satisfiesQualityEvidenceContract(harness));
-assert(satisfiesCombinedVisualScaleContract(harness));
-const mutationCases = [
-  harness.replace("beforeCount === 0 && afterCount === 0", "true"),
-  harness.replace('result.data === "STALE_FENCE_REJECTED"', "true"),
-  harness.replace("replayCounters.inference === 0", "replayCounters.inference >= 0"),
-  harness.replace(
-    "retryableScaleProviderCodes.has(outcomeJob.safe_error_code)",
-    "true",
+const harnessEolVariants = buildSourceEolVariants(harness);
+const scalePredicateResults = harnessEolVariants.map((value) =>
+  scaleSafetyPredicates(value),
+);
+assert(
+  scalePredicateResults.every(
+    (predicates) => predicates.length === 16 && predicates.every(Boolean),
   ),
-  harness.replace(
-    'retryJob.checkpoint_stage === "provider_result_checkpointed"',
-    "true",
+);
+assert(
+  harnessEolVariants.every((value) => satisfiesQualityEvidenceContract(value)),
+);
+assert(
+  harnessEolVariants.every((value) =>
+    satisfiesCombinedVisualScaleContract(value),
   ),
-  harness.replace(
-    "completedJob.provider_attempt_count === interruptedJobProviderAttempts",
-    "true",
-  ),
-  harness.replace(
-    "remainingJobsAfterCurrent <=\n      maxProviderAttempts",
-    "remainingJobsAfterCurrent <=\n      Number.MAX_VALUE",
-  ),
-  harness.replace(
-    'expected: ["completed", "retry_wait", "failed"]',
-    'expected: ["completed"]',
-  ),
-  harness.replace(
-    "counters.inputBytesMax <=",
-    "counters.inputBytesMax >=",
-  ),
-  harness.replace(
-    "counters.cleanupFailures === 0 &&\n      (!requireInference",
-    "counters.cleanupFailures >= 0 &&\n      (!requireInference",
-  ),
-  harness.replace(
-    "drain.counters.inference >= config.stageControl.providerJobs",
-    "drain.counters.inference >= 0",
-  ),
-  harness.replace("config.stageControl.maxProviderAttempts", "Number.MAX_VALUE"),
-  harness.replace(
-    "providerTestEnvironment: scaleProviderEnvironment",
-    "providerTestEnvironment: proofControlEnvironment",
-  ),
-  harness.replace(
-    '["queued", "retry_wait"].includes(job?.status)',
-    'job?.status === "retry_wait"',
-  ),
-  harness.replace(
-    "const before = await waitForExactJobAvailable({ jobId, service })",
-    "const before = await loadJob({ jobId, service })",
-  ),
-];
+);
+function buildScaleSafetyMutationCases(value) {
+  const source = normalizeSourceEol(value);
+  return [
+    source.replace("beforeCount === 0 && afterCount === 0", "true"),
+    source.replace('result.data === "STALE_FENCE_REJECTED"', "true"),
+    source.replace(
+      "replayCounters.inference === 0",
+      "replayCounters.inference >= 0",
+    ),
+    source.replace(
+      "retryableScaleProviderCodes.has(outcomeJob.safe_error_code)",
+      "true",
+    ),
+    source.replace(
+      'retryJob.checkpoint_stage === "provider_result_checkpointed"',
+      "true",
+    ),
+    source.replace(
+      "completedJob.provider_attempt_count === interruptedJobProviderAttempts",
+      "true",
+    ),
+    source.replace(
+      "remainingJobsAfterCurrent <=\n      maxProviderAttempts",
+      "remainingJobsAfterCurrent <=\n      Number.MAX_VALUE",
+    ),
+    source.replace(
+      'expected: ["completed", "retry_wait", "failed"]',
+      'expected: ["completed"]',
+    ),
+    source.replace(
+      "counters.inputBytesMax <=",
+      "counters.inputBytesMax >=",
+    ),
+    source.replace(
+      "counters.cleanupFailures === 0 &&\n      (!requireInference",
+      "counters.cleanupFailures >= 0 &&\n      (!requireInference",
+    ),
+    source.replace(
+      "drain.counters.inference >= config.stageControl.providerJobs",
+      "drain.counters.inference >= 0",
+    ),
+    source.replace(
+      "config.stageControl.maxProviderAttempts",
+      "Number.MAX_VALUE",
+    ),
+    source.replace(
+      "providerTestEnvironment: scaleProviderEnvironment",
+      "providerTestEnvironment: proofControlEnvironment",
+    ),
+    source.replace(
+      '["queued", "retry_wait"].includes(job?.status)',
+      'job?.status === "retry_wait"',
+    ),
+    source.replace(
+      "const before = await waitForExactJobAvailable({ jobId, service })",
+      "const before = await loadJob({ jobId, service })",
+    ),
+    source.replace("availableAt <= Date.now()", "true"),
+  ];
+}
+const mutationCases = harnessEolVariants.flatMap(
+  buildScaleSafetyMutationCases,
+);
+assert.equal(mutationCases.length, 48);
 assert(mutationCases.every((mutated) => !satisfiesScaleSafetyContract(mutated)));
 
 const qualityMutationCases = [
