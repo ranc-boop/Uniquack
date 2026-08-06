@@ -235,8 +235,8 @@
       },
       "path": "scripts/pdf50-post-persistence-diagnostic-smoke.mjs",
       "treatment": {
-        "blob": "82ced30a64eef8b1167db9fa7c1a753ebb906d9a",
-        "sha256": "a216a66da77bd777994ec82cfe046e43489539171253912bbd0cdde5f75b2160"
+        "blob": "a62965f0cbd4872626142b25cad11ad6658678f6",
+        "sha256": "da352a8b175e808763a94db8d3d5190b6c2a8c8607f2e9f47036c9af301e1cf2"
       }
     },
     {
@@ -257,8 +257,8 @@
       },
       "path": "scripts/pdf50-scale-qualification-live-e2e-safety-smoke.mjs",
       "treatment": {
-        "blob": "951834559ba23284982ff4db1182cd4d8ece93e1",
-        "sha256": "8f6e7726861d14c56bb07132b470accca6bbeae0f558c905665bc1095e89613f"
+        "blob": "8273479b98530cad0a90a7aa546a1b9609deae53",
+        "sha256": "fcf1a12579081cb24d038227157034709a241e65acb351b4ed45e3b8b6a6b2c7"
       }
     },
     {
@@ -591,5 +591,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "857a486636a8836344a25080a1673024379b2e64"
+  "treatmentAnchor": "1d54e70f669347b85383169eb18e44846100123b"
 }

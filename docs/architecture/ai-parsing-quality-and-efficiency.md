@@ -32,7 +32,7 @@ The verifier requires baseline ancestry, treatment ancestry, exact file order,
 exact anchor blobs, and current-byte equality. New treatment modules are
 explicitly absent at baseline. Uncommitted worktree bytes are never accepted as
 an anchor. The current manifest binds 61 files to treatment anchor
-`857a486636a8836344a25080a1673024379b2e64`; the manifest-only evidence commit
+`1d54e70f669347b85383169eb18e44846100123b`; the manifest-only evidence commit
 is a descendant and does not redefine treatment bytes.
 
 ## Runtime taxonomy path
@@ -499,7 +499,7 @@ The authoritative identities are:
 - v5 parsing contract:
   `5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95`;
 - immutable treatment anchor:
-  `857a486636a8836344a25080a1673024379b2e64`.
+  `1d54e70f669347b85383169eb18e44846100123b`.
 
 Final superseding classification:
 `GEMINI_VISUAL_VALIDATED_PDF50_OPERATIONALLY_READY_FOR_FINAL_HOST_REVIEW`.
