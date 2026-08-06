@@ -118,16 +118,16 @@
       "baseline": null,
       "path": "scripts/ai-parsing-visual-evidence-live-e2e-safety-smoke.mjs",
       "treatment": {
-        "blob": "9bf4311771816929c5b12d4837bcb0452f6f32e8",
-        "sha256": "ad3b44df97e907b10dc7053197f4563d23fb538a1bc50dbb0e325672d9c2af4c"
+        "blob": "f79b5b859f48628b1d4d5a323920c5e997a8eaa2",
+        "sha256": "ae604135aa65867f247bc9b4bbd7f8c2b72fb85568b4b9a5330303cf173aff3b"
       }
     },
     {
       "baseline": null,
       "path": "scripts/ai-parsing-visual-evidence-live-e2e.mjs",
       "treatment": {
-        "blob": "46eb99257be42fada5eddd7580a79d1fb243fb97",
-        "sha256": "c997c36c3370c531fb92414bb8dacc103e1486a7140010f1e458b3ceb835cf61"
+        "blob": "b36b135c10f6444fb13eec27a07362fbd378b81f",
+        "sha256": "2708ac9d4d2c7041f800460f5a684555622cdd79e7ccc9502d9862ba3a6beb06"
       }
     },
     {
@@ -257,8 +257,8 @@
       "baseline": null,
       "path": "scripts/run-ai-parsing-visual-evidence-live-e2e.ps1",
       "treatment": {
-        "blob": "18046e72e35ed776a4a4cda6cd1c5821ebb4ad58",
-        "sha256": "2c77e076a31a256aa29fc3aabfe42cc7aa8c5b119b103db033d142009e0c2d08"
+        "blob": "89bded3cbdf74da1887a8c63ce655e41ad1ac059",
+        "sha256": "a72b9cb99d6d9cc07ee68b3bbc6f55a59a84aba937908b80a193497a71a2d076"
       }
     },
     {
@@ -542,5 +542,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "0a00d26cdc12efa68957703d5766398ae72175f7"
+  "treatmentAnchor": "d0275479b8aad3e4aaac45f658632f5f31fd70ed"
 }
