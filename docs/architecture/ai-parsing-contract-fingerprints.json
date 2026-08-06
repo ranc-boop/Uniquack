@@ -1,7 +1,103 @@
 {
   "baselineAnchor": "f1ce7bcb791604468693ea945401cfb157e64d97",
-  "contractVersion": "ai-pdf-parsing/provider-neutral-v2",
+  "contractVersion": "ai-pdf-parsing/provider-neutral-v3",
   "files": [
+    {
+      "baseline": null,
+      "path": "fixtures/ai-parsing-golden/manifest.json",
+      "treatment": {
+        "blob": "7df7d068e5f1ec6514700165addb029ba9032e7a",
+        "sha256": "c5bc16d2be582dc7e59b16237fe307af73db9aa3c693b9004b9ea33ad638d08b"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "fixtures/ai-parsing-golden/taxonomy-cases.json",
+      "treatment": {
+        "blob": "4a947535044a1d62e9f2f3f26fea69eb1c320ca1",
+        "sha256": "63b42c278b31a6d2493b25d06c091d8d5c5286caabd10605a8abfa437ab1d982"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/evaluate-golden.mjs",
+      "treatment": {
+        "blob": "41450a15dcb19292ef078e6d6067093375c94381",
+        "sha256": "a18d2c9aac97d05e328ef8356dbf8fd2313f1a06df2009059c5f387663b1338a"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/hosted-taxonomy-readonly-parity-safety-smoke.mjs",
+      "treatment": {
+        "blob": "c0fcb4abf1704bbb18c02a54a6f93e3d96031dbb",
+        "sha256": "74bc08deeaa370638687a9a8b0d69c5fa659751c858a61f4dcd4a7e616c78dc6"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/hosted-taxonomy-readonly-parity.mjs",
+      "treatment": {
+        "blob": "039e8a87b88f3b146dce25dd2df9e9e5e1bff41b",
+        "sha256": "235ee7b6fe96af44ef7802b5b384f6e8467820498d11079156b2ed9374fdf35a"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/lib/golden-evaluator.mjs",
+      "treatment": {
+        "blob": "c7577d1b09e781631414b4f8e101044526b139d3",
+        "sha256": "b7e8636dde2f03c21d02c9dc0a6525c7e462494cc8918cd4227256b5f267e183"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/lib/taxonomy-golden-fixture.mjs",
+      "treatment": {
+        "blob": "0122b41472076da4f0338a6fcbbfbae1e5c7ccf2",
+        "sha256": "ca43ec611861a663563e3717f30f65d908da4a5826a2c88a29c26e9826ee8847"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/lib/taxonomy-source-inventory.mjs",
+      "treatment": {
+        "blob": "8fc7bcb784fa59a03082813162687e3a2c29dcaa",
+        "sha256": "0dcebd970be993120712af642d88843351c8ed55195d6fb1da738a9244f9d31d"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/mutation-proof.mjs",
+      "treatment": {
+        "blob": "b3d95418efe966b053a2ad474795a760f49b1913",
+        "sha256": "57ffb98dc94beba377f05b6b4a7dfca9f7b71cbc68e4ac19a8f74d5949196149"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/taxonomy-context-efficiency.mjs",
+      "treatment": {
+        "blob": "9ab5d1992f15cf964e0258aed41acc8bcb43a5e2",
+        "sha256": "7eac6c3ab60d25568ae1911f9adb49e35953412598ebd05d72c66d0f81726061"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/taxonomy-provenance-audit.mjs",
+      "treatment": {
+        "blob": "fa5703464a7cd3c3e4f92e7903e5f832475b14c8",
+        "sha256": "0517fb1d90c8cb514f2be245612bbad10fcbe17e74dbe49a1466e36541cdbbd2"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/run-ai-parsing-taxonomy-readonly-parity.ps1",
+      "treatment": {
+        "blob": "672ac802bb50f669652526387f0d5ff681f4b485",
+        "sha256": "ed0acf72672c4053ec11bae36004cd6a074480b7853b4eafa9e57359ba5cfd52"
+      }
+    },
     {
       "baseline": {
         "blob": "3122ae1b1243e903ced210c61473caaadde21da3",
@@ -9,8 +105,8 @@
       },
       "path": "src/lib/ai-pdf-import/service.ts",
       "treatment": {
-        "blob": "705aede33d84087fc02e569251b5d8c4bf1b6030",
-        "sha256": "af8975a73e25143c18268f8101c7712565d89ef5535bd9f5505912dec9c9590e"
+        "blob": "dee5778d76839d288977cfa379610bc9ebfefd0b",
+        "sha256": "af28798d01bcf53dac6a270f55faff78244bad74c93bd2393ee5c3221923f0f1"
       }
     },
     {
@@ -83,8 +179,8 @@
       "baseline": null,
       "path": "src/lib/ai-pdf-import/quality-observatory.ts",
       "treatment": {
-        "blob": "24f67bf4634d5b7c89fcca8119516d91f15cc387",
-        "sha256": "62bb17a4bb48350591cf40fa43d93d5468f2b24492d4610f8d703fc5e3f97e33"
+        "blob": "6ee66be2ffba379b8c759539a137e6acd3b19ab8",
+        "sha256": "6f385a5f1d4d12008bf7940459eef97b584ef6804e8caeb5c3b8174160cebaea"
       }
     },
     {
@@ -165,16 +261,27 @@
       },
       "path": "src/lib/tags/taxonomy-db.ts",
       "treatment": {
-        "blob": "5a52b0d1d3771a73143286de7b175c7f2a1f4376",
-        "sha256": "60ae229a6ca5a25e689eeb390cdb63e8330748a8d3d9fe618dfc48eb71e89c42"
+        "blob": "a22fbfe08c5e518038df7abe4701cd3d4efa251e",
+        "sha256": "ebd9de991b31ce9b8ec5ea06e97526aaf8975179f58221a95be1ea924316e665"
       }
     },
     {
       "baseline": null,
       "path": "src/lib/tags/runtime-taxonomy-snapshot.ts",
       "treatment": {
-        "blob": "177f3ea5278e8598e3ecb13d1e7a277fc2ff32d4",
-        "sha256": "e819882d432a50864c33729656c0aac5a5b88459b453b3d42c826f8d1dce4f9b"
+        "blob": "1d57ad9afc82656dc6a8290b7256df21b2f7023b",
+        "sha256": "81c2dcaa7fa392ddaf5418e4af45f536917904b577b543c43634df8705af5dc5"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "5932219f5e78a0a3aa0b872003ab1789092446fb",
+        "sha256": "390e7cf48350b4153613fb30a3a3e31087b3bc76675be12e15a4f8d249f50fb0"
+      },
+      "path": "supabase/clean-seeds/0002_local_taxonomy_seed.sql",
+      "treatment": {
+        "blob": "5932219f5e78a0a3aa0b872003ab1789092446fb",
+        "sha256": "390e7cf48350b4153613fb30a3a3e31087b3bc76675be12e15a4f8d249f50fb0"
       }
     },
     {
@@ -190,5 +297,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "53375a928185ffc9f5d16907ff4e7f499ddb28d9"
+  "treatmentAnchor": "8f1037fdd7a7c6f43b94fc5d44b52b411e7fab5d"
 }
