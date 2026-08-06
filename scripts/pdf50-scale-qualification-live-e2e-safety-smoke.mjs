@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +23,7 @@ import {
 import {
   aggregateQualityObservatories,
   conservativeUsageCostMicros,
+  waitForChildExit,
 } from "./pdf50-scale-qualification-live-e2e.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,6 +32,26 @@ assert.equal(numeric(undefined), null);
 assert.equal(numeric(""), null);
 assert.equal(numeric("12"), 12);
 assert.equal(conservativeUsageCostMicros(100, 20), 18);
+
+const originalSetTimeout = globalThis.setTimeout;
+const originalClearTimeout = globalThis.clearTimeout;
+const fakeTimer = { cleared: false };
+try {
+  globalThis.setTimeout = () => fakeTimer;
+  globalThis.clearTimeout = (timer) => {
+    assert.equal(timer, fakeTimer);
+    timer.cleared = true;
+  };
+  const child = new EventEmitter();
+  const exit = waitForChildExit(child, 300_000);
+  child.emit("exit", 0);
+  assert.deepEqual(await exit, { code: 0 });
+  assert.equal(fakeTimer.cleared, true);
+  assert.equal(child.listenerCount("exit"), 0);
+} finally {
+  globalThis.setTimeout = originalSetTimeout;
+  globalThis.clearTimeout = originalClearTimeout;
+}
 
 const attemptHistogram = {
   ANSWER_CONSISTENCY_REPAIR: 0,
@@ -382,6 +404,8 @@ assert(
 assert(harness.includes("PROVIDER_USAGE_METADATA_COMPLETE="));
 assert(harness.includes("USAGE_DERIVED_CONSERVATIVE_COST_MICROS="));
 assert(harness.includes("row.provider_latency_ms ?? row.execution_latency_ms"));
+assert(harness.includes("await waitForChildExit(child, 300_000)"));
+assert(!harness.includes("sleep(300_000).then"));
 
 assert(launcher.includes("Import-Clixml -LiteralPath $VaultPath"));
 assert(launcher.includes("Set-ProcessValueFromSecureString"));

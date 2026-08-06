@@ -159,6 +159,22 @@ function percentile(values, ratio) {
   return ordered[Math.max(0, Math.ceil(ordered.length * ratio) - 1)];
 }
 
+function waitForChildExit(child, timeoutMs) {
+  return new Promise((resolveOutcome) => {
+    let settled = false;
+    const settle = (outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.removeListener("exit", handleExit);
+      resolveOutcome(outcome);
+    };
+    const handleExit = (code) => settle({ code });
+    const timer = setTimeout(() => settle({ timeout: true }), timeoutMs);
+    child.once("exit", handleExit);
+  });
+}
+
 function aggregateQualityObservatories({ batches, completedBatchSet }) {
   const snapshots = batches
     .filter((batch) => completedBatchSet.has(batch.id))
@@ -761,12 +777,7 @@ async function runExactWorker({
   const fencePromise = captureFence
     ? captureProcessingFence({ child, jobId, service })
     : Promise.resolve(null);
-  const outcome = await Promise.race([
-    new Promise((resolveExit) =>
-      child.once("exit", (code) => resolveExit({ code })),
-    ),
-    sleep(300_000).then(() => ({ timeout: true })),
-  ]);
+  const outcome = await waitForChildExit(child, 300_000);
   const fence = await fencePromise;
   if (outcome.timeout) {
     child.kill("SIGKILL");
@@ -2406,4 +2417,5 @@ if (isDirectInvocation) {
 export {
   aggregateQualityObservatories,
   conservativeUsageCostMicros,
+  waitForChildExit,
 };
