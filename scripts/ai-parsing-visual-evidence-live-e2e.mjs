@@ -61,7 +61,7 @@ const visualEnvironment = [
 ];
 const visualEnvironmentLiteral = "DISPOSABLE_AI_PARSING_VISUAL_EVIDENCE";
 const visualCleanupLiteral = "DELETE_AI_PARSING_VISUAL_EVIDENCE_FIXTURES";
-const expectedPriorConservativeMicros = 677_178;
+const expectedPriorConservativeMicros = 808_251;
 const authorizedTotalMicros = 2_000_000;
 const visualCostCeilingMicros = estimatePDF50ProviderProofCostMicros(proofControl);
 const questionAssetsBucket = "question-assets";

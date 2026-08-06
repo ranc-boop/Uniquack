@@ -37,7 +37,7 @@ assert(
   !/(?:dotenv|\.env\.local|Get-Content\s+[^\n]*\.env)/i.test(launcher),
   "launcher must not load environment files",
 );
-assert(harness.includes("expectedPriorConservativeMicros = 677_178"));
+assert(harness.includes("expectedPriorConservativeMicros = 808_251"));
 assert(harness.includes("authorizedTotalMicros = 2_000_000"));
 assert(harness.includes("runLocalWorkerOnce({"));
 assert(harness.includes("providerInferenceAttempts !== 1"));
