@@ -55,6 +55,10 @@ assert(harness.includes("outsiderAuthorizedRouteCount"));
 assert(harness.includes("verifyReviewSurface({"));
 assert(harness.includes("AI_PARSING_VISUAL_EVIDENCE_LIVE_E2E=PASS"));
 assert(harness.includes("clearProcessEnvironment();"));
+assert(harness.includes("VISUAL_FAILURE_STAGE=${safeFailureStage(failure)}"));
+assert(harness.includes("VISUAL_IMPORTED_ITEM_COUNT="));
+assert(harness.includes("VISUAL_HASH_MATCH_COUNT="));
+assert(harness.includes("VISUAL_METRIC_INVALID_PROPOSALS="));
 assert(!/console\.(?:log|error)\([^\n]*(?:email|password|serviceRoleKey|anonKey|storage_path|object_path)/.test(harness));
 
 assert(

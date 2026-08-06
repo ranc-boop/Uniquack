@@ -87,11 +87,26 @@ const allowedFailureCategories = new Set([
   "visual_evidence_privacy_failed",
   "visual_source_integrity_failed",
 ]);
+const allowedFailureStages = new Set([
+  "batch_contract",
+  "browser_render_contract",
+  "cleanup_contract",
+  "import_cardinality_contract",
+  "provider_counter_contract",
+  "provider_terminal_contract",
+  "quality_observatory_contract",
+  "requester_authorization_contract",
+  "source_blob_contract",
+  "source_hash_contract",
+  "source_review_lineage_contract",
+  "visual_persistence_contract",
+]);
 
 class VisualHarnessError extends Error {
-  constructor(category) {
+  constructor(category, stage = "unspecified") {
     super(category);
     this.category = category;
+    this.stage = stage;
   }
 }
 
@@ -148,8 +163,21 @@ function safeFailureCategory(error) {
   return allowedFailureCategories.has(category) ? category : "unexpected_failure";
 }
 
-async function blobToBuffer(blob, category) {
-  if (!blob) throw new VisualHarnessError(category);
+function safeFailureStage(error) {
+  if (
+    error instanceof VisualEvidenceContractError &&
+    /^[a-z0-9_]{1,80}$/.test(error.predicate)
+  ) {
+    return error.predicate;
+  }
+  if (error instanceof VisualHarnessError && allowedFailureStages.has(error.stage)) {
+    return error.stage;
+  }
+  return "unexpected_failure";
+}
+
+async function blobToBuffer(blob, category, stage = "source_blob_contract") {
+  if (!blob) throw new VisualHarnessError(category, stage);
   return Buffer.from(await blob.arrayBuffer());
 }
 
@@ -200,7 +228,10 @@ async function independentlyCropSource(pdf, record) {
   const width = Math.min(requestedWidth, page.width - left);
   const height = Math.min(requestedHeight, page.height - top);
   if (width < 1 || height < 1) {
-    throw new VisualHarnessError("visual_source_integrity_failed");
+    throw new VisualHarnessError(
+      "visual_source_integrity_failed",
+      "source_blob_contract",
+    );
   }
   return sharp(page.png).extract({ height, left, top, width }).png().toBuffer();
 }
@@ -249,7 +280,10 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     job.target_bank_id !== bankId ||
     job.resource_id !== fixture.item.import_batch_id
   ) {
-    throw new VisualHarnessError("provider_execution_failed");
+    throw new VisualHarnessError(
+      "provider_execution_failed",
+      "provider_terminal_contract",
+    );
   }
   const safeResult = asRecord(job.safe_result);
   const providerInferenceAttempts = numeric(safeResult.providerInferenceAttempts);
@@ -262,7 +296,10 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     providerNetworkRequests > proofControl.providerMaxNetworkRequests ||
     numeric(safeResult.providerCleanupFailures) !== 0
   ) {
-    throw new VisualHarnessError("provider_execution_failed");
+    throw new VisualHarnessError(
+      "provider_execution_failed",
+      "provider_counter_contract",
+    );
   }
 
   const batch = requireData(
@@ -279,7 +316,10 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     batch.target_bank_id !== bankId ||
     batch.source_type !== "ai_pdf"
   ) {
-    throw new VisualHarnessError("visual_evidence_persistence_failed");
+    throw new VisualHarnessError(
+      "visual_evidence_persistence_failed",
+      "batch_contract",
+    );
   }
 
   const items =
@@ -296,11 +336,19 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
   const imported = items.filter(
     (item) => item.status === "imported" && item.created_question_id,
   );
+  const uniqueLineageCount = new Set(
+    imported.map((item) => item.persistence_lineage_key),
+  ).size;
+  console.log(`VISUAL_IMPORTED_ITEM_COUNT=${imported.length}`);
+  console.log(`VISUAL_UNIQUE_LINEAGE_COUNT=${uniqueLineageCount}`);
   if (
     imported.length !== 4 ||
-    new Set(imported.map((item) => item.persistence_lineage_key)).size !== 4
+    uniqueLineageCount !== 4
   ) {
-    throw new VisualHarnessError("visual_evidence_contract_failed");
+    throw new VisualHarnessError(
+      "visual_evidence_contract_failed",
+      "import_cardinality_contract",
+    );
   }
   const questionIds = imported.map((item) => item.created_question_id);
   const questions =
@@ -333,6 +381,9 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
         .in("question_id", questionIds),
       "visual_evidence_persistence_failed",
     ) ?? [];
+  console.log(`VISUAL_QUESTION_ROW_COUNT=${questions.length}`);
+  console.log(`VISUAL_REVIEW_ITEM_COUNT=${reviews.length}`);
+  console.log(`VISUAL_ASSET_ROW_COUNT=${assetRows.length}`);
   if (
     questions.length !== 4 ||
     reviews.length !== 4 ||
@@ -348,7 +399,10 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
         question.source_kind !== "ai_import",
     )
   ) {
-    throw new VisualHarnessError("visual_evidence_persistence_failed");
+    throw new VisualHarnessError(
+      "visual_evidence_persistence_failed",
+      "visual_persistence_contract",
+    );
   }
 
   const sourceDownload = await service.storage
@@ -360,7 +414,10 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
   );
   const sourceHashMatches = sha256(hostedSource) === sha256(pdf);
   if (!sourceHashMatches) {
-    throw new VisualHarnessError("visual_source_integrity_failed");
+    throw new VisualHarnessError(
+      "visual_source_integrity_failed",
+      "source_hash_contract",
+    );
   }
 
   const questionById = new Map(questions.map((question) => [question.id, question]));
@@ -381,7 +438,10 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     const question = questionById.get(item.created_question_id);
     const review = reviewByQuestion.get(item.created_question_id);
     if (!question || !review || question.source_review_item_id !== review.id) {
-      throw new VisualHarnessError("visual_evidence_persistence_failed");
+      throw new VisualHarnessError(
+        "visual_evidence_persistence_failed",
+        "source_review_lineage_contract",
+      );
     }
     const visualEvidence = asRecord(asRecord(review.draft_payload).visualEvidence);
     const evidenceRecords = Array.isArray(visualEvidence.records)
@@ -456,6 +516,22 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
   const contractEvidence = asRecord(quality.contractEvidence);
   const visualMetrics = asRecord(quality.visualEvidence);
   const usage = asRecord(quality.usage);
+  const hashMatchCount = [
+    contractEvidence.fullTaxonomySnapshotSha256 === expectedTaxonomySnapshot,
+    contractEvidence.taxonomySnapshotSha256 === expectedTaxonomySnapshot,
+    contractEvidence.candidateSubsetSha256 === expectedCandidateSubset,
+    contractEvidence.parsingContractSha256 === expectedParsingContract,
+  ].filter(Boolean).length;
+  console.log(`VISUAL_PENDING_REVIEW_COUNT=${questionObservations.filter((question) => question.reviewStatus === "pending_review").length}`);
+  console.log(`VISUAL_NEEDS_MORE_EVIDENCE_COUNT=${questionObservations.filter((question) => question.reviewStatus === "needs_more_evidence").length}`);
+  console.log(`VISUAL_PLACEHOLDER_COUNT=${questionObservations.reduce((total, question) => total + question.placeholders.length, 0)}`);
+  console.log(`VISUAL_EVIDENCE_RECORD_COUNT=${questionObservations.reduce((total, question) => total + (question.visualEvidence?.records?.length ?? 0), 0)}`);
+  console.log(`VISUAL_HASH_MATCH_COUNT=${hashMatchCount}`);
+  console.log(`VISUAL_METRIC_ATTACHED_ASSETS=${numeric(visualMetrics.attachedAssets) ?? -1}`);
+  console.log(`VISUAL_METRIC_VALID_CROPS=${numeric(visualMetrics.validCrops) ?? -1}`);
+  console.log(`VISUAL_METRIC_DECORATIVE_SKIPPED=${numeric(visualMetrics.decorativeSkipped) ?? -1}`);
+  console.log(`VISUAL_METRIC_BLOCKING_MISSING=${numeric(visualMetrics.blockingMissingRequired) ?? -1}`);
+  console.log(`VISUAL_METRIC_INVALID_PROPOSALS=${numeric(visualMetrics.invalidProposals) ?? -1}`);
   if (
     contractEvidence.fullTaxonomySnapshotSha256 !== expectedTaxonomySnapshot ||
     contractEvidence.taxonomySnapshotSha256 !== expectedTaxonomySnapshot ||
@@ -473,7 +549,10 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     visualMetrics.blockingMissingRequired < 1 ||
     visualMetrics.invalidProposals !== 0
   ) {
-    throw new VisualHarnessError("visual_evidence_contract_failed");
+    throw new VisualHarnessError(
+      "visual_evidence_contract_failed",
+      "quality_observatory_contract",
+    );
   }
 
   const bankApprovalCount = await countRows(
@@ -880,6 +959,7 @@ async function main() {
 
   if (failure) {
     console.error("AI_PARSING_VISUAL_EVIDENCE_LIVE_E2E=BLOCKED");
+    console.error(`VISUAL_FAILURE_STAGE=${safeFailureStage(failure)}`);
     console.error(`FAILURE_CATEGORY=${safeFailureCategory(failure)}`);
     process.exitCode = 1;
   }
