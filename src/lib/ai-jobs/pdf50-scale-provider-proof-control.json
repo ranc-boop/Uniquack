@@ -8,7 +8,7 @@
   "providerMaxOutputTokens": 4096,
   "providerMaxNetworkRequests": 68,
   "approvedBudgetUsd": 2,
-  "maxInputBytesPerAttempt": 50000,
+  "maxInputBytesPerAttempt": 200000,
   "maxInputTokensPerAttempt": 50000,
   "maxBillableOutputTokensPerAttempt": 4096,
   "inputMicrosPerMillion": 100000,

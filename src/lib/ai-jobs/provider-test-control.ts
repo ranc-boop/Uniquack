@@ -120,7 +120,7 @@ const scaleExpectedControl = Object.freeze({
   providerMaxOutputTokens: 4_096,
   providerMaxNetworkRequests: 68,
   approvedBudgetUsd: 2,
-  maxInputBytesPerAttempt: 50_000,
+  maxInputBytesPerAttempt: 200_000,
   maxInputTokensPerAttempt: 50_000,
   maxBillableOutputTokensPerAttempt: 4_096,
   inputMicrosPerMillion: 100_000,

@@ -74,7 +74,12 @@ assert.equal(scaleProviderControl.workerRouteInvocations, 1);
 assert.equal(scaleProviderControl.providerInferenceAttempts, 3);
 assert.equal(scaleProviderControl.providerMaxOutputTokens, 4_096);
 assert.equal(scaleProviderControl.providerMaxNetworkRequests, 68);
-assert.equal(scaleProviderControl.maxInputBytesPerAttempt, 50_000);
+assert.equal(scaleProviderControl.maxInputBytesPerAttempt, 200_000);
+assert.equal(
+  scaleProviderControl.maxInputBytesPerAttempt,
+  scaleProviderControl.maxInputTokensPerAttempt * 4,
+  "the UTF-8 transport-byte guard must remain distinct from the token-cost ceiling",
+);
 assert.equal(scaleProviderControl.approvedBudgetUsd, 2);
 assert.equal(
   control.conservativeInputTokensPerProviderAttempt,
@@ -95,7 +100,7 @@ assert.equal(
 assert.deepEqual(pdf50ScaleProviderProofEnvironment(scaleProviderControl), {
   AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
   PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "3",
-  PDF50_PROVIDER_TEST_MAX_INPUT_BYTES: "50000",
+  PDF50_PROVIDER_TEST_MAX_INPUT_BYTES: "200000",
   PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
   PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
   PDF50_PROVIDER_TEST_MODE: "BOUNDED_SCALE_REAL_PROVIDER",

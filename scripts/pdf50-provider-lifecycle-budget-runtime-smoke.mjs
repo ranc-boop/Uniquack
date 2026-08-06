@@ -205,7 +205,7 @@ try {
   assert.deepEqual(providerTestControl.readTrustedAIProviderTestLimits(), {
     maxClaimedJobs: 1,
     maxInferenceAttempts: 3,
-    maxInputBytes: 50_000,
+    maxInputBytes: 200_000,
     maxEstimatedCostMicros: 19_917,
     maxNetworkRequests: 68,
     maxOutputTokens: 4_096,
