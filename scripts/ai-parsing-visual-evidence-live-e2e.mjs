@@ -61,7 +61,7 @@ const visualEnvironment = [
 ];
 const visualEnvironmentLiteral = "DISPOSABLE_AI_PARSING_VISUAL_EVIDENCE";
 const visualCleanupLiteral = "DELETE_AI_PARSING_VISUAL_EVIDENCE_FIXTURES";
-const expectedPriorConservativeMicros = 1_070_397;
+const expectedPriorConservativeMicros = 1_201_470;
 const authorizedTotalMicros = 2_000_000;
 const visualCostCeilingMicros = estimatePDF50ProviderProofCostMicros(proofControl);
 const questionAssetsBucket = "question-assets";
@@ -102,6 +102,36 @@ const allowedFailureStages = new Set([
   "source_hash_contract",
   "source_review_lineage_contract",
   "visual_persistence_contract",
+]);
+const safeProviderErrorCodes = new Set([
+  "operation_cancelled",
+  "provider_busy",
+  "provider_configuration_error",
+  "provider_execution_budget_exhausted",
+  "provider_invalid_response",
+  "provider_network_error",
+  "provider_permission_error",
+  "provider_rate_limited",
+  "provider_timeout",
+  "request_invalid",
+  "unknown_provider_error",
+]);
+const safeProviderJobStatuses = new Set([
+  "cancelled",
+  "completed",
+  "failed",
+  "queued",
+  "retry_wait",
+]);
+const safeWorkerCheckpointStages = new Set([
+  "claimed",
+  "completed",
+  "drafts_persisted",
+  "normalized",
+  "provider_request_started",
+  "provider_result_checkpointed",
+  "queued",
+  "source_validated",
 ]);
 
 class VisualHarnessError extends Error {
@@ -176,6 +206,27 @@ function safeFailureStage(error) {
     return error.stage;
   }
   return "unexpected_failure";
+}
+
+function safeEnum(value, allowed, fallback) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return allowed.has(normalized) ? normalized : fallback;
+}
+
+function emitSafeProviderTerminalEvidence(job) {
+  const safeResult = asRecord(job.safe_result);
+  console.log(
+    `VISUAL_PROVIDER_JOB_STATUS=${safeEnum(job.status, safeProviderJobStatuses, "unknown")}`,
+  );
+  console.log(
+    `VISUAL_PROVIDER_CHECKPOINT_STAGE=${safeEnum(job.checkpoint_stage, safeWorkerCheckpointStages, "unknown")}`,
+  );
+  console.log(
+    `VISUAL_PROVIDER_SAFE_ERROR_CODE=${safeEnum(job.safe_error_code, safeProviderErrorCodes, "unknown_provider_error")}`,
+  );
+  console.log(
+    `VISUAL_PROVIDER_COUNTERS=inference:${numeric(safeResult.providerInferenceAttempts) ?? -1},inferenceRequests:${numeric(safeResult.providerInferenceRequests) ?? -1},network:${numeric(safeResult.providerNetworkRequests) ?? -1},uploads:${numeric(safeResult.providerUploadRequests) ?? -1},cleanup:${numeric(safeResult.providerCleanupRequests) ?? -1},cleanupFailures:${numeric(safeResult.providerCleanupFailures) ?? -1}`,
+  );
 }
 
 async function blobToBuffer(blob, category, stage = "source_blob_contract") {
@@ -900,6 +951,9 @@ async function main() {
       jobId: fixture.item.ai_provider_job_id,
       service,
     });
+    if (job.status !== "completed" || job.checkpoint_stage !== "completed") {
+      emitSafeProviderTerminalEvidence(job);
+    }
     const observation = await loadVisualEvidence({
       bankId,
       config,

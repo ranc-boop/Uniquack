@@ -37,7 +37,7 @@ assert(
   !/(?:dotenv|\.env\.local|Get-Content\s+[^\n]*\.env)/i.test(launcher),
   "launcher must not load environment files",
 );
-assert(harness.includes("expectedPriorConservativeMicros = 1_070_397"));
+assert(harness.includes("expectedPriorConservativeMicros = 1_201_470"));
 assert(harness.includes("authorizedTotalMicros = 2_000_000"));
 assert(harness.includes("runLocalWorkerOnce({"));
 assert(harness.includes("providerInferenceAttempts !== 1"));
@@ -49,6 +49,9 @@ assert(harness.includes("independentlyCropSource(pdf, record)"));
 assert(harness.includes("await image.scrollIntoViewIfNeeded()"));
 assert(harness.includes("element.addEventListener(\"load\""));
 assert(harness.includes("browser_asset_render_contract"));
+assert(harness.includes("emitSafeProviderTerminalEvidence(job)"));
+assert(harness.includes("VISUAL_PROVIDER_SAFE_ERROR_CODE="));
+assert(!harness.includes("job.safe_message"));
 assert(harness.includes("await loadingTask.destroy();"));
 assert(!harness.includes("await document.destroy();"));
 assert(harness.includes("directPublicStorageDenied(config, asset)"));
