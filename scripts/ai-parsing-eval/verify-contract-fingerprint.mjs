@@ -119,7 +119,7 @@ if (process.argv[2] === "--emit") {
     JSON.stringify(
       {
         baselineAnchor: baseline,
-        contractVersion: "ai-pdf-parsing/provider-neutral-v3",
+        contractVersion: "ai-pdf-parsing/provider-neutral-v4",
         files: fingerprintedPaths.map((path) => ({
           baseline: anchorRecord(baseline, path),
           path,
@@ -143,7 +143,7 @@ const head = resolveCommit("HEAD");
 assert.equal(manifest.schemaVersion, 1);
 assert.equal(
   manifest.contractVersion,
-  "ai-pdf-parsing/provider-neutral-v3",
+  "ai-pdf-parsing/provider-neutral-v4",
 );
 assert.equal(baseline, manifest.baselineAnchor);
 assert.equal(treatment, manifest.treatmentAnchor);

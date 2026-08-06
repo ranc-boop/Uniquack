@@ -253,7 +253,7 @@ observer.beginAttempt({
     taxonomyCandidateBytes: 0,
   },
   inferenceOrdinal: 2,
-  reason: "STRUCTURAL_REPAIR_SOURCE_FREE",
+  reason: "STRUCTURAL_SCHEMA_REPAIR",
   routeCandidateIndex: 0,
   sourceIncluded: false,
   sourceRepeated: false,
@@ -295,7 +295,7 @@ observer.recordContractEvidence({
 });
 const snapshot = observer.snapshot();
 assert.equal(snapshot.attemptsPerJob, 2);
-assert.equal(snapshot.attemptHistogram.STRUCTURAL_REPAIR_SOURCE_FREE, 1);
+assert.equal(snapshot.attemptHistogram.STRUCTURAL_SCHEMA_REPAIR, 1);
 assert.equal(snapshot.contextComposition.repeatedSourceBytes, 0);
 assert.equal(snapshot.contextComposition.repeatedPreviousResponseBytes, 50);
 assert.equal(snapshot.contextComposition.totalSerializedRequestBytes, 1_330);

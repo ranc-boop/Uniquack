@@ -10,7 +10,7 @@ This treatment hardens Parsing-to-Review without changing Provider settings,
 models, publication rules, Assignment behavior, migrations, dependencies, or
 environment contracts. The immutable baseline is
 `f1ce7bcb791604468693ea945401cfb157e64d97`; the treatment contract is
-`ai-pdf-parsing/provider-neutral-v3`.
+`ai-pdf-parsing/provider-neutral-v4`.
 
 No real Provider call or hosted mutation was performed during the source phase.
 Current Clean taxonomy parity subsequently passed read-only with the exact
@@ -69,7 +69,13 @@ owner is `runAIPdfProviderTransport`. Every inference gets exactly one primary
 reason:
 
 - `FIRST_ATTEMPT`
-- `STRUCTURAL_REPAIR_SOURCE_FREE`
+- `STRUCTURAL_SCHEMA_REPAIR`
+- `APPLICATION_VALIDATION_REPAIR`
+- `BLANK_REQUIRED_FIELD_REPAIR`
+- `ANSWER_CONSISTENCY_REPAIR`
+- `SOURCE_LINEAGE_REPAIR`
+- `VISUAL_ASSOCIATION_REPAIR`
+- `TAXONOMY_REPAIR`
 - `SOURCE_BACKED_SEMANTIC_RECOVERY`
 - `PROVIDER_BUSY_RETRY`
 - `RATE_LIMIT_RETRY`

@@ -795,6 +795,9 @@ const resilience = await loadTypeScriptModule(
 const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
   "@/lib/ai-pdf-import/schema": {
     normalizeAIPdfExtractionResponse(value) {
+      if (value?.questions === "invalid") {
+        throw new Error("questions: expected array");
+      }
       if (!Array.isArray(value?.questions) || value.questions.length === 0) {
         throw new Error("AI provider response contained zero importable questions.");
       }
@@ -1036,10 +1039,47 @@ assert.deepEqual(
 );
 assert.deepEqual(
   structuralRepairLedger.attempts.map((entry) => entry.primaryReason),
-  ["FIRST_ATTEMPT", "STRUCTURAL_REPAIR_SOURCE_FREE"],
+  ["FIRST_ATTEMPT", "STRUCTURAL_SCHEMA_REPAIR"],
 );
 assert.equal(structuralRepairLedger.sourceInferenceCount, 1);
 assert.equal(structuralRepairLedger.sourceRecoveryUsed, false);
+
+const applicationRepairLedger = attemptState.createAIPdfProviderAttemptLedger();
+const sourceModeCountBeforeApplicationRepair = extractionSourceModes.length;
+extractionResponses = [
+  '{"questions":"invalid","warnings":[]}',
+  '{"questions":[{"title":"Synthetic question","content_html":"<p>What is 2 + 3?</p>"}],"warnings":[]}',
+];
+const applicationRepairedExtraction = await chat.callAIPdfExtractionProvider({
+  attemptLedger: applicationRepairLedger,
+  fileName: "synthetic.pdf",
+  inputStrategy: "gemini_native_pdf",
+  pageImageDataUrls: [],
+  pdfBase64: "",
+  pdfBytes: Buffer.from("synthetic-pdf"),
+  profile: {
+    apiKey: "synthetic-test-key",
+    base_url: "https://provider.invalid",
+    model: "synthetic-model",
+    name: "Synthetic Provider",
+    provider: "gemini_native",
+    supports_pdf_input: true,
+    supports_vision_images: false,
+  },
+  prompt: originalExtractionPrompt,
+  promptContext: extractionPromptContext,
+});
+assert.equal(applicationRepairedExtraction.questions.length, 1);
+assert.deepEqual(
+  extractionSourceModes.slice(sourceModeCountBeforeApplicationRepair),
+  ["pdf", "text"],
+  "application validation repair must not re-upload the source PDF",
+);
+assert.deepEqual(
+  applicationRepairLedger.attempts.map((entry) => entry.primaryReason),
+  ["FIRST_ATTEMPT", "APPLICATION_VALIDATION_REPAIR"],
+);
+assert.equal(applicationRepairLedger.sourceInferenceCount, 1);
 
 const transportRetryLedger = attemptState.createAIPdfProviderAttemptLedger();
 extractionResponses = [

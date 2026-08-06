@@ -3,7 +3,7 @@
   "evidenceClass": "SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY",
   "rights": "Repository-authored synthetic educational fixtures; no private or third-party source material.",
   "baselineAnchor": "f1ce7bcb791604468693ea945401cfb157e64d97",
-  "treatmentVersion": "ai-pdf-parsing/provider-neutral-v3",
+  "treatmentVersion": "ai-pdf-parsing/provider-neutral-v4",
   "legacyTaxonomySanityBaseline": {
     "anchor": "659654e81e56b0891f786adfa3a003faec8783d5",
     "caseCount": 6,

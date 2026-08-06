@@ -1,11 +1,18 @@
 import type { AIProviderErrorCode } from "@/lib/ai-providers/errors";
 
-export const AI_PDF_PROVIDER_ATTEMPT_LEDGER_VERSION = 1;
+export const AI_PDF_PROVIDER_ATTEMPT_LEDGER_VERSION = 2;
+const LEGACY_AI_PDF_PROVIDER_ATTEMPT_LEDGER_VERSION = 1;
 const MAX_RECORDED_PROVIDER_ATTEMPTS = 128;
 
 export type AIPdfProviderAttemptReason =
   | "FIRST_ATTEMPT"
-  | "STRUCTURAL_REPAIR_SOURCE_FREE"
+  | "STRUCTURAL_SCHEMA_REPAIR"
+  | "APPLICATION_VALIDATION_REPAIR"
+  | "BLANK_REQUIRED_FIELD_REPAIR"
+  | "ANSWER_CONSISTENCY_REPAIR"
+  | "SOURCE_LINEAGE_REPAIR"
+  | "VISUAL_ASSOCIATION_REPAIR"
+  | "TAXONOMY_REPAIR"
   | "SOURCE_BACKED_SEMANTIC_RECOVERY"
   | "PROVIDER_BUSY_RETRY"
   | "RATE_LIMIT_RETRY"
@@ -41,16 +48,30 @@ function nonNegativeInteger(value: unknown) {
     : 0;
 }
 
-function isAttemptReason(value: unknown): value is AIPdfProviderAttemptReason {
+function normalizeAttemptReason(
+  value: unknown,
+): AIPdfProviderAttemptReason | null {
+  if (value === "STRUCTURAL_REPAIR_SOURCE_FREE") {
+    return "STRUCTURAL_SCHEMA_REPAIR";
+  }
+  const reason = String(value);
   return [
     "FIRST_ATTEMPT",
-    "STRUCTURAL_REPAIR_SOURCE_FREE",
+    "STRUCTURAL_SCHEMA_REPAIR",
+    "APPLICATION_VALIDATION_REPAIR",
+    "BLANK_REQUIRED_FIELD_REPAIR",
+    "ANSWER_CONSISTENCY_REPAIR",
+    "SOURCE_LINEAGE_REPAIR",
+    "VISUAL_ASSOCIATION_REPAIR",
+    "TAXONOMY_REPAIR",
     "SOURCE_BACKED_SEMANTIC_RECOVERY",
     "PROVIDER_BUSY_RETRY",
     "RATE_LIMIT_RETRY",
     "NETWORK_RETRY",
     "TIMEOUT_RETRY",
-  ].includes(String(value));
+  ].includes(reason)
+    ? (reason as AIPdfProviderAttemptReason)
+    : null;
 }
 
 export function createAIPdfProviderAttemptLedger(): AIPdfProviderAttemptLedger {
@@ -72,7 +93,10 @@ export function parseAIPdfProviderAttemptLedger(
 ): AIPdfProviderAttemptLedger | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  if (record.contractVersion !== AI_PDF_PROVIDER_ATTEMPT_LEDGER_VERSION) {
+  if (
+    record.contractVersion !== AI_PDF_PROVIDER_ATTEMPT_LEDGER_VERSION &&
+    record.contractVersion !== LEGACY_AI_PDF_PROVIDER_ATTEMPT_LEDGER_VERSION
+  ) {
     return null;
   }
 
@@ -80,8 +104,9 @@ export function parseAIPdfProviderAttemptLedger(
     ? record.attempts.flatMap((entry) => {
         if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
         const attempt = entry as Record<string, unknown>;
+        const primaryReason = normalizeAttemptReason(attempt.primaryReason);
         if (
-          !isAttemptReason(attempt.primaryReason) ||
+          !primaryReason ||
           typeof attempt.scope !== "string" ||
           typeof attempt.sourceIncluded !== "boolean"
         ) {
@@ -89,7 +114,7 @@ export function parseAIPdfProviderAttemptLedger(
         }
         return [{
           ordinal: nonNegativeInteger(attempt.ordinal),
-          primaryReason: attempt.primaryReason,
+          primaryReason,
           routeCandidateIndex: nonNegativeInteger(attempt.routeCandidateIndex),
           scope: attempt.scope,
           sourceIncluded: attempt.sourceIncluded,

@@ -101,7 +101,7 @@ assert(
     chat.includes("buildGeminiRepairPrompt") &&
     chat.includes("generateWithGeminiNativeText") &&
     chat.includes("sourceIncluded") &&
-    chat.includes('semanticReason !== "STRUCTURAL_REPAIR_SOURCE_FREE"') &&
+    chat.includes("!isSourceFreeRepairReason(semanticReason)") &&
     chat.includes("zero importable questions") &&
     !chat.includes("Response preview:") &&
     !chat.includes("Provider response:") &&

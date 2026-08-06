@@ -295,12 +295,24 @@ function semanticAttemptReason({
       ? "SOURCE_BACKED_SEMANTIC_RECOVERY"
       : null;
   }
-  if (lastError.kind === "non_json" || lastError.kind === "application_schema") {
+  if (lastError.kind === "non_json") {
     return reserveAIPdfStructuralRepair(attemptLedger, attemptScope)
-      ? "STRUCTURAL_REPAIR_SOURCE_FREE"
+      ? "STRUCTURAL_SCHEMA_REPAIR"
+      : null;
+  }
+  if (lastError.kind === "application_schema") {
+    return reserveAIPdfStructuralRepair(attemptLedger, attemptScope)
+      ? "APPLICATION_VALIDATION_REPAIR"
       : null;
   }
   return null;
+}
+
+function isSourceFreeRepairReason(reason: AIPdfProviderAttemptReason) {
+  return (
+    reason === "STRUCTURAL_SCHEMA_REPAIR" ||
+    reason === "APPLICATION_VALIDATION_REPAIR"
+  );
 }
 
 function attemptFailureCategory(error: unknown): AIPdfAttemptFailureCategory {
@@ -806,8 +818,7 @@ export async function callAIPdfExtractionProvider({
         lastError,
       });
       if (!semanticReason) break;
-      const sourceIncluded =
-        semanticReason !== "STRUCTURAL_REPAIR_SOURCE_FREE";
+      const sourceIncluded = !isSourceFreeRepairReason(semanticReason);
       const repairInstruction = attempt === 1
         ? ""
         : buildRepairInstruction({
@@ -844,7 +855,7 @@ export async function callAIPdfExtractionProvider({
                 ? Buffer.byteLength(repairInstruction, "utf8")
                 : 0,
             structuralRepairInstructionBytes:
-              semanticReason === "STRUCTURAL_REPAIR_SOURCE_FREE"
+              isSourceFreeRepairReason(semanticReason)
                 ? Buffer.byteLength(repairInstruction, "utf8")
                 : 0,
             structuredSchemaBytes:
@@ -1008,8 +1019,7 @@ export async function callAIPdfExtractionProvider({
       lastError,
     });
     if (!semanticReason) break;
-    const sourceIncluded =
-      semanticReason !== "STRUCTURAL_REPAIR_SOURCE_FREE";
+    const sourceIncluded = !isSourceFreeRepairReason(semanticReason);
     const repairInstruction = attempt === 1
       ? ""
       : buildRepairInstruction({
@@ -1051,7 +1061,7 @@ export async function callAIPdfExtractionProvider({
               ? Buffer.byteLength(repairInstruction, "utf8")
               : 0,
           structuralRepairInstructionBytes:
-            semanticReason === "STRUCTURAL_REPAIR_SOURCE_FREE"
+            isSourceFreeRepairReason(semanticReason)
               ? Buffer.byteLength(repairInstruction, "utf8")
               : 0,
           structuredSchemaBytes: sourceIncluded

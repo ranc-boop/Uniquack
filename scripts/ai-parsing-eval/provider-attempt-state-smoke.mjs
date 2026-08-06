@@ -35,7 +35,7 @@ attemptState.recordAIPdfProviderInference(ledger, {
   transportAttempt: 2,
 });
 attemptState.recordAIPdfProviderInference(ledger, {
-  primaryReason: "STRUCTURAL_REPAIR_SOURCE_FREE",
+  primaryReason: "STRUCTURAL_SCHEMA_REPAIR",
   routeCandidateIndex: 0,
   scope: "single",
   sourceIncluded: false,
@@ -51,6 +51,24 @@ assert.equal(restored.providerInferenceCount, 3);
 assert.equal(restored.sourceInferenceCount, 2);
 assert.equal(attemptState.reserveAIPdfSourceRecovery(restored, "reentered"), false);
 assert.equal(attemptState.reserveAIPdfStructuralRepair(restored, "single"), false);
+
+const legacy = attemptState.parseAIPdfProviderAttemptLedger({
+  ...JSON.parse(JSON.stringify(ledger)),
+  attempts: [{
+    ordinal: 1,
+    primaryReason: "STRUCTURAL_REPAIR_SOURCE_FREE",
+    routeCandidateIndex: 0,
+    scope: "legacy",
+    sourceIncluded: false,
+    transportAttempt: 1,
+  }],
+  contractVersion: 1,
+  providerInferenceCount: 1,
+  sourceInferenceCount: 0,
+});
+assert(legacy);
+assert.equal(legacy.contractVersion, 2);
+assert.equal(legacy.attempts[0].primaryReason, "STRUCTURAL_SCHEMA_REPAIR");
 
 assert.equal(
   attemptState.aiPdfProviderRetryReason("provider_busy"),
