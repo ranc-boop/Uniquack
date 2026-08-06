@@ -94,8 +94,8 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/verify-contract-fingerprint.mjs",
       "treatment": {
-        "blob": "fbdf461fbe337ae489b728cd6f6c3a82bda2c220",
-        "sha256": "69c4b1bcfe75f904d782c66bb4879106de137008350b26976a0a27a2d3de873c"
+        "blob": "558e9b8a5fc7a5a04d035b404071227c2e13551c",
+        "sha256": "05c1da21b41bd4071bac30c3814d6a06842d8316b80760905295886392feae28"
       }
     },
     {
@@ -133,6 +133,28 @@
     },
     {
       "baseline": {
+        "blob": "9c0f7235d9356e7ce7a5c33fa4c4086ba5b92e16",
+        "sha256": "7bf192b86a0c6da695a2575df8a04c8b1ebd240d65af2981ab0505dce8680933"
+      },
+      "path": "scripts/pdf50-end-to-end-live-e2e.mjs",
+      "treatment": {
+        "blob": "e85f009398f6d0f396b6756533e6c33d7a496da2",
+        "sha256": "42c6a297b42520faa3f115a688d9687db40a6355b93b3eced52276ecaed0d944"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "ca3dd221faf57e0b19fdf40452658a2d23e77b91",
+        "sha256": "0c80cd332586e74cb5c85e99f7f61611193021e8a6e6688b2f535d8c897384bd"
+      },
+      "path": "scripts/pdf50-post-persistence-diagnostic-smoke.mjs",
+      "treatment": {
+        "blob": "ecacdbb29da6c45b5d9ae368b33e3020d1136332",
+        "sha256": "b3d3e961c7de0626c9c231da0fb8c597ca6a881aeba7b112d8a473b2eda7a520"
+      }
+    },
+    {
+      "baseline": {
         "blob": "5330bff59bda57077d9d207c3c1a9e2eee5c7cbf",
         "sha256": "b2ba12290cf95e4bf1add2455aa6f90fe79b367b4f0a27edc20f3d78722513d0"
       },
@@ -160,8 +182,8 @@
       },
       "path": "scripts/pdf50-scale-qualification-live-e2e.mjs",
       "treatment": {
-        "blob": "2562a486d7f767a54a77f45d1872f751a55f9eae",
-        "sha256": "7504a337d20acd3a3448256378cb699badb6fc5e38366a5c8c5f268eeb90b420"
+        "blob": "beb920e2aaadb989bf44b13a1f935d148796e80b",
+        "sha256": "e935be10a29c90b41d3ff5e3ba99a9df54540e9e7d2811bda03563e5697de34c"
       }
     },
     {
@@ -195,14 +217,44 @@
       }
     },
     {
+      "baseline": null,
+      "path": "src/lib/batch-import/fenced-persistence.ts",
+      "treatment": {
+        "blob": "b5d3bca07506147b7107a0b6e406f5bbb4b1eac4",
+        "sha256": "544054362b05195aef86365628469eedc6936207e87c1a032c85f69415bdbc42"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "42ffa23f532055bd8a56a6e58f75d9f65835bcd1",
+        "sha256": "04a450dc2fd937899a69f855d078bdb026b3ad5e71721ad53e2c7f0a89a496c4"
+      },
+      "path": "src/lib/batch-import/service.ts",
+      "treatment": {
+        "blob": "8da52ca9e8ec3e61d6ce4bbc1507576ae2468b7e",
+        "sha256": "c93a7fcc63d175c1072bf7969e211435573b83b2243fec08900dd6c8ebd0d435"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "f396ef79346824f9eb9fd817c21500dc19e56080",
+        "sha256": "fdec203fdb3d327592b50deed37a5bc29cfeeaff8bff5d54603404860e038c2d"
+      },
+      "path": "src/lib/ai-pdf-import/post-persistence.ts",
+      "treatment": {
+        "blob": "dd792e90050386ac01eced78d3e03462db48065d",
+        "sha256": "360d14daf9433c5e69aa9b477a4397018306d84abdce46e186cfc4ce06b00442"
+      }
+    },
+    {
       "baseline": {
         "blob": "3122ae1b1243e903ced210c61473caaadde21da3",
         "sha256": "cbce802b06b994862adb3ce1342039d2f2476cc491b7c98f2e9d071f76a63ac8"
       },
       "path": "src/lib/ai-pdf-import/service.ts",
       "treatment": {
-        "blob": "dee5778d76839d288977cfa379610bc9ebfefd0b",
-        "sha256": "af28798d01bcf53dac6a270f55faff78244bad74c93bd2393ee5c3221923f0f1"
+        "blob": "7e59e80bc0d20bd946ab6dca50f874a84565c8ab",
+        "sha256": "5600c3dfa72498a27cb4fbbd99d554a33584d253eb61e8c5c9dd7de23aa28efe"
       }
     },
     {
@@ -415,5 +467,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "1a4a1da3f6a5ccb5f8e35db2774a973a879148c2"
+  "treatmentAnchor": "a71b858752100673cac52c0f9ae4ce522dc4fc89"
 }
