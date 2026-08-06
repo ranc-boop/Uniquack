@@ -61,7 +61,7 @@ const visualEnvironment = [
 ];
 const visualEnvironmentLiteral = "DISPOSABLE_AI_PARSING_VISUAL_EVIDENCE";
 const visualCleanupLiteral = "DELETE_AI_PARSING_VISUAL_EVIDENCE_FIXTURES";
-const expectedPriorConservativeMicros = 939_324;
+const expectedPriorConservativeMicros = 1_070_397;
 const authorizedTotalMicros = 2_000_000;
 const visualCostCeilingMicros = estimatePDF50ProviderProofCostMicros(proofControl);
 const questionAssetsBucket = "question-assets";
@@ -88,6 +88,8 @@ const allowedFailureCategories = new Set([
   "visual_source_integrity_failed",
 ]);
 const allowedFailureStages = new Set([
+  "browser_asset_render_contract",
+  "browser_decorative_suppression_contract",
   "batch_contract",
   "browser_render_contract",
   "cleanup_contract",
@@ -696,11 +698,38 @@ async function openQuestionPreview(page, question, expectedAssetIds) {
   const loaded = new Set();
   for (const assetId of expectedAssetIds) {
     const image = article.locator(`img[src="/api/question-assets/${assetId}"]`).first();
+    await image.scrollIntoViewIfNeeded();
     await image.waitFor({ state: "visible", timeout: 30_000 });
-    const rendered = await image.evaluate(
-      (element) => element.complete && element.naturalWidth > 0 && element.naturalHeight > 0,
-    );
-    if (!rendered) throw new VisualHarnessError("browser_visual_evidence_failed");
+    const rendered = await image.evaluate(async (element) => {
+      const hasPixels = () =>
+        element.complete && element.naturalWidth > 0 && element.naturalHeight > 0;
+      if (hasPixels()) return true;
+
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          resolve(value);
+        };
+        const timeout = window.setTimeout(() => finish(false), 30_000);
+        element.addEventListener("load", () => finish(hasPixels()), { once: true });
+        element.addEventListener("error", () => finish(false), { once: true });
+        void element.decode?.().then(
+          () => finish(hasPixels()),
+          () => undefined,
+        );
+        if (hasPixels()) finish(true);
+        else if (element.complete) finish(false);
+      });
+    });
+    if (!rendered) {
+      throw new VisualHarnessError(
+        "browser_visual_evidence_failed",
+        "browser_asset_render_contract",
+      );
+    }
     loaded.add(assetId);
   }
   return loaded.size;
@@ -736,7 +765,10 @@ async function verifyReviewSurface({ bankId, observation, page, secrets }) {
     });
     await decorativeArticle.getByRole("button", { name: "Preview" }).click();
     if ((await decorativeArticle.locator('img[src*="/api/question-assets/"]').count()) !== 0) {
-      throw new VisualHarnessError("browser_visual_evidence_failed");
+      throw new VisualHarnessError(
+        "browser_visual_evidence_failed",
+        "browser_decorative_suppression_contract",
+      );
     }
     const missingArticle = activePage.locator("article").filter({
       has: activePage.getByRole("heading", { exact: true, name: missing.title }),
