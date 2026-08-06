@@ -1,5 +1,5 @@
 param(
-  [int]$PriorConservativeMicros = 1201470,
+  [int]$PriorConservativeMicros = 1048584,
   [switch]$NoPause
 )
 
@@ -58,7 +58,7 @@ try {
     $FailureCategory = "production_environment_refused"
     throw "blocked"
   }
-  if ($PriorConservativeMicros -ne 1201470) {
+  if ($PriorConservativeMicros -ne 1048584) {
     $FailureCategory = "cost_envelope_rejected"
     throw "blocked"
   }

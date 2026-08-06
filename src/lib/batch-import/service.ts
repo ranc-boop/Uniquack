@@ -9,7 +9,10 @@ import {
   type ImportAssetReferences,
 } from "@/lib/batch-import/asset-references";
 import type { AIProviderJobPersistenceFence } from "@/lib/ai-jobs/checkpoint";
-import { runFencedImportItemRpcWithReplay } from "@/lib/batch-import/fenced-persistence";
+import {
+  fencedImportPersistenceError,
+  runFencedImportItemRpcWithReplay,
+} from "@/lib/batch-import/fenced-persistence";
 
 type SupabaseLike = {
   from: (table: string) => any;
@@ -534,9 +537,7 @@ export async function importBatchImportJson({
         }),
       );
       if (error) {
-        throw new Error(
-          error.message ?? "Fenced import item persistence failed.",
-        );
+        throw fencedImportPersistenceError(error);
       }
 
       const result = asSummaryRecord(data);

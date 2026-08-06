@@ -139,11 +139,26 @@ const placeholder = {
   required: true,
   visual_role: "graph",
 };
-assert.equal(visual.validateAIPdfVisualProposal({ pageCount: 1, placeholder }).valid, true);
+assert.equal(visual.validateAIPdfVisualProposal({
+  pageCount: 1,
+  placeholder,
+  questionPageRefs: [1],
+}).valid, true);
 assert.equal(visual.validateAIPdfVisualProposal({
   pageCount: 1,
   placeholder: { ...placeholder, bbox: { ...placeholder.bbox, x: 0.8 } },
+  questionPageRefs: [1],
 }).valid, false);
+assert.equal(visual.validateAIPdfVisualProposal({
+  pageCount: 2,
+  placeholder,
+  questionPageRefs: [],
+}).reason, "missing_question_lineage");
+assert.equal(visual.validateAIPdfVisualProposal({
+  pageCount: 2,
+  placeholder,
+  questionPageRefs: [2],
+}).reason, "page_outside_question_lineage");
 assert.equal(visual.questionRequiresVisualEvidence({
   contentHtml: "<p>Use the graph shown below to justify your answer.</p>",
 }), true);
@@ -278,6 +293,28 @@ observer.beginAttempt({
   },
 });
 observer.recordPersistence({ importableReviewDrafts: 1 });
+observer.recordVisualEvidence({
+  invalidProposals: 1,
+  invalidProposalReasons: {
+    decorative_required: 0,
+    invalid_crop_content: 1,
+    invalid_source_region: 0,
+    missing_question_lineage: 0,
+    page_outside_question_lineage: 0,
+    source_render_unavailable: 0,
+  },
+});
+observer.recordVisualEvidence({
+  invalidProposals: 1,
+  invalidProposalReasons: {
+    decorative_required: 0,
+    invalid_crop_content: 0,
+    invalid_source_region: 0,
+    missing_question_lineage: 0,
+    page_outside_question_lineage: 1,
+    source_render_unavailable: 0,
+  },
+});
 observer.recordContractEvidence({
   candidateCount: 10,
   candidateSubsetBytes: 400,
@@ -305,6 +342,12 @@ assert.equal(snapshot.contextComposition.providerReportedInputTokens, 100);
 assert.equal(snapshot.contextComposition.providerReportedOutputTokens, 80);
 assert.equal(snapshot.attempts[1].sourceIncluded, false);
 assert.equal(snapshot.output.importableReviewDrafts, 1);
+assert.equal(snapshot.visualEvidence.invalidProposals, 2);
+assert.equal(snapshot.visualEvidence.invalidProposalReasons.invalid_crop_content, 1);
+assert.equal(
+  snapshot.visualEvidence.invalidProposalReasons.page_outside_question_lineage,
+  1,
+);
 assert.equal(snapshot.output.usefulOutputPerProviderInputToken, 0.01);
 assert.equal(snapshot.contractEvidence.taxonomySnapshotSha256, "b".repeat(64));
 assert.equal(snapshot.contractEvidence.candidateSubsetSha256, "c".repeat(64));

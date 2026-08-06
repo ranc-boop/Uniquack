@@ -123,8 +123,8 @@ const qualitySnapshot = {
       "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
   },
   firstAttemptSuccess: true,
-  observatoryVersion: 4,
-  parsingContractVersion: "ai-pdf-parsing/provider-neutral-v4",
+  observatoryVersion: 5,
+  parsingContractVersion: "ai-pdf-parsing/provider-neutral-v5",
 };
 const qualityBatch = (snapshot) => ({
   id: "batch-1",
@@ -176,6 +176,8 @@ const [
   oneFileHarness,
   providerTestControl,
   route,
+  visualContract,
+  visualHarness,
   worker,
 ] = await Promise.all([
     loadPDF50ScaleQualificationControl(),
@@ -189,6 +191,14 @@ const [
     readFile(resolve(root, "scripts/pdf50-end-to-end-live-e2e.mjs"), "utf8"),
     readFile(resolve(root, "src/lib/ai-jobs/provider-test-control.ts"), "utf8"),
     readFile(resolve(root, "src/app/api/internal/ai-jobs/run/route.ts"), "utf8"),
+    readFile(
+      resolve(root, "scripts/ai-parsing-eval/visual-evidence-live-contract.mjs"),
+      "utf8",
+    ),
+    readFile(
+      resolve(root, "scripts/ai-parsing-visual-evidence-live-e2e.mjs"),
+      "utf8",
+    ),
     readFile(resolve(root, "src/lib/ai-jobs/worker.ts"), "utf8"),
   ]);
 
@@ -317,7 +327,8 @@ assert(harness.includes("cleanupScaleFixture"));
 assert(harness.includes("finally"));
 assert(harness.includes("SYNTHETIC_RESIDUE_COUNT"));
 assert(harness.includes("PROCESS_ENVIRONMENT_CLEARED"));
-assert(harness.includes("reviewItems.length === stageControl.completed"));
+assert(harness.includes("reviewItems.length === expectedQuestionCount"));
+assert(harness.includes('item.status === "needs_more_evidence"'));
 assert(harness.includes('item.status === "pending_review"'));
 assert(harness.includes("bankQuestionCount === 0 && assignmentCount === 0"));
 assert(harness.includes("verifyCrossOrganizationIsolation"));
@@ -406,6 +417,12 @@ assert(harness.includes("USAGE_DERIVED_CONSERVATIVE_COST_MICROS="));
 assert(harness.includes("row.provider_latency_ms ?? row.execution_latency_ms"));
 assert(harness.includes("await waitForChildExit(child, 300_000)"));
 assert(!harness.includes("sleep(300_000).then"));
+assert(
+  visualHarness.includes(
+    "import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href",
+  ),
+);
+assert(visualContract.includes("record.sharedGroupKey === null ||"));
 
 assert(launcher.includes("Import-Clixml -LiteralPath $VaultPath"));
 assert(launcher.includes("Set-ProcessValueFromSecureString"));
@@ -500,8 +517,35 @@ function satisfiesQualityEvidenceContract(source) {
   );
 }
 
+function satisfiesCombinedVisualScaleContract(source) {
+  return (
+    source.includes('const visualFixture = stage === "50" && index === 0') &&
+    source.includes("buildSyntheticVisualEvidencePdf()") &&
+    source.includes(
+      'item.page_count !==\n              (fileCount === 50 && index === 0 ? 4 : 1)',
+    ) &&
+    source.includes("const requiresVisualFixture = stageControl.files === 50") &&
+    source.includes(
+      "stageControl.completed + (requiresVisualFixture ? 3 : 0)",
+    ) &&
+    source.includes("reviewItems.length === expectedQuestionCount") &&
+    source.includes(
+      'item.created_question_id === missingVisualQuestionId\n            ? item.status === "needs_more_evidence"',
+    ) &&
+    source.includes('requireVisual: config.stage === "50"') &&
+    source.includes(
+      'scaleAssert(!requireVisual, "visual_evidence_contract_failed")',
+    ) &&
+    source.includes("QUESTION_VISUAL_ATTACHMENT_RESTORED_AND_LIVE_VALIDATED") &&
+    source.includes('["question_assets", "id", questionAssetRows.map((row) => row.id)]') &&
+    source.includes('"question_asset_storage"') &&
+    source.includes('"verify_question_asset_storage"')
+  );
+}
+
 assert(satisfiesScaleSafetyContract(harness));
 assert(satisfiesQualityEvidenceContract(harness));
+assert(satisfiesCombinedVisualScaleContract(harness));
 const mutationCases = [
   harness.replace("beforeCount === 0 && afterCount === 0", "true"),
   harness.replace('result.data === "STALE_FENCE_REJECTED"', "true"),
@@ -580,6 +624,35 @@ const qualityMutationCases = [
 assert(
   qualityMutationCases.every(
     (mutated) => !satisfiesQualityEvidenceContract(mutated),
+  ),
+);
+
+const combinedVisualMutationCases = [
+  harness.replace(
+    'const visualFixture = stage === "50" && index === 0',
+    "const visualFixture = false",
+  ),
+  harness.replace(
+    'item.page_count !==\n              (fileCount === 50 && index === 0 ? 4 : 1)',
+    "item.page_count !== 1",
+  ),
+  harness.replace(
+    "stageControl.completed + (requiresVisualFixture ? 3 : 0)",
+    "stageControl.completed",
+  ),
+  harness.replace(
+    'item.created_question_id === missingVisualQuestionId\n            ? item.status === "needs_more_evidence"',
+    'item.created_question_id === missingVisualQuestionId\n            ? item.status === "pending_review"',
+  ),
+  harness.replace('requireVisual: config.stage === "50"', "requireVisual: false"),
+  harness.replace(
+    '["question_assets", "id", questionAssetRows.map((row) => row.id)]',
+    '["question_assets", "id", []]',
+  ),
+];
+assert(
+  combinedVisualMutationCases.every(
+    (mutated) => !satisfiesCombinedVisualScaleContract(mutated),
   ),
 );
 

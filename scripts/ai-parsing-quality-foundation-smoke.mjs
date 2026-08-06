@@ -97,8 +97,8 @@ assert(
   "reachable parsing must bind runtime candidates and their snapshot fingerprint",
 );
 assert(
-  service.includes('AI_PDF_PROMPT_CONTRACT_VERSION = "ai-pdf-extraction-prompt-v3"') &&
-    service.includes('AI_PDF_SCHEMA_CONTRACT_VERSION = "gemini-ai-pdf-extraction-schema-v2"') &&
+  service.includes('AI_PDF_PROMPT_CONTRACT_VERSION = "ai-pdf-extraction-prompt-v4"') &&
+    service.includes('AI_PDF_SCHEMA_CONTRACT_VERSION = "gemini-ai-pdf-extraction-schema-v3"') &&
     service.includes("AI_PDF_REPAIR_POLICY_VERSION") &&
     service.includes('"source-free-structural-single-source-semantic-v2"'),
   "reachable parsing must expose explicit prompt, schema, and repair-policy versions",

@@ -99,6 +99,8 @@
           },
           "page_refs": {
             "type": "array",
+            "description": "Non-empty source page numbers that visibly contain this question. Never guess or omit page lineage.",
+            "minItems": 1,
             "items": {
               "type": "integer",
               "minimum": 1
@@ -152,7 +154,7 @@
             }
           }
         },
-        "required": ["title", "question_type", "content_html"]
+        "required": ["title", "question_type", "content_html", "page_refs"]
       }
     },
     "warnings": {

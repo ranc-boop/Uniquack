@@ -53,10 +53,30 @@ async function loadResilienceModules() {
 
 const {
   AIProviderError,
+  classifyAIProviderError,
   redactAIProviderDiagnostic,
   safeAIProviderErrorState,
   runWithAIProviderRetry,
 } = await loadResilienceModules();
+
+function extractionValidationClassification() {
+  for (const kind of [
+    "application_schema",
+    "non_json",
+    "response_missing",
+    "zero_importable",
+  ]) {
+    const classified = classifyAIProviderError({
+      error: Object.assign(new Error("private validation detail"), { kind }),
+      operation: "ai_pdf_extraction",
+    });
+    assert(
+      classified.code === "provider_invalid_response" &&
+        classified.retryable === false,
+      `${kind} must map to the bounded invalid-response contract`,
+    );
+  }
+}
 
 async function retryBudgetPreservesPriorProviderFailure() {
   let calls = 0;
@@ -360,6 +380,7 @@ await independentBudgetFailureIsNotMasked();
 await retryAfterIsBounded();
 await repeatedProviderFailureStops();
 await permanentAndNetworkCases();
+extractionValidationClassification();
 redactionCase();
 sourceIntegrationChecks({
   blueprintGeneration: await read("src/lib/teacher-blueprint-generation.ts"),

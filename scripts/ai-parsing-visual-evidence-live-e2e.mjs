@@ -18,6 +18,9 @@ import {
 import {
   VisualEvidenceContractError,
   validateVisualEvidenceLiveObservation,
+  visualEvidenceAttachedSafeIndices,
+  visualEvidenceQuestionSafeIndices,
+  visualEvidenceSafeIndex,
 } from "./ai-parsing-eval/visual-evidence-live-contract.mjs";
 import {
   estimatePDF50ProviderProofCostMicros,
@@ -61,7 +64,7 @@ const visualEnvironment = [
 ];
 const visualEnvironmentLiteral = "DISPOSABLE_AI_PARSING_VISUAL_EVIDENCE";
 const visualCleanupLiteral = "DELETE_AI_PARSING_VISUAL_EVIDENCE_FIXTURES";
-const expectedPriorConservativeMicros = 1_201_470;
+const expectedPriorConservativeMicros = 1_048_584;
 const authorizedTotalMicros = 2_000_000;
 const visualCostCeilingMicros = estimatePDF50ProviderProofCostMicros(proofControl);
 const questionAssetsBucket = "question-assets";
@@ -72,7 +75,7 @@ const expectedTaxonomySnapshot =
 const expectedCandidateSubset =
   "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262";
 const expectedParsingContract =
-  "579f6e308de89b77f681906ec40dc65cd7ba9043351e59894ebfa4c1c65687a1";
+  "5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95";
 
 const allowedFailureCategories = new Set([
   "browser_visual_evidence_failed",
@@ -104,6 +107,8 @@ const allowedFailureStages = new Set([
   "visual_persistence_contract",
 ]);
 const safeProviderErrorCodes = new Set([
+  "ai_job_checkpoint_failed",
+  "ai_job_checkpoint_transient",
   "operation_cancelled",
   "provider_busy",
   "provider_configuration_error",
@@ -132,6 +137,29 @@ const safeWorkerCheckpointStages = new Set([
   "provider_result_checkpointed",
   "queued",
   "source_validated",
+]);
+const safeCheckpointOperations = new Set([
+  "begin_pdf_processing",
+  "checkpoint_provider_result",
+  "checkpoint_stage",
+  "finalize_import_batch",
+  "finish_job",
+  "heartbeat",
+  "read_provider_result",
+]);
+const safeCheckpointReasons = new Set([
+  "checkpoint_authorization",
+  "checkpoint_constraint",
+  "checkpoint_request",
+  "checkpoint_transient",
+  "checkpoint_unknown",
+]);
+const safeCheckpointHttpClassifications = new Set([
+  "4xx",
+  "5xx",
+  "network",
+  "none",
+  "timeout",
 ]);
 
 class VisualHarnessError extends Error {
@@ -226,6 +254,9 @@ function emitSafeProviderTerminalEvidence(job) {
   );
   console.log(
     `VISUAL_PROVIDER_COUNTERS=inference:${numeric(safeResult.providerInferenceAttempts) ?? -1},inferenceRequests:${numeric(safeResult.providerInferenceRequests) ?? -1},network:${numeric(safeResult.providerNetworkRequests) ?? -1},uploads:${numeric(safeResult.providerUploadRequests) ?? -1},cleanup:${numeric(safeResult.providerCleanupRequests) ?? -1},cleanupFailures:${numeric(safeResult.providerCleanupFailures) ?? -1}`,
+  );
+  console.log(
+    `VISUAL_CHECKPOINT_FAILURE=operation:${safeEnum(safeResult.checkpointFailureOperation, safeCheckpointOperations, "none")},reason:${safeEnum(safeResult.checkpointFailureReason, safeCheckpointReasons, "none")},http:${safeEnum(safeResult.checkpointFailureHttpClassification, safeCheckpointHttpClassifications, "none")},sqlStateClass:${/^[0-9A-Z]{2}$/.test(String(safeResult.checkpointFailureSqlStateClass)) ? safeResult.checkpointFailureSqlStateClass : "none"},retryable:${safeResult.checkpointFailureRetryable === true ? "true" : safeResult.checkpointFailureRetryable === false ? "false" : "unknown"}`,
   );
 }
 
@@ -326,7 +357,7 @@ async function directPublicStorageDenied(config, asset) {
   return response.status < 200 || response.status >= 300;
 }
 
-async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }) {
+export async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }) {
   if (
     job.status !== "completed" ||
     job.checkpoint_stage !== "completed" ||
@@ -568,6 +599,9 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
   const quality = asRecord(asRecord(asRecord(batch.summary).aiPdfImport).qualityObservatory);
   const contractEvidence = asRecord(quality.contractEvidence);
   const visualMetrics = asRecord(quality.visualEvidence);
+  const visualInvalidReasonCounts = asRecord(
+    visualMetrics.invalidProposalReasons,
+  );
   const usage = asRecord(quality.usage);
   const hashMatchCount = [
     contractEvidence.fullTaxonomySnapshotSha256 === expectedTaxonomySnapshot,
@@ -585,6 +619,25 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
       ).length,
     0,
   );
+  const safeProposalSummary = questionObservations
+    .map((question) => {
+      const safeIndex = visualEvidenceSafeIndex(question) ?? "UNKNOWN";
+      const required = question.placeholders.filter(
+        (placeholder) => placeholder.required === true,
+      ).length;
+      const decorative = question.placeholders.filter(
+        (placeholder) =>
+          placeholder.required === false &&
+          placeholder.visual_role === "decorative",
+      ).length;
+      return `${safeIndex}:proposed${question.placeholders.length}:required${required}:decorative${decorative}:attached${question.assets.length}`;
+    })
+    .join(",");
+  const missingQuestion = questionObservations.find(
+    (question) => visualEvidenceSafeIndex(question) === "Q3",
+  );
+  const rejectedMissingProposalCount = missingQuestion?.placeholders.length ?? 0;
+  console.log(`VISUAL_SAFE_PROPOSAL_SUMMARY=${safeProposalSummary}`);
   console.log(`VISUAL_PENDING_REVIEW_COUNT=${questionObservations.filter((question) => question.reviewStatus === "pending_review").length}`);
   console.log(`VISUAL_NEEDS_MORE_EVIDENCE_COUNT=${questionObservations.filter((question) => question.reviewStatus === "needs_more_evidence").length}`);
   console.log(`VISUAL_PLACEHOLDER_COUNT=${questionObservations.reduce((total, question) => total + question.placeholders.length, 0)}`);
@@ -595,6 +648,18 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
   console.log(`VISUAL_METRIC_DECORATIVE_SKIPPED=${numeric(visualMetrics.decorativeSkipped) ?? -1}`);
   console.log(`VISUAL_METRIC_BLOCKING_MISSING=${numeric(visualMetrics.blockingMissingRequired) ?? -1}`);
   console.log(`VISUAL_METRIC_INVALID_PROPOSALS=${numeric(visualMetrics.invalidProposals) ?? -1}`);
+  console.log(
+    `VISUAL_INVALID_REASON_COUNTS=${[
+      "decorative_required",
+      "missing_question_lineage",
+      "page_outside_question_lineage",
+      "invalid_source_region",
+      "source_render_unavailable",
+      "invalid_crop_content",
+    ]
+      .map((reason) => `${reason}:${numeric(visualInvalidReasonCounts[reason]) ?? -1}`)
+      .join(",")}`,
+  );
   if (
     contractEvidence.fullTaxonomySnapshotSha256 !== expectedTaxonomySnapshot ||
     contractEvidence.taxonomySnapshotSha256 !== expectedTaxonomySnapshot ||
@@ -610,7 +675,7 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     visualMetrics.validCrops !== 2 ||
     visualMetrics.decorativeSkipped < decorativeProposalCount ||
     visualMetrics.blockingMissingRequired < 1 ||
-    visualMetrics.invalidProposals !== 0
+    visualMetrics.invalidProposals !== rejectedMissingProposalCount
   ) {
     throw new VisualHarnessError(
       "visual_evidence_contract_failed",
@@ -658,11 +723,12 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     sourceHashMatches,
     totalAssetCount: assetRows.length,
     usage,
+    visualInvalidReasonCounts,
     visualMetrics,
   };
 }
 
-async function deniedRequesterEvidence({ anonymous, observation, outsider }) {
+export async function deniedRequesterEvidence({ anonymous, observation, outsider }) {
   let anonymousAssetVisibilityCount = 0;
   let outsiderAssetVisibilityCount = 0;
   let crossOrganizationVisibilityCount = 0;
@@ -712,7 +778,7 @@ async function deniedRequesterEvidence({ anonymous, observation, outsider }) {
   };
 }
 
-async function routeAuthorization({ anonymousContext, observation, outsiderContext, teacherContext }) {
+export async function routeAuthorization({ anonymousContext, observation, outsiderContext, teacherContext }) {
   let anonymousAuthorizedRouteCount = 0;
   let outsiderAuthorizedRouteCount = 0;
   let teacherAuthorizedRouteCount = 0;
@@ -786,14 +852,14 @@ async function openQuestionPreview(page, question, expectedAssetIds) {
   return loaded.size;
 }
 
-async function verifyReviewSurface({ bankId, observation, page, secrets }) {
+export async function verifyReviewSurface({ bankId, observation, page, secrets }) {
   const reviewUrl = `/teacher/banks/${bankId}/review`;
   const attached = observation.questions.filter((question) => question.assets.length > 0);
   const decorative = observation.questions.find(
-    (question) => question.visibleQuestionNumber === "2",
+    (question) => visualEvidenceSafeIndex(question) === "Q2",
   );
   const missing = observation.questions.find(
-    (question) => question.visibleQuestionNumber === "3",
+    (question) => visualEvidenceSafeIndex(question) === "Q3",
   );
 
   const verifyCycle = async (activePage) => {
@@ -825,7 +891,11 @@ async function verifyReviewSurface({ bankId, observation, page, secrets }) {
       has: activePage.getByRole("heading", { exact: true, name: missing.title }),
     });
     const missingText = await missingArticle.innerText();
-    return { count, missingWarningVisible: missingText.includes(missingVisualWarning) };
+    return {
+      count,
+      missingWarningVisible: missingText.includes(missingVisualWarning),
+      visualSafeIndices: attached.map(visualEvidenceSafeIndex).filter(Boolean),
+    };
   };
 
   const initial = await verifyCycle(page);
@@ -840,12 +910,15 @@ async function verifyReviewSurface({ bankId, observation, page, secrets }) {
   }
   return {
     initialAssetCount: initial.count,
+    initialVisualSafeIndices: initial.visualSafeIndices,
     missingWarningVisible:
       initial.missingWarningVisible &&
       reload.missingWarningVisible &&
       remount.missingWarningVisible,
     reloadAssetCount: reload.count,
+    reloadVisualSafeIndices: reload.visualSafeIndices,
     remountAssetCount: remount.count,
+    remountVisualSafeIndices: remount.visualSafeIndices,
   };
 }
 
@@ -1006,6 +1079,31 @@ async function main() {
       Math.ceil((inputTokens * proofControl.inputMicrosPerMillion) / 1_000_000) +
       Math.ceil((outputTokens * proofControl.outputMicrosPerMillion) / 1_000_000);
     console.log(`VISUAL_CONTRACT_PREDICATES=${contract.predicates.length}`);
+    console.log(
+      `VISUAL_EXPECTED_SAFE_SET=${visualEvidenceQuestionSafeIndices.join(",")}`,
+    );
+    console.log(
+      `VISUAL_OBSERVED_SAFE_SET=${observation.questions
+        .map(visualEvidenceSafeIndex)
+        .filter(Boolean)
+        .join(",")}`,
+    );
+    console.log(
+      `VISUAL_EXPECTED_ATTACHED_SAFE_SET=${visualEvidenceAttachedSafeIndices.join(",")}`,
+    );
+    console.log(
+      `VISUAL_OBSERVED_ATTACHED_SAFE_SET=${observation.questions
+        .filter((question) => question.assets.length > 0)
+        .map(visualEvidenceSafeIndex)
+        .filter(Boolean)
+        .join(",")}`,
+    );
+    console.log(
+      `VISUAL_UI_RELOAD_SAFE_SET=${observation.ui.reloadVisualSafeIndices.join(",")}`,
+    );
+    console.log(
+      `VISUAL_UI_REMOUNT_SAFE_SET=${observation.ui.remountVisualSafeIndices.join(",")}`,
+    );
     console.log(`VISUAL_ASSET_COUNT=${observation.totalAssetCount}`);
     console.log(`DECORATIVE_PROPOSAL_COUNT=${observation.decorativeProposalCount}`);
     console.log("DECORATIVE_ATTACHMENT_COUNT=0");
@@ -1064,11 +1162,16 @@ async function main() {
   }
 }
 
-try {
-  await main();
-} catch {
-  clearVisualEnvironment();
-  console.error("AI_PARSING_VISUAL_EVIDENCE_LIVE_E2E=BLOCKED");
-  console.error("FAILURE_CATEGORY=unexpected_failure");
-  process.exitCode = 1;
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+) {
+  try {
+    await main();
+  } catch {
+    clearVisualEnvironment();
+    console.error("AI_PARSING_VISUAL_EVIDENCE_LIVE_E2E=BLOCKED");
+    console.error("FAILURE_CATEGORY=unexpected_failure");
+    process.exitCode = 1;
+  }
 }

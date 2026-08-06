@@ -41,6 +41,7 @@ import {
 } from "@/lib/ai-pdf-import/constants";
 import {
   AIPdfBatchFinalizationContractError,
+  isAIPdfPostPersistenceError,
   runAIPdfPostPersistenceStage,
 } from "@/lib/ai-pdf-import/post-persistence";
 import {
@@ -87,6 +88,7 @@ import {
   AI_PDF_VISUAL_MISSING_WARNING,
   contentSha256,
   deterministicQuestionAssetId,
+  emptyAIPdfVisualProposalRejectionCounts,
   questionRequiresVisualEvidence,
   safeQuestionVisualAlt,
   validateAIPdfVisualProposal,
@@ -319,8 +321,8 @@ type ActiveTag = {
 
 const AI_PDF_RUNTIME_TAXONOMY_FACETS = new Set<string>(RUNTIME_TAXONOMY_FACETS);
 
-const AI_PDF_PROMPT_CONTRACT_VERSION = "ai-pdf-extraction-prompt-v3";
-const AI_PDF_SCHEMA_CONTRACT_VERSION = "gemini-ai-pdf-extraction-schema-v2";
+const AI_PDF_PROMPT_CONTRACT_VERSION = "ai-pdf-extraction-prompt-v4";
+const AI_PDF_SCHEMA_CONTRACT_VERSION = "gemini-ai-pdf-extraction-schema-v3";
 const AI_PDF_REPAIR_POLICY_VERSION =
   "source-free-structural-single-source-semantic-v2";
 
@@ -2895,12 +2897,15 @@ function buildPrompt({
     "- Convert common math text to LaTeX in source fields: sqrt(x) -> \\sqrt{x}, pi -> \\pi when mathematical, fractions -> \\frac{...}{...}.",
     "- If a figure, chart, graph, table image, or diagram is important to the question, create one asset_placeholders entry so the system can crop it from the authoritative PDF and display it in the question image gallery.",
     "- For each visual proposal, identify visual_role, whether it is required, the owning subquestion when present, and a shared_group_key when the same figure supports multiple subquestions.",
+    "- page_refs is required and must contain every visible source page used by the question. Never return an empty page_refs array for a visible question.",
+    "- Every asset placeholder page must also appear in that question's page_refs. Never attach a crop from another question's page.",
     "- Use confidence only for the visual association. Put any crop or ownership ambiguity in ambiguity; never invent a page or bounding region.",
     "- Decorative logos, headers, watermarks, and page furniture must not be attached as question evidence.",
     "- If the image must appear at an exact inline position, also put the exact placeholder string inside content_html or solution_html at that location.",
     "- Inline placeholders are optional because cropped images are also attached as question_assets and shown below the question detail.",
     "- Use placeholder strings exactly like {{asset:figure_1}}. Do not alter braces, spacing, or capitalization.",
-    "- Bboxes are normalized page coordinates from top-left, all values 0..1.",
+    "- Bboxes are normalized page coordinates from top-left. Use a tight box around the actual visual with only a small margin; do not return a whole-page or mostly blank crop.",
+    "- Every bbox value is 0..1, width and height are positive, x + width must be <= 1, and y + height must be <= 1.",
     "- Use question_number only for the visible number from the PDF. Do not invent database question_code values; the server always generates those.",
     "- Do not normalize visible numbers aggressively: 3, 3.1, 3(a), and FRQ 2 are different display values.",
     "- Assign multiple tag_ids when they accurately describe the question. A single question can and should reuse existing tags across several facets when relevant.",
@@ -3094,7 +3099,12 @@ async function buildImportJson({
   supabase: SupabaseLike;
 }) {
   const activeTagIds = new Set(activeTags.map((tag) => tag.id));
-  const existingQuestionCodes = await loadExistingQuestionCodeKeys(supabase);
+  // Durable imports derive question codes from their exact persistence
+  // lineage, so a global code scan is both unnecessary and a transient read
+  // dependency after Provider output has already been checkpointed.
+  const existingQuestionCodes = persistenceLineageKey
+    ? new Set<string>()
+    : await loadExistingQuestionCodeKeys(supabase);
   const usedQuestionCodes = new Set<string>();
   const usedVisibleQuestionNumbers = new Set<string>();
 
@@ -3427,6 +3437,7 @@ async function attachCroppedAssets({
     decorativeSkipped: 0,
     duplicateProposals: 0,
     invalidProposals: 0,
+    invalidProposalReasons: emptyAIPdfVisualProposalRejectionCounts(),
     proposedAssets: extraction.questions.reduce(
       (total, question) => total + question.asset_placeholders.length,
       0,
@@ -3606,6 +3617,7 @@ async function attachCroppedAssets({
       if (placeholder.visual_role === "decorative") {
         if (placeholder.required) {
           visualEvidence.invalidProposals += 1;
+          visualEvidence.invalidProposalReasons.decorative_required += 1;
           requiredProposalFailed = true;
           questionWarnings.push(
             "A visual proposal was both decorative and required; approval remains blocked.",
@@ -3620,9 +3632,15 @@ async function attachCroppedAssets({
         availablePageNumbers: pages.map((page) => page.page),
         pageCount: pages.length,
         placeholder,
+        questionPageRefs: question.page_refs,
       });
       if (renderFailure || !proposalValidation.valid) {
         visualEvidence.invalidProposals += 1;
+        if (renderFailure) {
+          visualEvidence.invalidProposalReasons.source_render_unavailable += 1;
+        } else if (proposalValidation.reason) {
+          visualEvidence.invalidProposalReasons[proposalValidation.reason] += 1;
+        }
         requiredProposalFailed ||= placeholder.required;
         questionWarnings.push("A visual crop proposal could not be validated.");
         continue;
@@ -3637,6 +3655,7 @@ async function attachCroppedAssets({
         await inspectQuestionVisualCrop(cropped);
       } catch {
         visualEvidence.invalidProposals += 1;
+        visualEvidence.invalidProposalReasons.invalid_crop_content += 1;
         requiredProposalFailed ||= placeholder.required;
         questionWarnings.push("A visual crop proposal could not be validated.");
         continue;
@@ -4646,7 +4665,7 @@ async function processAIPdfSinglePass({
     });
   }
 
-  await updateAIPdfBatchProgress(input, {
+  await updateAIPdfBatchProgressBestEffort(input, {
     detail: "AI response parsed and validated.",
     pageCount,
     phase: "provider_response_validated",
@@ -4705,7 +4724,6 @@ async function processAIPdfSinglePass({
   await input.onCheckpointStage?.("drafts_persisted", {
     createdDraftCount: importSummary.createdCount,
     persistenceLineageKey: input.persistenceLineageKey ?? null,
-    qualityObservatory: input.qualityObserver?.snapshot(),
   });
 
   const cropSummary = await runAIPdfPostPersistenceStage({
@@ -4740,6 +4758,7 @@ async function processAIPdfSinglePass({
               decorativeSkipped: 0,
               duplicateProposals: 0,
               invalidProposals: 0,
+              invalidProposalReasons: emptyAIPdfVisualProposalRejectionCounts(),
               proposedAssets: 0,
               requiredQuestions: 0,
               reusedAssets: 0,
@@ -5337,6 +5356,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
                 decorativeSkipped: 0,
                 duplicateProposals: 0,
                 invalidProposals: 0,
+                invalidProposalReasons: emptyAIPdfVisualProposalRejectionCounts(),
                 proposedAssets: 0,
                 requiredQuestions: 0,
                 reusedAssets: 0,
@@ -5394,6 +5414,11 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
         },
       });
     } catch (error) {
+      // Draft persistence and later stages are durable-job failures, not
+      // provider chunk failures. Preserve their bounded error identity so the
+      // worker can retry or stop without issuing another inference request.
+      if (isAIPdfPostPersistenceError(error)) throw error;
+
       const providerError = safeAIProviderErrorState({
         error: classifyAIProviderError({
           error,
@@ -5496,7 +5521,6 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
   await input.onCheckpointStage?.("drafts_persisted", {
     createdDraftCount: aggregate.createdCount,
     persistenceLineageKey: input.persistenceLineageKey ?? null,
-    qualityObservatory: input.qualityObserver?.snapshot(),
   });
 
   return finalSummary;

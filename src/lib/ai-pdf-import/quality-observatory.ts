@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import type { AiPdfInputStrategy } from "@/lib/ai-providers/adapters";
 import type { AIProviderErrorCode } from "@/lib/ai-providers/errors";
 import type { GeminiNativeUsage } from "@/lib/ai-providers/gemini-native";
+import type { AIPdfVisualProposalRejectionCounts } from "@/lib/ai-pdf-import/visual-evidence";
 import type { AIPdfProviderAttemptReason } from "@/lib/ai-providers/ai-pdf-attempt-state";
 
 export const AI_PDF_PARSING_BASELINE_ANCHOR =
@@ -12,8 +13,8 @@ export const AI_PDF_PARSING_BASELINE_ANCHOR =
 export const AI_PDF_PARSING_BASELINE_VERSION =
   "ai-pdf-parsing/f1ce7bc-baseline-v1";
 export const AI_PDF_PARSING_TREATMENT_VERSION =
-  "ai-pdf-parsing/provider-neutral-v4";
-export const AI_PDF_QUALITY_OBSERVATORY_VERSION = 4;
+  "ai-pdf-parsing/provider-neutral-v5";
+export const AI_PDF_QUALITY_OBSERVATORY_VERSION = 5;
 export const AI_PDF_ATTEMPT_REASON_VERSION = 3;
 export const AI_PDF_CONTEXT_ACCOUNTING_VERSION = 2;
 
@@ -84,6 +85,7 @@ export type AIPdfVisualQualityMetrics = {
   decorativeSkipped: number;
   duplicateProposals: number;
   invalidProposals: number;
+  invalidProposalReasons: AIPdfVisualProposalRejectionCounts;
   proposedAssets: number;
   requiredQuestions: number;
   reusedAssets: number;
@@ -530,6 +532,14 @@ export function createAIPdfQualityObservatory(
     decorativeSkipped: 0,
     duplicateProposals: 0,
     invalidProposals: 0,
+    invalidProposalReasons: {
+      decorative_required: 0,
+      invalid_crop_content: 0,
+      invalid_source_region: 0,
+      missing_question_lineage: 0,
+      page_outside_question_lineage: 0,
+      source_render_unavailable: 0,
+    },
     proposedAssets: 0,
     requiredQuestions: 0,
     reusedAssets: 0,
@@ -768,15 +778,46 @@ export function createAIPdfQualityObservatory(
       };
     },
     recordVisualEvidence(next: Partial<AIPdfVisualQualityMetrics>) {
-      visualEvidence = Object.fromEntries(
-        Object.entries(visualEvidence).map(([key, value]) => [
-          key,
-          value +
-            nonNegativeInteger(
-              next[key as keyof AIPdfVisualQualityMetrics],
-            ),
-        ]),
-      ) as AIPdfVisualQualityMetrics;
+      const nextReasons: Partial<AIPdfVisualProposalRejectionCounts> =
+        next.invalidProposalReasons ?? {};
+      visualEvidence = {
+        attachedAssets:
+          visualEvidence.attachedAssets + nonNegativeInteger(next.attachedAssets),
+        blockingMissingRequired:
+          visualEvidence.blockingMissingRequired +
+          nonNegativeInteger(next.blockingMissingRequired),
+        decorativeSkipped:
+          visualEvidence.decorativeSkipped +
+          nonNegativeInteger(next.decorativeSkipped),
+        duplicateProposals:
+          visualEvidence.duplicateProposals +
+          nonNegativeInteger(next.duplicateProposals),
+        invalidProposals:
+          visualEvidence.invalidProposals +
+          nonNegativeInteger(next.invalidProposals),
+        invalidProposalReasons: Object.fromEntries(
+          Object.entries(visualEvidence.invalidProposalReasons).map(
+            ([reason, count]) => [
+              reason,
+              count +
+                nonNegativeInteger(
+                  nextReasons[
+                    reason as keyof AIPdfVisualProposalRejectionCounts
+                  ],
+                ),
+            ],
+          ),
+        ) as AIPdfVisualProposalRejectionCounts,
+        proposedAssets:
+          visualEvidence.proposedAssets + nonNegativeInteger(next.proposedAssets),
+        requiredQuestions:
+          visualEvidence.requiredQuestions +
+          nonNegativeInteger(next.requiredQuestions),
+        reusedAssets:
+          visualEvidence.reusedAssets + nonNegativeInteger(next.reusedAssets),
+        validCrops:
+          visualEvidence.validCrops + nonNegativeInteger(next.validCrops),
+      };
     },
     snapshot,
   };

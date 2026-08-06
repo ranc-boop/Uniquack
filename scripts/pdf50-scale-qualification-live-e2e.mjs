@@ -12,6 +12,19 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
 
+import { buildSyntheticVisualEvidencePdf } from "./ai-parsing-eval/synthetic-visual-pdf.mjs";
+import {
+  validateVisualEvidenceLiveObservation,
+  visualEvidenceAttachedSafeIndices,
+  visualEvidenceQuestionSafeIndices,
+  visualEvidenceSafeIndex,
+} from "./ai-parsing-eval/visual-evidence-live-contract.mjs";
+import {
+  deniedRequesterEvidence,
+  loadVisualEvidence,
+  routeAuthorization,
+  verifyReviewSurface,
+} from "./ai-parsing-visual-evidence-live-e2e.mjs";
 import {
   HarnessError,
   assert,
@@ -60,7 +73,7 @@ const authoritativeTaxonomySnapshotSha256 =
 const authoritativeCandidateSubsetSha256 =
   "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262";
 const authoritativeParsingTreatmentVersion =
-  "ai-pdf-parsing/provider-neutral-v4";
+  "ai-pdf-parsing/provider-neutral-v5";
 const providerInferenceReasons = [
   "FIRST_ATTEMPT",
   "STRUCTURAL_SCHEMA_REPAIR",
@@ -93,6 +106,7 @@ const transientRetryReasons = new Set([
   "TIMEOUT_RETRY",
 ]);
 const retryableScaleProviderCodes = new Set([
+  "ai_pdf_post_persistence_transient",
   "provider_busy",
   "provider_network_error",
   "provider_rate_limited",
@@ -229,7 +243,7 @@ function aggregateQualityObservatories({ batches, completedBatchSet }) {
     scaleAssert(
       snapshot.attemptReasonVersion === 3 &&
         snapshot.contextAccountingVersion === 2 &&
-        snapshot.observatoryVersion === 4 &&
+        snapshot.observatoryVersion === 5 &&
         snapshot.parsingContractVersion ===
           authoritativeParsingTreatmentVersion &&
         records.length > 0 &&
@@ -552,11 +566,12 @@ async function waitForUploadedBurst({ bankId, fileCount, service, teacherId }) {
       if (
         snapshot.items.length !== fileCount ||
         snapshot.items.some(
-          (item) =>
+          (item, index) =>
             !item.import_batch_id ||
             !item.source_asset_id ||
             !item.object_path ||
-            item.page_count !== 1 ||
+            item.page_count !==
+              (fileCount === 50 && index === 0 ? 4 : 1) ||
             !["admission_ready", "queued"].includes(item.status),
         )
       ) {
@@ -571,12 +586,20 @@ async function waitForUploadedBurst({ bankId, fileCount, service, teacherId }) {
 
 function syntheticFiles(fileCount, stage) {
   return Array.from({ length: fileCount }, (_, index) => {
-    const pdf = buildSyntheticPdf({ variant: Number(stage) * 100 + index + 1 });
-    scaleAssert(pdf.byteLength <= 4096, "scale_control_rejected");
+    const visualFixture = stage === "50" && index === 0;
+    const pdf = visualFixture
+      ? buildSyntheticVisualEvidencePdf()
+      : buildSyntheticPdf({ variant: Number(stage) * 100 + index + 1 });
+    scaleAssert(
+      pdf.byteLength <= (visualFixture ? 200_000 : 4096),
+      "scale_control_rejected",
+    );
     return {
       buffer: pdf,
       mimeType: "application/pdf",
-      name: `synthetic-scale-${stage}-${String(index + 1).padStart(2, "0")}.pdf`,
+      name: visualFixture
+        ? "synthetic-scale-50-visual-contract.pdf"
+        : `synthetic-scale-${stage}-${String(index + 1).padStart(2, "0")}.pdf`,
     };
   });
 }
@@ -699,6 +722,12 @@ function safeWorkerValue(value) {
     : "unknown";
 }
 
+function safeWorkerFingerprint(value) {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value)
+    ? value
+    : "unknown";
+}
+
 async function reportSafeWorkerFailure({ jobId, outcome, output, service }) {
   const job = await loadJob({ jobId, service }).catch(() => null);
   console.log(
@@ -732,6 +761,22 @@ function reportSafeJobState({ job, label }) {
       counters.cleanupFailures
     },network:${counters.network},postPersistence:${safeWorkerValue(
       safeResult.postPersistenceFailureStage,
+    )},postPersistenceReason:${safeWorkerValue(
+      safeResult.postPersistenceFailureReason,
+    )},postPersistenceHttp:${safeWorkerValue(
+      safeResult.postPersistenceHttpClassification,
+    )},postPersistenceValidation:${safeWorkerValue(
+      safeResult.postPersistenceValidationCategory,
+    )},postPersistenceRetryable:${
+      safeResult.postPersistenceRetryable === true
+        ? "true"
+        : safeResult.postPersistenceRetryable === false
+          ? "false"
+          : "unknown"
+    },postPersistenceAttempt:${numeric(
+      safeResult.postPersistenceAttemptNumber,
+    ) ?? 0},postPersistenceFingerprint:${safeWorkerFingerprint(
+      safeResult.postPersistenceEvidenceFingerprint,
     )}`,
   );
 }
@@ -993,7 +1038,11 @@ async function runExactWorkerToTerminal({
     const executionCounters = providerCounters(outcomeJob);
     validateProviderCounters({
       counters: executionCounters,
-      requireInference: outcomeJob.status !== "failed",
+      requireInference:
+        outcomeJob.status !== "failed" &&
+        !["provider_result_checkpointed", "normalized", "drafts_persisted"].includes(
+          before.checkpoint_stage,
+        ),
     });
     addCounters(counters, executionCounters);
     scaleAssert(
@@ -1028,7 +1077,7 @@ async function runExactWorkerToTerminal({
     retryWaitReplays += 1;
     onRetryWaitReplay();
     console.log(
-      "PASS retryable Provider wait remained durable and exact-job scoped",
+      "PASS retryable execution wait remained durable and exact-job scoped",
     );
   }
 }
@@ -1381,6 +1430,18 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
   const terminal = drain.terminal;
   const completedItems = terminal.items.filter((item) => item.status === "completed");
   const cancelledItems = terminal.items.filter((item) => item.status === "cancelled");
+  const requiresVisualFixture = stageControl.files === 50;
+  const visualItem = requiresVisualFixture
+    ? terminal.items.find((item) => item.item_index === 0) ?? null
+    : null;
+  scaleAssert(
+    !requiresVisualFixture ||
+      (visualItem?.import_batch_id && visualItem.status === "completed"),
+    "scale_batch_evidence_failed",
+  );
+  const visualBatchId = visualItem?.import_batch_id ?? null;
+  const expectedQuestionCount =
+    stageControl.completed + (requiresVisualFixture ? 3 : 0);
   scaleAssert(
     completedItems.length === stageControl.completed &&
       cancelledItems.length === stageControl.cancelled &&
@@ -1486,9 +1547,25 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
   for (const item of importedItems) {
     importedByBatch.set(item.batch_id, (importedByBatch.get(item.batch_id) ?? 0) + 1);
   }
+  const visualImportedItems = visualBatchId
+    ? importedItems.filter((item) => item.batch_id === visualBatchId)
+    : [];
+  const visualPageRefs = visualImportedItems
+    .map((item) => {
+      const metadata = asRecord(
+        asRecord(item.normalized_question_json).ai_metadata,
+      );
+      return Array.isArray(metadata.page_refs) && metadata.page_refs.length === 1
+        ? numeric(metadata.page_refs[0])
+        : null;
+    })
+    .sort((left, right) => (left ?? 0) - (right ?? 0));
   scaleAssert(
-    importedItems.length === stageControl.completed &&
-      completedBatchIds.every((batchId) => importedByBatch.get(batchId) === 1) &&
+    importedItems.length === expectedQuestionCount &&
+      completedBatchIds.every(
+        (batchId) =>
+          importedByBatch.get(batchId) === (batchId === visualBatchId ? 4 : 1),
+      ) &&
       new Set(importedItems.map((item) => item.persistence_lineage_key)).size ===
         importedItems.length &&
       importedItems.every((item) => {
@@ -1497,9 +1574,11 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
           item.persistence_lineage_key &&
           Array.isArray(metadata.page_refs) &&
           metadata.page_refs.length === 1 &&
-          metadata.page_refs[0] === 1
+          (item.batch_id === visualBatchId || metadata.page_refs[0] === 1)
         );
-      }),
+      }) &&
+      (!visualBatchId ||
+        JSON.stringify(visualPageRefs) === JSON.stringify([1, 2, 3, 4])),
     "scale_batch_evidence_failed",
   );
 
@@ -1515,7 +1594,7 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
       "scale_batch_evidence_failed",
     ) ?? [];
   scaleAssert(
-    questions.length === stageControl.completed &&
+    questions.length === expectedQuestionCount &&
       new Set(questions.map((question) => question.question_code)).size ===
         questions.length &&
       questions.every(
@@ -1540,13 +1619,38 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
         .in("created_question_id", questionIds),
       "scale_batch_evidence_failed",
     ) ?? [];
+  const missingVisualQuestionId = visualBatchId
+    ? visualImportedItems.find((item) => {
+        const metadata = asRecord(
+          asRecord(item.normalized_question_json).ai_metadata,
+        );
+        return Array.isArray(metadata.page_refs) && metadata.page_refs[0] === 3;
+      })?.created_question_id ?? null
+    : null;
   scaleAssert(
-    reviewItems.length === stageControl.completed &&
+    reviewItems.length === expectedQuestionCount &&
       new Set(reviewItems.map((item) => item.created_question_id)).size ===
         reviewItems.length &&
       reviewItems.every(
-        (item) => item.target_bank_id === bankId && item.status === "pending_review",
+        (item) =>
+          item.target_bank_id === bankId &&
+          (item.created_question_id === missingVisualQuestionId
+            ? item.status === "needs_more_evidence"
+            : item.status === "pending_review"),
       ),
+    "scale_batch_evidence_failed",
+  );
+  const reviewStatusCounts = {
+    needsMoreEvidence: reviewItems.filter(
+      (item) => item.status === "needs_more_evidence",
+    ).length,
+    pendingReview: reviewItems.filter((item) => item.status === "pending_review")
+      .length,
+  };
+  scaleAssert(
+    reviewStatusCounts.needsMoreEvidence === (requiresVisualFixture ? 1 : 0) &&
+      reviewStatusCounts.pendingReview ===
+        expectedQuestionCount - (requiresVisualFixture ? 1 : 0),
     "scale_batch_evidence_failed",
   );
   const reviewByQuestion = new Map(
@@ -1670,6 +1774,7 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
     outputTokens: sum(usageRows.map((row) => row.actual_output_tokens)),
     questionIds,
     questions,
+    expectedQuestionCount,
     quality,
     qualityConservativeCostMicros: quality.providerUsageComplete
       ? conservativeUsageCostMicros(
@@ -1679,6 +1784,7 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
       : null,
     reviewBatchIds,
     reviewItemIds: reviewItems.map((item) => item.id),
+    reviewStatusCounts,
     telemetry,
     totalTokens: sum(usageRows.map((row) => row.actual_total_tokens)),
     usageUnknown,
@@ -1688,6 +1794,8 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
         (row) => row.provider_latency_ms ?? row.execution_latency_ms,
       ),
     ),
+    visualBatchId,
+    visualItem,
   };
 }
 
@@ -1802,12 +1910,100 @@ async function verifyTeacherUI({
   const reviewText = await page.locator("body").innerText();
   assertSafeBrowserText(reviewText, secrets);
   scaleAssert(
-    evidence.questions.length === expected.completed &&
+    evidence.questions.length === evidence.expectedQuestionCount &&
       reviewText.includes(evidence.questions[0].title),
     "browser_scale_state_failed",
   );
   console.log("BROWSER_CHECK_RESULT=review_pending_drafts:PASS");
   console.log("PASS Teacher UI, reload, and fresh remount retained durable state");
+}
+
+async function verifyCombinedVisualGate({
+  anonymousContext,
+  bankId,
+  config,
+  evidence,
+  files,
+  outsider,
+  outsiderContext,
+  page,
+  requireVisual,
+  secrets,
+  service,
+  teacherContext,
+}) {
+  if (!evidence.visualItem || !evidence.visualBatchId) {
+    scaleAssert(!requireVisual, "visual_evidence_contract_failed");
+    return null;
+  }
+  const visualJob = await loadJob({
+    jobId: evidence.visualItem.ai_provider_job_id,
+    service,
+  });
+  const observation = await loadVisualEvidence({
+    bankId,
+    config,
+    fixture: { item: evidence.visualItem },
+    job: visualJob,
+    pdf: files[0].buffer,
+    service,
+  });
+  const anonymous = createClient(config.url, config.anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  Object.assign(
+    observation,
+    await deniedRequesterEvidence({ anonymous, observation, outsider }),
+  );
+  Object.assign(
+    observation,
+    await routeAuthorization({
+      anonymousContext,
+      observation,
+      outsiderContext,
+      teacherContext,
+    }),
+  );
+  observation.ui = await verifyReviewSurface({
+    bankId,
+    observation,
+    page,
+    secrets,
+  });
+  observation.secretOrRawContentEmissionCount = 0;
+  const contract = validateVisualEvidenceLiveObservation(observation);
+
+  const observedSafeSet = observation.questions
+    .map(visualEvidenceSafeIndex)
+    .filter(Boolean);
+  const observedAttachedSafeSet = observation.questions
+    .filter((question) => question.assets.length > 0)
+    .map(visualEvidenceSafeIndex)
+    .filter(Boolean);
+  console.log(`VISUAL_CONTRACT_PREDICATES=${contract.predicates.length}`);
+  console.log(
+    `VISUAL_EXPECTED_SAFE_SET=${visualEvidenceQuestionSafeIndices.join(",")}`,
+  );
+  console.log(`VISUAL_OBSERVED_SAFE_SET=${observedSafeSet.join(",")}`);
+  console.log(
+    `VISUAL_EXPECTED_ATTACHED_SAFE_SET=${visualEvidenceAttachedSafeIndices.join(",")}`,
+  );
+  console.log(
+    `VISUAL_OBSERVED_ATTACHED_SAFE_SET=${observedAttachedSafeSet.join(",")}`,
+  );
+  console.log(
+    `VISUAL_UI_RELOAD_SAFE_SET=${observation.ui.reloadVisualSafeIndices.join(",")}`,
+  );
+  console.log(
+    `VISUAL_UI_REMOUNT_SAFE_SET=${observation.ui.remountVisualSafeIndices.join(",")}`,
+  );
+  console.log(`VISUAL_ASSET_COUNT=${observation.totalAssetCount}`);
+  console.log("VISUAL_DECORATIVE_ATTACHMENT_COUNT=0");
+  console.log(
+    `VISUAL_BLOCKING_MISSING_REQUIRED=${observation.visualMetrics.blockingMissingRequired}`,
+  );
+  console.log("QUESTION_VISUAL_ATTACHMENT_RESTORED_AND_LIVE_VALIDATED");
+  return observation;
 }
 
 async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
@@ -1818,6 +2014,7 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
   const jobIds = items.map((item) => item.ai_provider_job_id).filter(Boolean);
   const objectPaths = items.map((item) => item.object_path).filter(Boolean);
   let questionIds = [];
+  let questionAssetRows = [];
   let reviewBatchIds = [];
 
   if (batchIds.length) {
@@ -1837,6 +2034,15 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
       .in("source_record_id", batchIds);
     if (reviews.error) failures.push("collect_review_batches");
     else reviewBatchIds = (reviews.data ?? []).map((row) => row.id);
+  }
+
+  if (questionIds.length) {
+    const assets = await service
+      .from("question_assets")
+      .select("id, storage_bucket, storage_path")
+      .in("question_id", questionIds);
+    if (assets.error) failures.push("collect_question_assets");
+    else questionAssetRows = assets.data ?? [];
   }
 
   if (reviewBatchIds.length) {
@@ -1863,6 +2069,20 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
       () => service.from("questions").delete().in("id", questionIds),
       failures,
       "questions",
+    );
+  }
+  const questionAssetObjectsByBucket = new Map();
+  for (const asset of questionAssetRows) {
+    questionAssetObjectsByBucket.set(asset.storage_bucket, [
+      ...(questionAssetObjectsByBucket.get(asset.storage_bucket) ?? []),
+      asset.storage_path,
+    ]);
+  }
+  for (const [bucket, paths] of questionAssetObjectsByBucket) {
+    await safeDelete(
+      () => service.storage.from(bucket).remove(paths),
+      failures,
+      "question_asset_storage",
     );
   }
   if (burstId) {
@@ -1972,6 +2192,7 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
     ["ai_provider_jobs", "id", jobIds],
     ["import_batches", "id", batchIds],
     ["questions", "id", questionIds],
+    ["question_assets", "id", questionAssetRows.map((row) => row.id)],
     ["review_batches", "id", reviewBatchIds],
     ["organization_members", "id", fixtures?.organizationMemberIds ?? []],
     ["profiles", "id", fixtures?.profileIds ?? []],
@@ -1997,6 +2218,18 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
       residueCount += 1;
     }
   }
+  for (const asset of questionAssetRows) {
+    const slash = asset.storage_path.lastIndexOf("/");
+    const directory = asset.storage_path.slice(0, slash);
+    const filename = asset.storage_path.slice(slash + 1);
+    const listed = await service.storage
+      .from(asset.storage_bucket)
+      .list(directory, { search: filename });
+    if (listed.error) failures.push("verify_question_asset_storage");
+    else if ((listed.data ?? []).some((item) => item.name === filename)) {
+      residueCount += 1;
+    }
+  }
   for (const userId of fixtures?.authUserIds ?? []) {
     const result = await service.auth.admin.getUserById(userId);
     if (!result.error && result.data.user) residueCount += 1;
@@ -2006,6 +2239,7 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
 
 async function main() {
   const control = await loadPDF50ScaleQualificationControl();
+  let anonymousContext = null;
   let bankId = null;
   let browser = null;
   let cleanup = { ok: true, residueCount: 0 };
@@ -2014,12 +2248,14 @@ async function main() {
   let failure = null;
   let fixtures = null;
   let outsider = null;
+  let outsiderContext = null;
   let page = null;
   let providerWorkStarted = false;
   let server = null;
   let service = null;
   let snapshot = null;
   let teacher = null;
+  let teacherContext = null;
   let drain = null;
   const internalToken = randomBytes(48).toString("base64url");
   const runId = randomBytes(8).toString("hex");
@@ -2077,8 +2313,18 @@ async function main() {
       executablePath: config.edgePath,
       headless: true,
     });
-    const context = await browser.newContext();
-    page = await context.newPage();
+    teacherContext = await browser.newContext({ baseURL: server.origin });
+    outsiderContext = await browser.newContext({ baseURL: server.origin });
+    anonymousContext = await browser.newContext({ baseURL: server.origin });
+    page = await teacherContext.newPage();
+    const outsiderPage = await outsiderContext.newPage();
+    await signInThroughBrowser(
+      outsiderPage,
+      server.origin,
+      outsider.actor,
+      "/teacher",
+    );
+    await outsiderPage.close();
 
     console.log("PHASE=browser_burst_admission");
     snapshot = await uploadBurstThroughBrowser({
@@ -2158,6 +2404,20 @@ async function main() {
       origin: server.origin,
       page,
       secrets,
+    });
+    await verifyCombinedVisualGate({
+      anonymousContext,
+      bankId,
+      config,
+      evidence,
+      files: snapshot.files,
+      outsider,
+      outsiderContext,
+      page,
+      requireVisual: config.stage === "50",
+      secrets,
+      service,
+      teacherContext,
     });
 
     console.log(`ADMITTED_ITEMS=${config.stageControl.files}`);
@@ -2331,7 +2591,15 @@ async function main() {
           : "UNKNOWN"
       }`,
     );
-    console.log("REVIEW_DRAFT_STATE=pending_review");
+    console.log(
+      `REVIEW_DRAFT_PENDING_REVIEW_COUNT=${evidence.reviewStatusCounts.pendingReview}`,
+    );
+    console.log(
+      `REVIEW_DRAFT_NEEDS_MORE_EVIDENCE_COUNT=${evidence.reviewStatusCounts.needsMoreEvidence}`,
+    );
+    console.log(
+      `REVIEW_DRAFT_STATE=${evidence.reviewStatusCounts.needsMoreEvidence ? "pending_review+needs_more_evidence" : "pending_review"}`,
+    );
     console.log(`DUPLICATE_COUNT=${evidence.duplicateCount}`);
     console.log(`BANK_APPROVAL_COUNT=${evidence.bankQuestionCount}`);
     console.log("PUBLICATION_COUNT=0");
@@ -2350,6 +2618,9 @@ async function main() {
   } catch (error) {
     failure = error;
   } finally {
+    await anonymousContext?.close().catch(() => undefined);
+    await outsiderContext?.close().catch(() => undefined);
+    await teacherContext?.close().catch(() => undefined);
     if (browser) await browser.close().catch(() => undefined);
     const serverStopped = await stopOwnedTemporaryServer(server);
     console.log(`LOCAL_SERVER_CLEANUP=${serverStopped ? "PASS" : "FAIL"}`);

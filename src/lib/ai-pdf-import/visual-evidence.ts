@@ -19,6 +19,29 @@ export const aiPdfVisualRoles = [
 
 export type AIPdfVisualRole = (typeof aiPdfVisualRoles)[number];
 
+export const aiPdfVisualProposalRejectionReasons = [
+  "decorative_required",
+  "missing_question_lineage",
+  "page_outside_question_lineage",
+  "invalid_source_region",
+  "source_render_unavailable",
+  "invalid_crop_content",
+] as const;
+
+export type AIPdfVisualProposalRejectionReason =
+  (typeof aiPdfVisualProposalRejectionReasons)[number];
+
+export type AIPdfVisualProposalRejectionCounts = Record<
+  AIPdfVisualProposalRejectionReason,
+  number
+>;
+
+export function emptyAIPdfVisualProposalRejectionCounts(): AIPdfVisualProposalRejectionCounts {
+  return Object.fromEntries(
+    aiPdfVisualProposalRejectionReasons.map((reason) => [reason, 0]),
+  ) as AIPdfVisualProposalRejectionCounts;
+}
+
 const VISUAL_ALT_BY_ROLE: Record<AIPdfVisualRole, string> = {
   answer_figure: "Answer figure",
   decorative: "Decorative image",
@@ -65,16 +88,23 @@ export function validateAIPdfVisualProposal({
   availablePageNumbers,
   pageCount,
   placeholder,
+  questionPageRefs,
 }: {
   availablePageNumbers?: number[];
   pageCount: number;
   placeholder: AIPdfAssetPlaceholder;
+  questionPageRefs: number[];
 }) {
   const { bbox } = placeholder;
   const availablePages = availablePageNumbers?.length
     ? new Set(availablePageNumbers)
     : null;
-  const valid =
+  const lineagePages = new Set(
+    questionPageRefs.filter(
+      (page) => Number.isInteger(page) && page >= 1 && page <= pageCount,
+    ),
+  );
+  const validSourceRegion =
     Number.isInteger(placeholder.page) &&
     placeholder.page >= 1 &&
     (availablePages
@@ -89,9 +119,17 @@ export function validateAIPdfVisualProposal({
     bbox.x + bbox.width <= 1 &&
     bbox.y + bbox.height <= 1;
 
+  const reason: AIPdfVisualProposalRejectionReason | null = !lineagePages.size
+    ? "missing_question_lineage"
+    : !lineagePages.has(placeholder.page)
+      ? "page_outside_question_lineage"
+      : !validSourceRegion
+        ? "invalid_source_region"
+        : null;
+
   return {
-    reason: valid ? null : "invalid_source_region",
-    valid,
+    reason,
+    valid: reason === null,
   } as const;
 }
 

@@ -32,6 +32,7 @@ import {
   checkpointAIProviderJobProviderResult,
   checkpointAIProviderJobStage,
   finishAIProviderJobFence,
+  getAIProviderJobCheckpointFailureDiagnostic,
   persistenceFenceForJob,
   heartbeatAIProviderJobFence,
   loadAIProviderJobProviderResult,
@@ -56,6 +57,7 @@ import { createAIPdfQualityObservatory } from "@/lib/ai-pdf-import/quality-obser
 import { releaseAIPdfBurstAdmissionJobs } from "@/lib/ai-pdf-import/burst-admission";
 import {
   getAIPdfBatchFinalizationFailure,
+  getAIPdfPostPersistenceFailureDiagnostic,
   getAIPdfPostPersistenceFailureStage,
 } from "@/lib/ai-pdf-import/post-persistence";
 import { generateTeacherBlueprintReviewDrafts } from "@/lib/teacher-blueprint-generation";
@@ -633,7 +635,9 @@ async function runAIPdfExtractJob({
     if (
       !(error instanceof AIProviderJobFenceLostError) &&
       !(error instanceof TrustedProviderCheckpointInterruptionError) &&
-      !(error instanceof Error && error.message === STALE_FENCE_REJECTED)
+      !(error instanceof Error && error.message === STALE_FENCE_REJECTED) &&
+      !getAIProviderJobCheckpointFailureDiagnostic(error) &&
+      !getAIPdfPostPersistenceFailureStage(error)
     ) {
       await recordAIPdfProviderFailure({ error, input });
     }
@@ -1066,33 +1070,76 @@ async function executeClaimedJob({
     const providerExecutionSummary = providerExecution.snapshot();
     const postPersistenceFailureStage =
       getAIPdfPostPersistenceFailureStage(error);
+    const checkpointDiagnostic =
+      getAIProviderJobCheckpointFailureDiagnostic(error);
+    const postPersistenceDiagnostic =
+      getAIPdfPostPersistenceFailureDiagnostic({
+        attemptNumber: job.execution_attempt_count,
+        error,
+      });
     const batchFinalizationFailure = getAIPdfBatchFinalizationFailure(error);
-    const classified = classifyAIProviderError({
-      error,
-      operation:
-        job.job_kind === "ai_pdf_extract" || job.job_kind === "ai_pdf_coverage_recovery"
-          ? "ai_pdf_extraction"
-          : "blueprint_generation",
-    });
-    const safe = safeAIProviderErrorState({ error: classified });
+    const classified = postPersistenceDiagnostic || checkpointDiagnostic
+      ? null
+      : classifyAIProviderError({
+          error,
+          operation:
+            job.job_kind === "ai_pdf_extract" ||
+            job.job_kind === "ai_pdf_coverage_recovery"
+              ? "ai_pdf_extraction"
+              : "blueprint_generation",
+        });
+    const safe = classified
+      ? safeAIProviderErrorState({ error: classified })
+      : null;
+    const retryable =
+      postPersistenceDiagnostic?.retryable ??
+      checkpointDiagnostic?.retryable ??
+      classified?.retryable ??
+      false;
     const canRetry =
-      classified.retryable &&
+      retryable &&
       job.execution_attempt_count < job.max_execution_attempts &&
       queueRetryDelayMs(job.execution_attempt_count) !== null;
+    const safeErrorCode =
+      postPersistenceDiagnostic?.safeErrorCode ??
+      checkpointDiagnostic?.safeErrorCode ??
+      safe?.safeErrorCode ??
+      "unknown_provider_error";
 
     const finished = await finishJob({
       job,
       leaseOwner,
       providerAttemptCount: providerExecutionSummary.providerInferenceAttempts,
-      safeErrorCode: safe.safeErrorCode,
+      safeErrorCode,
       safeMessage: canRetry
         ? "The AI service is temporarily busy. Your work is safe and will retry automatically."
         : safeWorkerFailureMessage(),
       safeResult: {
+        checkpointFailureHttpClassification:
+          checkpointDiagnostic?.httpClassification ?? null,
+        checkpointFailureOperation: checkpointDiagnostic?.operation ?? null,
+        checkpointFailureReason: checkpointDiagnostic?.reason ?? null,
+        checkpointFailureRetryable: checkpointDiagnostic?.retryable ?? null,
+        checkpointFailureSqlStateClass:
+          checkpointDiagnostic?.sqlStateClass ?? null,
         batchFinalizationFailureReason: batchFinalizationFailure?.reason ?? null,
         batchFinalizationSummaryBytes:
           batchFinalizationFailure?.summaryBytes ?? null,
         postPersistenceFailureStage,
+        postPersistenceAttemptNumber:
+          postPersistenceDiagnostic?.attemptNumber ?? null,
+        postPersistenceEvidenceFingerprint:
+          postPersistenceDiagnostic?.evidenceFingerprint ?? null,
+        postPersistenceFailureReason:
+          postPersistenceDiagnostic?.reason ?? null,
+        postPersistenceHttpClassification:
+          postPersistenceDiagnostic?.httpClassification ?? null,
+        postPersistenceRetryable:
+          postPersistenceDiagnostic?.retryable ?? null,
+        postPersistenceSqlStateClass:
+          postPersistenceDiagnostic?.sqlStateClass ?? null,
+        postPersistenceValidationCategory:
+          postPersistenceDiagnostic?.validationCategory ?? null,
         providerCleanupFailures: providerExecutionSummary.providerCleanupFailures,
         providerCleanupRequests: providerExecutionSummary.providerCleanupRequests,
         providerInputBytesMax: providerExecutionSummary.providerInputBytesMax,
@@ -1117,7 +1164,7 @@ async function executeClaimedJob({
           "provider_rate_limited",
           "provider_timeout",
           "provider_network_error",
-        ].includes(classified.code)
+        ].includes(classified?.code ?? "")
           ? "unavailable"
           : "closed",
         providerCallCount: providerExecutionSummary.providerInferenceRequests,
@@ -1126,7 +1173,7 @@ async function executeClaimedJob({
           providerExecutionSummary.providerInferenceAttempts - 1,
         ),
       },
-      safeErrorCode: safe.safeErrorCode,
+      safeErrorCode,
       supabase,
     }).catch(() => undefined);
 

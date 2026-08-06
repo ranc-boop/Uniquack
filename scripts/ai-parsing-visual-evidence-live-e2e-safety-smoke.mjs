@@ -1,22 +1,136 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import sharp from "sharp";
 
 import { buildSyntheticVisualEvidencePdf } from "./ai-parsing-eval/synthetic-visual-pdf.mjs";
+import { loadAuthoritativeTaxonomySourceInventory } from "./ai-parsing-eval/lib/taxonomy-source-inventory.mjs";
 import {
   validateVisualEvidenceLiveObservation,
 } from "./ai-parsing-eval/visual-evidence-live-contract.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const [harness, launcher, sharedHarness, sharedSafety] = await Promise.all([
+const expectedParsingContractSha256 =
+  "5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95";
+const nativeRequire = createRequire(import.meta.url);
+const jiti = nativeRequire("jiti")(import.meta.url, {
+  alias: { "@": resolve(root, "src") },
+  cache: false,
+});
+const {
+  buildRuntimeTaxonomyCandidateSubset,
+  buildRuntimeTaxonomySnapshot,
+  serializeRuntimeTaxonomyCandidates,
+} = jiti("../src/lib/tags/runtime-taxonomy-snapshot.ts");
+const [
+  harness,
+  launcher,
+  sharedHarness,
+  sharedSafety,
+  importService,
+  qualityObservatory,
+  structuredOutput,
+] = await Promise.all([
   readFile(resolve(root, "scripts/ai-parsing-visual-evidence-live-e2e.mjs"), "utf8"),
   readFile(resolve(root, "scripts/run-ai-parsing-visual-evidence-live-e2e.ps1"), "utf8"),
   readFile(resolve(root, "scripts/pdf50-end-to-end-live-e2e.mjs"), "utf8"),
   readFile(resolve(root, "scripts/pdf50-end-to-end-live-e2e-safety-smoke.mjs"), "utf8"),
+  readFile(resolve(root, "src/lib/ai-pdf-import/service.ts"), "utf8"),
+  readFile(resolve(root, "src/lib/ai-pdf-import/quality-observatory.ts"), "utf8"),
+  readFile(resolve(root, "src/lib/ai-providers/gemini-structured-output.ts"), "utf8"),
 ]);
+const providerSchema = JSON.parse(
+  await readFile(
+    resolve(root, "src/lib/ai-providers/gemini-ai-pdf-extraction.schema.json"),
+    "utf8",
+  ),
+);
+
+function contractConstant(source, name) {
+  const match = source.match(
+    new RegExp(`${name}\\s*=\\s*(?:\\r?\\n\\s*)?["']([^"']+)["']`),
+  );
+  assert.ok(match, `missing versioned contract constant ${name}`);
+  return match[1];
+}
+
+function parsingContractSha256(components) {
+  const fingerprints = Object.fromEntries(
+    Object.entries(components)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => {
+        const bytes = Buffer.from(value, "utf8");
+        return [
+          key,
+          {
+            byteLength: bytes.byteLength,
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+          },
+        ];
+      }),
+  );
+  return createHash("sha256")
+    .update(JSON.stringify(fingerprints))
+    .digest("hex");
+}
+
+assert(
+  structuredOutput.includes('mode: "json_schema"') &&
+    structuredOutput.includes('transport: "response_json_schema"') &&
+    structuredOutput.includes("schema: GEMINI_AI_PDF_EXTRACTION_SCHEMA"),
+  "Gemini extraction output contract wrapper drifted",
+);
+const taxonomyInventory = await loadAuthoritativeTaxonomySourceInventory(root);
+const taxonomySnapshot = buildRuntimeTaxonomySnapshot({
+  ...taxonomyInventory.catalog,
+  edges: taxonomyInventory.edges,
+});
+assert.equal(taxonomySnapshot.valid, true);
+const candidateSubset = buildRuntimeTaxonomyCandidateSubset(
+  taxonomySnapshot.candidates,
+);
+const computedParsingContractSha256 = parsingContractSha256({
+  candidateSubset: candidateSubset.canonicalJson,
+  fullTaxonomySnapshot: taxonomySnapshot.canonicalJson,
+  outputContract: JSON.stringify({
+    mode: "json_schema",
+    schema: providerSchema,
+    transport: "response_json_schema",
+  }),
+  promptContractVersion: contractConstant(
+    importService,
+    "AI_PDF_PROMPT_CONTRACT_VERSION",
+  ),
+  repairPolicyVersion: contractConstant(
+    importService,
+    "AI_PDF_REPAIR_POLICY_VERSION",
+  ),
+  retrievalAlgorithmVersion: candidateSubset.version,
+  schemaContractVersion: contractConstant(
+    importService,
+    "AI_PDF_SCHEMA_CONTRACT_VERSION",
+  ),
+  taxonomyCandidates: serializeRuntimeTaxonomyCandidates(
+    candidateSubset.candidates,
+  ),
+  treatmentVersion: contractConstant(
+    qualityObservatory,
+    "AI_PDF_PARSING_TREATMENT_VERSION",
+  ),
+});
+assert.equal(
+  taxonomySnapshot.sha256,
+  "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+);
+assert.equal(
+  candidateSubset.sha256,
+  "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262",
+);
+assert.equal(computedParsingContractSha256, expectedParsingContractSha256);
 
 for (const name of [
   "AI_PARSING_VISUAL_E2E_ENVIRONMENT",
@@ -37,8 +151,26 @@ assert(
   !/(?:dotenv|\.env\.local|Get-Content\s+[^\n]*\.env)/i.test(launcher),
   "launcher must not load environment files",
 );
-assert(harness.includes("expectedPriorConservativeMicros = 1_201_470"));
+assert(harness.includes("expectedPriorConservativeMicros = 1_048_584"));
 assert(harness.includes("authorizedTotalMicros = 2_000_000"));
+assert(
+  harness.includes(
+    `"${expectedParsingContractSha256}"`,
+  ),
+  "visual harness must bind the versioned parsing contract",
+);
+assert(
+  importService.includes(
+    'AI_PDF_PROMPT_CONTRACT_VERSION = "ai-pdf-extraction-prompt-v4"',
+  ) &&
+    importService.includes(
+      'AI_PDF_SCHEMA_CONTRACT_VERSION = "gemini-ai-pdf-extraction-schema-v3"',
+    ) &&
+    qualityObservatory.includes(
+      '"ai-pdf-parsing/provider-neutral-v5"',
+    ),
+  "runtime prompt, schema and treatment versions must advance together",
+);
 assert(harness.includes("runLocalWorkerOnce({"));
 assert(harness.includes("providerInferenceAttempts !== 1"));
 assert(harness.includes("providerInferenceRequests !== 1"));
@@ -51,6 +183,10 @@ assert(harness.includes("element.addEventListener(\"load\""));
 assert(harness.includes("browser_asset_render_contract"));
 assert(harness.includes("emitSafeProviderTerminalEvidence(job)"));
 assert(harness.includes("VISUAL_PROVIDER_SAFE_ERROR_CODE="));
+assert(harness.includes('"ai_job_checkpoint_transient"'));
+assert(harness.includes("VISUAL_CHECKPOINT_FAILURE=operation:"));
+assert(harness.includes("safeCheckpointOperations"));
+assert(harness.includes("safeCheckpointReasons"));
 assert(!harness.includes("job.safe_message"));
 assert(harness.includes("await loadingTask.destroy();"));
 assert(!harness.includes("await document.destroy();"));
@@ -65,7 +201,13 @@ assert(harness.includes("VISUAL_FAILURE_STAGE=${safeFailureStage(failure)}"));
 assert(harness.includes("VISUAL_IMPORTED_ITEM_COUNT="));
 assert(harness.includes("VISUAL_HASH_MATCH_COUNT="));
 assert(harness.includes("VISUAL_METRIC_INVALID_PROPOSALS="));
+assert(harness.includes("VISUAL_INVALID_REASON_COUNTS="));
 assert(!/console\.(?:log|error)\([^\n]*(?:email|password|serviceRoleKey|anonKey|storage_path|object_path)/.test(harness));
+assert(
+  providerSchema.properties.questions.items.required.includes("page_refs"),
+  "Gemini visual extraction must require question page lineage",
+);
+assert.equal(providerSchema.properties.questions.items.properties.page_refs.minItems, 1);
 
 assert(
   sharedHarness.includes("collect_question_assets") &&
@@ -216,18 +358,33 @@ function validObservation() {
           status: "needs_more_evidence",
         },
       },
-      attachedQuestion(4, 4, "question_4_shared_table"),
+      {
+        ...attachedQuestion(4, 4, "question_4_shared_table"),
+        visibleQuestionNumber: "4 (parts a and b)",
+      },
     ],
     secretOrRawContentEmissionCount: 0,
     sourceAssetId,
     sourceHashMatches: true,
     teacherAuthorizedRouteCount: 2,
     totalAssetCount: 2,
+    visualInvalidReasonCounts: {
+      decorative_required: 0,
+      invalid_crop_content: 0,
+      invalid_source_region: 0,
+      missing_question_lineage: 0,
+      page_outside_question_lineage: 0,
+      source_render_unavailable: 0,
+    },
+    visualMetrics: { invalidProposals: 0 },
     ui: {
       initialAssetCount: 2,
+      initialVisualSafeIndices: ["Q1", "Q4"],
       missingWarningVisible: true,
       reloadAssetCount: 2,
+      reloadVisualSafeIndices: ["Q1", "Q4"],
       remountAssetCount: 2,
+      remountVisualSafeIndices: ["Q1", "Q4"],
     },
   };
 }
@@ -241,19 +398,48 @@ assert.equal(
   validateVisualEvidenceLiveObservation(explicitDecorativeSkip).valid,
   true,
 );
+const rejectedMissingProposal = validObservation();
+rejectedMissingProposal.questions[2].placeholders = [
+  { page: 3, required: true, visual_role: "diagram" },
+];
+rejectedMissingProposal.visualMetrics.invalidProposals = 1;
+rejectedMissingProposal.visualInvalidReasonCounts.invalid_crop_content = 1;
+assert.equal(
+  validateVisualEvidenceLiveObservation(rejectedMissingProposal).valid,
+  true,
+);
 
 const mutations = [
   ["historical_source_drift", (value) => { value.sourceHashMatches = false; }],
+  ["missing_safe_question", (value) => { value.questions.pop(); }],
+  ["duplicate_safe_question", (value) => { value.questions[3].pageRefs = [1]; }],
+  ["unexpected_safe_question", (value) => { value.questions[3].pageRefs = [5]; }],
+  ["visible_number_lineage_mismatch", (value) => { value.questions[3].visibleQuestionNumber = "7"; }],
   ["wrong_question_asset", (value) => { value.questions[0].assets[0].questionId = value.questions[1].questionId; }],
   ["decorative_asset_attached", (value) => { value.questions[1].assets = structuredClone(value.questions[0].assets); }],
   ["decorative_misclassified_required", (value) => { value.questions[1].placeholders = [{ page: 2, required: true, visual_role: "diagram" }]; }],
   ["missing_visual_not_blocked", (value) => { value.questions[2].reviewStatus = "pending_review"; }],
-  ["shared_group_removed", (value) => { value.questions[3].visualEvidence.records[0].sharedGroupKey = null; }],
+  ["missing_visual_proposal_misclassified", (value) => {
+    value.questions[2].placeholders = [
+      { page: 3, required: false, visual_role: "decorative" },
+    ];
+    value.visualMetrics.invalidProposals = 1;
+  }],
+  ["unaccounted_invalid_proposal", (value) => { value.visualMetrics.invalidProposals = 1; }],
+  ["missing_lineage_rejection_hidden", (value) => {
+    value.visualMetrics.invalidProposals = 1;
+    value.visualInvalidReasonCounts.missing_question_lineage = 1;
+  }],
+  ["rejection_reason_total_drift", (value) => {
+    value.visualInvalidReasonCounts.invalid_source_region = 1;
+  }],
+  ["invalid_shared_group", (value) => { value.questions[3].visualEvidence.records[0].sharedGroupKey = ""; }],
   ["invalid_crop_bounds", (value) => { value.questions[0].visualEvidence.records[0].bbox.width = 2; }],
   ["nondeterministic_asset", (value) => { value.questions[0].visualEvidence.records[0].deterministicIdentityMatches = false; }],
   ["public_asset_route", (value) => { value.anonymousAuthorizedRouteCount = 1; }],
   ["orphan_asset", (value) => { value.orphanAssetCount = 1; }],
   ["review_gate_bypassed", (value) => { value.assignmentCount = 1; }],
+  ["reload_visual_set_changed", (value) => { value.ui.reloadVisualSafeIndices = ["Q1", "Q3"]; }],
 ];
 
 for (const [label, mutate] of mutations) {
