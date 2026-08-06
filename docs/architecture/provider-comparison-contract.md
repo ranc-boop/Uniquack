@@ -29,8 +29,9 @@ different runtime taxonomy snapshot SHA. The authoritative source replay is the
 seed plus 0056 under their real conflict and assignability semantics, not the
 0056 payload alone. It produces the complete source snapshot
 `05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe`.
-Paid work remains inactive until Current Clean independently produces the exact
-same snapshot through the credential-safe read-only parity gate.
+Current Clean independently produced the exact same snapshot through the
+credential-safe read-only parity gate. That prerequisite is closed, but no
+valid paired baseline/treatment comparison has yet run.
 
 ## Measurements
 
@@ -69,6 +70,7 @@ candidates, adopt only when quality is non-inferior and the efficiency change
 is material under the same fixture and budget. A lower cost cannot compensate
 for weaker review safety, lineage, answer validity, or visual fidelity.
 
-No comparison Provider call was made in this work. The current deterministic
-result is `SYNTHETIC_EVALUATOR_SANITY_BASELINE_ONLY`, not Provider-performance
-evidence.
+The scale mission made bounded Gemini calls, but those runs were not a frozen
+paired comparison and cannot be repurposed as one. The current comparison
+result remains `NOT_RUN`; deterministic Golden output is Provider-neutral
+system evidence, not Provider-performance evidence.

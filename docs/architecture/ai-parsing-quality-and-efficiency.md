@@ -13,10 +13,11 @@ environment contracts. The immutable baseline is
 `ai-pdf-parsing/provider-neutral-v3`.
 
 No real Provider call or hosted mutation was performed during the source phase.
-PDF50 remains only partially scale-qualified because the prior authorized run
-completed 23 of 50 jobs. Real image-rich visual evidence remains a later live
-gate; taxonomy source provenance is resolved, while Current Clean parity is the
-remaining pre-paid gate.
+Current Clean taxonomy parity subsequently passed read-only with the exact
+source snapshot. Three bounded Gemini scale attempts then ran under the separate
+USD 2 authorization. They materially narrowed two defects, but neither the
+paired parsing experiment, image-rich visual proof, nor terminal 50-file gate is
+complete.
 
 ## Immutable contract fingerprints
 
@@ -29,7 +30,9 @@ source catalog to immutable Git blobs and SHA-256 values.
 The verifier requires baseline ancestry, treatment ancestry, exact file order,
 exact anchor blobs, and current-byte equality. New treatment modules are
 explicitly absent at baseline. Uncommitted worktree bytes are never accepted as
-an anchor.
+an anchor. The current manifest binds 47 files to treatment anchor
+`a71b858752100673cac52c0f9ae4ce522dc4fc89`; the manifest-only evidence commit
+is a descendant and does not redefine treatment bytes.
 
 ## Runtime taxonomy path
 
@@ -174,6 +177,48 @@ Provider output still passes application schema, answer, page lineage,
 taxonomy, duplicate, visual, Bank-scope, and `pending_review` gates. Neither the
 attempt ledger nor context observer can bypass validation.
 
+## Authorized live extension
+
+The independently reproduced Current Clean taxonomy snapshot matched the source
+snapshot exactly, so the paid gate opened without changing Provider settings or
+hosted taxonomy. All live runs used that same 439-node/372-candidate contract.
+
+1. A 50-file run admitted exactly 50 and rejected file 51, then failed before
+   Provider transport because the 50,000-token planning limit had also been
+   interpreted as a 50,000-byte limit. The observed request was 55,694 bytes.
+   Provider inference requests were zero and exact cleanup passed.
+2. The corrected contract separates 50,000 input tokens from a 200,000-byte
+   serialized request ceiling. A new 50-file run completed seven items. The
+   eighth normalized successfully after three bounded Provider attempts, then
+   failed before `drafts_persisted`. Aggregate evidence recorded ten inference
+   requests, 40 Provider HTTP requests, and no trusted complete usage total.
+   Exact cleanup passed and usage-derived spend remains `UNKNOWN`.
+3. Source tracing showed that the remaining interval contains a non-authoritative
+   progress write and the fenced atomic Review Draft persistence RPC. Progress
+   telemetry is now best-effort after the durable normalized checkpoint. The
+   same fenced persistence operation may replay once with identical lineage;
+   ambiguous first-response loss followed by deterministic `NOOP` is accepted,
+   while a second genuine failure remains terminal. The new safe
+   `draft_persistence` diagnostic cannot expose row data or Provider output.
+4. A ten-file validation of that correction admitted all ten files but the first
+   exact worker invocation encountered an external HTTPS connection timeout
+   before any Provider inference. It stopped without retry. Provider inference,
+   upload, cleanup, and network counters were all zero. Cleanup reported one
+   failed operation during the same connectivity event, while the independent
+   final synthetic residue count was zero and process-only values were cleared.
+
+The new authorization ledger has three paid-run slots consumed. Conservative
+ceilings are USD 0.497925, USD 0.497925, and USD 0.179253, totaling USD 1.175103
+and leaving USD 0.824897. Known actual Provider spend is zero for runs one and
+three; run two remains `UNKNOWN` because complete usage evidence was not
+reached. No dashboard-observed total was collected. Theoretical exposure is
+not reported as actual spend.
+
+The paired baseline/treatment quality comparison and blind human-review packet
+were not produced. The visual path remains source-ready but has no paid
+image-rich crop/persistence/remount proof. PDF50 still lacks a 50/50 terminal
+drain, aggregate UI proof, and final live invariant matrix.
+
 ## Existing validation limitations
 
 Three unchanged stacked-base source smokes remain red because they require UI
@@ -188,18 +233,16 @@ source literals that are already absent at baseline `f1ce7bc`:
 
 The exact baseline files fail those same predicates. This treatment did not
 change the referenced UI files and does not mark those checks as passing. They
-belong to the separate stale-source smoke cleanup. Live/chaos scripts requiring
-Supabase credentials were not run because hosted access is outside this task.
-The known Windows embedded-Postgres `initdb` restriction remains an
-infrastructure limitation, not passing aggregate evidence or a product
-regression.
+belong to the separate stale-source smoke cleanup. The known Windows
+embedded-Postgres `initdb` restriction remains an infrastructure limitation,
+not passing aggregate evidence or a product regression.
 
 ## Rollout gates
 
-Before any paid Gemini comparison:
+Before any further paid Gemini comparison:
 
-1. Run the authorized read-only Current Clean taxonomy parity check and require
-   `AUTHORITATIVE_RECENT_TAXONOMY_CONFIRMED`.
+1. Preserve the passed Current Clean taxonomy parity result
+   `AUTHORITATIVE_RECENT_TAXONOMY_CONFIRMED` and stop if a later snapshot drifts.
 2. Require both arms to carry the exact same runtime taxonomy snapshot SHA and
    parsing-contract SHA.
 3. Verify immutable contract fingerprints and identical fixtures, source,
@@ -212,6 +255,7 @@ Before any paid Gemini comparison:
 7. Stop on any privacy, Bank-scope, Review Gate, cleanup, lineage, or
    authorization failure.
 
-The task authorization permits bounded paid Gemini work only after the exact
-source/hosted parity gate passes. It does not authorize GPT/Luna, deployment,
-migrations, Provider-setting changes, or hosted taxonomy mutation.
+No automatic retry was made after the observed connectivity failure. Any later
+run must first re-establish the same fingerprints and budget ledger. The
+authorization still does not cover GPT/Luna, deployment, migrations,
+Provider-setting changes, or hosted taxonomy mutation.

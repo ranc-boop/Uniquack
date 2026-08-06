@@ -113,16 +113,18 @@ permission to replace the conservative 372-leaf production subset.
 
 ## Hosted parity gate
 
-Source reconciliation does not prove Current Clean runtime parity. The
-credential-safe read-only launcher compares exact nodes, labels, aliases,
-facets, parent relationships, all edges, flags, effective leaves, counts, and
-the deterministic snapshot SHA with no service-role key, writes, or Provider
-call.
+The credential-safe Current Clean read-only parity run returned
+`AUTHORITATIVE_RECENT_TAXONOMY_CONFIRMED`. It independently observed 439 active
+canonical nodes, 460 active edges, 20 normalized aliases, 372 declared
+assignable/effective leaves, and five facets. Its deterministic snapshot SHA-256
+was exactly
+`05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe`,
+matching source replay byte-for-byte under the shared canonicalizer.
 
-Paid work remains inactive until that audit returns exactly
-`AUTHORITATIVE_RECENT_TAXONOMY_CONFIRMED`. A newer hosted catalog or any exact
-source/hosted drift stops the mission for review; hosted rows are never exported
-or changed automatically.
+The audit made zero hosted writes and zero Provider calls, printed no taxonomy
+rows or credentials, and cleared its process-only environment. This closes the
+pre-paid source/hosted taxonomy parity gate. It does not authorize hosted
+taxonomy mutation or make future Admin-created rows reproducible by itself.
 
 ## Remaining schema gate
 

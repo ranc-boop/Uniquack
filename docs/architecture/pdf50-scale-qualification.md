@@ -431,3 +431,45 @@ of the observed repair/retry frequency and safe aggregate diagnostics, followed
 by a new explicit Provider budget large enough for a fresh 50-file run after
 any reviewed correction. An unchanged paid rerun is not justified or
 authorized.
+
+## Stacked PR #229 requalification extension
+
+This section is a separate ledger under the later USD 2 authorization. It does
+not rewrite the PR #228 history or reclaim its conservative budget.
+
+| Run | Stage | Conservative ceiling | Provider evidence | Result |
+| --- | ---: | ---: | --- | --- |
+| 1 | 50 | USD 0.497925 | 0 inference requests | 50 admitted and file 51 rejected; stopped before transport on a byte/token limit defect |
+| 2 | 50 | USD 0.497925 | 10 inference, 40 total HTTP requests | 7 completed; job 8 normalized, then failed before `drafts_persisted` |
+| 3 | 10 | USD 0.179253 | 0 inference requests | 10 admitted; external HTTPS timeout on first worker invocation |
+
+Run one proved that the 50,000 planning-token ceiling had also been used as a
+50,000-byte request ceiling. The observed request was 55,694 bytes. The proof
+contract now keeps a 50,000-token planning limit and separately enforces a
+200,000-byte serialized-input limit.
+
+Run two proved the byte fix and completed seven exact jobs. The eighth job used
+three bounded Provider attempts and reached the durable `normalized`
+checkpoint. The remaining interval was narrowed to a non-authoritative progress
+write and fenced Review Draft persistence. The progress write is now
+best-effort after the durable checkpoint. The atomic persistence call may replay
+once using the same fence and deterministic lineage. An ambiguous first reply
+followed by `NOOP` is accepted; two real failures remain terminal. A new safe
+`draft_persistence` stage identifies this boundary without row data, prompts,
+source content, Provider output, or identifiers.
+
+Run three was the first live validation after that correction. It did not reach
+Provider transport because the first exact worker invocation encountered a
+connection timeout. The harness stopped rather than retrying. Local server
+shutdown and process-environment clearing passed. Cleanup reported failure
+during the connectivity incident, but its final independent synthetic residue
+count was zero. This is not a complete cleanup pass and not product closure.
+
+The PR #229 conservative ledger is USD 1.175103 consumed and USD 0.824897
+remaining. Usage-derived actual spend is known zero for runs one and three;
+run-two usage remains `UNKNOWN`. Dashboard-observed spend was not collected.
+
+Latest status: `PDF50_SCALE_REQUALIFICATION_PARTIAL`. Maximum-count admission
+is reconfirmed, but a fresh 50-file run has not reached 50/50 terminal items,
+final batch aggregation, Teacher UI reload/remount, or the complete invariant
+matrix. No automatic paid retry is recorded.

@@ -121,3 +121,11 @@ this hardening. Therefore, the valid classification is:
 A separate authorization must use a rights-safe image-rich PDF with graphs,
 tables, shared figures, a deliberately missing required figure, and exact
 cleanup. The existing text-heavy 23/50 evidence does not satisfy that gate.
+
+The later PR #229 authorization covered such a proof, but the three useful
+scale attempts were text-only operational diagnostics. The third stopped on an
+external connection timeout before Provider inference. No image-rich PDF,
+crop, Storage object, question-asset row, Teacher render, or remount evidence
+was created. The classification therefore remains unchanged:
+
+`QUESTION_VISUAL_ATTACHMENT_SOURCE_READY_LIVE_PROOF_PENDING`
