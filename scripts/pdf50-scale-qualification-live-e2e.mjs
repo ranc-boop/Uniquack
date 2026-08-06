@@ -392,6 +392,7 @@ async function reportSafeWorkerFailure({ jobId, outcome, output, service }) {
 
 function reportSafeJobState({ job, label }) {
   const counters = providerCounters(job);
+  const safeResult = asRecord(job?.safe_result);
   console.log(
     `SAFE_JOB_STATE=label:${label},status:${safeWorkerValue(
       job?.status,
@@ -407,7 +408,9 @@ function reportSafeJobState({ job, label }) {
       counters.uploads
     },polls:${counters.polls},cleanup:${counters.cleanup},cleanupFailures:${
       counters.cleanupFailures
-    },network:${counters.network}`,
+    },network:${counters.network},postPersistence:${safeWorkerValue(
+      safeResult.postPersistenceFailureStage,
+    )}`,
   );
 }
 

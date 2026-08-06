@@ -9,6 +9,7 @@ import {
   type ImportAssetReferences,
 } from "@/lib/batch-import/asset-references";
 import type { AIProviderJobPersistenceFence } from "@/lib/ai-jobs/checkpoint";
+import { runFencedImportItemRpcWithReplay } from "@/lib/batch-import/fenced-persistence";
 
 type SupabaseLike = {
   from: (table: string) => any;
@@ -518,9 +519,8 @@ export async function importBatchImportJson({
         throw new Error("Fenced import persistence requires a deterministic lineage key.");
       }
 
-      const { data, error } = await supabase.rpc(
-        "persist_ai_provider_job_import_item_fenced",
-        {
+      const { data, error } = await runFencedImportItemRpcWithReplay(() =>
+        supabase.rpc!("persist_ai_provider_job_import_item_fenced", {
           p_execution_fence_token: persistenceFence.executionFenceToken,
           p_item_index: itemIndex,
           p_job_id: persistenceFence.jobId,
@@ -531,9 +531,13 @@ export async function importBatchImportJson({
           p_source_type: sourceType,
           p_validation_errors: [...item.errors, ...item.warnings],
           p_visibility: "private",
-        },
+        }),
       );
-      if (error) throw new Error(error.message);
+      if (error) {
+        throw new Error(
+          error.message ?? "Fenced import item persistence failed.",
+        );
+      }
 
       const result = asSummaryRecord(data);
       if (result.outcome === "STALE_FENCE_REJECTED") {

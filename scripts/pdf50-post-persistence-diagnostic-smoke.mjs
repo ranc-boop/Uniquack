@@ -23,6 +23,19 @@ const compiled = ts.transpileModule(source, {
 const contract = await import(
   `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
 );
+const fencedPersistenceSource = await readFile(
+  resolve(root, "src/lib/batch-import/fenced-persistence.ts"),
+  "utf8",
+);
+const fencedPersistenceCompiled = ts.transpileModule(fencedPersistenceSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ESNext,
+    target: ts.ScriptTarget.ES2022,
+  },
+}).outputText;
+const fencedPersistence = await import(
+  `data:text/javascript;base64,${Buffer.from(fencedPersistenceCompiled).toString("base64")}`
+);
 
 const privateSentinel = "raw-provider-body-private-sentinel";
 let captured = null;
@@ -49,8 +62,66 @@ assert(
   "post-persistence diagnostics must not serialize raw failure content",
 );
 assert(
-  contract.AI_PDF_POST_PERSISTENCE_STAGES.length === 4,
+  contract.AI_PDF_POST_PERSISTENCE_STAGES.length === 5 &&
+    contract.AI_PDF_POST_PERSISTENCE_STAGES.includes("draft_persistence"),
   "post-persistence diagnostics must remain a bounded stage vocabulary",
+);
+
+let draftPersistenceError = null;
+try {
+  await contract.runAIPdfPostPersistenceStage({
+    operation: async () => {
+      throw new Error(privateSentinel);
+    },
+    stage: "draft_persistence",
+  });
+} catch (error) {
+  draftPersistenceError = error;
+}
+assert(
+  contract.getAIPdfPostPersistenceFailureStage(draftPersistenceError) ===
+    "draft_persistence",
+  "draft persistence failures must retain only their bounded stage",
+);
+
+let replayAttempts = 0;
+const replayed = await fencedPersistence.runFencedImportItemRpcWithReplay(
+  async () => {
+    replayAttempts += 1;
+    return replayAttempts === 1
+      ? { data: null, error: { safe: true } }
+      : { data: "APPLIED", error: null };
+  },
+);
+assert(
+  replayAttempts === 2 && replayed.data === "APPLIED",
+  "a fenced atomic item RPC may replay once after an ambiguous error",
+);
+
+let permanentAttempts = 0;
+const permanent = await fencedPersistence.runFencedImportItemRpcWithReplay(
+  async () => {
+    permanentAttempts += 1;
+    return { data: null, error: { safe: true } };
+  },
+);
+assert(
+  permanentAttempts === 2 && permanent.error?.safe === true,
+  "a permanent fenced item RPC error must remain failed after two attempts",
+);
+
+let thrownAttempts = 0;
+const recoveredThrown = await fencedPersistence.runFencedImportItemRpcWithReplay(
+  async () => {
+    thrownAttempts += 1;
+    if (thrownAttempts === 1) throw new Error(privateSentinel);
+    return { data: "NOOP_ALREADY_PERSISTED", error: null };
+  },
+);
+assert(
+  thrownAttempts === 2 &&
+    recoveredThrown.data === "NOOP_ALREADY_PERSISTED",
+  "a lost atomic RPC response may replay through deterministic lineage",
 );
 
 const finalizationError = new contract.AIPdfBatchFinalizationContractError({

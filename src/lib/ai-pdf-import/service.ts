@@ -714,6 +714,17 @@ async function updateAIPdfBatchProgress(
   }
 }
 
+async function updateAIPdfBatchProgressBestEffort(
+  input: ProcessInput,
+  progress: AIPdfProgress,
+) {
+  try {
+    await updateAIPdfBatchProgress(input, progress);
+  } catch {
+    // The durable checkpoint is authoritative after Provider output validates.
+  }
+}
+
 async function finalizeAIPdfImportBatch({
   input,
   status,
@@ -4636,7 +4647,7 @@ async function processAIPdfSinglePass({
     providerResultReused: Boolean(recoveredExtraction),
     questionCount: extraction.questions.length,
   });
-  await updateAIPdfBatchProgress(input, {
+  await updateAIPdfBatchProgressBestEffort(input, {
     detail: "Importing generated questions.",
     pageCount,
     phase: "importing_questions",
@@ -4645,18 +4656,21 @@ async function processAIPdfSinglePass({
     warnings: extraction.warnings,
   });
 
-  const importSummary = await importBatchImportJson({
-    allowDraftTags: true,
-    batchId: input.batchId,
-    deferFinalization: Boolean(input.persistenceFence),
-    initialSummaryExtras: {},
-    jsonText,
-    profileId: input.profileId,
-    sourceType: "ai_pdf",
-    supabase: input.supabase,
-    targetBankId: input.targetBankId,
-    persistenceFence: input.persistenceFence,
-    persistenceLineageKey: input.persistenceLineageKey,
+  const importSummary = await runAIPdfPostPersistenceStage({
+    operation: () => importBatchImportJson({
+      allowDraftTags: true,
+      batchId: input.batchId,
+      deferFinalization: Boolean(input.persistenceFence),
+      initialSummaryExtras: {},
+      jsonText,
+      profileId: input.profileId,
+      sourceType: "ai_pdf",
+      supabase: input.supabase,
+      targetBankId: input.targetBankId,
+      persistenceFence: input.persistenceFence,
+      persistenceLineageKey: input.persistenceLineageKey,
+    }),
+    stage: "draft_persistence",
   });
   input.qualityObserver?.recordPersistence({
     duplicateCount: importSummary.duplicateCount,
@@ -5242,7 +5256,7 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
         providerResultReused: Boolean(checkpointedExtraction),
         questionCount: extraction.questions.length,
       });
-      await updateAIPdfBatchProgress(input, {
+      await updateAIPdfBatchProgressBestEffort(input, {
         detail: `Importing generated questions for ${formatAIPdfChunkPageRange(chunk)}.`,
         pageCount,
         phase: "importing_questions",
@@ -5251,21 +5265,24 @@ export async function processAIPdfImport(input: AIPdfProcessInput) {
         warnings: uniqueStrings([...allWarnings, ...extraction.warnings]),
       });
 
-      const importSummary = await importBatchImportJson({
-        allowDraftTags: true,
-        batchId: input.batchId,
-        deferFinalization: Boolean(input.persistenceFence),
-        initialSummaryExtras: {},
-        itemIndexOffset: chunk.chunkIndex * 1000,
-        jsonText,
-        profileId: input.profileId,
-        sourceType: "ai_pdf",
-        supabase: input.supabase,
-        targetBankId: input.targetBankId,
-        persistenceFence: input.persistenceFence,
-        persistenceLineageKey: input.persistenceLineageKey
-          ? `${input.persistenceLineageKey}:chunk:${chunk.chunkIndex}`
-          : undefined,
+      const importSummary = await runAIPdfPostPersistenceStage({
+        operation: () => importBatchImportJson({
+          allowDraftTags: true,
+          batchId: input.batchId,
+          deferFinalization: Boolean(input.persistenceFence),
+          initialSummaryExtras: {},
+          itemIndexOffset: chunk.chunkIndex * 1000,
+          jsonText,
+          profileId: input.profileId,
+          sourceType: "ai_pdf",
+          supabase: input.supabase,
+          targetBankId: input.targetBankId,
+          persistenceFence: input.persistenceFence,
+          persistenceLineageKey: input.persistenceLineageKey
+            ? `${input.persistenceLineageKey}:chunk:${chunk.chunkIndex}`
+            : undefined,
+        }),
+        stage: "draft_persistence",
       });
       input.qualityObserver?.recordPersistence({
         duplicateCount: aggregate.duplicateCount + importSummary.duplicateCount,

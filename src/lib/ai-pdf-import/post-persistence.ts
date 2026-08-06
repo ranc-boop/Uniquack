@@ -1,4 +1,5 @@
 export const AI_PDF_POST_PERSISTENCE_STAGES = [
+  "draft_persistence",
   "asset_attachment",
   "summary_preparation",
   "batch_finalization",

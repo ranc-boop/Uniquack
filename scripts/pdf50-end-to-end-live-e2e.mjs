@@ -100,6 +100,7 @@ const safeWorkerCheckpointStages = new Set([
 ]);
 
 const safePostPersistenceFailureStages = new Set([
+  "draft_persistence",
   "asset_attachment",
   "summary_preparation",
   "batch_finalization",
