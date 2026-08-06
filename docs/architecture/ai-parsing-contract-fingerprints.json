@@ -138,8 +138,8 @@
       },
       "path": "scripts/pdf50-end-to-end-live-e2e.mjs",
       "treatment": {
-        "blob": "e85f009398f6d0f396b6756533e6c33d7a496da2",
-        "sha256": "42c6a297b42520faa3f115a688d9687db40a6355b93b3eced52276ecaed0d944"
+        "blob": "b8e95a0de0fd1a48793b4919654dc68b0bd4fb3e",
+        "sha256": "824eb016f3c6c1cd653058fb941f91a8016c924222096f18376fe29ced62ed91"
       }
     },
     {
@@ -171,8 +171,8 @@
       },
       "path": "scripts/pdf50-scale-qualification-live-e2e-safety-smoke.mjs",
       "treatment": {
-        "blob": "70eeee3e73d830ee27ef8ad92065c20c1c86a590",
-        "sha256": "a394d0da0c11c32bf871c011986848990dc827002b4bca4bd65294b6ae3de46f"
+        "blob": "6d9f87a7527d42b440026b44939179281fca5ca0",
+        "sha256": "709930380c1a53f9ecfd359515886c9507dc7ff821425d62fbf97ddbd358ed36"
       }
     },
     {
@@ -182,8 +182,8 @@
       },
       "path": "scripts/pdf50-scale-qualification-live-e2e.mjs",
       "treatment": {
-        "blob": "beb920e2aaadb989bf44b13a1f935d148796e80b",
-        "sha256": "e935be10a29c90b41d3ff5e3ba99a9df54540e9e7d2811bda03563e5697de34c"
+        "blob": "dc72fb47cb3cc1b53afe22b4e74e32d7c7d4d024",
+        "sha256": "ac210ee3061ce3de34524ca5909f42f160c55fce93db6b72f8500bc605372b1a"
       }
     },
     {
@@ -253,8 +253,8 @@
       },
       "path": "src/lib/ai-pdf-import/service.ts",
       "treatment": {
-        "blob": "7e59e80bc0d20bd946ab6dca50f874a84565c8ab",
-        "sha256": "5600c3dfa72498a27cb4fbbd99d554a33584d253eb61e8c5c9dd7de23aa28efe"
+        "blob": "d8cbcf94404a3981ced4e8d5485a6b294e096c32",
+        "sha256": "2aefbd5af35ed55c24bf26c3e78a47e5425a94356068802e0cc16f73325ee390"
       }
     },
     {
@@ -327,8 +327,8 @@
       "baseline": null,
       "path": "src/lib/ai-pdf-import/quality-observatory.ts",
       "treatment": {
-        "blob": "b847258eac16128e9d91407ff57d4108a7568caf",
-        "sha256": "af795cf615da9548f2333e9578b59795253032aa78ce5eda101e886ed844ad48"
+        "blob": "0011fba18ec5049c2046e0b2943db241dcdbcfbf",
+        "sha256": "37d90b439ffa5ae846da5892bef22a9ec5aaaf84564aa899b4e189e1ee1ae962"
       }
     },
     {
@@ -420,8 +420,8 @@
       },
       "path": "src/lib/ai-jobs/worker.ts",
       "treatment": {
-        "blob": "a5c1d1e10c5fe363236a933eb0f543eaf9601be3",
-        "sha256": "fbeeade99bfc222646045f38bbd8f8d0d545654cac30360745f9d441479d6ce0"
+        "blob": "79fff037e1263d1f3a51c84c2dc5196052bd5178",
+        "sha256": "0556fafdd4407df906d142166bb07444587a7889546912b978b77e716e4d36ba"
       }
     },
     {
@@ -467,5 +467,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "5cc2416ef73f1c8b557657558878e732a363de8f"
+  "treatmentAnchor": "91ec3ae6c14c773d4a59295693a26efb402abddc"
 }
