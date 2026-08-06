@@ -118,16 +118,16 @@
       "baseline": null,
       "path": "scripts/ai-parsing-visual-evidence-live-e2e-safety-smoke.mjs",
       "treatment": {
-        "blob": "ede7bd5677473aec86c8ed759563cfbf9ba0050e",
-        "sha256": "49ec1042d3d619b814c111b37209f32876d259cacc138119ba68406673e4aa05"
+        "blob": "9bf4311771816929c5b12d4837bcb0452f6f32e8",
+        "sha256": "ad3b44df97e907b10dc7053197f4563d23fb538a1bc50dbb0e325672d9c2af4c"
       }
     },
     {
       "baseline": null,
       "path": "scripts/ai-parsing-visual-evidence-live-e2e.mjs",
       "treatment": {
-        "blob": "d305599fd3f8dd867f0d0748eb263f0146765989",
-        "sha256": "de054d296768ed31ca4e3d331cdcb8a50c290e6c5bcbf1b57c62c2942fec3632"
+        "blob": "46eb99257be42fada5eddd7580a79d1fb243fb97",
+        "sha256": "c997c36c3370c531fb92414bb8dacc103e1486a7140010f1e458b3ceb835cf61"
       }
     },
     {
@@ -542,5 +542,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "afedad4404f3b3db0ab840dde956f70b6aa29817"
+  "treatmentAnchor": "0a00d26cdc12efa68957703d5766398ae72175f7"
 }
