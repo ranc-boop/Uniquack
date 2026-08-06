@@ -76,6 +76,14 @@
     },
     {
       "baseline": null,
+      "path": "scripts/ai-parsing-eval/synthetic-visual-pdf.mjs",
+      "treatment": {
+        "blob": "d2aec39a02e384b3a95729d3d8c98cba48b07981",
+        "sha256": "d47d7dbb0b9afa501f0be3898a72648a1b7e629668eb53a8e461d8fac5eb8c7d"
+      }
+    },
+    {
+      "baseline": null,
       "path": "scripts/ai-parsing-eval/taxonomy-context-efficiency.mjs",
       "treatment": {
         "blob": "9ab5d1992f15cf964e0258aed41acc8bcb43a5e2",
@@ -94,8 +102,48 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/verify-contract-fingerprint.mjs",
       "treatment": {
-        "blob": "3d0de95fea2aedeb2103214e3ec388611ea9bfc3",
-        "sha256": "fce064e1ecfb269eb9b55d518fe87e2488c6cbdc46a0292abbf38dbb0b615129"
+        "blob": "42b7ece8afac1bed4231e47418cbbb5825a59c6c",
+        "sha256": "eaad30fe6baddab26bf437b79b54dc7a338bb5829c505c080b79d0c5edd9ae0f"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/visual-evidence-live-contract.mjs",
+      "treatment": {
+        "blob": "2b83a766bdf187340bea3845ea5127b03012d308",
+        "sha256": "7e9b8f5a82cdf404b393b2f7b576eea60233481ef9cb3487e9d1cb2ab0b6ab6f"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-visual-evidence-live-e2e-safety-smoke.mjs",
+      "treatment": {
+        "blob": "ede7bd5677473aec86c8ed759563cfbf9ba0050e",
+        "sha256": "49ec1042d3d619b814c111b37209f32876d259cacc138119ba68406673e4aa05"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-visual-evidence-live-e2e.mjs",
+      "treatment": {
+        "blob": "d305599fd3f8dd867f0d0748eb263f0146765989",
+        "sha256": "de054d296768ed31ca4e3d331cdcb8a50c290e6c5bcbf1b57c62c2942fec3632"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/gemini-live-resume-preflight-safety-smoke.mjs",
+      "treatment": {
+        "blob": "64ead680dbebed64bd2afeeaf3c345b0a9d86497",
+        "sha256": "34f0b12496b7da969326c5e2a9cd671ad9df05ce1b65c33bf1552b861fb38910"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/gemini-live-resume-preflight.mjs",
+      "treatment": {
+        "blob": "4a23c043a6eb87d129ae269c776312e1b0ed0399",
+        "sha256": "6de3bd9ba98d7af1527f4e4f93f80db07c1d87b99101d570a3ff15f0690cf2da"
       }
     },
     {
@@ -133,13 +181,24 @@
     },
     {
       "baseline": {
+        "blob": "5b15ecc4b155918d608943b8e67f6daa85192c47",
+        "sha256": "7f690e1c56c355b59532a437da1119824671fcc7d86fd269a8452115a46ffb11"
+      },
+      "path": "scripts/pdf50-end-to-end-live-e2e-safety-smoke.mjs",
+      "treatment": {
+        "blob": "439d7622dc2b292700b82c3ab848f7ffa732edea",
+        "sha256": "c661c027c995a6f0a15fd8c38833d2b2361b8a90a27b9041fa3e3b7c9e10ea36"
+      }
+    },
+    {
+      "baseline": {
         "blob": "9c0f7235d9356e7ce7a5c33fa4c4086ba5b92e16",
         "sha256": "7bf192b86a0c6da695a2575df8a04c8b1ebd240d65af2981ab0505dce8680933"
       },
       "path": "scripts/pdf50-end-to-end-live-e2e.mjs",
       "treatment": {
-        "blob": "b8e95a0de0fd1a48793b4919654dc68b0bd4fb3e",
-        "sha256": "824eb016f3c6c1cd653058fb941f91a8016c924222096f18376fe29ced62ed91"
+        "blob": "ed0bb16bcc808d4a102fb6fddb541c529a4c8fd9",
+        "sha256": "833035cbeaa21f68f20ed727580d22c59ccbef8fd347f3e328019fcac1c7064d"
       }
     },
     {
@@ -192,6 +251,22 @@
       "treatment": {
         "blob": "672ac802bb50f669652526387f0d5ff681f4b485",
         "sha256": "ed0acf72672c4053ec11bae36004cd6a074480b7853b4eafa9e57359ba5cfd52"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/run-ai-parsing-visual-evidence-live-e2e.ps1",
+      "treatment": {
+        "blob": "18046e72e35ed776a4a4cda6cd1c5821ebb4ad58",
+        "sha256": "2c77e076a31a256aa29fc3aabfe42cc7aa8c5b119b103db033d142009e0c2d08"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/run-gemini-live-resume-preflight.ps1",
+      "treatment": {
+        "blob": "bc77156983ccb5bce80e4117eeb79dbf649eb6ed",
+        "sha256": "48473ba7e760bf25ab025cf0530d6d1c59ec2d307440e2bbd9b4ec24b0c850d4"
       }
     },
     {
@@ -467,5 +542,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "db93a885fbe4896b24d1ada13ded69493a67499f"
+  "treatmentAnchor": "afedad4404f3b3db0ab840dde956f70b6aa29817"
 }
