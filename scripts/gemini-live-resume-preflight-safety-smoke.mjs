@@ -32,6 +32,7 @@ assert(preflight.includes("PROVIDER_SOURCE_CONTENT_REQUESTS=0"));
 assert(preflight.includes("HOSTED_WRITES=0"));
 assert(preflight.includes("AbortController"));
 assert(preflight.includes("fixture_kind"));
+assert(preflight.includes("ai-parsing-visual-evidence.pdf"));
 assert(preflight.includes('"queued", "retry_wait", "leased", "processing"'));
 assert(launcher.includes("Import-Clixml -LiteralPath $VaultPath"));
 assert(launcher.includes("CURRENT_WINDOWS_USER_AND_COMPUTER"));

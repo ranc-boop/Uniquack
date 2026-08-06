@@ -117,6 +117,7 @@ async function main() {
     .from("question_banks")
     .select("id")
     .like("name", `${bankPrefix}%`)
+    // perf-budget-allow-large-query: bounded synthetic-residue inventory selects IDs only and fails closed at the cap.
     .limit(1000);
   if (banks.error) throw new PreflightError("database_residue_check_failed");
   const bankIds = (banks.data ?? []).map((row) => row.id);
@@ -133,7 +134,9 @@ async function main() {
     service
       .from("import_batch_assets")
       .select("id", { count: "exact", head: true })
-      .like("original_filename", "synthetic-scale-%"),
+      .or(
+        "original_filename.like.synthetic-scale-%,original_filename.eq.ai-parsing-visual-evidence.pdf",
+      ),
     "database_residue_check_failed",
   );
   const syntheticJobCount = bankIds.length
