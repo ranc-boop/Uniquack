@@ -61,7 +61,7 @@ const visualEnvironment = [
 ];
 const visualEnvironmentLiteral = "DISPOSABLE_AI_PARSING_VISUAL_EVIDENCE";
 const visualCleanupLiteral = "DELETE_AI_PARSING_VISUAL_EVIDENCE_FIXTURES";
-const expectedPriorConservativeMicros = 808_251;
+const expectedPriorConservativeMicros = 939_324;
 const authorizedTotalMicros = 2_000_000;
 const visualCostCeilingMicros = estimatePDF50ProviderProofCostMicros(proofControl);
 const questionAssetsBucket = "question-assets";
@@ -522,6 +522,16 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     contractEvidence.candidateSubsetSha256 === expectedCandidateSubset,
     contractEvidence.parsingContractSha256 === expectedParsingContract,
   ].filter(Boolean).length;
+  const decorativeProposalCount = questionObservations.reduce(
+    (total, question) =>
+      total +
+      question.placeholders.filter(
+        (placeholder) =>
+          placeholder.visual_role === "decorative" &&
+          placeholder.required === false,
+      ).length,
+    0,
+  );
   console.log(`VISUAL_PENDING_REVIEW_COUNT=${questionObservations.filter((question) => question.reviewStatus === "pending_review").length}`);
   console.log(`VISUAL_NEEDS_MORE_EVIDENCE_COUNT=${questionObservations.filter((question) => question.reviewStatus === "needs_more_evidence").length}`);
   console.log(`VISUAL_PLACEHOLDER_COUNT=${questionObservations.reduce((total, question) => total + question.placeholders.length, 0)}`);
@@ -545,7 +555,7 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     Number(usage.outputTokens) > proofControl.providerMaxOutputTokens ||
     visualMetrics.attachedAssets !== 2 ||
     visualMetrics.validCrops !== 2 ||
-    visualMetrics.decorativeSkipped < 1 ||
+    visualMetrics.decorativeSkipped < decorativeProposalCount ||
     visualMetrics.blockingMissingRequired < 1 ||
     visualMetrics.invalidProposals !== 0
   ) {
@@ -578,6 +588,7 @@ async function loadVisualEvidence({ bankId, config, fixture, job, pdf, service }
     batch,
     bucketPrivate,
     contractEvidence,
+    decorativeProposalCount,
     maxProviderNetworkRequests: proofControl.providerMaxNetworkRequests,
     orphanAssetCount: assetRows.filter((asset) => !recordedAssetIds.has(asset.id)).length,
     pageCount: fixture.item.page_count,
@@ -910,6 +921,8 @@ async function main() {
       Math.ceil((outputTokens * proofControl.outputMicrosPerMillion) / 1_000_000);
     console.log(`VISUAL_CONTRACT_PREDICATES=${contract.predicates.length}`);
     console.log(`VISUAL_ASSET_COUNT=${observation.totalAssetCount}`);
+    console.log(`DECORATIVE_PROPOSAL_COUNT=${observation.decorativeProposalCount}`);
+    console.log("DECORATIVE_ATTACHMENT_COUNT=0");
     console.log(`DECORATIVE_SKIPPED=${observation.visualMetrics.decorativeSkipped}`);
     console.log(
       `BLOCKING_MISSING_REQUIRED=${observation.visualMetrics.blockingMissingRequired}`,

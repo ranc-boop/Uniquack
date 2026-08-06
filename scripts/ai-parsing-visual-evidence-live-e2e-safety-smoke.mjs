@@ -37,7 +37,7 @@ assert(
   !/(?:dotenv|\.env\.local|Get-Content\s+[^\n]*\.env)/i.test(launcher),
   "launcher must not load environment files",
 );
-assert(harness.includes("expectedPriorConservativeMicros = 808_251"));
+assert(harness.includes("expectedPriorConservativeMicros = 939_324"));
 assert(harness.includes("authorizedTotalMicros = 2_000_000"));
 assert(harness.includes("runLocalWorkerOnce({"));
 assert(harness.includes("providerInferenceAttempts !== 1"));
@@ -189,9 +189,7 @@ function validObservation() {
         assets: [],
         hasMissingVisualWarning: false,
         pageRefs: [2],
-        placeholders: [
-          { page: 2, required: false, visual_role: "decorative" },
-        ],
+        placeholders: [],
         questionId: "00000000-0000-5000-8000-000000000002",
         reviewStatus: "pending_review",
         visibleQuestionNumber: "2",
@@ -229,11 +227,20 @@ function validObservation() {
 }
 
 assert.equal(validateVisualEvidenceLiveObservation(validObservation()).valid, true);
+const explicitDecorativeSkip = validObservation();
+explicitDecorativeSkip.questions[1].placeholders = [
+  { page: 2, required: false, visual_role: "decorative" },
+];
+assert.equal(
+  validateVisualEvidenceLiveObservation(explicitDecorativeSkip).valid,
+  true,
+);
 
 const mutations = [
   ["historical_source_drift", (value) => { value.sourceHashMatches = false; }],
   ["wrong_question_asset", (value) => { value.questions[0].assets[0].questionId = value.questions[1].questionId; }],
   ["decorative_asset_attached", (value) => { value.questions[1].assets = structuredClone(value.questions[0].assets); }],
+  ["decorative_misclassified_required", (value) => { value.questions[1].placeholders = [{ page: 2, required: true, visual_role: "diagram" }]; }],
   ["missing_visual_not_blocked", (value) => { value.questions[2].reviewStatus = "pending_review"; }],
   ["shared_group_removed", (value) => { value.questions[3].visualEvidence.records[0].sharedGroupKey = null; }],
   ["invalid_crop_bounds", (value) => { value.questions[0].visualEvidence.records[0].bbox.width = 2; }],

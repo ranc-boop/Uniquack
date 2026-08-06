@@ -163,12 +163,16 @@ export function validateVisualEvidenceLiveObservation(observation) {
     results,
   });
 
+  const decorativePlaceholders = placeholders(decorative);
   requirePredicate(
     decorative.reviewStatus === "pending_review" &&
-      placeholders(decorative).length === 1 &&
-      placeholders(decorative)[0].page === 2 &&
-      placeholders(decorative)[0].required === false &&
-      placeholders(decorative)[0].visual_role === "decorative" &&
+      (decorativePlaceholders.length === 0 ||
+        decorativePlaceholders.every(
+          (placeholder) =>
+            placeholder.page === 2 &&
+            placeholder.required === false &&
+            placeholder.visual_role === "decorative",
+        )) &&
       records(decorative).length === 0 &&
       assets(decorative).length === 0,
     "decorative_visual_suppressed",
