@@ -12,10 +12,42 @@
     },
     {
       "baseline": null,
+      "path": "fixtures/ai-parsing-golden/parsing-cases.json",
+      "treatment": {
+        "blob": "f6e3aa2faf890dcc2bc60acdb400e56b3cd6a081",
+        "sha256": "e3328d066f6e640b618066e3273f6d0bdfb7ca7df27c8ff102be8672a7a5ad2d"
+      }
+    },
+    {
+      "baseline": null,
       "path": "fixtures/ai-parsing-golden/taxonomy-cases.json",
       "treatment": {
         "blob": "4a947535044a1d62e9f2f3f26fea69eb1c320ca1",
         "sha256": "63b42c278b31a6d2493b25d06c091d8d5c5286caabd10605a8abfa437ab1d982"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "fixtures/ai-parsing-golden/visual-cases.json",
+      "treatment": {
+        "blob": "b6f168cc61ce0014047895787c7870c2e8e0a5db",
+        "sha256": "d6791e4e4d4341230b65d4864d56c8ddd8e0baba391c2173f483a221127bd9e0"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "fixtures/ai-parsing-provider-benchmark-v1/manifest.json",
+      "treatment": {
+        "blob": "4bc12014c7386a089824d52b063e6d89329a9043",
+        "sha256": "47260ed4b29373456c970eb0cfbf079b24ee9d626a4007fdbe74299b6a06cbc4"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "fixtures/ai-parsing-provider-benchmark-v1/gemini-observations.json",
+      "treatment": {
+        "blob": "015ae68b43288d8949aaf008f78a9a2a4f8e6286",
+        "sha256": "58454f184cfd2d2fc1d9897ac5c1721eb5233a4acbe2bb5c31c45c90f59cc3eb"
       }
     },
     {
@@ -78,8 +110,40 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/runtime-contract-smoke.mjs",
       "treatment": {
-        "blob": "375601969dbcd7983f7f3631561d288f89667ddf",
-        "sha256": "7ae696acc30a73feafa8b6e5ec3f4183800e04af9b7fd2e7f420e49ea1e9021f"
+        "blob": "35dcf3bde7415932e4c0fc125778b71692265dd6",
+        "sha256": "e706f95d19fb16c33bb642633a5437fa1952f63ac0607acae73d68068e1fdd14"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/gemini-baseline-v1.mjs",
+      "treatment": {
+        "blob": "79acf8c419110edae2ea5e944f9a73a622deaa53",
+        "sha256": "44ff49d4bb5447c4e195558b9ff9922074dc97a403eacf9ec88be1880b580f5d"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/lib/provider-usage-baseline.mjs",
+      "treatment": {
+        "blob": "045d4dc14c80cd24fb32c4babc0a2a29daa358a4",
+        "sha256": "2eab11547a681fa58a38ac8a9099eeb120e66089a62735a38ea10515598e1311"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/provider-benchmark-v1-smoke.mjs",
+      "treatment": {
+        "blob": "d74697bb1581db67e4a4605e199a1534da4f3d8f",
+        "sha256": "32402fba5fb931006cf21e1e81ef802d9040a7b2c35eb10268c3c0b82105ece8"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/provider-benchmark-v1-sources.mjs",
+      "treatment": {
+        "blob": "be81e2cb8b03f240a5cf119ff07e5d4b0ba0cfab",
+        "sha256": "79cc242d7e415740fc572cbaba1773b7ebac97fadd733ceec3ff64d09aa67c6c"
       }
     },
     {
@@ -110,8 +174,8 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/verify-contract-fingerprint.mjs",
       "treatment": {
-        "blob": "64639fd50756ebaf2b15696c202de20e0d0c4abc",
-        "sha256": "b889f8eea32edd94c5b6ce99fb8e3bea3be1c423b3f4640fd216267b12f6b9c5"
+        "blob": "a4745e7d026b90f54a8d1b8478ef28f712f9e131",
+        "sha256": "229de900778a6d0d012c4f05767baee620059c3d2e04aa4c45d4934fbba76bee"
       }
     },
     {
@@ -144,6 +208,14 @@
       "treatment": {
         "blob": "40b85b822530d733e217b51e288b6cce96721bed",
         "sha256": "bbf16191e26ad19f103bdefe988161645e047d6dc0c82d9f70565fd554b9675d"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-provider-usage-accounting-smoke.mjs",
+      "treatment": {
+        "blob": "2788b263de18ffbb5ca8c30675f5a71da0d52816",
+        "sha256": "6038cb13dc49fa5feae7c7d716ce2f947ff216967bf0c6784e3a0105c2b49f93"
       }
     },
     {
@@ -246,8 +318,19 @@
       },
       "path": "scripts/pdf50-provider-lifecycle-budget-runtime-smoke.mjs",
       "treatment": {
-        "blob": "31c0be83bced5a236e4a0750be9eb2319d6d84d0",
-        "sha256": "fa6949e04ef1ceab98ceae16a03423c2d34cdcf9155ffdf38f9e43d0f20f4c4f"
+        "blob": "069cf26ad9cd2c051635cf0e1bd2e16d43ec6712",
+        "sha256": "c5f75b43ade06cd07ebec06b5060f5f8d41083c85673f86c10deb89ab25dc4cb"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "01e1b9d46437d63dc4fc1d50d8be00d61f37e3c4",
+        "sha256": "72764d2b130ce5a92886e2e0f89693516ac34acf6f1f6c86b3df8b4a6a4935a3"
+      },
+      "path": "scripts/pdf50-provider-lifecycle-budget-smoke.mjs",
+      "treatment": {
+        "blob": "ee06b1b06d59e0a03f12ec68e84c09328563eece",
+        "sha256": "b5a5a8c0a99edb4eb538fe220e93fe3f6cd7b6b23422a8b24d4ed9548a34f354"
       }
     },
     {
@@ -316,6 +399,25 @@
       "treatment": {
         "blob": "22580e5bb4d9593a3d1175498df737ef11fe350e",
         "sha256": "7c5cc07603e8a9414c4fbb057928bce48fb8828fe4edd30d8416c8b8b3c87b15"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "b6b059781cfe780b2a41a241f06744823b3fc7d9",
+        "sha256": "05ddbdecf58f1539444cdcaa66046e0923fba486b98db879b4068ab6286b6614"
+      },
+      "path": "src/lib/ai-operations/cost-catalog.ts",
+      "treatment": {
+        "blob": "1419c841295a4250467ed9ed82f835a594afbfed",
+        "sha256": "c7e31d96cf195d528dedca5bb8d75f3874e5fb0e0a5a891e41637a94e2a9f118"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "src/lib/ai-operations/provider-usage.ts",
+      "treatment": {
+        "blob": "747a2c63be124329ba1ce887dcc0112019fcb637",
+        "sha256": "e205d1e62408f109aa2e1b30eff4d340dede105a1084f3b69b72827b99c1c045"
       }
     },
     {
@@ -405,6 +507,17 @@
     },
     {
       "baseline": {
+        "blob": "6c88ce59c3015aafac7b5be481743097c82d53d4",
+        "sha256": "acb3837aeeb8217933bad1fd35c3f9727b38c947bf9d24e339e358b6192c24d0"
+      },
+      "path": "src/lib/ai-pdf-import/question-blueprint-analyzer.ts",
+      "treatment": {
+        "blob": "4035334528229b30937c3b7517ada01abe1b4581",
+        "sha256": "843d0f2e6d4946f722c7b0cc3b4af0fddae8eb26538f2e6db86832038cf774b8"
+      }
+    },
+    {
+      "baseline": {
         "blob": "11f538c7f0150a9d2ca3bad490809706087b5634",
         "sha256": "e590db8941596af19c1b8e5023108c13d90b900fd3b11f6d2331c79f24c7d22c"
       },
@@ -440,8 +553,8 @@
       "baseline": null,
       "path": "src/lib/ai-pdf-import/quality-observatory.ts",
       "treatment": {
-        "blob": "c364132c6fac6db2ef8976a6cc6b8c0dc49a92b8",
-        "sha256": "d13d77042c8402e72a111131c58d758b6f4aa689afbc559aee08fb928cc6b5af"
+        "blob": "9830668631f87169fbdcf71d279225d57c0efedb",
+        "sha256": "484ae9c2ff48534a6a68163cd76e2f41db3b68ba1f0e54a623e51d327541f185"
       }
     },
     {
@@ -467,8 +580,8 @@
       },
       "path": "src/lib/ai-providers/chat.ts",
       "treatment": {
-        "blob": "91ee5fd1701e3a205e86855ab94d55bb08d30cd2",
-        "sha256": "4c9c4d5503fd98283413e848992bf27c8c61ab3a1e08761ed9d0b52429dd2a45"
+        "blob": "85d791b891091d426cde28cf8e2c38ce12da913d",
+        "sha256": "c0b1f8cea09cf90142aa1a2680aa6723d52b9b97d985fad37760dea1cade6f86"
       }
     },
     {
@@ -480,6 +593,17 @@
       "treatment": {
         "blob": "b7d719d080daa9d0b315cc9a672734c912b9d151",
         "sha256": "6f29c697a4fdbf309d46bcd8b7165e90094df981c6c6c3b1aeff12651eaf84ab"
+      }
+    },
+    {
+      "baseline": {
+        "blob": "4a7d6559d3189d1bca7563f7ab3a3411c2c9ef0a",
+        "sha256": "6d7a776d21db8d5e8e4d1f57ff8ce5dbd654c71ce1d0f45db69bafcfae964ad4"
+      },
+      "path": "src/lib/ai-providers/execution-budget.ts",
+      "treatment": {
+        "blob": "6f11d7d86530d7a91b8d392b3ec5fe810d52be4b",
+        "sha256": "03de48e60ef59164e3415254b8f62e22ad5bac949ba6817b7bba0128eb81dca5"
       }
     },
     {
@@ -500,8 +624,8 @@
       },
       "path": "src/lib/ai-providers/gemini-native.ts",
       "treatment": {
-        "blob": "3a94b8916f31005d2b25b5de4cf625ad571aff3c",
-        "sha256": "4ac6e969378af919a1a5efcaead023dfad476fcc2f6b985dc2210ea3abddc00a"
+        "blob": "63ea2a20c600f9f5f28222901930abc994f0d84f",
+        "sha256": "07dd6879c68b5309ece7899af68b8e5cdc0b1ce47dc045b23b9cf1087b490fa6"
       }
     },
     {
@@ -569,6 +693,17 @@
     },
     {
       "baseline": {
+        "blob": "c4ab11d7bec73a5f95247f237ddbd1126d0506b2",
+        "sha256": "5b7dfe1d7af2c884dbee3c12b852f3c9f401528e167fee087b90b1461567661e"
+      },
+      "path": "src/lib/teacher-blueprint-generation.ts",
+      "treatment": {
+        "blob": "5ad4813900167371e99c34e6de982637ab1645a6",
+        "sha256": "cef85dc9cd0a44834ac57d8fb785487504c8f3e5993fdeacb9c3378a5b865e4b"
+      }
+    },
+    {
+      "baseline": {
         "blob": "5932219f5e78a0a3aa0b872003ab1789092446fb",
         "sha256": "390e7cf48350b4153613fb30a3a3e31087b3bc76675be12e15a4f8d249f50fb0"
       },
@@ -591,5 +726,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "1d54e70f669347b85383169eb18e44846100123b"
+  "treatmentAnchor": "9d03fdb4959bc15f1807cbe10fbed6c3084983ec"
 }
