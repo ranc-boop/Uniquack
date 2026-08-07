@@ -38,7 +38,7 @@ understanding may genuinely be missing.
 The quality observer now measures attempt reasons, repeated source bytes,
 context composition, token usage when available, valid Drafts, and visual
 outcomes. A local ablation proves source repetition is removed from structural
-repair. Its synthetic context accounting is 169,514 baseline bytes and 194,865
+repair. Its synthetic context accounting is 169,514 baseline bytes and 206,524
 treatment bytes; the larger treatment total includes the new quality and visual
 contracts, while the repair-specific source repetition is zero. It does not
 claim a paid latency, token, quality, or cost improvement.
@@ -125,3 +125,18 @@ The credible observed Gemini result is therefore one successful, unpaired
 authoritative-taxonomy treatment run plus partial visual and scale evidence.
 It does not establish relative Provider quality, treatment uplift, or a valid
 baseline-versus-treatment cost comparison.
+
+## Provider benchmark V1 accounting
+
+The later source-only accounting work freezes a separate six-source,
+rights-safe `AI_PARSING_PROVIDER_BENCHMARK_V1`; see
+`docs/architecture/gemini-ai-parsing-baseline-v1.md`. It captures safe Gemini
+`usageMetadata`, supports opt-in semantically identical `countTokens`
+preflight, and keeps Provider counts, local bytes, estimates, and unknowns
+separate. Historical operational aggregates are not backfilled into its
+per-attempt rows.
+
+The fixed Gemini benchmark observation file remains `NOT_RUN`. Consequently
+p50/p95 tokens and latency, per-attempt thinking usage, and usage-derived cost
+per valid Review Draft remain `UNKNOWN` for the model-quality corpus. No new
+Provider call was made by the accounting work.

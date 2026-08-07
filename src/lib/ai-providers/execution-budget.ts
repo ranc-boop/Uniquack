@@ -9,6 +9,7 @@ export const aiProviderNetworkRequestKinds = [
   "file_upload_start",
   "file_upload_finalize",
   "file_status_poll",
+  "token_count",
   "inference",
   "file_cleanup",
 ] as const;
@@ -27,6 +28,7 @@ export type AIProviderExecutionSummary = {
   providerInferenceRequests: number;
   providerNetworkRequests: number;
   providerPollRequests: number;
+  providerTokenCountRequests: number;
   providerUploadRequests: number;
 };
 
@@ -89,6 +91,7 @@ export function createAIProviderExecutionBudget({
   let providerInferenceRequests = 0;
   let providerNetworkRequests = 0;
   let providerPollRequests = 0;
+  let providerTokenCountRequests = 0;
   let providerUploadRequests = 0;
 
   return {
@@ -142,6 +145,7 @@ export function createAIProviderExecutionBudget({
       if (kind === "file_cleanup") providerCleanupRequests += 1;
       if (kind === "inference") providerInferenceRequests += 1;
       if (kind === "file_status_poll") providerPollRequests += 1;
+      if (kind === "token_count") providerTokenCountRequests += 1;
       if (kind === "file_upload_start" || kind === "file_upload_finalize") {
         providerUploadRequests += 1;
       }
@@ -158,6 +162,7 @@ export function createAIProviderExecutionBudget({
         providerInferenceRequests,
         providerNetworkRequests,
         providerPollRequests,
+        providerTokenCountRequests,
         providerUploadRequests,
       };
     },

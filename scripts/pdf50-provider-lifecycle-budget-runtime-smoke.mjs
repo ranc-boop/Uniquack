@@ -99,6 +99,9 @@ const structuredOutput = await loadTypeScriptModule(
     "./gemini-ai-pdf-extraction.schema.json": extractionSchema,
   },
 );
+const providerUsage = await loadTypeScriptModule(
+  "src/lib/ai-operations/provider-usage.ts",
+);
 
 assert.deepEqual(structuredOutput.buildGeminiGenerationConfig({
   outputContract: { mode: "text" },
@@ -252,6 +255,7 @@ assert.deepEqual(budget.snapshot(), {
   providerInferenceRequests: 4,
   providerNetworkRequests: 5,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 0,
 });
 
@@ -296,6 +300,7 @@ assert.throws(
 );
 
 const gemini = await loadTypeScriptModule("src/lib/ai-providers/gemini-native.ts", {
+  "@/lib/ai-operations/provider-usage": providerUsage,
   "@/lib/ai-providers/gemini-structured-output": structuredOutput,
   "@/lib/ai-providers/llm-debug-logs": {
     writeAIImportLLMDebugLog: async () => undefined,
@@ -404,6 +409,7 @@ assert.deepEqual(providerRejectionBudget.snapshot(), {
   providerInferenceRequests: 1,
   providerNetworkRequests: 1,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 0,
 });
 
@@ -482,9 +488,19 @@ assert.deepEqual(generated.usage, {
   candidateOutputTokens: 5,
   inputTokens: 11,
   outputTokens: 8,
+  promptTokensDetails: [],
   thoughtTokens: 3,
+  toolUseInputTokens: null,
   totalTokens: 19,
 });
+assert.equal(
+  generated.usageAccounting.providerReportedUsage.source,
+  "PROVIDER_REPORTED_USAGE",
+);
+assert.equal(
+  generated.usageAccounting.localContextBytes.source,
+  "LOCAL_CONTEXT_BYTES",
+);
 assert.deepEqual(
   requests.map((request) => request.method),
   ["POST", "POST", "GET", "POST", "DELETE"],
@@ -503,6 +519,7 @@ assert.deepEqual(lifecycleBudget.snapshot(), {
   providerInferenceRequests: 1,
   providerNetworkRequests: 5,
   providerPollRequests: 1,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 2,
 });
 assert.equal(
@@ -611,6 +628,7 @@ assert.deepEqual(cleanupBudget.snapshot(), {
   providerInferenceRequests: 1,
   providerNetworkRequests: 3,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 2,
 });
 
@@ -683,6 +701,7 @@ assert.deepEqual(malformedBudget.snapshot(), {
   providerInferenceRequests: 1,
   providerNetworkRequests: 4,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 2,
 });
 
@@ -721,6 +740,7 @@ assert.deepEqual(uploadFailureBudget.snapshot(), {
   providerInferenceRequests: 0,
   providerNetworkRequests: 1,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 1,
 });
 
@@ -793,6 +813,7 @@ const resilience = await loadTypeScriptModule(
   { "@/lib/ai-providers/errors": errors },
 );
 const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
+  "@/lib/ai-operations/provider-usage": providerUsage,
   "@/lib/ai-pdf-import/schema": {
     normalizeAIPdfExtractionResponse(value) {
       if (value?.questions === "invalid") {

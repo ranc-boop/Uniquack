@@ -95,3 +95,16 @@ No GPT/Luna call was authorized or made. `NOT_RUN` remains the only valid
 comparison result until both arms use the same immutable fixtures and bindings,
 complete every hard-zero gate, retain complete usage metadata, and undergo the
 blind review defined above.
+
+## Fixed benchmark and accounting schema
+
+`AI_PARSING_PROVIDER_BENCHMARK_V1` is the fixed model-quality corpus for the
+future comparison. Its manifest, deterministic PDF bytes, Golden references,
+runtime bindings, and Provider-neutral numeric usage schema are documented in
+`docs/architecture/gemini-ai-parsing-baseline-v1.md`.
+
+The Gemini observation file remains `NOT_RUN`. Operational PDF50 evidence is
+kept under `OPERATIONAL_PDF50_EVIDENCE`; it cannot be promoted into
+`MODEL_QUALITY_PROVIDER_BENCHMARK`. A future Luna adapter must populate the
+same Provider-neutral usage schema and evaluator without changing the corpus,
+hard-zero gates, or scoring rules.

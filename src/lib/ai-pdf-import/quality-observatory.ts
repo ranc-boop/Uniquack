@@ -2,9 +2,15 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+import {
+  buildAIProviderUsageAccounting,
+  normalizeAIProviderUsage,
+  normalizeAIProviderUsageAccounting,
+  type AIProviderUsage,
+  type AIProviderUsageAccounting,
+} from "@/lib/ai-operations/provider-usage";
 import type { AiPdfInputStrategy } from "@/lib/ai-providers/adapters";
 import type { AIProviderErrorCode } from "@/lib/ai-providers/errors";
-import type { GeminiNativeUsage } from "@/lib/ai-providers/gemini-native";
 import type { AIPdfVisualProposalRejectionCounts } from "@/lib/ai-pdf-import/visual-evidence";
 import type { AIPdfProviderAttemptReason } from "@/lib/ai-providers/ai-pdf-attempt-state";
 
@@ -66,7 +72,8 @@ type AIPdfAttemptCompletion = {
   failureCategory?: AIPdfAttemptFailureCategory;
   output?: AIPdfCandidateMetrics;
   outcome: "failed" | "success";
-  usage?: GeminiNativeUsage | null;
+  usage?: AIProviderUsage | null;
+  usageAccounting?: AIProviderUsageAccounting | null;
 };
 
 export type AIPdfAttemptRecord = AIPdfAttemptInput & {
@@ -76,7 +83,8 @@ export type AIPdfAttemptRecord = AIPdfAttemptInput & {
   fixedTransportOverheadBytes: number;
   outcome: "failed" | "success";
   output: AIPdfCandidateMetrics | null;
-  usage: GeminiNativeUsage | null;
+  usage: AIProviderUsage | null;
+  usageAccounting: AIProviderUsageAccounting | null;
 };
 
 export type AIPdfVisualQualityMetrics = {
@@ -152,7 +160,8 @@ export type AIPdfQualitySnapshot = {
     usefulOutputPerProviderInputToken: number | null;
   };
   parsingContractVersion: typeof AI_PDF_PARSING_TREATMENT_VERSION;
-  usage: GeminiNativeUsage;
+  usage: AIProviderUsage;
+  usageAccounting: AIProviderUsageAccounting;
   visualEvidence: AIPdfVisualQualityMetrics;
 };
 
@@ -225,10 +234,6 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
-function isNullableNonNegativeInteger(value: unknown) {
-  return value === null || isNonNegativeInteger(value);
-}
-
 function isSha256(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }
@@ -244,16 +249,8 @@ function isCandidateMetrics(value: unknown): value is AIPdfCandidateMetrics {
   ].every((key) => isNonNegativeInteger(value[key]));
 }
 
-function isUsage(value: unknown): value is GeminiNativeUsage {
-  if (!isRecord(value)) return false;
-  return [
-    "cachedInputTokens",
-    "candidateOutputTokens",
-    "inputTokens",
-    "outputTokens",
-    "thoughtTokens",
-    "totalTokens",
-  ].every((key) => isNullableNonNegativeInteger(value[key]));
+function isUsage(value: unknown): value is AIProviderUsage {
+  return normalizeAIProviderUsage(value) !== null;
 }
 
 function isSerializedContext(
@@ -300,7 +297,10 @@ function isAttemptRecord(value: unknown): value is AIPdfAttemptRecord {
     isNonNegativeInteger(value.fixedTransportOverheadBytes) &&
     (value.outcome === "failed" || value.outcome === "success") &&
     (value.output === null || isCandidateMetrics(value.output)) &&
-    (value.usage === null || isUsage(value.usage))
+    (value.usage === null || isUsage(value.usage)) &&
+    (value.usageAccounting === undefined ||
+      value.usageAccounting === null ||
+      normalizeAIProviderUsageAccounting(value.usageAccounting) !== null)
   );
 }
 
@@ -370,15 +370,9 @@ function cloneAttempt(attempt: AIPdfAttemptRecord): AIPdfAttemptRecord {
     sourceIncluded: attempt.sourceIncluded,
     sourceRepeated: attempt.sourceRepeated,
     transportAttempt: attempt.transportAttempt,
-    usage: attempt.usage
-      ? {
-          cachedInputTokens: attempt.usage.cachedInputTokens,
-          candidateOutputTokens: attempt.usage.candidateOutputTokens,
-          inputTokens: attempt.usage.inputTokens,
-          outputTokens: attempt.usage.outputTokens,
-          thoughtTokens: attempt.usage.thoughtTokens,
-          totalTokens: attempt.usage.totalTokens,
-        }
+    usage: attempt.usage ? normalizeAIProviderUsage(attempt.usage) : null,
+    usageAccounting: attempt.usageAccounting
+      ? normalizeAIProviderUsageAccounting(attempt.usageAccounting)
       : null,
   };
 }
@@ -443,12 +437,13 @@ function nonNegativeInteger(value: number | null | undefined) {
     : 0;
 }
 
-function nullableSum(values: Array<number | null | undefined>) {
-  const present = values.filter(
-    (value): value is number => typeof value === "number" && Number.isFinite(value),
-  );
-  return present.length
-    ? present.reduce((total, value) => total + value, 0)
+function strictNullableSum(values: Array<number | null | undefined>) {
+  return values.length > 0 &&
+    values.every(
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value),
+    )
+    ? values.reduce((total, value) => total + value, 0)
     : null;
 }
 
@@ -560,6 +555,17 @@ export function createAIPdfQualityObservatory(
           input.context.serializedRequestBytes,
         );
         const componentTotal = contextComponentTotal(input.context);
+        const usageAccounting = completion.usageAccounting ??
+          buildAIProviderUsageAccounting({
+            localContextBytes: {
+              serializedRequestBytes,
+              sourceInputBytes: input.context.sourceInputBytes,
+            },
+            providerReportedUsage: completion.usage,
+          });
+        const providerReportedUsage =
+          usageAccounting.providerReportedUsage?.usage ??
+          normalizeAIProviderUsage(completion.usage);
 
         attempts.push({
           ...input,
@@ -572,7 +578,8 @@ export function createAIPdfQualityObservatory(
           ),
           outcome: completion.outcome,
           output: completion.output ?? null,
-          usage: completion.usage ?? null,
+          usage: providerReportedUsage,
+          usageAccounting,
         });
       },
     };
@@ -648,26 +655,53 @@ export function createAIPdfQualityObservatory(
         warningCount: 0,
       },
     );
-    const usage: GeminiNativeUsage = {
-      cachedInputTokens: nullableSum(
+    const usage: AIProviderUsage = {
+      cachedInputTokens: strictNullableSum(
         attempts.map((attempt) => attempt.usage?.cachedInputTokens),
       ),
-      candidateOutputTokens: nullableSum(
+      candidateOutputTokens: strictNullableSum(
         attempts.map((attempt) => attempt.usage?.candidateOutputTokens),
       ),
-      inputTokens: nullableSum(
+      inputTokens: strictNullableSum(
         attempts.map((attempt) => attempt.usage?.inputTokens),
       ),
-      outputTokens: nullableSum(
+      outputTokens: strictNullableSum(
         attempts.map((attempt) => attempt.usage?.outputTokens),
       ),
-      thoughtTokens: nullableSum(
+      promptTokensDetails: [],
+      thoughtTokens: strictNullableSum(
         attempts.map((attempt) => attempt.usage?.thoughtTokens),
       ),
-      totalTokens: nullableSum(
+      toolUseInputTokens: strictNullableSum(
+        attempts.map((attempt) => attempt.usage?.toolUseInputTokens),
+      ),
+      totalTokens: strictNullableSum(
         attempts.map((attempt) => attempt.usage?.totalTokens),
       ),
     };
+    const usageAccounting = buildAIProviderUsageAccounting({
+      countTokens: {
+        cachedInputTokens: strictNullableSum(
+          attempts.map(
+            (attempt) =>
+              attempt.usageAccounting?.providerCountTokens
+                ?.cachedInputTokens,
+          ),
+        ),
+        inputTokens: strictNullableSum(
+          attempts.map(
+            (attempt) =>
+              attempt.usageAccounting?.providerCountTokens?.inputTokens,
+          ),
+        ),
+        promptTokensDetails: [],
+      },
+      localContextBytes: {
+        serializedRequestBytes: totalSerializedRequestBytes,
+        sourceInputBytes: component.sourceInput,
+      },
+      providerReportedUsage: usage,
+    });
     const repairBytes = component.previousResponse +
       component.structuralRepairInstructions +
       component.semanticRecoveryInstructions;
@@ -720,10 +754,13 @@ export function createAIPdfQualityObservatory(
       output: {
         ...outputMetrics,
         ...persistence,
-        outputTokensPerValidDraft: safeRatio(
-          usage.outputTokens ?? 0,
-          persistence.importableReviewDrafts,
-        ),
+        outputTokensPerValidDraft:
+          usage.outputTokens === null
+            ? null
+            : safeRatio(
+                usage.outputTokens,
+                persistence.importableReviewDrafts,
+              ),
         usefulOutputPerProviderInputToken:
           usage.inputTokens == null
             ? null
@@ -734,6 +771,7 @@ export function createAIPdfQualityObservatory(
       },
       parsingContractVersion: AI_PDF_PARSING_TREATMENT_VERSION,
       usage,
+      usageAccounting,
       visualEvidence,
     };
   }

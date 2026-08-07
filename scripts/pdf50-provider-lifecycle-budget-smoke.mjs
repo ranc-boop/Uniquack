@@ -30,6 +30,7 @@ const [
   providerTestControl,
   burstUpload,
   burstStatusReconciliation,
+  providerUsage,
 ] = await Promise.all([
   read("src/lib/ai-providers/execution-budget.ts"),
   read("src/lib/ai-providers/gemini-native.ts"),
@@ -42,6 +43,7 @@ const [
   read("src/lib/ai-jobs/provider-test-control.ts"),
   read("src/components/teacher/teacher-pdf-burst-upload.tsx"),
   read("src/lib/ai-pdf-import/burst-status-reconciliation.ts"),
+  read("src/lib/ai-operations/provider-usage.ts"),
 ]);
 
 const providerExtractionSchema = JSON.parse(
@@ -76,6 +78,7 @@ for (const operation of [
   "file_upload_start",
   "file_upload_finalize",
   "file_status_poll",
+  "token_count",
   "inference",
   "file_cleanup",
 ]) {
@@ -197,8 +200,13 @@ assert(
 
 assert(
   gemini.includes("thoughtsTokenCount") &&
-    gemini.includes("candidateOutputTokens") &&
-    gemini.includes("(candidateOutputTokens ?? 0) + (thoughtTokens ?? 0)"),
+    gemini.includes("toolUsePromptTokenCount") &&
+    gemini.includes("promptTokensDetails") &&
+    providerUsage.includes("candidateOutputTokens") &&
+    providerUsage.includes("thoughtTokens") &&
+    providerUsage.includes(
+      "(candidateOutputTokens ?? 0) + (thoughtTokens ?? 0)",
+    ),
   "Gemini usage accounting must include billable thinking tokens",
 );
 

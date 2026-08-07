@@ -44,8 +44,12 @@ async function loadTypeScriptModule(relativePath, mocks = {}) {
 const visual = await loadTypeScriptModule(
   "src/lib/ai-pdf-import/visual-evidence.ts",
 );
+const providerUsage = await loadTypeScriptModule(
+  "src/lib/ai-operations/provider-usage.ts",
+);
 const observerModule = await loadTypeScriptModule(
   "src/lib/ai-pdf-import/quality-observatory.ts",
+  { "@/lib/ai-operations/provider-usage": providerUsage },
 );
 const taxonomyDb = await loadTypeScriptModule(
   "src/lib/tags/taxonomy-db.ts",
@@ -338,8 +342,24 @@ assert.equal(snapshot.contextComposition.repeatedPreviousResponseBytes, 50);
 assert.equal(snapshot.contextComposition.totalSerializedRequestBytes, 1_330);
 assert.equal(snapshot.contextComposition.componentBytes.sourceInput, 1_000);
 assert.equal(snapshot.contextComposition.componentBytes.fixedTransportOverhead, 30);
-assert.equal(snapshot.contextComposition.providerReportedInputTokens, 100);
-assert.equal(snapshot.contextComposition.providerReportedOutputTokens, 80);
+assert.equal(snapshot.contextComposition.providerReportedInputTokens, null);
+assert.equal(snapshot.contextComposition.providerReportedOutputTokens, null);
+assert.equal(
+  snapshot.attempts[1].usageAccounting.providerReportedUsage.source,
+  "PROVIDER_REPORTED_USAGE",
+);
+assert.equal(
+  snapshot.usageAccounting.localContextBytes.source,
+  "LOCAL_CONTEXT_BYTES",
+);
+assert.deepEqual(snapshot.usageAccounting.unknownUsage.fields, [
+  "providerReportedInputTokens",
+  "countTokensInputTokens",
+  "candidateOutputTokens",
+  "thoughtTokens",
+  "toolUseInputTokens",
+  "totalTokens",
+]);
 assert.equal(snapshot.attempts[1].sourceIncluded, false);
 assert.equal(snapshot.output.importableReviewDrafts, 1);
 assert.equal(snapshot.visualEvidence.invalidProposals, 2);
@@ -348,7 +368,7 @@ assert.equal(
   snapshot.visualEvidence.invalidProposalReasons.page_outside_question_lineage,
   1,
 );
-assert.equal(snapshot.output.usefulOutputPerProviderInputToken, 0.01);
+assert.equal(snapshot.output.usefulOutputPerProviderInputToken, null);
 assert.equal(snapshot.contractEvidence.taxonomySnapshotSha256, "b".repeat(64));
 assert.equal(snapshot.contractEvidence.candidateSubsetSha256, "c".repeat(64));
 assert.equal(snapshot.contractEvidence.subsetToFullCatalogByteRatio, 0.5);
@@ -358,6 +378,15 @@ assert.deepEqual(
   observerModule.parseAIPdfQualityCheckpoint(checkpoint),
   checkpoint,
 );
+const legacyCheckpoint = structuredClone(checkpoint);
+for (const attempt of legacyCheckpoint.attempts) {
+  delete attempt.usageAccounting;
+}
+const parsedLegacyCheckpoint = observerModule.parseAIPdfQualityCheckpoint(
+  legacyCheckpoint,
+);
+assert(parsedLegacyCheckpoint);
+assert.equal(parsedLegacyCheckpoint.attempts[0].usageAccounting, null);
 const resumedObserver = observerModule.createAIPdfQualityObservatory(checkpoint);
 resumedObserver.recordCheckpointReplay();
 const resumedSnapshot = resumedObserver.snapshot();
@@ -370,8 +399,8 @@ assert.equal(
 );
 assert.equal(resumedSnapshot.checkpointReplayCount, 1);
 assert.equal(resumedSnapshot.contextComposition.totalSerializedRequestBytes, 1_330);
-assert.equal(resumedSnapshot.contextComposition.providerReportedInputTokens, 100);
-assert.equal(resumedSnapshot.contextComposition.providerReportedOutputTokens, 80);
+assert.equal(resumedSnapshot.contextComposition.providerReportedInputTokens, null);
+assert.equal(resumedSnapshot.contextComposition.providerReportedOutputTokens, null);
 assert.equal(
   resumedSnapshot.contractEvidence.taxonomySnapshotSha256,
   "b".repeat(64),

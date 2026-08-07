@@ -1,6 +1,12 @@
 import "server-only";
 
 import {
+  attachAIProviderUsageAccounting,
+  buildAIProviderUsageAccounting,
+  normalizeAIProviderUsage,
+  readAIProviderUsageAccountingFromError,
+} from "@/lib/ai-operations/provider-usage";
+import {
   normalizeAIPdfExtractionResponse,
   type AIPdfExtraction,
 } from "@/lib/ai-pdf-import/schema";
@@ -423,9 +429,13 @@ async function runAIPdfProviderTransport<T>({
         });
         return { recorder, value };
       } catch (error) {
+        const usageAccounting = readAIProviderUsageAccountingFromError(error);
         recorder?.complete({
           failureCategory: attemptFailureCategory(error),
           outcome: "failed",
+          usage:
+            usageAccounting?.providerReportedUsage?.usage ?? null,
+          usageAccounting,
         });
         throw error;
       }
@@ -453,12 +463,14 @@ async function requestChatCompletion({
   messages,
   onSerializedRequest,
   profile,
+  sourceInputBytes,
 }: {
   debugContext?: Record<string, unknown>;
   executionObserver?: AIProviderExecutionObserver;
   messages: ChatMessage[];
   onSerializedRequest?: (serializedRequestBytes: number) => Promise<void> | void;
   profile: ProviderProfileForUse;
+  sourceInputBytes: number;
 }) {
   let response: Response;
   const requestBody = {
@@ -471,6 +483,10 @@ async function requestChatCompletion({
     temperature: 0.1,
   };
   const serializedRequestBody = JSON.stringify(requestBody);
+  const localContextBytes = {
+    serializedRequestBytes: Buffer.byteLength(serializedRequestBody, "utf8"),
+    sourceInputBytes,
+  };
   await onSerializedRequest?.(
     Buffer.byteLength(serializedRequestBody, "utf8"),
   );
@@ -524,13 +540,17 @@ async function requestChatCompletion({
         name: error instanceof Error ? error.name : "UnknownError",
       },
     });
-    throw new Error(
+    const networkError = new Error(
       providerNetworkErrorMessage({
         error,
         operation: "request",
         profile,
         timeoutMs: CHAT_COMPLETION_TIMEOUT_MS,
       }),
+    );
+    throw attachAIProviderUsageAccounting(
+      networkError,
+      buildAIProviderUsageAccounting({ localContextBytes }),
     );
   }
 
@@ -551,7 +571,7 @@ async function requestChatCompletion({
         statusText: response.statusText,
       },
     });
-    throw new Error(
+    const providerError = new Error(
       providerHttpErrorMessage({
         body: text,
         operation: "request",
@@ -559,16 +579,31 @@ async function requestChatCompletion({
         status: response.status,
       }),
     );
+    throw attachAIProviderUsageAccounting(
+      providerError,
+      buildAIProviderUsageAccounting({ localContextBytes }),
+    );
   }
 
-  const payload = await readProviderJsonWithLimit<{
+  let payload: {
     choices?: { message?: { content?: string } }[];
     usage?: {
       completion_tokens?: number;
       prompt_tokens?: number;
       total_tokens?: number;
     };
-  }>(response, EXTRACTION_RESPONSE_MAX_BYTES);
+  };
+  try {
+    payload = await readProviderJsonWithLimit(
+      response,
+      EXTRACTION_RESPONSE_MAX_BYTES,
+    );
+  } catch (error) {
+    throw attachAIProviderUsageAccounting(
+      error,
+      buildAIProviderUsageAccounting({ localContextBytes }),
+    );
+  }
   await writeAIImportLLMDebugLog({
     context: {
       ...debugContext,
@@ -585,22 +620,24 @@ async function requestChatCompletion({
     },
   });
   const contentText = payload.choices?.[0]?.message?.content;
+  const usage = normalizeAIProviderUsage(payload.usage);
+  const usageAccounting = buildAIProviderUsageAccounting({
+    localContextBytes,
+    providerReportedUsage: usage,
+  });
 
   if (!contentText) {
-    throw new Error("AI provider response did not include message content.");
+    const error = new Error(
+      "AI provider response did not include message content.",
+    );
+    throw attachAIProviderUsageAccounting(error, usageAccounting);
   }
 
   return {
-    serializedRequestBytes: Buffer.byteLength(serializedRequestBody, "utf8"),
+    serializedRequestBytes: localContextBytes.serializedRequestBytes,
     text: contentText,
-    usage: payload.usage
-      ? {
-          cachedInputTokens: null,
-          inputTokens: payload.usage.prompt_tokens ?? null,
-          outputTokens: payload.usage.completion_tokens ?? null,
-          totalTokens: payload.usage.total_tokens ?? null,
-        }
-      : null,
+    usage,
+    usageAccounting,
   };
 }
 
@@ -942,6 +979,7 @@ export async function callAIPdfExtractionProvider({
           outcome: "success",
           output,
           usage: nativeResponse.usage,
+          usageAccounting: nativeResponse.usageAccounting,
         });
 
         if (usedRepair) {
@@ -957,6 +995,7 @@ export async function callAIPdfExtractionProvider({
           failureCategory: attemptFailureCategory(error),
           outcome: "failed",
           usage: nativeResponse.usage,
+          usageAccounting: nativeResponse.usageAccounting,
         });
         lastError = error;
 
@@ -1097,6 +1136,7 @@ export async function callAIPdfExtractionProvider({
                 sourceIncluded ? pdfBytes.byteLength : 0,
               ),
             profile,
+            sourceInputBytes: sourceIncluded ? pdfBytes.byteLength : 0,
           }),
         semanticReason,
         sourceIncluded,
@@ -1132,6 +1172,7 @@ export async function callAIPdfExtractionProvider({
         outcome: "success",
         output,
         usage: response.usage,
+        usageAccounting: response.usageAccounting,
       });
 
       if (usedRepair) {
@@ -1147,6 +1188,7 @@ export async function callAIPdfExtractionProvider({
         failureCategory: attemptFailureCategory(error),
         outcome: "failed",
         usage: response.usage,
+        usageAccounting: response.usageAccounting,
       });
       lastError = error;
 

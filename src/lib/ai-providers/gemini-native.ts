@@ -1,5 +1,13 @@
 import "server-only";
 
+import {
+  attachAIProviderUsageAccounting,
+  buildAIProviderUsageAccounting,
+  normalizeAIProviderPromptTokenDetails,
+  normalizeAIProviderUsage,
+  type AIProviderUsage,
+  type AIProviderUsageAccounting,
+} from "@/lib/ai-operations/provider-usage";
 import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
 import type { AIProviderErrorOperation } from "@/lib/ai-providers/errors";
 import {
@@ -36,19 +44,35 @@ type GeminiGenerateResponse = {
     cachedContentTokenCount?: number;
     candidatesTokenCount?: number;
     promptTokenCount?: number;
+    promptTokensDetails?: {
+      modality?: string;
+      tokenCount?: number;
+    }[];
     thoughtsTokenCount?: number;
+    toolUsePromptTokenCount?: number;
     totalTokenCount?: number;
   };
 };
 
-export type GeminiNativeUsage = {
-  cachedInputTokens: number | null;
-  candidateOutputTokens?: number | null;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  thoughtTokens?: number | null;
-  totalTokens: number | null;
+type GeminiGenerateContentRequest = {
+  contents: {
+    parts: Record<string, unknown>[];
+  }[];
+  generationConfig: ReturnType<typeof buildGeminiGenerationConfig>;
 };
+
+type GeminiCountTokensResponse = {
+  cachedContentTokenCount?: number;
+  promptTokensDetails?: {
+    modality?: string;
+    tokenCount?: number;
+  }[];
+  totalTokens?: number;
+};
+
+export type GeminiNativeUsage = AIProviderUsage;
+
+export type GeminiCountTokensMode = "best_effort" | "off" | "required";
 
 export type GeminiNativeSerializedRequest = {
   serializedRequestBytes: number;
@@ -58,6 +82,7 @@ export type GeminiNativeSerializedRequest = {
 type GeminiNativePdfInput = {
   apiKey: string;
   baseUrl?: string;
+  countTokensMode?: GeminiCountTokensMode;
   debugContext?: Record<string, unknown>;
   executionObserver?: AIProviderExecutionObserver;
   fetchImpl?: GeminiFetch;
@@ -76,6 +101,7 @@ type GeminiNativePdfInput = {
 type GeminiNativeTextTestInput = {
   apiKey: string;
   baseUrl?: string;
+  countTokensMode?: GeminiCountTokensMode;
   executionObserver?: AIProviderExecutionObserver;
   fetchImpl?: GeminiFetch;
   model: string;
@@ -264,6 +290,17 @@ function generateContentUrl(model: string, baseUrl: string) {
   )}:generateContent`;
 }
 
+function countTokensUrl(model: string, baseUrl: string) {
+  return `${geminiApiBaseUrl(baseUrl)}/v1beta/models/${modelPath(
+    model,
+  )}:countTokens`;
+}
+
+function geminiModelResourceName(model: string) {
+  const normalized = model.trim().replace(/^models\//i, "");
+  return `models/${normalized}`;
+}
+
 function fileMimeType(file: GeminiFile) {
   return file.mimeType ?? file.mime_type ?? GEMINI_PDF_MIME_TYPE;
 }
@@ -315,6 +352,66 @@ async function readJson<T>(response: Response, operation: string): Promise<T> {
     return JSON.parse(text) as T;
   } catch {
     throw new Error(`Gemini Native ${operation} returned invalid JSON.`);
+  }
+}
+
+async function countGeminiTokens({
+  apiKey,
+  baseUrl,
+  executionObserver,
+  fetchImpl,
+  mode,
+  model,
+  requestBody,
+}: {
+  apiKey: string;
+  baseUrl: string;
+  executionObserver?: AIProviderExecutionObserver;
+  fetchImpl: GeminiFetch;
+  mode: GeminiCountTokensMode;
+  model: string;
+  requestBody: GeminiGenerateContentRequest;
+}) {
+  if (mode === "off") return null;
+
+  const body = JSON.stringify({
+    generateContentRequest: {
+      ...requestBody,
+      model: geminiModelResourceName(model),
+    },
+  });
+  executionObserver?.recordNetworkRequest("token_count");
+
+  try {
+    const response = await fetchImpl(countTokensUrl(model, baseUrl), {
+      body,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+      },
+      method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(GEMINI_GENERATE_TIMEOUT_MS),
+    });
+    const payload = await readJson<GeminiCountTokensResponse>(
+      response,
+      "countTokens",
+    );
+
+    return {
+      cachedInputTokens:
+        typeof payload.cachedContentTokenCount === "number"
+          ? payload.cachedContentTokenCount
+          : null,
+      inputTokens:
+        typeof payload.totalTokens === "number" ? payload.totalTokens : null,
+      promptTokensDetails: normalizeAIProviderPromptTokenDetails(
+        payload.promptTokensDetails,
+      ),
+    };
+  } catch (error) {
+    if (mode === "required") throw error;
+    return null;
   }
 }
 
@@ -498,9 +595,12 @@ async function deleteGeminiFile({
 async function generateContent({
   apiKey,
   baseUrl,
+  countTokensMode,
   debugContext,
   executionObserver,
   fetchImpl,
+  localContextRequestPrefixBytes,
+  localContextSourceInputBytes,
   parts,
   model,
   onSerializedRequest,
@@ -508,15 +608,18 @@ async function generateContent({
 }: {
   apiKey: string;
   baseUrl: string;
+  countTokensMode: GeminiCountTokensMode;
   debugContext?: Record<string, unknown>;
   executionObserver?: AIProviderExecutionObserver;
   fetchImpl: GeminiFetch;
+  localContextRequestPrefixBytes: number;
+  localContextSourceInputBytes: number;
   parts: Record<string, unknown>[];
   model: string;
   onSerializedRequest?: (serializedRequestBytes: number) => Promise<void> | void;
   outputContract?: GeminiOutputContract;
 }) {
-  const requestBody = {
+  const requestBody: GeminiGenerateContentRequest = {
     contents: [
       {
         parts,
@@ -528,9 +631,43 @@ async function generateContent({
     }),
   };
   const serializedRequestBody = JSON.stringify(requestBody);
-  await onSerializedRequest?.(
-    Buffer.byteLength(serializedRequestBody, "utf8"),
+  const serializedRequestBytes = Buffer.byteLength(
+    serializedRequestBody,
+    "utf8",
   );
+  await onSerializedRequest?.(
+    serializedRequestBytes,
+  );
+  const localContextBytes = {
+    serializedRequestBytes:
+      localContextRequestPrefixBytes + serializedRequestBytes,
+    sourceInputBytes: localContextSourceInputBytes,
+  };
+  let providerCountTokens: Awaited<ReturnType<typeof countGeminiTokens>> = null;
+  try {
+    providerCountTokens = await countGeminiTokens({
+      apiKey,
+      baseUrl,
+      executionObserver,
+      fetchImpl,
+      mode: countTokensMode,
+      model,
+      requestBody,
+    });
+  } catch (error) {
+    throw attachAIProviderUsageAccounting(
+      error,
+      buildAIProviderUsageAccounting({
+        localContextBytes,
+      }),
+    );
+  }
+  const usageAccounting = (providerReportedUsage?: unknown) =>
+    buildAIProviderUsageAccounting({
+      countTokens: providerCountTokens,
+      localContextBytes,
+      providerReportedUsage,
+    });
 
   await writeAIImportLLMDebugLog({
     context: {
@@ -578,7 +715,7 @@ async function generateContent({
         name: error instanceof Error ? error.name : "UnknownError",
       },
     });
-    throw error;
+    throw attachAIProviderUsageAccounting(error, usageAccounting());
   }
   if (!response.ok) {
     const safeDetails = parseGeminiNativeSafeErrorDetails({
@@ -600,10 +737,15 @@ async function generateContent({
       },
     });
   }
-  const payload = await readJson<GeminiGenerateResponse>(
-    response,
-    "generateContent",
-  );
+  let payload: GeminiGenerateResponse;
+  try {
+    payload = await readJson<GeminiGenerateResponse>(
+      response,
+      "generateContent",
+    );
+  } catch (error) {
+    throw attachAIProviderUsageAccounting(error, usageAccounting());
+  }
   await writeAIImportLLMDebugLog({
     context: {
       ...debugContext,
@@ -616,6 +758,8 @@ async function generateContent({
       status: response.status,
     },
   });
+  const providerUsage = normalizeAIProviderUsage(payload.usageMetadata);
+  const accounting = usageAccounting(providerUsage);
   const text = payload.candidates
     ?.flatMap((candidate) => candidate.content?.parts ?? [])
     .map((part) => part.text)
@@ -624,51 +768,24 @@ async function generateContent({
     .trim();
 
   if (!text) {
-    throw new Error("Gemini Native response did not include text content.");
+    const error = new Error(
+      "Gemini Native response did not include text content.",
+    );
+    throw attachAIProviderUsageAccounting(error, accounting);
   }
 
-  const usageMetadata = payload.usageMetadata;
-  const candidateOutputTokens =
-    typeof usageMetadata?.candidatesTokenCount === "number"
-      ? usageMetadata.candidatesTokenCount
-      : null;
-  const thoughtTokens =
-    typeof usageMetadata?.thoughtsTokenCount === "number"
-      ? usageMetadata.thoughtsTokenCount
-      : null;
-  const usage: GeminiNativeUsage | null = usageMetadata
-    ? {
-        cachedInputTokens:
-          typeof usageMetadata.cachedContentTokenCount === "number"
-            ? usageMetadata.cachedContentTokenCount
-            : null,
-        inputTokens:
-          typeof usageMetadata.promptTokenCount === "number"
-            ? usageMetadata.promptTokenCount
-            : null,
-        candidateOutputTokens,
-        outputTokens:
-          candidateOutputTokens !== null || thoughtTokens !== null
-            ? (candidateOutputTokens ?? 0) + (thoughtTokens ?? 0)
-            : null,
-        thoughtTokens,
-        totalTokens:
-          typeof usageMetadata.totalTokenCount === "number"
-            ? usageMetadata.totalTokenCount
-            : null,
-      }
-    : null;
-
   return {
-    serializedRequestBytes: Buffer.byteLength(serializedRequestBody, "utf8"),
+    serializedRequestBytes,
     text,
-    usage,
+    usage: providerUsage,
+    usageAccounting: accounting,
   };
 }
 
 export async function generateWithGeminiNativePdf({
   apiKey,
   baseUrl = DEFAULT_GEMINI_API_BASE_URL,
+  countTokensMode = "off",
   debugContext,
   executionObserver,
   fetchImpl = fetch,
@@ -684,6 +801,7 @@ export async function generateWithGeminiNativePdf({
   serializedRequestBytes: number;
   text: string;
   usage: GeminiNativeUsage | null;
+  usageAccounting: AIProviderUsageAccounting;
 }> {
   assertGeminiConfig({ apiKey, model, pdfBytes });
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
@@ -723,9 +841,12 @@ export async function generateWithGeminiNativePdf({
     return await generateContent({
       apiKey,
       baseUrl,
+      countTokensMode,
       debugContext,
       executionObserver,
       fetchImpl,
+      localContextRequestPrefixBytes: upload.serializedRequestBytes,
+      localContextSourceInputBytes: pdfBytes.byteLength,
       model,
       onSerializedRequest: async (generateRequestBytes) => {
         await onSerializedRequest?.({
@@ -769,7 +890,10 @@ export async function testGeminiNativeTextConnection({
   await generateContent({
     apiKey,
     baseUrl,
+    countTokensMode: "off",
     fetchImpl,
+    localContextRequestPrefixBytes: 0,
+    localContextSourceInputBytes: 0,
     model,
     outputContract,
     parts: [{ text: prompt }],
@@ -784,6 +908,7 @@ export async function testGeminiNativeTextConnection({
 export async function generateWithGeminiNativeText({
   apiKey,
   baseUrl = DEFAULT_GEMINI_API_BASE_URL,
+  countTokensMode = "off",
   debugContext,
   executionObserver,
   fetchImpl = fetch,
@@ -799,6 +924,7 @@ export async function generateWithGeminiNativeText({
   serializedRequestBytes: number;
   text: string;
   usage: GeminiNativeUsage | null;
+  usageAccounting: AIProviderUsageAccounting;
 }> {
   assertGeminiTextConfig({ apiKey, model });
   if (fetchImpl === fetch) await assertSafeAIProviderBaseUrl(baseUrl);
@@ -807,9 +933,12 @@ export async function generateWithGeminiNativeText({
   return generateContent({
     apiKey,
     baseUrl,
+    countTokensMode,
     debugContext,
     executionObserver,
     fetchImpl,
+    localContextRequestPrefixBytes: 0,
+    localContextSourceInputBytes: 0,
     model,
     onSerializedRequest: async (serializedRequestBytes) => {
       await onSerializedRequest?.({

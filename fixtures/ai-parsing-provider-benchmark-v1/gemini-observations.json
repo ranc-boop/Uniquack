@@ -1,0 +1,10 @@
+{
+  "benchmarkCorpusVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1",
+  "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+  "status": "NOT_RUN",
+  "provider": "gemini_native",
+  "model": "gemini-2.5-flash-lite",
+  "rows": [],
+  "jobs": [],
+  "reason": "No new paid Provider run was authorized for baseline accounting work. Existing operational PDF50 evidence is retained separately and is not relabeled as a model-quality benchmark."
+}

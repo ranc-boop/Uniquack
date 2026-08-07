@@ -1,0 +1,94 @@
+{
+  "version": "AI_PARSING_PROVIDER_BENCHMARK_V1",
+  "manifestVersion": 1,
+  "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+  "rights": "Repository-authored deterministic synthetic educational PDFs selected from the existing Golden Corpus; no private or third-party source material.",
+  "productionTuningProhibited": true,
+  "sourceBuilder": "scripts/ai-parsing-eval/provider-benchmark-v1-sources.mjs",
+  "goldenCorpus": {
+    "version": 3,
+    "manifestSha256": "d7ab3baa3ac2d51d936dcd48a5cbecbbeccab730dbe0144c121ee8096ae636e3",
+    "parsingCasesSha256": "e3328d066f6e640b618066e3273f6d0bdfb7ca7df27c8ff102be8672a7a5ad2d",
+    "taxonomyCasesSha256": "63b42c278b31a6d2493b25d06c091d8d5c5286caabd10605a8abfa437ab1d982",
+    "visualCasesSha256": "d6791e4e4d4341230b65d4864d56c8ddd8e0baba391c2173f483a221127bd9e0"
+  },
+  "runtimeBindings": {
+    "parsingContractSha256": "5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95",
+    "taxonomySnapshotSha256": "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+    "candidateSubsetSha256": "RECORD_PER_ATTEMPT_AT_RUN"
+  },
+  "requiredCapabilities": [
+    "text",
+    "answer-key",
+    "free-response",
+    "equation",
+    "table",
+    "visual",
+    "missing-visual",
+    "multi-part",
+    "taxonomy-ambiguous",
+    "insufficient-evidence"
+  ],
+  "sources": [
+    {
+      "sourceId": "text-free-response",
+      "byteLength": 765,
+      "sha256": "74a55b8a16b5335f91241e4fe6f10d57a4f003dbde1db0ab2ece3477ad027f5d",
+      "pageCount": 1,
+      "capabilities": ["text", "free-response"],
+      "goldenRefs": ["parsing/plain-single-frq"]
+    },
+    {
+      "sourceId": "answer-key",
+      "byteLength": 1737,
+      "sha256": "1c9d38a50043fa63aad4b2dba10b265567d98f360352683f2edf3b88b4d6e771",
+      "pageCount": 4,
+      "capabilities": ["answer-key"],
+      "goldenRefs": ["parsing/multipage-answer-key"]
+    },
+    {
+      "sourceId": "equation",
+      "byteLength": 763,
+      "sha256": "c87044561a49a3151718dacd8a4299f6d354113648994fb6c096f65650da3faa",
+      "pageCount": 1,
+      "capabilities": ["equation"],
+      "goldenRefs": ["parsing/latex-equations"]
+    },
+    {
+      "sourceId": "visual-evidence",
+      "byteLength": 4054,
+      "sha256": "09bc5eb8b70e6f5c4cfa122a33fd048cd60448ffeaffc49180cc59b6afa95938",
+      "pageCount": 4,
+      "capabilities": ["table", "visual", "missing-visual", "multi-part"],
+      "goldenRefs": [
+        "parsing/required-data-table",
+        "parsing/subquestions-shared-stem",
+        "visual/single-required-graph",
+        "visual/missing-required-figure",
+        "visual/shared-figure-subquestions"
+      ]
+    },
+    {
+      "sourceId": "taxonomy-ambiguous",
+      "byteLength": 760,
+      "sha256": "279067c78dab9f7ba48e223d493e58f4aa1ba6224638ed8d434fbcb43abeca17",
+      "pageCount": 1,
+      "capabilities": ["taxonomy-ambiguous"],
+      "goldenRefs": [
+        "parsing/ambiguous-taxonomy-clear-question",
+        "taxonomy/ambiguous-curriculum-abstains"
+      ]
+    },
+    {
+      "sourceId": "insufficient-evidence",
+      "byteLength": 830,
+      "sha256": "dce2d1709b337e02edb8e3c0e75a9f68b1394f366ad1f6cd6fe9bc8d2e49591c",
+      "pageCount": 1,
+      "capabilities": ["insufficient-evidence"],
+      "goldenRefs": [
+        "parsing/insufficient-answer-evidence",
+        "taxonomy/insufficient-taxonomy-evidence"
+      ]
+    }
+  ]
+}

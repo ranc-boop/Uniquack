@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { normalizeAIProviderUsage } from "@/lib/ai-operations/provider-usage";
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
 import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
 import {
@@ -723,14 +724,7 @@ async function callTeacherBlueprintGenerationProvider({
 
   return {
     text: content,
-    usage: payload.usage
-      ? {
-          cachedInputTokens: null,
-          inputTokens: payload.usage.prompt_tokens ?? null,
-          outputTokens: payload.usage.completion_tokens ?? null,
-          totalTokens: payload.usage.total_tokens ?? null,
-        }
-      : null,
+    usage: normalizeAIProviderUsage(payload.usage),
   };
 }
 
