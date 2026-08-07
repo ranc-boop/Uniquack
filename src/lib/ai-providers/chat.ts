@@ -43,6 +43,7 @@ import {
   generateWithGeminiNativePdf,
   generateWithGeminiNativeText,
   testGeminiNativeTextConnection,
+  type GeminiCountTokensMode,
   type GeminiNativeUsage,
 } from "@/lib/ai-providers/gemini-native";
 import { GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT } from "@/lib/ai-providers/gemini-structured-output";
@@ -73,6 +74,7 @@ type ProviderProfileForUse = {
 type ProviderInput = {
   attemptLedger?: AIPdfProviderAttemptLedger;
   attemptScope?: string;
+  countTokensMode?: GeminiCountTokensMode;
   debugContext?: Record<string, unknown>;
   executionObserver?: AIProviderExecutionObserver;
   fileName: string;
@@ -794,6 +796,7 @@ export async function testAIProviderConnection(
 export async function callAIPdfExtractionProvider({
   attemptLedger = createAIPdfProviderAttemptLedger(),
   attemptScope = "single",
+  countTokensMode = "off",
   debugContext,
   executionObserver,
   fileName,
@@ -914,6 +917,7 @@ export async function callAIPdfExtractionProvider({
             const common = {
               apiKey: profile.apiKey,
               baseUrl: profile.base_url,
+              countTokensMode,
               debugContext: {
                 ...debugContext,
                 attempt,

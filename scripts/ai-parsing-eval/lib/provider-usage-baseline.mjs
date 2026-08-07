@@ -75,6 +75,13 @@ function selectInputTokens(accounting) {
     : tokenMeasurement(estimatedValue, "ESTIMATED_USAGE");
 }
 
+function selectCountTokensInput(accounting) {
+  const value = numeric(accounting?.providerCountTokens?.inputTokens);
+  return value === null
+    ? tokenMeasurement(null, "UNKNOWN_USAGE")
+    : tokenMeasurement(value, "PROVIDER_COUNT_TOKENS");
+}
+
 function selectProviderToken(accounting, key) {
   const value = numeric(accounting?.providerReportedUsage?.usage?.[key]);
   if (value !== null) {
@@ -162,6 +169,7 @@ function attemptObservation(row, manifest, pricing) {
   assert.equal(isCount(row.attemptOrdinal) && row.attemptOrdinal > 0, true);
   assert.equal(isCount(row.durationMs), true);
   const inputTokens = selectInputTokens(row.usageAccounting);
+  const countTokensInput = selectCountTokensInput(row.usageAccounting);
   const cachedInputTokens = selectProviderToken(
     row.usageAccounting,
     "cachedInputTokens",
@@ -197,6 +205,7 @@ function attemptObservation(row, manifest, pricing) {
     durationMs: row.durationMs,
     evidenceClass: row.evidenceClass,
     inputTokens,
+    countTokensInput,
     jobOrdinal: row.jobOrdinal,
     model: row.model,
     parsingContractSha256: row.parsingContractSha256,
@@ -206,6 +215,7 @@ function attemptObservation(row, manifest, pricing) {
     thinkingTokens,
     toolUseInputTokens,
     totalTokens,
+    outputTokens: billedOutputTokens,
     usageDerivedCostMicros: costMicros({
       cachedInputTokens,
       inputTokens,
@@ -306,18 +316,84 @@ export function buildProviderUsageBaselineReport({
     .map((row) => row.totalTokens.value)
     .filter((value) => typeof value === "number");
   const latencies = rows.map((row) => row.durationMs);
+  const availableOutputTokens = rows
+    .map((row) => row.outputTokens.value)
+    .filter((value) => typeof value === "number");
+  const availableThinkingTokens = rows
+    .map((row) => row.thinkingTokens.value)
+    .filter((value) => typeof value === "number");
+  const totalInputTokens = strictSum(rows.map((row) => row.inputTokens.value));
+  const totalOutputTokens = strictSum(rows.map((row) => row.outputTokens.value));
+  const totalThinkingTokens = strictSum(
+    rows.map((row) => row.thinkingTokens.value),
+  );
+  const countTokenComparisons = rows
+    .filter(
+      (row) =>
+        typeof row.countTokensInput.value === "number" &&
+        typeof row.inputTokens.value === "number",
+    )
+    .map((row) => ({
+      absoluteDelta: Math.abs(
+        row.inputTokens.value - row.countTokensInput.value,
+      ),
+      countTokensInput: row.countTokensInput.value,
+      providerReportedInput: row.inputTokens.value,
+    }));
+  const providerHttpRequestCount = numeric(
+    observations.run?.globalProviderCounters?.networkRequests,
+  );
+  const providerCountTokensRequestCount = numeric(
+    observations.run?.globalProviderCounters?.tokenCountRequests,
+  );
 
   return {
     aggregate: {
       attemptsPerValidReviewDraft: safeRatio(rows.length, validReviewDrafts),
+      providerCountTokensRequestCount,
+      providerHttpRequestCount,
+      providerInferenceRequestCount: rows.length,
+      providerInferenceRequestsPerValidReviewDraft: safeRatio(
+        rows.length,
+        validReviewDrafts,
+      ),
+      providerRequestsPerValidReviewDraft: safeRatio(
+        providerHttpRequestCount,
+        validReviewDrafts,
+      ),
       completedJobs: completedJobs.length,
+      countTokensComparisonCoverage: `${countTokenComparisons.length}/${rows.length}`,
+      countTokensInputAbsoluteDeltaTotal: countTokenComparisons.length
+        ? countTokenComparisons.reduce(
+            (total, comparison) => total + comparison.absoluteDelta,
+            0,
+          )
+        : null,
       inputTokenCoverage: `${availableInputTokens.length}/${rows.length}`,
       p50InputTokens: percentile(availableInputTokens, 0.5),
       p50LatencyMs: percentile(latencies, 0.5),
+      p50OutputTokens: percentile(availableOutputTokens, 0.5),
+      p50ThinkingTokens: percentile(availableThinkingTokens, 0.5),
       p50TotalTokens: percentile(availableTotalTokens, 0.5),
       p95InputTokens: percentile(availableInputTokens, 0.95),
       p95LatencyMs: percentile(latencies, 0.95),
+      p95OutputTokens: percentile(availableOutputTokens, 0.95),
+      p95ThinkingTokens: percentile(availableThinkingTokens, 0.95),
       p95TotalTokens: percentile(availableTotalTokens, 0.95),
+      inputTokensPerValidReviewDraft: safeRatio(
+        totalInputTokens,
+        validReviewDrafts,
+      ),
+      outputTokensPerValidReviewDraft: safeRatio(
+        totalOutputTokens,
+        validReviewDrafts,
+      ),
+      thinkingTokensPerValidReviewDraft: safeRatio(
+        totalThinkingTokens,
+        validReviewDrafts,
+      ),
+      outputTokenCoverage: `${availableOutputTokens.length}/${rows.length}`,
+      thinkingTokenCoverage: `${availableThinkingTokens.length}/${rows.length}`,
       totalTokenCoverage: `${availableTotalTokens.length}/${rows.length}`,
       totalTokensPerCompletedJob: safeRatio(
         totalTokens,

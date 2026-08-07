@@ -68,7 +68,7 @@ const sourceBuilders = Object.freeze({
     ]),
     textPage([
       "Question 2",
-      "If y = 2x + 1 and x = 3, what is y?",
+      "If y = 2x + 2 and x = 3, what is y?",
       "A) 5   B) 6   C) 7   D) 8",
     ]),
     textPage([
@@ -77,7 +77,7 @@ const sourceBuilders = Object.freeze({
     textPage([
       "Answer Key",
       "Question 1: B. Solving 3x + 2 = 14 gives x = 4.",
-      "Question 2: C. Substituting x = 3 gives y = 7.",
+      "Question 2: D. Substituting x = 3 gives y = 8.",
     ]),
   ]),
   equation: () => assemblePdf([

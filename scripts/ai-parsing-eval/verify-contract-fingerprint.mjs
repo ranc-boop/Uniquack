@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +16,7 @@ const fingerprintedPaths = [
   "fixtures/ai-parsing-golden/parsing-cases.json",
   "fixtures/ai-parsing-golden/taxonomy-cases.json",
   "fixtures/ai-parsing-golden/visual-cases.json",
+  "fixtures/ai-parsing-provider-benchmark-v1/evaluation-contract.json",
   "fixtures/ai-parsing-provider-benchmark-v1/manifest.json",
   "fixtures/ai-parsing-provider-benchmark-v1/gemini-observations.json",
   "scripts/ai-parsing-eval/evaluate-golden.mjs",
@@ -27,9 +28,13 @@ const fingerprintedPaths = [
   "scripts/ai-parsing-eval/mutation-proof.mjs",
   "scripts/ai-parsing-eval/runtime-contract-smoke.mjs",
   "scripts/ai-parsing-eval/gemini-baseline-v1.mjs",
+  "scripts/ai-parsing-eval/gemini-baseline-v1-safety-smoke.mjs",
+  "scripts/ai-parsing-eval/lib/provider-benchmark-v1-evaluator.mjs",
   "scripts/ai-parsing-eval/lib/provider-usage-baseline.mjs",
+  "scripts/ai-parsing-eval/provider-benchmark-v1-evaluator-smoke.mjs",
   "scripts/ai-parsing-eval/provider-benchmark-v1-smoke.mjs",
   "scripts/ai-parsing-eval/provider-benchmark-v1-sources.mjs",
+  "scripts/ai-parsing-eval/run-gemini-baseline-v1.mjs",
   "scripts/ai-parsing-eval/synthetic-visual-pdf.mjs",
   "scripts/ai-parsing-eval/taxonomy-context-efficiency.mjs",
   "scripts/ai-parsing-eval/taxonomy-provenance-audit.mjs",
@@ -55,6 +60,7 @@ const fingerprintedPaths = [
   "scripts/run-ai-parsing-taxonomy-readonly-parity.ps1",
   "scripts/run-ai-parsing-visual-evidence-live-e2e.ps1",
   "scripts/run-gemini-live-resume-preflight.ps1",
+  "scripts/run-gemini-ai-parsing-baseline-v1.ps1",
   "scripts/run-pdf50-scale-qualification-live-e2e.ps1",
   "src/app/api/internal/ai-jobs/run/route.ts",
   "src/lib/ai-operations/cost-catalog.ts",
@@ -135,7 +141,7 @@ function canonicalWorkingTreeSha(path) {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
-if (process.argv[2] === "--emit") {
+if (process.argv[2] === "--emit" || process.argv[2] === "--write") {
   const baseline = resolveCommit(process.argv[3]);
   const treatment = resolveCommit(process.argv[4]);
   assert.equal(
@@ -144,23 +150,25 @@ if (process.argv[2] === "--emit") {
     "Baseline must be an ancestor of treatment.",
   );
 
-  console.log(
-    JSON.stringify(
-      {
-        baselineAnchor: baseline,
-        contractVersion: "ai-pdf-parsing/provider-neutral-v5",
-        files: fingerprintedPaths.map((path) => ({
-          baseline: anchorRecord(baseline, path),
-          path,
-          treatment: anchorRecord(treatment, path),
-        })),
-        schemaVersion: 1,
-        treatmentAnchor: treatment,
-      },
-      null,
-      2,
-    ),
-  );
+  const output = {
+    baselineAnchor: baseline,
+    contractVersion: "ai-pdf-parsing/provider-neutral-v5",
+    files: fingerprintedPaths.map((path) => ({
+      baseline: anchorRecord(baseline, path),
+      path,
+      treatment: anchorRecord(treatment, path),
+    })),
+    schemaVersion: 1,
+    treatmentAnchor: treatment,
+  };
+
+  if (process.argv[2] === "--write") {
+    writeFileSync(manifestPath, `${JSON.stringify(output, null, 2)}\n`, "utf8");
+    console.log("AI_PARSING_CONTRACT_FINGERPRINT_REGISTRY=WRITTEN");
+    console.log(`TREATMENT_ANCHOR=${treatment}`);
+  } else {
+    console.log(JSON.stringify(output, null, 2));
+  }
   process.exit(0);
 }
 

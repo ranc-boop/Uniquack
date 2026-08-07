@@ -4,7 +4,9 @@
   "status": "NOT_RUN",
   "provider": "gemini_native",
   "model": "gemini-2.5-flash-lite",
+  "treatmentVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1_SOURCE_EXACT_V2",
+  "evaluatorVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1_EVALUATOR_V2",
   "rows": [],
   "jobs": [],
-  "reason": "No new paid Provider run was authorized for baseline accounting work. Existing operational PDF50 evidence is retained separately and is not relabeled as a model-quality benchmark."
+  "reason": "The source-exact V2 benchmark correction was frozen before Provider observation. The authorized bounded baseline has not run yet; operational PDF50 evidence remains separate."
 }

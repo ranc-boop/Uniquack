@@ -3056,6 +3056,67 @@ async function loadActiveTags(
   };
 }
 
+export async function buildAIPdfProviderBenchmarkContract({
+  fileName,
+  pageCount,
+  supabase,
+}: {
+  fileName: string;
+  pageCount: number;
+  supabase: SupabaseLike;
+}) {
+  const runtimeTaxonomy = await loadActiveTags(supabase);
+  const prompt = buildPrompt({
+    fileName,
+    pageCount,
+    runtimeTaxonomy,
+  });
+
+  return {
+    activeTags: runtimeTaxonomy.activeTags.map((tag) => ({
+      facetKey: tag.facet_key,
+      id: tag.id,
+    })),
+    activeTagIds: runtimeTaxonomy.activeTags.map((tag) => tag.id),
+    authoritativeTagIds: runtimeTaxonomy.snapshot.candidates
+      .filter((tag) => AI_PDF_RUNTIME_TAXONOMY_FACETS.has(tag.facet))
+      .map((tag) => tag.tagId),
+    contractEvidence: {
+      candidateCount: runtimeTaxonomy.candidateSubset.candidates.length,
+      candidateSubsetBytes: Buffer.byteLength(
+        runtimeTaxonomy.candidateSubset.canonicalJson,
+        "utf8",
+      ),
+      candidateSubsetSha256: runtimeTaxonomy.candidateSubset.sha256,
+      fullTaxonomySnapshotBytes: Buffer.byteLength(
+        runtimeTaxonomy.snapshot.canonicalJson,
+        "utf8",
+      ),
+      fullTaxonomySnapshotSha256: runtimeTaxonomy.snapshot.sha256,
+      parsingContractSha256: runtimeTaxonomy.parsingContractSha256,
+      promptContractVersion: AI_PDF_PROMPT_CONTRACT_VERSION,
+      repairPolicyVersion: AI_PDF_REPAIR_POLICY_VERSION,
+      retrievalAlgorithmVersion: runtimeTaxonomy.candidateSubset.version,
+      schemaContractVersion: AI_PDF_SCHEMA_CONTRACT_VERSION,
+      subsetToFullCatalogByteRatio:
+        runtimeTaxonomy.snapshot.canonicalJson.length > 0
+          ? Number((
+              Buffer.byteLength(
+                runtimeTaxonomy.candidateSubset.canonicalJson,
+                "utf8",
+              ) /
+              Buffer.byteLength(runtimeTaxonomy.snapshot.canonicalJson, "utf8")
+            ).toFixed(6))
+          : null,
+      taxonomySnapshotSha256: runtimeTaxonomy.snapshot.sha256,
+      taxonomySnapshotVersion: runtimeTaxonomy.snapshot.version,
+    },
+    promptContext: prompt.context,
+    promptText: prompt.text,
+    visualContractVersion: AI_PDF_VISUAL_EVIDENCE_CONTRACT_VERSION,
+  };
+}
+
 async function loadActiveLeafTaxonomyCandidates(supabase: SupabaseLike) {
   const runtimeTaxonomy = await loadActiveTags(supabase);
 

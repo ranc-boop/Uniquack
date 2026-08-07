@@ -51,9 +51,19 @@ function clone(value) {
 
 function validateManifest(candidate, goldenRefs) {
   assert.equal(candidate.version, "AI_PARSING_PROVIDER_BENCHMARK_V1");
-  assert.equal(candidate.manifestVersion, 1);
+  assert.equal(candidate.manifestVersion, 2);
   assert.equal(candidate.evidenceClass, MODEL_QUALITY_PROVIDER_BENCHMARK);
   assert.equal(candidate.productionTuningProhibited, true);
+  assert.equal(candidate.sourceCorrection.providerRunsBeforeCorrection, 0);
+  assert.equal(
+    candidate.treatmentVersion,
+    "AI_PARSING_PROVIDER_BENCHMARK_V1_SOURCE_EXACT_V2",
+  );
+  assert.match(candidate.evaluationContract.sha256, SHA256_PATTERN);
+  assert.match(
+    candidate.evaluationContract.implementationSha256NormalizedLf,
+    SHA256_PATTERN,
+  );
   assert.equal(candidate.sources.length > 0, true);
   assert.equal(
     new Set(candidate.sources.map((source) => source.sourceId)).size,
@@ -146,6 +156,12 @@ function completeObservations(manifest) {
     status: "COMPLETE",
     provider: "gemini_native",
     model: "gemini-2.5-flash-lite",
+    run: {
+      globalProviderCounters: {
+        networkRequests: 12,
+        tokenCountRequests: 6,
+      },
+    },
     rows: manifest.sources.map((source, index) => ({
       attemptOrdinal: 1,
       attemptReason: "FIRST_ATTEMPT",
@@ -172,6 +188,9 @@ function completeObservations(manifest) {
 }
 
 const manifest = await loadJson(resolve(benchmarkRoot, "manifest.json"));
+const evaluationContract = await loadJson(
+  resolve(benchmarkRoot, "evaluation-contract.json"),
+);
 const observations = await loadJson(
   resolve(benchmarkRoot, "gemini-observations.json"),
 );
@@ -185,6 +204,17 @@ const goldenRefs = new Set([
 ]);
 
 validateManifest(manifest, goldenRefs);
+assert.equal(
+  manifest.evaluationContract.sha256,
+  createHash("sha256")
+    .update(JSON.stringify(evaluationContract))
+    .digest("hex"),
+);
+assert.equal(evaluationContract.frozenBeforeProviderObservation, true);
+assert.equal(
+  manifest.evaluationContract.implementationSha256NormalizedLf,
+  await canonicalSha256(resolve(root, manifest.evaluationContract.implementationPath)),
+);
 assert.equal(
   manifest.goldenCorpus.manifestSha256,
   await canonicalSha256(resolve(goldenRoot, "manifest.json")),
@@ -231,16 +261,25 @@ assert.equal(report.classification, "GEMINI_AI_PARSING_BASELINE_V1_COMPLETE");
 assert.equal(report.evidenceClass, MODEL_QUALITY_PROVIDER_BENCHMARK);
 assert.equal(report.operationalEvidenceClass, OPERATIONAL_PDF50_EVIDENCE);
 assert.equal(report.aggregate.attemptsPerValidReviewDraft, 1);
+assert.equal(report.aggregate.providerInferenceRequestCount, 6);
+assert.equal(report.aggregate.providerCountTokensRequestCount, 6);
+assert.equal(report.aggregate.providerHttpRequestCount, 12);
+assert.equal(report.aggregate.providerRequestsPerValidReviewDraft, 2);
 assert.equal(report.aggregate.totalTokensPerCompletedJob, 149.5);
 assert.equal(report.aggregate.totalTokensPerValidReviewDraft, 149.5);
 assert.equal(report.aggregate.p50InputTokens, 120);
 assert.equal(report.aggregate.p95InputTokens, 150);
 assert.equal(report.aggregate.p50TotalTokens, 144);
 assert.equal(report.aggregate.p95TotalTokens, 177);
+assert.equal(report.aggregate.p50OutputTokens, 24);
+assert.equal(report.aggregate.p95OutputTokens, 27);
+assert.equal(report.aggregate.p50ThinkingTokens, 2);
+assert.equal(report.aggregate.p95ThinkingTokens, 2);
 assert.equal(report.aggregate.p50LatencyMs, 30);
 assert.equal(report.aggregate.p95LatencyMs, 60);
 assert.equal(report.rows[0].inputTokens.source, "PROVIDER_REPORTED_USAGE");
 assert.equal(report.rows[0].inputTokens.value, 100);
+assert.equal(report.rows[0].countTokensInput.value, null);
 assert.equal(report.rows[0].cachedInputTokens.value, 0);
 assert.equal(report.rows[0].toolUseInputTokens.value, 0);
 assert.notEqual(
@@ -258,6 +297,7 @@ const partialReport = buildProviderUsageBaselineReport({
 });
 assert.equal(partialReport.rows[0].inputTokens.source, "PROVIDER_COUNT_TOKENS");
 assert.equal(partialReport.rows[0].inputTokens.value, 900);
+assert.equal(partialReport.rows[0].countTokensInput.value, 900);
 assert.equal(partialReport.rows[0].candidateOutputTokens.value, null);
 assert.equal(partialReport.rows[0].thinkingTokens.value, null);
 assert.equal(partialReport.rows[0].cachedInputTokens.value, null);

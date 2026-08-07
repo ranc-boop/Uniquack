@@ -1,0 +1,232 @@
+{
+  "version": "AI_PARSING_PROVIDER_BENCHMARK_V1_EVALUATOR_V2",
+  "contractVersion": 2,
+  "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+  "frozenBeforeProviderObservation": true,
+  "sourceCorrection": {
+    "reason": "The original answer-key source contradicted its expected answer, and two historical Golden references described different source text. V2 fixes the synthetic answer-key source and binds all six generated PDFs to source-exact expectations before any paid baseline request.",
+    "originalProviderRuns": 0,
+    "goldenReferencesAreCapabilityProvenanceOnly": true
+  },
+  "matching": {
+    "version": "source-exact-number-then-term-v1",
+    "numberMatchPriority": true,
+    "minimumTermMatchesWithoutNumber": 1,
+    "answerNormalization": "case-fold, HTML-strip, whitespace/punctuation compact",
+    "visualAssociationIoUFloor": 0.15
+  },
+  "sources": {
+    "text-free-response": {
+      "pageCount": 1,
+      "mustReject": false,
+      "questions": [
+        {
+          "id": "q1",
+          "numberAliases": ["1"],
+          "matchTerms": ["counter", "box"],
+          "pageRefs": [1],
+          "answerMode": "source_inline",
+          "answerAliases": ["6", "6 counters", "2 + 4 = 6"],
+          "answerPages": [1]
+        }
+      ],
+      "visuals": [],
+      "taxonomy": null
+    },
+    "answer-key": {
+      "pageCount": 4,
+      "mustReject": false,
+      "questions": [
+        {
+          "id": "q1",
+          "numberAliases": ["1"],
+          "matchTerms": ["3x", "14"],
+          "pageRefs": [1, 4],
+          "answerMode": "source_answer_key",
+          "answerAliases": ["B", "4", "x = 4"],
+          "correctOptionIds": ["B"],
+          "answerPages": [4]
+        },
+        {
+          "id": "q2",
+          "numberAliases": ["2"],
+          "matchTerms": ["2x", "x = 3"],
+          "pageRefs": [2, 4],
+          "answerMode": "source_answer_key",
+          "answerAliases": ["D", "8", "y = 8"],
+          "correctOptionIds": ["D"],
+          "answerPages": [4]
+        }
+      ],
+      "visuals": [],
+      "taxonomy": null
+    },
+    "equation": {
+      "pageCount": 1,
+      "mustReject": false,
+      "questions": [
+        {
+          "id": "q1",
+          "numberAliases": ["1"],
+          "matchTerms": ["differentiate", "x^2"],
+          "pageRefs": [1],
+          "answerMode": "source_inline",
+          "answerAliases": ["2x"],
+          "answerPages": [1]
+        },
+        {
+          "id": "q2",
+          "numberAliases": ["2"],
+          "matchTerms": ["integral", "1/x"],
+          "pageRefs": [1],
+          "answerMode": "source_inline",
+          "answerAliases": ["ln|x|+C", "ln |x| + C"],
+          "answerPages": [1]
+        }
+      ],
+      "visuals": [],
+      "taxonomy": null
+    },
+    "visual-evidence": {
+      "pageCount": 4,
+      "mustReject": false,
+      "questions": [
+        {
+          "id": "q1",
+          "numberAliases": ["1"],
+          "matchTerms": ["slope", "coordinate"],
+          "pageRefs": [1],
+          "answerMode": "source_inline",
+          "answerAliases": ["B", "2", "slope = 2"],
+          "correctOptionIds": ["B"],
+          "answerPages": [1]
+        },
+        {
+          "id": "q2",
+          "numberAliases": ["2"],
+          "matchTerms": ["derivative", "x^3"],
+          "pageRefs": [2],
+          "answerMode": "source_inline",
+          "answerAliases": ["C", "3x^2"],
+          "correctOptionIds": ["C"],
+          "answerPages": [2]
+        },
+        {
+          "id": "q3",
+          "numberAliases": ["3"],
+          "matchTerms": ["shaded area", "diagram"],
+          "pageRefs": [3],
+          "answerMode": "source_insufficient_evidence",
+          "answerAliases": ["D", "insufficient evidence", "cannot be determined"],
+          "correctOptionIds": ["D"],
+          "answerPages": [3]
+        },
+        {
+          "id": "q4a",
+          "numberAliases": ["4a", "4(a)"],
+          "matchTerms": ["constant rate", "part a"],
+          "pageRefs": [4],
+          "answerMode": "source_inline",
+          "answerAliases": ["2", "rate = 2"],
+          "answerPages": [4]
+        },
+        {
+          "id": "q4b",
+          "numberAliases": ["4b", "4(b)"],
+          "matchTerms": ["f(4)", "part b"],
+          "pageRefs": [4],
+          "answerMode": "source_inline",
+          "answerAliases": ["9", "f(4) = 9"],
+          "answerPages": [4]
+        }
+      ],
+      "visuals": [
+        {
+          "questionId": "q1",
+          "page": 1,
+          "role": "graph",
+          "required": true,
+          "expectedBbox": [0.245098, 0.337121, 0.490196, 0.391414],
+          "descriptionTerms": ["graph", "line", "coordinate"]
+        },
+        {
+          "questionId": "q2",
+          "page": 2,
+          "role": "decorative",
+          "required": false,
+          "mustSuppress": true
+        },
+        {
+          "questionId": "q3",
+          "page": 3,
+          "role": "diagram",
+          "required": true,
+          "sourceVisualMissing": true,
+          "expectedDisposition": "needs_more_evidence"
+        },
+        {
+          "questionId": "q4a",
+          "page": 4,
+          "role": "table",
+          "required": true,
+          "expectedBbox": [0.212418, 0.375, 0.575163, 0.315657],
+          "descriptionTerms": ["table", "data"],
+          "sharedGroup": "q4"
+        },
+        {
+          "questionId": "q4b",
+          "page": 4,
+          "role": "table",
+          "required": true,
+          "expectedBbox": [0.212418, 0.375, 0.575163, 0.315657],
+          "descriptionTerms": ["table", "data"],
+          "sharedGroup": "q4"
+        }
+      ],
+      "taxonomy": null
+    },
+    "taxonomy-ambiguous": {
+      "pageCount": 1,
+      "mustReject": false,
+      "questions": [
+        {
+          "id": "q1",
+          "numberAliases": ["1"],
+          "matchTerms": ["inverse operation", "x + 7"],
+          "pageRefs": [1],
+          "answerMode": "source_inline",
+          "answerAliases": ["x=5", "x = 5"],
+          "answerPages": [1]
+        }
+      ],
+      "visuals": [],
+      "taxonomy": {
+        "questionId": "q1",
+        "expectedIds": [
+          "math.concept.algebra.equations.linear_equations",
+          "math.task.rewrite.solve_for_variable",
+          "math.form.symbolic.equation"
+        ],
+        "expectedAbstainFacets": ["curriculum", "method"],
+        "broadParentIds": [
+          "math.concept.algebra.equations",
+          "math.method.equation_solving",
+          "math.task.rewrite",
+          "math.form.symbolic"
+        ]
+      }
+    },
+    "insufficient-evidence": {
+      "pageCount": 1,
+      "mustReject": true,
+      "questions": [],
+      "visuals": [],
+      "taxonomy": {
+        "questionId": null,
+        "expectedIds": [],
+        "expectedAbstainFacets": ["curriculum", "concept", "method", "task", "form"],
+        "broadParentIds": []
+      }
+    }
+  }
+}

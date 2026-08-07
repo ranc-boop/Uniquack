@@ -38,4 +38,22 @@ console.log(`BASELINE_CLASSIFICATION=${report.classification}`);
 if (report.remainingGap) {
   console.log(`REMAINING_BASELINE_GAP=${report.remainingGap}`);
 }
-console.log("PROVIDER_CALLS=0");
+if (report.aggregate) {
+  console.log(`VALID_REVIEW_DRAFTS=${report.aggregate.validReviewDrafts}`);
+  console.log(`PROVIDER_REQUESTS=${report.rows.length}`);
+  console.log(`P50_INPUT_TOKENS=${report.aggregate.p50InputTokens ?? "UNKNOWN_USAGE"}`);
+  console.log(`P95_INPUT_TOKENS=${report.aggregate.p95InputTokens ?? "UNKNOWN_USAGE"}`);
+  console.log(`P50_OUTPUT_TOKENS=${report.aggregate.p50OutputTokens ?? "UNKNOWN_USAGE"}`);
+  console.log(`P95_OUTPUT_TOKENS=${report.aggregate.p95OutputTokens ?? "UNKNOWN_USAGE"}`);
+  console.log(`P50_TOTAL_TOKENS=${report.aggregate.p50TotalTokens ?? "UNKNOWN_USAGE"}`);
+  console.log(`P95_TOTAL_TOKENS=${report.aggregate.p95TotalTokens ?? "UNKNOWN_USAGE"}`);
+  console.log(`P50_LATENCY_MS=${report.aggregate.p50LatencyMs}`);
+  console.log(`P95_LATENCY_MS=${report.aggregate.p95LatencyMs}`);
+  console.log(
+    `USAGE_DERIVED_COST_MICROS_PER_VALID_DRAFT=${
+      report.aggregate.usageDerivedCostMicrosPerValidReviewDraft ?? "UNKNOWN_USAGE"
+    }`,
+  );
+} else {
+  console.log("PROVIDER_REQUESTS=0");
+}

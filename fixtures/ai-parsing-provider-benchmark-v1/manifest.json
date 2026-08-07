@@ -1,10 +1,24 @@
 {
   "version": "AI_PARSING_PROVIDER_BENCHMARK_V1",
-  "manifestVersion": 1,
+  "manifestVersion": 2,
   "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
   "rights": "Repository-authored deterministic synthetic educational PDFs selected from the existing Golden Corpus; no private or third-party source material.",
   "productionTuningProhibited": true,
+  "treatmentVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1_SOURCE_EXACT_V2",
+  "sourceCorrection": {
+    "baseHead": "6c7df56393b7bf3eca6c853b57967671e165f580",
+    "providerRunsBeforeCorrection": 0,
+    "reason": "Corrected one contradictory synthetic answer-key item and replaced content-mismatched Golden expectations with a source-exact evaluation contract before Provider observation."
+  },
   "sourceBuilder": "scripts/ai-parsing-eval/provider-benchmark-v1-sources.mjs",
+  "evaluationContract": {
+    "path": "fixtures/ai-parsing-provider-benchmark-v1/evaluation-contract.json",
+    "version": "AI_PARSING_PROVIDER_BENCHMARK_V1_EVALUATOR_V2",
+    "sha256": "51ab57b9c372078b5a86af501788949f72d6acaedb076e104873a3199f01036c",
+    "implementationPath": "scripts/ai-parsing-eval/lib/provider-benchmark-v1-evaluator.mjs",
+    "implementationSha256NormalizedLf": "fb48df5c800ec0a93d0215608a989dde9437d9f1b2d0a9e651c96c496ca79306"
+  },
+  "goldenReferenceRole": "Capability provenance only; source-exact expected outputs are frozen in evaluation-contract.json.",
   "goldenCorpus": {
     "version": 3,
     "manifestSha256": "d7ab3baa3ac2d51d936dcd48a5cbecbbeccab730dbe0144c121ee8096ae636e3",
@@ -41,7 +55,7 @@
     {
       "sourceId": "answer-key",
       "byteLength": 1737,
-      "sha256": "1c9d38a50043fa63aad4b2dba10b265567d98f360352683f2edf3b88b4d6e771",
+      "sha256": "7d296821f4500d1ed58a511ee16a69b469a09c70718c10877e38667acea17ab8",
       "pageCount": 4,
       "capabilities": ["answer-key"],
       "goldenRefs": ["parsing/multipage-answer-key"]
