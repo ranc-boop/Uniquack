@@ -36,18 +36,26 @@
     },
     {
       "baseline": null,
+      "path": "fixtures/ai-parsing-provider-benchmark-v1/evaluation-contract.json",
+      "treatment": {
+        "blob": "6baac548545a225a980a2728b7e766eccc56ec96",
+        "sha256": "d47a0617752cef16ac398490d7296b16a4969fd79a6e58307c15532e1ca880f6"
+      }
+    },
+    {
+      "baseline": null,
       "path": "fixtures/ai-parsing-provider-benchmark-v1/manifest.json",
       "treatment": {
-        "blob": "4bc12014c7386a089824d52b063e6d89329a9043",
-        "sha256": "47260ed4b29373456c970eb0cfbf079b24ee9d626a4007fdbe74299b6a06cbc4"
+        "blob": "30b21501319b7fa5bde435fdade7b0a2dcb30ffb",
+        "sha256": "e36ea3edd4f3dd2b4b3eb68337ddad8451b390e4df43f475e84c9b10e9bb2f60"
       }
     },
     {
       "baseline": null,
       "path": "fixtures/ai-parsing-provider-benchmark-v1/gemini-observations.json",
       "treatment": {
-        "blob": "015ae68b43288d8949aaf008f78a9a2a4f8e6286",
-        "sha256": "58454f184cfd2d2fc1d9897ac5c1721eb5233a4acbe2bb5c31c45c90f59cc3eb"
+        "blob": "810bdc2acf0a35966a91a1e00d9dd63fc2841b40",
+        "sha256": "3b3a899a1adb07f2e361b7e973fe0e66083f5d496dc8b381ac9939c81f2e23d5"
       }
     },
     {
@@ -118,32 +126,64 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/gemini-baseline-v1.mjs",
       "treatment": {
-        "blob": "79acf8c419110edae2ea5e944f9a73a622deaa53",
-        "sha256": "44ff49d4bb5447c4e195558b9ff9922074dc97a403eacf9ec88be1880b580f5d"
+        "blob": "f222d297e210c042a8446d061b01c36687674704",
+        "sha256": "fa9a6c2fce2e5c5c6a534cb48e844451ef1b82c4df48edb31d00c95eacc86d74"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/gemini-baseline-v1-safety-smoke.mjs",
+      "treatment": {
+        "blob": "d1cdbe6ce60ac4af0d4f8b6e1b4a17f7e35241ed",
+        "sha256": "09d30ad51269f6fbac371f45656e2c68d5ac5fa26b9eb107a5b5f19942d2ece6"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/lib/provider-benchmark-v1-evaluator.mjs",
+      "treatment": {
+        "blob": "d4dcb36ca287a8dd4a19d162e32648df23f0929a",
+        "sha256": "fb48df5c800ec0a93d0215608a989dde9437d9f1b2d0a9e651c96c496ca79306"
       }
     },
     {
       "baseline": null,
       "path": "scripts/ai-parsing-eval/lib/provider-usage-baseline.mjs",
       "treatment": {
-        "blob": "045d4dc14c80cd24fb32c4babc0a2a29daa358a4",
-        "sha256": "2eab11547a681fa58a38ac8a9099eeb120e66089a62735a38ea10515598e1311"
+        "blob": "35123ab8b2e07cae40a1c570a22e0800023c69d6",
+        "sha256": "552f2b376ba3cd4b008792e2b121c1613088377b79f46f659d105c3e17cbc708"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/provider-benchmark-v1-evaluator-smoke.mjs",
+      "treatment": {
+        "blob": "afdc5ec62bf575535fafc38cde1e251ba4c5ec7e",
+        "sha256": "bc8a6a0d51d53d16e23935e0a42acc3c4a71496cd0ccf81f071af2bc7b29c890"
       }
     },
     {
       "baseline": null,
       "path": "scripts/ai-parsing-eval/provider-benchmark-v1-smoke.mjs",
       "treatment": {
-        "blob": "d74697bb1581db67e4a4605e199a1534da4f3d8f",
-        "sha256": "32402fba5fb931006cf21e1e81ef802d9040a7b2c35eb10268c3c0b82105ece8"
+        "blob": "ae8b3a92502d15c271bf2dab15d442701a45a6be",
+        "sha256": "96bf9775605fc62c0fd2f62354e6a27f2e9c04bf97c3f8378b981d4cfefc40ba"
       }
     },
     {
       "baseline": null,
       "path": "scripts/ai-parsing-eval/provider-benchmark-v1-sources.mjs",
       "treatment": {
-        "blob": "be81e2cb8b03f240a5cf119ff07e5d4b0ba0cfab",
-        "sha256": "79cc242d7e415740fc572cbaba1773b7ebac97fadd733ceec3ff64d09aa67c6c"
+        "blob": "51931e1d59317936f2b460aa368b0966157c512d",
+        "sha256": "dc6944c9f37a670152002d009c8fb25f7f63a39c03fc5c3edd3b4af5cdaf3b9c"
+      }
+    },
+    {
+      "baseline": null,
+      "path": "scripts/ai-parsing-eval/run-gemini-baseline-v1.mjs",
+      "treatment": {
+        "blob": "302afcb25a15654bd0b9192451ed3dca3b965d48",
+        "sha256": "4f6db638d1008b14ef783dc36f1089ba0298ba41aede979bbd7bba845b5654e0"
       }
     },
     {
@@ -174,8 +214,8 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/verify-contract-fingerprint.mjs",
       "treatment": {
-        "blob": "a4745e7d026b90f54a8d1b8478ef28f712f9e131",
-        "sha256": "229de900778a6d0d012c4f05767baee620059c3d2e04aa4c45d4934fbba76bee"
+        "blob": "24a42f8fed2fcff6e3791c3e55866d706924af12",
+        "sha256": "a4c0e01affc576441cffe2c5f87b15576707765e1cdaff186d7af801cf5e590c"
       }
     },
     {
@@ -380,6 +420,14 @@
       }
     },
     {
+      "baseline": null,
+      "path": "scripts/run-gemini-ai-parsing-baseline-v1.ps1",
+      "treatment": {
+        "blob": "80b7e4c26f3a43da3234229cac496a8d48169ed2",
+        "sha256": "0d4ae919139604a6cda031706b49e0e8f44ac6cfbd3906fb4b553f16aef5a263"
+      }
+    },
+    {
       "baseline": {
         "blob": "f87b1d03ceaf64245e8dc8f933d42cc8f9b89a5a",
         "sha256": "043fcc464c692b753cf68535728730fe7100e4547a52527aff5d7e9b2d89b2da"
@@ -468,8 +516,8 @@
       },
       "path": "src/lib/ai-pdf-import/service.ts",
       "treatment": {
-        "blob": "99ef44339eb002e94b294841cda1f016801e3b88",
-        "sha256": "046f67df4eae801f9d424b14d721633654a55998244ddf10188cc724fb04647e"
+        "blob": "7cb0fd24330a5884d8c554bcd9a4a1097a8a3149",
+        "sha256": "ef340fe1b9410a5c1896ab5360fc0ca3a56b19c3a853a9e5bc6be311b337acb2"
       }
     },
     {
@@ -580,8 +628,8 @@
       },
       "path": "src/lib/ai-providers/chat.ts",
       "treatment": {
-        "blob": "85d791b891091d426cde28cf8e2c38ce12da913d",
-        "sha256": "c0b1f8cea09cf90142aa1a2680aa6723d52b9b97d985fad37760dea1cade6f86"
+        "blob": "c033007cd6fef97e0aaa81cea3100ac1de492698",
+        "sha256": "e36baab4c7a62c157ab48df1ccb635acd77bae18383852ca8eb78eb7ca8d2c19"
       }
     },
     {
@@ -726,5 +774,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "9d03fdb4959bc15f1807cbe10fbed6c3084983ec"
+  "treatmentAnchor": "cbe504109072bce8574f7c287e65498735f73aa8"
 }
