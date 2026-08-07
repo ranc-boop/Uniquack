@@ -3,7 +3,7 @@
   "canonicalMigrationDirectory": "supabase/clean-migrations",
   "legacyMigrationDirectory": "supabase/migrations",
   "captureStatus": "PARTIALLY_CAPTURED_PROVIDER_GATEWAY_POST_0042",
-  "latestActivePrefix": 76,
+  "latestActivePrefix": 77,
   "blockedMigrations": [
     {
       "filename": "0032_google_account_links.sql",
@@ -90,7 +90,8 @@
     "0073_practice_ai_request_admission.sql",
     "0074_practice_ai_request_admission_time_fix.sql",
     "0075_practice_ai_inflight_leases.sql",
-    "0076_official_public_library_two_state_approval.sql"
+    "0076_official_public_library_two_state_approval.sql",
+    "0077_scope_orphan_question_admin_access.sql"
   ],
   "frozenMigrationHashes": {
     "0039_profile_privileged_fields_immutability.sql": "403c579b8feb47f29b6cfadde27f59a239c8fdce4df28c2c8ac3dcfe10d8277e",
@@ -304,6 +305,7 @@
     { "filename": "0073_practice_ai_request_admission.sql", "migrationNumber": 73, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 73, "status": "APPLIED_MANUALLY_NOT_LEDGERED_FORWARD_CORRECTED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Rollback preflight, hosted apply, and catalog/RLS/grant validation passed; runtime exposed a current_time type collision, making 0074 mandatory; no migration-ledger claim" },
     { "filename": "0074_practice_ai_request_admission_time_fix.sql", "migrationNumber": 74, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 74, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Rollback preflight, hosted apply, post-apply catalog/RLS/grant validation, rollback-only authenticated/anonymous runtime matrix, and Data API schema-cache probes passed; no migration-ledger history is claimed" },
     { "filename": "0075_practice_ai_inflight_leases.sql", "migrationNumber": 75, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 75, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Direct Postgres transaction on the configured disposable project", "evidenceSource": "Rollback preflight, hosted apply, catalog/RLS/grant validation, rollback-only lease contention/token/runtime matrix, and non-mutating Data API schema-cache probes passed; no migration-ledger history is claimed" },
-    { "filename": "0076_official_public_library_two_state_approval.sql", "migrationNumber": 76, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 76, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Exact project-ref-matched direct Postgres transaction after rollback preflight and explicit one-time commit gate", "evidenceSource": "docs/security/official-public-library-0076-hosted-apply-evidence.md; catalog, constraints, indexes, RLS/grants, aggregate preservation, four-role ID parity, anonymous denial, and Data API schema-cache validation passed; no Supabase migration-ledger history is claimed" }
+    { "filename": "0076_official_public_library_two_state_approval.sql", "migrationNumber": 76, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 76, "status": "APPLIED_MANUALLY_NOT_LEDGERED", "applicationMethod": "Exact project-ref-matched direct Postgres transaction after rollback preflight and explicit one-time commit gate", "evidenceSource": "docs/security/official-public-library-0076-hosted-apply-evidence.md; catalog, constraints, indexes, RLS/grants, aggregate preservation, four-role ID parity, anonymous denial, and Data API schema-cache validation passed; no Supabase migration-ledger history is claimed" },
+    { "filename": "0077_scope_orphan_question_admin_access.sql", "migrationNumber": 77, "classification": "CANONICAL_EXECUTABLE", "expectedOrder": 77, "status": "SOURCE_COMPLETE_CI_VALIDATED_NOT_HOSTED_APPLIED", "applicationMethod": "Forward-only migration validated on disposable local Supabase", "evidenceSource": "Authorization-matrix tenant isolation regression; no hosted or migration-ledger application is claimed" }
   ]
 }

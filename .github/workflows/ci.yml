@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+
+jobs:
+  quality:
+    name: Quality and static invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Canonical migration governance
+        run: node scripts/canonical-migration-governance-smoke.mjs
+      - name: Security source invariants
+        run: node scripts/security-smoke.mjs
+      - name: Route source invariants
+        run: node scripts/route-smoke.mjs --source-only
+      - name: Dead-code report (existing baseline)
+        continue-on-error: true
+        run: npm run deadcode:audit
+      - name: Dependency audit report (existing baseline)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  database:
+    name: Embedded database - ${{ matrix.test }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - library-governance-db-smoke.mjs
+          - assignment-creation-idempotency-db-smoke.mjs
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run canonical-chain database test
+        run: node scripts/${{ matrix.test }}
+
+  authorization:
+    name: Local Supabase authorization matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.84.2
+      - name: Initialize disposable Supabase project
+        run: |
+          rm -rf .ci
+          mkdir -p .ci
+          SUPABASE_WORKDIR=.ci supabase init
+          node scripts/ci-materialize-supabase.mjs .ci
+      - name: Start disposable Supabase stack
+        run: SUPABASE_WORKDIR=.ci supabase start
+      - name: Export local test credentials
+        run: |
+          SUPABASE_WORKDIR=.ci supabase status -o env \
+            --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
+            --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
+            --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
+            | sed -E 's/="(.*)"$/=\1/' > .env.test
+          AUTHZ_PASSWORD="$(openssl rand -base64 24 | tr -d '\n')"
+          echo "CI_AUTHZ_PASSWORD=$AUTHZ_PASSWORD" >> "$GITHUB_ENV"
+          cat >> .env.test <<EOF
+          TEST_ORG_T1=11111111-1111-4111-8111-111111111111
+          TEST_ORG_T2=22222222-2222-4222-8222-222222222222
+          TEST_STUDENT_USERNAME=student@test.local
+          TEST_TEACHER_USERNAME=teacher-a@test.local
+          TEST_TEACHER_B_USERNAME=teacher-b@test.local
+          TEST_UNRELATED_TEACHER_USERNAME=teacher-t2@test.local
+          TEST_ADMIN_USERNAME=admin@test.local
+          TEST_SUPER_ADMIN_USERNAME=super-admin@test.local
+          TEST_ADMIN_PASSWORD=$AUTHZ_PASSWORD
+          EOF
+      - run: node scripts/ci-authz-seed.mjs
+      - name: Enforce authorization matrix
+        run: node scripts/ci-authz-matrix-gate.mjs
+      - name: Enforce cross-tenant delete regression
+        run: node scripts/ci-authz-delete-regression.mjs
+      - name: Upload authorization evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: authz-matrix-evidence
+          path: docs/security/evidence/authz-run-*.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Stop disposable Supabase stack
+        if: always()
+        run: SUPABASE_WORKDIR=.ci supabase stop --no-backup || true
+
+  build-and-runtime:
+    name: Build, performance, and runtime routes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run perf:audit
+      - run: npm run perf:budget
+      - name: Start production server
+        run: |
+          npm run start -- -H 127.0.0.1 > /tmp/o2i-next.log 2>&1 &
+          echo $! > /tmp/o2i-next.pid
+      - name: Wait for production server
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/o2i-next.log
+          exit 1
+      - name: Runtime route smoke
+        env:
+          SITE_URL: http://127.0.0.1:3000
+        run: node scripts/ci-runtime-route-smoke.mjs
+      - if: failure()
+        run: cat /tmp/o2i-next.log || true
+      - if: always()
+        run: |
+          if [ -f /tmp/o2i-next.pid ]; then kill "$(cat /tmp/o2i-next.pid)" 2>/dev/null || true; fi

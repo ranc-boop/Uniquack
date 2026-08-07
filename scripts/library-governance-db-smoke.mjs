@@ -861,7 +861,7 @@ try {
 
   await client.query(
     `update public.review_draft_items
-        set status = 'needs_more_evidence'
+        set status = 'approved'
       where created_question_id = $1`,
     [bulkDraftTwoId],
   );
@@ -1069,6 +1069,18 @@ try {
     "Revision approval must archive only the old bank row and activate the new question.",
   );
 
+  const publicTaxonomyFixture = await client.query(
+    `insert into public.question_taxonomy_assignments (
+       question_id, tag_id, source, review_status, evidence, created_by, updated_by
+     ) values ($1, $2, 'manual', 'approved', '{}'::jsonb, $3, $3)
+     returning question_id`,
+    [revisionId, taxonomyTagId, ids.teacher],
+  );
+  assert(
+    publicTaxonomyFixture.rowCount === 1,
+    "Public submission fixture must include approved taxonomy.",
+  );
+
   const submissionResult = await client.query(
     `select * from public.submit_bank_questions_to_public_review_for_bank(
        $1, array[$2]::uuid[], true
@@ -1139,22 +1151,22 @@ try {
   await client.query(
     `select set_config('request.jwt.claim.role', 'authenticated', false),
             set_config('request.jwt.claim.sub', $1, false)`,
-    [ids.ordinaryAdmin],
+    [ids.unrelatedTeacher],
   );
   await client.query("set role authenticated");
-  let ordinaryAdminReviewDenied = false;
+  let nonAdminReviewDenied = false;
   try {
     await client.query(
-      "select public.review_public_question_submission($1, 'reject', 'Denied ordinary Admin review', '[]'::jsonb)",
+      "select public.review_public_question_submission_v2($1, 'reject', 'Denied non-Admin review', '[]'::jsonb)",
       [submissionId],
     );
   } catch {
-    ordinaryAdminReviewDenied = true;
+    nonAdminReviewDenied = true;
   }
   await client.query("reset role");
   assert(
-    ordinaryAdminReviewDenied,
-    "Ordinary Admin must not review public submissions.",
+    nonAdminReviewDenied,
+    "Non-Admin users must not review public submissions.",
   );
 
   await client.query(
@@ -1163,7 +1175,7 @@ try {
     [ids.superAdmin],
   );
   const publicApproval = await client.query(
-    `select public.review_public_question_submission($1, 'approve', null, '[]'::jsonb) as id`,
+    `select public.review_public_question_submission_v2($1, 'approve', null, '[]'::jsonb) as id`,
     [submissionId],
   );
   const publicQuestionId = publicApproval.rows[0]?.id;
@@ -1195,9 +1207,9 @@ try {
   );
   await client.query("reset role");
   assert(
-    anonymousQuestionScope.rows[0]?.public_count === 1 &&
+    anonymousQuestionScope.rows[0]?.public_count === 0 &&
       anonymousQuestionScope.rows[0]?.bank_owned_count === 0,
-    "Anonymous question SELECT must evaluate RLS without helper permission errors and expose only global public questions.",
+    "Anonymous users must not read Official Public Library or private Library questions.",
   );
 
   await client.query(
