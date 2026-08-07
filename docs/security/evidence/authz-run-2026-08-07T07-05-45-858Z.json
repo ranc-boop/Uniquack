@@ -1,0 +1,82 @@
+{
+  "target": "http://127.0.0.1:54321",
+  "ranAt": "2026-08-07T07:05:45.858Z",
+  "evidence": [
+    {
+      "case_id": "N10-C1",
+      "actor": "admin@test.local",
+      "endpoint": "GET /rest/v1/questions?id=eq.<id>",
+      "target_owner": "orphan",
+      "tenant": "T1",
+      "mutation_axis": "tenant",
+      "payload_hash": "b2911edd0fea2989",
+      "response_hash": "55bf236c5f58b6a2",
+      "http_status": 403,
+      "denial_code": "42501",
+      "rls_rows_affected": 0,
+      "expected": {
+        "rows": 1
+      },
+      "result": "fail",
+      "request_id": "e635c712-3431-47ef-98d7-24c7dd255786",
+      "timestamp": "2026-08-07T07:05:45.732Z"
+    },
+    {
+      "case_id": "N10-C2",
+      "actor": "teacher-a@test.local",
+      "endpoint": "GET /rest/v1/questions?id=eq.<id>",
+      "target_owner": "orphan",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "payload_hash": "29ecd2d93ac9b443",
+      "response_hash": "55bf236c5f58b6a2",
+      "http_status": 403,
+      "denial_code": "42501",
+      "rls_rows_affected": 0,
+      "expected": {
+        "rows": 0
+      },
+      "result": "pass",
+      "request_id": "91edf05a-99fd-4475-b807-8b26f0d35570",
+      "timestamp": "2026-08-07T07:05:45.782Z"
+    },
+    {
+      "case_id": "N10-1",
+      "actor": "admin@test.local",
+      "endpoint": "GET /rest/v1/questions?id=eq.<id>",
+      "target_owner": "orphan",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "payload_hash": "29ecd2d93ac9b443",
+      "response_hash": "55bf236c5f58b6a2",
+      "http_status": 403,
+      "denial_code": "42501",
+      "rls_rows_affected": 0,
+      "expected": {
+        "rows": 0
+      },
+      "result": "pass",
+      "request_id": "233f354c-72ba-409e-a1f7-4c7f59502667",
+      "timestamp": "2026-08-07T07:05:45.791Z"
+    },
+    {
+      "case_id": "N10-2",
+      "actor": "admin@test.local",
+      "endpoint": "PATCH /rest/v1/questions?id=eq.<id>",
+      "target_owner": "orphan",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "payload_hash": "6fa143de19bc5979",
+      "response_hash": "1489ab07c72219e2",
+      "http_status": 403,
+      "denial_code": "42501",
+      "rls_rows_affected": 0,
+      "expected": {
+        "mutated": false
+      },
+      "result": "pass",
+      "request_id": "2b14d9f6-04aa-42c9-9613-46d16b01d186",
+      "timestamp": "2026-08-07T07:05:45.832Z"
+    }
+  ]
+}

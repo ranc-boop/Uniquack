@@ -1,0 +1,329 @@
+{
+  "target": "http://127.0.0.1:54321",
+  "ranAt": "2026-08-07T07:51:01.096Z",
+  "evidence": [
+    {
+      "case_id": "N10-C1",
+      "actor": "admin@test.local",
+      "endpoint": "GET /rest/v1/questions?id=eq.<id>",
+      "target_owner": "questions",
+      "tenant": "T1",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "rows": 1
+      },
+      "result": "pass",
+      "payload_hash": "1e5f9d757482dca8",
+      "response_hash": "74e2d27c7e03e296",
+      "request_id": "6b97b672-c343-4c48-b554-990b54cb73db",
+      "timestamp": "2026-08-07T07:51:00.301Z"
+    },
+    {
+      "case_id": "N10-C2",
+      "actor": "teacher-a@test.local",
+      "endpoint": "GET /rest/v1/questions?id=eq.<id>",
+      "target_owner": "questions",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 0,
+      "expected": {
+        "rows": 0
+      },
+      "result": "pass",
+      "payload_hash": "0584fb15920d8e73",
+      "response_hash": "23193d3a6f66761b",
+      "request_id": "c9b2659d-cb39-41e9-beb4-cf05e84b679f",
+      "timestamp": "2026-08-07T07:51:00.352Z"
+    },
+    {
+      "case_id": "N10-1",
+      "actor": "admin@test.local",
+      "endpoint": "GET /rest/v1/questions?id=eq.<id>",
+      "target_owner": "questions",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "rows": 0
+      },
+      "result": "fail",
+      "payload_hash": "0584fb15920d8e73",
+      "response_hash": "74e2d27c7e03e296",
+      "request_id": "2746d99c-9ed7-4a3d-b390-06a05aa94094",
+      "timestamp": "2026-08-07T07:51:00.364Z"
+    },
+    {
+      "case_id": "N10-2",
+      "actor": "admin@test.local",
+      "endpoint": "PATCH /rest/v1/questions?id=eq.<id>",
+      "target_owner": "questions",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "mutated": false
+      },
+      "result": "fail",
+      "payload_hash": "bd40ae30a147550a",
+      "response_hash": "48867338f890656e",
+      "request_id": "0f64e46a-6a26-4d60-a2f4-977f2dc16c72",
+      "timestamp": "2026-08-07T07:51:00.400Z"
+    },
+    {
+      "case_id": "N2-C",
+      "actor": "admin@test.local",
+      "endpoint": "PATCH /rest/v1/question_banks?id=eq.<id>",
+      "target_owner": "question_banks",
+      "tenant": "T1",
+      "mutation_axis": "state",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "mutated": false
+      },
+      "result": "pass",
+      "payload_hash": "711841c6c6737e2e",
+      "response_hash": "81d8f676b70a2746",
+      "request_id": "d0bc4e98-1178-48c3-ab8a-7a004a458015",
+      "timestamp": "2026-08-07T07:51:00.460Z"
+    },
+    {
+      "case_id": "N2-1",
+      "actor": "admin@test.local",
+      "endpoint": "PATCH /rest/v1/question_banks?id=eq.<id>",
+      "target_owner": "question_banks",
+      "tenant": "T1",
+      "mutation_axis": "state",
+      "http_status": 403,
+      "denial_code": "42501",
+      "rls_rows_affected": 0,
+      "expected": {
+        "mutated": false
+      },
+      "result": "pass",
+      "payload_hash": "ff41562c7216063e",
+      "response_hash": "85b9d990a423c5cc",
+      "request_id": "85ed521f-2e5c-4152-8d27-73619dc4692c",
+      "timestamp": "2026-08-07T07:51:00.497Z"
+    },
+    {
+      "case_id": "N8-C",
+      "actor": "super-admin@test.local",
+      "endpoint": "PATCH /rest/v1/organizations?id=eq.<id>",
+      "target_owner": "organizations",
+      "tenant": "T1",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "mutated": true
+      },
+      "result": "pass",
+      "payload_hash": "64fee2d3309f393a",
+      "response_hash": "48867338f890656e",
+      "request_id": "d63a1775-f566-404e-bdf0-9818fe5d2060",
+      "timestamp": "2026-08-07T07:51:00.564Z"
+    },
+    {
+      "case_id": "N8-1",
+      "actor": "admin@test.local",
+      "endpoint": "PATCH /rest/v1/organizations?id=eq.<id>",
+      "target_owner": "organizations",
+      "tenant": "T1",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 0,
+      "expected": {
+        "mutated": false
+      },
+      "result": "pass",
+      "payload_hash": "73bbd607e71fc89f",
+      "response_hash": "de74f64efc20f82b",
+      "request_id": "a08fa588-a48b-462f-a651-d03cbba6c259",
+      "timestamp": "2026-08-07T07:51:00.584Z"
+    },
+    {
+      "case_id": "N6-C",
+      "actor": "student@test.local",
+      "endpoint": "DELETE /rest/v1/practice_sessions?id=eq.<id>",
+      "target_owner": "practice_sessions",
+      "tenant": "T1",
+      "mutation_axis": "owner",
+      "http_status": 204,
+      "denial_code": null,
+      "rls_rows_affected": 0,
+      "expected": {
+        "deleted": false
+      },
+      "result": "pass",
+      "payload_hash": "ee0259159ca6bcce",
+      "response_hash": "9e89f82311c4bc0c",
+      "request_id": "df35fd0a-7009-4f2e-b49f-81f616cf733e",
+      "timestamp": "2026-08-07T07:51:00.676Z"
+    },
+    {
+      "case_id": "N6-1",
+      "actor": "student@test.local",
+      "endpoint": "DELETE /rest/v1/practice_sessions?id=eq.<id>",
+      "target_owner": "practice_sessions",
+      "tenant": "T1",
+      "mutation_axis": "owner",
+      "http_status": 204,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "deleted": true
+      },
+      "result": "pass",
+      "payload_hash": "7331fc60670bb939",
+      "response_hash": "1b70b1c98c544d97",
+      "request_id": "87d2a020-919b-48b6-b1ce-3cecae21f7fa",
+      "timestamp": "2026-08-07T07:51:00.713Z"
+    },
+    {
+      "case_id": "BANK-C1",
+      "actor": "teacher-a@test.local",
+      "endpoint": "GET /rest/v1/question_banks?id=eq.<id>",
+      "target_owner": "question_banks",
+      "tenant": "T1",
+      "mutation_axis": "owner",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "rows": 1
+      },
+      "result": "pass",
+      "payload_hash": "865b80c2a2ead4a8",
+      "response_hash": "74e2d27c7e03e296",
+      "request_id": "4134f7d0-a0ae-4511-9b8b-e30c46882029",
+      "timestamp": "2026-08-07T07:51:00.770Z"
+    },
+    {
+      "case_id": "BANK-1",
+      "actor": "teacher-b@test.local",
+      "endpoint": "GET /rest/v1/question_banks?id=eq.<id>",
+      "target_owner": "question_banks",
+      "tenant": "T1",
+      "mutation_axis": "owner",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 0,
+      "expected": {
+        "rows": 0
+      },
+      "result": "pass",
+      "payload_hash": "865b80c2a2ead4a8",
+      "response_hash": "23193d3a6f66761b",
+      "request_id": "6a405774-91c2-473d-ba39-fbd6a49bc7d7",
+      "timestamp": "2026-08-07T07:51:00.815Z"
+    },
+    {
+      "case_id": "BANK-C2",
+      "actor": "teacher-a@test.local",
+      "endpoint": "GET /rest/v1/question_banks?id=eq.<id>",
+      "target_owner": "question_banks",
+      "tenant": "T1",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "rows": 1
+      },
+      "result": "pass",
+      "payload_hash": "43dc31d2cf0d79ea",
+      "response_hash": "74e2d27c7e03e296",
+      "request_id": "7df85d75-d3e5-4c84-b318-453c0780db01",
+      "timestamp": "2026-08-07T07:51:00.827Z"
+    },
+    {
+      "case_id": "BANK-2",
+      "actor": "teacher-t2@test.local",
+      "endpoint": "GET /rest/v1/question_banks?id=eq.<id>",
+      "target_owner": "question_banks",
+      "tenant": "T1",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 0,
+      "expected": {
+        "rows": 0
+      },
+      "result": "pass",
+      "payload_hash": "43dc31d2cf0d79ea",
+      "response_hash": "23193d3a6f66761b",
+      "request_id": "eb80450a-27e0-41ef-ba87-b94c7713ae21",
+      "timestamp": "2026-08-07T07:51:00.874Z"
+    },
+    {
+      "case_id": "SUB-C",
+      "actor": "student@test.local",
+      "endpoint": "GET /rest/v1/practice_sessions?id=eq.<id>",
+      "target_owner": "practice_sessions",
+      "tenant": "T1",
+      "mutation_axis": "owner",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "rows": 1
+      },
+      "result": "pass",
+      "payload_hash": "cdf6f27fbad05d12",
+      "response_hash": "74e2d27c7e03e296",
+      "request_id": "0bfd3151-d6d7-4957-95a6-93402f01ca62",
+      "timestamp": "2026-08-07T07:51:00.906Z"
+    },
+    {
+      "case_id": "SUB-1",
+      "actor": "student@test.local",
+      "endpoint": "GET /rest/v1/practice_sessions?id=eq.<id>",
+      "target_owner": "practice_sessions",
+      "tenant": "T1",
+      "mutation_axis": "owner",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 0,
+      "expected": {
+        "rows": 0
+      },
+      "result": "pass",
+      "payload_hash": "de8966560e993a61",
+      "response_hash": "23193d3a6f66761b",
+      "request_id": "571ba43a-409d-4a84-b486-9ec684344be8",
+      "timestamp": "2026-08-07T07:51:00.914Z"
+    },
+    {
+      "case_id": "SUB-2",
+      "actor": "student@test.local",
+      "endpoint": "PATCH /rest/v1/practice_sessions?id=eq.<id>",
+      "target_owner": "practice_sessions",
+      "tenant": "T1",
+      "mutation_axis": "owner",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 0,
+      "expected": {
+        "mutated": false
+      },
+      "result": "pass",
+      "payload_hash": "d1d10e92235299b8",
+      "response_hash": "de74f64efc20f82b",
+      "request_id": "3ad55b73-ac24-4319-925f-16a8c9fe2a74",
+      "timestamp": "2026-08-07T07:51:00.935Z"
+    }
+  ]
+}
