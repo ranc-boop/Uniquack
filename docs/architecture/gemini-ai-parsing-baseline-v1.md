@@ -36,7 +36,8 @@ corpus.
 | Source-exact evaluator | `AI_PARSING_PROVIDER_BENCHMARK_V1_EVALUATOR_V2` |
 | Evaluator implementation SHA-256 | `fb48df5c800ec0a93d0215608a989dde9437d9f1b2d0a9e651c96c496ca79306` |
 | Golden corpus/evaluator | manifest v3; evaluator SHA-256 `b7e8636dde2f03c21d02c9dc0a6525c7e462494cc8918cd4227256b5f267e183` |
-| Fingerprint treatment anchor | `eeff3466d7286fbe2a77b4f6fbeb060be4d77fa9` |
+| Provider-visible treatment anchor | `eeff3466d7286fbe2a77b4f6fbeb060be4d77fa9` |
+| Frozen observation/evidence anchor | `73c667f557ac57605c9717ab8bb7d7a6712d0b78` |
 
 The six source-exact PDF fingerprints are:
 

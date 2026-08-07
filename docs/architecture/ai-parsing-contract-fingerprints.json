@@ -54,8 +54,8 @@
       "baseline": null,
       "path": "fixtures/ai-parsing-provider-benchmark-v1/gemini-observations.json",
       "treatment": {
-        "blob": "09321afa147ed4c0124913a0296fb9acbb7dfe0e",
-        "sha256": "ff697dd0360c5cb55bc02821a779b422a6f66f3120f7b2b3c9079f82281458fc"
+        "blob": "3b731bdeaa4ff800caaed9597dcde4b86c66aacd",
+        "sha256": "ce42190e80b6b27179a357df9ae82d7b3b96466e69381cb01d6bf52f08cdde66"
       }
     },
     {
@@ -166,8 +166,8 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/provider-benchmark-v1-smoke.mjs",
       "treatment": {
-        "blob": "7f8d57675a30773557bb2567eb7d60836043645d",
-        "sha256": "84ac5e7515287db9160c14d5ea549d45e6125d47b7b1feeed364af32b1274952"
+        "blob": "7fd4c7b3fab38a69d68f0047cbc39bbe6ea22b88",
+        "sha256": "b70ea97d57ea5ad58067e2a7d8d81f24f48f9e4e72fb7393865372d0f3283524"
       }
     },
     {
@@ -774,5 +774,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "eeff3466d7286fbe2a77b4f6fbeb060be4d77fa9"
+  "treatmentAnchor": "73c667f557ac57605c9717ab8bb7d7a6712d0b78"
 }

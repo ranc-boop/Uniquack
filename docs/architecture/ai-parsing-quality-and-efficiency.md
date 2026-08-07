@@ -31,9 +31,11 @@ source catalog to immutable Git blobs and SHA-256 values.
 The verifier requires baseline ancestry, treatment ancestry, exact file order,
 exact anchor blobs, and current-byte equality. New treatment modules are
 explicitly absent at baseline. Uncommitted worktree bytes are never accepted as
-an anchor. The current manifest binds 82 files to treatment anchor
-`eeff3466d7286fbe2a77b4f6fbeb060be4d77fa9`. The completed observation file
-is a descendant result and does not redefine the Provider-visible treatment.
+an anchor. Provider-visible treatment bytes were frozen at
+`eeff3466d7286fbe2a77b4f6fbeb060be4d77fa9`. The current manifest binds all
+82 files, including the completed observation and its deterministic smoke, to
+final evidence anchor `73c667f557ac57605c9717ab8bb7d7a6712d0b78`. The result
+does not redefine the Provider-visible treatment.
 
 ## Frozen Gemini model-quality baseline
 
