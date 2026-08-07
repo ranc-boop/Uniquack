@@ -54,8 +54,8 @@
       "baseline": null,
       "path": "fixtures/ai-parsing-provider-benchmark-v1/gemini-observations.json",
       "treatment": {
-        "blob": "810bdc2acf0a35966a91a1e00d9dd63fc2841b40",
-        "sha256": "3b3a899a1adb07f2e361b7e973fe0e66083f5d496dc8b381ac9939c81f2e23d5"
+        "blob": "09321afa147ed4c0124913a0296fb9acbb7dfe0e",
+        "sha256": "ff697dd0360c5cb55bc02821a779b422a6f66f3120f7b2b3c9079f82281458fc"
       }
     },
     {
@@ -134,8 +134,8 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/gemini-baseline-v1-safety-smoke.mjs",
       "treatment": {
-        "blob": "d1cdbe6ce60ac4af0d4f8b6e1b4a17f7e35241ed",
-        "sha256": "09d30ad51269f6fbac371f45656e2c68d5ac5fa26b9eb107a5b5f19942d2ece6"
+        "blob": "a09ef4923b8ccfd205222288f17eb1553a4b5c33",
+        "sha256": "82bac9057f9f8aa3e5e8bc248633f8176c18f9ae88b35db1aa0bf38f60349b4b"
       }
     },
     {
@@ -150,8 +150,8 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/lib/provider-usage-baseline.mjs",
       "treatment": {
-        "blob": "35123ab8b2e07cae40a1c570a22e0800023c69d6",
-        "sha256": "552f2b376ba3cd4b008792e2b121c1613088377b79f46f659d105c3e17cbc708"
+        "blob": "408ba22e0fb8e322ff5340aca298f666bfbdce64",
+        "sha256": "c4149be879b339680524f77783d1be3d87351c70303ae5a034b9c6918ed793ff"
       }
     },
     {
@@ -166,8 +166,8 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/provider-benchmark-v1-smoke.mjs",
       "treatment": {
-        "blob": "ae8b3a92502d15c271bf2dab15d442701a45a6be",
-        "sha256": "96bf9775605fc62c0fd2f62354e6a27f2e9c04bf97c3f8378b981d4cfefc40ba"
+        "blob": "7f8d57675a30773557bb2567eb7d60836043645d",
+        "sha256": "84ac5e7515287db9160c14d5ea549d45e6125d47b7b1feeed364af32b1274952"
       }
     },
     {
@@ -182,8 +182,8 @@
       "baseline": null,
       "path": "scripts/ai-parsing-eval/run-gemini-baseline-v1.mjs",
       "treatment": {
-        "blob": "302afcb25a15654bd0b9192451ed3dca3b965d48",
-        "sha256": "4f6db638d1008b14ef783dc36f1089ba0298ba41aede979bbd7bba845b5654e0"
+        "blob": "4af21d6b5ae951cfaf246a1c75368fce4722ff30",
+        "sha256": "e5421b54270289db81e84c6d64800a34ad0e9beb3c5a9137bdcb6b693420b8d9"
       }
     },
     {
@@ -423,8 +423,8 @@
       "baseline": null,
       "path": "scripts/run-gemini-ai-parsing-baseline-v1.ps1",
       "treatment": {
-        "blob": "80b7e4c26f3a43da3234229cac496a8d48169ed2",
-        "sha256": "0d4ae919139604a6cda031706b49e0e8f44ac6cfbd3906fb4b553f16aef5a263"
+        "blob": "5300ca7e61cc4633ead71b3d4239dc28928e10cc",
+        "sha256": "9b4c5e5fa0c67dfceb044edfc6be0d431b8fb1f5c22396a3da90b234280a559f"
       }
     },
     {
@@ -774,5 +774,5 @@
     }
   ],
   "schemaVersion": 1,
-  "treatmentAnchor": "cbe504109072bce8574f7c287e65498735f73aa8"
+  "treatmentAnchor": "eeff3466d7286fbe2a77b4f6fbeb060be4d77fa9"
 }
