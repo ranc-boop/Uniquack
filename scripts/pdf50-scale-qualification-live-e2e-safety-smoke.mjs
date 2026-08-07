@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,20 +16,178 @@ import {
   pdf50ScaleProviderProofEnvironment,
 } from "./lib/pdf50-scale-provider-proof-control.mjs";
 import {
+  numeric,
   proofControlEnvironment,
   validatedProviderTestEnvironment,
 } from "./pdf50-end-to-end-live-e2e.mjs";
+import {
+  aggregateQualityObservatories,
+  conservativeUsageCostMicros,
+  waitForChildExit,
+} from "./pdf50-scale-qualification-live-e2e.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+function normalizeSourceEol(value) {
+  return value.replace(/\r\n?/g, "\n");
+}
+
+function buildSourceEolVariants(value) {
+  const lf = normalizeSourceEol(value);
+  return [lf, lf.replace(/\n/g, "\r\n"), lf.replace(/\n/g, "\r")];
+}
+
+assert.equal(numeric(null), null);
+assert.equal(numeric(undefined), null);
+assert.equal(numeric(""), null);
+assert.equal(numeric("12"), 12);
+assert.equal(conservativeUsageCostMicros(100, 20), 18);
+
+const originalSetTimeout = globalThis.setTimeout;
+const originalClearTimeout = globalThis.clearTimeout;
+const fakeTimer = { cleared: false };
+try {
+  globalThis.setTimeout = () => fakeTimer;
+  globalThis.clearTimeout = (timer) => {
+    assert.equal(timer, fakeTimer);
+    timer.cleared = true;
+  };
+  const child = new EventEmitter();
+  const exit = waitForChildExit(child, 300_000);
+  child.emit("exit", 0);
+  assert.deepEqual(await exit, { code: 0 });
+  assert.equal(fakeTimer.cleared, true);
+  assert.equal(child.listenerCount("exit"), 0);
+} finally {
+  globalThis.setTimeout = originalSetTimeout;
+  globalThis.clearTimeout = originalClearTimeout;
+}
+
+const attemptHistogram = {
+  ANSWER_CONSISTENCY_REPAIR: 0,
+  APPLICATION_VALIDATION_REPAIR: 0,
+  BLANK_REQUIRED_FIELD_REPAIR: 0,
+  CHECKPOINT_REPLAY_ZERO_INFERENCE: 1,
+  FIRST_ATTEMPT: 1,
+  NETWORK_RETRY: 0,
+  PROVIDER_BUSY_RETRY: 0,
+  RATE_LIMIT_RETRY: 0,
+  SOURCE_BACKED_SEMANTIC_RECOVERY: 0,
+  SOURCE_LINEAGE_REPAIR: 0,
+  STRUCTURAL_SCHEMA_REPAIR: 0,
+  TAXONOMY_REPAIR: 0,
+  TIMEOUT_RETRY: 0,
+  VISUAL_ASSOCIATION_REPAIR: 0,
+};
+const qualitySnapshot = {
+  attemptHistogram,
+  attemptReasonVersion: 3,
+  attempts: [
+    {
+      outcome: "success",
+      reason: "FIRST_ATTEMPT",
+      usage: {
+        cachedInputTokens: null,
+        candidateOutputTokens: 20,
+        inputTokens: 100,
+        outputTokens: 20,
+        thoughtTokens: null,
+        totalTokens: 120,
+      },
+    },
+  ],
+  attemptsPerJob: 1,
+  checkpointReplayCount: 1,
+  contextAccountingVersion: 2,
+  contextComposition: {
+    componentBytes: {
+      extractionInstructions: 10,
+      fixedTransportOverhead: 5,
+      previousResponse: 0,
+      semanticRecoveryInstructions: 0,
+      sourceInput: 100,
+      structuralRepairInstructions: 0,
+      structuredSchema: 20,
+      systemInstructions: 5,
+      taxonomyCandidates: 30,
+    },
+    providerReportedInputTokens: 100,
+    providerReportedOutputTokens: 20,
+    repeatedPreviousResponseBytes: 0,
+    repeatedSourceBytes: 0,
+    totalSerializedRequestBytes: 170,
+  },
+  contractEvidence: {
+    candidateSubsetBytes: 30,
+    candidateSubsetSha256:
+      "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262",
+    fullTaxonomySnapshotBytes: 40,
+    fullTaxonomySnapshotSha256:
+      "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+    parsingContractSha256: "a".repeat(64),
+    promptContractVersion: "prompt-v1",
+    repairPolicyVersion: "repair-v1",
+    retrievalAlgorithmVersion: "retrieval-v1",
+    schemaContractVersion: "schema-v1",
+    taxonomySnapshotSha256:
+      "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+  },
+  firstAttemptSuccess: true,
+  observatoryVersion: 5,
+  parsingContractVersion: "ai-pdf-parsing/provider-neutral-v5",
+};
+const qualityBatch = (snapshot) => ({
+  id: "batch-1",
+  summary: { aiPdfImport: { qualityObservatory: snapshot } },
+});
+const aggregate = aggregateQualityObservatories({
+  batches: [qualityBatch(qualitySnapshot)],
+  completedBatchSet: new Set(["batch-1"]),
+});
+assert.equal(aggregate.providerInferenceAttemptCount, 1);
+assert.equal(aggregate.checkpointReplays, 1);
+assert.equal(aggregate.providerUsageComplete, true);
+assert.equal(aggregate.cachedInputUsageComplete, false);
+assert.equal(aggregate.thoughtUsageComplete, false);
+assert.equal(aggregate.providerReportedInputTokens, 100);
+assert.equal(aggregate.providerReportedOutputTokens, 20);
+assert.equal(aggregate.attemptHistogram.FIRST_ATTEMPT, 1);
+assert.throws(() =>
+  aggregateQualityObservatories({
+    batches: [
+      qualityBatch({
+        ...qualitySnapshot,
+        attemptsPerJob: 0,
+      }),
+    ],
+    completedBatchSet: new Set(["batch-1"]),
+  }),
+);
+assert.throws(() =>
+  aggregateQualityObservatories({
+    batches: [
+      qualityBatch({
+        ...qualitySnapshot,
+        contractEvidence: {
+          ...qualitySnapshot.contractEvidence,
+          taxonomySnapshotSha256: "b".repeat(64),
+        },
+      }),
+    ],
+    completedBatchSet: new Set(["batch-1"]),
+  }),
+);
 const [
   control,
   providerControl,
   scaleProviderControl,
-  harness,
+  harnessSource,
   launcher,
   oneFileHarness,
   providerTestControl,
   route,
+  visualContract,
+  visualHarness,
   worker,
 ] = await Promise.all([
     loadPDF50ScaleQualificationControl(),
@@ -42,8 +201,17 @@ const [
     readFile(resolve(root, "scripts/pdf50-end-to-end-live-e2e.mjs"), "utf8"),
     readFile(resolve(root, "src/lib/ai-jobs/provider-test-control.ts"), "utf8"),
     readFile(resolve(root, "src/app/api/internal/ai-jobs/run/route.ts"), "utf8"),
+    readFile(
+      resolve(root, "scripts/ai-parsing-eval/visual-evidence-live-contract.mjs"),
+      "utf8",
+    ),
+    readFile(
+      resolve(root, "scripts/ai-parsing-visual-evidence-live-e2e.mjs"),
+      "utf8",
+    ),
     readFile(resolve(root, "src/lib/ai-jobs/worker.ts"), "utf8"),
   ]);
+const harness = normalizeSourceEol(harnessSource);
 
 assert.equal(control.approvedBudgetUsd, 2);
 assert.equal(providerControl.mode, "BOUNDED_ONE_JOB_REAL_PROVIDER");
@@ -74,7 +242,12 @@ assert.equal(scaleProviderControl.workerRouteInvocations, 1);
 assert.equal(scaleProviderControl.providerInferenceAttempts, 3);
 assert.equal(scaleProviderControl.providerMaxOutputTokens, 4_096);
 assert.equal(scaleProviderControl.providerMaxNetworkRequests, 68);
-assert.equal(scaleProviderControl.maxInputBytesPerAttempt, 50_000);
+assert.equal(scaleProviderControl.maxInputBytesPerAttempt, 200_000);
+assert.equal(
+  scaleProviderControl.maxInputBytesPerAttempt,
+  scaleProviderControl.maxInputTokensPerAttempt * 4,
+  "the UTF-8 transport-byte guard must remain distinct from the token-cost ceiling",
+);
 assert.equal(scaleProviderControl.approvedBudgetUsd, 2);
 assert.equal(
   control.conservativeInputTokensPerProviderAttempt,
@@ -95,7 +268,7 @@ assert.equal(
 assert.deepEqual(pdf50ScaleProviderProofEnvironment(scaleProviderControl), {
   AI_JOBS_LOCAL_MAX_INVOCATIONS: "1",
   PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: "3",
-  PDF50_PROVIDER_TEST_MAX_INPUT_BYTES: "50000",
+  PDF50_PROVIDER_TEST_MAX_INPUT_BYTES: "200000",
   PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: "68",
   PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: "4096",
   PDF50_PROVIDER_TEST_MODE: "BOUNDED_SCALE_REAL_PROVIDER",
@@ -165,7 +338,8 @@ assert(harness.includes("cleanupScaleFixture"));
 assert(harness.includes("finally"));
 assert(harness.includes("SYNTHETIC_RESIDUE_COUNT"));
 assert(harness.includes("PROCESS_ENVIRONMENT_CLEARED"));
-assert(harness.includes("reviewItems.length === stageControl.completed"));
+assert(harness.includes("reviewItems.length === expectedQuestionCount"));
+assert(harness.includes('item.status === "needs_more_evidence"'));
 assert(harness.includes('item.status === "pending_review"'));
 assert(harness.includes("bankQuestionCount === 0 && assignmentCount === 0"));
 assert(harness.includes("verifyCrossOrganizationIsolation"));
@@ -239,6 +413,27 @@ assert(harness.includes('label: "unexpected_terminal"'));
 assert(harness.includes("PARTIAL_PROVIDER_NETWORK_REQUESTS="));
 assert(!harness.includes("console.log(output)"));
 assert(harness.includes('getByRole("button", { name: "Cancel unstarted" })'));
+assert(
+  harness.includes(
+    '"05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe"',
+  ),
+);
+assert(
+  harness.includes(
+    '"fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262"',
+  ),
+);
+assert(harness.includes("PROVIDER_USAGE_METADATA_COMPLETE="));
+assert(harness.includes("USAGE_DERIVED_CONSERVATIVE_COST_MICROS="));
+assert(harness.includes("row.provider_latency_ms ?? row.execution_latency_ms"));
+assert(harness.includes("await waitForChildExit(child, 300_000)"));
+assert(!harness.includes("sleep(300_000).then"));
+assert(
+  visualHarness.includes(
+    "import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href",
+  ),
+);
+assert(visualContract.includes("record.sharedGroupKey === null ||"));
 
 assert(launcher.includes("Import-Clixml -LiteralPath $VaultPath"));
 assert(launcher.includes("Set-ProcessValueFromSecureString"));
@@ -277,93 +472,249 @@ assert(
   worker.includes("!(error instanceof TrustedProviderCheckpointInterruptionError)"),
 );
 
-function satisfiesScaleSafetyContract(source) {
-  return (
-    source.includes("beforeCount === 0 && afterCount === 0") &&
-    source.includes('result.data === "STALE_FENCE_REJECTED"') &&
-    source.includes("replayCounters.inference === 0") &&
+function scaleSafetyPredicates(value) {
+  const source = normalizeSourceEol(value);
+  return [
+    source.includes("beforeCount === 0 && afterCount === 0"),
+    source.includes('result.data === "STALE_FENCE_REJECTED"'),
+    source.includes("replayCounters.inference === 0"),
     source.includes(
       "retryableScaleProviderCodes.has(outcomeJob.safe_error_code)",
-    ) &&
+    ),
     source.includes(
       'retryJob.checkpoint_stage === "provider_result_checkpointed"',
-    ) &&
+    ),
     source.includes(
       "completedJob.provider_attempt_count === interruptedJobProviderAttempts",
-    ) &&
+    ),
     source.includes(
       "remainingJobsAfterCurrent <=\n      maxProviderAttempts",
-    ) &&
-    source.includes('expected: ["completed", "retry_wait", "failed"]') &&
-    source.includes("counters.inputBytesMax <=") &&
+    ),
+    source.includes('expected: ["completed", "retry_wait", "failed"]'),
+    source.includes("counters.inputBytesMax <="),
     source.includes(
       "counters.cleanupFailures === 0 &&\n      (!requireInference",
-    ) &&
+    ),
     source.includes(
       "drain.counters.inference >= config.stageControl.providerJobs",
-    ) &&
-    source.includes("config.stageControl.maxProviderAttempts") &&
-    source.includes("providerTestEnvironment: scaleProviderEnvironment") &&
+    ),
+    source.includes("config.stageControl.maxProviderAttempts"),
+    source.includes("providerTestEnvironment: scaleProviderEnvironment"),
     source.includes(
       "const before = await waitForExactJobAvailable({ jobId, service })",
+    ),
+    source.includes('["queued", "retry_wait"].includes(job?.status)'),
+    source.includes("availableAt <= Date.now()"),
+  ];
+}
+
+function satisfiesScaleSafetyContract(source) {
+  return scaleSafetyPredicates(source).every(Boolean);
+}
+
+function satisfiesQualityEvidenceContract(value) {
+  const source = normalizeSourceEol(value);
+  return (
+    source.includes(
+      "numeric(snapshot.attemptsPerJob) === records.length",
     ) &&
-    source.includes('["queued", "retry_wait"].includes(job?.status)') &&
-    source.includes("availableAt <= Date.now()")
+    source.includes(
+      "quality.providerInferenceAttemptCount === drain.counters.inference",
+    ) &&
+    source.includes(
+      "snapshot.firstAttemptSuccess === (records[0]?.outcome === \"success\")",
+    ) &&
+    source.includes(
+      "numeric(histogram.CHECKPOINT_REPLAY_ZERO_INFERENCE) ===",
+    ) &&
+    source.includes("providerUsageComplete = false") &&
+    source.includes(
+      "telemetryProviderCalls !== drain.counters.inference",
+    )
   );
 }
 
-assert(satisfiesScaleSafetyContract(harness));
-const mutationCases = [
-  harness.replace("beforeCount === 0 && afterCount === 0", "true"),
-  harness.replace('result.data === "STALE_FENCE_REJECTED"', "true"),
-  harness.replace("replayCounters.inference === 0", "replayCounters.inference >= 0"),
+function satisfiesCombinedVisualScaleContract(value) {
+  const source = normalizeSourceEol(value);
+  return (
+    source.includes('const visualFixture = stage === "50" && index === 0') &&
+    source.includes("buildSyntheticVisualEvidencePdf()") &&
+    source.includes(
+      'item.page_count !==\n              (fileCount === 50 && index === 0 ? 4 : 1)',
+    ) &&
+    source.includes("const requiresVisualFixture = stageControl.files === 50") &&
+    source.includes(
+      "stageControl.completed + (requiresVisualFixture ? 3 : 0)",
+    ) &&
+    source.includes("reviewItems.length === expectedQuestionCount") &&
+    source.includes(
+      'item.created_question_id === missingVisualQuestionId\n            ? item.status === "needs_more_evidence"',
+    ) &&
+    source.includes('requireVisual: config.stage === "50"') &&
+    source.includes(
+      'scaleAssert(!requireVisual, "visual_evidence_contract_failed")',
+    ) &&
+    source.includes(
+      "reviewText.includes(`${evidence.expectedQuestionCount} results`)",
+    ) &&
+    source.includes("reviewText.includes(`Page 1 of ${expectedReviewPages}`)") &&
+    source.includes('activePage.locator("#review-results article").count()') &&
+    !source.includes("reviewText.includes(evidence.questions[0].title)") &&
+    source.includes("QUESTION_VISUAL_ATTACHMENT_RESTORED_AND_LIVE_VALIDATED") &&
+    source.includes('["question_assets", "id", questionAssetRows.map((row) => row.id)]') &&
+    source.includes('"question_asset_storage"') &&
+    source.includes('"verify_question_asset_storage"')
+  );
+}
+
+const harnessEolVariants = buildSourceEolVariants(harness);
+const scalePredicateResults = harnessEolVariants.map((value) =>
+  scaleSafetyPredicates(value),
+);
+assert(
+  scalePredicateResults.every(
+    (predicates) => predicates.length === 16 && predicates.every(Boolean),
+  ),
+);
+assert(
+  harnessEolVariants.every((value) => satisfiesQualityEvidenceContract(value)),
+);
+assert(
+  harnessEolVariants.every((value) =>
+    satisfiesCombinedVisualScaleContract(value),
+  ),
+);
+function buildScaleSafetyMutationCases(value) {
+  const source = normalizeSourceEol(value);
+  return [
+    source.replace("beforeCount === 0 && afterCount === 0", "true"),
+    source.replace('result.data === "STALE_FENCE_REJECTED"', "true"),
+    source.replace(
+      "replayCounters.inference === 0",
+      "replayCounters.inference >= 0",
+    ),
+    source.replace(
+      "retryableScaleProviderCodes.has(outcomeJob.safe_error_code)",
+      "true",
+    ),
+    source.replace(
+      'retryJob.checkpoint_stage === "provider_result_checkpointed"',
+      "true",
+    ),
+    source.replace(
+      "completedJob.provider_attempt_count === interruptedJobProviderAttempts",
+      "true",
+    ),
+    source.replace(
+      "remainingJobsAfterCurrent <=\n      maxProviderAttempts",
+      "remainingJobsAfterCurrent <=\n      Number.MAX_VALUE",
+    ),
+    source.replace(
+      'expected: ["completed", "retry_wait", "failed"]',
+      'expected: ["completed"]',
+    ),
+    source.replace(
+      "counters.inputBytesMax <=",
+      "counters.inputBytesMax >=",
+    ),
+    source.replace(
+      "counters.cleanupFailures === 0 &&\n      (!requireInference",
+      "counters.cleanupFailures >= 0 &&\n      (!requireInference",
+    ),
+    source.replace(
+      "drain.counters.inference >= config.stageControl.providerJobs",
+      "drain.counters.inference >= 0",
+    ),
+    source.replace(
+      "config.stageControl.maxProviderAttempts",
+      "Number.MAX_VALUE",
+    ),
+    source.replace(
+      "providerTestEnvironment: scaleProviderEnvironment",
+      "providerTestEnvironment: proofControlEnvironment",
+    ),
+    source.replace(
+      '["queued", "retry_wait"].includes(job?.status)',
+      'job?.status === "retry_wait"',
+    ),
+    source.replace(
+      "const before = await waitForExactJobAvailable({ jobId, service })",
+      "const before = await loadJob({ jobId, service })",
+    ),
+    source.replace("availableAt <= Date.now()", "true"),
+  ];
+}
+const mutationCases = harnessEolVariants.flatMap(
+  buildScaleSafetyMutationCases,
+);
+assert.equal(mutationCases.length, 48);
+assert(mutationCases.every((mutated) => !satisfiesScaleSafetyContract(mutated)));
+
+const qualityMutationCases = [
   harness.replace(
-    "retryableScaleProviderCodes.has(outcomeJob.safe_error_code)",
+    "numeric(snapshot.attemptsPerJob) === records.length",
     "true",
   ),
   harness.replace(
-    'retryJob.checkpoint_stage === "provider_result_checkpointed"',
+    "quality.providerInferenceAttemptCount === drain.counters.inference",
     "true",
   ),
   harness.replace(
-    "completedJob.provider_attempt_count === interruptedJobProviderAttempts",
+    'snapshot.firstAttemptSuccess === (records[0]?.outcome === "success")',
     "true",
   ),
   harness.replace(
-    "remainingJobsAfterCurrent <=\n      maxProviderAttempts",
-    "remainingJobsAfterCurrent <=\n      Number.MAX_VALUE",
+    "numeric(histogram.CHECKPOINT_REPLAY_ZERO_INFERENCE) ===",
+    "0 ===",
   ),
+  harness.replace("providerUsageComplete = false", "providerUsageComplete = true"),
   harness.replace(
-    'expected: ["completed", "retry_wait", "failed"]',
-    'expected: ["completed"]',
-  ),
-  harness.replace(
-    "counters.inputBytesMax <=",
-    "counters.inputBytesMax >=",
-  ),
-  harness.replace(
-    "counters.cleanupFailures === 0 &&\n      (!requireInference",
-    "counters.cleanupFailures >= 0 &&\n      (!requireInference",
-  ),
-  harness.replace(
-    "drain.counters.inference >= config.stageControl.providerJobs",
-    "drain.counters.inference >= 0",
-  ),
-  harness.replace("config.stageControl.maxProviderAttempts", "Number.MAX_VALUE"),
-  harness.replace(
-    "providerTestEnvironment: scaleProviderEnvironment",
-    "providerTestEnvironment: proofControlEnvironment",
-  ),
-  harness.replace(
-    '["queued", "retry_wait"].includes(job?.status)',
-    'job?.status === "retry_wait"',
-  ),
-  harness.replace(
-    "const before = await waitForExactJobAvailable({ jobId, service })",
-    "const before = await loadJob({ jobId, service })",
+    "telemetryProviderCalls !== drain.counters.inference",
+    "false",
   ),
 ];
-assert(mutationCases.every((mutated) => !satisfiesScaleSafetyContract(mutated)));
+assert(
+  qualityMutationCases.every(
+    (mutated) => !satisfiesQualityEvidenceContract(mutated),
+  ),
+);
+
+const combinedVisualMutationCases = [
+  harness.replace(
+    'const visualFixture = stage === "50" && index === 0',
+    "const visualFixture = false",
+  ),
+  harness.replace(
+    'item.page_count !==\n              (fileCount === 50 && index === 0 ? 4 : 1)',
+    "item.page_count !== 1",
+  ),
+  harness.replace(
+    "stageControl.completed + (requiresVisualFixture ? 3 : 0)",
+    "stageControl.completed",
+  ),
+  harness.replace(
+    'item.created_question_id === missingVisualQuestionId\n            ? item.status === "needs_more_evidence"',
+    'item.created_question_id === missingVisualQuestionId\n            ? item.status === "pending_review"',
+  ),
+  harness.replace('requireVisual: config.stage === "50"', "requireVisual: false"),
+  harness.replace(
+    "reviewText.includes(`${evidence.expectedQuestionCount} results`)",
+    "true",
+  ),
+  harness.replace(
+    "reviewText.includes(`Page 1 of ${expectedReviewPages}`)",
+    "true",
+  ),
+  harness.replace(
+    '["question_assets", "id", questionAssetRows.map((row) => row.id)]',
+    '["question_assets", "id", []]',
+  ),
+];
+assert(
+  combinedVisualMutationCases.every(
+    (mutated) => !satisfiesCombinedVisualScaleContract(mutated),
+  ),
+);
 
 console.log(
   "PASS PDF50 4/10/50 scale qualification safety and conservative budget contract",

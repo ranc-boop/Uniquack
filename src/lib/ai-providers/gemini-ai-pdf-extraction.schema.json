@@ -99,6 +99,8 @@
           },
           "page_refs": {
             "type": "array",
+            "description": "Non-empty source page numbers that visibly contain this question. Never guess or omit page lineage.",
+            "minItems": 1,
             "items": {
               "type": "integer",
               "minimum": 1
@@ -111,11 +113,31 @@
               "additionalProperties": false,
               "properties": {
                 "alt": { "type": "string" },
+                "ambiguity": { "type": "string" },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
                 "page": {
                   "type": "integer",
                   "minimum": 1
                 },
                 "placeholder": { "type": "string" },
+                "required": { "type": "boolean" },
+                "shared_group_key": { "type": "string" },
+                "subquestion_ref": { "type": "string" },
+                "visual_role": {
+                  "type": "string",
+                  "enum": [
+                    "answer_figure",
+                    "decorative",
+                    "diagram",
+                    "graph",
+                    "question_figure",
+                    "table"
+                  ]
+                },
                 "bbox": {
                   "type": "object",
                   "additionalProperties": false,
@@ -132,7 +154,7 @@
             }
           }
         },
-        "required": ["title", "question_type", "content_html"]
+        "required": ["title", "question_type", "content_html", "page_refs"]
       }
     },
     "warnings": {

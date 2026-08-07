@@ -1,0 +1,504 @@
+{
+  "version": 3,
+  "evidenceClass": "PR214_STRATIFIED_PROVIDER_NEUTRAL_GOLDEN",
+  "invalidIds": [
+    "math.inactive.not_in_active_catalog",
+    "math.unknown.invented"
+  ],
+  "cases": [
+    {
+      "id": "clear-chain-rule",
+      "categories": ["legacy_sanity", "all_facets", "deep_leaf", "alias", "migration_0056"],
+      "retrievalText": "AP Calculus AB chain rule: differentiate a composite expression and explain the reasoning.",
+      "candidatePool": [
+        "math.curriculum.ap.ap_calculus_ab.differentiation_rules",
+        "math.curriculum.bc.calculus_12.derivatives",
+        "math.concept.calculus.derivatives",
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.concept.calculus.derivatives.power_rule",
+        "math.method.calculus_procedure.use_chain_rule",
+        "math.method.graph_reasoning.use_slope",
+        "math.task.explain.explain_reasoning",
+        "math.task.determine.determine_value",
+        "math.form.symbolic.composite_expression",
+        "math.form.visual.coordinate_graph",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": [
+        "math.curriculum.ap.ap_calculus_ab.differentiation_rules",
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.method.calculus_procedure.use_chain_rule",
+        "math.task.explain.explain_reasoning",
+        "math.form.symbolic.composite_expression"
+      ],
+      "prediction": [
+        "math.curriculum.ap.ap_calculus_ab.differentiation_rules",
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.method.calculus_procedure.use_chain_rule",
+        "math.task.explain.explain_reasoning",
+        "math.form.symbolic.composite_expression"
+      ],
+      "distractorIds": [
+        "math.curriculum.bc.calculus_12.derivatives",
+        "math.concept.calculus.derivatives",
+        "math.concept.calculus.derivatives.power_rule",
+        "math.method.graph_reasoning.use_slope",
+        "math.task.determine.determine_value",
+        "math.form.visual.coordinate_graph",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [
+        {"input": "chain rule", "tagId": "math.concept.calculus.derivatives.chain_rule"},
+        {"input": "use chain rule", "tagId": "math.method.calculus_procedure.use_chain_rule"}
+      ],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "ambiguous-curriculum-abstains",
+      "categories": ["legacy_sanity", "partial_abstention", "migration_0056"],
+      "retrievalText": "Differentiate f(g(x)) and show the symbolic work; no curriculum is stated.",
+      "candidatePool": [
+        "math.curriculum.ap.ap_calculus_ab.differentiation_rules",
+        "math.curriculum.bc.calculus_12.derivatives",
+        "math.concept.calculus.derivatives",
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.concept.calculus.derivatives.power_rule",
+        "math.method.calculus_procedure.use_chain_rule",
+        "math.task.explain.explain_reasoning",
+        "math.form.symbolic.composite_expression",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": [
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.method.calculus_procedure.use_chain_rule",
+        "math.form.symbolic.composite_expression"
+      ],
+      "prediction": [
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.method.calculus_procedure.use_chain_rule",
+        "math.form.symbolic.composite_expression"
+      ],
+      "distractorIds": [
+        "math.curriculum.ap.ap_calculus_ab.differentiation_rules",
+        "math.curriculum.bc.calculus_12.derivatives",
+        "math.concept.calculus.derivatives",
+        "math.concept.calculus.derivatives.power_rule",
+        "math.task.explain.explain_reasoning",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [
+        {"input": "composite derivative", "tagId": "math.concept.calculus.derivatives.chain_rule"}
+      ],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "graph-slope-reasoning",
+      "categories": ["legacy_sanity", "visual", "four_facets", "migration_0056"],
+      "retrievalText": "Interpret the slope on a coordinate graph and explain its rate-of-change meaning.",
+      "candidatePool": [
+        "math.concept.functions.linear.slope",
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.method.graph_reasoning.use_slope",
+        "math.method.graph_reasoning.read_from_graph",
+        "math.task.explain.interpret_result",
+        "math.task.determine.determine_value",
+        "math.form.visual.coordinate_graph",
+        "math.form.table.data_table",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": [
+        "math.concept.functions.linear.slope",
+        "math.method.graph_reasoning.use_slope",
+        "math.task.explain.interpret_result",
+        "math.form.visual.coordinate_graph"
+      ],
+      "prediction": [
+        "math.concept.functions.linear.slope",
+        "math.method.graph_reasoning.use_slope",
+        "math.task.explain.interpret_result",
+        "math.form.visual.coordinate_graph"
+      ],
+      "distractorIds": [
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.method.graph_reasoning.read_from_graph",
+        "math.task.determine.determine_value",
+        "math.form.table.data_table",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "insufficient-taxonomy-evidence",
+      "categories": ["legacy_sanity", "unknown", "full_abstention"],
+      "retrievalText": "Solve the problem.",
+      "candidatePool": [
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.concept.functions.linear.slope",
+        "math.method.calculus_procedure.use_chain_rule",
+        "math.form.verbal.word_problem",
+        "math.inactive.not_in_active_catalog",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": [],
+      "prediction": [],
+      "distractorIds": [
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.concept.functions.linear.slope",
+        "math.method.calculus_procedure.use_chain_rule",
+        "math.form.verbal.word_problem",
+        "math.inactive.not_in_active_catalog",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [],
+      "acceptableAbstention": true
+    },
+    {
+      "id": "data-table-form-only",
+      "categories": ["legacy_sanity", "partial_evidence", "form_only", "close_siblings"],
+      "retrievalText": "The only reliable evidence is that the question is presented as a data table.",
+      "candidatePool": [
+        "math.form.table.data_table",
+        "math.form.table.input_output_table",
+        "math.form.table.frequency_table",
+        "math.form.visual.coordinate_graph",
+        "math.form.verbal.word_problem",
+        "math.concept.functions.linear.slope",
+        "math.task.determine.determine_value",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": ["math.form.table.data_table"],
+      "prediction": ["math.form.table.data_table"],
+      "distractorIds": [
+        "math.form.table.input_output_table",
+        "math.form.table.frequency_table",
+        "math.form.visual.coordinate_graph",
+        "math.form.verbal.word_problem",
+        "math.concept.functions.linear.slope",
+        "math.task.determine.determine_value",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "word-problem-form-only",
+      "categories": ["legacy_sanity", "partial_evidence", "form_only", "migration_0056"],
+      "retrievalText": "The item is clearly a verbal word problem, but its mathematical topic is unavailable.",
+      "candidatePool": [
+        "math.form.verbal.word_problem",
+        "math.form.table.data_table",
+        "math.form.visual.coordinate_graph",
+        "math.concept.functions.linear.slope",
+        "math.task.explain.interpret_result",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": ["math.form.verbal.word_problem"],
+      "prediction": ["math.form.verbal.word_problem"],
+      "distractorIds": [
+        "math.form.table.data_table",
+        "math.form.visual.coordinate_graph",
+        "math.concept.functions.linear.slope",
+        "math.task.explain.interpret_result",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "seed-area-between-curves-frq",
+      "categories": ["all_facets", "seed_only", "alias", "identical_label_siblings"],
+      "retrievalText": "AP Calculus BC Applications of Integration FRQ: set up an integral for the area between curves and evaluate it.",
+      "candidatePool": [
+        "math.curriculum.ap_calculus_bc.applications_of_integration",
+        "math.curriculum.ap.ap_calculus_ab.applications_integration",
+        "math.concept.integration",
+        "math.concept.integration.area_between_curves",
+        "math.concept.calculus.integrals.area_between_curves",
+        "math.method.integral_setup",
+        "math.method.calculus_procedure.use_integration_by_parts",
+        "math.task.determine.determine_value",
+        "math.task.determine.determine_integral",
+        "math.form.free_response",
+        "math.form.multiple_choice",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": [
+        "math.curriculum.ap_calculus_bc.applications_of_integration",
+        "math.concept.integration.area_between_curves",
+        "math.method.integral_setup",
+        "math.task.determine.determine_value",
+        "math.form.free_response"
+      ],
+      "prediction": [
+        "math.curriculum.ap_calculus_bc.applications_of_integration",
+        "math.concept.integration.area_between_curves",
+        "math.method.integral_setup",
+        "math.task.determine.determine_value",
+        "math.form.free_response"
+      ],
+      "distractorIds": [
+        "math.curriculum.ap.ap_calculus_ab.applications_integration",
+        "math.concept.integration",
+        "math.concept.calculus.integrals.area_between_curves",
+        "math.method.calculus_procedure.use_integration_by_parts",
+        "math.task.determine.determine_integral",
+        "math.form.multiple_choice",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [
+        {"input": "Applications of Integration", "tagId": "math.curriculum.ap_calculus_bc.applications_of_integration"},
+        {"input": "Area between curves", "tagId": "math.concept.integration.area_between_curves"},
+        {"input": "FRQ", "tagId": "math.form.free_response"}
+      ],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "seed-table-accumulation",
+      "categories": ["seed_only", "alias", "close_siblings", "four_facets"],
+      "retrievalText": "Use tabular rate data to find accumulation and interpret the result.",
+      "candidatePool": [
+        "math.curriculum.ap_calculus_bc.applications_of_integration",
+        "math.curriculum.ap.ap_calculus_ab.integration_accumulation",
+        "math.concept.integration.accumulation",
+        "math.concept.calculus.integrals.accumulation_functions",
+        "math.method.table_accumulation",
+        "math.method.integral_setup",
+        "math.task.explain.interpret_result",
+        "math.task.determine.determine_integral",
+        "math.form.table.data_table",
+        "math.form.table.input_output_table",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": [
+        "math.curriculum.ap_calculus_bc.applications_of_integration",
+        "math.concept.integration.accumulation",
+        "math.method.table_accumulation",
+        "math.task.explain.interpret_result",
+        "math.form.table.data_table"
+      ],
+      "prediction": [
+        "math.curriculum.ap_calculus_bc.applications_of_integration",
+        "math.concept.integration.accumulation",
+        "math.method.table_accumulation",
+        "math.task.explain.interpret_result",
+        "math.form.table.data_table"
+      ],
+      "distractorIds": [
+        "math.curriculum.ap.ap_calculus_ab.integration_accumulation",
+        "math.concept.calculus.integrals.accumulation_functions",
+        "math.method.integral_setup",
+        "math.task.determine.determine_integral",
+        "math.form.table.input_output_table",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [
+        {"input": "Accumulation", "tagId": "math.concept.integration.accumulation"}
+      ],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "quadratic-maximum-on-graph",
+      "categories": ["all_facets", "migration_0056", "alias", "close_siblings"],
+      "retrievalText": "For a Precalculus 11 quadratic graph, determine its maximum value and read it from the coordinate graph.",
+      "candidatePool": [
+        "math.curriculum.bc.precalculus_11.quadratic_functions",
+        "math.concept.functions.quadratic",
+        "math.concept.functions.quadratic.vertex",
+        "math.concept.functions.quadratic.extreme_value",
+        "math.concept.functions.quadratic.where_extreme_occurs",
+        "math.method.graph_reasoning.read_from_graph",
+        "math.method.equation_solving.use_quadratic_formula",
+        "math.task.determine.determine_extreme_value",
+        "math.task.determine.determine_where_extreme_occurs",
+        "math.form.visual.coordinate_graph",
+        "math.form.symbolic.composite_expression",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": [
+        "math.curriculum.bc.precalculus_11.quadratic_functions",
+        "math.concept.functions.quadratic.extreme_value",
+        "math.method.graph_reasoning.read_from_graph",
+        "math.task.determine.determine_extreme_value",
+        "math.form.visual.coordinate_graph"
+      ],
+      "prediction": [
+        "math.curriculum.bc.precalculus_11.quadratic_functions",
+        "math.concept.functions.quadratic.extreme_value",
+        "math.method.graph_reasoning.read_from_graph",
+        "math.task.determine.determine_extreme_value",
+        "math.form.visual.coordinate_graph"
+      ],
+      "distractorIds": [
+        "math.concept.functions.quadratic",
+        "math.concept.functions.quadratic.vertex",
+        "math.concept.functions.quadratic.where_extreme_occurs",
+        "math.method.equation_solving.use_quadratic_formula",
+        "math.task.determine.determine_where_extreme_occurs",
+        "math.form.symbolic.composite_expression",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [
+        {"input": "maximum value", "tagId": "math.concept.functions.quadratic.extreme_value"}
+      ],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "conditional-probability-word-problem",
+      "categories": ["all_facets", "migration_0056", "deep_leaf", "close_siblings"],
+      "retrievalText": "AP Statistics probability word problem: calculate a conditional probability and determine the result.",
+      "candidatePool": [
+        "math.curriculum.ap.ap_statistics.probability",
+        "math.curriculum.common_core.statistics_probability",
+        "math.concept.statistics_probability",
+        "math.concept.statistics_probability.probability_basics",
+        "math.concept.statistics_probability.conditional_probability",
+        "math.concept.statistics_probability.independence",
+        "math.method.statistical_methods.calculate_probability",
+        "math.method.table_accumulation",
+        "math.task.determine.determine_probability",
+        "math.task.explain.interpret_result",
+        "math.form.verbal.word_problem",
+        "math.form.multiple_choice",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": [
+        "math.curriculum.ap.ap_statistics.probability",
+        "math.concept.statistics_probability.conditional_probability",
+        "math.method.statistical_methods.calculate_probability",
+        "math.task.determine.determine_probability",
+        "math.form.verbal.word_problem"
+      ],
+      "prediction": [
+        "math.curriculum.ap.ap_statistics.probability",
+        "math.concept.statistics_probability.conditional_probability",
+        "math.method.statistical_methods.calculate_probability",
+        "math.task.determine.determine_probability",
+        "math.form.verbal.word_problem"
+      ],
+      "distractorIds": [
+        "math.curriculum.common_core.statistics_probability",
+        "math.concept.statistics_probability",
+        "math.concept.statistics_probability.probability_basics",
+        "math.concept.statistics_probability.independence",
+        "math.method.table_accumulation",
+        "math.task.explain.interpret_result",
+        "math.form.multiple_choice",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "same-label-derivatives-curriculum-only",
+      "categories": ["similar_label_cross_facet", "broad_parent", "partial_evidence", "migration_0056"],
+      "retrievalText": "The curriculum unit is titled Derivatives; no specific derivative rule or action is stated.",
+      "candidatePool": [
+        "math.curriculum.bc.calculus_12.derivatives",
+        "math.curriculum.ap.ap_calculus_ab.differentiation_rules",
+        "math.concept.calculus.derivatives",
+        "math.concept.calculus.derivatives.power_rule",
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.task.determine.determine_derivative",
+        "math.form.symbolic.composite_expression",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": ["math.curriculum.bc.calculus_12.derivatives"],
+      "prediction": ["math.curriculum.bc.calculus_12.derivatives"],
+      "distractorIds": [
+        "math.curriculum.ap.ap_calculus_ab.differentiation_rules",
+        "math.concept.calculus.derivatives",
+        "math.concept.calculus.derivatives.power_rule",
+        "math.concept.calculus.derivatives.chain_rule",
+        "math.task.determine.determine_derivative",
+        "math.form.symbolic.composite_expression",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "integral-topic-too-broad",
+      "categories": ["broad_parent", "full_abstention", "close_siblings"],
+      "retrievalText": "The item concerns an integral, but no operation, method, representation, or curriculum is supplied.",
+      "candidatePool": [
+        "math.curriculum.bc.calculus_12.integrals",
+        "math.concept.calculus.integrals",
+        "math.concept.calculus.integrals.antiderivatives",
+        "math.concept.calculus.integrals.definite_integrals",
+        "math.concept.calculus.integrals.accumulation_functions",
+        "math.method.integral_setup",
+        "math.task.determine.determine_integral",
+        "math.form.free_response",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": [],
+      "prediction": [],
+      "distractorIds": [
+        "math.curriculum.bc.calculus_12.integrals",
+        "math.concept.calculus.integrals",
+        "math.concept.calculus.integrals.antiderivatives",
+        "math.concept.calculus.integrals.definite_integrals",
+        "math.concept.calculus.integrals.accumulation_functions",
+        "math.method.integral_setup",
+        "math.task.determine.determine_integral",
+        "math.form.free_response",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [],
+      "acceptableAbstention": true
+    },
+    {
+      "id": "seed-frq-format-only",
+      "categories": ["seed_only", "alias", "form_only", "partial_evidence"],
+      "retrievalText": "Answer in FRQ format.",
+      "candidatePool": [
+        "math.form.free_response",
+        "math.form.multiple_choice",
+        "math.form.verbal.word_problem",
+        "math.form.symbolic.composite_expression",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": ["math.form.free_response"],
+      "prediction": ["math.form.free_response"],
+      "distractorIds": [
+        "math.form.multiple_choice",
+        "math.form.verbal.word_problem",
+        "math.form.symbolic.composite_expression",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [
+        {"input": "FRQ", "tagId": "math.form.free_response"}
+      ],
+      "acceptableAbstention": false
+    },
+    {
+      "id": "quadratic-vertex-form-sibling",
+      "categories": ["migration_0056", "close_siblings", "deep_leaf", "concept_only"],
+      "retrievalText": "Rewrite the quadratic in vertex form.",
+      "candidatePool": [
+        "math.concept.functions.quadratic",
+        "math.concept.functions.quadratic.standard_form",
+        "math.concept.functions.quadratic.vertex_form",
+        "math.concept.functions.quadratic.factored_form",
+        "math.concept.functions.quadratic.vertex",
+        "math.concept.functions.quadratic.extreme_value",
+        "math.form.symbolic.composite_expression",
+        "math.unknown.invented"
+      ],
+      "goldExpectedIds": ["math.concept.functions.quadratic.vertex_form"],
+      "prediction": ["math.concept.functions.quadratic.vertex_form"],
+      "distractorIds": [
+        "math.concept.functions.quadratic",
+        "math.concept.functions.quadratic.standard_form",
+        "math.concept.functions.quadratic.factored_form",
+        "math.concept.functions.quadratic.vertex",
+        "math.concept.functions.quadratic.extreme_value",
+        "math.form.symbolic.composite_expression",
+        "math.unknown.invented"
+      ],
+      "aliasExpectations": [],
+      "acceptableAbstention": false
+    }
+  ]
+}

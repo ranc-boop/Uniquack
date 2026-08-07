@@ -7,10 +7,24 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
 
+import { buildSyntheticVisualEvidencePdf } from "./ai-parsing-eval/synthetic-visual-pdf.mjs";
+import {
+  validateVisualEvidenceLiveObservation,
+  visualEvidenceAttachedSafeIndices,
+  visualEvidenceQuestionSafeIndices,
+  visualEvidenceSafeIndex,
+} from "./ai-parsing-eval/visual-evidence-live-contract.mjs";
+import {
+  deniedRequesterEvidence,
+  loadVisualEvidence,
+  routeAuthorization,
+  verifyReviewSurface,
+} from "./ai-parsing-visual-evidence-live-e2e.mjs";
 import {
   HarnessError,
   assert,
@@ -54,7 +68,45 @@ import {
 
 const workerRoutePath = "/api/internal/ai-jobs/run";
 const providerInterruption = "after_provider_checkpoint";
+const authoritativeTaxonomySnapshotSha256 =
+  "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe";
+const authoritativeCandidateSubsetSha256 =
+  "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262";
+const authoritativeParsingTreatmentVersion =
+  "ai-pdf-parsing/provider-neutral-v5";
+const providerInferenceReasons = [
+  "FIRST_ATTEMPT",
+  "STRUCTURAL_SCHEMA_REPAIR",
+  "APPLICATION_VALIDATION_REPAIR",
+  "BLANK_REQUIRED_FIELD_REPAIR",
+  "ANSWER_CONSISTENCY_REPAIR",
+  "SOURCE_LINEAGE_REPAIR",
+  "VISUAL_ASSOCIATION_REPAIR",
+  "TAXONOMY_REPAIR",
+  "PROVIDER_BUSY_RETRY",
+  "RATE_LIMIT_RETRY",
+  "NETWORK_RETRY",
+  "TIMEOUT_RETRY",
+  "SOURCE_BACKED_SEMANTIC_RECOVERY",
+];
+const repairReasons = new Set([
+  "STRUCTURAL_SCHEMA_REPAIR",
+  "APPLICATION_VALIDATION_REPAIR",
+  "BLANK_REQUIRED_FIELD_REPAIR",
+  "ANSWER_CONSISTENCY_REPAIR",
+  "SOURCE_LINEAGE_REPAIR",
+  "VISUAL_ASSOCIATION_REPAIR",
+  "TAXONOMY_REPAIR",
+  "SOURCE_BACKED_SEMANTIC_RECOVERY",
+]);
+const transientRetryReasons = new Set([
+  "PROVIDER_BUSY_RETRY",
+  "RATE_LIMIT_RETRY",
+  "NETWORK_RETRY",
+  "TIMEOUT_RETRY",
+]);
 const retryableScaleProviderCodes = new Set([
+  "ai_pdf_post_persistence_transient",
   "provider_busy",
   "provider_network_error",
   "provider_rate_limited",
@@ -98,6 +150,290 @@ function scaleAssert(condition, category) {
 
 function sum(values) {
   return values.reduce((total, value) => total + (numeric(value) ?? 0), 0);
+}
+
+function safeRatio(numerator, denominator) {
+  return denominator > 0 ? Number((numerator / denominator).toFixed(6)) : null;
+}
+
+function conservativeUsageCostMicros(inputTokens, outputTokens) {
+  return (
+    Math.ceil(
+      (inputTokens * scaleProviderControl.inputMicrosPerMillion) / 1_000_000,
+    ) +
+    Math.ceil(
+      (outputTokens * scaleProviderControl.outputMicrosPerMillion) / 1_000_000,
+    )
+  );
+}
+
+function percentile(values, ratio) {
+  if (!values.length) return 0;
+  const ordered = [...values].sort((left, right) => left - right);
+  return ordered[Math.max(0, Math.ceil(ordered.length * ratio) - 1)];
+}
+
+function waitForChildExit(child, timeoutMs) {
+  return new Promise((resolveOutcome) => {
+    let settled = false;
+    const settle = (outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.removeListener("exit", handleExit);
+      resolveOutcome(outcome);
+    };
+    const handleExit = (code) => settle({ code });
+    const timer = setTimeout(() => settle({ timeout: true }), timeoutMs);
+    child.once("exit", handleExit);
+  });
+}
+
+function aggregateQualityObservatories({ batches, completedBatchSet }) {
+  const snapshots = batches
+    .filter((batch) => completedBatchSet.has(batch.id))
+    .map((batch) =>
+      asRecord(asRecord(asRecord(batch.summary).aiPdfImport).qualityObservatory),
+    );
+  scaleAssert(
+    snapshots.length === completedBatchSet.size &&
+      snapshots.every((snapshot) => Object.keys(snapshot).length > 0),
+    "scale_batch_evidence_failed",
+  );
+
+  const attemptHistogram = Object.fromEntries(
+    providerInferenceReasons.map((reason) => [reason, 0]),
+  );
+  const attemptsPerJob = [];
+  const attempts = [];
+  const componentBytes = {
+    extractionInstructions: 0,
+    fixedTransportOverhead: 0,
+    previousResponse: 0,
+    semanticRecoveryInstructions: 0,
+    sourceInput: 0,
+    structuralRepairInstructions: 0,
+    structuredSchema: 0,
+    systemInstructions: 0,
+    taxonomyCandidates: 0,
+  };
+  const contracts = [];
+  let checkpointReplays = 0;
+  let firstAttemptSuccesses = 0;
+  let providerReportedCachedInputTokens = 0;
+  let providerReportedCandidateOutputTokens = 0;
+  let providerReportedInputTokens = 0;
+  let providerReportedOutputTokens = 0;
+  let providerReportedThoughtTokens = 0;
+  let providerReportedTotalTokens = 0;
+  let providerUsageComplete = true;
+  let cachedInputUsageComplete = true;
+  let candidateOutputUsageComplete = true;
+  let thoughtUsageComplete = true;
+  let repeatedPreviousResponseBytes = 0;
+  let repeatedSourceBytes = 0;
+  let totalSerializedRequestBytes = 0;
+
+  for (const snapshot of snapshots) {
+    const contract = asRecord(snapshot.contractEvidence);
+    const histogram = asRecord(snapshot.attemptHistogram);
+    const context = asRecord(snapshot.contextComposition);
+    const components = asRecord(context.componentBytes);
+    const records = Array.isArray(snapshot.attempts) ? snapshot.attempts : [];
+    scaleAssert(
+      snapshot.attemptReasonVersion === 3 &&
+        snapshot.contextAccountingVersion === 2 &&
+        snapshot.observatoryVersion === 5 &&
+        snapshot.parsingContractVersion ===
+          authoritativeParsingTreatmentVersion &&
+        records.length > 0 &&
+        numeric(snapshot.attemptsPerJob) === records.length &&
+        Object.keys(histogram).every(
+        (reason) =>
+          providerInferenceReasons.includes(reason) ||
+          reason === "CHECKPOINT_REPLAY_ZERO_INFERENCE",
+      ) &&
+        records.every(
+          (record) =>
+            providerInferenceReasons.includes(record?.reason) &&
+            ["failed", "success"].includes(record?.outcome),
+        ),
+      "scale_batch_evidence_failed",
+    );
+    for (const reason of providerInferenceReasons) {
+      const observed = numeric(histogram[reason]);
+      const recorded = records.filter((record) => record?.reason === reason).length;
+      scaleAssert(
+        Number.isInteger(observed) && observed === recorded,
+        "scale_batch_evidence_failed",
+      );
+      attemptHistogram[reason] += observed;
+    }
+    const snapshotCheckpointReplays = numeric(snapshot.checkpointReplayCount);
+    scaleAssert(
+      Number.isInteger(snapshotCheckpointReplays) &&
+        numeric(histogram.CHECKPOINT_REPLAY_ZERO_INFERENCE) ===
+          snapshotCheckpointReplays,
+      "scale_batch_evidence_failed",
+    );
+    checkpointReplays += snapshotCheckpointReplays;
+    attemptsPerJob.push(records.length);
+    attempts.push(...records);
+    scaleAssert(
+      snapshot.firstAttemptSuccess === (records[0]?.outcome === "success"),
+      "scale_batch_evidence_failed",
+    );
+    if (snapshot.firstAttemptSuccess) firstAttemptSuccesses += 1;
+    for (const key of Object.keys(componentBytes)) {
+      componentBytes[key] += numeric(components[key]) ?? 0;
+    }
+    repeatedPreviousResponseBytes +=
+      numeric(context.repeatedPreviousResponseBytes) ?? 0;
+    repeatedSourceBytes += numeric(context.repeatedSourceBytes) ?? 0;
+    totalSerializedRequestBytes +=
+      numeric(context.totalSerializedRequestBytes) ?? 0;
+    const usageValues = records.map((record) => {
+      const usage = asRecord(record?.usage);
+      return {
+        cachedInputTokens: numeric(usage.cachedInputTokens),
+        candidateOutputTokens: numeric(usage.candidateOutputTokens),
+        inputTokens: numeric(usage.inputTokens),
+        outputTokens: numeric(usage.outputTokens),
+        thoughtTokens: numeric(usage.thoughtTokens),
+        totalTokens: numeric(usage.totalTokens),
+      };
+    });
+    if (
+      usageValues.some(
+        (usage) =>
+          usage.inputTokens === null ||
+          usage.outputTokens === null ||
+          usage.totalTokens === null,
+      )
+    ) {
+      providerUsageComplete = false;
+    } else {
+      providerReportedInputTokens += sum(
+        usageValues.map((usage) => usage.inputTokens),
+      );
+      providerReportedOutputTokens += sum(
+        usageValues.map((usage) => usage.outputTokens),
+      );
+      providerReportedTotalTokens += sum(
+        usageValues.map((usage) => usage.totalTokens),
+      );
+      scaleAssert(
+        numeric(context.providerReportedInputTokens) ===
+          sum(usageValues.map((usage) => usage.inputTokens)) &&
+          numeric(context.providerReportedOutputTokens) ===
+            sum(usageValues.map((usage) => usage.outputTokens)),
+        "scale_batch_evidence_failed",
+      );
+    }
+    if (usageValues.some((usage) => usage.cachedInputTokens === null)) {
+      cachedInputUsageComplete = false;
+    } else {
+      providerReportedCachedInputTokens += sum(
+        usageValues.map((usage) => usage.cachedInputTokens),
+      );
+    }
+    if (usageValues.some((usage) => usage.candidateOutputTokens === null)) {
+      candidateOutputUsageComplete = false;
+    } else {
+      providerReportedCandidateOutputTokens += sum(
+        usageValues.map((usage) => usage.candidateOutputTokens),
+      );
+    }
+    if (usageValues.some((usage) => usage.thoughtTokens === null)) {
+      thoughtUsageComplete = false;
+    } else {
+      providerReportedThoughtTokens += sum(
+        usageValues.map((usage) => usage.thoughtTokens),
+      );
+    }
+    contracts.push(contract);
+  }
+
+  scaleAssert(
+    contracts.every(
+      (contract) =>
+        contract.taxonomySnapshotSha256 === authoritativeTaxonomySnapshotSha256 &&
+        contract.fullTaxonomySnapshotSha256 ===
+          authoritativeTaxonomySnapshotSha256 &&
+        contract.candidateSubsetSha256 === authoritativeCandidateSubsetSha256 &&
+        typeof contract.parsingContractSha256 === "string" &&
+        /^[a-f0-9]{64}$/.test(contract.parsingContractSha256) &&
+        typeof contract.retrievalAlgorithmVersion === "string" &&
+        typeof contract.promptContractVersion === "string" &&
+        typeof contract.schemaContractVersion === "string" &&
+        typeof contract.repairPolicyVersion === "string",
+    ),
+    "scale_batch_evidence_failed",
+  );
+  for (const key of [
+    "parsingContractSha256",
+    "retrievalAlgorithmVersion",
+    "promptContractVersion",
+    "schemaContractVersion",
+    "repairPolicyVersion",
+  ]) {
+    scaleAssert(
+      new Set(contracts.map((contract) => contract[key])).size === 1,
+      "scale_batch_evidence_failed",
+    );
+  }
+
+  const repairAttempts = attempts.filter((attempt) =>
+    repairReasons.has(attempt.reason),
+  );
+  const transientRetries = attempts.filter((attempt) =>
+    transientRetryReasons.has(attempt.reason),
+  );
+  return {
+    attemptHistogram,
+    attemptsPerJobHistogram: Object.fromEntries(
+      [...new Set(attemptsPerJob)]
+        .sort((left, right) => left - right)
+        .map((value) => [value, attemptsPerJob.filter((item) => item === value).length]),
+    ),
+    candidateSubsetBytes: numeric(contracts[0].candidateSubsetBytes) ?? 0,
+    cachedInputUsageComplete,
+    candidateOutputUsageComplete,
+    checkpointReplays,
+    componentBytes,
+    firstAttemptSuccessRate: safeRatio(firstAttemptSuccesses, snapshots.length),
+    fullTaxonomySnapshotBytes:
+      numeric(contracts[0].fullTaxonomySnapshotBytes) ?? 0,
+    parsingContractSha256: contracts[0].parsingContractSha256,
+    p50AttemptsPerJob: percentile(attemptsPerJob, 0.5),
+    p95AttemptsPerJob: percentile(attemptsPerJob, 0.95),
+    promptContractVersion: contracts[0].promptContractVersion,
+    providerInferenceAttemptCount: attempts.length,
+    providerReportedCachedInputTokens,
+    providerReportedCandidateOutputTokens,
+    providerReportedInputTokens,
+    providerReportedOutputTokens,
+    providerReportedThoughtTokens,
+    providerReportedTotalTokens,
+    providerUsageComplete,
+    repairPolicyVersion: contracts[0].repairPolicyVersion,
+    repairRate: safeRatio(repairAttempts.length, attempts.length),
+    repairSuccessRate: safeRatio(
+      repairAttempts.filter((attempt) => attempt.outcome === "success").length,
+      repairAttempts.length,
+    ),
+    repeatedPreviousResponseBytes,
+    repeatedSourceBytes,
+    retrievalAlgorithmVersion: contracts[0].retrievalAlgorithmVersion,
+    schemaContractVersion: contracts[0].schemaContractVersion,
+    taxonomyInputShare: safeRatio(
+      componentBytes.taxonomyCandidates,
+      totalSerializedRequestBytes,
+    ),
+    totalSerializedRequestBytes,
+    thoughtUsageComplete,
+    transientRetryRate: safeRatio(transientRetries.length, attempts.length),
+  };
 }
 
 function providerCounters(job) {
@@ -230,11 +566,12 @@ async function waitForUploadedBurst({ bankId, fileCount, service, teacherId }) {
       if (
         snapshot.items.length !== fileCount ||
         snapshot.items.some(
-          (item) =>
+          (item, index) =>
             !item.import_batch_id ||
             !item.source_asset_id ||
             !item.object_path ||
-            item.page_count !== 1 ||
+            item.page_count !==
+              (fileCount === 50 && index === 0 ? 4 : 1) ||
             !["admission_ready", "queued"].includes(item.status),
         )
       ) {
@@ -249,12 +586,20 @@ async function waitForUploadedBurst({ bankId, fileCount, service, teacherId }) {
 
 function syntheticFiles(fileCount, stage) {
   return Array.from({ length: fileCount }, (_, index) => {
-    const pdf = buildSyntheticPdf({ variant: Number(stage) * 100 + index + 1 });
-    scaleAssert(pdf.byteLength <= 4096, "scale_control_rejected");
+    const visualFixture = stage === "50" && index === 0;
+    const pdf = visualFixture
+      ? buildSyntheticVisualEvidencePdf()
+      : buildSyntheticPdf({ variant: Number(stage) * 100 + index + 1 });
+    scaleAssert(
+      pdf.byteLength <= (visualFixture ? 200_000 : 4096),
+      "scale_control_rejected",
+    );
     return {
       buffer: pdf,
       mimeType: "application/pdf",
-      name: `synthetic-scale-${stage}-${String(index + 1).padStart(2, "0")}.pdf`,
+      name: visualFixture
+        ? "synthetic-scale-50-visual-contract.pdf"
+        : `synthetic-scale-${stage}-${String(index + 1).padStart(2, "0")}.pdf`,
     };
   });
 }
@@ -377,6 +722,12 @@ function safeWorkerValue(value) {
     : "unknown";
 }
 
+function safeWorkerFingerprint(value) {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value)
+    ? value
+    : "unknown";
+}
+
 async function reportSafeWorkerFailure({ jobId, outcome, output, service }) {
   const job = await loadJob({ jobId, service }).catch(() => null);
   console.log(
@@ -392,6 +743,7 @@ async function reportSafeWorkerFailure({ jobId, outcome, output, service }) {
 
 function reportSafeJobState({ job, label }) {
   const counters = providerCounters(job);
+  const safeResult = asRecord(job?.safe_result);
   console.log(
     `SAFE_JOB_STATE=label:${label},status:${safeWorkerValue(
       job?.status,
@@ -407,7 +759,25 @@ function reportSafeJobState({ job, label }) {
       counters.uploads
     },polls:${counters.polls},cleanup:${counters.cleanup},cleanupFailures:${
       counters.cleanupFailures
-    },network:${counters.network}`,
+    },network:${counters.network},postPersistence:${safeWorkerValue(
+      safeResult.postPersistenceFailureStage,
+    )},postPersistenceReason:${safeWorkerValue(
+      safeResult.postPersistenceFailureReason,
+    )},postPersistenceHttp:${safeWorkerValue(
+      safeResult.postPersistenceHttpClassification,
+    )},postPersistenceValidation:${safeWorkerValue(
+      safeResult.postPersistenceValidationCategory,
+    )},postPersistenceRetryable:${
+      safeResult.postPersistenceRetryable === true
+        ? "true"
+        : safeResult.postPersistenceRetryable === false
+          ? "false"
+          : "unknown"
+    },postPersistenceAttempt:${numeric(
+      safeResult.postPersistenceAttemptNumber,
+    ) ?? 0},postPersistenceFingerprint:${safeWorkerFingerprint(
+      safeResult.postPersistenceEvidenceFingerprint,
+    )}`,
   );
 }
 
@@ -452,12 +822,7 @@ async function runExactWorker({
   const fencePromise = captureFence
     ? captureProcessingFence({ child, jobId, service })
     : Promise.resolve(null);
-  const outcome = await Promise.race([
-    new Promise((resolveExit) =>
-      child.once("exit", (code) => resolveExit({ code })),
-    ),
-    sleep(300_000).then(() => ({ timeout: true })),
-  ]);
+  const outcome = await waitForChildExit(child, 300_000);
   const fence = await fencePromise;
   if (outcome.timeout) {
     child.kill("SIGKILL");
@@ -673,7 +1038,11 @@ async function runExactWorkerToTerminal({
     const executionCounters = providerCounters(outcomeJob);
     validateProviderCounters({
       counters: executionCounters,
-      requireInference: outcomeJob.status !== "failed",
+      requireInference:
+        outcomeJob.status !== "failed" &&
+        !["provider_result_checkpointed", "normalized", "drafts_persisted"].includes(
+          before.checkpoint_stage,
+        ),
     });
     addCounters(counters, executionCounters);
     scaleAssert(
@@ -708,7 +1077,7 @@ async function runExactWorkerToTerminal({
     retryWaitReplays += 1;
     onRetryWaitReplay();
     console.log(
-      "PASS retryable Provider wait remained durable and exact-job scoped",
+      "PASS retryable execution wait remained durable and exact-job scoped",
     );
   }
 }
@@ -1061,6 +1430,18 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
   const terminal = drain.terminal;
   const completedItems = terminal.items.filter((item) => item.status === "completed");
   const cancelledItems = terminal.items.filter((item) => item.status === "cancelled");
+  const requiresVisualFixture = stageControl.files === 50;
+  const visualItem = requiresVisualFixture
+    ? terminal.items.find((item) => item.item_index === 0) ?? null
+    : null;
+  scaleAssert(
+    !requiresVisualFixture ||
+      (visualItem?.import_batch_id && visualItem.status === "completed"),
+    "scale_batch_evidence_failed",
+  );
+  const visualBatchId = visualItem?.import_batch_id ?? null;
+  const expectedQuestionCount =
+    stageControl.completed + (requiresVisualFixture ? 3 : 0);
   scaleAssert(
     completedItems.length === stageControl.completed &&
       cancelledItems.length === stageControl.cancelled &&
@@ -1140,6 +1521,14 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
         ),
     "scale_batch_evidence_failed",
   );
+  const quality = aggregateQualityObservatories({
+    batches,
+    completedBatchSet,
+  });
+  scaleAssert(
+    quality.providerInferenceAttemptCount === drain.counters.inference,
+    "scale_batch_evidence_failed",
+  );
 
   const importItems =
     requireData(
@@ -1158,9 +1547,25 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
   for (const item of importedItems) {
     importedByBatch.set(item.batch_id, (importedByBatch.get(item.batch_id) ?? 0) + 1);
   }
+  const visualImportedItems = visualBatchId
+    ? importedItems.filter((item) => item.batch_id === visualBatchId)
+    : [];
+  const visualPageRefs = visualImportedItems
+    .map((item) => {
+      const metadata = asRecord(
+        asRecord(item.normalized_question_json).ai_metadata,
+      );
+      return Array.isArray(metadata.page_refs) && metadata.page_refs.length === 1
+        ? numeric(metadata.page_refs[0])
+        : null;
+    })
+    .sort((left, right) => (left ?? 0) - (right ?? 0));
   scaleAssert(
-    importedItems.length === stageControl.completed &&
-      completedBatchIds.every((batchId) => importedByBatch.get(batchId) === 1) &&
+    importedItems.length === expectedQuestionCount &&
+      completedBatchIds.every(
+        (batchId) =>
+          importedByBatch.get(batchId) === (batchId === visualBatchId ? 4 : 1),
+      ) &&
       new Set(importedItems.map((item) => item.persistence_lineage_key)).size ===
         importedItems.length &&
       importedItems.every((item) => {
@@ -1169,9 +1574,11 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
           item.persistence_lineage_key &&
           Array.isArray(metadata.page_refs) &&
           metadata.page_refs.length === 1 &&
-          metadata.page_refs[0] === 1
+          (item.batch_id === visualBatchId || metadata.page_refs[0] === 1)
         );
-      }),
+      }) &&
+      (!visualBatchId ||
+        JSON.stringify(visualPageRefs) === JSON.stringify([1, 2, 3, 4])),
     "scale_batch_evidence_failed",
   );
 
@@ -1187,7 +1594,7 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
       "scale_batch_evidence_failed",
     ) ?? [];
   scaleAssert(
-    questions.length === stageControl.completed &&
+    questions.length === expectedQuestionCount &&
       new Set(questions.map((question) => question.question_code)).size ===
         questions.length &&
       questions.every(
@@ -1212,13 +1619,38 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
         .in("created_question_id", questionIds),
       "scale_batch_evidence_failed",
     ) ?? [];
+  const missingVisualQuestionId = visualBatchId
+    ? visualImportedItems.find((item) => {
+        const metadata = asRecord(
+          asRecord(item.normalized_question_json).ai_metadata,
+        );
+        return Array.isArray(metadata.page_refs) && metadata.page_refs[0] === 3;
+      })?.created_question_id ?? null
+    : null;
   scaleAssert(
-    reviewItems.length === stageControl.completed &&
+    reviewItems.length === expectedQuestionCount &&
       new Set(reviewItems.map((item) => item.created_question_id)).size ===
         reviewItems.length &&
       reviewItems.every(
-        (item) => item.target_bank_id === bankId && item.status === "pending_review",
+        (item) =>
+          item.target_bank_id === bankId &&
+          (item.created_question_id === missingVisualQuestionId
+            ? item.status === "needs_more_evidence"
+            : item.status === "pending_review"),
       ),
+    "scale_batch_evidence_failed",
+  );
+  const reviewStatusCounts = {
+    needsMoreEvidence: reviewItems.filter(
+      (item) => item.status === "needs_more_evidence",
+    ).length,
+    pendingReview: reviewItems.filter((item) => item.status === "pending_review")
+      .length,
+  };
+  scaleAssert(
+    reviewStatusCounts.needsMoreEvidence === (requiresVisualFixture ? 1 : 0) &&
+      reviewStatusCounts.pendingReview ===
+        expectedQuestionCount - (requiresVisualFixture ? 1 : 0),
     "scale_batch_evidence_failed",
   );
   const reviewByQuestion = new Map(
@@ -1288,7 +1720,7 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
       await service
         .from("ai_operation_telemetry")
         .select(
-          "queue_job_id, final_status, provider, model, actual_input_tokens, actual_output_tokens, actual_total_tokens, estimated_total_cost_micros, provider_call_count, provider_retry_attempts",
+          "queue_job_id, final_status, provider, model, actual_input_tokens, actual_output_tokens, actual_total_tokens, estimated_total_cost_micros, provider_call_count, provider_retry_attempts, provider_latency_ms, execution_latency_ms",
         )
         .in("queue_job_id", jobIds),
       "scale_batch_evidence_failed",
@@ -1311,7 +1743,24 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
       numeric(row.actual_total_tokens) !== null &&
       numeric(row.estimated_total_cost_micros) !== null,
   );
-  const usageUnknown = usageRows.length !== stageControl.completed;
+  const telemetryProviderCalls = sum(
+    telemetry.map((row) => row.provider_call_count),
+  );
+  const usageAccountedProviderCalls = sum(
+    usageRows.map((row) => row.provider_call_count),
+  );
+  const usageUnknown =
+    telemetryProviderCalls !== drain.counters.inference ||
+    usageAccountedProviderCalls !== telemetryProviderCalls;
+  const providerLatencyRows = telemetry.filter(
+    (row) =>
+      (numeric(row.provider_call_count) ?? 0) > 0 &&
+      (numeric(row.provider_latency_ms) !== null ||
+        numeric(row.execution_latency_ms) !== null),
+  );
+  const providerLatencyComplete =
+    sum(providerLatencyRows.map((row) => row.provider_call_count)) ===
+    telemetryProviderCalls;
 
   return {
     actualCostMicros: sum(usageRows.map((row) => row.estimated_total_cost_micros)),
@@ -1325,11 +1774,28 @@ async function loadAggregateEvidence({ bankId, drain, service, stageControl }) {
     outputTokens: sum(usageRows.map((row) => row.actual_output_tokens)),
     questionIds,
     questions,
+    expectedQuestionCount,
+    quality,
+    qualityConservativeCostMicros: quality.providerUsageComplete
+      ? conservativeUsageCostMicros(
+          quality.providerReportedInputTokens,
+          quality.providerReportedOutputTokens,
+        )
+      : null,
     reviewBatchIds,
     reviewItemIds: reviewItems.map((item) => item.id),
+    reviewStatusCounts,
     telemetry,
     totalTokens: sum(usageRows.map((row) => row.actual_total_tokens)),
     usageUnknown,
+    providerLatencyComplete,
+    providerLatencyMs: sum(
+      providerLatencyRows.map(
+        (row) => row.provider_latency_ms ?? row.execution_latency_ms,
+      ),
+    ),
+    visualBatchId,
+    visualItem,
   };
 }
 
@@ -1438,18 +1904,126 @@ async function verifyTeacherUI({
     await remounted.close();
   }
   console.log("BROWSER_CHECK=review_pending_drafts");
-  await page.goto(`${origin}/teacher/banks/${bankId}/review`, {
-    waitUntil: "networkidle",
-  });
-  const reviewText = await page.locator("body").innerText();
-  assertSafeBrowserText(reviewText, secrets);
-  scaleAssert(
-    evidence.questions.length === expected.completed &&
-      reviewText.includes(evidence.questions[0].title),
-    "browser_scale_state_failed",
+  const reviewUrl = `${origin}/teacher/banks/${bankId}/review`;
+  const reviewPageSize = 25;
+  const expectedReviewPages = Math.max(
+    1,
+    Math.ceil(evidence.expectedQuestionCount / reviewPageSize),
   );
+  const verifyReviewSummary = async (activePage, label) => {
+    const reviewText = await activePage.locator("body").innerText();
+    assertSafeBrowserText(reviewText, secrets);
+    scaleAssert(
+      evidence.questions.length === evidence.expectedQuestionCount &&
+        reviewText.includes(`${evidence.expectedQuestionCount} results`) &&
+        reviewText.includes(`Page 1 of ${expectedReviewPages}`) &&
+        (await activePage.locator("#review-results article").count()) ===
+          Math.min(reviewPageSize, evidence.expectedQuestionCount),
+      "browser_scale_state_failed",
+    );
+    console.log(`BROWSER_CHECK_RESULT=${label}:PASS`);
+  };
+  await page.goto(reviewUrl, { waitUntil: "networkidle" });
+  await verifyReviewSummary(page, "review_initial");
+  await page.reload({ waitUntil: "networkidle" });
+  await verifyReviewSummary(page, "review_reload");
+  const reviewRemounted = await page.context().newPage();
+  try {
+    await reviewRemounted.goto(reviewUrl, { waitUntil: "networkidle" });
+    await verifyReviewSummary(reviewRemounted, "review_remount");
+  } finally {
+    await reviewRemounted.close();
+  }
   console.log("BROWSER_CHECK_RESULT=review_pending_drafts:PASS");
   console.log("PASS Teacher UI, reload, and fresh remount retained durable state");
+}
+
+async function verifyCombinedVisualGate({
+  anonymousContext,
+  bankId,
+  config,
+  evidence,
+  files,
+  outsider,
+  outsiderContext,
+  page,
+  requireVisual,
+  secrets,
+  service,
+  teacherContext,
+}) {
+  if (!evidence.visualItem || !evidence.visualBatchId) {
+    scaleAssert(!requireVisual, "visual_evidence_contract_failed");
+    return null;
+  }
+  const visualJob = await loadJob({
+    jobId: evidence.visualItem.ai_provider_job_id,
+    service,
+  });
+  const observation = await loadVisualEvidence({
+    bankId,
+    config,
+    fixture: { item: evidence.visualItem },
+    job: visualJob,
+    pdf: files[0].buffer,
+    service,
+  });
+  const anonymous = createClient(config.url, config.anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  Object.assign(
+    observation,
+    await deniedRequesterEvidence({ anonymous, observation, outsider }),
+  );
+  Object.assign(
+    observation,
+    await routeAuthorization({
+      anonymousContext,
+      observation,
+      outsiderContext,
+      teacherContext,
+    }),
+  );
+  observation.ui = await verifyReviewSurface({
+    bankId,
+    observation,
+    page,
+    secrets,
+  });
+  observation.secretOrRawContentEmissionCount = 0;
+  const contract = validateVisualEvidenceLiveObservation(observation);
+
+  const observedSafeSet = observation.questions
+    .map(visualEvidenceSafeIndex)
+    .filter(Boolean);
+  const observedAttachedSafeSet = observation.questions
+    .filter((question) => question.assets.length > 0)
+    .map(visualEvidenceSafeIndex)
+    .filter(Boolean);
+  console.log(`VISUAL_CONTRACT_PREDICATES=${contract.predicates.length}`);
+  console.log(
+    `VISUAL_EXPECTED_SAFE_SET=${visualEvidenceQuestionSafeIndices.join(",")}`,
+  );
+  console.log(`VISUAL_OBSERVED_SAFE_SET=${observedSafeSet.join(",")}`);
+  console.log(
+    `VISUAL_EXPECTED_ATTACHED_SAFE_SET=${visualEvidenceAttachedSafeIndices.join(",")}`,
+  );
+  console.log(
+    `VISUAL_OBSERVED_ATTACHED_SAFE_SET=${observedAttachedSafeSet.join(",")}`,
+  );
+  console.log(
+    `VISUAL_UI_RELOAD_SAFE_SET=${observation.ui.reloadVisualSafeIndices.join(",")}`,
+  );
+  console.log(
+    `VISUAL_UI_REMOUNT_SAFE_SET=${observation.ui.remountVisualSafeIndices.join(",")}`,
+  );
+  console.log(`VISUAL_ASSET_COUNT=${observation.totalAssetCount}`);
+  console.log("VISUAL_DECORATIVE_ATTACHMENT_COUNT=0");
+  console.log(
+    `VISUAL_BLOCKING_MISSING_REQUIRED=${observation.visualMetrics.blockingMissingRequired}`,
+  );
+  console.log("QUESTION_VISUAL_ATTACHMENT_RESTORED_AND_LIVE_VALIDATED");
+  return observation;
 }
 
 async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
@@ -1460,6 +2034,7 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
   const jobIds = items.map((item) => item.ai_provider_job_id).filter(Boolean);
   const objectPaths = items.map((item) => item.object_path).filter(Boolean);
   let questionIds = [];
+  let questionAssetRows = [];
   let reviewBatchIds = [];
 
   if (batchIds.length) {
@@ -1479,6 +2054,15 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
       .in("source_record_id", batchIds);
     if (reviews.error) failures.push("collect_review_batches");
     else reviewBatchIds = (reviews.data ?? []).map((row) => row.id);
+  }
+
+  if (questionIds.length) {
+    const assets = await service
+      .from("question_assets")
+      .select("id, storage_bucket, storage_path")
+      .in("question_id", questionIds);
+    if (assets.error) failures.push("collect_question_assets");
+    else questionAssetRows = assets.data ?? [];
   }
 
   if (reviewBatchIds.length) {
@@ -1505,6 +2089,20 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
       () => service.from("questions").delete().in("id", questionIds),
       failures,
       "questions",
+    );
+  }
+  const questionAssetObjectsByBucket = new Map();
+  for (const asset of questionAssetRows) {
+    questionAssetObjectsByBucket.set(asset.storage_bucket, [
+      ...(questionAssetObjectsByBucket.get(asset.storage_bucket) ?? []),
+      asset.storage_path,
+    ]);
+  }
+  for (const [bucket, paths] of questionAssetObjectsByBucket) {
+    await safeDelete(
+      () => service.storage.from(bucket).remove(paths),
+      failures,
+      "question_asset_storage",
     );
   }
   if (burstId) {
@@ -1614,6 +2212,7 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
     ["ai_provider_jobs", "id", jobIds],
     ["import_batches", "id", batchIds],
     ["questions", "id", questionIds],
+    ["question_assets", "id", questionAssetRows.map((row) => row.id)],
     ["review_batches", "id", reviewBatchIds],
     ["organization_members", "id", fixtures?.organizationMemberIds ?? []],
     ["profiles", "id", fixtures?.profileIds ?? []],
@@ -1639,6 +2238,18 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
       residueCount += 1;
     }
   }
+  for (const asset of questionAssetRows) {
+    const slash = asset.storage_path.lastIndexOf("/");
+    const directory = asset.storage_path.slice(0, slash);
+    const filename = asset.storage_path.slice(slash + 1);
+    const listed = await service.storage
+      .from(asset.storage_bucket)
+      .list(directory, { search: filename });
+    if (listed.error) failures.push("verify_question_asset_storage");
+    else if ((listed.data ?? []).some((item) => item.name === filename)) {
+      residueCount += 1;
+    }
+  }
   for (const userId of fixtures?.authUserIds ?? []) {
     const result = await service.auth.admin.getUserById(userId);
     if (!result.error && result.data.user) residueCount += 1;
@@ -1648,6 +2259,7 @@ async function cleanupScaleFixture({ bankId, fixtures, service, snapshot }) {
 
 async function main() {
   const control = await loadPDF50ScaleQualificationControl();
+  let anonymousContext = null;
   let bankId = null;
   let browser = null;
   let cleanup = { ok: true, residueCount: 0 };
@@ -1656,12 +2268,14 @@ async function main() {
   let failure = null;
   let fixtures = null;
   let outsider = null;
+  let outsiderContext = null;
   let page = null;
   let providerWorkStarted = false;
   let server = null;
   let service = null;
   let snapshot = null;
   let teacher = null;
+  let teacherContext = null;
   let drain = null;
   const internalToken = randomBytes(48).toString("base64url");
   const runId = randomBytes(8).toString("hex");
@@ -1719,8 +2333,18 @@ async function main() {
       executablePath: config.edgePath,
       headless: true,
     });
-    const context = await browser.newContext();
-    page = await context.newPage();
+    teacherContext = await browser.newContext({ baseURL: server.origin });
+    outsiderContext = await browser.newContext({ baseURL: server.origin });
+    anonymousContext = await browser.newContext({ baseURL: server.origin });
+    page = await teacherContext.newPage();
+    const outsiderPage = await outsiderContext.newPage();
+    await signInThroughBrowser(
+      outsiderPage,
+      server.origin,
+      outsider.actor,
+      "/teacher",
+    );
+    await outsiderPage.close();
 
     console.log("PHASE=browser_burst_admission");
     snapshot = await uploadBurstThroughBrowser({
@@ -1801,6 +2425,20 @@ async function main() {
       page,
       secrets,
     });
+    await verifyCombinedVisualGate({
+      anonymousContext,
+      bankId,
+      config,
+      evidence,
+      files: snapshot.files,
+      outsider,
+      outsiderContext,
+      page,
+      requireVisual: config.stage === "50",
+      secrets,
+      service,
+      teacherContext,
+    });
 
     console.log(`ADMITTED_ITEMS=${config.stageControl.files}`);
     console.log(`DURABLE_JOBS=${evidence.jobIds.length}`);
@@ -1820,17 +2458,168 @@ async function main() {
     console.log(`PROVIDER_CLEANUP_REQUESTS=${drain.counters.cleanup}`);
     console.log(`PROVIDER_NETWORK_REQUESTS=${drain.counters.network}`);
     console.log(`PROVIDER_RETRY_WAIT_REPLAYS=${drain.providerRetryWaitReplays}`);
-    console.log(`INPUT_TOKENS=${evidence.inputTokens}`);
-    console.log(`OUTPUT_TOKENS=${evidence.outputTokens}`);
-    console.log("THINKING_TOKENS=UNKNOWN");
-    console.log(`TOTAL_TOKENS=${evidence.totalTokens}`);
+    console.log(
+      `ATTEMPT_REASON_HISTOGRAM=${Object.entries(evidence.quality.attemptHistogram)
+        .map(([reason, count]) => `${reason}:${count}`)
+        .join(",")}`,
+    );
+    console.log(
+      `ATTEMPTS_PER_JOB_HISTOGRAM=${Object.entries(
+        evidence.quality.attemptsPerJobHistogram,
+      )
+        .map(([attempts, count]) => `${attempts}:${count}`)
+        .join(",")}`,
+    );
+    console.log(
+      `FIRST_ATTEMPT_SUCCESS_RATE=${evidence.quality.firstAttemptSuccessRate}`,
+    );
+    console.log(`REPAIR_RATE=${evidence.quality.repairRate}`);
+    console.log(`REPAIR_SUCCESS_RATE=${evidence.quality.repairSuccessRate}`);
+    console.log(`TRANSIENT_RETRY_RATE=${evidence.quality.transientRetryRate}`);
+    console.log(`P50_ATTEMPTS_PER_JOB=${evidence.quality.p50AttemptsPerJob}`);
+    console.log(`P95_ATTEMPTS_PER_JOB=${evidence.quality.p95AttemptsPerJob}`);
+    console.log(`CHECKPOINT_REPLAY_ZERO_INFERENCE=${evidence.quality.checkpointReplays}`);
+    console.log(
+      `TAXONOMY_SNAPSHOT_SHA256=${authoritativeTaxonomySnapshotSha256}`,
+    );
+    console.log(
+      `CANDIDATE_SUBSET_SHA256=${authoritativeCandidateSubsetSha256}`,
+    );
+    console.log(
+      `PARSING_CONTRACT_SHA256=${evidence.quality.parsingContractSha256}`,
+    );
+    console.log(
+      `RETRIEVAL_ALGORITHM_VERSION=${evidence.quality.retrievalAlgorithmVersion}`,
+    );
+    console.log(`PROMPT_CONTRACT_VERSION=${evidence.quality.promptContractVersion}`);
+    console.log(`SCHEMA_CONTRACT_VERSION=${evidence.quality.schemaContractVersion}`);
+    console.log(`REPAIR_POLICY_VERSION=${evidence.quality.repairPolicyVersion}`);
+    console.log(
+      `FULL_TAXONOMY_SERIALIZED_BYTES=${evidence.quality.fullTaxonomySnapshotBytes}`,
+    );
+    console.log(
+      `CANDIDATE_TAXONOMY_SERIALIZED_BYTES=${evidence.quality.candidateSubsetBytes}`,
+    );
+    console.log(`TAXONOMY_INPUT_BYTE_SHARE=${evidence.quality.taxonomyInputShare}`);
+    console.log(`SOURCE_CONTEXT_BYTES=${evidence.quality.componentBytes.sourceInput}`);
+    console.log(
+      `INSTRUCTION_CONTEXT_BYTES=${
+        evidence.quality.componentBytes.extractionInstructions +
+        evidence.quality.componentBytes.systemInstructions
+      }`,
+    );
+    console.log(
+      `SCHEMA_CONTEXT_BYTES=${evidence.quality.componentBytes.structuredSchema}`,
+    );
+    console.log(
+      `REPAIR_CONTEXT_BYTES=${
+        evidence.quality.componentBytes.structuralRepairInstructions +
+        evidence.quality.componentBytes.semanticRecoveryInstructions
+      }`,
+    );
+    console.log(
+      `PREVIOUS_RESPONSE_CONTEXT_BYTES=${evidence.quality.componentBytes.previousResponse}`,
+    );
+    console.log(`REPEATED_SOURCE_BYTES=${evidence.quality.repeatedSourceBytes}`);
+    console.log(
+      `REPEATED_PREVIOUS_RESPONSE_BYTES=${evidence.quality.repeatedPreviousResponseBytes}`,
+    );
+    console.log(
+      `TOTAL_SERIALIZED_REQUEST_BYTES=${evidence.quality.totalSerializedRequestBytes}`,
+    );
+    console.log(
+      `PROVIDER_USAGE_METADATA_COMPLETE=${
+        evidence.quality.providerUsageComplete ? "PASS" : "FAIL"
+      }`,
+    );
+    console.log(
+      `INPUT_TOKENS=${
+        evidence.quality.providerUsageComplete
+          ? evidence.quality.providerReportedInputTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `CACHED_INPUT_TOKENS=${
+        evidence.quality.cachedInputUsageComplete
+          ? evidence.quality.providerReportedCachedInputTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `CANDIDATE_OUTPUT_TOKENS=${
+        evidence.quality.candidateOutputUsageComplete
+          ? evidence.quality.providerReportedCandidateOutputTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `THINKING_TOKENS=${
+        evidence.quality.thoughtUsageComplete
+          ? evidence.quality.providerReportedThoughtTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `OUTPUT_TOKENS=${
+        evidence.quality.providerUsageComplete
+          ? evidence.quality.providerReportedOutputTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `TOTAL_TOKENS=${
+        evidence.quality.providerUsageComplete
+          ? evidence.quality.providerReportedTotalTokens
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `TELEMETRY_USAGE_COMPLETE=${evidence.usageUnknown ? "FAIL" : "PASS"}`,
+    );
     console.log(
       `ACTUAL_ESTIMATED_COST_MICROS=${
         evidence.usageUnknown ? "UNKNOWN" : evidence.actualCostMicros
       }`,
     );
+    console.log(
+      `USAGE_DERIVED_CONSERVATIVE_COST_MICROS=${
+        evidence.qualityConservativeCostMicros ?? "UNKNOWN"
+      }`,
+    );
     console.log(`REVIEW_DRAFT_COUNT=${evidence.questions.length}`);
-    console.log("REVIEW_DRAFT_STATE=pending_review");
+    console.log(
+      `VALID_REVIEW_DRAFT_YIELD=${safeRatio(
+        evidence.questions.length,
+        drain.counters.inference,
+      )}`,
+    );
+    console.log(
+      `COST_MICROS_PER_VALID_REVIEW_DRAFT=${
+        evidence.qualityConservativeCostMicros === null
+          ? "UNKNOWN"
+          : Math.ceil(
+              evidence.qualityConservativeCostMicros /
+                evidence.questions.length,
+            )
+      }`,
+    );
+    console.log(
+      `LATENCY_MS_PER_VALID_REVIEW_DRAFT=${
+        evidence.providerLatencyComplete
+          ? Math.ceil(evidence.providerLatencyMs / evidence.questions.length)
+          : "UNKNOWN"
+      }`,
+    );
+    console.log(
+      `REVIEW_DRAFT_PENDING_REVIEW_COUNT=${evidence.reviewStatusCounts.pendingReview}`,
+    );
+    console.log(
+      `REVIEW_DRAFT_NEEDS_MORE_EVIDENCE_COUNT=${evidence.reviewStatusCounts.needsMoreEvidence}`,
+    );
+    console.log(
+      `REVIEW_DRAFT_STATE=${evidence.reviewStatusCounts.needsMoreEvidence ? "pending_review+needs_more_evidence" : "pending_review"}`,
+    );
     console.log(`DUPLICATE_COUNT=${evidence.duplicateCount}`);
     console.log(`BANK_APPROVAL_COUNT=${evidence.bankQuestionCount}`);
     console.log("PUBLICATION_COUNT=0");
@@ -1849,6 +2638,9 @@ async function main() {
   } catch (error) {
     failure = error;
   } finally {
+    await anonymousContext?.close().catch(() => undefined);
+    await outsiderContext?.close().catch(() => undefined);
+    await teacherContext?.close().catch(() => undefined);
     if (browser) await browser.close().catch(() => undefined);
     const serverStopped = await stopOwnedTemporaryServer(server);
     console.log(`LOCAL_SERVER_CLEANUP=${serverStopped ? "PASS" : "FAIL"}`);
@@ -1898,11 +2690,23 @@ async function main() {
   }
 }
 
-try {
-  await main();
-} catch {
-  clearScaleEnvironment();
-  console.error("PDF50_SCALE_UNKNOWN=BLOCKED");
-  console.error("FAILURE_CATEGORY=unexpected_failure");
-  process.exitCode = 1;
+const isDirectInvocation =
+  typeof process.argv[1] === "string" &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectInvocation) {
+  try {
+    await main();
+  } catch {
+    clearScaleEnvironment();
+    console.error("PDF50_SCALE_UNKNOWN=BLOCKED");
+    console.error("FAILURE_CATEGORY=unexpected_failure");
+    process.exitCode = 1;
+  }
 }
+
+export {
+  aggregateQualityObservatories,
+  conservativeUsageCostMicros,
+  waitForChildExit,
+};

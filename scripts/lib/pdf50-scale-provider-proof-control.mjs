@@ -90,11 +90,18 @@ export async function loadPDF50ScaleProviderProofControl() {
     control.providerMaxOutputTokens !== 4_096 ||
     control.providerMaxNetworkRequests !== 68 ||
     control.approvedBudgetUsd !== 2 ||
-    control.maxInputBytesPerAttempt !== 50_000 ||
+    control.maxInputBytesPerAttempt !== 200_000 ||
     control.maxInputTokensPerAttempt !== 50_000 ||
     control.maxBillableOutputTokensPerAttempt !== 4_096
   ) {
     throw new Error("invalid_pdf50_scale_provider_control:safety_boundary");
+  }
+
+  if (
+    control.maxInputBytesPerAttempt !==
+    control.maxInputTokensPerAttempt * 4
+  ) {
+    throw new Error("invalid_pdf50_scale_provider_control:input_unit_boundary");
   }
 
   const maximumJobCostMicros =

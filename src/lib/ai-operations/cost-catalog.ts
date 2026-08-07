@@ -1,11 +1,11 @@
 import "server-only";
 
-export type AIProviderUsage = {
-  cachedInputTokens: number | null;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  totalTokens: number | null;
-};
+import {
+  normalizeAIProviderUsage,
+  type AIProviderUsage,
+} from "@/lib/ai-operations/provider-usage";
+
+export type { AIProviderUsage } from "@/lib/ai-operations/provider-usage";
 
 type AIModelCostCatalogEntry = {
   batchInputMicrosPerMillion: number | null;
@@ -43,41 +43,12 @@ export type AIEstimatedCost = {
   totalCostMicros: number | null;
 };
 
-function safeCount(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
-}
-
 function costForTokens(tokens: number, microsPerMillion: number) {
   return Math.round((tokens * microsPerMillion) / 1_000_000);
 }
 
 export function normalizeProviderUsage(value: unknown): AIProviderUsage | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const usage = value as Record<string, unknown>;
-  const inputTokens = safeCount(
-    usage.promptTokenCount ?? usage.prompt_token_count ?? usage.input_tokens,
-  );
-  const cachedInputTokens = safeCount(
-    usage.cachedContentTokenCount ?? usage.cached_content_token_count ?? usage.cached_tokens,
-  );
-  const outputTokens = safeCount(
-    usage.candidatesTokenCount ?? usage.candidates_token_count ?? usage.completion_tokens ?? usage.output_tokens,
-  );
-  const totalTokens = safeCount(
-    usage.totalTokenCount ?? usage.total_tokens,
-  );
-
-  if (
-    inputTokens === null &&
-    cachedInputTokens === null &&
-    outputTokens === null &&
-    totalTokens === null
-  ) {
-    return null;
-  }
-
-  return { cachedInputTokens, inputTokens, outputTokens, totalTokens };
+  return normalizeAIProviderUsage(value);
 }
 
 export function getAIModelCostCatalogEntry({
@@ -118,35 +89,62 @@ export function estimateAIProviderCost({
     };
   }
 
-  const cachedInputTokens = usage.cachedInputTokens ?? 0;
-  const inputTokens = Math.max(0, (usage.inputTokens ?? 0) - cachedInputTokens);
-  const outputTokens = usage.outputTokens ?? 0;
-  const inputCostMicros = costForTokens(inputTokens, entry.inputMicrosPerMillion);
-  const cachedInputCostMicros = entry.cachedInputMicrosPerMillion === null
+  const cachedInputTokens = usage.cachedInputTokens;
+  const inputTokens = usage.inputTokens;
+  const outputTokens = usage.outputTokens;
+  const hasDistinctCachedInputPrice = entry.cachedInputMicrosPerMillion !== null;
+  const uncachedInputTokens =
+    inputTokens === null ||
+      (hasDistinctCachedInputPrice && cachedInputTokens === null)
+      ? null
+      : Math.max(0, inputTokens - (cachedInputTokens ?? 0));
+  const inputCostMicros = uncachedInputTokens === null
     ? null
-    : costForTokens(cachedInputTokens, entry.cachedInputMicrosPerMillion);
-  const outputCostMicros = costForTokens(outputTokens, entry.outputMicrosPerMillion);
+    : costForTokens(uncachedInputTokens, entry.inputMicrosPerMillion);
+  const cachedInputCostMicros =
+    cachedInputTokens === null || entry.cachedInputMicrosPerMillion === null
+      ? null
+      : costForTokens(cachedInputTokens, entry.cachedInputMicrosPerMillion);
+  const outputCostMicros = outputTokens === null
+    ? null
+    : costForTokens(outputTokens, entry.outputMicrosPerMillion);
+  const inputTotalCostMicros = inputCostMicros === null
+    ? null
+    : hasDistinctCachedInputPrice
+      ? cachedInputCostMicros === null
+        ? null
+        : inputCostMicros + cachedInputCostMicros
+      : inputCostMicros;
 
   return {
     cachedInputCostMicros,
     inputCostMicros,
     outputCostMicros,
     totalCostMicros:
-      inputCostMicros + (cachedInputCostMicros ?? 0) + outputCostMicros,
+      inputTotalCostMicros === null || outputCostMicros === null
+        ? null
+        : inputTotalCostMicros + outputCostMicros,
   };
 }
 
 export function sumAIProviderUsage(samples: Array<AIProviderUsage | null>): AIProviderUsage | null {
+  if (!samples.length) return null;
   const present = samples.filter((sample): sample is AIProviderUsage => Boolean(sample));
   if (!present.length) return null;
   const sum = (key: keyof AIProviderUsage) => {
-    const values = present.map((sample) => sample[key]).filter((value): value is number => value !== null);
-    return values.length ? values.reduce((total, value) => total + value, 0) : null;
+    const values = samples.map((sample) => sample?.[key] ?? null);
+    return values.every((value): value is number => typeof value === "number")
+      ? values.reduce((total, value) => total + value, 0)
+      : null;
   };
   return {
     cachedInputTokens: sum("cachedInputTokens"),
+    candidateOutputTokens: sum("candidateOutputTokens"),
     inputTokens: sum("inputTokens"),
     outputTokens: sum("outputTokens"),
+    promptTokensDetails: [],
+    thoughtTokens: sum("thoughtTokens"),
+    toolUseInputTokens: sum("toolUseInputTokens"),
     totalTokens: sum("totalTokens"),
   };
 }

@@ -187,6 +187,10 @@ export async function cropPdfPlaceholderImage({
   const safeWidth = Math.min(width, page.width - left);
   const safeHeight = Math.min(height, page.height - top);
 
+  if (safeWidth < 1 || safeHeight < 1) {
+    throw new Error("Crop region does not intersect the rendered source page.");
+  }
+
   return sharp(page.png)
     .extract({
       height: safeHeight,
@@ -196,4 +200,26 @@ export async function cropPdfPlaceholderImage({
     })
     .png()
     .toBuffer();
+}
+
+export async function inspectQuestionVisualCrop(image: Buffer) {
+  const [metadata, stats] = await Promise.all([
+    sharp(image, { failOn: "error" }).metadata(),
+    sharp(image, { failOn: "error" }).stats(),
+  ]);
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  const entropy = Math.max(0, stats.entropy ?? 0);
+
+  if (metadata.format !== "png") {
+    throw new Error("Question visual crop must be a PNG.");
+  }
+  if (width < 8 || height < 8 || width > 4096 || height > 4096) {
+    throw new Error("Question visual crop dimensions are outside safe bounds.");
+  }
+  if (entropy < 0.01) {
+    throw new Error("Question visual crop does not contain readable source variation.");
+  }
+
+  return { entropy, height, mimeType: "image/png" as const, width };
 }

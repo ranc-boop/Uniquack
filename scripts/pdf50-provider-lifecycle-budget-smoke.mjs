@@ -30,6 +30,7 @@ const [
   providerTestControl,
   burstUpload,
   burstStatusReconciliation,
+  providerUsage,
 ] = await Promise.all([
   read("src/lib/ai-providers/execution-budget.ts"),
   read("src/lib/ai-providers/gemini-native.ts"),
@@ -42,6 +43,7 @@ const [
   read("src/lib/ai-jobs/provider-test-control.ts"),
   read("src/components/teacher/teacher-pdf-burst-upload.tsx"),
   read("src/lib/ai-pdf-import/burst-status-reconciliation.ts"),
+  read("src/lib/ai-operations/provider-usage.ts"),
 ]);
 
 const providerExtractionSchema = JSON.parse(
@@ -76,6 +78,7 @@ for (const operation of [
   "file_upload_start",
   "file_upload_finalize",
   "file_status_poll",
+  "token_count",
   "inference",
   "file_cleanup",
 ]) {
@@ -94,14 +97,20 @@ assert(
 );
 
 assert(
-  chat.includes('originalPrompt ? "Original extraction instructions:"') &&
-    chat.includes("originalPrompt: prompt") &&
+  chat.includes("function semanticAttemptReason") &&
+    chat.includes("reserveAIPdfSourceRecovery") &&
+    chat.includes("reserveAIPdfStructuralRepair") &&
+    chat.includes('lastError.kind === "zero_importable"') &&
+    chat.includes("buildGeminiRepairPrompt") &&
+    chat.includes("generateWithGeminiNativeText") &&
+    chat.includes("sourceIncluded") &&
+    chat.includes("!isSourceFreeRepairReason(semanticReason)") &&
     chat.includes("zero importable questions") &&
     !chat.includes("Response preview:") &&
     !chat.includes("Provider response:") &&
     !chat.includes("could not reach ${profile.base_url}") &&
     !chat.includes("Provider replied:"),
-  "Provider repair must retain original extraction instructions without exposing raw output or configured URLs",
+  "Provider repair must retain source context only for zero-importable recovery, use text-only structural repair, and never expose raw output or configured URLs",
 );
 
 assert(
@@ -145,7 +154,9 @@ assert(
 const singlePass = functionBody(service, "processAIPdfSinglePass");
 assert(
   singlePass.includes("providerRetryMaxAttempts") &&
-    singlePass.includes("policy:"),
+    singlePass.includes("callAIPdfExtractionProvider") &&
+    chat.includes("async function runAIPdfProviderTransport") &&
+    chat.includes("policy: providerRetryMaxAttempts"),
   "single-pass PDF extraction must honor the worker-provided retry ceiling",
 );
 
@@ -189,8 +200,13 @@ assert(
 
 assert(
   gemini.includes("thoughtsTokenCount") &&
-    gemini.includes("candidateOutputTokens") &&
-    gemini.includes("(candidateOutputTokens ?? 0) + (thoughtTokens ?? 0)"),
+    gemini.includes("toolUsePromptTokenCount") &&
+    gemini.includes("promptTokensDetails") &&
+    providerUsage.includes("candidateOutputTokens") &&
+    providerUsage.includes("thoughtTokens") &&
+    providerUsage.includes(
+      "(candidateOutputTokens ?? 0) + (thoughtTokens ?? 0)",
+    ),
   "Gemini usage accounting must include billable thinking tokens",
 );
 

@@ -4,11 +4,17 @@ import type {
   TaxonomyCatalogView,
   TaxonomyNodeView,
 } from "@/components/tags/taxonomy-tag-tree-picker";
-import { taxonomyDisplayLabelFromId } from "@/lib/tags/taxonomy-display";
 
 type TaxonomySupabaseLike = {
   from: (table: string) => any;
   rpc?: any;
+};
+
+export type TaxonomyEdgeView = {
+  edge_kind: string;
+  from_tag_id: string;
+  is_primary: boolean;
+  to_tag_id: string;
 };
 
 type FacetRow = TaxonomyCatalogView["facets"][number];
@@ -17,10 +23,7 @@ type NodeRow = Omit<TaxonomyNodeView, "aliases" | "parent_tag_ids" | "label"> & 
   label: string;
   sort_order?: number | null;
 };
-type EdgeRow = {
-  from_tag_id: string;
-  to_tag_id: string;
-};
+type EdgeRow = TaxonomyEdgeView;
 type AliasRow = {
   alias_text: string;
   tag_id: string;
@@ -28,7 +31,12 @@ type AliasRow = {
 
 export type TaxonomyDbLoadResult = {
   catalog: TaxonomyCatalogView;
+  edges: TaxonomyEdgeView[];
   errorMessage: string | null;
+};
+
+type TaxonomyDbLoadOptions = {
+  includeAllEdges?: boolean;
 };
 
 function isMissingTaxonomyError(error: unknown) {
@@ -96,7 +104,7 @@ function catalogFromRpcValue(value: unknown): TaxonomyCatalogView | null {
     if (
       !node ||
       typeof node.tag_id !== "string" ||
-      typeof node.facet_key !== "string"
+      (typeof node.facet_key !== "string" && node.facet_key !== null)
     ) {
       return [];
     }
@@ -105,9 +113,13 @@ function catalogFromRpcValue(value: unknown): TaxonomyCatalogView | null {
       aliases: stringList(node.aliases),
       description:
         typeof node.description === "string" ? node.description : null,
-      facet_key: node.facet_key,
+      facet_key:
+        typeof node.facet_key === "string" ? node.facet_key : null,
       is_assignable: node.is_assignable === true,
-      label: taxonomyDisplayLabelFromId(node.tag_id),
+      label:
+        typeof node.label === "string" && node.label.trim()
+          ? node.label.trim()
+          : node.tag_id,
       parent_tag_ids: stringList(node.parent_tag_ids),
       tag_id: node.tag_id,
     }];
@@ -118,17 +130,50 @@ function catalogFromRpcValue(value: unknown): TaxonomyCatalogView | null {
 
 export async function loadTaxonomyCatalog(
   supabase: TaxonomySupabaseLike,
+  options: TaxonomyDbLoadOptions = {},
 ): Promise<TaxonomyDbLoadResult> {
   if (supabase.rpc) {
     const catalogResult = await supabase.rpc("get_active_taxonomy_catalog_v1");
     if (!catalogResult.error) {
       const catalog = catalogFromRpcValue(catalogResult.data);
       if (catalog) {
-        return { catalog, errorMessage: null };
+        if (!options.includeAllEdges) {
+          return {
+            catalog,
+            edges: catalog.nodes.flatMap((node) =>
+              (node.parent_tag_ids ?? []).map((parentTagId) => ({
+                edge_kind: "parent_child",
+                from_tag_id: parentTagId,
+                is_primary: true,
+                to_tag_id: node.tag_id,
+              }))),
+            errorMessage: null,
+          };
+        }
+
+        const { data: edges, error: edgesError } = await supabase
+          .from("taxonomy_edges")
+          .select("from_tag_id,to_tag_id,edge_kind,is_primary")
+          .eq("status", "active")
+          .order("sort_order", { ascending: true });
+        if (edgesError) {
+          return {
+            catalog: { facets: [], nodes: [] },
+            edges: [],
+            errorMessage: `Taxonomy edge catalog is unavailable: ${edgesError.message}`,
+          };
+        }
+
+        return {
+          catalog,
+          edges: (edges ?? []) as TaxonomyEdgeView[],
+          errorMessage: null,
+        };
       }
 
       return {
         catalog: { facets: [], nodes: [] },
+        edges: [],
         errorMessage: "Taxonomy catalog returned an invalid read-model payload.",
       };
     }
@@ -136,9 +181,18 @@ export async function loadTaxonomyCatalog(
     if (!isMissingCatalogRpcError(catalogResult.error)) {
       return {
         catalog: { facets: [], nodes: [] },
+        edges: [],
         errorMessage: `Taxonomy catalog is unavailable: ${catalogResult.error.message}`,
       };
     }
+  }
+
+  let edgesQuery = supabase
+    .from("taxonomy_edges")
+    .select("from_tag_id,to_tag_id,edge_kind,is_primary,sort_order")
+    .eq("status", "active");
+  if (!options.includeAllEdges) {
+    edgesQuery = edgesQuery.eq("edge_kind", "parent_child");
   }
 
   const [
@@ -157,12 +211,7 @@ export async function loadTaxonomyCatalog(
       .select("tag_id,facet_key,label,description,is_assignable,sort_order")
       .eq("status", "active")
       .order("sort_order", { ascending: true }),
-    supabase
-      .from("taxonomy_edges")
-      .select("from_tag_id,to_tag_id,edge_kind,sort_order")
-      .eq("status", "active")
-      .eq("edge_kind", "parent_child")
-      .order("sort_order", { ascending: true }),
+    edgesQuery.order("sort_order", { ascending: true }),
     supabase
       .from("taxonomy_aliases")
       .select("tag_id,alias_text")
@@ -173,6 +222,7 @@ export async function loadTaxonomyCatalog(
   if (firstError) {
     return {
       catalog: { facets: [], nodes: [] },
+      edges: [],
       errorMessage: isMissingTaxonomyError(firstError)
         ? "Taxonomy tables are not available yet. Apply migration 0011_math_taxonomy_source_of_truth.sql to enable taxonomy UI."
         : `Taxonomy catalog is unavailable: ${firstError.message}`,
@@ -189,6 +239,7 @@ export async function loadTaxonomyCatalog(
 
   const parentsByTagId = new Map<string, string[]>();
   for (const edge of (edges ?? []) as EdgeRow[]) {
+    if (edge.edge_kind !== "parent_child") continue;
     parentsByTagId.set(edge.to_tag_id, [
       ...(parentsByTagId.get(edge.to_tag_id) ?? []),
       edge.from_tag_id,
@@ -201,7 +252,10 @@ export async function loadTaxonomyCatalog(
       description: node.description,
       facet_key: node.facet_key,
       is_assignable: node.is_assignable,
-      label: taxonomyDisplayLabelFromId(node.tag_id),
+      label:
+        typeof node.label === "string" && node.label.trim()
+          ? node.label.trim()
+          : node.tag_id,
       parent_tag_ids: parentsByTagId.get(node.tag_id) ?? [],
       tag_id: node.tag_id,
     }));
@@ -211,6 +265,7 @@ export async function loadTaxonomyCatalog(
       facets: (facets ?? []) as FacetRow[],
       nodes: catalogNodes,
     },
+    edges: (edges ?? []) as TaxonomyEdgeView[],
     errorMessage: null,
   };
 }

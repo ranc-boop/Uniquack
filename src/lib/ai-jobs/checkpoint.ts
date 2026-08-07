@@ -25,6 +25,141 @@ export type AIProviderJobCheckpointStage =
   (typeof aiProviderJobCheckpointStages)[number];
 
 export const STALE_FENCE_REJECTED = "STALE_FENCE_REJECTED";
+export const AI_PROVIDER_JOB_CHECKPOINT_METADATA_MAX_BYTES = 4096;
+
+export const AI_PROVIDER_JOB_CHECKPOINT_OPERATIONS = [
+  "begin_pdf_processing",
+  "checkpoint_provider_result",
+  "checkpoint_stage",
+  "finalize_import_batch",
+  "finish_job",
+  "heartbeat",
+  "read_provider_result",
+] as const;
+
+export type AIProviderJobCheckpointOperation =
+  (typeof AI_PROVIDER_JOB_CHECKPOINT_OPERATIONS)[number];
+
+const AI_PROVIDER_JOB_CHECKPOINT_ERROR_BRAND = Symbol.for(
+  "edustruct.ai-provider-job-checkpoint-error",
+);
+
+export type AIProviderJobCheckpointFailureDiagnostic = {
+  httpClassification: "4xx" | "5xx" | "network" | "none" | "timeout";
+  operation: AIProviderJobCheckpointOperation;
+  reason:
+    | "checkpoint_authorization"
+    | "checkpoint_constraint"
+    | "checkpoint_request"
+    | "checkpoint_transient"
+    | "checkpoint_unknown";
+  retryable: boolean;
+  safeErrorCode:
+    | "ai_job_checkpoint_failed"
+    | "ai_job_checkpoint_transient";
+  sqlStateClass: string;
+};
+
+function checkpointErrorRecord(value: unknown) {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function checkpointFailureDiagnostic({
+  error,
+  operation,
+}: {
+  error: unknown;
+  operation: AIProviderJobCheckpointOperation;
+}): AIProviderJobCheckpointFailureDiagnostic {
+  const value = checkpointErrorRecord(error);
+  const code = String(value.code ?? "").toUpperCase();
+  const sqlStateClass = /^[0-9A-Z]{5}$/.test(code) ? code.slice(0, 2) : "none";
+  const status = Number(value.status ?? value.statusCode);
+  const message = error instanceof Error
+    ? error.message
+    : String(value.message ?? "");
+  const timeout = /\b(?:timeout|timed out|deadline exceeded)\b/i.test(message);
+  const network = /\b(?:ECONNRESET|ECONNREFUSED|ENOTFOUND|fetch failed|network|unavailable)\b/i.test(
+    message,
+  );
+  const transientSqlState = ["08", "40", "53", "55", "57", "58"].includes(
+    sqlStateClass,
+  );
+  const retryable = timeout || network || transientSqlState || status >= 500;
+  const reason = retryable
+    ? "checkpoint_transient"
+    : sqlStateClass === "23"
+      ? "checkpoint_constraint"
+      : sqlStateClass === "28"
+        ? "checkpoint_authorization"
+        : sqlStateClass === "22" || code.startsWith("PGRST")
+          ? "checkpoint_request"
+          : "checkpoint_unknown";
+  const httpClassification = timeout
+    ? "timeout"
+    : network
+      ? "network"
+      : status >= 500
+        ? "5xx"
+        : status >= 400
+          ? "4xx"
+          : "none";
+  return {
+    httpClassification,
+    operation,
+    reason,
+    retryable,
+    safeErrorCode: retryable
+      ? "ai_job_checkpoint_transient"
+      : "ai_job_checkpoint_failed",
+    sqlStateClass,
+  };
+}
+
+export class AIProviderJobCheckpointRpcError extends Error {
+  readonly [AI_PROVIDER_JOB_CHECKPOINT_ERROR_BRAND] = true;
+  readonly diagnostic: AIProviderJobCheckpointFailureDiagnostic;
+
+  constructor(operation: AIProviderJobCheckpointOperation, cause: unknown) {
+    super("Durable AI job checkpoint operation failed.", { cause });
+    this.name = "AIProviderJobCheckpointRpcError";
+    this.diagnostic = checkpointFailureDiagnostic({ error: cause, operation });
+  }
+}
+
+export function getAIProviderJobCheckpointFailureDiagnostic(error: unknown) {
+  if (!(error instanceof Error)) return null;
+  const value = error as Error & {
+    [AI_PROVIDER_JOB_CHECKPOINT_ERROR_BRAND]?: unknown;
+    diagnostic?: unknown;
+  };
+  if (
+    !(error instanceof AIProviderJobCheckpointRpcError) &&
+    value[AI_PROVIDER_JOB_CHECKPOINT_ERROR_BRAND] !== true
+  ) {
+    return null;
+  }
+  const diagnostic = checkpointErrorRecord(value.diagnostic);
+  const operation = String(diagnostic.operation);
+  const reason = String(diagnostic.reason);
+  if (
+    !AI_PROVIDER_JOB_CHECKPOINT_OPERATIONS.includes(
+      operation as AIProviderJobCheckpointOperation,
+    ) ||
+    ![
+      "checkpoint_authorization",
+      "checkpoint_constraint",
+      "checkpoint_request",
+      "checkpoint_transient",
+      "checkpoint_unknown",
+    ].includes(reason)
+  ) {
+    return null;
+  }
+  return diagnostic as AIProviderJobCheckpointFailureDiagnostic;
+}
 
 export class AIProviderJobFenceLostError extends Error {
   constructor() {
@@ -59,17 +194,33 @@ function isFenceRejection(value: unknown) {
 
 async function callFencedRpc({
   args,
+  maxAttempts = 1,
   name,
+  operation,
   supabase,
 }: {
   args: Record<string, unknown>;
+  maxAttempts?: 1 | 2;
   name: string;
+  operation: AIProviderJobCheckpointOperation;
   supabase: SupabaseCheckpointClient;
 }) {
-  const { data, error } = await supabase.rpc(name, args);
-  if (error) throw new Error(error.message);
-  if (isFenceRejection(data)) throw new AIProviderJobFenceLostError();
-  return data as string;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const { data, error } = await supabase.rpc(name, args);
+    if (error) {
+      const checkpointError = new AIProviderJobCheckpointRpcError(
+        operation,
+        error,
+      );
+      if (attempt < maxAttempts && checkpointError.diagnostic.retryable) {
+        continue;
+      }
+      throw checkpointError;
+    }
+    if (isFenceRejection(data)) throw new AIProviderJobFenceLostError();
+    return data as string;
+  }
+  throw new AIProviderJobCheckpointRpcError(operation, null);
 }
 
 export async function heartbeatAIProviderJobFence({
@@ -90,6 +241,7 @@ export async function heartbeatAIProviderJobFence({
       p_lease_seconds: leaseSeconds,
     },
     name: "heartbeat_ai_provider_job_fenced",
+    operation: "heartbeat",
     supabase,
   });
 }
@@ -106,6 +258,15 @@ export async function checkpointAIProviderJobStage({
   supabase: SupabaseCheckpointClient;
 }) {
   const fence = requireFence(job);
+  if (
+    Buffer.byteLength(JSON.stringify(metadata), "utf8") >
+    AI_PROVIDER_JOB_CHECKPOINT_METADATA_MAX_BYTES
+  ) {
+    throw new AIProviderJobCheckpointRpcError("checkpoint_stage", {
+      code: "22023",
+      message: "Checkpoint metadata exceeds its bounded contract.",
+    });
+  }
   return callFencedRpc({
     args: {
       p_execution_fence_token: fence.fenceToken,
@@ -115,6 +276,7 @@ export async function checkpointAIProviderJobStage({
       p_stage: stage,
     },
     name: "checkpoint_ai_provider_job_stage",
+    operation: "checkpoint_stage",
     supabase,
   });
 }
@@ -140,6 +302,7 @@ export async function beginAIProviderJobPdfProcessing({
       p_source_asset_id: sourceAssetId,
     },
     name: "begin_ai_provider_job_pdf_processing_fenced",
+    operation: "begin_pdf_processing",
     supabase,
   });
 }
@@ -167,7 +330,9 @@ export async function checkpointAIProviderJobProviderResult({
       p_payload: payload,
       p_payload_sha256: payloadSha256,
     },
+    maxAttempts: 2,
     name: "checkpoint_ai_provider_job_provider_result",
+    operation: "checkpoint_provider_result",
     supabase,
   });
 }
@@ -188,7 +353,9 @@ export async function loadAIProviderJobProviderResult({
       p_lease_owner: fence.leaseOwner,
     },
   );
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new AIProviderJobCheckpointRpcError("read_provider_result", error);
+  }
   if (isFenceRejection(data)) throw new AIProviderJobFenceLostError();
   return data && typeof data === "object" && !Array.isArray(data)
     ? (data as Record<string, unknown>)
@@ -231,6 +398,7 @@ export async function finishAIProviderJobFence({
       p_status: status,
     },
     name: "finish_ai_provider_job_fenced",
+    operation: "finish_job",
     supabase,
   });
 }
@@ -259,6 +427,7 @@ export async function finalizeAIProviderJobImportBatchFence({
       p_summary: summary,
     },
     name: "finalize_ai_provider_job_import_batch_fenced",
+    operation: "finalize_import_batch",
     supabase,
   });
 }

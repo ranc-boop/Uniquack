@@ -107,6 +107,22 @@ Unknown usage remains `UNKNOWN`; it is never converted into a zero-cost claim.
 Before each paid run, the harness must calculate a credible maximum and stop if
 that maximum would exceed the remaining authorized budget.
 
+## Parsing-quality reconciliation
+
+The partial fifty-file evidence predates versioned attempt-reason
+observability. Its 48 inference requests for 23 completed jobs prove 25 extra
+attempts occurred, but do not prove whether they were structural repairs,
+semantic recovery, transient transport retries, fallback attempts, or durable
+retry waits. Those attempts are now recorded as `LEGACY_REASON_UNKNOWN`; no
+retroactive attribution is permitted.
+
+The stacked parsing-quality treatment adds a Provider-neutral, enum/numeric-
+only observatory, deterministic Golden Corpus, exact taxonomy abstention,
+reason-specific source reuse, and deterministic visual attachment safety. It
+does not rerun or alter this paid scale result. The remaining USD 0.133279 is
+still below the minimum credible ceiling for a new 50-file run, and the prior
+text-heavy fixtures do not qualify as visual-attachment evidence.
+
 ## Evidence status
 
 | Stage | Status | Live iterations | Provider attempts | Result |
@@ -381,6 +397,25 @@ structural-guidance UI literals. They are recorded as baseline test-maintenance
 failures, not as passing checks and not as PDF50 regressions. No production
 source was changed to satisfy them.
 
+## Provider-neutral quality treatment
+
+The stacked quality branch freezes this evidence at baseline
+`f1ce7bcb791604468693ea945401cfb157e64d97` and introduces treatment
+`ai-pdf-parsing/provider-neutral-v2`. It adds explicit attempt reasons, exact
+safe Provider error categories, deterministic Golden evaluation, exact
+five-facet taxonomy abstention, text-only structural repair, and a hardened
+private visual-evidence boundary. Fourteen parsing, six taxonomy, and thirteen
+visual fixtures pass with zero hard-gate failures; fifteen independent
+mutations, including a real-route cross-organization asset denial, are
+rejected.
+
+This is source and local deterministic evidence only. No additional paid
+Provider run, hosted write, or Storage operation was performed. The historical
+25 excess attempts remain `LEGACY_REASON_UNKNOWN`, and the remaining USD
+0.133279 authorization still cannot fund the USD 0.331950 minimum fresh
+50-file gate. Embedded-question figures are source-ready but require a separate
+rights-safe image-rich live proof.
+
 ## Current classification
 
 `PDF50_SCALE_QUALIFICATION_PARTIALLY_COMPLETE`
@@ -396,3 +431,160 @@ of the observed repair/retry frequency and safe aggregate diagnostics, followed
 by a new explicit Provider budget large enough for a fresh 50-file run after
 any reviewed correction. An unchanged paid rerun is not justified or
 authorized.
+
+## Stacked PR #229 requalification extension
+
+This section is a separate ledger under the later USD 2 authorization. It does
+not rewrite the PR #228 history or reclaim its conservative budget.
+
+| Run | Stage | Conservative ceiling | Provider evidence | Result |
+| --- | ---: | ---: | --- | --- |
+| 1 | 50 | USD 0.497925 | 0 inference requests | 50 admitted and file 51 rejected; stopped before transport on a byte/token limit defect |
+| 2 | 50 | USD 0.497925 | 10 inference, 40 total HTTP requests | 7 completed; job 8 normalized, then failed before `drafts_persisted` |
+| 3 | 10 | USD 0.179253 | 0 inference requests | 10 admitted; external HTTPS timeout on first worker invocation |
+
+Run one proved that the 50,000 planning-token ceiling had also been used as a
+50,000-byte request ceiling. The observed request was 55,694 bytes. The proof
+contract now keeps a 50,000-token planning limit and separately enforces a
+200,000-byte serialized-input limit.
+
+Run two proved the byte fix and completed seven exact jobs. The eighth job used
+three bounded Provider attempts and reached the durable `normalized`
+checkpoint. The remaining interval was narrowed to a non-authoritative progress
+write and fenced Review Draft persistence. The progress write is now
+best-effort after the durable checkpoint. The atomic persistence call may replay
+once using the same fence and deterministic lineage. An ambiguous first reply
+followed by `NOOP` is accepted; two real failures remain terminal. A new safe
+`draft_persistence` stage identifies this boundary without row data, prompts,
+source content, Provider output, or identifiers.
+
+Run three was the first live validation after that correction. It did not reach
+Provider transport because the first exact worker invocation encountered a
+connection timeout. The harness stopped rather than retrying. Local server
+shutdown and process-environment clearing passed. Cleanup reported failure
+during the connectivity incident, but its final independent synthetic residue
+count was zero. This is not a complete cleanup pass and not product closure.
+
+The PR #229 conservative ledger is USD 1.175103 consumed and USD 0.824897
+remaining. Usage-derived actual spend is known zero for runs one and three;
+run-two usage remains `UNKNOWN`. Dashboard-observed spend was not collected.
+
+Latest status: `PDF50_SCALE_REQUALIFICATION_PARTIAL`. Maximum-count admission
+is reconfirmed, but a fresh 50-file run has not reached 50/50 terminal items,
+final batch aggregation, Teacher UI reload/remount, or the complete invariant
+matrix. No automatic paid retry is recorded.
+
+## Final PR #229 live-resume evidence
+
+The resume began from a clean exact branch head after a read-only preflight
+found zero run-scoped residue, zero synthetic queued/processing jobs or leases,
+no leftover local server, cleared process-only values, and restored bounded
+Gemini HTTPS reachability. The earlier HTTPS timeout remained a zero-inference,
+zero-spend event.
+
+The resumed Stage 10 admitted ten exact items, completed nine, intentionally
+cancelled one, replayed one normalized checkpoint with zero inference, and
+rejected a stale fence. All nine Provider jobs succeeded on their first attempt.
+It persisted nine private pending Review Drafts with no approval, publication,
+Assignment, duplicate claim, or cross-organization effect. Exact cleanup,
+reload/remount, and environment clearing passed.
+
+The final Stage 50 run then proved:
+
+- file 51 was rejected before durable-row creation;
+- exactly 50 private synthetic files/items were admitted;
+- no unrelated job was selected;
+- 11 items reached completed;
+- item 12 failed at the durable `normalized` checkpoint after two Provider
+  attempts with safe code `unknown_provider_error`;
+- the harness stopped fail closed and did not start the remaining 38 items;
+- approval, publication, and Assignment creation remained zero; and
+- local-server shutdown, exact-ID cleanup, zero residue, and environment
+  clearing passed.
+
+The bounded partial counters were:
+
+| Measure | Final Stage 50 observation |
+| --- | ---: |
+| Worker-route invocations | 12 |
+| Completed items | 11 |
+| Inference attempts / requests | 13 / 13 |
+| Maximum serialized input bytes | 52,343 |
+| Upload / cleanup requests | 26 / 13 |
+| Poll requests | 0 |
+| Provider network requests | 52 |
+| Cleanup failures | 0 |
+
+Batch aggregation, complete Teacher UI reload/remount, and the full 50-item
+lineage/taxonomy/visual invariant matrix were not reached and are not inferred
+from admission. The correct classification remains
+`PDF50_SCALE_REQUALIFICATION_PARTIAL`.
+
+The separate PR #229 authorization used all 10 paid-run slots. Its final
+conservative ledger is 1,830,468 micros, leaving 169,532 micros of USD 2 but no
+run slot. Recorded inference attempts total 37. The successful resumed Stage 10
+retained an estimated actual cost of 11,361 micros; incomplete-run usage remains
+`UNKNOWN` and is covered by the conservative reserve. No further paid run is
+authorized, and the remaining amount is below the 331,950-micros minimum for a
+fresh one-attempt-per-file Stage 50.
+
+Final PR #229 live classification:
+`GEMINI_LIVE_EXPERIMENTS_COMPLETE_PDF50_PARTIAL`. A new terminal proof requires
+separate authorization after a causal review of the normalized-stage Provider
+failure. This record does not claim PDF50 operational readiness.
+
+## Superseding fifty-file closure evidence
+
+The fresh closure authorization started from
+`c9fede4b91e66c80846ecd19215d5931d213f287` and used all 10 paid-run slots. The
+earlier `unknown_provider_error` was traced beyond successful Provider output
+and Review persistence to oversized checkpoint metadata. The full quality
+snapshot exceeded migration 0051's 4096-byte limit. Bounded typed checkpoint
+metadata, fenced post-persistence diagnostics, and transient-only replay now
+preserve the successful output while real failures remain terminal.
+
+The final Stage 50 run proved the following before a non-authoritative UI
+assertion stopped the launcher:
+
+- file 51 was rejected before durable rows;
+- exactly 50 private synthetic PDFs, burst items, and durable jobs were
+  admitted;
+- all 50 intended jobs and items reached `completed`;
+- the durable burst aggregate reached `completed` with zero queued,
+  processing, admission-ready, failed, or cancelled items;
+- all 50 import batches reached `imported` and retained exact Bank scope;
+- 53 unique private draft questions and 53 unique Review Drafts were created;
+- Review status was 52 `pending_review` and one `needs_more_evidence`;
+- page lineage was one page per standard item and pages 1 through 4 for the
+  visual fixture;
+- deterministic persistence lineage was unique for every imported question;
+- taxonomy rows remained review-gated;
+- duplicate drafts, Bank approvals, publications, Assignments, and
+  cross-organization visibility were zero;
+- no unrelated job was claimed or mutated; and
+- exact database, Storage, Auth/profile/membership/organization, local-process,
+  and process-environment cleanup passed with zero synthetic residue.
+
+The Imports surface passed initial load, reload, and fresh remount. The later
+Review-page assertion selected an unordered arbitrary question title and
+expected it on page 1, even though the page size is 25 and the run created 53
+rows. This is a pagination-sensitive harness defect, not a durable-state or UI
+data failure. The assertion now checks the deterministic result count, page
+count, and rendered first-page article count on initial load, reload, and
+remount, with mutation coverage. It was not rerun against Gemini because the
+authorization had no eleventh paid slot.
+
+Accordingly, the literal launcher result remains `PDF50_SCALE_50=BLOCKED`; no
+terminal `PASS` is fabricated. The completed durable and aggregate gates are
+accepted as operational evidence, while exact final Provider HTTP counts,
+tokens, queue-depth maxima, drain timing, attempt histogram, and
+attempts-per-job remain `UNKNOWN` because the post-gate stop occurred before
+summary emission.
+
+The fresh conservative ledger is 1,677,582 micros spent or held, with 322,418
+micros remaining and zero paid runs remaining. Actual usage for incomplete or
+unreported calls and dashboard-observed spend remain `UNKNOWN`.
+
+Final superseding classification:
+`GEMINI_VISUAL_VALIDATED_PDF50_OPERATIONALLY_READY_FOR_FINAL_HOST_REVIEW`.
+This is a recommendation for independent Host review, not merge authorization.
