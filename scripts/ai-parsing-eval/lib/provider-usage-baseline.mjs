@@ -94,19 +94,72 @@ function selectProviderToken(accounting, key) {
 }
 
 function costMicros({ cachedInputTokens, inputTokens, outputTokens, pricing }) {
-  if (inputTokens.value === null || outputTokens.value === null) return null;
+  if (inputTokens.value === null || outputTokens.value === null) {
+    return {
+      basis: "UNKNOWN_USAGE",
+      value: null,
+    };
+  }
   const hasDistinctCachedPrice =
     typeof pricing.cachedInputMicrosPerMillion === "number";
-  if (hasDistinctCachedPrice && cachedInputTokens.value === null) return null;
+  if (hasDistinctCachedPrice && cachedInputTokens.value === null) {
+    return {
+      basis: "UNCACHED_INPUT_UPPER_BOUND",
+      value: Math.round(
+        (inputTokens.value * pricing.inputMicrosPerMillion +
+          outputTokens.value * pricing.outputMicrosPerMillion) /
+          1_000_000,
+      ),
+    };
+  }
   const cachedTokens = cachedInputTokens.value ?? 0;
   const uncachedTokens = Math.max(0, inputTokens.value - cachedTokens);
-  return Math.round(
-    (uncachedTokens * pricing.inputMicrosPerMillion +
-      cachedTokens *
-        (pricing.cachedInputMicrosPerMillion ?? pricing.inputMicrosPerMillion) +
-      outputTokens.value * pricing.outputMicrosPerMillion) /
-      1_000_000,
+  return {
+    basis: "USAGE_DERIVED_ESTIMATE",
+    value: Math.round(
+      (uncachedTokens * pricing.inputMicrosPerMillion +
+        cachedTokens *
+          (pricing.cachedInputMicrosPerMillion ?? pricing.inputMicrosPerMillion) +
+        outputTokens.value * pricing.outputMicrosPerMillion) /
+        1_000_000,
+    ),
+  };
+}
+
+export function estimateProviderAttemptCostUpperBoundMicros({
+  maxOutputTokens,
+  pricing,
+  usageAccounting,
+}) {
+  assertAccounting(usageAccounting);
+  assert.equal(isCount(maxOutputTokens) && maxOutputTokens > 0, true);
+  const inputTokens = selectInputTokens(usageAccounting);
+  if (inputTokens.value === null) return null;
+  const cachedInputTokens = selectProviderToken(
+    usageAccounting,
+    "cachedInputTokens",
   );
+  const reportedOutputTokens = selectProviderToken(
+    usageAccounting,
+    "outputTokens",
+  );
+  const outputTokens =
+    reportedOutputTokens.value === null
+      ? tokenMeasurement(maxOutputTokens, "TEMPORARY_THEORETICAL_EXPOSURE")
+      : reportedOutputTokens;
+  const estimate = costMicros({
+    cachedInputTokens,
+    inputTokens,
+    outputTokens,
+    pricing,
+  });
+  return {
+    basis:
+      reportedOutputTokens.value === null
+        ? `MAX_OUTPUT_TOKEN_UPPER_BOUND/${estimate.basis}`
+        : estimate.basis,
+    valueMicros: estimate.value,
+  };
 }
 
 function assertAccounting(accounting) {
@@ -194,6 +247,12 @@ function attemptObservation(row, manifest, pricing) {
     row.usageAccounting,
     "toolUseInputTokens",
   );
+  const usageDerivedCost = costMicros({
+    cachedInputTokens,
+    inputTokens,
+    outputTokens: billedOutputTokens,
+    pricing,
+  });
 
   return {
     attemptOrdinal: row.attemptOrdinal,
@@ -216,12 +275,8 @@ function attemptObservation(row, manifest, pricing) {
     toolUseInputTokens,
     totalTokens,
     outputTokens: billedOutputTokens,
-    usageDerivedCostMicros: costMicros({
-      cachedInputTokens,
-      inputTokens,
-      outputTokens: billedOutputTokens,
-      pricing,
-    }),
+    usageDerivedCostBasis: usageDerivedCost.basis,
+    usageDerivedCostMicros: usageDerivedCost.value,
   };
 }
 
@@ -309,6 +364,11 @@ export function buildProviderUsageBaselineReport({
   const totalUsageDerivedCostMicros = strictSum(
     rows.map((row) => row.usageDerivedCostMicros),
   );
+  const usageDerivedCostBasisHistogram = rows.reduce((histogram, row) => {
+    histogram[row.usageDerivedCostBasis] =
+      (histogram[row.usageDerivedCostBasis] ?? 0) + 1;
+    return histogram;
+  }, {});
   const availableInputTokens = rows
     .map((row) => row.inputTokens.value)
     .filter((value) => typeof value === "number");
@@ -407,6 +467,7 @@ export function buildProviderUsageBaselineReport({
         totalUsageDerivedCostMicros,
         validReviewDrafts,
       ),
+      usageDerivedCostBasisHistogram,
       validReviewDrafts,
     },
     benchmarkCorpusVersion: manifest.version,

@@ -6,7 +6,25 @@
   "model": "gemini-2.5-flash-lite",
   "treatmentVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1_SOURCE_EXACT_V2",
   "evaluatorVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1_EVALUATOR_V2",
+  "invalidRuns": [
+    {
+      "runOrdinal": 1,
+      "sourceHead": "46519c810076b1102d6d198a794ff9ef38d60a17",
+      "classification": "INVALID_USAGE_ACCOUNTING_DEFECT",
+      "failureCategory": "credible_provider_spend_unresolved",
+      "provider": "gemini_native",
+      "model": "gemini-2.5-flash-lite",
+      "providerReportedSpendMicros": null,
+      "providerReportedSpendSource": "UNKNOWN_USAGE",
+      "dashboardObservedSpendMicros": null,
+      "dashboardObservedSpendSource": "UNKNOWN_USAGE",
+      "conservativeExposureMicros": 334248,
+      "conservativeExposureSource": "TEMPORARY_THEORETICAL_EXPOSURE",
+      "resultPersisted": false,
+      "reason": "All required input, output, total and countTokens coverage checks passed in memory, but an omitted optional cached-token count was incorrectly treated as unresolvable cost. No benchmark result was persisted."
+    }
+  ],
   "rows": [],
   "jobs": [],
-  "reason": "The source-exact V2 benchmark correction was frozen before Provider observation. The authorized bounded baseline has not run yet; operational PDF50 evidence remains separate."
+  "reason": "Run 1 was invalidated by a usage-accounting defect before result persistence. Its full temporary theoretical exposure is reserved against the cumulative USD 0.50 cap; operational PDF50 evidence remains separate."
 }

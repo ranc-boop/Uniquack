@@ -8,6 +8,7 @@ import {
   MODEL_QUALITY_PROVIDER_BENCHMARK,
   OPERATIONAL_PDF50_EVIDENCE,
   buildProviderUsageBaselineReport,
+  estimateProviderAttemptCostUpperBoundMicros,
 } from "./lib/provider-usage-baseline.mjs";
 import {
   AI_PARSING_PROVIDER_BENCHMARK_V1_SOURCE_IDS,
@@ -277,6 +278,9 @@ assert.equal(report.aggregate.p50ThinkingTokens, 2);
 assert.equal(report.aggregate.p95ThinkingTokens, 2);
 assert.equal(report.aggregate.p50LatencyMs, 30);
 assert.equal(report.aggregate.p95LatencyMs, 60);
+assert.deepEqual(report.aggregate.usageDerivedCostBasisHistogram, {
+  USAGE_DERIVED_ESTIMATE: 6,
+});
 assert.equal(report.rows[0].inputTokens.source, "PROVIDER_REPORTED_USAGE");
 assert.equal(report.rows[0].inputTokens.value, 100);
 assert.equal(report.rows[0].countTokensInput.value, null);
@@ -286,6 +290,39 @@ assert.notEqual(
   report.rows[0].inputTokens.value,
   complete.rows[0].usageAccounting.localContextBytes.serializedRequestBytes,
   "local bytes must never become token usage",
+);
+
+const missingCachedUsage = clone(complete);
+delete missingCachedUsage.rows[0].usageAccounting.providerReportedUsage.usage
+  .cachedInputTokens;
+missingCachedUsage.rows[0].usageAccounting.unknownUsage.fields.push(
+  "cachedInputTokens",
+);
+const missingCachedReport = buildProviderUsageBaselineReport({
+  manifest,
+  observations: missingCachedUsage,
+  pricing,
+});
+assert.equal(missingCachedReport.rows[0].cachedInputTokens.value, null);
+assert.equal(
+  missingCachedReport.rows[0].cachedInputTokens.source,
+  "UNKNOWN_USAGE",
+);
+assert.equal(
+  missingCachedReport.rows[0].usageDerivedCostBasis,
+  "UNCACHED_INPUT_UPPER_BOUND",
+);
+assert.equal(missingCachedReport.rows[0].usageDerivedCostMicros, 19);
+assert.deepEqual(
+  estimateProviderAttemptCostUpperBoundMicros({
+    maxOutputTokens: 4_096,
+    pricing,
+    usageAccounting: missingCachedUsage.rows[0].usageAccounting,
+  }),
+  {
+    basis: "UNCACHED_INPUT_UPPER_BOUND",
+    valueMicros: 19,
+  },
 );
 
 const partialUsage = clone(complete);

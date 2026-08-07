@@ -17,7 +17,10 @@ import {
   aggregateProviderBenchmarkEvaluations,
   evaluateProviderBenchmarkSource,
 } from "./lib/provider-benchmark-v1-evaluator.mjs";
-import { buildProviderUsageBaselineReport } from "./lib/provider-usage-baseline.mjs";
+import {
+  buildProviderUsageBaselineReport,
+  estimateProviderAttemptCostUpperBoundMicros,
+} from "./lib/provider-usage-baseline.mjs";
 import {
   AI_PARSING_PROVIDER_BENCHMARK_V1_SOURCE_IDS,
   buildAIParsingProviderBenchmarkV1Source,
@@ -74,14 +77,17 @@ const pricing = Object.freeze({
   inputMicrosPerMillion: 100_000,
   outputMicrosPerMillion: 400_000,
 });
-const conservativeExposureMicros =
-  maxInferenceRequests *
-  (Math.ceil(
+const perInferenceConservativeExposureMicros =
+  Math.ceil(
     (maxInputBytesPerInference * pricing.inputMicrosPerMillion) / 1_000_000,
   ) +
-    Math.ceil(
-      (maxOutputTokensPerInference * pricing.outputMicrosPerMillion) / 1_000_000,
-    ));
+  Math.ceil(
+    (maxOutputTokensPerInference * pricing.outputMicrosPerMillion) / 1_000_000,
+  );
+const conservativeExposureMicros =
+  maxInferenceRequests * perInferenceConservativeExposureMicros;
+const maxSourceConservativeExposureMicros =
+  maxSemanticAttemptsPerSource * perInferenceConservativeExposureMicros;
 const infrastructureFailureCategories = new Set([
   "provider_busy",
   "provider_network_error",
@@ -385,6 +391,33 @@ async function main() {
   if (priorObservations.status === "COMPLETE") {
     throw new BaselineError("completed_baseline_overwrite_refused");
   }
+  const invalidRuns = Array.isArray(priorObservations.invalidRuns)
+    ? priorObservations.invalidRuns
+    : [];
+  if (invalidRuns.length !== runOrdinal - 1) {
+    throw new BaselineError("invalid_run_ledger_mismatch");
+  }
+  const priorInvalidRunConservativeExposureMicros = invalidRuns.reduce(
+    (total, invalidRun) => {
+      if (
+        !Number.isSafeInteger(invalidRun.conservativeExposureMicros) ||
+        invalidRun.conservativeExposureMicros !== conservativeExposureMicros ||
+        invalidRun.runOrdinal < 1 ||
+        invalidRun.runOrdinal >= runOrdinal ||
+        !/^[a-f0-9]{40}$/.test(invalidRun.sourceHead)
+      ) {
+        throw new BaselineError("invalid_run_ledger_invalid");
+      }
+      return total + invalidRun.conservativeExposureMicros;
+    },
+    0,
+  );
+  if (
+    priorInvalidRunConservativeExposureMicros >=
+    approvedBudgetUsd * 1_000_000
+  ) {
+    throw new BaselineError("cumulative_provider_budget_exhausted");
+  }
   if (manifest.sources.length !== 6) {
     throw new BaselineError("benchmark_source_count_mismatch");
   }
@@ -445,8 +478,17 @@ async function main() {
   const jobs = [];
   const evaluations = [];
   const candidateHashes = new Set();
+  let currentRunCredibleSpendUpperBoundMicros = 0;
 
   for (const [sourceIndex, sourceId] of AI_PARSING_PROVIDER_BENCHMARK_V1_SOURCE_IDS.entries()) {
+    if (
+      priorInvalidRunConservativeExposureMicros +
+        currentRunCredibleSpendUpperBoundMicros +
+        maxSourceConservativeExposureMicros >
+      approvedBudgetUsd * 1_000_000
+    ) {
+      throw new BaselineError("cumulative_provider_budget_exhausted");
+    }
     const sourceManifest = manifest.sources.find((source) => source.sourceId === sourceId);
     if (!sourceManifest) throw new BaselineError("benchmark_manifest_source_missing");
     const pdfBytes = buildAIParsingProviderBenchmarkV1Source(sourceId);
@@ -511,6 +553,27 @@ async function main() {
     });
     evaluations.push(evaluation);
     const snapshot = qualityObserver.snapshot();
+    const sourceCostEstimates = snapshot.attempts.map((attempt) =>
+      estimateProviderAttemptCostUpperBoundMicros({
+        maxOutputTokens: maxOutputTokensPerInference,
+        pricing,
+        usageAccounting: attempt.usageAccounting,
+      }),
+    );
+    if (sourceCostEstimates.some((estimate) => estimate === null)) {
+      throw new BaselineError("credible_provider_spend_unresolved");
+    }
+    currentRunCredibleSpendUpperBoundMicros += sourceCostEstimates.reduce(
+      (total, estimate) => total + estimate.valueMicros,
+      0,
+    );
+    if (
+      priorInvalidRunConservativeExposureMicros +
+        currentRunCredibleSpendUpperBoundMicros >
+      approvedBudgetUsd * 1_000_000
+    ) {
+      throw new BaselineError("cumulative_provider_budget_exhausted");
+    }
     for (const [attemptIndex, attempt] of snapshot.attempts.entries()) {
       rows.push({
         attemptOrdinal: attemptIndex + 1,
@@ -570,6 +633,7 @@ async function main() {
     evidenceClass: manifest.evidenceClass,
     evaluationContractSha256: canonicalSha256(evaluationContract),
     evaluatorVersion: evaluationContract.version,
+    invalidRuns,
     jobs,
     model: provider.model,
     provider: "gemini_native",
@@ -608,6 +672,7 @@ async function main() {
       conservativeExposureMicros,
       globalProviderCounters: globalBudget.snapshot(),
       maxWholeBenchmarkRuns,
+      priorInvalidRunConservativeExposureMicros,
       runOrdinal,
       sourceHead,
     },
@@ -626,15 +691,25 @@ async function main() {
   ) {
     throw new BaselineError("usage_accounting_incomplete");
   }
+  if (report.jobTotals.some((job) => job.usageDerivedCostMicros === null)) {
+    throw new BaselineError("credible_provider_spend_unresolved");
+  }
+  const currentRunUsageDerivedCostMicros = report.jobTotals.reduce(
+    (total, job) => total + job.usageDerivedCostMicros,
+    0,
+  );
+  const cumulativeCredibleSpendUpperBoundMicros =
+    priorInvalidRunConservativeExposureMicros +
+    currentRunUsageDerivedCostMicros;
   if (
-    report.jobTotals.some((job) => job.usageDerivedCostMicros === null) ||
-    report.jobTotals.reduce(
-      (total, job) => total + job.usageDerivedCostMicros,
-      0,
-    ) > approvedBudgetUsd * 1_000_000
+    cumulativeCredibleSpendUpperBoundMicros > approvedBudgetUsd * 1_000_000
   ) {
     throw new BaselineError("credible_provider_spend_unresolved");
   }
+  observations.run.currentRunUsageDerivedCostMicros =
+    currentRunUsageDerivedCostMicros;
+  observations.run.cumulativeCredibleSpendUpperBoundMicros =
+    cumulativeCredibleSpendUpperBoundMicros;
   if (globalBudget.snapshot().cleanupFailures > 0) {
     throw new BaselineError("provider_file_cleanup_failed");
   }
@@ -648,10 +723,10 @@ async function main() {
   console.log(`PROVIDER_COUNT_TOKENS_REQUESTS=${globalBudget.snapshot().tokenCountRequests}`);
   console.log(`VALID_REVIEW_DRAFTS=${qualityAggregate.parsing.validReviewDrafts}`);
   console.log(`NEEDS_MORE_EVIDENCE_DRAFTS=${qualityAggregate.parsing.needsMoreEvidenceDrafts}`);
-  console.log(`USAGE_DERIVED_COST_MICROS=${report.jobTotals.reduce(
-    (total, job) => total + job.usageDerivedCostMicros,
-    0,
-  )}`);
+  console.log(`USAGE_DERIVED_COST_MICROS=${currentRunUsageDerivedCostMicros}`);
+  console.log(
+    `CUMULATIVE_CREDIBLE_SPEND_UPPER_BOUND_MICROS=${cumulativeCredibleSpendUpperBoundMicros}`,
+  );
   console.log("DASHBOARD_COST=UNKNOWN_USAGE");
   console.log("PROVIDER_FILE_CLEANUP=PASS");
   console.log("HOSTED_WRITES=0");
