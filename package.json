@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit",
     "start": "next start",
     "analyze": "cross-env ANALYZE=true next build --webpack",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-coverage",
+    "test:core": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-coverage test/request-origin.test.mjs test/practice-request-validation.test.mjs test/extraction-coverage-audit.test.mjs",
     "perf:audit": "node scripts/site-performance-audit.mjs",
     "perf:budget": "node scripts/performance-budget-smoke.mjs",
     "deadcode:audit": "knip --reporter compact",
