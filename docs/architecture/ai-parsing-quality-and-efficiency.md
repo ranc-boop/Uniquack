@@ -14,11 +14,11 @@ environment contracts. The immutable baseline is
 
 No real Provider call or hosted mutation was performed during the source phase.
 Current Clean taxonomy parity subsequently passed read-only with the exact
-source snapshot. The final bounded Gemini authorization completed all ten paid
-run slots. It validated the exact visual attachment set and completed all 50
-durable qualification jobs. The launcher's final status remained blocked only
-by a post-gate, pagination-sensitive Review-page assertion; the superseding
-evidence and its limitation are recorded below.
+source snapshot. The bounded operational Gemini authorization then validated
+the exact visual attachment set and completed all 50 durable qualification
+jobs. The separate six-source model-quality baseline is now complete and frozen
+at source head `53527d4068d348ffb04093632910da545eca0601`. Operational and
+model-quality evidence remain distinct.
 
 ## Immutable contract fingerprints
 
@@ -31,9 +31,34 @@ source catalog to immutable Git blobs and SHA-256 values.
 The verifier requires baseline ancestry, treatment ancestry, exact file order,
 exact anchor blobs, and current-byte equality. New treatment modules are
 explicitly absent at baseline. Uncommitted worktree bytes are never accepted as
-an anchor. The current manifest binds 61 files to treatment anchor
-`1d54e70f669347b85383169eb18e44846100123b`; the manifest-only evidence commit
-is a descendant and does not redefine treatment bytes.
+an anchor. The current manifest binds 82 files to treatment anchor
+`eeff3466d7286fbe2a77b4f6fbeb060be4d77fa9`. The completed observation file
+is a descendant result and does not redefine the Provider-visible treatment.
+
+## Frozen Gemini model-quality baseline
+
+`GEMINI_AI_PARSING_BASELINE_V1` used the six immutable, rights-safe sources in
+`AI_PARSING_PROVIDER_BENCHMARK_V1`. Run 1 was invalidated by an accounting-only
+defect and is conservatively reserved at its full 334,248-micro theoretical
+envelope. The corrected run 2 completed with six first-attempt inferences, six
+matching `countTokens` results, eight valid Review Drafts, two
+`needs_more_evidence` Drafts, zero retries, and zero hard-boundary escapes.
+
+The baseline intentionally preserves weak quality results: question-boundary
+F1 was 0.909091, valid Draft yield was 0.727273, answer correctness was
+0.909091, answer/solution consistency was 0.545455, exact taxonomy recall was
+zero, visual-dependent recall was 0.500000, required-asset association was
+0.333333, and insufficient-evidence detection was 0/1. No rerun was made to
+improve these scores.
+
+Run-2 Provider-reported usage was 69,942 input, 3,527 output, and 73,469 total
+tokens. Input `countTokens` matched response usage exactly for all six
+attempts. Cached usage was absent on all six responses and therefore remains
+unknown; cost is conservatively priced as uncached. Run-2 estimated cost was
+8,405 micros, and cumulative credible upper-bound exposure including invalid
+run 1 was 342,653 micros, below the USD 0.50 authorization. Dashboard spend and
+aggregate thinking usage remain unknown. The complete per-source report is in
+`docs/architecture/gemini-ai-parsing-baseline-v1.md`.
 
 ## Runtime taxonomy path
 

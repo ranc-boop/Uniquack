@@ -344,9 +344,30 @@ assert.equal(partialReport.rows[0].usageDerivedCostMicros, null);
 assert.equal(partialReport.aggregate.totalTokensPerCompletedJob, null);
 assert.equal(partialReport.aggregate.usageDerivedCostMicrosPerValidReviewDraft, null);
 
-const notRunReport = buildProviderUsageBaselineReport({
+const frozenReport = buildProviderUsageBaselineReport({
   manifest,
   observations,
+  pricing,
+});
+assert.equal(
+  frozenReport.classification,
+  "GEMINI_AI_PARSING_BASELINE_V1_COMPLETE",
+);
+assert.equal(frozenReport.aggregate.completedJobs, 6);
+assert.equal(frozenReport.aggregate.validReviewDrafts, 8);
+assert.equal(frozenReport.aggregate.countTokensComparisonCoverage, "6/6");
+assert.equal(frozenReport.aggregate.countTokensInputAbsoluteDeltaTotal, 0);
+assert.deepEqual(frozenReport.aggregate.usageDerivedCostBasisHistogram, {
+  UNCACHED_INPUT_UPPER_BOUND: 6,
+});
+
+const notRunObservations = clone(observations);
+notRunObservations.status = "NOT_RUN";
+notRunObservations.rows = [];
+notRunObservations.jobs = [];
+const notRunReport = buildProviderUsageBaselineReport({
+  manifest,
+  observations: notRunObservations,
   pricing,
 });
 assert.equal(
