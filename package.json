@@ -6,6 +6,7 @@
     "dev": "next dev --webpack",
     "worker:dev": "node scripts/local-ai-jobs-worker.mjs",
     "build": "node ./node_modules/next/dist/bin/next build --webpack",
+    "typecheck": "tsc --noEmit",
     "start": "next start",
     "analyze": "cross-env ANALYZE=true next build --webpack",
     "perf:audit": "node scripts/site-performance-audit.mjs",

@@ -15,46 +15,33 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(plan.directoryMigrationNames.length === 77, "Raw clean source must contain 77 SQL files.");
-assert(plan.executableMigrationNames.length === 76, "Executable clean chain must contain 76 migrations.");
+assert(plan.directoryMigrationNames.length === 78, "Raw clean source must contain 78 SQL files.");
+assert(plan.executableMigrationNames.length === 77, "Executable clean chain must contain 77 migrations.");
 assert(
-  plan.duplicateRawPrefixes.length === 1 &&
-    plan.duplicateRawPrefixes[0]?.number === 32,
+  plan.duplicateRawPrefixes.length === 1 && plan.duplicateRawPrefixes[0]?.number === 32,
   "Raw duplicate migration numbers must be detected explicitly.",
 );
-assert(
-  plan.executableMigrationNames[31] === "0032_teacher_feedback_notes.sql",
-  "Teacher feedback notes must be the only executable migration at position 0032.",
-);
-assert(
-  plan.blockedMigrationNames.length === 1 &&
-    plan.blockedMigrationNames[0] === "0032_google_account_links.sql",
-  "Google account links must remain the exact excluded 0032.",
-);
+assert(plan.executableMigrationNames[31] === "0032_teacher_feedback_notes.sql", "Teacher feedback notes must be the only executable migration at position 0032.");
+assert(plan.blockedMigrationNames.length === 1 && plan.blockedMigrationNames[0] === "0032_google_account_links.sql", "Google account links must remain the exact excluded 0032.");
 
 let blockedGoogle = false;
-try {
-  assertCanonicalMigrationExecutable(plan, "0032_google_account_links.sql");
-} catch {
-  blockedGoogle = true;
-}
+try { assertCanonicalMigrationExecutable(plan, "0032_google_account_links.sql"); } catch { blockedGoogle = true; }
 assert(blockedGoogle, "Excluded Google 0032 must fail closed in executable tooling.");
 
-for (let number = 44; number <= 76; number += 1) {
+for (let number = 44; number <= 77; number += 1) {
   const filename = plan.executableMigrationNames[number - 1];
   const entry = plan.inventoryByFilename.get(filename);
   assert(migrationNumber(filename) === number, `Position ${number} has the wrong migration number.`);
   assert(entry?.migrationNumber === number, `${filename} is missing its registered number.`);
   assert(entry?.classification === "CANONICAL_EXECUTABLE", `${filename} is not canonical executable.`);
-  assert(entry?.expectedOrder === number, `${filename} has the wrong expected order.`);
+  assert(entry?.expectedOrder === number, `${filename} has the wrong executable order.`);
 }
 
 assert(
-  plan.executableMigrationNames.at(-2) === "0075_practice_ai_inflight_leases.sql" &&
-    plan.executableMigrationNames.at(-1) ===
-      "0076_official_public_library_two_state_approval.sql" &&
-    plan.manifest.latestActivePrefix === 76,
-  "Official Public Library approval 0076 must be the canonical tail.",
+  plan.executableMigrationNames.at(-2) === "0076_official_public_library_two_state_approval.sql" &&
+    plan.executableMigrationNames.at(-1) === "0077_scope_orphan_question_admin_access.sql" &&
+    plan.manifest.latestActivePrefix === 77,
+  "Orphan-question tenant hardening 0077 must be the canonical tail.",
 );
 assert(
   plan.manifest.canonicalMigrationDirectory === "supabase/clean-migrations" &&
@@ -76,6 +63,6 @@ for (const filename of [
 
 console.log("PASS raw duplicate 0032 is detected and explicitly classified");
 console.log("PASS executable 0032 is teacher feedback notes; Google 0032 is excluded");
-console.log("PASS canonical registrations 0044-0076 are ordered and complete");
-console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0076");
+console.log("PASS canonical registrations 0044-0077 are ordered and complete");
+console.log("PASS fresh-chain enumeration is manifest-driven with canonical head 0077");
 console.log("PASS legacy migrations are absent from the executable plan");
