@@ -18,11 +18,29 @@ async function readDir(relativePath) {
   return readdir(resolve(root, relativePath));
 }
 
-function extractFunctionBody(source, functionName) {
-  const start = source.indexOf(`export async function ${functionName}`);
+function delegatesToSafeDraftSaver(source) {
+  return source.includes("await saveBankReviewDraftQuestion(formData)");
+}
+
+function hasReviewDecisionControls(source) {
+  return (
+    source.includes("/review/${question.reviewItemId}/edit") &&
+    source.includes("action={markBankReviewDraftNeedsFix}") &&
+    source.includes("action={rejectBankReviewDraftQuestion}") &&
+    source.includes("action={approveBankReviewQuestion}")
+  );
+}
+
+function extractAsyncFunctionBody(source, functionName) {
+  const exportedSignature = `export async function ${functionName}`;
+  const privateSignature = `async function ${functionName}`;
+  const start = source.indexOf(exportedSignature) >= 0
+    ? source.indexOf(exportedSignature)
+    : source.indexOf(privateSignature);
   assert(start >= 0, `${functionName} must exist`);
-  const nextExport = source.indexOf("\nexport async function ", start + 1);
-  return source.slice(start, nextExport >= 0 ? nextExport : source.length);
+  const nextFunction = source.slice(start + 1).search(/\n(?:export\s+)?async function\s+/);
+  const end = nextFunction >= 0 ? start + 1 + nextFunction : source.length;
+  return source.slice(start, end);
 }
 
 const bankActions = await read("src/app/teacher/banks/actions.ts");
@@ -33,16 +51,17 @@ const migrationFileNames = [
   ...(await readDir("supabase/clean-migrations")),
 ];
 
-const editAction = extractFunctionBody(bankActions, "editBankReviewDraftQuestion");
-const needsFixAction = extractFunctionBody(
+const saveAction = extractAsyncFunctionBody(bankActions, "saveBankReviewDraftQuestion");
+const editAction = extractAsyncFunctionBody(bankActions, "editBankReviewDraftQuestion");
+const needsFixAction = extractAsyncFunctionBody(
   bankActions,
   "markBankReviewDraftNeedsFix",
 );
-const rejectAction = extractFunctionBody(
+const rejectAction = extractAsyncFunctionBody(
   bankActions,
   "rejectBankReviewDraftQuestion",
 );
-const approveAction = extractFunctionBody(
+const approveAction = extractAsyncFunctionBody(
   bankActions,
   "approveBankReviewQuestion",
 );
@@ -61,18 +80,29 @@ assert(
 );
 
 assert(
-  editAction.includes("content_source: parsed.contentSource") &&
-    editAction.includes("content_source_format: \"markdown_latex\"") &&
-    editAction.includes("solution_source: parsed.solutionSource") &&
-    editAction.includes("difficulty_rating: parsed.difficultyRating") &&
-    editAction.includes("status: \"pending_review\"") &&
-    editAction.includes("actionKind: \"edit\"") &&
-    !editAction.includes("owner_bank_id:") &&
-    !editAction.includes("visibility: \"public\"") &&
-    !editAction.includes("published_at: new Date") &&
-    !editAction.includes("bank_questions") &&
-    !editAction.includes("processAIPdfImport"),
-  "edit action must update safe draft content only, reset review item to pending review, and avoid owner/visibility/publish/provider changes",
+  delegatesToSafeDraftSaver(editAction) &&
+    saveAction.includes("content_source: parsed.contentSource") &&
+    saveAction.includes("content_source_format: \"markdown_latex\"") &&
+    saveAction.includes("solution_source: parsed.solutionSource") &&
+    saveAction.includes("difficulty_rating: parsed.difficultyRating") &&
+    saveAction.includes("status: \"pending_review\"") &&
+    saveAction.includes("actionKind: \"edit\"") &&
+    !`${saveAction}\n${editAction}`.includes("owner_bank_id:") &&
+    !`${saveAction}\n${editAction}`.includes("visibility: \"public\"") &&
+    !`${saveAction}\n${editAction}`.includes("published_at: new Date") &&
+    !`${saveAction}\n${editAction}`.includes("bank_questions") &&
+    !`${saveAction}\n${editAction}`.includes("processAIPdfImport"),
+  "edit action must delegate to the safe draft saver, reset Review state, and avoid owner/visibility/publish/provider changes",
+);
+
+assert(
+  !delegatesToSafeDraftSaver(
+    editAction.replace(
+      "await saveBankReviewDraftQuestion(formData)",
+      "await unsafeSave(formData)",
+    ),
+  ),
+  "Review edit delegation mutation must be detectable.",
 );
 
 assert(
@@ -108,21 +138,24 @@ assert(
 );
 
 assert(
-  bankReviewPage.includes("Edit Review Draft before approval") &&
-    bankReviewPage.includes("Save draft changes") &&
-    bankReviewPage.includes("Mark needs fix") &&
-    bankReviewPage.includes("Reject and archive") &&
-    bankReviewPage.includes("students never") &&
-    bankReviewPage.includes("see Review Drafts") &&
-    bankReviewPage.includes("Edit changes this private draft only") &&
-    bankReviewPage.includes("Reject archives the draft") &&
-    bankReviewPage.includes("action={editBankReviewDraftQuestion}") &&
-    bankReviewPage.includes("action={markBankReviewDraftNeedsFix}") &&
-    bankReviewPage.includes("action={rejectBankReviewDraftQuestion}") &&
+  hasReviewDecisionControls(bankReviewPage) &&
+    bankReviewPage.includes("Approval confirms these questions for this Library") &&
+    bankReviewPage.includes("Content") &&
+    bankReviewPage.includes("you did not preview remains your responsibility") &&
     !bankReviewPage.includes("Edit draft - coming next") &&
     !bankReviewPage.includes("Needs fix - coming next") &&
     !bankReviewPage.includes("published_at"),
-  "bank Review Draft page must expose edit/needs-fix/reject actions with clear private review-gate copy and no published_at UI",
+  "bank Review Draft page must expose edit/needs-fix/reject/approve controls with manual review-gate context and no published_at UI",
+);
+
+assert(
+  !hasReviewDecisionControls(
+    bankReviewPage.replace(
+      "action={rejectBankReviewDraftQuestion}",
+      "action={approveBankReviewQuestion}",
+    ),
+  ),
+  "Removing the Review rejection action must fail the decision-control contract.",
 );
 
 assert(

@@ -25,6 +25,10 @@ import type {
   QuestionSourceFileView,
 } from "@/lib/questions/media-workspace";
 import { validateReviewQuestionForPublish } from "@/lib/questions/review-publish-validation";
+import {
+  buildTeacherReviewGuidance,
+  type TeacherReviewGuidanceItem,
+} from "@/lib/questions/teacher-review-guidance";
 import { getQuestionAssetUrl } from "@/lib/storage/question-assets";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -139,6 +143,7 @@ export type BankReviewQuestionSummary = {
   questionCode: string;
   questionType: Question["question_type"];
   reviewItemId: string | null;
+  reviewGuidance: TeacherReviewGuidanceItem[];
   reviewStatus:
     | "pending_review"
     | "needs_more_evidence"
@@ -823,7 +828,7 @@ async function loadBankReviewQuestionSummaries({
       .limit(250),
     supabase
       .from("import_batch_items")
-      .select("created_question_id, validation_errors")
+      .select("batch_id, created_question_id, validation_errors")
       .in("created_question_id", questionIds)
       .limit(100),
   ]);
@@ -871,15 +876,45 @@ async function loadBankReviewQuestionSummaries({
     );
   }
   const importWarningsByQuestionId = new Map<string, unknown[]>();
+  const importBatchIdByQuestionId = new Map<string, string>();
   for (const item of importWarningResult.data ?? []) {
-    if (!item.created_question_id || !Array.isArray(item.validation_errors)) {
+    if (!item.created_question_id) {
       continue;
     }
-    importWarningsByQuestionId.set(
-      item.created_question_id,
-      item.validation_errors,
-    );
+    if (item.batch_id) {
+      importBatchIdByQuestionId.set(item.created_question_id, item.batch_id);
+    }
+    if (Array.isArray(item.validation_errors)) {
+      importWarningsByQuestionId.set(
+        item.created_question_id,
+        item.validation_errors,
+      );
+    }
   }
+  const importBatchIds = Array.from(new Set(importBatchIdByQuestionId.values()));
+  const importBatchResult = importBatchIds.length
+    ? await supabase
+        .from("import_batches")
+        .select("id, summary")
+        .in("id", importBatchIds)
+        .limit(100)
+    : { data: [], error: null };
+  if (importBatchResult.error) throw new Error(importBatchResult.error.message);
+
+  const questionBoundaryPlanByBatchId = new Map<string, unknown>(
+    (importBatchResult.data ?? []).map((batch) => {
+      const summary =
+        batch.summary && typeof batch.summary === "object"
+          ? (batch.summary as Record<string, unknown>)
+          : {};
+      const aiPdfImport =
+        summary.aiPdfImport && typeof summary.aiPdfImport === "object"
+          ? (summary.aiPdfImport as Record<string, unknown>)
+          : {};
+
+      return [batch.id, aiPdfImport.questionBoundaryGuardPlan];
+    }),
+  );
 
   const byId = new Map(
     questions.map((question) => {
@@ -920,6 +955,13 @@ async function loadBankReviewQuestionSummaries({
         status: question.status,
         taxonomyCount: taxonomyCountByQuestionId.get(question.id) ?? 0,
       });
+      const boundaryFindings = questionBoundaryFindingsForQuestion({
+        plan: questionBoundaryPlanByBatchId.get(
+          importBatchIdByQuestionId.get(question.id) ?? "",
+        ),
+        questionCode: question.question_code,
+        questionId: question.id,
+      });
 
       return [
         question.id,
@@ -933,6 +975,12 @@ async function loadBankReviewQuestionSummaries({
           questionCode: question.question_code,
           questionType: question.question_type,
           reviewItemId: reviewItem?.id ?? null,
+          reviewGuidance: buildTeacherReviewGuidance({
+            boundaryFindings,
+            hardErrors: validation.hardErrors,
+            reviewStatus: reviewItem?.status ?? null,
+            softWarnings: validation.softWarnings,
+          }),
           reviewStatus: reviewItem?.status ?? null,
           softWarnings: validation.softWarnings,
           state: "draft" as const,

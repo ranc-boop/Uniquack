@@ -3,13 +3,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const root = resolve(__dirname, "..");
-dotenv.config({ path: resolve(root, ".env.local") });
-dotenv.config({ path: resolve(root, ".env.disposable-smoke.local") });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -18,6 +15,7 @@ const serviceRoleKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 const teacherUsername = process.env.TEST_TEACHER_USERNAME;
 const teacherPassword = process.env.TEST_TEACHER_PASSWORD;
+const sourceOnly = process.argv.includes("--source-only");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -37,6 +35,16 @@ function usernameToLocalEmail(username) {
 
 async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
+}
+
+function deniesViewerImportRoute(source) {
+  const capability = source.indexOf(
+    "const canImport = canManageBankContent(currentUserRole)",
+  );
+  const denial = source.indexOf("if (!canImport)", capability);
+  const notFoundCall = source.indexOf("notFound()", denial);
+
+  return capability >= 0 && denial > capability && notFoundCall > denial;
 }
 
 async function signIn(username, password, label) {
@@ -93,13 +101,21 @@ async function runSourceSmoke() {
   );
 
   assert(
-      bankImportUi.includes("Viewer Libraries are visible for context") &&
-      bankImportUi.includes("only owners and editors can") &&
-      bankImportUi.includes("aria-disabled") &&
-      bankImportUi.includes("No import auto-publishes or assigns content.") &&
-      bankImportUi.includes("Recent AI Parsing status") &&
-      bankImportUi.includes("AI Parsing status history uses existing import batches only"),
-    "bank import UI must disable viewer imports and explain review-gated bank targeting",
+    deniesViewerImportRoute(bankImportsPage) &&
+      bankImportsPage.includes("canImport={canImport}") &&
+      bankImportsPage.includes("Review is required before assignment") &&
+      bankImportUi.includes("Recent AI Parsing status"),
+    "Library imports must fail closed for viewers before rendering owner/editor import controls.",
+  );
+
+  assert(
+    !deniesViewerImportRoute(
+      bankImportsPage.replace(
+        /if\s*\(!canImport\)\s*\{\s*notFound\(\);\s*\}/,
+        "if (!canImport) { /* viewer route allowed */ }",
+      ),
+    ),
+    "Viewer-import denial mutation must be detectable.",
   );
 
   assert(
@@ -233,4 +249,8 @@ async function runLiveSmoke() {
 }
 
 await runSourceSmoke();
-await runLiveSmoke();
+if (sourceOnly) {
+  console.log("PASS teacher AI Parsing live smoke intentionally skipped in source-only mode");
+} else {
+  await runLiveSmoke();
+}
