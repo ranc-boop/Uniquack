@@ -100,6 +100,7 @@ const safeWorkerCheckpointStages = new Set([
 ]);
 
 const safePostPersistenceFailureStages = new Set([
+  "draft_persistence",
   "asset_attachment",
   "summary_preparation",
   "batch_finalization",
@@ -224,6 +225,7 @@ function asRecord(value) {
 }
 
 function numeric(value) {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -410,17 +412,32 @@ async function importTranspiledTypescriptModule(relativePath) {
   return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 }
 
-function buildSyntheticPdf() {
-  const lines = [
-    "Question 1",
-    "What is 2 + 3?",
-    "A) 4",
-    "B) 5",
-    "C) 6",
-    "D) 7",
-    "Answer: B",
-    "Explanation: 2 + 3 = 5.",
-  ];
+function buildSyntheticPdf({ variant = 1 } = {}) {
+  const normalizedVariant = Number.isSafeInteger(variant) && variant > 0 ? variant : 1;
+  const left = normalizedVariant === 1 ? 2 : normalizedVariant + 2;
+  const right = normalizedVariant === 1 ? 3 : (normalizedVariant % 7) + 1;
+  const answer = left + right;
+  const lines = normalizedVariant === 1
+    ? [
+        "Question 1",
+        "What is 2 + 3?",
+        "A) 4",
+        "B) 5",
+        "C) 6",
+        "D) 7",
+        "Answer: B",
+        "Explanation: 2 + 3 = 5.",
+      ]
+    : [
+        `Question ${normalizedVariant}`,
+        `What is ${left} + ${right}?`,
+        `A) ${answer - 2}`,
+        `B) ${answer - 1}`,
+        `C) ${answer}`,
+        `D) ${answer + 1}`,
+        "Answer: C",
+        `Explanation: ${left} + ${right} = ${answer}.`,
+      ];
   const escapedLines = lines.map((line) =>
     line.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)"),
   );
@@ -750,13 +767,38 @@ async function stopOwnedTemporaryServer(server) {
   return forcedExit && portClosed;
 }
 
-async function startNextServer({ config, internalToken }) {
+function validatedProviderTestEnvironment(environment) {
+  const optionalScaleName = "PDF50_PROVIDER_TEST_MAX_INPUT_BYTES";
+  const expectedNames = [
+    ...Object.keys(proofControlEnvironment),
+    ...(Object.hasOwn(environment ?? {}, optionalScaleName)
+      ? [optionalScaleName]
+      : []),
+  ].sort();
+  const receivedNames = Object.keys(environment ?? {}).sort();
+  assert(
+    expectedNames.length === receivedNames.length &&
+      expectedNames.every((name, index) => name === receivedNames[index]) &&
+      receivedNames.every(
+        (name) =>
+          typeof environment[name] === "string" && environment[name].length > 0,
+      ),
+    "worker_evidence_failed",
+  );
+  return environment;
+}
+
+async function startNextServer({
+  config,
+  internalToken,
+  providerTestEnvironment = proofControlEnvironment,
+}) {
   const port = await findFreePort();
   const nextBin = resolve(root, "node_modules", "next", "dist", "bin", "next");
   const environment = {
     ...minimalChildEnvironment(),
     AI_JOBS_INTERNAL_TOKEN: internalToken,
-    ...proofControlEnvironment,
+    ...validatedProviderTestEnvironment(providerTestEnvironment),
     AI_PROVIDER_ENCRYPTION_KEY: config.encryptionKey,
     CLEAN_SUPABASE_SERVICE_ROLE_KEY: config.serviceRoleKey,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: config.anonKey,
@@ -846,7 +888,15 @@ async function waitForBurstFixture({ bankId, service, teacherId }) {
   throw new HarnessError("browser_upload_failed");
 }
 
-async function uploadThroughBrowser({ bankId, origin, page, service, teacher }) {
+async function uploadThroughBrowser({
+  bankId,
+  fileName = "pdf50-provider-proof.pdf",
+  origin,
+  page,
+  pdf = buildSyntheticPdf(),
+  service,
+  teacher,
+}) {
   const importPath = `/teacher/banks/${bankId}/imports?mode=ai`;
   await signInThroughBrowser(page, origin, teacher.actor, importPath);
   if (!page.url().includes(`/teacher/banks/${bankId}/imports`)) {
@@ -856,12 +906,18 @@ async function uploadThroughBrowser({ bankId, origin, page, service, teacher }) 
   if (!(await fileInput.isEnabled().catch(() => false))) {
     throw new HarnessError("hosted_readiness_failed");
   }
-  const pdf = buildSyntheticPdf();
-  assert(pdf.byteLength <= 4_096, "trusted_provider_test_control_rejected");
+  assert(
+    Buffer.isBuffer(pdf) && pdf.byteLength > 0 && pdf.byteLength <= 200_000,
+    "trusted_provider_test_control_rejected",
+  );
+  assert(
+    /^[a-z0-9][a-z0-9._-]{0,79}\.pdf$/i.test(fileName),
+    "trusted_provider_test_control_rejected",
+  );
   await fileInput.setInputFiles({
     buffer: pdf,
     mimeType: "application/pdf",
-    name: "pdf50-provider-proof.pdf",
+    name: fileName,
   });
   await page.getByRole("button", { name: "Reserve and upload" }).click();
   return waitForBurstFixture({
@@ -892,15 +948,12 @@ async function runLocalWorkerOnce({ internalToken, jobId, origin }) {
   };
   child.stdout.on("data", capture);
   child.stderr.on("data", capture);
-  const outcome = await Promise.race([
-    new Promise((resolveExit) => child.once("exit", (code) => resolveExit({ code }))),
-    sleep(270_000).then(() => ({ timeout: true })),
-  ]);
-  if (outcome.timeout) {
+  const exited = await waitForChildExit(child, 270_000);
+  if (!exited) {
     await stopChild(child);
     throw new HarnessError("worker_timeout");
   }
-  if (outcome.code !== 0) {
+  if (child.exitCode !== 0) {
     const safeReason = [
       "trusted_provider_test_claim_capacity_failed",
       "trusted_provider_test_claim_fence_missing",
@@ -1652,6 +1705,7 @@ async function cleanupFixture({ bankId, fixture, fixtures, service }) {
   const burstId = fixture?.burst?.id ?? null;
   const objectPath = fixture?.item?.object_path ?? null;
   let questionIds = [];
+  let questionAssets = [];
   let reviewBatchIds = [];
 
   if (batchId) {
@@ -1680,6 +1734,25 @@ async function cleanupFixture({ bankId, fixture, fixtures, service }) {
     );
   }
   if (questionIds.length) {
+    const assets = await service
+      .from("question_assets")
+      .select("id, storage_bucket, storage_path")
+      .in("question_id", questionIds);
+    if (assets.error) {
+      failures.push("collect_question_assets");
+    } else {
+      questionAssets = assets.data ?? [];
+      for (const asset of questionAssets) {
+        await safeDelete(
+          () =>
+            service.storage
+              .from(asset.storage_bucket)
+              .remove([asset.storage_path]),
+          failures,
+          "question_asset_storage",
+        );
+      }
+    }
     for (const [table, column] of [
       ["question_taxonomy_assignments", "question_id"],
       ["question_assets", "question_id"],
@@ -1793,6 +1866,7 @@ async function cleanupFixture({ bankId, fixture, fixtures, service }) {
     ["ai_provider_jobs", "id", jobId ? [jobId] : []],
     ["import_batches", "id", batchId ? [batchId] : []],
     ["questions", "id", questionIds],
+    ["question_assets", "id", questionAssets.map((asset) => asset.id)],
     ["review_batches", "id", reviewBatchIds],
     ["organization_members", "id", fixtures?.organizationMemberIds ?? []],
     ["profiles", "id", fixtures?.profileIds ?? []],
@@ -1811,6 +1885,22 @@ async function cleanupFixture({ bankId, fixture, fixtures, service }) {
     const listed = await service.storage.from(sourceBucket).list(directory, { search: filename });
     if (listed.error || (listed.data ?? []).some((item) => item.name === filename)) {
       remaining.push("storage_object");
+    }
+  }
+  for (const asset of questionAssets) {
+    const directory = asset.storage_path.slice(
+      0,
+      asset.storage_path.lastIndexOf("/"),
+    );
+    const filename = asset.storage_path.slice(directory.length + 1);
+    const listed = await service.storage
+      .from(asset.storage_bucket)
+      .list(directory, { search: filename });
+    if (
+      listed.error ||
+      (listed.data ?? []).some((item) => item.name === filename)
+    ) {
+      remaining.push("question_asset_storage");
     }
   }
   for (const userId of fixtures?.authUserIds ?? []) {
@@ -1998,11 +2088,60 @@ async function main() {
   }
 }
 
-try {
-  await main();
-} catch {
-  clearProcessEnvironment();
-  console.error("PDF50_ONE_FILE_E2E=BLOCKED");
-  console.error("FAILURE_CATEGORY=unexpected_failure");
-  process.exitCode = 1;
+const isDirectInvocation =
+  typeof process.argv[1] === "string" &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectInvocation) {
+  try {
+    await main();
+  } catch {
+    clearProcessEnvironment();
+    console.error("PDF50_ONE_FILE_E2E=BLOCKED");
+    console.error("FAILURE_CATEGORY=unexpected_failure");
+    process.exitCode = 1;
+  }
 }
+
+export {
+  HarnessError,
+  assert,
+  assertEvidence,
+  assertRequesterSeesNoRows,
+  assertSafeBrowserText,
+  asRecord,
+  buildSyntheticPdf,
+  clearProcessEnvironment,
+  cleanupFixture,
+  countRows,
+  createFixtureState,
+  createSyntheticBank,
+  createSyntheticOrganization,
+  createSyntheticTeacher,
+  knownProviderModel,
+  loadFinishedJob,
+  minimalChildEnvironment,
+  numeric,
+  proofControl,
+  proofControlEnvironment,
+  readEvidenceWithRetry,
+  requiredEnvironment,
+  requireData,
+  requireProcessEnvironment,
+  root,
+  runReadinessPreflight,
+  runLocalWorkerOnce,
+  safeDelete,
+  signInTeacher,
+  signInThroughBrowser,
+  sleep,
+  sourceBucket,
+  startNextServer,
+  stopOwnedTemporaryServer,
+  uploadThroughBrowser,
+  unusedStandingTeacherEnvironment,
+  validatedProviderTestEnvironment,
+  verifyAnonymousSourcePrivacy,
+  verifyProductionReconciliationContracts,
+  waitForBurstFixture,
+};

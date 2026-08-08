@@ -112,6 +112,11 @@ assert(
   "real proof must bind its one-shot worker to the exact browser-created job",
 );
 assert(
+  harness.includes("await waitForChildExit(child, 270_000)") &&
+    !harness.includes("sleep(270_000).then"),
+  "a completed one-shot worker must cancel its timeout timer",
+);
+assert(
   harness.includes("read_ai_provider_job_provider_result_checkpoint") &&
     harness.includes("execution_fence_token") &&
     harness.includes('checkpoint_stage === "completed"'),
@@ -126,7 +131,12 @@ assert(
 );
 assert(
   !harness.includes("._options") &&
-    harness.includes("uploadThroughBrowser({ bankId, origin, page, service, teacher })"),
+    harness.includes("async function uploadThroughBrowser({") &&
+    harness.includes("origin,") &&
+    harness.includes("signInThroughBrowser(page, origin, teacher.actor, importPath)") &&
+    harness.includes("origin: server.origin") &&
+    harness.includes('fileName = "pdf50-provider-proof.pdf"') &&
+    harness.includes("pdf = buildSyntheticPdf()"),
   "browser proof must use an explicit trusted local origin",
 );
 assert(
@@ -151,7 +161,10 @@ assert(
   "real proof must preserve review, publication, and Assignment gates",
 );
 assert(
-  harness.includes("cleanupFixture") &&
+    harness.includes("cleanupFixture") &&
+    harness.includes("collect_question_assets") &&
+    harness.includes("question_asset_storage") &&
+    harness.includes("questionAssets.map((asset) => asset.id)") &&
     harness.includes("classifyPDF50ProviderCounterContract") &&
     counterContract.includes('return "provider_cleanup_failed"') &&
     counterContract.includes("counters.uploads > counters.inference * 2") &&

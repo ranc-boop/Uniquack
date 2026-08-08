@@ -95,6 +95,7 @@ export async function runWithAIProviderRetry<T>({
 }): Promise<AIProviderRetryResult<T>> {
   const policy = normalizedPolicy(suppliedPolicy);
   const retryHistory: AIProviderRetryHistoryItem[] = [];
+  let priorRetryableError: AIProviderError | null = null;
 
   for (let attemptCount = 1; attemptCount <= policy.maxAttempts; attemptCount += 1) {
     if (signal?.aborted) {
@@ -112,6 +113,15 @@ export async function runWithAIProviderRetry<T>({
       return { attemptCount, retryHistory, value };
     } catch (error) {
       const classified = classifyAIProviderError({ error, operation });
+      if (
+        classified.code === "provider_execution_budget_exhausted" &&
+        classified.attemptCount != null &&
+        classified.maxAttempts != null &&
+        classified.attemptCount >= classified.maxAttempts &&
+        priorRetryableError
+      ) {
+        throw priorRetryableError;
+      }
       const canRetry = classified.retryable && attemptCount < policy.maxAttempts;
 
       if (!canRetry) {
@@ -147,6 +157,7 @@ export async function runWithAIProviderRetry<T>({
         delayMs,
         safeErrorCode: safeError.safeErrorCode,
       });
+      priorRetryableError = classified;
 
       try {
         await onRetry?.({

@@ -52,10 +52,97 @@ async function loadResilienceModules() {
 }
 
 const {
+  AIProviderError,
+  classifyAIProviderError,
   redactAIProviderDiagnostic,
   safeAIProviderErrorState,
   runWithAIProviderRetry,
 } = await loadResilienceModules();
+
+function extractionValidationClassification() {
+  for (const kind of [
+    "application_schema",
+    "non_json",
+    "response_missing",
+    "zero_importable",
+  ]) {
+    const classified = classifyAIProviderError({
+      error: Object.assign(new Error("private validation detail"), { kind }),
+      operation: "ai_pdf_extraction",
+    });
+    assert(
+      classified.code === "provider_invalid_response" &&
+        classified.retryable === false,
+      `${kind} must map to the bounded invalid-response contract`,
+    );
+  }
+}
+
+async function retryBudgetPreservesPriorProviderFailure() {
+  let calls = 0;
+  let failure = null;
+  try {
+    await runWithAIProviderRetry({
+      operation: "ai_pdf_extraction",
+      policy: { maxAttempts: 3 },
+      run: async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw Object.assign(new Error("UNAVAILABLE"), { status: 503 });
+        }
+        throw new AIProviderError({
+          attemptCount: 3,
+          code: "provider_execution_budget_exhausted",
+          maxAttempts: 3,
+          operation: "ai_pdf_extraction",
+          retryable: false,
+        });
+      },
+      sleep: async () => undefined,
+    });
+  } catch (error) {
+    failure = error;
+  }
+
+  assert(calls === 2, "a pre-transport budget stop must not start another retry");
+  assert(
+    failure?.code === "provider_busy",
+    "a pre-transport budget stop must preserve the preceding real Provider failure",
+  );
+}
+
+async function independentBudgetFailureIsNotMasked() {
+  let calls = 0;
+  let failure = null;
+  try {
+    await runWithAIProviderRetry({
+      operation: "ai_pdf_extraction",
+      policy: { maxAttempts: 3 },
+      run: async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw Object.assign(new Error("UNAVAILABLE"), { status: 503 });
+        }
+        throw new AIProviderError({
+          attemptCount: 1,
+          code: "provider_execution_budget_exhausted",
+          maxAttempts: 3,
+          operation: "ai_pdf_extraction",
+          retryable: false,
+        });
+      },
+      sleep: async () => undefined,
+    });
+  } catch (error) {
+    failure = error;
+  }
+
+  assert(calls === 2, "an independent budget failure must stop retries");
+  assert(
+    failure?.code === "provider_execution_budget_exhausted",
+    "an independent budget failure must not be masked by an earlier Provider failure",
+  );
+}
 
 async function retry503ThenSuccess() {
   let calls = 0;
@@ -201,6 +288,7 @@ function functionSlice(source, startMarker, endMarker) {
 
 function sourceIntegrationChecks({
   blueprintGeneration,
+  chat,
   chunking,
   pdfService,
   teacherActions,
@@ -237,15 +325,27 @@ function sourceIntegrationChecks({
     "AI PDF failures must preserve safe retry state and target Bank lineage",
   );
   assert(
-    singlePass.includes("runWithAIProviderRetry") &&
-      singlePass.indexOf("runWithAIProviderRetry") < singlePass.indexOf("importBatchImportJson"),
-    "full-PDF provider retries must finish before durable import writes",
+    !singlePass.includes("runWithAIProviderRetry") &&
+      singlePass.includes("callAIPdfExtractionProvider") &&
+      singlePass.includes("onAttemptLedgerCheckpoint") &&
+      singlePass.indexOf("callAIPdfExtractionProvider") <
+        singlePass.indexOf("importBatchImportJson"),
+    "full-PDF extraction must use the shared attempt ledger and finish before durable import writes",
   );
   assert(
-    sequential.includes("runWithAIProviderRetry") &&
+    !sequential.includes("runWithAIProviderRetry") &&
+      sequential.includes("callAIPdfExtractionProvider") &&
+      sequential.includes("attemptScope: checkpointKey") &&
       sequential.includes("chunk,") &&
       pdfService.includes('status: "retrying"'),
-    "sequential extraction must retry only the active chunk",
+    "sequential extraction must bind the active chunk to the shared Provider attempt coordinator",
+  );
+  assert(
+    chat.includes("async function runAIPdfProviderTransport") &&
+      (chat.match(/runWithAIProviderRetry\(\{/g) ?? []).length === 1 &&
+      chat.includes("recordAIPdfProviderInference") &&
+      chat.includes("onAttemptLedgerCheckpoint"),
+    "AI PDF Provider transport must have one retry owner and checkpoint every counted inference",
   );
   assert(
     chunking.includes('"retrying"') && chunking.includes("safeErrorCode"),
@@ -275,12 +375,16 @@ function sourceIntegrationChecks({
 }
 
 await retry503ThenSuccess();
+await retryBudgetPreservesPriorProviderFailure();
+await independentBudgetFailureIsNotMasked();
 await retryAfterIsBounded();
 await repeatedProviderFailureStops();
 await permanentAndNetworkCases();
+extractionValidationClassification();
 redactionCase();
 sourceIntegrationChecks({
   blueprintGeneration: await read("src/lib/teacher-blueprint-generation.ts"),
+  chat: await read("src/lib/ai-providers/chat.ts"),
   chunking: await read("src/lib/ai-pdf-import/chunking.ts"),
   pdfService: await read("src/lib/ai-pdf-import/service.ts"),
   teacherActions: await read("src/app/teacher/banks/actions.ts"),

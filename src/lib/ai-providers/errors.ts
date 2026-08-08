@@ -228,6 +228,18 @@ function codeFromMessage(value: unknown): AIProviderErrorCode {
   return "unknown_provider_error";
 }
 
+function codeFromValidationKind(value: unknown): AIProviderErrorCode | null {
+  const kind = errorRecord(value).kind;
+  return [
+    "application_schema",
+    "non_json",
+    "response_missing",
+    "zero_importable",
+  ].includes(String(kind))
+    ? "provider_invalid_response"
+    : null;
+}
+
 function isRetryableCode(code: AIProviderErrorCode) {
   return [
     "provider_busy",
@@ -283,7 +295,10 @@ export function classifyAIProviderError({
   }
 
   const statusCode = statusCodeFromError(error);
-  const code = codeFromStatus(statusCode) ?? codeFromMessage(error);
+  const code =
+    codeFromValidationKind(error) ??
+    codeFromStatus(statusCode) ??
+    codeFromMessage(error);
 
   return new AIProviderError({
     causeForServerLog: error,

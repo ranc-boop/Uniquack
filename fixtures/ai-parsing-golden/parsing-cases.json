@@ -1,0 +1,100 @@
+[
+  {
+    "id": "plain-single-frq",
+    "categories": ["plain", "frq"],
+    "pageCount": 1,
+    "expected": {"questionIds": ["q1"], "pageRefs": {"q1": [1]}, "answers": {"q1": "6"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1"], "pageRefs": {"q1": [1]}, "answers": {"q1": "6"}, "rejected": false}
+  },
+  {
+    "id": "multiple-numbered-questions",
+    "categories": ["multiple_questions", "frq"],
+    "pageCount": 2,
+    "expected": {"questionIds": ["q1", "q2", "q3"], "pageRefs": {"q1": [1], "q2": [1], "q3": [2]}, "answers": {"q1": "4", "q2": "9", "q3": "12"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1", "q2", "q3"], "pageRefs": {"q1": [1], "q2": [1], "q3": [2]}, "answers": {"q1": "4", "q2": "9", "q3": "12"}, "rejected": false}
+  },
+  {
+    "id": "multipage-answer-key",
+    "categories": ["multipage_answer_key", "cross_page"],
+    "pageCount": 4,
+    "expected": {"questionIds": ["q1", "q2"], "pageRefs": {"q1": [1, 4], "q2": [2, 4]}, "answers": {"q1": "B", "q2": "D"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1", "q2"], "pageRefs": {"q1": [1, 4], "q2": [2, 4]}, "answers": {"q1": "B", "q2": "D"}, "rejected": false}
+  },
+  {
+    "id": "mcq-options-and-key",
+    "categories": ["mcq", "options"],
+    "pageCount": 1,
+    "expected": {"questionIds": ["q1"], "pageRefs": {"q1": [1]}, "answers": {"q1": "C"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1"], "pageRefs": {"q1": [1]}, "answers": {"q1": "C"}, "rejected": false}
+  },
+  {
+    "id": "latex-equations",
+    "categories": ["equations", "latex"],
+    "pageCount": 1,
+    "expected": {"questionIds": ["q1", "q2"], "pageRefs": {"q1": [1], "q2": [1]}, "answers": {"q1": "2x", "q2": "ln|x|+C"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1", "q2"], "pageRefs": {"q1": [1], "q2": [1]}, "answers": {"q1": "2x", "q2": "ln|x|+C"}, "rejected": false}
+  },
+  {
+    "id": "required-data-table",
+    "categories": ["table", "visual_required"],
+    "pageCount": 1,
+    "expected": {"questionIds": ["q1"], "pageRefs": {"q1": [1]}, "answers": {"q1": "increasing"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1"], "pageRefs": {"q1": [1]}, "answers": {"q1": "increasing"}, "rejected": false}
+  },
+  {
+    "id": "ocr-noisy-scan",
+    "categories": ["ocr", "noise"],
+    "pageCount": 2,
+    "expected": {"questionIds": ["q1"], "pageRefs": {"q1": [2]}, "answers": {"q1": "15"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1"], "pageRefs": {"q1": [2]}, "answers": {"q1": "15"}, "rejected": false}
+  },
+  {
+    "id": "two-column-layout",
+    "categories": ["columns", "reading_order"],
+    "pageCount": 1,
+    "expected": {"questionIds": ["left-1", "left-2", "right-3", "right-4"], "pageRefs": {"left-1": [1], "left-2": [1], "right-3": [1], "right-4": [1]}, "answers": {"left-1": "1", "left-2": "2", "right-3": "3", "right-4": "4"}, "mustReject": false},
+    "candidate": {"questionIds": ["left-1", "left-2", "right-3", "right-4"], "pageRefs": {"left-1": [1], "left-2": [1], "right-3": [1], "right-4": [1]}, "answers": {"left-1": "1", "left-2": "2", "right-3": "3", "right-4": "4"}, "rejected": false}
+  },
+  {
+    "id": "duplicate-scanned-page",
+    "categories": ["duplicate_pages", "deduplication"],
+    "pageCount": 3,
+    "expected": {"questionIds": ["q1", "q2"], "pageRefs": {"q1": [1], "q2": [3]}, "answers": {"q1": "7", "q2": "8"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1", "q2"], "pageRefs": {"q1": [1], "q2": [3]}, "answers": {"q1": "7", "q2": "8"}, "rejected": false}
+  },
+  {
+    "id": "cross-page-question-boundary",
+    "categories": ["cross_page", "boundary"],
+    "pageCount": 2,
+    "expected": {"questionIds": ["q1"], "pageRefs": {"q1": [1, 2]}, "answers": {"q1": "3/2"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1"], "pageRefs": {"q1": [1, 2]}, "answers": {"q1": "3/2"}, "rejected": false}
+  },
+  {
+    "id": "ambiguous-taxonomy-clear-question",
+    "categories": ["ambiguous_taxonomy", "abstention"],
+    "pageCount": 1,
+    "expected": {"questionIds": ["q1"], "pageRefs": {"q1": [1]}, "answers": {"q1": "x=5"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1"], "pageRefs": {"q1": [1]}, "answers": {"q1": "x=5"}, "rejected": false}
+  },
+  {
+    "id": "no-question-reading-page",
+    "categories": ["no_question", "must_reject"],
+    "pageCount": 1,
+    "expected": {"questionIds": [], "pageRefs": {}, "answers": {}, "mustReject": true},
+    "candidate": {"questionIds": [], "pageRefs": {}, "answers": {}, "rejected": true}
+  },
+  {
+    "id": "insufficient-answer-evidence",
+    "categories": ["insufficient_evidence", "must_reject"],
+    "pageCount": 1,
+    "expected": {"questionIds": [], "pageRefs": {}, "answers": {}, "mustReject": true},
+    "candidate": {"questionIds": [], "pageRefs": {}, "answers": {}, "rejected": true}
+  },
+  {
+    "id": "subquestions-shared-stem",
+    "categories": ["subquestions", "shared_stem"],
+    "pageCount": 2,
+    "expected": {"questionIds": ["q1a", "q1b"], "pageRefs": {"q1a": [1, 2], "q1b": [1, 2]}, "answers": {"q1a": "12", "q1b": "18"}, "mustReject": false},
+    "candidate": {"questionIds": ["q1a", "q1b"], "pageRefs": {"q1a": [1, 2], "q1b": [1, 2]}, "answers": {"q1a": "12", "q1b": "18"}, "rejected": false}
+  }
+]

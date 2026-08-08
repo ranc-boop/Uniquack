@@ -1,0 +1,93 @@
+[
+  {
+    "id": "single-required-graph",
+    "categories": ["single", "graph", "required"],
+    "pageCount": 1,
+    "expected": {"visuals": [{"key": "v1", "questionId": "q1", "page": 1, "bbox": [0.10, 0.20, 0.60, 0.45], "role": "graph", "required": true}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "v1", "questionId": "q1", "page": 1, "bbox": [0.10, 0.20, 0.60, 0.45], "role": "graph", "required": true}], "approvalBlocked": false}
+  },
+  {
+    "id": "multiple-question-figures",
+    "categories": ["multiple", "adjacent"],
+    "pageCount": 1,
+    "expected": {"visuals": [{"key": "left", "questionId": "q1", "page": 1, "bbox": [0.05, 0.15, 0.40, 0.35], "role": "diagram", "required": true}, {"key": "right", "questionId": "q2", "page": 1, "bbox": [0.55, 0.15, 0.40, 0.35], "role": "diagram", "required": true}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "left", "questionId": "q1", "page": 1, "bbox": [0.05, 0.15, 0.40, 0.35], "role": "diagram", "required": true}, {"key": "right", "questionId": "q2", "page": 1, "bbox": [0.55, 0.15, 0.40, 0.35], "role": "diagram", "required": true}], "approvalBlocked": false}
+  },
+  {
+    "id": "shared-figure-subquestions",
+    "categories": ["shared", "subquestions"],
+    "pageCount": 1,
+    "expected": {"visuals": [{"key": "shared-a", "questionId": "q1a", "page": 1, "bbox": [0.20, 0.10, 0.55, 0.40], "role": "question_figure", "required": true, "sharedGroupKey": "stem-1"}, {"key": "shared-b", "questionId": "q1b", "page": 1, "bbox": [0.20, 0.10, 0.55, 0.40], "role": "question_figure", "required": true, "sharedGroupKey": "stem-1"}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "shared-a", "questionId": "q1a", "page": 1, "bbox": [0.20, 0.10, 0.55, 0.40], "role": "question_figure", "required": true, "sharedGroupKey": "stem-1"}, {"key": "shared-b", "questionId": "q1b", "page": 1, "bbox": [0.20, 0.10, 0.55, 0.40], "role": "question_figure", "required": true, "sharedGroupKey": "stem-1"}], "approvalBlocked": false}
+  },
+  {
+    "id": "geometry-diagram",
+    "categories": ["geometry", "diagram"],
+    "pageCount": 1,
+    "expected": {"visuals": [{"key": "triangle", "questionId": "q1", "page": 1, "bbox": [0.22, 0.18, 0.42, 0.42], "role": "diagram", "required": true}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "triangle", "questionId": "q1", "page": 1, "bbox": [0.22, 0.18, 0.42, 0.42], "role": "diagram", "required": true}], "approvalBlocked": false}
+  },
+  {
+    "id": "mechanics-diagram",
+    "categories": ["mechanics", "diagram"],
+    "pageCount": 2,
+    "expected": {"visuals": [{"key": "forces", "questionId": "q1", "page": 2, "bbox": [0.12, 0.25, 0.62, 0.38], "role": "diagram", "required": true}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "forces", "questionId": "q1", "page": 2, "bbox": [0.12, 0.25, 0.62, 0.38], "role": "diagram", "required": true}], "approvalBlocked": false}
+  },
+  {
+    "id": "required-data-table",
+    "categories": ["table", "required"],
+    "pageCount": 1,
+    "expected": {"visuals": [{"key": "table", "questionId": "q1", "page": 1, "bbox": [0.10, 0.30, 0.75, 0.28], "role": "table", "required": true}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "table", "questionId": "q1", "page": 1, "bbox": [0.10, 0.30, 0.75, 0.28], "role": "table", "required": true}], "approvalBlocked": false}
+  },
+  {
+    "id": "before-after-figures",
+    "categories": ["before_after", "multiple"],
+    "pageCount": 1,
+    "expected": {"visuals": [{"key": "before", "questionId": "q1", "page": 1, "bbox": [0.08, 0.20, 0.38, 0.34], "role": "diagram", "required": true}, {"key": "after", "questionId": "q1", "page": 1, "bbox": [0.54, 0.20, 0.38, 0.34], "role": "diagram", "required": true}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "before", "questionId": "q1", "page": 1, "bbox": [0.08, 0.20, 0.38, 0.34], "role": "diagram", "required": true}, {"key": "after", "questionId": "q1", "page": 1, "bbox": [0.54, 0.20, 0.38, 0.34], "role": "diagram", "required": true}], "approvalBlocked": false}
+  },
+  {
+    "id": "cross-page-answer-figure",
+    "categories": ["cross_page", "answer_figure"],
+    "pageCount": 3,
+    "expected": {"visuals": [{"key": "question", "questionId": "q1", "page": 1, "bbox": [0.10, 0.15, 0.65, 0.35], "role": "question_figure", "required": true}, {"key": "answer", "questionId": "q1", "page": 3, "bbox": [0.15, 0.20, 0.60, 0.30], "role": "answer_figure", "required": false}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "question", "questionId": "q1", "page": 1, "bbox": [0.10, 0.15, 0.65, 0.35], "role": "question_figure", "required": true}, {"key": "answer", "questionId": "q1", "page": 3, "bbox": [0.15, 0.20, 0.60, 0.30], "role": "answer_figure", "required": false}], "approvalBlocked": false}
+  },
+  {
+    "id": "duplicate-proposal-deduplicated",
+    "categories": ["duplicate", "idempotency"],
+    "pageCount": 1,
+    "expected": {"visuals": [{"key": "v1", "questionId": "q1", "page": 1, "bbox": [0.18, 0.22, 0.50, 0.32], "role": "graph", "required": true}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "v1", "questionId": "q1", "page": 1, "bbox": [0.18, 0.22, 0.50, 0.32], "role": "graph", "required": true}], "approvalBlocked": false}
+  },
+  {
+    "id": "decorative-image-ignored",
+    "categories": ["decorative", "must_ignore"],
+    "pageCount": 1,
+    "expected": {"visuals": [], "approvalBlocked": false},
+    "candidate": {"visuals": [], "approvalBlocked": false}
+  },
+  {
+    "id": "missing-required-figure",
+    "categories": ["missing", "must_block"],
+    "pageCount": 1,
+    "expected": {"visuals": [{"key": "required", "questionId": "q1", "page": 1, "bbox": [0.10, 0.10, 0.55, 0.45], "role": "diagram", "required": true}], "approvalBlocked": true},
+    "candidate": {"visuals": [], "approvalBlocked": true}
+  },
+  {
+    "id": "low-resolution-required-figure",
+    "categories": ["low_resolution", "must_block"],
+    "pageCount": 1,
+    "expected": {"visuals": [{"key": "required", "questionId": "q1", "page": 1, "bbox": [0.10, 0.10, 0.20, 0.15], "role": "diagram", "required": true}], "approvalBlocked": true},
+    "candidate": {"visuals": [], "approvalBlocked": true}
+  },
+  {
+    "id": "answer-key-thumbnail-optional",
+    "categories": ["answer_key", "optional"],
+    "pageCount": 2,
+    "expected": {"visuals": [{"key": "answer", "questionId": "q1", "page": 2, "bbox": [0.20, 0.25, 0.45, 0.30], "role": "answer_figure", "required": false}], "approvalBlocked": false},
+    "candidate": {"visuals": [{"key": "answer", "questionId": "q1", "page": 2, "bbox": [0.20, 0.25, 0.45, 0.30], "role": "answer_figure", "required": false}], "approvalBlocked": false}
+  }
+]

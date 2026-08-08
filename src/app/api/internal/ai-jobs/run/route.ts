@@ -3,7 +3,9 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import {
+  PDF50_PROVIDER_TEST_INTERRUPTION_HEADER,
   PDF50_PROVIDER_TEST_JOB_HEADER,
+  parseTrustedAIProviderTestInterruption,
   parseTrustedAIProviderTestJobId,
   readTrustedAIProviderTestLimits,
 } from "@/lib/ai-jobs/provider-test-control";
@@ -18,6 +20,8 @@ const safeWorkerFailureReasons = new Set([
   "trusted_provider_test_claim_fence_missing",
   "trusted_provider_test_claim_read_failed",
   "trusted_provider_test_claim_update_failed",
+  "trusted_provider_test_interruption_rejected",
+  "trusted_provider_test_interruption_without_test_mode",
   "trusted_provider_test_job_id_rejected",
   "trusted_provider_test_target_required",
 ]);
@@ -45,14 +49,24 @@ export async function POST(request: Request) {
     const requestedTestJobId = request.headers.get(
       PDF50_PROVIDER_TEST_JOB_HEADER,
     );
+    const requestedTestInterruption = request.headers.get(
+      PDF50_PROVIDER_TEST_INTERRUPTION_HEADER,
+    );
     if (!providerTestLimits && requestedTestJobId) {
       throw new Error("trusted_provider_test_job_id_without_test_mode");
+    }
+    if (!providerTestLimits && requestedTestInterruption) {
+      throw new Error("trusted_provider_test_interruption_without_test_mode");
     }
     const targetJobId = providerTestLimits
       ? parseTrustedAIProviderTestJobId(requestedTestJobId)
       : null;
+    const providerTestInterruption = providerTestLimits
+      ? parseTrustedAIProviderTestInterruption(requestedTestInterruption)
+      : null;
     const result = await runDurableAIProviderJobs({
       limit: providerTestLimits?.maxClaimedJobs ?? 2,
+      providerTestInterruption,
       providerTestLimits,
       targetJobId,
     });

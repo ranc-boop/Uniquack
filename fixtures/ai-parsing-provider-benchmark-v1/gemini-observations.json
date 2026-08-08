@@ -1,0 +1,1923 @@
+{
+  "benchmarkCorpusVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1",
+  "benchmarkManifestSha256": "6d4fc29a959209f4e9576b76e536fd382131cff8ae11fc8a639f5f8653189712",
+  "candidateSubsetSha256": [
+    "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262"
+  ],
+  "cleanup": {
+    "databaseFixturesCreated": 0,
+    "databaseRowsWritten": 0,
+    "localTemporaryFilesRemaining": 0,
+    "providerCleanupFailures": 0,
+    "providerFilesCleanupRequested": 6,
+    "storageObjectsWritten": 0
+  },
+  "dashboardObservedCost": {
+    "source": "UNKNOWN_USAGE",
+    "valueMicros": null
+  },
+  "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+  "evaluationContractSha256": "51ab57b9c372078b5a86af501788949f72d6acaedb076e104873a3199f01036c",
+  "evaluatorVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1_EVALUATOR_V2",
+  "invalidRuns": [
+    {
+      "runOrdinal": 1,
+      "sourceHead": "46519c810076b1102d6d198a794ff9ef38d60a17",
+      "classification": "INVALID_USAGE_ACCOUNTING_DEFECT",
+      "failureCategory": "credible_provider_spend_unresolved",
+      "provider": "gemini_native",
+      "model": "gemini-2.5-flash-lite",
+      "providerReportedSpendMicros": null,
+      "providerReportedSpendSource": "UNKNOWN_USAGE",
+      "dashboardObservedSpendMicros": null,
+      "dashboardObservedSpendSource": "UNKNOWN_USAGE",
+      "conservativeExposureMicros": 334248,
+      "conservativeExposureSource": "TEMPORARY_THEORETICAL_EXPOSURE",
+      "resultPersisted": false,
+      "reason": "All required input, output, total and countTokens coverage checks passed in memory, but an omitted optional cached-token count was incorrectly treated as unresolvable cost. No benchmark result was persisted."
+    }
+  ],
+  "jobs": [
+    {
+      "attemptHistogram": {
+        "FIRST_ATTEMPT": 1,
+        "STRUCTURAL_SCHEMA_REPAIR": 0,
+        "APPLICATION_VALIDATION_REPAIR": 0,
+        "BLANK_REQUIRED_FIELD_REPAIR": 0,
+        "ANSWER_CONSISTENCY_REPAIR": 0,
+        "SOURCE_LINEAGE_REPAIR": 0,
+        "VISUAL_ASSOCIATION_REPAIR": 0,
+        "TAXONOMY_REPAIR": 0,
+        "SOURCE_BACKED_SEMANTIC_RECOVERY": 0,
+        "PROVIDER_BUSY_RETRY": 0,
+        "RATE_LIMIT_RETRY": 0,
+        "NETWORK_RETRY": 0,
+        "TIMEOUT_RETRY": 0,
+        "CHECKPOINT_REPLAY_ZERO_INFERENCE": 0
+      },
+      "attempts": 1,
+      "completed": true,
+      "contextComposition": {
+        "componentBytes": {
+          "extractionInstructions": 7780,
+          "fixedTransportOverhead": 4240,
+          "previousResponse": 0,
+          "semanticRecoveryInstructions": 0,
+          "sourceInput": 1737,
+          "structuralRepairInstructions": 0,
+          "structuredSchema": 4486,
+          "systemInstructions": 0,
+          "taxonomyCandidates": 35865
+        },
+        "componentOverflowBytes": 0,
+        "nonSourceOverheadBytes": 52371,
+        "providerReportedInputTokens": 12173,
+        "providerReportedOutputTokens": 677,
+        "repairShare": 0,
+        "repeatedContextRatio": 0,
+        "repeatedPreviousResponseBytes": 0,
+        "repeatedSourceBytes": 0,
+        "schemaShare": 0.082908,
+        "sourceBytes": 1737,
+        "sourceShare": 0.032102,
+        "taxonomyShare": 0.662841,
+        "totalSerializedRequestBytes": 54108
+      },
+      "firstAttemptSuccess": true,
+      "jobOrdinal": 1,
+      "metrics": {
+        "answer": {
+          "answerCorrectness": 1,
+          "answerProvenance": 0,
+          "answerSolutionConsistency": 0,
+          "correct": 2,
+          "expected": 2,
+          "provenanceCorrect": 0,
+          "solutionConsistencyCorrect": 0,
+          "modelDerivedAnswerCorrect": 0,
+          "modelDerivedAnswerExpected": 0,
+          "sourceAnswerKeyAccuracy": 1,
+          "sourceAnswerKeyCorrect": 2,
+          "sourceAnswerKeyExpected": 2,
+          "unsupportedAnswerRate": 0,
+          "unsupportedAnswers": 0
+        },
+        "hardBoundaryEscapes": {
+          "autoApprovedOrPublished": 0,
+          "fabricatedPageReferencesAccepted": 0,
+          "invalidTaxonomyIdsAccepted": 0,
+          "missingRequiredVisualUnblocked": 0,
+          "wrongQuestionVisualAttachmentsAccepted": 0
+        },
+        "parsing": {
+          "applicationValidity": 1,
+          "duplicateCount": 0,
+          "duplicateRate": 0,
+          "insufficientEvidenceCorrect": 0,
+          "insufficientEvidenceExpected": 0,
+          "pageReferences": {
+            "candidate": 2,
+            "expected": 4,
+            "f1": 0.666667,
+            "precision": 1,
+            "recall": 0.5,
+            "truePositive": 2
+          },
+          "questionBoundary": {
+            "candidate": 2,
+            "expected": 2,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 2
+          },
+          "questionsExpected": 2,
+          "questionsExtracted": 2,
+          "schemaValidity": 1,
+          "sourceGroundedQuestions": 2,
+          "sourceGroundingAccuracy": 1,
+          "fabricatedPageReferenceRate": 0,
+          "fabricatedPageRefs": 0,
+          "validReviewDraftYield": 1,
+          "validReviewDrafts": 2,
+          "needsMoreEvidenceDrafts": 0,
+          "reviewDrafts": 2
+        },
+        "providerOutcome": "success",
+        "sourceId": "answer-key",
+        "taxonomy": {
+          "abstentionCorrect": 0,
+          "abstentionExpected": 0,
+          "broadParentOveruse": 0,
+          "candidateExpected": 0,
+          "candidateRetrieved": 0,
+          "candidateRetrievalRecall": 1,
+          "exactId": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "facetMetrics": {
+            "curriculum": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "concept": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "method": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "task": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "form": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            }
+          },
+          "invalidIdsRejected": 0,
+          "unknownIdCount": 0,
+          "wrongFacet": 0
+        },
+        "visual": {
+          "decorativeSuppressionCorrect": 0,
+          "decorativeSuppressionExpected": 0,
+          "decorativeSuppressionRate": 1,
+          "fabricatedVisualProposals": 0,
+          "invalidVisualProposals": 0,
+          "missingRequiredVisualCorrect": 0,
+          "missingRequiredVisualExpected": 0,
+          "missingRequiredVisualRate": 1,
+          "requiredAssetAssociationRate": 1,
+          "requiredAssetAssociations": 0,
+          "requiredAssetExpected": 0,
+          "sharedVisualGroupsCorrect": 0,
+          "sharedVisualGroupsExpected": 0,
+          "visualDependentDetection": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "visualDescriptionCorrect": 0,
+          "visualDescriptionExpected": 0,
+          "visualDescriptionRate": 1,
+          "wrongQuestionAttachmentRate": 1,
+          "wrongQuestionAttachments": 0,
+          "placeholderCount": 0
+        }
+      },
+      "providerCounters": {
+        "maxInferenceAttempts": 2,
+        "maxNetworkRequests": 20,
+        "maxOutputTokens": 4096,
+        "providerCleanupFailures": 0,
+        "providerCleanupRequests": 1,
+        "providerInputBytesMax": 53964,
+        "providerInferenceAttempts": 1,
+        "providerInferenceRequests": 1,
+        "providerNetworkRequests": 5,
+        "providerPollRequests": 0,
+        "providerTokenCountRequests": 1,
+        "providerUploadRequests": 2
+      },
+      "repairSucceeded": false,
+      "sourceId": "answer-key",
+      "validReviewDrafts": 2
+    },
+    {
+      "attemptHistogram": {
+        "FIRST_ATTEMPT": 1,
+        "STRUCTURAL_SCHEMA_REPAIR": 0,
+        "APPLICATION_VALIDATION_REPAIR": 0,
+        "BLANK_REQUIRED_FIELD_REPAIR": 0,
+        "ANSWER_CONSISTENCY_REPAIR": 0,
+        "SOURCE_LINEAGE_REPAIR": 0,
+        "VISUAL_ASSOCIATION_REPAIR": 0,
+        "TAXONOMY_REPAIR": 0,
+        "SOURCE_BACKED_SEMANTIC_RECOVERY": 0,
+        "PROVIDER_BUSY_RETRY": 0,
+        "RATE_LIMIT_RETRY": 0,
+        "NETWORK_RETRY": 0,
+        "TIMEOUT_RETRY": 0,
+        "CHECKPOINT_REPLAY_ZERO_INFERENCE": 0
+      },
+      "attempts": 1,
+      "completed": true,
+      "contextComposition": {
+        "componentBytes": {
+          "extractionInstructions": 7780,
+          "fixedTransportOverhead": 4240,
+          "previousResponse": 0,
+          "semanticRecoveryInstructions": 0,
+          "sourceInput": 763,
+          "structuralRepairInstructions": 0,
+          "structuredSchema": 4486,
+          "systemInstructions": 0,
+          "taxonomyCandidates": 35865
+        },
+        "componentOverflowBytes": 0,
+        "nonSourceOverheadBytes": 52371,
+        "providerReportedInputTokens": 11399,
+        "providerReportedOutputTokens": 328,
+        "repairShare": 0,
+        "repeatedContextRatio": 0,
+        "repeatedPreviousResponseBytes": 0,
+        "repeatedSourceBytes": 0,
+        "schemaShare": 0.084428,
+        "sourceBytes": 763,
+        "sourceShare": 0.01436,
+        "taxonomyShare": 0.674992,
+        "totalSerializedRequestBytes": 53134
+      },
+      "firstAttemptSuccess": true,
+      "jobOrdinal": 2,
+      "metrics": {
+        "answer": {
+          "answerCorrectness": 1,
+          "answerProvenance": 1,
+          "answerSolutionConsistency": 1,
+          "correct": 2,
+          "expected": 2,
+          "provenanceCorrect": 2,
+          "solutionConsistencyCorrect": 2,
+          "modelDerivedAnswerCorrect": 0,
+          "modelDerivedAnswerExpected": 0,
+          "sourceAnswerKeyAccuracy": 1,
+          "sourceAnswerKeyCorrect": 0,
+          "sourceAnswerKeyExpected": 0,
+          "unsupportedAnswerRate": 0,
+          "unsupportedAnswers": 0
+        },
+        "hardBoundaryEscapes": {
+          "autoApprovedOrPublished": 0,
+          "fabricatedPageReferencesAccepted": 0,
+          "invalidTaxonomyIdsAccepted": 0,
+          "missingRequiredVisualUnblocked": 0,
+          "wrongQuestionVisualAttachmentsAccepted": 0
+        },
+        "parsing": {
+          "applicationValidity": 1,
+          "duplicateCount": 0,
+          "duplicateRate": 0,
+          "insufficientEvidenceCorrect": 0,
+          "insufficientEvidenceExpected": 0,
+          "pageReferences": {
+            "candidate": 2,
+            "expected": 2,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 2
+          },
+          "questionBoundary": {
+            "candidate": 2,
+            "expected": 2,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 2
+          },
+          "questionsExpected": 2,
+          "questionsExtracted": 2,
+          "schemaValidity": 1,
+          "sourceGroundedQuestions": 2,
+          "sourceGroundingAccuracy": 1,
+          "fabricatedPageReferenceRate": 0,
+          "fabricatedPageRefs": 0,
+          "validReviewDraftYield": 1,
+          "validReviewDrafts": 2,
+          "needsMoreEvidenceDrafts": 0,
+          "reviewDrafts": 2
+        },
+        "providerOutcome": "success",
+        "sourceId": "equation",
+        "taxonomy": {
+          "abstentionCorrect": 0,
+          "abstentionExpected": 0,
+          "broadParentOveruse": 0,
+          "candidateExpected": 0,
+          "candidateRetrieved": 0,
+          "candidateRetrievalRecall": 1,
+          "exactId": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "facetMetrics": {
+            "curriculum": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "concept": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "method": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "task": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "form": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            }
+          },
+          "invalidIdsRejected": 0,
+          "unknownIdCount": 0,
+          "wrongFacet": 0
+        },
+        "visual": {
+          "decorativeSuppressionCorrect": 0,
+          "decorativeSuppressionExpected": 0,
+          "decorativeSuppressionRate": 1,
+          "fabricatedVisualProposals": 0,
+          "invalidVisualProposals": 0,
+          "missingRequiredVisualCorrect": 0,
+          "missingRequiredVisualExpected": 0,
+          "missingRequiredVisualRate": 1,
+          "requiredAssetAssociationRate": 1,
+          "requiredAssetAssociations": 0,
+          "requiredAssetExpected": 0,
+          "sharedVisualGroupsCorrect": 0,
+          "sharedVisualGroupsExpected": 0,
+          "visualDependentDetection": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "visualDescriptionCorrect": 0,
+          "visualDescriptionExpected": 0,
+          "visualDescriptionRate": 1,
+          "wrongQuestionAttachmentRate": 1,
+          "wrongQuestionAttachments": 0,
+          "placeholderCount": 0
+        }
+      },
+      "providerCounters": {
+        "maxInferenceAttempts": 2,
+        "maxNetworkRequests": 20,
+        "maxOutputTokens": 4096,
+        "providerCleanupFailures": 0,
+        "providerCleanupRequests": 1,
+        "providerInputBytesMax": 52990,
+        "providerInferenceAttempts": 1,
+        "providerInferenceRequests": 1,
+        "providerNetworkRequests": 5,
+        "providerPollRequests": 0,
+        "providerTokenCountRequests": 1,
+        "providerUploadRequests": 2
+      },
+      "repairSucceeded": false,
+      "sourceId": "equation",
+      "validReviewDrafts": 2
+    },
+    {
+      "attemptHistogram": {
+        "FIRST_ATTEMPT": 1,
+        "STRUCTURAL_SCHEMA_REPAIR": 0,
+        "APPLICATION_VALIDATION_REPAIR": 0,
+        "BLANK_REQUIRED_FIELD_REPAIR": 0,
+        "ANSWER_CONSISTENCY_REPAIR": 0,
+        "SOURCE_LINEAGE_REPAIR": 0,
+        "VISUAL_ASSOCIATION_REPAIR": 0,
+        "TAXONOMY_REPAIR": 0,
+        "SOURCE_BACKED_SEMANTIC_RECOVERY": 0,
+        "PROVIDER_BUSY_RETRY": 0,
+        "RATE_LIMIT_RETRY": 0,
+        "NETWORK_RETRY": 0,
+        "TIMEOUT_RETRY": 0,
+        "CHECKPOINT_REPLAY_ZERO_INFERENCE": 0
+      },
+      "attempts": 1,
+      "completed": true,
+      "contextComposition": {
+        "componentBytes": {
+          "extractionInstructions": 7780,
+          "fixedTransportOverhead": 4240,
+          "previousResponse": 0,
+          "semanticRecoveryInstructions": 0,
+          "sourceInput": 830,
+          "structuralRepairInstructions": 0,
+          "structuredSchema": 4486,
+          "systemInstructions": 0,
+          "taxonomyCandidates": 35865
+        },
+        "componentOverflowBytes": 0,
+        "nonSourceOverheadBytes": 52371,
+        "providerReportedInputTokens": 11399,
+        "providerReportedOutputTokens": 198,
+        "repairShare": 0,
+        "repeatedContextRatio": 0,
+        "repeatedPreviousResponseBytes": 0,
+        "repeatedSourceBytes": 0,
+        "schemaShare": 0.084322,
+        "sourceBytes": 830,
+        "sourceShare": 0.015601,
+        "taxonomyShare": 0.674141,
+        "totalSerializedRequestBytes": 53201
+      },
+      "firstAttemptSuccess": true,
+      "jobOrdinal": 3,
+      "metrics": {
+        "answer": {
+          "answerCorrectness": 1,
+          "answerProvenance": 1,
+          "answerSolutionConsistency": 1,
+          "correct": 0,
+          "expected": 0,
+          "provenanceCorrect": 0,
+          "solutionConsistencyCorrect": 0,
+          "modelDerivedAnswerCorrect": 0,
+          "modelDerivedAnswerExpected": 0,
+          "sourceAnswerKeyAccuracy": 1,
+          "sourceAnswerKeyCorrect": 0,
+          "sourceAnswerKeyExpected": 0,
+          "unsupportedAnswerRate": 0,
+          "unsupportedAnswers": 0
+        },
+        "hardBoundaryEscapes": {
+          "autoApprovedOrPublished": 0,
+          "fabricatedPageReferencesAccepted": 0,
+          "invalidTaxonomyIdsAccepted": 0,
+          "missingRequiredVisualUnblocked": 0,
+          "wrongQuestionVisualAttachmentsAccepted": 0
+        },
+        "parsing": {
+          "applicationValidity": 0,
+          "duplicateCount": 0,
+          "duplicateRate": 0,
+          "insufficientEvidenceCorrect": 0,
+          "insufficientEvidenceExpected": 1,
+          "pageReferences": {
+            "candidate": 1,
+            "expected": 0,
+            "f1": 0,
+            "precision": 0,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "questionBoundary": {
+            "candidate": 1,
+            "expected": 0,
+            "f1": 0,
+            "precision": 0,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "questionsExpected": 0,
+          "questionsExtracted": 1,
+          "schemaValidity": 0,
+          "sourceGroundedQuestions": 0,
+          "sourceGroundingAccuracy": 0,
+          "fabricatedPageReferenceRate": 0,
+          "fabricatedPageRefs": 0,
+          "validReviewDraftYield": 1,
+          "validReviewDrafts": 0,
+          "needsMoreEvidenceDrafts": 0,
+          "reviewDrafts": 0
+        },
+        "providerOutcome": "success",
+        "sourceId": "insufficient-evidence",
+        "taxonomy": {
+          "abstentionCorrect": 5,
+          "abstentionExpected": 5,
+          "broadParentOveruse": 0,
+          "candidateExpected": 0,
+          "candidateRetrieved": 0,
+          "candidateRetrievalRecall": 1,
+          "exactId": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "facetMetrics": {
+            "curriculum": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "concept": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "method": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "task": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "form": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            }
+          },
+          "invalidIdsRejected": 0,
+          "unknownIdCount": 0,
+          "wrongFacet": 0
+        },
+        "visual": {
+          "decorativeSuppressionCorrect": 0,
+          "decorativeSuppressionExpected": 0,
+          "decorativeSuppressionRate": 1,
+          "fabricatedVisualProposals": 0,
+          "invalidVisualProposals": 0,
+          "missingRequiredVisualCorrect": 0,
+          "missingRequiredVisualExpected": 0,
+          "missingRequiredVisualRate": 1,
+          "requiredAssetAssociationRate": 1,
+          "requiredAssetAssociations": 0,
+          "requiredAssetExpected": 0,
+          "sharedVisualGroupsCorrect": 0,
+          "sharedVisualGroupsExpected": 0,
+          "visualDependentDetection": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "visualDescriptionCorrect": 0,
+          "visualDescriptionExpected": 0,
+          "visualDescriptionRate": 1,
+          "wrongQuestionAttachmentRate": 1,
+          "wrongQuestionAttachments": 0,
+          "placeholderCount": 0
+        }
+      },
+      "providerCounters": {
+        "maxInferenceAttempts": 2,
+        "maxNetworkRequests": 20,
+        "maxOutputTokens": 4096,
+        "providerCleanupFailures": 0,
+        "providerCleanupRequests": 1,
+        "providerInputBytesMax": 53057,
+        "providerInferenceAttempts": 1,
+        "providerInferenceRequests": 1,
+        "providerNetworkRequests": 5,
+        "providerPollRequests": 0,
+        "providerTokenCountRequests": 1,
+        "providerUploadRequests": 2
+      },
+      "repairSucceeded": false,
+      "sourceId": "insufficient-evidence",
+      "validReviewDrafts": 0
+    },
+    {
+      "attemptHistogram": {
+        "FIRST_ATTEMPT": 1,
+        "STRUCTURAL_SCHEMA_REPAIR": 0,
+        "APPLICATION_VALIDATION_REPAIR": 0,
+        "BLANK_REQUIRED_FIELD_REPAIR": 0,
+        "ANSWER_CONSISTENCY_REPAIR": 0,
+        "SOURCE_LINEAGE_REPAIR": 0,
+        "VISUAL_ASSOCIATION_REPAIR": 0,
+        "TAXONOMY_REPAIR": 0,
+        "SOURCE_BACKED_SEMANTIC_RECOVERY": 0,
+        "PROVIDER_BUSY_RETRY": 0,
+        "RATE_LIMIT_RETRY": 0,
+        "NETWORK_RETRY": 0,
+        "TIMEOUT_RETRY": 0,
+        "CHECKPOINT_REPLAY_ZERO_INFERENCE": 0
+      },
+      "attempts": 1,
+      "completed": true,
+      "contextComposition": {
+        "componentBytes": {
+          "extractionInstructions": 7780,
+          "fixedTransportOverhead": 4240,
+          "previousResponse": 0,
+          "semanticRecoveryInstructions": 0,
+          "sourceInput": 760,
+          "structuralRepairInstructions": 0,
+          "structuredSchema": 4486,
+          "systemInstructions": 0,
+          "taxonomyCandidates": 35865
+        },
+        "componentOverflowBytes": 0,
+        "nonSourceOverheadBytes": 52371,
+        "providerReportedInputTokens": 11399,
+        "providerReportedOutputTokens": 307,
+        "repairShare": 0,
+        "repeatedContextRatio": 0,
+        "repeatedPreviousResponseBytes": 0,
+        "repeatedSourceBytes": 0,
+        "schemaShare": 0.084433,
+        "sourceBytes": 760,
+        "sourceShare": 0.014304,
+        "taxonomyShare": 0.67503,
+        "totalSerializedRequestBytes": 53131
+      },
+      "firstAttemptSuccess": true,
+      "jobOrdinal": 4,
+      "metrics": {
+        "answer": {
+          "answerCorrectness": 1,
+          "answerProvenance": 1,
+          "answerSolutionConsistency": 1,
+          "correct": 1,
+          "expected": 1,
+          "provenanceCorrect": 1,
+          "solutionConsistencyCorrect": 1,
+          "modelDerivedAnswerCorrect": 0,
+          "modelDerivedAnswerExpected": 0,
+          "sourceAnswerKeyAccuracy": 1,
+          "sourceAnswerKeyCorrect": 0,
+          "sourceAnswerKeyExpected": 0,
+          "unsupportedAnswerRate": 0,
+          "unsupportedAnswers": 0
+        },
+        "hardBoundaryEscapes": {
+          "autoApprovedOrPublished": 0,
+          "fabricatedPageReferencesAccepted": 0,
+          "invalidTaxonomyIdsAccepted": 0,
+          "missingRequiredVisualUnblocked": 0,
+          "wrongQuestionVisualAttachmentsAccepted": 0
+        },
+        "parsing": {
+          "applicationValidity": 1,
+          "duplicateCount": 0,
+          "duplicateRate": 0,
+          "insufficientEvidenceCorrect": 0,
+          "insufficientEvidenceExpected": 0,
+          "pageReferences": {
+            "candidate": 1,
+            "expected": 1,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 1
+          },
+          "questionBoundary": {
+            "candidate": 1,
+            "expected": 1,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 1
+          },
+          "questionsExpected": 1,
+          "questionsExtracted": 1,
+          "schemaValidity": 1,
+          "sourceGroundedQuestions": 1,
+          "sourceGroundingAccuracy": 1,
+          "fabricatedPageReferenceRate": 0,
+          "fabricatedPageRefs": 0,
+          "validReviewDraftYield": 1,
+          "validReviewDrafts": 1,
+          "needsMoreEvidenceDrafts": 0,
+          "reviewDrafts": 1
+        },
+        "providerOutcome": "success",
+        "sourceId": "taxonomy-ambiguous",
+        "taxonomy": {
+          "abstentionCorrect": 2,
+          "abstentionExpected": 2,
+          "broadParentOveruse": 0,
+          "candidateExpected": 3,
+          "candidateRetrieved": 3,
+          "candidateRetrievalRecall": 1,
+          "exactId": {
+            "candidate": 0,
+            "expected": 3,
+            "f1": 0,
+            "precision": 1,
+            "recall": 0,
+            "truePositive": 0
+          },
+          "facetMetrics": {
+            "curriculum": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "concept": {
+              "candidate": 0,
+              "expected": 1,
+              "f1": 0,
+              "precision": 1,
+              "recall": 0,
+              "truePositive": 0
+            },
+            "method": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "task": {
+              "candidate": 0,
+              "expected": 1,
+              "f1": 0,
+              "precision": 1,
+              "recall": 0,
+              "truePositive": 0
+            },
+            "form": {
+              "candidate": 0,
+              "expected": 1,
+              "f1": 0,
+              "precision": 1,
+              "recall": 0,
+              "truePositive": 0
+            }
+          },
+          "invalidIdsRejected": 0,
+          "unknownIdCount": 0,
+          "wrongFacet": 0
+        },
+        "visual": {
+          "decorativeSuppressionCorrect": 0,
+          "decorativeSuppressionExpected": 0,
+          "decorativeSuppressionRate": 1,
+          "fabricatedVisualProposals": 0,
+          "invalidVisualProposals": 0,
+          "missingRequiredVisualCorrect": 0,
+          "missingRequiredVisualExpected": 0,
+          "missingRequiredVisualRate": 1,
+          "requiredAssetAssociationRate": 1,
+          "requiredAssetAssociations": 0,
+          "requiredAssetExpected": 0,
+          "sharedVisualGroupsCorrect": 0,
+          "sharedVisualGroupsExpected": 0,
+          "visualDependentDetection": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "visualDescriptionCorrect": 0,
+          "visualDescriptionExpected": 0,
+          "visualDescriptionRate": 1,
+          "wrongQuestionAttachmentRate": 1,
+          "wrongQuestionAttachments": 0,
+          "placeholderCount": 0
+        }
+      },
+      "providerCounters": {
+        "maxInferenceAttempts": 2,
+        "maxNetworkRequests": 20,
+        "maxOutputTokens": 4096,
+        "providerCleanupFailures": 0,
+        "providerCleanupRequests": 1,
+        "providerInputBytesMax": 52987,
+        "providerInferenceAttempts": 1,
+        "providerInferenceRequests": 1,
+        "providerNetworkRequests": 5,
+        "providerPollRequests": 0,
+        "providerTokenCountRequests": 1,
+        "providerUploadRequests": 2
+      },
+      "repairSucceeded": false,
+      "sourceId": "taxonomy-ambiguous",
+      "validReviewDrafts": 1
+    },
+    {
+      "attemptHistogram": {
+        "FIRST_ATTEMPT": 1,
+        "STRUCTURAL_SCHEMA_REPAIR": 0,
+        "APPLICATION_VALIDATION_REPAIR": 0,
+        "BLANK_REQUIRED_FIELD_REPAIR": 0,
+        "ANSWER_CONSISTENCY_REPAIR": 0,
+        "SOURCE_LINEAGE_REPAIR": 0,
+        "VISUAL_ASSOCIATION_REPAIR": 0,
+        "TAXONOMY_REPAIR": 0,
+        "SOURCE_BACKED_SEMANTIC_RECOVERY": 0,
+        "PROVIDER_BUSY_RETRY": 0,
+        "RATE_LIMIT_RETRY": 0,
+        "NETWORK_RETRY": 0,
+        "TIMEOUT_RETRY": 0,
+        "CHECKPOINT_REPLAY_ZERO_INFERENCE": 0
+      },
+      "attempts": 1,
+      "completed": true,
+      "contextComposition": {
+        "componentBytes": {
+          "extractionInstructions": 7780,
+          "fixedTransportOverhead": 4240,
+          "previousResponse": 0,
+          "semanticRecoveryInstructions": 0,
+          "sourceInput": 765,
+          "structuralRepairInstructions": 0,
+          "structuredSchema": 4486,
+          "systemInstructions": 0,
+          "taxonomyCandidates": 35865
+        },
+        "componentOverflowBytes": 0,
+        "nonSourceOverheadBytes": 52371,
+        "providerReportedInputTokens": 11399,
+        "providerReportedOutputTokens": 207,
+        "repairShare": 0,
+        "repeatedContextRatio": 0,
+        "repeatedPreviousResponseBytes": 0,
+        "repeatedSourceBytes": 0,
+        "schemaShare": 0.084425,
+        "sourceBytes": 765,
+        "sourceShare": 0.014397,
+        "taxonomyShare": 0.674966,
+        "totalSerializedRequestBytes": 53136
+      },
+      "firstAttemptSuccess": true,
+      "jobOrdinal": 5,
+      "metrics": {
+        "answer": {
+          "answerCorrectness": 1,
+          "answerProvenance": 1,
+          "answerSolutionConsistency": 1,
+          "correct": 1,
+          "expected": 1,
+          "provenanceCorrect": 1,
+          "solutionConsistencyCorrect": 1,
+          "modelDerivedAnswerCorrect": 0,
+          "modelDerivedAnswerExpected": 0,
+          "sourceAnswerKeyAccuracy": 1,
+          "sourceAnswerKeyCorrect": 0,
+          "sourceAnswerKeyExpected": 0,
+          "unsupportedAnswerRate": 0,
+          "unsupportedAnswers": 0
+        },
+        "hardBoundaryEscapes": {
+          "autoApprovedOrPublished": 0,
+          "fabricatedPageReferencesAccepted": 0,
+          "invalidTaxonomyIdsAccepted": 0,
+          "missingRequiredVisualUnblocked": 0,
+          "wrongQuestionVisualAttachmentsAccepted": 0
+        },
+        "parsing": {
+          "applicationValidity": 1,
+          "duplicateCount": 0,
+          "duplicateRate": 0,
+          "insufficientEvidenceCorrect": 0,
+          "insufficientEvidenceExpected": 0,
+          "pageReferences": {
+            "candidate": 1,
+            "expected": 1,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 1
+          },
+          "questionBoundary": {
+            "candidate": 1,
+            "expected": 1,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 1
+          },
+          "questionsExpected": 1,
+          "questionsExtracted": 1,
+          "schemaValidity": 1,
+          "sourceGroundedQuestions": 1,
+          "sourceGroundingAccuracy": 1,
+          "fabricatedPageReferenceRate": 0,
+          "fabricatedPageRefs": 0,
+          "validReviewDraftYield": 1,
+          "validReviewDrafts": 1,
+          "needsMoreEvidenceDrafts": 0,
+          "reviewDrafts": 1
+        },
+        "providerOutcome": "success",
+        "sourceId": "text-free-response",
+        "taxonomy": {
+          "abstentionCorrect": 0,
+          "abstentionExpected": 0,
+          "broadParentOveruse": 0,
+          "candidateExpected": 0,
+          "candidateRetrieved": 0,
+          "candidateRetrievalRecall": 1,
+          "exactId": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "facetMetrics": {
+            "curriculum": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "concept": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "method": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "task": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "form": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            }
+          },
+          "invalidIdsRejected": 0,
+          "unknownIdCount": 0,
+          "wrongFacet": 0
+        },
+        "visual": {
+          "decorativeSuppressionCorrect": 0,
+          "decorativeSuppressionExpected": 0,
+          "decorativeSuppressionRate": 1,
+          "fabricatedVisualProposals": 0,
+          "invalidVisualProposals": 0,
+          "missingRequiredVisualCorrect": 0,
+          "missingRequiredVisualExpected": 0,
+          "missingRequiredVisualRate": 1,
+          "requiredAssetAssociationRate": 1,
+          "requiredAssetAssociations": 0,
+          "requiredAssetExpected": 0,
+          "sharedVisualGroupsCorrect": 0,
+          "sharedVisualGroupsExpected": 0,
+          "visualDependentDetection": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "visualDescriptionCorrect": 0,
+          "visualDescriptionExpected": 0,
+          "visualDescriptionRate": 1,
+          "wrongQuestionAttachmentRate": 1,
+          "wrongQuestionAttachments": 0,
+          "placeholderCount": 0
+        }
+      },
+      "providerCounters": {
+        "maxInferenceAttempts": 2,
+        "maxNetworkRequests": 20,
+        "maxOutputTokens": 4096,
+        "providerCleanupFailures": 0,
+        "providerCleanupRequests": 1,
+        "providerInputBytesMax": 52992,
+        "providerInferenceAttempts": 1,
+        "providerInferenceRequests": 1,
+        "providerNetworkRequests": 5,
+        "providerPollRequests": 0,
+        "providerTokenCountRequests": 1,
+        "providerUploadRequests": 2
+      },
+      "repairSucceeded": false,
+      "sourceId": "text-free-response",
+      "validReviewDrafts": 1
+    },
+    {
+      "attemptHistogram": {
+        "FIRST_ATTEMPT": 1,
+        "STRUCTURAL_SCHEMA_REPAIR": 0,
+        "APPLICATION_VALIDATION_REPAIR": 0,
+        "BLANK_REQUIRED_FIELD_REPAIR": 0,
+        "ANSWER_CONSISTENCY_REPAIR": 0,
+        "SOURCE_LINEAGE_REPAIR": 0,
+        "VISUAL_ASSOCIATION_REPAIR": 0,
+        "TAXONOMY_REPAIR": 0,
+        "SOURCE_BACKED_SEMANTIC_RECOVERY": 0,
+        "PROVIDER_BUSY_RETRY": 0,
+        "RATE_LIMIT_RETRY": 0,
+        "NETWORK_RETRY": 0,
+        "TIMEOUT_RETRY": 0,
+        "CHECKPOINT_REPLAY_ZERO_INFERENCE": 0
+      },
+      "attempts": 1,
+      "completed": true,
+      "contextComposition": {
+        "componentBytes": {
+          "extractionInstructions": 7780,
+          "fixedTransportOverhead": 4240,
+          "previousResponse": 0,
+          "semanticRecoveryInstructions": 0,
+          "sourceInput": 4054,
+          "structuralRepairInstructions": 0,
+          "structuredSchema": 4486,
+          "systemInstructions": 0,
+          "taxonomyCandidates": 35865
+        },
+        "componentOverflowBytes": 0,
+        "nonSourceOverheadBytes": 52371,
+        "providerReportedInputTokens": 12173,
+        "providerReportedOutputTokens": 1810,
+        "repairShare": 0,
+        "repeatedContextRatio": 0,
+        "repeatedPreviousResponseBytes": 0,
+        "repeatedSourceBytes": 0,
+        "schemaShare": 0.079504,
+        "sourceBytes": 4054,
+        "sourceShare": 0.071848,
+        "taxonomyShare": 0.635623,
+        "totalSerializedRequestBytes": 56425
+      },
+      "firstAttemptSuccess": true,
+      "jobOrdinal": 6,
+      "metrics": {
+        "answer": {
+          "answerCorrectness": 0.8,
+          "answerProvenance": 0.8,
+          "answerSolutionConsistency": 0.4,
+          "correct": 4,
+          "expected": 5,
+          "provenanceCorrect": 4,
+          "solutionConsistencyCorrect": 2,
+          "modelDerivedAnswerCorrect": 0,
+          "modelDerivedAnswerExpected": 0,
+          "sourceAnswerKeyAccuracy": 1,
+          "sourceAnswerKeyCorrect": 0,
+          "sourceAnswerKeyExpected": 0,
+          "unsupportedAnswerRate": 0,
+          "unsupportedAnswers": 0
+        },
+        "hardBoundaryEscapes": {
+          "autoApprovedOrPublished": 0,
+          "fabricatedPageReferencesAccepted": 0,
+          "invalidTaxonomyIdsAccepted": 0,
+          "missingRequiredVisualUnblocked": 0,
+          "wrongQuestionVisualAttachmentsAccepted": 0
+        },
+        "parsing": {
+          "applicationValidity": 1,
+          "duplicateCount": 0,
+          "duplicateRate": 0,
+          "insufficientEvidenceCorrect": 0,
+          "insufficientEvidenceExpected": 0,
+          "pageReferences": {
+            "candidate": 4,
+            "expected": 5,
+            "f1": 0.888889,
+            "precision": 1,
+            "recall": 0.8,
+            "truePositive": 4
+          },
+          "questionBoundary": {
+            "candidate": 4,
+            "expected": 5,
+            "f1": 0.888889,
+            "precision": 1,
+            "recall": 0.8,
+            "truePositive": 4
+          },
+          "questionsExpected": 5,
+          "questionsExtracted": 4,
+          "schemaValidity": 1,
+          "sourceGroundedQuestions": 4,
+          "sourceGroundingAccuracy": 1,
+          "fabricatedPageReferenceRate": 0,
+          "fabricatedPageRefs": 0,
+          "validReviewDraftYield": 0.4,
+          "validReviewDrafts": 2,
+          "needsMoreEvidenceDrafts": 2,
+          "reviewDrafts": 4
+        },
+        "providerOutcome": "success",
+        "sourceId": "visual-evidence",
+        "taxonomy": {
+          "abstentionCorrect": 0,
+          "abstentionExpected": 0,
+          "broadParentOveruse": 0,
+          "candidateExpected": 0,
+          "candidateRetrieved": 0,
+          "candidateRetrievalRecall": 1,
+          "exactId": {
+            "candidate": 0,
+            "expected": 0,
+            "f1": 1,
+            "precision": 1,
+            "recall": 1,
+            "truePositive": 0
+          },
+          "facetMetrics": {
+            "curriculum": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "concept": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "method": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "task": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            },
+            "form": {
+              "candidate": 0,
+              "expected": 0,
+              "f1": 1,
+              "precision": 1,
+              "recall": 1,
+              "truePositive": 0
+            }
+          },
+          "invalidIdsRejected": 0,
+          "unknownIdCount": 0,
+          "wrongFacet": 0
+        },
+        "visual": {
+          "decorativeSuppressionCorrect": 1,
+          "decorativeSuppressionExpected": 1,
+          "decorativeSuppressionRate": 1,
+          "fabricatedVisualProposals": 0,
+          "invalidVisualProposals": 0,
+          "missingRequiredVisualCorrect": 1,
+          "missingRequiredVisualExpected": 1,
+          "missingRequiredVisualRate": 1,
+          "requiredAssetAssociationRate": 0.333333,
+          "requiredAssetAssociations": 1,
+          "requiredAssetExpected": 3,
+          "sharedVisualGroupsCorrect": 0,
+          "sharedVisualGroupsExpected": 1,
+          "visualDependentDetection": {
+            "candidate": 2,
+            "expected": 4,
+            "f1": 0.666667,
+            "precision": 1,
+            "recall": 0.5,
+            "truePositive": 2
+          },
+          "visualDescriptionCorrect": 1,
+          "visualDescriptionExpected": 1,
+          "visualDescriptionRate": 1,
+          "wrongQuestionAttachmentRate": 0.5,
+          "wrongQuestionAttachments": 1,
+          "placeholderCount": 2
+        }
+      },
+      "providerCounters": {
+        "maxInferenceAttempts": 2,
+        "maxNetworkRequests": 20,
+        "maxOutputTokens": 4096,
+        "providerCleanupFailures": 0,
+        "providerCleanupRequests": 1,
+        "providerInputBytesMax": 56281,
+        "providerInferenceAttempts": 1,
+        "providerInferenceRequests": 1,
+        "providerNetworkRequests": 5,
+        "providerPollRequests": 0,
+        "providerTokenCountRequests": 1,
+        "providerUploadRequests": 2
+      },
+      "repairSucceeded": false,
+      "sourceId": "visual-evidence",
+      "validReviewDrafts": 2
+    }
+  ],
+  "model": "gemini-2.5-flash-lite",
+  "provider": "gemini_native",
+  "qualityAggregate": {
+    "answer": {
+      "answerCorrectness": 0.909091,
+      "answerProvenance": 0.727273,
+      "answerSolutionConsistency": 0.545455,
+      "modelDerivedAnswerCorrect": 0,
+      "modelDerivedAnswerCorrectness": null,
+      "modelDerivedAnswerExpected": 0,
+      "sourceAnswerKeyAccuracy": 1,
+      "unsupportedAnswerRate": 0
+    },
+    "hardBoundaryEscapes": {
+      "autoApprovedOrPublished": 0,
+      "fabricatedPageReferencesAccepted": 0,
+      "invalidTaxonomyIdsAccepted": 0,
+      "missingRequiredVisualUnblocked": 0,
+      "wrongQuestionVisualAttachmentsAccepted": 0
+    },
+    "parsing": {
+      "applicationValidityRate": 0.833333,
+      "duplicateCount": 0,
+      "duplicateRate": 0,
+      "fabricatedPageRefs": 0,
+      "fabricatedPageReferenceRate": 0,
+      "insufficientEvidenceAccuracy": 0,
+      "insufficientEvidenceCorrect": 0,
+      "insufficientEvidenceExpected": 1,
+      "pageReferences": {
+        "candidate": 11,
+        "expected": 13,
+        "f1": 0.833334,
+        "precision": 0.909091,
+        "recall": 0.769231,
+        "truePositive": 10
+      },
+      "questionBoundary": {
+        "candidate": 11,
+        "expected": 11,
+        "f1": 0.909091,
+        "precision": 0.909091,
+        "recall": 0.909091,
+        "truePositive": 10
+      },
+      "questionsExpected": 11,
+      "questionsExtracted": 11,
+      "reviewDrafts": 10,
+      "schemaValidityRate": 0.833333,
+      "sourceGroundedQuestions": 10,
+      "sourceGroundingAccuracy": 0.909091,
+      "validReviewDrafts": 8,
+      "validReviewDraftYield": 0.727273,
+      "needsMoreEvidenceDrafts": 2
+    },
+    "taxonomy": {
+      "abstentionAccuracy": 1,
+      "broadParentOveruse": 0,
+      "broadParentOveruseRate": null,
+      "candidateExpected": 3,
+      "candidateRetrieved": 3,
+      "candidateRetrievalRecall": 1,
+      "exactId": {
+        "candidate": 0,
+        "expected": 3,
+        "f1": 0,
+        "precision": 1,
+        "recall": 0,
+        "truePositive": 0
+      },
+      "invalidIdsRejected": 0,
+      "facetMetrics": {
+        "curriculum": {
+          "candidate": 0,
+          "expected": 0,
+          "f1": 1,
+          "precision": 1,
+          "recall": 1,
+          "truePositive": 0
+        },
+        "concept": {
+          "candidate": 0,
+          "expected": 1,
+          "f1": 0,
+          "precision": 1,
+          "recall": 0,
+          "truePositive": 0
+        },
+        "method": {
+          "candidate": 0,
+          "expected": 0,
+          "f1": 1,
+          "precision": 1,
+          "recall": 1,
+          "truePositive": 0
+        },
+        "task": {
+          "candidate": 0,
+          "expected": 1,
+          "f1": 0,
+          "precision": 1,
+          "recall": 0,
+          "truePositive": 0
+        },
+        "form": {
+          "candidate": 0,
+          "expected": 1,
+          "f1": 0,
+          "precision": 1,
+          "recall": 0,
+          "truePositive": 0
+        }
+      },
+      "unknownIdCount": 0,
+      "wrongFacet": 0,
+      "wrongFacetRate": null
+    },
+    "visual": {
+      "decorativeSuppressionRate": 1,
+      "missingRequiredVisualRate": 1,
+      "requiredAssetAssociationRate": 0.333333,
+      "fabricatedVisualProposals": 0,
+      "invalidVisualProposals": 0,
+      "sharedVisualGroupAccuracy": 0,
+      "visualDependentQuestionDetection": {
+        "candidate": 2,
+        "expected": 4,
+        "f1": 0.666667,
+        "precision": 1,
+        "recall": 0.5,
+        "truePositive": 2
+      },
+      "visualDescriptionRate": 1,
+      "wrongQuestionAttachments": 1,
+      "wrongQuestionAttachmentRate": 0.5
+    }
+  },
+  "reliability": {
+    "attemptHistogram": {
+      "FIRST_ATTEMPT": 6,
+      "STRUCTURAL_SCHEMA_REPAIR": 0,
+      "APPLICATION_VALIDATION_REPAIR": 0,
+      "BLANK_REQUIRED_FIELD_REPAIR": 0,
+      "ANSWER_CONSISTENCY_REPAIR": 0,
+      "SOURCE_LINEAGE_REPAIR": 0,
+      "VISUAL_ASSOCIATION_REPAIR": 0,
+      "TAXONOMY_REPAIR": 0,
+      "SOURCE_BACKED_SEMANTIC_RECOVERY": 0,
+      "PROVIDER_BUSY_RETRY": 0,
+      "RATE_LIMIT_RETRY": 0,
+      "NETWORK_RETRY": 0,
+      "TIMEOUT_RETRY": 0,
+      "CHECKPOINT_REPLAY_ZERO_INFERENCE": 0
+    },
+    "firstAttemptSuccessRate": 1,
+    "p50AttemptsPerSource": 1,
+    "p95AttemptsPerSource": 1,
+    "repairRate": 0,
+    "repairSuccessRate": null,
+    "sourceBackedSemanticRecoveryRate": 0,
+    "transientRetryRate": 0
+  },
+  "rows": [
+    {
+      "attemptOrdinal": 1,
+      "attemptReason": "FIRST_ATTEMPT",
+      "benchmarkCorpusVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1",
+      "candidateSubsetSha256": "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262",
+      "durationMs": 3772,
+      "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+      "jobOrdinal": 1,
+      "model": "gemini-2.5-flash-lite",
+      "parsingContractSha256": "5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95",
+      "provider": "gemini_native",
+      "sourceId": "answer-key",
+      "taxonomySnapshotSha256": "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+      "usageAccounting": {
+        "estimatedUsage": null,
+        "localContextBytes": {
+          "serializedRequestBytes": 54108,
+          "sourceInputBytes": 1737,
+          "source": "LOCAL_CONTEXT_BYTES"
+        },
+        "providerCountTokens": {
+          "cachedInputTokens": null,
+          "inputTokens": 12173,
+          "promptTokensDetails": [
+            {
+              "modality": "TEXT",
+              "tokenCount": 11141
+            },
+            {
+              "modality": "DOCUMENT",
+              "tokenCount": 1032
+            }
+          ],
+          "source": "PROVIDER_COUNT_TOKENS"
+        },
+        "providerReportedUsage": {
+          "source": "PROVIDER_REPORTED_USAGE",
+          "usage": {
+            "cachedInputTokens": null,
+            "candidateOutputTokens": 677,
+            "inputTokens": 12173,
+            "outputTokens": 677,
+            "promptTokensDetails": [
+              {
+                "modality": "TEXT",
+                "tokenCount": 11141
+              },
+              {
+                "modality": "DOCUMENT",
+                "tokenCount": 1032
+              }
+            ],
+            "thoughtTokens": null,
+            "toolUseInputTokens": null,
+            "totalTokens": 12850
+          }
+        },
+        "schemaVersion": 1,
+        "unknownUsage": {
+          "fields": [
+            "thoughtTokens",
+            "toolUseInputTokens"
+          ],
+          "source": "UNKNOWN_USAGE"
+        }
+      }
+    },
+    {
+      "attemptOrdinal": 1,
+      "attemptReason": "FIRST_ATTEMPT",
+      "benchmarkCorpusVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1",
+      "candidateSubsetSha256": "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262",
+      "durationMs": 3961,
+      "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+      "jobOrdinal": 2,
+      "model": "gemini-2.5-flash-lite",
+      "parsingContractSha256": "5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95",
+      "provider": "gemini_native",
+      "sourceId": "equation",
+      "taxonomySnapshotSha256": "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+      "usageAccounting": {
+        "estimatedUsage": null,
+        "localContextBytes": {
+          "serializedRequestBytes": 53134,
+          "sourceInputBytes": 763,
+          "source": "LOCAL_CONTEXT_BYTES"
+        },
+        "providerCountTokens": {
+          "cachedInputTokens": null,
+          "inputTokens": 11399,
+          "promptTokensDetails": [
+            {
+              "modality": "TEXT",
+              "tokenCount": 11141
+            },
+            {
+              "modality": "DOCUMENT",
+              "tokenCount": 258
+            }
+          ],
+          "source": "PROVIDER_COUNT_TOKENS"
+        },
+        "providerReportedUsage": {
+          "source": "PROVIDER_REPORTED_USAGE",
+          "usage": {
+            "cachedInputTokens": null,
+            "candidateOutputTokens": 328,
+            "inputTokens": 11399,
+            "outputTokens": 328,
+            "promptTokensDetails": [
+              {
+                "modality": "TEXT",
+                "tokenCount": 11141
+              },
+              {
+                "modality": "DOCUMENT",
+                "tokenCount": 258
+              }
+            ],
+            "thoughtTokens": null,
+            "toolUseInputTokens": null,
+            "totalTokens": 11727
+          }
+        },
+        "schemaVersion": 1,
+        "unknownUsage": {
+          "fields": [
+            "thoughtTokens",
+            "toolUseInputTokens"
+          ],
+          "source": "UNKNOWN_USAGE"
+        }
+      }
+    },
+    {
+      "attemptOrdinal": 1,
+      "attemptReason": "FIRST_ATTEMPT",
+      "benchmarkCorpusVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1",
+      "candidateSubsetSha256": "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262",
+      "durationMs": 3041,
+      "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+      "jobOrdinal": 3,
+      "model": "gemini-2.5-flash-lite",
+      "parsingContractSha256": "5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95",
+      "provider": "gemini_native",
+      "sourceId": "insufficient-evidence",
+      "taxonomySnapshotSha256": "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+      "usageAccounting": {
+        "estimatedUsage": null,
+        "localContextBytes": {
+          "serializedRequestBytes": 53201,
+          "sourceInputBytes": 830,
+          "source": "LOCAL_CONTEXT_BYTES"
+        },
+        "providerCountTokens": {
+          "cachedInputTokens": null,
+          "inputTokens": 11399,
+          "promptTokensDetails": [
+            {
+              "modality": "TEXT",
+              "tokenCount": 11141
+            },
+            {
+              "modality": "DOCUMENT",
+              "tokenCount": 258
+            }
+          ],
+          "source": "PROVIDER_COUNT_TOKENS"
+        },
+        "providerReportedUsage": {
+          "source": "PROVIDER_REPORTED_USAGE",
+          "usage": {
+            "cachedInputTokens": null,
+            "candidateOutputTokens": 198,
+            "inputTokens": 11399,
+            "outputTokens": 198,
+            "promptTokensDetails": [
+              {
+                "modality": "TEXT",
+                "tokenCount": 11141
+              },
+              {
+                "modality": "DOCUMENT",
+                "tokenCount": 258
+              }
+            ],
+            "thoughtTokens": null,
+            "toolUseInputTokens": null,
+            "totalTokens": 11597
+          }
+        },
+        "schemaVersion": 1,
+        "unknownUsage": {
+          "fields": [
+            "thoughtTokens",
+            "toolUseInputTokens"
+          ],
+          "source": "UNKNOWN_USAGE"
+        }
+      }
+    },
+    {
+      "attemptOrdinal": 1,
+      "attemptReason": "FIRST_ATTEMPT",
+      "benchmarkCorpusVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1",
+      "candidateSubsetSha256": "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262",
+      "durationMs": 2709,
+      "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+      "jobOrdinal": 4,
+      "model": "gemini-2.5-flash-lite",
+      "parsingContractSha256": "5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95",
+      "provider": "gemini_native",
+      "sourceId": "taxonomy-ambiguous",
+      "taxonomySnapshotSha256": "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+      "usageAccounting": {
+        "estimatedUsage": null,
+        "localContextBytes": {
+          "serializedRequestBytes": 53131,
+          "sourceInputBytes": 760,
+          "source": "LOCAL_CONTEXT_BYTES"
+        },
+        "providerCountTokens": {
+          "cachedInputTokens": null,
+          "inputTokens": 11399,
+          "promptTokensDetails": [
+            {
+              "modality": "TEXT",
+              "tokenCount": 11141
+            },
+            {
+              "modality": "DOCUMENT",
+              "tokenCount": 258
+            }
+          ],
+          "source": "PROVIDER_COUNT_TOKENS"
+        },
+        "providerReportedUsage": {
+          "source": "PROVIDER_REPORTED_USAGE",
+          "usage": {
+            "cachedInputTokens": null,
+            "candidateOutputTokens": 307,
+            "inputTokens": 11399,
+            "outputTokens": 307,
+            "promptTokensDetails": [
+              {
+                "modality": "TEXT",
+                "tokenCount": 11141
+              },
+              {
+                "modality": "DOCUMENT",
+                "tokenCount": 258
+              }
+            ],
+            "thoughtTokens": null,
+            "toolUseInputTokens": null,
+            "totalTokens": 11706
+          }
+        },
+        "schemaVersion": 1,
+        "unknownUsage": {
+          "fields": [
+            "thoughtTokens",
+            "toolUseInputTokens"
+          ],
+          "source": "UNKNOWN_USAGE"
+        }
+      }
+    },
+    {
+      "attemptOrdinal": 1,
+      "attemptReason": "FIRST_ATTEMPT",
+      "benchmarkCorpusVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1",
+      "candidateSubsetSha256": "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262",
+      "durationMs": 2903,
+      "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+      "jobOrdinal": 5,
+      "model": "gemini-2.5-flash-lite",
+      "parsingContractSha256": "5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95",
+      "provider": "gemini_native",
+      "sourceId": "text-free-response",
+      "taxonomySnapshotSha256": "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+      "usageAccounting": {
+        "estimatedUsage": null,
+        "localContextBytes": {
+          "serializedRequestBytes": 53136,
+          "sourceInputBytes": 765,
+          "source": "LOCAL_CONTEXT_BYTES"
+        },
+        "providerCountTokens": {
+          "cachedInputTokens": null,
+          "inputTokens": 11399,
+          "promptTokensDetails": [
+            {
+              "modality": "TEXT",
+              "tokenCount": 11141
+            },
+            {
+              "modality": "DOCUMENT",
+              "tokenCount": 258
+            }
+          ],
+          "source": "PROVIDER_COUNT_TOKENS"
+        },
+        "providerReportedUsage": {
+          "source": "PROVIDER_REPORTED_USAGE",
+          "usage": {
+            "cachedInputTokens": null,
+            "candidateOutputTokens": 205,
+            "inputTokens": 11399,
+            "outputTokens": 207,
+            "promptTokensDetails": [
+              {
+                "modality": "TEXT",
+                "tokenCount": 11141
+              },
+              {
+                "modality": "DOCUMENT",
+                "tokenCount": 258
+              }
+            ],
+            "thoughtTokens": 2,
+            "toolUseInputTokens": null,
+            "totalTokens": 11606
+          }
+        },
+        "schemaVersion": 1,
+        "unknownUsage": {
+          "fields": [
+            "toolUseInputTokens"
+          ],
+          "source": "UNKNOWN_USAGE"
+        }
+      }
+    },
+    {
+      "attemptOrdinal": 1,
+      "attemptReason": "FIRST_ATTEMPT",
+      "benchmarkCorpusVersion": "AI_PARSING_PROVIDER_BENCHMARK_V1",
+      "candidateSubsetSha256": "fd11666a6ea207244dd5c60529aef812f73c8e82120f02b5348bb4db02970262",
+      "durationMs": 6222,
+      "evidenceClass": "MODEL_QUALITY_PROVIDER_BENCHMARK",
+      "jobOrdinal": 6,
+      "model": "gemini-2.5-flash-lite",
+      "parsingContractSha256": "5c19aed2d13c85121d89b09a3a85064f2eea200016560780295f2d7510e9ca95",
+      "provider": "gemini_native",
+      "sourceId": "visual-evidence",
+      "taxonomySnapshotSha256": "05c3179f0ce67f4828a66ddfdb7bd4c59752aceb390055cb26ba5192ddcafebe",
+      "usageAccounting": {
+        "estimatedUsage": null,
+        "localContextBytes": {
+          "serializedRequestBytes": 56425,
+          "sourceInputBytes": 4054,
+          "source": "LOCAL_CONTEXT_BYTES"
+        },
+        "providerCountTokens": {
+          "cachedInputTokens": null,
+          "inputTokens": 12173,
+          "promptTokensDetails": [
+            {
+              "modality": "TEXT",
+              "tokenCount": 11141
+            },
+            {
+              "modality": "DOCUMENT",
+              "tokenCount": 1032
+            }
+          ],
+          "source": "PROVIDER_COUNT_TOKENS"
+        },
+        "providerReportedUsage": {
+          "source": "PROVIDER_REPORTED_USAGE",
+          "usage": {
+            "cachedInputTokens": null,
+            "candidateOutputTokens": 1810,
+            "inputTokens": 12173,
+            "outputTokens": 1810,
+            "promptTokensDetails": [
+              {
+                "modality": "TEXT",
+                "tokenCount": 11141
+              },
+              {
+                "modality": "DOCUMENT",
+                "tokenCount": 1032
+              }
+            ],
+            "thoughtTokens": null,
+            "toolUseInputTokens": null,
+            "totalTokens": 13983
+          }
+        },
+        "schemaVersion": 1,
+        "unknownUsage": {
+          "fields": [
+            "thoughtTokens",
+            "toolUseInputTokens"
+          ],
+          "source": "UNKNOWN_USAGE"
+        }
+      }
+    }
+  ],
+  "run": {
+    "approvedBudgetUsd": 0.5,
+    "completedAt": "2026-08-07T05:16:22.689Z",
+    "conservativeExposureMicros": 334248,
+    "globalProviderCounters": {
+      "cleanupFailures": 0,
+      "cleanupRequests": 6,
+      "inferenceAttempts": 6,
+      "inferenceRequests": 6,
+      "networkRequests": 30,
+      "tokenCountRequests": 6
+    },
+    "maxWholeBenchmarkRuns": 3,
+    "priorInvalidRunConservativeExposureMicros": 334248,
+    "runOrdinal": 2,
+    "sourceHead": "53527d4068d348ffb04093632910da545eca0601",
+    "currentRunUsageDerivedCostMicros": 8405,
+    "cumulativeCredibleSpendUpperBoundMicros": 342653
+  },
+  "status": "COMPLETE"
+}

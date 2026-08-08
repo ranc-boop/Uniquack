@@ -112,6 +112,10 @@ export function validateReviewQuestionForPublish(
     hardErrors.push("This Draft is no longer awaiting approval.");
   }
 
+  if (input.reviewItem?.status === "needs_more_evidence") {
+    hardErrors.push("This Draft still needs more evidence before approval.");
+  }
+
   if (!SUPPORTED_QUESTION_TYPES.has(input.questionType)) {
     hardErrors.push("This question type cannot be published.");
   }
@@ -136,6 +140,17 @@ export function validateReviewQuestionForPublish(
     input.contentHtml,
     input.solutionHtml,
   );
+  const unresolvedVisualPlaceholder = /\{\{\s*asset:[A-Za-z0-9_-]+\s*\}\}/i;
+
+  if (
+    unresolvedVisualPlaceholder.test(
+      `${input.contentHtml ?? ""} ${input.contentSource ?? ""} ${
+        input.solutionHtml ?? ""
+      } ${input.solutionSource ?? ""}`,
+    )
+  ) {
+    hardErrors.push("A required question image has not been attached.");
+  }
 
   for (const assetId of referencedAssetIds) {
     const asset = availableAssets.get(assetId);

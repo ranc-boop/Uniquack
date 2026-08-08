@@ -8,11 +8,14 @@ import {
 } from "@/lib/questions/answer-spec";
 
 const bboxSchema = z.object({
-  height: z.number().min(0).max(1),
-  width: z.number().min(0).max(1),
+  height: z.number().gt(0).max(1),
+  width: z.number().gt(0).max(1),
   x: z.number().min(0).max(1),
   y: z.number().min(0).max(1),
-});
+}).refine(
+  ({ height, width, x, y }) => x + width <= 1 && y + height <= 1,
+  { message: "Bounding region must remain inside the source page." },
+);
 
 const QUESTION_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 
@@ -165,8 +168,8 @@ function fallbackTitle(input: Record<string, unknown>) {
 function numberInUnitRange(value: unknown) {
   const numeric = Number(value);
 
-  return Number.isFinite(numeric)
-    ? Math.max(0, Math.min(1, numeric))
+  return Number.isFinite(numeric) && numeric >= 0 && numeric <= 1
+    ? numeric
     : undefined;
 }
 
@@ -241,7 +244,7 @@ function normalizeAssetPlaceholdersForQuestion({
   const rawValue = question.asset_placeholders;
 
   if (rawValue === undefined || rawValue === null || rawValue === "") {
-    return { placeholders: [], warnings: [] };
+    return { placeholders: [], requiresVisual: false, warnings: [] };
   }
 
   const rawItems = Array.isArray(rawValue)
@@ -259,15 +262,45 @@ function normalizeAssetPlaceholdersForQuestion({
 
   const availableContentPlaceholders = contentPlaceholders(question);
   const usedPlaceholders = new Set<string>();
+  let requiresVisual = false;
   const placeholders: {
     alt?: string;
+    ambiguity?: string;
     bbox: { height: number; width: number; x: number; y: number };
+    confidence?: number;
     page: number;
     placeholder: string;
+    required: boolean;
+    shared_group_key?: string;
+    subquestion_ref?: string;
+    visual_role:
+      | "answer_figure"
+      | "decorative"
+      | "diagram"
+      | "graph"
+      | "question_figure"
+      | "table";
   }[] = [];
 
   rawItems.forEach((item, index) => {
     const input = asRecord(item);
+    const visualRole =
+      typeof input.visual_role === "string" &&
+      [
+        "answer_figure",
+        "decorative",
+        "diagram",
+        "graph",
+        "question_figure",
+        "table",
+      ].includes(input.visual_role)
+        ? input.visual_role
+        : "question_figure";
+    const required =
+      typeof input.required === "boolean"
+        ? input.required
+        : visualRole !== "decorative";
+    requiresVisual ||= required;
     const bbox = normalizeBbox(input.bbox);
     const page = normalizePageNumber(
       input.page ?? input.page_number ?? input.pageNumber,
@@ -288,24 +321,45 @@ function normalizeAssetPlaceholdersForQuestion({
     }
 
     usedPlaceholders.add(placeholder);
-    placeholders.push({
+    const parsedPlaceholder = aiPdfAssetPlaceholderSchema.safeParse({
       alt:
         typeof input.alt === "string"
           ? input.alt
           : typeof input.description === "string"
             ? input.description
             : undefined,
+      ambiguity:
+        typeof input.ambiguity === "string" ? input.ambiguity : undefined,
       bbox,
+      confidence:
+        input.confidence === undefined ? undefined : Number(input.confidence),
       page,
       placeholder,
+      required,
+      shared_group_key: input.shared_group_key,
+      subquestion_ref: input.subquestion_ref,
+      visual_role: input.visual_role ?? "question_figure",
     });
+
+    if (!parsedPlaceholder.success) {
+      warnings.push(
+        `${questionLabel}: ignored invalid visual evidence proposal ${index + 1}.`,
+      );
+      return;
+    }
+
+    placeholders.push(parsedPlaceholder.data);
   });
 
   if (warnings.length) {
     warnings.unshift("Some image placeholders were ignored because they were invalid.");
   }
 
-  return { placeholders, warnings: Array.from(new Set(warnings)) };
+  return {
+    placeholders,
+    requiresVisual,
+    warnings: Array.from(new Set(warnings)),
+  };
 }
 
 const optionalStringSchema = z.preprocess((value) => {
@@ -362,13 +416,33 @@ const difficultyRatingSchema = z.preprocess((value) => {
 
 export const aiPdfAssetPlaceholderSchema = z.object({
   alt: z.string().trim().max(240).optional(),
+  ambiguity: z.string().trim().max(240).optional(),
   bbox: bboxSchema,
+  confidence: z.number().min(0).max(1).optional(),
   page: z.number().int().min(1),
   placeholder: z
     .string()
     .trim()
     .regex(/^\{\{asset:[A-Za-z0-9_-]+\}\}$/)
     .max(80),
+  required: z.boolean().default(true),
+  shared_group_key: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9._-]+$/)
+    .max(80)
+    .optional(),
+  subquestion_ref: z.string().trim().max(80).optional(),
+  visual_role: z
+    .enum([
+      "answer_figure",
+      "decorative",
+      "diagram",
+      "graph",
+      "question_figure",
+      "table",
+    ])
+    .default("question_figure"),
 });
 
 const assetPlaceholdersSchema = z.preprocess((value) => {
@@ -469,6 +543,7 @@ export const aiPdfQuestionSchema = z.preprocess((value) => {
   solution_source: optionalStringSchema,
   tag_ids: stringArraySchema,
   title: z.string().trim().min(1).max(240),
+  visual_evidence_required: z.boolean().default(false),
 }));
 
 export const aiPdfExtractionSchema = z.preprocess((value) => {
@@ -512,6 +587,7 @@ export const aiPdfExtractionSchema = z.preprocess((value) => {
       const parsedQuestion = aiPdfQuestionSchema.safeParse({
         ...questionRecord,
         asset_placeholders: normalized.placeholders,
+        visual_evidence_required: normalized.requiresVisual,
       });
 
       if (!parsedQuestion.success) {

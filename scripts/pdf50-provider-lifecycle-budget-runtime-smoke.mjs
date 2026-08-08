@@ -17,6 +17,15 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+function expectedPdfInputBytes({ outputContract, pdfBytes, prompt }) {
+  return (
+    Buffer.byteLength(prompt, "utf8") +
+    Buffer.byteLength(JSON.stringify(outputContract ?? {}), "utf8") +
+    pdfBytes.byteLength +
+    4_096
+  );
+}
+
 async function loadTypeScriptModule(relativePath, mocks = {}) {
   const filePath = resolve(root, relativePath);
   const source = await readFile(filePath, "utf8");
@@ -73,6 +82,15 @@ const proofControlSource = JSON.parse(
     "utf8",
   ),
 );
+const scaleProofControlSource = JSON.parse(
+  await readFile(
+    resolve(
+      root,
+      "src/lib/ai-jobs/pdf50-scale-provider-proof-control.json",
+    ),
+    "utf8",
+  ),
+);
 const proofControl = await loadPDF50ProviderProofControl();
 const proofEnvironment = pdf50ProviderProofEnvironment(proofControl);
 const structuredOutput = await loadTypeScriptModule(
@@ -80,6 +98,9 @@ const structuredOutput = await loadTypeScriptModule(
   {
     "./gemini-ai-pdf-extraction.schema.json": extractionSchema,
   },
+);
+const providerUsage = await loadTypeScriptModule(
+  "src/lib/ai-operations/provider-usage.ts",
 );
 
 assert.deepEqual(structuredOutput.buildGeminiGenerationConfig({
@@ -125,11 +146,13 @@ const providerTestControl = await loadTypeScriptModule(
   "src/lib/ai-jobs/provider-test-control.ts",
   {
     "./pdf50-provider-proof-control.json": proofControlSource,
+    "./pdf50-scale-provider-proof-control.json": scaleProofControlSource,
   },
 );
 const proofEnvironmentNames = [
   "AI_JOBS_LOCAL_MAX_INVOCATIONS",
   "PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS",
+  "PDF50_PROVIDER_TEST_MAX_INPUT_BYTES",
   "PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS",
   "PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS",
   "PDF50_PROVIDER_TEST_MODE",
@@ -150,6 +173,7 @@ try {
   assert.deepEqual(providerTestControl.readTrustedAIProviderTestLimits(), {
     maxClaimedJobs: proofControl.claimedJobs,
     maxInferenceAttempts: proofControl.providerInferenceAttempts,
+    maxInputBytes: null,
     maxEstimatedCostMicros: estimatePDF50ProviderProofCostMicros(proofControl),
     maxNetworkRequests: proofControl.providerMaxNetworkRequests,
     maxOutputTokens: proofControl.providerMaxOutputTokens,
@@ -159,6 +183,41 @@ try {
     providerTestControl.PDF50_PROVIDER_TEST_MAX_COST_MICROS <
       proofControl.approvedBudgetUsd * 1_000_000,
     "trusted proof worst-case token envelope must remain below its canonical budget",
+  );
+  Object.assign(process.env, {
+    AI_JOBS_LOCAL_MAX_INVOCATIONS: String(
+      scaleProofControlSource.workerRouteInvocations,
+    ),
+    PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS: String(
+      scaleProofControlSource.providerInferenceAttempts,
+    ),
+    PDF50_PROVIDER_TEST_MAX_INPUT_BYTES: String(
+      scaleProofControlSource.maxInputBytesPerAttempt,
+    ),
+    PDF50_PROVIDER_TEST_MAX_NETWORK_REQUESTS: String(
+      scaleProofControlSource.providerMaxNetworkRequests,
+    ),
+    PDF50_PROVIDER_TEST_MAX_OUTPUT_TOKENS: String(
+      scaleProofControlSource.providerMaxOutputTokens,
+    ),
+    PDF50_PROVIDER_TEST_MODE: scaleProofControlSource.mode,
+    PDF50_TOTAL_PROVIDER_TEST_BUDGET_USD: String(
+      scaleProofControlSource.approvedBudgetUsd,
+    ),
+  });
+  assert.deepEqual(providerTestControl.readTrustedAIProviderTestLimits(), {
+    maxClaimedJobs: 1,
+    maxInferenceAttempts: 3,
+    maxInputBytes: 200_000,
+    maxEstimatedCostMicros: 19_917,
+    maxNetworkRequests: 68,
+    maxOutputTokens: 4_096,
+    providerBudgetMicros: 2_000_000,
+  });
+  process.env.PDF50_PROVIDER_TEST_MAX_INFERENCE_ATTEMPTS = "1";
+  assert.throws(
+    () => providerTestControl.readTrustedAIProviderTestLimits(),
+    /trusted_provider_test_control_rejected/,
   );
 } finally {
   for (const name of proofEnvironmentNames) {
@@ -191,12 +250,37 @@ assert.deepEqual(budget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 0,
   providerCleanupRequests: 1,
+  providerInputBytesMax: 0,
   providerInferenceAttempts: 4,
   providerInferenceRequests: 4,
   providerNetworkRequests: 5,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 0,
 });
+
+const inputBoundBudget = budgetModule.createAIProviderExecutionBudget({
+  maxInferenceAttempts: 1,
+  maxInputBytes: 10,
+});
+assert.throws(
+  () => inputBoundBudget.beforeInference("ai_pdf_extraction", 11),
+  (error) => {
+    assert(error instanceof errors.AIProviderError);
+    assert.equal(error.code, "provider_execution_budget_exhausted");
+    return true;
+  },
+);
+assert.equal(inputBoundBudget.snapshot().providerInferenceAttempts, 0);
+assert.equal(inputBoundBudget.snapshot().providerInputBytesMax, 0);
+
+const inputTelemetryBudget = budgetModule.createAIProviderExecutionBudget({
+  maxInferenceAttempts: 2,
+  maxInputBytes: 100,
+});
+inputTelemetryBudget.beforeInference("ai_pdf_extraction", 25);
+inputTelemetryBudget.beforeInference("ai_pdf_extraction", 40);
+assert.equal(inputTelemetryBudget.snapshot().providerInputBytesMax, 40);
 
 const networkBudget = budgetModule.createAIProviderExecutionBudget({
   maxInferenceAttempts: 4,
@@ -216,6 +300,7 @@ assert.throws(
 );
 
 const gemini = await loadTypeScriptModule("src/lib/ai-providers/gemini-native.ts", {
+  "@/lib/ai-operations/provider-usage": providerUsage,
   "@/lib/ai-providers/gemini-structured-output": structuredOutput,
   "@/lib/ai-providers/llm-debug-logs": {
     writeAIImportLLMDebugLog: async () => undefined,
@@ -319,10 +404,12 @@ assert.deepEqual(providerRejectionBudget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 0,
   providerCleanupRequests: 0,
+  providerInputBytesMax: 0,
   providerInferenceAttempts: 1,
   providerInferenceRequests: 1,
   providerNetworkRequests: 1,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 0,
 });
 
@@ -401,9 +488,19 @@ assert.deepEqual(generated.usage, {
   candidateOutputTokens: 5,
   inputTokens: 11,
   outputTokens: 8,
+  promptTokensDetails: [],
   thoughtTokens: 3,
+  toolUseInputTokens: null,
   totalTokens: 19,
 });
+assert.equal(
+  generated.usageAccounting.providerReportedUsage.source,
+  "PROVIDER_REPORTED_USAGE",
+);
+assert.equal(
+  generated.usageAccounting.localContextBytes.source,
+  "LOCAL_CONTEXT_BYTES",
+);
 assert.deepEqual(
   requests.map((request) => request.method),
   ["POST", "POST", "GET", "POST", "DELETE"],
@@ -414,10 +511,15 @@ assert.deepEqual(lifecycleBudget.snapshot(), {
   maxOutputTokens: 8192,
   providerCleanupFailures: 0,
   providerCleanupRequests: 1,
+  providerInputBytesMax: expectedPdfInputBytes({
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "Return an empty question array.",
+  }),
   providerInferenceAttempts: 1,
   providerInferenceRequests: 1,
   providerNetworkRequests: 5,
   providerPollRequests: 1,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 2,
 });
 assert.equal(
@@ -518,10 +620,15 @@ assert.deepEqual(cleanupBudget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 1,
   providerCleanupRequests: 0,
+  providerInputBytesMax: expectedPdfInputBytes({
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "Return JSON.",
+  }),
   providerInferenceAttempts: 1,
   providerInferenceRequests: 1,
   providerNetworkRequests: 3,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 2,
 });
 
@@ -586,10 +693,15 @@ assert.deepEqual(malformedBudget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 0,
   providerCleanupRequests: 1,
+  providerInputBytesMax: expectedPdfInputBytes({
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "Return JSON.",
+  }),
   providerInferenceAttempts: 1,
   providerInferenceRequests: 1,
   providerNetworkRequests: 4,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 2,
 });
 
@@ -620,10 +732,15 @@ assert.deepEqual(uploadFailureBudget.snapshot(), {
   maxOutputTokens: null,
   providerCleanupFailures: 0,
   providerCleanupRequests: 0,
+  providerInputBytesMax: expectedPdfInputBytes({
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "No inference request should be sent.",
+  }),
   providerInferenceAttempts: 1,
   providerInferenceRequests: 0,
   providerNetworkRequests: 1,
   providerPollRequests: 0,
+  providerTokenCountRequests: 0,
   providerUploadRequests: 1,
 });
 
@@ -654,14 +771,56 @@ await assert.rejects(
 );
 assert.equal(exhaustedFetchCount, 0);
 
+const smallInputBudget = budgetModule.createAIProviderExecutionBudget({
+  maxInferenceAttempts: 1,
+  maxInputBytes: 16,
+});
+let oversizedInputFetchCount = 0;
+await assert.rejects(
+  gemini.generateWithGeminiNativePdf({
+    apiKey: "synthetic-test-key",
+    baseUrl: "https://provider.invalid",
+    executionObserver: smallInputBudget,
+    fetchImpl: async () => {
+      oversizedInputFetchCount += 1;
+      throw new Error("The transport must not run for oversized proof input.");
+    },
+    fileName: "synthetic.pdf",
+    model: "synthetic-model",
+    outputContract: structuredOutput.GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    prompt: "Synthetic prompt",
+  }),
+  (error) => {
+    assert(error instanceof errors.AIProviderError);
+    assert.equal(error.code, "provider_execution_budget_exhausted");
+    return true;
+  },
+);
+assert.equal(oversizedInputFetchCount, 0);
+assert.equal(smallInputBudget.snapshot().providerInferenceAttempts, 0);
+assert.equal(smallInputBudget.snapshot().providerInputBytesMax, 0);
+
 let extractionResponses = [];
 const extractionPrompts = [];
 const extractionOutputContracts = [];
+const extractionSourceModes = [];
+const attemptState = await loadTypeScriptModule(
+  "src/lib/ai-providers/ai-pdf-attempt-state.ts",
+);
+const resilience = await loadTypeScriptModule(
+  "src/lib/ai-providers/resilience.ts",
+  { "@/lib/ai-providers/errors": errors },
+);
 const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
+  "@/lib/ai-operations/provider-usage": providerUsage,
   "@/lib/ai-pdf-import/schema": {
     normalizeAIPdfExtractionResponse(value) {
+      if (value?.questions === "invalid") {
+        throw new Error("questions: expected array");
+      }
       if (!Array.isArray(value?.questions) || value.questions.length === 0) {
-        throw new Error("questions: array must contain at least one item");
+        throw new Error("AI provider response contained zero importable questions.");
       }
       return value;
     },
@@ -670,16 +829,50 @@ const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
     AI_PDF_UNSUPPORTED_PROVIDER_MESSAGE: "unsupported",
     inferAiProviderMode: () => "gemini_native",
   },
+  "@/lib/ai-providers/ai-pdf-attempt-state": attemptState,
   "@/lib/ai-providers/gemini-native": {
-    async generateWithGeminiNativePdf({ outputContract, prompt }) {
+    async generateWithGeminiNativePdf({
+      executionObserver,
+      onSerializedRequest,
+      outputContract,
+      pdfBytes,
+      prompt,
+    }) {
+      await onSerializedRequest?.({
+        serializedRequestBytes: Buffer.byteLength(prompt, "utf8") + pdfBytes.byteLength + 64,
+        sourceInputBytes: pdfBytes.byteLength,
+      });
+      executionObserver?.beforeInference("ai_pdf_extraction");
       extractionPrompts.push(prompt);
       extractionOutputContracts.push(outputContract);
+      extractionSourceModes.push("pdf");
       const response = extractionResponses.shift();
       if (!response) throw new Error("Missing fake Provider response.");
+      if (response instanceof Error) throw response;
+      return { text: response, usage: null };
+    },
+    async generateWithGeminiNativeText({
+      executionObserver,
+      onSerializedRequest,
+      outputContract,
+      prompt,
+    }) {
+      await onSerializedRequest?.({
+        serializedRequestBytes: Buffer.byteLength(prompt, "utf8") + 64,
+        sourceInputBytes: 0,
+      });
+      executionObserver?.beforeInference("ai_pdf_extraction");
+      extractionPrompts.push(prompt);
+      extractionOutputContracts.push(outputContract);
+      extractionSourceModes.push("text");
+      const response = extractionResponses.shift();
+      if (!response) throw new Error("Missing fake Provider response.");
+      if (response instanceof Error) throw response;
       return { text: response, usage: null };
     },
     testGeminiNativeTextConnection: async () => ({ message: "ok", ok: true }),
   },
+  "@/lib/ai-providers/errors": errors,
   "@/lib/ai-providers/gemini-structured-output": structuredOutput,
   "@/lib/ai-providers/json-repair": {
     parsePossiblyMalformedJson: (value) => JSON.parse(value),
@@ -695,14 +888,22 @@ const chat = await loadTypeScriptModule("src/lib/ai-providers/chat.ts", {
     assertSafeAIProviderBaseUrl: async () => undefined,
   },
   "@/lib/ai-providers/response-limits": responseLimits,
+  "@/lib/ai-providers/resilience": resilience,
 });
 
 const originalExtractionPrompt = "ORIGINAL PDF EXTRACTION CONTRACT";
+const extractionPromptContext = {
+  extractionInstructionBytes: Buffer.byteLength(originalExtractionPrompt, "utf8"),
+  structuredSchemaBytes: 0,
+  taxonomyCandidateBytes: 0,
+};
+const sourceRecoveryLedger = attemptState.createAIPdfProviderAttemptLedger();
 extractionResponses = [
   '{"questions":[],"warnings":[]}',
   '{"questions":[{"title":"Synthetic question","content_html":"<p>What is 2 + 3?</p>"}],"warnings":[]}',
 ];
 const repairedExtraction = await chat.callAIPdfExtractionProvider({
+  attemptLedger: sourceRecoveryLedger,
   fileName: "synthetic.pdf",
   inputStrategy: "gemini_native_pdf",
   pageImageDataUrls: [],
@@ -718,6 +919,7 @@ const repairedExtraction = await chat.callAIPdfExtractionProvider({
     supports_vision_images: false,
   },
   prompt: originalExtractionPrompt,
+  promptContext: extractionPromptContext,
 });
 assert.equal(repairedExtraction.questions.length, 1);
 assert.equal(extractionPrompts.length, 2);
@@ -725,18 +927,36 @@ assert.deepEqual(extractionOutputContracts, [
   structuredOutput.GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
   structuredOutput.GEMINI_AI_PDF_EXTRACTION_OUTPUT_CONTRACT,
 ]);
+assert.deepEqual(extractionSourceModes, ["pdf", "pdf"]);
 assert.equal(extractionPrompts[0], originalExtractionPrompt);
-assert(extractionPrompts[1].includes("Original extraction instructions:"));
 assert(extractionPrompts[1].includes(originalExtractionPrompt));
 assert(extractionPrompts[1].includes("zero importable questions"));
+assert(extractionPrompts[1].includes("non-empty title"));
+assert(extractionPrompts[1].includes("non-empty content_html"));
+assert(extractionPrompts[1].includes("Do not return blank strings"));
 assert(extractionPrompts[1].includes('{"questions":[],"warnings":[]}'));
+assert.equal(
+  extractionPrompts[1].split('{"questions":[],"warnings":[]}').length - 1,
+  1,
+  "the previous Provider response must appear exactly once in semantic recovery",
+);
 assert(extractionPrompts[1].includes('"question_number"'));
 assert(!extractionPrompts[1].includes('"question_code"'));
+assert.deepEqual(
+  sourceRecoveryLedger.attempts.map((entry) => entry.primaryReason),
+  ["FIRST_ATTEMPT", "SOURCE_BACKED_SEMANTIC_RECOVERY"],
+);
+assert.equal(sourceRecoveryLedger.sourceRecoveryUsed, true);
+assert.equal(sourceRecoveryLedger.sourceInferenceCount, 2);
 
-const rawResponseMarker = "PRIVATE_PROVIDER_OUTPUT_MUST_NOT_ESCAPE";
-extractionResponses = [rawResponseMarker, rawResponseMarker];
+const reenteredRecoveryLedger = attemptState.parseAIPdfProviderAttemptLedger(
+  JSON.parse(JSON.stringify(sourceRecoveryLedger)),
+);
+assert(reenteredRecoveryLedger);
+extractionResponses = ['{"questions":[],"warnings":[]}'];
 await assert.rejects(
   chat.callAIPdfExtractionProvider({
+    attemptLedger: reenteredRecoveryLedger,
     fileName: "synthetic.pdf",
     inputStrategy: "gemini_native_pdf",
     pageImageDataUrls: [],
@@ -752,6 +972,76 @@ await assert.rejects(
       supports_vision_images: false,
     },
     prompt: originalExtractionPrompt,
+    promptContext: extractionPromptContext,
+  }),
+  /at least one item|zero importable questions/,
+);
+assert.equal(
+  reenteredRecoveryLedger.attempts.filter(
+    (entry) => entry.primaryReason === "SOURCE_BACKED_SEMANTIC_RECOVERY",
+  ).length,
+  1,
+  "durable re-entry must not reset the one-per-job source recovery reservation",
+);
+
+const priorPromptCount = extractionPrompts.length;
+extractionResponses = ['{"questions":[],"warnings":[]}'];
+const oneAttemptBudget = budgetModule.createAIProviderExecutionBudget({
+  maxInferenceAttempts: 1,
+});
+await assert.rejects(
+  chat.callAIPdfExtractionProvider({
+    executionObserver: oneAttemptBudget,
+    fileName: "synthetic.pdf",
+    inputStrategy: "gemini_native_pdf",
+    pageImageDataUrls: [],
+    pdfBase64: "",
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    profile: {
+      apiKey: "synthetic-test-key",
+      base_url: "https://provider.invalid",
+      model: "synthetic-model",
+      name: "Synthetic Provider",
+      provider: "gemini_native",
+      supports_pdf_input: true,
+      supports_vision_images: false,
+    },
+    prompt: originalExtractionPrompt,
+    promptContext: extractionPromptContext,
+  }),
+  (error) => {
+    assert(!(error instanceof errors.AIProviderError));
+    assert.match(error.message, /at least one item|zero importable questions/);
+    assert(!error.message.includes("provider_execution_budget_exhausted"));
+    return true;
+  },
+);
+assert.equal(extractionPrompts.length, priorPromptCount + 1);
+assert.equal(oneAttemptBudget.snapshot().providerInferenceAttempts, 1);
+
+const rawResponseMarker = "PRIVATE_PROVIDER_OUTPUT_MUST_NOT_ESCAPE";
+const sourceModeCountBeforeMalformedResponse = extractionSourceModes.length;
+const structuralRepairLedger = attemptState.createAIPdfProviderAttemptLedger();
+extractionResponses = [rawResponseMarker, rawResponseMarker];
+await assert.rejects(
+  chat.callAIPdfExtractionProvider({
+    attemptLedger: structuralRepairLedger,
+    fileName: "synthetic.pdf",
+    inputStrategy: "gemini_native_pdf",
+    pageImageDataUrls: [],
+    pdfBase64: "",
+    pdfBytes: Buffer.from("synthetic-pdf"),
+    profile: {
+      apiKey: "synthetic-test-key",
+      base_url: "https://provider.invalid",
+      model: "synthetic-model",
+      name: "Synthetic Provider",
+      provider: "gemini_native",
+      supports_pdf_input: true,
+      supports_vision_images: false,
+    },
+    prompt: originalExtractionPrompt,
+    promptContext: extractionPromptContext,
   }),
   (error) => {
     assert.equal(error.message, "AI provider returned non-JSON content.");
@@ -763,6 +1053,91 @@ await assert.rejects(
     return true;
   },
 );
+assert.deepEqual(
+  extractionSourceModes.slice(sourceModeCountBeforeMalformedResponse),
+  ["pdf", "text"],
+  "structural repair must not re-upload the source PDF",
+);
+assert.deepEqual(
+  structuralRepairLedger.attempts.map((entry) => entry.primaryReason),
+  ["FIRST_ATTEMPT", "STRUCTURAL_SCHEMA_REPAIR"],
+);
+assert.equal(structuralRepairLedger.sourceInferenceCount, 1);
+assert.equal(structuralRepairLedger.sourceRecoveryUsed, false);
+
+const applicationRepairLedger = attemptState.createAIPdfProviderAttemptLedger();
+const sourceModeCountBeforeApplicationRepair = extractionSourceModes.length;
+extractionResponses = [
+  '{"questions":"invalid","warnings":[]}',
+  '{"questions":[{"title":"Synthetic question","content_html":"<p>What is 2 + 3?</p>"}],"warnings":[]}',
+];
+const applicationRepairedExtraction = await chat.callAIPdfExtractionProvider({
+  attemptLedger: applicationRepairLedger,
+  fileName: "synthetic.pdf",
+  inputStrategy: "gemini_native_pdf",
+  pageImageDataUrls: [],
+  pdfBase64: "",
+  pdfBytes: Buffer.from("synthetic-pdf"),
+  profile: {
+    apiKey: "synthetic-test-key",
+    base_url: "https://provider.invalid",
+    model: "synthetic-model",
+    name: "Synthetic Provider",
+    provider: "gemini_native",
+    supports_pdf_input: true,
+    supports_vision_images: false,
+  },
+  prompt: originalExtractionPrompt,
+  promptContext: extractionPromptContext,
+});
+assert.equal(applicationRepairedExtraction.questions.length, 1);
+assert.deepEqual(
+  extractionSourceModes.slice(sourceModeCountBeforeApplicationRepair),
+  ["pdf", "text"],
+  "application validation repair must not re-upload the source PDF",
+);
+assert.deepEqual(
+  applicationRepairLedger.attempts.map((entry) => entry.primaryReason),
+  ["FIRST_ATTEMPT", "APPLICATION_VALIDATION_REPAIR"],
+);
+assert.equal(applicationRepairLedger.sourceInferenceCount, 1);
+
+const transportRetryLedger = attemptState.createAIPdfProviderAttemptLedger();
+extractionResponses = [
+  new errors.AIProviderError({
+    code: "provider_busy",
+    operation: "ai_pdf_extraction",
+    retryAfterMs: 0,
+    retryable: true,
+  }),
+  '{"questions":[{"title":"Synthetic question","content_html":"<p>What is 2 + 3?</p>"}],"warnings":[]}',
+];
+const transportRetriedExtraction = await chat.callAIPdfExtractionProvider({
+  attemptLedger: transportRetryLedger,
+  fileName: "synthetic.pdf",
+  inputStrategy: "gemini_native_pdf",
+  pageImageDataUrls: [],
+  pdfBase64: "",
+  pdfBytes: Buffer.from("synthetic-pdf"),
+  profile: {
+    apiKey: "synthetic-test-key",
+    base_url: "https://provider.invalid",
+    model: "synthetic-model",
+    name: "Synthetic Provider",
+    provider: "gemini_native",
+    supports_pdf_input: true,
+    supports_vision_images: false,
+  },
+  prompt: originalExtractionPrompt,
+  promptContext: extractionPromptContext,
+  providerRetryMaxAttempts: 2,
+});
+assert.equal(transportRetriedExtraction.questions.length, 1);
+assert.deepEqual(
+  transportRetryLedger.attempts.map((entry) => entry.primaryReason),
+  ["FIRST_ATTEMPT", "PROVIDER_BUSY_RETRY"],
+);
+assert.equal(transportRetryLedger.sourceInferenceCount, 2);
 
 console.log(
   "PASS PDF50 Provider lifecycle runtime smoke: bounded inference / JSON PDF output / counted upload-poll-inference-cleanup / pre-inference upload failure / cleanup-failure evidence / concurrent denial / malformed-response cleanup / pre-transport exhaustion / stateless repair continuity / raw-output containment",

@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  AIProviderError,
   classifyAIProviderError,
   safeAIProviderErrorState,
 } from "@/lib/ai-providers/errors";
@@ -16,8 +17,13 @@ import {
   runWithAIProviderRoute,
   type AIProviderRoutingOperationKind,
 } from "@/lib/ai-providers/routing";
+import { createAIPdfProviderAttemptLedger } from "@/lib/ai-providers/ai-pdf-attempt-state";
 import { queueRetryDelayMs } from "@/lib/ai-jobs/policy";
-import type { TrustedAIProviderTestLimits } from "@/lib/ai-jobs/provider-test-control";
+import {
+  PDF50_PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT,
+  type TrustedAIProviderTestInterruption,
+  type TrustedAIProviderTestLimits,
+} from "@/lib/ai-jobs/provider-test-control";
 import type { AIProviderJob } from "@/lib/ai-jobs/types";
 import {
   AIProviderJobFenceLostError,
@@ -26,6 +32,7 @@ import {
   checkpointAIProviderJobProviderResult,
   checkpointAIProviderJobStage,
   finishAIProviderJobFence,
+  getAIProviderJobCheckpointFailureDiagnostic,
   persistenceFenceForJob,
   heartbeatAIProviderJobFence,
   loadAIProviderJobProviderResult,
@@ -42,12 +49,15 @@ import {
   AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
   recordAIPdfCoverageRecoveryFailure,
   recordAIPdfProviderFailure,
+  type AIPdfCoverageRecoveryProcessInput,
   type AIPdfProcessInput,
 } from "@/lib/ai-pdf-import/service";
 import { AI_IMPORT_SOURCES_BUCKET } from "@/lib/ai-pdf-import/constants";
+import { createAIPdfQualityObservatory } from "@/lib/ai-pdf-import/quality-observatory";
 import { releaseAIPdfBurstAdmissionJobs } from "@/lib/ai-pdf-import/burst-admission";
 import {
   getAIPdfBatchFinalizationFailure,
+  getAIPdfPostPersistenceFailureDiagnostic,
   getAIPdfPostPersistenceFailureStage,
 } from "@/lib/ai-pdf-import/post-persistence";
 import { generateTeacherBlueprintReviewDrafts } from "@/lib/teacher-blueprint-generation";
@@ -354,11 +364,25 @@ function checkpointPayloadSha256(payload: Record<string, unknown>) {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
+class TrustedProviderCheckpointInterruptionError extends AIProviderError {
+  constructor() {
+    super({
+      code: "provider_network_error",
+      operation: "ai_pdf_extraction",
+      retryable: true,
+      safeMessage:
+        "The trusted qualification runner interrupted after preserving the Provider result.",
+    });
+    this.name = "TrustedProviderCheckpointInterruptionError";
+  }
+}
+
 async function runAIPdfExtractJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
   providerExecution,
+  providerTestInterruption = null,
   selectiveExecutionEnabled = false,
   supabase,
 }: {
@@ -366,6 +390,7 @@ async function runAIPdfExtractJob({
   leaseOwner: string;
   maxProviderCalls?: number;
   providerExecution: AIProviderExecutionBudget;
+  providerTestInterruption?: TrustedAIProviderTestInterruption | null;
   selectiveExecutionEnabled?: boolean;
   supabase: SupabaseWorkerClient;
 }): Promise<WorkerExecutionResult> {
@@ -484,6 +509,12 @@ async function runAIPdfExtractJob({
     .from(AI_IMPORT_SOURCES_BUCKET)
     .download(sourceAsset.object_path);
   if (downloadError) throw new Error(downloadError.message);
+  const qualityObserver = createAIPdfQualityObservatory(
+    providerResultCheckpoint?.qualityCheckpoint,
+  );
+  const providerAttemptLedger =
+    providerResultCheckpoint?.attemptLedger ??
+    createAIPdfProviderAttemptLedger();
 
   const input: AIPdfProcessInput = {
     batchId: job.resource_id,
@@ -503,6 +534,18 @@ async function runAIPdfExtractJob({
     persistenceFence: persistenceFenceForJob(fencedJob),
     persistenceLineageKey: buildPdfPersistenceLineageKey({ job, sourceAssetId }),
     providerExecutionObserver: providerExecution,
+    providerAttemptLedger,
+    qualityObserver,
+    onProviderAttemptCheckpoint: async (checkpoint) => {
+      const payload = checkpoint as unknown as Record<string, unknown>;
+      await checkpointAIProviderJobProviderResult({
+        job: fencedJob,
+        outputContractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
+        payload,
+        payloadSha256: checkpointPayloadSha256(payload),
+        supabase,
+      });
+    },
     onProviderResultCheckpoint: async (checkpoint) => {
       const payload = checkpoint as unknown as Record<string, unknown>;
       await checkpointAIProviderJobProviderResult({
@@ -512,6 +555,12 @@ async function runAIPdfExtractJob({
         payloadSha256: checkpointPayloadSha256(payload),
         supabase,
       });
+      if (
+        providerTestInterruption ===
+        PDF50_PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT
+      ) {
+        throw new TrustedProviderCheckpointInterruptionError();
+      }
     },
     onCheckpointStage: async (stage, metadata) => {
       await checkpointAIProviderJobStage({
@@ -536,6 +585,7 @@ async function runAIPdfExtractJob({
         processAIPdfImport({
           ...input,
           providerProfileId: provider.id,
+          providerRouteCandidateIndex: attemptBudget.candidateIndex,
           providerRetryMaxAttempts: attemptBudget.maxAttempts,
         }),
       leaseOwner: `${leaseOwner}:${job.id}`,
@@ -584,7 +634,10 @@ async function runAIPdfExtractJob({
     // started under a newer fence.
     if (
       !(error instanceof AIProviderJobFenceLostError) &&
-      !(error instanceof Error && error.message === STALE_FENCE_REJECTED)
+      !(error instanceof TrustedProviderCheckpointInterruptionError) &&
+      !(error instanceof Error && error.message === STALE_FENCE_REJECTED) &&
+      !getAIProviderJobCheckpointFailureDiagnostic(error) &&
+      !getAIPdfPostPersistenceFailureStage(error)
     ) {
       await recordAIPdfProviderFailure({ error, input });
     }
@@ -665,6 +718,16 @@ async function runAIPdfCoverageRecoveryJob({
     stage: "provider_request_started",
     supabase,
   });
+  const storedProviderCheckpoint = await loadAIProviderJobProviderResult({
+    job: fencedJob,
+    supabase,
+  });
+  const providerResultCheckpoint = storedProviderCheckpoint
+    ? parseAIPdfProviderResultCheckpoint(storedProviderCheckpoint.payload)
+    : undefined;
+  if (storedProviderCheckpoint && !providerResultCheckpoint) {
+    throw new Error("The protected recovery attempt checkpoint is incompatible and cannot be replayed.");
+  }
   const { data: sourceBlob, error: downloadError } = await supabase.storage
     .from(AI_IMPORT_SOURCES_BUCKET)
     .download(sourceAsset.object_path);
@@ -672,7 +735,13 @@ async function runAIPdfCoverageRecoveryJob({
 
   const usageSamples: NonNullable<AIOperationExecutionMetadata["usageSamples"]> = [];
   const providerStartedAt = Date.now();
-  const input = {
+  const qualityObserver = createAIPdfQualityObservatory(
+    providerResultCheckpoint?.qualityCheckpoint,
+  );
+  const providerAttemptLedger =
+    providerResultCheckpoint?.attemptLedger ??
+    createAIPdfProviderAttemptLedger();
+  const input: AIPdfCoverageRecoveryProcessInput = {
     batchId: job.resource_id,
     fileName: sourceAsset.original_filename,
     jobId: job.id,
@@ -681,6 +750,9 @@ async function runAIPdfCoverageRecoveryJob({
     profileId: job.created_by,
     providerProfileId,
     providerExecutionObserver: providerExecution,
+    providerAttemptLedger,
+    providerResultCheckpoint: providerResultCheckpoint ?? undefined,
+    qualityObserver,
     recoveryPlanHash,
     recoveryWindowIds,
     routingLeaseOwner: `${leaseOwner}:${job.id}`,
@@ -691,6 +763,16 @@ async function runAIPdfCoverageRecoveryJob({
     targetBankId: job.target_bank_id,
     onProviderUsage: (usage: any) => usageSamples.push(usage),
   };
+  input.onProviderAttemptCheckpoint = async (checkpoint) => {
+    const payload = checkpoint as unknown as Record<string, unknown>;
+    await checkpointAIProviderJobProviderResult({
+      job: fencedJob,
+      outputContractVersion: AI_PDF_PROVIDER_RESULT_CHECKPOINT_CONTRACT_VERSION,
+      payload,
+      payloadSha256: checkpointPayloadSha256(payload),
+      supabase,
+    });
+  };
 
   try {
     const routed = await runWithAIProviderRoute({
@@ -698,6 +780,7 @@ async function runAIPdfCoverageRecoveryJob({
         processAIPdfCoverageRecovery({
           ...input,
           providerProfileId: provider.id,
+          providerRouteCandidateIndex: attemptBudget.candidateIndex,
           providerRetryMaxAttempts: attemptBudget.maxAttempts,
         }),
       leaseOwner: `${leaseOwner}:${job.id}`,
@@ -883,6 +966,7 @@ async function executeClaimedJob({
   job,
   leaseOwner,
   maxProviderCalls = 4,
+  providerTestInterruption = null,
   providerTestLimits,
   selectiveExecutionEnabled = false,
   supabase,
@@ -890,6 +974,7 @@ async function executeClaimedJob({
   job: AIProviderJob;
   leaseOwner: string;
   maxProviderCalls?: number;
+  providerTestInterruption?: TrustedAIProviderTestInterruption | null;
   providerTestLimits?: TrustedAIProviderTestLimits | null;
   selectiveExecutionEnabled?: boolean;
   supabase: SupabaseWorkerClient;
@@ -900,6 +985,7 @@ async function executeClaimedJob({
       maxProviderCalls,
       providerTestLimits?.maxInferenceAttempts ?? maxProviderCalls,
     ),
+    maxInputBytes: providerTestLimits?.maxInputBytes,
     maxNetworkRequests: providerTestLimits?.maxNetworkRequests,
     maxOutputTokens: providerTestLimits?.maxOutputTokens,
   });
@@ -917,6 +1003,7 @@ async function executeClaimedJob({
             leaseOwner,
             maxProviderCalls,
             providerExecution,
+            providerTestInterruption,
             selectiveExecutionEnabled,
             supabase,
           })
@@ -955,6 +1042,7 @@ async function executeClaimedJob({
         reviewRoute: result.reviewRoute,
         providerCleanupFailures: providerExecutionSummary.providerCleanupFailures,
         providerCleanupRequests: providerExecutionSummary.providerCleanupRequests,
+        providerInputBytesMax: providerExecutionSummary.providerInputBytesMax,
         providerInferenceAttempts: providerExecutionSummary.providerInferenceAttempts,
         providerInferenceRequests: providerExecutionSummary.providerInferenceRequests,
         providerNetworkRequests: providerExecutionSummary.providerNetworkRequests,
@@ -982,35 +1070,79 @@ async function executeClaimedJob({
     const providerExecutionSummary = providerExecution.snapshot();
     const postPersistenceFailureStage =
       getAIPdfPostPersistenceFailureStage(error);
+    const checkpointDiagnostic =
+      getAIProviderJobCheckpointFailureDiagnostic(error);
+    const postPersistenceDiagnostic =
+      getAIPdfPostPersistenceFailureDiagnostic({
+        attemptNumber: job.execution_attempt_count,
+        error,
+      });
     const batchFinalizationFailure = getAIPdfBatchFinalizationFailure(error);
-    const classified = classifyAIProviderError({
-      error,
-      operation:
-        job.job_kind === "ai_pdf_extract" || job.job_kind === "ai_pdf_coverage_recovery"
-          ? "ai_pdf_extraction"
-          : "blueprint_generation",
-    });
-    const safe = safeAIProviderErrorState({ error: classified });
+    const classified = postPersistenceDiagnostic || checkpointDiagnostic
+      ? null
+      : classifyAIProviderError({
+          error,
+          operation:
+            job.job_kind === "ai_pdf_extract" ||
+            job.job_kind === "ai_pdf_coverage_recovery"
+              ? "ai_pdf_extraction"
+              : "blueprint_generation",
+        });
+    const safe = classified
+      ? safeAIProviderErrorState({ error: classified })
+      : null;
+    const retryable =
+      postPersistenceDiagnostic?.retryable ??
+      checkpointDiagnostic?.retryable ??
+      classified?.retryable ??
+      false;
     const canRetry =
-      classified.retryable &&
+      retryable &&
       job.execution_attempt_count < job.max_execution_attempts &&
       queueRetryDelayMs(job.execution_attempt_count) !== null;
+    const safeErrorCode =
+      postPersistenceDiagnostic?.safeErrorCode ??
+      checkpointDiagnostic?.safeErrorCode ??
+      safe?.safeErrorCode ??
+      "unknown_provider_error";
 
     const finished = await finishJob({
       job,
       leaseOwner,
       providerAttemptCount: providerExecutionSummary.providerInferenceAttempts,
-      safeErrorCode: safe.safeErrorCode,
+      safeErrorCode,
       safeMessage: canRetry
         ? "The AI service is temporarily busy. Your work is safe and will retry automatically."
         : safeWorkerFailureMessage(),
       safeResult: {
+        checkpointFailureHttpClassification:
+          checkpointDiagnostic?.httpClassification ?? null,
+        checkpointFailureOperation: checkpointDiagnostic?.operation ?? null,
+        checkpointFailureReason: checkpointDiagnostic?.reason ?? null,
+        checkpointFailureRetryable: checkpointDiagnostic?.retryable ?? null,
+        checkpointFailureSqlStateClass:
+          checkpointDiagnostic?.sqlStateClass ?? null,
         batchFinalizationFailureReason: batchFinalizationFailure?.reason ?? null,
         batchFinalizationSummaryBytes:
           batchFinalizationFailure?.summaryBytes ?? null,
         postPersistenceFailureStage,
+        postPersistenceAttemptNumber:
+          postPersistenceDiagnostic?.attemptNumber ?? null,
+        postPersistenceEvidenceFingerprint:
+          postPersistenceDiagnostic?.evidenceFingerprint ?? null,
+        postPersistenceFailureReason:
+          postPersistenceDiagnostic?.reason ?? null,
+        postPersistenceHttpClassification:
+          postPersistenceDiagnostic?.httpClassification ?? null,
+        postPersistenceRetryable:
+          postPersistenceDiagnostic?.retryable ?? null,
+        postPersistenceSqlStateClass:
+          postPersistenceDiagnostic?.sqlStateClass ?? null,
+        postPersistenceValidationCategory:
+          postPersistenceDiagnostic?.validationCategory ?? null,
         providerCleanupFailures: providerExecutionSummary.providerCleanupFailures,
         providerCleanupRequests: providerExecutionSummary.providerCleanupRequests,
+        providerInputBytesMax: providerExecutionSummary.providerInputBytesMax,
         providerInferenceAttempts: providerExecutionSummary.providerInferenceAttempts,
         providerInferenceRequests: providerExecutionSummary.providerInferenceRequests,
         providerNetworkRequests: providerExecutionSummary.providerNetworkRequests,
@@ -1032,7 +1164,7 @@ async function executeClaimedJob({
           "provider_rate_limited",
           "provider_timeout",
           "provider_network_error",
-        ].includes(classified.code)
+        ].includes(classified?.code ?? "")
           ? "unavailable"
           : "closed",
         providerCallCount: providerExecutionSummary.providerInferenceRequests,
@@ -1041,7 +1173,7 @@ async function executeClaimedJob({
           providerExecutionSummary.providerInferenceAttempts - 1,
         ),
       },
-      safeErrorCode: safe.safeErrorCode,
+      safeErrorCode,
       supabase,
     }).catch(() => undefined);
 
@@ -1056,12 +1188,14 @@ async function executeClaimedJob({
 
 export async function runDurableAIProviderJobs({
   limit = 1,
+  providerTestInterruption = null,
   providerTestLimits = null,
   supabase = createServiceRoleClient(),
   targetJobId = null,
   workerId = `ai-worker-${randomUUID()}`,
 }: {
   limit?: number;
+  providerTestInterruption?: TrustedAIProviderTestInterruption | null;
   providerTestLimits?: TrustedAIProviderTestLimits | null;
   supabase?: SupabaseWorkerClient;
   targetJobId?: string | null;
@@ -1088,6 +1222,9 @@ export async function runDurableAIProviderJobs({
   }
   if (!providerTestLimits && targetJobId) {
     throw new Error("trusted_provider_test_target_without_limits");
+  }
+  if (providerTestInterruption && (!providerTestLimits || !targetJobId)) {
+    throw new Error("trusted_provider_test_interruption_without_test_mode");
   }
 
   if (!providerTestLimits) {
@@ -1121,6 +1258,7 @@ export async function runDurableAIProviderJobs({
         job,
         leaseOwner: workerId,
         maxProviderCalls: control.maxProviderCallsPerExecution,
+        providerTestInterruption,
         providerTestLimits,
         selectiveExecutionEnabled: control.selectiveExecutionEnabled,
         supabase,

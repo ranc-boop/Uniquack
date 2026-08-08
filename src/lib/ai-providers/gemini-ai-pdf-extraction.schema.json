@@ -4,6 +4,7 @@
   "properties": {
     "questions": {
       "type": "array",
+      "description": "Actual questions visible in the source. Return at least one when the source contains a question; required text fields must not be blank.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -11,7 +12,7 @@
         "properties": {
           "title": {
             "type": "string",
-            "description": "Short plain-text question title."
+            "description": "Non-empty short plain-text title for the actual question, never a heading or placeholder."
           },
           "question_number": {
             "type": "string",
@@ -28,7 +29,7 @@
           },
           "content_html": {
             "type": "string",
-            "description": "Sanitization-friendly HTML containing the complete question."
+            "description": "Non-empty sanitization-friendly HTML containing the complete visible question prompt."
           },
           "content_source": {
             "type": "string",
@@ -98,6 +99,8 @@
           },
           "page_refs": {
             "type": "array",
+            "description": "Non-empty source page numbers that visibly contain this question. Never guess or omit page lineage.",
+            "minItems": 1,
             "items": {
               "type": "integer",
               "minimum": 1
@@ -110,11 +113,31 @@
               "additionalProperties": false,
               "properties": {
                 "alt": { "type": "string" },
+                "ambiguity": { "type": "string" },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
                 "page": {
                   "type": "integer",
                   "minimum": 1
                 },
                 "placeholder": { "type": "string" },
+                "required": { "type": "boolean" },
+                "shared_group_key": { "type": "string" },
+                "subquestion_ref": { "type": "string" },
+                "visual_role": {
+                  "type": "string",
+                  "enum": [
+                    "answer_figure",
+                    "decorative",
+                    "diagram",
+                    "graph",
+                    "question_figure",
+                    "table"
+                  ]
+                },
                 "bbox": {
                   "type": "object",
                   "additionalProperties": false,
@@ -131,7 +154,7 @@
             }
           }
         },
-        "required": ["title", "question_type", "content_html"]
+        "required": ["title", "question_type", "content_html", "page_refs"]
       }
     },
     "warnings": {

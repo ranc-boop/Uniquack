@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { AIProviderUsage } from "@/lib/ai-operations/cost-catalog";
+import {
+  normalizeProviderUsage,
+  type AIProviderUsage,
+} from "@/lib/ai-operations/cost-catalog";
 import type { AIProviderExecutionObserver } from "@/lib/ai-providers/execution-budget";
 import { parsePossiblyMalformedJson } from "@/lib/ai-providers/json-repair";
 import { assertSafeAIProviderBaseUrl } from "@/lib/ai-providers/network-safety";
@@ -1075,14 +1078,7 @@ export async function executeDeepSeekQuestionBlueprintAnalyzer({
   const providerText = payload.choices?.[0]?.message?.content;
 
   onProviderUsage?.(
-    payload.usage
-      ? {
-          cachedInputTokens: null,
-          inputTokens: payload.usage.prompt_tokens ?? null,
-          outputTokens: payload.usage.completion_tokens ?? null,
-          totalTokens: payload.usage.total_tokens ?? null,
-        }
-      : null,
+    normalizeProviderUsage(payload.usage),
   );
 
   if (!providerText) {

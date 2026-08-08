@@ -1,0 +1,35 @@
+{
+  "schema": "edustruct.pdf50-scale-qualification-control.v1",
+  "environment": "DISPOSABLE_PDF50_SCALE_QUALIFICATION",
+  "cleanupConfirmation": "DELETE_PDF50_SCALE_QUALIFICATION_FIXTURES",
+  "approvedBudgetUsd": 2,
+  "conservativeInputTokensPerProviderAttempt": 50000,
+  "releaseLimit": 4,
+  "maxExpectedQueueDepth": 5,
+  "stages": {
+    "4": {
+      "files": 4,
+      "completed": 4,
+      "cancelled": 0,
+      "providerJobs": 4,
+      "maxProviderAttempts": 12,
+      "checkpointInterruption": false
+    },
+    "10": {
+      "files": 10,
+      "completed": 9,
+      "cancelled": 1,
+      "providerJobs": 9,
+      "maxProviderAttempts": 27,
+      "checkpointInterruption": true
+    },
+    "50": {
+      "files": 50,
+      "completed": 50,
+      "cancelled": 0,
+      "providerJobs": 50,
+      "maxProviderAttempts": 75,
+      "checkpointInterruption": false
+    }
+  }
+}

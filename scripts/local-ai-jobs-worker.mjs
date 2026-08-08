@@ -19,6 +19,10 @@ export const DEFAULT_LOCAL_AI_JOBS_ROUTE =
 
 const INTERNAL_TOKEN_HEADER = "x-ai-jobs-internal-token";
 const TARGET_JOB_HEADER = "x-pdf50-provider-test-job-id";
+const PROVIDER_TEST_INTERRUPTION_HEADER =
+  "x-pdf50-provider-test-interruption";
+const PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT =
+  "after_provider_checkpoint";
 const MAX_RESPONSE_BYTES = 8_192;
 const MAX_SAFE_PROVIDER_NETWORK_REQUESTS = 512;
 const SAFE_ROUTE_FAILURE_REASONS = new Set([
@@ -179,6 +183,16 @@ export function validateLocalAIJobsTargetJobId(value) {
     )
   ) {
     throw new LocalAIJobsWorkerConfigurationError("target_job_id_rejected");
+  }
+  return value;
+}
+
+export function validateLocalAIJobsProviderTestInterruption(value) {
+  if (value === undefined) return null;
+  if (value !== PROVIDER_TEST_INTERRUPTION_AFTER_CHECKPOINT) {
+    throw new LocalAIJobsWorkerConfigurationError(
+      "provider_test_interruption_rejected",
+    );
   }
   return value;
 }
@@ -398,6 +412,7 @@ export function createLocalAIJobsWorker({
   maxConsecutiveFatalFailures =
     LOCAL_AI_JOBS_WORKER_DEFAULTS.maxConsecutiveFatalFailures,
   now = () => new Date(),
+  providerTestInterruption,
   requestTimeoutMs = LOCAL_AI_JOBS_WORKER_DEFAULTS.requestTimeoutMs,
   targetUrl = DEFAULT_LOCAL_AI_JOBS_ROUTE,
   targetJobId,
@@ -410,6 +425,13 @@ export function createLocalAIJobsWorker({
   const target = resolveLocalAIJobsWorkerRoute(targetUrl);
   const validatedToken = validateLocalAIJobsInternalToken(token);
   const validatedTargetJobId = validateLocalAIJobsTargetJobId(targetJobId);
+  const validatedProviderTestInterruption =
+    validateLocalAIJobsProviderTestInterruption(providerTestInterruption);
+  if (validatedProviderTestInterruption && !validatedTargetJobId) {
+    throw new LocalAIJobsWorkerConfigurationError(
+      "provider_test_interruption_target_required",
+    );
+  }
   if (typeof fetchImpl !== "function") {
     throw new LocalAIJobsWorkerConfigurationError("fetch_implementation_missing");
   }
@@ -472,6 +494,10 @@ export function createLocalAIJobsWorker({
       };
       if (validatedTargetJobId) {
         headers[TARGET_JOB_HEADER] = validatedTargetJobId;
+      }
+      if (validatedProviderTestInterruption) {
+        headers[PROVIDER_TEST_INTERRUPTION_HEADER] =
+          validatedProviderTestInterruption;
       }
       const response = await fetchImpl(target, {
         body: undefined,
@@ -697,6 +723,8 @@ async function runFromCommandLine() {
     worker = createLocalAIJobsWorker({
       targetUrl,
       targetJobId: process.env.AI_JOBS_LOCAL_TARGET_JOB_ID,
+      providerTestInterruption:
+        process.env.AI_JOBS_LOCAL_PROVIDER_TEST_INTERRUPTION,
       token: process.env.AI_JOBS_INTERNAL_TOKEN,
     });
     workerLock = await acquireLocalAIJobsWorkerLock({ targetUrl });
