@@ -5,6 +5,7 @@ import { MoreHorizontal } from "lucide-react";
 
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { LazyTeacherQuestionPreview } from "@/components/teacher/lazy-teacher-question-preview";
+import { TeacherReviewGuidance } from "@/components/teacher/teacher-review-guidance";
 import {
   BulkRowCheckbox,
   BulkSelectAllCheckbox,
@@ -429,13 +430,11 @@ export default async function TeacherBankReviewPage({
                         />
                       ) : null}
 
+                      <TeacherReviewGuidance findings={question.reviewGuidance} />
+
                       {question.hardErrors.length ? (
                         <p className="mt-3 text-sm font-medium text-rose-700">
                           {question.hardErrors[0]}
-                        </p>
-                      ) : question.softWarnings.length ? (
-                        <p className="mt-3 text-sm text-amber-800">
-                          {question.softWarnings.join(" · ")}
                         </p>
                       ) : null}
                     </article>

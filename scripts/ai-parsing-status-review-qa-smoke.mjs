@@ -32,6 +32,16 @@ const bankReviewPage = await read("src/app/teacher/banks/[bankId]/review/page.ts
 const bankActions = await read("src/app/teacher/banks/actions.ts");
 const bankPdfBurstActions = await read("src/app/teacher/banks/pdf-burst-actions.ts");
 const questionBanks = await read("src/lib/question-banks.ts");
+const lazyReviewPreview = await read(
+  "src/components/teacher/lazy-teacher-question-preview.tsx",
+);
+const reviewPreview = await read("src/components/teacher/teacher-question-preview.tsx");
+const reviewPreviewRoute = await read(
+  "src/app/api/teacher/banks/[bankId]/previews/route.ts",
+);
+const reviewGuidance = await read(
+  "src/lib/questions/teacher-review-guidance.ts",
+);
 const smokeAll = await read("scripts/smoke-all.mjs");
 const migrationFileNames = [
   ...(await readDir("supabase/clean-migrations")),
@@ -61,16 +71,17 @@ assert(
 
 assert(
   bankImportUi.includes("Recent AI Parsing status") &&
-    bankImportUi.includes("AI Parsing status history uses existing import batches only") &&
+    bankImportUi.includes("summarizeImportBatch") &&
     bankImportUi.includes("Target Library") &&
     bankImportUi.includes("Drafts") &&
     bankImportUi.includes("Warnings") &&
-    bankImportUi.includes("Retryable import") &&
-    bankImportUi.includes("The AI service is temporarily busy") &&
+    bankImportUi.includes("status.retryable") &&
     bankImportUi.includes("Zero drafts were created") &&
     bankImportUi.includes("Open Review Drafts") &&
-    bankImportUi.includes("Provider setup stays in Admin / AI Settings"),
-  "recent bank imports panel must show teacher-safe AI Parsing status, target bank, draft/warning counts, retry copy, and Review Draft CTA",
+    bankImportUi.includes("QuestionBoundaryGuardCard") &&
+    bankImportUi.includes("Nothing was published or") &&
+    bankImportUi.includes("assigned; retry later"),
+  "recent bank imports panel must derive teacher-safe status, counts, retry state, boundary summary, and a bank-scoped Review CTA",
 );
 
 assert(
@@ -85,37 +96,41 @@ assert(
 );
 
 assert(
-  bankReviewPage.includes("Open question review") &&
-    bankReviewPage.includes("Check these before approval") &&
-    bankReviewPage.includes("Question prompt") &&
-    bankReviewPage.includes("Answer and options") &&
-    bankReviewPage.includes("Marked correct") &&
-    bankReviewPage.includes("QuestionAnswerSummary") &&
-    bankReviewPage.includes("Solution / explanation") &&
-    bankReviewPage.includes("Taxonomy suggestions") &&
-    bankReviewPage.includes("Edit Review Draft before approval") &&
-    bankReviewPage.includes("Mark needs fix") &&
-    bankReviewPage.includes("Reject and archive") &&
-    bankReviewPage.includes("Approval adds this question") &&
-    bankReviewPage.includes("private to this Library and is not globally published") &&
-    bankReviewPage.includes("Source lineage") &&
+  bankReviewPage.includes("LazyTeacherQuestionPreview") &&
+    bankReviewPage.includes('kind="review"') &&
+    bankReviewPage.includes("TeacherReviewGuidance") &&
+    bankReviewPage.includes("markBankReviewDraftNeedsFix") &&
+    bankReviewPage.includes("rejectBankReviewDraftQuestion") &&
+    lazyReviewPreview.includes("/api/teacher/banks/") &&
+    lazyReviewPreview.includes("credentials: \"same-origin\"") &&
+    reviewPreviewRoute.includes("getReviewPreviewDTOs") &&
+    reviewPreview.includes("QuestionDetailImageGallery") &&
+    reviewPreview.includes("<CompactAnswer preview={preview} />") &&
+    reviewPreview.includes("<SolutionText") &&
+    reviewPreview.includes("preview.taxonomy.map") &&
+    reviewGuidance.includes("Source boundary needs review") &&
+    reviewGuidance.includes("Answer and solution need review") &&
+    bankReviewPage.includes("Approval confirms these questions for this Library") &&
+    bankReviewPage.includes("you did not preview remains your responsibility") &&
     !bankReviewPage.includes("published_at"),
-  "teacher bank Review Draft QA must expose expandable prompt/answer/solution/taxonomy/warning review without publishing",
+  "teacher Review cards must load authenticated bank-scoped prompt, answer, solution, taxonomy, media, and safe boundary guidance without publishing",
 );
 
 assert(
   bankReviewPage.includes("await requireTeacher()") &&
     bankReviewPage.includes("const canApprove = detail.canManage") &&
-    bankReviewPage.includes('question.status === "draft"') &&
-    bankReviewPage.includes(
-      'question.reviewItemStatus === "pending_review"',
-    ) &&
-    questionBanks.includes(".eq(\"owner_bank_id\", bankId)") &&
+    bankReviewPage.includes("listBankReviewQuestionSummaries") &&
+    bankReviewPage.includes("question.publishable") &&
+    questionBanks.includes("validateReviewQuestionForPublish") &&
+    questionBanks.includes("expectedBankId: bankId") &&
+    questionBanks.includes("ownerBankId: question.owner_bank_id") &&
+    questionBanks.includes("status: question.status") &&
+    questionBanks.includes("publishable: validation.hardErrors.length === 0") &&
     questionBanks.includes("question_taxonomy_assignments") &&
     questionBanks.includes("review_status") &&
     questionBanks.includes("import_batch_items") &&
     questionBanks.includes("validation_errors"),
-  "Review Draft QA must stay teacher-only, owner/editor gated for approval, draft-only, and include taxonomy/warning context",
+  "Review QA must stay teacher-only, owner/editor gated, canonical-validator controlled, bank-scoped, and include taxonomy/warning context",
 );
 
 assert(

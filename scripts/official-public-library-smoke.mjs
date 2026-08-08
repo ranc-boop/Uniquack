@@ -15,6 +15,30 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function preservesApprovedStateOnPrivateCopy(source) {
+  return /update\s+public\.questions\s+set\s+approval_status\s*=\s*'approved'\s+where\s+id\s*=\s*copied_question_id\s*;/i.test(
+    source,
+  );
+}
+
+function callsCanonicalApprovalGate(source) {
+  return /\.rpc\s*\(\s*["']approve_library_questions_v2["']/i.test(source);
+}
+
+const approvedCopyStatement = [
+  "update public.questions",
+  "set approval_status = 'approved'",
+  "where id = copied_question_id;",
+].join("\n");
+assert(
+  preservesApprovedStateOnPrivateCopy(approvedCopyStatement) &&
+    preservesApprovedStateOnPrivateCopy(approvedCopyStatement.replaceAll("\n", "\r\n")) &&
+    !preservesApprovedStateOnPrivateCopy(
+      approvedCopyStatement.replace("copied_question_id", "p_public_question_id"),
+    ),
+  "Official-copy approval assertion must be LF/CRLF portable and reject the wrong target row.",
+);
+
 assert(
   migration.includes("questions_approval_status_check") &&
     migration.includes("check (approval_status in ('pending', 'approved'))") &&
@@ -56,10 +80,10 @@ assert(
 );
 
 assert(
-  migration.includes("Official Public Library pulls are server-only.") &&
+    migration.includes("Official Public Library pulls are server-only.") &&
     migration.includes("A real Library actor is required.") &&
     migration.includes(") to service_role;") &&
-    migration.includes("set approval_status = 'approved'\n  where id = copied_question_id") &&
+    preservesApprovedStateOnPrivateCopy(migration) &&
     migration.includes("count(distinct option_row->>'id')") &&
     migration.includes("jsonb_typeof(answer_value) = 'string'"),
   "Public pulls must preserve the service-role boundary and deterministic grading specs must be strict.",
@@ -94,8 +118,14 @@ assert(
 );
 
 assert(
-  adminActions.includes('rpc(\n            "approve_library_questions_v2"') &&
-    teacherActions.includes('rpc("approve_library_questions_v2"'),
+  callsCanonicalApprovalGate(adminActions) &&
+    callsCanonicalApprovalGate(teacherActions) &&
+    !callsCanonicalApprovalGate(
+      teacherActions.replaceAll(
+        "approve_library_questions_v2",
+        "approve_library_questions_legacy",
+      ),
+    ),
   "Admin and Teacher approval actions must use the canonical v2 approval gate.",
 );
 

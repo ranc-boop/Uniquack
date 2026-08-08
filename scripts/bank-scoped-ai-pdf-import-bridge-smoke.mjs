@@ -15,6 +15,11 @@ const [
   burstUpload,
   importsPage,
   reviewPage,
+  lazyReviewPreview,
+  previewRoute,
+  previewService,
+  previewRenderer,
+  questionAssetUrl,
   compatibilityPage,
   parsingProfiles,
 ] = await Promise.all([
@@ -24,9 +29,39 @@ const [
   read("src/components/teacher/teacher-pdf-burst-upload.tsx"),
   read("src/app/teacher/banks/[bankId]/imports/page.tsx"),
   read("src/app/teacher/banks/[bankId]/review/page.tsx"),
+  read("src/components/teacher/lazy-teacher-question-preview.tsx"),
+  read("src/app/api/teacher/banks/[bankId]/previews/route.ts"),
+  read("src/lib/teacher-focus-preview.ts"),
+  read("src/components/teacher/teacher-question-preview.tsx"),
+  read("src/lib/storage/question-assets.ts"),
   read("src/app/teacher/ai-parsing/page.tsx"),
   read("src/lib/ai-pdf-import/teacher-parsing-profiles.ts"),
 ]);
+
+function hasProtectedReviewMediaHandoff({
+  lazySource,
+  pageSource,
+  rendererSource,
+  routeSource,
+  serviceSource,
+  urlSource,
+}) {
+  return (
+    pageSource.includes("LazyTeacherQuestionPreview") &&
+    pageSource.includes('kind="review"') &&
+    lazySource.includes("/api/teacher/banks/") &&
+    lazySource.includes("credentials: \"same-origin\"") &&
+    routeSource.includes("getReviewPreviewDTOs") &&
+    routeSource.includes('return jsonResponse({ error: "Preview not found." }, 404)') &&
+    serviceSource.includes("if (!access?.canManage) return null") &&
+    serviceSource.includes('.eq("target_bank_id", bankId)') &&
+    serviceSource.includes("loadPreviewEnrichmentBatch") &&
+    serviceSource.includes("getQuestionAssetUrl(asset.id)") &&
+    rendererSource.includes("QuestionDetailImageGallery") &&
+    rendererSource.includes("preview.assets.map") &&
+    urlSource.includes("return `/api/question-assets/${assetId}`")
+  );
+}
 
 assert(
   aiPdfService.includes("targetBankId?: string | null") &&
@@ -68,11 +103,34 @@ assert(
 );
 
 assert(
-  reviewPage.includes("QuestionAssetsPanel") &&
-    reviewPage.includes("QuestionSourceFilesPanel") &&
+  hasProtectedReviewMediaHandoff({
+    lazySource: lazyReviewPreview,
+    pageSource: reviewPage,
+    rendererSource: previewRenderer,
+    routeSource: previewRoute,
+    serviceSource: previewService,
+    urlSource: questionAssetUrl,
+  }) &&
     reviewPage.includes("approveBankReviewQuestion") &&
-    reviewPage.includes("private to this Library and is not globally published"),
-  "AI-created drafts must hand off to the Library Review workspace with media and approval gates.",
+    reviewPage.includes("Approval confirms these questions for this Library") &&
+    reviewPage.includes("you did not preview remains your responsibility") &&
+    !reviewPage.includes("published_at"),
+  "AI-created drafts must hand off through the authenticated, bank-scoped lazy Review preview and protected asset route.",
+);
+
+assert(
+  !hasProtectedReviewMediaHandoff({
+    lazySource: lazyReviewPreview,
+    pageSource: reviewPage,
+    rendererSource: previewRenderer,
+    routeSource: previewRoute,
+    serviceSource: previewService.replaceAll(
+      "getQuestionAssetUrl(asset.id)",
+      "asset.storage_path",
+    ),
+    urlSource: questionAssetUrl,
+  }),
+  "Direct Storage-path Review media mutation must be detectable.",
 );
 
 assert(

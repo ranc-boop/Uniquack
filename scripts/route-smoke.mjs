@@ -50,9 +50,21 @@ async function read(relativePath) {
   return readFile(resolve(root, relativePath), "utf8");
 }
 
+function hasVideosRouteContract(source) {
+  return (
+    source.includes("export default async function VideosPage") &&
+    source.includes("if (!isSupabaseConfigured())") &&
+    source.includes("return <SupabaseConfigNotice />") &&
+    source.includes('.from("videos")') &&
+    source.includes('.eq("status", "published")') &&
+    source.includes("VIDEOS_PAGE_SIZE") &&
+    source.includes(".range(")
+  );
+}
+
 if (!sourceOnly) {
   await checkRoute("/questions", "Public Library");
-  await checkRoute("/videos", "Videos");
+  await checkRoute("/videos");
   await checkAdminRoute("/admin", "Dashboard");
   await checkAdminRoute("/admin/questions", "Questions");
   await checkAdminRoute("/admin/review", "Review Drafts");
@@ -428,10 +440,17 @@ assert(
   "bulk asset import route must keep existing-file lookup bounded to the draft window",
 );
 assert(
-  videosPage.includes("VIDEOS_PAGE_SIZE") &&
-    videosPage.includes(".range(") &&
-    !videosPage.includes(".limit(100);"),
-  "videos route must use paged video loading instead of a fixed 100-row initial query",
+  hasVideosRouteContract(videosPage) && !videosPage.includes(".limit(100);"),
+  "videos route must remain reachable with a safe unconfigured state and paged published-video loading",
+);
+assert(
+  !hasVideosRouteContract(
+    videosPage.replaceAll(
+      '.eq("status", "published")',
+      '.neq("status", "published")',
+    ),
+  ),
+  "videos published-only route mutation must be detectable",
 );
 console.log("PASS route data loading stays paged on review, assets, and videos");
 assert(
