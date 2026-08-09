@@ -1,0 +1,381 @@
+{
+  "version": "ai_parsing_v2_development_corpus_v1",
+  "rights": "Synthetic educational fixtures authored for repository testing; no third-party source text.",
+  "cases": [
+    {
+      "id": "dev-01-text-mcq",
+      "fixtureKind": "mcq",
+      "sourceContent": "Question 1 asks for the derivative of x squared. Four original answer choices and an answer key are supplied.",
+      "coverage": ["text", "multiple_choice", "answer_key", "taxonomy"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-02-boolean",
+      "fixtureKind": "boolean",
+      "sourceContent": "Determine whether the stated limit claim is true or false. A keyed explanation follows.",
+      "coverage": ["boolean", "answer_key", "explanation"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-03-numeric-equation",
+      "fixtureKind": "numeric",
+      "sourceContent": "Evaluate an original definite integral and report a numeric result with tolerance.",
+      "coverage": ["numeric", "numeric_tolerance", "equation", "worked_solution"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-04-short-text",
+      "fixtureKind": "short_text",
+      "sourceContent": "Name the theorem justified by the supplied hypotheses. The answer key names the theorem.",
+      "coverage": ["short_text", "answer_key"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-05-free-response",
+      "fixtureKind": "free_response",
+      "sourceContent": "Explain why a continuous function reaches a maximum on the closed interval. A short rubric is provided.",
+      "coverage": ["free_response", "rubric", "auditable_solution"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-06-multipart",
+      "fixtureKind": "multipart",
+      "sourceContent": "A two-part original problem shares one prompt. Part A is numeric and Part B requests a short explanation.",
+      "coverage": ["multipart", "shared_prompt", "typed_answers"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 3
+    },
+    {
+      "id": "dev-07-cross-page",
+      "fixtureKind": "cross_page",
+      "sourceContent": "A question begins on page one and its final condition continues onto page two before the answer key.",
+      "coverage": ["cross_page", "boundary", "page_lineage"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-08-shared-prompt",
+      "fixtureKind": "shared_prompt",
+      "sourceContent": "A shared data statement is followed by one independently answerable question and a keyed solution.",
+      "coverage": ["shared_prompt", "boundary"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-09-answer-key-continuation",
+      "fixtureKind": "answer_key_continuation",
+      "sourceContent": "The prompt is on page one while its matching answer-key continuation appears on page three.",
+      "coverage": ["answer_key_continuation", "page_lineage"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-10-required-graph",
+      "fixtureKind": "required_graph",
+      "sourceContent": "Use the original graph on page two to identify the interval where the function is increasing.",
+      "coverage": ["visual", "graph", "required_visual"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-11-required-table",
+      "fixtureKind": "required_table",
+      "sourceContent": "Use the synthetic value table on page two to select the correct rate comparison.",
+      "coverage": ["visual", "table", "required_visual", "visual_fact"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-12-shared-visual",
+      "fixtureKind": "shared_visual",
+      "sourceContent": "One coordinate diagram is explicitly shared by the prompt and its answer explanation.",
+      "coverage": ["visual", "shared_visual", "lineage"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 2
+    },
+    {
+      "id": "dev-13-decorative-visual",
+      "fixtureKind": "decorative_visual",
+      "sourceContent": "A decorative border appears beside a complete text-only question and is not required to solve it.",
+      "coverage": ["visual", "decorative_suppression"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-14-missing-required-visual",
+      "fixtureKind": "missing_visual",
+      "sourceContent": "The prompt says to use a diagram, but the source packet contains no recoverable diagram region.",
+      "coverage": ["visual", "missing_visual", "needs_more_evidence"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "needs_more_evidence",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-15-ambiguous-visual",
+      "fixtureKind": "ambiguous_visual",
+      "sourceContent": "Two nearby diagrams could belong to the prompt and the association cannot be resolved safely.",
+      "coverage": ["visual", "ambiguous_visual", "needs_more_evidence"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "needs_more_evidence",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-16-no-questions",
+      "fixtureKind": "no_questions",
+      "sourceContent": "A synthetic course cover and schedule contain no educational question prompt.",
+      "coverage": ["no_questions", "source_sufficiency"],
+      "expectedSufficiency": "no_questions",
+      "expectedDisposition": "insufficient_source",
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-17-insufficient-answer-evidence",
+      "fixtureKind": "unsupported_answer",
+      "sourceContent": "A complete prompt is visible, but no answer or worked solution is present in the bounded source.",
+      "coverage": ["insufficient_evidence", "answer_provenance"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "needs_more_evidence",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-18-unsupported-source",
+      "fixtureKind": "unsupported_source",
+      "sourceContent": "The synthetic input declares a source format outside the supported P0 set.",
+      "coverage": ["unsupported_source", "source_sufficiency"],
+      "expectedSufficiency": "unsupported_source",
+      "expectedDisposition": "insufficient_source",
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-19-taxonomy-abstention",
+      "fixtureKind": "taxonomy_abstain",
+      "sourceContent": "The problem clearly supports curriculum and form tags but provides no exact method evidence.",
+      "coverage": ["taxonomy", "abstention", "effective_leaf"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-20-taxonomy-ambiguous",
+      "fixtureKind": "taxonomy_ambiguous",
+      "sourceContent": "Two concept candidates remain equally plausible, so the exact concept decision abstains.",
+      "coverage": ["taxonomy", "ambiguity", "no_parent_substitution"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-21-answer-provenance",
+      "fixtureKind": "answer_provenance",
+      "sourceContent": "A multiple-choice answer is linked to the exact answer-key fingerprint rather than inferred from plausibility.",
+      "coverage": ["answer_provenance", "exact_fingerprint"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-22-worked-solution",
+      "fixtureKind": "worked_solution",
+      "sourceContent": "The answer key supplies concise visible algebra steps and a conclusion matching the canonical answer.",
+      "coverage": ["auditable_solution", "answer_consistency"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-23-multipart-shared-answer",
+      "fixtureKind": "multipart",
+      "sourceContent": "A second multipart fixture uses one answer-key region to support both child responses without inventing a parent answer.",
+      "coverage": ["multipart", "shared_answer_key", "source_lineage"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 3
+    },
+    {
+      "id": "dev-24-answer-key-figure",
+      "fixtureKind": "answer_key_visual",
+      "sourceContent": "A source-backed answer figure on page three supports the keyed explanation and is not exposed publicly.",
+      "coverage": ["answer_key_visual", "private_asset", "visual_fact"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-25-two-questions",
+      "fixtureKind": "two_questions",
+      "sourceContent": "Two independent original questions share a page but retain separate IDs, answers, and Review Draft projections.",
+      "coverage": ["multiple_questions", "duplicate_protection"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 2
+    },
+    {
+      "id": "dev-26-ambiguous-boundary",
+      "fixtureKind": "ambiguous_boundary",
+      "sourceContent": "A trailing clause may belong to either adjacent question, so the boundary remains explicitly ambiguous.",
+      "coverage": ["ambiguous_boundary", "needs_more_evidence"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "needs_more_evidence",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-27-answer-only-source",
+      "fixtureKind": "answer_only_source",
+      "sourceContent": "A synthetic answer-key fragment is present, but the corresponding educational prompt is absent from the bounded source.",
+      "coverage": ["answer_only_source", "insufficient_evidence", "compact_zero_question"],
+      "expectedSufficiency": "insufficient_evidence",
+      "expectedDisposition": "insufficient_source",
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-28-incomplete-source",
+      "fixtureKind": "insufficient_source",
+      "sourceContent": "A synthetic prompt begins a calculation but ends before the required condition, answer choices, and answer evidence appear.",
+      "coverage": ["incomplete_question", "insufficient_evidence", "compact_zero_question"],
+      "expectedSufficiency": "insufficient_evidence",
+      "expectedDisposition": "insufficient_source",
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-29-model-derived-answer",
+      "fixtureKind": "model_derived_answer",
+      "sourceContent": "A complete synthetic prompt can be solved from visible values, but no source answer key exists, so the proposed derivation remains model-derived.",
+      "coverage": ["model_derived", "auditable_derivation", "needs_more_evidence"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "needs_more_evidence",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-30-answer-solution-conflict",
+      "fixtureKind": "answer_solution_conflict",
+      "sourceContent": "The synthetic canonical answer selects option A while the proposed solution conclusion selects option B, creating a deterministic contradiction.",
+      "coverage": ["answer_solution_conflict", "deterministic_rejection", "invalid_provider_output"],
+      "expectedCanonicalization": "application_rejected",
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "invalid_provider_output",
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-31-numeric-units",
+      "fixtureKind": "numeric_units",
+      "sourceContent": "An original force calculation has the canonical numeric value five, an explicit newton unit, accepted variants, and a visible worked result.",
+      "coverage": ["numeric", "units", "accepted_variants"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-32-multiple-visuals",
+      "fixtureKind": "multiple_visuals",
+      "sourceContent": "One synthetic question requires both a bounded graph and a separate bounded table, with one source-backed fact from each visual.",
+      "coverage": ["multiple_visuals_one_question", "visual_facts", "mature_crop_adapter"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-33-invalid-bbox",
+      "fixtureKind": "invalid_bbox",
+      "sourceContent": "A synthetic visual proposal extends beyond normalized source bounds and must fail before any canonical visual or Draft can exist.",
+      "coverage": ["invalid_bbox", "provider_schema_rejection", "zero_projection"],
+      "expectedCanonicalization": "provider_schema_rejected",
+      "expectedSufficiency": null,
+      "expectedDisposition": null,
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-34-fabricated-visual-fact",
+      "fixtureKind": "fabricated_visual_fact",
+      "sourceContent": "A proposed visual fact points to a visual object that does not exist in the document registry and must be rejected by the application.",
+      "coverage": ["fabricated_visual_fact", "orphan_reference", "invalid_provider_output"],
+      "expectedCanonicalization": "application_rejected",
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "invalid_provider_output",
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-35-taxonomy-close-siblings",
+      "fixtureKind": "taxonomy_close_siblings",
+      "sourceContent": "Two active concept leaves are close siblings, but exact source evidence supports only the derivative leaf and no broad substitution.",
+      "coverage": ["taxonomy_close_siblings", "exact_leaf", "candidate_subset"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-36-taxonomy-wrong-facet",
+      "fixtureKind": "taxonomy_wrong_facet",
+      "sourceContent": "A method-tag identifier is incorrectly proposed for the concept facet and must fail the exact facet boundary.",
+      "coverage": ["taxonomy_wrong_facet", "facet_validation", "invalid_provider_output"],
+      "expectedCanonicalization": "application_rejected",
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "invalid_provider_output",
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-37-taxonomy-broad-parent",
+      "fixtureKind": "taxonomy_broad_parent",
+      "sourceContent": "A broad assignable-looking concept parent is offered as a temptation but is not an effective leaf and must remain unassignable.",
+      "coverage": ["taxonomy_broad_parent", "effective_leaf", "invalid_provider_output"],
+      "expectedCanonicalization": "application_rejected",
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "invalid_provider_output",
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-38-taxonomy-unknown-id",
+      "fixtureKind": "taxonomy_unknown_id",
+      "sourceContent": "A syntactically valid but unknown taxonomy identifier is absent from the candidate set and must not become authoritative state.",
+      "coverage": ["taxonomy_unknown_id", "candidate_validation", "invalid_provider_output"],
+      "expectedCanonicalization": "application_rejected",
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "invalid_provider_output",
+      "expectedQuestionCount": 0
+    },
+    {
+      "id": "dev-39-generation-parameter-invariant",
+      "fixtureKind": "generation_parameter_invariant",
+      "sourceContent": "One force problem exposes instance values, possible parameters, a reasoning operator, and only a candidate invariant with one recurrence.",
+      "coverage": ["generation_parameters", "candidate_invariant", "single_instance_not_authoritative"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-40-surface-specific-not-rule",
+      "fixtureKind": "surface_specific_rule",
+      "sourceContent": "The numbers eight and three are surface-specific details from one source instance and cannot become an authoritative generator rule.",
+      "coverage": ["surface_specific_detail", "candidate_only", "blueprint_noninterference"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    },
+    {
+      "id": "dev-41-source-explicit-answer",
+      "fixtureKind": "source_explicit_answer",
+      "sourceContent": "The synthetic explanation explicitly states the correct multiple-choice answer in visible source text without using a separate answer-key label.",
+      "coverage": ["source_explicit_answer", "answer_provenance", "source_role"],
+      "expectedSufficiency": "extractable",
+      "expectedDisposition": "review_ready",
+      "expectedQuestionCount": 1
+    }
+  ]
+}
