@@ -1,0 +1,115 @@
+{
+  "version": "ai_parsing_v2_frozen_holdout_v1",
+  "rights": "Synthetic educational fixtures authored for repository testing; no third-party source text.",
+  "policy": "Frozen before the first paid V2 Provider run on 2026-08-08. Do not use these cases or their gold expectations to tune implementation after Provider output is observed.",
+  "cases": [
+    {
+      "id": "holdout-01-vector-diagram",
+      "sourceKind": "pdf",
+      "sourceContent": "Page 1. Question H1. A force diagram labeled H1V shows a 7 N arrow pointing east and a 2 N arrow pointing west. Determine the net force, including direction. Page 2. Answer key H1: 5 N east.",
+      "sourceSha256": "fa897a77868acb422c3d12f4f248e2cbeded8323c90a9a2f267001b87f31167c",
+      "coverage": ["vector", "required_visual", "cross_page", "numeric_units"],
+      "gold": {
+        "expectedSufficiency": "extractable",
+        "expectedQuestionCount": 1,
+        "expectedQuestionIds": ["H1"],
+        "expectedBoundaryKinds": ["cross_page_continuation"],
+        "expectedAnswerKinds": ["numeric"],
+        "expectedAnswers": [{ "questionId": "H1", "value": 5, "unit": "N", "direction": "east" }],
+        "expectedVisualRelationship": "one_visual_one_question",
+        "expectedTaxonomyBehavior": "exact_leaf_or_abstain",
+        "expectedDisposition": "review_ready"
+      }
+    },
+    {
+      "id": "holdout-02-proof-table",
+      "sourceKind": "pdf",
+      "sourceContent": "Page 1. Question H2. The table H2T contains ordered pairs (0, 1), (1, 3), and (2, 6). Explain why the relationship is not linear. Page 2. Rubric: compare consecutive first differences and state that unequal differences rule out a linear relationship.",
+      "sourceSha256": "89ef79391f0ff83153c0a3c9d3081d1e357647a81dcd631273c000db9ed42383",
+      "coverage": ["table", "free_response", "rubric", "worked_solution"],
+      "gold": {
+        "expectedSufficiency": "extractable",
+        "expectedQuestionCount": 1,
+        "expectedQuestionIds": ["H2"],
+        "expectedBoundaryKinds": ["standalone"],
+        "expectedAnswerKinds": ["free_response"],
+        "expectedAnswers": [{ "questionId": "H2", "rubricPoints": ["differences are 2 and 3", "unequal differences mean not linear"] }],
+        "expectedVisualRelationship": "one_table_one_question",
+        "expectedTaxonomyBehavior": "exact_leaf_or_abstain",
+        "expectedDisposition": "review_ready"
+      }
+    },
+    {
+      "id": "holdout-03-multipart-equation",
+      "sourceKind": "image",
+      "sourceContent": "Image source. Question H3 has two parts. (a) Solve 2x + 3 = 11. (b) Substitute the result into the original equation to verify it. Answer panel: (a) x = 4. (b) 2(4) + 3 = 11.",
+      "sourceSha256": "04e20c5f14d6467543b288ac9d4932e15673a8cba9d3376be386bd2d791677e2",
+      "coverage": ["image", "multipart", "equation", "shared_answer_source"],
+      "gold": {
+        "expectedSufficiency": "extractable",
+        "expectedQuestionCount": 3,
+        "expectedQuestionIds": ["H3", "H3a", "H3b"],
+        "expectedBoundaryKinds": ["multipart_parent", "multipart_child", "multipart_child"],
+        "expectedAnswerKinds": ["multipart", "numeric", "boolean"],
+        "expectedAnswers": [{ "questionId": "H3a", "value": 4, "unit": null }, { "questionId": "H3b", "value": true }],
+        "expectedVisualRelationship": "answer_key_visual_shared_by_parts",
+        "expectedTaxonomyBehavior": "exact_leaf_or_abstain",
+        "expectedDisposition": "review_ready"
+      }
+    },
+    {
+      "id": "holdout-04-no-question-handout",
+      "sourceKind": "pdf",
+      "sourceContent": "Synthetic handout. Vocabulary: velocity is displacement per unit time. Acceleration is the rate of change of velocity. The handout contains definitions and a reading schedule, but no prompt, task, exercise, or answer key.",
+      "sourceSha256": "898f41e825054e74631107d372f44faa0040582ced7d26a38bf1b2ba6e9c9570",
+      "coverage": ["no_questions", "source_sufficiency", "compact_result"],
+      "gold": {
+        "expectedSufficiency": "no_questions",
+        "expectedQuestionCount": 0,
+        "expectedQuestionIds": [],
+        "expectedBoundaryKinds": [],
+        "expectedAnswerKinds": [],
+        "expectedAnswers": [],
+        "expectedVisualRelationship": "none",
+        "expectedTaxonomyBehavior": "no_assignments",
+        "expectedDisposition": "insufficient_source"
+      }
+    },
+    {
+      "id": "holdout-05-taxonomy-collision",
+      "sourceKind": "text",
+      "sourceContent": "Question H5. For f(x) = x squared, compute f prime at x = 3. Answer key: 6. The wording supports a derivative task and numeric form, but the bounded candidate set intentionally contains two equally plausible fine-grained concept leaves with no source evidence that distinguishes them.",
+      "sourceSha256": "b4543655791fbf20c3c0819e3e726dcc8bf2e15fa3ff327c937f91225daa24ed",
+      "coverage": ["taxonomy", "close_siblings", "abstention", "numeric"],
+      "gold": {
+        "expectedSufficiency": "extractable",
+        "expectedQuestionCount": 1,
+        "expectedQuestionIds": ["H5"],
+        "expectedBoundaryKinds": ["standalone"],
+        "expectedAnswerKinds": ["numeric"],
+        "expectedAnswers": [{ "questionId": "H5", "value": 6, "unit": null }],
+        "expectedVisualRelationship": "none",
+        "expectedTaxonomyBehavior": "concept_abstain_no_broad_parent",
+        "expectedDisposition": "review_ready"
+      }
+    },
+    {
+      "id": "holdout-06-missing-visual",
+      "sourceKind": "html",
+      "sourceContent": "Question H6. Use plot H6P to identify every interval on which the function decreases. The bounded HTML source references H6P, but the plot bytes and region are absent. No answer key or substitute description is present.",
+      "sourceSha256": "114684096e96033c0524c89de00560311321e680e33b4ebc48eab60253042dc6",
+      "coverage": ["missing_required_visual", "insufficient_evidence", "no_text_substitution"],
+      "gold": {
+        "expectedSufficiency": "extractable",
+        "expectedQuestionCount": 1,
+        "expectedQuestionIds": ["H6"],
+        "expectedBoundaryKinds": ["standalone"],
+        "expectedAnswerKinds": ["free_response"],
+        "expectedAnswers": [],
+        "expectedVisualRelationship": "required_visual_missing",
+        "expectedTaxonomyBehavior": "exact_leaf_or_abstain",
+        "expectedDisposition": "needs_more_evidence"
+      }
+    }
+  ]
+}

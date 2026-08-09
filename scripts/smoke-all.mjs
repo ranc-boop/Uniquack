@@ -101,6 +101,7 @@ await import("./pdf50-single-page-source-lineage-smoke.mjs");
 await import("./pdf50-burst-status-reconciliation-smoke.mjs");
 await import("./ai-parsing-boundary-duplicate-guard-smoke.mjs");
 await import("./ai-parsing-quality-foundation-smoke.mjs");
+await import("./ai-parsing-v2-foundation-fingerprint-smoke.mjs");
 await import("./ai-parsing-eval/taxonomy-admin-mutation-source-audit.mjs");
 await import("./ai-parsing-eval/runtime-taxonomy-snapshot-smoke.mjs");
 await import("./ai-parsing-eval/provider-attempt-state-smoke.mjs");

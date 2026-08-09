@@ -1,0 +1,19 @@
+{
+  "version": "ai_parsing_v2_foundation_fingerprints_v1",
+  "developmentCorpus": {
+    "canonicalJsonSha256": "7e0b30c2846ea948ee12aacd11bc4b9a6744389919eaa838add23478c6350b3c",
+    "fileBytesSha256": "ab7ed0d920b1ba892df226d84824597e450e611af299e1ec6e3b4d6be3b375f5"
+  },
+  "frozenHoldout": {
+    "canonicalJsonSha256": "498b4fe1bdf29d17d420b976e29e8b3b5b80b4e1de415f5de136b066f42e1518",
+    "fileBytesSha256": "1d7c4055348f421e49a6ffbcab4669c544c4edfc0928d6ece70d0d2119c0971a"
+  },
+  "providerContract": {
+    "canonicalContractVersionSha256": "ce7e53d140db7d63a76a673d257cff34309cf56ed0aaa58ffc34501de106b3ca",
+    "evaluatorVersionSha256": "f86a8aaef534a3e747c05805cfc87f58b6edcd602a22a6b1c533d5e4d7e8e00c",
+    "policySha256": "f2c5c810df5a7bc3e95ee4e5429abb58b4299846868184cf342e762f194a0b09",
+    "promptContractVersionSha256": "e1ba6e08fafaa27169f2586fcf22d4792ae1ae0b6946f9d62fc19de0bf290a04",
+    "proposalSchemaSha256": "cdc30f1b60f5c38b06e6be98fdd0d437d4aca3b7010642522892c27c44436207",
+    "taskInstructionsSha256": "d56b0f8075785e1f93a871a3b2062df3621d9b3b9f66f7de8c8f858c073dbbe0"
+  }
+}
