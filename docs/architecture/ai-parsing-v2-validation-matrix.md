@@ -103,7 +103,8 @@ source bytes, and checkpoint replay performs zero inference.
 
 P0 is accepted only when all of these are true:
 
-- development and holdout fingerprints match;
+- development and holdout canonical-JSON and normalized-text fingerprints
+  match across LF and CRLF checkouts while semantic text mutations fail;
 - all 41 development cases produce their declared source/fake outcome;
 - a perfect evaluator prediction scores without hard-boundary escapes;
 - fabricated-source, taxonomy, answer, boundary, visual, ownership, and Review

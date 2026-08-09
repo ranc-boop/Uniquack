@@ -61,6 +61,7 @@ const {
 const {
   canonicalJsonV2,
   sha256CanonicalJsonV2,
+  sha256NormalizedTextV2,
   sha256TextV2,
 } = await import("../src/lib/ai-pdf-import/v2/fingerprint.ts");
 const {
@@ -400,7 +401,7 @@ test("frozen holdout is separate, unique, and integrity-only", () => {
   );
 });
 
-test("corpus, holdout, and Provider contracts match frozen fingerprints", () => {
+test("corpus, holdout, and Provider contracts match portable frozen fingerprints", () => {
   const developmentText = corpusFileText(
     "./fixtures/ai-parsing-v2-development-corpus.json",
   );
@@ -413,16 +414,26 @@ test("corpus, holdout, and Provider contracts match frozen fingerprints", () => 
     frozenFingerprints.developmentCorpus.canonicalJsonSha256,
   );
   assert.equal(
-    sha256TextV2(developmentText),
-    frozenFingerprints.developmentCorpus.fileBytesSha256,
+    sha256NormalizedTextV2(developmentText),
+    frozenFingerprints.developmentCorpus.normalizedTextSha256,
   );
   assert.equal(
     sha256CanonicalJsonV2(JSON.parse(holdoutText)),
     frozenFingerprints.frozenHoldout.canonicalJsonSha256,
   );
   assert.equal(
-    sha256TextV2(holdoutText),
-    frozenFingerprints.frozenHoldout.fileBytesSha256,
+    sha256NormalizedTextV2(holdoutText),
+    frozenFingerprints.frozenHoldout.normalizedTextSha256,
+  );
+  const developmentLf = developmentText.replace(/\r\n?/g, "\n");
+  const developmentCrlf = developmentLf.replace(/\n/g, "\r\n");
+  assert.equal(
+    sha256NormalizedTextV2(developmentLf),
+    sha256NormalizedTextV2(developmentCrlf),
+  );
+  assert.notEqual(
+    sha256NormalizedTextV2(`${developmentLf}\nsemantic-mutation`),
+    frozenFingerprints.developmentCorpus.normalizedTextSha256,
   );
   assert.deepEqual(
     AI_PARSING_V2_PROMPT_FINGERPRINTS,

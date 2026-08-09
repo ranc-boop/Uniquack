@@ -29,6 +29,14 @@ export function sha256TextV2(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+export function normalizeTextLineEndingsV2(value: string) {
+  return value.replace(/\r\n?/g, "\n");
+}
+
+export function sha256NormalizedTextV2(value: string) {
+  return sha256TextV2(normalizeTextLineEndingsV2(value));
+}
+
 export function utf8BytesV2(value: string) {
   return Buffer.byteLength(value, "utf8");
 }

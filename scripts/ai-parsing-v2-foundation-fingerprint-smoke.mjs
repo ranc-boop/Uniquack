@@ -33,7 +33,7 @@ registerHooks({
 const { AI_PARSING_V2_PROMPT_FINGERPRINTS } = await import(
   "../src/lib/ai-pdf-import/v2/prompt-contract.ts"
 );
-const { sha256CanonicalJsonV2, sha256TextV2 } = await import(
+const { sha256CanonicalJsonV2, sha256NormalizedTextV2 } = await import(
   "../src/lib/ai-pdf-import/v2/fingerprint.ts"
 );
 
@@ -55,11 +55,11 @@ const current = {
   version: "ai_parsing_v2_foundation_fingerprints_v1",
   developmentCorpus: {
     canonicalJsonSha256: sha256CanonicalJsonV2(JSON.parse(developmentText)),
-    fileBytesSha256: sha256TextV2(developmentText),
+    normalizedTextSha256: sha256NormalizedTextV2(developmentText),
   },
   frozenHoldout: {
     canonicalJsonSha256: sha256CanonicalJsonV2(JSON.parse(holdoutText)),
-    fileBytesSha256: sha256TextV2(holdoutText),
+    normalizedTextSha256: sha256NormalizedTextV2(holdoutText),
   },
   providerContract: AI_PARSING_V2_PROMPT_FINGERPRINTS,
 };
