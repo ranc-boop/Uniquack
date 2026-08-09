@@ -111,8 +111,6 @@ jobs:
       - run: node scripts/ci-authz-seed.mjs
       - name: Enforce authorization matrix
         run: node scripts/ci-authz-matrix-gate.mjs
-      - name: Enforce cross-tenant delete regression
-        run: node scripts/ci-authz-delete-regression.mjs
       - name: Upload authorization evidence
         if: always()
         uses: actions/upload-artifact@v7

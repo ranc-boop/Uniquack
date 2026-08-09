@@ -27,6 +27,7 @@ Net: tenant isolation, owner isolation, and privilege boundaries all hold. The o
 - **Category:** Roles × resource-access coupling (question access ↔ admin role scope)
 - **Design note:** N10 (§8.1)
 - **Status:** Intended, confirmed by product owner 2026-08-07. Re-test required if the role model or the policy changes.
+- **Decision (2026-08-09):** Accepted as intended. The CI step "Enforce cross-tenant delete regression" (`scripts/ci-authz-delete-regression.mjs`) was **removed** because it asserted the opposite (org-scoped delete) and contradicted this decision. The remaining `authz-matrix-runner.mjs` N10 cases encode the intended-allow behavior and stay in CI via `ci-authz-matrix-gate.mjs` — if the role model ever changes, flip N10 back to "deny" and that guard reactivates.
 
 ### What
 The `questions_staff_access` RLS policy on `public.questions`:
