@@ -1,0 +1,101 @@
+{
+  "target": "http://127.0.0.1:54321",
+  "ranAt": "2026-08-09T05:49:23.653Z",
+  "evidence": [
+    {
+      "case_id": "N10-C1",
+      "actor": "admin@test.local",
+      "endpoint": "GET /rest/v1/questions?id=eq.<id>",
+      "target_owner": "questions",
+      "tenant": "T1",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "rows": 1
+      },
+      "result": "pass",
+      "payload_hash": "bd00c9c9e23bc0df",
+      "response_hash": "74e2d27c7e03e296",
+      "request_id": "d630dcb2-8497-4623-a6cd-097f700092bd",
+      "timestamp": "2026-08-09T05:49:23.236Z"
+    },
+    {
+      "case_id": "N10-C2",
+      "actor": "teacher-a@test.local",
+      "endpoint": "GET /rest/v1/questions?id=eq.<id>",
+      "target_owner": "questions",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 0,
+      "expected": {
+        "rows": 0
+      },
+      "result": "pass",
+      "payload_hash": "bdc1ffff115da0dc",
+      "response_hash": "23193d3a6f66761b",
+      "request_id": "857848c9-cd35-4d71-ab2d-6a498478afc6",
+      "timestamp": "2026-08-09T05:49:23.347Z"
+    },
+    {
+      "case_id": "N10-1",
+      "actor": "admin@test.local",
+      "endpoint": "GET /rest/v1/questions?id=eq.<id>",
+      "target_owner": "questions",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "rows": 1
+      },
+      "result": "pass",
+      "payload_hash": "bdc1ffff115da0dc",
+      "response_hash": "74e2d27c7e03e296",
+      "request_id": "8597531f-5434-46aa-bfb2-79205cf82cae",
+      "timestamp": "2026-08-09T05:49:23.376Z"
+    },
+    {
+      "case_id": "N10-2",
+      "actor": "admin@test.local",
+      "endpoint": "PATCH /rest/v1/questions?id=eq.<id>",
+      "target_owner": "questions",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "http_status": 200,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "mutated": true
+      },
+      "result": "pass",
+      "payload_hash": "aecb6e89120edb38",
+      "response_hash": "48867338f890656e",
+      "request_id": "e0d1ea55-9063-452f-b3a7-b02118bc2829",
+      "timestamp": "2026-08-09T05:49:23.479Z"
+    },
+    {
+      "case_id": "N10-3",
+      "actor": "admin@test.local",
+      "endpoint": "DELETE /rest/v1/questions?id=eq.<id>",
+      "target_owner": "questions",
+      "tenant": "T2",
+      "mutation_axis": "tenant",
+      "http_status": 204,
+      "denial_code": null,
+      "rls_rows_affected": 1,
+      "expected": {
+        "deleted": true
+      },
+      "result": "pass",
+      "payload_hash": "08bda4aa78282f73",
+      "response_hash": "1b70b1c98c544d97",
+      "request_id": "8d7e0fbc-650c-4901-a582-36408276e202",
+      "timestamp": "2026-08-09T05:49:23.574Z"
+    }
+  ]
+}
