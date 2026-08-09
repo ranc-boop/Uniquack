@@ -121,26 +121,18 @@ async function insert(table, row, tag) {
 const orphanQ = (org, tag) => insert("questions", { organization_id: org, owner_bank_id: null, question_code: `AZ-${tag}-${randomUUID().slice(0, 6)}`, title: `fx ${tag}`, question_type: "mcq", content_html: "<p>x</p>", status: "draft" }, tag);
 
 // ---------- case groups ----------
-// N10 — roles x question-access cross-test (WATCH item, not a vuln).
-// Orphan (owner_bank_id IS NULL) questions ARE the global/official library.
-// `questions_staff_access` gates them on is_admin() = profiles.role in
-// (admin,super_admin), a GLOBAL platform role. Global admins managing global
-// questions across orgs is INTENDED (confirmed 2026-08-07). These cases encode
-// that intent so the suite stays green.
-//
-// !!! IF THE ROLE MODEL CHANGES (profiles.role='admin' becomes org-scoped, or
-// per-org platform admins are introduced) WITHOUT adding an organization_id
-// clause to questions_staff_access, this becomes a real cross-tenant IDOR.
-// Then flip expectRows->0 / expectMutated->false / expectDeleted->false and
-// this same test guards the boundary. See docs/security/findings.md F-001.
+// N10 — roles x question-access cross-test.
+// Orphan (owner_bank_id IS NULL) questions are now scoped by organization via
+// questions_staff_access => private.is_org_admin(organization_id) (0077), so an
+// org admin must NOT access orphan questions in a foreign organization.
 async function N10() {
   const t2 = await orphanQ(T2, "T2"), t1 = await orphanQ(T1, "T1"), t2del = await orphanQ(T2, "T2del");
   return [
     ["N10-C1 control: platform admin reads OWN-tenant orphan (allow)", await probeSelect({ case_id: "N10-C1", actor: A.admin, table: "questions", id: t1, tenant: "T1", axis: "tenant", expectRows: 1 })],
     ["N10-C2 control: teacher (non-admin) reads orphan (deny)", await probeSelect({ case_id: "N10-C2", actor: A.teacherA, table: "questions", id: t2, tenant: "T2", axis: "tenant", expectRows: 0 })],
-    ["N10-1 platform admin READS global orphan (intended allow; flip if roles change)", await probeSelect({ case_id: "N10-1", actor: A.admin, table: "questions", id: t2, tenant: "T2", axis: "tenant", expectRows: 1 })],
-    ["N10-2 platform admin WRITES global orphan (intended allow; flip if roles change)", await probeUpdate({ case_id: "N10-2", actor: A.admin, table: "questions", id: t2, patch: { title: "x" + randomUUID().slice(0, 4) }, verifyCol: "title", tenant: "T2", axis: "tenant", expectMutated: true })],
-    ["N10-3 platform admin DELETES global orphan (intended allow; flip if roles change)", await probeDelete({ case_id: "N10-3", actor: A.admin, table: "questions", id: t2del, tenant: "T2", axis: "tenant", expectDeleted: true })],
+    ["N10-1 platform admin READS foreign-tenant orphan (deny)", await probeSelect({ case_id: "N10-1", actor: A.admin, table: "questions", id: t2, tenant: "T2", axis: "tenant", expectRows: 0 })],
+    ["N10-2 platform admin WRITES foreign-tenant orphan (deny)", await probeUpdate({ case_id: "N10-2", actor: A.admin, table: "questions", id: t2, patch: { title: "x" + randomUUID().slice(0, 4) }, verifyCol: "title", tenant: "T2", axis: "tenant", expectMutated: false })],
+    ["N10-3 platform admin DELETES foreign-tenant orphan (deny)", await probeDelete({ case_id: "N10-3", actor: A.admin, table: "questions", id: t2del, tenant: "T2", axis: "tenant", expectDeleted: false })],
   ];
 }
 
